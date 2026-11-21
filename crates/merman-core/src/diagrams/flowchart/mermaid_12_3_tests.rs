@@ -1076,6 +1076,43 @@ fn direction_values_follow_the_upstream_prefix_rule() {
 }
 
 #[test]
+fn direction_rules_use_statement_separators_outside_labels() {
+    for statement in [
+        "A[\"direction LR; x\"]",
+        "A[\"x; direction LR\"]",
+        "A -->|x; y| B[direction LR]",
+        "A@{ label: \"x; direction LR\", shape: rect }",
+        "direction\nLR A[\"x;y\"]",
+    ] {
+        let model = parse(&format!("flowchart TB\nsubgraph S\n{statement};Z\nend\n"));
+        assert_eq!(model.subgraphs[0].dir.as_deref(), Some("LR"), "{statement}");
+        assert_eq!(model.subgraphs[0].nodes, ["Z"], "{statement}");
+    }
+    let model = parse("flowchart TD\nsubgraph S\nA[\"x;y\"];direction LR;B --> C\nend\n");
+    assert_eq!(model.subgraphs[0].dir.as_deref(), Some("LR"));
+    assert_eq!(model.nodes.len(), 3);
+    assert_eq!((&*model.edges[0].from, &*model.edges[0].to), ("B", "C"));
+}
+
+#[test]
+fn closing_a_subgraph_consumes_the_indentation_before_a_direction_match() {
+    for directive in ["class direction LR", "style direction LR"] {
+        let source =
+            format!("flowchart TD\nsubgraph Outer\nsubgraph Inner\nB\nend\n  {directive}\nend\n");
+        assert!(
+            parse_flowchart_model_for_render(&source, &metadata()).is_err(),
+            "{directive}"
+        );
+    }
+    for gap in ["\n  ", " ", "\u{2028}", "\u{2029}"] {
+        let model = parse(&format!(
+            "flowchart TD\nsubgraph Outer\nsubgraph Inner\nB\nend{gap}direction LR\nend\n"
+        ));
+        assert_eq!(model.subgraphs.last().unwrap().dir.as_deref(), Some("LR"));
+    }
+}
+
+#[test]
 fn direction_value_selection_follows_the_greedy_upstream_rule() {
     let source = "direction LR direction TBfoo direction TBbar";
     let Some(Ok((_, super::Tok::DirectionStmt(statement), end))) = super::Lexer::new(source).next()
@@ -1083,10 +1120,8 @@ fn direction_value_selection_follows_the_greedy_upstream_rule() {
         panic!("expected a Flowchart direction statement");
     };
     assert_eq!(statement.direction, "TB");
-    assert_eq!(statement.selection.start, source.rfind("TB").unwrap());
-    assert_eq!(
-        &source[statement.selection.start..statement.selection.end],
-        "TB"
-    );
+    let matched = super::lexer::match_direction(source, source).unwrap();
+    assert_eq!(matched.offset, source.rfind("TB").unwrap());
+    assert_eq!(statement.completion_span, None);
     assert_eq!(end, source.len());
 }

@@ -795,7 +795,7 @@ impl FlowchartTokenTrace {
         code_len: usize,
     ) -> Option<SourceSpan> {
         match &token.1 {
-            Tok::DirectionStmt(stmt) => Some(stmt.selection),
+            Tok::DirectionStmt(stmt) => stmt.completion_span,
             Tok::Id(id) if id == "direction" => {
                 // A standalone vertex also offers a direction value after trailing whitespace.
                 let Some(FlowchartTracedItem::Token((_, Tok::Sep, _))) = self.items[..index].last()

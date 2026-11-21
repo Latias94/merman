@@ -330,80 +330,89 @@ fn split_comma_value_spans(text: &str, text_start: usize) -> Vec<SourceSpan> {
 }
 
 struct ClickParse<'a> {
-    s: &'a str,
-    #[cfg(feature = "editor-facts")]
-    base: usize,
+    input: &'a str,
+    end: usize,
     i: usize,
 }
 
 impl<'a> ClickParse<'a> {
-    fn new(s: &'a str, _base: usize) -> Self {
+    fn new(input: &'a str, body: SourceSpan) -> Self {
         Self {
-            s,
-            #[cfg(feature = "editor-facts")]
-            base: _base,
-            i: 0,
+            input,
+            end: body.end,
+            i: body.start,
         }
     }
 
     fn skip_ws(&mut self) {
-        while self.i < self.s.len() {
-            let Some(ch) = self.s[self.i..].chars().next() else {
-                break;
-            };
-            if !is_ecmascript_whitespace(ch) {
-                break;
-            }
-            self.i += ch.len_utf8();
-        }
+        self.i = self.end
+            - self
+                .rest()
+                .trim_start_matches(is_ecmascript_whitespace)
+                .len();
     }
 
     fn peek(&self) -> Option<u8> {
-        self.s.as_bytes().get(self.i).copied()
+        self.rest().as_bytes().first().copied()
     }
 
     fn take_word(&mut self) -> Option<String> {
         self.skip_ws();
-        let start = self.i;
-        while self.i < self.s.len() {
-            let Some(ch) = self.s[self.i..].chars().next() else {
-                break;
-            };
-            if is_ecmascript_whitespace(ch) {
-                break;
-            }
-            self.i += ch.len_utf8();
-        }
-        if self.i == start {
-            return None;
-        }
-        Some(self.s[start..self.i].to_string())
+        let word = self.rest().split(is_ecmascript_whitespace).next()?;
+        self.i += word.len();
+        (!word.is_empty()).then(|| word.to_string())
     }
 
-    fn take_quoted(&mut self) -> Option<String> {
-        self.skip_ws();
-        if self.peek()? != b'"' {
-            return None;
+    fn reject_direction(&self) -> Result<(), LexError> {
+        let prefix = self
+            .rest()
+            .split(['\r', '\n', '\u{2028}', '\u{2029}'])
+            .next()
+            .unwrap_or_default();
+        // Only the whitespace between `direction` and its value can cross the line.
+        if let Some(matched) = super::lexer::match_direction(&self.input[self.i..], prefix) {
+            let value_start = self.i + matched.offset;
+            return Err(LexError::with_span(
+                "unexpected direction in Flowchart click statement",
+                SourceSpan::new(value_start, value_start + matched.direction.len()),
+            ));
+        }
+        Ok(())
+    }
+
+    fn skip_initial_ws(&mut self) -> Result<(), LexError> {
+        if self.rest().starts_with(is_ecmascript_whitespace) {
+            // In Jison's INITIAL state the direction rules precede SPACE.
+            self.reject_direction()?;
+            self.skip_ws();
+        }
+        Ok(())
+    }
+
+    fn skip_click_separator(&mut self) -> Result<(), LexError> {
+        // The click state consumes one separator after the target, as does the HREF rule.
+        if let Some(separator) = self.rest().chars().next()
+            && is_ecmascript_whitespace(separator)
+        {
+            self.i += separator.len_utf8();
+        }
+        self.skip_initial_ws()
+    }
+
+    fn take_quoted(&mut self) -> Result<Option<String>, LexError> {
+        self.skip_initial_ws()?;
+        if self.peek() != Some(b'"') {
+            return Ok(None);
         }
         self.i += 1;
-        let start = self.i;
-        while self.i < self.s.len() && self.s.as_bytes()[self.i] != b'"' {
-            self.i += 1;
-        }
-        let out = self.s[start..self.i].to_string();
-        if self.i < self.s.len() && self.s.as_bytes()[self.i] == b'"' {
-            self.i += 1;
-        }
-        Some(out)
+        let rest = self.rest();
+        let (text, after_quote) = rest.split_once('"').unwrap_or((rest, ""));
+        self.i = self.end - after_quote.len();
+        Ok(Some(text.to_string()))
     }
 
-    fn rest(&self) -> &str {
-        &self.s[self.i..]
-    }
-
-    #[cfg(feature = "editor-facts")]
-    fn source_span(&self, start: usize, end: usize) -> SourceSpan {
-        SourceSpan::new(self.base + start, self.base + end)
+    fn rest(&self) -> &'a str {
+        &self.input[self.i..self.end]
     }
 }
 
@@ -412,11 +421,11 @@ fn click_following_span(parser: &ClickParse<'_>, boundary_end: usize) -> Option<
     (parser.i > boundary_end).then(|| {
         // Keep the completion slot after the first separator, including any
         // remaining spaces, without placing a byte span inside a UTF-8 character.
-        let separator_len = parser.s[boundary_end..]
+        let separator_len = parser.input[boundary_end..parser.i]
             .chars()
             .next()
             .map_or(0, char::len_utf8);
-        parser.source_span(boundary_end + separator_len, parser.s.len())
+        SourceSpan::new(boundary_end + separator_len, parser.end)
     })
 }
 
@@ -438,10 +447,10 @@ fn click_statement_error(
 }
 
 pub(super) fn parse_click_stmt(
-    rest: &str,
-    rest_start: usize,
+    input: &str,
+    body: SourceSpan,
 ) -> std::result::Result<ClickStmt, LexError> {
-    let mut p = ClickParse::new(rest, rest_start);
+    let mut p = ClickParse::new(input, body);
     p.skip_ws();
     let id_start = p.i;
     let Some(id) = p.take_word() else {
@@ -450,7 +459,7 @@ pub(super) fn parse_click_stmt(
     let mut ids = Vec::new();
     #[cfg(feature = "editor-facts")]
     let mut id_spans = Vec::new();
-    for (target, _span) in split_click_targets(&id, rest_start + id_start) {
+    for (target, _span) in split_click_targets(&id, id_start) {
         ids.push(target.to_string());
         #[cfg(feature = "editor-facts")]
         id_spans.push(_span);
@@ -458,7 +467,7 @@ pub(super) fn parse_click_stmt(
 
     #[cfg(feature = "editor-facts")]
     let target_end = p.i;
-    p.skip_ws();
+    p.skip_click_separator()?;
     #[cfg(feature = "editor-facts")]
     let after_target = click_following_span(&p, target_end);
     let tooltip: Option<String>;
@@ -476,14 +485,14 @@ pub(super) fn parse_click_stmt(
         #[cfg(feature = "editor-facts")]
         let action_end = p.i;
         #[cfg(feature = "editor-facts")]
-        let action_span = p.source_span(action_start, action_end);
-        p.skip_ws();
+        let action_span = SourceSpan::new(action_start, action_end);
+        p.skip_click_separator()?;
         #[cfg(feature = "editor-facts")]
         let interaction_evidence = FlowchartClickEditorEvidence::new(
             Some(action_span),
             click_following_span(&p, action_end),
         );
-        let Some(link) = p.take_quoted() else {
+        let Some(link) = p.take_quoted()? else {
             return Err({
                 #[cfg(feature = "editor-facts")]
                 {
@@ -499,7 +508,7 @@ pub(super) fn parse_click_stmt(
                 }
             });
         };
-        let maybe_tt = p.take_quoted();
+        let maybe_tt = p.take_quoted()?;
         let maybe_target = p.take_word();
         if maybe_target
             .as_deref()
@@ -526,7 +535,7 @@ pub(super) fn parse_click_stmt(
             target: maybe_target,
         };
         p.skip_ws();
-        if p.i != p.s.len() {
+        if p.i != p.end {
             return Err({
                 #[cfg(feature = "editor-facts")]
                 {
@@ -571,14 +580,11 @@ pub(super) fn parse_click_stmt(
         p.skip_ws();
         #[cfg(feature = "editor-facts")]
         let interaction_evidence = FlowchartClickEditorEvidence::new(
-            Some(p.source_span(action_start, action_end)),
+            Some(SourceSpan::new(action_start, action_end)),
             click_following_span(&p, action_end),
         );
         let start = p.i;
-        while p.i < p.s.len() {
-            let Some(ch) = p.s[p.i..].chars().next() else {
-                break;
-            };
+        while let Some(ch) = p.rest().chars().next() {
             if is_ecmascript_whitespace(ch) || ch == '(' {
                 break;
             }
@@ -603,10 +609,7 @@ pub(super) fn parse_click_stmt(
         p.skip_ws();
         if p.peek() == Some(b'(') {
             p.i += 1;
-            while p.i < p.s.len() && p.s.as_bytes()[p.i] != b')' {
-                p.i += 1;
-            }
-            if p.peek() != Some(b')') {
+            let Some(close) = p.rest().find(')') else {
                 return Err({
                     #[cfg(feature = "editor-facts")]
                     {
@@ -621,14 +624,14 @@ pub(super) fn parse_click_stmt(
                         LexError::new("Unterminated click callback arguments")
                     }
                 });
-            }
-            p.i += 1;
+            };
+            p.i += close + 1;
         }
 
-        tooltip = p.take_quoted();
+        tooltip = p.take_quoted()?;
         action = ClickAction::Callback;
         p.skip_ws();
-        if p.i != p.s.len() {
+        if p.i != p.end {
             return Err({
                 #[cfg(feature = "editor-facts")]
                 {
@@ -659,10 +662,10 @@ pub(super) fn parse_click_stmt(
         });
     }
 
-    if let Some(link) = p.take_quoted() {
+    if let Some(link) = p.take_quoted()? {
         #[cfg(feature = "editor-facts")]
         let interaction_evidence = FlowchartClickEditorEvidence::new(None, after_target);
-        let maybe_tt = p.take_quoted();
+        let maybe_tt = p.take_quoted()?;
         let maybe_target = p.take_word();
         if maybe_target
             .as_deref()
@@ -689,7 +692,7 @@ pub(super) fn parse_click_stmt(
             target: maybe_target,
         };
         p.skip_ws();
-        if p.i != p.s.len() {
+        if p.i != p.end {
             return Err({
                 #[cfg(feature = "editor-facts")]
                 {
@@ -722,6 +725,8 @@ pub(super) fn parse_click_stmt(
 
     #[cfg(feature = "editor-facts")]
     let function_start = p.i;
+    // A bare callback name is an INITIAL token. `call` has its own name and argument states.
+    p.reject_direction()?;
     let Some(_function_name) = p.take_word() else {
         return Err({
             #[cfg(feature = "editor-facts")]
@@ -738,17 +743,17 @@ pub(super) fn parse_click_stmt(
         });
     };
     #[cfg(feature = "editor-facts")]
-    let function_span = p.source_span(function_start, p.i);
+    let function_span = SourceSpan::new(function_start, p.i);
     #[cfg(feature = "editor-facts")]
     let interaction_evidence = if click_action_prefix(&_function_name) {
         FlowchartClickEditorEvidence::new(Some(function_span), None)
     } else {
         FlowchartClickEditorEvidence::new(None, after_target)
     };
-    tooltip = p.take_quoted();
+    tooltip = p.take_quoted()?;
     action = ClickAction::Callback;
     p.skip_ws();
-    if p.i != p.s.len() {
+    if p.i != p.end {
         return Err({
             #[cfg(feature = "editor-facts")]
             {
@@ -794,9 +799,9 @@ pub(super) fn split_click_targets(
 
 pub(super) fn parse_link_style_stmt(
     rest: &str,
-    rest_start: usize,
+    _rest_start: usize,
 ) -> std::result::Result<LinkStyleStmt, LexError> {
-    let mut p = ClickParse::new(rest, rest_start);
+    let mut p = ClickParse::new(rest, SourceSpan::new(0, rest.len()));
     p.skip_ws();
     let Some(pos_raw) = p.take_word() else {
         return Err(LexError::new("Invalid linkStyle statement".to_string()));
@@ -846,6 +851,10 @@ pub(super) fn parse_link_style_stmt(
 mod tests {
     use super::*;
 
+    fn parse_click_body(body: &str) -> Result<ClickStmt, LexError> {
+        parse_click_stmt(body, SourceSpan::new(0, body.len()))
+    }
+
     #[test]
     fn markdown_labels_preserve_valid_payloads_and_plain_backticks() {
         for (raw, expected, expected_kind) in [
@@ -882,7 +891,7 @@ mod tests {
 
     #[test]
     fn parse_click_stmt_parses_callback() {
-        let stmt = parse_click_stmt("A callback", 0).unwrap();
+        let stmt = parse_click_body("A callback").unwrap();
         assert_eq!(stmt.ids, vec!["A"]);
         assert!(stmt.tooltip.is_none());
         match stmt.action {
@@ -893,7 +902,7 @@ mod tests {
 
     #[test]
     fn parse_click_stmt_parses_call_callback_empty_args() {
-        let stmt = parse_click_stmt("A call callback()", 0).unwrap();
+        let stmt = parse_click_body("A call callback()").unwrap();
         assert_eq!(stmt.ids, vec!["A"]);
         assert!(stmt.tooltip.is_none());
         match stmt.action {
@@ -904,7 +913,7 @@ mod tests {
 
     #[test]
     fn parse_click_stmt_parses_call_callback_with_args() {
-        let stmt = parse_click_stmt("A call callback(\"test0\", test1, test2)", 0).unwrap();
+        let stmt = parse_click_body("A call callback(\"test0\", test1, test2)").unwrap();
         match stmt.action {
             ClickAction::Callback => {}
             _ => panic!("expected callback action"),
@@ -913,7 +922,7 @@ mod tests {
 
     #[test]
     fn parse_click_stmt_parses_link_and_tooltip_and_target() {
-        let stmt = parse_click_stmt("A \"click.html\" \"tooltip\" _blank", 0).unwrap();
+        let stmt = parse_click_body("A \"click.html\" \"tooltip\" _blank").unwrap();
         assert_eq!(stmt.tooltip.as_deref(), Some("tooltip"));
         match stmt.action {
             ClickAction::Link { href, target } => {
@@ -932,20 +941,26 @@ mod tests {
             "\u{2006}", "\u{2007}", "\u{2008}", "\u{2009}", "\u{200a}", "\u{2028}", "\u{2029}",
             "\u{202f}", "\u{205f}", "\u{3000}", "\u{feff}",
         ] {
-            let source =
-                format!("A{separator}href{separator}\"url\"{separator}\"tip\"{separator}_blank");
-            let stmt = parse_click_stmt(&source, 11).unwrap();
+            let prefix = "graph LR\nclick ";
+            let source = format!(
+                "{prefix}A{separator}href{separator}\"url\"{separator}\"tip\"{separator}_blank"
+            );
+            let stmt =
+                parse_click_stmt(&source, SourceSpan::new(prefix.len(), source.len())).unwrap();
             assert_eq!(stmt.ids, vec!["A"]);
             assert_eq!(stmt.tooltip.as_deref(), Some("tip"));
             #[cfg(feature = "editor-facts")]
-            assert_eq!(stmt.id_spans[0], SourceSpan::new(11, 12));
+            assert_eq!(
+                stmt.id_spans[0],
+                SourceSpan::new(prefix.len(), prefix.len() + 1)
+            );
             #[cfg(feature = "editor-facts")]
             let expected_payload = format!("\"url\"{separator}\"tip\"{separator}_blank");
             #[cfg(feature = "editor-facts")]
             for expected in stmt.interaction_evidence.iter() {
                 let span = expected.span;
                 let actual = source
-                    .get(span.start - 11..span.end - 11)
+                    .get(span.start..span.end)
                     .expect("interaction spans must stay on UTF-8 character boundaries");
                 match expected.kind {
                     crate::EditorExpectedSyntaxKind::InteractionAction => {
@@ -959,12 +974,12 @@ mod tests {
                 }
             }
         }
-        assert!(parse_click_stmt("A\u{0085}href\u{0085}\"url\"", 0).is_err());
+        assert!(parse_click_body("A\u{0085}href\u{0085}\"url\"").is_err());
     }
 
     #[test]
     fn parse_click_stmt_parses_href_link_and_tooltip_and_target() {
-        let stmt = parse_click_stmt("A href \"click.html\" \"tooltip\" _blank", 0).unwrap();
+        let stmt = parse_click_body("A href \"click.html\" \"tooltip\" _blank").unwrap();
         assert_eq!(stmt.tooltip.as_deref(), Some("tooltip"));
         match stmt.action {
             ClickAction::Link { href, target } => {
@@ -972,6 +987,49 @@ mod tests {
                 assert_eq!(target.as_deref(), Some("_blank"));
             }
             _ => panic!("expected link action"),
+        }
+    }
+
+    #[test]
+    fn click_direction_precedence_follows_jison_token_boundaries() {
+        use super::super::{Lexer, Tok};
+
+        for source in [
+            "click A href \"direction LR\"",
+            "click A \"direction LR\"",
+            "click A call \t f(direction LR)",
+            "click direction LR",
+            "click A,direction href\u{00a0}\"direction\nLR\" \"tip\" _blank",
+            "click A callback \"tip\u{2028}direction LR\"",
+            "click A callback \"direction BR\"",
+        ] {
+            assert!(
+                matches!(
+                    Lexer::new(source).next(),
+                    Some(Ok((_, Tok::ClickStmt(_), _)))
+                ),
+                "{source:?}"
+            );
+        }
+
+        for (source, value) in [
+            ("click A href \"url\" \"direction LR\"", "LR"),
+            ("click A callback \"direction LR\"", "LR"),
+            ("click A href  \"direction LR\"", "LR"),
+            ("click A \"url\" \"direction RL\"", "RL"),
+            ("click A call f() \"direction TD\"", "TD"),
+            ("click A\u{3000}\u{00a0}call f(direction BT)", "BT"),
+            (
+                "click A href \"direction TB\" \"tip; direction\nRLfoo\"",
+                "RL",
+            ),
+            ("click 雪 callbackdirection\n \u{00a0}LR", "LR"),
+        ] {
+            let Some(Err(error)) = Lexer::new(source).next() else {
+                panic!("expected a direction error for {source:?}");
+            };
+            let span = error.span.expect("direction value span");
+            assert_eq!(&source[span.start..span.end], value, "{source:?}");
         }
     }
 }

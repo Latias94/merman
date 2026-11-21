@@ -137,8 +137,16 @@ impl Lexer<'_> {
             return Some(Ok((start, Tok::KwSubgraph, keyword_end)));
         }
         if self.starts_with_kw("end") {
-            self.pos += "end".len();
-            return Some(Ok((start, Tok::KwEnd, self.pos)));
+            let end = start + "end".len();
+            // The upstream END token owns its trailing whitespace, including the indentation
+            // of the next statement. Keep a separator for the Rust statement-list grammar.
+            let rest = &self.input[end..];
+            let next = rest.trim_start_matches(super::is_ecmascript_trim_char);
+            self.pos = self.input.len() - next.len();
+            if self.pos > end {
+                self.pending.push_back(Ok((end, Tok::Sep, self.pos)));
+            }
+            return Some(Ok((start, Tok::KwEnd, end)));
         }
 
         if let Some(tok) = self.lex_style_sep() {

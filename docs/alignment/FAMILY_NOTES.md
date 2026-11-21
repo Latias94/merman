@@ -271,9 +271,12 @@ A bare `direction` inside a subgraph declares a vertex. Mermaid 12.3 matches dir
 statements through the rest of the line, including text before `direction`. Whitespace after
 `direction` can cross physical lines. Values match as prefixes in `TB`, `BT`, `RL`, `LR`, `TD`
 rule order, so `direction LRfoo` sets `LR` and `direction LRfoo direction TB` sets `TB`.
-An indented `class direction LR` selects `LR` for the subgraph. Renaming a node to `direction`
-checks each class binding against these rules. Merman retains its semicolon statement boundary
-for compact input such as `subgraph TOP;direction TD;A-->B;end`. The Tree-sitter grammar used
+The editor offers direction-value edits when a single match determines the statement's extent.
+An indented `class direction LR` selects `LR` for the subgraph. Immediately after a subgraph's
+`end`, that keyword consumes the indentation, so the same class statement fails to parse.
+Renaming a node to `direction` checks each class binding against these rules. Merman retains its
+semicolon statement boundary for compact input such as `subgraph TOP;direction TD;A-->B;end`.
+Semicolons inside node and edge labels belong to the label. The Tree-sitter grammar used
 for highlighting recognizes direction statements at the start of a statement. For input such as
 `A --> direction LR`, use the semantic parser to determine the subgraph direction. Owners:
 [12.3 regressions](../../crates/merman-core/src/diagrams/flowchart/mermaid_12_3_tests.rs).

@@ -1332,6 +1332,38 @@ fn flowchart_prefixed_direction_values_parse_like_mermaid() {
 }
 
 #[test]
+fn flowchart_competing_directions_do_not_offer_edits_that_change_the_graph() {
+    let harness = SnapshotHarness::new();
+    for (body, cursor) in [
+        ("direction TB direction\nTB --> B", Position::new(3, 2)),
+        ("direction LR direction TB", Position::new(2, 25)),
+    ] {
+        let source = format!("flowchart TD\nsubgraph S\n{body}\nend\n");
+        let snapshot = harness
+            .analyze(
+                "file:///tmp/competing-directions.mmd",
+                1,
+                source,
+                DocumentKind::Diagram,
+            )
+            .unwrap();
+        assert_eq!(
+            snapshot.fences()[0].text_index().source(),
+            FenceTextIndexSource::ParserComplete
+        );
+        let menu = completion_for_snapshot(&snapshot, cursor);
+        assert!(
+            !menu
+                .items
+                .iter()
+                .any(|item| matches!(item.label.as_str(), "TB" | "TD" | "BT" | "LR" | "RL")),
+            "{body}: {:?}",
+            menu.items
+        );
+    }
+}
+
+#[test]
 fn flowchart_empty_direction_value_completes_after_a_navigable_vertex() {
     let harness = SnapshotHarness::new();
     let source = "flowchart TD\nsubgraph S\ndirection \nend\n";
