@@ -19,10 +19,7 @@ Changes since stable [0.10.0](#0100---2026-11-12).
 - Render Agentflow, Architecture, Block, C4, Pie, Requirement, Usecase, and ZenUML as terminal diagrams. Gantt gains timelines, GitGraph gains branch tracks, and Packet gains bit grids. Improved routing makes edges easier to trace in dense graphs, and complete records reflow to the requested width. [Terminal support matrix](docs/rendering/ASCII_SUPPORT_MATRIX.md), [#314](https://github.com/Latias94/merman/pull/314), [#317](https://github.com/Latias94/merman/pull/317), [#324](https://github.com/Latias94/merman/pull/324), [#326](https://github.com/Latias94/merman/pull/326)
 - Opt in to Plain `adaptive` terminal output for Flowchart, Swimlane, State, Agentflow, and Requirement. When routing exhausts its search or runs out of ports, the renderer can emit complete node and relationship records. Use `--ascii-graph-presentation adaptive --ascii-color plain` in the CLI or `ascii.graph_presentation` in binding options. [Graph presentation and viewport](docs/rendering/ASCII_SUPPORT_MATRIX.md#viewport-and-report-contract), [#323](https://github.com/Latias94/merman/pull/323), [#324](https://github.com/Latias94/merman/pull/324)
 - Show the Gantt Today Marker at the browser's current time in Playground and carry that instant into exports. Replay a captured instant with `--fixed-unix-millis` in the CLI or `fixed_unix_millis` in binding options, together with the local offset. [#311](https://github.com/Latias94/merman/issues/311), [#312](https://github.com/Latias94/merman/pull/312)
-
-### Added
-
-- New `merman.authoring.class.ignored_statement` diagnostic (`Recommended` ruleset, `Hint` level) for Class diagram statements that are ignored. This diagnostic helps to identify invalid syntax, such as using `title` as a statement instead of as a front matter field.
+- Report ignored Class statements with the `merman.authoring.class.ignored_statement` hint in the Recommended ruleset. This catches cases such as a `title` statement where the diagram expects a front matter field. Thanks to @MikeRomaa. [#332](https://github.com/Latias94/merman/pull/332)
 
 ### Changed
 
