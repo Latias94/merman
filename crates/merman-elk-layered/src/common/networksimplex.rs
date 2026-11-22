@@ -79,22 +79,7 @@ impl NGraph {
     }
 
     pub fn connected_edges(&self, node: usize) -> Vec<usize> {
-        self.nodes[node]
-            .incoming_edges
-            .iter()
-            .chain(self.nodes[node].outgoing_edges.iter())
-            .copied()
-            .collect()
-    }
-
-    fn remove_active_node(&mut self, node: usize) {
-        if let Some(position) = self
-            .node_order
-            .iter()
-            .position(|candidate| *candidate == node)
-        {
-            self.node_order.remove(position);
-        }
+        self.nodes[node].incident_edges().collect()
     }
 
     fn add_active_node(&mut self, node: usize) {
@@ -112,6 +97,19 @@ pub struct NNode {
     pub outgoing_edges: Vec<usize>,
     tree_node: bool,
     unknown_cutvalues: Vec<usize>,
+}
+
+impl NNode {
+    fn degree(&self) -> usize {
+        self.incoming_edges.len() + self.outgoing_edges.len()
+    }
+
+    fn incident_edges(&self) -> impl Iterator<Item = usize> + '_ {
+        self.incoming_edges
+            .iter()
+            .chain(&self.outgoing_edges)
+            .copied()
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -265,38 +263,68 @@ impl<'a> NetworkSimplex<'a> {
 
     fn remove_subtrees(&mut self) {
         self.subtree_nodes_stack.clear();
-
-        let mut leafs = VecDeque::new();
-        for node in self.graph.node_order.iter().copied() {
-            if self.graph.connected_edges(node).len() == 1 {
-                leafs.push_back(node);
+        for &node in &self.graph.node_order {
+            let vertex = &self.graph.nodes[node];
+            if vertex.degree() == 1
+                && let Some(edge) = vertex.incident_edges().next()
+            {
+                self.subtree_nodes_stack.push((node, edge));
             }
         }
+        if self.subtree_nodes_stack.is_empty() {
+            return;
+        }
 
-        while let Some(node) = leafs.pop_front() {
-            let connected_edges = self.graph.connected_edges(node);
-            if connected_edges.is_empty() {
+        // The removal order is both the FIFO discovery queue and the LIFO reattachment stack.
+        // A queued final root can lose its last edge before its turn. It remains in the graph.
+        const REMOVED: usize = usize::MAX;
+        let mut degree: Vec<_> = self.graph.nodes.iter().map(NNode::degree).collect();
+        let mut cursor = 0;
+        while cursor < self.subtree_nodes_stack.len() {
+            let (node, edge) = self.subtree_nodes_stack[cursor];
+            cursor += 1;
+            if degree[node] != 1 {
                 continue;
             }
-
-            let edge = connected_edges[0];
-            let is_out_edge = !self.graph.nodes[node].outgoing_edges.is_empty();
             let Some(other) = self.graph.edges[edge].other(node) else {
                 continue;
             };
-
-            if is_out_edge {
-                remove_item(&mut self.graph.nodes[other].incoming_edges, edge);
-            } else {
-                remove_item(&mut self.graph.nodes[other].outgoing_edges, edge);
+            degree[node] = REMOVED;
+            degree[other] -= 1;
+            if degree[other] == 1
+                && let Some(next) = self.graph.nodes[other].incident_edges().find(|&index| {
+                    let edge = &self.graph.edges[index];
+                    degree[edge.source] != REMOVED && degree[edge.target] != REMOVED
+                })
+            {
+                self.subtree_nodes_stack.push((other, next));
             }
+        }
 
-            if self.graph.connected_edges(other).len() == 1 {
-                leafs.push_back(other);
+        // Compact each adjacency list once, preserving the order used to break simplex ties.
+        // A removed node keeps its parent edge; reattachment inserts the opposite incidence.
+        self.subtree_nodes_stack
+            .retain(|&(node, _)| degree[node] == REMOVED);
+        self.graph
+            .node_order
+            .retain(|&node| degree[node] != REMOVED);
+        for &(node, parent_edge) in &self.subtree_nodes_stack {
+            let vertex = &mut self.graph.nodes[node];
+            if vertex.degree() > 1 {
+                vertex.incoming_edges.retain(|&edge| edge == parent_edge);
+                vertex.outgoing_edges.retain(|&edge| edge == parent_edge);
             }
-
-            self.subtree_nodes_stack.push((node, edge));
-            self.graph.remove_active_node(node);
+        }
+        for &node in &self.graph.node_order {
+            let vertex = &mut self.graph.nodes[node];
+            if vertex.degree() != degree[node] {
+                vertex
+                    .incoming_edges
+                    .retain(|&e| degree[self.graph.edges[e].source] != REMOVED);
+                vertex
+                    .outgoing_edges
+                    .retain(|&e| degree[self.graph.edges[e].target] != REMOVED);
+            }
         }
     }
 
@@ -803,6 +831,29 @@ mod tests {
         assert_eq!(graph.nodes[a].layer, 0);
         assert_eq!(graph.nodes[b].layer, 0);
         assert!(graph.nodes[c].layer > graph.nodes[a].layer);
+    }
+
+    #[test]
+    fn pruning_preserves_parallel_core_order_and_reverse_leaf_reattachment() {
+        let mut graph = NGraph::new();
+        for _ in 0..5 {
+            graph.add_node(None);
+        }
+        for (source, target) in [(0, 2), (0, 1), (0, 3), (0, 1), (3, 4)] {
+            graph.add_edge(None, source, target, 1.0, 1).unwrap();
+        }
+        let mut simplex = NetworkSimplex::for_graph(&mut graph);
+        simplex.remove_subtrees();
+        assert_eq!(simplex.subtree_nodes_stack, [(2, 0), (4, 4), (3, 2)]);
+        assert_eq!(simplex.graph.active_nodes(), [0, 1]);
+        assert_eq!(simplex.graph.nodes[0].outgoing_edges, [1, 3]);
+        assert_eq!(simplex.graph.nodes[3].incoming_edges, [2]);
+        assert!(simplex.graph.nodes[3].outgoing_edges.is_empty());
+
+        simplex.reattach_subtrees().unwrap();
+        assert_eq!(graph.active_nodes(), [0, 1, 3, 4, 2]);
+        assert_eq!(graph.nodes[0].outgoing_edges, [1, 3, 2, 0]);
+        assert_eq!(graph.nodes[3].outgoing_edges, [4]);
     }
 
     #[test]
