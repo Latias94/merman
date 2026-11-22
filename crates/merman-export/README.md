@@ -96,6 +96,12 @@ Fontconfig configuration remains empty; library callers decide whether an unavai
 service permits another provider. The CLI retries bounded discovery only for automatic
 provider selection, never for an explicit `--font-system platform` request.
 
+For Rust consumers upgrading from v0.11.0, complete `NativeFontLimits` struct
+literals need the new `max_selection_entries` and `max_selection_bytes` fields;
+existing literals using `..NativeFontLimits::default()` continue to compile.
+Exhaustive `NativeFontError` matches must handle `PlatformDiscoveryUnavailable`.
+These public API additions require the next breaking release, not a v0.11.x patch.
+
 `png` and `jpeg` share private bitmap preparation. `pdf` is a separate vector export capability. Features are additive, but one output does not implicitly expose another output's API. The published `merman-export`, `merman`, and `merman-render` versions must match because the sealed SVG type crosses their crate boundaries.
 
 Themes can select font-family names and typography values, but caller-supplied theme font files
