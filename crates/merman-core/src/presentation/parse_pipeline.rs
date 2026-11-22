@@ -149,18 +149,37 @@ impl OperationConfigBuilder {
             MaterializationPlan::Materialize { selected } => {
                 // Detection must observe initialized config. Keep that result only when its
                 // assignments actually need replay onto a newly materialized theme.
-                let materialize =
-                    || Self::materialize_operation_theme(engine, &decision, &source, selected);
-                // The source merge can change authored ownership even when its values match.
-                // Only the site projection enters the cache, before detector changes are replayed.
-                let projected = if source.is_empty_object()
-                    && let Some(section) = family::config_namespace_for_diagram_type(diagram_type)
-                {
+                let source_is_empty = source.is_empty_object();
+                // Cache only site-owned appearance. A disjoint source merge can follow the
+                // materialization with its explicit assignments and provenance still intact.
+                let projected = if let Some(section) =
+                    family::config_namespace_for_diagram_type(diagram_type)
+                    && (source_is_empty
+                        || (engine.theme_compatibility_config.is_none()
+                            && decision.can_merge_after_site_appearance(
+                                &source,
+                                engine.initialization.site_config.as_config(),
+                            ))) {
                     engine
                         .initialization
-                        .materialize_appearance(section, selected, materialize)
+                        .materialize_appearance(section, selected, || {
+                            Self::materialize_operation_theme(
+                                engine,
+                                &decision,
+                                &MermaidConfig::empty_object(),
+                                selected,
+                            )
+                        })
+                        .map(|config| {
+                            if source_is_empty {
+                                return config;
+                            }
+                            let mut config = config.with_shared_sections();
+                            config.deep_merge_explicit(source.as_value());
+                            config
+                        })
                 } else {
-                    materialize()
+                    Self::materialize_operation_theme(engine, &decision, &source, selected)
                 };
                 effective = match projected {
                     Ok(config) => config,
@@ -1746,6 +1765,58 @@ mod editor_parse_source_map_tests {
         assert_eq!(warm, cold);
         assert_eq!(warm.get_str("layout"), Some("elk"));
         assert!(warm.explicit_config_owns_path("layout"));
+    }
+
+    #[test]
+    fn disjoint_source_spacing_reuses_the_site_palette_and_keeps_its_assignment() {
+        use super::{AppearanceDecision, MermaidConfig, OperationConfigBuilder};
+
+        let engine = MermaidEngine::new().with_exact_site_config(None);
+        let baseline = engine
+            .parse_metadata_sync("flowchart TD\nA --> B\nA --> C")
+            .unwrap()
+            .effective_config;
+        let defaults = crate::generated::upstream_default_config();
+        for spacing in [72, 95] {
+            let source = format!(
+                "---\nconfig:\n  flowchart:\n    nodeSpacing: {spacing}\n---\nflowchart TD\nA --> B\nA --> C"
+            );
+            let (result, work) =
+                crate::config::measure_config_work(|| engine.parse_metadata_sync(&source));
+            let actual = result.unwrap().effective_config;
+            assert_eq!(work.selected_theme_materializations, 0, "{work:?}");
+            assert_eq!(
+                actual
+                    .get_path(&["flowchart", "nodeSpacing"])
+                    .and_then(serde_json::Value::as_i64),
+                Some(spacing),
+            );
+            assert!(actual.explicit_config_owns_path("flowchart.nodeSpacing"));
+            assert!(!baseline.explicit_config_owns_path("flowchart.nodeSpacing"));
+
+            let overrides = MermaidConfig::from_value(serde_json::json!({
+                "flowchart": { "nodeSpacing": spacing },
+            }));
+            let decision = AppearanceDecision::resolve(
+                "flowchart-v2",
+                &overrides,
+                engine.site_config_overrides.as_config(),
+                None,
+                &defaults,
+            );
+            let mut reference = OperationConfigBuilder::materialize_operation_theme(
+                &engine,
+                &decision,
+                &overrides,
+                crate::MermaidThemeId::ReduxColor,
+            )
+            .unwrap();
+            decision.apply_to_presentation(&mut reference);
+            assert_eq!(
+                serde_json::to_vec(actual.as_value()).unwrap(),
+                serde_json::to_vec(reference.as_value()).unwrap(),
+            );
+        }
     }
 
     #[test]
