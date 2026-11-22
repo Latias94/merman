@@ -462,7 +462,7 @@ mod tests {
         let face = physical.faces().find(|face| face.index == index).unwrap();
         assert_eq!(face.post_script_name, "NotoSansSC-Thin");
         assert_eq!(face.weight, base.weight);
-        expected.validate(face, &path).unwrap();
+        expected.validate(face, &path, index).unwrap();
     }
 
     #[test]
@@ -489,21 +489,21 @@ mod tests {
         let regular = load(path.clone());
         let regular = regular.faces().find(|face| face.index == index).unwrap();
         assert_eq!(regular.post_script_name, "MicrosoftYaHeiUI");
-        expected.validate(regular, &path).unwrap();
+        expected.validate(regular, &path, index).unwrap();
 
         let bold = load(directory.join("msyhbd.ttc"));
         let bold = bold.faces().find(|face| face.index == index).unwrap();
         assert_eq!(bold.post_script_name, "MicrosoftYaHeiUI-Bold");
-        assert!(expected.validate(bold, &path).is_err());
+        assert!(expected.validate(bold, &path, index).is_err());
 
         let mut incorrect_weight = regular.clone();
         incorrect_weight.weight = bold.weight;
-        assert!(expected.validate(&incorrect_weight, &path).is_err());
+        assert!(expected.validate(&incorrect_weight, &path, index).is_err());
 
         let super::super::ExpectedFace::Platform(mut descriptor) = expected else {
             panic!("DirectWrite must provide a platform descriptor");
         };
         descriptor.post_script_name = Some(bold.post_script_name.clone());
-        assert!(descriptor.validate(regular, &path).is_err());
+        assert!(descriptor.validate(regular, &path, index).is_err());
     }
 }
