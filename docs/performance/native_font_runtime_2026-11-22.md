@@ -83,6 +83,9 @@ The 66,188,368-byte executable has SHA-256
 `745ca45ae773bb0536a137b683dbd472241b7b057ca2fb071772dec224ce0177`.
 Its lockfile SHA-256 is
 `dd5ba5d40b7405f064c6c2f1cdd922619681e307ac1d4b3779af2950458ba55d`.
+The later CI-driven `url` 2.5.9 security update is outside this frozen timing
+comparison. The recorded source revision and lockfile, rather than the current
+branch head, reproduce these measurements.
 
 The same executable runs with `--font-system=bounded` and
 `--font-system=platform`. Measurements span fresh process startup through captured

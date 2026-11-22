@@ -93,7 +93,7 @@
     "version": "0.9.3",
     "command_profile": "artifact-profile-target-union",
     "offline": true,
-    "cargo_lock_sha256": "dd5ba5d40b7405f064c6c2f1cdd922619681e307ac1d4b3779af2950458ba55d",
+    "cargo_lock_sha256": "5034b1c2f24902c8d96d795d5cef482ecb8324d66ba6c7bdb49f5350c92b6a63",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "cbc891a4b853c0a5639d299a773b329aaab24d9134a38542a3d4feff7b5da473"
   },
@@ -102,18 +102,18 @@
       "artifact_profile_id": "android-native",
       "target": "aarch64-linux-android",
       "package_count": 167,
-      "packages_sha256": "e6a3e84d65c4d8b86229b3f150d77dedbc47f2e66158255cdfd113fb86a66811"
+      "packages_sha256": "977dc6c0a9a100b163f0172ad97a1c4d334aedd667f70643ef2f42b5a14918bb"
     },
     {
       "artifact_profile_id": "android-native",
       "target": "x86_64-linux-android",
       "package_count": 167,
-      "packages_sha256": "e6a3e84d65c4d8b86229b3f150d77dedbc47f2e66158255cdfd113fb86a66811"
+      "packages_sha256": "977dc6c0a9a100b163f0172ad97a1c4d334aedd667f70643ef2f42b5a14918bb"
     }
   ],
   "dependency_closure": {
     "package_count": 167,
-    "packages_sha256": "e6a3e84d65c4d8b86229b3f150d77dedbc47f2e66158255cdfd113fb86a66811"
+    "packages_sha256": "977dc6c0a9a100b163f0172ad97a1c4d334aedd667f70643ef2f42b5a14918bb"
   },
   "licenses": [
     {
@@ -641,7 +641,7 @@
         },
         {
           "name": "form_urlencoded",
-          "version": "1.2.2",
+          "version": "1.2.3",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -997,7 +997,7 @@
         },
         {
           "name": "url",
-          "version": "2.5.8",
+          "version": "2.5.9",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
