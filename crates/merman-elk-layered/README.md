@@ -54,6 +54,16 @@ Adaptive layering searches honor the caller's work control. Stretch-width reject
 zero and positive normal-node heights with a typed error because the upstream normalization
 can make its retry loop nonterminating. An interrupted assignment does not commit partial layers.
 
+## Input model order
+
+For `NODES_AND_EDGES` and `PREFER_NODES`, a layer with distinct nodes and a model order on
+every node can be stably sorted by that order. The merge sort preserves the incoming order of
+ties and bounds a layer of width `n` to `O(n log n)` sorting work and `O(n)` scratch. The caller
+admits the two index buffers and a checked bound on merge writes before each sort, then pays for
+each comparison. This changes the work needed to admit eligible layers under a caller's ceiling.
+Layers with missing keys or repeated nodes, edge-priority ordering and port ordering use their
+existing relation-based comparison schedules.
+
 ## Node placement
 
 NetworkSimplex supports the node-level `PORT_POSITION` flexibility used for Mermaid 12
