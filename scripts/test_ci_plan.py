@@ -1150,6 +1150,10 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
             "--features diagram-flowchart,png,windows-platform-font-default --test native_fonts_contract",
             core,
         )
+        self.assertIn(
+            "--test platform_font_context ${{ runner.os == 'macOS' && '--lib' || '' }} --run-ignored only",
+            core,
+        )
         self.assertNotIn("verify_theme_acceptance_boundary.py", feature)
         self.assertNotIn("verify_theme_acceptance_boundary.py", theme)
         self.assertIn("Test preset qualification and family terminal behavior", theme)

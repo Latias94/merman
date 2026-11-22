@@ -42,7 +42,8 @@ allowance on that declaration until an admitted compiler update handles the expa
 The core, native Node, and SVG/browser owners publish separate same-run results to `pr-gate`:
 
 - `build-test` retains the Linux workspace suite, generated checks with their pinned
-  DOMPurify/Node inputs, and the three-host font/platform contracts;
+  DOMPurify/Node inputs, and the three-host font/platform contracts. Its macOS host-font
+  run includes the library tests for Core Text matching, snapshot identity, and selection reuse.
 - `feature-contracts` owns Linux representative feature builds, isolated consumers, compile-fail
   examples, Rustdoc subsets/math, feature unification, runtime adapters, FFI and ASCII contracts;
 - `theme-contracts` groups the workspace-only theme acceptance cfg, preset and family terminal

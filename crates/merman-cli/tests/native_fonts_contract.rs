@@ -1013,15 +1013,44 @@ fn contradictory_or_unavailable_font_modes_fail_without_output() {
 }
 
 #[cfg(feature = "platform-system-font-query")]
+mod platform_fonts {
+    use merman::svg::export::{NativeFontContext, NativeFontOptions};
+
+    pub(super) const FONTCONFIG_UNAVAILABLE: &str =
+        "platform system font service Fontconfig is unavailable";
+
+    pub(super) fn context_with_cousine() -> Option<NativeFontContext> {
+        // An explicit face keeps an empty system catalog usable for this availability check.
+        let options = NativeFontOptions::default()
+            .with_font_file(super::font())
+            .with_system_fonts(true);
+        match options.load_platform(&merman::OperationControl::new()) {
+            Ok(context) => Some(context),
+            #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+            Err(merman::svg::export::NativeFontError::PlatformDiscoveryUnavailable {
+                service: "Fontconfig",
+            }) => None,
+            Err(error) => panic!("loading the platform font context with Cousine failed: {error}"),
+        }
+    }
+
+    #[track_caller]
+    pub(super) fn assert_error(output: &std::process::Output, mode: &str, expected: &str) {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert_eq!(output.status.code(), Some(3), "{mode}: {stderr}");
+        assert!(output.stdout.is_empty(), "{mode} wrote to stdout");
+        let error = stderr.lines().next_back().unwrap_or_default();
+        assert!(
+            error.contains(expected),
+            "{mode}: expected {expected:?}, got {stderr}"
+        );
+    }
+}
+
+#[cfg(feature = "platform-system-font-query")]
 #[test]
 fn explicit_platform_query_uses_shared_context_and_respects_explicit_fonts() {
     let font = font();
-    let control = merman::OperationControl::new();
-    let context = merman::svg::export::NativeFontOptions::default()
-        .with_font_file(&font)
-        .with_system_fonts(true)
-        .load_platform(&control)
-        .unwrap();
     let source = "---\nconfig:\n  fontFamily: Cousine\n  htmlLabels: false\n---\nflowchart LR\nA[Native measurement]\n";
     let render = |system| {
         run_with_stdin(
@@ -1038,19 +1067,32 @@ fn explicit_platform_query_uses_shared_context_and_respects_explicit_fonts() {
             source,
         )
     };
-    let platform = render("platform");
+    let assert_cousine = |output: &std::process::Output, identity: &str| {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(output.status.success(), "{stderr}");
+        assert!(!output.stdout.is_empty());
+        let expected = format!("native measurement faces: Cousine-Regular#0; context {identity}");
+        assert_eq!(measurement_notices(&stderr), [expected.as_str()]);
+    };
+    let closed_context = merman::svg::export::NativeFontOptions::default()
+        .with_font_file(&font)
+        .load(&merman::OperationControl::new())
+        .unwrap();
     let closed = render("off");
-    let stderr = String::from_utf8_lossy(&platform.stderr);
-    assert!(platform.status.success(), "{stderr}");
-    assert!(closed.status.success(), "{:?}", closed.stderr);
-    assert!(!platform.stdout.is_empty());
+    assert_cousine(&closed, closed_context.identity());
+
+    let platform = render("platform");
+    let Some(platform_context) = platform_fonts::context_with_cousine() else {
+        platform_fonts::assert_error(
+            &platform,
+            "platform",
+            platform_fonts::FONTCONFIG_UNAVAILABLE,
+        );
+        return;
+    };
+    assert_cousine(&platform, platform_context.identity());
+    assert_ne!(platform_context.identity(), closed_context.identity());
     assert_eq!(platform.stdout, closed.stdout);
-    let expected = format!(
-        "native measurement faces: Cousine-Regular#0; context {}",
-        context.identity()
-    );
-    assert_eq!(measurement_notices(&stderr), [expected.as_str()]);
-    assert!(!String::from_utf8_lossy(&closed.stderr).contains(context.identity()));
 }
 
 #[cfg(all(target_os = "linux", feature = "platform-system-font-query"))]
@@ -1060,29 +1102,54 @@ fn empty_fontconfig_policy_does_not_trigger_bounded_fallback() {
     std::fs::create_dir(temp.path().join("empty")).unwrap();
     let config = temp.path().join("fonts.conf");
     std::fs::write(&config, "<?xml version=\"1.0\"?><fontconfig><dir prefix=\"relative\">empty</dir><cachedir prefix=\"relative\">cache</cachedir></fontconfig>").unwrap();
+    // Bounded discovery can find Cousine even on a host with no installed fonts.
+    let fonts = temp.path().join("fonts");
+    std::fs::create_dir(&fonts).unwrap();
+    std::fs::copy(font(), fonts.join("Cousine-Regular.ttf")).unwrap();
     let input = temp.path().join("input.mmd");
-    std::fs::write(&input, "flowchart LR\nA[Empty font policy]\n").unwrap();
-    let mut modes = vec!["platform"];
-    if cfg!(feature = "experimental-system-font-query") {
-        modes.push("on");
-    }
-    for mode in modes {
-        let output = std::process::Command::new(assert_cmd::cargo_bin!("merman-cli"))
+    std::fs::write(&input, "---\nconfig:\n  fontFamily: Cousine\n  htmlLabels: false\n---\nflowchart LR\nA[Empty font policy]\n").unwrap();
+    let render = |mode: Option<&str>| {
+        let mut command = std::process::Command::new(assert_cmd::cargo_bin!("merman-cli"));
+        command
             .arg("render")
             .arg(&input)
-            .args([
-                "--output=-",
-                "--font-measurement=native",
-                "--font-system",
-                mode,
-            ])
+            .args(["--output=-", "--font-measurement=native"]);
+        if let Some(mode) = mode {
+            command.args(["--font-system", mode]);
+        }
+        command
             .env("FONTCONFIG_FILE", &config)
+            .env("HOME", temp.path())
+            .env("XDG_DATA_HOME", temp.path())
             .output()
-            .unwrap();
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(!output.status.success(), "{mode}: {stderr}");
-        assert!(output.stdout.is_empty(), "{mode}");
-        assert!(stderr.contains("no usable font faces"), "{mode}: {stderr}");
+            .unwrap()
+    };
+    let fontconfig_available = platform_fonts::context_with_cousine().is_some();
+    let empty_set = "no usable font faces";
+    let platform_error = if fontconfig_available {
+        empty_set
+    } else {
+        platform_fonts::FONTCONFIG_UNAVAILABLE
+    };
+    platform_fonts::assert_error(&render(Some("platform")), "platform", platform_error);
+
+    let bounded = render(Some("bounded"));
+    let bounded_stderr = String::from_utf8_lossy(&bounded.stderr);
+    assert!(bounded.status.success(), "{bounded_stderr}");
+    assert!(!bounded.stdout.is_empty());
+    let bounded_notices = measurement_notices(&bounded_stderr);
+    assert!(!bounded_notices.is_empty(), "{bounded_stderr}");
+    for mode in [None, Some("on")] {
+        let output = render(mode);
+        let name = mode.unwrap_or("default");
+        if cfg!(feature = "experimental-system-font-query") && fontconfig_available {
+            platform_fonts::assert_error(&output, name, empty_set);
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(output.status.success(), "{name}: {stderr}");
+            assert_eq!(output.stdout, bounded.stdout, "{name}");
+            assert_eq!(measurement_notices(&stderr), bounded_notices, "{name}");
+        }
     }
 }
 
