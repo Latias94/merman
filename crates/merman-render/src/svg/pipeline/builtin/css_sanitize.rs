@@ -595,6 +595,9 @@ impl<'i> AtRuleParser<'i> for ResvgCssRuleParser<'_, '_> {
             }
             AtRuleBody::RuleList => rewrite_rule_list(input, self.mode, depth, self.control)?,
         };
+        if self.mode == CssProcessingMode::Validate {
+            return Ok(String::new());
+        }
         Ok(format!("@{name}{prelude}{{{body}}}"))
     }
 }
@@ -630,6 +633,9 @@ impl<'i> QualifiedRuleParser<'i> for ResvgCssRuleParser<'_, '_> {
             return Ok(String::new());
         };
         let declarations = rewrite_declaration_list(input, self.mode, depth, self.control)?;
+        if self.mode == CssProcessingMode::Validate {
+            return Ok(String::new());
+        }
         Ok(format!("{prelude}{{{declarations}}}"))
     }
 }
@@ -688,6 +694,9 @@ fn rewrite_declaration_list(
         control.step()?;
         let declaration_start = input.position();
         if input.is_exhausted() {
+            if mode == CssProcessingMode::Validate {
+                return Ok(String::new());
+            }
             output.push((
                 input.slice_from(declaration_start).to_owned(),
                 NativeFontSizeDeclaration::Other,
@@ -700,7 +709,6 @@ fn rewrite_declaration_list(
             let property = declaration.expect_ident_cloned()?;
             declaration.expect_colon()?;
             let value_start = declaration.position();
-            let prefix = declaration.slice(prefix_start..value_start).to_string();
 
             if is_animation_property(&property) {
                 consume_component_values(declaration, depth, control)?;
@@ -718,34 +726,45 @@ fn rewrite_declaration_list(
                 return Ok(None);
             }
 
+            if mode == CssProcessingMode::Validate {
+                process_component_values::<false>(
+                    declaration,
+                    mode,
+                    depth,
+                    control,
+                    &mut String::new(),
+                )?;
+                // The only successful rewrite in Validate mode replaces a trailing escape
+                // with U+FFFD. Both are non-whitespace, so the source answers this check.
+                if declaration.slice_from(value_start).trim().is_empty() {
+                    return Err(ParseError::custom(CssViolation::EmptyDeclaration));
+                }
+                return Ok(None);
+            }
+
+            let prefix = declaration.slice(prefix_start..value_start).to_owned();
             let mut value = rewrite_component_values(declaration, mode, depth, control)?;
             if value.trim().is_empty() {
                 return Err(ParseError::custom(CssViolation::EmptyDeclaration));
             }
-            if mode == CssProcessingMode::Sanitize && property.eq_ignore_ascii_case("font-size") {
+            if property.eq_ignore_ascii_case("font-size") {
                 match prepare_native_font_size_value(&value, false) {
                     NativeFontSizeValue::Unchanged => {}
                     NativeFontSizeValue::Invalid => return Ok(None),
                     NativeFontSizeValue::Normalized(normalized) => value = normalized,
                 }
             }
-            let priority = if mode == CssProcessingMode::Sanitize {
-                native_font_size_declaration(&property, &value)
-            } else {
-                NativeFontSizeDeclaration::Other
-            };
+            let priority = native_font_size_declaration(&property, &value);
             Ok(Some((prefix, value, priority)))
         });
-        let declaration_end = input.position();
-        let had_semicolon = input
-            .slice(declaration_start..declaration_end)
-            .trim_end()
-            .ends_with(';');
-
         match declaration {
             Ok(Some((mut prefix, value, priority))) => {
                 prefix.push_str(&value);
-                if had_semicolon {
+                if input
+                    .slice_from(declaration_start)
+                    .trim_end()
+                    .ends_with(';')
+                {
                     prefix.push(';');
                 }
                 output.push((prefix, priority));
@@ -765,15 +784,27 @@ fn rewrite_component_values(
     control: &mut CssParseControl<'_>,
 ) -> std::result::Result<String, ParseError<CssViolation>> {
     let mut output = String::new();
+    process_component_values::<true>(input, mode, depth, control, &mut output)?;
+    Ok(output)
+}
 
+fn process_component_values<const EMIT: bool>(
+    input: &mut Parser<'_>,
+    mode: CssProcessingMode,
+    depth: CssNestingDepth,
+    control: &mut CssParseControl<'_>,
+    output: &mut String,
+) -> std::result::Result<(), ParseError<CssViolation>> {
     loop {
         control.step()?;
         let token_start = input.position();
         let token = match input.next_including_whitespace_and_comments() {
             Ok(token) => token.clone(),
             Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
-                output.push_str(input.slice_from(token_start));
-                return Ok(output);
+                if EMIT {
+                    output.push_str(input.slice_from(token_start));
+                }
+                return Ok(());
             }
             Err(error) => return Err(error.into()),
         };
@@ -783,7 +814,9 @@ fn rewrite_component_values(
             Token::QuotedString(_) | Token::Comment(_) => {
                 let raw = input.slice(token_start..token_end);
                 ensure_source_closed_token(raw, control)?;
-                output.push_str(raw);
+                if EMIT {
+                    output.push_str(raw);
+                }
             }
             Token::Dimension {
                 value,
@@ -794,44 +827,59 @@ fn rewrite_component_values(
                 if mode == CssProcessingMode::Validate {
                     return Err(ParseError::custom(CssViolation::Degrees));
                 }
-                output.push_str(
-                    &Token::Number {
-                        value,
-                        int_value,
-                        has_sign,
-                    }
-                    .to_css_string(),
-                );
+                if EMIT {
+                    output.push_str(
+                        &Token::Number {
+                            value,
+                            int_value,
+                            has_sign,
+                        }
+                        .to_css_string(),
+                    );
+                }
             }
             Token::UnquotedUrl(url) => {
                 ensure_source_closed_token(input.slice(token_start..token_end), control)?;
                 if is_unsafe_render_resource_url_value(&url) {
                     return Err(ParseError::custom(CssViolation::UnsafeUrl));
                 }
-                output.push_str(input.slice(token_start..token_end));
+                if EMIT {
+                    output.push_str(input.slice(token_start..token_end));
+                }
             }
             Token::Function(name) => {
                 if matches_external_image_function(&name) {
                     return Err(ParseError::custom(CssViolation::ExternalImageFunction));
                 }
                 let nested_depth = depth.descend()?;
-                output.push_str(input.slice(token_start..token_end));
-                let nested = input.parse_nested_block(|nested| {
+                if EMIT {
+                    output.push_str(input.slice(token_start..token_end));
+                }
+                input.parse_nested_block(|nested| {
                     if name.eq_ignore_ascii_case("url") {
-                        rewrite_quoted_url(nested, mode, nested_depth, control)
+                        process_quoted_url::<EMIT>(nested, mode, nested_depth, control, output)
                     } else {
-                        rewrite_component_values(nested, mode, nested_depth, control)
+                        process_component_values::<EMIT>(
+                            nested,
+                            mode,
+                            nested_depth,
+                            control,
+                            output,
+                        )
                     }
                 })?;
                 ensure_source_closed_block(input, token_start, ')', control)?;
-                output.push_str(&nested);
-                output.push(')');
+                if EMIT {
+                    output.push(')');
+                }
             }
             Token::ParenthesisBlock | Token::SquareBracketBlock | Token::CurlyBracketBlock => {
                 let nested_depth = depth.descend()?;
-                output.push_str(input.slice(token_start..token_end));
-                let nested = input.parse_nested_block(|nested| {
-                    rewrite_component_values(nested, mode, nested_depth, control)
+                if EMIT {
+                    output.push_str(input.slice(token_start..token_end));
+                }
+                input.parse_nested_block(|nested| {
+                    process_component_values::<EMIT>(nested, mode, nested_depth, control, output)
                 })?;
                 let close = match token {
                     Token::ParenthesisBlock => ')',
@@ -840,8 +888,9 @@ fn rewrite_component_values(
                     _ => unreachable!(),
                 };
                 ensure_source_closed_block(input, token_start, close, control)?;
-                output.push_str(&nested);
-                output.push(close);
+                if EMIT {
+                    output.push(close);
+                }
             }
             Token::BadUrl(_) | Token::BadString(_) => {
                 return Err(ParseError::custom(CssViolation::BadToken));
@@ -851,7 +900,8 @@ fn rewrite_component_values(
             | Token::Hash(name)
             | Token::IDHash(name)
             | Token::Dimension { unit: name, .. }
-                if name.ends_with('\u{FFFD}')
+                if EMIT
+                    && name.ends_with('\u{FFFD}')
                     && input.slice(token_start..token_end).ends_with('\\') =>
             {
                 // cssparser decodes an identifier's EOF escape as U+FFFD. Replaying the
@@ -862,7 +912,8 @@ fn rewrite_component_values(
                 output.push_str(&raw[..raw.len() - 1]);
                 output.push('\u{FFFD}');
             }
-            _ => output.push_str(input.slice(token_start..token_end)),
+            _ if EMIT => output.push_str(input.slice(token_start..token_end)),
+            _ => {}
         }
     }
 }
@@ -976,12 +1027,13 @@ fn opening_token_matches_close(token: &Token<'_>, close: char) -> bool {
     }
 }
 
-fn rewrite_quoted_url(
+fn process_quoted_url<const EMIT: bool>(
     input: &mut Parser<'_>,
     mode: CssProcessingMode,
     depth: CssNestingDepth,
     control: &mut CssParseControl<'_>,
-) -> std::result::Result<String, ParseError<CssViolation>> {
+    output: &mut String,
+) -> std::result::Result<(), ParseError<CssViolation>> {
     control.step()?;
     let url_start = input.position();
     let url = input.expect_string_cloned()?;
@@ -992,7 +1044,7 @@ fn rewrite_quoted_url(
 
     let raw = input.slice_from(url_start);
     let mut raw_parser = Parser::new(raw);
-    rewrite_component_values(&mut raw_parser, mode, depth, control)
+    process_component_values::<EMIT>(&mut raw_parser, mode, depth, control, output)
 }
 
 fn consume_component_values(
@@ -1537,6 +1589,27 @@ mod tests {
         assert!(validate_resvg_css_stylesheet(".a{transform:rotate(45deg)}").is_err());
         assert!(validate_resvg_css_stylesheet(".a{fill:url(javascript:x)}").is_err());
         assert!(validate_resvg_css_stylesheet(".a{content:\"45deg\"}").is_ok());
+    }
+
+    #[test]
+    fn css_validation_checks_nested_values_without_rebuilding_rules() {
+        let css = r##"@media all{.label[id$="-text"]{fill:url("#paint");transform:rotate(45)}}"##;
+        assert!(
+            process_stylesheet(css, CssProcessingMode::Validate)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(sanitize_css(css), css);
+
+        for (value, expected_error) in [
+            ("  ", "empty CSS declaration"),
+            ("rotate(45deg)", "CSS angle units"),
+            ("url(#paint", "unclosed CSS"),
+        ] {
+            let error = validate_resvg_css_declaration_list(&format!("fill:{value};opacity:.5"))
+                .unwrap_err();
+            assert!(error.contains(expected_error), "{value:?}: {error}");
+        }
     }
 
     #[test]
