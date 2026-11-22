@@ -12,6 +12,7 @@ const DSIG: u32 = u32::from_be_bytes(*b"DSIG");
 /// Repackages one face at index zero, preserving opaque tables without subsetting.
 ///
 /// `limit` bounds the serialized bytes, including the directory and table padding.
+/// The returned buffer's capacity equals its serialized length.
 /// The caller owns the input buffers and validates the result before registration;
 /// neither this adapter nor `FontBuilder` validates table contents.
 pub(super) fn from_tables<'a>(
@@ -74,7 +75,7 @@ pub(super) fn from_tables<'a>(
     control.terminal_checkpoint_at(OperationPhase::Layout)?;
     // All size checks precede this synchronous build. FontBuilder writes the directory,
     // padding and checksums, including head.checkSumAdjustment, without changing our inputs.
-    let bytes = builder.build();
+    let bytes = builder.build().into_boxed_slice().into_vec();
     control.terminal_checkpoint_at(OperationPhase::Layout)?;
     Ok(bytes)
 }
@@ -149,9 +150,10 @@ mod tests {
                     assert_eq!(actual, expected, "table {tag:#010x}");
                 }
             }
-            assert_eq!(bytes.len() % 4, 0);
-            let checksum = bytes.chunks_exact(4).fold(0u32, |sum, word| {
-                sum.wrapping_add(u32::from_be_bytes(word.try_into().unwrap()))
+            let (words, trailing) = bytes.as_chunks::<4>();
+            assert!(trailing.is_empty());
+            let checksum = words.iter().fold(0u32, |sum, word| {
+                sum.wrapping_add(u32::from_be_bytes(*word))
             });
             assert_eq!(checksum, 0xB1B0_AFBA);
         }
@@ -171,6 +173,25 @@ mod tests {
                 limit: 31,
             })
         ));
+    }
+
+    #[test]
+    fn snapshot_capacity_matches_its_charged_size() {
+        let payload = [0; 4096];
+        let tables = [
+            (u32::from_be_bytes(*b"DATA"), payload.as_slice()),
+            (u32::from_be_bytes(*b"TAIL"), b"end".as_slice()),
+        ];
+        let size = HEADER_LEN + tables.len() * TABLE_RECORD_LEN + payload.len() + 4;
+        let bytes = from_tables(
+            tables,
+            size,
+            &OperationControl::new(),
+            Path::new("selected-face"),
+        )
+        .unwrap();
+        assert_eq!(bytes.len(), size);
+        assert_eq!(bytes.capacity(), size);
     }
 
     #[test]

@@ -46,24 +46,15 @@ pub(super) enum ExpectedFace {
 }
 
 impl ExpectedFace {
-    pub(super) fn validate(
-        &self,
-        face: &FaceInfo,
-        path: &Path,
-        origin_index: u32,
-    ) -> Result<(), NativeFontError> {
+    pub(super) fn validate(&self, face: &FaceInfo, path: &Path) -> Result<(), NativeFontError> {
         match self {
-            Self::Bounded { metadata, .. }
-                if metadata.index == origin_index && system::same_face(metadata, face) =>
-            {
-                Ok(())
-            }
+            Self::Bounded { metadata, .. } if system::same_face(metadata, face) => Ok(()),
             Self::Bounded { .. } => Err(source_error(
                 path,
                 "font properties changed after metadata discovery; retry the operation",
             )),
             #[cfg(feature = "experimental-system-font-query")]
-            Self::Platform(candidate) => candidate.validate(face, path, origin_index),
+            Self::Platform(candidate) => candidate.validate(face, path),
         }
     }
 }
@@ -160,16 +151,16 @@ pub(super) fn resolver(
                     _ => None,
                 };
                 #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
-                let request = matches!(provider, DiscoveryProvider::Platform { .. })
+                let mut request = matches!(provider, DiscoveryProvider::Platform { .. })
                     .then(|| SelectionRequest::Font(font.clone()));
                 #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
                 if let Some(request) = &request
-                    && let Some((id, selected)) =
+                    && let Some((id, source, family_fallback_used)) =
                         select_context.0.sources.selected(request, database)?
                 {
                     if let Some(observer) = &select_observer {
-                        observer.admit(id, selected.source);
-                        if selected.family_fallback_used {
+                        observer.admit(id, source);
+                        if family_fallback_used {
                             observer.mark_family_fallback();
                         }
                     }
@@ -177,6 +168,11 @@ pub(super) fn resolver(
                 }
                 provider.select(font, &select_control, &mut |selection, check_implicit| {
                     let source = selection.candidate.export_source();
+                    #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+                    let origin = match &selection.candidate {
+                        FontCandidate::Native(native) => Some(native.clone()),
+                        _ => None,
+                    };
                     let Some(id) = select_context.0.sources.materialize(
                         selection.candidate,
                         None,
@@ -196,24 +192,21 @@ pub(super) fn resolver(
                     }
                     let family_fallback_used = selection.family_fallback_used;
                     #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
-                    let (id, source, family_fallback_used) = if let Some(request) = &request {
+                    if let Some(request) = request.take() {
                         let face = database.face(id).cloned().ok_or_else(|| {
                             NativeFontError::Measurement("missing selected font".to_owned())
                         })?;
-                        let (id, selected) = select_context.0.sources.remember_selection(
-                            request.clone(),
+                        select_context.0.sources.remember_selection(
+                            request,
                             SelectedFont {
                                 face,
                                 source,
                                 family_fallback_used,
                             },
+                            origin,
                             &select_context.0.limits,
-                            database,
                         )?;
-                        (id, selected.source, selected.family_fallback_used)
-                    } else {
-                        (id, source, family_fallback_used)
-                    };
+                    }
                     if let Some(observer) = &select_observer {
                         observer.admit(id, source);
                         if family_fallback_used {
@@ -252,15 +245,15 @@ pub(super) fn resolver(
                     _ => None,
                 };
                 #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
-                let request = matches!(provider, DiscoveryProvider::Platform { .. })
+                let mut request = matches!(provider, DiscoveryProvider::Platform { .. })
                     .then(|| SelectionRequest::fallback(character, &excluded_faces))
                     .flatten();
                 #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
                 if let Some(request) = &request
-                    && let Some((id, selected)) = context.0.sources.selected(request, database)?
+                    && let Some((id, source, _)) = context.0.sources.selected(request, database)?
                 {
                     if let Some(observer) = &observer {
-                        observer.admit(id, selected.source);
+                        observer.admit(id, source);
                     }
                     return Ok(Some(id));
                 }
@@ -299,21 +292,18 @@ pub(super) fn resolver(
                             feature = "experimental-system-font-query",
                             target_os = "macos"
                         ))]
-                        let (id, source) = if let Some(request) = &request {
-                            let (id, selected) = context.0.sources.remember_selection(
-                                request.clone(),
+                        if let Some(request) = request.take() {
+                            context.0.sources.remember_selection(
+                                request,
                                 SelectedFont {
                                     face: face.clone(),
                                     source,
                                     family_fallback_used: false,
                                 },
+                                None,
                                 &context.0.limits,
-                                database,
                             )?;
-                            (id, selected.source)
-                        } else {
-                            (id, source)
-                        };
+                        }
                         if let Some(observer) = &observer {
                             observer.admit(id, source);
                         }

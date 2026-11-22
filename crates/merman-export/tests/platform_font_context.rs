@@ -373,6 +373,79 @@ fn macos_unregistered_explicit_font_can_use_authorized_system_fallback() {
 
 #[cfg(target_os = "macos")]
 #[test]
+#[ignore = "requires the macOS Helvetica collection and Arial; run explicitly in CI"]
+fn macos_collection_weights_share_one_file_slot_across_export() {
+    let context = NativeFontOptions::default()
+        .with_system_fonts(true)
+        .with_limits(NativeFontLimits {
+            max_files: 1,
+            ..Default::default()
+        })
+        .load_platform(&OperationControl::new())
+        .unwrap();
+    let regular = style("Helvetica");
+    assert!(advance(&context, "AVA", &regular) > 0.0);
+    let export = context.for_export(&OperationControl::new()).unwrap();
+    let bold = TextStyle {
+        font_weight: Some("700".to_owned()),
+        ..regular
+    };
+    assert!(advance(&export, "AVA", &bold) > 0.0);
+    assert_eq!(export.face_count(), 2);
+    assert_eq!(context.face_count(), 1);
+    assert!(export.measure(request("AVA", &style("Arial"))).is_err());
+    assert!(matches!(
+        export.check(),
+        Err(NativeFontError::Limit {
+            resource: "system-snapshot-files",
+            actual: 2,
+            limit: 1
+        })
+    ));
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "requires the macOS Heiti SC and TC shared-outline collection"]
+fn macos_heiti_sc_and_tc_share_outline_bytes_through_export() {
+    let context = NativeFontOptions::default()
+        .with_system_fonts(true)
+        .load_platform(&OperationControl::new())
+        .unwrap();
+    let mut bytes = None;
+    for family in ["Heiti SC", "Heiti TC"] {
+        let light = TextStyle {
+            font_weight: Some("300".to_owned()),
+            ..style(family)
+        };
+        assert!(advance(&context, "漢字", &light) > 0.0);
+        let resident = context.resident_font_bytes();
+        assert!(resident > 0 && resident <= NativeFontLimits::default().max_bytes);
+        assert_eq!(*bytes.get_or_insert(resident), resident);
+    }
+    assert_eq!(context.face_count(), 2);
+    let export = context.for_export(&OperationControl::new()).unwrap();
+    let mut options = usvg::Options::default();
+    export.apply_to_usvg_options(&mut options);
+    let tree = usvg::Tree::from_str(r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="60" font-weight="300"><text id="sc" y="20" font-family="Heiti SC">漢字</text><text id="tc" y="50" font-family="Heiti TC">漢字</text></svg>"#, &options).unwrap();
+    let mut painted = BTreeSet::new();
+    for id in ["sc", "tc"] {
+        for span in painted_text(&tree, id).layouted() {
+            for glyph in &span.positioned_glyphs {
+                assert_ne!(glyph.id.0, 0);
+                let face = tree.fontdb().face(glyph.font).unwrap();
+                painted.insert(format!("{}#{}", face.post_script_name, face.index));
+            }
+        }
+    }
+    assert_eq!(painted.len(), 2);
+    assert_eq!(painted, context.selected_faces().into_iter().collect());
+    export.check().unwrap();
+    assert_eq!(export.resident_font_bytes(), context.resident_font_bytes());
+}
+
+#[cfg(target_os = "macos")]
+#[test]
 #[ignore = "requires macOS Arial; run explicitly in CI"]
 fn macos_selection_pinning_has_independent_terminal_metadata_limits() {
     for limits in [

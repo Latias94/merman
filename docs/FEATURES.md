@@ -193,15 +193,17 @@ system face. On Windows, explicit faces are tried first. DirectWrite queries the
 actual missing character for script-specific fallback. Shared symbols and
 combining marks try the catalog fallback order before the single-character
 query. On macOS, family/style queries avoid constructing a full font catalog, and
-Core Text queries the actual missing Unicode scalar using the registered base face.
-The selected native object is retained as the origin of the admitted data; no
-physical collection index is inferred from its name. Generic family lookup stops after the
+Core Text queries the actual missing Unicode scalar using the retained primary face.
+For an explicit primary face, its admitted tables must match the registered font
+before its native cascade can be used. Generic family lookup stops after the
 first accepted candidate. Non-covering fallback candidates are filtered before
 new snapshot acquisition, while an already admitted snapshot remains authoritative.
-On macOS, the selected native face is stored as a standalone font instead of
-copying unrelated collection members. Its tables come from the retained native
-object, while the standalone data's face index is zero. Explicit input files retain their whole-file
-ingestion policy. The cumulative font-data budget remains 64 MiB, and a large
+On macOS, most selected faces use a standalone snapshot assembled from their native
+tables at index zero. A TTC that fits the remaining budget can retain its original
+indices when its members share an outline table large enough that two copies would
+cost more than the collection. The selected member is verified against the native
+tables before reuse. Explicit input files retain their whole-file ingestion policy.
+The cumulative font-data budget remains 64 MiB, and a large
 selected color/bitmap table can still exceed it. A context identity includes the policy, initial
 font bytes, and the system default family name when applicable.
 Successful macOS selections are fixed for measurement and its derived exports;

@@ -1,6 +1,6 @@
 //! Bounded metadata discovery and operation-local binary snapshots.
 
-use super::registry::{read_bounded_into, snapshot_cmap};
+use super::registry::{checked_cmap_bytes, read_bounded_into};
 use super::resolver::{ExpectedFace, FontCandidate};
 use super::*;
 use usvg::fontdb::{Database, FaceInfo, ID, Source};
@@ -286,6 +286,20 @@ fn coverage(
         .table(rustybuzz::ttf_parser::Tag::from_bytes(b"cmap"))
         .unwrap_or_default();
     snapshot_cmap(table, control, metadata_bytes, limits)
+}
+
+fn snapshot_cmap(
+    table: &[u8],
+    control: &OperationControl,
+    metadata_bytes: &mut usize,
+    limits: &NativeFontLimits,
+) -> Result<Vec<u8>, NativeFontError> {
+    let total = checked_cmap_bytes(table, control, *metadata_bytes, limits)?;
+    // Discovery keeps the table after releasing the temporary font buffer.
+    let snapshot = table.to_vec();
+    control.terminal_checkpoint_at(OperationPhase::Admission)?;
+    *metadata_bytes = total;
+    Ok(snapshot)
 }
 
 fn cmap_supports(

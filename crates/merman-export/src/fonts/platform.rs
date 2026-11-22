@@ -260,20 +260,6 @@ impl PlatformCatalog {
         Ok(None)
     }
 
-    #[cfg(all(target_os = "macos", test))]
-    fn discovery_data(
-        &self,
-        font: &FontInfo,
-        sources: &super::registry::FontSourceRegistry,
-    ) -> Result<Option<fontique::Blob<u8>>, NativeFontError> {
-        if let SourceKind::Path(path) = font.source().kind()
-            && let Some(data) = sources.snapshot(path)?
-        {
-            return Ok(Some(fontique::Blob::new(data)));
-        }
-        self.call(|| font.load(None))
-    }
-
     #[cfg(windows)]
     fn directwrite(&self) -> Option<&dwrite::CharacterFallback> {
         self.character_fallback
@@ -316,6 +302,7 @@ impl PlatformCatalog {
                 NativeFontError::Measurement("platform font collection is poisoned".to_owned())
             })?;
         let mut ids = Vec::new();
+        let mut seen = std::collections::HashSet::new();
         let scripts =
             std::iter::once(character.script()).chain(character.script_extension().iter());
         for script in scripts {
@@ -325,7 +312,7 @@ impl PlatformCatalog {
                     .fallback_families(FallbackKey::new(script, None))
                     .collect::<Vec<_>>()
             })? {
-                if !ids.contains(&id) {
+                if seen.insert(id) {
                     ids.push(id);
                 }
             }
@@ -337,7 +324,7 @@ impl PlatformCatalog {
             GenericFamily::Serif,
         ] {
             for id in self.call(|| collection.generic_families(generic).collect::<Vec<_>>())? {
-                if !ids.contains(&id) {
+                if seen.insert(id) {
                     ids.push(id);
                 }
             }
@@ -427,56 +414,6 @@ fn platform_style(style: Style) -> FontStyle {
 }
 
 impl PlatformFace {
-    #[cfg(target_os = "macos")]
-    pub(super) fn selected_collection_data(
-        &self,
-        path: &Path,
-        limit: usize,
-        max_faces: usize,
-        control: &OperationControl,
-    ) -> Result<Option<Vec<u8>>, NativeFontError> {
-        control.terminal_checkpoint_at(OperationPhase::Layout)?;
-        let Some(data) = platform_call(|| self.coverage_source.as_ref()?.load(None))? else {
-            return Ok(None);
-        };
-        let Some(count) = ttf_parser::fonts_in_collection(data.as_ref()) else {
-            return Ok(None);
-        };
-        check_limit("font-collection-faces", count as usize, max_faces)?;
-        let raw =
-            RawFace::parse(data.as_ref(), self.index).map_err(|error| source_error(path, error))?;
-        let table = raw
-            .table(Tag::from_bytes(b"name"))
-            .and_then(name::Table::parse)
-            .ok_or_else(|| source_error(path, "selected collection face has no name table"))?;
-        let post_script_name = if let Some(expected) = &self.post_script_name {
-            if !post_script_name_matches(table, expected) {
-                return Err(source_error(
-                    path,
-                    "font identity changed after platform lookup",
-                ));
-            }
-            Some(expected.clone())
-        } else {
-            table.names.into_iter().find_map(|record| {
-                (record.name_id == name_id::POST_SCRIPT_NAME)
-                    .then(|| {
-                        record.to_string().or_else(|| {
-                            (record.platform_id == ttf_parser::PlatformId::Macintosh
-                                && record.encoding_id == 0
-                                && record.name.is_ascii())
-                            .then(|| String::from_utf8_lossy(record.name).into_owned())
-                        })
-                    })
-                    .flatten()
-            })
-        };
-        let Some(name) = post_script_name else {
-            return Ok(None);
-        };
-        coretext::collection_snapshot(&name, path, &raw, limit, control)
-    }
-
     pub(super) fn discovery_covers(
         &self,
         character: char,
@@ -499,13 +436,8 @@ impl PlatformFace {
         }
     }
 
-    pub(super) fn validate(
-        &self,
-        face: &FaceInfo,
-        path: &Path,
-        origin_index: u32,
-    ) -> Result<(), NativeFontError> {
-        if origin_index != self.index
+    pub(super) fn validate(&self, face: &FaceInfo, path: &Path) -> Result<(), NativeFontError> {
+        if face.index != self.index
             || !self.attributes.matches(face)
             || !matches_family(face, &self.family)
             || self
@@ -750,6 +682,7 @@ impl PlatformCatalog {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fonts::registry::FontSourceRegistry;
 
     fn test_catalog() -> PlatformCatalog {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts");
@@ -859,6 +792,104 @@ mod tests {
     }
 
     #[test]
+    fn uncovered_collection_member_leaves_the_last_face_slot_for_fallback() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts");
+        let collection = root.join("Cousine-test-collection.ttc");
+        let registry = FontSourceRegistry::new(BTreeMap::new(), BTreeMap::new(), 0, 0);
+        let mut database = Arc::new(Database::new());
+        let control = OperationControl::new();
+        let limits = NativeFontLimits {
+            max_faces: 2,
+            ..Default::default()
+        };
+        let mut admit = |path: &Path, index, fallback| {
+            registry
+                .materialize(
+                    file_candidate(path, index),
+                    fallback,
+                    &mut database,
+                    &limits,
+                    &control,
+                )
+                .unwrap()
+        };
+
+        assert!(admit(&collection, 1, None).is_some());
+        assert_eq!(admit(&collection, 0, Some('!')), None);
+        assert_eq!(registry.admitted_faces(), 1);
+        assert!(admit(&root.join("Cousine-Regular.ttf"), 0, Some('!')).is_some());
+        assert_eq!(registry.admitted_faces(), 2);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn fallback_rejects_a_symlink_even_when_its_target_lacks_the_glyph() {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts/Cousine-Regular.ttf");
+        let link = std::env::temp_dir().canonicalize().unwrap().join(format!(
+            "merman-coverage-link-{}-{:?}.ttf",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::os::unix::fs::symlink(fixture, &link).unwrap();
+        let registry = FontSourceRegistry::new(BTreeMap::new(), BTreeMap::new(), 0, 0);
+        let result = registry.materialize(
+            file_candidate(&link, 0),
+            Some('\u{0378}'),
+            &mut Arc::new(Database::new()),
+            &NativeFontLimits::default(),
+            &OperationControl::new(),
+        );
+        fs::remove_file(&link).unwrap();
+        assert!(matches!(result, Err(NativeFontError::Source { path, .. }) if path == link));
+        assert_eq!(registry.resident_bytes(), 0);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "requires a registered macOS Arial face"]
+    fn uninstalled_face_in_retained_explicit_data_obeys_the_face_limit() {
+        let control = OperationControl::new();
+        let native =
+            coretext::named("Arial", Weight::NORMAL, Stretch::Normal, Style::Normal).unwrap();
+        let path = native.path.canonicalize().unwrap();
+        let data = native
+            .snapshot(NativeFontLimits::default().max_bytes, &control)
+            .unwrap();
+        // The loader can retain a source even when an earlier descriptor won admission.
+        let registry = FontSourceRegistry::new(
+            BTreeMap::from([(path, Arc::new(data))]),
+            BTreeMap::new(),
+            1,
+            0,
+        );
+        let mut database = Arc::new(Database::new());
+        let mut admit = |candidate, max_faces| {
+            let limits = NativeFontLimits {
+                max_faces,
+                ..Default::default()
+            };
+            registry.materialize(candidate, Some('A'), &mut database, &limits, &control)
+        };
+        let first = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts/Cousine-Regular.ttf");
+        assert!(admit(file_candidate(&first, 0), 1).unwrap().is_some());
+        let resident = registry.resident_bytes();
+
+        assert!(matches!(
+            admit(FontCandidate::Native(native.clone()), 1),
+            Err(NativeFontError::Limit {
+                resource: "font-faces",
+                actual: 2,
+                limit: 1
+            })
+        ));
+        assert_eq!(registry.admitted_faces(), 1);
+        assert!(admit(FontCandidate::Native(native), 2).unwrap().is_some());
+        assert_eq!(registry.admitted_faces(), 2);
+        assert_eq!(database.len(), 2);
+        assert_eq!(registry.resident_bytes(), resident);
+    }
+
+    #[test]
     fn non_covering_fallback_does_not_consume_snapshot_budget() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts/Cousine-Regular.ttf");
         let registry =
@@ -913,14 +944,7 @@ mod tests {
         fs::write(&path, original).unwrap();
         let candidate = file_candidate(&path, 1);
         let later_candidate = file_candidate(&root.join(".").join("font.ttc"), 1);
-        #[cfg(target_os = "macos")]
-        let font = match &candidate {
-            FontCandidate::File {
-                expected: ExpectedFace::Platform(face),
-                ..
-            } => face.coverage_source.clone().unwrap(),
-            _ => unreachable!(),
-        };
+        let after_removal = file_candidate(&path, 1);
         let registry =
             super::super::registry::FontSourceRegistry::new(BTreeMap::new(), BTreeMap::new(), 0, 0);
         let control = OperationControl::new();
@@ -947,18 +971,19 @@ mod tests {
         assert_eq!(database.face(selected).unwrap().index, 1);
         assert_eq!(registry.resident_bytes(), original.len());
         fs::remove_file(path).unwrap();
-        #[cfg(target_os = "macos")]
-        {
-            let data = test_catalog()
-                .discovery_data(&font, &registry)
-                .unwrap()
-                .unwrap();
-            let raw = RawFace::parse(data.as_ref(), font.index()).unwrap();
-            let names = name::Table::parse(raw.table(Tag::from_bytes(b"name")).unwrap()).unwrap();
-            assert!(post_script_name_matches(names, "Cousine-Italic"));
-            assert!(!post_script_name_matches(names, "Cousine-Regular"));
-            assert_eq!(data.as_ref(), original);
-        }
+        let mut exported = Arc::new(Database::new());
+        let export_id = registry
+            .for_export()
+            .unwrap()
+            .materialize(after_removal, Some('A'), &mut exported, &limits, &control)
+            .unwrap()
+            .unwrap();
+        exported
+            .with_face_data(export_id, |data, index| {
+                assert_eq!(index, 1);
+                assert_eq!(data, original);
+            })
+            .unwrap();
         fs::remove_dir(root).unwrap();
     }
 
@@ -1085,11 +1110,7 @@ mod tests {
         assert!(
             candidate
                 .into_face()
-                .validate(
-                    &replacement,
-                    Path::new("unused-font-path"),
-                    replacement.index
-                )
+                .validate(&replacement, Path::new("unused-font-path"))
                 .is_err()
         );
     }
@@ -1111,7 +1132,7 @@ mod tests {
             };
             candidate
                 .into_face()
-                .validate(&face, Path::new("unused-font-path"), face.index)
+                .validate(&face, Path::new("unused-font-path"))
                 .expect("family aliases come from the same immutable binary");
         }
     }

@@ -137,7 +137,7 @@ fn file_candidate(font: IDWriteFont) -> Option<FontCandidate> {
         let family = localized_name(&font.GetFontFamily().ok()?.GetFamilyNames().ok()?)?;
         let variable = variable_face(&face);
         let post_script_name = if let Some(instance) = &variable {
-            if has_non_default_axes(&face, instance) {
+            if has_non_default_axes(&face, instance)? {
                 // The resolver admits a file and collection index. These cannot carry the
                 // selected instance's coordinates, even when it shares the physical family.
                 return None;
@@ -226,7 +226,7 @@ fn variable_face(face: &IDWriteFontFace) -> Option<IDWriteFontFace5> {
     }
 }
 
-fn has_non_default_axes(face: &IDWriteFontFace, instance: &IDWriteFontFace5) -> bool {
+fn has_non_default_axes(face: &IDWriteFontFace, instance: &IDWriteFontFace5) -> Option<bool> {
     with_font_table(face, b"fvar", |bytes| {
         let table = fvar::Table::parse(bytes)?;
         // SAFETY: The slice has the exact number of writable slots reported by this face.
@@ -250,7 +250,7 @@ fn has_non_default_axes(face: &IDWriteFontFace, instance: &IDWriteFontFace5) -> 
                     (axis.min_value..=axis.max_value).contains(&value) && value != axis.def_value
                 })
         }))
-    }) == Some(true)
+    })
 }
 
 struct FontTableLease<'a> {
@@ -462,7 +462,7 @@ mod tests {
         let face = physical.faces().find(|face| face.index == index).unwrap();
         assert_eq!(face.post_script_name, "NotoSansSC-Thin");
         assert_eq!(face.weight, base.weight);
-        expected.validate(face, &path, index).unwrap();
+        expected.validate(face, &path).unwrap();
     }
 
     #[test]
@@ -489,21 +489,21 @@ mod tests {
         let regular = load(path.clone());
         let regular = regular.faces().find(|face| face.index == index).unwrap();
         assert_eq!(regular.post_script_name, "MicrosoftYaHeiUI");
-        expected.validate(regular, &path, index).unwrap();
+        expected.validate(regular, &path).unwrap();
 
         let bold = load(directory.join("msyhbd.ttc"));
         let bold = bold.faces().find(|face| face.index == index).unwrap();
         assert_eq!(bold.post_script_name, "MicrosoftYaHeiUI-Bold");
-        assert!(expected.validate(bold, &path, index).is_err());
+        assert!(expected.validate(bold, &path).is_err());
 
         let mut incorrect_weight = regular.clone();
         incorrect_weight.weight = bold.weight;
-        assert!(expected.validate(&incorrect_weight, &path, index).is_err());
+        assert!(expected.validate(&incorrect_weight, &path).is_err());
 
         let super::super::ExpectedFace::Platform(mut descriptor) = expected else {
             panic!("DirectWrite must provide a platform descriptor");
         };
         descriptor.post_script_name = Some(bold.post_script_name.clone());
-        assert!(descriptor.validate(regular, &path, index).is_err());
+        assert!(descriptor.validate(regular, &path).is_err());
     }
 }

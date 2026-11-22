@@ -1,6 +1,6 @@
 //! Per-family Core Text matching; generic family resolution belongs to the caller.
 
-use std::{ptr, sync::Arc};
+use std::{collections::HashMap, ptr, sync::Arc};
 
 use objc2_core_foundation::{
     CFArray, CFComparisonResult, CFDictionary, CFNumber, CFRetained, CFSet, CFString,
@@ -14,6 +14,11 @@ use usvg::fontdb::{
     Database, FaceInfo, Family, ID, Language, Query, Source, Stretch, Style, Weight,
 };
 
+use super::NativeFace;
+
+// Core Text already selected one family. The ranking database only needs a shared key.
+const QUERY_FAMILY: &str = "";
+
 /// Matches one named family, keeping the selected native face alive for the caller.
 /// Styles are preferences; a missing family must not select a substitute family.
 pub(super) fn match_family(
@@ -21,11 +26,103 @@ pub(super) fn match_family(
     weight: Weight,
     stretch: Stretch,
     style: Style,
-) -> Option<CFRetained<CTFont>> {
+    character: Option<char>,
+) -> Option<NativeFace> {
+    let mut candidates = Vec::new();
+    let mut weight_groups = HashMap::new();
+    for descriptor in family_descriptors(family)?.iter() {
+        let Some(font) = font_from_descriptor(&descriptor) else {
+            continue;
+        };
+        if character.is_some_and(|ch| !font_covers(&font, ch)) {
+            continue;
+        }
+        let Some(face) = NativeFace::from_font(font) else {
+            continue;
+        };
+        let (native_weight, native_stretch, native_style) = native_attributes(&face.font);
+        let table = table_attributes(&face.font, native_style);
+        if let (Some(attributes), Some(weight)) = (table, native_weight) {
+            let (first, differs) = weight_groups.entry(attributes).or_insert((weight, false));
+            *differs |= *first != weight;
+        }
+        let attributes = table.unwrap_or((
+            native_weight.unwrap_or(Weight::NORMAL),
+            native_stretch,
+            native_style,
+        ));
+        candidates.push((face, attributes, native_weight));
+    }
+
+    let mut database = Database::new();
+    // This database only ranks supported candidates. Its indices refer to retained faces.
+    let source = Source::Binary(Arc::new(Vec::<u8>::new()));
+    for (index, (_, attributes, native_weight)) in candidates.iter().enumerate() {
+        let (mut weight, stretch, style) = *attributes;
+        // Kaiti's Regular, Bold and Black all report OS/2 weight 400. Keep exact
+        // table weights unless Core Text distinguishes faces in the same class.
+        if weight_groups
+            .get(attributes)
+            .is_some_and(|(_, differs)| *differs)
+        {
+            weight = native_weight.unwrap_or(weight);
+        }
+        database.push_face_info(FaceInfo {
+            id: ID::dummy(),
+            source: source.clone(),
+            index: u32::try_from(index).ok()?,
+            families: vec![(QUERY_FAMILY.to_owned(), Language::English_UnitedStates)],
+            post_script_name: String::new(),
+            style,
+            weight,
+            stretch,
+            monospaced: false,
+        });
+    }
+    let id = database.query(&Query {
+        families: &[Family::Name(QUERY_FAMILY)],
+        weight,
+        stretch,
+        style,
+    })?;
+    let index = usize::try_from(database.face(id)?.index).ok()?;
+    candidates.into_iter().nth(index).map(|(face, ..)| face)
+}
+
+/// Core Text can return an instance whose coordinates the snapshot cannot represent.
+/// Keep its position in the cascade by trying supported faces of its actual family.
+pub(super) fn fallback_face(font: CFRetained<CTFont>, character: char) -> Option<NativeFace> {
+    if !font_covers(&font, character) {
+        return None;
+    }
+    if let Some(face) = NativeFace::from_font(font.clone()) {
+        return Some(face);
+    }
+    // SAFETY: The retained font owns its family identity independently of the descriptor.
+    let family = unsafe { font.family_name() }.to_string();
+    if super::is_last_resort(&family) {
+        return None;
+    }
+    let (weight, stretch, style) = native_attributes(&font);
+    match_family(
+        &family,
+        weight.unwrap_or(Weight::NORMAL),
+        stretch,
+        style,
+        Some(character),
+    )
+}
+
+fn font_covers(font: &CTFont, character: char) -> bool {
+    // SAFETY: The live font returns a retained, immutable character set.
+    let character_set = unsafe { font.character_set() };
+    super::character_set_contains_scalar(&character_set, character)
+}
+
+fn family_descriptors(family: &str) -> Option<CFRetained<CFArray<CTFontDescriptor>>> {
     if family.is_empty() {
         return None;
     }
-
     let family_name = CFString::from_str(family);
     // SAFETY: This is an immutable Core Text CFString constant.
     let family_key = unsafe { kCTFontFamilyNameAttribute };
@@ -44,44 +141,10 @@ pub(super) fn match_family(
     // without native style preferences, which do not implement CSS weight ordering.
     let descriptors = unsafe { request.matching_font_descriptors(Some(&required)) }?;
     // SAFETY: Core Text returns an immutable CFArray of retained CTFontDescriptor objects.
-    let descriptors: CFRetained<CFArray<CTFontDescriptor>> =
-        unsafe { CFRetained::cast_unchecked(descriptors) };
-
-    let mut database = Database::new();
-    // Only query metadata is used. This empty source never reaches admission or shaping;
-    // each index identifies a descriptor array row, not a physical TTC member.
-    let source = Source::Binary(Arc::new(Vec::<u8>::new()));
-    for (index, descriptor) in descriptors.iter().enumerate() {
-        let Some(font) = font_from_descriptor(&descriptor) else {
-            continue;
-        };
-        let (weight, stretch, style) = font_attributes(&font);
-        database.push_face_info(FaceInfo {
-            id: ID::dummy(),
-            source: source.clone(),
-            index: u32::try_from(index).ok()?,
-            // Core Text has already resolved case/localized aliases. Use the authored
-            // spelling as a query-local grouping key, not as native identity evidence.
-            families: vec![(family.to_owned(), Language::English_UnitedStates)],
-            post_script_name: String::new(),
-            style,
-            weight,
-            stretch,
-            monospaced: false,
-        });
-    }
-    let id = database.query(&Query {
-        families: &[Family::Name(family)],
-        weight,
-        stretch,
-        style,
-    })?;
-    let index = usize::try_from(database.face(id)?.index).ok()?;
-    let descriptor = descriptors.get(index)?;
-    font_from_descriptor(&descriptor)
+    Some(unsafe { CFRetained::cast_unchecked(descriptors) })
 }
 
-fn font_from_descriptor(descriptor: &CTFontDescriptor) -> Option<CFRetained<CTFont>> {
+pub(super) fn font_from_descriptor(descriptor: &CTFontDescriptor) -> Option<CFRetained<CTFont>> {
     // Compare the normalized descriptor's identity, not the input spelling:
     // Core Text owns case folding and recognition of localized names/aliases.
     // SAFETY: The descriptor is live; this accessor returns a retained CF object.
@@ -107,7 +170,22 @@ fn font_from_descriptor(descriptor: &CTFontDescriptor) -> Option<CFRetained<CTFo
     Some(font)
 }
 
-fn font_attributes(font: &CTFont) -> (Weight, Stretch, Style) {
+fn table_attributes(font: &CTFont, native_style: Style) -> Option<(Weight, Stretch, Style)> {
+    // Only supported default instances reach here, so OS/2 describes the physical face.
+    // SAFETY: The live font returns immutable retained table data.
+    let data = unsafe { font.table(u32::from_be_bytes(*b"OS/2"), CTFontTableOptions::NoOptions) }?;
+    // SAFETY: The retained CFData outlives the borrowed table parser.
+    let table = ttf_parser::os2::Table::parse(unsafe { data.as_bytes_unchecked() })?;
+    let style = match table.style() {
+        // Some legacy fonts report italic only through native/post traits.
+        ttf_parser::Style::Normal => native_style,
+        ttf_parser::Style::Italic => Style::Italic,
+        ttf_parser::Style::Oblique => Style::Oblique,
+    };
+    Some((Weight(table.weight().to_number()), table.width(), style))
+}
+
+fn native_attributes(font: &CTFont) -> (Option<Weight>, Stretch, Style) {
     // SAFETY: The font is retained and these accessors do not mutate it.
     let native_italic =
         unsafe { font.symbolic_traits() }.contains(CTFontSymbolicTraits::TraitItalic);
@@ -116,30 +194,6 @@ fn font_attributes(font: &CTFont) -> (Weight, Stretch, Style) {
     } else {
         Style::Normal
     };
-    // A named variable instance's OS/2 table describes the default physical face.
-    // Keep its native traits for ranking; NativeFace still rejects non-default instances.
-    // SAFETY: Core Text returns an immutable retained dictionary for this live font.
-    let default_instance = unsafe { font.variation() }.is_none_or(|values| values.is_empty());
-    if default_instance {
-        // SAFETY: The live font returns immutable retained table data. Only this
-        // candidate's OS/2 table is requested, never its file or unrelated families.
-        let data =
-            unsafe { font.table(u32::from_be_bytes(*b"OS/2"), CTFontTableOptions::NoOptions) };
-        if let Some(data) = data
-            // SAFETY: The retained immutable CFData outlives the borrowed table parser.
-            && let Some(table) =
-                ttf_parser::os2::Table::parse(unsafe { data.as_bytes_unchecked() })
-        {
-            let style = match table.style() {
-                // Some legacy fonts report italic only through native/post traits.
-                ttf_parser::Style::Normal => native_style,
-                ttf_parser::Style::Italic => Style::Italic,
-                ttf_parser::Style::Oblique => Style::Oblique,
-            };
-            return (Weight(table.weight().to_number()), table.width(), style);
-        }
-    }
-
     // SAFETY: Core Text's immutable traits dictionary has CFString keys and CFType values.
     let traits: CFRetained<CFDictionary<CFString, CFType>> =
         unsafe { CFRetained::cast_unchecked(font.traits()) };
@@ -165,13 +219,13 @@ fn font_attributes(font: &CTFont) -> (Weight, Stretch, Style) {
         9 => Stretch::UltraExpanded,
         _ => Stretch::Normal,
     };
-    (css_weight(weight.unwrap_or(0.0)), stretch, native_style)
+    (weight.map(css_weight), stretch, native_style)
 }
 
 fn css_weight(weight: f64) -> Weight {
     // Skia 026cef465735b4dfb51bfd64b748017e902d2a67:
-    // Invert SkCTFontGetNSFontWeightMapping's defaults only when the native instance
-    // cannot use an exact OS/2 weight. This converts units; fontdb owns CSS ranking.
+    // Invert SkCTFontGetNSFontWeightMapping's defaults for missing or ambiguous
+    // OS/2 weights. This converts units; fontdb owns CSS ranking.
     const WEIGHTS: [f64; 11] = [
         -1.00, -0.80, -0.60, -0.40, 0.00, 0.23, 0.30, 0.40, 0.56, 0.62, 1.00,
     ];
@@ -186,6 +240,7 @@ fn css_weight(weight: f64) -> Weight {
 
 #[cfg(test)]
 mod tests {
+    use super::super::named;
     use super::*;
 
     #[test]
@@ -196,31 +251,25 @@ mod tests {
             (Style::Italic, "Arial-ItalicMT", "Arial-BoldItalicMT"),
         ] {
             for (weight, expected) in [(400, regular), (500, regular), (600, bold), (700, bold)] {
-                let font = match_family("Arial", Weight(weight), Stretch::Normal, style)
+                let font = named("Arial", Weight(weight), Stretch::Normal, style)
                     .expect("registered Arial family");
-                // SAFETY: The font is live and the name is retained.
                 assert_eq!(
-                    unsafe { font.post_script_name() }.to_string(),
-                    expected,
+                    font.post_script_name, expected,
                     "Arial CSS weight {weight}, style {style:?}"
                 );
             }
         }
 
-        let mixed_case = match_family("aRiAl", Weight::MEDIUM, Stretch::Normal, Style::Italic)
+        let mixed_case = named("aRiAl", Weight::MEDIUM, Stretch::Normal, Style::Italic)
             .expect("family matching accepts case variants");
-        // SAFETY: The font is live and the name is retained.
-        assert_eq!(
-            unsafe { mixed_case.post_script_name() }.to_string(),
-            "Arial-ItalicMT"
-        );
+        assert_eq!(mixed_case.post_script_name, "Arial-ItalicMT");
     }
 
     #[test]
     #[ignore = "requires the macOS Core Text font registry"]
     fn unknown_family_does_not_select_a_substitute() {
         assert!(
-            match_family(
+            named(
                 "MermanMissingFamily-46da48fb3f884be4",
                 Weight::NORMAL,
                 Stretch::Normal,
@@ -228,5 +277,126 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    #[ignore = "optional qualification with the system STIX Two Text variable fonts installed"]
+    fn installed_stix_family_keeps_its_physical_default_faces() {
+        let root = std::path::Path::new("/System/Library/Fonts/Supplemental");
+        for (style, file) in [
+            (Style::Normal, "STIXTwoText.ttf"),
+            (Style::Italic, "STIXTwoText-Italic.ttf"),
+        ] {
+            let path = root.join(file);
+            if !path.is_file() {
+                continue;
+            }
+            let bytes = std::fs::read(&path).unwrap();
+            let physical = ttf_parser::Face::parse(&bytes, 0).unwrap();
+            let Some(axis) = physical
+                .variation_axes()
+                .into_iter()
+                .find(|axis| axis.tag == ttf_parser::Tag::from_bytes(b"wght"))
+            else {
+                continue;
+            };
+            let expected = physical
+                .names()
+                .into_iter()
+                .filter(|name| name.name_id == ttf_parser::name_id::POST_SCRIPT_NAME)
+                .find_map(|name| name.to_string())
+                .expect("the physical STIX face has a PostScript name");
+            for weight in [Weight::NORMAL, Weight::MEDIUM, Weight::BOLD] {
+                let face = named("STIX Two Text", weight, Stretch::Normal, style)
+                    .expect("the installed variable face is usable");
+                assert_eq!(face.path, path);
+                assert_eq!(face.post_script_name, expected, "{weight:?} {style:?}");
+            }
+
+            let base = named("STIX Two Text", Weight::NORMAL, Stretch::Normal, style).unwrap();
+            let non_default = if axis.max_value > axis.def_value {
+                axis.max_value
+            } else {
+                axis.min_value
+            };
+            let axis_id = CFNumber::new_i32(i32::from_be_bytes(*b"wght"));
+            // SAFETY: The live descriptor and axis identifier describe this variable font.
+            let instance = unsafe {
+                let descriptor = base
+                    .font
+                    .font_descriptor()
+                    .copy_with_variation(&axis_id, non_default.into());
+                CTFont::with_font_descriptor(&descriptor, 0.0, ptr::null())
+            };
+            // SAFETY: Core Text returns the live font's non-default coordinates.
+            assert!(unsafe { instance.variation() }.is_some_and(|values| !values.is_empty()));
+            let fallback = fallback_face(instance, 'A').expect("the default STIX face covers A");
+            assert_eq!(fallback.path, path);
+            assert_eq!(fallback.post_script_name, expected);
+        }
+    }
+
+    #[test]
+    #[ignore = "optional qualification with the registered Kaiti SC collection installed"]
+    fn installed_kaiti_faces_with_shared_table_weight_follow_native_traits() {
+        let Some(descriptors) = family_descriptors("Kaiti SC") else {
+            return;
+        };
+        let mut weights = HashMap::new();
+        for descriptor in descriptors.iter() {
+            let Some(face) = font_from_descriptor(&descriptor).and_then(NativeFace::from_font)
+            else {
+                continue;
+            };
+            if !face.path.is_file() {
+                continue;
+            }
+            let (Some(weight), _, Style::Normal) = native_attributes(&face.font) else {
+                continue;
+            };
+            if table_attributes(&face.font, Style::Normal)
+                == Some((Weight::NORMAL, Stretch::Normal, Style::Normal))
+            {
+                weights.entry(weight).or_insert_with(Vec::new).push(face);
+            }
+        }
+        if weights.len() < 2 {
+            return;
+        }
+        for (weight, expected) in weights {
+            let face = named("Kaiti SC", weight, Stretch::Normal, Style::Normal)
+                .expect("the installed Kaiti face is usable");
+            assert!(
+                expected.iter().any(|candidate| candidate.path == face.path
+                    && candidate.post_script_name == face.post_script_name),
+                "Kaiti SC {weight:?} selected {}",
+                face.post_script_name
+            );
+        }
+    }
+
+    #[cfg(feature = "png")]
+    #[test]
+    #[ignore = "requires macOS Arial and system Ethiopic coverage"]
+    fn bold_arial_paints_ethiopic_with_strict_coverage() {
+        use crate::{NativeFontOptions, RasterOptions, svg_to_png_with_report};
+        use merman_model::OperationControl;
+        use merman_render::environment::RenderEnvironment;
+
+        let fonts = NativeFontOptions::default()
+            .with_system_fonts(true)
+            .load_platform(&OperationControl::new())
+            .unwrap()
+            .with_strict_glyph_coverage(true);
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let source = r#"<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><text x="4" y="48" font-family="Arial" font-size="32" font-weight="700">ሀ</text></svg>"#;
+        let svg = merman_render::svg::finalize_resvg_svg(source, &session).unwrap();
+        let options = RasterOptions::default().with_font_context(fonts);
+        let (png, report) =
+            svg_to_png_with_report(&svg, &options).expect("strict export must cover U+1200");
+        assert!(report.fonts().used_system_fonts());
+        assert_eq!(report.fonts().notdef_glyph_count(), 0);
+        let pixels = tiny_skia::Pixmap::decode_png(&png).unwrap();
+        assert!(pixels.pixels().iter().any(|pixel| pixel.alpha() > 0));
     }
 }

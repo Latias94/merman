@@ -198,7 +198,7 @@ pub enum NativeFontError {
         "platform system font service {service} is unavailable; select bounded discovery or provide explicit fonts"
     )]
     PlatformDiscoveryUnavailable { service: &'static str },
-    #[error("explicit font sources contain no usable font faces")]
+    #[error("selected font sources contain no usable font faces")]
     EmptyFontSet,
     #[error("font source {path}: {message}")]
     Source { path: PathBuf, message: String },
@@ -722,7 +722,7 @@ impl FontLoader {
             not(target_family = "wasm")
         ))]
         if platform.is_some() {
-            loader.hash.update(b"\0platform-query/native/v5");
+            loader.hash.update(b"\0platform-query/native/v6");
         }
         #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         if let Some(catalog) = &system {
