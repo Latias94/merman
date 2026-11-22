@@ -33,7 +33,20 @@ Registry packages still resolve the public 0.47 line through their consumer's Ca
 The Windows release default is qualified with the repository patch. Remove the local source and
 patch together when a compatible released export chain covers these fallback cases.
 The Linux and FreeBSD Fontique builds load Fontconfig dynamically for explicit platform queries.
-This keeps Fontconfig outside the ordinary CLI's load-time dependency set.
+This keeps Fontconfig outside the ordinary CLI's load-time dependency set. The direct optional
+`yeslogic-fontconfig-sys` dependency uses the same loader result to distinguish a missing runtime
+from an intentionally empty configuration. Before replacing Linux family matching, admit bindings
+for `FcPatternGetWithBinding` and the actual `FcValue` union layout; the resolved 6.0.1 binding
+cannot currently preserve Fontconfig alias strength through that API. Do not implement a second
+partial alias matcher or add a load-time Fontconfig link to work around this boundary.
+
+macOS platform queries use Core Text descriptors for one requested family at a time and retain
+the selected native face. `write-fonts` 0.48.1, already in the PDF dependency graph, assembles that
+face's tables into a bounded standalone SFNT. These adapters preserve the existing usvg/fontdb
+handoff and do not require another renderer fork. Native non-default variation coordinates and
+oversized bitmap-font tables remain separate instance/data-interface work. A future published
+usvg fork must keep one package identity across Merman, resvg and krilla-svg; a root workspace
+patch alone does not deliver its behavior to ordinary crates.io consumers.
 
 The 2026-11-19 dependency review selected Jiff 1.0.1, following the existing removal of Chrono.
 Jiff's [1.0 changelog](https://docs.rs/crate/jiff/1.0.1/source/CHANGELOG.md) commits to the stable
