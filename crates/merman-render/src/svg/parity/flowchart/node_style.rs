@@ -478,12 +478,12 @@ impl PreparedNodeTerminal {
         (classes, inline_styles, include_default_class): (&[String], &[String], bool),
         terminal_shape: Option<&str>,
         structural: &crate::flowchart::FlowchartStructuralLabelTypography,
-        source_text_style: std::sync::Arc<crate::flowchart::FlowchartNodeSourceTypography>,
+        source_text_style: Option<std::sync::Arc<crate::flowchart::FlowchartNodeSourceTypography>>,
         ordinal: Option<usize>,
         theme: Option<&crate::diagram_theme::ResolvedDiagramTheme>,
         inputs: &NodeSelectionInputs<'_>,
         work: &crate::resources::OperationWorkMeter,
-    ) -> crate::Result<Self> {
+    ) -> crate::Result<Option<Self>> {
         let style = FlowchartNodeThemeStyle::resolve(theme, ordinal, work)?;
         let source = if include_default_class {
             flowchart_compile_node_styles(class_defs, classes, inline_styles, &[])
@@ -499,6 +499,11 @@ impl PreparedNodeTerminal {
             &source,
             work,
         )?;
+        // Geometry queries still run the metered source and theme resolution above, but
+        // they do not consume SVG paint strings or terminal provenance.
+        let Some(source_text_style) = source_text_style else {
+            return Ok(None);
+        };
         // Radius configuration reaches RoundedRectangle in every look, but only Neo's
         // Process writer consumes the numeric compatibility radius.
         let radius_config_override = match terminal_shape
@@ -522,14 +527,14 @@ impl PreparedNodeTerminal {
         } else {
             String::new()
         };
-        Ok(Self {
+        Ok(Some(Self {
             source_text_style,
             style,
             source,
             terminal_sources,
             rough_group_style,
             selection,
-        })
+        }))
     }
 }
 

@@ -834,6 +834,7 @@ mod tests {
             &theme,
             &config,
             session.work_meter(),
+            true,
         )
         .unwrap();
         consume(

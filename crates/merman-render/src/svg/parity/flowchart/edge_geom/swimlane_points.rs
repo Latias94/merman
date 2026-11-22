@@ -142,6 +142,7 @@ mod tests {
             &prepared_theme,
             &render_config,
             session.work_meter(),
+            true,
         )
         .expect("prepared fixed-layout nodes");
         let theme_evidence = crate::flowchart::FlowchartThemeEvidenceRecorder::default();

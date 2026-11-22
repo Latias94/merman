@@ -299,6 +299,7 @@ pub use merman_model::family::DiagramFamilyId;
 #[doc(hidden)]
 pub mod __private {
     pub use crate::diagram_theme::EffectComposition;
+    pub use crate::family::{FamilyLayoutArtifact, prepare_layout};
     use crate::family::{FamilyRenderReport, FamilyStyleVerification};
 
     pub use crate::diagram_theme::{EffectColorSpace, EffectInput};

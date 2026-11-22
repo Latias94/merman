@@ -9288,7 +9288,7 @@ fn planned_family_drives_flowchart_router_before_layout() {
         &flowchart,
         &options,
         FamilyRenderContext::resolve(session(), DiagramFamilyId::SWIMLANE),
-        FlowchartSvgLabelPreparation(true),
+        FamilyPreparation::Render,
     )
     .expect("planned Swimlane family should drive layout");
     assert_eq!(swimlane.family_id(), DiagramFamilyId::SWIMLANE);
@@ -9305,7 +9305,7 @@ fn planned_family_drives_flowchart_router_before_layout() {
         &configured_swimlane,
         &options,
         FamilyRenderContext::resolve(session(), DiagramFamilyId::FLOWCHART),
-        FlowchartSvgLabelPreparation(true),
+        FamilyPreparation::Render,
     )
     .expect("planned Flowchart family should drive layout");
     assert_eq!(flowchart.family_id(), DiagramFamilyId::FLOWCHART);
@@ -9323,7 +9323,7 @@ fn flowchart_router_rejects_an_incompatible_planned_family() {
         &parsed,
         &LayoutOptions::default(),
         FamilyRenderContext::resolve(session(), DiagramFamilyId::STATE),
-        FlowchartSvgLabelPreparation(true),
+        FamilyPreparation::Render,
     ) {
         Ok(_) => panic!("State cannot consume a Flowchart semantic model"),
         Err(error) => error,
@@ -12110,7 +12110,7 @@ fn suppressed_parse_failure_uses_the_typed_error_artifact_and_renderer() {
 }
 
 fn render_with_sidecar_host_control(
-    preparation: FlowchartSvgLabelPreparation,
+    preparation: FamilyPreparation,
     outcome: SidecarHostOutcome,
 ) -> (
     bool,
@@ -12147,13 +12147,8 @@ A traced-edge@-->|edge label words| B["delta epsilon"]
             TextMeasurementPolicy::host_display(identity, host.clone(), TextMeasurementPhase::ALL),
         );
     let session = environment.begin_session().expect("render session");
-    let artifact = prepare_with_svg_label_preparation(
-        &parsed,
-        &LayoutOptions::default(),
-        session,
-        preparation,
-    )
-    .expect("prepare flowchart artifact");
+    let artifact = prepare_for(&parsed, &LayoutOptions::default(), session, preparation)
+        .expect("prepare flowchart artifact");
     let indexed_sidecar = match &artifact.family {
         #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
         BuiltinFamilyArtifact::Flowchart(flowchart) => {
@@ -12181,9 +12176,12 @@ A traced-edge@-->|edge label words| B["delta epsilon"]
 fn routed_host_and_fallback_traces_match_a_no_sidecar_family_control() {
     for outcome in [SidecarHostOutcome::Success, SidecarHostOutcome::Missing] {
         let (control_indexed, control_trace, control_report, control_svg) =
-            render_with_sidecar_host_control(FlowchartSvgLabelPreparation(false), outcome);
+            render_with_sidecar_host_control(
+                FamilyPreparation::RenderWithoutFlowchartSvgLabels,
+                outcome,
+            );
         let (sidecar_indexed, sidecar_trace, sidecar_report, sidecar_svg) =
-            render_with_sidecar_host_control(FlowchartSvgLabelPreparation(true), outcome);
+            render_with_sidecar_host_control(FamilyPreparation::Render, outcome);
 
         assert!(
             !control_indexed,

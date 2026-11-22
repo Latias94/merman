@@ -1572,7 +1572,7 @@ fn render_layout_json_target(
 fn with_prepared_layout_json<T>(
     semantic: PresentationArtifact,
     request: &SvgRequest,
-    project: impl FnOnce(&merman_render::family::FamilyRenderArtifact<'_>) -> Result<T, RenderError>,
+    project: impl FnOnce(&merman_render::__private::FamilyLayoutArtifact<'_>) -> Result<T, RenderError>,
 ) -> Result<T, RenderError> {
     // A prepared artifact keeps the operation's sticky terminal state. Observe it before
     // rejecting a target-specific portability requirement so cancellation/deadline errors cannot
@@ -1591,7 +1591,8 @@ fn with_prepared_layout_json<T>(
         operation.context,
         operation.control,
     )?;
-    let artifact = merman_render::family::prepare(parsed.parsed(), &request.layout, session)?;
+    let artifact =
+        merman_render::__private::prepare_layout(parsed.parsed(), &request.layout, session)?;
     project(&artifact)
 }
 

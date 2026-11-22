@@ -1758,7 +1758,7 @@ pub(crate) struct FlowchartFamilyArtifact<'parsed, L> {
     edge_style_plan: crate::svg::FlowchartEdgeStylePlan,
     edge_theme: crate::flowchart::FlowchartEdgeThemeStyle,
     prepared_theme: crate::flowchart::FlowchartPreparedTheme,
-    prepared_nodes: crate::svg::FlowchartPreparedNodes,
+    prepared_nodes: Option<crate::svg::FlowchartPreparedNodes>,
     render_config: crate::svg::FlowchartRenderConfig,
     svg_label_sidecar: crate::flowchart::FlowchartSvgLabelSidecar,
     theme_evidence: crate::flowchart::FlowchartThemeEvidenceRecorder,
@@ -1776,8 +1776,12 @@ impl<'parsed, L> FlowchartFamilyArtifact<'parsed, L> {
         &self.render_config
     }
 
-    pub(crate) const fn prepared_nodes(&self) -> &crate::svg::FlowchartPreparedNodes {
-        &self.prepared_nodes
+    pub(crate) fn prepared_nodes(&self) -> Result<&crate::svg::FlowchartPreparedNodes> {
+        self.prepared_nodes
+            .as_ref()
+            .ok_or_else(|| Error::InvalidModel {
+                message: "Flowchart node paint was not prepared for SVG".into(),
+            })
     }
 
     pub(crate) fn prepared_theme(&self) -> &crate::flowchart::FlowchartPreparedTheme {
@@ -4482,17 +4486,57 @@ pub fn prepare<'parsed>(
     options: &LayoutOptions,
     session: RenderSession,
 ) -> Result<FamilyRenderArtifact<'parsed>> {
-    prepare_with_svg_label_preparation(parsed, options, session, FlowchartSvgLabelPreparation(true))
+    prepare_for(parsed, options, session, FamilyPreparation::Render)
 }
 
-#[derive(Clone, Copy)]
-struct FlowchartSvgLabelPreparation(bool);
+/// Prepared geometry and its semantic projection. It cannot be used to emit SVG.
+#[doc(hidden)]
+pub struct FamilyLayoutArtifact<'parsed>(FamilyRenderArtifact<'parsed>);
 
-fn prepare_with_svg_label_preparation<'parsed>(
+impl FamilyLayoutArtifact<'_> {
+    pub fn gantt_time_axis_diagnostics(&self) -> Option<GanttTimeAxisDiagnostics> {
+        self.0.gantt_time_axis_diagnostics()
+    }
+
+    pub fn layout_json(&self) -> Result<ManagedJson> {
+        self.0.layout_json()
+    }
+
+    pub fn layout_geometry_json(&self) -> Result<ManagedJson> {
+        self.0.layout_geometry_json()
+    }
+
+    pub fn write_layout_geometry_json(
+        &self,
+        writer: impl std::io::Write,
+        pretty: bool,
+    ) -> Result<()> {
+        self.0.write_layout_geometry_json(writer, pretty)
+    }
+}
+
+#[doc(hidden)]
+pub fn prepare_layout<'parsed>(
     parsed: &'parsed PresentationDiagram,
     options: &LayoutOptions,
     session: RenderSession,
-    svg_label_preparation: FlowchartSvgLabelPreparation,
+) -> Result<FamilyLayoutArtifact<'parsed>> {
+    prepare_for(parsed, options, session, FamilyPreparation::Layout).map(FamilyLayoutArtifact)
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FamilyPreparation {
+    Render,
+    Layout,
+    #[cfg(all(test, feature = "all-diagrams"))]
+    RenderWithoutFlowchartSvgLabels,
+}
+
+fn prepare_for<'parsed>(
+    parsed: &'parsed PresentationDiagram,
+    options: &LayoutOptions,
+    session: RenderSession,
+    preparation: FamilyPreparation,
 ) -> Result<FamilyRenderArtifact<'parsed>> {
     session.checkpoint(OperationPhase::Layout)?;
     validate_layout_options(parsed, options)?;
@@ -4510,7 +4554,7 @@ fn prepare_with_svg_label_preparation<'parsed>(
         DiagramFamilyId::ARCHITECTURE => {
             preparation::prepare_architecture_render(parsed, options, context)
         }
-        _ => preparation::prepare_non_class_render(parsed, options, context, svg_label_preparation),
+        _ => preparation::prepare_non_class_render(parsed, options, context, preparation),
     }?;
     artifact.required_capabilities = required_capabilities;
     artifact
@@ -4519,6 +4563,9 @@ fn prepare_with_svg_label_preparation<'parsed>(
         .checkpoint(OperationPhase::Layout)?;
     Ok(artifact)
 }
+
+#[cfg(all(test, feature = "diagram-flowchart"))]
+mod flowchart_layout_tests;
 
 #[cfg(all(test, feature = "all-diagrams"))]
 mod tests;

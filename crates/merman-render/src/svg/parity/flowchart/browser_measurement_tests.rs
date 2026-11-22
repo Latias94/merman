@@ -527,6 +527,7 @@ fn flowchart_browser_measured_terminals_preserve_upstream_geometry() {
             &prepared_theme,
             &render_config,
             session.work_meter(),
+            true,
         )
         .expect("prepared nodes");
         let svg = render_flowchart_svg_model(
