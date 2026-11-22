@@ -4564,5 +4564,8 @@ fn prepare_for<'parsed>(
     Ok(artifact)
 }
 
+#[cfg(all(test, feature = "diagram-flowchart"))]
+mod flowchart_layout_tests;
+
 #[cfg(all(test, feature = "all-diagrams"))]
 mod tests;

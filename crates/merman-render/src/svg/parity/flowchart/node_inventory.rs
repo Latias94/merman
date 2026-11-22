@@ -234,6 +234,11 @@ pub(crate) struct FlowchartPreparedNodes {
     _cluster_retained_reservation: crate::resources::PreparedTextRetainedReservation,
 }
 
+#[cfg(all(test, feature = "diagram-flowchart"))]
+thread_local! {
+    static PAINT_TABLE_ENTRIES_BUILT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 #[derive(Debug)]
 pub(super) struct FlowchartPreparedCluster {
     pub(super) theme: crate::flowchart::FlowchartClusterThemeStyle,
@@ -251,6 +256,11 @@ pub(super) struct FlowchartPreparedCluster {
 }
 
 impl FlowchartPreparedNodes {
+    #[cfg(all(test, feature = "diagram-flowchart"))]
+    pub(crate) fn paint_table_entries_built() -> usize {
+        PAINT_TABLE_ENTRIES_BUILT.get()
+    }
+
     #[allow(
         clippy::too_many_arguments,
         reason = "Node terminals bind existing layout and label artifacts to the operation theme"
@@ -433,6 +443,8 @@ impl FlowchartPreparedNodes {
                 work,
             )?;
             let duplicate = if let Some(terminal) = terminal {
+                #[cfg(all(test, feature = "diagram-flowchart"))]
+                PAINT_TABLE_ENTRIES_BUILT.set(PAINT_TABLE_ENTRIES_BUILT.get() + 1);
                 terminals.insert(id.clone(), terminal).is_some()
             } else {
                 !admitted_nodes.insert(id.as_str())
@@ -613,6 +625,8 @@ impl FlowchartPreparedNodes {
                 .saturating_add(stroke.len())
                 .saturating_add(typed_fill.as_ref().map_or(0, String::len));
             if prepare_paint {
+                #[cfg(all(test, feature = "diagram-flowchart"))]
+                PAINT_TABLE_ENTRIES_BUILT.set(PAINT_TABLE_ENTRIES_BUILT.get() + 1);
                 clusters.insert(
                     id.to_owned(),
                     FlowchartPreparedCluster {
