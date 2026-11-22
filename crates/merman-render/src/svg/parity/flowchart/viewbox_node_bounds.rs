@@ -643,6 +643,7 @@ mod tests {
             &prepared_theme,
             &render_config,
             session.work_meter(),
+            true,
         )
         .expect("prepared nodes");
         render_flowchart_svg_model(

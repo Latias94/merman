@@ -13,14 +13,14 @@ pub(in crate::svg::parity) fn render_flowchart_svg_artifact(
     metadata: &merman_model::presentation::PresentationMetadata,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    render_flowchart_svg_model(flowchart_request(artifact, metadata), options)
+    render_flowchart_svg_model(flowchart_request(artifact, metadata)?, options)
 }
 
 pub(super) fn flowchart_request<'a>(
     artifact: &'a crate::family::FlowchartFamilyArtifact<FlowchartLayout>,
     metadata: &'a merman_model::presentation::PresentationMetadata,
-) -> FlowchartSvgModelRequest<'a> {
-    FlowchartSvgModelRequest {
+) -> Result<FlowchartSvgModelRequest<'a>> {
+    Ok(FlowchartSvgModelRequest {
         layout: artifact.pair().layout(),
         swimlane_layout: None,
         model: artifact.pair().semantic(),
@@ -35,9 +35,9 @@ pub(super) fn flowchart_request<'a>(
         edge_style_plan: artifact.edge_style_plan(),
         edge_theme: artifact.edge_theme(),
         prepared_theme: artifact.prepared_theme(),
-        prepared_nodes: artifact.prepared_nodes(),
+        prepared_nodes: artifact.prepared_nodes()?,
         render_config: artifact.render_config(),
-    }
+    })
 }
 
 pub(in crate::svg::parity) fn flowchart_edge_geometry(
@@ -45,7 +45,7 @@ pub(in crate::svg::parity) fn flowchart_edge_geometry(
     metadata: &merman_model::presentation::PresentationMetadata,
     options: &SvgExecution<'_>,
 ) -> Result<Vec<crate::model::EdgePaintGeometry>> {
-    super::paint::edge_geometry(flowchart_request(artifact, metadata), options)
+    super::paint::edge_geometry(flowchart_request(artifact, metadata)?, options)
 }
 
 #[derive(Clone, Copy)]
@@ -761,6 +761,7 @@ mod integration_tests {
             &prepared_theme,
             &render_config,
             session.work_meter(),
+            true,
         )
         .expect("prepared nodes");
 
@@ -931,6 +932,7 @@ mod integration_tests {
                 &prepared_theme,
                 &render_config,
                 session.work_meter(),
+                true,
             )
             .expect("prepared nodes");
             render_flowchart_svg_model(

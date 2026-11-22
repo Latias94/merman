@@ -265,6 +265,7 @@ impl FlowchartPreparedNodes {
         prepared_theme: &crate::flowchart::FlowchartPreparedTheme,
         render_config: &super::render_config::FlowchartRenderConfig,
         work: &std::sync::Arc<crate::resources::OperationWorkMeter>,
+        prepare_paint: bool,
     ) -> crate::Result<Self> {
         let swimlane = matches!(layout, FlowchartNodeLayoutView::Swimlane(_));
         let typography = svg_labels.base_typography().map_or_else(
@@ -305,6 +306,10 @@ impl FlowchartPreparedNodes {
             render_config,
         );
         let mut terminals = FxHashMap::default();
+        let mut admitted_nodes = FxHashSet::default();
+        // Any typography missing from the label sidecar still reserves retained bytes.
+        // Hold those reservations through cluster admission on both paths.
+        let mut layout_typography = Vec::new();
         for id in schedule
             .top
             .iter()
@@ -377,9 +382,8 @@ impl FlowchartPreparedNodes {
             let source_text_style = match svg_labels
                 .node_owner(id, swimlane)
                 .and_then(|owner| svg_labels.node_source_style(owner))
-                .cloned()
             {
-                Some(style) => style,
+                Some(style) => std::borrow::Cow::Borrowed(style),
                 None => {
                     let parent = label_typography.node_source_parent_style(
                         source_base,
@@ -395,13 +399,21 @@ impl FlowchartPreparedNodes {
                         parent.as_ref(), &model.class_defs, classes, styles
                     );
                     structural.apply_to_content(&mut style);
-                    std::sync::Arc::new(
+                    std::borrow::Cow::Owned(std::sync::Arc::new(
                         crate::flowchart::FlowchartNodeSourceTypography::from_style(
                             style.into_owned(),
                             work,
                         )?,
-                    )
+                    ))
                 }
+            };
+            let source_text_style = if prepare_paint {
+                Some(source_text_style.into_owned())
+            } else {
+                if let std::borrow::Cow::Owned(style) = source_text_style {
+                    layout_typography.push(style);
+                }
+                None
             };
             let occurrence_inputs =
                 if model.keyword == "agentflow-beta" && render_context.is_subgraph_collapsed(id) {
@@ -420,7 +432,12 @@ impl FlowchartPreparedNodes {
                 &occurrence_inputs,
                 work,
             )?;
-            if terminals.insert(id.clone(), terminal).is_some() {
+            let duplicate = if let Some(terminal) = terminal {
+                terminals.insert(id.clone(), terminal).is_some()
+            } else {
+                !admitted_nodes.insert(id.as_str())
+            };
+            if duplicate {
                 return Err(crate::Error::InvalidModel {
                     message: format!("Flowchart emits themed node `{id}` more than once"),
                 });
@@ -595,23 +612,27 @@ impl FlowchartPreparedNodes {
                 .saturating_add(fill.len())
                 .saturating_add(stroke.len())
                 .saturating_add(typed_fill.as_ref().map_or(0, String::len));
-            clusters.insert(
-                id.to_owned(),
-                FlowchartPreparedCluster {
-                    theme,
-                    compiled,
-                    structural_sources,
-                    rect_style,
-                    fill,
-                    stroke,
-                    typed_fill,
-                    typed_stroke_width,
-                    fill_precedence,
-                    stroke_precedence,
-                    stroke_width_precedence,
-                    title_text_style,
-                },
-            );
+            if prepare_paint {
+                clusters.insert(
+                    id.to_owned(),
+                    FlowchartPreparedCluster {
+                        theme,
+                        compiled,
+                        structural_sources,
+                        rect_style,
+                        fill,
+                        stroke,
+                        typed_fill,
+                        typed_stroke_width,
+                        fill_precedence,
+                        stroke_precedence,
+                        stroke_width_precedence,
+                        title_text_style,
+                    },
+                );
+            } else {
+                layout_typography.push(title_text_style);
+            }
         }
         if !remaining.is_empty() {
             return Err(crate::Error::InvalidModel {
@@ -868,6 +889,7 @@ mod source_typography_tests {
             &theme,
             &render_config,
             &work,
+            true,
         )
         .unwrap();
         assert_eq!(prepared.cluster_ids().collect::<Vec<_>>(), ["Shared"]);
@@ -978,6 +1000,7 @@ mod source_typography_tests {
             &theme,
             &render_config,
             &work,
+            true,
         );
         assert!(
             matches!(result, Err(crate::Error::ResourceLimitExceeded(ref error))

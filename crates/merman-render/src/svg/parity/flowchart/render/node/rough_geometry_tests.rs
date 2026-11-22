@@ -152,6 +152,7 @@ fn with_context<T>(
         &theme,
         &render_config,
         session.work_meter(),
+        true,
     )
     .unwrap();
     flow::paint::with_flowchart_paint_context(

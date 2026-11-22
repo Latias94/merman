@@ -27,7 +27,7 @@ fn prepare_flowchart_artifact<'parsed, L>(
     typography_config_ownership: crate::flowchart::FlowchartTypographyConfigOwnership,
     work_meter: Arc<crate::resources::OperationWorkMeter>,
     edge_style_plan: crate::svg::FlowchartEdgeStylePlan,
-    svg_label_preparation: FlowchartSvgLabelPreparation,
+    preparation: FamilyPreparation,
     layout_view: impl for<'a> Fn(&'a L) -> crate::svg::FlowchartNodeLayoutView<'a>,
     layout: impl FnOnce(
         &diagrams::flowchart::FlowchartModel,
@@ -55,7 +55,12 @@ fn prepare_flowchart_artifact<'parsed, L>(
         )?;
     let base_typography =
         crate::flowchart::FlowchartBaseTypographyPlan::resolve(resolved_theme, effective_config);
-    let svg_label_sidecar = svg_label_preparation.0.then(|| {
+    let prepare_svg_labels = match preparation {
+        FamilyPreparation::Layout | FamilyPreparation::Render => true,
+        #[cfg(all(test, feature = "all-diagrams"))]
+        FamilyPreparation::RenderWithoutFlowchartSvgLabels => false,
+    };
+    let svg_label_sidecar = prepare_svg_labels.then(|| {
         crate::flowchart::FlowchartSvgLabelSidecarBuilder::new_with_work_meter(
             resolved_theme,
             Arc::clone(&work_meter),
@@ -100,6 +105,7 @@ fn prepare_flowchart_artifact<'parsed, L>(
         ),
         &svg_label_sidecar.label_typography(),
     )?;
+    let prepare_node_paint = preparation != FamilyPreparation::Layout;
     let prepared_nodes = crate::svg::FlowchartPreparedNodes::prepare(
         &semantic,
         &render_context,
@@ -110,6 +116,7 @@ fn prepare_flowchart_artifact<'parsed, L>(
         &prepared_theme,
         &render_config,
         &work_meter,
+        prepare_node_paint,
     )?;
     Ok(Box::new(FlowchartFamilyArtifact {
         pair: FamilyPair::new(semantic, layout),
@@ -117,7 +124,7 @@ fn prepare_flowchart_artifact<'parsed, L>(
         edge_style_plan,
         edge_theme,
         prepared_theme,
-        prepared_nodes,
+        prepared_nodes: prepare_node_paint.then_some(prepared_nodes),
         render_config,
         svg_label_sidecar,
         theme_evidence: crate::flowchart::FlowchartThemeEvidenceRecorder::default(),
@@ -438,7 +445,7 @@ fn prepare_flowchart_family<'parsed>(
     render_context: std::borrow::Cow<'parsed, diagrams::flowchart::FlowchartRenderContext>,
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
-    svg_label_preparation: FlowchartSvgLabelPreparation,
+    preparation: FamilyPreparation,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     match execution.family_id() {
         DiagramFamilyId::SWIMLANE => {
@@ -457,7 +464,7 @@ fn prepare_flowchart_family<'parsed>(
                 crate::flowchart::flowchart_typography_config_ownership(&meta.effective_config),
                 execution.work_meter(),
                 edge_style_plan,
-                svg_label_preparation,
+                preparation,
                 |layout| crate::svg::FlowchartNodeLayoutView::Swimlane(layout),
                 |model, render_context, svg_label_sidecar, edge_style_plan| {
                     crate::swimlane::layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
@@ -490,7 +497,7 @@ fn prepare_flowchart_family<'parsed>(
                     crate::flowchart::flowchart_typography_config_ownership(&meta.effective_config),
                     execution.work_meter(),
                     edge_style_plan,
-                    svg_label_preparation,
+                    preparation,
                     |layout| crate::svg::FlowchartNodeLayoutView::Flowchart(layout),
                     |model, render_context, svg_label_sidecar, edge_style_plan| {
                         crate::layout_flowchart_typed_with_render_labels_by_engine(
@@ -1381,7 +1388,7 @@ pub(super) fn prepare_non_class_render<'parsed>(
     parsed: &'parsed PresentationDiagram,
     options: &LayoutOptions,
     mut context: FamilyRenderContext,
-    svg_label_preparation: FlowchartSvgLabelPreparation,
+    preparation: FamilyPreparation,
 ) -> Result<FamilyRenderArtifact<'parsed>> {
     let meta = parsed.metadata();
     let model = parsed.model();
@@ -1435,7 +1442,7 @@ pub(super) fn prepare_non_class_render<'parsed>(
             flowchart_render_context,
             meta,
             &execution,
-            svg_label_preparation,
+            preparation,
         )?,
         #[cfg(feature = "layout-cytoscape")]
         #[cfg(feature = "diagram-architecture")]
@@ -1560,7 +1567,7 @@ pub(super) fn prepare_non_class_render<'parsed>(
                 crate::flowchart::flowchart_typography_config_ownership(&config),
                 execution.work_meter(),
                 edge_style_plan,
-                svg_label_preparation,
+                preparation,
                 |layout| crate::svg::FlowchartNodeLayoutView::Flowchart(layout),
                 |model, render_context, sidecar, edge_style_plan| {
                     crate::layout_flowchart_typed_with_render_labels_by_engine(
