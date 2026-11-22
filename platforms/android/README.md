@@ -2,11 +2,10 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams in Android apps without a WebView or a JavaScript runtime. The Kotlin API uses a direct JNI transport over Merman's shared binding engine.
 
-Current examples target `0.11.0`, using Options JSON schema `3`, facts schema `3`, and theme execution evidence schema `2`. The download links below retain published `0.10.0-alpha.1` artifacts; see the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for verified choices and the [stable upgrade guide](../../docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) for migration. Use a matching `0.11.0` AAR for the current examples.
+The `0.11.0` examples use Options JSON schema `3`, facts schema `3`, and theme execution evidence schema `2`. See the [upgrade index](../../docs/release/README.md#merman-0110) for migration from `0.10.0`.
 
-> **Binding contract:** Kotlin classes and `libmerman_android_jni.so` must come from the same
-> `0.10.0` AAR. The published download below uses local coordinate
-> `io.merman:merman-android:0.10.0-alpha.1`; a local coordinate does not establish Maven Central availability.
+> Use Kotlin classes and `libmerman_android_jni.so` from the same AAR. The download below provides
+> `io.merman:merman-android:0.11.0` through an extracted local Maven repository.
 
 ## Requirements
 
@@ -20,8 +19,8 @@ At load time, the wrapper validates the runtime catalog schema, transport API, n
 
 <a id="resolve-a-candidate-maven-publication"></a>
 
-Download [the Maven repository ZIP](https://github.com/Latias94/merman/releases/download/v0.10.0-alpha.1/merman-android-0.10.0-alpha.1-maven.zip)
-and [its SHA-256 sidecar](https://github.com/Latias94/merman/releases/download/v0.10.0-alpha.1/merman-android-0.10.0-alpha.1-maven.zip.sha256),
+Download [the Maven repository ZIP](https://github.com/Latias94/merman/releases/download/v0.11.0/merman-android-0.11.0-maven.zip)
+and [its SHA-256 sidecar](https://github.com/Latias94/merman/releases/download/v0.11.0/merman-android-0.11.0-maven.zip.sha256),
 verify the checksum and extract the ZIP into a local directory.
 The ZIP is a complete Maven repository for exactly this version:
 AAR, POM, Gradle module metadata, sources,
@@ -59,13 +58,10 @@ dependencies {
 ```
 
 Pass `-PmermanRepository=/absolute/path/to/extracted/repository`,
-`-PmermanGroup=io.merman` and `-PmermanVersion=0.10.0-alpha.1` to Gradle. The repository path is
-the extraction root containing `io/merman/merman-android/`. Central installation requires a
-separately verified namespace, publication and public resolution of that exact coordinate;
-the local group name is not evidence of Central ownership.
+`-PmermanGroup=io.merman` and `-PmermanVersion=0.11.0` to Gradle. The repository path is
+the extraction root containing `io/merman/merman-android/`.
 
-For a matching `0.11.0` repository built from source, use its selected group and repository path
-with `-PmermanVersion=0.11.0`. Keep its Kotlin facade and native libraries together. ASCII schema `4` reports nullable `primaryOverflowed` and required `emittedOverflowed` in `MermanAsciiOutputPlan`. [ASCII report migration](../../docs/migrations/render-reuse-host-integration.md#ascii-output-schema-3-to-4)
+ASCII schema `4` reports nullable `primaryOverflowed` and required `emittedOverflowed` in `MermanAsciiOutputPlan`. [ASCII report migration](../../docs/migrations/render-reuse-host-integration.md#ascii-output-schema-3-to-4)
 
 ## Render A Diagram
 
@@ -139,7 +135,7 @@ The default AAR is deterministic and does not bundle native clock, time-zone, or
 
 Use `Merman.runtimeCatalogJson()` to inspect the loaded artifact's exact options and payload schemas, capability/output/operation/metadata surface, constructor-owned services, and resource-to-operation mappings. Use `Merman.themeCatalogJson()` for open-ended compiled-theme presets, capabilities, font containers, semantic targets, and variants instead of maintaining Kotlin enums. Hosts should query the loaded catalogs before exposing optional choices. A custom Android build that changes the selected SKU must regenerate and package its matching Kotlin artifact contract with the native library.
 
-`analyzeJson` and `analyzeDocumentJson` return diagnostics schema `1`; version `0.10.0` document facts use their independently defined schema `3` and contain generic parser/editor facts plus required per-diagram `appearance` evidence tagged `known` or `unknown`. Known declarations carry source provenance and byte spans, independently of render metadata. Published `0.10.0-alpha.1` retains facts schema `2`. These payload schemas are independent of Android transport version. See the [stable upgrade guide](../../docs/release/V093_TO_V0100_UPGRADE_GUIDE.md). Pass full Markdown/MDX-like content plus a URI to document analysis:
+`analyzeJson` and `analyzeDocumentJson` return diagnostics schema `1`. Document facts use schema `3` and contain generic parser/editor facts plus required per-diagram `appearance` evidence tagged `known` or `unknown`. Known declarations carry source provenance and byte spans, independently of render metadata. These payload schemas are independent of the Android transport version. Pass full Markdown/MDX-like content plus a URI to document analysis:
 
 ````kotlin
 val factsJson = Merman.analyzeDocumentFactsJson(
