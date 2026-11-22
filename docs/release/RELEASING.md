@@ -105,28 +105,27 @@ workflows/descriptors, and use the release skill for the sequence and conditiona
 | `vscode-extension.yml` | Platform-specific `merman-vscode` VSIX artifacts | GitHub Actions artifacts |
 | `homebrew.yml` | Nothing; Homebrew/core formula health check only | Homebrew |
 
-Before publication, review the complete workflow table above, including channels outside the
-FFI/native static contract. In the existing dated release entry in [Publish Order](PUBLISH_ORDER.md),
-record each relevant workspace-coupled delivery channel as `selected` or `deferred`. For each
-`deferred` channel, record its current independently verified published version and delivery
-evidence; if no version can be verified, state that limitation explicitly. Preflight coverage and
-shared version metadata do not select a channel or establish its published version. Independently
-versioned packages and external channels retain their own release scope and contracts.
+For a maintainer-authorized stable workspace release, start with the public GitHub assets and
+workspace-coupled registry packages of the previous stable version. Carry forward their channels
+and target coverage. Apply any subset the maintainer selects. Match every channel to its owner in
+the table above. Independently versioned packages and external channels follow their own scope and
+authorization.
 
-Honor an explicitly selected subset and carry forward existing authorization for the same release,
-surfaces, and necessary recovery without asking again. Invoke each selected publishing owner through
-its documented tag trigger or manual dispatch. A release is complete for its selected scope only
-after every selected owner succeeds and an independent query of its registry or actual public
-GitHub Release assets confirms the exact version and matching artifacts. A successful upstream or
-preflight build, an existing Actions artifact, or an asset name alone does not prove delivery of
-the selected source and bytes.
+Record each selected owner, trigger, destination, and expected archive or registry package set in
+the dated [Publish Order](PUBLISH_ORDER.md) entry. Record a deliberate exclusion as `deferred` and
+give its verified published version or state that availability is unknown. Keep selected channels
+pending while they await a run, approval, or public verification. Preflight qualifies candidates
+for their owners to publish.
+
+Invoke each selected owner through its tag trigger or manual dispatch. Reconcile public asset names
+and registry package sets with the recorded inventory, accounting for planned renames or target
+changes. Completion requires each selected owner to succeed and independent public readback to
+confirm the expected versions and matching artifacts.
 
 Write the public GitHub Release body for users: final capabilities, behavior changes, required
 upgrade actions, examples and relevant limitations. Link the host installation guide for package
-and version choices; add download links only for confirmed public artifacts. Record selected,
-pending and deferred delivery, upload counts, workflow recovery, source identities and receipts
-in Publish Order. Do not copy that operator ledger into release notes or changelogs. This scope
-review adds no automatic publication of deferred channels.
+and version choices. Add download links for confirmed public artifacts. Keep publication states,
+upload counts, workflow recovery, source identities and receipts in Publish Order.
 
 The SDK workflow is deliberately separate from the normal tag-triggered Release: preflight uploads
 qualified SDK archives as Actions artifacts, while `release-sdk-publish.yml` manually attaches them
