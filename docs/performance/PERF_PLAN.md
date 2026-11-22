@@ -76,12 +76,17 @@ optimization, changed runtime contract or different release baseline does not cl
    separate native PDF filter/export allocation, cold startup and explicit system-font costs.
    [CLI font policy](../../crates/merman-cli/README.md#explicit-fonts) distinguishes deterministic
    layout from native measurement and codec painting. Keep native, N-API, Node-WASM and browser lanes separate.
-   The [platform-font checkpoint](platform_font_query_2026-11-22.md) records reduced family
-   expansion and actual-character Core Text fallback on macOS, without an additional public-latency
-   claim. Qualifying additional release defaults still requires a design for selected
-   CJK/emoji sources that exceed whole-file snapshot limits, and Linux handling that distinguishes
-   unavailable Fontconfig from an intentionally empty configuration. Preserve immutable measurement/
-   painting identity and resource errors; do not increase global limits or hide failures to qualify a default.
+   The [native-font checkpoint](native_font_runtime_2026-11-22.md) records direct macOS queries,
+   selected-face snapshots that repair CJK admission, and Linux handling that distinguishes
+   unavailable Fontconfig from an intentionally empty configuration. It confirms same-output
+   macOS improvements for two bounded/platform inputs and two previous/current platform inputs;
+   other registered rows remain diagnostic after failed A/A calibration. The
+   [earlier checkpoint](platform_font_query_2026-11-22.md) retains its ordered-family Linux
+   work evidence. Remaining interface work covers Fontconfig alias-preserving native matching,
+   oversized bitmap emoji data, native variation instances, and the packaged renderer dependency
+   boundary. Qualify additional defaults against supported hosts and font/geometry behavior;
+   a speedup on every workload is not a prerequisite. Preserve immutable measurement/painting
+   identity and resource errors; do not increase global limits or hide failures to qualify a default.
 3. Preserve semantic output, sanitization, source ownership, callback order, errors, cancellation
    and resource limits. Record model size, SVG bytes/elements and relevant DOM/raster controls.
    Keep in-flight ledgers under `target/bench`; retain only concise decision-relevant evidence.
