@@ -17,12 +17,125 @@ pub(super) struct SnapshotState {
     pub(super) files: BTreeMap<PathBuf, FontSnapshot>,
     #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
     selected_faces: BTreeMap<(PathBuf, u32), Arc<Vec<u8>>>,
+    #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+    native_faces: std::collections::HashMap<platform::coretext::NativeFace, NativeSnapshot>,
+    #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+    selections: std::collections::HashMap<SelectionRequest, SelectedFont>,
+    #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+    selection_bytes: usize,
     aliases: BTreeMap<PathBuf, PathBuf>,
     faces: BTreeMap<(PathBuf, u32), FaceInfo>,
     cmap_bytes: usize,
     bytes: usize,
     #[cfg(feature = "experimental-system-font-query")]
     collection: Option<CollectionMetadata>,
+}
+
+#[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+#[derive(Clone)]
+struct NativeSnapshot {
+    path: PathBuf,
+    face: FaceInfo,
+}
+
+#[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+#[derive(Clone, Hash, Eq, PartialEq)]
+pub(super) enum SelectionRequest {
+    Font(usvg::Font),
+    Fallback(char, Vec<AdmittedFaceKey>),
+}
+
+/// Retain the source so pointer identity cannot be recycled while a request is pinned.
+#[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+#[derive(Clone)]
+pub(super) struct AdmittedFaceKey {
+    data: Arc<dyn AsRef<[u8]> + Send + Sync>,
+    index: u32,
+}
+
+#[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+impl PartialEq for AdmittedFaceKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.index == other.index && Arc::ptr_eq(&self.data, &other.data)
+    }
+}
+
+#[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+impl Eq for AdmittedFaceKey {}
+
+#[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+impl std::hash::Hash for AdmittedFaceKey {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        std::hash::Hash::hash(&(Arc::as_ptr(&self.data) as *const ()), state);
+        std::hash::Hash::hash(&self.index, state);
+    }
+}
+
+#[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+impl SelectionRequest {
+    pub(super) fn fallback(character: char, excluded: &[FaceInfo]) -> Option<Self> {
+        let keys = excluded
+            .iter()
+            .map(|face| {
+                let Source::Binary(data) = &face.source else {
+                    return None;
+                };
+                Some(AdmittedFaceKey {
+                    data: Arc::clone(data),
+                    index: face.index,
+                })
+            })
+            .collect::<Option<Vec<_>>>()?;
+        Some(Self::Fallback(character, keys))
+    }
+
+    fn heap_bytes(&self) -> usize {
+        match self {
+            Self::Font(font) => font.families().iter().fold(
+                font.variations()
+                    .len()
+                    .saturating_mul(size_of::<usvg::FontVariation>()),
+                |bytes, family| {
+                    bytes
+                        .saturating_add(size_of::<usvg::FontFamily>())
+                        .saturating_add(match family {
+                            usvg::FontFamily::Named(name) => name.len(),
+                            _ => 0,
+                        })
+                },
+            ),
+            Self::Fallback(_, keys) => keys.len().saturating_mul(size_of::<AdmittedFaceKey>()),
+        }
+    }
+}
+
+#[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+#[derive(Clone)]
+pub(super) struct SelectedFont {
+    pub(super) face: FaceInfo,
+    pub(super) source: NativeExportFontSource,
+    pub(super) family_fallback_used: bool,
+}
+
+impl SnapshotState {
+    fn face_count(&self) -> usize {
+        let count = self.faces.len();
+        #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+        let count = count.saturating_add(self.native_faces.len());
+        count
+    }
+
+    fn source_paths(&self) -> BTreeSet<&PathBuf> {
+        let paths: BTreeSet<_> = self.files.keys().collect();
+        #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+        let paths = {
+            let mut paths = paths;
+            paths.extend(self.selected_faces.keys().map(|(path, _)| path));
+            paths.extend(self.native_faces.values().map(|snapshot| &snapshot.path));
+            paths
+        };
+        paths
+    }
 }
 
 #[derive(Clone)]
@@ -32,7 +145,7 @@ pub(super) struct FontSnapshot {
     discovery_digest: Option<[u8; 32]>,
 }
 
-#[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+#[cfg(all(feature = "experimental-system-font-query", target_os = "macos", test))]
 pub(super) struct FaceData {
     pub(super) data: Arc<Vec<u8>>,
     pub(super) index: u32,
@@ -149,9 +262,79 @@ impl FontSourceRegistry {
         self.initial.faces.saturating_add(
             self.snapshots
                 .lock()
-                .map(|state| state.faces.len())
+                .map(|state| state.face_count())
                 .unwrap_or_default(),
         )
+    }
+
+    #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+    pub(super) fn native_origin(
+        &self,
+        face: &FaceInfo,
+    ) -> Result<Option<platform::coretext::NativeFace>, NativeFontError> {
+        let state = self.snapshots.lock().map_err(|_| {
+            NativeFontError::Measurement("font snapshot state is poisoned".to_owned())
+        })?;
+        Ok(state.native_faces.iter().find_map(|(origin, snapshot)| {
+            (face.index == snapshot.face.index && same_source(&face.source, &snapshot.face.source))
+                .then(|| origin.clone())
+        }))
+    }
+
+    #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+    pub(super) fn selected(
+        &self,
+        request: &SelectionRequest,
+        database: &mut Arc<Database>,
+    ) -> Result<Option<(ID, SelectedFont)>, NativeFontError> {
+        let state = self.snapshots.lock().map_err(|_| {
+            NativeFontError::Measurement("font snapshot state is poisoned".to_owned())
+        })?;
+        Ok(state
+            .selections
+            .get(request)
+            .map(|selected| (install(selected.face.clone(), database), selected.clone())))
+    }
+
+    #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+    pub(super) fn remember_selection(
+        &self,
+        request: SelectionRequest,
+        selected: SelectedFont,
+        limits: &NativeFontLimits,
+        database: &mut Arc<Database>,
+    ) -> Result<(ID, SelectedFont), NativeFontError> {
+        let mut state = self.snapshots.lock().map_err(|_| {
+            NativeFontError::Measurement("font snapshot state is poisoned".to_owned())
+        })?;
+        if let Some(existing) = state.selections.get(&request) {
+            return Ok((install(existing.face.clone(), database), existing.clone()));
+        }
+        check_limit(
+            "font-selections",
+            state.selections.len().saturating_add(1),
+            limits.max_selection_entries,
+        )?;
+        let bytes = size_of::<(SelectionRequest, SelectedFont)>()
+            .saturating_add(request.heap_bytes())
+            .saturating_add(selected.face.post_script_name.len())
+            .saturating_add(
+                selected
+                    .face
+                    .families
+                    .iter()
+                    .fold(0_usize, |bytes, (name, _)| {
+                        bytes
+                            .saturating_add(size_of::<(String, usvg::fontdb::Language)>())
+                            .saturating_add(name.len())
+                    }),
+            );
+        let total = state.selection_bytes.saturating_add(bytes);
+        check_limit("font-selection-bytes", total, limits.max_selection_bytes)?;
+        state.selection_bytes = total;
+        let id = install(selected.face.clone(), database);
+        state.selections.insert(request, selected.clone());
+        Ok((id, selected))
     }
 
     fn source_key(&self, state: &SnapshotState, path: &Path) -> std::io::Result<PathBuf> {
@@ -171,7 +354,7 @@ impl FontSourceRegistry {
     }
 
     /// Identity probes must prefer admitted bytes over a file that may have changed.
-    #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+    #[cfg(all(feature = "experimental-system-font-query", target_os = "macos", test))]
     pub(super) fn snapshot(&self, path: &Path) -> Result<Option<Arc<Vec<u8>>>, NativeFontError> {
         let state = self.snapshots.lock().map_err(|_| {
             NativeFontError::Measurement("font snapshot state is poisoned".to_owned())
@@ -188,7 +371,7 @@ impl FontSourceRegistry {
 
     /// A standalone snapshot keeps the original index in the registry key, not in its data.
     /// Explicit initial bytes win; a selected face precedes any later whole-file snapshot.
-    #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+    #[cfg(all(feature = "experimental-system-font-query", target_os = "macos", test))]
     pub(super) fn face_snapshot(
         &self,
         path: &Path,
@@ -230,6 +413,10 @@ impl FontSourceRegistry {
         let _ = fallback;
         let (path, index, expected) = match candidate {
             FontCandidate::Loaded(face) => return Ok(Some(install(face, database))),
+            #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+            FontCandidate::Native(face) => {
+                return self.materialize_native(face, fallback, database, limits, control);
+            }
             FontCandidate::File {
                 path,
                 index,
@@ -269,9 +456,7 @@ impl FontSourceRegistry {
                     return Ok(None);
                 }
             }
-            let mut source_paths: BTreeSet<_> = state.files.keys().collect();
-            #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
-            source_paths.extend(state.selected_faces.keys().map(|(path, _)| path));
+            let mut source_paths = state.source_paths();
             source_paths.insert(&key_path);
             check_limit(
                 "system-snapshot-files",
@@ -363,7 +548,7 @@ impl FontSourceRegistry {
             "font-faces",
             self.initial
                 .faces
-                .saturating_add(state.faces.len())
+                .saturating_add(state.face_count())
                 .saturating_add(1),
             limits.max_faces,
         )?;
@@ -406,6 +591,113 @@ impl FontSourceRegistry {
         expected.validate(&face, &path, index)?;
         state.cmap_bytes = cmap_bytes;
         state.faces.insert(key, face.clone());
+        drop(state);
+        Ok(Some(install(face, database)))
+    }
+
+    #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+    fn materialize_native(
+        &self,
+        candidate: platform::coretext::NativeFace,
+        fallback: Option<char>,
+        database: &mut Arc<Database>,
+        limits: &NativeFontLimits,
+        control: &OperationControl,
+    ) -> Result<Option<ID>, NativeFontError> {
+        let mut state = self.snapshots.lock().map_err(|_| {
+            NativeFontError::Measurement("font snapshot state is poisoned".to_owned())
+        })?;
+        if let Some(snapshot) = state.native_faces.get(&candidate) {
+            // The retained native origin is an identity, never a fresh path lookup.
+            return Ok(Some(install(snapshot.face.clone(), database)));
+        }
+        if fallback.is_some_and(|character| !candidate.covers(character)) {
+            return Ok(None);
+        }
+        control.terminal_checkpoint_at(OperationPhase::Layout)?;
+        let path = &candidate.path;
+        let key = self
+            .source_key(&state, path)
+            .map_err(|error| source_error(path, error))?;
+        // Explicitly supplied immutable bytes have precedence over later system data.
+        if let Some(data) = self.initial.files.get(&key) {
+            let count = ttf_parser::fonts_in_collection(data).unwrap_or(1);
+            check_limit("font-collection-faces", count as usize, limits.max_faces)?;
+            for index in 0..count {
+                if candidate.matches_data(data, index, control)? {
+                    let source = Source::Binary(data.clone());
+                    if let Some(face) = database
+                        .faces()
+                        .find(|face| face.index == index && same_source(&face.source, &source))
+                    {
+                        return Ok(Some(face.id));
+                    }
+                    let mut parsed = Database::new();
+                    parsed.load_font_source(source);
+                    let face = parsed
+                        .faces()
+                        .find(|face| face.index == index)
+                        .cloned()
+                        .ok_or_else(|| {
+                            source_error(path, "selected explicit face cannot be parsed")
+                        })?;
+                    candidate.validate(&face)?;
+                    return Ok(Some(install(face, database)));
+                }
+            }
+            return Err(source_error(
+                path,
+                "native selection differs from the admitted explicit font",
+            ));
+        }
+        let mut paths = state.source_paths();
+        paths.insert(&key);
+        check_limit(
+            "system-snapshot-files",
+            self.initial.acquired_files.saturating_add(paths.len()),
+            limits.max_files,
+        )?;
+        check_limit(
+            "font-faces",
+            self.initial
+                .faces
+                .saturating_add(state.face_count())
+                .saturating_add(1),
+            limits.max_faces,
+        )?;
+        verify_font_file(path, control, OperationPhase::Layout)?;
+        let remaining = limits
+            .max_bytes
+            .saturating_sub(self.initial.bytes.saturating_add(state.bytes));
+        let data = Arc::new(candidate.snapshot(remaining, control)?);
+        let parsed = rustybuzz::ttf_parser::Face::parse(&data, 0)
+            .map_err(|error| source_error(path, error))?;
+        let table = parsed
+            .raw_face()
+            .table(rustybuzz::ttf_parser::Tag::from_bytes(b"cmap"))
+            .unwrap_or_default();
+        let mut cmap_bytes = state.cmap_bytes;
+        let _ = snapshot_cmap(table, control, &mut cmap_bytes, limits)?;
+        let mut parsed = Database::new();
+        parsed.load_font_source(Source::Binary(data.clone()));
+        let face = parsed
+            .faces()
+            .next()
+            .cloned()
+            .ok_or_else(|| source_error(path, "selected native face cannot be parsed"))?;
+        candidate.validate(&face)?;
+        control.terminal_checkpoint_at(OperationPhase::Layout)?;
+        state.bytes = state.bytes.saturating_add(data.len());
+        state.cmap_bytes = cmap_bytes;
+        state.aliases.insert(path.clone(), key.clone());
+        state.aliases.insert(key.clone(), key.clone());
+        state.native_faces.insert(
+            candidate,
+            NativeSnapshot {
+                path: key,
+                face: face.clone(),
+            },
+        );
         drop(state);
         Ok(Some(install(face, database)))
     }

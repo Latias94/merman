@@ -64,6 +64,10 @@ pub struct NativeFontLimits {
     pub max_measurements: usize,
     pub max_cache_entries: usize,
     pub max_cache_bytes: usize,
+    /// Successful native font selections pinned for one operation, including exports.
+    /// Unlike the optional measurement cache, exhausting these limits is terminal.
+    pub max_selection_entries: usize,
+    pub max_selection_bytes: usize,
     /// Metadata discovery is separate from resident font bytes.
     pub max_system_files: usize,
     /// Cumulative temporary discovery reads; selected snapshots use `max_bytes` instead.
@@ -85,6 +89,8 @@ impl Default for NativeFontLimits {
             max_measurements: 16_384,
             max_cache_entries: 1024,
             max_cache_bytes: 4 * 1024 * 1024,
+            max_selection_entries: 16_384,
+            max_selection_bytes: 4 * 1024 * 1024,
             max_system_files: 4096,
             max_system_scan_bytes: 2 * 1024 * 1024 * 1024,
             max_system_faces: 16_384,
@@ -707,7 +713,7 @@ impl FontLoader {
             not(target_family = "wasm")
         ))]
         if platform.is_some() {
-            loader.hash.update(b"\0platform-query/fontique-0.12.0/v4");
+            loader.hash.update(b"\0platform-query/native/v5");
         }
         #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         if let Some(catalog) = &system {

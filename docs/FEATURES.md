@@ -170,7 +170,8 @@ estimates.
 
 The optional CLI feature `platform-system-font-query` adds an explicit system
 font policy. Use `--font-system platform` to query the operating system's font
-catalog through Fontique. `--font-system bounded` explicitly selects bounded
+service (Fontique on Windows/Linux, direct Core Text descriptors on macOS).
+`--font-system bounded` explicitly selects bounded
 discovery in builds with platform query support. `--font-system on` selects the
 build's default system provider. Automatic Mermaid encoded output uses the same
 provider when no explicit fonts or font policy are supplied. The official release
@@ -184,18 +185,24 @@ painting. Platform mode acquires those bytes on demand, including the default
 system face. On Windows, explicit faces are tried first. DirectWrite queries the
 actual missing character for script-specific fallback. Shared symbols and
 combining marks try the catalog fallback order before the single-character
-query. On macOS, Core Text queries the actual missing Unicode scalar using the
-registered base face; its PostScript name and collection index are validated
-against the selected bytes. Generic and fallback family lookup stops after the
+query. On macOS, family/style queries avoid constructing a full font catalog, and
+Core Text queries the actual missing Unicode scalar using the registered base face.
+The selected native object is retained as the origin of the admitted data; no
+physical collection index is inferred from its name. Generic family lookup stops after the
 first accepted candidate. Non-covering fallback candidates are filtered before
 new snapshot acquisition, while an already admitted snapshot remains authoritative.
-On macOS, a registered TTC face can be stored as a standalone font instead of
-copying unrelated collection members. Its native tables must match the selected
-physical face before admission; the original source identity remains distinct
-from the standalone data's face index. Explicit input files retain their whole-file
+On macOS, the selected native face is stored as a standalone font instead of
+copying unrelated collection members. Its tables come from the retained native
+object, while the standalone data's face index is zero. Explicit input files retain their whole-file
 ingestion policy. The cumulative font-data budget remains 64 MiB, and a large
 selected color/bitmap table can still exceed it. A context identity includes the policy, initial
 font bytes, and the system default family name when applicable.
+Successful macOS selections are fixed for measurement and its derived exports;
+new operations query the current system again. Their metadata is bounded separately
+from the optional measurement cache. Explicit unregistered fonts can use a system
+cascade when system fallback is enabled. Native instances with non-default variation
+coordinates are currently declined because those coordinates cannot yet be passed
+through the complete shaping and painting bridge.
 Platform fallback can choose different faces and change diagram geometry. For
 fixed font selection, supply explicit font files with `--font-system off`.
 In builds with platform queries, `on`, `bounded`, and `platform` all allow system
