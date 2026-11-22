@@ -112,7 +112,7 @@
     "version": "0.9.3",
     "command_profile": "artifact-profile-target-union",
     "offline": true,
-    "cargo_lock_sha256": "c2bfd43810e1a2fd17a309f0f2c7dd98ace270d968295fede98e2b9aaf4dbe32",
+    "cargo_lock_sha256": "5034b1c2f24902c8d96d795d5cef482ecb8324d66ba6c7bdb49f5350c92b6a63",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "ab361aedeec616af3fbf7dad3a5bb1be2f46e9b19fb9bc4023176bc4f1ac4902"
   },
@@ -121,36 +121,36 @@
       "artifact_profile_id": "python-uniffi-native",
       "target": "aarch64-apple-darwin",
       "package_count": 182,
-      "packages_sha256": "6b250a73c9dea1ce02d3125f33f6b32c496e7551c6957a641a485210fb25946d"
+      "packages_sha256": "946e28314b35d43dcf2f7adc6b07790c354779f22113e91c4120b2ed4011b4cf"
     },
     {
       "artifact_profile_id": "python-uniffi-native",
       "target": "aarch64-unknown-linux-gnu",
       "package_count": 184,
-      "packages_sha256": "a7169603141466969fe1d50f35a4dbc0908a524f44b9782e33b386bc4a2120bf"
+      "packages_sha256": "78841ff903d92773375abbf53cece108cb136592c1ccd8f996ba81d5d7226216"
     },
     {
       "artifact_profile_id": "python-uniffi-native",
       "target": "x86_64-apple-darwin",
       "package_count": 182,
-      "packages_sha256": "6b250a73c9dea1ce02d3125f33f6b32c496e7551c6957a641a485210fb25946d"
+      "packages_sha256": "946e28314b35d43dcf2f7adc6b07790c354779f22113e91c4120b2ed4011b4cf"
     },
     {
       "artifact_profile_id": "python-uniffi-native",
       "target": "x86_64-pc-windows-msvc",
       "package_count": 182,
-      "packages_sha256": "805f4a31904e122affad21ec8a1b6f7e0333ca311c447ad1969a90f618fa0ea9"
+      "packages_sha256": "1dbdea0b1dcdb5912450387fe338e12fce49be1e59016a395484e4a5151a01fe"
     },
     {
       "artifact_profile_id": "python-uniffi-native",
       "target": "x86_64-unknown-linux-gnu",
       "package_count": 184,
-      "packages_sha256": "a7169603141466969fe1d50f35a4dbc0908a524f44b9782e33b386bc4a2120bf"
+      "packages_sha256": "78841ff903d92773375abbf53cece108cb136592c1ccd8f996ba81d5d7226216"
     }
   ],
   "dependency_closure": {
     "package_count": 188,
-    "packages_sha256": "c3d4060c4246d17f587fabcbf2b2fd97fd33bcded95327ed1f01d9388e590037"
+    "packages_sha256": "0b25fbfddc84bc7cd2e4835174c437e37a4b1705e2237f40fb827062d6224340"
   },
   "licenses": [
     {
@@ -769,7 +769,7 @@
         },
         {
           "name": "form_urlencoded",
-          "version": "1.2.2",
+          "version": "1.2.3",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [
@@ -1177,7 +1177,7 @@
         },
         {
           "name": "url",
-          "version": "2.5.8",
+          "version": "2.5.9",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT OR Apache-2.0",
           "authors": [

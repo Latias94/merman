@@ -52,17 +52,55 @@ when a selected file is snapshotted, so discovery can inspect larger system coll
 The resident-byte budget does not cap temporary scan buffers or process peak memory.
 See [CLI font coverage and limitations](../../docs/FEATURES.md#optional-cli-fonts).
 
-Experimental `load_platform` uses Fontique for system family matching when
-system fonts are authorized. Windows queries DirectWrite for the missing
-character after explicit sources have been tried. The resolver admits the
-matched file and collection face through the same bounded snapshot store used
-for layout and painting. A system-only context starts with zero resident font
+Experimental `load_platform` uses the system's font matching when system fonts
+are authorized. Windows and Linux use Fontique; macOS matches family/style
+descriptors directly with Core Text without constructing a Fontique catalog or
+walking font directories. Generic families are queried in order, stopping when
+a face is accepted. Windows queries DirectWrite for the missing character after
+explicit sources have been tried. macOS queries Core Text with the actual Unicode
+scalar and registered base face. The resolver admits selected data through the
+same bounded snapshot store used for layout and painting. A system-only context starts with zero resident font
 bytes. The selected-file limits apply when a face is first needed, including the
 generic default for text without a font family. Platform metadata access and
 file mappings run outside Merman's scan budgets and preemptive cancellation.
+Before acquiring a new fallback source, mapped coverage tables can reject an
+unrelated font without consuming the selected-file budget. Coverage and identity
+are checked again on admitted bytes; existing snapshots take precedence over
+later file changes. On macOS, a retained immutable Core Text font identifies the
+selected face; its PostScript name alone is not an identity. Its native tables are
+materialized as a standalone font with data index zero, keeping unrelated TTC
+members out of the snapshot. Explicitly admitted bytes from the same source may
+be reused only when their selected face has the same tables.
+
+Successful macOS family/style requests and character fallback requests are pinned
+within the operation and retained by `for_export()`. `for_operation()` resets them;
+missing matches are not cached. Selection metadata has independent terminal limits
+(`max_selection_entries`, default 16,384; `max_selection_bytes`, default 4 MiB), so
+disabling the optional measurement cache does not permit a later system-registry
+change to alter an already selected font. An unregistered explicit face can use
+the Helvetica system cascade when system fallback is authorized. Non-default native
+variation coordinates remain unsupported and are declined before data admission.
+
+The cumulative admitted-data budget remains 64 MiB. Explicit inputs and other source
+paths retain whole-file ingestion. Native table backing and the output buffer can
+coexist during serialization; the data limit is not a process peak-memory limit.
+A selected font or color/bitmap table that exceeds the
+budget still fails. Reconstructing a face does not subset it to the diagram's glyphs
+or eliminate the cost of a large emoji table.
 Ordinary `load` still uses bounded system discovery. The platform context identity
 covers its policy, initially admitted bytes, and the default family name when
 derived from the system catalog. Later system snapshots are operation-local.
+On Linux/FreeBSD, `load_platform` reports `PlatformDiscoveryUnavailable` when the
+Fontconfig runtime cannot load, before acquiring explicit sources. A valid empty
+Fontconfig configuration remains empty; library callers decide whether an unavailable
+service permits another provider. The CLI retries bounded discovery only for automatic
+provider selection, never for an explicit `--font-system platform` request.
+
+For Rust consumers upgrading from v0.11.0, complete `NativeFontLimits` struct
+literals need the new `max_selection_entries` and `max_selection_bytes` fields;
+existing literals using `..NativeFontLimits::default()` continue to compile.
+Exhaustive `NativeFontError` matches must handle `PlatformDiscoveryUnavailable`.
+These public API additions require the next breaking release, not a v0.11.x patch.
 
 `png` and `jpeg` share private bitmap preparation. `pdf` is a separate vector export capability. Features are additive, but one output does not implicitly expose another output's API. The published `merman-export`, `merman`, and `merman-render` versions must match because the sealed SVG type crosses their crate boundaries.
 

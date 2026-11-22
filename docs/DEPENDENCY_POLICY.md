@@ -14,6 +14,7 @@ Stable coupled workspace crates use ordinary compatible requirements such as `0.
 | --- | --- | --- |
 | `libm` | Exact 0.2.16 | Iterative layout uses reproducible math instead of host-dependent transcendental results. [The introducing change](https://github.com/Latias94/merman/commit/f5e557f85cfa03992ba367cd970605258e060ea6) ties this choice to deterministic geometry. A change requires source-backed layout and parity evidence. |
 | `pulldown-cmark` | Compatible 0.13.6 minimum | Includes the [RUSTSEC-2026-0433 repair](https://rustsec.org/advisories/RUSTSEC-2026-0433.html). Merman selects explicit Markdown options without Wikilinks; keep the patched minimum for fresh source consumers and update each governed lockfile. |
+| `url` | Compatible 2.5.9 minimum | Includes the [RUSTSEC-2026-0592 repair](https://rustsec.org/advisories/RUSTSEC-2026-0592.html) for stack overflow in nested `blob:` origins. Keep the fixed minimum for fresh consumers and the workspace, Node, and fuzz lockfiles; do not suppress the advisory. |
 | `jiff` | Compatible 1.0.1 minimum, defaults disabled | Optional system time-zone rules only, enabled by `merman-model/system-timezone`. Keep project-owned wide civil dates and explicit clock/time-zone capabilities; deterministic profiles must not acquire Jiff. |
 | NAPI runtime / derive / build | Exact 3.16.1 / 3.7.0 / 2.6.0 group | Generated native Node binding code, build integration, and runtime must be admitted together; review package loading and platform artifacts as one group. |
 | Tree-sitter CLI / Rust and Web runtime | Exact 0.27.1 group | Parser generation and the selected runtimes are admitted together. Grammar candidate 0.3.3 remains independent; generated language ABI stays 15. Native Node's separate 0.25.x runtime contract remains explicit. |
@@ -33,7 +34,20 @@ Registry packages still resolve the public 0.47 line through their consumer's Ca
 The Windows release default is qualified with the repository patch. Remove the local source and
 patch together when a compatible released export chain covers these fallback cases.
 The Linux and FreeBSD Fontique builds load Fontconfig dynamically for explicit platform queries.
-This keeps Fontconfig outside the ordinary CLI's load-time dependency set.
+This keeps Fontconfig outside the ordinary CLI's load-time dependency set. The direct optional
+`yeslogic-fontconfig-sys` dependency uses the same loader result to distinguish a missing runtime
+from an intentionally empty configuration. Before replacing Linux family matching, admit bindings
+for `FcPatternGetWithBinding` and the actual `FcValue` union layout; the resolved 6.0.1 binding
+cannot currently preserve Fontconfig alias strength through that API. Do not implement a second
+partial alias matcher or add a load-time Fontconfig link to work around this boundary.
+
+macOS platform queries use Core Text descriptors for one requested family at a time and retain
+the selected native face. `write-fonts` 0.48.1, already in the PDF dependency graph, assembles that
+face's tables into a bounded standalone SFNT. These adapters preserve the existing usvg/fontdb
+handoff and do not require another renderer fork. Native non-default variation coordinates and
+oversized bitmap-font tables remain separate instance/data-interface work. A future published
+usvg fork must keep one package identity across Merman, resvg and krilla-svg; a root workspace
+patch alone does not deliver its behavior to ordinary crates.io consumers.
 
 The 2026-11-19 dependency review selected Jiff 1.0.1, following the existing removal of Chrono.
 Jiff's [1.0 changelog](https://docs.rs/crate/jiff/1.0.1/source/CHANGELOG.md) commits to the stable

@@ -1,5 +1,7 @@
 //! Discovery supplies candidates; one resolver admits and validates their binary faces.
 
+#[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+use super::registry::{SelectedFont, SelectionRequest};
 use super::*;
 use crate::font_selection::{allows_implicit_binary_face, fallback_style_matches};
 use usvg::fontdb::{FaceInfo, ID};
@@ -12,6 +14,8 @@ pub(super) struct FontSelection {
 
 pub(super) enum FontCandidate {
     Loaded(FaceInfo),
+    #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+    Native(platform::coretext::NativeFace),
     File {
         path: PathBuf,
         index: u32,
@@ -26,6 +30,8 @@ impl FontCandidate {
             // always cross the bounded file admission path below.
             Self::Loaded(_) => NativeExportFontSource::Caller,
             Self::File { .. } => NativeExportFontSource::System,
+            #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+            Self::Native(_) => NativeExportFontSource::System,
         }
     }
 }
@@ -40,15 +46,24 @@ pub(super) enum ExpectedFace {
 }
 
 impl ExpectedFace {
-    pub(super) fn validate(&self, face: &FaceInfo, path: &Path) -> Result<(), NativeFontError> {
+    pub(super) fn validate(
+        &self,
+        face: &FaceInfo,
+        path: &Path,
+        origin_index: u32,
+    ) -> Result<(), NativeFontError> {
         match self {
-            Self::Bounded { metadata, .. } if system::same_face(metadata, face) => Ok(()),
+            Self::Bounded { metadata, .. }
+                if metadata.index == origin_index && system::same_face(metadata, face) =>
+            {
+                Ok(())
+            }
             Self::Bounded { .. } => Err(source_error(
                 path,
                 "font properties changed after metadata discovery; retry the operation",
             )),
             #[cfg(feature = "experimental-system-font-query")]
-            Self::Platform(candidate) => candidate.validate(face, path),
+            Self::Platform(candidate) => candidate.validate(face, path, origin_index),
         }
     }
 }
@@ -87,8 +102,11 @@ impl DiscoveryProvider {
         base: &FaceInfo,
         excluded: &[FaceInfo],
         control: &OperationControl,
+        sources: &super::registry::FontSourceRegistry,
         accept: &mut dyn FnMut(FontCandidate) -> Result<Option<ID>, NativeFontError>,
     ) -> Result<Option<ID>, NativeFontError> {
+        #[cfg(not(feature = "experimental-system-font-query"))]
+        let _ = sources;
         match self {
             Self::Bounded(catalog) => catalog.fallback(character, base, excluded, control, accept),
             #[cfg(feature = "experimental-system-font-query")]
@@ -103,7 +121,7 @@ impl DiscoveryProvider {
                         return Ok(Some(id));
                     }
                 }
-                catalog.fallback(character, base, control, accept)
+                catalog.fallback(character, base, control, sources, accept)
             }
         }
     }
@@ -134,14 +152,41 @@ pub(super) fn resolver(
                     .discovery
                     .as_ref()
                     .ok_or(NativeFontError::SystemDiscoveryUnavailable)?;
+                #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+                let _selection = match provider {
+                    DiscoveryProvider::Platform { .. } => {
+                        Some(select_context.0.sources.lock_selection()?)
+                    }
+                    _ => None,
+                };
+                #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+                let request = matches!(provider, DiscoveryProvider::Platform { .. })
+                    .then(|| SelectionRequest::Font(font.clone()));
+                #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+                if let Some(request) = &request
+                    && let Some((id, selected)) =
+                        select_context.0.sources.selected(request, database)?
+                {
+                    if let Some(observer) = &select_observer {
+                        observer.admit(id, selected.source);
+                        if selected.family_fallback_used {
+                            observer.mark_family_fallback();
+                        }
+                    }
+                    return Ok(Some(id));
+                }
                 provider.select(font, &select_control, &mut |selection, check_implicit| {
                     let source = selection.candidate.export_source();
-                    let id = select_context.0.sources.materialize(
+                    let Some(id) = select_context.0.sources.materialize(
                         selection.candidate,
+                        None,
                         database,
                         &select_context.0.limits,
                         &select_control,
-                    )?;
+                    )?
+                    else {
+                        return Ok(None);
+                    };
                     if check_implicit
                         && !database
                             .face(id)
@@ -149,9 +194,29 @@ pub(super) fn resolver(
                     {
                         return Ok(None);
                     }
+                    let family_fallback_used = selection.family_fallback_used;
+                    #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+                    let (id, source, family_fallback_used) = if let Some(request) = &request {
+                        let face = database.face(id).cloned().ok_or_else(|| {
+                            NativeFontError::Measurement("missing selected font".to_owned())
+                        })?;
+                        let (id, selected) = select_context.0.sources.remember_selection(
+                            request.clone(),
+                            SelectedFont {
+                                face,
+                                source,
+                                family_fallback_used,
+                            },
+                            &select_context.0.limits,
+                            database,
+                        )?;
+                        (id, selected.source, selected.family_fallback_used)
+                    } else {
+                        (id, source, family_fallback_used)
+                    };
                     if let Some(observer) = &select_observer {
                         observer.admit(id, source);
-                        if selection.family_fallback_used {
+                        if family_fallback_used {
                             observer.mark_family_fallback();
                         }
                     }
@@ -181,19 +246,42 @@ pub(super) fn resolver(
                     .discovery
                     .as_ref()
                     .ok_or(NativeFontError::SystemDiscoveryUnavailable)?;
+                #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+                let _selection = match provider {
+                    DiscoveryProvider::Platform { .. } => Some(context.0.sources.lock_selection()?),
+                    _ => None,
+                };
+                #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+                let request = matches!(provider, DiscoveryProvider::Platform { .. })
+                    .then(|| SelectionRequest::fallback(character, &excluded_faces))
+                    .flatten();
+                #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+                if let Some(request) = &request
+                    && let Some((id, selected)) = context.0.sources.selected(request, database)?
+                {
+                    if let Some(observer) = &observer {
+                        observer.admit(id, selected.source);
+                    }
+                    return Ok(Some(id));
+                }
                 provider.fallback(
                     character,
                     base,
                     &excluded_faces,
                     &control,
+                    &context.0.sources,
                     &mut |candidate| {
                         let source = candidate.export_source();
-                        let id = context.0.sources.materialize(
+                        let Some(id) = context.0.sources.materialize(
                             candidate,
+                            Some(character),
                             database,
                             &context.0.limits,
                             &control,
-                        )?;
+                        )?
+                        else {
+                            return Ok(None);
+                        };
                         if excluded.contains(&id) {
                             return Ok(None);
                         }
@@ -207,6 +295,25 @@ pub(super) fn resolver(
                         {
                             return Ok(None);
                         }
+                        #[cfg(all(
+                            feature = "experimental-system-font-query",
+                            target_os = "macos"
+                        ))]
+                        let (id, source) = if let Some(request) = &request {
+                            let (id, selected) = context.0.sources.remember_selection(
+                                request.clone(),
+                                SelectedFont {
+                                    face: face.clone(),
+                                    source,
+                                    family_fallback_used: false,
+                                },
+                                &context.0.limits,
+                                database,
+                            )?;
+                            (id, selected.source)
+                        } else {
+                            (id, source)
+                        };
                         if let Some(observer) = &observer {
                             observer.admit(id, source);
                         }

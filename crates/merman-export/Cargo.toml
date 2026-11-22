@@ -29,7 +29,7 @@ native-fonts = [
     "dep:usvg",
 ]
 system-fonts = ["dep:usvg", "usvg/system-fonts"]
-experimental-system-font-query = ["native-fonts", "system-fonts", "dep:fontique", "dep:unicode-script", "dep:windows", "dep:windows-core"]
+experimental-system-font-query = ["native-fonts", "system-fonts", "dep:fontique", "dep:unicode-script", "dep:windows", "dep:windows-core", "dep:objc2-core-foundation", "dep:objc2-core-text", "dep:write-fonts", "dep:yeslogic-fontconfig-sys"]
 png = [
     "dep:cssparser",
     "dep:data-url",
@@ -97,10 +97,16 @@ usvg = { workspace = true, optional = true, features = ["text"] }
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies]
 # System font queries can load Fontconfig when selected. Keep it out of the CLI's load-time ABI.
 fontique = { workspace = true, optional = true, features = ["fontconfig-dlopen"] }
+yeslogic-fontconfig-sys = { version = "6.0.1", optional = true, features = ["dlopen"] }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62.2", optional = true, features = ["Win32_Graphics_DirectWrite"] }
 windows-core = { version = "0.62.2", optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-core-foundation = { version = "0.3.2", optional = true, default-features = false, features = ["CFBase", "CFArray", "CFString", "CFCharacterSet", "CFData", "CFURL"] }
+objc2-core-text = { version = "0.3.2", optional = true, default-features = false, features = ["CTFont", "CTFontDescriptor", "CTFontTraits"] }
+write-fonts = { version = "0.48.1", optional = true, default-features = false }
 
 [dev-dependencies]
 base64.workspace = true

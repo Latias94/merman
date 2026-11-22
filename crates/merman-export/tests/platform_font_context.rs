@@ -238,6 +238,209 @@ fn platform_system_font_host_smoke_initializes_and_materializes() {
         .expect("platform host smoke remains healthy");
 }
 
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "requires macOS Arial and its system fallback fonts; run explicitly in CI"]
+fn macos_character_fallback_shares_symbol_faces_with_paint_without_emoji_admission() {
+    let context = NativeFontOptions::default()
+        .with_system_fonts(true)
+        .with_limits(NativeFontLimits {
+            max_bytes: 8 * 1024 * 1024,
+            ..Default::default()
+        })
+        .load_platform(&OperationControl::new())
+        .expect("platform font context initializes");
+    assert_text_advance_and_faces(&context, "Arial", "Latin ✓ ∑ ∫ e\u{301}");
+    let faces = context.selected_faces();
+    assert!(
+        faces.iter().any(|face| !face.starts_with("Arial")),
+        "the check mark must exercise glyph fallback: {faces:?}"
+    );
+    assert!(
+        faces
+            .iter()
+            .all(|face| !face.to_ascii_lowercase().contains("emoji"))
+    );
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "requires macOS Arial and its system fallback fonts; run explicitly in CI"]
+fn macos_unassigned_scalar_declines_without_acquiring_unrelated_fallback_files() {
+    let context = NativeFontOptions::default()
+        .with_system_fonts(true)
+        .load_platform(&OperationControl::new())
+        .expect("platform font context initializes");
+    assert!(advance(&context, "AVA", &style("Arial")) > 0.0);
+    let resident = context.resident_font_bytes();
+    let faces = context.face_count();
+    assert!(
+        context
+            .measure(request("A\u{0378}", &style("Arial")))
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(context.resident_font_bytes(), resident);
+    assert_eq!(context.face_count(), faces);
+    context
+        .check()
+        .expect("missing coverage does not poison the context");
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "requires macOS Arial and CJK system fonts; run explicitly in CI"]
+fn macos_selected_collection_faces_fit_the_data_budget_and_survive_export() {
+    let context = NativeFontOptions::default()
+        .with_system_fonts(true)
+        .load_platform(&OperationControl::new())
+        .expect("platform font context initializes")
+        .with_strict_glyph_coverage(true);
+    for text in ["Latin 中文 日本語 한글", "Latin 𠮷野家"] {
+        let operation = context.for_operation(&OperationControl::new());
+        assert_text_advance_and_faces(&operation, "Arial", text);
+        let resident = operation.resident_font_bytes();
+        assert!(resident > 0);
+        assert!(resident <= NativeFontLimits::default().max_bytes);
+        let export = operation.for_export(&OperationControl::new()).unwrap();
+        assert_text_advance_and_faces(&export, "Arial", text);
+        assert_eq!(export.resident_font_bytes(), resident);
+        assert_eq!(operation.resident_font_bytes(), resident);
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "requires macOS Arial and its system fallback fonts; run explicitly in CI"]
+fn macos_native_queries_keep_family_order_and_selected_source_limits() {
+    let context = NativeFontOptions::default()
+        .with_system_fonts(true)
+        .with_limits(NativeFontLimits {
+            max_files: 1,
+            max_faces: 1,
+            ..Default::default()
+        })
+        .load_platform(&OperationControl::new())
+        .expect("initialization does not acquire unrelated font files");
+    assert_text_advance_and_faces(&context, "MermanMissingFamily-46da48fb, Arial", "AVA");
+    assert_eq!(context.selected_faces(), ["ArialMT#0"]);
+    assert_eq!(context.face_count(), 1);
+    let bytes = context.resident_font_bytes();
+    let export = context.for_export(&OperationControl::new()).unwrap();
+    assert_text_advance_and_faces(&export, "Arial", "AVA");
+    assert_eq!(export.resident_font_bytes(), bytes);
+    assert_eq!(export.face_count(), 1);
+
+    // A real fallback still consumes a source slot and cannot bypass admission.
+    assert!(context.measure(request("A中文", &style("Arial"))).is_err());
+    assert!(matches!(
+        context.check(),
+        Err(NativeFontError::Limit { .. })
+    ));
+    let fresh = context.for_operation(&OperationControl::new());
+    assert_eq!(fresh.resident_font_bytes(), 0);
+    assert_eq!(fresh.face_count(), 0);
+    assert!(advance(&fresh, "AVA", &style("Arial")) > 0.0);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "requires macOS system CJK fallback; run explicitly in CI"]
+fn macos_unregistered_explicit_font_can_use_authorized_system_fallback() {
+    let context = options()
+        .with_system_fonts(true)
+        .load_platform(&OperationControl::new())
+        .unwrap()
+        .with_strict_glyph_coverage(true);
+    let ascii = context.for_operation(&OperationControl::new());
+    assert_same_advance_and_faces(&ascii, "Cousine");
+    assert_eq!(ascii.selected_faces(), ["Cousine-Regular#0"]);
+    assert_text_advance_and_faces(&context, "Cousine", "A中V");
+    assert!(
+        context
+            .selected_faces()
+            .iter()
+            .any(|face| !face.starts_with("Cousine-"))
+    );
+    let closed = options().load_platform(&OperationControl::new()).unwrap();
+    assert!(
+        closed
+            .measure(request("A中V", &style("Cousine")))
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "requires macOS Arial; run explicitly in CI"]
+fn macos_selection_pinning_has_independent_terminal_metadata_limits() {
+    for limits in [
+        NativeFontLimits {
+            max_selection_entries: 0,
+            ..Default::default()
+        },
+        NativeFontLimits {
+            max_selection_bytes: 1,
+            ..Default::default()
+        },
+    ] {
+        let context = NativeFontOptions::default()
+            .with_system_fonts(true)
+            .with_limits(limits)
+            .load_platform(&OperationControl::new())
+            .unwrap();
+        assert!(context.measure(request("AVA", &style("Arial"))).is_err());
+        assert!(matches!(
+            context.check(),
+            Err(NativeFontError::Limit {
+                resource: "font-selections" | "font-selection-bytes",
+                ..
+            })
+        ));
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "requires macOS Arial; run explicitly in CI"]
+fn macos_concurrent_cold_paint_queries_share_one_admitted_selection() {
+    let context = NativeFontOptions::default()
+        .with_system_fonts(true)
+        .with_limits(NativeFontLimits {
+            max_files: 1,
+            max_faces: 1,
+            max_selection_entries: 1,
+            ..Default::default()
+        })
+        .load_platform(&OperationControl::new())
+        .unwrap();
+    let start = std::sync::Barrier::new(4);
+    std::thread::scope(|scope| {
+        let threads: Vec<_> = (0..4)
+            .map(|_| {
+                scope.spawn(|| {
+                    start.wait();
+                    let tree = paint(&context, "Arial");
+                    let text = painted_text(&tree, "left");
+                    assert!(!text.layouted().is_empty());
+                    context.check().unwrap();
+                })
+            })
+            .collect();
+        for thread in threads {
+            thread.join().unwrap();
+        }
+    });
+    assert_eq!(context.face_count(), 1);
+    let bytes = context.resident_font_bytes();
+    let export = context.for_export(&OperationControl::new()).unwrap();
+    let _ = paint(&export, "Arial");
+    export.check().unwrap();
+    assert_eq!(export.resident_font_bytes(), bytes);
+    assert_eq!(export.face_count(), 1);
+}
+
 #[test]
 #[ignore = "requires a host-managed font catalog; run explicitly in CI"]
 fn platform_system_font_repeated_measurement_and_paint_keep_residency_stable() {

@@ -1,0 +1,678 @@
+//! Retained Core Text selections and bounded snapshots of their immutable tables.
+//! Character sets only filter candidates; the registry validates glyphs in admitted data.
+
+use std::{
+    collections::HashSet,
+    hash::{Hash, Hasher},
+    path::{Path, PathBuf},
+    ptr,
+};
+
+use objc2_core_foundation::{
+    CFArray, CFCharacterSet, CFComparisonResult, CFData, CFRange, CFRetained, CFString,
+    CFStringCompareFlags, CFURL, CFURLPathStyle,
+};
+use objc2_core_text::{
+    CTFont, CTFontDescriptor, CTFontTableOptions, kCTFontNameAttribute, kCTFontURLAttribute,
+};
+use usvg::fontdb::{FaceInfo, ID, Stretch, Style, Weight};
+
+use super::super::{NativeFontError, OperationControl, OperationPhase, check_limit, source_error};
+
+mod query;
+
+const DSIG: u32 = u32::from_be_bytes(*b"DSIG");
+const HVGL: u32 = u32::from_be_bytes(*b"hvgl");
+const HEAD: u32 = u32::from_be_bytes(*b"head");
+
+type FontTables = Vec<(u32, CFRetained<CFData>)>;
+
+/// An immutable selection created exclusively through Core Text.
+///
+/// Keep the handle private: neither a raw CTFont nor its toll-free NSFont bridge may
+/// escape this adapter. Paths and names are metadata, not native object identity.
+#[derive(Clone, Debug)]
+pub(in crate::fonts) struct NativeFace {
+    font: CFRetained<CTFont>,
+    pub(in crate::fonts) path: PathBuf,
+    pub(in crate::fonts) family: String,
+    pub(in crate::fonts) post_script_name: String,
+}
+
+// SAFETY: Apple's CTFont.h "Thread Safety Information" states that its functions
+// are thread safe unless otherwise specified. core-text 21.0.0's font.rs likewise
+// marks its retained CTFont wrapper Send + Sync. Here the guarantee is narrower:
+// only Core Text constructors create this private, immutable handle, and no API
+// exposes it to NSFont/AppKit or accepts a caller-owned (possibly bridged) CTFont.
+// CFRetain/CFRelease are thread safe; the remaining fields are owned Rust values.
+unsafe impl Send for NativeFace {}
+// SAFETY: The same closed-handle invariant applies to shared access. Every method
+// uses immutable Core Text/CF accessors; no mutable native aliases are exposed.
+unsafe impl Sync for NativeFace {}
+
+impl PartialEq for NativeFace {
+    fn eq(&self, other: &Self) -> bool {
+        // objc2-core-foundation forwards retained CTFont equality to CFEqual.
+        self.font == other.font
+    }
+}
+
+impl Eq for NativeFace {}
+
+impl Hash for NativeFace {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        // The CTFont Hash implementation uses CFHash, consistent with CFEqual.
+        self.font.hash(state);
+    }
+}
+
+/// Matches a named family without reconstructing the selection from its name or URL.
+pub(super) fn named(
+    family: &str,
+    weight: Weight,
+    stretch: Stretch,
+    style: Style,
+) -> Option<NativeFace> {
+    NativeFace::from_font(query::match_family(family, weight, stretch, style)?)
+}
+
+impl NativeFace {
+    /// Accept only handles from this module's immutable Core Text constructors.
+    fn from_font(font: CFRetained<CTFont>) -> Option<Self> {
+        // SAFETY: The retained font is live; both accessors return owned strings.
+        let (family, post_script_name) = unsafe { (font.family_name(), font.post_script_name()) };
+        let family = family.to_string();
+        let post_script_name = post_script_name.to_string();
+        if family.is_empty()
+            || post_script_name.is_empty()
+            || is_last_resort(&family)
+            || is_last_resort(&post_script_name)
+        {
+            return None;
+        }
+
+        // Copying tables does not instantiate variable outlines. Since macOS 10.12,
+        // CTFontCopyVariation reports only non-default coordinates. Until native
+        // coordinates can reach both shaping and painting, decline all such instances,
+        // including wght and automatic opsz; a default variable face remains usable.
+        // SAFETY: The font is live and Core Text returns an immutable retained dictionary.
+        if unsafe { font.variation() }.is_some_and(|variation| !variation.is_empty()) {
+            return None;
+        }
+
+        // SAFETY: The font is live; Core Text returns an owned array of unboxed tags.
+        let tags = unsafe { font.available_tables(CTFontTableOptions::NoOptions) }?;
+        for index in 0..tags.count() {
+            // SAFETY: The index is in bounds; these pointer slots contain integers,
+            // not CF objects. Never dereference or retain the slot values.
+            let tag = u32::try_from(unsafe { tags.value_at_index(index) } as usize).ok()?;
+            if tag == HVGL {
+                return None;
+            }
+        }
+
+        Some(Self {
+            path: font_path(&font)?,
+            font,
+            family,
+            post_script_name,
+        })
+    }
+
+    /// Repackages this selection at index zero without opening its source file.
+    /// `limit` is the caller's remaining resident-font budget (64 MiB by default).
+    pub(in crate::fonts) fn snapshot(
+        &self,
+        limit: usize,
+        control: &OperationControl,
+    ) -> Result<Vec<u8>, NativeFontError> {
+        let tables = collect_tables(&self.font, &self.path, limit, None, control)?
+            .ok_or_else(|| source_error(&self.path, "selected Core Text face exposes hvgl"))?;
+        super::super::sfnt::from_tables(
+            tables.iter().map(|(tag, data)| {
+                // SAFETY: The retained immutable data outlives serialization.
+                (*tag, unsafe { data.as_bytes_unchecked() })
+            }),
+            limit,
+            control,
+            &self.path,
+        )
+    }
+
+    /// A rejection-only prefilter; admission must still validate the actual glyph.
+    pub(in crate::fonts) fn covers(&self, character: char) -> bool {
+        // SAFETY: The font is live and Core Text returns an owned immutable set.
+        let character_set = unsafe { self.font.character_set() };
+        character_set_contains_scalar(&character_set, character)
+    }
+
+    /// Preserves the exact native origin when following its character cascade.
+    pub(in crate::fonts) fn fallback(&self, character: char) -> Option<Self> {
+        fallback_from_font(&self.font, character)
+    }
+
+    /// Proves that already admitted bytes describe this selected physical face.
+    /// Collections may supply a nonzero index; only new snapshots use index zero.
+    pub(in crate::fonts) fn matches_data(
+        &self,
+        data: &[u8],
+        index: u32,
+        control: &OperationControl,
+    ) -> Result<bool, NativeFontError> {
+        control.terminal_checkpoint_at(OperationPhase::Layout)?;
+        let Ok(source) = ttf_parser::RawFace::parse(data, index) else {
+            return Ok(false);
+        };
+        let names = source
+            .table(ttf_parser::Tag::from_bytes(b"name"))
+            .and_then(ttf_parser::name::Table::parse);
+        if !names
+            .is_some_and(|names| super::post_script_name_matches(names, &self.post_script_name))
+        {
+            return Ok(false);
+        }
+        let source_count = source
+            .table_records
+            .into_iter()
+            .filter(|record| record.tag.0 != DSIG)
+            .count();
+        // SAFETY: The font is live; Core Text returns an owned array of unboxed tags.
+        let tags = unsafe { self.font.available_tables(CTFontTableOptions::NoOptions) }
+            .ok_or_else(|| source_error(&self.path, "selected Core Text face exposes no tables"))?;
+        let mut compared = 0;
+        for index in 0..tags.count() {
+            control.terminal_checkpoint_at(OperationPhase::Layout)?;
+            // SAFETY: The index is in bounds; table tags are unboxed integers.
+            let tag = u32::try_from(unsafe { tags.value_at_index(index) } as usize)
+                .map_err(|_| source_error(&self.path, "Core Text returned an invalid table tag"))?;
+            if tag == HVGL {
+                return Ok(false);
+            }
+            if tag == DSIG {
+                continue;
+            }
+            let Some(source_table) = source.table(ttf_parser::Tag(tag)) else {
+                return Ok(false);
+            };
+            // Compare one retained table at a time, without a second SFNT allocation.
+            let native_table = copy_table(&self.font, tag, &self.path)?;
+            control.terminal_checkpoint_at(OperationPhase::Layout)?;
+            // SAFETY: This immutable retained table stays live through the comparison.
+            let native_table = unsafe { native_table.as_bytes_unchecked() };
+            if !table_matches_snapshot(tag, native_table, source_table) {
+                return Ok(false);
+            }
+            compared += 1;
+        }
+        control.terminal_checkpoint_at(OperationPhase::Layout)?;
+        Ok(compared == source_count)
+    }
+
+    /// Checks metadata against admitted bytes, using their actual collection index.
+    /// The registry, which knows whether the data was rebuilt, owns the index-zero check.
+    pub(in crate::fonts) fn validate(&self, face: &FaceInfo) -> Result<(), NativeFontError> {
+        if !super::matches_post_script_name(face, &self.post_script_name)
+            || !super::matches_family(face, &self.family)
+        {
+            return Err(source_error(
+                &self.path,
+                "font properties changed after Core Text lookup; retry the operation",
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Tries the retained native origin first, then the ordered Core Text cascade.
+///
+/// `accept` owns admission and may return `Ok(None)` to reject one candidate and
+/// continue. Its errors, including cancellation and resource limits, stop the
+/// cascade and are returned unchanged. No system font directory is enumerated.
+pub(in crate::fonts) fn fallback_candidates(
+    character: char,
+    base: &FaceInfo,
+    origin: Option<&NativeFace>,
+    control: &OperationControl,
+    accept: &mut dyn FnMut(NativeFace) -> Result<Option<ID>, NativeFontError>,
+) -> Result<Option<ID>, NativeFontError> {
+    control.terminal_checkpoint_at(OperationPhase::Layout)?;
+    let Some(native_base) = origin
+        .cloned()
+        .or_else(|| registered_base(base))
+        .or_else(|| named("Helvetica", base.weight, base.stretch, base.style))
+    else {
+        return Ok(None);
+    };
+
+    let mut seen = HashSet::new();
+    if let Some(candidate) = native_base.fallback(character)
+        && seen.insert(candidate.clone())
+    {
+        control.terminal_checkpoint_at(OperationPhase::Layout)?;
+        if let Some(id) = accept(candidate)? {
+            return Ok(Some(id));
+        }
+    }
+
+    control.terminal_checkpoint_at(OperationPhase::Layout)?;
+    let Some(cascade) = (unsafe { native_base.font.default_cascade_list_for_languages(None) })
+    else {
+        control.terminal_checkpoint_at(OperationPhase::Layout)?;
+        return Ok(None);
+    };
+    control.terminal_checkpoint_at(OperationPhase::Layout)?;
+    // Core Text documents this result as an array of CTFontDescriptorRef values.
+    // The typed view lets CFArray retain each descriptor before its next iteration.
+    let cascade: CFRetained<CFArray<CTFontDescriptor>> =
+        unsafe { CFRetained::cast_unchecked(cascade) };
+    for index in 0..cascade.len() {
+        control.terminal_checkpoint_at(OperationPhase::Layout)?;
+        let Some(descriptor) = cascade.get(index) else {
+            continue;
+        };
+        let Some(font) = cascade_font(&descriptor) else {
+            continue;
+        };
+        let Some(candidate) = NativeFace::from_font(font) else {
+            continue;
+        };
+        if !candidate.covers(character) || !seen.insert(candidate.clone()) {
+            continue;
+        }
+        if let Some(id) = accept(candidate)? {
+            return Ok(Some(id));
+        }
+    }
+    control.terminal_checkpoint_at(OperationPhase::Layout)?;
+    Ok(None)
+}
+
+fn registered_base(base: &FaceInfo) -> Option<NativeFace> {
+    registered_base_font(base).and_then(NativeFace::from_font)
+}
+
+fn registered_base_font(base: &FaceInfo) -> Option<CFRetained<CTFont>> {
+    if base.post_script_name.is_empty() || base.post_script_name.starts_with('.') {
+        return None;
+    }
+    let name = CFString::from_str(&base.post_script_name);
+    // SAFETY: The retained name is live and a null matrix requests identity.
+    let font = unsafe { CTFont::with_name(&name, 0.0, ptr::null()) };
+    // CTFontCreateWithName may substitute a different font for an unknown name.
+    // An explicit face may use this path only when the actual PS name is equal.
+    // SAFETY: The retained font is live; the accessor returns an owned string.
+    let actual_name = unsafe { font.post_script_name() };
+    (actual_name.to_string() == base.post_script_name).then_some(font)
+}
+
+fn cascade_font(descriptor: &CTFontDescriptor) -> Option<CFRetained<CTFont>> {
+    // Default cascade descriptors are expected to carry a concrete native name.
+    // Verify it after construction because CTFontCreateWithFontDescriptor can
+    // otherwise return a best substitute for an unavailable descriptor.
+    // SAFETY: The descriptor is retained by the typed cascade array.
+    let expected_name = unsafe { descriptor.attribute(kCTFontNameAttribute) }?
+        .downcast::<CFString>()
+        .ok()?;
+    if expected_name.length() == 0 {
+        return None;
+    }
+    // SAFETY: The descriptor is live; zero size and null matrix preserve its traits.
+    let font = unsafe { CTFont::with_font_descriptor(descriptor, 0.0, ptr::null()) };
+    // SAFETY: The constructed font is live; the accessor returns an owned string.
+    let actual_name = unsafe { font.post_script_name() };
+    (expected_name.compare(
+        Some(&actual_name),
+        CFStringCompareFlags::CompareCaseInsensitive,
+    ) == CFComparisonResult::CompareEqualTo)
+        .then_some(font)
+}
+
+fn font_path(font: &CTFont) -> Option<PathBuf> {
+    // SAFETY: Core Text defines this attribute as a CFURL; downcast checks its type.
+    // Converting its URL to a path does not access or canonicalize the source file.
+    unsafe { font.attribute(kCTFontURLAttribute) }?
+        .downcast::<CFURL>()
+        .ok()?
+        .file_system_path(CFURLPathStyle::CFURLPOSIXPathStyle)
+        .map(|path| PathBuf::from(path.to_string()))
+}
+
+fn table_matches_snapshot(tag: u32, native: &[u8], source: &[u8]) -> bool {
+    native == source
+        || (tag == HEAD
+            && native.len() == source.len()
+            && native.len() >= 12
+            // Only head.checkSumAdjustment changes when repackaging an SFNT.
+            && native[..8] == source[..8]
+            && native[12..] == source[12..])
+}
+
+/// Materializes one registered collection face without copying the original TTC.
+pub(super) fn collection_snapshot(
+    post_script_name: &str,
+    path: &Path,
+    source: &ttf_parser::RawFace<'_>,
+    limit: usize,
+    control: &OperationControl,
+) -> Result<Option<Vec<u8>>, NativeFontError> {
+    control.terminal_checkpoint_at(OperationPhase::Layout)?;
+    super::super::registry::verify_font_file(path, control, OperationPhase::Layout)?;
+    if post_script_name.is_empty() || post_script_name.starts_with('.') {
+        return Ok(None);
+    }
+    let name = CFString::from_str(post_script_name);
+    // SAFETY: The retained name is live and a null matrix requests identity.
+    let font = unsafe { CTFont::with_name(&name, 0.0, ptr::null()) };
+    // SAFETY: The font is live; accessors return retained objects.
+    let actual_name = unsafe { font.post_script_name() };
+    if actual_name.to_string() != post_script_name {
+        return Ok(None);
+    }
+    // A registered font with a colliding name must not replace the selected source.
+    let Some(native_path) = font_path(&font) else {
+        return Ok(None);
+    };
+    let expected_path = std::fs::canonicalize(path).map_err(|error| source_error(path, error))?;
+    if std::fs::canonicalize(native_path).ok().as_ref() != Some(&expected_path) {
+        return Ok(None);
+    }
+    let Some(tables) = collect_tables(&font, path, limit, Some(source.data.len()), control)? else {
+        return Ok(None);
+    };
+    if !tables_match_source(source, &tables) {
+        // A TTC may contain colliding PostScript names. The native object is usable only
+        // when its actual tables describe the selected physical face, not merely its name.
+        return Ok(None);
+    }
+    let data = super::super::sfnt::from_tables(
+        tables.iter().map(|(tag, data)| {
+            // SAFETY: Retained immutable CFData values outlive serialization, and are never mutated.
+            (*tag, unsafe { data.as_bytes_unchecked() })
+        }),
+        limit,
+        control,
+        path,
+    )?;
+    Ok(Some(data))
+}
+
+/// Bounds retained table payloads before serialization. The legacy TTC path also
+/// declines a standalone face that would be no smaller than its original container.
+fn collect_tables(
+    font: &CTFont,
+    path: &Path,
+    limit: usize,
+    smaller_than: Option<usize>,
+    control: &OperationControl,
+) -> Result<Option<FontTables>, NativeFontError> {
+    control.terminal_checkpoint_at(OperationPhase::Layout)?;
+    let mut total = 12_usize;
+    check_limit("system-font-bytes", total, limit)?;
+    // SAFETY: The retained font is live; table tags are unboxed pointer-sized values.
+    let tags = unsafe { font.available_tables(CTFontTableOptions::NoOptions) }
+        .ok_or_else(|| source_error(path, "selected Core Text face exposes no tables"))?;
+    check_limit("font-tables", tags.count() as usize, usize::from(u16::MAX))?;
+    let mut tables = Vec::new();
+    for index in 0..tags.count() {
+        control.terminal_checkpoint_at(OperationPhase::Layout)?;
+        // SAFETY: The index is in bounds. Table tags are not CF objects.
+        let value = unsafe { tags.value_at_index(index) } as usize;
+        let tag = u32::try_from(value)
+            .map_err(|_| source_error(path, "Core Text returned an invalid table tag"))?;
+        if tag == HVGL {
+            return Ok(None);
+        }
+        if tag == DSIG {
+            continue;
+        }
+        let table = copy_table(font, tag, path)?;
+        control.terminal_checkpoint_at(OperationPhase::Layout)?;
+        let aligned = table.len().checked_add(3).map(|length| length & !3);
+        total = aligned
+            .and_then(|length| length.checked_add(16))
+            .and_then(|length| total.checked_add(length))
+            .ok_or_else(|| source_error(path, "selected font table sizes overflow"))?;
+        if smaller_than.is_some_and(|size| total >= size) {
+            // Shared/overlapping tables can make a standalone font larger than its
+            // container. Keep the existing whole-file representation in that case.
+            return Ok(None);
+        }
+        check_limit("system-font-bytes", total, limit)?;
+        tables.push((tag, table));
+    }
+    control.terminal_checkpoint_at(OperationPhase::Layout)?;
+    Ok(Some(tables))
+}
+
+fn copy_table(font: &CTFont, tag: u32, path: &Path) -> Result<CFRetained<CFData>, NativeFontError> {
+    // SAFETY: The retained font is live. Core Text owns this immutable table's backing
+    // storage, and no mutable reference is exposed by this adapter.
+    unsafe { font.table(tag, CTFontTableOptions::NoOptions) }
+        .ok_or_else(|| source_error(path, "Core Text omitted an advertised font table"))
+}
+
+fn tables_match_source(
+    source: &ttf_parser::RawFace<'_>,
+    tables: &[(u32, CFRetained<CFData>)],
+) -> bool {
+    let retained = source
+        .table_records
+        .into_iter()
+        .filter(|record| record.tag.0 != DSIG)
+        .count();
+    retained == tables.len()
+        && tables.iter().all(|(tag, data)| {
+            // SAFETY: Core Text or the test constructor owns immutable retained data;
+            // it stays live through this comparison and is not mutated by this adapter.
+            let data = unsafe { data.as_bytes_unchecked() };
+            source.table(ttf_parser::Tag(*tag)) == Some(data)
+        })
+}
+
+/// Compatibility lookup for an explicit/non-native base. Native admissions must
+/// use `NativeFace::fallback` to preserve their retained origin, including name collisions.
+#[cfg(test)]
+pub(super) fn fallback(character: char, base: &FaceInfo) -> Option<NativeFace> {
+    let base_font = registered_base_font(base)?;
+    fallback_from_font(&base_font, character)
+}
+
+fn fallback_from_font(base: &CTFont, character: char) -> Option<NativeFace> {
+    let mut utf8 = [0; 4];
+    let text = CFString::from_str(character.encode_utf8(&mut utf8));
+    let range = CFRange {
+        location: 0,
+        length: text.length(),
+    };
+    // SAFETY: The retained base and string are live and the range covers the complete
+    // CFString in UTF-16 code units, including both halves of a surrogate pair.
+    let font = unsafe { CTFont::for_string(base, &text, range) };
+    let selected = NativeFace::from_font(font)?;
+    selected.covers(character).then_some(selected)
+}
+
+fn is_last_resort(name: &str) -> bool {
+    let name = name.trim_start_matches('.');
+    name.eq_ignore_ascii_case("LastResort") || name.eq_ignore_ascii_case("Last Resort")
+}
+
+fn character_set_contains_scalar(character_set: &CFCharacterSet, character: char) -> bool {
+    // The long-character API takes a full UTF-32 scalar, including non-BMP values.
+    character_set.is_long_character_member(u32::from(character))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    use usvg::fontdb::{Database, Family, Query};
+
+    #[test]
+    fn native_tables_cannot_substitute_a_different_face_with_identical_names() {
+        let bytes = include_bytes!("../../../tests/fonts/Cousine-Regular.ttf");
+        let source = ttf_parser::RawFace::parse(bytes, 0).unwrap();
+        let mut tables: Vec<_> = source
+            .table_records
+            .into_iter()
+            .filter(|record| record.tag.0 != u32::from_be_bytes(*b"DSIG"))
+            .map(|record| {
+                (
+                    record.tag.0,
+                    CFData::from_bytes(source.table(record.tag).unwrap()),
+                )
+            })
+            .collect();
+        assert!(tables_match_source(&source, &tables));
+
+        let (_, metrics) = tables
+            .iter_mut()
+            .find(|(tag, _)| *tag == u32::from_be_bytes(*b"hmtx"))
+            .unwrap();
+        // SAFETY: The test owns immutable retained data and copies it before replacing the handle.
+        let mut changed = unsafe { metrics.as_bytes_unchecked() }.to_vec();
+        changed[0] ^= 1;
+        *metrics = CFData::from_bytes(&changed);
+        assert!(
+            !tables_match_source(&source, &tables),
+            "equal name and style tables do not establish physical face identity"
+        );
+        tables.retain(|(tag, _)| *tag != u32::from_be_bytes(*b"hmtx"));
+        assert!(!tables_match_source(&source, &tables));
+    }
+
+    #[test]
+    fn character_set_membership_preserves_supplementary_scalars() {
+        // SAFETY: None selects the default allocator, and the UTF-32 range contains
+        // exactly one valid scalar. This character set does not depend on host fonts.
+        let character_set = unsafe {
+            CFCharacterSet::with_characters_in_range(
+                None,
+                CFRange {
+                    location: 0x1f600,
+                    length: 1,
+                },
+            )
+        }
+        .expect("create a supplementary character set");
+        assert!(character_set_contains_scalar(&character_set, '\u{1f600}'));
+        assert!(!character_set_contains_scalar(&character_set, '\u{f600}'));
+        assert!(!character_set_contains_scalar(&character_set, '\u{1f601}'));
+    }
+
+    #[test]
+    fn native_sfnt_comparison_only_ignores_head_checksum_adjustment() {
+        let mut source = [0_u8; 16];
+        source[..8].copy_from_slice(b"headtest");
+        source[12..].copy_from_slice(b"tail");
+        let mut rebuilt = source;
+        rebuilt[8..12].copy_from_slice(&u32::MAX.to_be_bytes());
+        assert!(table_matches_snapshot(HEAD, &rebuilt, &source));
+
+        rebuilt[12] ^= 1;
+        assert!(!table_matches_snapshot(HEAD, &rebuilt, &source));
+        assert!(!table_matches_snapshot(
+            u32::from_be_bytes(*b"hhea"),
+            &rebuilt,
+            &source
+        ));
+    }
+
+    #[test]
+    #[ignore = "requires macOS with a registered Arial face"]
+    fn native_snapshot_round_trips_and_reuses_coretext_identity() {
+        let first = named("Arial", Weight::NORMAL, Stretch::Normal, Style::Normal)
+            .expect("registered Arial Regular");
+        let second = named("aRiAl", Weight::NORMAL, Stretch::Normal, Style::Normal)
+            .expect("registered Arial Regular");
+        assert_eq!(first, second);
+
+        let mut first_hash = DefaultHasher::new();
+        first.hash(&mut first_hash);
+        let mut second_hash = DefaultHasher::new();
+        second.hash(&mut second_hash);
+        assert_eq!(first_hash.finish(), second_hash.finish());
+
+        let bytes = first
+            .snapshot(64 * 1024 * 1024, &OperationControl::new())
+            .expect("Core Text tables form a bounded standalone SFNT");
+        let parsed = ttf_parser::Face::parse(&bytes, 0).expect("snapshot parses as SFNT");
+        assert!(
+            parsed
+                .raw_face()
+                .table(ttf_parser::Tag::from_bytes(b"DSIG"))
+                .is_none()
+        );
+        assert!(
+            first
+                .matches_data(&bytes, 0, &OperationControl::new())
+                .expect("native table comparison completes")
+        );
+
+        let offset = {
+            let raw = ttf_parser::RawFace::parse(&bytes, 0).expect("snapshot has raw tables");
+            let table = raw
+                .table(ttf_parser::Tag::from_bytes(b"hhea"))
+                .expect("Arial has hhea");
+            table.as_ptr() as usize - bytes.as_ptr() as usize
+        };
+        let mut changed = bytes.clone();
+        changed[offset] ^= 1;
+        assert!(
+            !first
+                .matches_data(&changed, 0, &OperationControl::new())
+                .expect("changed table comparison completes")
+        );
+
+        let fallback = first
+            .fallback('\u{2713}')
+            .expect("Arial fallback for check mark");
+        assert!(fallback.covers('\u{2713}'));
+    }
+
+    fn arial() -> FaceInfo {
+        let mut database = Database::new();
+        database.load_system_fonts();
+        let id = database
+            .query(&Query {
+                families: &[Family::Name("Arial")],
+                ..Query::default()
+            })
+            .expect("requires a registered Arial font");
+        database.face(id).unwrap().clone()
+    }
+
+    #[test]
+    #[ignore = "requires macOS Arial and its system fallback fonts"]
+    fn arial_check_mark_fallback_is_a_non_emoji_discovery_candidate() {
+        let face = fallback('\u{2713}', &arial()).expect("Arial check mark fallback");
+        assert!(!face.family.to_ascii_lowercase().contains("emoji"));
+        assert!(!face.post_script_name.to_ascii_lowercase().contains("emoji"));
+
+        let name = CFString::from_str(&face.post_script_name);
+        // SAFETY: `name` is live, and a null matrix requests the identity transform.
+        let font = unsafe { CTFont::with_name(&name, 0.0, ptr::null()) };
+        // SAFETY: The retained font is live and the returned name is owned.
+        assert_eq!(
+            unsafe { font.post_script_name() }.to_string(),
+            face.post_script_name
+        );
+        // SAFETY: The retained font is live and the returned character set is owned.
+        let character_set = unsafe { font.character_set() };
+        assert!(character_set_contains_scalar(&character_set, '\u{2713}'));
+    }
+
+    #[test]
+    #[ignore = "requires macOS Arial and its system fallback fonts"]
+    fn unassigned_scalar_does_not_accept_last_resort() {
+        assert!(fallback('\u{0378}', &arial()).is_none());
+    }
+
+    #[test]
+    #[ignore = "requires macOS Arial and its system fallback fonts"]
+    fn unknown_base_name_does_not_use_a_substituted_cascade() {
+        let mut base = arial();
+        base.post_script_name = "MermanMissingFont-46da48fb3f884be4".into();
+        assert!(fallback('\u{2713}', &base).is_none());
+    }
+}

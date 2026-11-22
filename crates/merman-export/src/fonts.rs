@@ -32,6 +32,8 @@ mod platform;
 mod registry;
 #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
 mod resolver;
+#[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+mod sfnt;
 #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
 mod system;
 
@@ -48,7 +50,8 @@ pub enum FontSource {
 pub struct NativeFontLimits {
     /// Maximum input sources, including duplicate files or memory buffers.
     pub max_files: usize,
-    /// Cumulative input bytes, charged before content deduplication.
+    /// Explicit input bytes are charged before content deduplication. Selected system
+    /// data is also bounded; macOS can retain a standalone face instead of its whole TTC.
     pub max_bytes: usize,
     pub max_faces: usize,
     pub max_directory_entries: usize,
@@ -61,6 +64,10 @@ pub struct NativeFontLimits {
     pub max_measurements: usize,
     pub max_cache_entries: usize,
     pub max_cache_bytes: usize,
+    /// Successful native font selections pinned for one operation, including exports.
+    /// Unlike the optional measurement cache, exhausting these limits is terminal.
+    pub max_selection_entries: usize,
+    pub max_selection_bytes: usize,
     /// Metadata discovery is separate from resident font bytes.
     pub max_system_files: usize,
     /// Cumulative temporary discovery reads; selected snapshots use `max_bytes` instead.
@@ -82,6 +89,8 @@ impl Default for NativeFontLimits {
             max_measurements: 16_384,
             max_cache_entries: 1024,
             max_cache_bytes: 4 * 1024 * 1024,
+            max_selection_entries: 16_384,
+            max_selection_bytes: 4 * 1024 * 1024,
             max_system_files: 4096,
             max_system_scan_bytes: 2 * 1024 * 1024 * 1024,
             max_system_faces: 16_384,
@@ -135,6 +144,11 @@ impl NativeFontOptions {
         self,
         control: &OperationControl,
     ) -> Result<NativeFontContext, NativeFontError> {
+        if self.system_fonts {
+            // Detect a missing service before acquiring any explicit sources. A caller
+            // choosing an automatic provider may then retry bounded discovery cleanly.
+            platform::ensure_available(control)?;
+        }
         self.load_inner(control, true)
     }
 
@@ -180,6 +194,10 @@ pub enum NativeFontError {
         "bounded system font discovery is unavailable; provide font bytes or supported explicit files"
     )]
     SystemDiscoveryUnavailable,
+    #[error(
+        "platform system font service {service} is unavailable; select bounded discovery or provide explicit fonts"
+    )]
+    PlatformDiscoveryUnavailable { service: &'static str },
     #[error("explicit font sources contain no usable font faces")]
     EmptyFontSet,
     #[error("font source {path}: {message}")]
@@ -407,7 +425,8 @@ impl NativeFontContext {
             .unwrap_or(true)
     }
 
-    /// Names and collection indices selected by successful native shaping probes.
+    /// Names and indices within admitted font data selected by successful shaping probes.
+    /// A standalone representation of a system collection face has data index zero.
     /// This does not describe deterministic fallback or other painting operations.
     pub fn selected_faces(&self) -> Vec<String> {
         self.0
@@ -703,7 +722,7 @@ impl FontLoader {
             not(target_family = "wasm")
         ))]
         if platform.is_some() {
-            loader.hash.update(b"\0platform-query/fontique-0.12.0/v3");
+            loader.hash.update(b"\0platform-query/native/v5");
         }
         #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         if let Some(catalog) = &system {

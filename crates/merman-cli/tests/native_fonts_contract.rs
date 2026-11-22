@@ -1053,6 +1053,39 @@ fn explicit_platform_query_uses_shared_context_and_respects_explicit_fonts() {
     assert!(!String::from_utf8_lossy(&closed.stderr).contains(context.identity()));
 }
 
+#[cfg(all(target_os = "linux", feature = "platform-system-font-query"))]
+#[test]
+fn empty_fontconfig_policy_does_not_trigger_bounded_fallback() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::create_dir(temp.path().join("empty")).unwrap();
+    let config = temp.path().join("fonts.conf");
+    std::fs::write(&config, "<?xml version=\"1.0\"?><fontconfig><dir prefix=\"relative\">empty</dir><cachedir prefix=\"relative\">cache</cachedir></fontconfig>").unwrap();
+    let input = temp.path().join("input.mmd");
+    std::fs::write(&input, "flowchart LR\nA[Empty font policy]\n").unwrap();
+    let mut modes = vec!["platform"];
+    if cfg!(feature = "experimental-system-font-query") {
+        modes.push("on");
+    }
+    for mode in modes {
+        let output = std::process::Command::new(assert_cmd::cargo_bin!("merman-cli"))
+            .arg("render")
+            .arg(&input)
+            .args([
+                "--output=-",
+                "--font-measurement=native",
+                "--font-system",
+                mode,
+            ])
+            .env("FONTCONFIG_FILE", &config)
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(!output.status.success(), "{mode}: {stderr}");
+        assert!(output.stdout.is_empty(), "{mode}");
+        assert!(stderr.contains("no usable font faces"), "{mode}: {stderr}");
+    }
+}
+
 #[test]
 fn capabilities_disclose_shared_coverage_and_cli_discovery_policy() {
     let output = run_with_stdin(&["capabilities", "--json"], "");

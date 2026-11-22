@@ -784,11 +784,17 @@ fn prepare_font_context(
         };
     }
     #[cfg(feature = "platform-system-font-query")]
-    let result = if use_system && FontSystemKind::platform_selected(args.system) {
-        options.load_platform(control)
-    } else {
-        options.load(control)
-    };
+    let result =
+        if use_system && FontSystemKind::platform_selected(args.system) {
+            match options.clone().load_platform(control) {
+                Err(merman::svg::export::NativeFontError::PlatformDiscoveryUnavailable {
+                    ..
+                }) if args.system != Some(FontSystemKind::Platform) => options.load(control),
+                result => result,
+            }
+        } else {
+            options.load(control)
+        };
     #[cfg(not(feature = "platform-system-font-query"))]
     let result = options.load(control);
     crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
