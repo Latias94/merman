@@ -17,11 +17,11 @@ The versions below were verified on 2026-11-22. Select an exact version for repr
 | CLI / standalone LSP | `0.11.0` | [Installers and archives](https://github.com/Latias94/merman/releases/tag/v0.11.0) |
 | Browser / Worker | `0.11.0` | `npm install --save-exact @mermanjs/web@0.11.0` |
 | Native Node / Node-WASM | `0.11.0` | `npm install --save-exact @mermanjs/node@0.11.0` or `npm install --save-exact @mermanjs/node-wasm@0.11.0` |
-| Python | `0.10.0` | `python -m pip install --only-binary=:all: merman==0.10.0` |
-| Flutter / native Dart | `0.10.0` | `flutter pub add 'merman:0.10.0'` |
-| Android | `0.10.0` | [Local Maven ZIP or AAR](#android-installation) |
-| Apple | `0.10.0` | [Complete local SwiftPM / XCFramework](#swift-installation) |
-| Native C / WASI SDK | `0.10.0` | [SDK downloads](https://github.com/Latias94/merman/releases/tag/v0.10.0) and [flavor choices](#native-c-and-wasi-installation) |
+| Python | `0.11.0` | `python -m pip install --only-binary=:all: merman==0.11.0` |
+| Flutter / native Dart | `0.11.0` | `flutter pub add 'merman:0.11.0'` |
+| Android | `0.11.0` | [Local Maven ZIP or AAR](#android-installation) |
+| Apple | `0.11.0` | [Complete local SwiftPM / XCFramework](#swift-installation) |
+| Native C / WASI SDK | `0.11.0` | [SDK downloads](https://github.com/Latias94/merman/releases/tag/v0.11.0) and [flavor choices](#native-c-and-wasi-installation) |
 
 The [0.11.0 upgrade notes](README.md#merman-0110) cover layout, fonts, and binding changes.
 Use the [0.10.0 upgrade guide](V093_TO_V0100_UPGRADE_GUIDE.md) for earlier migrations from
@@ -33,16 +33,16 @@ Use the [0.10.0 upgrade guide](V093_TO_V0100_UPGRADE_GUIDE.md) for earlier migra
 | --- | --- | --- |
 | Browser or browser Worker | [Browser SDK](https://github.com/Latias94/merman/blob/v0.11.0/platforms/web/README.md) | Complete browser SDK or focused SVG, analysis, editor, and ASCII packages |
 | Node, static-site generation or server rendering | [`@mermanjs/node`](https://github.com/Latias94/merman/blob/v0.11.0/platforms/node/README.md) | Automatic native package selection with explicit Node-WASM available separately |
-| Python | [`merman` wheel](https://github.com/Latias94/merman/blob/v0.10.0/platforms/python/merman/README.md) | pip and uv select a matching native wheel |
-| Flutter or native Dart | [`merman` on pub.dev](https://pub.dev/packages/merman/versions/0.10.0) | Downloads and verifies the build target's library, with local assets for offline builds |
+| Python | [`merman` wheel](https://github.com/Latias94/merman/blob/v0.11.0/platforms/python/merman/README.md) | pip and uv select a matching native wheel |
+| Flutter or native Dart | [`merman` on pub.dev](https://pub.dev/packages/merman/versions/0.11.0) | Downloads and verifies the build target's library, with local assets for offline builds |
 | Kotlin on Android | [Local Maven repository](#android-installation) | Maven ZIP retains AAR metadata and transitive dependencies |
 | Swift on iOS or macOS | [Complete local SwiftPM package](#swift-installation) | ZIP includes the facade, resources, manifest, and XCFramework |
 | Native application with C/C++ interoperability | `sdk-native-full` for your target | SVG, PNG, JPEG, PDF and ASCII; math and ELK; caller-owned font bytes |
 | Go, Python or another non-JavaScript sandbox host | `sdk-wasi-full` | SVG and PNG; math and ELK; one WASI reactor with a separate ABI |
 | Rust, CLI/LSP, Rustdoc, Typst or editor integration | [Package surfaces](PACKAGE_SURFACES.md) | Source crates and independent task products keep their existing installation routes |
 
-The `0.11.0` Web full/render packages and both Node transports include SVG math, as do the
-`0.10.0` Swift, Android, Python, and Flutter products. These native bindings do not include PNG/JPEG/PDF
+The `0.11.0` Web full/render packages, both Node transports, and the Swift, Android, Python, and
+Flutter products include SVG math. These native bindings do not include PNG/JPEG/PDF
 encoders or native C/WASI's memory-font service. Native C/WASI SDK flavors have their own output
 and font services. Dedicated analysis/editor/ASCII packages retain their task
 scope. Check the loaded runtime catalog and the matching version's guide for available operations.
@@ -61,14 +61,14 @@ operation IDs, text-measurement providers and constructor services.
 ## Swift Installation
 
 Download the complete
-[`Merman-swiftpm-v0.10.0.zip`](https://github.com/Latias94/merman/releases/download/v0.10.0/Merman-swiftpm-v0.10.0.zip)
+[`Merman-swiftpm-v0.11.0.zip`](https://github.com/Latias94/merman/releases/download/v0.11.0/Merman-swiftpm-v0.11.0.zip)
 and its
-[SHA-256 checksum](https://github.com/Latias94/merman/releases/download/v0.10.0/Merman-swiftpm-v0.10.0.zip.checksum).
+[SHA-256 checksum](https://github.com/Latias94/merman/releases/download/v0.11.0/Merman-swiftpm-v0.11.0.zip.checksum).
 Verify the checksum, extract the archive and add the resulting directory as a local package in
 Xcode. Link the `Merman` product. A Swift package can use:
 
 ```swift
-.package(path: "../Merman-swiftpm-v0.10.0")
+.package(path: "../Merman-swiftpm-v0.11.0")
 ```
 
 The archive includes matching Swift sources, resources, manifest, XCFramework and legal material.
@@ -94,22 +94,22 @@ math. Keep all inputs at `v0.9.3`.
 ## Android Installation
 
 Download the complete
-[`merman-android-0.10.0-maven.zip`](https://github.com/Latias94/merman/releases/download/v0.10.0/merman-android-0.10.0-maven.zip)
+[`merman-android-0.11.0-maven.zip`](https://github.com/Latias94/merman/releases/download/v0.11.0/merman-android-0.11.0-maven.zip)
 and its
-[SHA-256 sidecar](https://github.com/Latias94/merman/releases/download/v0.10.0/merman-android-0.10.0-maven.zip.sha256).
+[SHA-256 sidecar](https://github.com/Latias94/merman/releases/download/v0.11.0/merman-android-0.11.0-maven.zip.sha256).
 Verify the checksum and extract it to a local directory. The [Gradle example](../../platforms/android/README.md#resolve-a-candidate-maven-publication)
-resolves `io.merman:merman-android:0.10.0` with these properties:
+resolves `io.merman:merman-android:0.11.0` with these properties:
 
 ```text
 -PmermanRepository=/absolute/path/to/extracted/repository
 -PmermanGroup=io.merman
--PmermanVersion=0.10.0
+-PmermanVersion=0.11.0
 ```
 
-The repository path is the extraction root containing `io/merman/merman-android/`. Gradle then
-reads the POM/module metadata and resolves the Kotlin dependency along with the AAR. A standalone
-AAR is also available from the same Release. This is local Maven installation; Maven Central
-publication remains separate.
+The repository path is the extraction root containing `io/merman/merman-android/`. Gradle reads
+the POM and module metadata to resolve the Kotlin dependency along with the AAR. For direct imports,
+download the [standalone AAR](https://github.com/Latias94/merman/releases/download/v0.11.0/merman-android-v0.11.0.aar)
+and its [SHA-256 sidecar](https://github.com/Latias94/merman/releases/download/v0.11.0/merman-android-v0.11.0.aar.sha256).
 
 ## Native C and WASI Installation
 
@@ -120,11 +120,11 @@ Python/wasmtime examples with pinned host dependencies.
 
 Native C applications requesting math should construct their engine with
 `{"resources":{"profile":"interactive"}}`. WASI selects interactive for omitted constructor
-options. Both `0.10.0` SDKs use Options JSON schema `3`. A WASI request with an explicitly
+options. Both `0.11.0` SDKs use Options JSON schema `3`. A WASI request with an explicitly
 constrained profile can reject math. Use matching C headers, wrappers, and modules for Native C
 ABI `3` and WASI ABI `1`.
 
-See the [0.10.0 SDK guide](https://github.com/Latias94/merman/blob/v0.10.0/distribution/sdk/README.md)
+See the [0.11.0 SDK guide](https://github.com/Latias94/merman/blob/v0.11.0/distribution/sdk/README.md)
 for commands, platform requirements, installed examples, and qualification.
 
 ## Fonts and Output Formats
@@ -146,7 +146,7 @@ in every viewer. See [host text measurement](../bindings/HOST_TEXT_MEASUREMENT.m
 
 ## Platform and Download Choices
 
-Python `0.10.0` wheels cover GNU Linux ARM64/x86-64, macOS ARM64/x86-64, and Windows x86-64.
+Python `0.11.0` wheels cover GNU Linux ARM64/x86-64, macOS ARM64/x86-64, and Windows x86-64.
 GNU Linux wheels use manylinux 2.28 and require glibc `2.28+`. The Python guide documents
 the separate source-helper route for checkout builds.
 
@@ -156,7 +156,7 @@ and install on the deployment target. For the portable transport, install `@merm
 and follow the [Node-WASM guide](https://github.com/Latias94/merman/blob/v0.11.0/platforms/node/packages/node-wasm/README.md). The native
 loader does not switch transports on failure; Node-WASM is separate from the browser package.
 
-Flutter `0.10.0` requires Flutter `3.47.7+` or native Dart `3.10+`. Its thin facade verifies
+Flutter `0.11.0` requires Flutter `3.47.7+` or native Dart `3.10+`. Its thin facade verifies
 and downloads only the target library at build time, and the application bundles it for runtime.
 For offline builds, prepare the exact target assets or supply a local native directory; a cold
 cache cannot download offline. Mirrors retain manifest checksum verification. See the

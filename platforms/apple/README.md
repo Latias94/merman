@@ -2,7 +2,7 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams from Swift on iOS and macOS without a WebView or JavaScript runtime. The `Merman` SwiftPM product is a direct UniFFI binding packaged as a binary XCFramework plus generated Swift source.
 
-Current examples target `0.11.0`, using Options JSON schema `3`, facts schema `3`, and theme execution evidence schema `2`. The download links below retain published `0.10.0-alpha.1` artifacts; see the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for verified choices and the [stable upgrade guide](../../docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) for migration. Use a matching `0.11.0` package for the current examples.
+The `0.11.0` examples use Options JSON schema `3`, facts schema `3`, and theme execution evidence schema `2`. See the [upgrade index](../../docs/release/README.md#merman-0110) for migration from `0.10.0`.
 
 > **Binding contract:** Current source uses direct UniFFI binding API `8` and ASCII output schema `4`; published Merman `0.10.0` wrappers retain API `7`. Options JSON remains schema `3`. Use the Swift source and XCFramework produced by the same Merman build. UniFFI rejects incompatible contract or API checksum pairs, but it does not compare Merman release versions when the generated interface is unchanged.
 
@@ -17,28 +17,24 @@ For Swift 5.9 iOS integration, use Xcode 15.2 or newer. The SwiftPM 5.9 command-
 
 ## Add the Complete Swift Package
 
-Download [the complete SwiftPM ZIP](https://github.com/Latias94/merman/releases/download/v0.10.0-alpha.1/Merman-swiftpm-v0.10.0-alpha.1.zip)
-and [its SHA-256 checksum](https://github.com/Latias94/merman/releases/download/v0.10.0-alpha.1/Merman-swiftpm-v0.10.0-alpha.1.zip.checksum),
+Download [the complete SwiftPM ZIP](https://github.com/Latias94/merman/releases/download/v0.11.0/Merman-swiftpm-v0.11.0.zip)
+and [its SHA-256 checksum](https://github.com/Latias94/merman/releases/download/v0.11.0/Merman-swiftpm-v0.11.0.zip.checksum),
 and verify the checksum before extraction. For custom builds, use the matching source revision
 with [Build The Local Package](#build-the-local-package).
-Extract the archive and add the resulting `Merman-swiftpm-v0.10.0-alpha.1` directory as a
+Extract the archive and add the resulting `Merman-swiftpm-v0.11.0` directory as a
 local package in Xcode. A Swift package can declare:
 
 ```swift
-.package(path: "../Merman-swiftpm-v0.10.0-alpha.1")
+.package(path: "../Merman-swiftpm-v0.11.0")
 ```
 
 Link the `Merman` product. The package includes matching generated Swift, resource declarations, XCFramework,
 manifest and legal material. No Rust checkout or compiler is needed to consume it.
 
-The separately named `Merman.xcframework-v0.10.0-alpha.1.zip` is the binary-target input. Its checksum
-differs from the complete Swift package's checksum. An emitted remote manifest is a
-publisher handoff using that exact binary URL/digest. The corresponding
-`Merman-swiftpm-remote-v0.10.0-alpha.1.zip` contains the complete thin delivery repository
-tree, including that manifest, the same generated facade and legal material. It
-does not contain the XCFramework. These archives do not establish an already hosted
-public SwiftPM repository; URL-based installation requires a separately published and
-qualified delivery repository.
+Publishers can use `Merman-swiftpm-remote-v0.11.0.zip` as the basis for a hosted delivery
+repository. The ZIP contains the manifest, generated facade and legal material. Its manifest
+pins `Merman.xcframework-v0.11.0.zip` by URL and checksum. Public Git-URL installation requires
+hosting and qualifying that repository separately.
 
 <a id="install-published-v093"></a>
 
@@ -59,7 +55,7 @@ examples; the current theme examples in this README require a matching `0.11.0` 
 
 ## Build The Local Package
 
-The current source prepares `0.11.0`. Build, package and qualify the same candidate version; use the host guide to select verified public downloads.
+Build the source, Swift facade and XCFramework together for the selected version.
 
 ```sh
 bash scripts/build-apple-xcframework.sh

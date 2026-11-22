@@ -28,20 +28,16 @@ release need not already contain its commit hash. Ask only when scope expands, a
 provenance decision needs the maintainer, or an upstream rule explicitly requires personal review.
 Complete independent preparation before presenting that decision.
 
-Use [Package Surfaces](../../../docs/release/PACKAGE_SURFACES.md) when delivery scope is unclear.
-Workspace tags trigger Cargo and CLI/LSP owners; other registries, deployment, independently
-versioned packages, and external repositories have their own owners. Include only requested
-surfaces. Before the first external write, verify its target, immutable source, and authorization.
+Use [Release Workflows](../../../docs/release/RELEASING.md#release-workflows) to inventory the
+previous stable release and resolve publishing triggers. An authorized stable workspace release
+carries forward its previously published workspace-coupled channels and targets unless the
+maintainer selects a subset. Record expected public deliverables in the dated Publish Order entry,
+with evidence for deliberate deferrals and next conditions for pending selected owners. Independently
+versioned and external channels follow their own authorization. Before the first external write,
+verify its target, immutable source, and authorization.
 
-Review the complete [Release Workflows](../../../docs/release/RELEASING.md#release-workflows)
-table before publication, including channels outside the static FFI/native contract. In the existing
-dated Publish Order entry, record each relevant workspace-coupled channel as `selected` or
-`deferred`. For every deferred channel, record its current independently verified published version
-and evidence, or explicitly state that availability could not be verified. Honor a requested subset;
-preflight coverage and shared workspace versions do not expand its publication scope.
-
-Done: the requested result and each owner's authorized operations are explicit; unrelated work
-remains intact.
+Done: the scope accounts for the previous stable inventory, when applicable, and each selected
+owner has an expected public result.
 
 ## 2. Prepare versions and user documentation
 
@@ -182,6 +178,10 @@ owner's evidence; use the existing verifiers and receipt schemas. Cargo requires
 sparse-index checksums. npm groups require every member's integrity and requested dist-tag. Verify registry provenance for OIDC
 uploads; explicitly record the missing attestation of a manual first-publication bootstrap and
 preserve its accepted version.
+
+For a stable workspace release, reconcile the public attachment names and registry package sets
+against the inventory from step 1. Investigate missing or renamed targets with their owning
+workflows. Continue through pending selected owners and record any external blocker with its evidence.
 
 Record observed results and outstanding upstream review in Publish Order. Mark checklist items
 complete only for the state actually proven: prepared, submitted, merged, or available. Inspect
