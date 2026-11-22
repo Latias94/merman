@@ -1,20 +1,26 @@
 # Platform font query checkpoint — 2026-11-22
 
-The ordered-family refactor and macOS character fallback repair reduce unnecessary
-discovery and snapshot work. This checkpoint does **not** establish an additional
-end-to-end speedup or qualify a new CLI default. The baseline is PR #336 at
-`2ce0fa4589f13c6c80c4e0be9d3292eedfbc4471`; the candidate contains the accompanying
-platform-font changes. Both sides use Rust 1.100.0, locked dependencies, the
-`cli-release` artifact recipe, and `dist`.
+This checkpoint records family lookups, font-file access and output for the
+ordered-family refactor in PR #337. Its baseline was PR #336 at
+`2ce0fa4589f13c6c80c4e0be9d3292eedfbc4471`. The macOS candidate was built from
+that revision with local changes. Its recorded production inputs and lockfile
+match #337's final `62a876a14868187338cde0d0622c2bfa3138afbc`. Both sides used
+Rust 1.100.0, locked dependencies, the `cli-release` artifact recipe and `dist`.
 
 ## Work and correctness
 
-For `F` ordered generic/fallback family IDs, the old provider expanded all `F`
-families before acceptance. The candidate expands only the prefix `K` through the
-first accepted face. Worst-case expansion remains O(F); collecting IDs remains
-O(F). There is no new persistent cache. Controlled catalog tests count family
-calls and verify first acceptance, rejection order, cancellation, and admission
-errors. Fontique still owns its initial platform catalog construction.
+For an ordered list of `F` candidate families, the old provider called Fontique
+to expand all `F` before accepting a face. The candidate expands only the first
+`K` families through the accepted face, or all `F` when none qualifies. Controlled
+catalog tests count these family calls and check rejection order, cancellation
+and admission errors. Fontique still builds the initial platform catalog.
+
+Collecting one generic-family list takes time linear in its length. Character
+fallback first merges script and generic lists. Both measured revisions use
+`Vec::contains` to preserve the first occurrence of each ID. Visiting `M` IDs
+with `F` distinct families takes O(M × F) comparisons in the worst case and
+retains O(F) IDs. With `M = F`, the scan makes `F(F−1)/2` comparisons before
+the first family is expanded.
 
 On macOS, Core Text receives the actual missing Unicode scalar and the registered
 base face. The returned PostScript identity is matched to a physical collection
@@ -64,8 +70,8 @@ Run each frozen executable with:
 
 ```console
 strace -qq -f -yy -o font.trace -e trace=openat,read,pread64,mmap \
-  ./merman-cli render generic.mmd --format=png --output=generic.png \
-  --scale=2 --svg-id=font-provider-probe --font-system=platform
+  ./merman-cli render - --format=png --output=- --scale=2 \
+  --svg-id=font-provider-probe --font-system=platform <generic.mmd >generic.png
 ```
 
 For the other rows use family `DejaVu Sans` and label `Native font: AV iii WWW mmm`,
@@ -74,16 +80,18 @@ build recipe, input, and output options when comparing revisions.
 
 ## Timing and verification boundary
 
-The fresh-process schedule used two warmups, a median of three sequential spawns
-per paired side, independent eight-pair A/A calibration for both executables, and
-eight fresh alternating A/B pairs. The registered improvement margin was jointly
-10% and 1 ms, with 10,000 bootstrap resamples and seed 336.
+On each host, the CLI probe calibrated three inputs individually. Each side ran
+two warmups and eight A/A pairs per input. Each side of a pair is the median of
+three fresh processes. The probe then ran eight alternating A/B pairs per input
+on each host. The registered improvement margins were 10% and 1 ms, with 10,000
+bootstrap resamples and seed 336.
 
-Linux calibrated successfully. Generic PNG changed from 10.859 to 10.553 ms;
-named small Flowchart PNG from 20.763 to 20.776 ms; native SVG from 6.124 to
-6.107 ms. None clears the improvement margin. The macOS 27.0 / M4 rows failed
-A/A qualification and remain inconclusive. These observations support the
-structural-work claim, not a further public-latency claim.
+On Linux, both executables passed A/A for each input and each input required
+eight pairs. Generic PNG changed from 10.859 to 10.553 ms, the named small
+Flowchart PNG from 20.763 to 20.776 ms, and native SVG from 6.124 to 6.107 ms.
+All three fell short of the joint improvement margin. On macOS 27.0 / M4, all
+three inputs failed A/A. Their eight A/B pairs per input are diagnostic. The
+family-call counts and Linux file traces establish where discovery work fell.
 
 The 19-case corpus on each host covered Latin, generic families, Sequence,
 Arabic, Devanagari, CJK, rare Han, combining symbols, emoji, unassigned scalars,
@@ -99,6 +107,6 @@ owners. An earlier copy of an old cached baseline was rejected and excluded from
 this checkpoint. Local raw samples and recipes are under
 `target/bench/experiments/platform-font-query-2026-11-22/`.
 
-Keep the current defaults. The remaining policy gates are selected-face snapshot
-design for oversized macOS sources, and distinguishing absent Fontconfig from an
-intentionally empty Linux configuration. See [CLI font policy](../FEATURES.md#optional-cli-fonts).
+This checkpoint retained the provider defaults. Oversized macOS collections and the distinction between an
+unavailable Fontconfig runtime and an intentionally empty configuration were
+still open. The subsequent checkpoint records both repairs. [Native font runtime checkpoint](native_font_runtime_2026-11-22.md) · [CLI font policy](../FEATURES.md#optional-cli-fonts)
