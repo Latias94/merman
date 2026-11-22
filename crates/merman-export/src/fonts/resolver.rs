@@ -153,6 +153,13 @@ pub(super) fn resolver(
                     .as_ref()
                     .ok_or(NativeFontError::SystemDiscoveryUnavailable)?;
                 #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+                let _selection = match provider {
+                    DiscoveryProvider::Platform { .. } => {
+                        Some(select_context.0.sources.lock_selection()?)
+                    }
+                    _ => None,
+                };
+                #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
                 let request = matches!(provider, DiscoveryProvider::Platform { .. })
                     .then(|| SelectionRequest::Font(font.clone()));
                 #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
@@ -239,6 +246,11 @@ pub(super) fn resolver(
                     .discovery
                     .as_ref()
                     .ok_or(NativeFontError::SystemDiscoveryUnavailable)?;
+                #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+                let _selection = match provider {
+                    DiscoveryProvider::Platform { .. } => Some(context.0.sources.lock_selection()?),
+                    _ => None,
+                };
                 #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
                 let request = matches!(provider, DiscoveryProvider::Platform { .. })
                     .then(|| SelectionRequest::fallback(character, &excluded_faces))

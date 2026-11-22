@@ -401,6 +401,46 @@ fn macos_selection_pinning_has_independent_terminal_metadata_limits() {
     }
 }
 
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "requires macOS Arial; run explicitly in CI"]
+fn macos_concurrent_cold_paint_queries_share_one_admitted_selection() {
+    let context = NativeFontOptions::default()
+        .with_system_fonts(true)
+        .with_limits(NativeFontLimits {
+            max_files: 1,
+            max_faces: 1,
+            max_selection_entries: 1,
+            ..Default::default()
+        })
+        .load_platform(&OperationControl::new())
+        .unwrap();
+    let start = std::sync::Barrier::new(4);
+    std::thread::scope(|scope| {
+        let threads: Vec<_> = (0..4)
+            .map(|_| {
+                scope.spawn(|| {
+                    start.wait();
+                    let tree = paint(&context, "Arial");
+                    let text = painted_text(&tree, "left");
+                    assert!(!text.layouted().is_empty());
+                    context.check().unwrap();
+                })
+            })
+            .collect();
+        for thread in threads {
+            thread.join().unwrap();
+        }
+    });
+    assert_eq!(context.face_count(), 1);
+    let bytes = context.resident_font_bytes();
+    let export = context.for_export(&OperationControl::new()).unwrap();
+    let _ = paint(&export, "Arial");
+    export.check().unwrap();
+    assert_eq!(export.resident_font_bytes(), bytes);
+    assert_eq!(export.face_count(), 1);
+}
+
 #[test]
 #[ignore = "requires a host-managed font catalog; run explicitly in CI"]
 fn platform_system_font_repeated_measurement_and_paint_keep_residency_stable() {

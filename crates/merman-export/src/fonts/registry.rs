@@ -205,6 +205,8 @@ impl SnapshotState {
 pub(super) struct FontSourceRegistry {
     initial: Arc<InitialSources>,
     pub(super) snapshots: Mutex<SnapshotState>,
+    #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+    selection_gate: Mutex<()>,
 }
 
 impl FontSourceRegistry {
@@ -229,6 +231,8 @@ impl FontSourceRegistry {
                 bytes,
             }),
             snapshots: Mutex::new(SnapshotState::default()),
+            #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+            selection_gate: Mutex::new(()),
         }
     }
 
@@ -236,16 +240,31 @@ impl FontSourceRegistry {
         Self {
             initial: Arc::clone(&self.initial),
             snapshots: Mutex::new(SnapshotState::default()),
+            #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+            selection_gate: Mutex::new(()),
         }
     }
 
     pub(super) fn for_export(&self) -> Result<Self, NativeFontError> {
+        #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+        let _selection = self.lock_selection()?;
         let snapshots = self.snapshots.lock().map_err(|_| {
             NativeFontError::Measurement("font snapshot state is poisoned".to_owned())
         })?;
         Ok(Self {
             initial: Arc::clone(&self.initial),
             snapshots: Mutex::new(snapshots.clone()),
+            #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+            selection_gate: Mutex::new(()),
+        })
+    }
+
+    /// Serialize cold selection through admission and pinning. Otherwise a second
+    /// query can fail after another thread has selected the same request successfully.
+    #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+    pub(super) fn lock_selection(&self) -> Result<std::sync::MutexGuard<'_, ()>, NativeFontError> {
+        self.selection_gate.lock().map_err(|_| {
+            NativeFontError::Measurement("font selection state is poisoned".to_owned())
         })
     }
 
