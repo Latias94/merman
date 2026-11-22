@@ -179,6 +179,13 @@ recipe selects `windows-platform-font-default`, which provides both policy optio
 and makes platform discovery the default on Windows. Cargo source defaults continue
 to use bounded discovery.
 
+On Linux/FreeBSD, platform discovery distinguishes an unavailable Fontconfig runtime
+from an available runtime with an empty configured font set. In a build whose default
+provider is platform, automatic selection and `--font-system on` fall back to bounded
+discovery only when the runtime cannot load. Explicit `--font-system platform` reports
+that error instead. An intentionally empty Fontconfig configuration does not trigger
+fallback, and neither do font-data, resource-limit, or cancellation errors.
+
 Platform queries and metadata mappings run outside Merman's scan budgets.
 Selected font bytes use bounded immutable snapshots shared by measurement and
 painting. Platform mode acquires those bytes on demand, including the default

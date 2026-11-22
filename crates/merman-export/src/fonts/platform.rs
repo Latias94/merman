@@ -22,6 +22,21 @@ mod dwrite;
 #[allow(unsafe_code)]
 pub(super) mod coretext;
 
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+mod fontconfig;
+
+pub(super) fn ensure_available(control: &OperationControl) -> Result<(), NativeFontError> {
+    control.terminal_checkpoint_at(OperationPhase::Admission)?;
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    if !fontconfig::library_available() {
+        return Err(NativeFontError::PlatformDiscoveryUnavailable {
+            service: "Fontconfig",
+        });
+    }
+    control.terminal_checkpoint_at(OperationPhase::Admission)?;
+    Ok(())
+}
+
 struct PlatformCandidate {
     font: FontInfo,
     family: String,
@@ -54,7 +69,7 @@ pub(super) struct PlatformCatalog {
 
 impl PlatformCatalog {
     pub fn new(control: &OperationControl) -> Result<Self, NativeFontError> {
-        control.terminal_checkpoint_at(OperationPhase::Admission)?;
+        ensure_available(control)?;
         // Native discovery may map candidate files internally. This is an explicitly
         // authorized platform policy, not the bounded metadata discovery policy.
         #[cfg(not(target_os = "macos"))]

@@ -144,6 +144,11 @@ impl NativeFontOptions {
         self,
         control: &OperationControl,
     ) -> Result<NativeFontContext, NativeFontError> {
+        if self.system_fonts {
+            // Detect a missing service before acquiring any explicit sources. A caller
+            // choosing an automatic provider may then retry bounded discovery cleanly.
+            platform::ensure_available(control)?;
+        }
         self.load_inner(control, true)
     }
 
@@ -189,6 +194,10 @@ pub enum NativeFontError {
         "bounded system font discovery is unavailable; provide font bytes or supported explicit files"
     )]
     SystemDiscoveryUnavailable,
+    #[error(
+        "platform system font service {service} is unavailable; select bounded discovery or provide explicit fonts"
+    )]
+    PlatformDiscoveryUnavailable { service: &'static str },
     #[error("explicit font sources contain no usable font faces")]
     EmptyFontSet,
     #[error("font source {path}: {message}")]

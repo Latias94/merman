@@ -90,6 +90,11 @@ or eliminate the cost of a large emoji table.
 Ordinary `load` still uses bounded system discovery. The platform context identity
 covers its policy, initially admitted bytes, and the default family name when
 derived from the system catalog. Later system snapshots are operation-local.
+On Linux/FreeBSD, `load_platform` reports `PlatformDiscoveryUnavailable` when the
+Fontconfig runtime cannot load, before acquiring explicit sources. A valid empty
+Fontconfig configuration remains empty; library callers decide whether an unavailable
+service permits another provider. The CLI retries bounded discovery only for automatic
+provider selection, never for an explicit `--font-system platform` request.
 
 `png` and `jpeg` share private bitmap preparation. `pdf` is a separate vector export capability. Features are additive, but one output does not implicitly expose another output's API. The published `merman-export`, `merman`, and `merman-render` versions must match because the sealed SVG type crosses their crate boundaries.
 

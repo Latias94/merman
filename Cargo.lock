@@ -2492,6 +2492,7 @@ dependencies = [
  "windows",
  "windows-core",
  "write-fonts",
+ "yeslogic-fontconfig-sys",
 ]
 
 [[package]]
