@@ -21,7 +21,7 @@
 #![no_std]
 #![deny(missing_docs, missing_debug_implementations)]
 
-/// The [Unicode version](https://www.unicode.org/versions/) conformed to.
+/// The [Unicode version](https://www.unicode.org/versions/) used by the line breaking data.
 pub const UNICODE_VERSION: (u8, u8, u8) = (15, 0, 0);
 
 include!("shared.rs");
@@ -118,17 +118,20 @@ impl<I: Iterator<Item = (usize, char)>> Iterator for LineBreaks<I> {
         use BreakOpportunity::{Allowed, Mandatory};
 
         while !self.finished {
-            let (i, cls) = match self.chars.next() {
-                Some((i, c)) => (i, break_property(c as u32) as u8),
+            let (i, cls, codepoint) = match self.chars.next() {
+                Some((i, c)) => (i, break_property(c as u32) as u8, c as u32),
                 None => {
                     self.finished = true;
-                    (self.len, eot)
+                    (self.len, eot, 0)
                 }
             };
             // ZWJ is handled outside the table to reduce its size
-            let val = PAIR_TABLE[self.state.0 as usize][cls as usize];
+            let (prev, after_zwj) = self.state;
+            let val = PAIR_TABLE[prev as usize][cls as usize];
             let is_mandatory = val & MANDATORY_BREAK_BIT != 0;
-            let is_break = val & ALLOWED_BREAK_BIT != 0 && (!self.state.1 || is_mandatory);
+            let is_break = (!after_zwj || is_mandatory)
+                && (val & ALLOWED_BREAK_BIT != 0
+                    || (cls == OP as u8 && allows_lb30_break_before_op(prev, codepoint)));
             self.state = (
                 val & !(ALLOWED_BREAK_BIT | MANDATORY_BREAK_BIT),
                 cls == BreakClass::ZeroWidthJoiner as u8,
@@ -140,6 +143,19 @@ impl<I: Iterator<Item = (usize, char)>> Iterator for LineBreaks<I> {
         }
         None
     }
+}
+
+fn allows_lb30_break_before_op(prev: u8, codepoint: u32) -> bool {
+    // The generated table applies LB30 without considering East_Asian_Width. For AL, HL and NU,
+    // LB30 is the sole rule preventing a break before OP. Its exception only changes the break
+    // flag, so the opener still supplies the context for combining marks and later breaks.
+    // When intersected with OP, these ranges select exactly F, W and H in Unicode 15.0.0's
+    // EastAsianWidth.txt. Unicode 15.0.0 has two CP characters, ASCII ')' and ']', both narrow.
+    (prev == AL as u8 || prev == HL as u8 || prev == NU as u8)
+        && matches!(
+            codepoint,
+            0x2329 | 0x3008..=0x301d | 0xfe17 | 0xfe35..=0xfe5d | 0xff08..=0xff62
+        )
 }
 
 impl<I: Iterator<Item = (usize, char)>> core::iter::FusedIterator for LineBreaks<I> {}
@@ -224,6 +240,21 @@ mod tests {
         assert!(linebreaks("a\r\nb").eq([(3, Mandatory), (4, Mandatory)]));
         assert!(linebreaks("각나").eq([(9, Allowed), (15, Mandatory)]));
         assert!(linebreaks("alpha\u{00ad}beta").eq([(7, Allowed), (11, Mandatory)]));
+    }
+
+    #[test]
+    fn lb30_excludes_east_asian_open_punctuation() {
+        use BreakOpportunity::{Allowed, Mandatory};
+
+        for (text, offset) in [("ab（ク", 2), ("0〈", 1), ("א〈", 2), ("#\u{0308}｢a", 3)] {
+            let expected = [(offset, Allowed), (text.len(), Mandatory)];
+            assert!(linebreaks(text).eq(expected), "{text:?}");
+            assert!(linebreaks_iter(text.char_indices(), text.len()).eq(expected));
+        }
+
+        for text in ["a(b", "0]b", "a\u{200d}（犬", "$（0", "\" （a"] {
+            assert!(linebreaks(text).eq([(text.len(), Mandatory)]), "{text:?}");
+        }
     }
 
     #[test]
