@@ -238,6 +238,55 @@ fn platform_system_font_host_smoke_initializes_and_materializes() {
         .expect("platform host smoke remains healthy");
 }
 
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "requires macOS Arial and its system fallback fonts; run explicitly in CI"]
+fn macos_character_fallback_shares_symbol_faces_with_paint_without_emoji_admission() {
+    let context = NativeFontOptions::default()
+        .with_system_fonts(true)
+        .with_limits(NativeFontLimits {
+            max_bytes: 8 * 1024 * 1024,
+            ..Default::default()
+        })
+        .load_platform(&OperationControl::new())
+        .expect("platform font context initializes");
+    assert_text_advance_and_faces(&context, "Arial", "Latin ✓ ∑ ∫ e\u{301}");
+    let faces = context.selected_faces();
+    assert!(
+        faces.iter().any(|face| !face.starts_with("Arial")),
+        "the check mark must exercise glyph fallback: {faces:?}"
+    );
+    assert!(
+        faces
+            .iter()
+            .all(|face| !face.to_ascii_lowercase().contains("emoji"))
+    );
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "requires macOS Arial and its system fallback fonts; run explicitly in CI"]
+fn macos_unassigned_scalar_declines_without_acquiring_unrelated_fallback_files() {
+    let context = NativeFontOptions::default()
+        .with_system_fonts(true)
+        .load_platform(&OperationControl::new())
+        .expect("platform font context initializes");
+    assert!(advance(&context, "AVA", &style("Arial")) > 0.0);
+    let resident = context.resident_font_bytes();
+    let faces = context.face_count();
+    assert!(
+        context
+            .measure(request("A\u{0378}", &style("Arial")))
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(context.resident_font_bytes(), resident);
+    assert_eq!(context.face_count(), faces);
+    context
+        .check()
+        .expect("missing coverage does not poison the context");
+}
+
 #[test]
 #[ignore = "requires a host-managed font catalog; run explicitly in CI"]
 fn platform_system_font_repeated_measurement_and_paint_keep_residency_stable() {

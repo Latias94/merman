@@ -146,16 +146,45 @@ impl FontSourceRegistry {
         )
     }
 
+    /// Identity probes must prefer admitted bytes over a file that may have changed.
+    #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+    pub(super) fn snapshot(&self, path: &Path) -> Result<Option<Arc<Vec<u8>>>, NativeFontError> {
+        let state = self.snapshots.lock().map_err(|_| {
+            NativeFontError::Measurement("font snapshot state is poisoned".to_owned())
+        })?;
+        let key = self
+            .initial
+            .aliases
+            .get(path)
+            .or_else(|| state.aliases.get(path))
+            .cloned()
+            .or_else(|| {
+                (self.initial.files.contains_key(path) || state.files.contains_key(path))
+                    .then(|| path.to_owned())
+            })
+            .or_else(|| fs::canonicalize(path).ok());
+        let key = key.as_deref().unwrap_or(path);
+        Ok(self.initial.files.get(key).cloned().or_else(|| {
+            state
+                .files
+                .get(key)
+                .map(|snapshot| Arc::clone(&snapshot.data))
+        }))
+    }
+
     pub(super) fn materialize(
         &self,
         candidate: FontCandidate,
+        fallback: Option<char>,
         database: &mut Arc<Database>,
         limits: &NativeFontLimits,
         control: &OperationControl,
-    ) -> Result<ID, NativeFontError> {
+    ) -> Result<Option<ID>, NativeFontError> {
         control.terminal_checkpoint_at(OperationPhase::Layout)?;
+        #[cfg(not(feature = "experimental-system-font-query"))]
+        let _ = fallback;
         let (path, index, expected) = match candidate {
-            FontCandidate::Loaded(face) => return Ok(install(face, database)),
+            FontCandidate::Loaded(face) => return Ok(Some(install(face, database))),
             FontCandidate::File {
                 path,
                 index,
@@ -184,6 +213,16 @@ impl FontSourceRegistry {
         } else if let Some(snapshot) = state.files.get(&key_path) {
             (Arc::clone(&snapshot.data), snapshot.discovery_digest)
         } else {
+            // Discovery may reject a missing glyph before acquiring its entire source.
+            // Existing snapshots always win: a changed file cannot invalidate admitted bytes.
+            #[cfg(feature = "experimental-system-font-query")]
+            if let (ExpectedFace::Platform(face), Some(character)) = (&expected, fallback) {
+                let covered = face.discovery_covers(character)?;
+                control.terminal_checkpoint_at(OperationPhase::Layout)?;
+                if covered == Some(false) {
+                    return Ok(None);
+                }
+            }
             check_limit(
                 "system-snapshot-files",
                 self.initial
@@ -233,12 +272,12 @@ impl FontSourceRegistry {
             .find(|face| face.index == index && same_source(&face.source, &source))
         {
             expected.validate(face, &path)?;
-            return Ok(face.id);
+            return Ok(Some(face.id));
         }
         let key = (key_path, index);
         if let Some(face) = state.faces.get(&key).cloned() {
             expected.validate(&face, &path)?;
-            return Ok(install(face, database));
+            return Ok(Some(install(face, database)));
         }
         let count = rustybuzz::ttf_parser::fonts_in_collection(&data).unwrap_or(1);
         check_limit(
@@ -291,7 +330,7 @@ impl FontSourceRegistry {
         state.cmap_bytes = cmap_bytes;
         state.faces.insert(key, face.clone());
         drop(state);
-        Ok(install(face, database))
+        Ok(Some(install(face, database)))
     }
 }
 
@@ -459,6 +498,7 @@ mod tests {
                     index: metadata.index,
                     expected: ExpectedFace::Bounded { metadata, digest },
                 },
+                None,
                 &mut Arc::new(Database::new()),
                 &NativeFontLimits::default(),
                 &OperationControl::new(),
@@ -467,6 +507,41 @@ mod tests {
         assert!(
             matches!(error, NativeFontError::Source { message, .. } if message.contains("font properties changed"))
         );
+    }
+
+    #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+    #[test]
+    fn identity_probe_prefers_admitted_path_after_symlink_replacement() {
+        let root = std::env::temp_dir().join(format!(
+            "merman-font-probe-alias-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        fs::create_dir(&root).unwrap();
+        let root = root.canonicalize().unwrap();
+        let path = root.join("font.ttf");
+        let replacement = root.join("replacement.ttf");
+        let original = Arc::new(include_bytes!("../../tests/fonts/Cousine-Regular.ttf").to_vec());
+        fs::write(
+            &replacement,
+            include_bytes!("../../tests/fonts/NotoSansSC-subset.ttf"),
+        )
+        .unwrap();
+        let registry = FontSourceRegistry::new(
+            BTreeMap::from([(path.clone(), Arc::clone(&original))]),
+            BTreeMap::new(),
+            1,
+            1,
+        );
+        std::os::unix::fs::symlink(&replacement, &path).unwrap();
+        assert_eq!(path.canonicalize().unwrap(), replacement);
+        assert!(Arc::ptr_eq(
+            &registry.snapshot(&path).unwrap().unwrap(),
+            &original
+        ));
+        fs::remove_file(path).unwrap();
+        fs::remove_file(replacement).unwrap();
+        fs::remove_dir(root).unwrap();
     }
 
     #[test]
@@ -495,10 +570,12 @@ mod tests {
                         digest: Sha256::digest(collection).to_vec(),
                     },
                 },
+                None,
                 &mut database,
                 &limits,
                 &control,
             )
+            .unwrap()
             .unwrap();
         assert_eq!(
             database.face(id).unwrap().post_script_name,
@@ -516,6 +593,7 @@ mod tests {
                         digest: Sha256::digest(replacement).to_vec(),
                     },
                 },
+                None,
                 &mut database,
                 &limits,
                 &control,
@@ -581,6 +659,7 @@ mod tests {
         registry
             .materialize(
                 make_candidate(),
+                None,
                 &mut Arc::new(Database::new()),
                 &NativeFontLimits::default(),
                 &control,
@@ -591,6 +670,7 @@ mod tests {
         registry
             .materialize(
                 make_candidate(),
+                None,
                 &mut Arc::new(Database::new()),
                 &NativeFontLimits::default(),
                 &control,
@@ -601,6 +681,7 @@ mod tests {
         export
             .materialize(
                 make_candidate(),
+                None,
                 &mut Arc::new(Database::new()),
                 &NativeFontLimits::default(),
                 &OperationControl::new(),
@@ -641,6 +722,7 @@ mod tests {
             let error = export
                 .materialize(
                     extra,
+                    None,
                     &mut Arc::new(Database::new()),
                     &limits,
                     &OperationControl::new(),
@@ -662,6 +744,7 @@ mod tests {
         assert!(
             next.materialize(
                 make_candidate(),
+                None,
                 &mut Arc::new(Database::new()),
                 &NativeFontLimits::default(),
                 &control

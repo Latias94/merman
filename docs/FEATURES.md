@@ -184,7 +184,14 @@ painting. Platform mode acquires those bytes on demand, including the default
 system face. On Windows, explicit faces are tried first. DirectWrite queries the
 actual missing character for script-specific fallback. Shared symbols and
 combining marks try the catalog fallback order before the single-character
-query. A context identity includes the policy, initial
+query. On macOS, Core Text queries the actual missing Unicode scalar using the
+registered base face; its PostScript name and collection index are validated
+against the selected bytes. Generic and fallback family lookup stops after the
+first accepted candidate. Non-covering fallback candidates are filtered before
+new snapshot acquisition, while an already admitted snapshot remains authoritative.
+This does not relax selected-file limits: a large CJK collection or color emoji
+font may still exceed the default 64 MiB budget because snapshots retain the
+whole file. A context identity includes the policy, initial
 font bytes, and the system default family name when applicable.
 Platform fallback can choose different faces and change diagram geometry. For
 fixed font selection, supply explicit font files with `--font-system off`.

@@ -53,13 +53,22 @@ The resident-byte budget does not cap temporary scan buffers or process peak mem
 See [CLI font coverage and limitations](../../docs/FEATURES.md#optional-cli-fonts).
 
 Experimental `load_platform` uses Fontique for system family matching when
-system fonts are authorized. Windows queries DirectWrite for the missing
-character after explicit sources have been tried. The resolver admits the
+system fonts are authorized. Generic and fallback families are queried in order,
+stopping when a face is accepted. Windows queries DirectWrite for the missing
+character after explicit sources have been tried. macOS queries Core Text with
+the actual Unicode scalar and registered base face, then matches the returned
+PostScript identity to a physical collection face. The resolver admits the
 matched file and collection face through the same bounded snapshot store used
 for layout and painting. A system-only context starts with zero resident font
 bytes. The selected-file limits apply when a face is first needed, including the
 generic default for text without a font family. Platform metadata access and
 file mappings run outside Merman's scan budgets and preemptive cancellation.
+Before acquiring a new fallback source, mapped coverage tables can reject an
+unrelated font without consuming the selected-file budget. Coverage and identity
+are checked again on admitted bytes; existing snapshots take precedence over
+later file changes. An actual selected source that exceeds a resource limit
+still fails. Snapshots retain whole files, including all faces of a TTC, so a
+large CJK collection or color emoji font can exceed the default 64 MiB budget.
 Ordinary `load` still uses bounded system discovery. The platform context identity
 covers its policy, initially admitted bytes, and the default family name when
 derived from the system catalog. Later system snapshots are operation-local.
