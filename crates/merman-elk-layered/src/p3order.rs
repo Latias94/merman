@@ -15,7 +15,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::graph::{LGraph, LNodeKind, PortRef, PortSide, ReorderNodePortsWorkContext};
 use crate::options::{OrderingStrategy, PortConstraints, PortSortingStrategy};
-use crate::work::{WorkControl, WorkError, checked_add, checked_mul, checked_sum};
+use crate::work::{WorkControl, WorkError, ceil_log2, checked_add, checked_mul, checked_sum};
 
 use self::relations::ModelOrderRelations;
 
@@ -730,7 +730,7 @@ fn sorted_nodes_by_model_order(
                 .all(|&node| graph.layerless_nodes[node].model_order.is_some() && seen.insert(node))
         };
     if scalar_order {
-        return sorted_scalar_model_order_nodes(graph, nodes, previous_layer, work);
+        return sorted_scalar_model_order_nodes(graph, nodes, work);
     }
     sorted_nodes_with_relation_state(graph, nodes, previous_layer, before_ports, work)
 }
@@ -738,38 +738,27 @@ fn sorted_nodes_by_model_order(
 fn sorted_scalar_model_order_nodes(
     graph: &LGraph,
     nodes: &[usize],
-    previous_layer: &[usize],
     work: &mut dyn WorkControl,
 ) -> Result<Vec<usize>, WorkError> {
+    // Every comparison uses the same signed model-order key. Stable ties give the same
+    // order as the relation-based insertion pass, independent of its comparison schedule.
     let key = |node: usize| {
         graph.layerless_nodes[node]
             .model_order
             .expect("scalar model order was checked before sorting") as i64
     };
+    // Admit both index buffers and at most one full-width transfer per merge level.
+    let transfers = checked_mul(nodes.len(), checked_add(2, ceil_log2(nodes.len()))?)?;
+    work.check(transfers)?;
+    work.charge(transfers)?;
     let mut order = nodes.to_vec();
-    for index in 1..order.len() {
-        let node = order[index];
-        let key_to_insert = key(node);
-        let mut cursor = index;
-        while cursor > 0 {
-            let previous = order[cursor - 1];
-            admit_node_comparison(graph, previous_layer, previous, node, work)?;
-            let shift = key(previous) > key_to_insert;
-            // The sorted prefix already has a complete, stable order. Only the shifted
-            // suffix is known to exceed the inserted node. On a shift it has no known
-            // predecessors; on a stop the comparison node has cursor - 1 predecessors.
-            let smaller = if shift { 0 } else { cursor - 1 };
-            let units = model_order_relation_update_work_from_counts(smaller, index - cursor)?;
-            work.check(units)?;
-            work.charge(units)?;
-            if !shift {
-                break;
-            }
-            order[cursor] = previous;
-            cursor -= 1;
-        }
-        order[cursor] = node;
-    }
+    sort_model_order(&mut order, |left, right| {
+        // Two key reads, a comparison and up to two writes in insertion-sort runs.
+        const COMPARISON_WORK: usize = 5;
+        work.check(COMPARISON_WORK)?;
+        work.charge(COMPARISON_WORK)?;
+        Ok(key(left).cmp(&key(right)))
+    })?;
     Ok(order)
 }
 
@@ -2435,12 +2424,7 @@ mod tests {
         }
     }
 
-    fn assert_node_sort_matches_relations(
-        graph: &LGraph,
-        nodes: &[usize],
-        before_ports: bool,
-        check_interruptions: bool,
-    ) {
+    fn assert_node_sort_matches_relations(graph: &LGraph, nodes: &[usize], before_ports: bool) {
         let previous_layer = &graph.layers[0].nodes;
         let run = |reference, interrupt_at| {
             let mut work = SortWork {
@@ -2458,15 +2442,13 @@ mod tests {
         let expected = run(true, None);
         assert!(expected.0.is_ok());
         assert_eq!(run(false, None), expected);
-        if check_interruptions {
-            for index in 1..=expected.1.len() {
-                assert_eq!(run(false, Some(index)), run(true, Some(index)));
-            }
+        for index in 1..=expected.1.len() {
+            assert_eq!(run(false, Some(index)), run(true, Some(index)));
         }
     }
 
     #[test]
-    fn scalar_node_sort_matches_stable_relations_and_work_admissions() {
+    fn scalar_node_sort_matches_stable_relations() {
         let mut graph = graph(
             ["S0", "S1", "A", "B", "C", "D", "E"].map(node).to_vec(),
             vec![edge("e0", "S1", "A"), edge("e1", "S0", "B")],
@@ -2487,15 +2469,69 @@ mod tests {
                     digits /= keys.len();
                 }
                 for before_ports in [true, false] {
-                    assert_node_sort_matches_relations(
-                        &graph,
-                        &[2, 5, 4, 6, 3],
-                        before_ports,
-                        combination % 12 == 0,
+                    let nodes = &[2, 5, 4, 6, 3];
+                    let previous_layer = &graph.layers[0].nodes;
+                    assert_eq!(
+                        sorted_nodes_by_model_order(
+                            &graph,
+                            nodes,
+                            previous_layer,
+                            before_ports,
+                            &mut crate::work::NoopWorkControl,
+                        ),
+                        sorted_nodes_with_relation_state(
+                            &graph,
+                            nodes,
+                            previous_layer,
+                            before_ports,
+                            &mut crate::work::NoopWorkControl,
+                        ),
                     );
                 }
             }
         }
+    }
+
+    #[test]
+    fn scalar_merge_sort_preserves_equal_keys_and_admits_bounded_work() {
+        let keys = [8, 7, 7, 6, 4, 3, 3, 2, usize::MAX, usize::MAX];
+        let mut graph = LGraph::new("scalar-model-order", LayeredOptions::default());
+        for key in keys {
+            graph
+                .layerless_nodes
+                .push(LNode::new("", 1.0, 1.0, Some(key)));
+        }
+        let nodes = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let mut expected = nodes.to_vec();
+        expected.sort_by_key(|&node| keys[node] as i64);
+        let before = graph.clone();
+        let mut full = SortWork::default();
+        assert_eq!(
+            sorted_scalar_model_order_nodes(&graph, &nodes, &mut full),
+            Ok(expected),
+        );
+        assert_eq!(
+            full.admissions[..2],
+            [SortAdmission::Check(60), SortAdmission::Charge(60)]
+        );
+        assert!(full.admissions.len() > 2);
+        let (comparisons, remainder) = full.admissions[2..].as_chunks::<2>();
+        assert!(remainder.is_empty());
+        for &compare in comparisons {
+            assert_eq!(compare, [SortAdmission::Check(5), SortAdmission::Charge(5)]);
+        }
+        for index in 1..=full.admissions.len() {
+            let mut limited = SortWork {
+                interrupt_at: Some(index),
+                ..Default::default()
+            };
+            assert_eq!(
+                sorted_scalar_model_order_nodes(&graph, &nodes, &mut limited),
+                Err(WorkError::Interrupted),
+            );
+            assert_eq!(limited.admissions, full.admissions[..index]);
+        }
+        assert_eq!(graph, before);
     }
 
     #[test]
@@ -2515,9 +2551,9 @@ mod tests {
             OrderingStrategy::None,
         ] {
             graph.options.consider_model_order_strategy = strategy;
-            for nodes in [&[2, 2, 3][..], &[2, 4, 3], &[2, 3], &[2], &[]] {
+            for nodes in [&[2, 2, 3][..], &[2, 4, 3], &[2], &[]] {
                 for before_ports in [true, false] {
-                    assert_node_sort_matches_relations(&graph, nodes, before_ports, true);
+                    assert_node_sort_matches_relations(&graph, nodes, before_ports);
                 }
             }
         }

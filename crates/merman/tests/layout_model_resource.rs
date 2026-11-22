@@ -1,5 +1,7 @@
 #![cfg(all(feature = "svg", feature = "layout-elk", feature = "diagram-flowchart"))]
 
+use std::fmt::Write as _;
+
 use merman::svg::{RenderResourcePolicy, ResourceLimitId, SvgRenderOptions};
 use merman::{
     CancelReason, OperationControl, OperationPhase, OperationResourceDomain,
@@ -29,6 +31,26 @@ fn expect_svg(output: RenderOutput) -> SvgOutput {
         panic!("expected a completed SVG artifact, got {output:?}");
     };
     output
+}
+
+#[test]
+fn wide_star_uses_the_default_layout_work_budget() {
+    let mut source = String::from("flowchart TD\n");
+    for leaf in 1..500 {
+        writeln!(source, "N0 --> N{leaf}").unwrap();
+    }
+    let mut output = Vec::new();
+    Renderer::new()
+        .write_layout_json(
+            RenderRequest::layout_json(&source, OperationControl::new(), SvgRequest::default()),
+            &mut output,
+            false,
+        )
+        .expect("the default layout budget must admit a 500-node star");
+    let geometry: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    let layout = &geometry["layout"]["FlowchartV2"];
+    assert_eq!(layout["nodes"].as_array().unwrap().len(), 500);
+    assert_eq!(layout["edges"].as_array().unwrap().len(), 499);
 }
 
 #[test]
