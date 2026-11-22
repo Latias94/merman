@@ -1,11 +1,119 @@
 //! Core Text character fallback discovery. Character-set membership only filters candidates;
 //! the caller admits font data, validates nonzero glyph IDs and their bounds, and shapes text.
 
-use std::ptr;
+use std::{path::Path, ptr};
 
-use objc2_core_foundation::{CFCharacterSet, CFRange, CFString};
-use objc2_core_text::{CTFont, CTFontTableOptions};
+use objc2_core_foundation::{
+    CFCharacterSet, CFData, CFRange, CFRetained, CFString, CFURL, CFURLPathStyle,
+};
+use objc2_core_text::{CTFont, CTFontTableOptions, kCTFontURLAttribute};
 use usvg::fontdb::FaceInfo;
+
+use super::super::{NativeFontError, OperationControl, OperationPhase, check_limit, source_error};
+
+/// Materializes one registered collection face without copying the original TTC.
+pub(super) fn collection_snapshot(
+    post_script_name: &str,
+    path: &Path,
+    source: &ttf_parser::RawFace<'_>,
+    limit: usize,
+    control: &OperationControl,
+) -> Result<Option<Vec<u8>>, NativeFontError> {
+    control.terminal_checkpoint_at(OperationPhase::Layout)?;
+    super::super::registry::verify_font_file(path, control, OperationPhase::Layout)?;
+    if post_script_name.is_empty() || post_script_name.starts_with('.') {
+        return Ok(None);
+    }
+    let name = CFString::from_str(post_script_name);
+    // SAFETY: The retained name is live and a null matrix requests identity.
+    let font = unsafe { CTFont::with_name(&name, 0.0, ptr::null()) };
+    // SAFETY: The font is live; accessors return retained objects.
+    let actual_name = unsafe { font.post_script_name() };
+    if actual_name.to_string() != post_script_name {
+        return Ok(None);
+    }
+    // A registered font with a colliding name must not replace the selected source.
+    // SAFETY: Core Text defines this attribute as a CFURL; downcast checks its type.
+    let Some(url) = (unsafe { font.attribute(kCTFontURLAttribute) })
+        .and_then(|attribute| attribute.downcast::<CFURL>().ok())
+        .and_then(|url| url.file_system_path(CFURLPathStyle::CFURLPOSIXPathStyle))
+    else {
+        return Ok(None);
+    };
+    let expected_path = std::fs::canonicalize(path).map_err(|error| source_error(path, error))?;
+    if std::fs::canonicalize(url.to_string()).ok().as_ref() != Some(&expected_path) {
+        return Ok(None);
+    }
+    // SAFETY: The retained font is live; table tags are unboxed pointer-sized values.
+    let tags = unsafe { font.available_tables(CTFontTableOptions::NoOptions) }
+        .ok_or_else(|| source_error(path, "selected Core Text face exposes no tables"))?;
+    check_limit("font-tables", tags.count() as usize, usize::from(u16::MAX))?;
+    let mut tables = Vec::new();
+    let mut total = 12_usize;
+    for index in 0..tags.count() {
+        control.terminal_checkpoint_at(OperationPhase::Layout)?;
+        // SAFETY: The index is in bounds. Table tags are not CF objects.
+        let value = unsafe { tags.value_at_index(index) } as usize;
+        let tag = u32::try_from(value)
+            .map_err(|_| source_error(path, "Core Text returned an invalid table tag"))?;
+        if tag == u32::from_be_bytes(*b"hvgl") {
+            return Ok(None);
+        }
+        if tag == u32::from_be_bytes(*b"DSIG") {
+            continue;
+        }
+        // SAFETY: The retained font is live. This returns immutable retained table data;
+        // Core Text owns its backing storage and no mutable reference is exposed here.
+        let table = unsafe { font.table(tag, CTFontTableOptions::NoOptions) }
+            .ok_or_else(|| source_error(path, "Core Text omitted an advertised font table"))?;
+        let aligned = table.len().checked_add(3).map(|length| length & !3);
+        total = aligned
+            .and_then(|length| length.checked_add(16))
+            .and_then(|length| total.checked_add(length))
+            .ok_or_else(|| source_error(path, "selected font table sizes overflow"))?;
+        if total >= source.data.len() {
+            // Shared/overlapping tables can make a standalone font larger than its
+            // container. Keep the existing whole-file representation in that case.
+            return Ok(None);
+        }
+        check_limit("system-font-bytes", total, limit)?;
+        tables.push((tag, table));
+    }
+    control.terminal_checkpoint_at(OperationPhase::Layout)?;
+    if !tables_match_source(source, &tables) {
+        // A TTC may contain colliding PostScript names. The native object is usable only
+        // when its actual tables describe the selected physical face, not merely its name.
+        return Ok(None);
+    }
+    let data = super::super::sfnt::from_tables(
+        tables.iter().map(|(tag, data)| {
+            // SAFETY: Retained immutable CFData values outlive serialization, and are never mutated.
+            (*tag, unsafe { data.as_bytes_unchecked() })
+        }),
+        limit,
+        control,
+        path,
+    )?;
+    Ok(Some(data))
+}
+
+fn tables_match_source(
+    source: &ttf_parser::RawFace<'_>,
+    tables: &[(u32, CFRetained<CFData>)],
+) -> bool {
+    let retained = source
+        .table_records
+        .into_iter()
+        .filter(|record| record.tag.0 != u32::from_be_bytes(*b"DSIG"))
+        .count();
+    retained == tables.len()
+        && tables.iter().all(|(tag, data)| {
+            // SAFETY: Core Text or the test constructor owns immutable retained data;
+            // it stays live through this comparison and is not mutated by this adapter.
+            let data = unsafe { data.as_bytes_unchecked() };
+            source.table(ttf_parser::Tag(*tag)) == Some(data)
+        })
+}
 
 pub(super) struct FallbackFace {
     pub(super) family: String,
@@ -88,6 +196,39 @@ fn character_set_contains_scalar(character_set: &CFCharacterSet, character: char
 mod tests {
     use super::*;
     use usvg::fontdb::{Database, Family, Query};
+
+    #[test]
+    fn native_tables_cannot_substitute_a_different_face_with_identical_names() {
+        let bytes = include_bytes!("../../../tests/fonts/Cousine-Regular.ttf");
+        let source = ttf_parser::RawFace::parse(bytes, 0).unwrap();
+        let mut tables: Vec<_> = source
+            .table_records
+            .into_iter()
+            .filter(|record| record.tag.0 != u32::from_be_bytes(*b"DSIG"))
+            .map(|record| {
+                (
+                    record.tag.0,
+                    CFData::from_bytes(source.table(record.tag).unwrap()),
+                )
+            })
+            .collect();
+        assert!(tables_match_source(&source, &tables));
+
+        let (_, metrics) = tables
+            .iter_mut()
+            .find(|(tag, _)| *tag == u32::from_be_bytes(*b"hmtx"))
+            .unwrap();
+        // SAFETY: The test owns immutable retained data and copies it before replacing the handle.
+        let mut changed = unsafe { metrics.as_bytes_unchecked() }.to_vec();
+        changed[0] ^= 1;
+        *metrics = CFData::from_bytes(&changed);
+        assert!(
+            !tables_match_source(&source, &tables),
+            "equal name and style tables do not establish physical face identity"
+        );
+        tables.retain(|(tag, _)| *tag != u32::from_be_bytes(*b"hmtx"));
+        assert!(!tables_match_source(&source, &tables));
+    }
 
     #[test]
     fn character_set_membership_preserves_supplementary_scalars() {

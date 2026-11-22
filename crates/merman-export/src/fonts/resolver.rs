@@ -40,15 +40,24 @@ pub(super) enum ExpectedFace {
 }
 
 impl ExpectedFace {
-    pub(super) fn validate(&self, face: &FaceInfo, path: &Path) -> Result<(), NativeFontError> {
+    pub(super) fn validate(
+        &self,
+        face: &FaceInfo,
+        path: &Path,
+        origin_index: u32,
+    ) -> Result<(), NativeFontError> {
         match self {
-            Self::Bounded { metadata, .. } if system::same_face(metadata, face) => Ok(()),
+            Self::Bounded { metadata, .. }
+                if metadata.index == origin_index && system::same_face(metadata, face) =>
+            {
+                Ok(())
+            }
             Self::Bounded { .. } => Err(source_error(
                 path,
                 "font properties changed after metadata discovery; retry the operation",
             )),
             #[cfg(feature = "experimental-system-font-query")]
-            Self::Platform(candidate) => candidate.validate(face, path),
+            Self::Platform(candidate) => candidate.validate(face, path, origin_index),
         }
     }
 }

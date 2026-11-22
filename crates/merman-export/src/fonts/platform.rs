@@ -232,27 +232,36 @@ impl PlatformCatalog {
         let mut mapped_source = None;
         for font in family.fonts() {
             control.terminal_checkpoint_at(OperationPhase::Layout)?;
-            if mapped_source
-                .as_ref()
-                .is_none_or(|(id, _)| *id != font.source().id())
+            let snapshot = match font.source().kind() {
+                SourceKind::Path(path) => sources.face_snapshot(path, font.index())?,
+                SourceKind::Memory(_) => None,
+            };
+            if snapshot.is_none()
+                && mapped_source
+                    .as_ref()
+                    .is_none_or(|(id, _)| *id != font.source().id())
             {
                 let data = self.discovery_data(font, sources)?;
                 mapped_source = Some((font.source().id(), data));
             }
             let matches = self.call(|| {
-                mapped_source
+                let data = snapshot
                     .as_ref()
-                    .and_then(|(_, data)| data.as_ref())
-                    .is_some_and(|data| {
-                        RawFace::parse(data.as_ref(), font.index())
-                            .ok()
-                            .and_then(|raw| {
-                                name::Table::parse(raw.table(Tag::from_bytes(b"name"))?)
-                            })
-                            .is_some_and(|table| {
-                                post_script_name_matches(table, &selected.post_script_name)
-                            })
-                    })
+                    .map(|face| (face.data.as_slice(), face.index))
+                    .or_else(|| {
+                        mapped_source
+                            .as_ref()
+                            .and_then(|(_, data)| data.as_ref())
+                            .map(|data| (data.as_ref(), font.index()))
+                    });
+                data.is_some_and(|(data, index)| {
+                    RawFace::parse(data, index)
+                        .ok()
+                        .and_then(|raw| name::Table::parse(raw.table(Tag::from_bytes(b"name"))?))
+                        .is_some_and(|table| {
+                            post_script_name_matches(table, &selected.post_script_name)
+                        })
+                })
             })?;
             control.terminal_checkpoint_at(OperationPhase::Layout)?;
             if !matches {
@@ -439,6 +448,56 @@ fn platform_style(style: Style) -> FontStyle {
 }
 
 impl PlatformFace {
+    #[cfg(target_os = "macos")]
+    pub(super) fn selected_collection_data(
+        &self,
+        path: &Path,
+        limit: usize,
+        max_faces: usize,
+        control: &OperationControl,
+    ) -> Result<Option<Vec<u8>>, NativeFontError> {
+        control.terminal_checkpoint_at(OperationPhase::Layout)?;
+        let Some(data) = platform_call(|| self.coverage_source.as_ref()?.load(None))? else {
+            return Ok(None);
+        };
+        let Some(count) = ttf_parser::fonts_in_collection(data.as_ref()) else {
+            return Ok(None);
+        };
+        check_limit("font-collection-faces", count as usize, max_faces)?;
+        let raw =
+            RawFace::parse(data.as_ref(), self.index).map_err(|error| source_error(path, error))?;
+        let table = raw
+            .table(Tag::from_bytes(b"name"))
+            .and_then(name::Table::parse)
+            .ok_or_else(|| source_error(path, "selected collection face has no name table"))?;
+        let post_script_name = if let Some(expected) = &self.post_script_name {
+            if !post_script_name_matches(table, expected) {
+                return Err(source_error(
+                    path,
+                    "font identity changed after platform lookup",
+                ));
+            }
+            Some(expected.clone())
+        } else {
+            table.names.into_iter().find_map(|record| {
+                (record.name_id == name_id::POST_SCRIPT_NAME)
+                    .then(|| {
+                        record.to_string().or_else(|| {
+                            (record.platform_id == ttf_parser::PlatformId::Macintosh
+                                && record.encoding_id == 0
+                                && record.name.is_ascii())
+                            .then(|| String::from_utf8_lossy(record.name).into_owned())
+                        })
+                    })
+                    .flatten()
+            })
+        };
+        let Some(name) = post_script_name else {
+            return Ok(None);
+        };
+        coretext::collection_snapshot(&name, path, &raw, limit, control)
+    }
+
     pub(super) fn discovery_covers(
         &self,
         character: char,
@@ -461,8 +520,13 @@ impl PlatformFace {
         }
     }
 
-    pub(super) fn validate(&self, face: &FaceInfo, path: &Path) -> Result<(), NativeFontError> {
-        if face.index != self.index
+    pub(super) fn validate(
+        &self,
+        face: &FaceInfo,
+        path: &Path,
+        origin_index: u32,
+    ) -> Result<(), NativeFontError> {
+        if origin_index != self.index
             || !self.attributes.matches(face)
             || !matches_family(face, &self.family)
             || self
@@ -1012,7 +1076,11 @@ mod tests {
         assert!(
             candidate
                 .into_face()
-                .validate(&replacement, Path::new("unused-font-path"))
+                .validate(
+                    &replacement,
+                    Path::new("unused-font-path"),
+                    replacement.index
+                )
                 .is_err()
         );
     }
@@ -1034,7 +1102,7 @@ mod tests {
             };
             candidate
                 .into_face()
-                .validate(&face, Path::new("unused-font-path"))
+                .validate(&face, Path::new("unused-font-path"), face.index)
                 .expect("family aliases come from the same immutable binary");
         }
     }

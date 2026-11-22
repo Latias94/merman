@@ -189,9 +189,12 @@ registered base face; its PostScript name and collection index are validated
 against the selected bytes. Generic and fallback family lookup stops after the
 first accepted candidate. Non-covering fallback candidates are filtered before
 new snapshot acquisition, while an already admitted snapshot remains authoritative.
-This does not relax selected-file limits: a large CJK collection or color emoji
-font may still exceed the default 64 MiB budget because snapshots retain the
-whole file. A context identity includes the policy, initial
+On macOS, a registered TTC face can be stored as a standalone font instead of
+copying unrelated collection members. Its native tables must match the selected
+physical face before admission; the original source identity remains distinct
+from the standalone data's face index. Explicit input files retain their whole-file
+ingestion policy. The cumulative font-data budget remains 64 MiB, and a large
+selected color/bitmap table can still exceed it. A context identity includes the policy, initial
 font bytes, and the system default family name when applicable.
 Platform fallback can choose different faces and change diagram geometry. For
 fixed font selection, supply explicit font files with `--font-system off`.

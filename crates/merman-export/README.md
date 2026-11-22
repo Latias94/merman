@@ -66,9 +66,18 @@ file mappings run outside Merman's scan budgets and preemptive cancellation.
 Before acquiring a new fallback source, mapped coverage tables can reject an
 unrelated font without consuming the selected-file budget. Coverage and identity
 are checked again on admitted bytes; existing snapshots take precedence over
-later file changes. An actual selected source that exceeds a resource limit
-still fails. Snapshots retain whole files, including all faces of a TTC, so a
-large CJK collection or color emoji font can exceed the default 64 MiB budget.
+later file changes. On macOS, registered TTC faces can be materialized as standalone
+fonts using the selected face's tables. The native table set and contents must match
+the physical face; a colliding PostScript name does not authorize another face.
+The registry retains original source identity separately from the standalone data's
+index zero. An already admitted face remains authoritative even if a later request
+acquires a whole-file snapshot from the same path.
+
+The cumulative admitted-data budget remains 64 MiB. Standalone data is used only
+when smaller than its original container; explicit inputs and other source paths
+retain whole-file ingestion. A selected font or color/bitmap table that exceeds the
+budget still fails. Reconstructing a face does not subset it to the diagram's glyphs
+or eliminate the cost of a large emoji table.
 Ordinary `load` still uses bounded system discovery. The platform context identity
 covers its policy, initially admitted bytes, and the default family name when
 derived from the system catalog. Later system snapshots are operation-local.

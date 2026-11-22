@@ -287,6 +287,28 @@ fn macos_unassigned_scalar_declines_without_acquiring_unrelated_fallback_files()
         .expect("missing coverage does not poison the context");
 }
 
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "requires macOS Arial and CJK system fonts; run explicitly in CI"]
+fn macos_selected_collection_faces_fit_the_data_budget_and_survive_export() {
+    let context = NativeFontOptions::default()
+        .with_system_fonts(true)
+        .load_platform(&OperationControl::new())
+        .expect("platform font context initializes")
+        .with_strict_glyph_coverage(true);
+    for text in ["Latin 中文 日本語 한글", "Latin 𠮷野家"] {
+        let operation = context.for_operation(&OperationControl::new());
+        assert_text_advance_and_faces(&operation, "Arial", text);
+        let resident = operation.resident_font_bytes();
+        assert!(resident > 0);
+        assert!(resident <= NativeFontLimits::default().max_bytes);
+        let export = operation.for_export(&OperationControl::new()).unwrap();
+        assert_text_advance_and_faces(&export, "Arial", text);
+        assert_eq!(export.resident_font_bytes(), resident);
+        assert_eq!(operation.resident_font_bytes(), resident);
+    }
+}
+
 #[test]
 #[ignore = "requires a host-managed font catalog; run explicitly in CI"]
 fn platform_system_font_repeated_measurement_and_paint_keep_residency_stable() {

@@ -32,6 +32,8 @@ mod platform;
 mod registry;
 #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
 mod resolver;
+#[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+mod sfnt;
 #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
 mod system;
 
@@ -48,7 +50,8 @@ pub enum FontSource {
 pub struct NativeFontLimits {
     /// Maximum input sources, including duplicate files or memory buffers.
     pub max_files: usize,
-    /// Cumulative input bytes, charged before content deduplication.
+    /// Explicit input bytes are charged before content deduplication. Selected system
+    /// data is also bounded; macOS can retain a standalone face instead of its whole TTC.
     pub max_bytes: usize,
     pub max_faces: usize,
     pub max_directory_entries: usize,
@@ -407,7 +410,8 @@ impl NativeFontContext {
             .unwrap_or(true)
     }
 
-    /// Names and collection indices selected by successful native shaping probes.
+    /// Names and indices within admitted font data selected by successful shaping probes.
+    /// A standalone representation of a system collection face has data index zero.
     /// This does not describe deterministic fallback or other painting operations.
     pub fn selected_faces(&self) -> Vec<String> {
         self.0
@@ -703,7 +707,7 @@ impl FontLoader {
             not(target_family = "wasm")
         ))]
         if platform.is_some() {
-            loader.hash.update(b"\0platform-query/fontique-0.12.0/v3");
+            loader.hash.update(b"\0platform-query/fontique-0.12.0/v4");
         }
         #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         if let Some(catalog) = &system {
