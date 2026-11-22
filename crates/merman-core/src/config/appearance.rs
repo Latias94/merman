@@ -56,6 +56,33 @@ impl<'a> AppearanceDecision<'a> {
             .and_then(|winner| winner.value.as_str())
     }
 
+    pub(crate) fn can_merge_after_site_appearance(
+        &self,
+        source: &MermaidConfig,
+        site: &MermaidConfig,
+    ) -> bool {
+        let Some(source) = source.as_value().as_object() else {
+            return false;
+        };
+        let independent_key =
+            |key: &str| !key.is_empty() && !key.contains('.') && !APPEARANCE_KEYS.contains(&key);
+        // The theme program reads themeVariables and its input owners. Appearance writes
+        // only root and existing scoped appearance keys. A disjoint merge on existing
+        // root sections leaves these inputs and the insertion order unchanged. Dotted
+        // keys at these boundaries can also alias the ownership journal's paths.
+        source.iter().all(|(key, value)| {
+            independent_key(key)
+                && key != "themeVariables"
+                && site.get(key).is_some_and(|base| {
+                    key != self.section
+                        || (base.is_object()
+                            && value
+                                .as_object()
+                                .is_some_and(|scope| scope.keys().all(|key| independent_key(key))))
+                })
+        })
+    }
+
     pub(crate) fn materialization_plan(
         &self,
         current_theme: Option<&str>,
