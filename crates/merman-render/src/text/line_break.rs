@@ -341,6 +341,10 @@ mod tests {
     fn follows_browser_line_breaking_for_prose_cjk_and_url_boundaries() {
         assert_eq!(html_break_spaces_segments("alpha-beta"), ["alpha-", "beta"]);
         assert_eq!(
+            html_break_spaces_segments("ab（ク）cd"),
+            ["ab", "（ク）", "cd"]
+        );
+        assert_eq!(
             html_break_spaces_segments("alpha\u{200b}beta"),
             ["alpha\u{200b}", "beta"]
         );

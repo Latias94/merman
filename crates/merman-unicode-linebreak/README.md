@@ -14,10 +14,16 @@ the original published source-file hashes. The package archive hash is
 The generated tables are taken from that published archive; they are not stored in
 the upstream Git tree.
 
-The only algorithm-adapter change is exposing `LineBreaks<I>` and `linebreaks_iter`
-for arbitrary character-index iterators. The original `linebreaks(&str)` API delegates
+The fork exposes `LineBreaks<I>` and `linebreaks_iter` for arbitrary character-index
+iterators. The original `linebreaks(&str)` API delegates
 to the same state machine and remains clonable. `LineBreaks::get_mut` lets callers
 inspect an input iterator's cancellation state after advancing it.
+
+The iterator applies the [Unicode 15.0 LB30 exception](https://www.unicode.org/reports/tr14/tr14-49.html#LB30)
+for opening punctuation with fullwidth, wide, or halfwidth East Asian width, using the
+[Unicode 15.0.0 character properties](https://www.unicode.org/Public/15.0.0/ucd/EastAsianWidth.txt).
+For example, `ab（ク` can wrap before `（`. Unicode 15.0.0's two closing-parenthesis
+class characters are both narrow.
 
 An equivalent `Option::is_some_and` expression replaces the upstream `map_or`
 expression to satisfy the workspace's pinned Clippy checks.
