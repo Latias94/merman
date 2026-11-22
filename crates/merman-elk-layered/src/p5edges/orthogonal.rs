@@ -409,6 +409,32 @@ impl HyperEdgeGraph {
 
         critical_dependency_count
     }
+
+    fn create_initial_dependencies(&mut self, thresholds: OrthogonalRoutingThresholds) -> usize {
+        if let Some(pairs) = initial_candidate_pairs(&self.segments, thresholds) {
+            return pairs
+                .into_iter()
+                .map(|(first, second)| {
+                    self.create_dependency_if_necessary(first, second, thresholds)
+                })
+                .sum();
+        }
+        self.create_initial_dependencies_all_pairs(thresholds)
+    }
+
+    fn create_initial_dependencies_all_pairs(
+        &mut self,
+        thresholds: OrthogonalRoutingThresholds,
+    ) -> usize {
+        let mut critical_dependency_count = 0;
+        for first in 0..self.segments.len().saturating_sub(1) {
+            for second in (first + 1)..self.segments.len() {
+                critical_dependency_count +=
+                    self.create_dependency_if_necessary(first, second, thresholds);
+            }
+        }
+        critical_dependency_count
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -456,6 +482,72 @@ impl OrthogonalRoutingThresholds {
                 * minimum_horizontal_segment_distance(segments),
         }
     }
+}
+
+fn initial_candidate_pairs(
+    segments: &[HyperEdgeSegment],
+    thresholds: OrthogonalRoutingThresholds,
+) -> Option<Vec<(usize, usize)>> {
+    // The original loop is cheap on short corridors, which also avoid sorting scratch.
+    const MIN_SWEEP_SEGMENTS: usize = 16;
+    if segments.len() < MIN_SWEEP_SEGMENTS
+        || ![
+            thresholds.conflict_threshold,
+            thresholds.critical_conflict_threshold,
+        ]
+        .into_iter()
+        .all(|radius| radius.is_finite() && radius >= 0.0)
+    {
+        return None;
+    }
+    let radius = thresholds
+        .conflict_threshold
+        .max(thresholds.critical_conflict_threshold);
+    let mut spans = Vec::new();
+    for (id, segment) in segments.iter().enumerate() {
+        let start = segment.start_coordinate();
+        let end = segment.end_coordinate();
+        let incoming = &segment.incoming_connection_coordinates;
+        let outgoing = &segment.outgoing_connection_coordinates;
+        if !start.is_finite()
+            || !end.is_finite()
+            || start > end
+            || (incoming.is_empty() && outgoing.is_empty())
+            || !incoming
+                .iter()
+                .chain(outgoing)
+                .all(|position| (start..=end).contains(position))
+        {
+            return None;
+        }
+        if (start - end).abs() >= TOLERANCE {
+            spans.try_reserve(1).ok()?;
+            spans.push((start, end, id));
+        }
+    }
+    spans.sort_unstable_by(|left, right| left.0.total_cmp(&right.0).then(left.2.cmp(&right.2)));
+
+    // Bound scratch on dense corridors. No dependencies have been installed if planning stops.
+    let max_candidates = spans.len().saturating_mul(4);
+    let mut pairs = Vec::new();
+    for (index, &(_, end, first)) in spans.iter().enumerate() {
+        let end_with_radius = end + radius;
+        for &(start, _, second) in &spans[index + 1..] {
+            // Crossing ranges are inclusive. The two rounded conflict bounds come from the
+            // scorer's subtraction and addition, and neither implies the other at a boundary.
+            if end < start && end <= start - radius && end_with_radius <= start {
+                break;
+            }
+            if pairs.len() == max_candidates {
+                return None;
+            }
+            pairs.try_reserve(1).ok()?;
+            pairs.push((first.min(second), first.max(second)));
+        }
+    }
+    // Dependency insertion order feeds cycle breaking, including the order of random ties.
+    pairs.sort_unstable();
+    Some(pairs)
 }
 
 pub fn route_edges_west_to_east(
@@ -507,14 +599,7 @@ pub fn route_edges(
         edge_spacing,
         &hyper_graph.segments,
     );
-    let mut critical_dependency_count = 0usize;
-
-    for first in 0..hyper_graph.segments.len().saturating_sub(1) {
-        for second in (first + 1)..hyper_graph.segments.len() {
-            critical_dependency_count +=
-                hyper_graph.create_dependency_if_necessary(first, second, thresholds);
-        }
-    }
+    let critical_dependency_count = hyper_graph.create_initial_dependencies(thresholds);
 
     if critical_dependency_count >= 2 {
         break_critical_cycles(&mut hyper_graph, thresholds, &mut graph.random);
@@ -1717,6 +1802,122 @@ mod tests {
                 && dependency.target == Some(target)
                 && dependency.dependency_type == dependency_type
         })
+    }
+
+    fn separated_segments(count: u32) -> Vec<HyperEdgeSegment> {
+        (0..count)
+            .map(|index| {
+                let start = 20.0 * f64::from(index);
+                HyperEdgeSegment::with_incoming_outgoing(vec![start], vec![start + 2.0])
+            })
+            .collect()
+    }
+
+    #[test]
+    fn separated_routing_spans_skip_every_pair() {
+        let mut segments = separated_segments(256);
+        segments.reverse();
+        let thresholds =
+            OrthogonalRoutingThresholds::from_edge_spacing_and_segments(10.0, &segments);
+        assert_eq!(initial_candidate_pairs(&segments, thresholds), Some(vec![]));
+    }
+
+    #[test]
+    fn sparse_routing_keeps_dependency_order_and_slots() {
+        let mut segments = separated_segments(16);
+        // The initial ID order differs from coordinate order, including tied starts.
+        for index in (0..16).rev() {
+            let start = 20.0 * f64::from(index);
+            let incoming = if index % 2 == 0 { start } else { start + 1.0 };
+            segments.push(HyperEdgeSegment::with_incoming_outgoing(
+                vec![incoming],
+                vec![start + 3.0],
+            ));
+        }
+        segments.insert(5, segment(&[-120.0], &[-100.0]));
+        segments.insert(11, segment(&[-99.9], &[-119.9]));
+        let thresholds = OrthogonalRoutingThresholds {
+            conflict_threshold: 1.0,
+            critical_conflict_threshold: 0.25,
+        };
+        assert_eq!(
+            initial_candidate_pairs(&segments, thresholds)
+                .unwrap()
+                .len(),
+            17
+        );
+        let mut reference = HyperEdgeGraph {
+            segments,
+            dependencies: Vec::new(),
+        };
+        let mut filtered = reference.clone();
+        let reference_count = reference.create_initial_dependencies_all_pairs(thresholds);
+        let filtered_count = filtered.create_initial_dependencies(thresholds);
+        assert_eq!(reference_count, 2);
+        assert_eq!(filtered_count, reference_count);
+        assert_eq!(reference, filtered);
+        let mut reference_random = JavaRandom::new(31);
+        let mut filtered_random = reference_random.clone();
+        for (graph, random) in [
+            (&mut reference, &mut reference_random),
+            (&mut filtered, &mut filtered_random),
+        ] {
+            break_critical_cycles(graph, thresholds, random);
+            break_non_critical_cycles(graph, random);
+            topological_numbering(graph);
+        }
+        assert_eq!(reference, filtered);
+        assert_eq!(reference_random, filtered_random);
+    }
+
+    #[test]
+    fn routing_sweep_checks_both_rounded_conflict_bounds() {
+        let thresholds = OrthogonalRoutingThresholds {
+            conflict_threshold: 1.0,
+            critical_conflict_threshold: 0.0,
+        };
+        let close_to_zero = 2.0_f64.powi(-54);
+        let just_above_negative_one = (-1.0_f64).next_up();
+        let just_above_zero = 3.0 * 2.0_f64.powi(-55);
+        for (first, second) in [
+            (
+                HyperEdgeSegment::with_incoming_outgoing(vec![-2.0], vec![close_to_zero]),
+                HyperEdgeSegment::with_incoming_outgoing(vec![1.0], vec![3.0]),
+            ),
+            (
+                HyperEdgeSegment::with_incoming_outgoing(vec![just_above_negative_one], vec![-3.0]),
+                HyperEdgeSegment::with_incoming_outgoing(vec![2.0], vec![just_above_zero]),
+            ),
+        ] {
+            let mut segments = separated_segments(18).split_off(2);
+            segments.extend([first, second]);
+            assert_eq!(
+                initial_candidate_pairs(&segments, thresholds),
+                Some(vec![(16, 17)])
+            );
+            let mut reference = HyperEdgeGraph {
+                segments,
+                dependencies: Vec::new(),
+            };
+            let mut filtered = reference.clone();
+            reference.create_initial_dependencies_all_pairs(thresholds);
+            filtered.create_initial_dependencies(thresholds);
+            assert_eq!(reference.dependencies.len(), 1);
+            assert_eq!(reference, filtered);
+        }
+    }
+
+    #[test]
+    fn routing_sweep_falls_back_for_dense_or_unbounded_spans() {
+        let thresholds = OrthogonalRoutingThresholds {
+            conflict_threshold: 1.0,
+            critical_conflict_threshold: 0.5,
+        };
+        let dense = vec![HyperEdgeSegment::with_incoming_outgoing(vec![1.0], vec![10.0]); 32];
+        assert!(initial_candidate_pairs(&dense, thresholds).is_none());
+        let mut abnormal = separated_segments(16);
+        abnormal[1].end_position = f64::NAN;
+        assert!(initial_candidate_pairs(&abnormal, thresholds).is_none());
     }
 
     #[test]
