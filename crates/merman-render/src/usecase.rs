@@ -10,11 +10,16 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
 
+pub(crate) mod actor;
 mod dagre;
 mod layout;
 mod measure;
+#[cfg(feature = "layout-shoal")]
+mod shoal;
 mod theme;
 
+#[cfg(feature = "layout-shoal")]
+pub(crate) use shoal::{UsecaseMarker, canonical_route_style};
 pub(crate) use theme::{
     UsecaseCssBinding, UsecaseThemePlan, UsecaseThemeReceipt, UsecaseThemeStyle,
 };
@@ -113,6 +118,8 @@ pub(crate) struct UsecasePreparedArtifact {
     pub(crate) nodes: Vec<UsecaseNodePlan>,
     pub(crate) edges: Vec<UsecaseEdgePlan>,
     edge_paths: std::collections::HashMap<String, Vec<crate::model::LayoutPoint>>,
+    #[cfg(feature = "layout-shoal")]
+    canonical: Option<shoal::UsecaseCanonicalLayout>,
 }
 
 impl UsecasePreparedArtifact {
@@ -137,6 +144,23 @@ impl UsecasePreparedArtifact {
             .get(&edge.id)
             .cloned()
             .unwrap_or_else(|| edge.points.clone())
+    }
+
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) fn canonical_routes(
+        &self,
+    ) -> Option<&crate::graph_layout::canonical::CanonicalRoutes> {
+        self.canonical.as_ref().map(|layout| &layout.routes)
+    }
+
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) fn canonical_boundary_title(&self, id: &str) -> Option<&crate::model::LayoutLabel> {
+        self.canonical.as_ref()?.titles.get(id)
+    }
+
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) fn canonical_boundary_order(&self) -> Option<&[(usize, usize)]> {
+        Some(&self.canonical.as_ref()?.boundary_order)
     }
 }
 
@@ -286,9 +310,23 @@ pub(crate) fn prepare_usecase_diagram(
         math_renderer,
         &mut work,
     )?;
-    if crate::layout_backend::resolve_graph_layout(config_value).backend
-        == crate::layout_backend::GraphLayoutBackend::Dagre
-    {
+    let backend = crate::layout_backend::resolve_graph_layout(config_value).backend;
+    #[cfg(feature = "layout-shoal")]
+    if backend == crate::layout_backend::GraphLayoutBackend::Shoal {
+        let (layout, canonical) =
+            shoal::layout(model, config_value, &nodes, &edges, &theme_plan, &mut work)?;
+        return Ok(UsecasePreparedArtifact {
+            css_binding,
+            theme_plan,
+            effect_evidence: Default::default(),
+            layout,
+            nodes,
+            edges,
+            edge_paths: Default::default(),
+            canonical: Some(canonical),
+        });
+    }
+    if backend == crate::layout_backend::GraphLayoutBackend::Dagre {
         dagre::expand_self_loops(&mut nodes, &mut edges, &css_binding.generic_font, &mut work)?;
         theme_plan.retain_edge_terminals(&edges, &mut work)?;
     }
@@ -311,6 +349,8 @@ pub(crate) fn prepare_usecase_diagram(
         nodes,
         edges,
         edge_paths,
+        #[cfg(feature = "layout-shoal")]
+        canonical: None,
     })
 }
 

@@ -5,7 +5,9 @@
     any(
         feature = "diagram-class",
         feature = "diagram-er",
-        feature = "diagram-state"
+        feature = "diagram-requirement",
+        feature = "diagram-state",
+        feature = "diagram-usecase"
     )
 ))]
 pub(crate) mod canonical;

@@ -879,15 +879,23 @@ mod class;
 #[cfg(all(test, feature = "diagram-er", feature = "layout-shoal"))]
 mod er;
 
+#[cfg(all(test, feature = "diagram-requirement", feature = "layout-shoal"))]
+mod requirement;
+
 #[cfg(all(test, feature = "diagram-state", feature = "layout-shoal"))]
 mod state;
+
+#[cfg(all(test, feature = "diagram-usecase", feature = "layout-shoal"))]
+mod usecase;
 
 #[cfg(all(
     feature = "layout-shoal",
     any(
         feature = "diagram-class",
         feature = "diagram-er",
-        feature = "diagram-state"
+        feature = "diagram-requirement",
+        feature = "diagram-state",
+        feature = "diagram-usecase"
     )
 ))]
 fn svg_group_transform(node: roxmltree::Node<'_, '_>) -> Affine {
@@ -908,7 +916,12 @@ fn svg_group_transform(node: roxmltree::Node<'_, '_>) -> Affine {
 
 #[cfg(all(
     feature = "layout-shoal",
-    any(feature = "diagram-er", feature = "diagram-state")
+    any(
+        feature = "diagram-er",
+        feature = "diagram-requirement",
+        feature = "diagram-state",
+        feature = "diagram-usecase"
+    )
 ))]
 fn rect_face_normal(bounds: Rect, port: Point) -> Vec2 {
     [
@@ -921,6 +934,68 @@ fn rect_face_normal(bounds: Rect, port: Point) -> Vec2 {
     .min_by(|(distance, _), (other, _)| distance.total_cmp(other))
     .unwrap()
     .1
+}
+
+#[cfg(all(
+    feature = "layout-shoal",
+    any(
+        feature = "diagram-er",
+        feature = "diagram-requirement",
+        feature = "diagram-usecase"
+    )
+))]
+fn svg_box(node: roxmltree::Node<'_, '_>) -> Rect {
+    svg_group_transform(node).transform_rect_bbox(Rect::from_origin_size(
+        (svg_number(node, "x"), svg_number(node, "y")),
+        (svg_number(node, "width"), svg_number(node, "height")),
+    ))
+}
+
+#[cfg(all(
+    feature = "layout-shoal",
+    any(
+        feature = "diagram-er",
+        feature = "diagram-requirement",
+        feature = "diagram-usecase"
+    )
+))]
+fn svg_number(node: roxmltree::Node<'_, '_>, attribute: &str) -> f64 {
+    node.attribute(attribute).unwrap_or("0").parse().unwrap()
+}
+
+#[cfg(all(
+    feature = "layout-shoal",
+    any(feature = "diagram-requirement", feature = "diagram-usecase")
+))]
+fn svg_marker_scale(marker: roxmltree::Node<'_, '_>) -> f64 {
+    marker.attribute("viewBox").map_or(1.0, |view_box| {
+        let dimensions: Vec<f64> = view_box
+            .split_ascii_whitespace()
+            .map(|value| value.parse().unwrap())
+            .collect();
+        (svg_number(marker, "markerWidth") / dimensions[2])
+            .min(svg_number(marker, "markerHeight") / dimensions[3])
+    })
+}
+
+#[cfg(all(
+    feature = "layout-shoal",
+    any(
+        feature = "diagram-er",
+        feature = "diagram-requirement",
+        feature = "diagram-usecase"
+    )
+))]
+fn assert_same_bounds(actual: Rect, expected: Rect) {
+    for (actual_edge, expected_edge) in [actual.x0, actual.y0, actual.x1, actual.y1]
+        .into_iter()
+        .zip([expected.x0, expected.y0, expected.x1, expected.y1])
+    {
+        assert!(
+            (actual_edge - expected_edge).abs() <= FLATNESS,
+            "painted {actual:?}, measured {expected:?}"
+        );
+    }
 }
 
 #[cfg(test)]

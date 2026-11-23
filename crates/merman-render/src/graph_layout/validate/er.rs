@@ -1,6 +1,6 @@
 use super::{
-    Body, CrossAxis, Edge, End, FLATNESS, Label, LabelOwner, PointMarker, Scene, rect_face_normal,
-    svg_group_transform, validate,
+    Body, CrossAxis, Edge, End, FLATNESS, Label, LabelOwner, PointMarker, Scene,
+    assert_same_bounds, rect_face_normal, svg_box, svg_group_transform, svg_number, validate,
 };
 use crate::environment::RenderEnvironment;
 use crate::model::{ErDiagramLayout, LayoutLabel};
@@ -279,43 +279,23 @@ fn check_er_geometry(source: &str, look: &str) -> [bool; 4] {
     cardinalities
 }
 
-fn number(node: Node<'_, '_>, attribute: &str) -> f64 {
-    node.attribute(attribute).unwrap_or("0").parse().unwrap()
-}
-
-fn svg_box(node: Node<'_, '_>) -> Rect {
-    svg_group_transform(node).transform_rect_bbox(Rect::from_origin_size(
-        (number(node, "x"), number(node, "y")),
-        (number(node, "width"), number(node, "height")),
-    ))
-}
-
 fn label_box(label: &LayoutLabel) -> Rect {
     Rect::from_center_size((label.x, label.y), (label.width, label.height))
 }
 
-fn assert_same_bounds(actual: Rect, expected: Rect) {
-    for (actual, expected) in [actual.x0, actual.y0, actual.x1, actual.y1]
-        .into_iter()
-        .zip([expected.x0, expected.y0, expected.x1, expected.y1])
-    {
-        assert!((actual - expected).abs() <= FLATNESS);
-    }
-}
-
 fn marker_footprint(marker: Node<'_, '_>, end: End) -> (f64, PointMarker, Rect) {
     assert_eq!(marker.attribute("markerUnits"), Some("userSpaceOnUse"));
-    let ref_x = number(marker, "refX");
-    let ref_y = number(marker, "refY");
+    let ref_x = svg_number(marker, "refX");
+    let ref_y = svg_number(marker, "refY");
     let bounds = marker
         .children()
         .filter_map(|child| {
             if let Some(path) = child.attribute("d") {
                 Some(BezPath::from_svg(path).unwrap().bounding_box())
             } else if child.has_tag_name("circle") {
-                let radius = number(child, "r");
+                let radius = svg_number(child, "r");
                 Some(Rect::from_center_size(
-                    (number(child, "cx"), number(child, "cy")),
+                    (svg_number(child, "cx"), svg_number(child, "cy")),
                     (2.0 * radius, 2.0 * radius),
                 ))
             } else {

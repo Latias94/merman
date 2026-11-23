@@ -12,6 +12,8 @@ use std::f64::consts::TAU;
     feature = "diagram-agentflow"
 ))]
 mod flowchart;
+#[cfg(all(feature = "diagram-usecase", feature = "layout-shoal"))]
+mod usecase;
 
 /// The span is a full width (top/bottom) or height (left/right), centered on the port anchor.
 #[derive(Clone, Debug, PartialEq)]

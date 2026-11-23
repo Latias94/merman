@@ -10,8 +10,9 @@ use crate::text::{MermaidMarkdownWordType, TextMeasurer, TextMetrics, TextStyle,
 use crate::{Error, Result};
 use dugong::graphlib::{EdgeKey, Graph, GraphOptions};
 use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
+use indexmap::{IndexMap, map::Entry};
 use merman_model::families::requirement::{
-    RequirementDiagramModel, RequirementElement, RequirementNode,
+    RequirementDiagramModel, RequirementElement, RequirementNode, RequirementRelationship,
 };
 #[cfg(test)]
 use serde_json::Value;
@@ -25,6 +26,8 @@ mod css_binding;
 mod elk;
 mod html_label;
 mod relation_paint;
+#[cfg(feature = "layout-shoal")]
+mod shoal;
 mod source_typography;
 mod text_paint;
 mod theme;
@@ -148,6 +151,8 @@ impl RequirementLabelMeasurementBinding {
 pub(crate) struct RequirementPreparedArtifact {
     layout: RequirementDiagramLayout,
     render_layout: Option<RequirementDiagramLayout>,
+    #[cfg(feature = "layout-shoal")]
+    canonical_routes: Option<crate::graph_layout::canonical::CanonicalRoutes>,
     nodes: HashMap<String, RequirementNodeRenderPlan>,
     edges: HashMap<EdgeKey, RequirementEdgeLabelPlan>,
     measurement_binding: Option<RequirementLabelMeasurementBinding>,
@@ -160,6 +165,13 @@ impl RequirementPreparedArtifact {
 
     pub(crate) fn uses_elk(&self) -> bool {
         self.render_layout.is_some()
+    }
+
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) fn canonical_routes(
+        &self,
+    ) -> Option<&crate::graph_layout::canonical::CanonicalRoutes> {
+        self.canonical_routes.as_ref()
     }
 
     pub(crate) fn render_parts(
@@ -229,6 +241,29 @@ pub(crate) struct RequirementEdgeLabelPlan {
     pub(crate) has_label: bool,
     pub(crate) marker_start: bool,
     pub(crate) marker_end: bool,
+}
+
+impl RequirementEdgeLabelPlan {
+    fn for_relationship(
+        relationship: &RequirementRelationship,
+        relationship_index: usize,
+        display_text: String,
+    ) -> Self {
+        let contains = relationship.rel_type == "contains";
+        Self {
+            relationship_index,
+            relationship_type: relationship.rel_type.clone(),
+            display_text,
+            rendered_id: requirement_edge_id(
+                &relationship.src,
+                &relationship.dst,
+                relationship_index,
+            ),
+            has_label: true,
+            marker_start: contains,
+            marker_end: !contains,
+        }
+    }
 }
 
 pub(crate) struct RequirementRenderLabelMeasurements<'a> {
@@ -641,10 +676,6 @@ fn requirement_edge_id(src: &str, dst: &str, idx: usize) -> String {
     format!("{src}-{dst}-{idx}")
 }
 
-fn requirement_edge_key(src: &str, dst: &str, index: usize) -> EdgeKey {
-    EdgeKey::new(src, dst, Some(requirement_edge_id(src, dst, index)))
-}
-
 fn requirement_layout_edge_label(width: f64, height: f64) -> EdgeLabel {
     EdgeLabel {
         width,
@@ -831,6 +862,103 @@ fn requirement_measurement_styles(
     }
 }
 
+struct MeasuredRequirementNode {
+    width: f64,
+    height: f64,
+    label: RequirementNodeLabelPlan,
+}
+
+struct RequirementMeasurements<'a> {
+    nodes: IndexMap<&'a str, MeasuredRequirementNode>,
+    styles: RequirementMeasurementStyles,
+    binding: Option<RequirementLabelMeasurementBinding>,
+}
+
+fn measure_requirement<'a>(
+    model: &'a RequirementDiagramModel,
+    config: &merman_model::MermaidConfig,
+    text_measurer: &dyn TextMeasurer,
+    settings: &config::RequirementLayoutSettings,
+    work_meter: &Arc<OperationWorkMeter>,
+) -> Result<RequirementMeasurements<'a>> {
+    let binding = RequirementLabelMeasurementBinding::for_measurer(settings, text_measurer);
+    let styles = requirement_measurement_styles(settings);
+    let measure = |css_styles: &[String], specs: Vec<RequirementLabelSpec>| {
+        let typography = RequirementNodeTypography::resolve(css_styles, work_meter)?;
+        let node_styles = typography.apply_to(&styles);
+        let box_layout = requirement_box_layout(
+            text_measurer,
+            &typography,
+            &node_styles,
+            prepare_requirement_label_specs(specs, settings.html_labels, config, work_meter)?,
+            20.0,
+            20.0,
+        );
+        let (width, height, mut label) = box_layout.into_node_plan();
+        label.typography = typography;
+        Ok::<_, Error>(MeasuredRequirementNode {
+            width,
+            height,
+            label,
+        })
+    };
+    let mut nodes = IndexMap::new();
+    for requirement in &model.requirements {
+        if requirement.name.trim().is_empty() {
+            return Err(Error::InvalidModel {
+                message: format!("missing requirement name label for {}", requirement.name),
+            });
+        }
+        nodes.insert(
+            requirement.name.as_str(),
+            measure(
+                &requirement.css_styles,
+                requirement_node_label_specs(requirement),
+            )?,
+        );
+    }
+    let requirement_count = nodes.len();
+    for element in &model.elements {
+        if element.name.trim().is_empty() {
+            return Err(Error::InvalidModel {
+                message: format!("missing element name label for {}", element.name),
+            });
+        }
+        let measured = measure(&element.css_styles, element_node_label_specs(element))?;
+        match nodes.entry(element.name.as_str()) {
+            Entry::Occupied(mut entry) if entry.index() < requirement_count => {
+                let node = entry.get_mut();
+                node.width = measured.width;
+                node.height = measured.height;
+            }
+            entry => {
+                entry.insert_entry(measured);
+            }
+        }
+    }
+    Ok(RequirementMeasurements {
+        nodes,
+        styles,
+        binding,
+    })
+}
+
+fn measure_requirement_relationship(
+    relationship: &RequirementRelationship,
+    text_measurer: &dyn TextMeasurer,
+    styles: &RequirementMeasurementStyles,
+) -> Result<(String, RequirementLabelMetrics)> {
+    let display = format!("&lt;&lt;{}&gt;&gt;", relationship.rel_type);
+    let metrics = measure_requirement_edge_label_metrics(text_measurer, styles, &display)
+        .ok_or_else(|| Error::InvalidModel {
+            message: format!(
+                "missing relationship label for {} -> {} ({})",
+                relationship.src, relationship.dst, relationship.rel_type
+            ),
+        })?;
+    Ok((display, metrics))
+}
+
 /// Lays out a Requirement model under the resource policy owned by the render operation.
 #[cfg(test)]
 pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
@@ -866,9 +994,18 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
     work_meter
         .policy()
         .check_model_complexity(ModelComplexity::from_requirement(model))?;
+    let selection = crate::layout_backend::resolve_graph_layout(effective_config);
+    if selection.backend == crate::layout_backend::GraphLayoutBackend::Shoal {
+        #[cfg(feature = "layout-shoal")]
+        return shoal::layout(model, config, text_measurer, css_binding, work_meter);
+        #[cfg(not(feature = "layout-shoal"))]
+        return Err(Error::MissingCapability {
+            capability: crate::RenderCapability::LayoutShoal,
+            diagram_type: "requirement".to_owned(),
+        });
+    }
     work_meter.charge(requirement_layout_work_units(model))?;
     let mut work_control = OperationLayoutWorkControl::new(Arc::clone(work_meter));
-    let selection = crate::layout_backend::resolve_graph_layout(effective_config);
     selection.validate_rootless_graph()?;
     let backend = selection.backend;
     let direction = if model.direction.trim().is_empty() {
@@ -878,13 +1015,11 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
     };
 
     let cfg = &css_binding.layout;
-    let measurement_binding = RequirementLabelMeasurementBinding::for_measurer(cfg, text_measurer);
-    let styles = requirement_measurement_styles(cfg);
-
-    let padding = 20.0;
-    let gap = 20.0;
-    let mut requirement_node_labels = HashMap::new();
-    let mut element_node_labels = HashMap::new();
+    let RequirementMeasurements {
+        mut nodes,
+        styles,
+        binding: measurement_binding,
+    } = measure_requirement(model, config, text_measurer, cfg, work_meter)?;
     let mut edge_labels = HashMap::new();
     let mut edge_label_anchor_nodes = HashSet::new();
 
@@ -902,74 +1037,15 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
         ..Default::default()
     });
 
-    for r in &model.requirements {
-        if r.name.trim().is_empty() {
-            return Err(Error::InvalidModel {
-                message: format!("missing requirement name label for {}", r.name),
-            });
-        }
-
-        let typography = RequirementNodeTypography::resolve(&r.css_styles, work_meter)?;
-        let node_styles = typography.apply_to(&styles);
-        let box_layout = requirement_box_layout(
-            text_measurer,
-            &typography,
-            &node_styles,
-            prepare_requirement_label_specs(
-                requirement_node_label_specs(r),
-                cfg.html_labels,
-                config,
-                work_meter,
-            )?,
-            gap,
-            padding,
-        );
-        let (width, height, mut label_plan) = box_layout.into_node_plan();
-        label_plan.typography = typography;
+    for (&id, node) in &nodes {
         g.set_node(
-            r.name.clone(),
+            id,
             NodeLabel {
-                width,
-                height,
+                width: node.width,
+                height: node.height,
                 ..Default::default()
             },
         );
-        requirement_node_labels.insert(r.name.clone(), label_plan);
-    }
-
-    for e in &model.elements {
-        if e.name.trim().is_empty() {
-            return Err(Error::InvalidModel {
-                message: format!("missing element name label for {}", e.name),
-            });
-        }
-
-        let typography = RequirementNodeTypography::resolve(&e.css_styles, work_meter)?;
-        let node_styles = typography.apply_to(&styles);
-        let box_layout = requirement_box_layout(
-            text_measurer,
-            &typography,
-            &node_styles,
-            prepare_requirement_label_specs(
-                element_node_label_specs(e),
-                cfg.html_labels,
-                config,
-                work_meter,
-            )?,
-            gap,
-            padding,
-        );
-        let (width, height, mut label_plan) = box_layout.into_node_plan();
-        label_plan.typography = typography;
-        g.set_node(
-            e.name.clone(),
-            NodeLabel {
-                width,
-                height,
-                ..Default::default()
-            },
-        );
-        element_node_labels.insert(e.name.clone(), label_plan);
     }
 
     // Mermaid assigns one monotonically increasing edge counter across the complete
@@ -986,15 +1062,8 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
             });
         }
 
-        let label_display = format!("&lt;&lt;{}&gt;&gt;", rel.rel_type);
-        let metrics =
-            measure_requirement_edge_label_metrics(text_measurer, &styles, &label_display)
-                .ok_or_else(|| Error::InvalidModel {
-                    message: format!(
-                        "missing relationship label for {} -> {} ({})",
-                        rel.src, rel.dst, rel.rel_type
-                    ),
-                })?;
+        let (label_display, metrics) =
+            measure_requirement_relationship(rel, text_measurer, &styles)?;
 
         let is_contains = rel.rel_type == "contains";
         if rel.src == rel.dst && backend == crate::layout_backend::GraphLayoutBackend::Dagre {
@@ -1069,27 +1138,17 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
                 },
             );
         } else {
-            let edge_key = requirement_edge_key(&rel.src, &rel.dst, relationship_index);
-            let rendered_id = edge_key
-                .name
-                .clone()
-                .expect("Requirement edges are always named");
+            let plan =
+                RequirementEdgeLabelPlan::for_relationship(rel, relationship_index, label_display);
+            let graph_name = plan.rendered_id.clone();
             insert_requirement_layout_edge(
                 &mut g,
                 &mut edge_labels,
-                &edge_key.v,
-                &edge_key.w,
-                &rendered_id,
+                &rel.src,
+                &rel.dst,
+                &graph_name,
                 requirement_layout_edge_label(metrics.width.max(0.0), metrics.height.max(0.0)),
-                RequirementEdgeLabelPlan {
-                    relationship_index,
-                    relationship_type: rel.rel_type.clone(),
-                    display_text: label_display,
-                    rendered_id: rendered_id.clone(),
-                    has_label: true,
-                    marker_start: is_contains,
-                    marker_end: !is_contains,
-                },
+                plan,
             );
         }
     }
@@ -1226,15 +1285,13 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
         let plan = if edge_label_anchor_nodes.contains(&node.id) {
             RequirementNodeRenderPlan::EdgeLabelAnchor
         } else {
-            // Preserve the renderer's historical requirement-before-element precedence when both
-            // semantic collections contain the same node name.
-            let prepared_label = requirement_node_labels
-                .remove(&node.id)
-                .or_else(|| element_node_labels.remove(&node.id))
-                .ok_or_else(|| Error::InvalidModel {
-                    message: format!("missing prepared Requirement node label for {}", node.id),
-                })?;
-            RequirementNodeRenderPlan::Semantic(prepared_label)
+            let measured =
+                nodes
+                    .swap_remove(node.id.as_str())
+                    .ok_or_else(|| Error::InvalidModel {
+                        message: format!("missing prepared Requirement node label for {}", node.id),
+                    })?;
+            RequirementNodeRenderPlan::Semantic(measured.label)
         };
         if prepared_node_labels.insert(node.id.clone(), plan).is_some() {
             return Err(Error::InvalidModel {
@@ -1263,6 +1320,8 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
     Ok(RequirementPreparedArtifact {
         layout,
         render_layout,
+        #[cfg(feature = "layout-shoal")]
+        canonical_routes: None,
         nodes: prepared_node_labels,
         edges: prepared_edge_labels,
         measurement_binding,

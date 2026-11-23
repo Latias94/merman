@@ -207,7 +207,8 @@ pub(crate) use markers::BaseEdgeMarkerKind;
         any(
             feature = "diagram-class",
             feature = "diagram-er",
-            feature = "diagram-state"
+            feature = "diagram-state",
+            feature = "diagram-usecase"
         )
     ),
     all(

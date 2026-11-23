@@ -182,7 +182,9 @@ fn required_layout_capability(
             DiagramFamilyId::AGENTFLOW
                 | DiagramFamilyId::CLASS
                 | DiagramFamilyId::ER
+                | DiagramFamilyId::REQUIREMENT
                 | DiagramFamilyId::STATE
+                | DiagramFamilyId::USECASE
         )
         && !(family == DiagramFamilyId::FLOWCHART
             && matches!(meta.diagram_type.as_str(), "flowchart" | "flowchart-v2"))
@@ -320,6 +322,63 @@ pub fn has_edge_geometry(parsed: &PresentationDiagram) -> Result<bool> {
         family,
         DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE | DiagramFamilyId::AGENTFLOW
     ))
+}
+
+#[cfg(all(
+    test,
+    any(feature = "diagram-requirement", feature = "diagram-usecase")
+))]
+#[test]
+fn shoal_admission_for_requirement_and_usecase_is_typed() {
+    use crate::RenderCapabilityPolicy;
+    use crate::environment::RenderEnvironment;
+    use merman_core::{MermaidEngine, ParseOptions};
+
+    let sources = [
+        #[cfg(feature = "diagram-requirement")]
+        "requirementDiagram\nrequirement r {\nid: 1\ntext: Demo\nrisk: low\nverifymethod: test\n}",
+        #[cfg(feature = "diagram-usecase")]
+        "usecase-beta\nactor User\nA[Sign in]\nUser --> A",
+    ];
+    let engine = MermaidEngine::new();
+    for source in sources {
+        let source = format!("---\nconfig:\n  layout: shoal\n---\n{source}");
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        for (policy, ready) in [
+            (
+                RenderCapabilityPolicy::unrestricted(),
+                cfg!(feature = "layout-shoal"),
+            ),
+            (RenderCapabilityPolicy::deny_all(), false),
+        ] {
+            let session = RenderEnvironment::deterministic()
+                .with_capability_policy(policy)
+                .begin_session()
+                .unwrap();
+            let plan = super::plan_render(&parsed, &session).unwrap();
+            assert_eq!(
+                plan.required_capabilities(),
+                [RenderCapability::LayoutShoal]
+            );
+            assert_eq!(plan.is_ready(), ready);
+            let result = super::prepare(&parsed, &LayoutOptions::default(), session);
+            if ready {
+                result.unwrap();
+            } else {
+                assert!(matches!(
+                    result,
+                    Err(Error::MissingCapability {
+                        capability: RenderCapability::LayoutShoal,
+                        ..
+                    })
+                ));
+            }
+        }
+    }
 }
 
 fn validate_render_input(

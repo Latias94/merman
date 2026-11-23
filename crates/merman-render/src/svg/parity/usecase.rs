@@ -9,8 +9,11 @@ use merman_model::families::usecase::{
     UsecaseActorType, UsecaseAnimation, UsecaseDiagramModel, UsecaseLabelType, UsecaseNodeKind,
     UsecaseRelationshipType,
 };
+use std::borrow::Cow;
 use std::collections::HashMap;
 
+#[cfg(feature = "layout-shoal")]
+mod canonical;
 mod shapes;
 mod theme;
 
@@ -78,7 +81,7 @@ struct UsecaseLabelRenderContext<'a> {
 enum UsecaseLabelKind<'a> {
     Node(&'a str),
     PositionedNode(&'a str),
-    Boundary,
+    Boundary { canonical: bool },
     Edge(&'a str),
 }
 
@@ -117,16 +120,17 @@ fn write_label(
         .collect();
     css.push_str(&source_css);
     let is_edge_label = matches!(kind, UsecaseLabelKind::Edge(_));
-    let is_boundary = matches!(kind, UsecaseLabelKind::Boundary);
+    let is_boundary = matches!(kind, UsecaseLabelKind::Boundary { .. });
+    let canonical_boundary = matches!(kind, UsecaseLabelKind::Boundary { canonical: true });
     let positioned_node = matches!(kind, UsecaseLabelKind::PositionedNode(_));
-    let svg_bbox_y = if !html && (is_edge_label || positioned_node) {
+    let svg_bbox_y = if !html && (is_edge_label || positioned_node || canonical_boundary) {
         measurer.measure_svg_create_text_bbox_y_offset_px(&plan.text, &plan.style)
     } else {
         0.0
     };
     let class_attr = match kind {
         UsecaseLabelKind::Node(class) | UsecaseLabelKind::PositionedNode(class) => class,
-        UsecaseLabelKind::Boundary => "cluster-label system-boundary-title",
+        UsecaseLabelKind::Boundary { .. } => "cluster-label system-boundary-title",
         UsecaseLabelKind::Edge(_) => "label",
     };
     if let UsecaseLabelKind::Edge(data_id) = kind {
@@ -240,12 +244,25 @@ fn write_label(
                     .replace('&', "&amp;")
                     .replace('<', "&lt;")
                     .replace('>', "&gt;");
-                label::write_svg_text_from_create_text_source_with_style(
-                    out,
-                    &source,
-                    &css,
-                    is_edge_label,
-                )
+                if canonical_boundary {
+                    let words =
+                        crate::text::DeterministicTextMeasurer::normalized_text_lines(&source)
+                            .iter()
+                            .map(|line| {
+                                crate::text::non_markdown_svg_words(line)
+                                    .map(str::to_owned)
+                                    .collect()
+                            })
+                            .collect::<Vec<_>>();
+                    label::write_measured_svg_title(out, &words, &css, None, plan.metrics.width);
+                } else {
+                    label::write_svg_text_from_create_text_source_with_style(
+                        out,
+                        &source,
+                        &css,
+                        is_edge_label,
+                    );
+                }
             }
             UsecaseLabelType::Markdown => {
                 if is_edge_label {
@@ -373,6 +390,12 @@ pub(crate) fn render_usecase_diagram_svg_model(
         .filter(|text| !text.is_empty());
     let title_x = (bounds.min_x + bounds.max_x) / 2.0;
     let mut viewport_bounds = bounds.clone();
+    #[cfg(feature = "layout-shoal")]
+    let canonical_edges = canonical::prepare_edges(prepared, cfg, &mut viewport_bounds, options)?;
+    #[cfg(feature = "layout-shoal")]
+    let uses_canonical = canonical_edges.is_some();
+    #[cfg(not(feature = "layout-shoal"))]
+    let uses_canonical = false;
     let shadows = theme::prepare_body_shadows(
         prepared,
         &geometry,
@@ -469,43 +492,64 @@ pub(crate) fn render_usecase_diagram_svg_model(
     )?;
     // Mermaid emits marker wrappers that are observable in strict SVG DOM parity.
     out.push_str("<g>");
-    markers::push_base_edge_markers(&mut out, diagram_id, "usecase");
-    out.push_str("<defs>");
-    let _ = write!(
-        out,
-        r#"<marker id="{diagram_id}_usecase-extensionStart" class="marker extension usecase" refX="18" refY="7" markerWidth="20" markerHeight="28" orient="auto" markerUnits="userSpaceOnUse"><path d="M 1,7 L18,13 V 1 Z"/></marker>"#
-    );
-    out.push_str("</defs><defs>");
-    let _ = write!(
-        out,
-        r#"<marker id="{diagram_id}_usecase-extensionEnd" class="marker extension usecase" refX="1" refY="7" markerWidth="20" markerHeight="28" markerUnits="userSpaceOnUse" orient="auto"><path d="M 1,1 V 13 L18,7 Z"/></marker>"#
-    );
-    out.push_str("</defs>");
-    let _ = write!(
-        out,
-        r#"<marker id="{diagram_id}_usecase-extensionStart-margin" class="marker extension usecase" refX="18" refY="7" markerWidth="20" markerHeight="28" orient="auto" markerUnits="userSpaceOnUse" viewBox="0 0 20 14"><polygon points="10,7 18,13 18,1" style="stroke-width: 2; stroke-dasharray: 0;"/></marker>"#
-    );
-    out.push_str("<defs>");
-    let _ = write!(
-        out,
-        r#"<marker id="{diagram_id}_usecase-extensionEnd-margin" class="marker extension usecase" refX="9" refY="7" markerWidth="20" markerHeight="28" orient="auto" markerUnits="userSpaceOnUse" viewBox="0 0 20 14"><polygon points="10,1 10,13 18,7" style="stroke-width: 2; stroke-dasharray: 0;"/></marker>"#
-    );
-    out.push_str(r#"</defs><g class="root"><g class="clusters">"#);
-    for (color_index, plan) in prepared
+    if !uses_canonical {
+        markers::push_base_edge_markers(&mut out, diagram_id, "usecase");
+        out.push_str("<defs>");
+        let _ = write!(
+            out,
+            r#"<marker id="{diagram_id}_usecase-extensionStart" class="marker extension usecase" refX="18" refY="7" markerWidth="20" markerHeight="28" orient="auto" markerUnits="userSpaceOnUse"><path d="M 1,7 L18,13 V 1 Z"/></marker>"#
+        );
+        out.push_str("</defs><defs>");
+        let _ = write!(
+            out,
+            r#"<marker id="{diagram_id}_usecase-extensionEnd" class="marker extension usecase" refX="1" refY="7" markerWidth="20" markerHeight="28" markerUnits="userSpaceOnUse" orient="auto"><path d="M 1,1 V 13 L18,7 Z"/></marker>"#
+        );
+        out.push_str("</defs>");
+        let _ = write!(
+            out,
+            r#"<marker id="{diagram_id}_usecase-extensionStart-margin" class="marker extension usecase" refX="18" refY="7" markerWidth="20" markerHeight="28" orient="auto" markerUnits="userSpaceOnUse" viewBox="0 0 20 14"><polygon points="10,7 18,13 18,1" style="stroke-width: 2; stroke-dasharray: 0;"/></marker>"#
+        );
+        out.push_str("<defs>");
+        let _ = write!(
+            out,
+            r#"<marker id="{diagram_id}_usecase-extensionEnd-margin" class="marker extension usecase" refX="9" refY="7" markerWidth="20" markerHeight="28" orient="auto" markerUnits="userSpaceOnUse" viewBox="0 0 20 14"><polygon points="10,1 10,13 18,7" style="stroke-width: 2; stroke-dasharray: 0;"/></marker>"#
+        );
+        out.push_str("</defs>");
+    }
+    out.push_str(r#"<g class="root"><g class="clusters">"#);
+    let mut legacy_boundaries = prepared
         .nodes
         .iter()
         .filter(|plan| plan.is_boundary)
-        .enumerate()
-    {
+        .enumerate();
+    #[cfg(feature = "layout-shoal")]
+    let mut canonical_boundaries = prepared
+        .canonical_boundary_order()
+        .map(|order| order.iter());
+    let boundary_plans = std::iter::from_fn(|| {
+        #[cfg(feature = "layout-shoal")]
+        if let Some(order) = &mut canonical_boundaries {
+            return order
+                .next()
+                .map(|&(color, plan)| (color, &prepared.nodes[plan]));
+        }
+        legacy_boundaries.next()
+    });
+    for (color_index, plan) in boundary_plans {
         options.checkpoint_emit()?;
         let node = geometry[plan.id.as_str()];
         let boundary = boundaries[plan.id.as_str()];
         let kind = if plan.package { "package" } else { "rect" };
         let accessible = format!("{kind} system boundary {}", accessible_label(&plan.label));
         let appearance = theme::appearance_attributes(css_binding, Some(color_index));
+        let canonical_attributes = if uses_canonical {
+            format!(r#" data-et="cluster" data-id="{}""#, escape_attr(&plan.id))
+        } else {
+            String::new()
+        };
         let _ = write!(
             out,
-            r#"<g id="{}-usecase-{}" class="cluster usecase-system-boundary usecase-system-boundary-{kind} default system-boundary system-boundary-{kind} {}" data-boundary-type="{kind}"{appearance} data-usecase-id="{}" data-usecase-kind="boundary" role="img" aria-label="{}">"#,
+            r#"<g id="{}-usecase-{}" class="cluster usecase-system-boundary usecase-system-boundary-{kind} default system-boundary system-boundary-{kind} {}" data-boundary-type="{kind}"{appearance} data-usecase-id="{}" data-usecase-kind="boundary" role="img" aria-label="{}"{canonical_attributes}>"#,
             dom_part(diagram_id.semantic_str()),
             dom_part(&plan.id),
             escape_attr(&boundary.classes.join(" ")),
@@ -520,51 +564,84 @@ pub(crate) fn render_usecase_diagram_svg_model(
                 .unwrap_or_default(),
             plan.source_style
         );
+        #[cfg(feature = "layout-shoal")]
+        let placed_title = prepared.canonical_boundary_title(&plan.id);
+        #[cfg(not(feature = "layout-shoal"))]
+        let placed_title: Option<&crate::model::LayoutLabel> = None;
+        let left = node.x - node.width / 2.0;
+        let top = node.y - node.height / 2.0;
         let tab_height = if plan.package {
-            plan.label.metrics.height + 10.0
+            placed_title.map_or(plan.label.metrics.height + 10.0, |title| {
+                title.y - top + title.height / 2.0 + 5.0
+            })
         } else {
             0.0
         };
         let tab_width = node
             .width
             .min(80.0_f64.max(plan.label.metrics.width + 20.0));
-        let left = node.x - node.width / 2.0;
-        let top = node.y - node.height / 2.0;
-        if plan.package {
-            shapes::rect(
-                &mut out,
-                "boundary-tab system-boundary-package-tab label-container",
-                left,
-                top,
-                tab_width,
-                tab_height,
-                &style,
-            );
+        let tab_left = placed_title.map_or(left, |title| {
+            (title.x - tab_width / 2.0).clamp(left, (left + node.width - tab_width).max(left))
+        });
+        let write_tab = |out: &mut String| {
+            if plan.package {
+                shapes::rect(
+                    out,
+                    "boundary-tab system-boundary-package-tab label-container",
+                    tab_left,
+                    top,
+                    tab_width,
+                    tab_height,
+                    &style,
+                );
+            }
+        };
+        if !uses_canonical {
+            write_tab(&mut out);
         }
+        let body_inset = if uses_canonical { 0.0 } else { tab_height };
         shapes::rect(
             &mut out,
             "boundary-body label-container",
             left,
-            top + tab_height,
+            top + body_inset,
             node.width,
-            node.height - tab_height,
+            node.height - body_inset,
             &style,
+        );
+        if uses_canonical {
+            write_tab(&mut out);
+        }
+        let title_x = placed_title.map_or_else(
+            || {
+                if plan.package {
+                    left + tab_width / 2.0
+                } else {
+                    node.x
+                }
+            },
+            |title| title.x,
+        );
+        let title_y = placed_title.map_or_else(
+            || {
+                top + if plan.package {
+                    tab_height / 2.0
+                } else {
+                    plan.label.metrics.height / 2.0
+                        + config_f64(cfg, &["flowchart", "subGraphTitleMargin", "top"])
+                            .unwrap_or(0.0)
+                }
+            },
+            |title| title.y,
         );
         write_label(
             &mut out,
             &plan.label,
-            UsecaseLabelKind::Boundary,
-            if plan.package {
-                left + tab_width / 2.0
-            } else {
-                node.x
+            UsecaseLabelKind::Boundary {
+                canonical: uses_canonical,
             },
-            top + if plan.package {
-                tab_height / 2.0
-            } else {
-                plan.label.metrics.height / 2.0
-                    + config_f64(cfg, &["flowchart", "subGraphTitleMargin", "top"]).unwrap_or(0.0)
-            },
+            title_x,
+            title_y,
             UsecaseLabelRenderContext {
                 config,
                 measurer,
@@ -668,31 +745,45 @@ pub(crate) fn render_usecase_diagram_svg_model(
     for (edge_index, plan) in prepared.edges.iter().enumerate() {
         options.checkpoint_emit()?;
         let edge = edge_geometry[plan.id.as_str()];
-        let points = prepared.edge_points(edge);
-        let data_points = base64::engine::general_purpose::STANDARD
-            .encode(crate::svg::parity::util::json_stringify_points(&points));
         let data_look = &css_binding.edge_look;
-        let mut points = points;
-        let curve = if elk {
-            if edge.points.is_empty() {
-                "linear"
+        #[cfg(feature = "layout-shoal")]
+        let canonical_edge = canonical_edges.as_ref().map(|edges| &edges[edge_index]);
+        let legacy = || {
+            let mut points = prepared.edge_points(edge);
+            let curve = if elk {
+                if edge.points.is_empty() {
+                    "linear"
+                } else {
+                    "rounded"
+                }
             } else {
-                "rounded"
-            }
-        } else {
-            cfg.pointer("/flowchart/curve")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or("basis")
+                cfg.pointer("/flowchart/curve")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("basis")
+            };
+            let data_points = crate::svg::parity::util::json_stringify_points(&points);
+            let path = edge_path::render_path(
+                &mut points,
+                curve,
+                plan.start_marker.as_deref(),
+                plan.end_marker.as_deref(),
+            );
+            let path = match hopped_paths.get(plan.id.as_str()) {
+                Some(hop) => Cow::Borrowed(hop.as_str()),
+                None => Cow::Owned(path),
+            };
+            (data_points, path)
         };
-        let path = edge_path::render_path(
-            &mut points,
-            curve,
-            plan.start_marker.as_deref(),
-            plan.end_marker.as_deref(),
-        );
-        let path = hopped_paths
-            .get(plan.id.as_str())
-            .map_or(path.as_str(), String::as_str);
+        #[cfg(feature = "layout-shoal")]
+        let (data_points, path) = canonical_edge.map_or_else(legacy, |painted| {
+            (
+                crate::svg::parity::util::json_stringify_points(&painted.points),
+                Cow::Borrowed(painted.path.as_str()),
+            )
+        });
+        #[cfg(not(feature = "layout-shoal"))]
+        let (data_points, path) = legacy();
+        let data_points = base64::engine::general_purpose::STANDARD.encode(data_points);
         let relation = relationships
             .get(plan.original_id.as_deref().unwrap_or(&plan.id))
             .copied();
@@ -721,15 +812,19 @@ pub(crate) fn render_usecase_diagram_svg_model(
         let mut marker_references = Vec::new();
         for (start, marker) in [(true, &plan.start_marker), (false, &plan.end_marker)] {
             if let Some(marker) = marker {
+                let style = theme_plan.marker(semantic_id, start);
+                #[cfg(feature = "layout-shoal")]
+                if let Some(painted) = canonical_edge {
+                    if let Some(marker) = &painted.markers[usize::from(!start)] {
+                        let reference = canonical::write_marker(
+                            &mut out, diagram_id, marker, start, edge_index, style, &receipt,
+                        );
+                        marker_references.push((if start { "start" } else { "end" }, reference));
+                    }
+                    continue;
+                }
                 let reference = theme::write_marker(
-                    &mut out,
-                    diagram_id,
-                    marker,
-                    start,
-                    margin,
-                    edge_index,
-                    theme_plan.marker(semantic_id, start),
-                    &receipt,
+                    &mut out, diagram_id, marker, start, margin, edge_index, style, &receipt,
                 );
                 marker_references.push((if start { "start" } else { "end" }, reference));
             }
@@ -944,9 +1039,14 @@ pub(crate) fn render_usecase_diagram_svg_model(
             None if note.is_some() => "usecase-note".into(),
             None => "usecase-json-table usecase-json-table".into(),
         };
+        let canonical_attributes = if uses_canonical {
+            format!(r#" data-et="node" data-id="{}""#, escape_attr(&plan.id))
+        } else {
+            String::new()
+        };
         let _ = write!(
             out,
-            r#"<g id="{}-usecase-{}"{appearance} class="node default {role_classes} {}" data-usecase-id="{}" data-usecase-kind="{kind}" role="img" aria-label="{}" transform="translate({},{})">"#,
+            r#"<g id="{}-usecase-{}"{appearance} class="node default {role_classes} {}" data-usecase-id="{}" data-usecase-kind="{kind}" role="img" aria-label="{}" transform="translate({},{})"{canonical_attributes}>"#,
             dom_part(diagram_id.semantic_str()),
             dom_part(&plan.id),
             escape_attr(&classes.join(" ")),
@@ -978,6 +1078,8 @@ pub(crate) fn render_usecase_diagram_svg_model(
                 measurer,
                 diagram_id,
                 options,
+                #[cfg(feature = "layout-shoal")]
+                canonical: uses_canonical,
             },
         )?;
         out.push_str("</g>");

@@ -8,6 +8,69 @@ use merman_model::families::requirement::RequirementDiagramModel;
 
 const REQUIREMENT_ROUGH_GEOMETRY_COLOR: &str = "#000000";
 
+struct RequirementCanonicalPaint {
+    points: Vec<crate::model::LayoutPoint>,
+    bounds: Bounds,
+}
+
+struct RequirementPaintedEdge {
+    d: String,
+    label_position: Option<crate::model::LayoutPoint>,
+    canonical: Option<RequirementCanonicalPaint>,
+}
+
+#[cfg(feature = "layout-shoal")]
+fn paint_canonical_edge(
+    routes: &crate::graph_layout::canonical::CanonicalRoutes,
+    edge: &crate::model::LayoutEdge,
+    stroke_outset: f64,
+    options: &SvgExecution<'_>,
+) -> Result<(String, RequirementCanonicalPaint)> {
+    use crate::graph_layout::route_paint::RouteStyle;
+    use kurbo::{Point, Rect, Vec2};
+
+    options.work_meter().charge(edge.points.len())?;
+    let geometry = routes
+        .paint(edge, Vec2::ZERO, stroke_outset, RouteStyle::Curved)
+        .ok_or_else(|| Error::InvalidModel {
+            message: format!(
+                "Requirement edge `{}` has no canonical paint geometry",
+                edge.id
+            ),
+        })?;
+    let shaft = geometry.path.bounds;
+    let outset = stroke_outset * std::f64::consts::SQRT_2;
+    let mut bounds =
+        Rect::new(shaft.min_x, shaft.min_y, shaft.max_x, shaft.max_y).inflate(outset, outset);
+    let [start_ref, start_lead, end_lead, end_ref] = geometry.marker_points;
+    for (marker, reference, lead) in [
+        (geometry.markers.0, start_ref, start_lead),
+        (geometry.markers.1, end_ref, end_lead),
+    ] {
+        if marker.depth > 0.0 {
+            let reference = Point::new(reference.x, reference.y);
+            let normal = (Point::new(lead.x, lead.y) - reference).normalize();
+            let across = Vec2::new(-normal.y, normal.x) * (marker.width / 2.0);
+            for axial_distance in [-marker.trim, marker.depth] {
+                let center = reference + normal * axial_distance;
+                bounds = bounds.union_pt(center + across).union_pt(center - across);
+            }
+        }
+    }
+    Ok((
+        geometry.path.d,
+        RequirementCanonicalPaint {
+            points: geometry.data_points,
+            bounds: Bounds {
+                min_x: bounds.x0,
+                min_y: bounds.y0,
+                max_x: bounds.x1,
+                max_y: bounds.y1,
+            },
+        },
+    ))
+}
+
 fn requirement_color_id(border_colors: &[String], color_index: usize) -> Option<String> {
     (!border_colors.is_empty()).then(|| format!("color-{}", color_index % border_colors.len()))
 }
@@ -219,8 +282,16 @@ pub(crate) fn render_requirement_diagram_svg_model(
     }
 
     let diagram_id = options.diagram_id_or("requirement");
-    let render_settings = crate::requirement::RequirementConfigView::new(effective_config)
-        .render_settings_with_binding(paint_theme.css());
+    let requirement_config = crate::requirement::RequirementConfigView::new(effective_config);
+    let render_settings = requirement_config.render_settings_with_binding(paint_theme.css());
+    #[cfg(feature = "layout-shoal")]
+    let canonical_paint = prepared
+        .canonical_routes()
+        .map(|routes| (routes, requirement_config.canonical_stroke_width() / 2.0));
+    #[cfg(feature = "layout-shoal")]
+    let uses_canonical_routes = canonical_paint.is_some();
+    #[cfg(not(feature = "layout-shoal"))]
+    let uses_canonical_routes = false;
     let look = render_settings.look;
     let look = look.as_str();
     let look_attr = format!(r#" data-look="{}""#, escape_xml(look));
@@ -257,8 +328,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
     let edge_identity = |edge: &crate::model::LayoutEdge| {
         dugong::graphlib::EdgeKey::new(&edge.from, &edge.to, Some(&edge.id))
     };
-    let mut rendered_edge_paths = std::collections::HashMap::new();
-    let mut rendered_edge_label_positions = std::collections::HashMap::new();
+    let mut painted_edges = std::collections::HashMap::with_capacity(layout.edges.len());
     for edge in &layout.edges {
         let identity = edge_identity(edge);
         let prepared_edge = prepared_edges
@@ -269,18 +339,66 @@ pub(crate) fn render_requirement_diagram_svg_model(
                     edge.from, edge.to, edge.id
                 ),
             })?;
-        let rendered_d = if prepared.uses_elk() {
-            if edge.points.len() <= 2 {
-                super::super::curve::curve_linear_path_d(&edge.points)
-            } else {
-                super::super::curve::curve_rounded_path_d_and_bounds(&edge.points, 5.0, false, None)
+        let compatibility_path = || {
+            if prepared.uses_elk() {
+                if edge.points.len() <= 2 {
+                    super::super::curve::curve_linear_path_d(&edge.points)
+                } else {
+                    super::super::curve::curve_rounded_path_d_and_bounds(
+                        &edge.points,
+                        5.0,
+                        false,
+                        None,
+                    )
                     .0
+                }
+            } else {
+                curve_basis_path_d(&edge.points)
             }
-        } else {
-            curve_basis_path_d(&edge.points)
         };
-        if rendered_edge_paths
-            .insert(identity.clone(), rendered_d.clone())
+        #[cfg(feature = "layout-shoal")]
+        let (d, canonical) = if let Some((routes, stroke_outset)) = canonical_paint {
+            let (d, geometry) = paint_canonical_edge(routes, edge, stroke_outset, options)?;
+            (d, Some(geometry))
+        } else {
+            (compatibility_path(), None)
+        };
+        #[cfg(not(feature = "layout-shoal"))]
+        let (d, canonical) = (compatibility_path(), None);
+        let label_position = if prepared_edge.has_label {
+            let label = edge.label.as_ref().ok_or_else(|| Error::InvalidModel {
+                message: format!(
+                    "missing Requirement edge label geometry for {} -> {} ({})",
+                    edge.from, edge.to, edge.id
+                ),
+            })?;
+            let anchor = crate::model::LayoutPoint {
+                x: label.x,
+                y: label.y,
+            };
+            Some(if uses_canonical_routes {
+                anchor
+            } else {
+                super::super::edge_label_geometry::position_edge_label(
+                    anchor,
+                    Some(&edge.points),
+                    &edge.points,
+                    &d,
+                    false,
+                )
+            })
+        } else {
+            None
+        };
+        if painted_edges
+            .insert(
+                identity,
+                RequirementPaintedEdge {
+                    d,
+                    label_position,
+                    canonical,
+                },
+            )
             .is_some()
         {
             return Err(Error::InvalidModel {
@@ -289,25 +407,6 @@ pub(crate) fn render_requirement_diagram_svg_model(
                     edge.from, edge.to, edge.id
                 ),
             });
-        }
-        if prepared_edge.has_label {
-            let label = edge.label.as_ref().ok_or_else(|| Error::InvalidModel {
-                message: format!(
-                    "missing Requirement edge label geometry for {} -> {} ({})",
-                    edge.from, edge.to, edge.id
-                ),
-            })?;
-            let label_position = super::super::edge_label_geometry::position_edge_label(
-                crate::model::LayoutPoint {
-                    x: label.x,
-                    y: label.y,
-                },
-                Some(&edge.points),
-                &edge.points,
-                &rendered_d,
-                false,
-            );
-            rendered_edge_label_positions.insert(identity, label_position);
         }
     }
 
@@ -371,10 +470,14 @@ pub(crate) fn render_requirement_diagram_svg_model(
             max_y = max_y.max(point.y);
         }
         let identity = edge_identity(edge);
-        if let (Some(label), Some(position)) = (
-            edge.label.as_ref(),
-            rendered_edge_label_positions.get(&identity),
-        ) {
+        let painted = &painted_edges[&identity];
+        if let Some(canonical) = &painted.canonical {
+            min_x = min_x.min(canonical.bounds.min_x);
+            min_y = min_y.min(canonical.bounds.min_y);
+            max_x = max_x.max(canonical.bounds.max_x);
+            max_y = max_y.max(canonical.bounds.max_y);
+        }
+        if let (Some(label), Some(position)) = (&edge.label, &painted.label_position) {
             min_x = min_x.min(position.x - label.width / 2.0);
             min_y = min_y.min(position.y - label.height / 2.0);
             max_x = max_x.max(position.x + label.width / 2.0);
@@ -542,7 +645,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
     out.push_str("<g>");
 
     // Mermaid 12 selects the Neo variants in requirementRenderer.ts.
-    let marker_units = if look == "neo" {
+    let marker_units = if look == "neo" || uses_canonical_routes {
         r#" markerUnits="userSpaceOnUse""#
     } else {
         ""
@@ -609,9 +712,10 @@ pub(crate) fn render_requirement_diagram_svg_model(
             "fill:none;stroke-dasharray: 10,7;;;fill:none;stroke-dasharray: 10,7"
         };
 
-        let d = rendered_edge_paths
+        let painted = painted_edges
             .get(&identity)
             .expect("Requirement edge paths were validated before root rendering");
+        let d = painted.d.as_str();
         let mut masked_style = String::new();
         if look == "neo"
             && let Some(length) = super::super::svg_path_length_from_d(d)
@@ -636,8 +740,12 @@ pub(crate) fn render_requirement_diagram_svg_model(
         } else {
             std::borrow::Cow::Borrowed(masked_style.as_str())
         };
+        let data_points = painted
+            .canonical
+            .as_ref()
+            .map_or(e.points.as_slice(), |geometry| geometry.points.as_slice());
         let data_points_b64 =
-            base64::engine::general_purpose::STANDARD.encode(json_stringify_points(&e.points));
+            base64::engine::general_purpose::STANDARD.encode(json_stringify_points(data_points));
 
         let mut marker_attr = String::new();
         if prepared_label.marker_start {
@@ -716,8 +824,9 @@ pub(crate) fn render_requirement_diagram_svg_model(
             0.0
         };
         if prepared_label.has_label {
-            let label_position = rendered_edge_label_positions
+            let label_position = painted_edges
                 .get(&identity)
+                .and_then(|painted| painted.label_position.as_ref())
                 .expect("Requirement label positions were validated before root rendering");
             let _ = write!(
                 &mut out,
@@ -951,10 +1060,15 @@ pub(crate) fn render_requirement_diagram_svg_model(
             .and_then(|index| requirement_color_id(border_colors, *index))
             .map(|color_id| format!(r#" data-color-id="{}""#, escape_xml(&color_id)))
             .unwrap_or_default();
+        let semantic_id_attr = if uses_canonical_routes {
+            format!(r#" data-et="node" data-id="{}""#, escape_xml(&n.id))
+        } else {
+            String::new()
+        };
 
         let _ = write!(
             &mut out,
-            r#"<g class="{class}"{id_attr}{look_attr}{color_id_attr} transform="translate({cx}, {cy})">"#,
+            r#"<g class="{class}"{id_attr}{look_attr}{color_id_attr}{semantic_id_attr} transform="translate({cx}, {cy})">"#,
             class = escape_xml(&classes_str),
             id_attr = id_attr,
             look_attr = look_attr.as_str(),
@@ -2386,6 +2500,95 @@ mod tests {
             path_for("req1-cyclic-special-2").attribute("marker-end"),
             None
         );
+    }
+
+    #[cfg(feature = "layout-shoal")]
+    #[test]
+    fn requirement_shoal_keeps_both_native_loop_markers_and_svg_label_anchors() {
+        use super::fmt;
+        use kurbo::{BezPath, ParamCurve, Point};
+
+        let model = RequirementDiagramModel {
+            requirements: vec![requirement_node("req")],
+            relationships: ["contains", "refines"]
+                .map(|kind| RequirementRelationship {
+                    rel_type: kind.into(),
+                    src: "req".into(),
+                    dst: "req".into(),
+                })
+                .into(),
+            ..empty_requirement_model()
+        };
+        let config = crate::test_support::presentation_config(serde_json::json!({
+            "layout": "shoal",
+            "look": "neo",
+            "htmlLabels": false,
+            "themeVariables": { "strokeWidth": 2.5 }
+        }));
+        let measurer = DeterministicTextMeasurer::default();
+        let prepared = crate::requirement::layout_requirement_diagram_typed_with_resource_policy(
+            &model,
+            config.as_value(),
+            &measurer,
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        )
+        .unwrap();
+        let svg = render_prepared_requirement_for_test(
+            &prepared,
+            &model,
+            &config,
+            None,
+            &measurer,
+            &SvgRenderOptions::default(),
+        )
+        .unwrap();
+        let document = crate::xml_dom::Document::parse(&svg).unwrap();
+        let layout = prepared.layout();
+        assert_eq!(layout.nodes.len(), 1);
+        assert_eq!(layout.edges.len(), 2);
+        for (edge, marker_attr, opposite) in [
+            (&layout.edges[0], "marker-start", "marker-end"),
+            (&layout.edges[1], "marker-end", "marker-start"),
+        ] {
+            let path = document
+                .descendants()
+                .find(|node| {
+                    node.attribute("data-et") == Some("edge")
+                        && node.attribute("data-id") == Some(edge.id.as_str())
+                })
+                .unwrap();
+            assert!(path.attribute(marker_attr).is_some());
+            assert!(path.attribute(opposite).is_none());
+            let label = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g") && node.attribute("data-id") == Some(edge.id.as_str())
+                })
+                .unwrap();
+            assert!(label.descendants().any(|node| node.has_tag_name("text")));
+            let anchor = edge.label.as_ref().unwrap();
+            assert_eq!(
+                label.parent().unwrap().attribute("transform"),
+                Some(format!("translate({}, {})", fmt(anchor.x), fmt(anchor.y)).as_str())
+            );
+            let painted = BezPath::from_svg(path.attribute("d").unwrap()).unwrap();
+            let (reference, contact, expected_setback) = if marker_attr == "marker-start" {
+                (
+                    painted.segments().next().unwrap().start(),
+                    &edge.points[0],
+                    0.0,
+                )
+            } else {
+                let setback = (2.5 / 2.0) * (1.0 / 5.0_f64.sqrt()) * (20.0 / 25.0);
+                (
+                    painted.segments().last().unwrap().end(),
+                    edge.points.last().unwrap(),
+                    setback,
+                )
+            };
+            let actual_setback = (reference - Point::new(contact.x, contact.y)).hypot();
+            assert!((actual_setback - expected_setback).abs() < 0.002);
+        }
     }
 
     #[test]

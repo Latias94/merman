@@ -168,7 +168,9 @@ mod graph_label;
         any(
             feature = "diagram-class",
             feature = "diagram-er",
-            feature = "diagram-state"
+            feature = "diagram-requirement",
+            feature = "diagram-state",
+            feature = "diagram-usecase"
         )
     )
 ))]
@@ -2137,8 +2139,6 @@ id1(Start)-->id2(Stop)
         for body in [
             "swimlane-beta LR\nA --> B",
             "mindmap\n  root((Demo))\n    Leaf",
-            "requirementDiagram\nrequirement r {\nid: 1\ntext: Demo\nrisk: low\nverifymethod: test\n}",
-            "usecase-beta\nactor A\nA --> B",
         ] {
             let source = format!("---\nconfig:\n  layout: shoal\n---\n{body}\n");
             let parsed = MermaidEngine::new()
@@ -2189,6 +2189,14 @@ id1(Start)-->id2(Stop)
             ),
             (
                 "erDiagram\nA ||--o{ B : relates",
+                Some(RenderCapability::LayoutShoal),
+            ),
+            (
+                "requirementDiagram\nrequirement r {\nid: 1\ntext: Demo\nrisk: low\nverifymethod: test\n}",
+                Some(RenderCapability::LayoutShoal),
+            ),
+            (
+                "usecase-beta\nactor A\nA --> B",
                 Some(RenderCapability::LayoutShoal),
             ),
             (
