@@ -755,6 +755,7 @@ mod integration_tests {
         let prepared_nodes = super::node_inventory::FlowchartPreparedNodes::prepare(
             &model,
             &render_context,
+            &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
             super::node_inventory::FlowchartNodeLayoutView::Flowchart(&layout),
             &sidecar,
             None,
@@ -926,6 +927,7 @@ mod integration_tests {
             let prepared_nodes = super::node_inventory::FlowchartPreparedNodes::prepare(
                 &model,
                 &render_context,
+                &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
                 super::node_inventory::FlowchartNodeLayoutView::Flowchart(&layout),
                 &sidecar,
                 None,

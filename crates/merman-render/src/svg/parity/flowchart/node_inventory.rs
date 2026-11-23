@@ -268,6 +268,7 @@ impl FlowchartPreparedNodes {
     pub(crate) fn prepare(
         model: &crate::flowchart::FlowchartModel,
         render_context: &crate::flowchart::FlowchartRenderContext,
+        class_defs: &crate::flowchart::FlowchartClassDefinitions<'_>,
         layout: FlowchartNodeLayoutView<'_>,
         svg_labels: &crate::flowchart::FlowchartSvgLabelSidecar,
         theme: Option<&crate::diagram_theme::ResolvedDiagramTheme>,
@@ -382,7 +383,7 @@ impl FlowchartPreparedNodes {
                 ),
             );
             let structural = crate::flowchart::FlowchartStructuralLabelTypography::prepare(
-                &model.class_defs,
+                class_defs,
                 label_dom.0,
                 label_dom.1,
                 |units| work.charge(units).map_err(Into::into),
@@ -432,7 +433,7 @@ impl FlowchartPreparedNodes {
                     selection_inputs
                 };
             let terminal = super::node_style::PreparedNodeTerminal::prepare(
-                &model.class_defs,
+                class_defs,
                 (classes, styles, include_default_class),
                 terminal_shape,
                 &structural,
@@ -529,7 +530,7 @@ impl FlowchartPreparedNodes {
                 super::node_style::FlowchartClusterStructuralSources::absent()
             } else {
                 super::node_style::FlowchartClusterStructuralSources::prepare(
-                    &model.class_defs,
+                    class_defs,
                     prepared_theme.compatibility.html_labels,
                     crate::flowchart::FlowchartLabelDom::cluster(
                         input
@@ -873,7 +874,9 @@ mod source_typography_tests {
         )
         .unwrap();
         let mut layout = crate::flowchart::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
-            &model, &render_context, &metadata.effective_config,
+            &model, &render_context,
+            &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
+            &metadata.effective_config,
             &crate::text::DeterministicTextMeasurer::default(), None, None, &edge_style, work.clone(),
         ).unwrap();
         let theme = crate::flowchart::FlowchartPreparedTheme::resolve(
@@ -896,6 +899,7 @@ mod source_typography_tests {
         let prepared = FlowchartPreparedNodes::prepare(
             &model,
             &render_context,
+            &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
             FlowchartNodeLayoutView::Flowchart(&layout),
             &sidecar,
             None,
@@ -975,6 +979,7 @@ mod source_typography_tests {
         let layout = crate::flowchart::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
             &model,
             &render_context,
+            &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
             &metadata.effective_config,
             &measurer,
             None,
@@ -1007,6 +1012,7 @@ mod source_typography_tests {
         let result = FlowchartPreparedNodes::prepare(
             &model,
             &render_context,
+            &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
             FlowchartNodeLayoutView::Flowchart(&layout),
             &sidecar,
             None,

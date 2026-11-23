@@ -1493,6 +1493,7 @@ pub(crate) fn layout_flowchart_typed_with_work_meter(
     layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
         model,
         &FlowchartRenderContext::default(),
+        &super::FlowchartClassDefinitions::new(&model.class_defs),
         effective_config,
         measurer,
         math_renderer,
@@ -1509,6 +1510,7 @@ pub(crate) fn layout_flowchart_typed_with_work_meter(
 pub(crate) fn layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
+    class_defs: &super::FlowchartClassDefinitions<'_>,
     effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
@@ -1520,6 +1522,7 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_an
     layout_flowchart_with_model(
         model,
         render_label_sources,
+        class_defs,
         effective_config,
         measurer,
         math_renderer,
@@ -1536,6 +1539,7 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_an
 fn layout_flowchart_with_model(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
+    class_defs: &super::FlowchartClassDefinitions<'_>,
     effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
@@ -1822,7 +1826,7 @@ fn layout_flowchart_with_model(
             ),
         );
         let structural = super::FlowchartStructuralLabelTypography::prepare(
-            &model.class_defs,
+            class_defs,
             label_dom.0,
             label_dom.1,
             |units| work_control.charge_adapter(units),
@@ -1936,7 +1940,7 @@ fn layout_flowchart_with_model(
             ),
         );
         let structural = super::FlowchartStructuralLabelTypography::prepare(
-            &model.class_defs,
+            class_defs,
             label_dom.0,
             label_dom.1,
             |units| work_control.charge_adapter(units),
@@ -2035,7 +2039,7 @@ fn layout_flowchart_with_model(
             ),
         );
         let structural = super::FlowchartStructuralLabelTypography::prepare(
-            &model.class_defs,
+            class_defs,
             label_dom.0,
             label_dom.1,
             |units| work_control.charge_adapter(units),
@@ -4526,6 +4530,7 @@ flowchart TD
         layout_flowchart_with_model(
             model,
             &labels,
+            &super::super::FlowchartClassDefinitions::new(&model.class_defs),
             &parsed.metadata().effective_config,
             &measurer,
             None,

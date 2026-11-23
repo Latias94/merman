@@ -45,8 +45,8 @@ pub(in crate::svg::parity::flowchart) fn flowchart_classdef_css_declarations(
     // This is deliberately a safe headless projection, not a complete browser CSS engine:
     // `PreparedSourceStyleDeclaration` rejects resource-bearing values that CSSOM would retain.
     (
-        flowchart_classdef_cssom_string(styles.shape),
-        flowchart_classdef_cssom_string(styles.text),
+        flowchart_classdef_cssom_string(&styles.shape),
+        flowchart_classdef_cssom_string(&styles.text),
     )
 }
 
@@ -77,11 +77,11 @@ pub(in crate::svg::parity::flowchart) fn cluster_title_class_foreground(
     Ok(status)
 }
 
-fn flowchart_classdef_cssom_string(
-    cssom: IndexMap<String, std::sync::Arc<crate::diagram_theme::PreparedSourceStyleDeclaration>>,
+pub(super) fn flowchart_classdef_cssom_string(
+    cssom: &IndexMap<String, std::sync::Arc<crate::diagram_theme::PreparedSourceStyleDeclaration>>,
 ) -> String {
     let mut style = String::new();
-    for (property, declaration) in &cssom {
+    for (property, declaration) in cssom {
         let value = if !property.starts_with("--")
             && (matches!(property.as_str(), "fill" | "stroke" | "color")
                 || property.ends_with("-color"))

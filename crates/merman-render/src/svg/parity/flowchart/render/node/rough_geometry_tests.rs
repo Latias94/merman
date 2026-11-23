@@ -145,6 +145,7 @@ fn with_context<T>(
     let prepared_nodes = flow::node_inventory::FlowchartPreparedNodes::prepare(
         &model,
         &render_context,
+        &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
         flow::node_inventory::FlowchartNodeLayoutView::Flowchart(&layout),
         &sidecar,
         None,
