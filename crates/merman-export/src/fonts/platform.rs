@@ -1367,6 +1367,37 @@ mod tests {
     }
 
     #[test]
+    fn named_pictorial_font_is_eligible_for_authored_glyph_fallback() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts");
+        let mut context = NativeFontOptions::default()
+            .with_font_file(root.join("MermanProbeBase.ttf"))
+            .with_font_file(root.join("MermanPictorialTest.ttf"))
+            .with_font_file(root.join("Cousine-Regular.ttf"))
+            .load(&OperationControl::new())
+            .unwrap();
+        let inner = Arc::get_mut(&mut context.0).unwrap();
+        inner.discovery = Some(super::super::resolver::DiscoveryProvider::Platform {
+            catalog: Arc::new(test_catalog()),
+            explicit: Arc::clone(&inner.database),
+        });
+        for (family, expected) in [
+            ("Merman Pictorial Test", "MermanPictorialTest"),
+            (
+                "MermanProbeBase, Merman Pictorial Test, Cousine",
+                "MermanPictorialTest",
+            ),
+            ("MermanProbeBase", "Cousine-Regular"),
+        ] {
+            assert_eq!(
+                platform_painted_families(&context, Some(family)),
+                BTreeSet::from([expected.to_owned()]),
+                "{family}"
+            );
+            context.check().unwrap();
+        }
+    }
+
+    #[test]
     fn platform_glyph_fallback_rejects_symbolic_faces_after_binary_admission() {
         for fixture in ["MermanSymbolicTest.ttf", "MermanPictorialTest.ttf"] {
             for include_text_fallback in [false, true] {

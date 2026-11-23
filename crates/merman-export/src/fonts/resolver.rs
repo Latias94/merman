@@ -3,7 +3,7 @@
 #[cfg(feature = "experimental-system-font-query")]
 use super::registry::{SelectedFont, SelectionRequest};
 use super::*;
-use crate::font_selection::{allows_implicit_binary_face, fallback_style_matches};
+use crate::font_selection::{allows_binary_face, fallback_style_matches};
 use usvg::fontdb::{FaceInfo, ID};
 
 /// Discovery-owned selection evidence before bounded binary admission.
@@ -137,13 +137,17 @@ impl DiscoveryProvider {
         excluded: &[FaceInfo],
         control: &OperationControl,
         sources: &super::registry::FontSourceRegistry,
-        accept: &mut dyn FnMut(FontCandidate) -> Result<Option<ID>, NativeFontError>,
+        accept: &mut dyn FnMut(FontCandidate, bool) -> Result<Option<ID>, NativeFontError>,
     ) -> Result<Option<ID>, NativeFontError> {
         #[cfg(not(feature = "experimental-system-font-query"))]
         let _ = sources;
         match self {
             Self::Bounded(catalog) => match request.text.chars().next() {
-                Some(character) => catalog.fallback(character, base, excluded, control, accept),
+                Some(character) => {
+                    catalog.fallback(character, base, excluded, control, &mut |candidate| {
+                        accept(candidate, true)
+                    })
+                }
                 None => Ok(None),
             },
             #[cfg(feature = "experimental-system-font-query")]
@@ -154,7 +158,7 @@ impl DiscoveryProvider {
                         explicit,
                         Some(request),
                         control,
-                        &mut |selection, _| accept(selection.candidate),
+                        &mut |selection, implicit| accept(selection.candidate, implicit),
                     )?
                 {
                     return Ok(Some(id));
@@ -165,11 +169,13 @@ impl DiscoveryProvider {
                     if excluded.iter().any(|used| system::same_face(used, face)) {
                         continue;
                     }
-                    if let Some(id) = accept(FontCandidate::Loaded(face.clone()))? {
+                    if let Some(id) = accept(FontCandidate::Loaded(face.clone()), true)? {
                         return Ok(Some(id));
                     }
                 }
-                catalog.fallback(request, base, control, sources, accept)
+                catalog.fallback(request, base, control, sources, &mut |candidate| {
+                    accept(candidate, true)
+                })
             }
         }
     }
@@ -242,7 +248,7 @@ pub(super) fn install_resolver(
                     if check_implicit
                         && !database
                             .face(id)
-                            .is_some_and(|face| allows_implicit_binary_face(face, None))
+                            .is_some_and(|face| allows_binary_face(face, None, true))
                     {
                         return Ok(None);
                     }
@@ -383,7 +389,7 @@ fn fallback(
             &excluded_faces,
             control,
             &context.0.sources,
-            &mut |candidate| {
+            &mut |candidate, implicit| {
                 let source = candidate.export_source();
                 let candidate_scale = candidate.fallback_scale();
                 let Some(id) = context.0.sources.materialize(
@@ -404,8 +410,8 @@ fn fallback(
                 })?;
                 // Coverage belongs to the selected, admitted file and TTC index.
                 // usvg still tests whether this face can repair the shaped run.
-                if !fallback_style_matches(base, face)
-                    || !allows_implicit_binary_face(face, character)
+                if (implicit && !fallback_style_matches(base, face))
+                    || !allows_binary_face(face, character, implicit)
                 {
                     return Ok(None);
                 }
