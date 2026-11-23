@@ -1019,7 +1019,8 @@ fn measure_flowchart_html_images(
     authored_width: Option<HtmlLabelWidth>,
     fixed_img_width: bool,
 ) -> crate::text::TextMetrics {
-    let max_width = max_width_px.unwrap_or(200.0).max(1.0);
+    let wrap_width = authored_width.map_or(max_width_px, |width| width.wrap);
+    let max_width = wrap_width.unwrap_or(200.0).max(1.0);
     let text_wrap_width = authored_width.map_or(Some(max_width), |width| width.wrap);
     let fallback_width = if fixed_img_width { 80.0 } else { max_width };
     let mut metrics = crate::text::TextMetrics {

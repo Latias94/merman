@@ -97,6 +97,13 @@ fn html_label_images_use_authored_height_or_intrinsic_aspect_ratio() {
                 "{mode} {width}"
             );
         }
+        let (_, unavailable) = render(
+            &format!(
+                "{config}A[\"<div style='width:180px'><img src='missing.png'/>Alpha Beta</div>\"]\n"
+            ),
+            mode,
+        );
+        assert_eq!(first_foreign_object_size(&unavailable), (180.0, 221.0));
     }
 }
 
