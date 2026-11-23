@@ -243,6 +243,16 @@ impl PlatformCatalog {
         }
         // Shared symbols and combining characters don't identify a run's script on their own.
         // Keep the established fallback order for them before trying a scalar-only lookup.
+        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+        let mut missing_source = None;
+        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+        let mut accept = |file| match accept(file) {
+            Err(error) if fontconfig::source_disappeared(&error) => {
+                missing_source.get_or_insert(error);
+                Ok(None)
+            }
+            result => result,
+        };
         let mut try_face = |family: &FamilyInfo, index| {
             let candidate = PlatformCandidate::from_family(family, index);
             match self.candidate_file(candidate, control)? {
@@ -280,6 +290,10 @@ impl PlatformCatalog {
                     return Ok(Some(id));
                 }
             }
+        }
+        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+        if let Some(error) = missing_source {
+            return Err(error);
         }
         #[cfg(windows)]
         if !prefer_exact {
@@ -833,6 +847,52 @@ mod tests {
                 .expect("the cascade contains a covering face");
             assert_eq!(database.face(id).unwrap().post_script_name, expected);
         }
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    #[test]
+    fn removed_fontconfig_candidate_does_not_block_a_covering_export_snapshot() {
+        let skipped = std::env::temp_dir().canonicalize().unwrap().join(format!(
+            "merman-fontconfig-{}-{:?}.ttc",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let fixture =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts/Cousine-test-collection.ttc");
+        fs::copy(fixture, &skipped).unwrap();
+        let catalog = test_catalog(&[skipped.to_str().unwrap()]);
+        let base = binary_face(include_bytes!("../../tests/fonts/Cousine-Regular.ttf").to_vec());
+        let control = OperationControl::new();
+        let registry = FontSourceRegistry::new(BTreeMap::new(), BTreeMap::new(), 0, 0);
+        let resolve = |registry: &FontSourceRegistry, ch| {
+            let mut database = Arc::new(Database::new());
+            let id = catalog.fallback(ch, &base, &control, registry, &mut |candidate| {
+                let id = registry.materialize(
+                    candidate,
+                    Some(ch),
+                    &mut database,
+                    &NativeFontLimits::default(),
+                    &control,
+                )?;
+                Ok(id.filter(|id| {
+                    crate::font_selection::allows_implicit_binary_face(
+                        database.face(*id).unwrap(),
+                        Some(ch),
+                    )
+                }))
+            })?;
+            Ok(id.map(|id| database.face(id).unwrap().post_script_name.clone()))
+        };
+        let selected = resolve(&registry, 'f').unwrap();
+        assert_eq!(selected.as_deref(), Some("NotoSans-Regular"));
+        let export = registry.for_export().unwrap();
+        fs::remove_file(&skipped).unwrap();
+        assert_eq!(resolve(&export, 'f').unwrap(), selected);
+        let error = resolve(&export, '!').expect_err("no remaining face covers this glyph");
+        assert!(
+            matches!(&error, NativeFontError::Source { path, .. } if path == &skipped),
+            "{error}"
+        );
     }
 
     fn file_candidate(path: &Path, index: u32) -> FontCandidate {
