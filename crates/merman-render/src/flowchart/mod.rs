@@ -261,7 +261,7 @@ pub(crate) use style::flowchart_node_layout_style;
 #[cfg(test)]
 pub(crate) use style::flowchart_swimlane_label_rect_text_style;
 pub(crate) use style::{
-    FlowchartTerminalForeground, FlowchartTerminalForegroundProvenance,
+    FlowchartRectangleCssSize, FlowchartTerminalForeground, FlowchartTerminalForegroundProvenance,
     FlowchartTextStyleResolution, flowchart_apply_html_node_class_box_metrics,
     flowchart_effective_node_class_names, flowchart_effective_text_style_for_classes,
     flowchart_effective_text_style_for_classes_with_provenance,

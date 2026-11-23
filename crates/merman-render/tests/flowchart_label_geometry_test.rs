@@ -79,6 +79,24 @@ fn html_label_images_use_authored_height_or_intrinsic_aspect_ratio() {
             (text_w, text_h + 15.0),
             "{mode}"
         );
+        for width in [60, 180, 480] {
+            let (_, text) = render(
+                &format!("{config}A[\"<div style='width:{width}px'>Alpha Beta</div>\"]\n"),
+                mode,
+            );
+            let (_, mixed) = render(
+                &format!(
+                    "{config}A[\"<div style='width:{width}px'><img src='{WIDE_PNG}'/>Alpha Beta</div>\"]\n"
+                ),
+                mode,
+            );
+            let (text_width, text_height) = first_foreign_object_size(&text);
+            assert_eq!(
+                first_foreign_object_size(&mixed),
+                (text_width, text_height + f64::from(width) / 2.0),
+                "{mode} {width}"
+            );
+        }
     }
 }
 
@@ -536,7 +554,8 @@ fn rectangle_css_size_controls_layout_paint_and_viewport() {
             "classDef sized width:180px,height:80px\nclass A sized\nstyle A width:220px,height:90px\n",
             "style A width:220,height:90\n",
             "style A width:180px,WIDTH:220px,width:200px,height:90px\n",
-            "classDef sized width:220px !important,height:90px\nclass A sized\nstyle A width:180px\n",
+            "classDef sized width:220px !important,height:90px !important\nclass A sized\nstyle A WIDTH:180px,HEIGHT:80px\n",
+            "classDef sized WIDTH:180px,HEIGHT:80px\nclass A sized\nstyle A width:220px !important,height:90px !important\n",
         ] {
             let context = format!("{backend}: {style}");
             let (layout, svg) = render(&format!("{source}{style}"), backend);

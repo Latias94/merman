@@ -2502,7 +2502,12 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
         }
     }
 
-    let mut rectangle_size = [None; 2];
+    let mut rectangle_size = crate::flowchart::FlowchartRectangleCssSize::default();
+    for declaration in emission.values() {
+        rectangle_size.observe(declaration.property(), declaration.important(), || {
+            declaration.svg_rect_length_px()
+        });
+    }
     for declaration in emission.into_values() {
         let property_css = declaration.property_css();
         let v = declaration.value();
@@ -2513,10 +2518,8 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
             let _ = write!(&mut label_style, "{property_css}:{v} !important");
             label_div_decls.push((property_css.to_string(), v.to_string()));
         } else {
-            if matches!(declaration.property(), "width" | "height")
-                && let Ok(length) = declaration.svg_rect_length_px()
-            {
-                rectangle_size[usize::from(declaration.property() == "height")] = length;
+            if !declaration.important() && rectangle_size.has_important(declaration.property()) {
+                continue;
             }
             if !node_style.is_empty() {
                 node_style.push(';');
@@ -2664,7 +2667,7 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
         edge_animation_active: animation_name.active(),
         edge_class_shape_sources,
         node_style,
-        rectangle_size,
+        rectangle_size: rectangle_size.size,
         label_style,
         label_div_decls,
         fill,

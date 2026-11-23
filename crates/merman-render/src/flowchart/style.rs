@@ -315,9 +315,44 @@ fn flowchart_text_style_resolver_for_class_names<'a, 'b, 's>(
 }
 
 #[derive(Default)]
-struct RectangleCssSize<'a>(IndexMap<&'a str, ParsedStyleDeclaration<'a>, FxBuildHasher>);
+pub(crate) struct FlowchartRectangleCssSize {
+    pub(crate) size: [Option<f64>; 2],
+    important: [bool; 2],
+}
 
-impl<'a> RectangleCssSize<'a> {
+impl FlowchartRectangleCssSize {
+    pub(crate) fn observe(
+        &mut self,
+        property: &str,
+        important: bool,
+        length: impl FnOnce() -> Result<Option<f64>, ()>,
+    ) {
+        if let Some(index) = rectangle_dimension_index(property)
+            && (important || !self.important[index])
+            && let Ok(length) = length()
+        {
+            self.size[index] = length;
+            self.important[index] = important;
+        }
+    }
+
+    pub(crate) fn has_important(&self, property: &str) -> bool {
+        rectangle_dimension_index(property).is_some_and(|index| self.important[index])
+    }
+}
+
+fn rectangle_dimension_index(property: &str) -> Option<usize> {
+    match property {
+        "width" => Some(0),
+        "height" => Some(1),
+        _ => None,
+    }
+}
+
+#[derive(Default)]
+struct RectangleStyleDeclarations<'a>(IndexMap<&'a str, ParsedStyleDeclaration<'a>, FxBuildHasher>);
+
+impl<'a> RectangleStyleDeclarations<'a> {
     fn observe(&mut self, declaration: ParsedStyleDeclaration<'a>) {
         flowchart_insert_style_by_spelling(
             &mut self.0,
@@ -328,13 +363,13 @@ impl<'a> RectangleCssSize<'a> {
     }
 
     fn finish(self) -> [Option<f64>; 2] {
-        let mut size = [None; 2];
+        let mut dimensions = FlowchartRectangleCssSize::default();
         for declaration in self.0.into_values() {
-            if let Ok(length) = declaration.svg_rect_length_px() {
-                size[usize::from(declaration.property() == "height")] = length;
-            }
+            dimensions.observe(declaration.property(), declaration.important(), || {
+                declaration.svg_rect_length_px()
+            });
         }
-        size
+        dimensions.size
     }
 }
 
@@ -343,7 +378,7 @@ pub(super) fn flowchart_subgraph_css_size(
     classes: &[String],
     inline_styles: &[String],
 ) -> [Option<f64>; 2] {
-    let mut dimensions = RectangleCssSize::default();
+    let mut dimensions = RectangleStyleDeclarations::default();
     for (declaration, _) in flowchart_style_declarations(
         class_defs,
         classes.iter().map(String::as_str),
@@ -368,7 +403,7 @@ pub(crate) fn flowchart_node_layout_style<'a>(
     }
 
     let mut resolver = FlowchartTextStyleResolver::new(base);
-    let mut dimensions = RectangleCssSize::default();
+    let mut dimensions = RectangleStyleDeclarations::default();
     for (declaration, provenance) in
         flowchart_style_declarations(class_defs, classes, inline_styles)
     {

@@ -112,12 +112,45 @@ fn cli_png_preserves_the_width_and_height_of_flowchart_html_label_boxes() {
 }
 
 #[test]
+fn cli_png_paints_equal_flowchart_label_boxes_with_default_fonts() {
+    let source = r#"---
+config:
+  look: neo
+  htmlLabels: true
+---
+flowchart TB
+  A["<div style='width:188px;height:66px'>short</div>"]
+  B["<div style='width:188px;height:66px'>a much longer label<br/>with three<br/>lines of text</div>"]
+  A --> B
+  style A fill:#0055cc,stroke:none
+  style B fill:#22a055,stroke:none
+"#;
+    let output = support::run_with_stdin(&["render", "--format", "png", "-"], source);
+    assert!(output.status.success(), "{:?}", output.stderr);
+    let mut reader = png::Decoder::new(Cursor::new(output.stdout))
+        .read_info()
+        .unwrap();
+    let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+    let info = reader.next_frame(&mut pixels).unwrap();
+    assert_eq!(info.color_type, ColorType::Rgba);
+    let stride = info.width as usize * 4;
+    for fill in [[0, 85, 204, 255], [34, 160, 85, 255]] {
+        assert_eq!(
+            solid_fill_size(&pixels, stride, fill),
+            (220, 90),
+            "{fill:?}"
+        );
+    }
+}
+
+#[test]
 fn cli_png_paints_flowchart_rectangle_css_dimensions() {
     let source = "---\nconfig:\n  layout: dagre\n  look: neo\n  flowchart:\n    minNodeWidth: 0\n---\nflowchart TB\nA[Short]\n";
     for style in [
         "style A width:220px,height:90px,fill:#0055cc,stroke:none",
         "classDef sized width:220px,height:90px,fill:#0055cc,stroke:none\nclass A sized",
         "classDef sized width:140px,height:80px,fill:#0055cc,stroke:none\nclass A sized\nstyle A WIDTH:220,height:90",
+        "classDef sized width:220px !important,height:90px !important,fill:#0055cc,stroke:none\nclass A sized\nstyle A WIDTH:140px,HEIGHT:80px",
     ] {
         let output = support::run_with_stdin(
             &[
@@ -139,14 +172,11 @@ fn cli_png_paints_flowchart_rectangle_css_dimensions() {
         assert_eq!((info.width, info.height), (236, 106), "{style}");
         assert_eq!(info.color_type, ColorType::Rgba);
         let stride = info.width as usize * 4;
-        let fill = [0, 85, 204, 255];
-        let row = &pixels[20 * stride..21 * stride];
-        let painted_width = row.chunks_exact(4).filter(|pixel| *pixel == fill).count();
-        let painted_height = pixels
-            .chunks_exact(stride)
-            .filter(|row| row[20 * 4..21 * 4] == fill)
-            .count();
-        assert_eq!((painted_width, painted_height), (220, 90), "{style}");
+        assert_eq!(
+            solid_fill_size(&pixels, stride, [0, 85, 204, 255]),
+            (220, 90),
+            "{style}"
+        );
     }
 }
 
@@ -179,8 +209,10 @@ fn cli_png_paints_the_intrinsic_flowchart_image_aspect_ratio() {
         let center = info.width as usize / 2 * 4;
         let color = [24, 96, 180, 255];
         let width = pixels[row..row + stride]
-            .chunks_exact(4)
-            .filter(|pixel| *pixel == color)
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .filter(|pixel| **pixel == color)
             .count();
         let height = pixels
             .chunks_exact(stride)
@@ -213,13 +245,23 @@ fn cli_png_paints_the_styled_flowchart_subgraph_frame() {
     assert_eq!(info.color_type, ColorType::Rgba);
     assert_eq!((info.width, info.height), (276, 291));
     let stride = info.width as usize * 4;
-    let fill = [0, 85, 204, 255];
-    let painted_row_widths = pixels
-        .chunks_exact(stride)
-        .map(|row| row.chunks_exact(4).filter(|pixel| *pixel == fill).count());
+    assert_eq!(
+        solid_fill_size(&pixels, stride, [0, 85, 204, 255]),
+        (260, 180)
+    );
+}
+
+fn solid_fill_size(pixels: &[u8], stride: usize, fill: [u8; 4]) -> (usize, usize) {
+    let painted_row_widths = pixels.chunks_exact(stride).map(|row| {
+        row.as_chunks::<4>()
+            .0
+            .iter()
+            .filter(|pixel| **pixel == fill)
+            .count()
+    });
     let painted_width = painted_row_widths.clone().max().unwrap();
     let painted_height = painted_row_widths.filter(|width| *width > 0).count();
-    assert_eq!((painted_width, painted_height), (260, 180));
+    (painted_width, painted_height)
 }
 
 #[test]
@@ -276,7 +318,9 @@ fn cli_png_paints_flowchart_html_line_height() {
                 .chunks_exact(info.width as usize * 4)
                 .enumerate()
                 .filter_map(|(y, row)| {
-                    row.chunks_exact(4)
+                    row.as_chunks::<4>()
+                        .0
+                        .iter()
                         .any(|pixel| {
                             pixel[0] > 170 && pixel[1] < 90 && pixel[2] < 100 && pixel[3] > 200
                         })

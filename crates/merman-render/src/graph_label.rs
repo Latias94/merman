@@ -1,4 +1,4 @@
-use crate::html::label_box::HtmlLabelBox;
+use crate::html::label_box::{HtmlLabelBox, HtmlLabelWidth};
 use crate::math::MathRenderer;
 use crate::mermaid_style::HtmlTextGeometryDeclarations;
 use crate::model::{Bounds, LayoutEdge, LayoutNode};
@@ -750,7 +750,7 @@ pub(crate) fn flowchart_html_label_metrics_for_layout(
 }
 
 pub(crate) fn flowchart_html_label_metrics_with_geometry(
-    mut request: FlowchartLabelMetricsRequest<'_>,
+    request: FlowchartLabelMetricsRequest<'_>,
     xhtml: &str,
     geometry: HtmlTextGeometryDeclarations,
 ) -> crate::text::TextMetrics {
@@ -765,20 +765,17 @@ pub(crate) fn flowchart_html_label_metrics_with_geometry(
         width.is_some(),
     ) {
         metrics
-    } else if let Some(width) = width {
-        if xhtml.contains("<img") {
-            request.max_width_px = width.wrap;
-            flowchart_html_label_content_metrics(request, xhtml, geometry)
-        } else {
-            crate::text::measure_html_with_authored_width(
-                request.measurer,
-                xhtml,
-                request.style,
-                width.wrap,
-            )
-        }
+    } else if let Some(width) = width
+        && !xhtml.contains("<img")
+    {
+        crate::text::measure_html_with_authored_width(
+            request.measurer,
+            xhtml,
+            request.style,
+            width.wrap,
+        )
     } else {
-        flowchart_html_label_content_metrics(request, xhtml, geometry)
+        flowchart_html_label_content_metrics(request, xhtml, geometry, width)
     };
     if let Some(width) = width {
         metrics.width = width.outer;
@@ -804,6 +801,7 @@ fn flowchart_html_label_content_metrics(
     request: FlowchartLabelMetricsRequest<'_>,
     xhtml: &str,
     geometry: HtmlTextGeometryDeclarations,
+    authored_width: Option<HtmlLabelWidth>,
 ) -> crate::text::TextMetrics {
     let FlowchartLabelMetricsRequest {
         measurer,
@@ -950,6 +948,7 @@ fn flowchart_html_label_content_metrics(
             style,
             geometry,
             max_width_px,
+            authored_width,
             fixed_img_width,
         )
     } else if has_inline_style
@@ -1017,9 +1016,11 @@ fn measure_flowchart_html_images(
     style: &TextStyle,
     geometry: HtmlTextGeometryDeclarations,
     max_width_px: Option<f64>,
+    authored_width: Option<HtmlLabelWidth>,
     fixed_img_width: bool,
 ) -> crate::text::TextMetrics {
     let max_width = max_width_px.unwrap_or(200.0).max(1.0);
+    let text_wrap_width = authored_width.map_or(Some(max_width), |width| width.wrap);
     let fallback_width = if fixed_img_width { 80.0 } else { max_width };
     let mut metrics = crate::text::TextMetrics {
         width: 0.0,
@@ -1041,7 +1042,7 @@ fn measure_flowchart_html_images(
                     measurer,
                     style,
                     geometry,
-                    max_width,
+                    text_wrap_width,
                 );
                 text_buf.clear();
                 if let Some(height) = html_image_dimension(&tag, "height") {
@@ -1100,10 +1101,11 @@ fn measure_flowchart_html_images(
         measurer,
         style,
         geometry,
-        max_width,
+        text_wrap_width,
     );
     metrics.width = crate::text::ceil_to_1_64_px(metrics.width);
-    metrics.height = crate::text::ceil_to_1_64_px(metrics.height + metrics.width * height_per_px);
+    let image_width = authored_width.map_or(metrics.width, |width| width.outer);
+    metrics.height = crate::text::ceil_to_1_64_px(metrics.height + image_width * height_per_px);
     metrics
 }
 
@@ -1113,7 +1115,7 @@ fn measure_image_label_text(
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
     geometry: HtmlTextGeometryDeclarations,
-    max_width: f64,
+    wrap_width: Option<f64>,
 ) {
     if flowchart_trim_html_collapsible_whitespace(text).is_empty() {
         return;
@@ -1157,17 +1159,12 @@ fn measure_image_label_text(
             .then(|| {
                 let fragment = crate::svg::escape_xml(&text).replace('\n', "<br />");
                 crate::svg::measure_styled_html_label(
-                    measurer,
-                    &fragment,
-                    style,
-                    geometry,
-                    Some(max_width),
-                    false,
+                    measurer, &fragment, style, geometry, wrap_width, false,
                 )
             })
             .flatten();
         let text = styled.unwrap_or_else(|| {
-            measurer.measure_wrapped(&text, style, Some(max_width), WrapMode::HtmlLike)
+            measurer.measure_wrapped(&text, style, wrap_width, WrapMode::HtmlLike)
         });
         metrics.width = metrics.width.max(text.width);
         metrics.height += text.height;

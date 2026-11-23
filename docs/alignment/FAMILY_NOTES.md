@@ -421,8 +421,9 @@ data. See the [image shape in Mermaid 12.3.0](https://github.com/mermaid-js/merm
 
 HTML label images retain their authored `width` and `height` attributes in SVG. For mixed
 text-and-image labels, Mermaid sets the image width to the label width. Merman measures the text
-and an explicit pixel height together, or uses the intrinsic aspect ratio of an inline raster image
-to obtain its height. An image-only label with one image uses the existing 80 px headless width.
+and an explicit pixel height together, or applies the intrinsic aspect ratio of an inline raster
+image to the resolved label width, including a supported authored block width. An image-only label
+with one image uses the existing 80 px headless width.
 Images with no readable dimensions retain a headless estimate. The native text fallback projects
 the label text, while SVG consumers can display the retained HTML image. See the
 [label image sizing in Mermaid 12.3.0](https://github.com/mermaid-js/mermaid/blob/2086904e76c692331e34a45d7cc3bc30860d040e/packages/mermaid/src/rendering-util/rendering-elements/shapes/labelImageUtils.ts).
