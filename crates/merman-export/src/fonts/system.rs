@@ -60,7 +60,7 @@ impl SystemCatalog {
             entries: 0,
             cmap_bytes: 0,
             descriptors: loader.descriptors.clone(),
-            hashes: loader.hashes.clone(),
+            hashes: loader.data_by_digest.keys().cloned().collect(),
             identity: Sha256::new(),
         };
         for root in roots {
@@ -778,6 +778,65 @@ mod tests {
             }) if actual == max_bytes + 1 && limit == max_bytes
         ));
         assert_eq!(context.resident_font_bytes(), resident);
+    }
+
+    #[test]
+    fn discovery_reuses_either_explicit_copy_after_the_files_are_removed() {
+        let root = Root::new();
+        let first = root.copy("Cousine-Regular.ttf");
+        let second = root.0.join("copy.ttf");
+        fs::copy(&first, &second).unwrap();
+        let bytes = fs::read(&first).unwrap();
+        let limits = NativeFontLimits {
+            max_files: 2,
+            max_bytes: bytes.len() * 2,
+            ..Default::default()
+        };
+        let control = OperationControl::new();
+        let context = NativeFontOptions::default()
+            .with_font_file(&first)
+            .with_font_file(&second)
+            .with_limits(limits.clone())
+            .load(&control)
+            .unwrap();
+        fs::remove_file(&first).unwrap();
+        fs::remove_file(&second).unwrap();
+        let mut database = context.fontdb_for_export();
+        let metadata = database.faces().next().unwrap().clone();
+        for path in [second, first] {
+            let id = context
+                .0
+                .sources
+                .materialize(
+                    FontCandidate::File {
+                        path,
+                        index: metadata.index,
+                        expected: ExpectedFace::Bounded {
+                            metadata: metadata.clone(),
+                            digest: Sha256::digest(&bytes).to_vec(),
+                        },
+                    },
+                    None,
+                    &mut database,
+                    &limits,
+                    &control,
+                )
+                .unwrap();
+            assert_eq!(id, Some(metadata.id));
+        }
+        assert_eq!(context.resident_font_bytes(), bytes.len());
+    }
+
+    #[test]
+    fn replacing_an_explicit_file_between_inputs_aborts_loading() {
+        let root = Root::new();
+        let path = root.copy("Cousine-Regular.ttf");
+        let mut loader = FontLoader::new(NativeFontLimits::default(), OperationControl::new());
+        loader.file(&path).unwrap();
+        fs::write(&path, include_bytes!("../../tests/fonts/Cousine-Bold.ttf")).unwrap();
+        assert!(
+            matches!(loader.file(&path), Err(NativeFontError::Source { path: changed, .. }) if changed == path)
+        );
     }
 
     #[test]

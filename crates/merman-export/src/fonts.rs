@@ -21,7 +21,7 @@ use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 
 #[cfg(all(
     feature = "experimental-system-font-query",
@@ -664,7 +664,8 @@ struct FontLoader {
     bytes: usize,
     #[cfg(not(target_family = "wasm"))]
     entries: usize,
-    hashes: BTreeSet<Vec<u8>>,
+    // Sources own their bytes. A digest also remembers duplicates with no surviving face.
+    data_by_digest: BTreeMap<Vec<u8>, Weak<Vec<u8>>>,
     descriptors: BTreeSet<String>,
     hash: Sha256,
 }
@@ -807,7 +808,7 @@ impl FontLoader {
             bytes: 0,
             #[cfg(not(target_family = "wasm"))]
             entries: 0,
-            hashes: BTreeSet::new(),
+            data_by_digest: BTreeMap::new(),
             descriptors: BTreeSet::new(),
             hash: Sha256::new(),
         }
@@ -888,6 +889,20 @@ impl FontLoader {
         #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         if let Some(bytes) = admitted {
             let key = fs::canonicalize(path).map_err(|error| source_error(path, error))?;
+            if self
+                .source_aliases
+                .get(path)
+                .is_some_and(|first| first != &key)
+                || self
+                    .initial_sources
+                    .get(&key)
+                    .is_some_and(|first| !Arc::ptr_eq(first, &bytes))
+            {
+                return Err(source_error(
+                    path,
+                    "explicit font changed between reads; retry the operation",
+                ));
+            }
             self.source_aliases.insert(path.to_owned(), key.clone());
             self.initial_sources.insert(key, bytes);
         }
@@ -907,8 +922,8 @@ impl FontLoader {
         self.bytes += bytes.len();
         let digest = Sha256::digest(&bytes).to_vec();
         self.checkpoint()?;
-        if !self.hashes.insert(digest.clone()) {
-            return Ok(None);
+        if let Some(previous) = self.data_by_digest.get(&digest) {
+            return Ok(previous.upgrade());
         }
         // Check collection cardinality before fontdb allocates or parses all its faces.
         let faces = rustybuzz::ttf_parser::fonts_in_collection(&bytes).unwrap_or(1) as usize;
@@ -947,6 +962,7 @@ impl FontLoader {
                 self.selection.admit(id, &candidate, face.id);
             }
         }
+        self.data_by_digest.insert(digest, Arc::downgrade(&bytes));
         Ok(Some(bytes))
     }
 }
