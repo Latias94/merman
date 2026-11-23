@@ -143,6 +143,74 @@ fn shoal_paints_the_routes_and_anchors_of_each_visible_occurrence() {
 
 #[cfg(feature = "layout-shoal")]
 #[test]
+fn shoal_keeps_the_shaft_aligned_through_the_arrowhead() {
+    use kurbo::{BezPath, ParamCurve, ParamCurveArclen, Point};
+
+    fn along(path: &BezPath, mut distance: f64) -> Point {
+        for segment in path.segments() {
+            let length = segment.arclen(1e-5);
+            if distance <= length {
+                return segment.eval(segment.inv_arclen(distance, 1e-5));
+            }
+            distance -= length;
+        }
+        panic!("expected a shaft at least one marker long");
+    }
+
+    for direction in ["TD", "BT", "LR", "RL"] {
+        for curve in ["basis", "rounded", "linear", "stepAfter"] {
+            let parsed = parse(&format!(
+                "---\nconfig:\n  layout: shoal\n  look: neo\n  flowchart:\n    curve: {curve}\n---\nflowchart {direction}\nA([Start]) <-->|first| B[Review]\nA <--> C{{Decision}}\nB <--> Z([Publish])\nC <--> Z"
+            ));
+            let artifact = family::prepare(
+                &parsed,
+                &LayoutOptions::default(),
+                RenderEnvironment::deterministic().begin_session().unwrap(),
+            )
+            .unwrap();
+            let svg = artifact
+                .render_svg(&Default::default(), &Default::default())
+                .unwrap();
+            let document = roxmltree::Document::parse(svg.svg()).unwrap();
+            let paths: Vec<_> = document
+                .descendants()
+                .filter(|n| n.attribute("data-et") == Some("edge"))
+                .collect();
+            assert_eq!(paths.len(), 4);
+            for edge in paths {
+                let path = BezPath::from_svg(edge.attribute("d").unwrap()).unwrap();
+                for (attr, path) in [
+                    ("marker-end", path.reverse_subpaths()),
+                    ("marker-start", path),
+                ] {
+                    let id = edge
+                        .attribute(attr)
+                        .unwrap()
+                        .strip_prefix("url(#")
+                        .unwrap()
+                        .strip_suffix(')')
+                        .unwrap();
+                    let marker = document
+                        .descendants()
+                        .find(|n| n.attribute("id") == Some(id))
+                        .unwrap();
+                    let depth: f64 = marker.attribute("markerWidth").unwrap().parse().unwrap();
+                    let tip = along(&path, 0.0);
+                    let axis = (along(&path, 0.1) - tip).normalize();
+                    let shaft = along(&path, depth) - tip;
+                    assert!(
+                        axis.dot(shaft) > 0.0 && axis.cross(shaft).abs() < 0.02,
+                        "{direction} {curve} {attr} {}: shaft {shaft:?} diverges from marker axis {axis:?}",
+                        edge.attribute("data-id").unwrap()
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
 fn shoal_reports_graphs_outside_the_preview() {
     for (body, expected) in [
         ("A --> A", "self-loops"),

@@ -79,8 +79,9 @@ pub struct Layout {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Route {
-    /// Source center, exterior approach points, then target center. The caller clips each
-    /// end against its actual shape and applies its marker setback when painting.
+    /// Source center, exterior approach points, then target center. Clip each terminal ray
+    /// to its shape and apply the marker setback. Keep the terminal segments straight when
+    /// interpolating a path through the interior waypoints.
     pub points: Vec<Point>,
     /// Center of this occurrence's measured label box, when present.
     pub label_center: Option<Point>,

@@ -124,7 +124,7 @@ mod tests {
 
     #[cfg(feature = "layout-shoal")]
     #[test]
-    fn shoal_clearances_match_both_painted_path_ends() {
+    fn shoal_clearances_cover_each_marker_and_its_path_setback() {
         let points = [
             crate::model::LayoutPoint { x: 0.0, y: 0.0 },
             crate::model::LayoutPoint { x: 100.0, y: 0.0 },
@@ -138,12 +138,19 @@ mod tests {
             Some("arrow_open_head"),
             Some("arrow_hollow_circle"),
         ] {
-            let clearances = crate::svg::flowchart_marker_clearances(edge_type);
+            let edge = serde_json::from_value(serde_json::json!({
+                "id": "ab", "from": "a", "to": "b", "length": 1, "type": edge_type
+            }))
+            .unwrap();
+            let (start, end) = crate::svg::flowchart_marker_clearances(&edge);
+            let (start_marker, end_marker) = arrow_types_for_edge(edge_type);
             for path in [
                 line_with_offset_for_edge_type(&points, edge_type),
                 rounded_line_with_marker_offsets_for_edge_type(&points, edge_type),
             ] {
-                assert_eq!(clearances, (path[0].x, 100.0 - path[1].x), "{edge_type:?}");
+                assert!(start >= path[0].x && end >= 100.0 - path[1].x);
+                assert_eq!(start > path[0].x, start_marker.is_some());
+                assert_eq!(end > 100.0 - path[1].x, end_marker.is_some());
             }
         }
     }

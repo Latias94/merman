@@ -305,6 +305,19 @@ fn flowchart_marker_shape_spec(
         .expect("Flowchart marker shape descriptor")
 }
 
+/// Leave a straight shaft underneath either painted variant of a Shoal marker.
+#[cfg(feature = "layout-shoal")]
+pub(super) fn marker_approach(base: Option<FlowchartMarkerBase>) -> f64 {
+    base.map_or(0.0, |base| {
+        let radius = |margin| {
+            flowchart_marker_shape_spec(base, margin)
+                .viewport
+                .rotation_radius()
+        };
+        radius(false).max(radius(base.supports_margin()))
+    })
+}
+
 #[derive(Debug, Clone, Copy)]
 struct FlowchartMarkerReference {
     base: FlowchartMarkerBase,

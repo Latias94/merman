@@ -118,8 +118,7 @@ pub(crate) fn layout(
         charge(1)?;
         let edge = projected.semantic;
         let label = measurement.edge_label(edge, key)?;
-        let (start_clearance, end_clearance) =
-            crate::svg::flowchart_marker_clearances(edge.edge_type.as_deref());
+        let (start_clearance, end_clearance) = crate::svg::flowchart_marker_clearances(edge);
         graph.edges.push(shoal::Edge {
             source: endpoint(projected.from)?,
             target: endpoint(projected.to)?,

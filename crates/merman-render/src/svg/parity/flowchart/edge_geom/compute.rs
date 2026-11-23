@@ -340,63 +340,73 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
         }));
     }
 
-    let mut line_data: Vec<crate::model::LayoutPoint> = points_for_render
-        .iter()
-        .filter(|p| !p.y.is_nan())
-        .cloned()
-        .collect();
-
-    // Match Mermaid `fixCorners` in `rendering-elements/edges.js`: insert small offset points to
-    // round orthogonal corners before feeding into D3's line generator. The `rounded` curve uses
-    // its own rounded-corner generator and skips this pre-processing upstream.
-    if !is_rounded {
-        maybe_fix_corners(&mut line_data);
-    }
-
-    // Mermaid shortens edge paths so markers don't render on top of the line (see
-    // `packages/mermaid/src/utils/lineWithOffset.ts`).
-
-    let target_boundary = if is_elk_layout {
-        boundary_for_node(ctx, le.to.as_str(), origin_x, origin_y)
-    } else {
-        None
-    };
-    let collapsed_terminal_stub = if is_rounded && ctx.compact_edge_corners {
-        collapse_short_terminal_marker_stub(
-            &mut line_data,
+    let (d, pb, skipped_bounds_for_viewbox) = if ctx.uses_shoal_routes {
+        super::curve_path::shoal_path_d_and_bounds(
+            points_for_render,
             edge.edge_type.as_deref(),
-            target_boundary,
+            interpolate,
+            ctx.edge_corner_radius,
+            ctx.compact_edge_corners,
         )
     } else {
-        false
-    };
+        let mut line_data: Vec<crate::model::LayoutPoint> = points_for_render
+            .iter()
+            .filter(|p| !p.y.is_nan())
+            .cloned()
+            .collect();
 
-    let mut rounded_corner_mask = vec![true; line_data.len()];
-    if is_rounded && ctx.compact_edge_corners && is_elk_layout && line_data.len() > 2 {
-        if elk_endpoint_adapters.source && le.from_cluster.is_none() {
-            rounded_corner_mask[1] = false;
+        // Match Mermaid `fixCorners` in `rendering-elements/edges.js`: insert small offset points to
+        // round orthogonal corners before feeding into D3's line generator. The `rounded` curve uses
+        // its own rounded-corner generator and skips this pre-processing upstream.
+        if !is_rounded {
+            maybe_fix_corners(&mut line_data);
         }
-        if elk_endpoint_adapters.target && le.to_cluster.is_none() && !collapsed_terminal_stub {
-            let target_anchor = line_data.len() - 2;
-            rounded_corner_mask[target_anchor] = false;
+
+        // Mermaid shortens edge paths so markers don't render on top of the line (see
+        // `packages/mermaid/src/utils/lineWithOffset.ts`).
+
+        let target_boundary = if is_elk_layout {
+            boundary_for_node(ctx, le.to.as_str(), origin_x, origin_y)
+        } else {
+            None
+        };
+        let collapsed_terminal_stub = if is_rounded && ctx.compact_edge_corners {
+            collapse_short_terminal_marker_stub(
+                &mut line_data,
+                edge.edge_type.as_deref(),
+                target_boundary,
+            )
+        } else {
+            false
+        };
+
+        let mut rounded_corner_mask = vec![true; line_data.len()];
+        if is_rounded && ctx.compact_edge_corners && is_elk_layout && line_data.len() > 2 {
+            if elk_endpoint_adapters.source && le.from_cluster.is_none() {
+                rounded_corner_mask[1] = false;
+            }
+            if elk_endpoint_adapters.target && le.to_cluster.is_none() && !collapsed_terminal_stub {
+                let target_anchor = line_data.len() - 2;
+                rounded_corner_mask[target_anchor] = false;
+            }
         }
-    }
-    let rounded_corner_mask =
-        (is_rounded && ctx.compact_edge_corners).then_some(rounded_corner_mask);
+        let rounded_corner_mask =
+            (is_rounded && ctx.compact_edge_corners).then_some(rounded_corner_mask);
 
-    let line_data = if is_rounded {
-        rounded_line_with_marker_offsets_for_edge_type(&line_data, edge.edge_type.as_deref())
-    } else {
-        line_with_offset_for_edge_type(&line_data, edge.edge_type.as_deref())
+        let line_data = if is_rounded {
+            rounded_line_with_marker_offsets_for_edge_type(&line_data, edge.edge_type.as_deref())
+        } else {
+            line_with_offset_for_edge_type(&line_data, edge.edge_type.as_deref())
+        };
+
+        curve_path_d_and_bounds(
+            &line_data,
+            interpolate,
+            ctx.edge_corner_radius,
+            ctx.compact_edge_corners,
+            rounded_corner_mask.as_deref(),
+        )
     };
-
-    let (d, pb, skipped_bounds_for_viewbox) = curve_path_d_and_bounds(
-        &line_data,
-        interpolate,
-        ctx.edge_corner_radius,
-        ctx.compact_edge_corners,
-        rounded_corner_mask.as_deref(),
-    );
     if trace_enabled {
         record_flowchart_edge_trace(FlowchartEdgeTraceInput {
             ctx,
