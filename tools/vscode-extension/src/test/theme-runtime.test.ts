@@ -1,5 +1,8 @@
 import * as assert from "node:assert/strict";
+import * as fs from "node:fs/promises";
 import Module from "node:module";
+import * as os from "node:os";
+import * as path from "node:path";
 import type * as vscode from "vscode";
 import { describe, it } from "node:test";
 
@@ -53,6 +56,26 @@ describe("runtime theme discovery and import", () => {
     const payload = groupedCapabilities();
     payload.commands = ["render"];
     assert.equal(host.runtime.parseThemeCapabilities(payload).inspect, false);
+  });
+
+  it("refreshes the theme catalog when the CLI changes at the same path", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "merman-theme-cli-identity-"));
+    try {
+      const command = path.join(directory, "merman-cli");
+      const host = loadRuntime(command, async () =>
+        await fs.readFile(command, "utf8") === "current" ? groupedCapabilities() : {},
+      );
+      const context = {} as vscode.ExtensionContext;
+      await fs.writeFile(command, "old");
+      assert.equal((await host.runtime.discoverThemes(context)).paired, false);
+      await fs.writeFile(command, "current");
+      assert.equal((await host.runtime.discoverThemes(context)).paired, true);
+      await fs.writeFile(command, "old");
+      assert.equal((await host.runtime.discoverThemes(context)).paired, false);
+      assert.equal(host.requests.length, 3);
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
   });
 
   it("sends the original file bytes to inspect and preserves the complete admitted recipe", async () => {
@@ -143,7 +166,10 @@ function fileUri(): vscode.Uri {
   return { fsPath: "/private/reading.theme.json" } as vscode.Uri;
 }
 
-function loadRuntime() {
+function loadRuntime(
+  command = process.execPath,
+  capabilities: () => unknown = groupedCapabilities,
+) {
   const host = {
     requests: [] as RenderProcessRequest[],
     content: "{}",
@@ -166,7 +192,7 @@ function loadRuntime() {
       };
     }
     if (request === "./renderer.js") {
-      return { resolveCliInvocation: (_context: unknown, args: string[]) => ({ command: "merman-cli", source: "test", args }) };
+      return { resolveCliInvocation: (_context: unknown, args: string[]) => ({ command, source: "explicit", args }) };
     }
     if (request === "./render-process.js") {
       return {
@@ -180,7 +206,7 @@ function loadRuntime() {
               default_appearance: "light",
               appearances: [{ appearance: "light", references: [] }, { appearance: "dark", references: [] }],
             }
-            : groupedCapabilities();
+            : await capabilities();
           return { stdout: Buffer.from(JSON.stringify(result)) };
         },
       };
@@ -188,6 +214,7 @@ function loadRuntime() {
     return original.call(this, request, parent, isMain);
   };
   try {
+    delete require.cache[require.resolve("../cli-capabilities.js")];
     delete require.cache[require.resolve("../theme-runtime.js")];
     return { ...host, runtime: require("../theme-runtime.js") as typeof import("../theme-runtime.js"),
       get content() { return host.content; }, set content(value: string) { host.content = value; },

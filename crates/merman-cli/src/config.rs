@@ -650,6 +650,10 @@ mod tests {
             theme_appearance: None,
             theme_portability: crate::cli::ThemePortabilityKind::default(),
             theme_report: None,
+            #[cfg(feature = "layout-shoal")]
+            preview_frame_in: None,
+            #[cfg(feature = "layout-shoal")]
+            preview_frame_out: None,
             #[cfg(feature = "native-fonts")]
             fonts: crate::cli::FontCliArgs::default(),
             math_renderer,

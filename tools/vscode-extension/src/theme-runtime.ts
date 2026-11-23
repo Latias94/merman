@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 
+import { discardCliCapabilities, readCliCapabilities } from "./cli-capabilities.js";
 import { runRenderProcess } from "./render-process.js";
 import { resolveCliInvocation } from "./renderer.js";
 import {
@@ -15,26 +16,21 @@ import {
   type ThemeDiscovery,
 } from "./theme-selection.js";
 
-const discoveries = new Map<string, Promise<ThemeDiscovery>>();
+const discoveries = new WeakMap<Promise<unknown>, Promise<ThemeDiscovery>>();
 const MAX_THEME_FILE_BYTES = 8 * 1024 * 1024;
 
 export async function discoverThemes(context: vscode.ExtensionContext): Promise<ThemeDiscovery> {
   try {
     const invocation = resolveCliInvocation(context, ["capabilities", "--json"]);
-    const key = JSON.stringify(invocation);
-    let pending = discoveries.get(key);
+    const capabilities = readCliCapabilities(invocation);
+    let pending = discoveries.get(capabilities);
     if (!pending) {
-      pending = runRenderProcess({
-        invocation,
-        source: "",
-        timeoutMs: 15000,
-        maxStdoutBytes: 8 * 1024 * 1024,
-      }).then((result) => parseThemeCapabilities(JSON.parse(result.stdout.toString("utf8"))))
+      pending = capabilities.then(parseThemeCapabilities)
         .catch((error: unknown) => {
-          discoveries.delete(key);
+          discardCliCapabilities(invocation, capabilities);
           return legacyThemeDiscovery(`Theme discovery failed: ${error instanceof Error ? error.message : String(error)}. Source / default remains available.`);
         });
-      discoveries.set(key, pending);
+      discoveries.set(capabilities, pending);
     }
     return await pending;
   } catch (error) {

@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { errorMessage } from "./error-message.js";
 import { samePreviewRenderKey, type PreviewSnapshot } from "./preview-model.js";
 import {
@@ -5,10 +7,20 @@ import {
   type PreviewToWebviewMessage,
 } from "./preview-messages.js";
 import type { PreviewUpdateReason } from "./preview-policy.js";
+import type { PreviewInput } from "./preview-source.js";
+
+export interface PreviewRenderContent {
+  content: string;
+  previewLayoutFrame?: Buffer;
+}
 
 export interface PreviewRenderHost {
   beforeRender?(): Promise<void>;
-  renderContent(snapshot: PreviewSnapshot, signal: AbortSignal): Promise<string>;
+  renderContent(
+    snapshot: PreviewSnapshot,
+    signal: AbortSignal,
+    previousLayoutFrame: Buffer | undefined,
+  ): Promise<PreviewRenderContent>;
   postMessage(message: PreviewToWebviewMessage): Promise<void>;
   info(message: string): void;
   error(message: string): void;
@@ -16,9 +28,36 @@ export interface PreviewRenderHost {
   markRendered(requestId: number, snapshot: PreviewSnapshot, content: string): void;
 }
 
+interface LayoutFrameSource {
+  documentUri: string;
+  documentVersion: number;
+  sourceId: string;
+  kind: PreviewInput["kind"];
+  sourceHash: string;
+  fence?: {
+    range: PreviewInput["sourceRange"];
+    siblings: LayoutFrameFence[];
+  };
+}
+
+interface LayoutFrameFence {
+  sourceId: string;
+  sourceHash: string;
+  range: PreviewInput["sourceRange"];
+}
+
 export class PreviewRenderQueue {
   private requestId = 0;
   private pending: { snapshot: PreviewSnapshot; abortController: AbortController } | undefined;
+  private layoutFrame: {
+    source: LayoutFrameSource;
+    frame: Buffer;
+  } | undefined;
+
+  reset(): void {
+    this.cancelPending();
+    this.layoutFrame = undefined;
+  }
 
   cancelPending(): number {
     this.requestId += 1;
@@ -46,6 +85,11 @@ export class PreviewRenderQueue {
     const pending = { snapshot, abortController };
     this.pending = pending;
     const snapshotPayload = snapshotMessagePayload(snapshot);
+    const source = layoutFrameSource(snapshot);
+    if (this.layoutFrame && !continuesLayoutFrame(this.layoutFrame.source, source)) {
+      this.layoutFrame = undefined;
+    }
+    const capturesLayout = snapshot.displayMode === "svg";
 
     try {
       await host.beforeRender?.();
@@ -64,8 +108,12 @@ export class PreviewRenderQueue {
       if (!host.isCurrentRequest(requestId) || abortController.signal.aborted) {
         return;
       }
-      const content = await host.renderContent(snapshot, abortController.signal);
-      if (!host.isCurrentRequest(requestId)) {
+      const { content, previewLayoutFrame } = await host.renderContent(
+        snapshot,
+        abortController.signal,
+        capturesLayout ? this.layoutFrame?.frame : undefined,
+      );
+      if (!host.isCurrentRequest(requestId) || abortController.signal.aborted) {
         return;
       }
       host.markRendered(requestId, snapshot, content);
@@ -75,6 +123,11 @@ export class PreviewRenderQueue {
         snapshot: snapshotPayload,
         content,
       });
+      if (capturesLayout && host.isCurrentRequest(requestId) && !abortController.signal.aborted) {
+        this.layoutFrame = previewLayoutFrame
+          ? { source, frame: previewLayoutFrame }
+          : undefined;
+      }
     } catch (error) {
       if (!host.isCurrentRequest(requestId)) {
         return;
@@ -92,6 +145,59 @@ export class PreviewRenderQueue {
   isCurrentRequest(requestId: number): boolean {
     return requestId === this.requestId;
   }
+}
+
+function layoutFrameSource(snapshot: PreviewSnapshot): LayoutFrameSource {
+  const { documentUri, documentVersion, input, sources, sourceKey } = snapshot;
+  const { kind, sourceId } = input;
+  const fence = kind === "markdown-fence" ? {
+    range: input.sourceRange,
+    siblings: sources.filter((peer) => peer.sourceId !== sourceId).map((peer) => ({
+      sourceId: peer.sourceId,
+      sourceHash: hashFenceSource(peer.source),
+      range: peer.sourceRange,
+    })),
+  } : undefined;
+  return {
+    documentUri,
+    documentVersion,
+    kind,
+    sourceId,
+    sourceHash: fence ? hashFenceSource(input.source) : sourceKey.sourceHash,
+    fence,
+  };
+}
+
+function hashFenceSource(source: string): string {
+  return createHash("sha256").update(source).digest("hex");
+}
+
+function continuesLayoutFrame(previous: LayoutFrameSource, next: LayoutFrameSource): boolean {
+  const sourceChanged = previous.sourceHash !== next.sourceHash;
+  if (previous.documentUri !== next.documentUri || previous.kind !== next.kind ||
+    previous.sourceId !== next.sourceId || previous.documentVersion > next.documentVersion ||
+    (previous.documentVersion === next.documentVersion && sourceChanged)) {
+    return false;
+  }
+  const before = previous.fence;
+  const after = next.fence;
+  if (!before || !after) {
+    return true;
+  }
+  if (before.range.startLine !== after.range.startLine || before.siblings.length !== after.siblings.length) {
+    return false;
+  }
+
+  const lineDelta = after.range.endLine - before.range.endLine;
+  return before.siblings.every((sibling, index) => {
+    const current = after.siblings[index]!;
+    const shift = sibling.range.startLine > before.range.endLine ? lineDelta : 0;
+    const sharesSource = sourceChanged &&
+      (sibling.sourceHash === previous.sourceHash || sibling.sourceHash === next.sourceHash);
+    return sibling.sourceId === current.sourceId && sibling.sourceHash === current.sourceHash &&
+      sibling.range.startLine + shift === current.range.startLine &&
+      sibling.range.endLine + shift === current.range.endLine && !sharesSource;
+  });
 }
 
 async function postRenderFailed(

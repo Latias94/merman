@@ -143,6 +143,10 @@ The preview does not provide its own pin controls, account/sync controls, AI rep
 
 When edits require a rerender, the previous SVG stays visible while the new render runs. If rendering fails, the old SVG remains inspectable and the error appears as an overlay. Zoom is applied by resizing the SVG surface from its `viewBox` instead of scaling the whole canvas layer, so the preview continues to inspect vector output rather than a PNG snapshot.
 
+With a supporting CLI, Shoal SVG previews reuse placement hints from the last successful render of
+the same source. The preview session keeps those hints in memory and exchanges them with the CLI
+through temporary files. Text previews and exports run independently.
+
 ### Themes and appearance
 
 Choose a design in the preview's single **Theme** selector. The connected CLI supplies the Mermaid designs and Merman presets; the extension does not infer pairs from names. A paired design offers **Follow editor**, **Light**, and **Dark**. Single-appearance designs show their supported appearance without inventing another version. Follow uses VS Code's active appearance, including the light/dark interpretation of high-contrast editor themes; this does not certify a diagram as high-contrast accessible.

@@ -1,8 +1,13 @@
 import * as assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { createPreviewSnapshot, type PreviewSnapshot } from "../preview-model.js";
-import { PreviewRenderQueue, type PreviewRenderHost } from "../preview-render.js";
+import {
+  createPreviewSnapshot,
+  type CreatePreviewSnapshotRequest,
+  type PreviewSnapshot,
+} from "../preview-model.js";
+import { PreviewRenderQueue, type PreviewRenderContent, type PreviewRenderHost } from "../preview-render.js";
+import { listPreviewInputsFromText } from "../preview-source.js";
 
 describe("preview render queue", () => {
   it("posts render lifecycle messages for a successful render", async () => {
@@ -15,6 +20,147 @@ describe("preview render queue", () => {
       messages.map((message) => (message as { type: string }).type),
       ["renderStarted", "renderSucceeded"],
     );
+  });
+
+  it("reuses one accepted SVG frame across edits without sending it to the webview or text renders", async () => {
+    const queue = new PreviewRenderQueue();
+    const messages: unknown[] = [];
+    const first = snapshot();
+    const edited = snapshot({
+      documentVersion: 2,
+      input: { ...first.input, source: "flowchart TD\nA --> C" },
+    });
+    assert.notEqual(first.sourceKey.sourceHash, edited.sourceKey.sourceHash);
+    const frame = Buffer.from('{"nodes":{}}');
+    const result = { content: "<svg/>", previewLayoutFrame: frame };
+    const observed: Array<Buffer | undefined> = [];
+
+    await queue.render(first, "manual-open", host(queue, messages, async (_source, _signal, previous) => {
+      observed.push(previous);
+      return result;
+    }));
+    await queue.render(snapshot({ displayMode: "ascii" }), "document-change", host(
+      queue, messages, async (_source, _signal, previous) => {
+        observed.push(previous);
+        return { content: "text", previewLayoutFrame: Buffer.from("ignored") };
+      },
+    ));
+    await queue.render(edited, "document-change", host(queue, messages, async (_source, _signal, previous) => {
+      observed.push(previous);
+      return "<svg/>";
+    }));
+    await queue.render(edited, "document-change", host(queue, messages, async (_source, _signal, previous) => {
+      observed.push(previous);
+      return "<svg/>";
+    }));
+    assert.deepEqual(observed, [undefined, undefined, frame, undefined]);
+    assert.equal(messages.some((message) => Object.hasOwn(message as object, "previewLayoutFrame")), false);
+  });
+
+  it("keeps the previous successful frame after cancelled and failed attempts", async () => {
+    const queue = new PreviewRenderQueue();
+    const messages: unknown[] = [];
+    const frame = Buffer.from("accepted");
+    const content = "<svg/>";
+    await queue.render(snapshot(), "manual-open", host(queue, messages, async () => ({
+      content, previewLayoutFrame: frame,
+    })));
+    await queue.render(snapshot(), "document-change", host(queue, messages, async () => {
+      queue.cancelPending();
+      return { content, previewLayoutFrame: Buffer.from("cancelled") };
+    }));
+    await queue.render(snapshot(), "document-change", host(queue, messages, async () => {
+      throw new Error("invalid source");
+    }));
+    await queue.render(snapshot(), "document-change", {
+      ...host(queue, messages, async () => ({ content, previewLayoutFrame: Buffer.from("rejected") })),
+      postMessage: async (message) => {
+        if (message.type === "renderSucceeded") {
+          throw new Error("closed webview");
+        }
+      },
+    });
+    const observed: Array<Buffer | undefined> = [];
+    await queue.render(snapshot(), "document-change", host(queue, messages, async (_source, _signal, previous) => {
+      observed.push(previous);
+      return content;
+    }));
+    assert.deepEqual(observed, [frame]);
+  });
+
+  it("discards frames when switching documents, reopening a file, moving a fence, or resetting a panel", async () => {
+    const queue = new PreviewRenderQueue();
+    const messages: unknown[] = [];
+    const first = snapshot();
+    const otherDocument = snapshot({ documentUri: "file:///workspace/other.mmd" });
+    const reopened = snapshot({ input: { ...first.input, source: "flowchart LR\nC --> D" } });
+    const markdown = snapshot({
+      documentUri: "file:///workspace/example.md",
+      input: { ...first.input, kind: "markdown-fence", sourceId: "fence-1" },
+    });
+    const movedFence = snapshot({
+      documentUri: markdown.documentUri,
+      input: { ...markdown.input, sourceRange: { startLine: 4, endLine: 6 } },
+    });
+    const observed: Array<Buffer | undefined> = [];
+    const coldCapture = host(queue, messages, async (_source, _signal, previous) => {
+      observed.push(previous);
+      return { content: "<svg/>", previewLayoutFrame: Buffer.from("accepted") };
+    });
+    for (const source of [first, otherDocument, first, reopened, markdown, movedFence]) {
+      await queue.render(source, "manual-open", coldCapture);
+    }
+    queue.reset();
+    await queue.render(movedFence, "manual-open", coldCapture);
+    assert.deepEqual(observed, Array.from({ length: 7 }, () => undefined));
+  });
+
+  it("reuses frames for Markdown fence edits and cold-starts an equal-length fence swap", async () => {
+    const queue = new PreviewRenderQueue();
+    const messages: unknown[] = [];
+    const first = "flowchart LR\nA[first] --> B";
+    const edited = "flowchart LR\nA[edits] --> B";
+    const second = "flowchart LR\nA[other] --> B";
+    const snapshots = [
+      markdownSnapshot(1, first, second),
+      markdownSnapshot(2, edited, second),
+      markdownSnapshot(3, `${edited}\nB --> C`, second),
+      markdownSnapshot(4, edited, second),
+      markdownSnapshot(5, second, edited),
+      markdownSnapshot(6, "flowchart LR\nA[after] --> B", edited),
+    ];
+    assert.equal(edited.length, second.length);
+    assert.deepEqual(
+      snapshots[3]!.sources.map((source) => [source.sourceId, source.sourceRange]),
+      snapshots[4]!.sources.map((source) => [source.sourceId, source.sourceRange]),
+    );
+    const frames = snapshots.map((_, index) => Buffer.from(`frame ${index}`));
+    const observed: Array<Buffer | undefined> = [];
+    for (const [index, source] of snapshots.entries()) {
+      await queue.render(source, "document-change", host(queue, messages, async (_source, _signal, previous) => {
+        observed.push(previous);
+        return { content: "<svg/>", previewLayoutFrame: frames[index] };
+      }));
+    }
+    assert.deepEqual(observed, [undefined, frames[0], frames[1], frames[2], undefined, frames[4]]);
+  });
+
+  it("cold-starts when changed sibling fences make a Markdown edit ambiguous", async () => {
+    const queue = new PreviewRenderQueue();
+    const messages: unknown[] = [];
+    const first = "flowchart LR\nA[first] --> B";
+    const second = "flowchart LR\nA[other] --> B";
+    const original = markdownSnapshot(1, first, second);
+    const copied = markdownSnapshot(2, second, second);
+    const bothChanged = markdownSnapshot(3, first, "flowchart LR\nA[third] --> B");
+    const observed: Array<Buffer | undefined> = [];
+    for (const source of [original, copied, bothChanged]) {
+      await queue.render(source, "document-change", host(queue, messages, async (_source, _signal, previous) => {
+        observed.push(previous);
+        return { content: "<svg/>", previewLayoutFrame: Buffer.from("accepted") };
+      }));
+    }
+    assert.deepEqual(observed, [undefined, undefined, undefined]);
   });
 
   it("ignores stale render success after a newer request cancels it", async () => {
@@ -209,11 +355,18 @@ describe("preview render queue", () => {
 function host(
   queue: PreviewRenderQueue,
   messages: unknown[],
-  renderContent: (source: PreviewSnapshot, signal: AbortSignal) => Promise<string>,
+  renderContent: (
+    source: PreviewSnapshot,
+    signal: AbortSignal,
+    previousLayoutFrame: Buffer | undefined,
+  ) => Promise<string | PreviewRenderContent>,
   errors: string[] = [],
 ): PreviewRenderHost {
   return {
-    renderContent,
+    renderContent: async (...args) => {
+      const rendered = await renderContent(...args);
+      return typeof rendered === "string" ? { content: rendered } : rendered;
+    },
     postMessage: async (message) => {
       messages.push(message);
     },
@@ -236,8 +389,8 @@ async function waitUntil(predicate: () => boolean): Promise<void> {
   assert.fail("Condition was not met");
 }
 
-function snapshot(): PreviewSnapshot {
-  const input = {
+function snapshot(overrides: Partial<CreatePreviewSnapshotRequest> = {}): PreviewSnapshot {
+  const input = overrides.input ?? {
     sourceId: "document",
     source: "flowchart TD\nA --> B\n",
     title: "example.mmd",
@@ -264,5 +417,20 @@ function snapshot(): PreviewSnapshot {
     displayMode: "svg",
     background: "paper",
     locked: false,
+    ...overrides,
+  });
+}
+
+function markdownSnapshot(documentVersion: number, first: string, second: string): PreviewSnapshot {
+  const sources = listPreviewInputsFromText({
+    fileName: "example.md",
+    languageId: "markdown",
+    text: ["```mermaid", first, "```", "", "```mermaid", second, "```"].join("\n"),
+  });
+  return snapshot({
+    documentUri: "file:///workspace/example.md",
+    documentVersion,
+    input: sources[0]!,
+    sources,
   });
 }

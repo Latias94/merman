@@ -159,6 +159,22 @@ library behavior. For embedded integrations, use the
 
 `lint` defaults to stable human-readable text. Automation should request `--format json` explicitly; `lint-rules` remains JSON by default, and `--pretty` is valid only with JSON output.
 
+### Shoal Preview Frames
+
+Editor integrations can opt into placement hints for successive SVG renders of the same Mermaid
+diagram. Check `capabilities --json` for `preview_layout_frame.protocol_version` equal to `1` and
+use its `max_bytes` limit.
+
+```sh
+merman-cli render diagram.mmd --output - --preview-frame-out first.json
+merman-cli render diagram.mmd --output - --preview-frame-in first.json --preview-frame-out next.json
+```
+
+Each option is optional. Use an existing JSON file for input and a new path for output. Malformed
+frame JSON is ignored and input size is limited to 4 MiB. The CLI writes a separate frame file after
+a successful SVG render that produces an in-limit Shoal frame. The SVG payload keeps its ordinary
+format.
+
 ## Explicit Fonts
 
 Current-source default builds and the official release profile include

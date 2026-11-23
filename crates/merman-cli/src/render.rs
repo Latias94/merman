@@ -5,6 +5,8 @@ mod icons;
 #[cfg(feature = "markdown")]
 mod markdown_export;
 mod prepare;
+#[cfg(feature = "layout-shoal")]
+pub(crate) mod preview_frame;
 #[cfg(feature = "svg")]
 mod svg_pipeline;
 #[cfg(feature = "svg")]

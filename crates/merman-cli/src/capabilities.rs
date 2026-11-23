@@ -35,6 +35,15 @@ struct CapabilityDocument<'a> {
     ascii: AsciiCapabilityDocument,
     #[cfg(feature = "svg")]
     theme_presets: Option<ThemePresetCatalogDocument>,
+    #[cfg(feature = "layout-shoal")]
+    preview_layout_frame: PreviewLayoutFrameDocument,
+}
+
+#[cfg(feature = "layout-shoal")]
+#[derive(Serialize)]
+struct PreviewLayoutFrameDocument {
+    protocol_version: u16,
+    max_bytes: usize,
 }
 
 #[cfg(feature = "svg")]
@@ -299,6 +308,11 @@ pub(crate) fn write_compiled_capabilities(
         ascii: ascii_capability_document(),
         #[cfg(feature = "svg")]
         theme_presets: Some(theme_preset_catalog_document()),
+        #[cfg(feature = "layout-shoal")]
+        preview_layout_frame: PreviewLayoutFrameDocument {
+            protocol_version: 1,
+            max_bytes: crate::render::preview_frame::MAX_BYTES,
+        },
     };
 
     if json {

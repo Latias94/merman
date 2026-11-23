@@ -79,6 +79,8 @@ pub(crate) struct PreparedGraphicalRender {
     pub(super) theme_requested: bool,
     pub(super) theme_feedback_enabled: bool,
     pub(super) theme_report: Option<std::path::PathBuf>,
+    #[cfg(feature = "layout-shoal")]
+    pub(super) preview_frame_out: Option<std::path::PathBuf>,
     #[cfg(feature = "native-fonts")]
     pub(super) font_context: Option<merman::svg::export::NativeFontContext>,
     #[cfg(feature = "native-fonts")]
@@ -610,6 +612,21 @@ pub(crate) fn prepare_graphical_output(
             &common.resources,
             control,
         )?;
+        #[cfg(feature = "layout-shoal")]
+        let renderer = {
+            let mut renderer = renderer;
+            let previous = common
+                .render
+                .preview_frame_in
+                .as_deref()
+                .map(|path| super::preview_frame::read(path, control))
+                .transpose()?
+                .flatten();
+            if previous.is_some() || common.render.preview_frame_out.is_some() {
+                renderer.svg.layout = renderer.svg.layout.with_shoal_layout_frame(previous);
+            }
+            renderer
+        };
         #[cfg(feature = "native-fonts")]
         let renderer = if let Some(context) = &font_context {
             let environment = renderer
@@ -657,6 +674,8 @@ pub(crate) fn prepare_graphical_output(
                 || (!mmdc_compat && common.parse.theme.is_some()),
             theme_feedback_enabled: !mmdc_compat,
             theme_report: common.render.theme_report,
+            #[cfg(feature = "layout-shoal")]
+            preview_frame_out: common.render.preview_frame_out,
             #[cfg(feature = "native-fonts")]
             font_context,
             #[cfg(feature = "native-fonts")]
@@ -827,6 +846,10 @@ fn prepare_rustdoc_renderer(
         theme_appearance: None,
         theme_portability: crate::cli::ThemePortabilityKind::default(),
         theme_report: None,
+        #[cfg(feature = "layout-shoal")]
+        preview_frame_in: None,
+        #[cfg(feature = "layout-shoal")]
+        preview_frame_out: None,
         #[cfg(feature = "native-fonts")]
         fonts: crate::cli::FontCliArgs {
             measurement: Some(crate::cli::FontMeasurementKind::Deterministic),
@@ -854,6 +877,8 @@ fn prepare_rustdoc_renderer(
         theme_requested: true,
         theme_feedback_enabled: false,
         theme_report: None,
+        #[cfg(feature = "layout-shoal")]
+        preview_frame_out: None,
         #[cfg(feature = "native-fonts")]
         font_context: None,
         #[cfg(feature = "native-fonts")]
