@@ -910,6 +910,46 @@ mod tests {
     }
 
     #[test]
+    fn rejected_collection_identity_releases_the_parsed_source() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fonts/Cousine-test-collection.ttc")
+            .canonicalize()
+            .unwrap();
+        let bytes = Arc::new(fs::read(&path).unwrap());
+        let registry = FontSourceRegistry::new(
+            BTreeMap::from([(path.clone(), Arc::clone(&bytes))]),
+            BTreeMap::new(),
+            1,
+            0,
+        );
+        let mut candidate = file_candidate(&path, 1);
+        let FontCandidate::File {
+            expected: ExpectedFace::Platform(face),
+            ..
+        } = &mut candidate
+        else {
+            unreachable!()
+        };
+        face.post_script_name = Some("Cousine-Regular".into());
+        let owners = Arc::strong_count(&bytes);
+        let mut database = Arc::new(Database::new());
+        let error = registry
+            .materialize(
+                candidate,
+                None,
+                &mut database,
+                &NativeFontLimits::default(),
+                &OperationControl::new(),
+            )
+            .unwrap_err();
+        assert!(
+            matches!(error, NativeFontError::Source { path: rejected, .. } if rejected == path)
+        );
+        assert!(database.is_empty());
+        assert_eq!(Arc::strong_count(&bytes), owners);
+    }
+
+    #[test]
     fn uncovered_collection_member_leaves_the_last_face_slot_for_fallback() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts");
         let collection = root.join("Cousine-test-collection.ttc");

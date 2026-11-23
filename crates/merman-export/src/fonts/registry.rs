@@ -170,20 +170,34 @@ struct CollectionMetadata {
 
 #[cfg(feature = "experimental-system-font-query")]
 impl SnapshotState {
-    fn platform_face(&mut self, source: Source, index: u32, count: u32) -> Option<FaceInfo> {
+    fn validated_platform_face(
+        &mut self,
+        source: Source,
+        index: u32,
+        count: u32,
+        path: &Path,
+        validate: impl FnOnce(&FaceInfo) -> Result<(), NativeFontError>,
+    ) -> Result<FaceInfo, NativeFontError> {
+        let missing = || source_error(path, "selected face cannot be parsed from snapshot");
         if let Some(collection) = &self.collection
             && same_source(&collection.source, &source)
         {
             let position = collection
                 .faces
                 .binary_search_by_key(&index, |face| face.index)
-                .ok()?;
-            return Some(collection.faces[position].clone());
+                .map_err(|_| missing())?;
+            let face = &collection.faces[position];
+            validate(face)?;
+            return Ok(face.clone());
         }
 
         let mut parsed = Database::new();
         parsed.load_font_source(source.clone());
-        let selected = parsed.faces().find(|face| face.index == index)?.clone();
+        let selected = parsed
+            .faces()
+            .find(|face| face.index == index)
+            .ok_or_else(missing)?;
+        let mut next_collection = None;
         if count > 1 {
             // fontdb loads every collection member. Retain at most one bounded metadata
             // table per operation, using the same immutable bytes as the selected faces.
@@ -201,13 +215,18 @@ impl SnapshotState {
             if bytes <= MAX_COLLECTION_METADATA_BYTES {
                 let mut faces: Vec<_> = parsed.faces().cloned().collect();
                 faces.sort_unstable_by_key(|face| face.index);
-                self.collection = Some(CollectionMetadata {
+                next_collection = Some(CollectionMetadata {
                     source,
                     faces: faces.into(),
                 });
             }
         }
-        Some(selected)
+        // Cached members own the full source. Publish them only after the final admission check.
+        validate(selected)?;
+        if let Some(collection) = next_collection {
+            self.collection = Some(collection);
+        }
+        Ok(selected.clone())
     }
 }
 
@@ -525,32 +544,41 @@ impl FontSourceRegistry {
             .table(rustybuzz::ttf_parser::Tag::from_bytes(b"cmap"))
             .unwrap_or_default();
         let cmap_bytes = checked_cmap_bytes(table, control, state.cmap_bytes, limits)?;
+        let validate = |face: &FaceInfo| {
+            control.terminal_checkpoint_at(OperationPhase::Layout)?;
+            expected.validate(face, &path)
+        };
         let face = match &expected {
-            // The catalog parsed this face from the same bytes and the first snapshot
-            // verified the digest. Rebind its metadata to the admitted binary source.
-            ExpectedFace::Bounded { metadata, digest }
-                if discovery_digest
+            ExpectedFace::Bounded { metadata, digest } => {
+                let face = if discovery_digest
                     .as_ref()
-                    .is_some_and(|actual| actual.as_slice() == digest) =>
-            {
-                Some(FaceInfo {
-                    source,
-                    ..metadata.clone()
-                })
-            }
-            ExpectedFace::Bounded { .. } => {
-                // The snapshot might predate this discovery of the same path.
-                let mut parsed = Database::new();
-                parsed.load_font_source(source);
-                parsed.faces().find(|face| face.index == index).cloned()
+                    .is_some_and(|actual| actual.as_slice() == digest)
+                {
+                    // Discovery parsed the same bytes. Rebind its metadata to the snapshot.
+                    FaceInfo {
+                        source,
+                        ..metadata.clone()
+                    }
+                } else {
+                    // The snapshot might predate this discovery of the same path.
+                    let mut parsed = Database::new();
+                    parsed.load_font_source(source);
+                    parsed
+                        .faces()
+                        .find(|face| face.index == index)
+                        .cloned()
+                        .ok_or_else(|| {
+                            source_error(&path, "selected face cannot be parsed from snapshot")
+                        })?
+                };
+                validate(&face)?;
+                face
             }
             #[cfg(feature = "experimental-system-font-query")]
-            ExpectedFace::Platform(_) => state.platform_face(source, index, count),
+            ExpectedFace::Platform(_) => {
+                state.validated_platform_face(source, index, count, &path, validate)?
+            }
         };
-        control.terminal_checkpoint_at(OperationPhase::Layout)?;
-        let face = face
-            .ok_or_else(|| source_error(&path, "selected face cannot be parsed from snapshot"))?;
-        expected.validate(&face, &path)?;
         if is_new {
             state.bytes = state.bytes.saturating_add(data.len());
             state.files.insert(
@@ -684,11 +712,17 @@ impl FontSourceRegistry {
             .unwrap_or_default();
         let cmap_bytes = checked_cmap_bytes(table, control, state.cmap_bytes, limits)?;
         let count = ttf_parser::fonts_in_collection(&data).unwrap_or(1);
-        let face = state
-            .platform_face(Source::Binary(data.clone()), index, count)
-            .ok_or_else(|| source_error(path, "selected native face cannot be parsed"))?;
-        candidate.validate(&face)?;
-        control.terminal_checkpoint_at(OperationPhase::Layout)?;
+        let face = state.validated_platform_face(
+            Source::Binary(data.clone()),
+            index,
+            count,
+            path,
+            |face| {
+                candidate.validate(face)?;
+                control.terminal_checkpoint_at(OperationPhase::Layout)?;
+                Ok(())
+            },
+        )?;
         state.bytes = state.bytes.saturating_add(new_bytes);
         state.cmap_bytes = cmap_bytes;
         state.aliases.insert(path.clone(), key.clone());
@@ -844,10 +878,14 @@ mod tests {
         let bytes = include_bytes!("../../tests/fonts/Cousine-test-collection.ttc");
         let source = Source::Binary(Arc::new(bytes.to_vec()));
         let mut state = SnapshotState::default();
-        let regular = state.platform_face(source.clone(), 0, 2).unwrap();
+        let path = Path::new("Cousine-test-collection.ttc");
+        let select = |state: &mut SnapshotState, source: &Source, index| {
+            state.validated_platform_face(source.clone(), index, 2, path, |_| Ok(()))
+        };
+        let regular = select(&mut state, &source, 0).unwrap();
         let cached = Arc::clone(&state.collection.as_ref().unwrap().faces);
         assert_eq!(cached.len(), 2);
-        let italic = state.platform_face(source.clone(), 1, 2).unwrap();
+        let italic = select(&mut state, &source, 1).unwrap();
         assert_eq!(regular.post_script_name, "Cousine-Regular");
         assert_eq!(italic.post_script_name, "Cousine-Italic");
         assert!(same_source(&italic.source, &source));
@@ -855,7 +893,7 @@ mod tests {
             &cached,
             &state.collection.as_ref().unwrap().faces
         ));
-        assert!(state.platform_face(source.clone(), 2, 2).is_none());
+        assert!(select(&mut state, &source, 2).is_err());
 
         let mut export = state.clone();
         assert!(Arc::ptr_eq(
@@ -863,8 +901,19 @@ mod tests {
             &export.collection.as_ref().unwrap().faces
         ));
         let another = Source::Binary(Arc::new(bytes.to_vec()));
+        assert!(
+            export
+                .validated_platform_face(another.clone(), 1, 2, path, |_| {
+                    Err(source_error(path, "font identity changed"))
+                })
+                .is_err()
+        );
+        assert!(Arc::ptr_eq(
+            &cached,
+            &export.collection.as_ref().unwrap().faces
+        ));
         assert!(same_source(
-            &export.platform_face(another.clone(), 0, 2).unwrap().source,
+            &select(&mut export, &another, 0).unwrap().source,
             &another
         ));
         assert!(!Arc::ptr_eq(
