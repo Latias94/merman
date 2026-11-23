@@ -17,6 +17,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, OnceLock};
 
 mod config;
+#[cfg(feature = "layout-shoal")]
+mod shoal;
 mod swimlane;
 mod text_facts;
 mod theme;
@@ -1733,6 +1735,22 @@ fn er_marker_id(card: &str, suffix: &str) -> Option<String> {
     }
 }
 
+pub(crate) struct ErPreparedLayout {
+    pub(crate) layout: ErDiagramLayout,
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) canonical_routes: Option<crate::graph_layout::canonical::CanonicalRoutes>,
+}
+
+impl ErPreparedLayout {
+    fn legacy(layout: ErDiagramLayout) -> Self {
+        Self {
+            layout,
+            #[cfg(feature = "layout-shoal")]
+            canonical_routes: None,
+        }
+    }
+}
+
 /// Lays out an ER model with an optional renderer-owned inherited typography override.
 pub(crate) fn layout_er_diagram_typed_with_resolved_typography(
     model: &merman_model::families::er::ErDiagramModel,
@@ -1742,7 +1760,7 @@ pub(crate) fn layout_er_diagram_typed_with_resolved_typography(
     font_family_css: Option<&str>,
     font_size_px: Option<f64>,
     work_meter: Arc<crate::resources::OperationWorkMeter>,
-) -> Result<ErDiagramLayout> {
+) -> Result<ErPreparedLayout> {
     let mut work_control = OperationLayoutWorkControl::new(Arc::clone(&work_meter));
     let settings = ErConfigView::new(effective_config).layout_settings_with_resolved_typography(
         &model.direction,
@@ -1762,6 +1780,18 @@ pub(crate) fn layout_er_diagram_typed_with_resolved_typography(
     let selection = crate::layout_backend::resolve_er_graph_layout(effective_config);
     selection.validate_rootless_graph()?;
 
+    #[cfg(feature = "layout-shoal")]
+    if selection.backend == GraphLayoutBackend::Shoal {
+        return shoal::layout(
+            model,
+            measurer,
+            &settings,
+            prepared_labels,
+            crate::config::config_diagram_look(effective_config).is_neo(),
+            &mut work_control,
+        );
+    }
+
     if selection.backend == GraphLayoutBackend::Swimlane {
         return swimlane::layout_er_diagram_swimlane_typed(
             model,
@@ -1770,7 +1800,8 @@ pub(crate) fn layout_er_diagram_typed_with_resolved_typography(
             &settings,
             prepared_labels,
             work_meter,
-        );
+        )
+        .map(ErPreparedLayout::legacy);
     }
 
     #[cfg(feature = "layout-elk")]
@@ -1783,7 +1814,8 @@ pub(crate) fn layout_er_diagram_typed_with_resolved_typography(
             Arc::clone(&prepared_labels),
             operation_seed,
             &mut work_control,
-        );
+        )
+        .map(ErPreparedLayout::legacy);
     }
 
     layout_er_diagram_dagre_typed(
@@ -1793,6 +1825,7 @@ pub(crate) fn layout_er_diagram_typed_with_resolved_typography(
         prepared_labels,
         &mut work_control,
     )
+    .map(ErPreparedLayout::legacy)
 }
 
 fn validate_er_relationship_endpoints(
@@ -3716,6 +3749,85 @@ mod tests {
         let error =
             super::ErPreparedLabels::prepare(&model, &CancellingLabel(control), &settings, &meter)
                 .unwrap_err();
+        assert!(matches!(error, crate::Error::Cancelled(_)));
+        assert!(meter.prepared_text_retained_bytes_peak() > 0);
+        assert_eq!(meter.prepared_text_retained_bytes(), 0);
+    }
+
+    #[cfg(feature = "layout-shoal")]
+    #[test]
+    fn er_shoal_uses_the_cumulative_budget_and_releases_labels_on_failure() {
+        use crate::resources::{RenderResourcePolicy, ResourceLimitId};
+        use std::sync::Arc;
+
+        let mut model = er_resource_model();
+        model.subgraphs.push(super::ErSubgraph {
+            id: "g".into(),
+            title: "Group title".into(),
+            label_type: "string".into(),
+            nodes: vec!["A".into()],
+            ..Default::default()
+        });
+        model.relationships.push(super::ErRelationship {
+            entity_a: "g".into(),
+            entity_b: "A".into(),
+            role_a: "relationship".into(),
+            ..Default::default()
+        });
+        let config = serde_json::json!({"layout": "shoal", "htmlLabels": false});
+        let prepare = |measurer: &dyn TextMeasurer, meter| {
+            super::layout_er_diagram_typed_with_resolved_typography(
+                &model,
+                &config,
+                measurer,
+                #[cfg(feature = "layout-elk")]
+                merman_layout_elk::ElkOperationSeed::from_operation_seed(std::num::NonZeroU64::MIN),
+                None,
+                None,
+                meter,
+            )
+        };
+        let standard = DeterministicTextMeasurer::default();
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input();
+        let meter = Arc::new(OperationWorkMeter::new(policy));
+        let layout = prepare(&standard, Arc::clone(&meter)).expect("Shoal ER layout");
+        assert!(layout.canonical_routes.is_some());
+        let required = meter.used();
+        drop(layout);
+
+        let meter = Arc::new(OperationWorkMeter::new(
+            policy
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, required)
+                .unwrap(),
+        ));
+        meter.charge(1).unwrap();
+        let error = prepare(&standard, Arc::clone(&meter))
+            .err()
+            .expect("layout also counts prior work");
+        assert!(matches!(
+            error,
+            crate::Error::ResourceLimitExceeded(ref error)
+                if error.limit == "max_layout_work_units"
+        ));
+        assert_eq!(meter.prepared_text_retained_bytes(), 0);
+
+        struct CancellingTitle(merman_model::OperationControl);
+        impl TextMeasurer for CancellingTitle {
+            fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+                if text.contains("Group") {
+                    self.0.cancel();
+                }
+                DeterministicTextMeasurer::default().measure(text, style)
+            }
+        }
+        let control = merman_model::OperationControl::new();
+        let meter = Arc::new(OperationWorkMeter::new_with_control(
+            policy,
+            control.clone(),
+        ));
+        let error = prepare(&CancellingTitle(control), Arc::clone(&meter))
+            .err()
+            .expect("cancelling during title measurement aborts the layout");
         assert!(matches!(error, crate::Error::Cancelled(_)));
         assert!(meter.prepared_text_retained_bytes_peak() > 0);
         assert_eq!(meter.prepared_text_retained_bytes(), 0);

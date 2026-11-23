@@ -45,7 +45,7 @@ The public capability leaves are:
 | `ascii` | Terminal text output | None |
 | `png`, `jpeg`, `pdf` | Independent binary exports | None |
 | `layout-cytoscape`, `layout-elk` | Mermaid-compatible layout engines | Each implies `svg` |
-| `layout-shoal` | Experimental Merman layered layout for Flowchart, Agentflow, Class, and State | Implies `svg` |
+| `layout-shoal` | Experimental Merman layered layout for Flowchart, Agentflow, Class, State, and ER | Implies `svg` |
 | `math` | Math-label rendering | Implies `svg` |
 | `native-fonts` | Explicit font contexts for shared text measurement and native painting | Facade and CLI forward SVG; no codec requirement |
 | `system-clock`, `system-timezone`, `system-random`, `system-timing` | Optional native adapters | None; compiled separately and selected explicitly at runtime |
@@ -118,7 +118,7 @@ flowchart LR
     A[Review] -->|approved| B[Publish]
 ```
 
-Run `target/debug/merman-cli render diagram.mmd --theme-preset editor --theme-appearance dark -o diagram.svg` from the checkout. Select `dagre` or `elk` in the same field to compare drawings in a build containing those engines. Shoal uses the family's measured shapes and labels, including effective theme fonts and edge-label padding. It draws Flowcharts in all four directions, including cycles, self-loops, parallel labeled edges, nested subgraphs and edges attached directly to a group. Agentflow uses the same engine after projecting visible nodes, collapsed flows and connectors. Class uses its existing class box and label measurements, including nested namespaces and relation multiplicities. State preserves explicit composite directions, concurrent regions and self-transitions. A build without Shoal reports the missing capability when one of these diagrams requests it. Rust callers can also pass measured graphs directly to the standalone crate. [Shoal crate](../crates/merman-layout-shoal/README.md)
+Run `target/debug/merman-cli render diagram.mmd --theme-preset editor --theme-appearance dark -o diagram.svg` from the checkout. Select `dagre` or `elk` in the same field to compare drawings in a build containing those engines. Shoal uses the family's measured shapes and labels, including effective theme fonts and edge-label padding. It draws Flowcharts in all four directions, including cycles, self-loops, parallel labeled edges, nested subgraphs and edges attached directly to a group. Agentflow uses the same engine after projecting visible nodes, collapsed flows and connectors. Class uses its existing class box and label measurements, including nested namespaces and relation multiplicities. State preserves explicit composite directions, concurrent regions and self-transitions. ER retains entity tables, identifying and non-identifying relations, and cardinality markers at both ends. A build without Shoal reports the missing capability when one of these diagrams requests it. Rust callers can also pass measured graphs directly to the standalone crate. [Shoal crate](../crates/merman-layout-shoal/README.md)
 
 ### Optional CLI Fonts
 

@@ -179,7 +179,10 @@ fn required_layout_capability(
     if selection.backend == crate::layout_backend::GraphLayoutBackend::Shoal
         && !matches!(
             family,
-            DiagramFamilyId::AGENTFLOW | DiagramFamilyId::CLASS | DiagramFamilyId::STATE
+            DiagramFamilyId::AGENTFLOW
+                | DiagramFamilyId::CLASS
+                | DiagramFamilyId::ER
+                | DiagramFamilyId::STATE
         )
         && !(family == DiagramFamilyId::FLOWCHART
             && matches!(meta.diagram_type.as_str(), "flowchart" | "flowchart-v2"))

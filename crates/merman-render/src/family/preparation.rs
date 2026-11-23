@@ -868,7 +868,11 @@ fn prepare_er_family<'parsed>(
     let base_font_size =
         crate::er::ErBaseFontSizePlan::resolve(execution.resolved_theme(), &meta.effective_config);
     let font_size_override = base_font_size.layout_override_px();
-    let layout = crate::er::layout_er_diagram_typed_with_resolved_typography(
+    let crate::er::ErPreparedLayout {
+        layout,
+        #[cfg(feature = "layout-shoal")]
+        canonical_routes,
+    } = crate::er::layout_er_diagram_typed_with_resolved_typography(
         model,
         meta.effective_config.as_value(),
         execution.text_measurer(),
@@ -892,6 +896,8 @@ fn prepare_er_family<'parsed>(
     Ok(BuiltinFamilyArtifact::Er(Box::new(ErFamilyArtifact {
         pair: FamilyPair::new(model, layout),
         entity_theme,
+        #[cfg(feature = "layout-shoal")]
+        canonical_routes,
     })))
 }
 

@@ -118,12 +118,12 @@
     {
       "id": "layout-shoal",
       "kind": "engine",
-      "description": "Select the experimental Shoal layout for Flowchart, Agentflow, Class, and State diagrams.",
+      "description": "Select the experimental Shoal layout for Flowchart, Agentflow, Class, State, and ER diagrams.",
       "targets": ["native"],
       "implications": ["svg"],
       "absence": {
         "error_id": "missing-capability",
-        "contract": "An explicit Shoal request for Flowchart, Agentflow, Class, or State requires layout-shoal. An absent or host-denied engine returns a typed missing-capability error. Other families with selectable graph layouts reject Shoal as unsupported."
+        "contract": "An explicit Shoal request for Flowchart, Agentflow, Class, State, or ER requires layout-shoal. An absent or host-denied engine returns a typed missing-capability error. Other families with selectable graph layouts reject Shoal as unsupported."
       }
     },
     {

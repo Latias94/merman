@@ -1,11 +1,11 @@
 use super::{
-    Body, CrossAxis, Edge, FLATNESS, Label, LabelOwner, PointMarker, Scene, svg_group_transform,
-    validate,
+    Body, CrossAxis, Edge, FLATNESS, Label, LabelOwner, PointMarker, Scene, rect_face_normal,
+    svg_group_transform, validate,
 };
 use crate::environment::RenderEnvironment;
-use crate::model::{LayoutPoint, StateDiagramLayout};
+use crate::model::StateDiagramLayout;
 use crate::{LayoutOptions, family};
-use kurbo::{BezPath, Circle, Point, Rect, Shape, Vec2};
+use kurbo::{BezPath, Circle, Point, Rect, Shape};
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_model::presentation::RenderSemanticModel;
 use roxmltree::Document;
@@ -142,10 +142,16 @@ fn check_state_geometry(source: &str, look: &str) {
         let (from, to) = (bodies[route.from.as_str()], bodies[route.to.as_str()]);
         let mut edge = Edge::new(from, to, path.attribute("d").unwrap(), CrossAxis::X);
         edge.transform = svg_group_transform(path);
-        edge.start.outward_normal = Some(face_normal(scene.bodies[from].bounds, &route.points[0]));
-        edge.end.outward_normal = Some(face_normal(
+        let [start, .., end] = route.points.as_slice() else {
+            panic!("missing State route endpoints for {}", route.id);
+        };
+        edge.start.outward_normal = Some(rect_face_normal(
+            scene.bodies[from].bounds,
+            Point::new(start.x, start.y),
+        ));
+        edge.end.outward_normal = Some(rect_face_normal(
             scene.bodies[to].bounds,
-            route.points.last().unwrap(),
+            Point::new(end.x, end.y),
         ));
         let marker_id = path
             .attribute("marker-end")
@@ -228,18 +234,4 @@ fn terminal_contour(node: roxmltree::Node<'_, '_>) -> BezPath {
         .find(|child| child.has_tag_name("path"))
         .unwrap();
     svg_group_transform(outer) * BezPath::from_svg(outer.attribute("d").unwrap()).unwrap()
-}
-
-fn face_normal(bounds: Rect, port: &LayoutPoint) -> Vec2 {
-    let port = Point::new(port.x, port.y);
-    [
-        ((port.x - bounds.x0).abs(), Vec2::new(-1.0, 0.0)),
-        ((port.x - bounds.x1).abs(), Vec2::new(1.0, 0.0)),
-        ((port.y - bounds.y0).abs(), Vec2::new(0.0, -1.0)),
-        ((port.y - bounds.y1).abs(), Vec2::new(0.0, 1.0)),
-    ]
-    .into_iter()
-    .min_by(|(distance, _), (other, _)| distance.total_cmp(other))
-    .unwrap()
-    .1
 }

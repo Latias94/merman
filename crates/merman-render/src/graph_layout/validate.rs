@@ -876,12 +876,19 @@ pub(crate) fn validate(scene: &Scene<'_>) -> Report {
 #[cfg(all(test, feature = "diagram-class", feature = "layout-shoal"))]
 mod class;
 
+#[cfg(all(test, feature = "diagram-er", feature = "layout-shoal"))]
+mod er;
+
 #[cfg(all(test, feature = "diagram-state", feature = "layout-shoal"))]
 mod state;
 
 #[cfg(all(
     feature = "layout-shoal",
-    any(feature = "diagram-class", feature = "diagram-state")
+    any(
+        feature = "diagram-class",
+        feature = "diagram-er",
+        feature = "diagram-state"
+    )
 ))]
 fn svg_group_transform(node: roxmltree::Node<'_, '_>) -> Affine {
     node.ancestors()
@@ -897,6 +904,23 @@ fn svg_group_transform(node: roxmltree::Node<'_, '_>) -> Affine {
                 transform.f,
             ]) * local
         })
+}
+
+#[cfg(all(
+    feature = "layout-shoal",
+    any(feature = "diagram-er", feature = "diagram-state")
+))]
+fn rect_face_normal(bounds: Rect, port: Point) -> Vec2 {
+    [
+        ((port.x - bounds.x0).abs(), Vec2::new(-1.0, 0.0)),
+        ((port.x - bounds.x1).abs(), Vec2::new(1.0, 0.0)),
+        ((port.y - bounds.y0).abs(), Vec2::new(0.0, -1.0)),
+        ((port.y - bounds.y1).abs(), Vec2::new(0.0, 1.0)),
+    ]
+    .into_iter()
+    .min_by(|(distance, _), (other, _)| distance.total_cmp(other))
+    .unwrap()
+    .1
 }
 
 #[cfg(test)]

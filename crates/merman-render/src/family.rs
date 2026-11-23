@@ -2534,10 +2534,19 @@ impl<'parsed> MindmapFamilyArtifact<'parsed> {
 pub(crate) struct ErFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::er::ErDiagramModel, ErDiagramLayout>,
     entity_theme: crate::er::ErEntityThemePlan,
+    #[cfg(feature = "layout-shoal")]
+    canonical_routes: Option<crate::graph_layout::canonical::CanonicalRoutes>,
 }
 
 #[cfg(feature = "diagram-er")]
 impl<'parsed> ErFamilyArtifact<'parsed> {
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) const fn canonical_routes(
+        &self,
+    ) -> Option<&crate::graph_layout::canonical::CanonicalRoutes> {
+        self.canonical_routes.as_ref()
+    }
+
     pub(crate) const fn pair(
         &self,
     ) -> &FamilyPair<&'parsed diagrams::er::ErDiagramModel, ErDiagramLayout> {

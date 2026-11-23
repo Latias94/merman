@@ -2,7 +2,11 @@
 
 #[cfg(all(
     feature = "layout-shoal",
-    any(feature = "diagram-class", feature = "diagram-state")
+    any(
+        feature = "diagram-class",
+        feature = "diagram-er",
+        feature = "diagram-state"
+    )
 ))]
 pub(crate) mod canonical;
 #[cfg(any(feature = "layout-shoal", test))]

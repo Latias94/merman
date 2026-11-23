@@ -115,6 +115,8 @@ mod edge_path;
 mod emitted_bounds;
 #[cfg(feature = "diagram-er")]
 mod er;
+#[cfg(all(feature = "diagram-er", feature = "layout-shoal"))]
+pub(crate) use er::er_canonical_marker;
 mod error;
 #[cfg(feature = "diagram-event-modeling")]
 mod eventmodeling;
@@ -202,7 +204,11 @@ pub(crate) use markers::BaseEdgeMarkerKind;
 #[cfg(any(
     all(
         feature = "layout-shoal",
-        any(feature = "diagram-class", feature = "diagram-state")
+        any(
+            feature = "diagram-class",
+            feature = "diagram-er",
+            feature = "diagram-state"
+        )
     ),
     all(
         any(feature = "layout-shoal", test),
@@ -1549,6 +1555,8 @@ fn render_builtin_family_artifact_raw(
         #[cfg(feature = "diagram-er")]
         BuiltinFamilyArtifact::Er(artifact) => er::render_er_diagram_svg_model(
             artifact.pair().layout(),
+            #[cfg(feature = "layout-shoal")]
+            artifact.canonical_routes(),
             artifact.pair().semantic(),
             artifact.entity_theme(),
             effective_config,

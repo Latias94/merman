@@ -165,7 +165,11 @@ mod graph_label;
     feature = "diagram-agentflow",
     all(
         feature = "layout-shoal",
-        any(feature = "diagram-class", feature = "diagram-state")
+        any(
+            feature = "diagram-class",
+            feature = "diagram-er",
+            feature = "diagram-state"
+        )
     )
 ))]
 mod graph_layout;
@@ -2132,7 +2136,6 @@ id1(Start)-->id2(Stop)
     fn shoal_rejects_other_graph_adapters_during_planning_and_execution() {
         for body in [
             "swimlane-beta LR\nA --> B",
-            "erDiagram\nA ||--o{ B : relates",
             "mindmap\n  root((Demo))\n    Leaf",
             "requirementDiagram\nrequirement r {\nid: 1\ntext: Demo\nrisk: low\nverifymethod: test\n}",
             "usecase-beta\nactor A\nA --> B",
@@ -2182,6 +2185,10 @@ id1(Start)-->id2(Stop)
             ("classDiagram\nA --> B", Some(RenderCapability::LayoutShoal)),
             (
                 "stateDiagram-v2\nA --> B",
+                Some(RenderCapability::LayoutShoal),
+            ),
+            (
+                "erDiagram\nA ||--o{ B : relates",
                 Some(RenderCapability::LayoutShoal),
             ),
             (
