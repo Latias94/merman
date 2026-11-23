@@ -516,10 +516,14 @@ jobs:
         run: cargo nextest run --locked -p merman-export --no-default-features --features experimental-system-font-query,png,jpeg,pdf --cargo-quiet
 
       - name: Test platform font host contracts on every host
-        run: cargo nextest run --locked -p merman-export --no-default-features --features experimental-system-font-query,png,jpeg,pdf --test platform_font_context --run-ignored only --cargo-quiet
+        run: cargo nextest run --locked -p merman-export --no-default-features --features experimental-system-font-query,png,jpeg,pdf --test platform_font_context ${{ runner.os == 'macOS' && '--lib --test fallback_shaping' || '' }} --run-ignored only --no-fail-fast --cargo-quiet
 
       - name: Test release platform font CLI policy on every host
         run: cargo nextest run --locked -p merman-cli --no-default-features --features diagram-flowchart,png,platform-system-font-default --test native_fonts_contract --cargo-quiet
+
+      - name: Test automatic Fontconfig fallback on Linux
+        if: runner.os == 'Linux'
+        run: cargo nextest run --locked -p merman-cli --no-default-features --features diagram-flowchart,png,platform-system-font-query --test native_fonts_contract --test linux_fontconfig -E 'test(=fontconfig_availability_controls_automatic_fallback) | binary(linux_fontconfig)' --cargo-quiet
 
       - name: Test host-sensitive contracts on ordinary runs
         if: runner.os != 'Linux' && github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'

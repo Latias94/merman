@@ -1,6 +1,6 @@
 //! Bounded SFNT assembly from the tables of one platform-selected face.
 
-use super::{NativeFontError, OperationControl, OperationPhase, check_limit, source_error};
+use super::{FontByteBudget, NativeFontError, OperationControl, OperationPhase, source_error};
 use std::collections::BTreeSet;
 use std::path::Path;
 use write_fonts::{FontBuilder, types::Tag};
@@ -11,18 +11,19 @@ const DSIG: u32 = u32::from_be_bytes(*b"DSIG");
 
 /// Repackages one face at index zero, preserving opaque tables without subsetting.
 ///
-/// `limit` bounds the serialized bytes, including the directory and table padding.
+/// The budget includes the serialized directory and table padding.
+/// The returned buffer's capacity equals its serialized length.
 /// The caller owns the input buffers and validates the result before registration;
 /// neither this adapter nor `FontBuilder` validates table contents.
 pub(super) fn from_tables<'a>(
     tables: impl IntoIterator<Item = (u32, &'a [u8])>,
-    limit: usize,
+    budget: FontByteBudget,
     control: &OperationControl,
     path: &Path,
 ) -> Result<Vec<u8>, NativeFontError> {
     control.terminal_checkpoint_at(OperationPhase::Layout)?;
     let mut size = HEADER_LEN;
-    check_limit("font-bytes", size, limit)?;
+    budget.check(size as u64)?;
     let mut builder = FontBuilder::new();
     let mut seen = BTreeSet::new();
     let mut table_count = 0u16;
@@ -67,14 +68,14 @@ pub(super) fn from_tables<'a>(
             .ok_or_else(|| source_error(path, "SFNT size overflow"))?;
         // The total bounds every intermediate offset, regardless of table ordering.
         u32::try_from(size).map_err(|_| source_error(path, "SFNT size exceeds u32 offsets"))?;
-        check_limit("font-bytes", size, limit)?;
+        budget.check(size as u64)?;
         builder.add_raw(Tag::from_be_bytes(tag.to_be_bytes()), data);
     }
 
     control.terminal_checkpoint_at(OperationPhase::Layout)?;
     // All size checks precede this synchronous build. FontBuilder writes the directory,
     // padding and checksums, including head.checkSumAdjustment, without changing our inputs.
-    let bytes = builder.build();
+    let bytes = builder.build().into_boxed_slice().into_vec();
     control.terminal_checkpoint_at(OperationPhase::Layout)?;
     Ok(bytes)
 }
@@ -86,6 +87,10 @@ mod tests {
     use ttf_parser::{Face, RawFace};
 
     const COUSINE: &[u8] = include_bytes!("../../tests/fonts/Cousine-Regular.ttf");
+
+    fn budget(maximum: usize) -> FontByteBudget {
+        FontByteBudget::new("system-font-bytes", 0, maximum)
+    }
 
     fn face_tables(bytes: &[u8], index: u32) -> Vec<(u32, &[u8])> {
         let face = RawFace::parse(bytes, index).unwrap();
@@ -112,7 +117,7 @@ mod tests {
             let tables = face_tables(source, index);
             let bytes = from_tables(
                 tables.iter().copied(),
-                usize::MAX,
+                budget(usize::MAX),
                 &OperationControl::new(),
                 Path::new("selected-face"),
             )
@@ -149,9 +154,10 @@ mod tests {
                     assert_eq!(actual, expected, "table {tag:#010x}");
                 }
             }
-            assert_eq!(bytes.len() % 4, 0);
-            let checksum = bytes.chunks_exact(4).fold(0u32, |sum, word| {
-                sum.wrapping_add(u32::from_be_bytes(word.try_into().unwrap()))
+            let (words, trailing) = bytes.as_chunks::<4>();
+            assert!(trailing.is_empty());
+            let checksum = words.iter().fold(0u32, |sum, word| {
+                sum.wrapping_add(u32::from_be_bytes(*word))
             });
             assert_eq!(checksum, 0xB1B0_AFBA);
         }
@@ -161,16 +167,35 @@ mod tests {
     fn exact_budget_includes_directory_and_alignment() {
         let table = [(u32::from_be_bytes(*b"TEST"), b"abc".as_slice())];
         let path = Path::new("selected-face");
-        let bytes = from_tables(table, 32, &OperationControl::new(), path).unwrap();
+        let bytes = from_tables(table, budget(32), &OperationControl::new(), path).unwrap();
         assert_eq!(bytes.len(), 32);
         assert!(matches!(
-            from_tables(table, 31, &OperationControl::new(), path),
+            from_tables(table, budget(31), &OperationControl::new(), path),
             Err(NativeFontError::Limit {
-                resource: "font-bytes",
+                resource: "system-font-bytes",
                 actual: 32,
                 limit: 31,
             })
         ));
+    }
+
+    #[test]
+    fn snapshot_capacity_matches_its_charged_size() {
+        let payload = [0; 4096];
+        let tables = [
+            (u32::from_be_bytes(*b"DATA"), payload.as_slice()),
+            (u32::from_be_bytes(*b"TAIL"), b"end".as_slice()),
+        ];
+        let size = HEADER_LEN + tables.len() * TABLE_RECORD_LEN + payload.len() + 4;
+        let bytes = from_tables(
+            tables,
+            budget(size),
+            &OperationControl::new(),
+            Path::new("selected-face"),
+        )
+        .unwrap();
+        assert_eq!(bytes.len(), size);
+        assert_eq!(bytes.capacity(), size);
     }
 
     #[test]
@@ -179,7 +204,7 @@ mod tests {
         for tag in [u32::from_be_bytes(*b"TEST"), DSIG] {
             let result = from_tables(
                 [(tag, b"first".as_slice()), (tag, b"second".as_slice())],
-                usize::MAX,
+                budget(usize::MAX),
                 &OperationControl::new(),
                 path,
             );
@@ -199,7 +224,7 @@ mod tests {
             panic!("cancelled assembly must not acquire tables")
         });
         assert!(matches!(
-            from_tables(tables, usize::MAX, &control, path),
+            from_tables(tables, budget(usize::MAX), &control, path),
             Err(NativeFontError::Operation(OperationLedgerError::Cancelled(
                 OperationCancelled {
                     phase: OperationPhase::Layout,
@@ -217,7 +242,7 @@ mod tests {
             }
         });
         assert!(matches!(
-            from_tables(tables, usize::MAX, &control, path),
+            from_tables(tables, budget(usize::MAX), &control, path),
             Err(NativeFontError::Operation(OperationLedgerError::Cancelled(
                 OperationCancelled {
                     phase: OperationPhase::Layout,
@@ -241,9 +266,10 @@ mod tests {
         tables.extend(extras);
         let control = OperationControl::new();
         let path = Path::new("selected-face");
-        let unsigned = from_tables(tables.iter().copied(), usize::MAX, &control, path).unwrap();
+        let unsigned =
+            from_tables(tables.iter().copied(), budget(usize::MAX), &control, path).unwrap();
         tables.push((DSIG, b"invalidated original signature"));
-        let rebuilt = from_tables(tables, unsigned.len(), &control, path).unwrap();
+        let rebuilt = from_tables(tables, budget(unsigned.len()), &control, path).unwrap();
         assert_eq!(rebuilt, unsigned);
         let face = RawFace::parse(&rebuilt, 0).unwrap();
         assert!(face.table(ttf_parser::Tag(DSIG)).is_none());
@@ -257,7 +283,7 @@ mod tests {
         let tables = (0..4096).map(|tag| (tag, b"".as_slice()));
         let result = from_tables(
             tables,
-            usize::MAX,
+            budget(usize::MAX),
             &OperationControl::new(),
             Path::new("selected-face"),
         );
@@ -273,7 +299,7 @@ mod tests {
         let tables = (0..4095).map(|tag| (tag, shared.as_slice()));
         let result = from_tables(
             tables,
-            usize::MAX,
+            budget(usize::MAX),
             &OperationControl::new(),
             Path::new("selected-face"),
         );

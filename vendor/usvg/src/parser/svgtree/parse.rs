@@ -236,9 +236,13 @@ pub(crate) fn parse_svg_element<'input>(
             _ => continue,
         }
 
-        let aid = match AId::from_str(attr.name()) {
-            Some(v) => v,
-            None => continue,
+        let aid = if attr.namespace() == Some(XML_NAMESPACE_NS) && attr.name() == "lang" {
+            AId::XmlLang
+        } else {
+            match AId::from_str(attr.name()) {
+                Some(v) => v,
+                None => continue,
+            }
         };
 
         // During a `use` resolving, all `id` attributes must be ignored.

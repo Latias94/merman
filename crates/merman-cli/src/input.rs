@@ -33,6 +33,14 @@ pub(crate) enum ObservedSize {
     AtLeast(u64),
 }
 
+impl ObservedSize {
+    pub(crate) const fn bytes(self) -> u64 {
+        match self {
+            Self::Exact(bytes) | Self::AtLeast(bytes) => bytes,
+        }
+    }
+}
+
 impl std::fmt::Display for ObservedSize {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

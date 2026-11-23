@@ -85,6 +85,10 @@ pub struct Options<'a> {
     #[cfg(feature = "text")]
     pub font_resolver: FontResolver<'a>,
 
+    /// Optional default language and missing-cluster resolver for text.
+    #[cfg(feature = "text")]
+    pub text_fallback: crate::TextFallback<'a>,
+
     /// A database of fonts usable by text.
     ///
     /// This is a base database. If a custom `font_resolver` is specified,
@@ -98,6 +102,18 @@ pub struct Options<'a> {
     /// A CSS stylesheet that should be injected into the SVG. Can be used to overwrite
     /// certain attributes.
     pub style_sheet: Option<String>,
+}
+
+#[cfg(feature = "text")]
+impl<'a> Options<'a> {
+    /// Installs a missing-cluster selector and a default language for untagged text.
+    pub fn set_text_fallback(
+        &mut self,
+        language: Option<String>,
+        select: Option<crate::ClusterFallbackFn<'a>>,
+    ) {
+        self.text_fallback = crate::TextFallback { language, select };
+    }
 }
 
 impl Default for Options<'_> {
@@ -116,6 +132,8 @@ impl Default for Options<'_> {
             image_href_resolver: ImageHrefResolver::default(),
             #[cfg(feature = "text")]
             font_resolver: FontResolver::default(),
+            #[cfg(feature = "text")]
+            text_fallback: crate::TextFallback::default(),
             #[cfg(feature = "text")]
             fontdb: Arc::new(fontdb::Database::new()),
             style_sheet: None,
