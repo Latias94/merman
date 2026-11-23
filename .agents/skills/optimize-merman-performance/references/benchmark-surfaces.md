@@ -7,6 +7,7 @@ the registered question.
 
 - Rust pipeline and stress benches
 - Same-implementation revision A/B
+- Ordered public workloads and corpus coverage
 - External renderer reference
 - CPU attribution
 - Node N-API and Node-WASM
@@ -60,7 +61,8 @@ a literal substring and measure no rows. Run four commands when all four stages 
 
 ## External Renderer Reference
 
-Use these only after the Merman base/head result is understood:
+For a native peer comparison, reuse the existing `mermaid-rs-renderer` runner. For a Merman
+optimization decision, measure base and head with `compare_self.py`.
 
 ```console
 python3 tools/bench/stage_spotcheck.py \
@@ -78,6 +80,20 @@ python3 tools/bench/compare_mermaid_renderers.py \
 The local reference checkout defaults to `repo-ref/mermaid-rs-renderer`. Pin its revision and
 toolchain. Keep warm native Merman, mmdr, and warm browser Mermaid.js as separate implementations;
 coverage or failed renders are not latency samples.
+
+## Ordered Public Workloads and Corpus Coverage
+
+Use `perf_runner.py workloads plan` for a sequence of public Rust, Node or CLI calls. For fixture
+growth, inspect `workloads coverage` for distinct sources, repeated occurrences and label facts.
+For a headless Node product comparison, run `workloads node-matrix` from the
+[ordered workload runbook](../../../../docs/performance/RUNBOOK.md#run-an-ordered-workload).
+It executes the installed Merman, Pele and Mermaid v13 public APIs in a locked consumer and writes
+raw results and coverage beside the summary. `--pele-fixtures` imports upstream input text only.
+
+When a renderer appears to miss a label, inspect its SVG before changing its expected facts.
+For startup, use a fresh CLI or the Node initialization and first-render observations. For a batch
+use the matching complete warm batch. For topology growth, use the `work` metric and record the
+first failing limit. Always identify the host, lifecycle, input population and operation in the finding.
 
 ## CPU Attribution
 

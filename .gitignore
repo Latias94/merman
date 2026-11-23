@@ -1,6 +1,7 @@
 target/
 .build/
 /node_modules/
+/tools/bench/node-reference/node_modules/
 /platforms/web/node_modules/
 /platforms/web/dist/
 /platforms/web/pkg/

@@ -19,6 +19,12 @@ under a frozen recipe and fixed maximum budget.
 
 ## GitHub Actions lanes
 
+The `regression` measurement job also uploads `perf-public-workloads` with separate memory,
+retention and topology observations. Labelled PRs and ordinary regression dispatches use the quick
+suite. Scheduled runs and full dispatches use the full suite. It compares both revisions when the
+base contains the workload runner. On older bases the artifact identifies the missing observation.
+The [local recipe](#run-an-ordered-workload) uses the same inputs and commands.
+
 Performance automation is isolated in the `Performance` workflow:
 
 - `perf-contracts` checks Python syntax and benchmark-helper contracts on manual and scheduled
@@ -40,6 +46,10 @@ Performance automation is isolated in the `Performance` workflow:
 - `perf-frontmatter` owns its preprocessing comparison and uses a separate sticky marker.
 - `perf-reference` checks out the pinned `mermaid-rs-renderer` reference and provides cross-renderer
   context. It does not decide a Merman base/head candidate.
+- Manual `reference` and `full` dispatches also run `perf-node-reference` on revisions containing
+  the locked Node consumer. Its artifact contains the plan, raw product reports, coverage and
+  per-scenario comparisons of the pinned npm releases. A `full` dispatch also replays the native
+  `cross_family` catalog in those packages and retains a separate result bundle.
 
 Manual confirmation example:
 
@@ -79,6 +89,101 @@ plain `main` unless it already satisfies that identity contract.
 Use `-f ascii_suite=closeout` for the five-family medium closeout observation. `run=full` explicitly
 selects the ordinary regression, ASCII, frontmatter, and reference lanes; the weekly schedule does
 not add ASCII timing.
+
+## Run an ordered workload
+
+Run these commands from the checkout root. `plan` freezes request order, source bytes and SVG IDs
+in one portable JSON file. Keep that exact file for every implementation in a comparison.
+
+```console
+python tools/bench/perf_runner.py workloads plan --suite quick --out target/bench/plan.json
+python tools/bench/perf_runner.py workloads rust --plan target/bench/plan.json --metric memory --site-layout dagre --out target/bench/memory.json
+python tools/bench/perf_runner.py workloads rust --plan target/bench/plan.json --metric work --out target/bench/elk.json
+```
+
+`mixed-families` alternates a configured Flowchart and an unconfigured Sequence four times.
+Compare it with `repeat-flow` and `repeat-sequence`. To investigate site sharing, select
+`--scenario retained-configs --operation prepare-retained --warmups 0 --site-css-bytes 65536`.
+Repeat with `--operation prepare-drop` and with 8,192 CSS bytes. Both operations use the same
+eight requests. A retained result is released after the checkpoint and before the final live-byte
+reading. Use `--metric clock` for a separate time observation. Each Rust report records the
+executable, embedded measurement-source and plan digests. Automatic builds use a stable per-checkout slot under the Cargo
+target directory. For a historical revision, apply the identical benchmark sources in its own
+worktree and keep each built executable separately. `--runner PATH --revision SHA` replays a
+frozen binary. The source label is supplied by the caller.
+
+```console
+python tools/bench/perf_runner.py workloads compare target/bench/base.json target/bench/head.json --out target/bench/diff.json
+```
+
+The full plan includes a five-diagram project guide, Zed issue examples, configured multilingual
+labels, default and explicit Dagre layouts, mixed families, two equal-length 100-message Sequence
+inputs with repeated or unique labels, and 20 topology rows (five shapes at 50, 100, 250 and 500 nodes).
+`--scenario fan-in-500` when creating the plan also makes that topology available as an ordinary
+SVG scenario for the external adapters. A reviewed downstream or Trident document can be imported
+with `--document path/to/manifest.json`. For example, a manifest can contain
+`{"id":"guide","origin":"project@revision/chapter.md","files":["intro.mmd","example.mmd","intro.mmd"]}`.
+Paths are relative to the manifest. Keep repeated occurrences and pin the upstream revision.
+Add `"expected_labels":{"intro.mmd":["Start","End"]}` to check that file's reviewed labels
+at every occurrence. Other imported sources retain their mechanical SVG checks.
+`--pele-fixtures path/to/mermaid-v13/packages/bench/fixtures/pele` imports the five shared upstream
+inputs. Local `.mmd` text is decoded as UTF-8 with LF line endings before hashing.
+
+To reproduce the Node comparison from the repository root, install the locked consumer once and
+choose a fresh results directory for each run. This consumer pins Merman N-API, Pele and the
+Mermaid v13 package. Node selects the public `mermaid` Node export and awaits each SVG. Default
+v13 plugin discovery runs in the same consumer project for the whole comparison.
+
+```console
+npm ci --prefix tools/bench/node-reference --ignore-scripts --no-audit --no-fund
+python tools/bench/perf_runner.py workloads plan --suite full --out target/bench/full-plan.json
+python tools/bench/perf_runner.py workloads node-matrix --plan target/bench/full-plan.json --out-dir target/bench/node-full
+```
+
+Open `node-full/summary.md` for the complete-batch medians and how many requests passed in both
+products. The adjacent `coverage.json` lists distinct sources, label checks and individual
+failure or stability differences. Use `--peer mermaid-v13` or `--peer pele` for a focused run.
+`--merman-module PATH` selects a built local N-API or Node-WASM package entry while the peer
+versions and working directory stay fixed. A failed collector leaves its raw output, the
+independent peer results and an incomplete bundle. A diagram rejected by a functioning collector
+is recorded as an observed request outcome. The bundle includes the exact npm manifest and lock
+under `consumer/`. Inspect a plan or existing external comparisons with these commands.
+
+```console
+python tools/bench/perf_runner.py workloads coverage --plan target/bench/full-plan.json
+python tools/bench/perf_runner.py workloads coverage --plan target/bench/node-full/plan.json --comparison target/bench/node-full/merman-vs-mermaid-v13.json --out target/bench/v13-coverage.json
+```
+
+For a breadth check, `workloads plan --scenario corpus-cross_family --out target/bench/families.json`
+replays the native `cross_family` suite in catalog order across the public adapters.
+`--scenario corpus-full` selects every registered native fixture. These batches retain the label
+facts available for each source and report the other inputs as mechanically checked. Keep intended
+error drawings and unsupported families visible in the coverage results.
+
+For a package or CLI comparison, install the two releases of interest and run them on one host.
+The Node adapter accepts `--module PATH` to select an explicit package entry. The CLI adapter
+resolves an installed `mmdc` executable, including its npm shim on Windows. Use `--format png`
+on both commands to compare file-to-PNG exports. `--font-file PATH` selects a Merman font;
+`--extra-arg=ARG` records explicit CLI arguments, including renderer-specific font configuration.
+PNG validation records dimensions and checks an equivalent SVG after timing. The browser corpus
+and its existing visual comparisons remain available separately.
+
+```console
+python tools/bench/perf_runner.py workloads plan --scenario small-svg --out target/bench/one.json
+node tools/bench/workload_node.mjs --engine merman --plan target/bench/one.json --samples 3 > target/bench/node-merman.json
+node tools/bench/workload_node.mjs --engine pele --plan target/bench/one.json --samples 3 > target/bench/node-pele.json
+python tools/bench/perf_runner.py workloads compare target/bench/node-merman.json target/bench/node-pele.json --out target/bench/node-comparison.json
+python tools/bench/workload_cli.py --engine merman --binary merman-cli --format svg --plan target/bench/one.json --output-dir target/bench/cli-runs > target/bench/cli-merman.json
+python tools/bench/workload_cli.py --engine mmdc --binary mmdc --format svg --plan target/bench/one.json --output-dir target/bench/cli-runs > target/bench/cli-mmdc.json
+python tools/bench/perf_runner.py workloads compare target/bench/cli-merman.json target/bench/cli-mmdc.json --out target/bench/cli-comparison.json
+```
+
+Reference reports show planned, completed and repeatable requests per scenario. Time ratios use
+right divided by left. Complete-batch ratios require every request to complete with stable output
+in both engines. The report also exposes the fixed common subset and each product's output bytes.
+Explicit font settings or different rendering environments retain their observations with the
+comparison qualification. Use the [measurement boundaries](BENCHMARKING.md#ordered-public-workloads)
+when publishing results.
 
 ## 1. Freeze the question and revisions
 

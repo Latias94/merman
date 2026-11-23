@@ -460,6 +460,16 @@ harness = false
 required-features = ["svg", "compat-json", "editor-facts"]
 
 [[bench]]
+name = "public_workloads"
+harness = false
+required-features = ["svg", "diagram-flowchart", "diagram-sequence", "layout-elk"]
+
+[[bench]]
+name = "public_workload_memory"
+harness = false
+required-features = ["svg", "diagram-flowchart", "diagram-sequence", "layout-elk"]
+
+[[bench]]
 name = "native_export"
 harness = false
 required-features = ["png", "pdf"]

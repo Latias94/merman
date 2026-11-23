@@ -1,0 +1,100 @@
+{
+  "inputs": {
+    "flow-padding": "---\nconfig:\n  flowchart:\n    diagramPadding: 32\n---\nflowchart TD\nA-->B",
+    "seq-message": "sequenceDiagram\nA->>B: hi",
+    "seq-margin": "---\nconfig:\n  sequence:\n    actorMargin: 75\n---\nsequenceDiagram\nA->>B: hi"
+  },
+  "fixture_files": {
+    "flowchart-cjk-approval": "fixtures/flowchart/upstream_html_demos_flowchart_flowchart_002.mmd",
+    "flowchart-markdown-svg": "fixtures/flowchart/upstream_docs_flowchart_markdown_strings_200.mmd",
+    "flowchart-theme-variables": "fixtures/flowchart/upstream_docs_theming_customizing_themes_with_themevariables_003.mmd",
+    "sequence-dark-font": "fixtures/sequence/upstream_cypress_sequencediagram_spec_should_render_dark_theme_from_init_directive_and_configure_font_047.mmd",
+    "zed_51142_sequence_rect_rgb": "fixtures/zed_issues/zed_51142_sequence_rect_rgb.mmd",
+    "zed_56767_flowchart_foreign_object_labels": "fixtures/zed_issues/zed_56767_flowchart_foreign_object_labels.mmd",
+    "zed_57323_er_entity_style_text": "fixtures/zed_issues/zed_57323_er_entity_style_text.mmd",
+    "zed_57363_flowchart_hyphen_edge_labels": "fixtures/zed_issues/zed_57363_flowchart_hyphen_edge_labels.mmd"
+  },
+  "expected_labels": {
+    "flowchart_tiny": ["Start", "End"],
+    "flow-padding": ["A", "B"],
+    "seq-message": ["hi"],
+    "seq-margin": ["hi"],
+    "flowchart_medium": ["Service 1", "Group 2", "Service 45"],
+    "flowchart_nested_clusters": ["Region A", "AZ-4", "replicate", "health"],
+    "flowchart_parallel_merges": ["Head", "Merge", "Tail", "skip"],
+    "sequence_medium": ["Alice", "Hello 0", "Ack 19"],
+    "class_medium": ["C1", "+String field1", "inherits", "+method15()"],
+    "mindmap_medium": ["Root", "Research", "Community"],
+    "sequence-100-repeated": ["A", "B", "event-000"],
+    "sequence-100-unique": ["A", "B", "event-000", "event-050", "event-099"],
+    "architecture_medium": ["API", "Web", "DB"],
+    "er_medium": ["CUSTOMER", "ordered_at", "quantity", "supplies"],
+    "swimlane_medium": ["Engineering", "Prepare fix", "Needs code change", "Receive update"],
+    "flowchart_nested_clusters_dagre_classic": ["Region A", "AZ-4", "replicate", "health"],
+    "flowchart_long_edge_labels": ["Policy gate", "Inventory allocation", "Audit archive"],
+    "flowchart_long_edge_labels_dagre_classic": ["Policy gate", "Inventory allocation", "Audit archive"],
+    "flowchart-markdown-svg": ["One", "cat", "Two", "Bold"],
+    "flowchart-cjk-approval": ["提交申请", "DBA审批", "负责人确认", "结束"],
+    "flowchart-theme-variables": ["Christmas", "Get money", "Laptop"],
+    "sequence-dark-font": ["Alice", "Hello John, how are you?", "I feel great!"],
+    "zed_51142_sequence_rect_rgb": ["Frontend", "startup_reconcile()", "Reconciliation Step 1 - Inventory", "get recorded file timestamps"],
+    "zed_56767_flowchart_foreign_object_labels": ["Prepare change", "checks pass", "checks fail", "Release"],
+    "zed_57323_er_entity_style_text": ["EMPRESA", "usuario_id", "employs"],
+    "zed_57363_flowchart_hyphen_edge_labels": ["A", "single-string-with-hyphens", "F"]
+  },
+  "scenarios": [
+    {"id":"small-svg", "fixtures":["flowchart_tiny"], "quick":true},
+    {"id":"repeat-flow", "fixtures":["flow-padding"], "repeat":8, "quick":true},
+    {"id":"repeat-sequence", "fixtures":["seq-message"], "repeat":8, "quick":true},
+    {"id":"mixed-families", "fixtures":["flow-padding","seq-message"], "repeat":4, "quick":true},
+    {"id":"retained-configs", "fixtures":["flow-padding","seq-margin"], "repeat":4, "quick":true},
+    {"id":"different-flowcharts", "fixtures":["flowchart_tiny","flowchart_medium","flowchart_nested_clusters","flowchart_parallel_merges"]},
+    {"id":"mixed-document", "fixtures":["flowchart_medium","sequence_medium","class_medium","mindmap_medium","flowchart_nested_clusters","sequence_medium"]},
+    {"id":"repeated-message-labels", "fixtures":["sequence-100-repeated"]},
+    {"id":"unique-message-labels", "fixtures":["sequence-100-unique"]},
+    {
+      "id": "merman-issue-guide",
+      "document": "docs/assets/ascii-geometry-issues-183-187/README.md",
+      "expected_labels": {
+        "block-1": ["Write code", "Tests pass?", "Yes", "No", "Open PR"],
+        "block-2": ["Draft", "Review", "submit", "changes requested"],
+        "block-3": ["API", "DB", "find user by email"],
+        "block-4": ["CI", "Lint", "Test", "Deploy", "Staging", "Prod"],
+        "block-5": ["Write code", "Open PR", "Merge"]
+      }
+    },
+    {
+      "id": "service-design-document",
+      "fixtures": ["architecture_medium", "er_medium", "swimlane_medium", "architecture_medium"]
+    },
+    {
+      "id": "flowchart-layout-default",
+      "fixtures": ["flowchart_nested_clusters", "flowchart_long_edge_labels"],
+      "repeat": 2
+    },
+    {
+      "id": "flowchart-layout-dagre-classic",
+      "fixtures": ["flowchart_nested_clusters_dagre_classic", "flowchart_long_edge_labels_dagre_classic"],
+      "repeat": 2
+    },
+    {
+      "id": "configured-labels",
+      "fixtures": [
+        "flowchart-markdown-svg", "flowchart-cjk-approval", "flowchart-theme-variables",
+        "sequence-dark-font", "flowchart-markdown-svg"
+      ]
+    },
+    {
+      "id": "zed-issue-examples",
+      "origin": "fixtures/zed_issues",
+      "fixtures": [
+        "zed_51142_sequence_rect_rgb", "zed_56767_flowchart_foreign_object_labels",
+        "zed_57323_er_entity_style_text", "zed_57363_flowchart_hyphen_edge_labels"
+      ]
+    }
+  ],
+  "topologies": {
+    "quick": {"shapes":["fan-in","fan-out"], "nodes":[50,500]},
+    "full": {"shapes":["chain","fan-in","fan-out","ternary","fork-join"], "nodes":[50,100,250,500]}
+  }
+}

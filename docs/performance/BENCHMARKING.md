@@ -23,6 +23,83 @@ Keep these lanes separate because they answer different questions:
 - Native allocation, peak-live-heap, Node RSS, and artifact-size evidence use their own harnesses.
   Do not infer memory or size behavior from latency alone.
 
+## Ordered public workloads
+
+Use `tools/bench/perf_runner.py workloads` to freeze one ordered plan for Rust, Node and CLI runs.
+`tools/bench/workloads.json` refers to existing `corpus.json` fixture IDs, adds small config
+controls, and preserves each occurrence and SVG ID. The full suite includes the five diagrams
+from Merman's issues #183–#187 guide in document order. Standalone public calls, repeated identical
+source, alternating families, repeated versus unique Sequence message labels, and retained
+artifacts exercise different behavior. Keep per-scenario results alongside coverage.
+
+| Operation | Observation boundary |
+| --- | --- |
+| Rust `svg-data`, `svg`, `layout-json` | Public bytes-only SVG, SVG with evidence, or compact geometry written to a `Vec<u8>`. Requests in a batch use one renderer. |
+| Rust `static-svg`, `resvg-svg` | Complete static SVG or static resvg-compatible SVG, including pipeline processing. |
+| Rust `prepare-drop`, `prepare-retained` | Prepare a presentation per source. Drop each result immediately or release all results after the batch checkpoint. Untimed verification checks family, title, source and effective configuration, and explicit paths. |
+| Rust layout work | Compare checked geometry bytes at default and elevated layout budgets. Record the smallest accepted budget and the adjacent rejection. A `maxEdges` parser rejection has its own status. |
+| Node | Merman, Pele and Mermaid v13 in the same Node consumer. Each scenario starts a process, imports the package and renders distinct IDs sequentially. A v13 request ends when `mermaid.render(id, source)` resolves. Reports separate initialization, first render and warm batches. |
+| CLI | The chosen binary reads and publishes one file per fresh process. A batch is the sequential execution of those processes. SVG and PNG have separate results. |
+
+Each Rust clock or memory sample starts a fresh process, constructs the renderer, then runs the
+specified number of warmup passes before observing one complete batch. `--warmups 0` captures
+first use on a constructed renderer. CLI timings include process startup. The memory executable
+uses the existing counting allocator and reports allocation traffic, peak growth, signed live
+growth at the batch boundary and growth after releasing results. Renderer construction, plan
+decoding, hashes, semantic checks and report formatting are outside the observed interval.
+The clock executable uses the ordinary allocator. Its raw samples and median deltas are diagnostic.
+
+For cross-renderer comparisons, report completion first. The common plan freezes the UTF-8
+sources, their SHA-256 digests and the request order. Scenarios can declare text expected in the
+rendered SVG. Output bytes, PNG dimensions and artifact checks describe the
+delivered product. Visual equivalence still requires the family-owned DOM or raster checks.
+The Node and CLI adapters use the same Python standard-library validator for SVG and expected
+labels. Node checks each new output once outside the timed batch, with a scenario timeout.
+Keep the browser comparison in its existing Chromium harness. The [runbook](RUNBOOK.md#run-an-ordered-workload)
+includes reproduction commands and external corpus imports.
+
+### Maintaining the benchmark suite
+
+| Comparison | Reference | Purpose |
+| --- | --- | --- |
+| Node package to SVG | Pele and the locked Mermaid v13 Node export | Headless public API latency and coverage on the same ordered requests. The consumer lock pins each release, including prereleases. |
+| Native library to SVG | `mermaid-rs-renderer` via `compare_mermaid_renderers.py` | Independently implemented Rust rendering on the supported fixture intersection. |
+| Fresh process to file | `mmdc` via `workload_cli.py` | What a CLI consumer pays for SVG or PNG, including startup. |
+| Browser to SVG | The pinned Mermaid.js build and Merman WASM in the playground | Browser initialization, drawing and family-specific visual evidence. |
+
+Add a case for a concrete workload or failure mechanism. Reuse its source from `corpus.json` or
+an existing project fixture, record its origin, and add the expected labels to `workloads.json`.
+For a drawing with no text to assert, an explicit empty label list records mechanical coverage.
+Use consecutive occurrences when order, reuse or retention matters. Keep a nearby control when
+changing a variable such as layout, label content or input size. `quick` covers frequent local
+checks. `full` adds family, downstream, configuration and scaling cases. An ordered document
+import preserves the weight of repeated examples. The coverage inventory counts both occurrences
+and distinct source digests and lists the layout-budget topology population separately.
+
+The native Criterion `pipeline` takes fixture registration from `tools/bench/corpus.json`.
+After editing that catalog, run `python tools/bench/pipeline_fixtures.py --write` to refresh the
+package-local Rust inventory and any mirrored external fixture bytes. The benchmark embeds the
+sources at compile time so a copied executable retains its inputs. Running the same command
+without `--write` checks the generated files. The `corpus-<suite>` workload selector reads this
+same catalog for public API runs. Stage timers, stress curves and native memory contracts retain
+their own observation boundaries.
+
+To register another Node renderer, add its package and public API to `workload_node_products.json`,
+pin the consumer dependency in `tools/bench/node-reference`, then implement its call in the
+existing adapter. Exercise a successful drawing, a failed call and repeated IDs across batches.
+Use its real asynchronous completion boundary when applicable. Run the installed product on the
+same frozen plan as its peers. Version upgrades get a fresh result bundle and preserve the old lock
+and raw reports with the measurement. Use a separate experiment if a product needs a different DSL,
+output format, font policy or process lifecycle.
+
+External reports include product versions, collector fingerprints and per-request results.
+Read coverage before interpreting a time. A matching text assertion establishes presence in the
+SVG text representation. Clipping, overlap and shaping require the visual checks. Complete-batch
+ratios use the same successful, repeatable population on both sides. When a report comes from a
+different collector, both observed time series remain available and the ratio is withheld.
+The Node matrix runs products sequentially. A warm batch median describes that collection order.
+Use the calibrated `compare_self.py` protocol for release claims about a Merman revision.
+
 ## Native Criterion benchmarks
 
 The `pipeline` bench can be run directly for local attribution:

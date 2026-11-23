@@ -1,0 +1,19 @@
+{
+  "merman": {
+    "package": "@mermanjs/node",
+    "backend": "napi",
+    "alternatives": {"@mermanjs/node-wasm": "node-wasm"},
+    "render_api": "MermanEngine.renderSvgSync"
+  },
+  "pele": {
+    "package": "pele",
+    "backend": "javascript",
+    "render_api": "render"
+  },
+  "mermaid-v13": {
+    "package": "mermaid",
+    "major": 13,
+    "backend": "javascript",
+    "render_api": "mermaid.render"
+  }
+}

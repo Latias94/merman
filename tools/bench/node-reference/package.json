@@ -1,0 +1,9 @@
+{
+  "name": "merman-benchmark-node-reference",
+  "private": true,
+  "dependencies": {
+    "@mermanjs/node": "0.11.0",
+    "mermaid": "13.0.0-alpha.3",
+    "pele": "1.13.0"
+  }
+}

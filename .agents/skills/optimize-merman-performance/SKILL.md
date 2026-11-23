@@ -1,6 +1,6 @@
 ---
 name: optimize-merman-performance
-description: Diagnose and improve Merman latency, throughput, memory use, input-amplification complexity, dependency closure, or artifact size with evidence matched to the claim and semantics-preserving implementation. Use when investigating a performance regression, profiling a Rust render stage, removing superlinear or attacker-controlled work, optimizing parser/layout/SVG/text paths, comparing Node N-API with Node-WASM, tuning browser WASM or CLI/native artifacts, or deciding whether a proposed fast path, cache, or refactor is a real improvement.
+description: Diagnose Merman latency, memory, resource bounds, dependency or artifact size. Use when profiling or admitting an optimization, maintaining benchmark corpora or collectors, or comparing native, Node, browser and CLI renderers.
 ---
 
 # Optimize Merman Performance
@@ -24,6 +24,9 @@ input variables, old/new bounds, and a reachable causal path. Never present one 
   revisions must be built. Never reset, stash, or overwrite unrelated work.
 - Reuse the checked-in benchmark tools. Read [benchmark-surfaces.md](references/benchmark-surfaces.md)
   before selecting or inventing a harness.
+- For corpus, competitor or collector work, follow the [benchmark maintenance contract](../../../docs/performance/BENCHMARKING.md#maintaining-the-benchmark-suite).
+  Freeze the plan, run the public operation and inspect planned, completed and repeatable coverage
+  before interpreting time. Keep known failures visible alongside successful inputs.
 - Never add benchmark work to regular CI by default. Use the dedicated Performance workflow only
   when explicitly requested and justified by a stable, bounded gate.
 

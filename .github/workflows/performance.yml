@@ -19,7 +19,11 @@ on:
       - "crates/merman/**"
       - "crates/merman-ascii/**"
       - "crates/merman-bindings-core/**"
+      - "crates/merman-cli/**"
       - "crates/merman-core/**"
+      - "crates/merman-elk-layered/**"
+      - "crates/merman-export/**"
+      - "crates/merman-layout-elk/**"
       - "crates/merman-model/**"
       - "crates/merman-markup/**"
       - "crates/merman-render/**"
@@ -416,6 +420,37 @@ jobs:
             head/target/performance/comparison.json
             head/target/performance/summary.md
 
+      - name: Observe ordered workloads on the measured revisions
+        if: ${{ matrix.id == 'regression' && hashFiles('head/tools/bench/run_workloads.py') != '' }}
+        env:
+          WORKLOAD_SUITE: ${{ (github.event_name == 'schedule' || inputs.run == 'full') && 'full' || 'quick' }}
+        run: |
+          set -euo pipefail
+          out="$GITHUB_WORKSPACE/head/target/performance/workloads"
+          driver=tools/bench/run_workloads.py
+          python3 "head/$driver" plan --suite "$WORKLOAD_SUITE" --out "$out/plan.json"
+          for side in head base; do
+            if [[ ! -f "$side/$driver" ]]; then
+              echo 'This revision predates the ordered workload runner.' > "$out/$side-unavailable.txt"
+              continue
+            fi
+            python3 "$side/$driver" rust --plan "$out/plan.json" --metric memory --out "$out/$side-memory.json"
+            python3 "$side/$driver" rust --plan "$out/plan.json" --metric work --out "$out/$side-work.json"
+            python3 "$side/$driver" rust --plan "$out/plan.json" --metric memory --operation prepare-retained --scenario retained-configs --warmups 0 --site-css-bytes 65536 --out "$out/$side-retained.json"
+          done
+          if [[ -f "$out/base-work.json" ]]; then
+            for metric in memory work retained; do
+              python3 "head/$driver" compare "$out/base-$metric.json" "$out/head-$metric.json" --out "$out/compare-$metric.json"
+            done
+          fi
+
+      - name: Upload ordered workload observations
+        if: ${{ always() && matrix.id == 'regression' && hashFiles('head/target/performance/workloads/plan.json') != '' }}
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: perf-public-workloads
+          path: head/target/performance/workloads
+
       - name: Write pull-request job summary
         if: ${{ always() && github.event_name == 'pull_request' }}
         working-directory: head
@@ -440,6 +475,57 @@ jobs:
           python3 tools/bench/performance_workflow.py enforce \
             --comparison-exit "$COMPARISON_EXIT" \
             --render-exit "$RENDER_EXIT"
+
+  node-reference:
+    name: perf-node-reference
+    if: github.event_name == 'workflow_dispatch' && (inputs.run == 'reference' || inputs.run == 'full')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+          repository: ${{ inputs.head_repository || github.repository }}
+          ref: ${{ inputs.head_ref || github.sha }}
+
+      - name: Check for a locked Node reference project
+        id: project
+        run: |
+          if test -f tools/bench/node-reference/package-lock.json; then
+            echo 'available=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'The selected revision predates the Node reference matrix.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/setup-node@v7.1.0
+        if: steps.project.outputs.available == 'true'
+        with:
+          node-version: "26.13.0"
+          cache: npm
+          cache-dependency-path: tools/bench/node-reference/package-lock.json
+
+      - name: Collect the locked Node SVG references
+        if: steps.project.outputs.available == 'true'
+        run: |
+          npm ci --prefix tools/bench/node-reference --ignore-scripts --no-audit --no-fund
+          node --test tools/bench/workload_node.test.mjs
+          python3 tools/bench/perf_runner.py workloads plan --suite full --out target/bench/reference-plan.json
+          python3 tools/bench/perf_runner.py workloads node-matrix --plan target/bench/reference-plan.json --out-dir target/bench/node-reference
+
+      - name: Replay the native cross-family suite
+        if: steps.project.outputs.available == 'true' && inputs.run == 'full'
+        run: |
+          python3 tools/bench/perf_runner.py workloads plan --scenario corpus-cross_family --out target/bench/families-plan.json
+          python3 tools/bench/perf_runner.py workloads node-matrix --plan target/bench/families-plan.json --out-dir target/bench/node-cross-family
+
+      - name: Upload Node observations
+        if: ${{ always() && hashFiles('target/bench/node-reference/plan.json') != '' }}
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: perf-node-reference
+          path: |
+            target/bench/node-reference
+            target/bench/node-cross-family
 
   reference:
     name: perf-reference
