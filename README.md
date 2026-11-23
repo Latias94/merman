@@ -146,8 +146,8 @@ and SVG structure. Browse the [alignment dashboard] for diagram-family coverage 
 evidence, from Flowchart and Sequence to Class, ER, State, Gantt, Mindmap, and charts.
 
 Text measurement, host fonts, HTML labels, and hand-drawn paths can differ from browser output.
-The [SVG output guide] explains the output pipelines and viewer requirements. Performance
-methodology, workloads, and reproducible commands live in the [benchmark guide].
+The [SVG output guide] explains the output pipelines and viewer requirements. Read the
+[renderer benchmark results] for measured workloads and the [benchmark guide] for methodology.
 
 ## Documentation and contributing
 
@@ -182,6 +182,7 @@ project or its maintainers.
 [alignment dashboard]: https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md
 [SVG output guide]: https://github.com/Latias94/merman/blob/main/docs/rendering/SVG_OUTPUT_PIPELINE.md
 [benchmark guide]: https://github.com/Latias94/merman/blob/main/docs/performance/BENCHMARKING.md
+[renderer benchmark results]: ./docs/performance/reports/README.md
 [documentation index]: https://github.com/Latias94/merman/blob/main/docs/README.md
 [resource policy]: https://github.com/Latias94/merman/blob/main/docs/integration/RESOURCE_POLICY.md
 [rendering security]: https://github.com/Latias94/merman/blob/main/docs/security/RENDERING_SECURITY.md

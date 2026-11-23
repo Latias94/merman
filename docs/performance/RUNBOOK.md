@@ -322,6 +322,82 @@ Explicit font settings or different rendering environments retain their observat
 comparison qualification. Use the [measurement boundaries](BENCHMARKING.md#ordered-public-workloads)
 when publishing results.
 
+## Publish a reader report
+
+Use `workloads report` to turn completed benchmark evidence into a dated Markdown page and a
+portable JSON receipt. [Published comparisons](reports/README.md) live in `docs/performance/reports/`.
+Keep exploratory drafts and raw collector bundles in `target/bench/`. The
+[Markdown template](../../tools/bench/workload_report.md.in) owns the common product descriptions,
+interpretation and section order. Each section uses the host, operation and sample units of its
+own inputs. Review the exact product versions and their upstream descriptions on each update.
+
+The following recipe reproduces the populations used in the November 23 Windows report. Run it
+from the repository root with the Node consumer, drawing checks and PNG decoder installed as
+described above. Select an installed Chrome executable for the drawing observer and mmdc. The
+published run used the Merman CLI 0.11.0 release binary and mmdc 12.2.0. Use a fresh raw directory
+for each collection.
+
+```console
+python tools/bench/perf_runner.py workloads plan --suite full --out target/bench/readers/full.json
+python tools/bench/perf_runner.py workloads node-matrix --plan target/bench/readers/full.json --samples 3 --check-drawings --out-dir target/bench/readers/coverage
+python tools/bench/perf_runner.py workloads plan --scenario small-svg --scenario family-sequence --scenario mixed-families --scenario mixed-document --out target/bench/readers/pairs.json
+python tools/bench/perf_runner.py workloads node-matrix --plan target/bench/readers/pairs.json --samples 5 --process-rounds 8 --check-drawings --out-dir target/bench/readers/rounds
+python tools/bench/perf_runner.py workloads plan --scenario family-flowchart --scenario family-sequence --out target/bench/readers/cli.json
+python tools/bench/workload_cli.py --engine merman --binary merman-cli --format svg --samples 3 --plan target/bench/readers/cli.json --output-dir target/bench/readers/files > target/bench/readers/merman-svg.json
+python tools/bench/workload_cli.py --engine mmdc --binary mmdc --format svg --samples 3 --plan target/bench/readers/cli.json --output-dir target/bench/readers/files > target/bench/readers/mmdc-svg.json
+python tools/bench/workload_cli.py --engine merman --binary merman-cli --format png --samples 3 --plan target/bench/readers/cli.json --output-dir target/bench/readers/files > target/bench/readers/merman-png.json
+python tools/bench/workload_cli.py --engine mmdc --binary mmdc --format png --samples 3 --plan target/bench/readers/cli.json --output-dir target/bench/readers/files > target/bench/readers/mmdc-png.json
+python tools/bench/perf_runner.py workloads rust --plan target/bench/readers/full.json --metric work --out target/bench/readers/work.json
+```
+
+For the independent browser comparison, use the [browser family corpus](BENCHMARKING.md#browser-comparison-with-mermaidjs)
+against an identified built playground. The example below collects Flowchart and Sequence with
+six measured blocks per mode. Select the browser SDK version independently of the Node binding.
+
+For a published SDK measurement, start with a fresh export of the matching release tag.
+Run `npm pack @mermanjs/web@<version>` and check the archive against `dist.integrity` from
+`npm view @mermanjs/web@<version> dist.integrity`. Extract the archive under
+`platforms/web/packages/full/`, stripping its leading `package/` directory. Both the Playground
+package link and the benchmark's direct WASM glue import resolve there. From the exported root, run:
+
+```console
+npm ci --prefix playground
+npm ci --prefix playground/tests
+npm --prefix playground run build:opaque-realm
+npm --prefix playground run verify:opaque-realm
+npm --prefix playground run build:prepared
+```
+
+Compare the SHA-256 of `playground/dist/assets/merman_wasm_bg-*.wasm` with the WASM entry in the
+package's `artifacts/provenance.json`. Record the tag, npm integrity and served WASM digest with the
+raw corpus. For a source-build measurement, record the checkout and identify it as a local build.
+
+```console
+npm --prefix playground run benchmark:corpus:built -- --fixtures basic-flowchart,sequence-interaction --iterations 6 --warmups 2 --out target/bench/readers/browser.json
+```
+
+Generate a report with the measurements you collected. `--date` is the observation date. Use
+`--note` to disclose a local candidate build or material host condition. `--raw-url` links to an
+already published evidence bundle when available. The portable JSON stores output counts, compact
+measurements and fingerprints without machine-specific installation paths. A single supplied
+surface is sufficient to generate a report. Empty sections identify unmeasured operations.
+
+```console
+python tools/bench/perf_runner.py workloads report --date 2026-11-23 --node-matrix target/bench/readers/coverage --node-rounds target/bench/readers/rounds --cli target/bench/readers/cli.json target/bench/readers/merman-svg.json target/bench/readers/mmdc-svg.json --cli target/bench/readers/cli.json target/bench/readers/merman-png.json target/bench/readers/mmdc-png.json --browser target/bench/readers/browser.json --rust-work target/bench/readers/full.json target/bench/readers/work.json --out target/bench/readers/2026-11-23-windows-x64.md
+python tools/bench/perf_runner.py workloads report --from target/bench/readers/2026-11-23-windows-x64.json --check
+```
+
+For publication use a new dated output basename, place its `.md` and `.json` together under
+`docs/performance/reports/`, and update the [results index](reports/README.md). `--from` renders
+the adjacent Markdown from that JSON, and `--from ... --check` verifies its contents across LF and CRLF checkouts without
+collecting any measurements. Treat these cross-product observations as inputs for choosing a
+workload to investigate. Use the calibrated same-implementation workflow below for a Merman
+release performance claim.
+
+Manual `reference` and `full` Performance runs also generate a coverage-only reader report
+under `node-reference/reader/` inside the `perf-node-reference` artifact. That page links to
+the run containing the raw observations. Curated snapshots enter the repository through review.
+
 ## 1. Freeze the question and revisions
 
 Write down the claim before measuring:

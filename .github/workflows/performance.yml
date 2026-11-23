@@ -590,6 +590,16 @@ jobs:
           python3 tools/bench/perf_runner.py workloads plan --scenario corpus-cross_family --out target/bench/families-plan.json
           python3 tools/bench/perf_runner.py workloads node-matrix --plan target/bench/families-plan.json --out-dir target/bench/node-cross-family
 
+      - name: Generate a reader report from the Node coverage bundle
+        if: ${{ !cancelled() && hashFiles('tools/bench/workload_report.py') != '' && hashFiles('target/bench/node-reference/coverage.json') != '' }}
+        env:
+          RAW_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
+        run: |
+          python3 -B tools/bench/perf_runner.py workloads report --date "$(date -u +%F)" \
+            --node-matrix target/bench/node-reference --raw-url "$RAW_RUN_URL" \
+            --out target/bench/node-reference/reader/report.md
+          python3 -B tools/bench/perf_runner.py workloads report --from target/bench/node-reference/reader/report.json --check
+
       - name: Upload Node observations
         if: ${{ always() && hashFiles('target/bench/node-reference/plan.json') != '' }}
         uses: actions/upload-artifact@v7.0.2

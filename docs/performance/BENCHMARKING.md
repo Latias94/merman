@@ -2,7 +2,7 @@
 
 This document defines the measurement contract for `merman`. Use
 `docs/performance/RUNBOOK.md` for the operational sequence and
-`docs/performance/PERF_PLAN.md` for the active optimization queue.
+`docs/performance/PERF_PLAN.md` for the active optimization queue. The [renderer benchmark reports](reports/README.md) contain dated results for readers.
 
 Performance evidence never overrides semantic parity, deterministic output, resource limits, or
 security behavior. A faster result with a different public operation, input, output contract, or

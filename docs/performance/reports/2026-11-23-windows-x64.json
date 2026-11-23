@@ -1,0 +1,2102 @@
+{
+  "format": "merman-public-renderer-report-v1",
+  "date": "2026-11-23",
+  "note": "Node, CLI and browser measurements use published Merman 0.11.0 artifacts. The browser comparison uses the npm package @mermanjs/web with the v0.11.0 Playground and Mermaid.js 12.3.0. The native layout work probe uses a local benchmark checkout.",
+  "raw_url": null,
+  "measurements": {
+    "node_coverage": {
+      "kind": "node-matrix",
+      "suite": "full",
+      "status": "complete",
+      "planned": {
+        "scenarios": 72,
+        "requests": 145,
+        "distinct_sources": 99,
+        "families": 37
+      },
+      "host": {
+        "os": "win32",
+        "arch": "x64",
+        "cpu": "11th Gen Intel(R) Core(TM) i7-11700 @ 2.50GHz",
+        "runtime": "v26.4.0"
+      },
+      "hashes": {
+        "plan_sha256": "07f87b546f3eb4d0f70b689277ebe34beff06349e65d2fa1ce702cf8685aad21",
+        "lock_sha256": "478ef072e8256808e77bb16a5f06e099ca53d891f89cfe37df7667415edc2877"
+      },
+      "products": {
+        "merman": {
+          "status": "complete",
+          "package": "@mermanjs/node",
+          "version": "0.11.0",
+          "backend": "napi",
+          "entry_sha256": "d0e4c20e655991815a1a6e7d28ff31760afeb2cbb56f2d4edf339b4d0a987d0e",
+          "transport_sha256": {
+            "native-addon": "0b740540742c45ce95cb5d2dce46b7c7c297a2c2f4b44e2e182d0a6f8414e2b0"
+          },
+          "collector_sha256": "3083e63bbbe4bceb4469ed3670c80255782e1e2e2fe110d2bc2a99227617ac76",
+          "workers": {
+            "planned": 72,
+            "missing": 0,
+            "failed": 0,
+            "timeout": 0
+          }
+        },
+        "pele": {
+          "status": "complete",
+          "package": "pele",
+          "version": "1.13.0",
+          "backend": "javascript",
+          "entry_sha256": "37bea5005aa6d2dde929032ced5d2958cf642667cbc1fe675f9dfacf4ba15a51",
+          "transport_sha256": {},
+          "collector_sha256": "3083e63bbbe4bceb4469ed3670c80255782e1e2e2fe110d2bc2a99227617ac76",
+          "workers": {
+            "planned": 72,
+            "missing": 0,
+            "failed": 0,
+            "timeout": 0
+          }
+        },
+        "mermaid-v13": {
+          "status": "complete",
+          "package": "mermaid",
+          "version": "13.0.0-alpha.3",
+          "backend": "javascript",
+          "entry_sha256": "ab3b805d55578215570451f9ad363517088088f3375360789c923631d83e08b5",
+          "transport_sha256": {},
+          "collector_sha256": "3083e63bbbe4bceb4469ed3670c80255782e1e2e2fe110d2bc2a99227617ac76",
+          "workers": {
+            "planned": 72,
+            "missing": 0,
+            "failed": 0,
+            "timeout": 0
+          }
+        }
+      },
+      "coverage": {
+        "pele": {
+          "planned_scenarios": 72,
+          "reported_scenarios": 72,
+          "planned_requests": 145,
+          "reported_requests": 145,
+          "common_completed": 139,
+          "common_stable": 139,
+          "common_expected_rejections": 3,
+          "eligible_scenarios": 65,
+          "failed_scenarios": 3,
+          "unchecked_scenarios": 0,
+          "withheld_scenarios": 4,
+          "drawing_checks": {
+            "planned": 7,
+            "passed": 7,
+            "failed": 0,
+            "unchecked": 0
+          },
+          "reasons": [
+            "collector-withheld",
+            "expected-rejection",
+            "output-not-stable"
+          ],
+          "families": {
+            "planned": 37,
+            "reported": 37,
+            "merman_stable": 37,
+            "peer_stable": 36,
+            "both_stable": 36
+          },
+          "family_gaps": [
+            {
+              "family": "zenuml",
+              "planned": 1,
+              "reported": 1,
+              "merman_stable": 1,
+              "peer_stable": 0,
+              "both_stable": 0
+            }
+          ]
+        },
+        "mermaid-v13": {
+          "planned_scenarios": 72,
+          "reported_scenarios": 72,
+          "planned_requests": 145,
+          "reported_requests": 145,
+          "common_completed": 139,
+          "common_stable": 139,
+          "common_expected_rejections": 3,
+          "eligible_scenarios": 65,
+          "failed_scenarios": 3,
+          "unchecked_scenarios": 0,
+          "withheld_scenarios": 4,
+          "drawing_checks": {
+            "planned": 7,
+            "passed": 7,
+            "failed": 0,
+            "unchecked": 0
+          },
+          "reasons": [
+            "collector-withheld",
+            "expected-rejection",
+            "output-not-stable"
+          ],
+          "families": {
+            "planned": 37,
+            "reported": 37,
+            "merman_stable": 37,
+            "peer_stable": 36,
+            "both_stable": 36
+          },
+          "family_gaps": [
+            {
+              "family": "zenuml",
+              "planned": 1,
+              "reported": 1,
+              "merman_stable": 1,
+              "peer_stable": 0,
+              "both_stable": 0
+            }
+          ]
+        }
+      },
+      "process_rounds": 1,
+      "warm_batches_per_worker": 3,
+      "latency": []
+    },
+    "node_rounds": {
+      "kind": "node-rounds",
+      "suite": "quick",
+      "status": "complete",
+      "planned": {
+        "scenarios": 4,
+        "requests": 16,
+        "distinct_sources": 9,
+        "families": 1
+      },
+      "host": {
+        "os": "win32",
+        "arch": "x64",
+        "cpu": "11th Gen Intel(R) Core(TM) i7-11700 @ 2.50GHz",
+        "runtime": "v26.4.0"
+      },
+      "hashes": {
+        "plan_sha256": "b085ae30ca3c694f064e0036cf30ac40d2b28bb400a3421e0997a6cadbdfc5f7",
+        "lock_sha256": "478ef072e8256808e77bb16a5f06e099ca53d891f89cfe37df7667415edc2877"
+      },
+      "products": {
+        "merman": {
+          "status": "complete",
+          "package": "@mermanjs/node",
+          "version": "0.11.0",
+          "backend": "napi",
+          "entry_sha256": "d0e4c20e655991815a1a6e7d28ff31760afeb2cbb56f2d4edf339b4d0a987d0e",
+          "transport_sha256": {
+            "native-addon": "0b740540742c45ce95cb5d2dce46b7c7c297a2c2f4b44e2e182d0a6f8414e2b0"
+          },
+          "collector_sha256": "3083e63bbbe4bceb4469ed3670c80255782e1e2e2fe110d2bc2a99227617ac76",
+          "workers": {
+            "planned": 32,
+            "missing": 0,
+            "failed": 0,
+            "timeout": 0
+          }
+        },
+        "pele": {
+          "status": "complete",
+          "package": "pele",
+          "version": "1.13.0",
+          "backend": "javascript",
+          "entry_sha256": "37bea5005aa6d2dde929032ced5d2958cf642667cbc1fe675f9dfacf4ba15a51",
+          "transport_sha256": {},
+          "collector_sha256": "3083e63bbbe4bceb4469ed3670c80255782e1e2e2fe110d2bc2a99227617ac76",
+          "workers": {
+            "planned": 32,
+            "missing": 0,
+            "failed": 0,
+            "timeout": 0
+          }
+        },
+        "mermaid-v13": {
+          "status": "complete",
+          "package": "mermaid",
+          "version": "13.0.0-alpha.3",
+          "backend": "javascript",
+          "entry_sha256": "ab3b805d55578215570451f9ad363517088088f3375360789c923631d83e08b5",
+          "transport_sha256": {},
+          "collector_sha256": "3083e63bbbe4bceb4469ed3670c80255782e1e2e2fe110d2bc2a99227617ac76",
+          "workers": {
+            "planned": 32,
+            "missing": 0,
+            "failed": 0,
+            "timeout": 0
+          }
+        }
+      },
+      "coverage": {
+        "pele": {
+          "planned_scenarios": 32,
+          "reported_scenarios": 32,
+          "planned_requests": 128,
+          "reported_requests": 128,
+          "common_completed": 128,
+          "common_stable": 128,
+          "common_expected_rejections": 0,
+          "eligible_scenarios": 32,
+          "failed_scenarios": 0,
+          "unchecked_scenarios": 0,
+          "withheld_scenarios": 0,
+          "drawing_checks": {
+            "planned": 8,
+            "passed": 8,
+            "failed": 0,
+            "unchecked": 0
+          },
+          "reasons": [],
+          "families": {
+            "planned": 8,
+            "reported": 8,
+            "merman_stable": 8,
+            "peer_stable": 8,
+            "both_stable": 8
+          },
+          "family_gaps": []
+        },
+        "mermaid-v13": {
+          "planned_scenarios": 32,
+          "reported_scenarios": 32,
+          "planned_requests": 128,
+          "reported_requests": 128,
+          "common_completed": 128,
+          "common_stable": 128,
+          "common_expected_rejections": 0,
+          "eligible_scenarios": 32,
+          "failed_scenarios": 0,
+          "unchecked_scenarios": 0,
+          "withheld_scenarios": 0,
+          "drawing_checks": {
+            "planned": 8,
+            "passed": 8,
+            "failed": 0,
+            "unchecked": 0
+          },
+          "reasons": [],
+          "families": {
+            "planned": 8,
+            "reported": 8,
+            "merman_stable": 8,
+            "peer_stable": 8,
+            "both_stable": 8
+          },
+          "family_gaps": []
+        }
+      },
+      "process_rounds": 8,
+      "warm_batches_per_worker": 5,
+      "latency": [
+        {
+          "peer": "pele",
+          "scenario": "small-svg",
+          "requests_per_batch": 1,
+          "status": "complete",
+          "planned_pairs": 8,
+          "eligible_pairs": 8,
+          "merman_ms": 0.6291000000000082,
+          "peer_ms": 0.5424000000000007,
+          "ratio": {
+            "min": 0.5727236893969312,
+            "median": 1.049707520614149,
+            "max": 1.4799729972997369
+          },
+          "pairs": [
+            {
+              "round": 1,
+              "merman_ms": 0.7212000000000103,
+              "peer_ms": 0.4526000000000181,
+              "ratio": 0.6275651691625231
+            },
+            {
+              "round": 2,
+              "merman_ms": 0.6396000000000015,
+              "peer_ms": 0.8414999999999964,
+              "ratio": 1.3156660412757886
+            },
+            {
+              "round": 3,
+              "merman_ms": 0.3556999999999846,
+              "peer_ms": 0.4316000000000031,
+              "ratio": 1.2133820635367496
+            },
+            {
+              "round": 4,
+              "merman_ms": 0.4270999999999958,
+              "peer_ms": 0.5422999999999831,
+              "ratio": 1.2697260594708228
+            },
+            {
+              "round": 5,
+              "merman_ms": 0.6186000000000149,
+              "peer_ms": 0.5481000000000051,
+              "ratio": 0.8860329776915485
+            },
+            {
+              "round": 6,
+              "merman_ms": 0.9431000000000154,
+              "peer_ms": 0.5425000000000182,
+              "ratio": 0.5752306224154483
+            },
+            {
+              "round": 7,
+              "merman_ms": 0.4444000000000017,
+              "peer_ms": 0.6577000000000055,
+              "ratio": 1.4799729972997369
+            },
+            {
+              "round": 8,
+              "merman_ms": 0.761099999999999,
+              "peer_ms": 0.43590000000000373,
+              "ratio": 0.5727236893969312
+            }
+          ],
+          "reasons": []
+        },
+        {
+          "peer": "pele",
+          "scenario": "family-sequence",
+          "requests_per_batch": 1,
+          "status": "complete",
+          "planned_pairs": 8,
+          "eligible_pairs": 8,
+          "merman_ms": 0.3138000000000005,
+          "peer_ms": 0.2733999999999952,
+          "ratio": {
+            "min": 0.5437890974084143,
+            "median": 0.8353951788400067,
+            "max": 1.1035620052771165
+          },
+          "pairs": [
+            {
+              "round": 1,
+              "merman_ms": 0.3246000000000038,
+              "peer_ms": 0.3200999999999965,
+              "ratio": 0.986136783733804
+            },
+            {
+              "round": 2,
+              "merman_ms": 0.6714000000000055,
+              "peer_ms": 0.3651000000000124,
+              "ratio": 0.5437890974084143
+            },
+            {
+              "round": 3,
+              "merman_ms": 0.4408999999999992,
+              "peer_ms": 0.25679999999999836,
+              "ratio": 0.5824449988659534
+            },
+            {
+              "round": 4,
+              "merman_ms": 0.30740000000000123,
+              "peer_ms": 0.23230000000000928,
+              "ratio": 0.7556929082628768
+            },
+            {
+              "round": 5,
+              "merman_ms": 0.26609999999999445,
+              "peer_ms": 0.23799999999999955,
+              "ratio": 0.8944006012777321
+            },
+            {
+              "round": 6,
+              "merman_ms": 0.3201999999999998,
+              "peer_ms": 0.24860000000001037,
+              "ratio": 0.7763897564022814
+            },
+            {
+              "round": 7,
+              "merman_ms": 0.3031999999999755,
+              "peer_ms": 0.3345999999999947,
+              "ratio": 1.1035620052771165
+            },
+            {
+              "round": 8,
+              "merman_ms": 0.3036000000000172,
+              "peer_ms": 0.28999999999999204,
+              "ratio": 0.955204216073701
+            }
+          ],
+          "reasons": []
+        },
+        {
+          "peer": "pele",
+          "scenario": "mixed-families",
+          "requests_per_batch": 8,
+          "status": "complete",
+          "planned_pairs": 8,
+          "eligible_pairs": 8,
+          "merman_ms": 3.3810999999999893,
+          "peer_ms": 1.09705000000001,
+          "ratio": {
+            "min": 0.22931536780772063,
+            "median": 0.3168535481153919,
+            "max": 0.6800124026200521
+          },
+          "pairs": [
+            {
+              "round": 1,
+              "merman_ms": 2.580100000000016,
+              "peer_ms": 1.7545000000000073,
+              "ratio": 0.6800124026200521
+            },
+            {
+              "round": 2,
+              "merman_ms": 5.49199999999999,
+              "peer_ms": 1.2593999999999994,
+              "ratio": 0.22931536780772063
+            },
+            {
+              "round": 3,
+              "merman_ms": 3.165999999999997,
+              "peer_ms": 0.9245999999999981,
+              "ratio": 0.29204042956411846
+            },
+            {
+              "round": 4,
+              "merman_ms": 3.9919999999999902,
+              "peer_ms": 0.9661000000000115,
+              "ratio": 0.2420090180360756
+            },
+            {
+              "round": 5,
+              "merman_ms": 2.5560000000000116,
+              "peer_ms": 0.8733000000000004,
+              "ratio": 0.3416666666666653
+            },
+            {
+              "round": 6,
+              "merman_ms": 3.584699999999998,
+              "peer_ms": 1.2280000000000086,
+              "ratio": 0.34256702095015185
+            },
+            {
+              "round": 7,
+              "merman_ms": 3.1965999999999894,
+              "peer_ms": 0.8773999999999944,
+              "ratio": 0.2744791340799591
+            },
+            {
+              "round": 8,
+              "merman_ms": 3.5655999999999892,
+              "peer_ms": 1.33329999999998,
+              "ratio": 0.3739342607134799
+            }
+          ],
+          "reasons": []
+        },
+        {
+          "peer": "pele",
+          "scenario": "mixed-document",
+          "requests_per_batch": 6,
+          "status": "complete",
+          "planned_pairs": 8,
+          "eligible_pairs": 8,
+          "merman_ms": 11.597400000000007,
+          "peer_ms": 8.595799999999997,
+          "ratio": {
+            "min": 0.597814901074753,
+            "median": 0.7382860495656995,
+            "max": 1.0469279991199278
+          },
+          "pairs": [
+            {
+              "round": 1,
+              "merman_ms": 10.402799999999985,
+              "peer_ms": 9.66319999999996,
+              "ratio": 0.9289037566808912
+            },
+            {
+              "round": 2,
+              "merman_ms": 11.959900000000005,
+              "peer_ms": 8.347499999999997,
+              "ratio": 0.6979573407804408
+            },
+            {
+              "round": 3,
+              "merman_ms": 12.361899999999991,
+              "peer_ms": 8.082699999999988,
+              "ratio": 0.6538396201231198
+            },
+            {
+              "round": 4,
+              "merman_ms": 10.908199999999994,
+              "peer_ms": 11.42009999999999,
+              "ratio": 1.0469279991199278
+            },
+            {
+              "round": 5,
+              "merman_ms": 10.022800000000018,
+              "peer_ms": 7.803899999999999,
+              "ratio": 0.7786147583509583
+            },
+            {
+              "round": 6,
+              "merman_ms": 11.23490000000001,
+              "peer_ms": 8.844099999999997,
+              "ratio": 0.7871988179690064
+            },
+            {
+              "round": 7,
+              "merman_ms": 13.762699999999967,
+              "peer_ms": 9.296199999999999,
+              "ratio": 0.675463390177801
+            },
+            {
+              "round": 8,
+              "merman_ms": 12.923900000000003,
+              "peer_ms": 7.726100000000002,
+              "ratio": 0.597814901074753
+            }
+          ],
+          "reasons": []
+        },
+        {
+          "peer": "mermaid-v13",
+          "scenario": "small-svg",
+          "requests_per_batch": 1,
+          "status": "complete",
+          "planned_pairs": 8,
+          "eligible_pairs": 8,
+          "merman_ms": 0.6291000000000082,
+          "peer_ms": 0.6522999999999968,
+          "ratio": {
+            "min": 0.8325013865779638,
+            "median": 1.0373669231588791,
+            "max": 1.9784593771949865
+          },
+          "pairs": [
+            {
+              "round": 1,
+              "merman_ms": 0.7212000000000103,
+              "peer_ms": 0.600400000000036,
+              "ratio": 0.8325013865779638
+            },
+            {
+              "round": 2,
+              "merman_ms": 0.6396000000000015,
+              "peer_ms": 0.5982000000000198,
+              "ratio": 0.9352720450281714
+            },
+            {
+              "round": 3,
+              "merman_ms": 0.3556999999999846,
+              "peer_ms": 0.6419999999999959,
+              "ratio": 1.8048917627214611
+            },
+            {
+              "round": 4,
+              "merman_ms": 0.4270999999999958,
+              "peer_ms": 0.8449999999999704,
+              "ratio": 1.9784593771949865
+            },
+            {
+              "round": 5,
+              "merman_ms": 0.6186000000000149,
+              "peer_ms": 0.644299999999987,
+              "ratio": 1.0415454251535265
+            },
+            {
+              "round": 6,
+              "merman_ms": 0.9431000000000154,
+              "peer_ms": 0.9744000000000028,
+              "ratio": 1.0331884211642317
+            },
+            {
+              "round": 7,
+              "merman_ms": 0.4444000000000017,
+              "peer_ms": 0.6603000000000065,
+              "ratio": 1.4858235823582449
+            },
+            {
+              "round": 8,
+              "merman_ms": 0.761099999999999,
+              "peer_ms": 0.6984999999999673,
+              "ratio": 0.9177506240966603
+            }
+          ],
+          "reasons": []
+        },
+        {
+          "peer": "mermaid-v13",
+          "scenario": "family-sequence",
+          "requests_per_batch": 1,
+          "status": "complete",
+          "planned_pairs": 8,
+          "eligible_pairs": 8,
+          "merman_ms": 0.3138000000000005,
+          "peer_ms": 0.6270500000000254,
+          "ratio": {
+            "min": 0.9384867441168037,
+            "median": 2.0038452423803035,
+            "max": 3.884473197782167
+          },
+          "pairs": [
+            {
+              "round": 1,
+              "merman_ms": 0.3246000000000038,
+              "peer_ms": 1.260900000000106,
+              "ratio": 3.884473197782167
+            },
+            {
+              "round": 2,
+              "merman_ms": 0.6714000000000055,
+              "peer_ms": 0.6301000000000272,
+              "ratio": 0.9384867441168037
+            },
+            {
+              "round": 3,
+              "merman_ms": 0.4408999999999992,
+              "peer_ms": 0.5889000000000237,
+              "ratio": 1.335677024268598
+            },
+            {
+              "round": 4,
+              "merman_ms": 0.30740000000000123,
+              "peer_ms": 0.7687000000000239,
+              "ratio": 2.5006506180872505
+            },
+            {
+              "round": 5,
+              "merman_ms": 0.26609999999999445,
+              "peer_ms": 0.5187999999999988,
+              "ratio": 1.949642991356669
+            },
+            {
+              "round": 6,
+              "merman_ms": 0.3201999999999998,
+              "peer_ms": 0.5733000000000175,
+              "ratio": 1.790443472829537
+            },
+            {
+              "round": 7,
+              "merman_ms": 0.3031999999999755,
+              "peer_ms": 0.6240000000000236,
+              "ratio": 2.0580474934039383
+            },
+            {
+              "round": 8,
+              "merman_ms": 0.3036000000000172,
+              "peer_ms": 0.8093000000000075,
+              "ratio": 2.66567852437405
+            }
+          ],
+          "reasons": []
+        },
+        {
+          "peer": "mermaid-v13",
+          "scenario": "mixed-families",
+          "requests_per_batch": 8,
+          "status": "complete",
+          "planned_pairs": 8,
+          "eligible_pairs": 8,
+          "merman_ms": 3.3810999999999893,
+          "peer_ms": 2.1239999999999952,
+          "ratio": {
+            "min": 0.5321225521162242,
+            "median": 0.6604918321712647,
+            "max": 0.8328638497652593
+          },
+          "pairs": [
+            {
+              "round": 1,
+              "merman_ms": 2.580100000000016,
+              "peer_ms": 2.119199999999978,
+              "ratio": 0.8213635130421166
+            },
+            {
+              "round": 2,
+              "merman_ms": 5.49199999999999,
+              "peer_ms": 3.6534000000000333,
+              "ratio": 0.6652221412964384
+            },
+            {
+              "round": 3,
+              "merman_ms": 3.165999999999997,
+              "peer_ms": 1.684699999999964,
+              "ratio": 0.5321225521162242
+            },
+            {
+              "round": 4,
+              "merman_ms": 3.9919999999999902,
+              "peer_ms": 2.6177999999999884,
+              "ratio": 0.6557615230460909
+            },
+            {
+              "round": 5,
+              "merman_ms": 2.5560000000000116,
+              "peer_ms": 2.1288000000000125,
+              "ratio": 0.8328638497652593
+            },
+            {
+              "round": 6,
+              "merman_ms": 3.584699999999998,
+              "peer_ms": 1.9151999999999134,
+              "ratio": 0.5342706502635965
+            },
+            {
+              "round": 7,
+              "merman_ms": 3.1965999999999894,
+              "peer_ms": 2.0137999999999465,
+              "ratio": 0.6299818557216896
+            },
+            {
+              "round": 8,
+              "merman_ms": 3.5655999999999892,
+              "peer_ms": 2.401200000000017,
+              "ratio": 0.6734350459950708
+            }
+          ],
+          "reasons": []
+        },
+        {
+          "peer": "mermaid-v13",
+          "scenario": "mixed-document",
+          "requests_per_batch": 6,
+          "status": "complete",
+          "planned_pairs": 8,
+          "eligible_pairs": 8,
+          "merman_ms": 11.597400000000007,
+          "peer_ms": 9.238249999999994,
+          "ratio": {
+            "min": 0.6807966460069619,
+            "median": 0.8147091279151679,
+            "max": 1.2337063098396661
+          },
+          "pairs": [
+            {
+              "round": 1,
+              "merman_ms": 10.402799999999985,
+              "peer_ms": 12.83400000000006,
+              "ratio": 1.2337063098396661
+            },
+            {
+              "round": 2,
+              "merman_ms": 11.959900000000005,
+              "peer_ms": 8.860300000000052,
+              "ratio": 0.7408339534611534
+            },
+            {
+              "round": 3,
+              "merman_ms": 12.361899999999991,
+              "peer_ms": 8.925299999999993,
+              "ratio": 0.7220006633284527
+            },
+            {
+              "round": 4,
+              "merman_ms": 10.908199999999994,
+              "peer_ms": 9.106899999999996,
+              "ratio": 0.834867347500046
+            },
+            {
+              "round": 5,
+              "merman_ms": 10.022800000000018,
+              "peer_ms": 10.293199999999956,
+              "ratio": 1.0269784890449711
+            },
+            {
+              "round": 6,
+              "merman_ms": 11.23490000000001,
+              "peer_ms": 8.926699999999983,
+              "ratio": 0.79455090833029
+            },
+            {
+              "round": 7,
+              "merman_ms": 13.762699999999967,
+              "peer_ms": 9.369599999999991,
+              "ratio": 0.6807966460069619
+            },
+            {
+              "round": 8,
+              "merman_ms": 12.923900000000003,
+              "peer_ms": 10.812999999999988,
+              "ratio": 0.8366669503787545
+            }
+          ],
+          "reasons": []
+        }
+      ]
+    },
+    "cli": [
+      {
+        "surface": "cli",
+        "classification": "diagnostic",
+        "format": "svg",
+        "samples": 3,
+        "sample_unit": "One sequential batch per sample and product, with a fresh CLI process per diagram. Render groups use median sums of process milliseconds. Complete batches use median wall milliseconds.",
+        "provenance": {
+          "plan_sha256": "fe4ec0d952f37565bca28e515da58a4a6570a1e52f29d37b6c5bbba81023245a",
+          "report_schema_version": 1,
+          "reports_sha256": {
+            "left": "4a4552c8ed3b77449d5fb747335b213049fbc9264c41ee73f8b3722a40bc01fc",
+            "right": "c31534303d09ce29bcd68da812b1ace3a59fa1b94ad4f1332df63391d347a976"
+          },
+          "collector_sha256": {
+            "left": "01b159358d0c8b2c6f7b13435d34ec1f26d6e1d76b8b5325428faf8507875a84",
+            "right": "01b159358d0c8b2c6f7b13435d34ec1f26d6e1d76b8b5325428faf8507875a84"
+          }
+        },
+        "host": {
+          "platform": "win32",
+          "arch": "x64"
+        },
+        "products": {
+          "left": {
+            "engine": "merman",
+            "version": "merman-cli 0.11.0",
+            "artifact_identity": {
+              "scope": "command-prefix",
+              "status": "recorded",
+              "files": [
+                {
+                  "role": "executable",
+                  "bytes": 67988992,
+                  "sha256": "85055c4e9df2fc8865a9cc447c177b8d525e6f6239a9d784574928b1d99ffdaa"
+                }
+              ]
+            }
+          },
+          "right": {
+            "engine": "mmdc",
+            "version": "12.2.0",
+            "artifact_identity": {
+              "scope": "command-prefix",
+              "status": "recorded",
+              "files": [
+                {
+                  "role": "executable",
+                  "bytes": 103230280,
+                  "sha256": "3193d7f751b8a07bd4acc70e81946ae9c6efdee83e07ad1c8d0e4089df7c5cef"
+                },
+                {
+                  "role": "script",
+                  "bytes": 184,
+                  "sha256": "91736b13c07adaba94f1000c31b5679ce78cf5b86685cb0e07f0d1912d91a799"
+                }
+              ],
+              "browser": {
+                "status": "unobserved"
+              }
+            }
+          }
+        },
+        "render_settings": "renderer defaults",
+        "output_scope": "SVG at each renderer's font and layout settings",
+        "ratio_withheld_reason": null,
+        "coverage": {
+          "planned_scenarios": 2,
+          "reported_scenarios": 2,
+          "planned_requests": 2,
+          "reported_requests": 2,
+          "planned_distinct_sources": 2,
+          "common_completed": 2,
+          "common_stable": 2,
+          "common_expected_rejections": 0
+        },
+        "rows": [
+          {
+            "id": "family-flowchart",
+            "planned_requests": 1,
+            "common_completed": 1,
+            "common_stable": 1,
+            "common_expected_rejections": 0,
+            "render_timing_groups": [
+              {
+                "expected_outcome": "draw",
+                "output_class": "draw",
+                "request_indices": [
+                  0
+                ],
+                "render_ms": {
+                  "left": 78.7113,
+                  "right": 2184.406,
+                  "right_over_left": 27.75212707705247
+                },
+                "ratio_withheld_reason": null
+              }
+            ],
+            "common_render_ms": {
+              "left": 78.7113,
+              "right": 2184.406,
+              "right_over_left": 27.75212707705247
+            },
+            "complete_batch_ms": {
+              "left": 80.2385,
+              "right": 2185.6463,
+              "right_over_left": 27.23937137409099
+            },
+            "ratio_withheld_reason": null,
+            "complete_batch_withheld_reason": null,
+            "requests": [
+              {
+                "source_sha256": "cbd5654e3f6524e99184339bbdac7673110e50818e10446b7fe51e6dcfcd86b7",
+                "expected_outcome": "draw",
+                "left": {
+                  "state": "stable",
+                  "statuses": [
+                    "ok"
+                  ],
+                  "output_bytes": [
+                    37705
+                  ],
+                  "output_class": "draw"
+                },
+                "right": {
+                  "state": "stable",
+                  "statuses": [
+                    "ok"
+                  ],
+                  "output_bytes": [
+                    203940
+                  ],
+                  "output_class": "draw"
+                }
+              }
+            ],
+            "stable_coverage": {
+              "requests": 1,
+              "distinct_sources": 1,
+              "label_verified": {
+                "requests": 1,
+                "distinct_sources": 1
+              },
+              "mechanical_only": 0
+            }
+          },
+          {
+            "id": "family-sequence",
+            "planned_requests": 1,
+            "common_completed": 1,
+            "common_stable": 1,
+            "common_expected_rejections": 0,
+            "render_timing_groups": [
+              {
+                "expected_outcome": "draw",
+                "output_class": "draw",
+                "request_indices": [
+                  0
+                ],
+                "render_ms": {
+                  "left": 70.8879,
+                  "right": 1917.5598,
+                  "right_over_left": 27.050593965965984
+                },
+                "ratio_withheld_reason": null
+              }
+            ],
+            "common_render_ms": {
+              "left": 70.8879,
+              "right": 1917.5598,
+              "right_over_left": 27.050593965965984
+            },
+            "complete_batch_ms": {
+              "left": 72.8229,
+              "right": 1918.8937,
+              "right_over_left": 26.350141233046198
+            },
+            "ratio_withheld_reason": null,
+            "complete_batch_withheld_reason": null,
+            "requests": [
+              {
+                "source_sha256": "0d3748a616ea44aaf8319e6abf4ae4f648699a1679f2c45b9c239cb58bdeccb1",
+                "expected_outcome": "draw",
+                "left": {
+                  "state": "stable",
+                  "statuses": [
+                    "ok"
+                  ],
+                  "output_bytes": [
+                    23540
+                  ],
+                  "output_class": "draw"
+                },
+                "right": {
+                  "state": "stable",
+                  "statuses": [
+                    "ok"
+                  ],
+                  "output_bytes": [
+                    191114
+                  ],
+                  "output_class": "draw"
+                }
+              }
+            ],
+            "stable_coverage": {
+              "requests": 1,
+              "distinct_sources": 1,
+              "label_verified": {
+                "requests": 1,
+                "distinct_sources": 1
+              },
+              "mechanical_only": 0
+            }
+          }
+        ]
+      },
+      {
+        "surface": "cli",
+        "classification": "diagnostic",
+        "format": "png",
+        "samples": 3,
+        "sample_unit": "One sequential batch per sample and product, with a fresh CLI process per diagram. Render groups use median sums of process milliseconds. Complete batches use median wall milliseconds.",
+        "provenance": {
+          "plan_sha256": "fe4ec0d952f37565bca28e515da58a4a6570a1e52f29d37b6c5bbba81023245a",
+          "report_schema_version": 1,
+          "reports_sha256": {
+            "left": "5730be9b6ffb65305144757e7c6b831886f64fec9b5c5312edb5737b929e79f0",
+            "right": "d91bdf6caaf53d62f03794b9f2287da705e4865fe585f2f9cdfb8a585ba9143d"
+          },
+          "collector_sha256": {
+            "left": "01b159358d0c8b2c6f7b13435d34ec1f26d6e1d76b8b5325428faf8507875a84",
+            "right": "01b159358d0c8b2c6f7b13435d34ec1f26d6e1d76b8b5325428faf8507875a84"
+          }
+        },
+        "host": {
+          "platform": "win32",
+          "arch": "x64"
+        },
+        "products": {
+          "left": {
+            "engine": "merman",
+            "version": "merman-cli 0.11.0",
+            "artifact_identity": {
+              "scope": "command-prefix",
+              "status": "recorded",
+              "files": [
+                {
+                  "role": "executable",
+                  "bytes": 67988992,
+                  "sha256": "85055c4e9df2fc8865a9cc447c177b8d525e6f6239a9d784574928b1d99ffdaa"
+                }
+              ]
+            },
+            "png_decoder": {
+              "name": "Pillow",
+              "version": "12.2.0"
+            }
+          },
+          "right": {
+            "engine": "mmdc",
+            "version": "12.2.0",
+            "artifact_identity": {
+              "scope": "command-prefix",
+              "status": "recorded",
+              "files": [
+                {
+                  "role": "executable",
+                  "bytes": 103230280,
+                  "sha256": "3193d7f751b8a07bd4acc70e81946ae9c6efdee83e07ad1c8d0e4089df7c5cef"
+                },
+                {
+                  "role": "script",
+                  "bytes": 184,
+                  "sha256": "91736b13c07adaba94f1000c31b5679ce78cf5b86685cb0e07f0d1912d91a799"
+                }
+              ],
+              "browser": {
+                "status": "unobserved"
+              }
+            },
+            "png_decoder": {
+              "name": "Pillow",
+              "version": "12.2.0"
+            }
+          }
+        },
+        "render_settings": "renderer defaults",
+        "output_scope": "Merman native rasterization and mmdc browser screenshots use each renderer's fonts and dimensions",
+        "ratio_withheld_reason": null,
+        "coverage": {
+          "planned_scenarios": 2,
+          "reported_scenarios": 2,
+          "planned_requests": 2,
+          "reported_requests": 2,
+          "planned_distinct_sources": 2,
+          "common_completed": 2,
+          "common_stable": 2,
+          "common_expected_rejections": 0
+        },
+        "rows": [
+          {
+            "id": "family-flowchart",
+            "planned_requests": 1,
+            "common_completed": 1,
+            "common_stable": 1,
+            "common_expected_rejections": 0,
+            "render_timing_groups": [
+              {
+                "expected_outcome": "draw",
+                "output_class": "draw",
+                "request_indices": [
+                  0
+                ],
+                "render_ms": {
+                  "left": 98.7261,
+                  "right": 2450.4583,
+                  "right_over_left": 24.82077485082465
+                },
+                "ratio_withheld_reason": null
+              }
+            ],
+            "common_render_ms": {
+              "left": 98.7261,
+              "right": 2450.4583,
+              "right_over_left": 24.82077485082465
+            },
+            "complete_batch_ms": {
+              "left": 99.9739,
+              "right": 2457.3012,
+              "right_over_left": 24.57942723050716
+            },
+            "ratio_withheld_reason": null,
+            "complete_batch_withheld_reason": null,
+            "requests": [
+              {
+                "source_sha256": "cbd5654e3f6524e99184339bbdac7673110e50818e10446b7fe51e6dcfcd86b7",
+                "expected_outcome": "draw",
+                "left": {
+                  "state": "stable",
+                  "statuses": [
+                    "ok"
+                  ],
+                  "output_bytes": [
+                    6821
+                  ],
+                  "output_class": "draw",
+                  "dimensions_px": [
+                    [
+                      360,
+                      418
+                    ]
+                  ]
+                },
+                "right": {
+                  "state": "stable",
+                  "statuses": [
+                    "ok"
+                  ],
+                  "output_bytes": [
+                    7698
+                  ],
+                  "output_class": "draw",
+                  "dimensions_px": [
+                    [
+                      360,
+                      418
+                    ]
+                  ]
+                }
+              }
+            ],
+            "stable_coverage": {
+              "requests": 1,
+              "distinct_sources": 1,
+              "label_verified": {
+                "requests": 1,
+                "distinct_sources": 1
+              },
+              "mechanical_only": 0
+            }
+          },
+          {
+            "id": "family-sequence",
+            "planned_requests": 1,
+            "common_completed": 1,
+            "common_stable": 1,
+            "common_expected_rejections": 0,
+            "render_timing_groups": [
+              {
+                "expected_outcome": "draw",
+                "output_class": "draw",
+                "request_indices": [
+                  0
+                ],
+                "render_ms": {
+                  "left": 86.1913,
+                  "right": 1813.8036,
+                  "right_over_left": 21.04392902763968
+                },
+                "ratio_withheld_reason": null
+              }
+            ],
+            "common_render_ms": {
+              "left": 86.1913,
+              "right": 1813.8036,
+              "right_over_left": 21.04392902763968
+            },
+            "complete_batch_ms": {
+              "left": 87.8886,
+              "right": 1815.2481,
+              "right_over_left": 20.653965360695246
+            },
+            "ratio_withheld_reason": null,
+            "complete_batch_withheld_reason": null,
+            "requests": [
+              {
+                "source_sha256": "0d3748a616ea44aaf8319e6abf4ae4f648699a1679f2c45b9c239cb58bdeccb1",
+                "expected_outcome": "draw",
+                "left": {
+                  "state": "stable",
+                  "statuses": [
+                    "ok"
+                  ],
+                  "output_bytes": [
+                    6153
+                  ],
+                  "output_class": "draw",
+                  "dimensions_px": [
+                    [
+                      450,
+                      281
+                    ]
+                  ]
+                },
+                "right": {
+                  "state": "stable",
+                  "statuses": [
+                    "ok"
+                  ],
+                  "output_bytes": [
+                    8007
+                  ],
+                  "output_class": "draw",
+                  "dimensions_px": [
+                    [
+                      450,
+                      347
+                    ]
+                  ]
+                }
+              }
+            ],
+            "stable_coverage": {
+              "requests": 1,
+              "distinct_sources": 1,
+              "label_verified": {
+                "requests": 1,
+                "distinct_sources": 1
+              },
+              "mechanical_only": 0
+            }
+          }
+        ]
+      }
+    ],
+    "rust_work": {
+      "surface": "rust",
+      "classification": "same-implementation-observation",
+      "operation": "layout-work",
+      "samples": 1,
+      "sample_unit": "One frozen Flowchart topology per native probe. Minimum passing budget is measured on the layout writer. Consumed layout work units are recorded on the high-budget public SVG.",
+      "provenance": {
+        "plan_sha256": "07f87b546f3eb4d0f70b689277ebe34beff06349e65d2fa1ce702cf8685aad21",
+        "report_sha256": "36ff4497aec59890c6ec34c4200ba2545e037532a0a4276c504cf2898a294186",
+        "report_schema_version": 1,
+        "runner_sha256": "3bf3a837b9f424180a1a9340966306a47748e2832e460a212f0fb7182f17c6db",
+        "harness_sha256": "a18577f6ed8f66098c5817a422fe966a1438c1d5f49fb038f8a1da440b525b74"
+      },
+      "host": {
+        "platform": "Windows",
+        "arch": "AMD64"
+      },
+      "products": {
+        "merman": {
+          "engine": "merman",
+          "version": null,
+          "revision": "b8fda4ea21ad0de6e3777dc8933254a99757ef70"
+        }
+      },
+      "coverage": {
+        "planned_topologies": 32,
+        "reported_topologies": 32,
+        "layout_default": {
+          "accepted": 29,
+          "layout_work_rejected": 2,
+          "source_max_edges_rejected": 1
+        },
+        "layout_high": {
+          "accepted": 31,
+          "source_max_edges_rejected": 1
+        },
+        "svg_default": {
+          "accepted": 28,
+          "layout_work_rejected": 3,
+          "source_max_edges_rejected": 1
+        },
+        "svg_high": {
+          "accepted": 31,
+          "source_max_edges_rejected": 1
+        }
+      },
+      "rows": [
+        {
+          "id": "chain-50",
+          "nodes": 50,
+          "edges": 49,
+          "source_sha256": "242781ddf6d4a970d56cd2772d52c19fab97efee898fb0becc54dff6a5249ef0",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "accepted",
+          "layout_high": "accepted",
+          "svg_default": "accepted",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 71773,
+          "svg_consumed_layout_work_units": 73435,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 71772,
+            "actual": 71773
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "chain-100",
+          "nodes": 100,
+          "edges": 99,
+          "source_sha256": "7a657d41d9de4cb47b91242608949f0a9c1bfa9e50ac151c5614ed0b736fa0af",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "accepted",
+          "layout_high": "accepted",
+          "svg_default": "accepted",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 208416,
+          "svg_consumed_layout_work_units": 211843,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 208415,
+            "actual": 208416
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "chain-250",
+          "nodes": 250,
+          "edges": 249,
+          "source_sha256": "111232de007420ee2ee3ed347c4eca307c49512bb2239954f227039f13d08d77",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "accepted",
+          "layout_high": "accepted",
+          "svg_default": "accepted",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 890087,
+          "svg_consumed_layout_work_units": 898910,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 890086,
+            "actual": 890087
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "chain-500",
+          "nodes": 500,
+          "edges": 499,
+          "source_sha256": "95cb401c1318676dc78124047b2152fb367cc7c1264c2b1c016f8552d66a3937",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "accepted",
+          "layout_high": "accepted",
+          "svg_default": "accepted",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 2926994,
+          "svg_consumed_layout_work_units": 2945145,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 2926993,
+            "actual": 2926994
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "fan-in-50",
+          "nodes": 50,
+          "edges": 49,
+          "source_sha256": "0bfbf3db92ad27f9a7231043a939b93ce23116a639abb8fe975ed96f269bd1b6",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "accepted",
+          "layout_high": "accepted",
+          "svg_default": "accepted",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 84889,
+          "svg_consumed_layout_work_units": 89553,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 84888,
+            "actual": 84889
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "fan-in-100",
+          "nodes": 100,
+          "edges": 99,
+          "source_sha256": "0f17a78317d0c61da3f76d6b01381663bb98ccee31e952ca81cba5949e3e813b",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "accepted",
+          "layout_high": "accepted",
+          "svg_default": "accepted",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 324988,
+          "svg_consumed_layout_work_units": 338413,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 324987,
+            "actual": 324988
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "fan-in-250",
+          "nodes": 250,
+          "edges": 249,
+          "source_sha256": "31c3714ef4090a368da557195d58d126b4606c7b49d309ae8ce923e686042d25",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "accepted",
+          "layout_high": "accepted",
+          "svg_default": "accepted",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 2925348,
+          "svg_consumed_layout_work_units": 2987865,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 2925347,
+            "actual": 2925348
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "fan-in-500",
+          "nodes": 500,
+          "edges": 499,
+          "source_sha256": "adc87685ed263eedf33fd76875d88ac79c37051cccb1067ca343896ddf373b1a",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "layout_work_rejected",
+          "layout_high": "accepted",
+          "svg_default": "layout_work_rejected",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 19957391,
+          "svg_consumed_layout_work_units": 20177732,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 19957390,
+            "actual": 19957391
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "fan-out-50",
+          "nodes": 50,
+          "edges": 49,
+          "source_sha256": "d4b8e704d27af8a08e48e93e9506c82ba2b532bc05ef9f1227f31a97438b93ca",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "accepted",
+          "layout_high": "accepted",
+          "svg_default": "accepted",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 62268,
+          "svg_consumed_layout_work_units": 66932,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 62267,
+            "actual": 62268
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "fan-out-100",
+          "nodes": 100,
+          "edges": 99,
+          "source_sha256": "33ad9a0b7f9a47526f16575b4632a355fe0c306999347241c91d5e4485f65a69",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "accepted",
+          "layout_high": "accepted",
+          "svg_default": "accepted",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 165084,
+          "svg_consumed_layout_work_units": 178509,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 165083,
+            "actual": 165084
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "fan-out-250",
+          "nodes": 250,
+          "edges": 249,
+          "source_sha256": "e1ea72e5f02bc3048340692ad40a6c60681eaefa59b2b782ce9ac25dbbc5dacf",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "accepted",
+          "layout_high": "accepted",
+          "svg_default": "accepted",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 595530,
+          "svg_consumed_layout_work_units": 658047,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 595529,
+            "actual": 595530
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "fan-out-500",
+          "nodes": 500,
+          "edges": 499,
+          "source_sha256": "006cb38fbb9b408aad840e7c35c9a062c7b738ec9dfec9e74fdb692b841d1fb8",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "accepted",
+          "layout_high": "accepted",
+          "svg_default": "accepted",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 1716190,
+          "svg_consumed_layout_work_units": 1936531,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 1716189,
+            "actual": 1716190
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "ternary-50",
+          "nodes": 50,
+          "edges": 49,
+          "source_sha256": "17a32c430f2861d51e79e83c46ca075e3c7ebcbd5c3b0ef666fa4431073b5c21",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "accepted",
+          "layout_high": "accepted",
+          "svg_default": "accepted",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 64065,
+          "svg_consumed_layout_work_units": 66657,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 64064,
+            "actual": 64065
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "ternary-100",
+          "nodes": 100,
+          "edges": 99,
+          "source_sha256": "3ac96d0ed3ee4ae67803bc26ae878277a4fe2e26428e45394a4a261db25fb1f2",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "accepted",
+          "layout_high": "accepted",
+          "svg_default": "accepted",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 173573,
+          "svg_consumed_layout_work_units": 180509,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 173572,
+            "actual": 173573
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "ternary-250",
+          "nodes": 250,
+          "edges": 249,
+          "source_sha256": "b5751d08b40bac4c3f3ad518940bd4128b47f8ba57e3b411b5918242b5cc1f48",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "accepted",
+          "layout_high": "accepted",
+          "svg_default": "accepted",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 654323,
+          "svg_consumed_layout_work_units": 672708,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 654322,
+            "actual": 654323
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "ternary-500",
+          "nodes": 500,
+          "edges": 499,
+          "source_sha256": "55c62e2ddef59eed5d33caa861e3203cb820cb3bb201f427af10b2a8c9731766",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "accepted",
+          "layout_high": "accepted",
+          "svg_default": "accepted",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 1958162,
+          "svg_consumed_layout_work_units": 1990659,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 1958161,
+            "actual": 1958162
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "fork-join-50",
+          "nodes": 50,
+          "edges": 96,
+          "source_sha256": "6f854b35c108ca3fbca03b5c4c3c72ef39a0e8168dc0f015004cc6451cffeee1",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "accepted",
+          "layout_high": "accepted",
+          "svg_default": "accepted",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 149570,
+          "svg_consumed_layout_work_units": 162400,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 149569,
+            "actual": 149570
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "fork-join-100",
+          "nodes": 100,
+          "edges": 196,
+          "source_sha256": "b18f71e2107c6f0d3721f5c8cb8d40681785b38f64e82a54ae2c2f5756277399",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "accepted",
+          "layout_high": "accepted",
+          "svg_default": "accepted",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 530009,
+          "svg_consumed_layout_work_units": 571458,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 530008,
+            "actual": 530009
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "fork-join-250",
+          "nodes": 250,
+          "edges": 496,
+          "source_sha256": "1f240cbe4ec880c6f30af5e4aa085ca98e51a0ef17f022846f0ac913486ec9be",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "accepted",
+          "layout_high": "accepted",
+          "svg_default": "accepted",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 3913716,
+          "svg_consumed_layout_work_units": 4131648,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 3913715,
+            "actual": 3913716
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "fork-join-500",
+          "nodes": 500,
+          "edges": 996,
+          "source_sha256": "3bac9c2ba84edcf2bdb0459f6b96decefb40efe042ecd22f22f93648c4b4296d",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "source_max_edges_rejected",
+          "layout_high": "source_max_edges_rejected",
+          "svg_default": "source_max_edges_rejected",
+          "svg_high": "source_max_edges_rejected",
+          "minimum_passing_budget": null,
+          "svg_consumed_layout_work_units": null,
+          "minimum_minus_one": null,
+          "boundary_withheld_reason": "source_max_edges_rejected"
+        },
+        {
+          "id": "scc-25",
+          "nodes": 25,
+          "edges": 45,
+          "source_sha256": "03f1447b7ca527af1bd5a58dc923869607ea0ecf0928993f6485e70aed2bb3a0",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "accepted",
+          "layout_high": "accepted",
+          "svg_default": "accepted",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 1269149,
+          "svg_consumed_layout_work_units": 1280772,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 1269148,
+            "actual": 1269149
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "scc-50",
+          "nodes": 50,
+          "edges": 95,
+          "source_sha256": "81f930ced980d458fe2ceaf9fef661f21b6d3d16e1f56d493ad9ec00a378d22a",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "accepted",
+          "layout_high": "accepted",
+          "svg_default": "accepted",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 5848961,
+          "svg_consumed_layout_work_units": 5911540,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 5848960,
+            "actual": 5848961
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "scc-75",
+          "nodes": 75,
+          "edges": 145,
+          "source_sha256": "ea425eed9c11de57531b0d5dfb49f429d7e2c12c85a1bb8b8934895ecbd15af2",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "accepted",
+          "layout_high": "accepted",
+          "svg_default": "accepted",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 13287162,
+          "svg_consumed_layout_work_units": 13403785,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 13287161,
+            "actual": 13287162
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "scc-100",
+          "nodes": 100,
+          "edges": 195,
+          "source_sha256": "a9fe244ef8e0a59ea577b14ab373f09ea407f38153144dd4f397c6a512b774af",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "layout_work_rejected",
+          "layout_high": "accepted",
+          "svg_default": "layout_work_rejected",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 18692634,
+          "svg_consumed_layout_work_units": 18941261,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 18692633,
+            "actual": 18692634
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "scc-dag-25",
+          "nodes": 25,
+          "edges": 45,
+          "source_sha256": "8a443c79411ed8a5ddb7e28db832a119b2d8f8203455d5da080056f1b9887acd",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "accepted",
+          "layout_high": "accepted",
+          "svg_default": "accepted",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 462228,
+          "svg_consumed_layout_work_units": 468704,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 462227,
+            "actual": 462228
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "scc-dag-50",
+          "nodes": 50,
+          "edges": 95,
+          "source_sha256": "9a4fcb11963142184bf7014acbf9c2ba75271184deb4b0b03bba70d22435f82f",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "accepted",
+          "layout_high": "accepted",
+          "svg_default": "accepted",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 1751088,
+          "svg_consumed_layout_work_units": 1769654,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 1751087,
+            "actual": 1751088
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "scc-dag-75",
+          "nodes": 75,
+          "edges": 145,
+          "source_sha256": "5830c8dcb65c076cf518f39cba8dd82ff19edc8b98d22397dc4f23d7ae519726",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "accepted",
+          "layout_high": "accepted",
+          "svg_default": "accepted",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 3392826,
+          "svg_consumed_layout_work_units": 3421173,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 3392825,
+            "actual": 3392826
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "scc-dag-100",
+          "nodes": 100,
+          "edges": 195,
+          "source_sha256": "b7912c5cf56e107c3bc052efe44560146fb0f1d1d2ef8944529da051759fc293",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "accepted",
+          "layout_high": "accepted",
+          "svg_default": "accepted",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 6380049,
+          "svg_consumed_layout_work_units": 6422351,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 6380048,
+            "actual": 6380049
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "scc-75-declarations-2",
+          "nodes": 75,
+          "edges": 145,
+          "canonical_id": "scc-75",
+          "statement_order": "declarations-2",
+          "source_sha256": "33d10dee17ec406e708ccbad502d01bffc881a24f70ba42bad7779a9654c9bf9",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "accepted",
+          "layout_high": "accepted",
+          "svg_default": "layout_work_rejected",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 14041681,
+          "svg_consumed_layout_work_units": 14162257,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 14041680,
+            "actual": 14041681
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "scc-dag-75-declarations-2",
+          "nodes": 75,
+          "edges": 145,
+          "canonical_id": "scc-dag-75",
+          "statement_order": "declarations-2",
+          "source_sha256": "bd1cbcabe099ffee6ef61894cbca495286259597d7b5ab60343367d663814aa4",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "accepted",
+          "layout_high": "accepted",
+          "svg_default": "accepted",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 3053853,
+          "svg_consumed_layout_work_units": 3082200,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 3053852,
+            "actual": 3053853
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "scc-100-edges-reverse",
+          "nodes": 100,
+          "edges": 195,
+          "canonical_id": "scc-100",
+          "statement_order": "edges-reverse",
+          "source_sha256": "f6afd337713173ebb3543c02a8813c6d796f9ceb2b186ed28801e0db24085d62",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "accepted",
+          "layout_high": "accepted",
+          "svg_default": "accepted",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 5086088,
+          "svg_consumed_layout_work_units": 5127268,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 5086087,
+            "actual": 5086088
+          },
+          "boundary_withheld_reason": null
+        },
+        {
+          "id": "scc-dag-100-edges-reverse",
+          "nodes": 100,
+          "edges": 195,
+          "canonical_id": "scc-dag-100",
+          "statement_order": "edges-reverse",
+          "source_sha256": "f68687b19ec64fb402d498961b999d37d1fce5372a1d45f56bea65b282259484",
+          "default_budget": 14100000,
+          "high_budget": 2000000000,
+          "layout_default": "accepted",
+          "layout_high": "accepted",
+          "svg_default": "accepted",
+          "svg_high": "accepted",
+          "minimum_passing_budget": 5084225,
+          "svg_consumed_layout_work_units": 5125405,
+          "minimum_minus_one": {
+            "status": "layout_work_rejected",
+            "maximum": 5084224,
+            "actual": 5084225
+          },
+          "boundary_withheld_reason": null
+        }
+      ]
+    },
+    "browser": {
+      "surface": "browser",
+      "classification": "diagnostic",
+      "terminal_status": "success",
+      "samples": 6,
+      "sample_unit": "Each measured block runs both engines once in balanced AB/BA order. A fresh Chromium process hosts each fixture. Cold uses a new realm and warm reuses the engine.",
+      "provenance": {
+        "report_sha256": "a1c71c6ef36f984db336bbeebfe8e5dde1af69eaa940605fe742eda24472790c",
+        "corpus_schema_version": 2,
+        "report_schema_version": 7,
+        "catalog": "playground-generated-examples/family-baseline",
+        "mermaid_baseline": "mermaid@12.3.0",
+        "master_seed": 1592594996,
+        "warmups": 2
+      },
+      "host": {
+        "platform": "Win32",
+        "arch": null,
+        "chromium_version": "158.0.8127.18"
+      },
+      "products": {
+        "left": {
+          "engine": "merman",
+          "backend": "browser-wasm",
+          "version": "0.11.0"
+        },
+        "right": {
+          "engine": "mermaid",
+          "backend": "javascript",
+          "version": "12.3.0"
+        }
+      },
+      "coverage": {
+        "available_families": 37,
+        "selected_families": 2,
+        "attempted_families": 2,
+        "succeeded_families": 2,
+        "failed_families": 0
+      },
+      "rows": [
+        {
+          "id": "sequence-interaction",
+          "family": "sequence",
+          "status": "success",
+          "attempted": true,
+          "source_sha256": "0d3748a616ea44aaf8319e6abf4ae4f648699a1679f2c45b9c239cb58bdeccb1",
+          "source_bytes": 80,
+          "cold": {
+            "metric": "firstPublishableSvgMs",
+            "status": "success",
+            "seed": 4264694352,
+            "samples": {
+              "left": 6,
+              "right": 6
+            },
+            "median_ms": {
+              "left": 171.54999999701977,
+              "right": 279.25000001490116,
+              "right_over_left": 1.627805304691066
+            },
+            "ratio_withheld_reason": null
+          },
+          "warm": {
+            "metric": "warmPublishableSvgMs",
+            "status": "success",
+            "seed": 863093228,
+            "samples": {
+              "left": 6,
+              "right": 6
+            },
+            "median_ms": {
+              "left": 16.950000002980232,
+              "right": 15.999999985098839,
+              "right_over_left": 0.943952801314787
+            },
+            "ratio_withheld_reason": null
+          }
+        },
+        {
+          "id": "basic-flowchart",
+          "family": "flowchart",
+          "status": "success",
+          "attempted": true,
+          "source_sha256": "cbd5654e3f6524e99184339bbdac7673110e50818e10446b7fe51e6dcfcd86b7",
+          "source_bytes": 78,
+          "cold": {
+            "metric": "firstPublishableSvgMs",
+            "status": "success",
+            "seed": 1657064714,
+            "samples": {
+              "left": 6,
+              "right": 6
+            },
+            "median_ms": {
+              "left": 163.3500000089407,
+              "right": 414.95000000298023,
+              "right_over_left": 2.5402509946756573
+            },
+            "ratio_withheld_reason": null
+          },
+          "warm": {
+            "metric": "warmPublishableSvgMs",
+            "status": "success",
+            "seed": 2547771320,
+            "samples": {
+              "left": 6,
+              "right": 6
+            },
+            "median_ms": {
+              "left": 16.849999994039536,
+              "right": 34.150000005960464,
+              "right_over_left": 2.0267062325246634
+            },
+            "ratio_withheld_reason": null
+          }
+        }
+      ]
+    }
+  }
+}

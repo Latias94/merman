@@ -718,6 +718,9 @@ def compare(base, head, *, drawing_products=None):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="action", required=True)
+    from workload_report import add_report_parser
+
+    add_report_parser(sub)
     matrix = sub.add_parser("node-matrix", help="collect and compare the locked Node products")
     matrix.add_argument("--plan", type=Path, required=True)
     matrix.add_argument("--out-dir", type=Path, required=True, help="directory for a new result bundle")
@@ -795,6 +798,11 @@ def main(argv=None):
     if args.action == "rust" and (args.samples <= 0 or args.warmups < 0 or args.site_css_bytes < 0):
         parser.error("samples must be positive; warmups and site CSS size must be nonnegative")
     try:
+        if args.action == "report":
+            from workload_report import generate_report
+
+            print(generate_report(args))
+            return 0
         if args.action == "node-matrix":
             from workload_matrix import collect_node_matrix
 

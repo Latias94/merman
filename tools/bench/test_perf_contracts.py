@@ -24,6 +24,9 @@ TEST_MODULES = (
     "test_workload_coverage",
     "test_workload_matrix",
     "test_workload_drawing",
+    "test_workload_report",
+    "test_workload_report_node",
+    "test_workload_report_surfaces",
 )
 
 

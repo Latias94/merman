@@ -1,0 +1,54 @@
+# Renderer benchmark report · $date
+
+Merman's benchmarks help us choose where to investigate rendering costs. A renderer can accept the same Mermaid source and choose different node sizes, edge routes, fonts and SVG structure. The observations below apply to the named products, workloads and machines.
+
+$highlights
+
+## What the renderers aim to do
+
+| Product | Design and public operation |
+| --- | --- |
+| Merman | A headless Rust renderer aiming for compatibility with a pinned Mermaid.js release across syntax, configuration, themes and SVG structure. The Rust library, Node binding and CLI expose different operation boundaries. |
+| Pele | An independent renderer of Mermaid syntax with its own layout and visual style. Its public `render` call returns a themeable SVG synchronously. |
+| Mermaid v13 | The upstream v13 package exposes a headless Node rendering API. The exact package version and the diagram plugins available to the consumer matter when interpreting coverage. |
+| Mermaid CLI (`mmdc`) | The upstream command-line tool uses Mermaid in a browser process to produce files. Startup, font selection and painting can contribute to the cost of a PNG export. |
+
+[Merman compatibility](https://github.com/Latias94/merman#rendering-quality-and-performance) · [Pele design](https://github.com/obsidianmd/pele/tree/1.13.0#compatibility) · [Mermaid v13](https://github.com/mermaid-js/mermaid-v13) · [Mermaid CLI](https://github.com/mermaid-js/mermaid-cli)
+
+## Node rendering coverage
+
+$coverage
+
+## Node warm render time
+
+$rounds
+
+## Command-line exports
+
+$cli
+
+## Browser rendering
+
+$browser
+
+## Merman layout work
+
+$rust
+
+## Interpreting the comparison
+
+Use a row that resembles your application. Rendering one preview, updating an existing engine and starting a CLI for each file incur different costs. Successful artifact and label checks cover the features asserted for those inputs. Visual fidelity, clipping, accessibility and interaction need their own checks. A performance difference between products can suggest an experiment. Establish its cause by comparing Merman revisions on the same source, settings and output contract.
+
+For native Rust peers and comparisons between Merman revisions, consult the dedicated measurements. [Native Merman and mmdr comparison](https://github.com/Latias94/merman/blob/main/docs/performance/renderer_comparison_2026-07-28_75c9fd156_vs_mmdr.md) · [Same-implementation release evidence](https://github.com/Latias94/merman/blob/main/docs/release/RELEASE_REPORTS.md)
+
+## Reproduce this report
+
+The [portable measurements]($receipt) contain the sample units, workload fingerprints and observations used here. To regenerate this Markdown from the adjacent receipt, run the following from a checkout that contains the report generator.
+
+```console
+python tools/bench/perf_runner.py workloads report --from path/to/measurements.json
+```
+
+Use the path of the linked JSON in place of `path/to/measurements.json`. Add `--check` to verify the adjacent Markdown. The JSON records the plan and product fingerprints for each measurement. $raw_bundle
+
+See the [measurement contract](https://github.com/Latias94/merman/blob/main/docs/performance/BENCHMARKING.md) and [collection and publication procedure](https://github.com/Latias94/merman/blob/main/docs/performance/RUNBOOK.md#publish-a-reader-report) to repeat the measurements with a new build.
