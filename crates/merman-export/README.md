@@ -70,12 +70,12 @@ continue to compile. Exhaustive `NativeFontError` matches must also handle
 
 With system fonts authorized, `load_platform` uses Fontique for family matching
 and DirectWrite for fallback on Windows. On macOS it queries Core Text descriptors
-one family at a time and skips descriptors for font assets that still need to be
-downloaded. Linux and FreeBSD submit the authored family order to
-Fontconfig, which applies strong and weak aliases. Merman accepts scan-time aliases
-after verifying the physical face and keeps sorted alternatives available while
-checking text suitability and glyph coverage. Generic lookup stops at the first
-accepted face.
+one family at a time with automatic activation disabled and skips font assets
+that still need to be downloaded. Linux and FreeBSD submit the authored family
+order to Fontconfig, which applies strong and weak aliases. Merman accepts
+scan-time aliases after verifying the physical face and keeps sorted alternatives
+available while checking text suitability and glyph coverage. Generic lookup
+stops at the first accepted face.
 
 Layout and painting share the same bounded snapshots. A system-only context starts
 with zero resident font bytes and acquires each face on demand, including the

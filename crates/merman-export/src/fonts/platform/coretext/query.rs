@@ -3,11 +3,12 @@
 use std::{collections::HashMap, ptr, sync::Arc};
 
 use objc2_core_foundation::{
-    CFArray, CFBoolean, CFComparisonResult, CFDictionary, CFNumber, CFRetained, CFSet, CFString,
-    CFStringCompareFlags, CFType, kCFTypeSetCallBacks,
+    CFArray, CFBoolean, CFComparisonResult, CFDictionary, CFNumber, CFRetained, CFString,
+    CFStringCompareFlags, CFType,
 };
 use objc2_core_text::{
-    CTFont, CTFontDescriptor, CTFontOptions, CTFontSymbolicTraits, CTFontTableOptions,
+    CTFont, CTFontCollection, CTFontDescriptor, CTFontOptions, CTFontSymbolicTraits,
+    CTFontTableOptions, kCTFontCollectionDisallowAutoActivationOption,
     kCTFontDownloadableAttribute, kCTFontDownloadedAttribute, kCTFontFamilyNameAttribute,
     kCTFontNameAttribute, kCTFontWeightTrait, kCTFontWidthTrait,
 };
@@ -20,6 +21,12 @@ use super::{NativeFace, font_covers};
 // Core Text already selected one family. The ranking database only needs a shared key.
 const QUERY_FAMILY: &str = "";
 
+#[derive(Clone, Copy)]
+struct FaceAttributes {
+    table: Option<(Weight, Stretch, Style)>,
+    native: (Option<Weight>, Stretch, Style),
+}
+
 /// Matches one named family, keeping the selected native face alive for the caller.
 /// Styles are preferences; a missing family must not select a substitute family.
 pub(super) fn match_family(
@@ -30,7 +37,6 @@ pub(super) fn match_family(
     character: Option<char>,
 ) -> Option<NativeFace> {
     let mut candidates = Vec::new();
-    let mut weight_groups = HashMap::new();
     for descriptor in family_descriptors(family)?.iter() {
         let Some(font) = font_from_descriptor(&descriptor) else {
             continue;
@@ -41,31 +47,41 @@ pub(super) fn match_family(
         let Some(face) = NativeFace::from_font(font) else {
             continue;
         };
-        let (native_weight, native_stretch, native_style) = native_attributes(&face.font);
-        let table = table_attributes(&face.font, native_stretch, native_style);
-        if let (Some(attributes), Some(weight)) = (table, native_weight) {
+        let native = native_attributes(&face.font);
+        let table = table_attributes(&face.font, native.1, native.2);
+        candidates.push((face, FaceAttributes { table, native }));
+    }
+    rank_family(candidates, weight, stretch, style)
+}
+
+fn rank_family<T>(
+    candidates: Vec<(T, FaceAttributes)>,
+    weight: Weight,
+    stretch: Stretch,
+    style: Style,
+) -> Option<T> {
+    let mut weight_groups = HashMap::new();
+    for (_, attributes) in &candidates {
+        if let (Some(attributes), Some(weight)) = (attributes.table, attributes.native.0) {
             let (first, differs) = weight_groups.entry(attributes).or_insert((weight, false));
             *differs |= *first != weight;
         }
-        let attributes = table.unwrap_or((
-            native_weight.unwrap_or(Weight::NORMAL),
-            native_stretch,
-            native_style,
-        ));
-        candidates.push((face, attributes, native_weight));
     }
 
     let mut database = Database::new();
     // This database only ranks supported candidates. Its indices refer to retained faces.
     let source = Source::Binary(Arc::new(Vec::<u8>::new()));
-    for (index, (_, attributes, native_weight)) in candidates.iter().enumerate() {
-        let (mut weight, stretch, style) = *attributes;
+    for (index, (_, attributes)) in candidates.iter().enumerate() {
+        let (native_weight, native_stretch, native_style) = attributes.native;
+        let css = attributes.table.unwrap_or((
+            native_weight.unwrap_or(Weight::NORMAL),
+            native_stretch,
+            native_style,
+        ));
+        let (mut weight, stretch, style) = css;
         // Kaiti's Regular, Bold and Black all report OS/2 weight 400. Keep exact
         // table weights unless Core Text distinguishes faces in the same class.
-        if weight_groups
-            .get(attributes)
-            .is_some_and(|(_, differs)| *differs)
-        {
+        if weight_groups.get(&css).is_some_and(|(_, differs)| *differs) {
             weight = native_weight.unwrap_or(weight);
         }
         database.push_face_info(FaceInfo {
@@ -87,7 +103,7 @@ pub(super) fn match_family(
         style,
     })?;
     let index = usize::try_from(database.face(id)?.index).ok()?;
-    candidates.into_iter().nth(index).map(|(face, ..)| face)
+    candidates.into_iter().nth(index).map(|(face, _)| face)
 }
 
 /// Core Text can return an instance whose coordinates the snapshot cannot represent.
@@ -129,15 +145,20 @@ fn family_descriptors(family: &str) -> Option<CFRetained<CFArray<CTFontDescripto
     // SAFETY: The key and its retained CFString value are valid descriptor attributes.
     let request = unsafe { CTFontDescriptor::with_attributes(attributes.as_opaque()) };
 
-    let mut required_keys = [ptr::from_ref(family_key).cast()];
-    // SAFETY: The array contains one live CFString pointer. The standard CFType
-    // callbacks retain it and compare by value; None selects the default allocator.
-    // objc2-core-foundation 0.3.2 has no safe CFSet slice constructor.
-    let required =
-        unsafe { CFSet::new(None, required_keys.as_mut_ptr(), 1, &kCFTypeSetCallBacks) }?;
-    // SAFETY: The set contains only the family attribute key. Enumerate this family
-    // without native style preferences, which do not implement CSS weight ordering.
-    let descriptors = unsafe { request.matching_font_descriptors(Some(&required)) }?;
+    // Match the family without letting Core Text search for missing fonts.
+    // SAFETY: This is an immutable Core Text CFString constant.
+    let local_only_key = unsafe { kCTFontCollectionDisallowAutoActivationOption };
+    let enabled = CFNumber::new_i32(1);
+    let options = CFDictionary::from_slices(&[local_only_key], &[&*enabled]);
+    let requests = CFArray::from_objects(&[&*request]);
+    // SAFETY: The array contains retained descriptors and the option is a CFNumber.
+    let descriptors = unsafe {
+        let collection = CTFontCollection::with_font_descriptors(
+            Some(requests.as_opaque()),
+            Some(options.as_opaque()),
+        );
+        collection.matching_font_descriptors()
+    }?;
     // SAFETY: Core Text returns an immutable CFArray of retained CTFontDescriptor objects.
     Some(unsafe { CFRetained::cast_unchecked(descriptors) })
 }
@@ -389,40 +410,31 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "optional qualification with the registered Kaiti SC collection installed"]
-    fn installed_kaiti_faces_with_shared_table_weight_follow_native_traits() {
-        let Some(descriptors) = family_descriptors("Kaiti SC") else {
-            return;
-        };
-        let mut weights = HashMap::new();
-        for descriptor in descriptors.iter() {
-            let Some(face) = font_from_descriptor(&descriptor).and_then(NativeFace::from_font)
-            else {
-                continue;
-            };
-            if !face.path.is_file() {
-                continue;
-            }
-            let (Some(weight), stretch, Style::Normal) = native_attributes(&face.font) else {
-                continue;
-            };
-            if table_attributes(&face.font, stretch, Style::Normal)
-                == Some((Weight::NORMAL, Stretch::Normal, Style::Normal))
-            {
-                weights.entry(weight).or_insert_with(Vec::new).push(face);
-            }
-        }
-        if weights.len() < 2 {
-            return;
-        }
-        for (weight, expected) in weights {
-            let face = named("Kaiti SC", weight, Stretch::Normal, Style::Normal)
-                .expect("the installed Kaiti face is usable");
-            assert!(
-                expected.iter().any(|candidate| candidate.path == face.path
-                    && candidate.post_script_name == face.post_script_name),
-                "Kaiti SC {weight:?} selected {}",
-                face.post_script_name
+    fn ambiguous_table_weights_follow_native_traits() {
+        let candidates =
+            [("regular", 0.0), ("bold", 0.4), ("black", 0.62)].map(|(name, native_weight)| {
+                let stretch = Stretch::Normal;
+                let style = Style::Normal;
+                let table = Some((Weight::NORMAL, stretch, style));
+                let native = (Some(css_weight(native_weight)), stretch, style);
+                (name, FaceAttributes { table, native })
+            });
+
+        for (weight, expected) in [
+            (400, "regular"),
+            (500, "regular"),
+            (700, "bold"),
+            (900, "black"),
+        ] {
+            assert_eq!(
+                rank_family(
+                    candidates.to_vec(),
+                    Weight(weight),
+                    Stretch::Normal,
+                    Style::Normal
+                ),
+                Some(expected),
+                "CSS weight {weight}"
             );
         }
     }
