@@ -917,7 +917,7 @@ pub(crate) enum FontSystemKind {
 impl FontSystemKind {
     pub(crate) const fn platform_is_default() -> bool {
         cfg!(any(
-            feature = "experimental-system-font-query",
+            feature = "platform-system-font-default",
             all(windows, feature = "windows-platform-font-default")
         ))
     }

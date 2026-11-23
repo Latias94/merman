@@ -1053,36 +1053,231 @@ fn explicit_platform_query_uses_shared_context_and_respects_explicit_fonts() {
     assert!(!String::from_utf8_lossy(&closed.stderr).contains(context.identity()));
 }
 
+#[cfg(all(
+    feature = "png",
+    any(
+        all(
+            windows,
+            any(
+                feature = "platform-system-font-default",
+                feature = "windows-platform-font-default"
+            )
+        ),
+        all(target_os = "linux", feature = "platform-system-font-query")
+    )
+))]
+mod large_font_inventory {
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+    };
+    use write_fonts::read::FontRef;
+    use write_fonts::tables::cmap::{
+        Cmap, CmapSubtable, EncodingRecord, PlatformId, SequentialMapGroup,
+    };
+    use write_fonts::tables::name::{Name, NameRecord};
+    use write_fonts::types::{NameId, Tag};
+    use write_fonts::{FontBuilder, dump_table};
+
+    fn populate_inventory(directory: &Path) {
+        let seed = fs::read(
+            super::repo_root().join("crates/merman-export/tests/fonts/MermanProbeBase.ttf"),
+        )
+        .unwrap();
+        let seed = FontRef::new(&seed).unwrap();
+        // Distinct faces avoid catalog deduplication. Each cmap fits the per-face limit,
+        // and the sum exceeds the 16 MiB discovery limit.
+        let groups = (0x20000..0x48000)
+            .step_by(2)
+            .map(|codepoint| SequentialMapGroup::new(codepoint, codepoint, 1))
+            .collect();
+        let cmap = dump_table(&Cmap::new(vec![EncodingRecord::new(
+            PlatformId::Windows,
+            10,
+            CmapSubtable::format_12(0, groups),
+        )]))
+        .unwrap();
+        for index in 0..18 {
+            let family = format!("MermanInventory{index:02}");
+            let name = Name::new(
+                [
+                    NameId::FAMILY_NAME,
+                    NameId::FULL_NAME,
+                    NameId::POSTSCRIPT_NAME,
+                ]
+                .into_iter()
+                .map(|id| NameRecord::new(3, 1, 0x409, id, family.clone().into()))
+                .collect(),
+            );
+            let mut builder = FontBuilder::new();
+            builder.add_raw(Tag::new(b"cmap"), cmap.as_slice());
+            builder.add_table(&name).unwrap();
+            builder.copy_missing_tables(seed.clone());
+            fs::write(directory.join(format!("{family}.ttf")), builder.build()).unwrap();
+        }
+    }
+
+    #[test]
+    fn platform_png_succeeds_when_bounded_discovery_exhausts_cmap_budget() {
+        let temp = tempfile::tempdir().unwrap();
+        let fonts = temp
+            .path()
+            .join(if cfg!(windows) { "Fonts" } else { "fonts" });
+        fs::create_dir(&fonts).unwrap();
+        populate_inventory(&fonts);
+        let cjk_font =
+            super::repo_root().join("crates/merman-export/tests/fonts/NotoSansSC-subset.ttf");
+
+        let config_contents = if cfg!(windows) {
+            r#"{"look":"classic"}"#
+        } else {
+            r#"{"look":"classic","fontFamily":"Cousine","htmlLabels":false}"#
+        };
+        let config = temp.path().join("classic.json");
+        fs::write(&config, config_contents).unwrap();
+
+        let fontconfig = temp.path().join("fonts.conf");
+        if cfg!(target_os = "linux") {
+            // Give Fontconfig access to the same large inventory that bounded discovery scans.
+            fs::copy(super::font(), fonts.join("Cousine-Regular.ttf")).unwrap();
+            fs::copy(&cjk_font, fonts.join("NotoSansSC-subset.ttf")).unwrap();
+            fs::write(
+                &fontconfig,
+                r#"<?xml version="1.0"?>
+<fontconfig>
+  <dir prefix="xdg">fonts</dir>
+  <cachedir prefix="xdg">fontconfig</cachedir>
+  <alias><family>sans-serif</family><prefer><family>Cousine</family></prefer></alias>
+</fontconfig>"#,
+            )
+            .unwrap();
+        }
+
+        let binary = std::env::var_os("MERMAN_TEST_FONT_INVENTORY_CLI_BIN")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| assert_cmd::cargo_bin!("merman-cli").to_path_buf());
+        let source = if cfg!(target_os = "linux") {
+            "flowchart LR\nA[Draft 中] --> B[Review]\n"
+        } else {
+            "flowchart LR\nA[Draft] --> B[Review]\n"
+        };
+        let render = |extra: &[&str]| {
+            let mut command = assert_cmd::Command::new(&binary);
+            if cfg!(windows) {
+                // DirectWrite queries the system catalog independently of the scan roots.
+                command
+                    .env("WINDIR", temp.path())
+                    .env("LOCALAPPDATA", temp.path());
+            } else {
+                // Newer Fontconfig also reads XDG_DATA_DIRS for a dir with prefix="xdg".
+                command
+                    .env("HOME", temp.path())
+                    .env("XDG_DATA_HOME", temp.path())
+                    .env("XDG_DATA_DIRS", temp.path())
+                    .env("XDG_CACHE_HOME", temp.path())
+                    .env("FONTCONFIG_FILE", &fontconfig);
+            }
+            command
+                .args(["-i", "-", "-o", "-", "-e", "png", "-t", "default"])
+                .args(["-b", "#FFFFFF", "-s", "2", "-c"])
+                .arg(&config)
+                .args(extra)
+                .write_stdin(source)
+                .output()
+                .unwrap()
+        };
+
+        let bounded = render(&["--font-system=bounded"]);
+        let stderr = String::from_utf8_lossy(&bounded.stderr);
+        assert_eq!(bounded.status.code(), Some(3), "{stderr}");
+        assert!(
+            stderr.contains("native font limit system-cmap-bytes exceeded"),
+            "{stderr}"
+        );
+        assert!(bounded.stdout.is_empty());
+
+        let platform = render(&["--font-system=platform"]);
+        assert!(
+            platform.status.success(),
+            "{}",
+            String::from_utf8_lossy(&platform.stderr)
+        );
+        assert!(platform.stdout.starts_with(b"\x89PNG\r\n\x1a\n"));
+        if cfg!(target_os = "linux") {
+            let explicit_font = render(&[
+                "--font-file",
+                &super::font(),
+                "--font-file",
+                cjk_font.to_str().unwrap(),
+            ]);
+            assert!(
+                explicit_font.status.success(),
+                "{}",
+                String::from_utf8_lossy(&explicit_font.stderr)
+            );
+            for output in [&platform, &explicit_font] {
+                let diagnostic = String::from_utf8_lossy(&output.stderr);
+                assert!(
+                    !diagnostic.contains("native export font resolution is incomplete"),
+                    "{diagnostic}"
+                );
+            }
+            assert_eq!(platform.stdout, explicit_font.stdout);
+        }
+        if cfg!(any(windows, feature = "platform-system-font-default")) {
+            let default = render(&[]);
+            assert!(
+                default.status.success(),
+                "{}",
+                String::from_utf8_lossy(&default.stderr)
+            );
+            assert_eq!(platform.stdout, default.stdout);
+        }
+    }
+}
+
 #[cfg(all(target_os = "linux", feature = "platform-system-font-query"))]
 #[test]
 fn empty_fontconfig_policy_does_not_trigger_bounded_fallback() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::create_dir(temp.path().join("empty")).unwrap();
     let config = temp.path().join("fonts.conf");
-    std::fs::write(&config, "<?xml version=\"1.0\"?><fontconfig><dir prefix=\"relative\">empty</dir><cachedir prefix=\"relative\">cache</cachedir></fontconfig>").unwrap();
+    std::fs::write(
+        &config,
+        r#"<?xml version="1.0"?>
+<fontconfig>
+  <dir prefix="xdg">empty</dir>
+  <cachedir prefix="xdg">fontconfig</cachedir>
+</fontconfig>"#,
+    )
+    .unwrap();
     let input = temp.path().join("input.mmd");
     std::fs::write(&input, "flowchart LR\nA[Empty font policy]\n").unwrap();
-    let mut modes = vec!["platform"];
-    if cfg!(feature = "experimental-system-font-query") {
-        modes.push("on");
+    let mut modes = vec![Some("platform")];
+    if cfg!(feature = "platform-system-font-default") {
+        modes.extend([Some("on"), None]);
     }
     for mode in modes {
-        let output = std::process::Command::new(assert_cmd::cargo_bin!("merman-cli"))
+        let mut command = std::process::Command::new(assert_cmd::cargo_bin!("merman-cli"));
+        command
             .arg("render")
             .arg(&input)
-            .args([
-                "--output=-",
-                "--font-measurement=native",
-                "--font-system",
-                mode,
-            ])
-            .env("FONTCONFIG_FILE", &config)
-            .output()
-            .unwrap();
+            .args(["--output=-", "--font-measurement=native"])
+            .env("XDG_DATA_HOME", temp.path())
+            .env("XDG_DATA_DIRS", temp.path())
+            .env("XDG_CACHE_HOME", temp.path())
+            .env("FONTCONFIG_FILE", &config);
+        if let Some(mode) = mode {
+            command.args(["--font-system", mode]);
+        }
+        let output = command.output().unwrap();
         let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(!output.status.success(), "{mode}: {stderr}");
-        assert!(output.stdout.is_empty(), "{mode}");
-        assert!(stderr.contains("no usable font faces"), "{mode}: {stderr}");
+        assert!(!output.status.success(), "{mode:?}: {stderr}");
+        assert!(output.stdout.is_empty(), "{mode:?}");
+        assert!(
+            stderr.contains("no usable font faces"),
+            "{mode:?}: {stderr}"
+        );
     }
 }
 
@@ -1117,7 +1312,7 @@ fn capabilities_disclose_shared_coverage_and_cli_discovery_policy() {
     assert_eq!(native["default_system_discovery"], "disabled");
     assert_eq!(native["default_policy_scope"], "mermaid-svg-input");
     let platform_default = cfg!(any(
-        feature = "experimental-system-font-query",
+        feature = "platform-system-font-default",
         all(windows, feature = "windows-platform-font-default")
     ));
     let expected_encoded = if platform_default {

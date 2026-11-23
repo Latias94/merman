@@ -256,10 +256,10 @@ def valid_capabilities_payload(
             "default_system_discovery": "disabled",
             "encoded_output_defaults": {
                 "measurement": "native",
-                "font_source": "bounded-system-discovery",
-                "system_discovery": "before-layout",
+                "font_source": "platform-managed-system-query",
+                "system_discovery": "platform-initialization-then-on-demand-families",
             },
-            "system_resources_bounded": True,
+            "system_resources_bounded": False,
             "platform_system_query": {
                 "cli_option": "--font-system platform",
                 "system_discovery": "platform-initialization-then-on-demand-families",
@@ -1470,8 +1470,8 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(native["default_system_discovery"], "disabled")
         self.assertEqual(native["encoded_output_defaults"], {
             "measurement": "native",
-            "font_source": "bounded-system-discovery",
-            "system_discovery": "before-layout",
+            "font_source": "platform-managed-system-query",
+            "system_discovery": "platform-initialization-then-on-demand-families",
         })
         self.assertEqual(payload["schema_version"], 2)
         self.assertEqual(payload["cli_contract_version"], 8)
@@ -1480,21 +1480,29 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(len(native["measurement_operations"]), 23)
         verifier._validate_runtime_capabilities(payload, expected)
 
-    def test_windows_archive_requires_platform_default_metadata(self) -> None:
-        expected = verifier._release_capabilities_contract(
-            PROJECT_ROOT, version=VERSION, target=WINDOWS_TARGET
-        )
-        payload = valid_capabilities_payload()
-        native = payload["native_fonts"]
-        with self.assertRaisesRegex(verifier.ArchiveVerificationError, "native_fonts"):
-            verifier._validate_runtime_capabilities(payload, expected)
-        native["encoded_output_defaults"] = {
-            "measurement": "native",
-            "font_source": "platform-managed-system-query",
-            "system_discovery": "platform-initialization-then-on-demand-families",
-        }
-        native["system_resources_bounded"] = False
-        verifier._validate_runtime_capabilities(payload, expected)
+    def test_release_archives_require_platform_default_metadata(self) -> None:
+        for target in (
+            WINDOWS_TARGET,
+            LINUX_TARGET,
+            "aarch64-unknown-linux-gnu",
+            "aarch64-apple-darwin",
+            "x86_64-apple-darwin",
+        ):
+            with self.subTest(target=target):
+                expected = verifier._release_capabilities_contract(
+                    PROJECT_ROOT, version=VERSION, target=target
+                )
+                payload = valid_capabilities_payload()
+                verifier._validate_runtime_capabilities(payload, expected)
+                native = payload["native_fonts"]
+                native["encoded_output_defaults"] = {
+                    "measurement": "native",
+                    "font_source": "bounded-system-discovery",
+                    "system_discovery": "before-layout",
+                }
+                native["system_resources_bounded"] = True
+                with self.assertRaisesRegex(verifier.ArchiveVerificationError, "native_fonts"):
+                    verifier._validate_runtime_capabilities(payload, expected)
 
     def test_runtime_rejects_native_defaults_for_mermaid_svg(self) -> None:
         implicit_defaults = (
@@ -1551,10 +1559,10 @@ class RuntimeContractTests(unittest.TestCase):
         rejected_values = {
             "measurement": ("deterministic", "unknown", None, [], {}, True, 1),
             "font_source": (
-                "none", "platform-managed-system-query", "unknown", None, [], {}, True, 1,
+                "none", "bounded-system-discovery", "unknown", None, [], {}, True, 1,
             ),
             "system_discovery": (
-                "disabled", "first-use", "platform-initialization-then-on-demand-families",
+                "disabled", "first-use", "before-layout",
                 "unknown", None, [], {}, True, 1,
             ),
         }
@@ -1580,8 +1588,8 @@ class RuntimeContractTests(unittest.TestCase):
             },
             {
                 "measurement": "native",
-                "font_source": "platform-managed-system-query",
-                "system_discovery": "platform-initialization-then-on-demand-families",
+                "font_source": "bounded-system-discovery",
+                "system_discovery": "before-layout",
             },
         ):
             with self.subTest(defaults=defaults):

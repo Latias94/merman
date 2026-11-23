@@ -179,9 +179,9 @@ Contract 8 returns versioned geometry from native `layout`. Use `layout --snapsh
 full metadata and semantic response provided by `layout` under contract 7.
 
 Mermaid SVG uses deterministic measurement by default. PNG, JPEG, and PDF use native font
-measurement and painting when system font support is compiled. The official Windows archive
-queries the platform catalog on demand, and macOS, Linux, and default Cargo builds use bounded
-discovery. Explicit font sources enable native measurement with a closed set unless system
+measurement and painting when system font support is compiled. The current release profile
+queries the platform catalog on demand. Default Cargo builds use bounded discovery.
+Explicit font sources enable native measurement with a closed set unless system
 fallback is requested. See the
 [CLI font guide](../../crates/merman-cli/README.md#explicit-fonts).
 The CLI contract version tracks native command behavior independently from this pinned

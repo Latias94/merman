@@ -64,6 +64,7 @@ const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
             "system-fonts",
             "platform-system-font-query",
             "experimental-system-font-query",
+            "platform-system-font-default",
             "windows-platform-font-default",
         ],
     ),
@@ -137,6 +138,11 @@ const LOCAL_FONT_FEATURE_CONTRACTS: &[(&str, &str, &str)] = &[
     ("merman-bindings-core", "system-fonts", "native-fonts"),
     (
         "merman-cli",
+        "platform-system-font-default",
+        "platform-system-font-query",
+    ),
+    (
+        "merman-cli",
         "windows-platform-font-default",
         "platform-system-font-query",
     ),
@@ -147,7 +153,7 @@ const LOCAL_FONT_FEATURE_CONTRACTS: &[(&str, &str, &str)] = &[
     ("merman-wasi", "bundled-fonts", "native-fonts"),
 ];
 const PRODUCT_FEATURE_CONTRACTS: usize = 3;
-const CLI_RELEASE_ONLY_FEATURES: &[&str] = &["math", "windows-platform-font-default"];
+const CLI_RELEASE_ONLY_FEATURES: &[&str] = &["math", "platform-system-font-default"];
 
 fn transport_packages() -> impl Iterator<Item = &'static str> {
     TRANSPORT_TARGETS.iter().map(|(package, _)| *package)
@@ -1822,6 +1828,7 @@ mod tests {
         "network-icons",
         "parallel-markdown",
         "pdf",
+        "platform-system-font-default",
         "png",
         "rustdoc",
         "shell-completions",
@@ -1831,7 +1838,6 @@ mod tests {
         "system-random",
         "system-timezone",
         "system-timing",
-        "windows-platform-font-default",
     ];
 
     fn package(name: &str, features: &[(&str, &[&str])]) -> CargoPackage {
@@ -1946,6 +1952,11 @@ mod tests {
             ("merman-export", "bundled-fonts", "native-fonts"),
             ("merman-bindings-core", "native-fonts", "svg"),
             ("merman-bindings-core", "system-fonts", "native-fonts"),
+            (
+                "merman-cli",
+                "platform-system-font-default",
+                "platform-system-font-query",
+            ),
             (
                 "merman-cli",
                 "windows-platform-font-default",
@@ -2420,12 +2431,12 @@ mod tests {
     }
 
     #[test]
-    fn cli_release_must_retain_explicit_math_and_windows_font_policy() {
-        for removed in ["math", "windows-platform-font-default"] {
+    fn cli_release_must_retain_release_only_features() {
+        for removed in CLI_RELEASE_ONLY_FEATURES {
             let mut graph = product_contract_graph();
             let release_features = CLI_RELEASE_FEATURES
                 .iter()
-                .filter(|feature| **feature != removed)
+                .filter(|feature| *feature != removed)
                 .copied()
                 .collect::<Vec<_>>();
             graph.packages.get_mut("merman-cli").unwrap().metadata["dist"]["features"] =
@@ -2458,7 +2469,9 @@ mod tests {
 
     #[test]
     fn cli_defaults_must_match_the_release_recipe_excluding_release_only_features() {
-        for extra in [None, Some("math"), Some("windows-platform-font-default")] {
+        for extra in
+            core::iter::once(None).chain(CLI_RELEASE_ONLY_FEATURES.iter().copied().map(Some))
+        {
             let mut graph = product_contract_graph();
             let defaults = graph
                 .packages

@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
+## [Unreleased]
+
+### Changed
+
+- **CLI fonts on macOS and Linux.** Official archives use Core Text or Fontconfig by default for native Mermaid PNG, JPEG, and PDF exports. Platform lookup opens the selected fonts on demand and avoids the bounded scan's aggregate character-map limit. On Linux the automatic policy retries bounded discovery if the Fontconfig runtime cannot load. Use `--font-system bounded` to select the previous provider, or `--font-file` to pin the fonts used for both measurement and painting. [CLI font guide](crates/merman-cli/README.md#explicit-fonts)
+
 ## [0.11.0] - 2026-11-21
 
 After introducing the theme compiler and editable theme recipes in 0.10.0, we focused 0.11.0 on performance and ease of use. A short-lived CLI should be quick enough to call for a single image, and a long-running editor or document builder should be able to reuse the work it has already done. This release also gives hosts simpler ways to request geometry, static SVGs, and terminal output. [0.10.0 release notes](#0100---2026-11-12)

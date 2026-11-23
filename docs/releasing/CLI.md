@@ -14,7 +14,7 @@ The standard CLI release is defined by the `cli-release` entry in
 
 Current source defaults and the official archive both include `layout-elk`, its EPL-2.0
 closure, and the corresponding notice/source obligations. `cli-release` and cargo-dist select
-`math` and `windows-platform-font-default` explicitly. Current Cargo source defaults omit both.
+`math` and `platform-system-font-default` explicitly. Current Cargo source defaults omit both.
 Source installations can opt in with `cargo install merman-cli --features math`; see the
 [math capability decision](../adr/0097-explicit-math-capability.md).
 Published releases retain their version-specific feature contract. The published
@@ -51,9 +51,10 @@ archives do not cover musl/Alpine or NixOS; the Nix integration builds from sour
 Complete releases governed by the current source contract report capability document schema 2
 and CLI contract 8. Default source builds and the official release profile include `native-fonts`
 and `system-fonts`. Mermaid SVG defaults to deterministic measurement. Mermaid PNG/JPEG/PDF
-use native measurements with the same font context as painting. The Windows archive uses the
-platform catalog by default, and other archives and Cargo source defaults use bounded discovery.
-Archive verification checks the provider for the archive's target. Official archives use
+use native measurements with the same font context as painting. Archives built from the current
+profile query the platform catalog by default. On Linux the default retries bounded discovery
+when the Fontconfig runtime cannot load. Cargo source defaults use bounded discovery. Archive
+verification checks the declared provider and exercises native exports. Official archives use
 the [workspace usvg backport](../DEPENDENCY_POLICY.md#exact-and-compatible-requirements), while
 registry consumers use the public usvg dependency. Explicit font files or directories enable
 native measurement with a closed set. See the

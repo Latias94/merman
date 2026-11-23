@@ -35,10 +35,20 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.100.0
 
+      - name: Install nextest
+        uses: taiki-e/install-action@v2.90.6
+        with:
+          tool: nextest@0.9.151
+
       - name: Rust cache
         uses: Swatinem/rust-cache@v2.9.3
         with:
           cache-targets: false
+
+      - name: Install Fontconfig runtime
+        run: |
+          sudo apt-get update --error-on=any
+          sudo apt-get install --no-install-recommends --yes libfontconfig1
 
       - name: Build exact CLI artifact profiles
         run: |
@@ -69,6 +79,22 @@ jobs:
           python3 scripts/verify_lsp_release_archive.py \
             "target/distrib/merman-lsp-$TARGET.tar.xz" --target "$TARGET" \
             --version "$version" --repo-root . --execute
+
+      - name: Check the archived CLI with a large font inventory
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          cli="$RUNNER_TEMP/font-inventory-merman-cli"
+          tar -xJOf "target/distrib/merman-cli-$TARGET.tar.xz" \
+            "merman-cli-$TARGET/merman-cli" > "$cli"
+          chmod +x "$cli"
+          features="$(python3 scripts/artifact_profile_recipe.py cli-release)"
+          MERMAN_TEST_FONT_INVENTORY_CLI_BIN="$cli" cargo nextest run --locked \
+            -p merman-cli --no-default-features --features "$features" \
+            --target "$TARGET" --cargo-profile dist --test native_fonts_contract \
+            -E 'test(large_font_inventory::platform_png_succeeds_when_bounded_discovery_exhausts_cmap_budget)' \
+            --cargo-quiet
 
       - name: Upload verified GNU archive bytes for container checks
         uses: actions/upload-artifact@v7.0.2

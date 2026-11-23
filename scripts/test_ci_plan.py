@@ -1147,7 +1147,7 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
             core.index("verify_theme_acceptance_boundary.py"),
         )
         self.assertIn(
-            "--features diagram-flowchart,png,windows-platform-font-default --test native_fonts_contract",
+            "--features diagram-flowchart,png,platform-system-font-default --test native_fonts_contract",
             core,
         )
         self.assertNotIn("verify_theme_acceptance_boundary.py", feature)
@@ -1219,6 +1219,10 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
         self.assertIn("os: ubuntu-22.04-arm", gnu)
         self.assertIn("scripts/linux_binary_compatibility.py", gnu)
         self.assertIn("--execute", gnu)
+        self.assertIn('tar -xJOf "target/distrib/merman-cli-$TARGET.tar.xz"', gnu)
+        self.assertIn('MERMAN_TEST_FONT_INVENTORY_CLI_BIN="$cli" cargo nextest run --locked', gnu)
+        self.assertLess(gnu.index("scripts/verify_cli_release_archive.py"),
+                        gnu.index("MERMAN_TEST_FONT_INVENTORY_CLI_BIN"))
 
     def test_native_runtime_routes_preserve_each_selected_owner(self) -> None:
         from scripts.test_release_workflow_security import workflow_job
