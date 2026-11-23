@@ -5,7 +5,7 @@ use super::svg_emit::FlowchartSvgModelRequest;
 use super::*;
 
 #[cfg(any(feature = "layout-shoal", test))]
-mod rough;
+use super::super::canonical_rough::constrained_rough_edge_path;
 
 pub(super) fn with_flowchart_paint_context<T>(
     request: FlowchartSvgModelRequest<'_>,
@@ -453,7 +453,7 @@ pub(super) fn prepare_rough_edge_paths(
             ctx.layout.route_contract,
             crate::graph_layout::RouteContract::CanonicalAxis { .. }
         ) {
-            entry.geom.emitted_d_for_label = Some(rough::edge_path(
+            entry.geom.emitted_d_for_label = Some(constrained_rough_edge_path(
                 &entry.geom.d,
                 flowchart_marker_metrics(edge.edge),
                 ctx.work_meter,

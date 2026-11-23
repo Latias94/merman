@@ -118,9 +118,13 @@ fn render_and_layout_class_with_edge_label_measurer(
 #[test]
 fn class_html_cardinalities_preserve_breaks_and_entity_depth_in_measured_content() {
     let source = "classDiagram\nA \"1<br/>many\" --> \"&amp;lt;owner&amp;gt;\\n**literal**\" B\n";
-    for layout in ["dagre", "elk"]
+    for layout in ["dagre", "elk", "shoal"]
         .into_iter()
-        .filter(|layout| *layout != "elk" || cfg!(feature = "layout-elk"))
+        .filter(|layout| match *layout {
+            "elk" => cfg!(feature = "layout-elk"),
+            "shoal" => cfg!(feature = "layout-shoal"),
+            _ => true,
+        })
     {
         let parsed = MermaidEngine::new()
             .with_site_config(

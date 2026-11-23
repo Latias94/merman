@@ -59,6 +59,16 @@ fn outward(side: Side) -> Vec2 {
     }
 }
 
+pub(crate) fn group_lead_side(side: Side, port: RoutePoint, next: RoutePoint) -> Side {
+    match side {
+        Side::Top if next.y > port.y => Side::Bottom,
+        Side::Right if next.x < port.x => Side::Left,
+        Side::Bottom if next.y < port.y => Side::Top,
+        Side::Left if next.x > port.x => Side::Right,
+        _ => side,
+    }
+}
+
 fn position(p: RoutePoint) -> Point {
     Point::new(p.x, p.y)
 }
@@ -415,6 +425,21 @@ impl Terminal {
             && (0.0..=self.marker.trim + LEAD.max(self.marker.depth))
                 .contains(&delta.dot(self.normal))
     }
+}
+
+#[cfg(all(feature = "layout-shoal", feature = "diagram-class"))]
+pub(super) fn marker_lead(
+    port: RoutePoint,
+    side: Side,
+    marker: Marker,
+) -> (crate::model::LayoutPoint, crate::model::LayoutPoint) {
+    let terminal = Terminal {
+        tip: position(port),
+        normal: outward(side),
+        marker,
+    };
+    let point = |p: Point| crate::model::LayoutPoint { x: p.x, y: p.y };
+    (point(terminal.shaft_end()), point(terminal.lead_end()))
 }
 
 /// The endpoints are already on the contours. The two sides are in semantic source/target

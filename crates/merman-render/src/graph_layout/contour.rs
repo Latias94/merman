@@ -6,6 +6,11 @@ use crate::model::LayoutPoint;
 use kurbo::{Arc, Point};
 use std::f64::consts::TAU;
 
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 mod flowchart;
 
 /// The span is a full width (top/bottom) or height (left/right), centered on the port anchor.
@@ -294,7 +299,14 @@ impl Outline {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(
+    test,
+    any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    )
+))]
 mod tests {
     use super::*;
     use crate::flowchart::FlowNode;

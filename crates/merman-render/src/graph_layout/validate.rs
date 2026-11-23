@@ -873,6 +873,9 @@ pub(crate) fn validate(scene: &Scene<'_>) -> Report {
     report
 }
 
+#[cfg(all(test, feature = "diagram-class", feature = "layout-shoal"))]
+mod class;
+
 #[cfg(test)]
 mod gallery;
 

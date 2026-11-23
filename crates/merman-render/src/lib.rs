@@ -162,7 +162,8 @@ mod graph_label;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
-    feature = "diagram-agentflow"
+    feature = "diagram-agentflow",
+    all(feature = "diagram-class", feature = "layout-shoal")
 ))]
 mod graph_layout;
 #[cfg_attr(
@@ -1230,6 +1231,18 @@ pub(crate) fn layout_class_typed_by_engine(
     work_control.charge_adapter(preparation_work)?;
     let selection = layout_backend::resolve_graph_layout(effective_config);
     selection.validate_rootless_graph()?;
+    #[cfg(feature = "layout-shoal")]
+    if selection.backend == layout_backend::GraphLayoutBackend::Shoal {
+        return class::shoal::layout(
+            model,
+            effective_config,
+            options.text_measurer(),
+            options.math_renderer(),
+            typography_theme,
+            render_config,
+            &mut work_control,
+        );
+    }
     #[cfg(feature = "layout-elk")]
     if selection.backend == layout_backend::GraphLayoutBackend::Elk {
         return class::layout_class_diagram_elk_typed_with_config_and_operation_seed(
@@ -2116,7 +2129,6 @@ id1(Start)-->id2(Stop)
     fn shoal_rejects_other_graph_adapters_during_planning_and_execution() {
         for body in [
             "swimlane-beta LR\nA --> B",
-            "classDiagram\nA --> B",
             "erDiagram\nA ||--o{ B : relates",
             "mindmap\n  root((Demo))\n    Leaf",
             "requirementDiagram\nrequirement r {\nid: 1\ntext: Demo\nrisk: low\nverifymethod: test\n}",
@@ -2165,6 +2177,7 @@ id1(Start)-->id2(Stop)
                 "---\nconfig:\n  layout: dagre\n  flowchart:\n    layout: shoal\n---\nflowchart LR\nA --> B",
                 Some(RenderCapability::LayoutShoal),
             ),
+            ("classDiagram\nA --> B", Some(RenderCapability::LayoutShoal)),
             (
                 "---\nconfig:\n  flowchart:\n    layout: shoal\n---\nflowchart-elk LR\nA --> B",
                 layout_elk_available().then_some(RenderCapability::LayoutElk),

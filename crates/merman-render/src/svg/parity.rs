@@ -45,6 +45,8 @@ pub(crate) use block::block_edge_is_visible;
 mod c4;
 #[cfg(feature = "diagram-class")]
 mod class;
+#[cfg(all(feature = "diagram-class", feature = "layout-shoal"))]
+pub(crate) use class::class_canonical_marker;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -197,6 +199,18 @@ mod look_defs;
 )]
 mod markers;
 pub(crate) use markers::BaseEdgeMarkerKind;
+#[cfg(any(
+    all(feature = "layout-shoal", feature = "diagram-class"),
+    all(
+        any(feature = "layout-shoal", test),
+        any(
+            feature = "diagram-flowchart",
+            feature = "diagram-swimlane",
+            feature = "diagram-agentflow"
+        )
+    )
+))]
+mod canonical_rough;
 #[cfg(feature = "diagram-mindmap")]
 mod mindmap;
 mod output;

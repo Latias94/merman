@@ -20,6 +20,89 @@ fn parse_class(text: &str) -> PresentationDiagram {
         .into_presentation()
 }
 
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_preserves_nested_namespaces_and_both_terminal_labels() {
+    let source = "\
+---
+config:
+  layout: shoal
+  htmlLabels: false
+  class:
+    hierarchicalNamespaces: true
+---
+classDiagram
+  namespace Trading {
+    namespace Bookkeeping {
+      class Account
+      class Ledger
+    }
+  }
+  class Journal
+  Account \"1\" *-- \"many\" Ledger : postings
+  Ledger <|-- Journal : records
+";
+    let parsed = parse_class(source);
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let plan = family::plan_render(&parsed, &session).unwrap();
+    assert_eq!(
+        plan.required_capabilities(),
+        [merman_render::RenderCapability::LayoutShoal]
+    );
+    let prepared = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .expect("Shoal Class layout");
+    let product = prepared.layout_json().unwrap();
+    let layout: ClassDiagramLayout =
+        serde_json::from_value(product["layout"]["ClassDiagramV2"].clone()).unwrap();
+    assert_eq!(
+        (
+            layout.nodes.len(),
+            layout.clusters.len(),
+            layout.edges.len()
+        ),
+        (3, 2, 2)
+    );
+    let ledger = layout
+        .nodes
+        .iter()
+        .find(|node| node.id == "Ledger")
+        .unwrap();
+    let outer = layout
+        .clusters
+        .iter()
+        .find(|cluster| cluster.title == "Trading")
+        .unwrap();
+    let inner = layout
+        .clusters
+        .iter()
+        .find(|cluster| cluster.title == "Bookkeeping")
+        .unwrap();
+    let (ix0, iy0, ix1, iy1) = rect_from_cluster(inner);
+    let (ox0, oy0, ox1, oy1) = rect_from_cluster(outer);
+    assert!(ix0 > ox0 && iy0 > oy0 && ix1 < ox1 && iy1 < oy1);
+    let (lx0, ly0, lx1, ly1) = rect_from_node(ledger);
+    assert!(lx0 > ix0 && ly0 > iy0 && lx1 < ix1 && ly1 < iy1);
+    let cardinalities = layout
+        .edges
+        .iter()
+        .find(|edge| edge.from == "Account")
+        .unwrap();
+    assert!(cardinalities.start_label_right.is_some() && cardinalities.end_label_left.is_some());
+    let svg = prepared
+        .render_svg(&Default::default(), &Default::default())
+        .expect("Shoal Class SVG");
+    let document = roxmltree::Document::parse(svg.svg()).unwrap();
+    let shafts: Vec<_> = document
+        .descendants()
+        .filter(|node| node.has_tag_name("path") && node.attribute("data-et") == Some("edge"))
+        .collect();
+    assert_eq!(shafts.len(), 2);
+    assert!(shafts.iter().any(|path| {
+        path.attribute("marker-start")
+            .is_some_and(|marker| marker.contains("compositionStart"))
+    }));
+}
+
 #[test]
 fn class_note_padding_expands_each_side_in_both_label_modes() {
     for layout in ["dagre", "elk"]

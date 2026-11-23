@@ -3,20 +3,10 @@
 use super::*;
 use crate::graph_layout::{
     RouteAxes, contour,
-    ir::{BorderStitch, Endpoint, RoutePoint, Side},
+    ir::{BorderStitch, Endpoint, RoutePoint},
     route_paint,
 };
 use std::borrow::Cow;
-
-fn group_lead_side(side: Side, port: RoutePoint, next: RoutePoint) -> Side {
-    match side {
-        Side::Top if next.y > port.y => Side::Bottom,
-        Side::Right if next.x < port.x => Side::Left,
-        Side::Bottom if next.y < port.y => Side::Top,
-        Side::Left if next.x > port.x => Side::Right,
-        _ => side,
-    }
-}
 
 pub(super) fn paint(
     request: FlowchartEdgePathGeomRequest<'_>,
@@ -78,7 +68,7 @@ pub(super) fn paint(
                 (
                     Cow::Owned(profile),
                     center,
-                    group_lead_side(side, port, next),
+                    route_paint::group_lead_side(side, port, next),
                 )
             }
         })

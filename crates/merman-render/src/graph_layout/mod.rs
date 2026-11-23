@@ -1,5 +1,7 @@
 //! Shared boundary between measured diagram families, graph solvers, and path painting.
 
+#[cfg(all(feature = "layout-shoal", feature = "diagram-class"))]
+pub(crate) mod canonical;
 #[cfg(any(feature = "layout-shoal", test))]
 pub(crate) mod contour;
 pub(crate) mod ir;

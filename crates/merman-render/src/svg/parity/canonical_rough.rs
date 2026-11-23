@@ -6,7 +6,7 @@ use roughr::core::{Op, OpType, OptionsBuilder, RoughRandomness};
 use roughr::work::WorkError;
 use svgtypes::PathSegment;
 
-pub(super) fn edge_path(
+pub(super) fn constrained_rough_edge_path(
     path: &str,
     markers: (Marker, Marker),
     meter: &OperationWorkMeter,
