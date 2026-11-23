@@ -166,7 +166,7 @@ function validExpectedLabels(labels) {
     Array.isArray(fact) ? fact.length > 0 && fact.every(nonblank) : nonblank(fact));
 }
 
-function readPlan(file) {
+function readPlan(file, retainAllDrawings) {
   const raw = readFileSync(file);
   const plan = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(raw));
   if (plan?.schema_version !== 1 || !Array.isArray(plan.scenarios)) {
@@ -196,7 +196,7 @@ function readPlan(file) {
         throw new Error(`Invalid expected_outcome at ${label}`);
       }
       const drawing_required = Object.hasOwn(request, "drawing_facts");
-      if (drawing_required) drawingIndices.push(position);
+      if (drawing_required || retainAllDrawings) drawingIndices.push(position);
       return { fixture, diagram_id, source, source_sha256: digest, expected_labels, expected_outcome, drawing_required };
     });
     return { index, id: scenario.id, origin: scenario.origin, requests, drawingIndices };
@@ -420,7 +420,7 @@ function isolatedScenario(input, timeoutSeconds) {
 async function main() {
   const { values } = parseArgs({ options: {
     plan: { type: "string" }, engine: { type: "string" }, module: { type: "string" },
-    "drawing-dir": { type: "string" },
+    "drawing-dir": { type: "string" }, "all-drawings": { type: "boolean" },
     samples: { type: "string", default: "3" }, "timeout-seconds": { type: "string", default: "300" },
   } });
   const samples = Number(values.samples);
@@ -428,10 +428,11 @@ async function main() {
   if (!values.plan || !Object.hasOwn(products, values.engine) || values["drawing-dir"] === "" ||
       !/^[1-9]\d*$/u.test(values.samples) || !Number.isSafeInteger(samples) ||
       !(timeoutSeconds > 0 && timeoutSeconds * 1000 <= 2_147_483_647)) {
-    throw new Error(`Usage: node tools/bench/workload_node.mjs --plan FILE --engine ${Object.keys(products).join("|")} [--module ENTRY] [--samples N] [--timeout-seconds N] [--drawing-dir DIR]`);
+    throw new Error(`Usage: node tools/bench/workload_node.mjs --plan FILE --engine ${Object.keys(products).join("|")} [--module ENTRY] [--samples N] [--timeout-seconds N] [--drawing-dir DIR [--all-drawings]]`);
   }
+  if (values["all-drawings"] && !values["drawing-dir"]) throw new Error("--all-drawings requires --drawing-dir");
   const drawingDir = values["drawing-dir"] && path.resolve(values["drawing-dir"]);
-  const plan = readPlan(values.plan);
+  const plan = readPlan(values.plan, values["all-drawings"]);
   const engine = values.engine;
   const product = installedPackage(values.module ?? products[engine].package, engine);
   // Resolve candidates in the parent to keep the worker's loader caches cold for init_ms.

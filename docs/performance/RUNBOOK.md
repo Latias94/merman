@@ -349,6 +349,40 @@ covers structural agreement on the drawing. Visual quality can be inspected sepa
 The command exits with a failure if any scenario misses the comparison criteria. Treat these
 fixed-order medians as diagnostics.
 
+Open an offline HTML gallery to inspect the returned SVGs side by side. Local `.mmd` files add
+examples without native timing. `--plan` adds the frozen cases. `--comparison` adds the
+SVG medians after checking the plan, executable, backend receipts and SVG digests against the
+report. Each unsuccessful backend displays its diagnostic in its own panel.
+
+```console
+python3 tools/bench/perf_runner.py workloads layout-gallery fixtures/flowchart/basic.mmd --plan target/bench/layouts/flat.json --comparison target/bench/layouts/comparison.json --out target/bench/layouts/gallery.html
+```
+
+Open `target/bench/layouts/gallery.html` in a browser. The file embeds the drawings and source.
+Use **Fit** for an overview or **1:1** for synchronized scrolling at the same scale. Each panel
+also offers its original SVG for download. For a visual-only comparison, pass one or more
+`.mmd` files and the output path.
+
+Add `--pele` to draw every case with the independent Pele Node.js renderer in a fourth panel.
+Install the locked Node consumer once. This example includes a file and a frozen directed-cycle case.
+
+```console
+npm ci --prefix tools/bench/node-reference --ignore-scripts --no-audit --no-fund
+python3 tools/bench/perf_runner.py workloads plan --scenario scc-25 --out target/bench/layouts/cycles.json
+python3 tools/bench/perf_runner.py workloads layout-gallery fixtures/flowchart/basic.mmd --plan target/bench/layouts/cycles.json --pele --out target/bench/layouts/gallery-pele.html
+```
+
+Pele receives the same source and diagram ID through its public `render()` API. The gallery embeds
+the SVG retained by the Node collector after validation and labels it with the installed version
+from the locked consumer (`pele@1.13.0`). A render or validation failure appears in that case's
+Pele panel. After the first render in each fresh Node.js worker, the collector times three calls
+from source to returned SVG. The Pele panel shows their median when the collector admits the
+request for timing and all four calls return the exact SVG embedded in the page. Otherwise the
+panel says **Untimed reference**. Package import, SVG validation and file I/O fall outside the
+Node.js interval. Medians from `--comparison` apply only to the three native panels.
+Pass `--runner PATH` to reuse an existing Shoal-enabled clock executable. Opening or sharing
+the resulting HTML requires only the file.
+
 For a single Shoal run, `--site-layout shoal` enables the Cargo feature on either the clock or
 memory executable and checks each successful SVG or layout JSON request outside measurement.
 A frozen `--runner` must supply per-request capability evidence tied to the source digest and

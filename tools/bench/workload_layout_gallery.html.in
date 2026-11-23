@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src blob:; base-uri 'none'; form-action 'none'">
+  <title>Flowchart layout comparison · Merman</title>
+  <style>
+    :root { color-scheme: light; --ink: #172e32; --muted: #4f6466; --line: #cbd5cf; --paper: #f6f8f5; --accent: #106c62; font: 15px/1.5 "DM Sans", Inter, system-ui, sans-serif; color: var(--ink); background: var(--paper); }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { max-width: 1800px; margin: auto; padding: clamp(16px, 3vw, 52px); }
+    h1, h2, p { margin: 0; }
+    h1 { font-size: clamp(28px, 3.1vw, 50px); line-height: 1.1; letter-spacing: -.045em; font-weight: 650; }
+    .brand { display: flex; align-items: center; gap: .6em; font-size: 17px; font-weight: 700; margin-bottom: 20px; }
+    .brand::before { content: ""; width: 19px; height: 15px; border-top: 3px solid var(--accent); border-bottom: 3px solid var(--accent); transform: skewY(-15deg); }
+    .toolbar { display: flex; gap: 16px 32px; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; margin: 28px 0 16px; }
+    .controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .field-label { font-weight: 600; font-size: 14px; }
+    select, button { font: inherit; color: var(--ink); }
+    select { max-width: min(68vw, 420px); padding: 8px 30px 8px 10px; border: 1px solid var(--line); border-radius: 5px; background: white; }
+    .zoom { display: inline-flex; border: 1px solid var(--line); background: white; border-radius: 6px; overflow: hidden; }
+    .zoom button { border: none; padding: 8px 14px; background: transparent; cursor: pointer; font-size: 14px; }
+    .zoom button + button { border-left: 1px solid var(--line); }
+    .zoom button[aria-pressed="true"] { background: var(--ink); color: white; }
+    :is(select,button,summary,a,.viewport):focus-visible { outline: 3px solid #278f82; outline-offset: 2px; }
+    .zoom button:focus-visible { outline-offset: -4px; }
+    .panels { display: grid; grid-template-columns: repeat(var(--columns, 3), minmax(0, 1fr)); gap: clamp(10px, 1.1vw, 20px); }
+    .panels.with-pele { --columns: 4; }
+    .panel { min-width: 0; background: white; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+    .panel header, .metrics { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 13px 16px; }
+    .panel header { flex-wrap: wrap; }
+    h2 { display: inline-flex; align-items: center; gap: 8px; font-size: 19px; letter-spacing: -.025em; }
+    h2::before { content: ""; width: 9px; height: 9px; border-radius: 3px; background: var(--engine); }
+    [data-engine="dagre"] { --engine: #ae6636; }
+    [data-engine="elk"] { --engine: #4e6598; }
+    [data-engine="shoal"] { --engine: #118174; }
+    [data-engine="pele"] { --engine: #885778; }
+    .renderer-note, .metrics, .context, .instruction { color: var(--muted); font-size: 13px; }
+    .renderer-note:empty { display: none; }
+    .context { margin: 12px 0; min-height: 1.5em; }
+    .viewport, .missing { height: clamp(255px, 45vh, 540px); border-block: 1px solid var(--line); background-color: #fff; }
+    .viewport { overflow: auto; overscroll-behavior-x: contain; background-image: radial-gradient(#dce3df .75px, transparent .75px); background-size: 16px 16px; }
+    .viewport:focus-visible { outline-offset: -3px; }
+    .sheet { min-width: 100%; min-height: 100%; width: max-content; padding: 16px; display: grid; place-items: center; }
+    .sheet img { display: block; max-width: none; user-select: none; }
+    .fit .sheet { width: 100%; height: 100%; grid-template: minmax(0, 1fr) / minmax(0, 1fr); }
+    .fit img { width: 100% !important; height: 100% !important; object-fit: contain; }
+    .missing { display: grid; align-content: center; justify-items: start; gap: 8px; padding: clamp(18px, 4vw, 52px); background: #f7f8f5; }
+    .missing p { color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+    .metrics { align-items: flex-end; min-height: 60px; padding-block: 10px; }
+    .metrics span { display: block; }
+    .metrics b { color: var(--ink); font-variant-numeric: tabular-nums; font-weight: 600; }
+    a { color: var(--accent); text-underline-offset: 3px; }
+    .instruction { margin: 10px 0 20px; }
+    details { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    summary { width: fit-content; cursor: pointer; padding: 12px 2px; font-weight: 600; }
+    pre { max-height: 280px; margin: 0 0 14px; overflow: auto; padding: 14px 18px; background: #eaf0ec; border-radius: 5px; font: 13px/1.55 "IBM Plex Mono", ui-monospace, monospace; }
+    [hidden] { display: none !important; }
+    @media (max-width: 1200px) { .panels.with-pele { --columns: 2; } }
+    @media (max-width: 760px) { .panels { grid-template-columns: 1fr; } .viewport, .missing { height: clamp(230px, 40vh, 350px); } }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="brand">Merman</div>
+    <h1>Flowchart layout comparison</h1>
+    <div class="toolbar">
+      <div class="controls"><label for="diagram" class="field-label">Diagram</label><select id="diagram"></select></div>
+      <div class="controls" role="group" aria-label="Scale for all diagrams">
+        <span class="field-label">Scale</span>
+        <div class="zoom">
+          <button type="button" data-scale="fit" aria-pressed="true" title="Fit each drawing to its panel">Fit</button>
+          <button type="button" data-scale="1" aria-pressed="false" title="One CSS pixel per SVG unit in every panel">1:1</button>
+          <button type="button" data-scale="2" aria-pressed="false" title="Two CSS pixels per SVG unit in every panel">2×</button>
+        </div>
+      </div>
+    </div>
+    <div class="panels" id="panels"></div>
+    <p class="instruction">Fit scales each drawing independently. At 1:1 and 2×, the panels share a scale and scroll together.</p>
+    <details><summary>Mermaid source</summary><pre><code id="source"></code></pre></details>
+    <p class="context" id="context" aria-live="polite"></p>
+    <noscript>Enable JavaScript to switch diagrams and view the embedded SVGs.</noscript>
+  </main>
+  <template id="card">
+    <section class="panel">
+      <header><h2></h2><span class="renderer-note"></span></header>
+      <div class="viewport fit" role="region" tabindex="0"><div class="sheet"><img draggable="false" alt=""></div></div>
+      <div class="missing" hidden><strong>Drawing unavailable</strong><p></p></div>
+      <div class="metrics"><div><span class="geometry" title="Node count, edge count and SVG viewBox size"></span><span class="timing"></span></div><a>Save SVG</a></div>
+    </section>
+  </template>
+  <script type="application/json" id="gallery">__GALLERY_DATA__</script>
+  <script>
+    const { cases, measurement, pele } = JSON.parse(document.querySelector('#gallery').textContent);
+    const picker = document.querySelector('#diagram');
+    const panels = document.querySelector('#panels');
+    const engines = { dagre: 'Dagre', elk: 'ELK', shoal: 'Shoal' };
+    if (pele) engines.pele = `Pele ${pele.version}`;
+    panels.classList.toggle('with-pele', Boolean(pele));
+    const buttons = document.querySelectorAll('[data-scale]');
+    const urls = [];
+    let scale = 'fit';
+    let activeViewport;
+
+    function setScale(value) {
+      scale = value;
+      activeViewport = null;
+      for (const button of buttons) button.setAttribute('aria-pressed', String(button.dataset.scale === scale));
+      for (const viewport of panels.querySelectorAll('.viewport:not([hidden])')) {
+        const img = viewport.querySelector('img');
+        viewport.classList.toggle('fit', scale === 'fit');
+        if (scale !== 'fit') {
+          img.style.width = `${Number(img.dataset.width) * Number(scale)}px`;
+          img.style.height = `${Number(img.dataset.height) * Number(scale)}px`;
+        }
+        viewport.scrollTo(0, 0);
+      }
+    }
+
+    function linkScroll(viewport) {
+      for (const event of ['pointerdown', 'pointerenter', 'wheel', 'keydown', 'focus']) {
+        viewport.addEventListener(event, () => { activeViewport = viewport; }, { passive: true });
+      }
+      viewport.addEventListener('scroll', () => {
+        if (viewport !== activeViewport || scale === 'fit') return;
+        const dx = viewport.scrollWidth - viewport.clientWidth;
+        const dy = viewport.scrollHeight - viewport.clientHeight;
+        for (const peer of panels.querySelectorAll('.viewport:not([hidden])')) {
+          if (peer === viewport) continue;
+          if (dx > 0) peer.scrollLeft = viewport.scrollLeft / dx * (peer.scrollWidth - peer.clientWidth);
+          if (dy > 0) peer.scrollTop = viewport.scrollTop / dy * (peer.scrollHeight - peer.clientHeight);
+        }
+      }, { passive: true });
+    }
+
+    function makePanel(backend, item, output) {
+      const panel = document.querySelector('#card').content.firstElementChild.cloneNode(true);
+      const name = engines[backend];
+      panel.dataset.engine = backend;
+      panel.querySelector('h2').textContent = name;
+      const note = panel.querySelector('.renderer-note');
+      if (backend === 'shoal') note.textContent = 'Experimental';
+      if (backend === 'pele') {
+        note.textContent = 'Independent renderer';
+        const timing = panel.querySelector('.timing');
+        const observed = output.nodeTiming;
+        if (observed) {
+          timing.textContent = `Node.js · Source → SVG · ${observed.medianMs.toFixed(3)} ms median (${observed.warmMs.length} warm calls)`;
+          timing.title = `Warm render() calls on Node.js ${pele.nodeVersion} took ${observed.warmMs.map(ms => ms.toFixed(3)).join(', ')} ms. Package import, validation and file writing are outside this interval.`;
+        } else {
+          timing.textContent = 'Node.js · Untimed reference';
+        }
+      }
+      const viewport = panel.querySelector('.viewport');
+      const download = panel.querySelector('a');
+      if (output.error) {
+        viewport.hidden = true;
+        panel.querySelector('.missing').hidden = false;
+        panel.querySelector('.missing p').textContent = output.error;
+        download.hidden = true;
+        return panel;
+      }
+      // An image document isolates each renderer’s marker IDs, styles and HTML labels.
+      const url = URL.createObjectURL(new Blob([output.svg], { type: 'image/svg+xml;charset=utf-8' }));
+      urls.push(url);
+      const img = panel.querySelector('img');
+      img.src = url;
+      img.alt = `${name} rendering of ${item.name}`;
+      img.dataset.width = output.width;
+      img.dataset.height = output.height;
+      viewport.setAttribute('aria-label', `${name} drawing viewport`);
+      linkScroll(viewport);
+      download.href = url;
+      download.download = `${item.name.replace(/\.mmd$/i, '')}-${backend}.svg`;
+      download.setAttribute('aria-label', `Save ${name} SVG`);
+      const count = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+      panel.querySelector('.geometry').textContent = `${count(output.nodes, 'node')} · ${count(output.edges, 'edge')} · ${Math.round(output.width)} × ${Math.round(output.height)}`;
+      if (output.medianNs != null) {
+        const time = document.createElement('b');
+        time.textContent = `${(output.medianNs / 1e6).toFixed(3)} ms`;
+        panel.querySelector('.timing').append('SVG median ', time);
+      }
+      return panel;
+    }
+
+    function showDiagram() {
+      const item = cases[picker.selectedIndex];
+      panels.replaceChildren();
+      while (urls.length) URL.revokeObjectURL(urls.pop());
+      for (const [backend, output] of Object.entries(item.cards)) panels.append(makePanel(backend, item, output));
+      document.querySelector('#source').textContent = item.source;
+      let context = pele ? 'Native Rust · Untimed' : 'Visual example · Untimed';
+      if (item.comparison) {
+        const { samples, warmups, host, revision } = measurement;
+        context = `Exploratory timing · Native Rust · ${host} · ${samples} samples after ${warmups} warmups per process · Source to returned SVG`;
+        if (revision) context += ` · ${revision.slice(0, 9)}`;
+        if (item.comparison !== 'matching-inventories') context += ` · ${item.comparison.replaceAll('-', ' ')} comparison`;
+      }
+      document.querySelector('#context').textContent = context;
+      setScale(scale);
+    }
+
+    for (const item of cases) picker.add(new Option(item.name));
+    picker.addEventListener('change', showDiagram);
+    for (const button of buttons) button.addEventListener('click', () => setScale(button.dataset.scale));
+    showDiagram();
+  </script>
+</body>
+</html>

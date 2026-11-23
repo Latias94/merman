@@ -874,6 +874,13 @@ def main(argv=None):
     run = sub.add_parser("rust", help="run each sample in a fresh child process")
     layouts = sub.add_parser("rust-layouts", help="compare Dagre, ELK and Shoal on single-request flat Flowcharts")
     layouts.set_defaults(metric="clock", check_drawings=False, chrome=None, site_css_bytes=0)
+    gallery = sub.add_parser("layout-gallery", help="write an offline HTML comparison of Flowchart SVGs")
+    gallery.add_argument("sources", nargs="*", type=Path, help="additional Mermaid files to draw without native timing")
+    gallery.add_argument("--plan", type=Path, help="frozen single-request Flowchart plan")
+    gallery.add_argument("--comparison", type=Path, help="rust-layouts report for this plan and executable")
+    gallery.add_argument("--runner", type=Path, help="use a frozen public_workloads clock executable")
+    gallery.add_argument("--pele", action="store_true", help="add the locked Pele renderer and its separate Node.js SVG timing")
+    gallery.add_argument("--out", required=True, type=Path, help="standalone HTML output file")
     for command in (run, layouts):
         command.add_argument("--plan", required=True, type=Path)
         command.add_argument("--warmups", type=int, default=1, help="untimed workload passes before each observation")
@@ -920,6 +927,11 @@ def main(argv=None):
     if args.action in ("rust", "rust-layouts") and args.out.resolve() in {p.resolve() for p in (args.plan, args.runner) if p}:
         parser.error("choose a report output distinct from the frozen plan and runner")
     try:
+        if args.action == "layout-gallery":
+            from workload_layout_gallery import write_gallery
+
+            write_gallery(args)
+            return 0
         if args.action == "report":
             from workload_report import generate_report
 
