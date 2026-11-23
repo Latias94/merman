@@ -1145,8 +1145,8 @@ mod large_font_inventory {
                 &fontconfig,
                 r#"<?xml version="1.0"?>
 <fontconfig>
-  <dir prefix="relative">fonts</dir>
-  <cachedir prefix="relative">cache</cachedir>
+  <dir prefix="xdg">fonts</dir>
+  <cachedir prefix="xdg">fontconfig</cachedir>
   <alias><family>sans-serif</family><prefer><family>Cousine</family></prefer></alias>
 </fontconfig>"#,
             )
@@ -1172,6 +1172,7 @@ mod large_font_inventory {
                 command
                     .env("HOME", temp.path())
                     .env("XDG_DATA_HOME", temp.path())
+                    .env("XDG_CACHE_HOME", temp.path())
                     .env("FONTCONFIG_FILE", &fontconfig);
             }
             command
@@ -1239,7 +1240,15 @@ fn empty_fontconfig_policy_does_not_trigger_bounded_fallback() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::create_dir(temp.path().join("empty")).unwrap();
     let config = temp.path().join("fonts.conf");
-    std::fs::write(&config, "<?xml version=\"1.0\"?><fontconfig><dir prefix=\"relative\">empty</dir><cachedir prefix=\"relative\">cache</cachedir></fontconfig>").unwrap();
+    std::fs::write(
+        &config,
+        r#"<?xml version="1.0"?>
+<fontconfig>
+  <dir prefix="xdg">empty</dir>
+  <cachedir prefix="xdg">fontconfig</cachedir>
+</fontconfig>"#,
+    )
+    .unwrap();
     let input = temp.path().join("input.mmd");
     std::fs::write(&input, "flowchart LR\nA[Empty font policy]\n").unwrap();
     let mut modes = vec![Some("platform")];
@@ -1252,6 +1261,8 @@ fn empty_fontconfig_policy_does_not_trigger_bounded_fallback() {
             .arg("render")
             .arg(&input)
             .args(["--output=-", "--font-measurement=native"])
+            .env("XDG_DATA_HOME", temp.path())
+            .env("XDG_CACHE_HOME", temp.path())
             .env("FONTCONFIG_FILE", &config);
         if let Some(mode) = mode {
             command.args(["--font-system", mode]);
