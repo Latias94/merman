@@ -194,8 +194,8 @@ impl PlatformCatalog {
         })?;
         for id in ids {
             if let Some(family) = self.family(id, control)?
-                && let Some(candidate) = matching_candidate(&family, weight, stretch, style)
-                && let Some(result) = accept(candidate)?
+                && let Some(index) = matching_face_index(&family, weight, stretch, style)
+                && let Some(result) = accept(PlatformCandidate::from_family(&family, index))?
             {
                 return Ok(Some(result));
             }
@@ -243,14 +243,42 @@ impl PlatformCatalog {
         }
         // Shared symbols and combining characters don't identify a run's script on their own.
         // Keep the established fallback order for them before trying a scalar-only lookup.
+        let mut try_face = |family: &FamilyInfo, index| {
+            let candidate = PlatformCandidate::from_family(family, index);
+            match self.candidate_file(candidate, control)? {
+                Some(file) => accept(file),
+                None => Ok(None),
+            }
+        };
+        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+        let mut remaining_families = Vec::new();
         for family_id in self.fallback_families(character, control)? {
-            if let Some(family) = self.family(family_id, control)?
-                && let Some(candidate) =
-                    matching_candidate(&family, base.weight, base.stretch, base.style)
-                && let Some(candidate) = self.candidate_file(candidate, control)?
-                && let Some(id) = accept(candidate)?
-            {
+            let Some(family) = self.family(family_id, control)? else {
+                continue;
+            };
+            let Some(preferred) =
+                matching_face_index(&family, base.weight, base.stretch, base.style)
+            else {
+                continue;
+            };
+            if let Some(id) = try_face(&family, preferred)? {
                 return Ok(Some(id));
+            }
+            #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+            if family.fonts().len() > 1 {
+                remaining_families.push((family, preferred));
+            }
+        }
+        // A Fontconfig family can contain faces with different character coverage.
+        // Preserve the preferred cascade before trying other members of those families.
+        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+        for (family, preferred) in remaining_families {
+            for index in 0..family.fonts().len() {
+                if index != preferred
+                    && let Some(id) = try_face(&family, index)?
+                {
+                    return Ok(Some(id));
+                }
             }
         }
         #[cfg(windows)]
@@ -365,23 +393,18 @@ impl PlatformCatalog {
     }
 }
 
-fn matching_candidate(
+fn matching_face_index(
     family: &FamilyInfo,
     weight: Weight,
     stretch: Stretch,
     style: Style,
-) -> Option<PlatformCandidate> {
-    family
-        .match_font(
-            width(stretch),
-            platform_style(style),
-            FontWeight::new(f32::from(weight.0)),
-            false,
-        )
-        .map(|font| PlatformCandidate {
-            font: font.clone(),
-            family: family.name().to_owned(),
-        })
+) -> Option<usize> {
+    family.match_index(
+        width(stretch),
+        platform_style(style),
+        FontWeight::new(f32::from(weight.0)),
+        false,
+    )
 }
 
 fn platform_call<T>(call: impl FnOnce() -> T) -> Result<T, NativeFontError> {
@@ -528,6 +551,13 @@ fn family_names_match(table: name::Table<'_>, expected: &str) -> bool {
 }
 
 impl PlatformCandidate {
+    fn from_family(family: &FamilyInfo, index: usize) -> Self {
+        Self {
+            font: family.fonts()[index].clone(),
+            family: family.name().to_owned(),
+        }
+    }
+
     fn into_face(self) -> PlatformFace {
         PlatformFace {
             family: self.family,
@@ -684,16 +714,14 @@ mod tests {
     use super::*;
     use crate::fonts::registry::FontSourceRegistry;
 
-    fn test_catalog() -> PlatformCatalog {
+    fn test_catalog(cousine_faces: &[&str]) -> PlatformCatalog {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts");
         let mut collection = Collection::new(CollectionOptions {
             system_fonts: false,
             ..Default::default()
         });
-        collection.load_fonts_from_paths([
-            root.join("Cousine-Regular.ttf"),
-            root.join("NotoSans-Latin-subset.ttf"),
-        ]);
+        collection.load_fonts_from_paths(cousine_faces.iter().map(|name| root.join(name)));
+        collection.load_fonts_from_paths([root.join("NotoSans-Latin-subset.ttf")]);
         let first = collection.family_id("Cousine").unwrap();
         let second = collection.family_id("Noto Sans").unwrap();
         collection.set_generic_families(GenericFamily::SansSerif, [first, second].into_iter());
@@ -709,7 +737,7 @@ mod tests {
     #[test]
     fn generic_queries_stop_after_the_first_accepted_family() {
         for accepted in ["Cousine", "Noto Sans"] {
-            let catalog = test_catalog();
+            let catalog = test_catalog(&["Cousine-Regular.ttf"]);
             let mut visited = Vec::new();
             let result = catalog
                 .candidates(
@@ -741,7 +769,7 @@ mod tests {
     #[test]
     fn generic_query_stops_on_cancellation_or_admission_error() {
         for cancel in [false, true] {
-            let catalog = test_catalog();
+            let catalog = test_catalog(&["Cousine-Regular.ttf"]);
             let control = OperationControl::new();
             let result = catalog.candidates::<()>(
                 &usvg::FontFamily::SansSerif,
@@ -774,6 +802,36 @@ mod tests {
                 )
             });
             assert_eq!(catalog.family_queries.load(Ordering::Relaxed), 1);
+        }
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    #[test]
+    fn fontconfig_fallback_tries_preferred_faces_before_other_family_members() {
+        let catalog = test_catalog(&["Cousine-test-collection.ttc", "Cousine-Bold.ttf"]);
+        let base = binary_face(include_bytes!("../../tests/fonts/Cousine-Regular.ttf").to_vec());
+        let control = OperationControl::new();
+        let limits = NativeFontLimits {
+            max_files: 1,
+            ..Default::default()
+        };
+        // The regular Cousine subset has neither character. Noto Regular covers only 'f'.
+        for (character, expected) in [('f', "NotoSans-Regular"), ('!', "Cousine-Bold")] {
+            let registry = FontSourceRegistry::new(BTreeMap::new(), BTreeMap::new(), 0, 0);
+            let mut database = Arc::new(Database::new());
+            let id = catalog
+                .fallback(character, &base, &control, &registry, &mut |candidate| {
+                    registry.materialize(
+                        candidate,
+                        Some(character),
+                        &mut database,
+                        &limits,
+                        &control,
+                    )
+                })
+                .unwrap()
+                .expect("the cascade contains a covering face");
+            assert_eq!(database.face(id).unwrap().post_script_name, expected);
         }
     }
 

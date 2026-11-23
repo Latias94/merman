@@ -185,6 +185,9 @@ provider is platform, automatic selection and `--font-system on` fall back to bo
 discovery only when the runtime cannot load. Explicit `--font-system platform` reports
 that error instead. An intentionally empty Fontconfig configuration does not trigger
 fallback, and neither do font-data, resource-limit, or cancellation errors.
+For a missing character, the resolver tries each fallback family's preferred face first.
+If that cascade has no match, it tries the remaining faces in those families. This lets
+a sibling face cover a character missing from a subsetted font.
 
 Platform queries and metadata mappings run outside Merman's scan budgets.
 Selected font bytes use bounded immutable snapshots shared by measurement and
