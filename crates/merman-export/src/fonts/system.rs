@@ -1,6 +1,6 @@
 //! Bounded metadata discovery and operation-local binary snapshots.
 
-use super::registry::{read_bounded_into, snapshot_cmap};
+use super::registry::{checked_cmap_bytes, read_bounded_into};
 use super::resolver::{ExpectedFace, FontCandidate};
 use super::*;
 use usvg::fontdb::{Database, FaceInfo, ID, Source};
@@ -60,7 +60,7 @@ impl SystemCatalog {
             entries: 0,
             cmap_bytes: 0,
             descriptors: loader.descriptors.clone(),
-            hashes: loader.hashes.clone(),
+            hashes: loader.data_by_digest.keys().cloned().collect(),
             identity: Sha256::new(),
         };
         for root in roots {
@@ -211,15 +211,13 @@ impl Discovery<'_> {
         self.files = self.files.saturating_add(1);
         check_limit("system-files", self.files, self.limits.max_system_files)?;
         // Only the current fontdb borrows the file buffer. Catalog entries retain metadata.
-        let remaining = self.limits.max_system_scan_bytes.saturating_sub(self.bytes);
+        let budget = FontByteBudget::new(
+            "system-scan-bytes",
+            self.bytes,
+            self.limits.max_system_scan_bytes,
+        );
         let bytes = Arc::make_mut(&mut self.file_bytes);
-        read_bounded_into(
-            path,
-            remaining,
-            self.control,
-            OperationPhase::Admission,
-            bytes,
-        )?;
+        read_bounded_into(path, budget, self.control, OperationPhase::Admission, bytes)?;
         self.bytes = self.bytes.saturating_add(bytes.len());
         let digest = Sha256::digest(bytes.as_slice()).to_vec();
         if !self.hashes.insert(digest.clone()) {
@@ -286,6 +284,20 @@ fn coverage(
         .table(rustybuzz::ttf_parser::Tag::from_bytes(b"cmap"))
         .unwrap_or_default();
     snapshot_cmap(table, control, metadata_bytes, limits)
+}
+
+fn snapshot_cmap(
+    table: &[u8],
+    control: &OperationControl,
+    metadata_bytes: &mut usize,
+    limits: &NativeFontLimits,
+) -> Result<Vec<u8>, NativeFontError> {
+    let total = checked_cmap_bytes(table, control, *metadata_bytes, limits)?;
+    // Discovery keeps the table after releasing the temporary font buffer.
+    let snapshot = table.to_vec();
+    control.terminal_checkpoint_at(OperationPhase::Admission)?;
+    *metadata_bytes = total;
+    Ok(snapshot)
 }
 
 fn cmap_supports(
@@ -762,10 +774,70 @@ mod tests {
             context.check(),
             Err(NativeFontError::Limit {
                 resource: "system-font-bytes",
-                ..
-            })
+                actual,
+                limit,
+            }) if actual == max_bytes + 1 && limit == max_bytes
         ));
         assert_eq!(context.resident_font_bytes(), resident);
+    }
+
+    #[test]
+    fn discovery_reuses_either_explicit_copy_after_the_files_are_removed() {
+        let root = Root::new();
+        let first = root.copy("Cousine-Regular.ttf");
+        let second = root.0.join("copy.ttf");
+        fs::copy(&first, &second).unwrap();
+        let bytes = fs::read(&first).unwrap();
+        let limits = NativeFontLimits {
+            max_files: 2,
+            max_bytes: bytes.len() * 2,
+            ..Default::default()
+        };
+        let control = OperationControl::new();
+        let context = NativeFontOptions::default()
+            .with_font_file(&first)
+            .with_font_file(&second)
+            .with_limits(limits.clone())
+            .load(&control)
+            .unwrap();
+        fs::remove_file(&first).unwrap();
+        fs::remove_file(&second).unwrap();
+        let mut database = context.fontdb_for_export();
+        let metadata = database.faces().next().unwrap().clone();
+        for path in [second, first] {
+            let id = context
+                .0
+                .sources
+                .materialize(
+                    FontCandidate::File {
+                        path,
+                        index: metadata.index,
+                        expected: ExpectedFace::Bounded {
+                            metadata: metadata.clone(),
+                            digest: Sha256::digest(&bytes).to_vec(),
+                        },
+                    },
+                    None,
+                    &mut database,
+                    &limits,
+                    &control,
+                )
+                .unwrap();
+            assert_eq!(id, Some(metadata.id));
+        }
+        assert_eq!(context.resident_font_bytes(), bytes.len());
+    }
+
+    #[test]
+    fn replacing_an_explicit_file_between_inputs_aborts_loading() {
+        let root = Root::new();
+        let path = root.copy("Cousine-Regular.ttf");
+        let mut loader = FontLoader::new(NativeFontLimits::default(), OperationControl::new());
+        loader.file(&path).unwrap();
+        fs::write(&path, include_bytes!("../../tests/fonts/Cousine-Bold.ttf")).unwrap();
+        assert!(
+            matches!(loader.file(&path), Err(NativeFontError::Source { path: changed, .. }) if changed == path)
+        );
     }
 
     #[test]
@@ -990,7 +1062,7 @@ mod tests {
                 &OperationControl::new(),
             ),
             Err(NativeFontError::Limit {
-                resource: "system-font-bytes",
+                resource: "system-scan-bytes",
                 actual,
                 limit,
             }) if actual == byte_count && limit == byte_count - 1

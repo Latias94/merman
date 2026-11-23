@@ -143,6 +143,7 @@ impl From<FontStyle> for fontdb::Style {
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct Font {
     pub(crate) families: Vec<FontFamily>,
+    pub(crate) language: Option<String>,
     pub(crate) style: FontStyle,
     pub(crate) stretch: FontStretch,
     pub(crate) weight: u16,
@@ -150,6 +151,11 @@ pub struct Font {
 }
 
 impl Font {
+    /// Effective language used for native family matching, including the context default.
+    pub fn selection_language(&self) -> Option<&str> {
+        self.language.as_deref()
+    }
+
     /// A list of family names.
     ///
     /// Never empty. Uses `usvg::Options::font_family` as fallback.

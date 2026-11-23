@@ -44,7 +44,9 @@ axis coordinates to reach shaping and both raster and PDF outlines.
 
 macOS platform queries use Core Text descriptors for one requested family at a time and retain
 the selected native face. `write-fonts` 0.48.1, already in the PDF dependency graph, assembles that
-face's tables into a bounded standalone SFNT. These adapters preserve the existing usvg/fontdb
+face's tables into a bounded standalone SFNT. Collections whose members share a dominant
+outline table can use one verified, bounded TTC backing across the selected faces.
+These adapters preserve the existing usvg/fontdb
 handoff and do not require another renderer fork. Native non-default variation coordinates and
 oversized bitmap-font tables remain separate instance/data-interface work. A future published
 usvg fork must keep one package identity across Merman, resvg and krilla-svg; a root workspace

@@ -511,6 +511,11 @@ fn convert_font(node: SvgNode, state: &converter::State) -> Font {
 
     Font {
         families,
+        language: node
+            .find_attribute::<&str>(AId::XmlLang)
+            .or(state.opt.text_fallback.language.as_deref())
+            .filter(|tag| crate::text::is_language_tag(tag))
+            .map(str::to_ascii_lowercase),
         style,
         stretch,
         weight,

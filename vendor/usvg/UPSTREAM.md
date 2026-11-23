@@ -6,11 +6,15 @@ built from [resvg `3a0fdba53ccf2d346b54cc53ba7adf0ee60d0707`](https://github.com
 The Cargo manifest disables publication. The runtime source and both upstream license files
 are copied from the archive.
 
-The change in `src/text/layout.rs` shapes a missing cluster in its original direction and
-surrounding context. A successful fallback replaces that cluster and keeps existing glyphs.
-Adjacent spans with matching shaping properties share a run. `Options::set_text_fallback`
-lets the font host consider the authored family stack, inherited `xml:lang`, and the complete
-cluster text. The returned relative size affects glyph advances, outlines and PDF spans.
+The change in `src/text/layout.rs` shapes missing text in its original direction and
+surrounding context. Consecutive missing clusters resolved to the same face, scale and
+script are shaped together, preserving ligatures and joining. Glyphs already supplied
+by the primary face keep their original positions within their cluster. Adjacent spans
+with matching shaping properties and equivalent language tags share a run.
+`Font::selection_language` supplies the effective language to primary family matching.
+`Options::set_text_fallback` lets the font host consider the authored family stack,
+inherited `xml:lang`, and complete cluster text. The returned relative size affects
+glyph advances, outlines and PDF spans.
 The scalar resolver remains available for existing callers. Upstream
 [resvg #1087](https://github.com/linebender/resvg/pull/1087) discusses cluster replacement.
 

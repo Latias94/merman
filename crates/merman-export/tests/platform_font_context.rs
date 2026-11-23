@@ -355,6 +355,62 @@ fn fallback_receives_and_repairs_a_complete_combining_cluster() {
 
 #[cfg(target_os = "macos")]
 #[test]
+#[ignore = "requires macOS Helvetica and its system math fallback; run explicitly in CI"]
+fn macos_math_cluster_finds_a_covering_face_within_the_snapshot_budget() {
+    let budget = 64 * 1024 * 1024;
+    let context = NativeFontOptions::default()
+        .with_system_fonts(true)
+        .with_limits(NativeFontLimits {
+            max_bytes: budget,
+            ..Default::default()
+        })
+        .load_platform(&OperationControl::new())
+        .unwrap()
+        .with_strict_glyph_coverage(true);
+    assert_text_advance_and_faces(&context, "Helvetica", "ℝ\u{20d7}");
+    let faces = context.selected_faces();
+    assert_eq!(faces.len(), 1, "one face must shape the cluster: {faces:?}");
+    assert!(!faces[0].contains("Emoji"), "{faces:?}");
+    assert!(
+        context.face_count() <= 2,
+        "only the base and fallback may be resident"
+    );
+    assert!(context.resident_font_bytes() <= budget);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "requires macOS Apple Color Emoji; run explicitly in CI"]
+fn macos_authored_emoji_face_is_skipped_before_acquiring_its_bitmap() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fonts");
+    let context = NativeFontOptions::default()
+        .with_font_file(root.join("MermanProbeBase.ttf"))
+        .with_font_file(root.join("Cousine-Regular.ttf"))
+        .with_system_fonts(true)
+        .with_limits(NativeFontLimits {
+            max_bytes: 64 * 1024 * 1024,
+            ..Default::default()
+        })
+        .load_platform(&OperationControl::new())
+        .unwrap()
+        .with_strict_glyph_coverage(true);
+    let resident = context.resident_font_bytes();
+    let family = "MermanProbeBase, Apple Color Emoji, Cousine";
+    let text = "f\u{301}i";
+    assert_text_advance_and_faces(&context, family, text);
+    let export = context.for_export(&OperationControl::new()).unwrap();
+    let tree = paint_text(&export, family, text);
+    assert_eq!(
+        painted_faces(&tree, "left"),
+        ["Cousine-Regular", "Cousine-Regular", "MermanProbeBase"]
+    );
+    export.check().unwrap();
+    assert_eq!(context.resident_font_bytes(), resident);
+    assert_eq!(export.resident_font_bytes(), resident);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
 #[ignore = "requires the macOS regional Han fonts; run explicitly in CI"]
 fn core_text_inherits_svg_language_and_keeps_regional_fallbacks_separate() {
     let context = options()
@@ -521,6 +577,121 @@ fn macos_unregistered_explicit_font_can_use_authorized_system_fallback() {
             .unwrap()
             .is_none()
     );
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "requires the macOS Helvetica collection and Arial; run explicitly in CI"]
+fn macos_collection_weights_share_one_file_slot_across_export() {
+    let context = NativeFontOptions::default()
+        .with_system_fonts(true)
+        .with_limits(NativeFontLimits {
+            max_files: 1,
+            ..Default::default()
+        })
+        .load_platform(&OperationControl::new())
+        .unwrap();
+    let regular = style("Helvetica");
+    assert!(advance(&context, "AVA", &regular) > 0.0);
+    let export = context.for_export(&OperationControl::new()).unwrap();
+    let bold = TextStyle {
+        font_weight: Some("700".to_owned()),
+        ..regular
+    };
+    assert!(advance(&export, "AVA", &bold) > 0.0);
+    assert_eq!(export.face_count(), 2);
+    assert_eq!(context.face_count(), 1);
+    assert!(export.measure(request("AVA", &style("Arial"))).is_err());
+    assert!(matches!(
+        export.check(),
+        Err(NativeFontError::Limit {
+            resource: "system-snapshot-files",
+            actual: 2,
+            limit: 1
+        })
+    ));
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "requires the macOS Heiti SC and TC shared-outline collection"]
+fn macos_heiti_sc_and_tc_share_outline_bytes_through_export() {
+    let context = NativeFontOptions::default()
+        .with_system_fonts(true)
+        .load_platform(&OperationControl::new())
+        .unwrap();
+    let mut bytes = None;
+    for family in ["Heiti SC", "Heiti TC"] {
+        let light = TextStyle {
+            font_weight: Some("300".to_owned()),
+            ..style(family)
+        };
+        assert!(advance(&context, "漢字", &light) > 0.0);
+        let resident = context.resident_font_bytes();
+        assert!(resident > 0 && resident <= NativeFontLimits::default().max_bytes);
+        assert_eq!(*bytes.get_or_insert(resident), resident);
+    }
+    assert_eq!(context.face_count(), 2);
+    let export = context.for_export(&OperationControl::new()).unwrap();
+    let mut options = usvg::Options::default();
+    export.apply_to_usvg_options(&mut options);
+    let tree = usvg::Tree::from_str(r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="60" font-weight="300"><text id="sc" y="20" font-family="Heiti SC">漢字</text><text id="tc" y="50" font-family="Heiti TC">漢字</text></svg>"#, &options).unwrap();
+    let mut painted = BTreeSet::new();
+    for id in ["sc", "tc"] {
+        for span in painted_text(&tree, id).layouted() {
+            for glyph in &span.positioned_glyphs {
+                assert_ne!(glyph.id.0, 0);
+                let face = tree.fontdb().face(glyph.font).unwrap();
+                painted.insert(format!("{}#{}", face.post_script_name, face.index));
+            }
+        }
+    }
+    assert_eq!(painted.len(), 2);
+    assert_eq!(painted, context.selected_faces().into_iter().collect());
+    export.check().unwrap();
+    assert_eq!(export.resident_font_bytes(), context.resident_font_bytes());
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn macos_variations_share_one_primary_selection_per_css_weight() {
+    let context = NativeFontOptions::default()
+        .with_font_file(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fonts/MermanVariableWeight.ttf"),
+        )
+        .with_system_fonts(true)
+        .with_limits(NativeFontLimits {
+            max_selection_entries: 1,
+            ..Default::default()
+        })
+        .load_platform(&OperationControl::new())
+        .unwrap();
+    let mut options = usvg::Options::default();
+    context.apply_to_usvg_options(&mut options);
+    let ink_width = |css_weight: u16, axis_weight: u16| -> Result<f32, NativeFontError> {
+        let svg = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="160" height="60">
+                <text id="sample" y="45" font-family="Merman Variable Weight" font-size="32"
+                      font-weight="{css_weight}" font-variation-settings="'wght' {axis_weight}">AV</text>
+            </svg>"#
+        );
+        let tree = usvg::Tree::from_str(&svg, &options).unwrap();
+        context.check()?;
+        let sample = painted_text(&tree, "sample");
+        Ok(sample.flattened().bounding_box().width())
+    };
+
+    let thin = ink_width(400, 100).unwrap();
+    let bold = ink_width(400, 700).unwrap();
+    assert!(thin < bold);
+    assert!(matches!(
+        ink_width(700, 700),
+        Err(NativeFontError::Limit {
+            resource: "font-selections",
+            actual: 2,
+            limit: 1,
+        })
+    ));
 }
 
 #[cfg(target_os = "macos")]

@@ -138,6 +138,14 @@ The payload remains schema `1`, including source occurrence order and duplicate 
 [current migration](../migrations/render-reuse-host-integration.md#migrate-edge-geometry-budgets)
 when updating an integration that relied on the old SVG-limit error.
 
+## Native font data budget
+
+`NativeFontLimits::max_bytes` defaults to 256 MiB for explicit font inputs and
+selected system font data combined in one native context. To override this budget
+independently of `RenderResourcePolicy`, pass the limits to `NativeFontOptions::with_limits`
+before loading the context. Bounded system discovery charges temporary reads to
+`max_system_scan_bytes`.
+
 ## Native font measurement budget
 
 Native-font measurement has its own per-operation provider limit, separate from

@@ -130,7 +130,10 @@ impl NativeFontDiagnostics {
         &self.identity
     }
 
-    /// Names and collection indices selected by successful native shaping probes.
+    /// Faces used by successful native shaping probes, reported as `PostScriptName#N`.
+    /// `N` is the zero-based face index in the font bytes used for measurement. A face
+    /// extracted from a system collection into a standalone font has index `0`.
+    /// Compare indices across layout and painting only when both use the same font bytes.
     pub fn selected_faces(&self) -> &[String] {
         &self.selected_faces
     }

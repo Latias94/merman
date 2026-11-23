@@ -159,6 +159,7 @@ pub(crate) fn execute_graphical(
         #[cfg(feature = "markdown")]
         writes_document,
     )
+    .map_err(CliError::with_graphical_limit_help)
 }
 
 #[cfg(feature = "rustdoc")]
@@ -411,7 +412,9 @@ fn execute_graphical_with_pipeline(
                     .as_ref()
                     .map(|context| context.for_operation(control));
                 if let Some(context) = &font_context {
-                    context.check().map_err(super::prepare::native_font_error)?;
+                    context
+                        .check()
+                        .map_err(|error| super::prepare::native_font_error(error, &[]))?;
                 }
                 prepared.output.clone().with_font_context(font_context)
             };
@@ -607,7 +610,10 @@ fn report_export_font_resolution(
         || fonts.notdef_glyph_count() != 0
     {
         crate::diagnostics::DiagnosticSink::new(quiet, stderr).info(format!(
-            "warning: native export font resolution is incomplete: unresolved font request={}; unresolved glyph fallback={}; .notdef glyphs={}; provide fonts covering the output text",
+            "warning: native export font resolution is incomplete: unresolved font request={}; \
+             unresolved glyph fallback={}; .notdef glyphs={}\n\
+             help: some text may be missing from the output. Choose a font family that covers \
+             the text or pass --font-file PATH for each required font.",
             fonts.unresolved_font_request(),
             fonts.unresolved_glyph_fallback(),
             fonts.notdef_glyph_count(),

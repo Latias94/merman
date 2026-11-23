@@ -85,6 +85,89 @@ fn native_measurement_diagnostics_describe_the_executing_svg() {
 }
 
 #[test]
+fn cumulative_font_byte_limit_preserves_output_and_gives_a_working_retry() {
+    assert_eq!(
+        merman::svg::export::NativeFontLimits::default().max_bytes,
+        256 * 1024 * 1024
+    );
+    let regular = font();
+    let bold = std::path::Path::new(&regular).with_file_name("Cousine-Bold.ttf");
+    let total =
+        std::fs::metadata(&regular).unwrap().len() + std::fs::metadata(&bold).unwrap().len();
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("diagram.svg");
+    let destination = path.to_str().unwrap();
+    let previous = b"previous diagram";
+    std::fs::write(&path, previous).unwrap();
+
+    let render = |output: &str, size: &str| {
+        run_with_stdin(
+            &[
+                "render",
+                "-",
+                "--output",
+                output,
+                "--font-file",
+                &regular,
+                "--font-file",
+                bold.to_str().unwrap(),
+                "--font-system=off",
+                "--font-max-bytes",
+                size,
+            ],
+            "flowchart LR\nA[Font budget]\n",
+        )
+    };
+    let too_small = (total - 1).to_string();
+    let file_failure = render(destination, &too_small);
+    let stdout_failure = render("-", &too_small);
+    for failure in [&file_failure, &stdout_failure] {
+        let stderr = String::from_utf8_lossy(&failure.stderr);
+        assert_eq!(failure.status.code(), Some(3), "{stderr}");
+        assert!(failure.stdout.is_empty(), "{stderr}");
+        assert!(stderr.contains(&total.to_string()), "{stderr}");
+        assert!(stderr.contains(&too_small), "{stderr}");
+    }
+    assert_eq!(std::fs::read(&path).unwrap(), previous);
+
+    let stderr = String::from_utf8_lossy(&file_failure.stderr);
+    let suggested = stderr
+        .split_once("--font-max-bytes ")
+        .and_then(|(_, rest)| rest.split_whitespace().next())
+        .unwrap_or_else(|| panic!("missing --font-max-bytes retry value: {stderr}"));
+    let retry = render(destination, suggested);
+    assert!(
+        retry.status.success(),
+        "--font-max-bytes {suggested}: {}",
+        String::from_utf8_lossy(&retry.stderr)
+    );
+    let artifact = std::fs::read_to_string(&path).unwrap();
+    let document = roxmltree::Document::parse(&artifact).unwrap();
+    assert!(document.root_element().has_tag_name("svg"));
+
+    let exact = total.to_string();
+    for size in [exact.as_str(), "1MiB"] {
+        let output = render("-", size);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(output.status.success(), "{size}: {stderr}");
+        assert!(String::from_utf8_lossy(&output.stdout).contains("<svg"));
+    }
+}
+
+#[test]
+fn invalid_font_byte_limits_fail_before_rendering() {
+    for size in ["0", "1.5MiB"] {
+        let invalid = run_with_stdin(
+            &["mmdc", "--input=-", "--output=-", "--font-max-bytes", size],
+            "flowchart LR\nA --> B\n",
+        );
+        let stderr = String::from_utf8_lossy(&invalid.stderr);
+        assert_eq!(invalid.status.code(), Some(2), "{size}: {stderr}");
+        assert!(invalid.stdout.is_empty(), "{size}: {stderr}");
+    }
+}
+
+#[test]
 fn exhausted_measurement_budget_explains_how_to_retry() {
     let font = font();
     let source = "flowchart LR\nA[Measure this label] --> B[Destination]\n";
@@ -112,7 +195,8 @@ fn exhausted_measurement_budget_explains_how_to_retry() {
             assert!(output.stdout.is_empty(), "no partial SVG may be published");
             assert!(stderr.contains("native_font_measurements"), "{stderr}");
             assert!(stderr.contains("actual=2 maximum=1"), "{stderr}");
-            assert!(stderr.contains("--font-max-measurements"), "{stderr}");
+            assert!(stderr.contains("--font-max-measurements 16384"), "{stderr}");
+            assert!(!stderr.contains("--font-max-bytes"), "{stderr}");
             assert!(
                 stderr.contains("resource profiles do not change"),
                 "{stderr}"
@@ -123,7 +207,7 @@ fn exhausted_measurement_budget_explains_how_to_retry() {
             );
         }
         let mut retry = args;
-        retry[6] = "--font-max-measurements=8192";
+        retry[6] = "--font-max-measurements=16384";
         let output = svg(&retry, source);
         assert!(output.contains("<svg"));
     }
@@ -169,6 +253,35 @@ fn raw_svg_rejects_native_measurement_budget() {
     assert_eq!(output.status.code(), Some(2), "{stderr}");
     assert!(output.stdout.is_empty());
     assert!(stderr.contains("raw SVG is not relaid out"), "{stderr}");
+}
+
+#[cfg(feature = "png")]
+#[test]
+fn raw_svg_font_byte_limit_applies_to_native_painting() {
+    let source = r#"<svg xmlns="http://www.w3.org/2000/svg" width="50" height="20"><text y="14" font-family="Cousine">ABC</text></svg>"#;
+    let mut args = vec![
+        "render",
+        "-",
+        "--input-kind=svg",
+        "--format=png",
+        "--output=-",
+        "--font-max-bytes=1MiB",
+    ];
+    let missing_context = run_with_stdin(&args, source);
+    let stderr = String::from_utf8_lossy(&missing_context.stderr);
+    assert_eq!(missing_context.status.code(), Some(2), "{stderr}");
+    assert!(missing_context.stdout.is_empty());
+    assert!(stderr.contains("--font-system on"), "{stderr}");
+
+    let font = font();
+    args.extend(["--font-file", &font]);
+    let painted = run_with_stdin(&args, source);
+    assert!(
+        painted.status.success(),
+        "{}",
+        String::from_utf8_lossy(&painted.stderr)
+    );
+    assert!(painted.stdout.starts_with(b"\x89PNG\r\n\x1a\n"));
 }
 
 #[cfg(feature = "markdown")]
@@ -388,25 +501,16 @@ fn native_cli_sizes_node_text_without_a_title() {
 #[test]
 fn compiled_native_feature_does_not_change_default_rendering() {
     let source = "---\nconfig:\n  fontFamily: Cousine\n---\nflowchart LR\nA-->B\n";
-    let implicit = svg(
-        &["mmdc", "-i", "-", "-o", "-", "--svgId", "unchanged"],
-        source,
-    );
-    let explicit = svg(
-        &[
-            "mmdc",
-            "-i",
-            "-",
-            "-o",
-            "-",
-            "--svgId",
-            "unchanged",
-            "--font-measurement",
-            "deterministic",
-        ],
-        source,
-    );
-    assert_eq!(implicit, explicit);
+    let args = ["mmdc", "-i", "-", "-o", "-", "--svgId", "unchanged"];
+    let implicit = svg(&args, source);
+    for options in [
+        ["--font-measurement", "deterministic"],
+        ["--font-max-bytes", "1"],
+    ] {
+        let mut explicit = args.to_vec();
+        explicit.extend(options);
+        assert_eq!(implicit, svg(&explicit, source), "{options:?}");
+    }
 }
 
 #[test]
@@ -587,6 +691,7 @@ fn native_font_budget_failure_aborts_the_entire_batch_publication() {
                     || diagnostic.contains("label-bytes"),
                 "expected the native font label budget, not another failure: {diagnostic}"
             );
+            assert!(!diagnostic.contains("--font-max-bytes"), "{diagnostic}");
             assert!(
                 diagnostic.contains("Markdown chart 2 at line 5, column 1"),
                 "expected the second fence location: {diagnostic}"
@@ -1013,15 +1118,44 @@ fn contradictory_or_unavailable_font_modes_fail_without_output() {
 }
 
 #[cfg(feature = "platform-system-font-query")]
+mod platform_fonts {
+    use merman::svg::export::{NativeFontContext, NativeFontOptions};
+
+    pub(super) const FONTCONFIG_UNAVAILABLE: &str =
+        "platform system font service Fontconfig is unavailable";
+
+    pub(super) fn context_with_cousine() -> Option<NativeFontContext> {
+        // An explicit face keeps an empty system catalog usable for this availability check.
+        let options = NativeFontOptions::default()
+            .with_font_file(super::font())
+            .with_system_fonts(true);
+        match options.load_platform(&merman::OperationControl::new()) {
+            Ok(context) => Some(context),
+            #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+            Err(merman::svg::export::NativeFontError::PlatformDiscoveryUnavailable {
+                service: "Fontconfig",
+            }) => None,
+            Err(error) => panic!("loading the platform font context with Cousine failed: {error}"),
+        }
+    }
+
+    #[track_caller]
+    pub(super) fn assert_error(output: &std::process::Output, mode: &str, expected: &str) {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert_eq!(output.status.code(), Some(3), "{mode}: {stderr}");
+        assert!(output.stdout.is_empty(), "{mode} wrote to stdout");
+        let error = stderr.lines().next_back().unwrap_or_default();
+        assert!(
+            error.contains(expected),
+            "{mode}: expected {expected:?}, got {stderr}"
+        );
+    }
+}
+
+#[cfg(feature = "platform-system-font-query")]
 #[test]
 fn explicit_platform_query_uses_shared_context_and_respects_explicit_fonts() {
     let font = font();
-    let control = merman::OperationControl::new();
-    let context = merman::svg::export::NativeFontOptions::default()
-        .with_font_file(&font)
-        .with_system_fonts(true)
-        .load_platform(&control)
-        .unwrap();
     let source = "---\nconfig:\n  fontFamily: Cousine\n  htmlLabels: false\n---\nflowchart LR\nA[Native measurement]\n";
     let render = |system| {
         run_with_stdin(
@@ -1038,19 +1172,32 @@ fn explicit_platform_query_uses_shared_context_and_respects_explicit_fonts() {
             source,
         )
     };
-    let platform = render("platform");
+    let assert_cousine = |output: &std::process::Output, identity: &str| {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(output.status.success(), "{stderr}");
+        assert!(!output.stdout.is_empty());
+        let expected = format!("native measurement faces: Cousine-Regular#0; context {identity}");
+        assert_eq!(measurement_notices(&stderr), [expected.as_str()]);
+    };
+    let closed_context = merman::svg::export::NativeFontOptions::default()
+        .with_font_file(&font)
+        .load(&merman::OperationControl::new())
+        .unwrap();
     let closed = render("off");
-    let stderr = String::from_utf8_lossy(&platform.stderr);
-    assert!(platform.status.success(), "{stderr}");
-    assert!(closed.status.success(), "{:?}", closed.stderr);
-    assert!(!platform.stdout.is_empty());
+    assert_cousine(&closed, closed_context.identity());
+
+    let platform = render("platform");
+    let Some(platform_context) = platform_fonts::context_with_cousine() else {
+        platform_fonts::assert_error(
+            &platform,
+            "platform",
+            platform_fonts::FONTCONFIG_UNAVAILABLE,
+        );
+        return;
+    };
+    assert_cousine(&platform, platform_context.identity());
+    assert_ne!(platform_context.identity(), closed_context.identity());
     assert_eq!(platform.stdout, closed.stdout);
-    let expected = format!(
-        "native measurement faces: Cousine-Regular#0; context {}",
-        context.identity()
-    );
-    assert_eq!(measurement_notices(&stderr), [expected.as_str()]);
-    assert!(!String::from_utf8_lossy(&closed.stderr).contains(context.identity()));
 }
 
 #[cfg(all(
@@ -1197,6 +1344,7 @@ mod large_font_inventory {
             stderr.contains("native font limit system-cmap-bytes exceeded"),
             "{stderr}"
         );
+        assert!(!stderr.contains("--font-max-bytes"), "{stderr}");
         assert!(bounded.stdout.is_empty());
         assert!(!temp.path().join("bounded.png").exists());
 
@@ -1227,6 +1375,12 @@ mod large_font_inventory {
             let stderr = String::from_utf8_lossy(&incomplete.stderr);
             assert!(incomplete.status.success(), "{stderr}");
             assert!(stderr.contains(missing_glyph_warning), "{stderr}");
+            let latin_only = fs::read(temp.path().join("latin-only.png")).unwrap();
+            assert!(latin_only.starts_with(b"\x89PNG\r\n\x1a\n"));
+            assert!(
+                latin_only != platform,
+                "the missing Han glyph must affect the PNG"
+            );
         }
         if cfg!(any(windows, feature = "platform-system-font-default")) {
             let default = render_complete_png("default.png", &[]);
@@ -1236,8 +1390,7 @@ mod large_font_inventory {
 }
 
 #[cfg(all(target_os = "linux", feature = "platform-system-font-query"))]
-#[test]
-fn empty_fontconfig_policy_does_not_trigger_bounded_fallback() {
+fn check_fontconfig_fallback(render_option: &str) {
     let temp = tempfile::tempdir().unwrap();
     std::fs::create_dir(temp.path().join("empty")).unwrap();
     let config = temp.path().join("fonts.conf");
@@ -1250,34 +1403,103 @@ fn empty_fontconfig_policy_does_not_trigger_bounded_fallback() {
 </fontconfig>"#,
     )
     .unwrap();
+    // Bounded discovery can find Cousine even on a host with no installed fonts.
+    let fonts = temp.path().join("fonts");
+    std::fs::create_dir(&fonts).unwrap();
+    std::fs::copy(font(), fonts.join("Cousine-Regular.ttf")).unwrap();
     let input = temp.path().join("input.mmd");
-    std::fs::write(&input, "flowchart LR\nA[Empty font policy]\n").unwrap();
-    let mut modes = vec![Some("platform")];
-    if cfg!(feature = "platform-system-font-default") {
-        modes.extend([Some("on"), None]);
+    std::fs::write(&input, "---\nconfig:\n  fontFamily: Cousine\n  htmlLabels: false\n---\nflowchart LR\nA[Empty font policy]\n").unwrap();
+    // Give only the child process an unloadable Fontconfig, keeping its other library paths.
+    std::fs::write(
+        temp.path().join("libfontconfig.so.1"),
+        b"unloadable test library",
+    )
+    .unwrap();
+    let mut library_dirs = vec![temp.path().to_owned()];
+    if let Some(paths) = std::env::var_os("LD_LIBRARY_PATH") {
+        library_dirs.extend(std::env::split_paths(&paths));
     }
-    for mode in modes {
+    let unavailable_path = std::env::join_paths(library_dirs).unwrap();
+    let render = |mode: Option<&str>, library_path: Option<&std::ffi::OsStr>| {
         let mut command = std::process::Command::new(assert_cmd::cargo_bin!("merman-cli"));
-        command
-            .arg("render")
-            .arg(&input)
-            .args(["--output=-", "--font-measurement=native"])
-            .env("XDG_DATA_HOME", temp.path())
-            .env("XDG_DATA_DIRS", temp.path())
-            .env("XDG_CACHE_HOME", temp.path())
-            .env("FONTCONFIG_FILE", &config);
+        command.arg("render").arg(&input).args([
+            "--output=-",
+            "--svg-id=fontconfig-fallback",
+            render_option,
+        ]);
         if let Some(mode) = mode {
             command.args(["--font-system", mode]);
         }
-        let output = command.output().unwrap();
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(!output.status.success(), "{mode:?}: {stderr}");
-        assert!(output.stdout.is_empty(), "{mode:?}");
-        assert!(
-            stderr.contains("no usable font faces"),
-            "{mode:?}: {stderr}"
+        if let Some(path) = library_path {
+            command.env("LD_LIBRARY_PATH", path);
+        }
+        command
+            .env("FONTCONFIG_FILE", &config)
+            .env("HOME", temp.path())
+            .env("XDG_DATA_HOME", temp.path())
+            .env("XDG_DATA_DIRS", temp.path())
+            .env("XDG_CACHE_HOME", temp.path())
+            .output()
+            .unwrap()
+    };
+    let bounded = render(Some("bounded"), None);
+    let bounded_stderr = String::from_utf8_lossy(&bounded.stderr);
+    assert!(bounded.status.success(), "{bounded_stderr}");
+    assert!(!bounded.stdout.is_empty());
+    assert!(
+        !measurement_notices(&bounded_stderr).is_empty(),
+        "{bounded_stderr}"
+    );
+    for (library_path, available) in [
+        (None, platform_fonts::context_with_cousine().is_some()),
+        (Some(unavailable_path.as_os_str()), false),
+    ] {
+        let platform_error = if available {
+            "no usable font faces"
+        } else {
+            platform_fonts::FONTCONFIG_UNAVAILABLE
+        };
+        platform_fonts::assert_error(
+            &render(Some("platform"), library_path),
+            "platform",
+            platform_error,
         );
+        for mode in [None, Some("on")] {
+            let output = render(mode, library_path);
+            let name = mode.unwrap_or("default");
+            if available && cfg!(feature = "platform-system-font-default") {
+                platform_fonts::assert_error(&output, name, platform_error);
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                assert!(
+                    output.status.success(),
+                    "{name}, {platform_error}: {stderr}"
+                );
+                assert_eq!(output.stdout, bounded.stdout, "{name}, {platform_error}");
+            }
+        }
     }
+}
+
+#[cfg(all(target_os = "linux", feature = "platform-system-font-query"))]
+#[test]
+fn fontconfig_availability_controls_automatic_fallback() {
+    let option = if cfg!(feature = "png") {
+        "--format=png"
+    } else {
+        "--font-measurement=native"
+    };
+    check_fontconfig_fallback(option);
+}
+
+#[cfg(all(
+    target_os = "linux",
+    feature = "platform-system-font-query",
+    feature = "png"
+))]
+#[test]
+fn empty_fontconfig_policy_does_not_trigger_bounded_fallback() {
+    check_fontconfig_fallback("--font-measurement=native");
 }
 
 #[cfg(all(
@@ -1930,6 +2152,8 @@ fn missing_glyph_exports_warn_with_real_font_resolution_details() {
             notice.contains("unresolved glyph fallback=true"),
             "{notice}"
         );
+        assert!(stderr.contains("some text may be missing"), "{stderr}");
+        assert!(stderr.contains("--font-file PATH"), "{stderr}");
         let notdef = notice
             .split(".notdef glyphs=")
             .nth(1)

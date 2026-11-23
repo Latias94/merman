@@ -496,6 +496,76 @@ mod tests {
     }
 
     #[test]
+    fn directwrite_maps_fallback_to_the_selected_collection_member() {
+        use windows::Win32::Graphics::DirectWrite::{DWRITE_UNICODE_RANGE, IDWriteFactory5};
+
+        let fixture =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts/Cousine-test-collection.ttc");
+        // SAFETY: DirectWrite reads the fixture path and mapping arrays during each call.
+        // The resulting collection and fallback own their font references.
+        let fallback = unsafe {
+            let factory =
+                DWriteCreateFactory::<IDWriteFactory5>(DWRITE_FACTORY_TYPE_SHARED).unwrap();
+            let path = windows_core::HSTRING::from(fixture.as_path());
+            let file = factory.CreateFontFileReference(&path, None).unwrap();
+            let fonts = factory.CreateFontSetBuilder().unwrap();
+            fonts.AddFontFile(&file).unwrap();
+            let collection: IDWriteFontCollection = factory
+                .CreateFontCollectionFromFontSet(&fonts.CreateFontSet().unwrap())
+                .unwrap()
+                .into();
+            let mappings = factory.CreateFontFallbackBuilder().unwrap();
+            let range = DWRITE_UNICODE_RANGE {
+                first: 'A' as u32,
+                last: 'A' as u32,
+            };
+            mappings
+                .AddMapping(
+                    &[range],
+                    &[w!("Cousine").as_ptr()],
+                    &collection,
+                    None,
+                    None,
+                    1.5,
+                )
+                .unwrap();
+            CharacterFallback {
+                collection,
+                fallback: mappings.CreateFontFallback().unwrap(),
+            }
+        };
+
+        let mut database = Database::new();
+        database
+            .load_font_data(include_bytes!("../../../tests/fonts/MermanProbeBase.ttf").to_vec());
+        let mut base = database.faces().next().unwrap().clone();
+        base.style = Style::Italic;
+        let selection = fallback.lookup(GlyphFallback::from("AA"), &base).unwrap();
+        assert_eq!(selection.fallback_scale(), 1.5);
+        let FontCandidate::File {
+            path,
+            index,
+            expected,
+        } = selection
+        else {
+            panic!("the private fallback mapping must select a file");
+        };
+        assert_eq!(
+            path.canonicalize().unwrap(),
+            fixture.canonicalize().unwrap()
+        );
+        assert_eq!(index, 1);
+        let mut physical = Database::new();
+        physical.load_font_data(std::fs::read(&path).unwrap());
+        let italic = physical.faces().find(|face| face.index == index).unwrap();
+        assert_eq!(italic.post_script_name, "Cousine-Italic");
+        expected.validate(italic, &path).unwrap();
+        let mut wrong_index = italic.clone();
+        wrong_index.index = 0;
+        assert!(expected.validate(&wrong_index, &path).is_err());
+    }
+
+    #[test]
     #[ignore = "requires Windows Noto Sans SC with a physical weight of 100"]
     fn directwrite_variable_fallback_requires_physical_axis_defaults() {
         let mut database = Database::new();
@@ -522,7 +592,7 @@ mod tests {
         let face = physical.faces().find(|face| face.index == index).unwrap();
         assert_eq!(face.post_script_name, "NotoSansSC-Thin");
         assert_eq!(face.weight, base.weight);
-        expected.validate(face, &path, index).unwrap();
+        expected.validate(face, &path).unwrap();
     }
 
     #[test]
@@ -549,21 +619,21 @@ mod tests {
         let regular = load(path.clone());
         let regular = regular.faces().find(|face| face.index == index).unwrap();
         assert_eq!(regular.post_script_name, "MicrosoftYaHeiUI");
-        expected.validate(regular, &path, index).unwrap();
+        expected.validate(regular, &path).unwrap();
 
         let bold = load(directory.join("msyhbd.ttc"));
         let bold = bold.faces().find(|face| face.index == index).unwrap();
         assert_eq!(bold.post_script_name, "MicrosoftYaHeiUI-Bold");
-        assert!(expected.validate(bold, &path, index).is_err());
+        assert!(expected.validate(bold, &path).is_err());
 
         let mut incorrect_weight = regular.clone();
         incorrect_weight.weight = bold.weight;
-        assert!(expected.validate(&incorrect_weight, &path, index).is_err());
+        assert!(expected.validate(&incorrect_weight, &path).is_err());
 
         let super::super::ExpectedFace::Platform(mut descriptor) = expected else {
             panic!("DirectWrite must provide a platform descriptor");
         };
         descriptor.post_script_name = Some(bold.post_script_name.clone());
-        assert!(descriptor.validate(regular, &path, index).is_err());
+        assert!(descriptor.validate(regular, &path).is_err());
     }
 }

@@ -1,6 +1,7 @@
 //! Native Fontconfig matching and borrowed metadata for selected file faces.
 
 use std::ffi::{CStr, CString, OsStr, c_char, c_double, c_int, c_void};
+use std::io::ErrorKind;
 use std::mem::MaybeUninit;
 use std::os::unix::ffi::OsStrExt;
 use std::ptr::{self, NonNull};
@@ -90,12 +91,47 @@ impl Drop for Catalog {
 
 pub(super) struct Query<'a> {
     pub(super) families: &'a [&'a str],
-    pub(super) only_family: bool,
     pub(super) weight: Weight,
     pub(super) stretch: Stretch,
     pub(super) style: Style,
     pub(super) text: Option<&'a str>,
     pub(super) language: Option<&'a str>,
+}
+
+impl Query<'_> {
+    fn explicit_faces<'db>(
+        &self,
+        database: &'db Database,
+        preferred: &[(&str, bool)],
+    ) -> Vec<(usize, &'db FaceInfo)> {
+        let mut faces = Vec::new();
+        if database.faces().next().is_none() {
+            return faces;
+        }
+        let mut next_strong = usize::MAX;
+        for name in self.families.iter().rev() {
+            if let Some(rank) = preferred
+                .iter()
+                .position(|(family, strong)| *strong && eq_family(family, name))
+            {
+                next_strong = rank;
+            }
+            if let Some(face) = crate::query_named_font_family_case_insensitively(
+                database,
+                name,
+                self.weight,
+                self.stretch,
+                self.style,
+            )
+            .and_then(|id| database.face(id))
+            {
+                faces.push((next_strong, face));
+            }
+        }
+        faces.reverse();
+        faces.sort_by_key(|(rank, _)| *rank);
+        faces
+    }
 }
 
 impl Catalog {
@@ -115,7 +151,6 @@ impl Catalog {
     ) -> Result<Option<String>, NativeFontError> {
         let pattern = self.pattern(&Query {
             families: &["sans-serif"],
-            only_family: false,
             weight: Weight::NORMAL,
             stretch: Stretch::Normal,
             style: Style::Normal,
@@ -151,19 +186,27 @@ impl Catalog {
         let weight = Weight(font.weight());
         let stretch = font.stretch().into();
         let style = font.style().into();
+        let language = fallback
+            .and_then(|request| request.language)
+            .or_else(|| font.selection_language());
+        let mut first_missing = None;
+        let mut accept = |selection, implicit| {
+            accept(selection, implicit)
+                .or_else(|error| defer_missing_source(error, &mut first_missing))
+        };
         let query =
-            |names: &[&str], only_family, family_fallback_used, accept: &mut AcceptFont<'_>| {
+            |names: &[&str], family_fallback_used, named_sources, accept: &mut AcceptFont<'_>| {
                 self.candidates(
                     Query {
                         families: names,
-                        only_family,
                         weight,
                         stretch,
                         style,
                         text: fallback.map(|request| request.text),
-                        language: fallback.and_then(|request| request.language),
+                        language,
                     },
                     control,
+                    named_sources,
                     |candidate, exact_name| {
                         accept(
                             FontSelection {
@@ -193,50 +236,63 @@ impl Catalog {
                 usvg::FontFamily::Fantasy => ("fantasy", true),
             };
             let family_fallback_used = index == font.families().len();
-            let caller = explicit_face(explicit, family, weight, stretch, style);
-            // Named system requests share one Fontconfig pattern so binding strength
-            // can order aliases against following authored names. Explicit sources and
-            // generic families retain their position as independent choices.
-            if !named.is_empty() && (generic || caller.is_some()) {
-                if let Some(id) = query(&named, true, false, accept)? {
+            if !generic {
+                named.push(name);
+                continue;
+            }
+            if !named.is_empty() {
+                if let Some(id) = query(&named, false, Some(explicit), &mut accept)? {
                     return Ok(Some(id));
                 }
                 named.clear();
             }
-            if let Some(face) = caller
+            if let Some(face) = explicit_face(explicit, family, weight, stretch, style)
                 && let Some(id) = accept(
                     FontSelection {
                         candidate: FontCandidate::Loaded(face),
                         family_fallback_used,
                     },
-                    generic,
+                    true,
                 )?
             {
                 return Ok(Some(id));
             }
-            if generic {
-                if let Some(id) = query(&[name], false, family_fallback_used, accept)? {
-                    return Ok(Some(id));
-                }
-            } else {
-                named.push(name);
+            if let Some(id) = query(&[name], family_fallback_used, None, &mut accept)? {
+                return Ok(Some(id));
             }
         }
-        if named.is_empty() {
-            Ok(None)
-        } else {
-            query(&named, true, false, accept)
+        if !named.is_empty()
+            && let Some(id) = query(&named, false, Some(explicit), &mut accept)?
+        {
+            return Ok(Some(id));
         }
+        // Glyph fallback continues with explicit sources and the general platform cascade.
+        if fallback.is_none()
+            && let Some(error) = first_missing
+        {
+            return Err(error);
+        }
+        Ok(None)
     }
 
     pub(super) fn candidates(
         &self,
         query: Query<'_>,
         control: &OperationControl,
+        named_sources: Option<&Database>,
         mut accept: impl FnMut(FontCandidate, bool) -> Result<Option<ID>, NativeFontError>,
     ) -> Result<Option<ID>, NativeFontError> {
         control.terminal_checkpoint_at(OperationPhase::Layout)?;
         let pattern = self.pattern(&query)?;
+        let (preferred, callers) = match named_sources {
+            Some(database) => {
+                let preferred = pattern.preferred_families(self.api);
+                let callers = query.explicit_faces(database, &preferred);
+                (Some(preferred), callers)
+            }
+            None => (None, Vec::new()),
+        };
+        let mut callers = callers.into_iter().peekable();
         let mut status = FC_RESULT_NO_MATCH;
         // SAFETY: The configuration and pattern are live. Keep all coverage alternatives,
         // since an earlier font can be unsuitable even with identical advertised coverage.
@@ -254,37 +310,45 @@ impl Catalog {
             fc: self.api.fc,
         });
         control.terminal_checkpoint_at(OperationPhase::Layout)?;
-        if status == FC_RESULT_NO_MATCH {
-            return Ok(None);
-        }
-        let sorted = sorted
-            .filter(|_| status == FC_RESULT_MATCH)
-            .ok_or_else(|| failed("sorting candidates"))?;
-        let allowed = query
-            .only_family
-            .then(|| pattern.preferred_families(self.api));
-
+        let sorted = match status {
+            FC_RESULT_MATCH => Some(sorted.ok_or_else(|| failed("sorting candidates"))?),
+            FC_RESULT_NO_MATCH => None,
+            _ => return Err(failed("sorting candidates")),
+        };
         let scalar = query
             .text
             .and_then(super::super::resolver::single_character);
-        for face in sorted.iter() {
+        for face in sorted.iter().flat_map(FontSet::iter) {
             control.terminal_checkpoint_at(OperationPhase::Layout)?;
-            if allowed.as_ref().is_some_and(|names| {
-                !face
-                    .families()
-                    .any(|name| names.iter().any(|wanted| eq_family(name, wanted)))
-            }) {
+            // Insert caller faces at their strong family positions without breaking the
+            // native ordering of system alternatives. A weak alias follows every strong name.
+            if let Some(names) = &preferred {
+                let Some(rank) = face.family_rank(names) else {
+                    continue;
+                };
+                while let Some((_, caller)) = callers.next_if(|(position, _)| *position <= rank) {
+                    if let Some(id) = accept(FontCandidate::Loaded(caller.clone()), true)? {
+                        return Ok(Some(id));
+                    }
+                }
+            }
+            if scalar.is_some_and(|ch| face.covers(ch) == Some(false)) {
                 continue;
             }
-            let Some(candidate) = self.candidate(face, scalar) else {
+            let Some(candidate) = self.candidate(face) else {
                 continue;
             };
-            let exact_name = query.only_family
+            let exact_name = preferred.is_some()
                 && query
                     .families
                     .iter()
                     .any(|wanted| face.families().any(|name| eq_family(name, wanted)));
             if let Some(id) = accept(candidate, exact_name)? {
+                return Ok(Some(id));
+            }
+        }
+        for (_, face) in callers {
+            if let Some(id) = accept(FontCandidate::Loaded(face.clone()), true)? {
                 return Ok(Some(id));
             }
         }
@@ -361,7 +425,15 @@ impl Catalog {
         Ok(pattern)
     }
 
-    fn candidate(&self, face: PatternRef<'_>, character: Option<char>) -> Option<FontCandidate> {
+    fn candidate(&self, face: PatternRef<'_>) -> Option<FontCandidate> {
+        // The snapshot parser accepts SFNT faces and collections. FreeType also catalogs
+        // other formats, including BDF and PCF, which cannot enter that parser.
+        if face
+            .get_string(FC_FONTFORMAT, 0)
+            .is_some_and(|format| !matches!(format.to_bytes(), b"TrueType" | b"CFF"))
+        {
+            return None;
+        }
         let filename = face.get_string(FC_FILE, 0)?;
         let mut families = face.families();
         let family = families.next()?;
@@ -394,7 +466,6 @@ impl Catalog {
                 // index rather than comparing substituted style values.
                 attributes: FaceAttributes::default(),
                 coverage_source: None,
-                fontconfig_coverage: character.and_then(|c| face.covers(c)),
             }
             .into_file(path),
         )
@@ -464,7 +535,7 @@ impl<'a> Pattern<'a> {
         Ok(())
     }
 
-    fn preferred_families(&self, api: &Api) -> Vec<&str> {
+    fn preferred_families(&self, api: &Api) -> Vec<(&str, bool)> {
         let mut names = Vec::new();
         let mut last_strong = None;
         for index in 0.. {
@@ -487,7 +558,7 @@ impl<'a> Pattern<'a> {
                 .get_string(FC_FAMILY, index)
                 .and_then(|s| s.to_str().ok())
             {
-                names.push(name);
+                names.push((name, binding != 0));
             }
             // FcValueBindingWeak is zero. Keep weak prefer entries before the last
             // strong/same value as Skia does. Trailing defaults cannot shadow
@@ -531,6 +602,19 @@ impl<'a> PatternRef<'a> {
         (0..)
             .map_while(move |index| self.get_string(FC_FAMILY, index))
             .filter_map(|value| value.to_str().ok())
+    }
+
+    fn family_rank(self, preferred: &[(&str, bool)]) -> Option<usize> {
+        let mut weak = None;
+        for (rank, &(name, strong)) in preferred.iter().enumerate() {
+            if self.families().any(|family| eq_family(family, name)) {
+                if strong {
+                    return Some(rank);
+                }
+                weak = Some(usize::MAX);
+            }
+        }
+        weak
     }
 
     fn get_integer(self, key: &CStr) -> Option<c_int> {
@@ -586,4 +670,34 @@ impl Drop for FontSet {
         // SAFETY: FcFontSort returned this owned font set.
         unsafe { (self.fc.FcFontSetSortDestroy)(self.raw.as_ptr()) };
     }
+}
+
+/// Try the rest of the catalog after a file disappears. Admission runs first so retained
+/// snapshots win. Symlinks in the file path keep their source errors.
+pub(super) fn defer_missing_source<T>(
+    error: NativeFontError,
+    first_missing: &mut Option<NativeFontError>,
+) -> Result<Option<T>, NativeFontError> {
+    if let NativeFontError::Source { path, .. } = &error
+        && source_disappeared(path)
+    {
+        first_missing.get_or_insert(error);
+        Ok(None)
+    } else {
+        Err(error)
+    }
+}
+
+fn source_disappeared(path: &Path) -> bool {
+    // A dangling ancestor also gives ENOENT at the leaf. Inspect the components
+    // before treating the original source error as a stale catalog entry.
+    let mut missing = false;
+    for component in path.ancestors().filter(|p| !p.as_os_str().is_empty()) {
+        match component.symlink_metadata() {
+            Err(error) if error.kind() == ErrorKind::NotFound => missing = true,
+            Ok(metadata) if missing && !metadata.is_symlink() => (),
+            _ => return false,
+        }
+    }
+    missing
 }
