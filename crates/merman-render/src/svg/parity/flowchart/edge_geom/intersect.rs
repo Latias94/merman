@@ -1,12 +1,6 @@
 use super::super::*;
 use super::BoundaryNode;
 
-pub(in crate::svg::parity::flowchart) fn is_rounded_intersect_shift_shape(
-    layout_shape: Option<&str>,
-) -> bool {
-    matches!(layout_shape, Some("roundedRect" | "rounded" | "event"))
-}
-
 pub(in crate::svg::parity::flowchart) fn is_polygon_layout_shape(
     layout_shape: Option<&str>,
 ) -> bool {
@@ -102,8 +96,6 @@ pub(in crate::svg::parity::flowchart) fn force_intersect_for_layout_shape(
                 | "diam"
                 | "question"
                 | "decision"
-                | "roundedRect"
-                | "rounded"
                 | "cylinder"
                 | "cyl"
                 | "db"
@@ -156,7 +148,8 @@ pub(in crate::svg::parity::flowchart) fn force_intersect_for_layout_shape(
                 | "window-pane"
                 | "stadium"
                 | "terminal"
-                | "pill",
+                | "pill"
+                | "imageSquare",
         )
     ) || is_polygon_layout_shape(layout_shape)
 }
@@ -165,30 +158,21 @@ fn intersect_rect(
     node: &BoundaryNode,
     point: &crate::model::LayoutPoint,
 ) -> crate::model::LayoutPoint {
-    let x = node.x;
-    let y = node.y;
-    let dx = point.x - x;
-    let dy = point.y - y;
-    let mut w = node.width / 2.0;
-    let mut h = node.height / 2.0;
-
-    let (sx, sy) = if dy.abs() * w > dx.abs() * h {
-        if dy < 0.0 {
-            h = -h;
-        }
-        let sx = if dy == 0.0 { 0.0 } else { (h * dx) / dy };
-        (sx, h)
-    } else {
-        if dx < 0.0 {
-            w = -w;
-        }
-        let sy = if dx == 0.0 { 0.0 } else { (w * dy) / dx };
-        (w, sy)
-    };
-
+    let point = dugong::util::intersect_rect(
+        dugong::util::Rect {
+            x: node.x,
+            y: node.y,
+            width: node.width,
+            height: node.height,
+        },
+        dugong::Point {
+            x: point.x,
+            y: point.y,
+        },
+    );
     crate::model::LayoutPoint {
-        x: x + sx,
-        y: y + sy,
+        x: point.x,
+        y: point.y,
     }
 }
 
@@ -1672,6 +1656,13 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
         Some("hourglass" | "collate") => intersect_polygon_hourglass(node, point),
         Some("diamond" | "diam" | "question" | "decision") => intersect_diamond(node, point),
         Some("stadium" | "terminal" | "pill") => intersect_stadium(ctx, node_id, node, point),
+        Some("imageSquare") => ctx
+            .node_image(node_id)
+            .and_then(crate::flowchart::ImageSquareGeometry::labeled_outline)
+            .map_or_else(
+                || intersect_rect(node, point),
+                |outline| intersect_polygon(node, &outline, point),
+            ),
         Some("hexagon" | "hex" | "prepare") => intersect_hexagon(ctx, node_id, node, point),
         Some("curv-trap" | "display" | "curved-trapezoid") => {
             intersect_curved_trapezoid(ctx, node_id, node, point)

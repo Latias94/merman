@@ -180,6 +180,17 @@ impl ExportError {
     #[must_use]
     pub fn resource_limit_details(&self) -> Option<ExportResourceLimitDetails> {
         let (limit_id, phase, actual, max, cause) = match self {
+            #[cfg(feature = "native-fonts")]
+            Self::NativeFont(error) => {
+                let (id, actual, max) = error.resource_limit()?;
+                (
+                    id,
+                    "native-font-export",
+                    actual,
+                    max,
+                    ExportResourceLimitCause::Ceiling,
+                )
+            }
             Self::EmbeddedImageLimit {
                 limit_name,
                 actual,

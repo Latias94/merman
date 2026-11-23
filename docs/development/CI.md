@@ -42,7 +42,11 @@ allowance on that declaration until an admitted compiler update handles the expa
 The core, native Node, and SVG/browser owners publish separate same-run results to `pr-gate`:
 
 - `build-test` retains the Linux workspace suite, generated checks with their pinned
-  DOMPurify/Node inputs, and the three-host font/platform contracts;
+  DOMPurify/Node inputs, and the three-host font/platform contracts. Its macOS host-font
+  run includes Core Text matching, snapshot identity and selection reuse, plus host-font
+  shaping comparisons for right-to-left and Indic text.
+  Linux exercises automatic CLI selection with both provider defaults, an empty Fontconfig
+  configuration, and an unloadable Fontconfig library.
 - `feature-contracts` owns Linux representative feature builds, isolated consumers, compile-fail
   examples, Rustdoc subsets/math, feature unification, runtime adapters, FFI and ASCII contracts;
 - `theme-contracts` groups the workspace-only theme acceptance cfg, preset and family terminal
@@ -399,14 +403,17 @@ evidence:
 - full SDK and registry package assembly;
 - release version and documentation projections.
 
-The `cli-and-lsp-archives` job owns final Linux CLI/LSP archive evidence on native x86_64 and
-ARM64 runners. It evaluates the full pinned cargo-dist plan with the requested version without
-creating a tag, checks the selected target's runner/host and planned assets, then builds and
-executes both final archives with adjacent-checksum verification. Each target uploads its plan,
-build manifest, archives, and checksums as `preflight-cli-lsp-<target>`. Keep the run and source SHA
-with any target-admission decision. This job replaces the former x86_64-only archive build inside
-`versions-and-packages`; it does not duplicate that build or add release permissions. Complete
-global installer, bundle, and attestation gates remain owned by the tagged release workflow.
+The `cli-and-lsp-archives` job owns final CLI/LSP archive evidence on native x86_64 and ARM64
+runners for both macOS and GNU Linux. It evaluates the full pinned cargo-dist plan with the
+requested version without creating a tag, checks the selected target's runner/host and planned
+assets, then builds and executes both final archives with adjacent-checksum verification.
+Both macOS targets run the mixed-script PNG check. Both GNU runners check the glibc floor,
+with preset qualification on x86_64 and system resource probes on ARM64.
+
+Each target uploads its plan, build manifest, archives, and checksums as `preflight-cli-lsp-<target>`.
+Keep the run and source SHA with any target-admission decision. This job replaces the former
+x86_64-only archive build inside `versions-and-packages`. The tagged release workflow owns the
+global installer, bundle, and attestation gates.
 
 The Web size gate measures the final wasm-bindgen binaries copied into the npm packages. It must not
 build and measure a second Cargo-only approximation of the same package.

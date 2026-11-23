@@ -11,6 +11,7 @@ flowchart LR
     A[Open] -->|submit| B[Review]
   end
   B --> C[Done]
+  style B width:220px,height:90px
   classDef default font-size:18px,stroke-width:3px
   classDef cluster fill:#eee,stroke:#000
 ";

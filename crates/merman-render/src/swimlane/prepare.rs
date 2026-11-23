@@ -6,12 +6,12 @@ use crate::flowchart::{
     FlowchartLabelMetricsRequest, FlowchartRenderModelRef, FlowchartSvgLabelOwner,
     FlowchartSvgLabelSidecarBuilder, FlowchartSvgWidthMode, NodeLayoutDimensionsRequest,
     ProjectedFlowchartEdge, flowchart_effective_text_style_for_classes_with_provenance,
-    flowchart_effective_text_style_for_node_classes_with_provenance,
-    flowchart_node_label_min_width, flowchart_node_svg_width_mode,
-    measure_flowchart_svg_label_for_layout_with_terminal_foreground, node_layout_dimensions,
+    flowchart_node_label_min_width, flowchart_node_layout_style, flowchart_node_svg_width_mode,
+    measure_flowchart_svg_label_for_layout_with_source_style,
 };
 use crate::math::MathRenderer;
 use crate::model::SwimlaneDirection;
+use crate::resources::OperationWorkMeter;
 use crate::text::{TextMeasurer, WrapMode};
 use indexmap::IndexMap;
 use merman_model::families::flowchart::{
@@ -91,6 +91,7 @@ struct MeasureContext<'a> {
     svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
     edge_style_plan: &'a crate::svg::FlowchartEdgeStylePlan,
     edge_label_padding: crate::flowchart::FlowchartEdgeLabelPadding,
+    work_meter: &'a OperationWorkMeter,
 }
 
 fn measure_content_node(
@@ -99,7 +100,7 @@ fn measure_content_node(
     owner: Option<FlowchartSvgLabelOwner>,
     use_default_class: bool,
     ctx: &MeasureContext<'_>,
-) -> WorkingNode {
+) -> crate::Result<WorkingNode> {
     let wrap_mode = ctx.settings.node_wrap_mode;
     let wrapping_width = crate::flowchart::bpmn::wrapping_width(
         node.layout_shape.as_deref(),
@@ -110,17 +111,24 @@ fn measure_content_node(
     } else {
         &ctx.settings.text_style
     };
-    let resolve_style = if use_default_class {
-        flowchart_effective_text_style_for_node_classes_with_provenance
+    let (style, rectangle_size) = if use_default_class {
+        flowchart_node_layout_style(
+            base_style,
+            &ctx.model.class_defs,
+            &node.classes,
+            &node.styles,
+        )
     } else {
-        flowchart_effective_text_style_for_classes_with_provenance
+        (
+            flowchart_effective_text_style_for_classes_with_provenance(
+                base_style,
+                &ctx.model.class_defs,
+                &node.classes,
+                &node.styles,
+            ),
+            [None; 2],
+        )
     };
-    let style = resolve_style(
-        base_style,
-        &ctx.model.class_defs,
-        &node.classes,
-        &node.styles,
-    );
     let label = render_label;
     let semantic_label = node.label.as_deref().unwrap_or(&node.id);
     let label_type = node.label_type.as_deref().unwrap_or("text");
@@ -130,7 +138,7 @@ fn measure_content_node(
         wrap_mode,
         node.layout_shape.as_deref().unwrap_or("squareRect"),
     );
-    let metrics = measure_flowchart_svg_label_for_layout_with_terminal_foreground(
+    let metrics = measure_flowchart_svg_label_for_layout_with_source_style(
         ctx.svg_label_sidecar,
         owner,
         owner.map(|_| node.id.as_str()),
@@ -144,7 +152,7 @@ fn measure_content_node(
             config: ctx.config,
             math_renderer: ctx.math_renderer,
         },
-        style.terminal_foreground(),
+        Some(&style),
         svg_width_mode,
     )
     .with_label_min_width(
@@ -153,7 +161,8 @@ fn measure_content_node(
         None,
     );
 
-    let (width, height) = node_layout_dimensions(NodeLayoutDimensionsRequest {
+    let look = crate::config::mermaid_config_diagram_look(ctx.config);
+    let (width, height) = NodeLayoutDimensionsRequest {
         layout_shape: node.layout_shape.as_deref(),
         layout_direction: ctx.direction.as_str(),
         metrics,
@@ -161,16 +170,26 @@ fn measure_content_node(
         wrapping_width,
         node_constraint: node.constraint.as_deref(),
         padding: ctx.settings.node_padding,
-        look_is_neo: crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
+        look_is_neo: look.is_neo(),
         state_padding: ctx.settings.state_padding,
         node_icon: node.icon.as_deref(),
         node_img: node.img.as_deref(),
         node_pos: node.pos.as_deref(),
         node_asset_width: node.asset_width,
         node_asset_height: node.asset_height,
-    });
+    }
+    .measure(
+        if owner.is_some() {
+            rectangle_size
+        } else {
+            [None; 2]
+        },
+        look.is_hand_drawn(),
+        ctx.svg_label_sidecar.zip(owner),
+        |units| ctx.work_meter.charge(units).map_err(Into::into),
+    )?;
 
-    WorkingNode {
+    Ok(WorkingNode {
         id: node.id.clone(),
         // Geometry follows the parser-owned render spelling, while the public layout projection
         // remains a projection of the semantic model.
@@ -196,7 +215,7 @@ fn measure_content_node(
         order: 0,
         content_top: None,
         title_rect: None,
-    }
+    })
 }
 
 fn measure_edge_label(
@@ -225,7 +244,7 @@ fn measure_edge_label(
     let label = render_label;
     let semantic_label = edge.label.as_deref().unwrap_or_default();
     let label_type = "text";
-    let metrics = measure_flowchart_svg_label_for_layout_with_terminal_foreground(
+    let metrics = measure_flowchart_svg_label_for_layout_with_source_style(
         ctx.svg_label_sidecar,
         Some(owner),
         Some(edge.id.as_str()),
@@ -239,7 +258,7 @@ fn measure_edge_label(
             config: ctx.config,
             math_renderer: ctx.math_renderer,
         },
-        style.terminal_foreground(),
+        Some(&style),
         FlowchartSvgWidthMode::Bbox,
     );
     let (label_width, label_height) = ctx
@@ -338,7 +357,7 @@ fn measure_group_title(
     // Mermaid 11.16's dedicated Swimlane renderer omits createText's `markdown` option, so the
     // default `true` applies independently of FlowDB's public subgraph labelType.
     let render_label_type = "markdown";
-    let metrics = measure_flowchart_svg_label_for_layout_with_terminal_foreground(
+    let metrics = measure_flowchart_svg_label_for_layout_with_source_style(
         ctx.svg_label_sidecar,
         Some(FlowchartSvgLabelOwner::SwimlaneGroupTitle(
             declaration_ordinal,
@@ -354,7 +373,7 @@ fn measure_group_title(
             config: ctx.config,
             math_renderer: ctx.math_renderer,
         },
-        style.terminal_foreground(),
+        Some(&style),
         FlowchartSvgWidthMode::Bbox,
     );
     (metrics.width.max(0.0), metrics.height.max(0.0))
@@ -367,10 +386,10 @@ pub(super) fn prepare(
         &FlowchartEdgeTransportPlan<'_>,
     ),
     effective_config: &PresentationConfig,
-    measurer: &dyn TextMeasurer,
-    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    (measurer, math_renderer): (&dyn TextMeasurer, Option<&(dyn MathRenderer + Send + Sync)>),
     svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
     edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
+    work_meter: &OperationWorkMeter,
 ) -> crate::Result<WorkingLayout> {
     let direction = normalize_direction(model.direction.as_deref());
     let config_view = FlowchartConfigView::new(effective_config.as_value());
@@ -394,6 +413,7 @@ pub(super) fn prepare(
         svg_label_sidecar,
         edge_style_plan,
         edge_label_padding,
+        work_meter,
     };
 
     // FlowDB builds parentDB by walking subgraphs from last to first.
@@ -430,7 +450,7 @@ pub(super) fn prepare(
             // The node owner range for collapsed groups follows the authored node range.
             let owner = FlowchartSvgLabelOwner::SwimlaneNode(model.nodes.len() + subgraph_index);
             let mut measured =
-                measure_content_node(&node, render_title, Some(owner), false, &measure_ctx);
+                measure_content_node(&node, render_title, Some(owner), false, &measure_ctx)?;
             measured.parent_id = parent_id(&subgraph.id);
             nodes.insert(node.id, measured);
             continue;
@@ -497,7 +517,7 @@ pub(super) fn prepare(
             Some(FlowchartSvgLabelOwner::SwimlaneNode(node_index)),
             true,
             &measure_ctx,
-        );
+        )?;
         measured.parent_id = parent_id(&node.id);
         nodes.insert(node.id.clone(), measured);
     }
@@ -506,7 +526,7 @@ pub(super) fn prepare(
             continue;
         }
         let synthetic = synthetic_node(id, id, Some("text"), "squareRect");
-        let mut measured = measure_content_node(&synthetic, id, None, true, &measure_ctx);
+        let mut measured = measure_content_node(&synthetic, id, None, true, &measure_ctx)?;
         measured.parent_id = parent_id(id);
         nodes.insert(id.clone(), measured);
     }

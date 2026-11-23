@@ -1,6 +1,7 @@
 use super::html::HtmlTextFragment;
 use crate::mermaid_style::{
-    CssFontSizeContext, is_supported_css_color_value, is_supported_css_font_style_value,
+    CssFontSizeContext, HtmlTextGeometry, HtmlTextGeometryDeclarations, HtmlTextProperty,
+    is_supported_css_color_value, is_supported_css_font_style_value,
     is_supported_css_font_weight_value, parse_style_declaration, resolve_mermaid_font_size_px,
     visit_style_declaration_boundaries_with_checkpoints,
 };
@@ -78,29 +79,13 @@ pub(super) struct ResolvedStyle {
     pub(super) font_weight: Option<Arc<str>>,
     pub(super) font_style: Option<Arc<str>>,
     pub(super) white_space: HtmlWhiteSpace,
-    line_height: LineHeight,
+    text_geometry: HtmlTextGeometry,
+    line_box_floor: f64,
     pub(super) fill: Arc<str>,
     color: Option<Arc<str>>,
     pub(super) background_color: Option<Arc<str>>,
     background_color_specified: bool,
     paint: Arc<[(String, Arc<str>)]>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-enum LineHeight {
-    Normal,
-    Multiplier(f64),
-    AbsolutePx(f64),
-}
-
-impl LineHeight {
-    fn pixels(&self, font_size: f64) -> f64 {
-        match self {
-            Self::Normal => font_size * 1.5,
-            Self::Multiplier(value) => font_size * value,
-            Self::AbsolutePx(value) => *value,
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -110,6 +95,8 @@ pub(super) struct ResolvedFallbackTypography {
     pub(super) font_weight: Option<Arc<str>>,
     pub(super) font_style: Option<Arc<str>>,
     pub(super) line_height: f64,
+    pub(super) line_box_floor: f64,
+    pub(super) text_geometry: HtmlTextGeometry,
     pub(super) fill: Arc<str>,
     pub(super) label_background: Option<Arc<str>>,
 }
@@ -119,6 +106,7 @@ pub(super) struct ResolvedForeignObject {
     pub(super) typography: ResolvedFallbackTypography,
     pub(super) fragments: Vec<HtmlTextFragment>,
     pub(super) paint: Arc<[(String, Arc<str>)]>,
+    pub(super) has_text_geometry: bool,
 }
 
 impl ResolvedFallbackTypography {
@@ -1123,14 +1111,13 @@ impl CascadeIndex {
             font_weight =
                 resolve_css_font_weight(value, inherited).map(|weight| weight.to_string().into());
         }
-        let line_height = resolve_line_height(
-            specified
-                .get("line-height")
-                .map(|value| value.value.as_ref()),
-            font_size,
-            &parent.line_height,
-            root_font_size,
-        );
+        let mut text_geometry = HtmlTextGeometryDeclarations::default();
+        for property in HtmlTextProperty::ALL {
+            if let Some(value) = specified.get(property.name()) {
+                text_geometry.set(property, &value.value);
+            }
+        }
+        let text_geometry = text_geometry.resolve(parent.text_geometry, font_size, root_font_size);
         let white_space = resolve_white_space(
             specified
                 .get("white-space")
@@ -1164,7 +1151,14 @@ impl CascadeIndex {
             font_weight,
             font_style,
             white_space,
-            line_height,
+            text_geometry,
+            line_box_floor: if element.namespace == Namespace::Xhtml
+                && is_label_line_container(&element.local_name)
+            {
+                text_geometry.line_height.pixels(font_size)
+            } else {
+                parent.line_box_floor
+            },
             fill,
             color,
             background_color,
@@ -1203,9 +1197,6 @@ impl CascadeIndex {
             )?);
         }
         let base_depth = path.len();
-        let mut node_path = (0..base_depth).collect::<Vec<_>>();
-        let mut next_node_id = base_depth;
-        let mut previous_text_node_path = None;
         let mut computed_styles = Vec::with_capacity(base_depth);
         let mut root_font_size = DEFAULT_FONT_SIZE;
         // Resolve each source node once. Text leaves and background ownership share this
@@ -1227,11 +1218,74 @@ impl CascadeIndex {
                 break;
             }
         }
+        self.resolve_html_content(
+            html,
+            path,
+            computed_styles,
+            root_font_size,
+            checkpoint,
+            selector_limit,
+        )
+    }
+
+    pub(super) fn resolve_label_for_layout<E>(
+        html: &str,
+        style: &TextStyle,
+        text_geometry: HtmlTextGeometryDeclarations,
+        white_space: HtmlWhiteSpace,
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<ResolvedForeignObject>, E> {
+        let mut limit_hit = false;
+        let mut selector_limit = |_, _| {
+            limit_hit = true;
+            Ok(())
+        };
+        let mut cascade = Self::new("", checkpoint, &mut selector_limit)?;
+        let mut base = default_style();
+        base.font_size = style.font_size;
+        if let Some(font_family) = &style.font_family {
+            base.font_family = font_family.as_str().into();
+        }
+        base.font_weight = style.font_weight.as_deref().map(Arc::from);
+        base.font_style = style.font_style.as_deref().map(Arc::from);
+        base.text_geometry =
+            text_geometry.resolve(base.text_geometry, base.font_size, DEFAULT_FONT_SIZE);
+        base.white_space = white_space;
+        // createText sets 1.5 on the outer div and installs authored styles on its span.
+        // A nested paragraph or div establishes its own line-height strut.
+        base.line_box_floor = style.font_size * 1.5;
+        let root = Self::source_element("<span>", Namespace::Xhtml, checkpoint)?;
+        let resolved = cascade.resolve_html_content(
+            html,
+            vec![root],
+            vec![base],
+            DEFAULT_FONT_SIZE,
+            checkpoint,
+            &mut selector_limit,
+        )?;
+        Ok((!limit_hit).then_some(resolved))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn resolve_html_content<E>(
+        &mut self,
+        html: &str,
+        mut path: Vec<SourceElement>,
+        mut computed_styles: Vec<ResolvedStyle>,
+        root_font_size: f64,
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+        selector_limit: &mut impl FnMut(usize, usize) -> Result<(), E>,
+    ) -> Result<ResolvedForeignObject, E> {
+        let base_depth = path.len();
+        let mut node_path = (0..base_depth).collect::<Vec<_>>();
+        let mut next_node_id = base_depth;
+        let mut previous_text_node_path = None;
         let base_style = computed_styles
             .last()
             .cloned()
             .unwrap_or_else(default_style);
         let paint = base_style.paint.clone();
+        let mut has_text_geometry = base_style.text_geometry != HtmlTextGeometry::default();
         let mut observed = TextTypographyObserver::default();
         let mut fragments = Vec::new();
         let mut cursor = 0usize;
@@ -1285,7 +1339,10 @@ impl CascadeIndex {
             }
             if let Some(name) = end_tag_name(tag) {
                 if name.eq_ignore_ascii_case("br") {
-                    fragments.push(HtmlTextFragment::HardBreak);
+                    fragments.push(terminal_line_break(computed_styles.last()));
+                    previous_text_node_path = None;
+                } else if name.eq_ignore_ascii_case("p") {
+                    fragments.push(HtmlTextFragment::BlockBoundary);
                     previous_text_node_path = None;
                 }
                 if !self.budget.matching_exhausted
@@ -1303,7 +1360,10 @@ impl CascadeIndex {
             }
             if let Some(name) = start_tag_name(tag) {
                 if name.eq_ignore_ascii_case("br") {
-                    fragments.push(HtmlTextFragment::HardBreak);
+                    fragments.push(terminal_line_break(computed_styles.last()));
+                    previous_text_node_path = None;
+                } else if name.eq_ignore_ascii_case("p") {
+                    fragments.push(HtmlTextFragment::BlockBoundary);
                     previous_text_node_path = None;
                 }
                 if !self.budget.matching_exhausted {
@@ -1326,6 +1386,7 @@ impl CascadeIndex {
                                 checkpoint,
                                 selector_limit,
                             )?;
+                            has_text_geometry |= style.text_geometry != HtmlTextGeometry::default();
                             computed_styles.push(style);
                         }
                     }
@@ -1390,6 +1451,7 @@ impl CascadeIndex {
                 typography: default_fallback_typography(),
                 fragments,
                 paint,
+                has_text_geometry: false,
             });
         }
         let style = if observed.differing_styles {
@@ -1438,8 +1500,21 @@ impl CascadeIndex {
             typography: fallback_typography(style, label_background),
             fragments,
             paint,
+            has_text_geometry,
         })
     }
+}
+
+fn is_label_line_container(name: &str) -> bool {
+    name.eq_ignore_ascii_case("p") || name.eq_ignore_ascii_case("div")
+}
+
+fn terminal_line_break(style: Option<&ResolvedStyle>) -> HtmlTextFragment {
+    HtmlTextFragment::HardBreak(style.map_or(0.0, |style| {
+        style
+            .line_box_floor
+            .max(style.text_geometry.line_height.pixels(style.font_size))
+    }))
 }
 
 fn parse_tag_attributes<E>(
@@ -1687,8 +1762,7 @@ fn same_effective_typography(left: &ResolvedStyle, right: &ResolvedStyle) -> boo
         && left.font_family == right.font_family
         && left.font_weight == right.font_weight
         && left.font_style == right.font_style
-        && left.line_height.pixels(left.font_size).to_bits()
-            == right.line_height.pixels(right.font_size).to_bits()
+        && left.text_geometry == right.text_geometry
         && effective_html_text_paint(left) == effective_html_text_paint(right)
 }
 
@@ -1745,7 +1819,8 @@ fn default_style() -> ResolvedStyle {
         font_weight: None,
         font_style: None,
         white_space: HtmlWhiteSpace::default(),
-        line_height: LineHeight::Normal,
+        text_geometry: HtmlTextGeometry::default(),
+        line_box_floor: 0.0,
         fill: DEFAULT_FILL.into(),
         color: None,
         background_color: None,
@@ -1763,13 +1838,15 @@ fn fallback_typography(
     label_background: Option<Arc<str>>,
 ) -> ResolvedFallbackTypography {
     let fill = style.color.clone().unwrap_or_else(|| style.fill.clone());
-    let line_height = style.line_height.pixels(style.font_size);
+    let line_height = style.text_geometry.line_height.pixels(style.font_size);
     ResolvedFallbackTypography {
         font_size: style.font_size,
         font_family: style.font_family,
         font_weight: style.font_weight,
         font_style: style.font_style,
         line_height,
+        line_box_floor: style.line_box_floor,
+        text_geometry: style.text_geometry,
         fill,
         label_background,
     }
@@ -1796,6 +1873,9 @@ fn is_supported_property(property: &str) -> bool {
             | "font-style"
             | "white-space"
             | "line-height"
+            | "letter-spacing"
+            | "word-spacing"
+            | "text-transform"
             | "fill"
             | "color"
             | "background-color"
@@ -1821,6 +1901,9 @@ fn is_admitted_value(property: &str, value: &str, presentation: bool) -> bool {
         return false;
     }
     let lower = value.to_ascii_lowercase();
+    if let Some(property) = HtmlTextProperty::named(property) {
+        return HtmlTextGeometryDeclarations::is_supported(property, value);
+    }
     if matches!(lower.as_str(), "inherit" | "initial" | "unset") {
         return true;
     }
@@ -1832,17 +1915,6 @@ fn is_admitted_value(property: &str, value: &str, presentation: bool) -> bool {
             presentation,
         )
         .is_some(),
-        "line-height" => {
-            lower == "normal"
-                || lower
-                    .parse::<f64>()
-                    .ok()
-                    .and_then(bounded_positive)
-                    .is_some()
-                || ["px", "rem", "em", "%"]
-                    .iter()
-                    .any(|unit| parse_css_number_with_unit(&lower, unit).is_some())
-        }
         "opacity" => lower
             .strip_suffix('%')
             .unwrap_or(&lower)
@@ -1876,14 +1948,6 @@ fn is_admitted_value(property: &str, value: &str, presentation: bool) -> bool {
 
 fn lower_ascii_contains(value: &str, needle: &str) -> bool {
     value.to_ascii_lowercase().contains(needle)
-}
-
-fn parse_css_number_with_unit(value: &str, unit: &str) -> Option<f64> {
-    let number = value.strip_suffix(unit)?;
-    if number.is_empty() || number.chars().any(char::is_whitespace) {
-        return None;
-    }
-    number.parse::<f64>().ok().and_then(bounded_positive)
 }
 
 fn is_admitted_font_family(value: &str) -> bool {
@@ -3284,50 +3348,6 @@ fn effective_html_text_paint(style: &ResolvedStyle) -> &str {
     style.color.as_deref().unwrap_or(&style.fill)
 }
 
-fn resolve_line_height(
-    value: Option<&str>,
-    font_size: f64,
-    inherited: &LineHeight,
-    root: f64,
-) -> LineHeight {
-    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
-        return inherited.clone();
-    };
-    let lower = value.to_ascii_lowercase();
-    if matches!(lower.as_str(), "inherit" | "unset") {
-        return inherited.clone();
-    }
-    if matches!(lower.as_str(), "normal" | "initial") {
-        return LineHeight::Normal;
-    }
-    if let Ok(number) = lower.parse::<f64>() {
-        return bounded_positive(number)
-            .map(LineHeight::Multiplier)
-            .unwrap_or_else(|| inherited.clone());
-    }
-    if let Some(number) = lower.strip_suffix("px").and_then(parse_number) {
-        return bounded_positive(number)
-            .map(LineHeight::AbsolutePx)
-            .unwrap_or_else(|| inherited.clone());
-    }
-    if let Some(number) = lower.strip_suffix("rem").and_then(parse_number) {
-        return bounded_positive(root * number)
-            .map(LineHeight::AbsolutePx)
-            .unwrap_or_else(|| inherited.clone());
-    }
-    if let Some(number) = lower.strip_suffix("em").and_then(parse_number) {
-        return bounded_positive(font_size * number)
-            .map(LineHeight::AbsolutePx)
-            .unwrap_or_else(|| inherited.clone());
-    }
-    if let Some(number) = lower.strip_suffix('%').and_then(parse_number) {
-        return bounded_positive(font_size * number / 100.0)
-            .map(LineHeight::AbsolutePx)
-            .unwrap_or_else(|| inherited.clone());
-    }
-    inherited.clone()
-}
-
 fn resolve_background(value: Option<&Arc<str>>, parent: Option<&Arc<str>>) -> Option<Arc<str>> {
     let value = value.filter(|value| !value.is_empty())?;
     if value.eq_ignore_ascii_case("initial") || value.eq_ignore_ascii_case("unset") {
@@ -3337,21 +3357,6 @@ fn resolve_background(value: Option<&Arc<str>>, parent: Option<&Arc<str>>) -> Op
     } else {
         Some(Arc::clone(value))
     }
-}
-
-fn parse_number(value: &str) -> Option<f64> {
-    value.trim().parse::<f64>().ok()
-}
-
-fn finite_positive(value: f64) -> Option<f64> {
-    value
-        .is_finite()
-        .then_some(value)
-        .filter(|value| *value > 0.0)
-}
-
-fn bounded_positive(value: f64) -> Option<f64> {
-    finite_positive(value).filter(|value| *value <= MAX_CSS_NUMERIC_VALUE)
 }
 
 #[cfg(test)]
@@ -3550,7 +3555,7 @@ mod tests {
                     boundary_white_space,
                     ..
                 } => Some((*white_space, *boundary_white_space)),
-                HtmlTextFragment::HardBreak => None,
+                HtmlTextFragment::HardBreak(_) | HtmlTextFragment::BlockBoundary => None,
             })
             .collect::<Vec<_>>();
         assert_eq!(
@@ -3663,7 +3668,7 @@ mod tests {
                 .iter()
                 .find_map(|fragment| match fragment {
                     HtmlTextFragment::Text { typography, .. } => Some(typography),
-                    HtmlTextFragment::HardBreak => None,
+                    HtmlTextFragment::HardBreak(_) | HtmlTextFragment::BlockBoundary => None,
                 })
                 .expect("label text");
             assert_eq!(
@@ -3711,7 +3716,7 @@ mod tests {
                 .iter()
                 .filter_map(|fragment| match fragment {
                     HtmlTextFragment::Text { typography, .. } => Some(typography.font_size),
-                    HtmlTextFragment::HardBreak => None,
+                    HtmlTextFragment::HardBreak(_) | HtmlTextFragment::BlockBoundary => None,
                 })
                 .collect();
             assert_eq!(sizes.len(), 1);
@@ -3809,7 +3814,7 @@ mod tests {
                 .iter()
                 .filter_map(|fragment| match fragment {
                     HtmlTextFragment::Text { typography, .. } => Some(&typography.font_family),
-                    HtmlTextFragment::HardBreak => None,
+                    HtmlTextFragment::HardBreak(_) | HtmlTextFragment::BlockBoundary => None,
                 })
                 .collect::<Vec<_>>();
             assert_eq!(families.len(), 256);
@@ -3857,7 +3862,7 @@ mod tests {
                         boundary_white_space,
                         ..
                     } => Some(*boundary_white_space),
-                    HtmlTextFragment::HardBreak => None,
+                    HtmlTextFragment::HardBreak(_) | HtmlTextFragment::BlockBoundary => None,
                 })
                 .collect::<Vec<_>>();
             assert_eq!(
@@ -3899,7 +3904,7 @@ mod tests {
                 HtmlTextFragment::Text {
                     text, white_space, ..
                 } => Some((text.as_str(), *white_space)),
-                HtmlTextFragment::HardBreak => None,
+                HtmlTextFragment::HardBreak(_) | HtmlTextFragment::BlockBoundary => None,
             })
             .collect::<Vec<_>>();
         assert_eq!(
@@ -3918,7 +3923,7 @@ mod tests {
             resolved
                 .fragments
                 .iter()
-                .filter(|fragment| matches!(fragment, HtmlTextFragment::HardBreak))
+                .filter(|fragment| matches!(fragment, HtmlTextFragment::HardBreak(_)))
                 .count(),
             1
         );
@@ -3981,7 +3986,10 @@ mod tests {
             &resolved.fragments[0],
             HtmlTextFragment::Text { text, white_space: HtmlWhiteSpace::Normal, .. } if text == "  a "
         ));
-        assert!(matches!(resolved.fragments[1], HtmlTextFragment::HardBreak));
+        assert!(matches!(
+            resolved.fragments[1],
+            HtmlTextFragment::HardBreak(_)
+        ));
         assert!(matches!(
             &resolved.fragments[2],
             HtmlTextFragment::Text { text, white_space: HtmlWhiteSpace::Normal, .. } if text == " "

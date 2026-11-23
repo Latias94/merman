@@ -567,6 +567,13 @@ fn assert_compiled_surface(case: &str) {
 fn assert_option_ownership(case: &str, capabilities: &BTreeSet<&str>, commands: &BTreeSet<String>) {
     if commands.contains("render") {
         let help = command_help("render");
+        if !commands.contains("batch") {
+            let markdown = run_without_stdin(&["render", "input.md"], None);
+            let stderr = String::from_utf8_lossy(&markdown.stderr);
+            assert_eq!(markdown.status.code(), Some(2), "{case}: {stderr}");
+            assert!(stderr.contains("merman-cli render -"), "{case}: {stderr}");
+            assert!(!stderr.contains("merman-cli batch"), "{case}: {stderr}");
+        }
         for (capability, flag) in [
             ("svg", "--svg-pipeline"),
             ("svg", "--theme-preset"),

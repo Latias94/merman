@@ -994,3 +994,26 @@ fn invalid_utf8_is_rejected_for_config_and_fragment_sources() {
         &["at fragments[0].source", "not valid UTF-8"],
     );
 }
+
+#[test]
+fn oversized_fragment_omits_the_unavailable_resource_limit_flag() {
+    use merman::model::resources::{
+        CLI_DEFAULT_RESOURCE_PROFILE, InputResourceLimitId, InputResourcePolicy,
+    };
+
+    let root = tempfile::tempdir().unwrap();
+    write_config(root.path(), &valid_config("diagram.mmd"));
+    let limit = InputResourcePolicy::for_profile(CLI_DEFAULT_RESOURCE_PROFILE)
+        .value(InputResourceLimitId::MaxSourceBytes)
+        .expect("default source limit");
+    fs::File::create(root.path().join("diagram.mmd"))
+        .unwrap()
+        .set_len(limit as u64 + 1)
+        .unwrap();
+
+    let output = run(root.path(), &["rustdoc", "check"]);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(exit_code(&output), 2, "{stderr}");
+    assert!(stderr.contains("max_source_bytes"), "{stderr}");
+    assert!(!stderr.contains("--resource-limit"), "{stderr}");
+}

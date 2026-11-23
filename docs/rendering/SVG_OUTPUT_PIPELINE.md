@@ -160,8 +160,9 @@ selector. Oversized matching work still fails with `svg_fallback_selector_index`
 of the configurable SVG byte and element limits.
 
 The adapter retains admitted inline text runs through whitespace normalization, wrapping, and SVG
-`tspan` emission. HTML emphasis and code defaults yield to explicit source styles. Generated runs
-keep resolved typography and paint isolated from ordinary SVG-only selectors. Styles that cannot
+`tspan` emission. It resolves static line-height and spacing values and applies supported case
+transforms before wrapping. HTML emphasis and code defaults yield to explicit source styles.
+Generated runs keep resolved typography and paint isolated from ordinary SVG-only selectors. Styles that cannot
 be projected faithfully, including the native backend's stylesheet `!important` priority residual,
 retain best-effort text output and a sealed `fallback_css_residual` diagnostic. This diagnostic
 lowers fidelity admission without granting font or resource evidence. Default export still succeeds;
@@ -314,6 +315,10 @@ to match the host's navigation capability, carry the returned admission through 
 parsed root and owner document, and enforce the surrounding CSP/sandbox policy. This final root and
 mount check prevents unchecked source/tree substitution and keeps fragment-only resource
 references local when an HTML document defines a `<base>` URL.
+
+Mermaid's `arrowMarkerAbsolute` builds marker IRIs from the browser page URL. Headless Merman
+emits same-document marker fragments in every output profile. Web embedding uses the mount
+check above to verify how the destination document will resolve those fragments.
 
 Parity and readable output retain Mermaid's external-resource references. A host that intentionally
 supports external images should resolve them under its own root, protocol, byte, and pixel policy,

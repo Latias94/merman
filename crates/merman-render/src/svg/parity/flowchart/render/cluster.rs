@@ -5,7 +5,9 @@ use crate::flowchart::{
     FLOWCHART_FIXED_LABEL_WRAP_WIDTH, FlowchartClusterThemeEmission, FlowchartFacetPrecedence,
     FlowchartShapeFacetEmissionReceipt, FlowchartThemeFacetEmission,
 };
-use crate::svg::parity::flowchart::util::HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR;
+use crate::svg::parity::flowchart::{
+    cluster_geometry::painted_cluster_frame, util::HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
+};
 
 const FLOWCHART_CLUSTER_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
 const FLOWCHART_CLUSTER_HAND_DRAWN_FILL_WEIGHT: f32 = 3.0;
@@ -31,14 +33,11 @@ pub(in crate::svg::parity::flowchart) fn advance_rough_geometry(
         return Ok(());
     }
     let terminal = ctx.prepared_nodes.cluster(cluster.id.as_str())?;
-    let frame_width = ctx
-        .elk_cluster_geometry
-        .get(cluster.id.as_str())
-        .map_or(cluster.width, |geometry| geometry.width);
-    let width = frame_width.max(1.0);
-    let left = cluster.x - frame_width / 2.0 + ctx.tx - origin_x;
-    let top = cluster.y - cluster.height / 2.0 + ctx.ty - origin_y;
-    let height = cluster.height.max(1.0);
+    let frame = painted_cluster_frame(ctx, cluster);
+    let width = frame.size.width;
+    let height = frame.size.height;
+    let left = frame.origin.x + ctx.tx - origin_x;
+    let top = frame.origin.y + ctx.ty - origin_y;
     let agentflow = ctx.diagram_type == "agentflow";
     if agentflow && (!terminal.theme.requests_shape_style() || terminal.fill == "none") {
         let path = rounded_rect_path_d(left, top, width, height, 10.0);
@@ -408,11 +407,11 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
     let classes = ctx.model.effective_subgraph_css(subgraph_index, sg).0;
 
     let elk_geometry = ctx.elk_cluster_geometry.get(cluster.id.as_str());
-    let frame_width = elk_geometry.map_or(cluster.width, |geometry| geometry.width);
-    let rect_w = frame_width.max(1.0);
-    let left = (cluster.x - frame_width / 2.0) + ctx.tx - origin_x;
-    let top = (cluster.y - cluster.height / 2.0) + ctx.ty - origin_y;
-    let rect_h = cluster.height.max(1.0);
+    let frame = painted_cluster_frame(ctx, cluster);
+    let rect_w = frame.size.width;
+    let rect_h = frame.size.height;
+    let left = frame.origin.x + ctx.tx - origin_x;
+    let top = frame.origin.y + ctx.ty - origin_y;
     let label_top = top + cluster.title_margin_top.max(0.0);
     let Some(cluster_dom_id) = ctx.document_ids().cluster(cluster.id.as_str()) else {
         return Err(crate::Error::InvalidModel {
@@ -464,7 +463,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
     let label_h = painted_markdown
         .map_or(cluster.title_label.height, |metrics| metrics.height)
         .max(0.0);
-    let label_left = left + rect_w / 2.0 - label_w / 2.0;
+    let label_left = cluster.x + ctx.tx - origin_x - label_w / 2.0;
 
     let mut class_attr = String::new();
     for c in classes {

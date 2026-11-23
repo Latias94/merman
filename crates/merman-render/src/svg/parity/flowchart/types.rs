@@ -128,6 +128,50 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
 }
 
 impl<'a> FlowchartRenderCtx<'a> {
+    pub(in crate::svg::parity::flowchart) fn node_rectangle(
+        &self,
+        id: &str,
+    ) -> Option<crate::flowchart::FlowchartRectangleGeometry> {
+        match self.node_geometry(id)? {
+            crate::flowchart::PreparedFlowchartNodeGeometry::Rectangle(rectangle) => {
+                Some(rectangle)
+            }
+            _ => None,
+        }
+    }
+
+    pub(in crate::svg::parity::flowchart) fn node_image(
+        &self,
+        id: &str,
+    ) -> Option<crate::flowchart::ImageSquareGeometry> {
+        match self.node_geometry(id)? {
+            crate::flowchart::PreparedFlowchartNodeGeometry::ImageSquare(image) => Some(image),
+            _ => None,
+        }
+    }
+
+    fn node_geometry(&self, id: &str) -> Option<crate::flowchart::PreparedFlowchartNodeGeometry> {
+        self.svg_label_sidecar?
+            .node_geometry(id, self.swimlane_layout.is_some())
+    }
+
+    pub(in crate::svg::parity::flowchart) fn rectangle_geometry(
+        &self,
+        node: &LayoutNode,
+    ) -> crate::flowchart::FlowchartRectangleGeometry {
+        self.node_rectangle(&node.id).unwrap_or_else(|| {
+            let shape = kurbo::Rect::from_center_size(
+                kurbo::Point::ORIGIN,
+                (node.width.max(1.0), node.height.max(1.0)),
+            );
+            crate::flowchart::FlowchartRectangleGeometry {
+                shape,
+                group: shape,
+                resolved_dimensions: [false; 2],
+            }
+        })
+    }
+
     pub(in crate::svg::parity::flowchart) fn document_ids(
         &self,
     ) -> &super::document_ids::FlowchartDocumentIds {

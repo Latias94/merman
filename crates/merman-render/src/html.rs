@@ -7,6 +7,8 @@ use merman_model::OperationPhase;
 
 use crate::resources::{OperationWorkError, OperationWorkMeter, ResourceLimitPhase};
 
+pub(crate) mod label_box;
+
 #[derive(Debug, Clone)]
 pub(crate) enum HtmlOutputError {
     Limit { attempted: usize },

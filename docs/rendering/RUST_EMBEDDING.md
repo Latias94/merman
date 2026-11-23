@@ -221,12 +221,15 @@ Optional graph backends preserve registered fallback behavior. Without compiled 
 Core SVG leaves the background unset. Set `SvgOutputPolicy.root_background_color` for opaque artwork.
 
 With `native-fonts`, install a reusable `NativeFontContext` through
-`SvgEnvironment::with_native_font_context`. Each render uses its own measurement state. The typed
-PNG, JPEG, and PDF paths reuse the selected context for painting.
+`SvgEnvironment::with_native_font_context`. `Renderer` creates a font context for each layout.
+In development builds, that context retains the system faces selected during the operation.
+To paint with those selections, use `RenderRequest::document` and call `export_png`, `export_jpeg`,
+or `export_pdf` on the resulting `RenderedDocument` with the corresponding codec feature enabled.
 
-When the painter uses the same `usvg` version, use `NativeFontContext::apply_to_usvg_options`
-to share the context before parsing the SVG. For an independent painter, register the same
-font faces and match the font stack as shown below. [Font selection and fallback](../../crates/merman-export/README.md#selection-and-fallback-order)
+An external painter that calls `apply_to_usvg_options` on the original context can query system
+fonts again, even with the same `usvg` version. For independent SVG parsing, give layout and
+painting the same explicit font bytes and family stack, as in the example below.
+[Font selection and fallback](../../crates/merman-export/README.md#selection-and-fallback-order)
 
 For Mermaid-compatible semantic JSON, enable `compat-json` and retain the returned
 `ManagedSemanticJson` owner. Retain managed layout results too, using their maintained JSON
@@ -270,13 +273,16 @@ Put a text family that covers the labels first. The example reports missing cove
 that would require independent fallback. When a subset and a full face share the same family,
 style and weight, supply the full face once. A TTC can already contain a face supplied as a TTF.
 For path-based loading, `NativeFontOptions::with_font_file` also accepts font collections.
-If your host uses the same `usvg` version as Merman,
-you can also install the context's database and resolver with `fonts.apply_to_usvg_options(&mut options)`
-before `usvg::Tree::from_str`. For a separate process or a different `resvg` version, supply the
-same font files and effective family stack there. The standalone SVG references fonts by name.
-To diagnose a mismatch, read `selected_faces()` from the diagnostics returned by
-`svg.evidence().native_font_diagnostics()`. Compare those names and collection indices with the
-faces of the positioned glyphs in the consumer's `usvg::Tree`.
+With a closed set of explicit fonts and the same `usvg` version, a host can install that font
+database and resolver with `fonts.apply_to_usvg_options(&mut options)` before `usvg::Tree::from_str`.
+A separate process or a different `resvg` version must register the font bytes in its own database.
+The standalone SVG references fonts by name.
+
+When `svg.evidence().native_font_diagnostics()` returns `Some(diagnostics)`, compare the PostScript
+names in `diagnostics.selected_faces()` with the faces of the positioned glyphs in the consumer's
+`usvg::Tree`. In development builds, `PostScriptName#N` gives the face index `N` in the font bytes
+used for measurement. For example, a standalone snapshot can report `PingFangSC-Regular#0` for a
+face at index 3 in the installed TTC. Compare indices only when both stages use identical font bytes.
 
 For variable fonts, the v0.11.0 workspace build and resvg 0.50 both request `wght=400` for CSS
 normal. The standalone example has an independent Cargo workspace. It resolves crates.io usvg

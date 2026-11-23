@@ -264,10 +264,14 @@ impl std::fmt::Display for ResourceLimitCause {
 
 impl ResourceLimitExceeded {
     fn recovery_hint(&self) -> &'static str {
-        if self.id == "native_font_measurements" && self.cause == ResourceLimitCause::Ceiling {
-            "; simplify the diagram or increase NativeFontLimits::max_measurements via NativeFontOptions::with_limits before loading fonts; render resource profiles do not change this limit"
-        } else {
-            ""
+        match (self.id, self.cause) {
+            ("native_font_bytes", ResourceLimitCause::Ceiling) => {
+                ". Select smaller fonts or increase NativeFontLimits::max_bytes via NativeFontOptions::with_limits before loading fonts."
+            }
+            ("native_font_measurements", ResourceLimitCause::Ceiling) => {
+                "; simplify the diagram or increase NativeFontLimits::max_measurements via NativeFontOptions::with_limits before loading fonts; render resource profiles do not change this limit"
+            }
+            _ => "",
         }
     }
 

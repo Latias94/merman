@@ -164,7 +164,7 @@ library behavior. For embedded integrations, use the
 Current-source default builds and the official release profile include
 `native-fonts` and `system-fonts`. Mermaid SVG keeps deterministic, font-agnostic
 measurement by default. The current release profile queries system fonts through
-DirectWrite on Windows, Core Text on macOS, and Fontconfig on Linux for Mermaid
+Fontique and DirectWrite on Windows, Core Text on macOS, and Fontconfig on Linux for Mermaid
 PNG/JPEG/PDF. Measurement and painting share the selected fonts. Default Cargo
 builds use bounded discovery. Font selection can change wrapping, node sizes, and
 image/PDF output across hosts or discovery providers.
@@ -218,10 +218,10 @@ merman-cli render diagram.mmd --format png --output diagram.png --font-dir fonts
 
 Supply the regular, bold or italic files your diagram uses. Sources are
 repeatable and earlier equal family/style/weight faces take precedence. Explicit
-sources disable system fallback unless `--font-system on` is supplied, even with
-`--font-measurement native`. Fixed font contents and matching configuration make
-layout more reproducible; a directory with many fonts still has its own scanning
-cost.
+sources form a closed set, even with `--font-measurement native`. To allow system
+fallback, add `--font-system on` or choose an available provider explicitly.
+Fixed font contents and matching configuration make layout more reproducible.
+Directories with many fonts can take longer to scan.
 
 To explicitly use the fonts installed on the current machine instead:
 
@@ -235,13 +235,27 @@ build's default provider. The current release profile selects Platform. On Linux
 the default and `on` retry with bounded discovery if the Fontconfig runtime cannot
 load. An explicit `platform` request reports the load error. Platform metadata
 queries run outside Merman's scan budgets.
-Selected font bytes have acquisition limits and serve both measurement and painting. On Windows,
-an unsupported named variable family may fall through to the next family in the requested stack.
+For a missing shaping cluster, platform fallback tries the authored font stack,
+then the supplied fonts, then the platform's candidates. Measurement and painting
+use the same physical face for the cluster. SVG text inherits `xml:lang` and a
+`<tspan>` can override it. On Windows, DirectWrite's fallback scale applies to
+both layout and painting. An unsupported named variable family can fall through
+to the next family in the stack.
 See [Optional CLI fonts](../../docs/FEATURES.md#optional-cli-fonts).
 
 If bounded discovery reports `native font limit system-cmap-bytes exceeded`, the installed fonts'
 combined character map tables exceeded the scan budget. Supply the diagram's fonts with
 `--font-file`, or select `--font-system platform` on a build that offers it.
+
+Each native font context has a default budget of 256 MiB for explicit font files
+(including files from `--font-dir`) and selected system font data combined.
+Set `--font-max-bytes <SIZE>` to a positive integer in bytes, KiB, MiB, or GiB.
+For example, `--font-max-bytes 536870912` and `--font-max-bytes 512MiB`
+set the same limit. With only this option, ordinary Mermaid SVG uses deterministic
+measurement with system discovery off. For raw SVG conversion, pair the budget with
+`--font-system on` or an explicit font source. If the fonts exceed the budget, the CLI
+preserves the existing output file. Retry the same command with the
+`--font-max-bytes` argument from stderr, replacing any previous value.
 
 Native measurement allows 16,384 uncached shaping probes per diagram by default.
 Large diagrams can reach this budget because one label may need several probes.
@@ -304,7 +318,9 @@ outer node has padding. The native encoded-output default shares layout and
 painting metrics; explicit fonts also make the selected faces reproducible.
 Supply every face needed by bold, italic, and mixed labels. A successful native
 export with unresolved fonts or glyphs reports a warning with the actual missing
-resolution state and `.notdef` glyph count; `--quiet` suppresses that diagnostic.
+resolution state and `.notdef` glyph count. If text is missing, select a family
+that covers it or pass `--font-file PATH` for each required font. `--quiet`
+suppresses that diagnostic.
 Best-effort export remains permissive, while strict portability admission retains
 its existing rejection policy.
 

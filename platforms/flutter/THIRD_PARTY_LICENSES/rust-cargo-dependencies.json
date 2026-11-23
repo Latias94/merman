@@ -292,7 +292,7 @@
     "version": "0.9.3",
     "command_profile": "artifact-profile-target-union",
     "offline": true,
-    "cargo_lock_sha256": "d8ce35a547ed3029a0719b1b1b32a88c234d24b6fa37434ec717ce9a12bc10b1",
+    "cargo_lock_sha256": "4935ef5e6da6e8a378cd2d2c81b900be4aa95135e028e9f0bcec9c1019c70047",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "b3030c431abb12f44bedd1589f9919df88fe1b34aec9aabf9794a6ae5a16a2fb"
   },
@@ -300,73 +300,73 @@
     {
       "artifact_profile_id": "flutter-android-native",
       "target": "aarch64-linux-android",
-      "package_count": 159,
-      "packages_sha256": "a3ef830b14a5fe4fdac733520124d6e35d688ea9655e352e9b261a116bc35cb9"
+      "package_count": 160,
+      "packages_sha256": "e60097573e0f4407d5e88826a8835ab665450f5038381cb3376e8824ba0bb30b"
     },
     {
       "artifact_profile_id": "flutter-android-native",
       "target": "armv7-linux-androideabi",
-      "package_count": 158,
-      "packages_sha256": "06545ee37a8fe9c29ae2616a9be438f0e0aebe0d0bb343b2a0893d2a35f594dd"
+      "package_count": 159,
+      "packages_sha256": "01923bcba7895df869629269b8f60c244e4d796bcc64d98ff976fd390de642d0"
     },
     {
       "artifact_profile_id": "flutter-android-native",
       "target": "x86_64-linux-android",
-      "package_count": 159,
-      "packages_sha256": "a3ef830b14a5fe4fdac733520124d6e35d688ea9655e352e9b261a116bc35cb9"
+      "package_count": 160,
+      "packages_sha256": "e60097573e0f4407d5e88826a8835ab665450f5038381cb3376e8824ba0bb30b"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "aarch64-apple-darwin",
-      "package_count": 159,
-      "packages_sha256": "a3ef830b14a5fe4fdac733520124d6e35d688ea9655e352e9b261a116bc35cb9"
+      "package_count": 160,
+      "packages_sha256": "e60097573e0f4407d5e88826a8835ab665450f5038381cb3376e8824ba0bb30b"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "aarch64-unknown-linux-gnu",
-      "package_count": 161,
-      "packages_sha256": "e98ba0ef874c874669e0b88acc45cfeb2d5220c94694234a577ac0313a0c0212"
+      "package_count": 162,
+      "packages_sha256": "c76311162addd1252ec1ec7731f567e8f742fd42c7179af4c33bdb1947fb6f1f"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "x86_64-apple-darwin",
-      "package_count": 159,
-      "packages_sha256": "a3ef830b14a5fe4fdac733520124d6e35d688ea9655e352e9b261a116bc35cb9"
+      "package_count": 160,
+      "packages_sha256": "e60097573e0f4407d5e88826a8835ab665450f5038381cb3376e8824ba0bb30b"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "x86_64-pc-windows-gnu",
-      "package_count": 161,
-      "packages_sha256": "164784a73f0997a251684a17eb779f0a7386c2dee6e9adba2fc9414eb59ff364"
+      "package_count": 162,
+      "packages_sha256": "12f802ddc44dff9be63069eb1540849e8f76690c9fdcc4466b462393c39a166b"
     },
     {
       "artifact_profile_id": "flutter-desktop-native",
       "target": "x86_64-unknown-linux-gnu",
-      "package_count": 161,
-      "packages_sha256": "e98ba0ef874c874669e0b88acc45cfeb2d5220c94694234a577ac0313a0c0212"
+      "package_count": 162,
+      "packages_sha256": "c76311162addd1252ec1ec7731f567e8f742fd42c7179af4c33bdb1947fb6f1f"
     },
     {
       "artifact_profile_id": "flutter-ios-native",
       "target": "aarch64-apple-ios",
-      "package_count": 161,
-      "packages_sha256": "e98ba0ef874c874669e0b88acc45cfeb2d5220c94694234a577ac0313a0c0212"
+      "package_count": 162,
+      "packages_sha256": "c76311162addd1252ec1ec7731f567e8f742fd42c7179af4c33bdb1947fb6f1f"
     },
     {
       "artifact_profile_id": "flutter-ios-native",
       "target": "aarch64-apple-ios-sim",
-      "package_count": 161,
-      "packages_sha256": "e98ba0ef874c874669e0b88acc45cfeb2d5220c94694234a577ac0313a0c0212"
+      "package_count": 162,
+      "packages_sha256": "c76311162addd1252ec1ec7731f567e8f742fd42c7179af4c33bdb1947fb6f1f"
     },
     {
       "artifact_profile_id": "flutter-ios-native",
       "target": "x86_64-apple-ios",
-      "package_count": 161,
-      "packages_sha256": "e98ba0ef874c874669e0b88acc45cfeb2d5220c94694234a577ac0313a0c0212"
+      "package_count": 162,
+      "packages_sha256": "c76311162addd1252ec1ec7731f567e8f742fd42c7179af4c33bdb1947fb6f1f"
     }
   ],
   "dependency_closure": {
-    "package_count": 164,
-    "packages_sha256": "cd546f96c2789c2182abaa9d50e12f22cc2a774d101e37b9eea7ca7e4cee4c75"
+    "package_count": 165,
+    "packages_sha256": "f9d396c518364644bf8f0615006554ea62936d8ed617e04a32dab0fef881d601"
   },
   "licenses": [
     {
@@ -1669,6 +1669,24 @@
             "Robin Stocker <robin@nibor.org>"
           ],
           "repository": "https://github.com/fancy-regex/fancy-regex"
+        }
+      ]
+    },
+    {
+      "id": "MIT",
+      "name": "MIT License",
+      "text_sha256": "436637bd4909fde7e14c899e9ff2cdd440b5968df12d431f1651f11db19bc2ef",
+      "text": "MIT License\r\n\r\nCopyright (c) 2017 Maiddog\r\n\r\nPermission is hereby granted, free of charge, to any person obtaining a copy\r\nof this software and associated documentation files (the \"Software\"), to deal\r\nin the Software without restriction, including without limitation the rights\r\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\r\ncopies of the Software, and to permit persons to whom the Software is\r\nfurnished to do so, subject to the following conditions:\r\n\r\nThe above copyright notice and this permission notice shall be included in all\r\ncopies or substantial portions of the Software.\r\n\r\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\r\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\r\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\r\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\r\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\r\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\r\nSOFTWARE.\r\n",
+      "packages": [
+        {
+          "name": "imagesize",
+          "version": "0.14.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT",
+          "authors": [
+            "Maid Dog <maiddogsrl@gmail.com>"
+          ],
+          "repository": "https://github.com/Roughsketch/imagesize"
         }
       ]
     },

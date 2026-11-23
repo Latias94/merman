@@ -97,6 +97,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartNodeShapeEmissionReceipt {
     stroke_width: FlowchartNodeFacetEmission,
     stroke_dasharray: FlowchartNodeFacetEmission,
     radius: FlowchartNodeFacetEmission,
+    rectangle_dimensions: [bool; 2],
     effect: bool,
 }
 
@@ -348,6 +349,25 @@ impl FlowchartNodeShapeEmissionReceipt {
         self.effect
     }
 
+    pub(in crate::svg::parity::flowchart::render::node) fn with_rectangle_dimensions(
+        mut self,
+        dimensions: [bool; 2],
+    ) -> Self {
+        self.rectangle_dimensions = dimensions;
+        self
+    }
+
+    pub(in crate::svg::parity::flowchart) fn verifies_rectangle_dimension(
+        self,
+        property: &str,
+    ) -> bool {
+        match property {
+            "width" => self.rectangle_dimensions[0],
+            "height" => self.rectangle_dimensions[1],
+            _ => false,
+        }
+    }
+
     pub(in crate::svg::parity::flowchart) const fn classic_process(radius_emitted: bool) -> Self {
         let facet = FlowchartNodeFacetEmission::new(
             FlowchartNodeFacetReach::Verified,
@@ -357,6 +377,7 @@ impl FlowchartNodeShapeEmissionReceipt {
             FlowchartNodeFacetReach::Verified,
         );
         Self {
+            rectangle_dimensions: [false; 2],
             effect: false,
             fill: facet,
             stroke: facet,
@@ -395,6 +416,7 @@ impl FlowchartNodeShapeEmissionReceipt {
             FlowchartNodeFacetReach::Unverified,
         );
         Self {
+            rectangle_dimensions: [false; 2],
             effect: false,
             fill: facet,
             stroke: facet,
@@ -443,6 +465,7 @@ impl FlowchartNodeShapeEmissionReceipt {
             FlowchartNodeFacetReach::Verified,
         );
         Self {
+            rectangle_dimensions: [false; 2],
             effect: false,
             fill: facet,
             stroke: facet,
@@ -479,6 +502,7 @@ impl FlowchartNodeShapeEmissionReceipt {
             FlowchartNodeFacetReach::Unverified,
         );
         Self {
+            rectangle_dimensions: [false; 2],
             effect: false,
             fill: facet,
             stroke: facet,
@@ -515,6 +539,7 @@ impl FlowchartNodeShapeEmissionReceipt {
             FlowchartNodeFacetReach::Unverified,
         );
         Self {
+            rectangle_dimensions: [false; 2],
             effect: false,
             fill: facet,
             stroke: facet,

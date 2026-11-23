@@ -95,7 +95,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node_depth(
         fmt(common.layout_node.y + ctx.ty - origin_y),
     );
     let receipt = match FlowchartShape::resolve(common.shape)? {
-        FlowchartShape::Process => shapes::render_process_rectangle(out, &common, details),
+        FlowchartShape::Process => shapes::render_process_rectangle(out, ctx, &common, details),
         FlowchartShape::RoundedRectangle => shapes::render_rounded_rect(out, ctx, &common, details),
         FlowchartShape::Diamond => shapes::render_diamond(out, &common, details),
         FlowchartShape::Circle => shapes::render_circle(out, ctx, &common, details)?,

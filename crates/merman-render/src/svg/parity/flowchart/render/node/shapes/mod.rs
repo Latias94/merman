@@ -151,7 +151,7 @@ pub(super) fn advance_rough_geometry(
         FlowchartShape::IconCircle => icon_circle::advance_rough_geometry(ctx, common, label),
         FlowchartShape::IconRounded => icon_square::advance_rough_geometry(ctx, common, label, 5.0),
         FlowchartShape::IconSquare => icon_square::advance_rough_geometry(ctx, common, label, 0.1),
-        FlowchartShape::ImageSquare => image_square::advance_rough_geometry(ctx, common, label),
+        FlowchartShape::ImageSquare => image_square::advance_rough_geometry(ctx, common, label)?,
         FlowchartShape::InvertedTrapezoid => {
             lean_trapezoids::advance_rough_geometry(common, LeanKind::InvertedTrapezoid)
         }

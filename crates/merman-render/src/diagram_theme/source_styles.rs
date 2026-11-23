@@ -227,6 +227,15 @@ impl PreparedSourceStyleDeclaration {
         self.analysis.svg_number_or_px()
     }
 
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    ))]
+    pub(crate) fn svg_rect_length_px(&self) -> Result<Option<f64>, ()> {
+        self.analysis.svg_rect_length_px(self.value())
+    }
+
     pub(crate) fn resolve_font_size_px(&self, context: CssFontSizeContext) -> Option<f64> {
         self.analysis.resolve_font_size_px(context)
     }

@@ -369,6 +369,7 @@ pub enum AId {
     X1,
     X2,
     XChannelSelector,
+    XmlLang,
     Y,
     Y1,
     Y2,
@@ -646,7 +647,10 @@ impl AId {
     /// Returns the original string.
     #[inline(never)]
     pub fn to_str(self) -> &'static str {
-        ATTRIBUTES.key(&self)
+        match self {
+            AId::XmlLang => "xml:lang",
+            _ => ATTRIBUTES.key(&self),
+        }
     }
 }
 

@@ -6,10 +6,17 @@ built from [resvg `3a0fdba53ccf2d346b54cc53ba7adf0ee60d0707`](https://github.com
 The Cargo manifest disables publication. The runtime source and both upstream license files
 are copied from the archive.
 
-The change in `src/text/layout.rs` keeps trying fallback faces after an incompatible partial
-shape or a character with no fallback. It can fill a missing cluster when both faces shape
-the same original byte range. Upstream [resvg #1087](https://github.com/linebender/resvg/pull/1087)
-discusses the cluster boundary problem.
+The change in `src/text/layout.rs` shapes missing text in its original direction and
+surrounding context. Consecutive missing clusters resolved to the same face, scale and
+script are shaped together, preserving ligatures and joining. Glyphs already supplied
+by the primary face keep their original positions within their cluster. Adjacent spans
+with matching shaping properties and equivalent language tags share a run.
+`Font::selection_language` supplies the effective language to primary family matching.
+`Options::set_text_fallback` lets the font host consider the authored family stack,
+inherited `xml:lang`, and complete cluster text. The returned relative size affects
+glyph advances, outlines and PDF spans.
+The scalar resolver remains available for existing callers. Upstream
+[resvg #1087](https://github.com/linebender/resvg/pull/1087) discusses cluster replacement.
 
 The CSS weight mapping follows [usvg 0.50.0](https://docs.rs/crate/usvg/0.50.0/source/src/parser/text.rs).
 It supplies `wght` for CSS normal (400) as well as other weights. An explicit `wght` takes

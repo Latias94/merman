@@ -207,11 +207,11 @@ fn native_request() -> SvgRequest {
 #[test]
 fn native_fonts_reject_unmeasured_node_and_class_text_geometry() {
     for directive in [
-        "style A letter-spacing:4px",
-        "style A word-spacing:4px",
-        "style A text-transform:uppercase",
+        "style A letter-spacing:1rem",
+        "style A word-spacing:calc(4px + 1px)",
+        "style A text-transform:full-width",
         "style A white-space:nowrap",
-        "classDef spaced letter-spacing:4px\nclass A spaced",
+        "classDef spaced letter-spacing:1rem\nclass A spaced",
     ] {
         let source = format!("flowchart LR\nA[Measured label]-->B\n{directive}\n");
         let result = Renderer::new().render(RenderRequest::new(
@@ -227,7 +227,7 @@ fn native_fonts_reject_unmeasured_node_and_class_text_geometry() {
 #[test]
 fn layout_json_writer_checks_native_font_admission_before_emission() {
     let request = RenderRequest::layout_json(
-        "flowchart LR\nA[Measured label]-->B\nstyle A letter-spacing:4px\n",
+        "%%{init: {\"htmlLabels\":false}}%%\nflowchart LR\nA[Measured label]-->B\nstyle A letter-spacing:4px\n",
         OperationControl::new(),
         native_request(),
     );
@@ -429,6 +429,10 @@ fn native_binary_fonts_apply_the_same_typography_admission() {
     for (source, accepted) in [
         (
             "flowchart LR\nA[Measured label]-->B\nstyle A word-spacing:4px\n",
+            true,
+        ),
+        (
+            "flowchart LR\nA[\"fa:fa-home Measured label\"]-->B\nstyle A word-spacing:4px\n",
             false,
         ),
         (
@@ -576,7 +580,7 @@ mod binary_context_contract {
             Some(context(Default::default(), &OperationControl::new())),
         ) {
             let error =
-                render("flowchart LR\nA[Hello]\nstyle A word-spacing:4px", target).unwrap_err();
+                render("flowchart LR\nA[Hello]\nstyle A word-spacing:1rem", target).unwrap_err();
             assert!(error.to_string().contains("text geometry style"), "{error}");
         }
     }

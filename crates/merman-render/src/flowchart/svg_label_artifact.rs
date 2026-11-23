@@ -16,6 +16,7 @@ use crate::math::{
     PrepareMathLabelRequest, PreparedMathEvidenceLease, PreparedMathLabel,
     PreparedMathOccurrenceId,
 };
+use crate::mermaid_style::HtmlTextGeometryDeclarations;
 use crate::resources::{
     OperationWorkError, OperationWorkMeter, PreparedTextRetainedReservation, ResourceLimitExceeded,
 };
@@ -556,6 +557,7 @@ pub(crate) struct FlowchartSvgLabelSidecarBuilder {
 #[derive(Debug, Default)]
 struct PendingFlowchartSvgLabels {
     node_source_typography: FlowchartSvgLabelSlots<Arc<FlowchartNodeSourceTypography>>,
+    node_geometry: FlowchartSvgLabelSlots<super::PreparedFlowchartNodeGeometry>,
     sources: FlowchartSvgLabelSlots<FlowchartSvgLabelSourceEntry>,
     prepared: FlowchartSvgLabelSlots<PreparedFlowchartSvgLabel>,
     math: FlowchartSvgLabelSlots<PreparedFlowchartMathLabel>,
@@ -965,7 +967,7 @@ impl FlowchartSvgLabelSidecarBuilder {
         break_long_words: bool,
         width_mode: FlowchartSvgWidthMode,
     ) -> TextMetrics {
-        self.measure_for_layout_with_terminal_foreground(
+        self.measure_for_layout_with_source_style(
             owner,
             render_id,
             request,
@@ -976,22 +978,22 @@ impl FlowchartSvgLabelSidecarBuilder {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn measure_for_layout_with_terminal_foreground(
+    fn measure_for_layout_with_source_style(
         &self,
         owner: FlowchartSvgLabelOwner,
         render_id: &str,
         request: FlowchartLabelMetricsRequest<'_>,
-        terminal_foreground: Option<&super::FlowchartTerminalForeground>,
+        source_style: Option<&super::FlowchartTextStyleResolution<'_>>,
         break_long_words: bool,
         width_mode: FlowchartSvgWidthMode,
     ) -> TextMetrics {
         let metrics_style = request.style;
-        self.measure_for_layout_with_metrics_style_and_terminal_foreground(
+        self.measure_for_layout_with_metrics_and_source_style(
             owner,
             render_id,
             request,
             metrics_style,
-            terminal_foreground,
+            source_style,
             break_long_words,
             width_mode,
         )
@@ -1008,7 +1010,7 @@ impl FlowchartSvgLabelSidecarBuilder {
         break_long_words: bool,
         width_mode: FlowchartSvgWidthMode,
     ) -> TextMetrics {
-        self.measure_for_layout_with_metrics_style_and_terminal_foreground(
+        self.measure_for_layout_with_metrics_and_source_style(
             owner,
             render_id,
             request,
@@ -1020,13 +1022,13 @@ impl FlowchartSvgLabelSidecarBuilder {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn measure_for_layout_with_metrics_style_and_terminal_foreground(
+    fn measure_for_layout_with_metrics_and_source_style(
         &self,
         owner: FlowchartSvgLabelOwner,
         render_id: &str,
         request: FlowchartLabelMetricsRequest<'_>,
         metrics_style: &TextStyle,
-        terminal_foreground: Option<&super::FlowchartTerminalForeground>,
+        source_style: Option<&super::FlowchartTextStyleResolution<'_>>,
         break_long_words: bool,
         width_mode: FlowchartSvgWidthMode,
     ) -> TextMetrics {
@@ -1085,6 +1087,7 @@ impl FlowchartSvgLabelSidecarBuilder {
             ..request
         };
         let metrics_style = weighted_metrics.as_ref();
+        let html_geometry = source_style.map_or(Default::default(), |style| style.html_geometry);
         if self
             .base_typography
             .as_ref()
@@ -1100,7 +1103,7 @@ impl FlowchartSvgLabelSidecarBuilder {
             render_id,
             &request,
             metrics_style,
-            terminal_foreground,
+            source_style.and_then(super::FlowchartTextStyleResolution::terminal_foreground),
         ) {
             PreparedMathMeasurement::Prepared(metrics) => return metrics,
             PreparedMathMeasurement::Unavailable => {
@@ -1112,6 +1115,7 @@ impl FlowchartSvgLabelSidecarBuilder {
                         math_renderer: None,
                         ..request
                     },
+                    html_geometry,
                 );
             }
             PreparedMathMeasurement::NotApplicable => {}
@@ -1124,6 +1128,7 @@ impl FlowchartSvgLabelSidecarBuilder {
                     style: metrics_style,
                     ..request
                 },
+                html_geometry,
             );
         }
         if !supports_svg_source_preparation(owner, &request) {
@@ -1250,6 +1255,7 @@ impl FlowchartSvgLabelSidecarBuilder {
         owner: FlowchartSvgLabelOwner,
         render_id: &str,
         request: FlowchartLabelMetricsRequest<'_>,
+        html_geometry: HtmlTextGeometryDeclarations,
     ) -> TextMetrics {
         let resolved_config = crate::graph_label::flowchart_label_sanitize_config(request.config);
         {
@@ -1259,9 +1265,10 @@ impl FlowchartSvgLabelSidecarBuilder {
                 .get(owner)
                 .filter(|prepared| prepared.matches(request.raw_label, request.label_type))
             {
-                return crate::graph_label::flowchart_html_label_metrics_for_layout(
+                return crate::graph_label::flowchart_html_label_metrics_with_geometry(
                     request,
                     &prepared.xhtml,
+                    html_geometry,
                 );
             }
         }
@@ -1348,7 +1355,11 @@ impl FlowchartSvgLabelSidecarBuilder {
         };
         let source = request.raw_label;
         let label_type = request.label_type;
-        let metrics = crate::graph_label::flowchart_html_label_metrics_for_layout(request, &xhtml);
+        let metrics = crate::graph_label::flowchart_html_label_metrics_with_geometry(
+            request,
+            &xhtml,
+            html_geometry,
+        );
         self.pending.borrow_mut().html.insert(
             owner,
             PreparedFlowchartHtmlLabel {
@@ -1497,18 +1508,26 @@ impl FlowchartSvgLabelSidecarBuilder {
         }
     }
 
+    pub(crate) fn record_node_geometry(
+        &self,
+        owner: FlowchartSvgLabelOwner,
+        geometry: super::PreparedFlowchartNodeGeometry,
+    ) -> crate::Result<()> {
+        if let Some(work) = &self.work_meter {
+            work.charge(1)?;
+        }
+        self.pending
+            .borrow_mut()
+            .node_geometry
+            .insert(owner, geometry);
+        Ok(())
+    }
+
     pub(crate) fn finish(self) -> FlowchartSvgLabelSidecar {
         #[cfg(test)]
         let source_plans_by_owner = self.source_plans_by_owner.into_inner();
-        let pending = self.pending.into_inner();
         FlowchartSvgLabelSidecar::new(
-            pending.node_source_typography,
-            pending.sources,
-            pending.prepared,
-            pending.math,
-            pending.html,
-            pending.render_ids,
-            pending.render_id_reservations,
+            self.pending.into_inner(),
             self.base_typography,
             self.label_typography,
             self.edge_label_padding,
@@ -1546,55 +1565,64 @@ pub(crate) fn measure_flowchart_svg_label_for_layout(
     request: FlowchartLabelMetricsRequest<'_>,
     width_mode: FlowchartSvgWidthMode,
 ) -> TextMetrics {
-    measure_flowchart_svg_label_for_layout_with_terminal_foreground(
+    measure_flowchart_svg_label_for_layout_with_source_style(
         sidecar, owner, render_id, request, None, width_mode,
     )
 }
 
-pub(crate) fn measure_flowchart_svg_label_for_layout_with_terminal_foreground(
+pub(crate) fn measure_flowchart_svg_label_for_layout_with_source_style(
     sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
     owner: Option<FlowchartSvgLabelOwner>,
     render_id: Option<&str>,
     request: FlowchartLabelMetricsRequest<'_>,
-    terminal_foreground: Option<&super::FlowchartTerminalForeground>,
+    source_style: Option<&super::FlowchartTextStyleResolution<'_>>,
     width_mode: FlowchartSvgWidthMode,
 ) -> TextMetrics {
     match sidecar.zip(owner).zip(render_id) {
-        Some(((sidecar, owner), render_id)) => sidecar.measure_for_layout_with_terminal_foreground(
+        Some(((sidecar, owner), render_id)) => sidecar.measure_for_layout_with_source_style(
             owner,
             render_id,
             request,
-            terminal_foreground,
+            source_style,
             true,
             width_mode,
         ),
-        None => measure_svg_label_without_sidecar(request, width_mode),
+        None => {
+            let geometry = source_style.map_or(Default::default(), |style| style.html_geometry);
+            measure_svg_label_without_sidecar(request, width_mode, geometry)
+        }
     }
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn measure_flowchart_svg_label_for_layout_with_metrics_style_and_terminal_foreground(
+pub(crate) fn measure_flowchart_svg_label_for_layout_with_metrics_and_source_style(
     sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
     owner: Option<FlowchartSvgLabelOwner>,
     render_id: Option<&str>,
     request: FlowchartLabelMetricsRequest<'_>,
     metrics_style: &TextStyle,
-    terminal_foreground: Option<&super::FlowchartTerminalForeground>,
+    source_style: Option<&super::FlowchartTextStyleResolution<'_>>,
     width_mode: FlowchartSvgWidthMode,
 ) -> TextMetrics {
     match sidecar.zip(owner).zip(render_id) {
         Some(((sidecar, owner), render_id)) => sidecar
-            .measure_for_layout_with_metrics_style_and_terminal_foreground(
+            .measure_for_layout_with_metrics_and_source_style(
                 owner,
                 render_id,
                 request,
                 metrics_style,
-                terminal_foreground,
+                source_style,
                 true,
                 width_mode,
             ),
         None => {
-            measure_svg_label_without_sidecar_with_metrics_style(request, metrics_style, width_mode)
+            let geometry = source_style.map_or(Default::default(), |style| style.html_geometry);
+            measure_svg_label_without_sidecar_with_metrics_style(
+                request,
+                metrics_style,
+                width_mode,
+                geometry,
+            )
         }
     }
 }
@@ -1635,21 +1663,31 @@ fn markdown_matches_non_markdown_svg_source(raw_label: &str) -> bool {
 fn measure_svg_label_without_sidecar(
     request: FlowchartLabelMetricsRequest<'_>,
     width_mode: FlowchartSvgWidthMode,
+    geometry: HtmlTextGeometryDeclarations,
 ) -> TextMetrics {
     let metrics_style = request.style;
-    measure_svg_label_without_sidecar_with_metrics_style(request, metrics_style, width_mode)
+    measure_svg_label_without_sidecar_with_metrics_style(
+        request,
+        metrics_style,
+        width_mode,
+        geometry,
+    )
 }
 
 fn measure_svg_label_without_sidecar_with_metrics_style(
     request: FlowchartLabelMetricsRequest<'_>,
     metrics_style: &TextStyle,
     width_mode: FlowchartSvgWidthMode,
+    geometry: HtmlTextGeometryDeclarations,
 ) -> TextMetrics {
     if request.wrap_mode != WrapMode::SvgLike || request.label_type == "markdown" {
-        return flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
-            style: metrics_style,
-            ..request
-        });
+        return crate::graph_label::flowchart_label_metrics_with_html_geometry(
+            FlowchartLabelMetricsRequest {
+                style: metrics_style,
+                ..request
+            },
+            geometry,
+        );
     }
     let source = FlowchartSvgLabelSource::new(request.raw_label);
     let wrapped_lines =
@@ -1662,6 +1700,7 @@ fn measure_svg_label_without_sidecar_with_metrics_style(
 pub(crate) struct FlowchartSvgLabelSidecar {
     _render_id_reservations: FlowchartSvgLabelSlots<PreparedTextRetainedReservation>,
     node_source_typography: FlowchartSvgLabelSlots<Arc<FlowchartNodeSourceTypography>>,
+    node_geometry: FlowchartSvgLabelSlots<super::PreparedFlowchartNodeGeometry>,
     sources: FlowchartSvgLabelSlots<FlowchartSvgLabelSourceEntry>,
     prepared: FlowchartSvgLabelSlots<PreparedFlowchartSvgLabel>,
     math: FlowchartSvgLabelSlots<PreparedFlowchartMathLabel>,
@@ -1689,18 +1728,8 @@ impl FlowchartSvgLabelSidecar {
         self.label_typography.clone()
     }
 
-    #[allow(
-        clippy::too_many_arguments,
-        reason = "The sidecar seals independent prepared label slots and terminal indexes"
-    )]
     fn new(
-        node_source_typography: FlowchartSvgLabelSlots<Arc<FlowchartNodeSourceTypography>>,
-        sources: FlowchartSvgLabelSlots<FlowchartSvgLabelSourceEntry>,
-        prepared: FlowchartSvgLabelSlots<PreparedFlowchartSvgLabel>,
-        math: FlowchartSvgLabelSlots<PreparedFlowchartMathLabel>,
-        html: FlowchartSvgLabelSlots<PreparedFlowchartHtmlLabel>,
-        render_ids: FlowchartSvgLabelSlots<Box<str>>,
-        render_id_reservations: FlowchartSvgLabelSlots<PreparedTextRetainedReservation>,
+        pending: PendingFlowchartSvgLabels,
         base_typography: Option<super::FlowchartBaseTypographyPlan>,
         label_typography: super::FlowchartLabelTypography,
         edge_label_padding: super::FlowchartEdgeLabelPadding,
@@ -1708,9 +1737,20 @@ impl FlowchartSvgLabelSidecar {
         prepared_work_error: Option<OperationWorkError>,
         #[cfg(test)] source_plans_by_owner: FxHashMap<FlowchartSvgLabelOwner, usize>,
     ) -> Self {
+        let PendingFlowchartSvgLabels {
+            node_source_typography,
+            node_geometry,
+            sources,
+            prepared,
+            math,
+            html,
+            render_ids,
+            render_id_reservations,
+        } = pending;
         let mut sidecar = Self {
             _render_id_reservations: render_id_reservations,
             node_source_typography,
+            node_geometry,
             sources,
             prepared,
             math,
@@ -1820,6 +1860,16 @@ impl FlowchartSvgLabelSidecar {
         owner: FlowchartSvgLabelOwner,
     ) -> Option<&Arc<FlowchartNodeSourceTypography>> {
         self.node_source_typography.get(owner)
+    }
+
+    pub(crate) fn node_geometry(
+        &self,
+        node_id: &str,
+        swimlane: bool,
+    ) -> Option<super::PreparedFlowchartNodeGeometry> {
+        self.node_geometry
+            .get(self.node_owner(node_id, swimlane)?)
+            .copied()
     }
 
     pub(crate) fn edge_owner(
@@ -2854,10 +2904,12 @@ mod tests {
             "#f43f5e",
             super::super::FlowchartTerminalForegroundProvenance::InlineStyle,
         );
+        let mut source_style = crate::flowchart::FlowchartTextStyleResolution::borrowed(&style);
+        source_style.terminal_foreground = Some(terminal_foreground);
         let measurer = crate::text::DeterministicTextMeasurer::default();
         let owner = FlowchartSvgLabelOwner::Node(0);
 
-        builder.measure_for_layout_with_terminal_foreground(
+        builder.measure_for_layout_with_source_style(
             owner,
             "node-a",
             FlowchartLabelMetricsRequest {
@@ -2870,7 +2922,7 @@ mod tests {
                 config: &config,
                 math_renderer: None,
             },
-            Some(&terminal_foreground),
+            Some(&source_style),
             true,
             FlowchartSvgWidthMode::Bbox,
         );

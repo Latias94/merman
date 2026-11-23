@@ -320,6 +320,7 @@ fn complete_profile_assets_expose_native_encoded_defaults_and_font_controls() {
             "--font-dir",
             "--font-measurement",
             "--font-system",
+            "--font-max-bytes",
             "--font-max-measurements",
         ] {
             assert!(options.contains(option), "{command} omits {option}");
@@ -344,6 +345,10 @@ fn complete_profile_assets_expose_native_encoded_defaults_and_font_controls() {
         assert!(man.contains("Control system font discovery"));
         assert!(man.contains("Native encoded output enables it by default"));
         assert!(man.contains("enable system fallback for explicit fonts"));
+        assert!(man.contains(r"\fB\-\-font\-max\-bytes\fR \fI<SIZE>\fR"));
+        assert!(man.contains("Byte budget for the entire native font context"));
+        assert!(man.contains("default 256 MiB"));
+        assert!(man.contains("256MiB"));
         assert!(man.contains("Maximum uncached native font shaping probes per diagram"));
         assert!(man.contains("default: 16384"));
         assert!(!man.contains("title horizontal bounds only"));
@@ -368,6 +373,10 @@ fn complete_profile_assets_expose_native_encoded_defaults_and_font_controls() {
         assert!(
             completion.contains("Control system font discovery"),
             "{asset} omits system font discovery controls"
+        );
+        assert!(
+            completion.contains("font-max-bytes"),
+            "{asset} omits the native font byte budget"
         );
         assert!(
             completion.contains("font-max-measurements"),

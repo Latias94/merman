@@ -165,7 +165,10 @@ pub fn intersect_rect(rect: Rect, point: Point) -> Point {
         if dx < 0.0 {
             w = -w;
         }
-        (w, w * dy / dx)
+        // A zero-width rectangle can align with the vertical ray without reaching the
+        // top/bottom branch. Its horizontal-side intersection remains at the center.
+        let sy = if dx == 0.0 { 0.0 } else { w * dy / dx };
+        (w, sy)
     };
 
     Point {

@@ -87,6 +87,257 @@ fn cli_renders_png_smoke() {
 }
 
 #[test]
+fn cli_png_preserves_the_width_and_height_of_flowchart_html_label_boxes() {
+    for (style, expected) in [
+        ("width:188px;height:66px", (236, 106)),
+        ("width:220px;height:90px", (268, 130)),
+    ] {
+        let source = format!(
+            "---\nconfig:\n  look: neo\n  htmlLabels: true\n---\nflowchart TB\nA@{{ shape: rect, label: \"<div style='{style}'>short</div>\" }}\n"
+        );
+        let output = support::run_with_stdin(
+            &[
+                "render",
+                "--format",
+                "png",
+                "--font-measurement",
+                "deterministic",
+                "-",
+            ],
+            &source,
+        );
+        assert!(output.status.success(), "{style}: {:?}", output.stderr);
+        assert_eq!(png_dimensions(&output.stdout), expected, "{style}");
+    }
+}
+
+#[test]
+fn cli_png_paints_equal_flowchart_label_boxes_with_default_fonts() {
+    let source = r#"---
+config:
+  look: neo
+  htmlLabels: true
+---
+flowchart TB
+  A["<div style='width:188px;height:66px'>short</div>"]
+  B["<div style='width:188px;height:66px'>a much longer label<br/>with three<br/>lines of text</div>"]
+  A --> B
+  style A fill:#0055cc,stroke:none
+  style B fill:#22a055,stroke:none
+"#;
+    let output = support::run_with_stdin(&["render", "--format", "png", "-"], source);
+    assert!(output.status.success(), "{:?}", output.stderr);
+    let mut reader = png::Decoder::new(Cursor::new(output.stdout))
+        .read_info()
+        .unwrap();
+    let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+    let info = reader.next_frame(&mut pixels).unwrap();
+    assert_eq!(info.color_type, ColorType::Rgba);
+    let stride = info.width as usize * 4;
+    for fill in [[0, 85, 204, 255], [34, 160, 85, 255]] {
+        assert_eq!(
+            solid_fill_size(&pixels, stride, fill),
+            (220, 90),
+            "{fill:?}"
+        );
+    }
+}
+
+#[test]
+fn cli_png_paints_flowchart_rectangle_css_dimensions() {
+    let source = "---\nconfig:\n  layout: dagre\n  look: neo\n  flowchart:\n    minNodeWidth: 0\n---\nflowchart TB\nA[Short]\n";
+    for style in [
+        "style A width:220px,height:90px,fill:#0055cc,stroke:none",
+        "classDef sized width:220px,height:90px,fill:#0055cc,stroke:none\nclass A sized",
+        "classDef sized width:140px,height:80px,fill:#0055cc,stroke:none\nclass A sized\nstyle A WIDTH:220,height:90",
+        "classDef sized width:220px !important,height:90px !important,fill:#0055cc,stroke:none\nclass A sized\nstyle A WIDTH:140px,HEIGHT:80px",
+    ] {
+        let output = support::run_with_stdin(
+            &[
+                "render",
+                "--format",
+                "png",
+                "--font-measurement",
+                "deterministic",
+                "-",
+            ],
+            &format!("{source}{style}\n"),
+        );
+        assert!(output.status.success(), "{style}: {:?}", output.stderr);
+        let mut reader = png::Decoder::new(Cursor::new(output.stdout))
+            .read_info()
+            .unwrap();
+        let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+        let info = reader.next_frame(&mut pixels).unwrap();
+        assert_eq!((info.width, info.height), (236, 106), "{style}");
+        assert_eq!(info.color_type, ColorType::Rgba);
+        let stride = info.width as usize * 4;
+        assert_eq!(
+            solid_fill_size(&pixels, stride, [0, 85, 204, 255]),
+            (220, 90),
+            "{style}"
+        );
+    }
+}
+
+#[test]
+fn cli_png_paints_the_intrinsic_flowchart_image_aspect_ratio() {
+    let image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHgAAAA8CAIAAAAiz+n/AAAAn0lEQVR4nO3QMQ0AIADAMEAF8hCJQFSwqzWwZHOfO/hvBQ2M7hgdMTpidMToiNERoyNGR4yOGB0xOmJ0xOiI0RGjI0ZHjI4YHTE6YnTE6IjREaMjRkeMjhgdMTpidMToiNERoyNGR4yOGB0xOmJ0xOiI0RGjI0ZHjI4YHTE6YnTE6IjREaMjRkeMjhgdMTpidMToiNERoyNGR4yOGD0aD1QBAaT/CgOSAAAAAElFTkSuQmCC";
+    for (constraint, expected_width) in [("off", 120), ("on", 80)] {
+        let source =
+            format!("flowchart TB\nA@{{ img: \"{image}\", h: 40, constraint: {constraint} }}\n");
+        let output = support::run_with_stdin(
+            &[
+                "render",
+                "--format",
+                "png",
+                "--font-measurement",
+                "deterministic",
+                "-",
+            ],
+            &source,
+        );
+        assert!(output.status.success(), "{constraint}: {:?}", output.stderr);
+        let mut reader = png::Decoder::new(Cursor::new(output.stdout))
+            .read_info()
+            .unwrap();
+        let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+        let info = reader.next_frame(&mut pixels).unwrap();
+        assert_eq!(info.color_type, ColorType::Rgba);
+        let stride = info.width as usize * 4;
+        let row = info.height as usize / 2 * stride;
+        let center = info.width as usize / 2 * 4;
+        let color = [24, 96, 180, 255];
+        let width = pixels[row..row + stride]
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .filter(|pixel| **pixel == color)
+            .count();
+        let height = pixels
+            .chunks_exact(stride)
+            .filter(|row| row[center..center + 4] == color)
+            .count();
+        assert_eq!((width, height), (expected_width, 40), "{constraint}");
+    }
+}
+
+#[test]
+fn cli_png_paints_the_styled_flowchart_subgraph_frame() {
+    let source = "---\nconfig:\n  layout: dagre\n  look: neo\n  flowchart:\n    minNodeWidth: 0\n---\nflowchart TB\nsubgraph G[Group]\nA[Short] --> B[End]\nend\nC --> A\nstyle G width:260px,height:180px,fill:#0055cc,stroke:none\n";
+    let output = support::run_with_stdin(
+        &[
+            "render",
+            "--format",
+            "png",
+            "--font-measurement",
+            "deterministic",
+            "-",
+        ],
+        source,
+    );
+    assert!(output.status.success(), "{:?}", output.stderr);
+    let mut reader = png::Decoder::new(Cursor::new(output.stdout))
+        .read_info()
+        .unwrap();
+    let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+    let info = reader.next_frame(&mut pixels).unwrap();
+    assert_eq!(info.color_type, ColorType::Rgba);
+    assert_eq!((info.width, info.height), (276, 291));
+    let stride = info.width as usize * 4;
+    assert_eq!(
+        solid_fill_size(&pixels, stride, [0, 85, 204, 255]),
+        (260, 180)
+    );
+}
+
+fn solid_fill_size(pixels: &[u8], stride: usize, fill: [u8; 4]) -> (usize, usize) {
+    let painted_row_widths = pixels.chunks_exact(stride).map(|row| {
+        row.as_chunks::<4>()
+            .0
+            .iter()
+            .filter(|pixel| **pixel == fill)
+            .count()
+    });
+    let painted_width = painted_row_widths.clone().max().unwrap();
+    let painted_height = painted_row_widths.filter(|width| *width > 0).count();
+    (painted_width, painted_height)
+}
+
+#[test]
+fn cli_png_paints_flowchart_html_line_height() {
+    let base = "---\nconfig:\n  look: neo\n  htmlLabels: true\n---\nflowchart TB\n";
+    let font_options: &[&[&str]] = &[
+        &[],
+        &["--font-measurement", "deterministic"],
+        #[cfg(feature = "native-fonts")]
+        &[
+            "--font-measurement",
+            "native",
+            "--font-file",
+            concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../merman-export/tests/fonts/Cousine-Regular.ttf"
+            ),
+        ],
+    ];
+    for (body, expected_height) in [
+        (
+            "A[\"AB<br/>AB\"]\nstyle A color:#e00022,line-height:3\n",
+            Some(124),
+        ),
+        (
+            "A[\"AB<br/>AB\"]:::tall\nclassDef tall color:#e00022,line-height:3\n",
+            Some(124),
+        ),
+        (
+            "A -->|AB<br/>AB| B\nlinkStyle default color:#e00022,line-height:3\n",
+            None,
+        ),
+    ] {
+        let source = format!("{base}{body}");
+        for options in font_options {
+            let mut args = vec!["render", "--format", "png", "-"];
+            args.extend_from_slice(options);
+            let output = support::run_with_stdin(&args, &source);
+            assert!(
+                output.status.success(),
+                "{body} {options:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let mut reader = png::Decoder::new(Cursor::new(output.stdout))
+                .read_info()
+                .unwrap();
+            let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+            let info = reader.next_frame(&mut pixels).unwrap();
+            assert_eq!(info.color_type, ColorType::Rgba);
+            if let Some(height) = expected_height {
+                assert_eq!(info.height, height);
+            }
+            let red_rows = pixels
+                .chunks_exact(info.width as usize * 4)
+                .enumerate()
+                .filter_map(|(y, row)| {
+                    row.as_chunks::<4>()
+                        .0
+                        .iter()
+                        .any(|pixel| {
+                            pixel[0] > 170 && pixel[1] < 90 && pixel[2] < 100 && pixel[3] > 200
+                        })
+                        .then_some(y)
+                })
+                .collect::<Vec<_>>();
+            let first = red_rows[0];
+            let second = red_rows
+                .windows(2)
+                .find(|rows| rows[1] > rows[0] + 1)
+                .unwrap()[1];
+            assert_eq!(second - first, 42, "{body} {options:?}");
+        }
+    }
+}
+
+#[test]
 fn cli_rasterizes_svg_input_to_png() {
     let root = repo_root();
 

@@ -214,27 +214,34 @@ pub(crate) fn fallback_style_matches(base: &FaceInfo, face: &FaceInfo) -> bool {
 }
 
 pub(crate) fn covers_character(face: &ttf_parser::Face<'_>, character: char) -> bool {
-    face.tables().cmap.is_some_and(|cmap| {
-        cmap.subtables.into_iter().any(|table| {
-            table.is_unicode()
-                && table
-                    .glyph_index(u32::from(character))
-                    .is_some_and(|glyph| glyph.0 != 0 && glyph.0 < face.number_of_glyphs())
-        })
+    face.tables()
+        .cmap
+        .is_some_and(|cmap| cmap_covers_character(cmap, face.number_of_glyphs(), character))
+}
+
+pub(crate) fn cmap_covers_character(
+    cmap: ttf_parser::cmap::Table<'_>,
+    num_glyphs: u16,
+    character: char,
+) -> bool {
+    cmap.subtables.into_iter().any(|table| {
+        table.is_unicode()
+            && table
+                .glyph_index(u32::from(character))
+                .is_some_and(|glyph| glyph.0 != 0 && glyph.0 < num_glyphs)
     })
 }
 
-/// Classify only bytes already admitted through the native source registry.
-/// Platform family ranking remains owned by Fontique; this gate owns text suitability.
+/// Check glyph coverage on admitted bytes. Generic and unrequested faces must also suit body text.
 #[cfg(all(feature = "native-fonts", feature = "system-fonts"))]
-pub(crate) fn allows_implicit_binary_face(face: &FaceInfo, character: Option<char>) -> bool {
+pub(crate) fn allows_binary_face(face: &FaceInfo, character: Option<char>, implicit: bool) -> bool {
     let usvg::fontdb::Source::Binary(bytes) = &face.source else {
         return false;
     };
     let Ok(face) = ttf_parser::Face::parse(bytes.as_ref().as_ref(), face.index) else {
         return character.is_none();
     };
-    classify_family(&face).allows_implicit_text()
+    (!implicit || classify_family(&face).allows_implicit_text())
         && character.is_none_or(|character| covers_character(&face, character))
 }
 

@@ -226,6 +226,7 @@ pub mod quadrantchart;
 pub mod radar;
 #[cfg(feature = "diagram-railroad")]
 pub mod railroad;
+mod raster_data_url;
 #[cfg(feature = "diagram-requirement")]
 pub mod requirement;
 pub mod resources;
