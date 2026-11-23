@@ -246,12 +246,9 @@ impl PlatformCatalog {
         #[cfg(any(target_os = "linux", target_os = "freebsd"))]
         let mut missing_source = None;
         #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-        let mut accept = |file| match accept(file) {
-            Err(error) if fontconfig::source_disappeared(&error) => {
-                missing_source.get_or_insert(error);
-                Ok(None)
-            }
-            result => result,
+        let mut accept = |file| {
+            accept(file)
+                .or_else(|error| fontconfig::defer_missing_source(error, &mut missing_source))
         };
         let mut try_face = |family: &FamilyInfo, index| {
             let candidate = PlatformCandidate::from_family(family, index);
@@ -283,8 +280,18 @@ impl PlatformCatalog {
         // Preserve the preferred cascade before trying other members of those families.
         #[cfg(any(target_os = "linux", target_os = "freebsd"))]
         for (family, preferred) in remaining_families {
-            for index in 0..family.fonts().len() {
+            // Fontconfig can list both the default and variable patterns for one file and index.
+            let fonts = family.fonts();
+            let mut tried = std::collections::HashSet::new();
+            let mut first_visit = |index: usize| match fonts[index].source().kind() {
+                SourceKind::Path(path) => tried.insert((path, fonts[index].index())),
+                SourceKind::Memory(_) => true,
+            };
+            first_visit(preferred);
+            for index in 0..fonts.len() {
+                control.terminal_checkpoint_at(OperationPhase::Layout)?;
                 if index != preferred
+                    && first_visit(index)
                     && let Some(id) = try_face(&family, index)?
                 {
                     return Ok(Some(id));
@@ -646,6 +653,8 @@ impl PlatformCatalog {
         let weight = Weight(font.weight());
         let stretch = font.stretch().into();
         let style = font.style().into();
+        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+        let mut missing_source = None;
         for (index, family) in font
             .families()
             .iter()
@@ -702,6 +711,11 @@ impl PlatformCatalog {
                 }
                 continue;
             }
+            #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+            let mut accept = |selection, implicit| {
+                accept(selection, implicit)
+                    .or_else(|error| fontconfig::defer_missing_source(error, &mut missing_source))
+            };
             if let Some(id) =
                 self.candidates(family, weight, stretch, style, control, |selected| {
                     let Some(candidate) = self.candidate_file(selected, control)? else {
@@ -718,6 +732,10 @@ impl PlatformCatalog {
             {
                 return Ok(Some(id));
             }
+        }
+        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+        if let Some(error) = missing_source {
+            return Err(error);
         }
         Ok(None)
     }
@@ -847,6 +865,103 @@ mod tests {
                 .expect("the cascade contains a covering face");
             assert_eq!(database.face(id).unwrap().post_script_name, expected);
         }
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    #[test]
+    fn fontconfig_fallback_visits_each_file_and_collection_index_once() {
+        let ttc = "Cousine-test-collection.ttc";
+        let catalog = test_catalog(&[ttc, ttc, "Cousine-Bold.ttf"]);
+        let base = binary_face(include_bytes!("../../tests/fonts/Cousine-Regular.ttf").to_vec());
+        let registry = FontSourceRegistry::new(BTreeMap::new(), BTreeMap::new(), 0, 0);
+        let mut tried = Vec::new();
+        catalog
+            .fallback(
+                'A',
+                &base,
+                &OperationControl::new(),
+                &registry,
+                &mut |candidate| {
+                    let FontCandidate::File { path, index, .. } = candidate else {
+                        panic!("file candidate")
+                    };
+                    tried.push((path, index));
+                    Ok(None)
+                },
+            )
+            .unwrap();
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts");
+        assert_eq!(
+            tried,
+            [
+                (root.join(ttc), 0),
+                (root.join("NotoSans-Latin-subset.ttf"), 0),
+                (root.join(ttc), 1),
+                (root.join("Cousine-Bold.ttf"), 0),
+            ]
+        );
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    #[test]
+    fn removed_fontconfig_primary_continues_the_family_stack_after_checking_snapshots() {
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts");
+        let scratch = std::env::temp_dir().canonicalize().unwrap().join(format!(
+            "merman-fontconfig-primary-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        fs::create_dir(&scratch).unwrap();
+        let fonts = scratch.join("fonts");
+        fs::create_dir(&fonts).unwrap();
+        let removed = fonts.join("regular.ttf");
+        fs::copy(fixture.join("Cousine-Regular.ttf"), &removed).unwrap();
+        let control = OperationControl::new();
+        let mut context = NativeFontOptions::default()
+            .with_font_file(fixture.join("MermanPictorialTest.ttf"))
+            .load(&control)
+            .unwrap();
+        let inner = Arc::get_mut(&mut context.0).unwrap();
+        inner.discovery = Some(super::super::resolver::DiscoveryProvider::Platform {
+            catalog: Arc::new(test_catalog(&[removed.to_str().unwrap()])),
+            explicit: Arc::clone(&inner.database),
+        });
+        let stack = Some("Cousine, Merman Pictorial Test");
+        let original = BTreeSet::from(["Cousine-Regular".to_owned()]);
+        assert_eq!(platform_painted_families(&context, stack), original);
+        let export = context.for_export(&control).unwrap();
+        fs::remove_file(&removed).unwrap();
+        assert_eq!(platform_painted_families(&export, stack), original);
+        export.check().unwrap();
+
+        let next = context.for_operation(&control);
+        assert_eq!(
+            platform_painted_families(&next, stack),
+            BTreeSet::from(["MermanPictorialTest".to_owned()])
+        );
+        next.check().unwrap();
+        let missing = context.for_operation(&control);
+        assert!(platform_painted_families(&missing, Some("Cousine")).is_empty());
+        assert!(
+            matches!(missing.check(), Err(NativeFontError::Source { path, .. }) if path == removed)
+        );
+
+        let assert_link_rejected = || {
+            let linked = context.for_operation(&control);
+            assert!(platform_painted_families(&linked, stack).is_empty());
+            assert!(
+                matches!(linked.check(), Err(NativeFontError::Source { path, .. }) if path == removed)
+            );
+        };
+        let absent = scratch.join("absent");
+        std::os::unix::fs::symlink(&absent, &removed).unwrap();
+        assert_link_rejected();
+        fs::remove_file(&removed).unwrap();
+        fs::remove_dir(&fonts).unwrap();
+        std::os::unix::fs::symlink(&absent, &fonts).unwrap();
+        assert_link_rejected();
+        fs::remove_file(&fonts).unwrap();
+        fs::remove_dir(scratch).unwrap();
     }
 
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
