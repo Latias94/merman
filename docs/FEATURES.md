@@ -176,8 +176,8 @@ discovery in builds with platform query support. `--font-system on` selects the
 build's default system provider. Automatic Mermaid encoded output uses the same
 provider when no explicit fonts or font policy are supplied. The official release
 recipe selects `windows-platform-font-default`, which provides both policy options
-and makes platform discovery the default on Windows. Cargo source defaults continue
-to use bounded discovery.
+and makes platform discovery the default on Windows. The official macOS and Linux
+builds and ordinary Cargo source builds default to bounded discovery.
 
 On Linux/FreeBSD, platform discovery distinguishes an unavailable Fontconfig runtime
 from an available runtime with an empty configured font set. In a build whose default
@@ -188,8 +188,16 @@ fallback, and neither do font-data, resource-limit, or cancellation errors.
 For a missing character, the resolver tries each fallback family's preferred face first.
 If that cascade has no match, it tries the remaining faces in those families. This lets
 a sibling face cover a character missing from a subsetted font.
-If a catalog entry disappears, another covering face can still supply the glyph during
-export. When the remaining candidates also miss, the resolver reports the missing file.
+If a file disappears after Fontique has returned its path, measurement and export can
+reuse an admitted snapshot. A new selection tries the remaining families in the requested
+stack or the remaining glyph fallback candidates. If none succeeds, the error identifies
+the first missing file.
+
+Custom Fontconfig family aliases can resolve differently from `fc-match`. A generic family
+can also lose a usable text face when Fontconfig trims fonts with overlapping coverage
+and Merman later rejects the preferred pictorial face. If text is missing or uses the wrong
+family, request the installed text family's name directly or pass `--font-file PATH` for
+each required font.
 
 Platform queries and metadata mappings run outside Merman's scan budgets.
 Selected font bytes use bounded immutable snapshots shared by measurement and
@@ -209,9 +217,10 @@ indices when its members share an outline table large enough that two copies wou
 cost more than the collection. The selected member is verified against the native
 tables before reuse. Explicit input files retain their whole-file ingestion policy.
 Explicit inputs and selected system font data share a 256 MiB budget per native
-context by default. A large color or bitmap table can exceed it. Use
-`--font-max-bytes` to set the budget. A context identity includes the policy,
-initial font bytes, and the system default family name when applicable.
+context by default. A large color or bitmap table can exceed it. The CLI reports
+the requested total so far and suggests a retry argument such as `--font-max-bytes 512MiB`.
+A context identity includes the policy, initial font bytes, and the system default family
+name when applicable.
 Successful macOS selections are fixed for measurement and its derived exports;
 new operations query the current system again. Their metadata is bounded separately
 from the optional measurement cache. Explicit unregistered fonts can use a system

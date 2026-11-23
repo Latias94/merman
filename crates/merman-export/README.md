@@ -85,7 +85,10 @@ preemptive cancellation.
 Before acquiring a new fallback source, mapped coverage tables can reject an
 unrelated font without consuming the selected-file budget. Coverage and identity
 are checked again on admitted bytes. Existing snapshots take precedence over
-later file changes.
+later file changes. When explicit files contain identical bytes, each supplied
+path refers to the same retained snapshot. Each input still counts toward the
+acquisition limits. If a repeated path changes during acquisition, registry
+construction reports the path and asks the caller to retry.
 
 On macOS, the retained Core Text font identifies the selected face. Merman usually
 rebuilds its tables as a standalone SFNT. It can retain one immutable TTC or OTC
@@ -129,11 +132,19 @@ Fontconfig runtime cannot load, before acquiring explicit sources. A valid empty
 Fontconfig configuration remains empty; library callers decide whether an unavailable
 service permits another provider. The CLI retries bounded discovery only for automatic
 provider selection, never for an explicit `--font-system platform` request.
+Fontique can expose a physical variable face while omitting Fontconfig's named variation
+instances. CSS weight can still vary the admitted face along its supported weight axis.
 
 ### Selection And Fallback Order
 
-Mermaid's `fontFamily` stack selects the initial family. Missing-glyph selection can then use
-another face; the remaining names in that stack do not currently define glyph-fallback order.
+Mermaid's `fontFamily` stack selects the initial family. Once a face is selected, the
+fallback resolver receives the missing Unicode scalar and the previously tried faces.
+The remaining family names, document language, and surrounding grapheme cluster are
+unavailable to that lookup. For regional Han forms, select a region-specific family
+explicitly. A fallback face that shapes an entire run can also supply characters the
+initial face covered, changing their advances. On Windows, the bridge uses the selected
+DirectWrite face at the requested size and omits its suggested fallback scale.
+
 For explicit font files or memory buffers, fallback visits admitted faces in source order,
 skipping previously tried, unsuitable, and incompatible candidates. Explicit sources precede
 discovered system candidates. Supply individual files or buffers in the intended order when
