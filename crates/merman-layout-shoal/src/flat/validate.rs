@@ -6,7 +6,9 @@ fn length(x: f64) -> bool {
     x.is_finite() && x >= 0.0
 }
 fn measured(s: Size) -> bool {
-    length(s.width) && length(s.height)
+    [s.width, s.height]
+        .into_iter()
+        .all(|extent| length(extent) && (extent == 0.0 || extent * 0.5 > 0.0))
 }
 
 pub(super) fn components(

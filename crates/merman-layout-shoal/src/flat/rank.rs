@@ -399,6 +399,33 @@ mod tests {
         assert!(!basis.pivot(&dag, &mut ranks, &slope, &mut work).unwrap());
     }
 
+    #[test]
+    fn fractional_weights_move_a_tight_block_across_two_maximum_spans() {
+        let mut arcs = [
+            edge(0, 1, u32::MAX, 1),
+            edge(1, 4, u32::MAX, 1),
+            edge(2, 3, 1, 1),
+            edge(3, 4, 1, 1),
+            edge(5, 6, 7, 1),
+        ];
+        for (arc, weight) in arcs.iter_mut().zip([0.03125, 0.25, 0.75, 0.125, 0.5]) {
+            arc.weight = weight;
+        }
+        let ranks = run(
+            7,
+            &arcs,
+            RankPolicy::BoundedNetworkSimplex { max_pivots: 8 },
+        );
+        let span = u64::from(u32::MAX);
+        assert_eq!(ranks[4] - ranks[0], 2 * span);
+        for arc in arcs {
+            assert_eq!(
+                ranks[arc.to as usize] - ranks[arc.from as usize],
+                u64::from(arc.span)
+            );
+        }
+    }
+
     // A connected tight-tree optimum has span at most (n-1) times the largest minimum length.
     // Translation lets the same enumeration cover disconnected graphs and isolated vertices.
     fn exhaustive(arcs: &[Link], r: &mut [u64], v: usize, ceiling: u64) -> u64 {

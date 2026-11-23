@@ -396,3 +396,310 @@ pub(super) fn build(
     g.pred.rebuild(vertices, g.to.iter().copied(), work)?;
     g.succ.rebuild(vertices, g.from.iter().copied(), work)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Direction, EdgeSpec, Endpoint, NodeId, NoopWorkControl, Side, WorkControl};
+
+    fn shape(w: f64, h: f64) -> Size {
+        Size {
+            width: w,
+            height: h,
+        }
+    }
+    fn input(n: u32, pairs: &[(u32, u32, u32)]) -> (Graph, Vec<Link>, Orientation) {
+        let mut graph = Graph {
+            nodes: (0..n)
+                .map(|i| NodeSpec::new(shape(12.0, 23.0), i))
+                .collect(),
+            ..Default::default()
+        };
+        let mut links = Vec::new();
+        for (id, &(from, to, span)) in pairs.iter().enumerate() {
+            let mut e = EdgeSpec::new(Endpoint::Node(NodeId(from)), Endpoint::Node(NodeId(to)));
+            e.min_rank_span = span;
+            links.push(Link {
+                from,
+                to,
+                span,
+                weight: e.weight,
+                edge: id as u32,
+            });
+            graph.edges.push(e);
+        }
+        let order = Orientation {
+            topo: (0..n).collect(),
+            reversed: links.iter().map(|e| e.from > e.to).collect(),
+            cyclic_sccs: 0,
+        };
+        (graph, links, order)
+    }
+
+    #[test]
+    fn huge_minimum_spans_keep_their_u64_distances_and_a_single_label_obstacle() {
+        let (mut graph, links, order) = input(3, &[(0, 1, u32::MAX), (1, 2, u32::MAX)]);
+        graph.edges[0].label = Some(shape(5.0, 12.0));
+        let mut g = Expanded::default();
+        let mut options = Options::default();
+        options.caps.max_dummies = usize::MAX;
+        build(
+            &graph.nodes,
+            &links,
+            &order,
+            &graph,
+            &options,
+            &mut Work::new(&mut NoopWorkControl),
+            &mut g,
+        )
+        .unwrap();
+        let m = u64::from(u32::MAX);
+        assert_eq!(g.logical_rank, [0, m / 2, m, 2 * m]);
+        assert_eq!(g.rank, [0, 2, 3, 1]);
+        assert_eq!(g.kind, [Kind::Node, Kind::Node, Kind::Node, Kind::Label]);
+        assert_eq!(g.chains, [vec![0, 3, 1], vec![1, 2]]);
+    }
+
+    #[test]
+    fn antiparallel_occurrences_share_a_tier_and_keep_global_measurements_and_fixed_ports() {
+        let (mut graph, mut links, order) = input(2, &[(1, 0, 1), (0, 1, 1)]);
+        graph.direction = Direction::Left;
+        let spec = &mut graph.edges[0];
+        spec.source_port = PortSideHint::FixedOffset {
+            side: Side::Left,
+            offset: 3.5,
+        };
+        spec.target_port = PortSideHint::FixedOffset {
+            side: Side::Right,
+            offset: -2.0,
+        };
+        spec.label = Some(shape(31.0, 7.0));
+        graph
+            .edges
+            .insert(0, EdgeSpec::new(NodeId(1).into(), NodeId(1).into()));
+        for e in &mut links {
+            e.edge += 1;
+        }
+        let mut g = Expanded::default();
+        build(
+            &graph.nodes,
+            &links,
+            &order,
+            &graph,
+            &Options::default(),
+            &mut Work::new(&mut NoopWorkControl),
+            &mut g,
+        )
+        .unwrap();
+        assert_eq!(g.logical_rank, [0, 1, 2]);
+        assert_eq!(g.label_vertex, [Some(2), None]);
+        assert_eq!(g.kind, [Kind::Node, Kind::Node, Kind::Label, Kind::Dummy]);
+        assert_eq!((g.width[0], g.height[0]), (23.0, 12.0));
+        assert_eq!((g.width[2], g.height[2]), (7.0, 31.0));
+        assert_eq!(g.chains, [vec![0, 2, 1], vec![0, 3, 1]]);
+        assert_eq!(g.source_offset, [-2.0, 0.0, 0.0, 0.0]);
+        assert_eq!(g.target_offset, [0.0, 3.5, 0.0, 0.0]);
+        assert_eq!(g.pred.at(1), [1, 3]);
+        assert_eq!(g.succ.at(0), [0, 2]);
+    }
+
+    #[test]
+    fn asymmetric_markers_select_existing_middle_ranks_in_the_ranked_direction() {
+        let (mut graph, links, order) = input(
+            6,
+            &[
+                (0, 1, 1),
+                (1, 2, 1),
+                (2, 3, 1),
+                (3, 4, 1),
+                (4, 5, 1),
+                (0, 5, 1),
+                (5, 0, 1),
+                (5, 0, 1),
+            ],
+        );
+        for spec in &mut graph.edges[5..] {
+            spec.label = Some(shape(8.0, 4.0));
+        }
+        graph.edges[5].end_marker.length = 18.0;
+        graph.edges[6].start_marker.length = 18.0;
+        graph.edges[7].end_marker.length = 18.0;
+        let mut g = Expanded::default();
+        build(
+            &graph.nodes,
+            &links,
+            &order,
+            &graph,
+            &Options::default(),
+            &mut Work::new(&mut NoopWorkControl),
+            &mut g,
+        )
+        .unwrap();
+        assert_eq!(g.logical_rank, [0, 1, 2, 3, 4, 5]);
+        for (edge, expected) in [(5, 1), (6, 1), (7, 3)] {
+            let label = g.label_vertex[edge].unwrap();
+            assert_eq!(g.rank[label as usize], expected);
+            assert_eq!(g.chains[edge][expected as usize], label);
+        }
+    }
+
+    #[test]
+    fn cap_removes_longest_chains_first_and_retains_their_semantic_label_for_routing() {
+        let (mut graph, links, order) = input(
+            6,
+            &[
+                (0, 1, 1),
+                (1, 2, 1),
+                (2, 3, 1),
+                (3, 4, 1),
+                (4, 5, 1),
+                (0, 5, 1),
+                (1, 4, 1),
+            ],
+        );
+        graph.edges[5].label = Some(shape(9.0, 4.0));
+        graph.edges[6].label = Some(shape(6.0, 3.0));
+        let mut options = Options::default();
+        options.caps.max_dummies = 2;
+        let mut g = Expanded::default();
+        build(
+            &graph.nodes,
+            &links,
+            &order,
+            &graph,
+            &options,
+            &mut Work::new(&mut NoopWorkControl),
+            &mut g,
+        )
+        .unwrap();
+        assert_eq!(g.direct, [false, false, false, false, false, true, false]);
+        assert_eq!(g.chains[5], [0, 5]);
+        assert!(g.label_vertex[5].is_none() && graph.edges[links[5].edge as usize].label.is_some());
+        assert_eq!(g.rank.len(), 8);
+        let label = g.label_vertex[6].unwrap() as usize;
+        assert!(
+            g.layers[g.rank[label] as usize]
+                .iter()
+                .any(|&v| g.kind[v as usize] == Kind::Node)
+        );
+        assert!(!g.succ.at(0).iter().any(|&e| g.to[e as usize] == 5));
+    }
+
+    struct Meter {
+        used: usize,
+        limit: usize,
+    }
+    impl WorkControl for Meter {
+        fn check(&mut self) -> Result<(), WorkError> {
+            Ok(())
+        }
+        fn charge(&mut self, units: usize) -> Result<(), WorkError> {
+            if units > self.limit - self.used {
+                return Err(WorkError::Interrupted);
+            }
+            self.used += units;
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn reused_workspace_recovers_from_interrupted_expansion_and_drops_empty_tiers() {
+        let (graph, links, order) = input(3, &[(0, 1, 1), (0, 1, 1), (1, 2, 1)]);
+        let mut g = Expanded::default();
+        let run = |g: &mut Expanded, cap: usize, limit: usize| {
+            let mut opts = Options::default();
+            opts.caps.max_dummies = cap;
+            let mut ctl = Meter { used: 0, limit };
+            let mut work = Work::new(&mut ctl);
+            build(&graph.nodes, &links, &order, &graph, &opts, &mut work, g)?;
+            work.finish()?;
+            Ok::<_, LayoutError>(ctl.used)
+        };
+        let exact = run(&mut g, 2, usize::MAX).unwrap();
+        let old = g.width.as_ptr();
+        for limit in [0, exact / 2, exact - 1] {
+            assert_eq!(
+                run(&mut g, 2, limit),
+                Err(LayoutError::Work(WorkError::Interrupted))
+            );
+            assert_eq!(run(&mut g, 2, exact).unwrap(), exact);
+            assert_eq!(g.width.as_ptr(), old);
+            assert_eq!(g.kind.len(), 5);
+        }
+        run(&mut g, 0, usize::MAX).unwrap();
+        assert_eq!(g.logical_rank, [0, 2, 3]);
+        assert!(g.layers.iter().all(|r| !r.is_empty()));
+        assert_eq!(g.rank, [0, 1, 2]);
+        assert_eq!(g.direct, [true, true, false]);
+        assert_eq!(g.chains, [vec![0, 1], vec![0, 1], vec![1, 2]]);
+        assert_eq!(g.from, [1]);
+        assert_eq!(g.to, [2]);
+    }
+
+    #[test]
+    fn random_multigraph_chains_match_their_rank_constraints_and_segment_indices() {
+        let mut state = 7531_u32;
+        let mut next = || {
+            state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+            state
+        };
+        let mut g = Expanded::default();
+        for _ in 0..120 {
+            let n = 3 + next() % 12;
+            let mut pairs = Vec::new();
+            for _ in 0..n * 2 {
+                let a = next() % n;
+                let b = (a + 1 + next() % (n - 1)) % n;
+                pairs.push((a, b, next() % 5));
+            }
+            let (mut graph, arcs, order) = input(n, &pairs);
+            for spec in &mut graph.edges {
+                if next() % 3 == 0 {
+                    spec.label = Some(shape(0.0, 4.0));
+                }
+            }
+            let mut o = Options::default();
+            o.caps.max_dummies = (next() % 24) as usize;
+            build(
+                &graph.nodes,
+                &arcs,
+                &order,
+                &graph,
+                &o,
+                &mut Work::new(&mut NoopWorkControl),
+                &mut g,
+            )
+            .unwrap();
+            assert!(g.kind.len() - n as usize <= o.caps.max_dummies);
+            assert!(g.logical_rank.windows(2).all(|r| r[0] < r[1]));
+            assert_eq!(g.layers.iter().map(Vec::len).sum::<usize>(), g.rank.len());
+            let mut segment = 0;
+            for (i, e) in arcs.iter().enumerate() {
+                let a = e.from.min(e.to);
+                let b = e.from.max(e.to);
+                assert_eq!(
+                    (g.chains[i].first(), g.chains[i].last()),
+                    (Some(&a), Some(&b))
+                );
+                let dist = g.logical_rank[g.rank[b as usize] as usize]
+                    - g.logical_rank[g.rank[a as usize] as usize];
+                assert!(dist >= u64::from(e.span.max(1)));
+                if g.direct[i] {
+                    assert_eq!(g.chains[i].len(), 2);
+                    continue;
+                }
+                assert_eq!(g.label_vertex[i].is_some(), graph.edges[i].label.is_some());
+                for p in g.chains[i].windows(2) {
+                    assert_eq!((g.from[segment], g.to[segment]), (p[0], p[1]));
+                    assert_eq!(g.rank[p[1] as usize], g.rank[p[0] as usize] + 1);
+                    assert!(
+                        g.pred.at(p[1]).contains(&(segment as u32))
+                            && g.succ.at(p[0]).contains(&(segment as u32))
+                    );
+                    segment += 1;
+                }
+            }
+            assert_eq!(segment, g.from.len());
+        }
+    }
+}

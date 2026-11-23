@@ -1,9 +1,15 @@
 //! Component-local topology and geometry in the canonical top-to-bottom coordinate space.
 
 mod acyclic;
+mod crossings;
 mod expand;
+mod extras;
 mod order;
+mod pack;
+mod position;
 mod rank;
+mod refine;
+mod routing;
 mod validate;
 
 use crate::work::{LayoutResult, Work, filled};
@@ -102,6 +108,7 @@ pub(crate) struct Expanded {
     width: Vec<f64>,
     height: Vec<f64>,
     kind: Vec<Kind>,
+    keep: Vec<bool>,
     from: Vec<u32>,
     to: Vec<u32>,
     weight: Vec<f32>,
@@ -159,6 +166,7 @@ impl Expanded {
             + bytes(&self.width)
             + bytes(&self.height)
             + bytes(&self.kind)
+            + bytes(&self.keep)
             + bytes(&self.from)
             + bytes(&self.to)
             + bytes(&self.weight)
@@ -191,4 +199,105 @@ fn prepare_component(
     )?;
     let crossings = order::reduce(expanded, &c.nodes, options, work)?;
     Ok((orientation, crossings))
+}
+
+use crate::{EdgeGeometry, LayoutOutput, LayoutStats, PortSideHint, Rect, Side};
+
+#[derive(Default)]
+struct Drawing {
+    nodes: Vec<Rect>,
+    edges: Vec<(u32, EdgeGeometry)>,
+}
+
+fn physical_side(dir: Direction, side: Side) -> Side {
+    use Side::*;
+    match dir {
+        Direction::Down => side,
+        Direction::Up => match side {
+            Top => Bottom,
+            Bottom => Top,
+            other => other,
+        },
+        Direction::Right => match side {
+            Top => Left,
+            Bottom => Right,
+            Left => Top,
+            Right => Bottom,
+        },
+        Direction::Left => match side {
+            Top => Right,
+            Bottom => Left,
+            Left => Top,
+            Right => Bottom,
+        },
+    }
+}
+
+fn to_canonical_port(dir: Direction, hint: PortSideHint) -> PortSideHint {
+    let (side, offset) = match hint {
+        PortSideHint::Auto => return hint,
+        PortSideHint::Side(s) => (s, None),
+        PortSideHint::FixedOffset { side, offset } => (side, Some(offset)),
+    };
+    let canonical = match dir {
+        Direction::Left => match side {
+            Side::Right => Side::Top,
+            Side::Left => Side::Bottom,
+            Side::Top => Side::Left,
+            Side::Bottom => Side::Right,
+        },
+        _ => physical_side(dir, side),
+    };
+    if let Some(offset) = offset {
+        // An offset grows along the physical face. Only a reversed longitudinal axis flips it.
+        let reverse = matches!(canonical, Side::Left | Side::Right)
+            && matches!(dir, Direction::Up | Direction::Left);
+        PortSideHint::FixedOffset {
+            side: canonical,
+            offset: if reverse { -offset } else { offset },
+        }
+    } else {
+        PortSideHint::Side(canonical)
+    }
+}
+
+pub(crate) fn run(
+    graph: &Graph,
+    options: &Options,
+    g: &mut Expanded,
+    work: &mut Work<'_>,
+) -> LayoutResult<LayoutOutput> {
+    let components = validate::components(graph, options, work)?;
+    let mut stats = LayoutStats {
+        components: components.len(),
+        ..Default::default()
+    };
+    let mut tiles = crate::work::reserved(components.len())?;
+    for c in components {
+        let mut local = *options;
+        local.caps.max_dummies -= stats.dummy_nodes;
+        let (orientation, crossings) = prepare_component(&c, graph, &local, work, g)?;
+        stats.scc_cyclic_count += orientation.cyclic_sccs;
+        stats.reversed_edges += orientation
+            .reversed
+            .iter()
+            .filter(|&&flipped| flipped)
+            .count();
+        stats.dummy_nodes += g.rank.len() - c.nodes.len();
+        stats.direct_fallback_edges += g.direct.iter().filter(|&&direct| direct).count();
+        stats.topological_crossings = stats
+            .topological_crossings
+            .checked_add(crossings)
+            .ok_or(WorkError::ArithmeticOverflow)?;
+        let mut x = position::assign(g, &c, &orientation, graph, options, work)?;
+        refine::refine(g, &c, &orientation, graph, options, &mut x, work)?;
+        let mut drawing = routing::route(g, &c, &orientation, graph, options, &x, work)?;
+        extras::finish(&mut drawing, g, &c, graph, options, work)?;
+        stats.routed_crossings = stats
+            .routed_crossings
+            .checked_add(crossings::pairs(&drawing.edges, work)?)
+            .ok_or(WorkError::ArithmeticOverflow)?;
+        tiles.push(pack::Tile::new(c.ids, drawing, graph, work)?);
+    }
+    pack::assemble(tiles, graph, options, stats, work)
 }

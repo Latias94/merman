@@ -2,19 +2,20 @@ use super::*;
 use crate::{EdgeSpec, Endpoint, LayoutScratch, NodeId, NoopWorkControl, WorkControl, WorkError};
 
 fn graph(n: u32) -> Graph {
-    let mut graph = Graph::default();
-    graph.nodes = (0..n)
-        .map(|seq| {
-            NodeSpec::new(
-                Size {
-                    width: 45.0,
-                    height: 25.0,
-                },
-                seq,
-            )
-        })
-        .collect();
-    graph
+    Graph {
+        nodes: (0..n)
+            .map(|seq| {
+                NodeSpec::new(
+                    Size {
+                        width: 45.0,
+                        height: 25.0,
+                    },
+                    seq,
+                )
+            })
+            .collect(),
+        ..Default::default()
+    }
 }
 fn edge(from: u32, to: u32) -> EdgeSpec {
     EdgeSpec::new(Endpoint::Node(NodeId(from)), Endpoint::Node(NodeId(to)))
@@ -106,7 +107,7 @@ fn sparse_selective_ranks_avoid_global_doubling_and_preserve_reused_scratch() {
     prepare_component(&c[0], &g, &o, &mut work, &mut expanded).unwrap();
     assert_eq!(expanded.layers, [vec![0]]);
     assert!(expanded.chains.is_empty());
-    scratch.buffers.expanded = expanded;
+    *scratch.frame().expanded = expanded;
     assert!(scratch.retained_bytes() > 0);
 }
 
@@ -228,4 +229,68 @@ fn invalid_port_span_marker_and_end_label_fail_before_cycle_removal() {
         validate::components(&g, &options, &mut work),
         Err(LayoutError::InvalidInput(_))
     ));
+}
+
+#[test]
+fn fixed_port_offsets_round_trip_on_all_four_faces_in_each_direction() {
+    let sides = [Side::Top, Side::Right, Side::Bottom, Side::Left];
+    for dir in [
+        Direction::Down,
+        Direction::Up,
+        Direction::Right,
+        Direction::Left,
+    ] {
+        for side in sides {
+            let PortSideHint::FixedOffset {
+                side: canonical,
+                offset,
+            } = to_canonical_port(dir, PortSideHint::FixedOffset { side, offset: 4.25 })
+            else {
+                panic!("fixed port")
+            };
+            assert_eq!(physical_side(dir, canonical), side);
+            let (x, y) = if canonical.axis() == crate::Axis::Vertical {
+                (offset, 0.0)
+            } else {
+                (0.0, offset)
+            };
+            let (x, y) = match dir {
+                Direction::Down => (x, y),
+                Direction::Up => (x, -y),
+                Direction::Right => (y, x),
+                Direction::Left => (-y, x),
+            };
+            assert_eq!(
+                if side.axis() == crate::Axis::Vertical {
+                    x
+                } else {
+                    y
+                },
+                4.25
+            );
+        }
+    }
+}
+
+#[test]
+fn scratch_reuses_vertex_and_adjacency_buffers_across_identical_public_solves() {
+    let mut graph = graph(12);
+    graph.edges = (1..12).map(|node| edge(node - 1, node)).collect();
+    let options = Options::default();
+    let mut scratch = LayoutScratch::default();
+    let output =
+        crate::layout_with_control(&graph, &options, &mut scratch, &mut NoopWorkControl).unwrap();
+    let pointers = |buffer: &mut LayoutScratch| {
+        let frame = buffer.frame();
+        (
+            frame.expanded.width.as_ptr(),
+            frame.expanded.from.as_ptr(),
+            frame.expanded.succ.entries.as_ptr(),
+        )
+    };
+    let first = pointers(&mut scratch);
+    let next =
+        crate::layout_with_control(&graph, &options, &mut scratch, &mut NoopWorkControl).unwrap();
+    assert_eq!(output, next);
+    assert_eq!(pointers(&mut scratch), first);
 }

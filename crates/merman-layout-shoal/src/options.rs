@@ -72,16 +72,17 @@ impl Default for GroupPolicy {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PackingPolicy {
-    AspectTargeted {
-        target_ratio: f64,
-    },
-    #[default]
+    AspectTargeted { target_ratio: f64 },
     Strip,
-    FitWidth {
-        max_width: f64,
-    },
+    FitWidth { max_width: f64 },
+}
+
+impl Default for PackingPolicy {
+    fn default() -> Self {
+        Self::AspectTargeted { target_ratio: 1.6 }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

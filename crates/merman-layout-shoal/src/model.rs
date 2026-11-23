@@ -257,7 +257,7 @@ pub struct GroupGeometry {
     pub effective_direction: Direction,
 }
 
-/// The flat preview records component count. The crossing counters are reserved for the full solver.
+/// Work attribution for the selected drawing. Routed crossings count pairs of polylines before painting.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct LayoutStats {

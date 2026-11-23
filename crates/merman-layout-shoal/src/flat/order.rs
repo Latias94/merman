@@ -266,10 +266,9 @@ struct Fenwick {
 
 impl Fenwick {
     fn reset(&mut self, slots: usize, work: &mut Work<'_>) -> LayoutResult<()> {
-        let leaves = slots
+        let size = slots
             .checked_next_power_of_two()
             .ok_or(WorkError::ArithmeticOverflow)?;
-        let size = leaves.checked_add(1).ok_or(WorkError::ArithmeticOverflow)?;
         work.charge(size)?;
         self.tree.clear();
         self.tree
@@ -284,7 +283,7 @@ impl Fenwick {
         let mut count = self.seen;
         let mut i = slot + 1;
         while i > 0 {
-            count -= self.tree[i];
+            count -= self.tree[i - 1];
             i &= i - 1;
         }
         u64::from(count)
@@ -292,10 +291,10 @@ impl Fenwick {
 
     fn insert(&mut self, slot: usize) {
         self.seen += 1;
-        let mut i = slot + 1;
+        let mut i = slot;
         while i < self.tree.len() {
             self.tree[i] += 1;
-            i += i & i.wrapping_neg();
+            i |= i + 1;
         }
     }
 

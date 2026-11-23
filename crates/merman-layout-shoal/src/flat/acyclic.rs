@@ -306,159 +306,210 @@ impl Scc<'_> {
 struct Degrees {
     incoming: u32,
     outgoing: u32,
-    slot: u32,
-    bucket: usize,
+    removed: bool,
 }
 
-// Missing hints sort after supplied ranks, including a supplied i32::MAX. The final local
-// vertex id makes the key unique even if two nodes have the same declaration sequence.
-fn tie_key(nodes: &[NodeSpec], v: u32) -> (bool, i32, u32, u32) {
-    let node = &nodes[v as usize];
-    (
-        node.order_hint.is_none(),
-        node.order_hint.map_or(0, |h| h.rank),
-        node.seq,
-        v,
-    )
-}
-
-/// One indexed min-heap per degree-difference bucket. Separating sinks and sources gives
-/// them precedence over every delta. The heap positions allow removal on each degree change
-/// without stale entries. Per SCC the worst case is O((V + E) log(V + 1)) time, O(V + E)
-/// storage, including retained heap capacity across moves. The outer Kahn/Tarjan scans are linear.
-struct Buckets {
-    heaps: Vec<Vec<u32>>,
-    zero: usize,
-    highest: usize,
-}
-
-impl Buckets {
-    fn new(max_in: u32, max_out: u32, work: &mut Work<'_>) -> LayoutResult<Self> {
-        // Delta -max_in maps to 0. Two more buckets are reserved for sources and sinks.
-        let count = (max_in as usize)
-            .checked_add(max_out as usize)
-            .and_then(|n| n.checked_add(3))
-            .ok_or(WorkError::ArithmeticOverflow)?;
-        work.charge(count)?;
-        Ok(Self {
-            heaps: filled(count, Vec::new())?,
-            zero: max_in as usize,
-            highest: 0,
-        })
-    }
-
-    fn source(&self) -> usize {
-        self.heaps.len() - 2
-    }
-    fn sink(&self) -> usize {
-        self.heaps.len() - 1
-    }
-
-    fn bucket(&self, degree: Degrees) -> usize {
-        if degree.outgoing == 0 {
-            self.sink()
-        } else if degree.incoming == 0 {
-            self.source()
+impl Degrees {
+    /// Sinks take 0, sources 1, and ordinary deltas map in descending order into 2..2^33.
+    fn bucket(self) -> u64 {
+        if self.outgoing == 0 {
+            0
+        } else if self.incoming == 0 {
+            1
         } else {
-            self.zero - degree.incoming as usize + degree.outgoing as usize
+            (1u64 << 32) + u64::from(self.incoming) - u64::from(self.outgoing)
         }
     }
+}
 
-    fn swap(heap: &mut [u32], degrees: &mut [Degrees], a: usize, b: usize) {
-        heap.swap(a, b);
-        degrees[heap[a] as usize].slot = a as u32;
-        degrees[heap[b] as usize].slot = b as u32;
+/// Words run from least to most significant. A missing rank follows even a supplied i32::MAX.
+#[derive(Clone, Copy)]
+struct Priority([u64; 3]);
+
+impl Priority {
+    const MIN: Self = Self([0; 3]);
+
+    fn new(node: &NodeSpec, vertex: u32, bucket: u64) -> Self {
+        let rank = node
+            .order_hint
+            .map_or(1u64 << 32, |hint| u64::from((hint.rank as u32) ^ (1 << 31)));
+        Self([
+            (u64::from(node.seq) << 32) | u64::from(vertex),
+            rank,
+            bucket,
+        ])
     }
 
-    fn up(heap: &mut [u32], mut i: usize, nodes: &[NodeSpec], degrees: &mut [Degrees]) {
-        let key = tie_key(nodes, heap[i]);
-        while i > 0 {
-            let parent = (i - 1) / 2;
-            if tie_key(nodes, heap[parent]) <= key {
-                break;
+    fn split_bit(self, other: Self) -> u8 {
+        for word in (0..self.0.len()).rev() {
+            let difference = self.0[word] ^ other.0[word];
+            if difference != 0 {
+                return word as u8 * 64 + difference.ilog2() as u8;
             }
-            Self::swap(heap, degrees, i, parent);
-            i = parent;
         }
+        unreachable!("distinct local vertices have distinct priorities")
     }
 
-    fn down(heap: &mut [u32], mut i: usize, nodes: &[NodeSpec], degrees: &mut [Degrees]) {
-        let key = tie_key(nodes, heap[i]);
-        while i < heap.len() / 2 {
-            let mut child = i * 2 + 1;
-            if child + 1 < heap.len()
-                && tie_key(nodes, heap[child + 1]) < tie_key(nodes, heap[child])
-            {
-                child += 1;
-            }
-            if key <= tie_key(nodes, heap[child]) {
-                break;
-            }
-            Self::swap(heap, degrees, i, child);
-            i = child;
+    fn side(self, bit: u8) -> usize {
+        ((self.0[usize::from(bit / 64)] >> (bit % 64)) & 1) as usize
+    }
+}
+
+#[derive(Clone, Copy)]
+enum Entry {
+    Leaf(u32),
+    Branch(u32),
+}
+
+struct Branch {
+    bit: u8,
+    children: [Entry; 2],
+}
+
+/// One Patricia trie indexes the occupied SCC-local buckets and the ties within them.
+/// Branch bits strictly decrease: 33 bucket bits, 33 rank bits, 32 sequence bits, 32 ID bits.
+/// Taking the leftmost leaf selects the minimum in at most 130 branches, including bucket
+/// selection. Insertion takes at most two walks. Each vertex is inserted and peeled once,
+/// and each live edge can move one peer once, giving O(V + E) total time.
+/// Building V leaves uses V - 1 branches. Each move reuses the branch its removal freed.
+struct Buckets<'a> {
+    nodes: &'a [NodeSpec],
+    root: Option<Entry>,
+    branches: Vec<Branch>,
+}
+
+impl<'a> Buckets<'a> {
+    fn from_members(
+        nodes: &'a [NodeSpec],
+        members: &[u32],
+        degrees: &[Degrees],
+        work: &mut Work<'_>,
+    ) -> LayoutResult<Self> {
+        work.charge(members.len())?;
+        let mut buckets = Self {
+            nodes,
+            root: None,
+            branches: reserved(members.len().saturating_sub(1))?,
+        };
+        for &vertex in members {
+            buckets.insert(vertex, degrees, None, work)?;
+        }
+        Ok(buckets)
+    }
+
+    fn attach(&mut self, parent: Option<(u32, usize)>, child: Entry) {
+        if let Some((branch, side)) = parent {
+            self.branches[branch as usize].children[side] = child;
+        } else {
+            self.root = Some(child);
         }
     }
 
     fn insert(
         &mut self,
-        v: u32,
-        nodes: &[NodeSpec],
-        degrees: &mut [Degrees],
+        vertex: u32,
+        degrees: &[Degrees],
+        vacant: Option<u32>,
         work: &mut Work<'_>,
     ) -> LayoutResult<()> {
-        let bucket = self.bucket(degrees[v as usize]);
-        if bucket < self.source() {
-            self.highest = self.highest.max(bucket);
-        }
-        let heap = &mut self.heaps[bucket];
-        let i = heap.len();
-        // Charge the heap walk by its height; no comparison can trigger unmetered rescans.
-        work.visit((i + 1).ilog2() as usize + 1)?;
-        crate::work::push(heap, v)?;
-        degrees[v as usize].slot = i as u32;
-        degrees[v as usize].bucket = bucket;
-        Self::up(heap, i, nodes, degrees);
-        Ok(())
-    }
-
-    fn remove(
-        &mut self,
-        v: u32,
-        nodes: &[NodeSpec],
-        degrees: &mut [Degrees],
-        work: &mut Work<'_>,
-    ) -> LayoutResult<()> {
-        let degree = degrees[v as usize];
-        let heap = &mut self.heaps[degree.bucket];
-        let i = degree.slot as usize;
-        work.visit(heap.len().ilog2() as usize + 1)?;
-        heap.swap_remove(i);
-        degrees[v as usize].slot = NONE;
-        if i < heap.len() {
-            let replacement = heap[i];
-            degrees[replacement as usize].slot = i as u32;
-            if i > 0 && tie_key(nodes, replacement) < tie_key(nodes, heap[(i - 1) / 2]) {
-                Self::up(heap, i, nodes, degrees);
-            } else {
-                Self::down(heap, i, nodes, degrees);
+        work.visit(1)?;
+        let leaf = Entry::Leaf(vertex);
+        let Some(root) = self.root else {
+            self.root = Some(leaf);
+            return Ok(());
+        };
+        let priority = |vertex: u32| {
+            let index = vertex as usize;
+            Priority::new(&self.nodes[index], vertex, degrees[index].bucket())
+        };
+        let key = priority(vertex);
+        let mut cursor = root;
+        let bit = loop {
+            match cursor {
+                Entry::Leaf(other) => break key.split_bit(priority(other)),
+                Entry::Branch(index) => {
+                    work.visit(1)?;
+                    let branch = &self.branches[index as usize];
+                    cursor = branch.children[key.side(branch.bit)];
+                }
             }
-        }
-        Ok(())
-    }
-
-    // Internal deltas change by one per removed edge. Upward jumps of the maximum after
-    // a scan are bounded by those moves, so all descending searches together cost O(V + E).
-    fn next(&mut self, work: &mut Work<'_>) -> LayoutResult<u32> {
-        for special in [self.sink(), self.source()] {
-            if let Some(&v) = self.heaps[special].first() {
-                return Ok(v);
-            }
-        }
-        while self.heaps[self.highest].is_empty() {
+        };
+        let mut parent = None;
+        cursor = root;
+        while let Entry::Branch(index) = cursor {
             work.visit(1)?;
-            self.highest -= 1; // Called with at least one active vertex in an ordinary bucket.
+            let branch = &self.branches[index as usize];
+            if branch.bit <= bit {
+                break;
+            }
+            let side = key.side(branch.bit);
+            parent = Some((index, side));
+            cursor = branch.children[side];
         }
-        Ok(self.heaps[self.highest][0])
+        let mut children = [cursor; 2];
+        children[key.side(bit)] = leaf;
+        let branch = Branch { bit, children };
+        let index = if let Some(index) = vacant {
+            self.branches[index as usize] = branch;
+            index
+        } else {
+            let index =
+                u32::try_from(self.branches.len()).map_err(|_| WorkError::ArithmeticOverflow)?;
+            self.branches.push(branch);
+            index
+        };
+        self.attach(parent, Entry::Branch(index));
+        Ok(())
+    }
+
+    fn take(&mut self, probe: Priority, work: &mut Work<'_>) -> LayoutResult<(u32, Option<u32>)> {
+        let mut cursor = self.root.expect("only a populated queue is searched");
+        let mut parent = None;
+        let mut grandparent = None;
+        let vertex = loop {
+            work.visit(1)?;
+            match cursor {
+                Entry::Leaf(vertex) => break vertex,
+                Entry::Branch(index) => {
+                    let branch = &self.branches[index as usize];
+                    let side = probe.side(branch.bit);
+                    grandparent = parent;
+                    parent = Some((index, side));
+                    cursor = branch.children[side];
+                }
+            }
+        };
+        if let Some((index, side)) = parent {
+            let sibling = self.branches[index as usize].children[side ^ 1];
+            self.attach(grandparent, sibling);
+            Ok((vertex, Some(index)))
+        } else {
+            self.root = None;
+            Ok((vertex, None))
+        }
+    }
+
+    fn decrement(
+        &mut self,
+        vertex: u32,
+        incoming: bool,
+        degrees: &mut [Degrees],
+        work: &mut Work<'_>,
+    ) -> LayoutResult<()> {
+        let degree = &mut degrees[vertex as usize];
+        let previous = degree.bucket();
+        if incoming {
+            degree.incoming -= 1;
+        } else {
+            degree.outgoing -= 1;
+        }
+        if previous != degree.bucket() {
+            let old_key = Priority::new(&self.nodes[vertex as usize], vertex, previous);
+            let (found, vacant) = self.take(old_key, work)?;
+            debug_assert_eq!(found, vertex);
+            self.insert(vertex, degrees, vacant, work)?;
+        }
+        Ok(())
     }
 }
 
@@ -471,7 +522,6 @@ impl Scc<'_> {
         topo: &mut Vec<u32>,
         work: &mut Work<'_>,
     ) -> LayoutResult<()> {
-        let (mut max_in, mut max_out) = (0, 0);
         for &v in members {
             work.visit(1)?;
             for &e in self.outgoing.at(v) {
@@ -480,22 +530,18 @@ impl Scc<'_> {
                 if self.contains(to) {
                     degrees[v as usize].outgoing += 1;
                     degrees[to as usize].incoming += 1;
-                    max_in = max_in.max(degrees[to as usize].incoming);
-                    max_out = max_out.max(degrees[v as usize].outgoing);
                 }
             }
         }
-        let mut buckets = Buckets::new(max_in, max_out, work)?;
-        for &v in members {
-            buckets.insert(v, self.nodes, degrees, work)?;
-        }
+        let mut buckets = Buckets::from_members(self.nodes, members, degrees, work)?;
         let mut left = topo.len();
         let mut right = left + members.len(); // Disjoint SCCs partition the reserved n slots.
         work.charge(members.len())?;
         topo.resize(right, 0);
         while left < right {
             work.visit(1)?;
-            let v = buckets.next(work)?;
+            let (v, _) = buckets.take(Priority::MIN, work)?;
+            degrees[v as usize].removed = true;
             if degrees[v as usize].outgoing == 0 {
                 right -= 1;
                 topo[right] = v;
@@ -503,23 +549,15 @@ impl Scc<'_> {
                 topo[left] = v;
                 left += 1;
             }
-            buckets.remove(v, self.nodes, degrees, work)?;
             for (outbound, edges) in [(true, self.outgoing.at(v)), (false, incoming.at(v))] {
                 for &e in edges {
                     work.visit(1)?;
                     let edge = &self.links[e as usize];
                     let peer = if outbound { edge.to } else { edge.from };
-                    if !self.contains(peer) || degrees[peer as usize].slot == NONE {
+                    if !self.contains(peer) || degrees[peer as usize].removed {
                         continue;
                     }
-                    buckets.remove(peer, self.nodes, degrees, work)?;
-                    let degree = &mut degrees[peer as usize];
-                    if outbound {
-                        degree.incoming -= 1;
-                    } else {
-                        degree.outgoing -= 1;
-                    }
-                    buckets.insert(peer, self.nodes, degrees, work)?;
+                    buckets.decrement(peer, outbound, degrees, work)?;
                 }
             }
         }
@@ -576,6 +614,37 @@ mod tests {
             .collect();
         ids.sort_unstable();
         ids
+    }
+
+    fn with_budget<T>(
+        budget: usize,
+        run: impl FnOnce(&mut Work<'_>) -> LayoutResult<T>,
+    ) -> LayoutResult<(T, usize)> {
+        struct Meter {
+            used: usize,
+            budget: usize,
+        }
+        impl WorkControl for Meter {
+            fn check(&mut self) -> Result<(), WorkError> {
+                Ok(())
+            }
+            fn charge(&mut self, units: usize) -> Result<(), WorkError> {
+                let next = self
+                    .used
+                    .checked_add(units)
+                    .ok_or(WorkError::ArithmeticOverflow)?;
+                if next > self.budget {
+                    return Err(WorkError::Interrupted);
+                }
+                self.used = next;
+                Ok(())
+            }
+        }
+        let mut meter = Meter { used: 0, budget };
+        let mut work = Work::new(&mut meter);
+        let result = run(&mut work)?;
+        work.finish()?;
+        Ok((result, meter.used))
     }
 
     const POLICIES: [CyclePolicy; 2] = [CyclePolicy::SccGreedyFas, CyclePolicy::SccDfs];
@@ -680,7 +749,14 @@ mod tests {
                     } else {
                         (2, incoming - outgoing)
                     };
-                    (choice, tie_key(nodes, v as u32))
+                    let node = &nodes[v];
+                    (
+                        choice,
+                        node.order_hint.is_none(),
+                        node.order_hint.map_or(0, |hint| hint.rank),
+                        node.seq,
+                        v,
+                    )
                 })
                 .unwrap();
             active[picked] = false;
@@ -726,6 +802,222 @@ mod tests {
                     assert_eq!(result.topo, expected);
                     links.reverse();
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn shuffled_multigraphs_with_full_width_ties_match_the_recounting_oracle() {
+        let mut state = 0x6a09e667u32;
+        let mut random = || {
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            state
+        };
+        for count in [7u32, 16, 33, 64] {
+            for trial in 0..12 {
+                let mut nodes = nodes(count as usize);
+                let shared_seq = random();
+                let shared_rank = random() as i32;
+                for node in &mut nodes {
+                    node.seq = match random() % 5 {
+                        0 => 0,
+                        1 => u32::MAX,
+                        2 | 3 => shared_seq,
+                        _ => random(),
+                    };
+                    node.order_hint = match random() % 7 {
+                        0 | 1 => None,
+                        2 => Some(i32::MIN),
+                        3 => Some(i32::MAX),
+                        4 | 5 => Some(shared_rank),
+                        _ => Some(random() as i32),
+                    }
+                    .map(|rank| OrderHint {
+                        rank,
+                        cross_key: f64::from(random()),
+                    });
+                }
+                let mut pairs: Vec<_> = (0..count).map(|v| (v, (v + 1) % count)).collect();
+                for _ in 0..3 * count {
+                    let from = if random() % 4 == 0 {
+                        0
+                    } else {
+                        random() % count
+                    };
+                    let to = (from + 1 + random() % (count - 1)) % count;
+                    pairs.extend(std::iter::repeat_n((from, to), 1 + (random() % 5) as usize));
+                }
+                let mut links = links(&pairs);
+                let expected = slow_greedy(&nodes, &links);
+                let forward = run(&nodes, &links, CyclePolicy::SccGreedyFas);
+                assert_eq!(forward.topo, expected, "size {count}, trial {trial}");
+                let expected_feedback = feedback(&links, &forward);
+                for last in (1..links.len()).rev() {
+                    links.swap(last, random() as usize % (last + 1));
+                }
+                for _ in 0..2 {
+                    let result = run(&nodes, &links, CyclePolicy::SccGreedyFas);
+                    assert_eq!(result.topo, expected, "size {count}, trial {trial}");
+                    assert_eq!(feedback(&links, &result), expected_feedback);
+                    links.reverse();
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn sparse_extreme_delta_buckets_reuse_branches_with_bounded_visits() {
+        let mut nodes = nodes(8);
+        nodes[5].order_hint = Some(OrderHint {
+            rank: i32::MAX,
+            cross_key: 0.0,
+        });
+        let max = u32::MAX;
+        let mut degrees = [
+            (max, 1),
+            (1, max),
+            (max, max),
+            (0, max),
+            (max, 0),
+            (0, 0),
+            (max - 1, 1),
+            (1, max - 1),
+        ]
+        .map(|(incoming, outgoing)| Degrees {
+            incoming,
+            outgoing,
+            removed: false,
+        });
+        let members = [7, 6, 5, 4, 3, 2, 1, 0];
+        let (mut buckets, _) = with_budget(2 * members.len().pow(2), |work| {
+            Buckets::from_members(&nodes, &members, &degrees, work)
+        })
+        .unwrap();
+        for _ in 0..64 {
+            for (vertex, incoming) in [(1, false), (0, true), (2, true)] {
+                let (_, used) = with_budget(3 * members.len(), |work| {
+                    buckets.decrement(vertex, incoming, &mut degrees, work)
+                })
+                .unwrap();
+                assert!(used > 0);
+            }
+        }
+        assert_eq!(buckets.branches.len(), members.len() - 1);
+        for expected in [5, 4, 3, 7, 1, 2, 0, 6] {
+            let ((next, _), _) =
+                with_budget(members.len(), |work| buckets.take(Priority::MIN, work)).unwrap();
+            assert_eq!(next, expected);
+        }
+        assert!(buckets.root.is_none());
+    }
+
+    #[test]
+    fn leftmost_walk_charges_each_significant_bit_once() {
+        const ID_BITS: usize = 8;
+        const WALK_LIMIT: usize = 33 + 33 + 32 + 32 + 1;
+        let hint = |rank| {
+            Some(OrderHint {
+                rank,
+                cross_key: 0.0,
+            })
+        };
+        let base = NodeSpec {
+            order_hint: hint(i32::MIN),
+            ..NodeSpec::new(Size::default(), 0)
+        };
+        let sink = Degrees {
+            incoming: 1,
+            ..Degrees::default()
+        };
+        let mut nodes = vec![base; 1 << ID_BITS];
+        let mut degrees = vec![sink; nodes.len()];
+        let mut add = |node, degree| {
+            nodes.push(node);
+            degrees.push(degree);
+        };
+        for bit in 0..32 {
+            add(
+                NodeSpec {
+                    seq: 1 << bit,
+                    ..base
+                },
+                sink,
+            );
+            add(
+                NodeSpec {
+                    order_hint: hint(i32::MIN ^ (1 << bit)),
+                    ..base
+                },
+                sink,
+            );
+        }
+        add(
+            NodeSpec {
+                order_hint: None,
+                ..base
+            },
+            sink,
+        );
+        add(
+            base,
+            Degrees {
+                incoming: 0,
+                outgoing: 1,
+                ..Degrees::default()
+            },
+        );
+        for bit in 1..=32 {
+            let outgoing = ((1u64 << 32) + 1 - (1u64 << bit)) as u32;
+            add(base, Degrees { outgoing, ..sink });
+        }
+        let members: Vec<_> = (0..nodes.len() as u32).rev().collect();
+        let (mut buckets, _) = with_budget(2 * WALK_LIMIT * members.len(), |work| {
+            Buckets::from_members(&nodes, &members, &degrees, work)
+        })
+        .unwrap();
+        let ((minimum, _), used) =
+            with_budget(WALK_LIMIT, |work| buckets.take(Priority::MIN, work)).unwrap();
+        assert_eq!(minimum, 0);
+        assert_eq!(used, 33 + 33 + 32 + ID_BITS + 1);
+    }
+
+    #[test]
+    fn orientation_work_has_a_linear_budget_for_ties_parallel_edges_and_small_sccs() {
+        for count in [64u32, 512, 4096] {
+            let nodes = vec![NodeSpec::new(Size::default(), 0); count as usize];
+            let ring: Vec<_> = (0..count).map(|v| (v, (v + 1) % count)).collect();
+            let mut paired = Vec::new();
+            for first in (0..count).step_by(2) {
+                paired.extend([(first, first + 1), (first + 1, first)]);
+                if first > 0 {
+                    paired.push((first - 1, first));
+                }
+            }
+            let star = (1..count).flat_map(|v| [(0, v), (0, v), (v, 0)]).collect();
+            for (family, pairs, components) in [
+                ("ring", ring, 1),
+                ("paired", paired, count / 2),
+                ("star", star, 1),
+            ] {
+                let edges = links(&pairs);
+                let budget = 64 * (nodes.len() + edges.len());
+                let (result, used) = with_budget(budget, |work| {
+                    orient(&nodes, &edges, CyclePolicy::SccGreedyFas, work)
+                })
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "{family} V={count} E={} budget={budget}: {error}",
+                        edges.len()
+                    )
+                });
+                assert_eq!(result.cyclic_sccs, components as usize);
+                assert_eq!(result.topo.len(), nodes.len());
+                eprintln!(
+                    "{family} V={count} E={} work={used} budget={budget}",
+                    edges.len()
+                );
             }
         }
     }
@@ -818,37 +1110,8 @@ mod tests {
             ));
         }
         let links = links(&[(0, 1), (1, 2), (2, 0), (0, 3), (3, 1)]);
-        struct Meter {
-            used: usize,
-            budget: usize,
-        }
-        impl WorkControl for Meter {
-            fn check(&mut self) -> Result<(), WorkError> {
-                Ok(())
-            }
-            fn charge(&mut self, n: usize) -> Result<(), WorkError> {
-                let next = self
-                    .used
-                    .checked_add(n)
-                    .ok_or(WorkError::ArithmeticOverflow)?;
-                if next > self.budget {
-                    return Err(WorkError::Interrupted);
-                }
-                self.used = next;
-                Ok(())
-            }
-        }
         for policy in POLICIES {
-            let solve = |limit| {
-                let mut meter = Meter {
-                    used: 0,
-                    budget: limit,
-                };
-                let mut work = Work::new(&mut meter);
-                let output = orient(&nodes, &links, policy, &mut work)?;
-                work.finish()?;
-                Ok::<_, LayoutError>((output, meter.used))
-            };
+            let solve = |limit| with_budget(limit, |work| orient(&nodes, &links, policy, work));
             let (reference, total) = solve(usize::MAX).unwrap();
             for limit in [0, total / 2, total - 1] {
                 assert!(matches!(

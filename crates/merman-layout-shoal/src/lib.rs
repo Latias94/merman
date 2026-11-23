@@ -2,12 +2,9 @@
 
 #![forbid(unsafe_code)]
 
-// Coordinates and painting are integrated after the topology stages pass their independent gates.
-#[cfg(test)]
 mod flat;
 mod model;
 mod options;
-mod preview;
 mod scratch;
 mod work;
 
@@ -36,7 +33,7 @@ pub fn layout_with_control(
     let frame = scratch.frame();
     let mut work = work::Work::new(control);
     work.charge(1)?;
-    let output = preview::run(graph, options, frame.buffers, &mut work)?;
+    let output = flat::run(graph, options, frame.expanded, &mut work)?;
     work.finish()?;
     Ok(output)
 }
