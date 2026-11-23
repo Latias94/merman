@@ -171,7 +171,7 @@ jobs:
         uses: actions/checkout@v7.0.1
         with:
           path: head
-          fetch-depth: 1
+          fetch-depth: 5 # The weekly baseline contract exercises a multi-commit Git interval.
           persist-credentials: false
           ref: ${{ inputs.head_ref || github.sha }}
           repository: ${{ inputs.head_repository || github.repository }}
@@ -272,9 +272,9 @@ jobs:
 
   measurement:
     name: perf-${{ matrix.id }}
-    needs: measurement-plan
-    if: needs.measurement-plan.outputs.selected == 'true'
-    runs-on: ubuntu-24.04
+    needs: [measurement-plan, weekly-baseline]
+    if: ${{ !cancelled() && needs.measurement-plan.result == 'success' && needs.measurement-plan.outputs.selected == 'true' }}
+    runs-on: &measurement_runner ubuntu-24.04
     permissions:
       contents: read
     env:
@@ -289,27 +289,37 @@ jobs:
         uses: actions/checkout@v7.0.1
         with:
           path: head
-          fetch-depth: 1
+          fetch-depth: ${{ github.event_name == 'schedule' && matrix.id != 'regression' && 2 || 1 }}
           persist-credentials: false
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.head_ref || github.sha }}
           repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}
+
+      - name: Resolve the scheduled base for this descriptor
+        id: scheduled-base
+        if: github.event_name == 'schedule'
+        working-directory: head
+        env:
+          LANE: ${{ matrix.id }}
+          MEASURED_BASE: ${{ needs.weekly-baseline.result == 'success' && needs.weekly-baseline.outputs.base_sha || '' }}
+        run: |
+          if [[ "$LANE" == regression ]]; then
+            sha="${MEASURED_BASE:?Scheduled workload baseline selection failed}"
+          else
+            sha="$(git rev-parse HEAD^)"
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
       - name: Checkout base
         uses: actions/checkout@v7.0.1
         with:
           path: base
-          fetch-depth: ${{ github.event_name == 'schedule' && 2 || 1 }}
+          fetch-depth: 1
           persist-credentials: false
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'schedule' && github.sha || inputs.base_ref || 'main' }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || steps.scheduled-base.outputs.sha || inputs.base_ref || 'main' }}
           repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || inputs.base_repository || github.repository }}
 
-      - name: Select previous main revision for scheduled comparison
-        if: github.event_name == 'schedule'
-        working-directory: base
-        run: git checkout --detach HEAD^
-
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.100.0
+        uses: &measurement_toolchain dtolnay/rust-toolchain@1.100.0
 
       - name: Read the base revision's performance recipe
         id: base-recipe
@@ -344,7 +354,7 @@ jobs:
           EVIDENCE_MODE: ${{ github.event_name == 'pull_request' && 'diagnostic' || inputs.evidence_mode || 'confirmation' }}
           RELATIVE_THRESHOLD_PERCENT: ${{ inputs.relative_threshold_percent || '10' }}
           ABSOLUTE_THRESHOLD_NS: ${{ inputs.absolute_threshold_ns || '50000' }}
-          BASE_LABEL: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || inputs.base_repository || github.repository }}@${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || github.event_name == 'schedule' && 'main~1' || inputs.base_ref || 'main' }}
+          BASE_LABEL: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name || inputs.base_repository || github.repository }}@${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || steps.scheduled-base.outputs.sha || inputs.base_ref || 'main' }}
           HEAD_LABEL: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || inputs.head_repository || github.repository }}@${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || inputs.head_ref || github.ref_name }}
         run: |
           set -euo pipefail
@@ -426,35 +436,48 @@ jobs:
             head/target/performance/summary.md
 
       - name: Observe ordered workloads on the measured revisions
+        id: workloads
         if: ${{ matrix.id == 'regression' && hashFiles('head/tools/bench/run_workloads.py') != '' }}
         env:
           WORKLOAD_SUITE: ${{ (github.event_name == 'schedule' || inputs.run == 'full') && 'full' || 'quick' }}
-        run: |
+        run: &workload_recipe |
           set -euo pipefail
           out="$GITHUB_WORKSPACE/head/target/performance/workloads"
           driver=tools/bench/run_workloads.py
           python3 "head/$driver" plan --suite "$WORKLOAD_SUITE" --out "$out/plan.json"
+          incomplete=0
           for side in head base; do
             if [[ ! -f "$side/$driver" ]]; then
               echo 'This revision predates the ordered workload runner.' > "$out/$side-unavailable.txt"
               continue
             fi
-            python3 "$side/$driver" rust --plan "$out/plan.json" --metric memory --out "$out/$side-memory.json"
-            python3 "$side/$driver" rust --plan "$out/plan.json" --metric work --out "$out/$side-work.json"
-            python3 "$side/$driver" rust --plan "$out/plan.json" --metric memory --operation prepare-retained --scenario retained-configs --warmups 0 --site-css-bytes 65536 --out "$out/$side-retained.json"
+            python3 "$side/$driver" rust --plan "$out/plan.json" --metric memory --out "$out/$side-memory.json" || incomplete=1
+            python3 "$side/$driver" rust --plan "$out/plan.json" --metric work --out "$out/$side-work.json" || incomplete=1
+            python3 "$side/$driver" rust --plan "$out/plan.json" --metric memory --operation prepare-retained --scenario retained-configs --warmups 0 --site-css-bytes 65536 --out "$out/$side-retained.json" || incomplete=1
           done
-          if [[ -f "$out/base-work.json" ]]; then
-            for metric in memory work retained; do
-              python3 "head/$driver" compare "$out/base-$metric.json" "$out/head-$metric.json" --out "$out/compare-$metric.json"
-            done
-          fi
+          for metric in memory work retained; do
+            if [[ -f "$out/base-$metric.json" && -f "$out/head-$metric.json" ]]; then
+              python3 "head/$driver" compare "$out/base-$metric.json" "$out/head-$metric.json" --out "$out/compare-$metric.json" || incomplete=1
+            fi
+          done
+          exit "$incomplete"
+
+      - name: Record the scheduled workload interval
+        id: weekly-receipt
+        if: ${{ !cancelled() && github.event_name == 'schedule' && matrix.id == 'regression' }}
+        working-directory: head
+        env:
+          WEEKLY_INTERVAL: ${{ needs.weekly-baseline.outputs.interval }}
+          WORKLOAD_RESULT: ${{ steps.workloads.outcome }}
+        run: python3 -B tools/bench/weekly_workload_baseline.py record target/performance/workloads
 
       - name: Upload ordered workload observations
-        if: ${{ always() && matrix.id == 'regression' && hashFiles('head/target/performance/workloads/plan.json') != '' }}
+        if: ${{ always() && matrix.id == 'regression' && hashFiles('head/target/performance/workloads/plan.json', 'head/target/performance/workloads/weekly-interval.json') != '' }}
         uses: actions/upload-artifact@v7.0.2
         with:
-          name: perf-public-workloads
+          name: ${{ steps.weekly-receipt.outputs.artifact || (github.event_name == 'schedule' && format('perf-public-workloads-incomplete-{0}', github.run_attempt)) || 'perf-public-workloads' }}
           path: head/target/performance/workloads
+          if-no-files-found: error
 
       - name: Write pull-request job summary
         if: ${{ always() && github.event_name == 'pull_request' }}
@@ -480,6 +503,36 @@ jobs:
           python3 tools/bench/performance_workflow.py enforce \
             --comparison-exit "$COMPARISON_EXIT" \
             --render-exit "$RENDER_EXIT"
+
+  weekly-baseline:
+    name: Select scheduled workload baseline
+    if: github.event_name == 'schedule'
+    runs-on: *measurement_runner
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      base_sha: ${{ steps.select.outputs.base_sha }}
+      interval: ${{ steps.select.outputs.interval }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Materialize the weekly sentinel
+        run: python3 -B tools/bench/run_workloads.py plan --scenario mixed-families --out "$RUNNER_TEMP/weekly-sentinel.json"
+
+      - name: Select the previous measured ancestor
+        id: select
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKLOAD_SOURCES: ${{ hashFiles('tools/bench/run_workloads.py', 'tools/bench/workload_svg.py', 'tools/bench/workload_drawing.py', 'crates/merman/benches/workloads/**/*.rs', 'crates/merman/benches/public_workload*.rs', 'crates/merman/benches/native_memory/allocator.rs', 'rust-toolchain.toml') }}
+          WORKLOAD_RECIPE: *workload_recipe
+          WORKLOAD_RUNNER: *measurement_runner
+          WORKLOAD_TOOLCHAIN: *measurement_toolchain
+        run: python3 -B tools/bench/weekly_workload_baseline.py select "$RUNNER_TEMP/weekly-sentinel.json"
 
   node-reference:
     name: perf-node-reference

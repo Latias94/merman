@@ -1520,6 +1520,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          fetch-depth: 5 # Exercise the multi-commit weekly baseline contract.
           persist-credentials: false
 
       - name: Check performance owner contracts

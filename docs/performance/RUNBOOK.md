@@ -19,11 +19,22 @@ under a frozen recipe and fixed maximum budget.
 
 ## GitHub Actions lanes
 
-The `regression` measurement job also uploads `perf-public-workloads` with separate memory,
-retention and topology observations. Labelled PRs and ordinary regression dispatches use the quick
+The `regression` measurement job uploads separate memory, retention and topology observations.
+Labelled PRs and ordinary regression dispatches use `perf-public-workloads` and the quick
 suite. Scheduled runs and full dispatches use the full suite. It compares both revisions when the
 base contains the workload runner. On older bases the artifact identifies the missing observation.
 The [local recipe](#run-an-ordered-workload) uses the same inputs and commands.
+
+Scheduled regression selects the last measured ancestor from this workflow and branch with a
+compatible workload receipt. The current runner measures both ends of the interval. The step
+summary names the SHAs and the earlier run, attempt and artifact. On the first run, or after
+all eligible artifacts have expired or become unreachable, it measures the current SHA against
+itself (`bootstrap`). A change in the sentinel, measurement code, runner recipe or toolchain
+starts another same-SHA baseline (`protocol-change`). `frontmatter` keeps its own parent-to-head
+comparison. A scheduled receipt contains `weekly-interval.json`, the full raw observations and
+`weekly-sentinel.json`, a standalone `mixed-families` plan. Check the per-side coverage in the
+receipt for product errors, including default-budget refusals. An incomplete measurement is
+uploaded under a separate artifact name and cannot become the next baseline.
 
 Performance automation is isolated in the `Performance` workflow:
 
