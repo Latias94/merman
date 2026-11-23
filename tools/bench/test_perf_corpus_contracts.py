@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
+import tempfile
 import tomllib
 import unittest
 from dataclasses import replace
@@ -19,6 +20,7 @@ from corpus_utils import (
     resolve_lane_group,
     select_corpus_fixtures,
 )
+from pipeline_fixtures import BEGIN, END, PIPELINE, sync_pipeline_fixtures
 from run_native_memory import load_owner_contract
 
 
@@ -29,6 +31,34 @@ BINDING_REQUEST_CORPUS_PATH = ROOT / "tools" / "bench" / "binding_request_corpus
 
 
 class CorpusContractsTest(unittest.TestCase):
+    def test_compiled_pipeline_inputs_match_the_checkout_corpus(self) -> None:
+        self.assertTrue(sync_pipeline_fixtures(ROOT, ROOT / PIPELINE))
+
+    def test_pipeline_package_copies_use_their_own_checkout_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            for side, raw in (("base", b"info\r\n"), ("head", b"info\n")):
+                root = Path(temp) / side
+                bench = root / PIPELINE
+                bench.parent.mkdir(parents=True)
+                bench.write_bytes(BEGIN + b"\r\n" + END + b"\r\n")
+                corpus = root / "tools/bench/corpus.json"
+                corpus.parent.mkdir(parents=True)
+                rows = [
+                    {"name": "late_control", "source": "original.mmd", "suites": ["release_control"]},
+                    {"name": "upstream", "source": "original.mmd", "criterion_order": 1},
+                ]
+                corpus.write_text(json.dumps({"schema_version": 1, "fixtures": rows}), encoding="utf-8")
+                (root / "original.mmd").write_bytes(raw)
+                self.assertTrue(sync_pipeline_fixtures(root, bench, write=True))
+                mirror = bench.parent / "support/corpus/upstream.mmd"
+                self.assertEqual(mirror.read_bytes(), raw)
+                self.assertTrue(sync_pipeline_fixtures(root, bench))
+                registry = bench.read_bytes()
+                self.assertLess(registry.index(b'fixture!("upstream"'), registry.index(b'fixture!("late_control"'))
+            mirror.write_bytes(b"info\r\n")
+            with self.assertRaisesRegex(ValueError, "stale"):
+                sync_pipeline_fixtures(root, bench)
+
     def test_cross_family_has_one_fixture_per_declared_family(self) -> None:
         corpus = load_corpus(CORPUS_PATH)
         fixtures = select_corpus_fixtures(corpus, "cross_family")

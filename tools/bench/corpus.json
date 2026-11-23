@@ -795,6 +795,7 @@
   "fixtures": [
     {
       "name": "flowchart_nested_clusters_dagre_classic",
+      "criterion_order": 6,
       "family": "flowchart",
       "size": "medium",
       "category": "stress",
@@ -816,6 +817,7 @@
     },
     {
       "name": "flowchart_medium_dagre_classic",
+      "criterion_order": 5,
       "family": "flowchart",
       "size": "medium",
       "category": "standard",
@@ -1568,6 +1570,7 @@
     },
     {
       "name": "flowchart_weave_dagre_classic",
+      "criterion_order": 1,
       "family": "flowchart",
       "size": "medium",
       "category": "stress",
@@ -1578,6 +1581,7 @@
     },
     {
       "name": "flowchart_ports_heavy_dagre_classic",
+      "criterion_order": 2,
       "family": "flowchart",
       "size": "medium",
       "category": "stress",
@@ -1588,6 +1592,7 @@
     },
     {
       "name": "flowchart_fanout_returns_dagre_classic",
+      "criterion_order": 3,
       "family": "flowchart",
       "size": "medium",
       "category": "stress",
@@ -1598,6 +1603,7 @@
     },
     {
       "name": "flowchart_long_edge_labels_dagre_classic",
+      "criterion_order": 4,
       "family": "flowchart",
       "size": "medium",
       "category": "stress",

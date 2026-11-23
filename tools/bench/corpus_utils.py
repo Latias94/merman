@@ -63,6 +63,7 @@ class CorpusFixture:
     suites: tuple[str, ...]
     features: tuple[str, ...]
     quality: tuple[str, ...]
+    criterion_order: int | None = None
 
 
 @dataclass(frozen=True)
@@ -420,6 +421,7 @@ def load_corpus(path: Path) -> Corpus:
         raise ValueError("corpus.fixtures must be a list")
 
     seen: set[str] = set()
+    criterion_orders: set[int] = set()
     fixtures: list[CorpusFixture] = []
     for idx, item in enumerate(fixtures_raw):
         if not isinstance(item, dict):
@@ -430,6 +432,12 @@ def load_corpus(path: Path) -> Corpus:
         if name in seen:
             raise ValueError(f"duplicate fixture in corpus: {name}")
         seen.add(name)
+
+        order = item.get("criterion_order")
+        if order is not None:
+            if type(order) is not int or order < 1 or order in criterion_orders:
+                raise ValueError(f"fixture {name}.criterion_order must be a unique positive integer")
+            criterion_orders.add(order)
 
         def str_tuple(key: str) -> tuple[str, ...]:
             value = item.get(key) or []
@@ -449,6 +457,7 @@ def load_corpus(path: Path) -> Corpus:
                 suites=str_tuple("suites"),
                 features=str_tuple("features"),
                 quality=str_tuple("quality"),
+                criterion_order=order,
             )
         )
 

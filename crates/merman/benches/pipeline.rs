@@ -133,278 +133,114 @@ fn verify_postflight(
     eprintln!("[bench][postflight] {group}/{name}");
 }
 
-fn fixtures() -> Vec<(&'static str, &'static str)> {
-    vec![
-        (
-            "flowchart_weave_dagre_classic",
-            include_str!("fixtures/flowchart_weave_dagre_classic.mmd"),
-        ),
-        (
-            "flowchart_ports_heavy_dagre_classic",
-            include_str!("fixtures/flowchart_ports_heavy_dagre_classic.mmd"),
-        ),
-        (
-            "flowchart_fanout_returns_dagre_classic",
-            include_str!("fixtures/flowchart_fanout_returns_dagre_classic.mmd"),
-        ),
-        (
-            "flowchart_long_edge_labels_dagre_classic",
-            include_str!("fixtures/flowchart_long_edge_labels_dagre_classic.mmd"),
-        ),
-        (
-            "flowchart_medium_dagre_classic",
-            include_str!("fixtures/flowchart_medium_dagre_classic.mmd"),
-        ),
-        (
-            "flowchart_nested_clusters_dagre_classic",
-            include_str!("fixtures/flowchart_nested_clusters_dagre_classic.mmd"),
-        ),
-        (
-            "flowchart_tiny",
-            include_str!("fixtures/flowchart_tiny.mmd"),
-        ),
-        (
-            "flowchart_small",
-            include_str!("fixtures/flowchart_small.mmd"),
-        ),
-        (
-            "flowchart_medium",
-            include_str!("fixtures/flowchart_medium.mmd"),
-        ),
-        (
-            "flowchart_large",
-            include_str!("fixtures/flowchart_large.mmd"),
-        ),
-        (
-            "flowchart_ports_heavy",
-            include_str!("fixtures/flowchart_ports_heavy.mmd"),
-        ),
-        (
-            "flowchart_weave",
-            include_str!("fixtures/flowchart_weave.mmd"),
-        ),
-        (
-            "flowchart_backedges_subgraphs",
-            include_str!("fixtures/flowchart_backedges_subgraphs.mmd"),
-        ),
-        (
-            "flowchart_sparse_components",
-            include_str!("fixtures/flowchart_sparse_components.mmd"),
-        ),
-        (
-            "flowchart_lanes_crossfeed",
-            include_str!("fixtures/flowchart_lanes_crossfeed.mmd"),
-        ),
-        (
-            "flowchart_grid_feedback",
-            include_str!("fixtures/flowchart_grid_feedback.mmd"),
-        ),
-        (
-            "flowchart_fanout_returns",
-            include_str!("fixtures/flowchart_fanout_returns.mmd"),
-        ),
-        (
-            "flowchart_label_collision",
-            include_str!("fixtures/flowchart_label_collision.mmd"),
-        ),
-        (
-            "flowchart_nested_clusters",
-            include_str!("fixtures/flowchart_nested_clusters.mmd"),
-        ),
-        (
-            "flowchart_elk_nested_directions",
-            include_str!(
-                "../../../fixtures/flowchart/upstream_cypress_flowchart_elk_spec_2050_elk_handling_of_different_rendering_direction_in_subgraphs_036.mmd"
-            ),
-        ),
-        (
-            "flowchart_asymmetric_components",
-            include_str!("fixtures/flowchart_asymmetric_components.mmd"),
-        ),
-        (
-            "flowchart_parallel_merges",
-            include_str!("fixtures/flowchart_parallel_merges.mmd"),
-        ),
-        (
-            "flowchart_long_edge_labels",
-            include_str!("fixtures/flowchart_long_edge_labels.mmd"),
-        ),
-        (
-            "flowchart_svg_label_reuse",
-            include_str!("fixtures/flowchart_svg_label_reuse.mmd"),
-        ),
-        (
-            "flowchart_selfloop_bidi",
-            include_str!("fixtures/flowchart_selfloop_bidi.mmd"),
-        ),
-        (
-            "flowchart_component_packing",
-            include_str!("fixtures/flowchart_component_packing.mmd"),
-        ),
-        (
-            "flowchart_direction_conflict",
-            include_str!("fixtures/flowchart_direction_conflict.mmd"),
-        ),
-        (
-            "flowchart_parallel_label_stack",
-            include_str!("fixtures/flowchart_parallel_label_stack.mmd"),
-        ),
-        ("class_tiny", include_str!("fixtures/class_tiny.mmd")),
-        ("class_medium", include_str!("fixtures/class_medium.mmd")),
-        (
-            "class_namespace_dense",
-            include_str!("fixtures/stress_class_dense_namespaces_generics_001.mmd"),
-        ),
-        (
-            "class_nested_namespaces",
-            include_str!("fixtures/class_nested_namespaces.mmd"),
-        ),
-        (
-            "class_nested_namespaces_large",
-            include_str!("fixtures/class_nested_namespaces_large.mmd"),
-        ),
-        ("state_tiny", include_str!("fixtures/state_tiny.mmd")),
-        ("state_medium", include_str!("fixtures/state_medium.mmd")),
-        ("sequence_tiny", include_str!("fixtures/sequence_tiny.mmd")),
-        (
-            "sequence_medium",
-            include_str!("fixtures/sequence_medium.mmd"),
-        ),
-        (
-            "sequence_actor_only_control",
-            include_str!("fixtures/sequence_actor_only_control.mmd"),
-        ),
-        (
-            "sequence_block_repeat_low",
-            include_str!("fixtures/sequence_block_repeat_low.mmd"),
-        ),
-        (
-            "sequence_block_repeat_medium",
-            include_str!("fixtures/sequence_block_repeat_medium.mmd"),
-        ),
-        (
-            "sequence_block_repeat_high",
-            include_str!("fixtures/sequence_block_repeat_high.mmd"),
-        ),
-        (
-            "sequence_block_unique_high",
-            include_str!("fixtures/sequence_block_unique_high.mmd"),
-        ),
-        ("er_medium", include_str!("fixtures/er_medium.mmd")),
-        ("info_medium", include_str!("fixtures/info_medium.mmd")),
-        ("pie_medium", include_str!("fixtures/pie_medium.mmd")),
-        (
-            "mindmap_medium",
-            include_str!("fixtures/mindmap_medium.mmd"),
-        ),
-        (
-            "journey_medium",
-            include_str!("fixtures/journey_medium.mmd"),
-        ),
-        (
-            "timeline_medium",
-            include_str!("fixtures/timeline_medium.mmd"),
-        ),
-        ("gantt_medium", include_str!("fixtures/gantt_medium.mmd")),
-        (
-            "requirement_medium",
-            include_str!("fixtures/requirement_medium.mmd"),
-        ),
-        (
-            "gitgraph_medium",
-            include_str!("fixtures/gitgraph_medium.mmd"),
-        ),
-        ("c4_medium", include_str!("fixtures/c4_medium.mmd")),
-        ("sankey_medium", include_str!("fixtures/sankey_medium.mmd")),
-        (
-            "quadrant_medium",
-            include_str!("fixtures/quadrant_medium.mmd"),
-        ),
-        ("zenuml_medium", include_str!("fixtures/zenuml_medium.mmd")),
-        ("block_medium", include_str!("fixtures/block_medium.mmd")),
-        ("packet_medium", include_str!("fixtures/packet_medium.mmd")),
-        ("kanban_medium", include_str!("fixtures/kanban_medium.mmd")),
-        (
-            "architecture_medium",
-            include_str!("fixtures/architecture_medium.mmd"),
-        ),
-        ("radar_medium", include_str!("fixtures/radar_medium.mmd")),
-        (
-            "treemap_medium",
-            include_str!("fixtures/treemap_medium.mmd"),
-        ),
-        (
-            "xychart_medium",
-            include_str!("fixtures/xychart_medium.mmd"),
-        ),
-        ("venn_medium", include_str!("fixtures/venn_medium.mmd")),
-        (
-            "swimlane_medium",
-            include_str!("fixtures/swimlane_medium.mmd"),
-        ),
-        (
-            "eventmodeling_medium",
-            include_str!("fixtures/eventmodeling_medium.mmd"),
-        ),
-        (
-            "treeview_medium",
-            include_str!("fixtures/treeview_medium.mmd"),
-        ),
-        (
-            "ishikawa_medium",
-            include_str!("fixtures/ishikawa_medium.mmd"),
-        ),
-        (
-            "railroad_medium",
-            include_str!("fixtures/railroad_medium.mmd"),
-        ),
-        (
-            "railroad_abnf_medium",
-            include_str!("fixtures/railroad_abnf_medium.mmd"),
-        ),
-        (
-            "railroad_ebnf_medium",
-            include_str!("fixtures/railroad_ebnf_medium.mmd"),
-        ),
-        (
-            "railroad_peg_medium",
-            include_str!("fixtures/railroad_peg_medium.mmd"),
-        ),
-        (
-            "wardley_medium",
-            include_str!("fixtures/wardley_medium.mmd"),
-        ),
-        (
-            "cynefin_medium",
-            include_str!("fixtures/cynefin_medium.mmd"),
-        ),
-        ("error_basic", include_str!("fixtures/error_basic.mmd")),
-        (
-            "agentflow_basic",
-            include_str!("../../../fixtures/agentflow/basic.mmd"),
-        ),
-        (
-            "usecase_basic",
-            include_str!("../../../fixtures/usecase/basic.mmd"),
-        ),
-    ]
+macro_rules! fixture {
+    ($name:literal) => {
+        ($name, include_str!(concat!("fixtures/", $name, ".mmd")))
+    };
+    ($name:literal, $path:literal) => {
+        ($name, include_str!($path))
+    };
 }
 
-fn frontmatter_fixtures() -> Vec<(&'static str, &'static str)> {
-    vec![
-        (
-            "frontmatter_basic",
-            include_str!("fixtures/frontmatter_basic.mmd"),
-        ),
-        (
-            "frontmatter_indented",
-            include_str!("fixtures/frontmatter_indented.mmd"),
-        ),
-        (
-            "frontmatter_deep_config",
-            include_str!("fixtures/frontmatter_deep_config.mmd"),
-        ),
-    ]
+// Generated from tools/bench/corpus.json by tools/bench/pipeline_fixtures.py --write.
+#[rustfmt::skip]
+const DIAGRAM_FIXTURES: &[(&str, &str)] = &[
+    fixture!("flowchart_weave_dagre_classic"),
+    fixture!("flowchart_ports_heavy_dagre_classic"),
+    fixture!("flowchart_fanout_returns_dagre_classic"),
+    fixture!("flowchart_long_edge_labels_dagre_classic"),
+    fixture!("flowchart_medium_dagre_classic"),
+    fixture!("flowchart_nested_clusters_dagre_classic"),
+    fixture!("flowchart_tiny"),
+    fixture!("flowchart_small"),
+    fixture!("flowchart_medium"),
+    fixture!("flowchart_large"),
+    fixture!("flowchart_ports_heavy"),
+    fixture!("flowchart_weave"),
+    fixture!("flowchart_backedges_subgraphs"),
+    fixture!("flowchart_sparse_components"),
+    fixture!("flowchart_lanes_crossfeed"),
+    fixture!("flowchart_grid_feedback"),
+    fixture!("flowchart_fanout_returns"),
+    fixture!("flowchart_label_collision"),
+    fixture!("flowchart_nested_clusters"),
+    fixture!("flowchart_elk_nested_directions", "support/corpus/flowchart_elk_nested_directions.mmd"),
+    fixture!("flowchart_asymmetric_components"),
+    fixture!("flowchart_parallel_merges"),
+    fixture!("flowchart_long_edge_labels"),
+    fixture!("flowchart_svg_label_reuse"),
+    fixture!("flowchart_selfloop_bidi"),
+    fixture!("flowchart_component_packing"),
+    fixture!("flowchart_direction_conflict"),
+    fixture!("flowchart_parallel_label_stack"),
+    fixture!("class_tiny"),
+    fixture!("class_medium"),
+    fixture!("class_namespace_dense", "fixtures/stress_class_dense_namespaces_generics_001.mmd"),
+    fixture!("class_nested_namespaces"),
+    fixture!("class_nested_namespaces_large"),
+    fixture!("state_tiny"),
+    fixture!("state_medium"),
+    fixture!("sequence_tiny"),
+    fixture!("sequence_medium"),
+    fixture!("sequence_actor_only_control"),
+    fixture!("sequence_block_repeat_low"),
+    fixture!("sequence_block_repeat_medium"),
+    fixture!("sequence_block_repeat_high"),
+    fixture!("sequence_block_unique_high"),
+    fixture!("er_medium"),
+    fixture!("info_medium"),
+    fixture!("pie_medium"),
+    fixture!("mindmap_medium"),
+    fixture!("journey_medium"),
+    fixture!("timeline_medium"),
+    fixture!("gantt_medium"),
+    fixture!("requirement_medium"),
+    fixture!("gitgraph_medium"),
+    fixture!("c4_medium"),
+    fixture!("sankey_medium"),
+    fixture!("quadrant_medium"),
+    fixture!("zenuml_medium"),
+    fixture!("block_medium"),
+    fixture!("packet_medium"),
+    fixture!("kanban_medium"),
+    fixture!("architecture_medium"),
+    fixture!("radar_medium"),
+    fixture!("treemap_medium"),
+    fixture!("xychart_medium"),
+    fixture!("venn_medium"),
+    fixture!("swimlane_medium"),
+    fixture!("eventmodeling_medium"),
+    fixture!("treeview_medium"),
+    fixture!("ishikawa_medium"),
+    fixture!("railroad_medium"),
+    fixture!("railroad_abnf_medium"),
+    fixture!("railroad_ebnf_medium"),
+    fixture!("railroad_peg_medium"),
+    fixture!("wardley_medium"),
+    fixture!("cynefin_medium"),
+    fixture!("error_basic"),
+    fixture!("agentflow_basic", "support/corpus/agentflow_basic.mmd"),
+    fixture!("usecase_basic", "support/corpus/usecase_basic.mmd"),
+];
+
+#[rustfmt::skip]
+const FRONTMATTER_FIXTURES: &[(&str, &str)] = &[
+    fixture!("frontmatter_basic"),
+    fixture!("frontmatter_indented"),
+    fixture!("frontmatter_deep_config"),
+];
+// End of generated pipeline fixtures.
+
+fn fixtures(group: &str) -> impl Iterator<Item = (&'static str, &'static str)> {
+    let entries = if group == "frontmatter_preprocess" {
+        FRONTMATTER_FIXTURES
+    } else {
+        DIAGRAM_FIXTURES
+    };
+    entries
+        .iter()
+        .copied()
+        .filter(move |(name, _)| benchmark_selected(group, name))
 }
 
 fn bench_parse(c: &mut Criterion) {
@@ -412,10 +248,7 @@ fn bench_parse(c: &mut Criterion) {
     let parse_opts = ParseOptions::strict();
 
     let mut group = c.benchmark_group("parse");
-    for (name, input) in fixtures() {
-        if !benchmark_selected("parse", name) {
-            continue;
-        }
+    for (name, input) in fixtures("parse") {
         let output_identity = || {
             let parsed = engine
                 .parse_diagram_for_render_model_sync(input, parse_opts)
@@ -447,10 +280,7 @@ fn bench_compatibility_json_parse(c: &mut Criterion) {
     let parse_opts = ParseOptions::strict();
 
     let mut group = c.benchmark_group("compatibility_json_parse");
-    for (name, input) in fixtures() {
-        if !benchmark_selected("compatibility_json_parse", name) {
-            continue;
-        }
+    for (name, input) in fixtures("compatibility_json_parse") {
         let diagram_type = engine
             .parse_metadata_sync(input)
             .unwrap_or_else(|error| {
@@ -496,10 +326,7 @@ fn bench_parse_cold_engine(c: &mut Criterion) {
     let parse_opts = ParseOptions::strict();
 
     let mut group = c.benchmark_group("parse_cold_engine");
-    for (name, input) in fixtures() {
-        if !benchmark_selected("parse_cold_engine", name) {
-            continue;
-        }
+    for (name, input) in fixtures("parse_cold_engine") {
         // Tracks request-style usage that constructs a fresh MermaidEngine per parse, so parse wins are
         // not accidentally attributed only to the hot shared-engine benchmark shape.
         let output_identity = || {
@@ -538,10 +365,7 @@ fn bench_parse_cold_engine(c: &mut Criterion) {
 fn bench_editor_snapshot(c: &mut Criterion) {
     let engine = MermaidEngine::new();
     let mut group = c.benchmark_group("editor_snapshot");
-    for (name, input) in fixtures() {
-        if !benchmark_selected("editor_snapshot", name) {
-            continue;
-        }
+    for (name, input) in fixtures("editor_snapshot") {
         let output_identity = || {
             let snapshot = engine
                 .parse_diagram_snapshot_sync(input)
@@ -598,10 +422,7 @@ fn bench_frontmatter_preprocess(c: &mut Criterion) {
     let registry = DetectorRegistry::pinned_mermaid_baseline();
 
     let mut group = c.benchmark_group("frontmatter_preprocess");
-    for (name, input) in frontmatter_fixtures() {
-        if !benchmark_selected("frontmatter_preprocess", name) {
-            continue;
-        }
+    for (name, input) in fixtures("frontmatter_preprocess") {
         let output_identity = || {
             let pre = merman_core::preprocess_diagram_with_known_type(
                 input,
@@ -648,10 +469,7 @@ fn bench_layout(c: &mut Criterion) {
         .with_resource_policy(RenderResourcePolicy::trusted_native());
 
     let mut group = c.benchmark_group("layout");
-    for (name, input) in fixtures() {
-        if !benchmark_selected("layout", name) {
-            continue;
-        }
+    for (name, input) in fixtures("layout") {
         let parsed = engine
             .parse_diagram_for_render_model_sync(input, parse_opts)
             .unwrap_or_else(|error| panic!("layout/{name} parse preflight failed: {error}"))
@@ -697,10 +515,7 @@ fn bench_render(c: &mut Criterion) {
         .with_resource_policy(RenderResourcePolicy::trusted_native());
 
     let mut group = c.benchmark_group("render");
-    for (name, input) in fixtures() {
-        if !benchmark_selected("render", name) {
-            continue;
-        }
+    for (name, input) in fixtures("render") {
         let parsed = engine
             .parse_diagram_for_render_model_sync(input, parse_opts)
             .unwrap_or_else(|error| panic!("render/{name} parse preflight failed: {error}"))
@@ -760,10 +575,7 @@ fn bench_end_to_end(c: &mut Criterion) {
         .with_resource_policy(*resources.input_policy());
 
     let mut group = c.benchmark_group("end_to_end");
-    for (name, input) in fixtures() {
-        if !benchmark_selected("end_to_end", name) {
-            continue;
-        }
+    for (name, input) in fixtures("end_to_end") {
         let svg_opts = SvgRenderOptions {
             diagram_id: Some(merman::svg::sanitize_svg_id(name)),
             ..SvgRenderOptions::default()
