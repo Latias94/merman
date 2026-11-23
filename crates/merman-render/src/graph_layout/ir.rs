@@ -122,6 +122,7 @@ pub(crate) enum Endpoint {
 }
 
 #[derive(Debug)]
+#[cfg_attr(test, derive(Clone))]
 pub(crate) struct MeasuredGraph {
     pub(crate) direction: Direction,
     pub(crate) routing: RoutingStyle,
@@ -134,6 +135,7 @@ pub(crate) struct MeasuredGraph {
 }
 
 #[derive(Debug)]
+#[cfg_attr(test, derive(Clone))]
 pub(crate) struct MeasuredNode {
     pub(crate) size: Size,
     pub(crate) seq: u32,
@@ -145,6 +147,7 @@ pub(crate) struct MeasuredNode {
 }
 
 #[derive(Debug)]
+#[cfg_attr(test, derive(Clone))]
 pub(crate) struct MeasuredGroup {
     pub(crate) seq: u32,
     pub(crate) parent: Option<u32>,
@@ -156,6 +159,7 @@ pub(crate) struct MeasuredGroup {
 }
 
 #[derive(Debug)]
+#[cfg_attr(test, derive(Clone))]
 pub(crate) struct MeasuredEdge {
     pub(crate) source: Endpoint,
     pub(crate) target: Endpoint,

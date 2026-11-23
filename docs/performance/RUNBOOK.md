@@ -351,6 +351,19 @@ covers structural agreement on the drawing. Visual quality can be inspected sepa
 The command exits with a failure if any scenario misses the comparison criteria. Treat these
 fixed-order medians as diagnostics.
 
+To isolate native layout computation, sample all three kernels against one frozen set of
+measurements per topology. The shell environment variables below select the full topology
+plan and a new JSONL output path.
+
+```console
+python3 tools/bench/perf_runner.py workloads plan --suite full --out target/bench/full-plan.json
+MERMAN_SHOAL_STRESS_PLAN="$PWD/target/bench/full-plan.json" MERMAN_SHOAL_KERNEL_OUT="$PWD/target/bench/shoal-kernel.jsonl" cargo nextest run --release --locked -p merman-render --features diagram-flowchart,layout-shoal,layout-elk --lib --run-ignored only -E 'test(native_kernel_samples)'
+```
+
+The sampler excludes parsing, family measurement, native input assembly, and SVG. Its
+JSONL records include measured input fingerprints, raw timings, geometry inventories
+and Shoal's retained scratch bytes. Run it when no other benchmarks or builds are active.
+
 Open an offline HTML gallery to inspect the returned SVGs side by side. Local `.mmd` files add
 examples without native timing. `--plan` adds the frozen cases. `--comparison` adds the
 SVG medians after checking the plan, executable, backend receipts and SVG digests against the

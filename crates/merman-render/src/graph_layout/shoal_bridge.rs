@@ -11,6 +11,10 @@ use crate::{Error, Result};
 use merman_layout_shoal as shoal;
 pub(crate) use shoal::LayoutScratch;
 
+#[cfg(all(test, feature = "diagram-flowchart", feature = "layout-elk"))]
+#[path = "kernel_bench.rs"]
+mod kernel_bench;
+
 fn marker_metrics(marker: Marker) -> shoal::MarkerMetrics {
     shoal::MarkerMetrics {
         // The painter keeps a straight normal lead even at an unmarked end (zero width).
@@ -107,6 +111,8 @@ pub(crate) fn solve(
     options.spacing.node = measured.node_spacing;
     options.spacing.rank = measured.rank_spacing;
     options.spacing.component = measured.component_spacing;
+    #[cfg(all(test, feature = "diagram-flowchart", feature = "layout-elk"))]
+    kernel_bench::capture(measured, options);
     let solved =
         shoal::layout_with_control(&project_input(measured, work)?, &options, scratch, work)
             .map_err(|error| work.map_shoal_error(error))?;
