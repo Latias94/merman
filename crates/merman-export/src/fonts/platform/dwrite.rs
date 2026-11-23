@@ -137,7 +137,7 @@ fn file_candidate(font: IDWriteFont) -> Option<FontCandidate> {
         let family = localized_name(&font.GetFontFamily().ok()?.GetFamilyNames().ok()?)?;
         let variable = variable_face(&face);
         let post_script_name = if let Some(instance) = &variable {
-            if has_non_default_axes(&face, instance)? {
+            if !uses_physical_axis_defaults(instance)? {
                 // The resolver admits a file and collection index. These cannot carry the
                 // selected instance's coordinates, even when it shares the physical family.
                 return None;
@@ -226,8 +226,8 @@ fn variable_face(face: &IDWriteFontFace) -> Option<IDWriteFontFace5> {
     }
 }
 
-fn has_non_default_axes(face: &IDWriteFontFace, instance: &IDWriteFontFace5) -> Option<bool> {
-    with_font_table(face, b"fvar", |bytes| {
+fn uses_physical_axis_defaults(instance: &IDWriteFontFace5) -> Option<bool> {
+    with_font_table(instance, b"fvar", |bytes| {
         let table = fvar::Table::parse(bytes)?;
         // SAFETY: The slice has the exact number of writable slots reported by this face.
         let mut values = unsafe {
@@ -238,18 +238,21 @@ fn has_non_default_axes(face: &IDWriteFontFace, instance: &IDWriteFontFace5) -> 
             instance.GetFontAxisValues(&mut values).ok()?;
             values
         };
-        values.sort_unstable_by_key(|value| value.axisTag.0);
-        // DirectWrite can include static CSS axes with no corresponding physical axis.
-        Some(table.axes.into_iter().any(|axis| {
-            let tag = u32::from_le_bytes(axis.tag.to_bytes());
-            values
-                .binary_search_by_key(&tag, |value| value.axisTag.0)
-                .ok()
-                .is_some_and(|i| {
-                    let value = values[i].value;
-                    (axis.min_value..=axis.max_value).contains(&value) && value != axis.def_value
-                })
-        }))
+        Some(axis_values_match_defaults(table, &mut values))
+    })
+}
+
+fn axis_values_match_defaults(
+    table: fvar::Table<'_>,
+    values: &mut [DWRITE_FONT_AXIS_VALUE],
+) -> bool {
+    values.sort_unstable_by_key(|value| value.axisTag.0);
+    // DirectWrite also reports static CSS axes. Only axes declared by the file need a match.
+    table.axes.into_iter().all(|axis| {
+        let tag = u32::from_le_bytes(axis.tag.to_bytes());
+        values
+            .binary_search_by_key(&tag, |value| value.axisTag.0)
+            .is_ok_and(|index| values[index].value == axis.def_value)
     })
 }
 
@@ -434,6 +437,104 @@ fn report_text(run: &[u16], text: *mut *mut u16, len: *mut u32) -> Result<()> {
 mod tests {
     use super::*;
     use usvg::fontdb::Database;
+
+    #[test]
+    fn directwrite_maps_fallback_to_the_selected_collection_member() {
+        use windows::Win32::Graphics::DirectWrite::{DWRITE_UNICODE_RANGE, IDWriteFactory5};
+
+        let fixture =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts/Cousine-test-collection.ttc");
+        // SAFETY: DirectWrite reads the fixture path and mapping arrays during each call.
+        // The resulting collection and fallback own their font references.
+        let fallback = unsafe {
+            let factory =
+                DWriteCreateFactory::<IDWriteFactory5>(DWRITE_FACTORY_TYPE_SHARED).unwrap();
+            let path = windows_core::HSTRING::from(fixture.as_path());
+            let file = factory.CreateFontFileReference(&path, None).unwrap();
+            let fonts = factory.CreateFontSetBuilder().unwrap();
+            fonts.AddFontFile(&file).unwrap();
+            let collection: IDWriteFontCollection = factory
+                .CreateFontCollectionFromFontSet(&fonts.CreateFontSet().unwrap())
+                .unwrap()
+                .into();
+            let mappings = factory.CreateFontFallbackBuilder().unwrap();
+            let range = DWRITE_UNICODE_RANGE {
+                first: 'A' as u32,
+                last: 'A' as u32,
+            };
+            mappings
+                .AddMapping(
+                    &[range],
+                    &[w!("Cousine").as_ptr()],
+                    &collection,
+                    None,
+                    None,
+                    1.0,
+                )
+                .unwrap();
+            CharacterFallback {
+                collection,
+                fallback: mappings.CreateFontFallback().unwrap(),
+            }
+        };
+
+        let mut database = Database::new();
+        database
+            .load_font_data(include_bytes!("../../../tests/fonts/MermanProbeBase.ttf").to_vec());
+        let mut base = database.faces().next().unwrap().clone();
+        base.style = Style::Italic;
+        let Some(FontCandidate::File {
+            path,
+            index,
+            expected,
+        }) = fallback.lookup('A', &base)
+        else {
+            panic!("the private fallback mapping must select a file");
+        };
+        assert_eq!(
+            path.canonicalize().unwrap(),
+            fixture.canonicalize().unwrap()
+        );
+        assert_eq!(index, 1);
+        let mut physical = Database::new();
+        physical.load_font_data(std::fs::read(&path).unwrap());
+        let italic = physical.faces().find(|face| face.index == index).unwrap();
+        assert_eq!(italic.post_script_name, "Cousine-Italic");
+        expected.validate(italic, &path).unwrap();
+        let mut wrong_index = italic.clone();
+        wrong_index.index = 0;
+        assert!(expected.validate(&wrong_index, &path).is_err());
+    }
+
+    #[test]
+    fn directwrite_requires_a_default_value_for_each_physical_axis() {
+        use windows::Win32::Graphics::DirectWrite::{
+            DWRITE_FONT_AXIS_TAG_WEIGHT, DWRITE_FONT_AXIS_TAG_WIDTH,
+        };
+
+        let bytes = include_bytes!("../../../tests/fonts/MermanVariableWeight.ttf");
+        let table = ttf_parser::Face::parse(bytes, 0)
+            .unwrap()
+            .tables()
+            .fvar
+            .unwrap();
+        let width = DWRITE_FONT_AXIS_VALUE {
+            axisTag: DWRITE_FONT_AXIS_TAG_WIDTH,
+            value: 100.0,
+        };
+        let weight = |value| DWRITE_FONT_AXIS_VALUE {
+            axisTag: DWRITE_FONT_AXIS_TAG_WEIGHT,
+            value,
+        };
+        assert!(axis_values_match_defaults(
+            table,
+            &mut [weight(100.0), width]
+        ));
+        assert!(!axis_values_match_defaults(table, &mut [width]));
+        for value in [400.0, 1000.0] {
+            assert!(!axis_values_match_defaults(table, &mut [weight(value)]));
+        }
+    }
 
     #[test]
     #[ignore = "requires Windows Noto Sans SC with a physical weight of 100"]
