@@ -1083,6 +1083,7 @@ dependencies = [
  "data-url",
  "dugong",
  "euclid",
+ "imagesize",
  "indexmap",
  "kurbo",
  "libm",
