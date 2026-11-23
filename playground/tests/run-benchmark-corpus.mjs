@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { chromium } from "playwright";
 import { preview } from "vite";
+import webPackage from "../../platforms/web/packages/full/package.json" with { type: "json" };
 
 import {
   BenchmarkPageOperationError,
@@ -77,6 +78,12 @@ try {
       return { plan, ready };
     }
   );
+  if (discovery.ready.versions.merman !== webPackage.version) {
+    throw new Error(
+      `Built Playground expects Merman Web ${discovery.ready.versions.merman}. ` +
+      `The selected Web package is ${webPackage.version}. Rebuild the Playground before measuring.`
+    );
+  }
   console.log(
     [
       "[merman-benchmark] browser corpus started.",
