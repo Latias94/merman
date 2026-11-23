@@ -73,6 +73,31 @@ pub type FontSelectionFn<'a> =
 pub type FallbackSelectionFn<'a> =
     Box<dyn Fn(char, &[ID], &mut Arc<Database>) -> Option<ID> + Send + Sync + 'a>;
 
+/// Selects a face and its relative size for a missing shaping cluster.
+/// The callback receives the authored font, the cluster text, its language and
+/// direction, and the faces already tried for that cluster.
+pub type ClusterFallbackFn<'a> = Box<
+    dyn Fn(&Font, &str, Option<&str>, bool, &[ID], &mut Arc<Database>) -> Option<(ID, f32)>
+        + Send
+        + Sync
+        + 'a,
+>;
+
+/// Optional context for text shaping and missing-cluster selection.
+#[derive(Default)]
+pub struct TextFallback<'a> {
+    pub(crate) language: Option<String>,
+    pub(crate) select: Option<ClusterFallbackFn<'a>>,
+}
+
+impl std::fmt::Debug for TextFallback<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TextFallback")
+            .field("language", &self.language)
+            .finish_non_exhaustive()
+    }
+}
+
 /// A font resolver for `<text>` elements.
 ///
 /// This type can be useful if you want to have an alternative font handling to
@@ -226,14 +251,14 @@ impl std::fmt::Debug for FontResolver<'_> {
 /// 2. We convert all of the positioned glyphs into outlines.
 pub(crate) fn convert(
     text: &mut Text,
-    resolver: &FontResolver,
+    options: &crate::Options,
     cache: &mut Cache,
     probe_end_anchor: bool,
     no_primary_face: &mut bool,
 ) -> Option<Option<f32>> {
     let (layout, end) = layout::layout_text(
         text,
-        resolver,
+        options,
         &mut cache.fontdb,
         probe_end_anchor,
         no_primary_face,

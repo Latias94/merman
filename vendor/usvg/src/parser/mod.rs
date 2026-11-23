@@ -136,6 +136,15 @@ impl crate::Tree {
                     (opt.font_resolver.select_fallback)(c, used_fonts, db)
                 }),
             },
+            #[cfg(feature = "text")]
+            text_fallback: crate::TextFallback {
+                language: opt.text_fallback.language.clone(),
+                select: opt
+                    .text_fallback
+                    .select
+                    .as_ref()
+                    .map(|select| Box::new(select) as crate::ClusterFallbackFn<'_>),
+            },
             ..Options::default()
         };
 

@@ -77,6 +77,22 @@ fn painted_text<'a>(tree: &'a usvg::Tree, id: &str) -> &'a usvg::Text {
     text
 }
 
+fn painted_faces<'a>(tree: &'a usvg::Tree, id: &str) -> Vec<&'a str> {
+    painted_text(tree, id)
+        .layouted()
+        .iter()
+        .flat_map(|span| &span.positioned_glyphs)
+        .map(|glyph| {
+            assert_ne!(glyph.id.0, 0);
+            tree.fontdb()
+                .face(glyph.font)
+                .unwrap()
+                .post_script_name
+                .as_str()
+        })
+        .collect()
+}
+
 fn assert_same_advance_and_faces(context: &NativeFontContext, family: &str) {
     assert_text_advance_and_faces(context, family, "AVA");
 }
@@ -236,6 +252,142 @@ fn platform_system_font_host_smoke_initializes_and_materializes() {
     context
         .check()
         .expect("platform host smoke remains healthy");
+}
+
+#[test]
+#[ignore = "requires a host-managed font catalog; run explicitly in CI"]
+fn platform_fallback_prefers_authored_faces_without_replacing_the_primary_ligature() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fonts");
+    let context = NativeFontOptions::default()
+        .with_font_file(root.join("MermanProbeBase.ttf"))
+        .with_font_file(root.join("MermanProbeFull.ttf"))
+        .with_font_file(root.join("MermanProbePartial.ttf"))
+        .with_system_fonts(true)
+        .load_platform(&OperationControl::new())
+        .unwrap();
+    let family = "MermanProbeBase, MermanProbePartial, MermanProbeFull";
+    assert_text_advance_and_faces(&context, family, "fi✓中");
+    let tree = paint_text(&context, family, "fi✓中");
+    assert_eq!(
+        painted_faces(&tree, "left"),
+        ["MermanProbeBase", "MermanProbePartial", "MermanProbeFull"]
+    );
+}
+
+#[test]
+fn fallback_scale_reaches_metrics_outlines_and_pdf_spans() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fonts");
+    let context = NativeFontOptions::default()
+        .with_font_file(root.join("MermanProbeBase.ttf"))
+        .with_font_file(root.join("MermanProbeFull.ttf"))
+        .load(&OperationControl::new())
+        .unwrap();
+    let mut options = usvg::Options::default();
+    context.apply_to_usvg_options(&mut options);
+    let fallback = options
+        .fontdb
+        .faces()
+        .find(|face| face.post_script_name == "MermanProbeFull")
+        .unwrap()
+        .id;
+    options.set_text_fallback(
+        None,
+        Some(Box::new(move |_, text, _, _, _, _| {
+            assert_eq!(text, "中");
+            Some((fallback, 1.5))
+        })),
+    );
+    let tree = usvg::Tree::from_str(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60">
+            <text id="probe" x="5" y="35" font-family="MermanProbeBase" font-size="20" text-decoration="underline">fi中</text>
+        </svg>"#,
+        &options,
+    ).unwrap();
+    let text = painted_text(&tree, "probe");
+    assert_eq!(
+        painted_faces(&tree, "probe"),
+        ["MermanProbeBase", "MermanProbeFull"]
+    );
+    let spans = text.layouted();
+    assert_eq!(spans.len(), 2);
+    assert_eq!(spans[0].font_size.get(), 20.0);
+    assert_eq!(spans[1].font_size.get(), 30.0);
+    assert_eq!(spans[1].positioned_glyphs[0].font_size(), 30.0);
+    assert!(spans[0].underline.is_some() && spans[1].underline.is_none());
+    assert_eq!(text.bounding_box().width(), 25.0);
+}
+
+#[test]
+fn fallback_receives_and_repairs_a_complete_combining_cluster() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fonts");
+    let context = options()
+        .with_font_file(root.join("MermanProbeBase.ttf"))
+        .load(&OperationControl::new())
+        .unwrap();
+    let mut options = usvg::Options::default();
+    context.apply_to_usvg_options(&mut options);
+    let fallback = options
+        .fontdb
+        .faces()
+        .find(|face| face.post_script_name == "Cousine-Regular")
+        .unwrap()
+        .id;
+    options.set_text_fallback(
+        None,
+        Some(Box::new(move |_, text, language, rtl, _, _| {
+            assert_eq!(text, "f\u{301}");
+            assert_eq!(language, Some("en-US"));
+            assert!(!rtl);
+            Some((fallback, 1.0))
+        })),
+    );
+    let tree = usvg::Tree::from_str(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50">
+          <text xml:lang="en-US" id="probe" y="35" font-family="MermanProbeBase" font-size="20">f&#x301;i</text>
+        </svg>"#,
+        &options,
+    ).unwrap();
+    assert_eq!(
+        painted_faces(&tree, "probe"),
+        ["Cousine-Regular", "Cousine-Regular", "MermanProbeBase"]
+    );
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "requires the macOS regional Han fonts; run explicitly in CI"]
+fn core_text_inherits_svg_language_and_keeps_regional_fallbacks_separate() {
+    let context = options()
+        .with_system_fonts(true)
+        .load_platform(&OperationControl::new())
+        .unwrap();
+    let mut options = usvg::Options::default();
+    context.apply_to_usvg_options(&mut options);
+    let tree = usvg::Tree::from_str(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="240" height="100">
+        <g font-family="Cousine" font-size="22" xml:lang="zh-Hans">
+          <text id="regions" x="10" y="50">骨<tspan xml:lang="zh-Hant">骨</tspan><tspan xml:lang="ja">骨</tspan><tspan xml:lang="ko">骨</tspan></text>
+        </g></svg>"#,
+        &options,
+    ).unwrap();
+    let regional = painted_faces(&tree, "regions");
+    assert_eq!(regional.len(), 4);
+    assert_eq!(
+        regional.iter().copied().collect::<BTreeSet<_>>().len(),
+        4,
+        "{regional:?}"
+    );
+
+    for (tag, expected) in ["zh-Hans", "zh-Hant", "ja", "ko"].into_iter().zip(regional) {
+        let localized = context.clone().with_language(tag);
+        assert_ne!(localized.identity(), context.identity());
+        assert_text_advance_and_faces(&localized, "Cousine", "骨");
+        assert_eq!(
+            localized.selected_faces(),
+            [format!("{expected}#0")],
+            "{tag}"
+        );
+    }
 }
 
 #[cfg(target_os = "macos")]

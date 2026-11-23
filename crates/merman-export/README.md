@@ -53,14 +53,14 @@ The resident-byte budget does not cap temporary scan buffers or process peak mem
 See [CLI font coverage and limitations](../../docs/FEATURES.md#optional-cli-fonts).
 
 Experimental `load_platform` uses the system's font matching when system fonts
-are authorized. Windows and Linux use Fontique; macOS matches family/style
-descriptors directly with Core Text without constructing a Fontique catalog or
-walking font directories. Generic families are queried in order, stopping when
-a face is accepted. Windows queries DirectWrite for the missing character after
-explicit sources have been tried. macOS queries Core Text with the actual Unicode
-scalar and registered base face. The resolver admits selected data through the
-same bounded snapshot store used for layout and painting. A system-only context starts with zero resident font
-bytes. The selected-file limits apply when a face is first needed, including the
+are authorized. Windows uses Fontique for family matching and DirectWrite for
+missing text. macOS queries Core Text descriptors directly. Linux and FreeBSD
+submit the requested names to Fontconfig with their original family order, so
+Fontconfig can apply strong and weak aliases. Sorted alternatives stay available
+while Merman checks text suitability and validates glyph coverage. The resolver
+admits selected data through the same bounded snapshot store used for layout and
+painting. A system-only context starts with zero resident font bytes. The
+selected-file limits apply when a face is first needed, including the
 generic default for text without a font family. Platform metadata access and
 file mappings run outside Merman's scan budgets and preemptive cancellation.
 Before acquiring a new fallback source, mapped coverage tables can reject an
@@ -72,13 +72,14 @@ materialized as a standalone font with data index zero, keeping unrelated TTC
 members out of the snapshot. Explicitly admitted bytes from the same source may
 be reused only when their selected face has the same tables.
 
-Successful macOS family/style requests and character fallback requests are pinned
-within the operation and retained by `for_export()`. `for_operation()` resets them;
+Successful platform family and fallback requests are pinned within the operation
+and retained by `for_export()`. `for_operation()` resets them;
 missing matches are not cached. Selection metadata has independent terminal limits
 (`max_selection_entries`, default 16,384; `max_selection_bytes`, default 4 MiB), so
 disabling the optional measurement cache does not permit a later system-registry
-change to alter an already selected font. An unregistered explicit face can use
-the Helvetica system cascade when system fallback is authorized. Non-default native
+change to alter an already selected font. Cluster requests include the authored
+stack, cluster text, language, direction, and faces already tried. An unregistered
+explicit face can use the Helvetica system cascade when system fallback is authorized. Non-default native
 variation coordinates remain unsupported and are declined before data admission.
 
 The cumulative admitted-data budget remains 64 MiB. Explicit inputs and other source
@@ -108,14 +109,24 @@ Themes can select font-family names and typography values, but caller-supplied t
 remain rejected. For explicit native shaping across layout and typed binary outputs, use the
 separate `native-fonts` context rather than a theme recipe.
 
-### Selection And Fallback Order
+### Selection and fallback order
 
-Mermaid's `fontFamily` stack selects the initial family. Missing-glyph selection can then use
-another face; the remaining names in that stack do not currently define glyph-fallback order.
-For explicit font files or memory buffers, fallback visits admitted faces in source order,
-skipping previously tried, unsuitable, and incompatible candidates. Explicit sources precede
-discovered system candidates. Supply individual files or buffers in the intended order when
-that priority matters; directory and system discovery have their own catalogue order.
+Workspace builds shape missing clusters with a covering face and retain the other glyphs
+of the original run. With platform discovery, the authored stack is tried before the
+general fallback. General fallback tries caller fonts in source order, then asks the
+platform about the missing cluster. Windows applies the relative font size returned by
+DirectWrite to both the cluster metrics and the painted glyphs.
+
+SVG text inherits `xml:lang`, and each `<tspan>` can override it. Library users can set
+the default for Mermaid measurement and untagged SVG with
+`NativeFontContext::with_language`. Registry builds using the published usvg 0.47
+retain its scalar fallback interface. That interface can use the context language for
+platform lookup and has the original whole-run shaping and replacement behavior.
+
+For explicit font files or memory buffers without system discovery, fallback visits
+admitted faces in source order, skipping previously tried, unsuitable, and incompatible
+candidates. Supply individual files or buffers in the intended order when that priority
+matters. Directory and system discovery have their own catalogue order.
 
 Use a closed set for repeatable native output, and share the resulting context between layout
 and painting:

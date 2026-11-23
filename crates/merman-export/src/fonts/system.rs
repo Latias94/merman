@@ -529,6 +529,7 @@ mod tests {
             discovery: Some(DiscoveryProvider::Bounded(Arc::new(catalog))),
             sources,
             default_family,
+            language: None,
             identity: "fixture-system".to_owned(),
             limits: loader.limits,
             control: control.clone(),
@@ -872,12 +873,11 @@ mod tests {
                             .as_str()
                     })
                     .collect();
-                let expected = if include_text_fallback {
-                    "Cousine-Regular"
-                } else {
-                    "NotoSans-Regular"
-                };
-                assert_eq!(selected, BTreeSet::from([expected]));
+                let mut expected = BTreeSet::from(["NotoSans-Regular"]);
+                if include_text_fallback {
+                    expected.insert("Cousine-Regular");
+                }
+                assert_eq!(selected, expected);
                 assert_eq!(
                     context.0.sources.snapshots.lock().unwrap().files.len(),
                     usize::from(include_text_fallback)

@@ -335,6 +335,7 @@ pub struct TextSpan {
     pub(crate) stroke: Option<Stroke>,
     pub(crate) paint_order: PaintOrder,
     pub(crate) font: Font,
+    pub(crate) language: Option<String>,
     pub(crate) font_size: NonZeroPositiveF32,
     pub(crate) small_caps: bool,
     pub(crate) apply_kerning: bool,

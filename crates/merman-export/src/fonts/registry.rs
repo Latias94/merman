@@ -19,9 +19,9 @@ pub(super) struct SnapshotState {
     selected_faces: BTreeMap<(PathBuf, u32), Arc<Vec<u8>>>,
     #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
     native_faces: std::collections::HashMap<platform::coretext::NativeFace, NativeSnapshot>,
-    #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+    #[cfg(feature = "experimental-system-font-query")]
     selections: std::collections::HashMap<SelectionRequest, SelectedFont>,
-    #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+    #[cfg(feature = "experimental-system-font-query")]
     selection_bytes: usize,
     aliases: BTreeMap<PathBuf, PathBuf>,
     faces: BTreeMap<(PathBuf, u32), FaceInfo>,
@@ -38,32 +38,38 @@ struct NativeSnapshot {
     face: FaceInfo,
 }
 
-#[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+#[cfg(feature = "experimental-system-font-query")]
 #[derive(Clone, Hash, Eq, PartialEq)]
 pub(super) enum SelectionRequest {
     Font(usvg::Font),
-    Fallback(char, Vec<AdmittedFaceKey>),
+    Fallback {
+        font: Option<usvg::Font>,
+        text: String,
+        language: Option<String>,
+        rtl: bool,
+        excluded: Vec<AdmittedFaceKey>,
+    },
 }
 
 /// Retain the source so pointer identity cannot be recycled while a request is pinned.
-#[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+#[cfg(feature = "experimental-system-font-query")]
 #[derive(Clone)]
 pub(super) struct AdmittedFaceKey {
     data: Arc<dyn AsRef<[u8]> + Send + Sync>,
     index: u32,
 }
 
-#[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+#[cfg(feature = "experimental-system-font-query")]
 impl PartialEq for AdmittedFaceKey {
     fn eq(&self, other: &Self) -> bool {
         self.index == other.index && Arc::ptr_eq(&self.data, &other.data)
     }
 }
 
-#[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+#[cfg(feature = "experimental-system-font-query")]
 impl Eq for AdmittedFaceKey {}
 
-#[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+#[cfg(feature = "experimental-system-font-query")]
 impl std::hash::Hash for AdmittedFaceKey {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         std::hash::Hash::hash(&(Arc::as_ptr(&self.data) as *const ()), state);
@@ -71,9 +77,12 @@ impl std::hash::Hash for AdmittedFaceKey {
     }
 }
 
-#[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+#[cfg(feature = "experimental-system-font-query")]
 impl SelectionRequest {
-    pub(super) fn fallback(character: char, excluded: &[FaceInfo]) -> Option<Self> {
+    pub(super) fn fallback(
+        request: super::resolver::GlyphFallback<'_>,
+        excluded: &[FaceInfo],
+    ) -> Option<Self> {
         let keys = excluded
             .iter()
             .map(|face| {
@@ -86,12 +95,18 @@ impl SelectionRequest {
                 })
             })
             .collect::<Option<Vec<_>>>()?;
-        Some(Self::Fallback(character, keys))
+        Some(Self::Fallback {
+            font: request.font.cloned(),
+            text: request.text.to_owned(),
+            language: request.language.map(str::to_owned),
+            rtl: request.rtl,
+            excluded: keys,
+        })
     }
 
     fn heap_bytes(&self) -> usize {
-        match self {
-            Self::Font(font) => font.families().iter().fold(
+        let font_bytes = |font: &usvg::Font| {
+            font.families().iter().fold(
                 font.variations()
                     .len()
                     .saturating_mul(size_of::<usvg::FontVariation>()),
@@ -103,17 +118,32 @@ impl SelectionRequest {
                             _ => 0,
                         })
                 },
-            ),
-            Self::Fallback(_, keys) => keys.len().saturating_mul(size_of::<AdmittedFaceKey>()),
+            )
+        };
+        match self {
+            Self::Font(font) => font_bytes(font),
+            Self::Fallback {
+                font,
+                text,
+                language,
+                excluded,
+                ..
+            } => excluded
+                .len()
+                .saturating_mul(size_of::<AdmittedFaceKey>())
+                .saturating_add(font.as_ref().map_or(0, font_bytes))
+                .saturating_add(text.len())
+                .saturating_add(language.as_ref().map_or(0, String::len)),
         }
     }
 }
 
-#[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+#[cfg(feature = "experimental-system-font-query")]
 #[derive(Clone)]
 pub(super) struct SelectedFont {
     pub(super) face: FaceInfo,
     pub(super) source: NativeExportFontSource,
+    pub(super) scale: f32,
     pub(super) family_fallback_used: bool,
 }
 
@@ -205,7 +235,7 @@ impl SnapshotState {
 pub(super) struct FontSourceRegistry {
     initial: Arc<InitialSources>,
     pub(super) snapshots: Mutex<SnapshotState>,
-    #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+    #[cfg(feature = "experimental-system-font-query")]
     selection_gate: Mutex<()>,
 }
 
@@ -231,7 +261,7 @@ impl FontSourceRegistry {
                 bytes,
             }),
             snapshots: Mutex::new(SnapshotState::default()),
-            #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+            #[cfg(feature = "experimental-system-font-query")]
             selection_gate: Mutex::new(()),
         }
     }
@@ -240,13 +270,13 @@ impl FontSourceRegistry {
         Self {
             initial: Arc::clone(&self.initial),
             snapshots: Mutex::new(SnapshotState::default()),
-            #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+            #[cfg(feature = "experimental-system-font-query")]
             selection_gate: Mutex::new(()),
         }
     }
 
     pub(super) fn for_export(&self) -> Result<Self, NativeFontError> {
-        #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+        #[cfg(feature = "experimental-system-font-query")]
         let _selection = self.lock_selection()?;
         let snapshots = self.snapshots.lock().map_err(|_| {
             NativeFontError::Measurement("font snapshot state is poisoned".to_owned())
@@ -254,14 +284,14 @@ impl FontSourceRegistry {
         Ok(Self {
             initial: Arc::clone(&self.initial),
             snapshots: Mutex::new(snapshots.clone()),
-            #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+            #[cfg(feature = "experimental-system-font-query")]
             selection_gate: Mutex::new(()),
         })
     }
 
     /// Serialize cold selection through admission and pinning. Otherwise a second
     /// query can fail after another thread has selected the same request successfully.
-    #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+    #[cfg(feature = "experimental-system-font-query")]
     pub(super) fn lock_selection(&self) -> Result<std::sync::MutexGuard<'_, ()>, NativeFontError> {
         self.selection_gate.lock().map_err(|_| {
             NativeFontError::Measurement("font selection state is poisoned".to_owned())
@@ -300,7 +330,7 @@ impl FontSourceRegistry {
         }))
     }
 
-    #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+    #[cfg(feature = "experimental-system-font-query")]
     pub(super) fn selected(
         &self,
         request: &SelectionRequest,
@@ -315,7 +345,7 @@ impl FontSourceRegistry {
             .map(|selected| (install(selected.face.clone(), database), selected.clone())))
     }
 
-    #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+    #[cfg(feature = "experimental-system-font-query")]
     pub(super) fn remember_selection(
         &self,
         request: SelectionRequest,

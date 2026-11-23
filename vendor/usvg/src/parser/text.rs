@@ -153,7 +153,7 @@ pub(crate) fn convert(
     let probe_end_anchor = report_anchor && text::layout::can_probe_end_anchor(&text);
     let Some(end_x) = text::convert(
         &mut text,
-        &state.opt.font_resolver,
+        state.opt,
         cache,
         probe_end_anchor,
         &mut parent.text_font_omissions.no_primary_face,
@@ -324,6 +324,9 @@ fn collect_text_chunks_impl(
             stroke: style::resolve_stroke(parent, true, state, cache, &mut paint_omissions),
             paint_order,
             font,
+            language: parent
+                .find_attribute::<&str>(AId::XmlLang)
+                .map(str::to_owned),
             font_size,
             small_caps: parent.find_attribute::<&str>(AId::FontVariant) == Some("small-caps"),
             apply_kerning,

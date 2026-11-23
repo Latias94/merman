@@ -1,7 +1,7 @@
-//! DirectWrite font identity and exact-character fallback. usvg shapes the selected faces.
+//! DirectWrite font identity and cluster fallback. usvg shapes the selected faces.
 
 use super::{
-    FaceAttributes, FontCandidate, FontStyle, FontWeight, FontWidth, PlatformFace,
+    FaceAttributes, FontCandidate, FontStyle, FontWeight, FontWidth, GlyphFallback, PlatformFace,
     family_names_match,
 };
 use std::{
@@ -22,10 +22,11 @@ use windows::Win32::Graphics::DirectWrite::{
     DWRITE_FONT_STRETCH_ULTRA_CONDENSED, DWRITE_FONT_STRETCH_ULTRA_EXPANDED,
     DWRITE_FONT_STYLE_ITALIC, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STYLE_OBLIQUE,
     DWRITE_FONT_WEIGHT, DWRITE_INFORMATIONAL_STRING_POSTSCRIPT_NAME, DWRITE_READING_DIRECTION,
-    DWRITE_READING_DIRECTION_LEFT_TO_RIGHT, DWriteCreateFactory, IDWriteFactory, IDWriteFactory2,
-    IDWriteFont, IDWriteFontCollection, IDWriteFontFace, IDWriteFontFace5, IDWriteFontFallback,
-    IDWriteLocalFontFileLoader, IDWriteLocalizedStrings, IDWriteNumberSubstitution,
-    IDWriteTextAnalysisSource, IDWriteTextAnalysisSource_Impl,
+    DWRITE_READING_DIRECTION_LEFT_TO_RIGHT, DWRITE_READING_DIRECTION_RIGHT_TO_LEFT,
+    DWriteCreateFactory, IDWriteFactory, IDWriteFactory2, IDWriteFont, IDWriteFontCollection,
+    IDWriteFontFace, IDWriteFontFace5, IDWriteFontFallback, IDWriteLocalFontFileLoader,
+    IDWriteLocalizedStrings, IDWriteNumberSubstitution, IDWriteTextAnalysisSource,
+    IDWriteTextAnalysisSource_Impl,
 };
 use windows_core::{Error, Interface, OutRef, PCWSTR, Result, implement, w};
 
@@ -89,10 +90,25 @@ impl CharacterFallback {
         }
     }
 
-    pub(super) fn lookup(&self, character: char, base: &FaceInfo) -> Option<FontCandidate> {
-        let mut text = [0; 2];
-        let len = character.encode_utf16(&mut text).len();
-        let source: IDWriteTextAnalysisSource = ScalarSource { text, len }.into();
+    pub(super) fn lookup(
+        &self,
+        request: GlyphFallback<'_>,
+        base: &FaceInfo,
+    ) -> Option<FontCandidate> {
+        let text: Vec<_> = request.text.encode_utf16().collect();
+        let len = u32::try_from(text.len()).ok()?;
+        let locale: Vec<_> = request
+            .language
+            .unwrap_or_default()
+            .encode_utf16()
+            .chain([0])
+            .collect();
+        let source: IDWriteTextAnalysisSource = TextSource {
+            text,
+            locale,
+            rtl: request.rtl,
+        }
+        .into();
         let family = crate::font_selection::face_family_name(base)?;
         let family: Vec<_> = family.encode_utf16().chain([0]).collect();
         let style = match base.style {
@@ -110,7 +126,7 @@ impl CharacterFallback {
                 .MapCharacters(
                     &source,
                     0,
-                    len as u32,
+                    len,
                     &self.collection,
                     PCWSTR::from_raw(family.as_ptr()),
                     DWRITE_FONT_WEIGHT(i32::from(base.weight.0)),
@@ -122,14 +138,14 @@ impl CharacterFallback {
                 )
                 .ok()?;
         }
-        (mapped_len as usize == len)
-            .then_some(mapped_font)
-            .flatten()
-            .and_then(file_candidate)
+        if mapped_len != len || !scale.is_finite() || scale <= 0.0 {
+            return None;
+        }
+        file_candidate(mapped_font?, scale)
     }
 }
 
-fn file_candidate(font: IDWriteFont) -> Option<FontCandidate> {
+fn file_candidate(font: IDWriteFont, fallback_scale: f32) -> Option<FontCandidate> {
     // SAFETY: COM objects stay live through the calls and own their output strings.
     unsafe {
         let face = font.CreateFontFace().ok()?;
@@ -185,6 +201,7 @@ fn file_candidate(font: IDWriteFont) -> Option<FontCandidate> {
                 post_script_name,
                 attributes,
                 coverage_source: None,
+                fallback_scale,
             }
             .into_file(path),
         )
@@ -349,17 +366,16 @@ fn physical_width(stretch: DWRITE_FONT_STRETCH) -> Option<FontWidth> {
 }
 
 #[implement(IDWriteTextAnalysisSource)]
-struct ScalarSource {
-    text: [u16; 2],
-    len: usize,
+struct TextSource {
+    text: Vec<u16>,
+    locale: Vec<u16>,
+    rtl: bool,
 }
 
-impl IDWriteTextAnalysisSource_Impl for ScalarSource_Impl {
+impl IDWriteTextAnalysisSource_Impl for TextSource_Impl {
     fn GetTextAtPosition(&self, position: u32, text: *mut *mut u16, len: *mut u32) -> Result<()> {
         report_text(
-            self.text[..self.len]
-                .get(position as usize..)
-                .unwrap_or_default(),
+            self.text.get(position as usize..).unwrap_or_default(),
             text,
             len,
         )
@@ -372,26 +388,28 @@ impl IDWriteTextAnalysisSource_Impl for ScalarSource_Impl {
         len: *mut u32,
     ) -> Result<()> {
         report_text(
-            self.text[..self.len]
-                .get(..position as usize)
-                .unwrap_or_default(),
+            self.text.get(..position as usize).unwrap_or_default(),
             text,
             len,
         )
     }
 
     fn GetParagraphReadingDirection(&self) -> DWRITE_READING_DIRECTION {
-        DWRITE_READING_DIRECTION_LEFT_TO_RIGHT
+        if self.rtl {
+            DWRITE_READING_DIRECTION_RIGHT_TO_LEFT
+        } else {
+            DWRITE_READING_DIRECTION_LEFT_TO_RIGHT
+        }
     }
 
     fn GetLocaleName(&self, position: u32, len: *mut u32, locale: *mut *mut u16) -> Result<()> {
         if len.is_null() || locale.is_null() {
             return Err(Error::from_hresult(E_POINTER));
         }
-        // SAFETY: COM supplies writable output pointers. The neutral locale is static.
+        // SAFETY: COM supplies writable output pointers. The source owns the NUL-terminated locale.
         unsafe {
-            len.write((self.len as u32).saturating_sub(position));
-            locale.write(w!("").as_ptr().cast_mut());
+            len.write((self.text.len() as u32).saturating_sub(position));
+            locale.write(self.locale.as_ptr().cast_mut());
         }
         Ok(())
     }
@@ -407,7 +425,7 @@ impl IDWriteTextAnalysisSource_Impl for ScalarSource_Impl {
         }
         substitution.write(None)?;
         // SAFETY: COM supplies a writable output pointer.
-        unsafe { len.write((self.len as u32).saturating_sub(position)) };
+        unsafe { len.write((self.text.len() as u32).saturating_sub(position)) };
         Ok(())
     }
 }
@@ -433,6 +451,15 @@ fn report_text(run: &[u16], text: *mut *mut u16, len: *mut u32) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn han() -> GlyphFallback<'static> {
+        GlyphFallback {
+            text: "中",
+            font: None,
+            language: None,
+            rtl: false,
+        }
+    }
     use usvg::fontdb::Database;
 
     #[test]
@@ -445,7 +472,7 @@ mod tests {
         let fallback = CharacterFallback::new().unwrap();
         for weight in [400, 700] {
             base.weight = usvg::fontdb::Weight(weight);
-            assert!(fallback.lookup('中', &base).is_none(), "weight {weight}");
+            assert!(fallback.lookup(han(), &base).is_none(), "weight {weight}");
         }
 
         base.weight = usvg::fontdb::Weight(100);
@@ -453,7 +480,7 @@ mod tests {
             path,
             index,
             expected,
-        }) = fallback.lookup('中', &base)
+        }) = fallback.lookup(han(), &base)
         else {
             panic!("the default instance remains representable");
         };
@@ -481,7 +508,7 @@ mod tests {
             expected,
         } = CharacterFallback::new()
             .unwrap()
-            .lookup('中', base.faces().next().unwrap())
+            .lookup(han(), base.faces().next().unwrap())
             .unwrap()
         else {
             panic!("DirectWrite must provide a file-backed face");

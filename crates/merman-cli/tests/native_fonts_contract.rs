@@ -1278,6 +1278,114 @@ fn empty_fontconfig_policy_does_not_trigger_bounded_fallback() {
     }
 }
 
+#[cfg(all(
+    target_os = "linux",
+    feature = "platform-system-font-query",
+    feature = "png"
+))]
+#[test]
+fn fontconfig_keeps_preferred_aliases_and_usable_coverage_alternatives() {
+    use std::{fs, process::Command};
+
+    let temp = tempfile::tempdir().unwrap();
+    let fonts = temp.path().join("fonts");
+    fs::create_dir(&fonts).unwrap();
+    let fixtures = repo_root().join("crates/merman-export/tests/fonts");
+    for file in [
+        "Cousine-Regular.ttf",
+        "MermanPictorialTest.ttf",
+        "NotoSans-Latin-subset.ttf",
+    ] {
+        fs::copy(fixtures.join(file), fonts.join(file)).unwrap();
+    }
+    let config = temp.path().join("fonts.conf");
+    fs::write(
+        &config,
+        r#"<?xml version="1.0"?>
+<fontconfig>
+  <dir prefix="xdg">fonts</dir>
+  <cachedir prefix="xdg">cache</cachedir>
+  <alias binding="strong">
+    <family>Office Body</family>
+    <prefer><family>Cousine</family></prefer>
+  </alias>
+  <alias binding="strong">
+    <family>sans-serif</family>
+    <prefer><family>Merman Pictorial Test</family><family>Cousine</family></prefer>
+  </alias>
+  <alias binding="strong">
+    <family>serif</family>
+    <prefer><family>Merman Pictorial Test</family><family>Cousine</family></prefer>
+  </alias>
+  <alias>
+    <family>Missing Body</family>
+    <default><family>Cousine</family></default>
+  </alias>
+  <alias binding="weak">
+    <family>Weak Body</family>
+    <prefer><family>Cousine</family></prefer>
+  </alias>
+  <match target="scan">
+    <test name="family" compare="not_eq"><string>Merman Pictorial Test</string></test>
+    <edit name="charset" mode="assign"><charset><int>65</int></charset></edit>
+  </match>
+</fontconfig>"#,
+    )
+    .unwrap();
+
+    let input = temp.path().join("input.svg");
+    let render = |family| {
+        fs::write(
+            &input,
+            format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="120" height="50"><text x="5" y="35" font-size="30" font-family="{family}">A</text></svg>"#
+            ),
+        )
+        .unwrap();
+        let result = Command::new(assert_cmd::cargo_bin!("merman-cli"))
+            .arg("render")
+            .arg(&input)
+            .args([
+                "--input-kind=svg",
+                "--format=png",
+                "--output=-",
+                "--font-system=platform",
+            ])
+            .env("XDG_DATA_HOME", temp.path())
+            .env("XDG_CACHE_HOME", temp.path())
+            .env("FONTCONFIG_FILE", &config)
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "{family}: {}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert!(result.stdout.starts_with(b"\x89PNG\r\n\x1a\n"));
+        result.stdout
+    };
+
+    let cousine = render("Cousine");
+    let noto = render("Noto Sans");
+    assert_ne!(noto, cousine);
+    assert!(
+        render("Office Body, Noto Sans") == cousine,
+        "the preferred alias must win"
+    );
+    assert!(
+        render("Missing Body, Noto Sans") == noto,
+        "a weak default must not shadow the next authored family"
+    );
+    assert!(
+        render("Weak Body, Noto Sans") == noto,
+        "native matching keeps a weak preference below a strong authored name"
+    );
+    assert!(
+        render("sans-serif") == cousine,
+        "the pictorial face must leave Cousine available"
+    );
+}
+
 #[test]
 fn capabilities_disclose_shared_coverage_and_cli_discovery_policy() {
     let output = run_with_stdin(&["capabilities", "--json"], "");
