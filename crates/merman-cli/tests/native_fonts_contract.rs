@@ -1169,9 +1169,11 @@ mod large_font_inventory {
                     .env("WINDIR", temp.path())
                     .env("LOCALAPPDATA", temp.path());
             } else {
+                // Newer Fontconfig also reads XDG_DATA_DIRS for a dir with prefix="xdg".
                 command
                     .env("HOME", temp.path())
                     .env("XDG_DATA_HOME", temp.path())
+                    .env("XDG_DATA_DIRS", temp.path())
                     .env("XDG_CACHE_HOME", temp.path())
                     .env("FONTCONFIG_FILE", &fontconfig);
             }
@@ -1262,6 +1264,7 @@ fn empty_fontconfig_policy_does_not_trigger_bounded_fallback() {
             .arg(&input)
             .args(["--output=-", "--font-measurement=native"])
             .env("XDG_DATA_HOME", temp.path())
+            .env("XDG_DATA_DIRS", temp.path())
             .env("XDG_CACHE_HOME", temp.path())
             .env("FONTCONFIG_FILE", &config);
         if let Some(mode) = mode {
