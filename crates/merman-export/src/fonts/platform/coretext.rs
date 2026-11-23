@@ -1,5 +1,5 @@
 //! Retained Core Text selections and bounded snapshots of their immutable tables.
-//! Character sets only filter candidates; the registry validates glyphs in admitted data.
+//! Fallback checks the selected font's Unicode mapping before snapshot admission.
 
 use std::{
     collections::HashSet,
@@ -9,8 +9,8 @@ use std::{
 };
 
 use objc2_core_foundation::{
-    CFArray, CFCharacterSet, CFComparisonResult, CFData, CFRange, CFRetained, CFString,
-    CFStringCompareFlags, CFURL, CFURLPathStyle,
+    CFArray, CFComparisonResult, CFData, CFRange, CFRetained, CFString, CFStringCompareFlags,
+    CFURL, CFURLPathStyle,
 };
 use objc2_core_text::{
     CTFont, CTFontDescriptor, CTFontTableOptions, kCTFontNameAttribute, kCTFontURLAttribute,
@@ -141,9 +141,7 @@ impl NativeFace {
 
     /// A rejection-only prefilter; admission must still validate the actual glyph.
     pub(in crate::fonts) fn covers(&self, character: char) -> bool {
-        // SAFETY: The font is live and Core Text returns an owned immutable set.
-        let character_set = unsafe { self.font.character_set() };
-        character_set_contains_scalar(&character_set, character)
+        font_covers(&self.font, character)
     }
 
     /// Preserves the exact native origin when following its character cascade.
@@ -496,9 +494,26 @@ fn is_last_resort(name: &str) -> bool {
     name.eq_ignore_ascii_case("LastResort") || name.eq_ignore_ascii_case("Last Resort")
 }
 
-fn character_set_contains_scalar(character_set: &CFCharacterSet, character: char) -> bool {
-    // The long-character API takes a full UTF-32 scalar, including non-BMP values.
-    character_set.is_long_character_member(u32::from(character))
+fn font_covers(font: &CTFont, character: char) -> bool {
+    // Core Text can synthesize mappings absent from the SFNT (Arial U+A789), and its
+    // character set can omit real glyphs (PingFang SC U+2DA5A). Use the same coverage
+    // rule as admission on borrowed tables, before acquiring any outlines or bitmaps.
+    let [Some(cmap), Some(maxp)] = [*b"cmap", *b"maxp"].map(|tag| {
+        // SAFETY: The selected font is live and the returned table data is retained.
+        unsafe { font.table(u32::from_be_bytes(tag), CTFontTableOptions::NoOptions) }
+    }) else {
+        return false;
+    };
+    // SAFETY: Both immutable CFData handles outlive the borrowed table parsers.
+    let (Some(cmap), Some(maxp)) = (unsafe {
+        (
+            ttf_parser::cmap::Table::parse(cmap.as_bytes_unchecked()),
+            ttf_parser::maxp::Table::parse(maxp.as_bytes_unchecked()),
+        )
+    }) else {
+        return false;
+    };
+    crate::font_selection::cmap_covers_character(cmap, maxp.number_of_glyphs.get(), character)
 }
 
 #[cfg(test)]
@@ -542,22 +557,18 @@ mod tests {
     }
 
     #[test]
-    fn character_set_membership_preserves_supplementary_scalars() {
-        // SAFETY: None selects the default allocator, and the UTF-32 range contains
-        // exactly one valid scalar. This character set does not depend on host fonts.
-        let character_set = unsafe {
-            CFCharacterSet::with_characters_in_range(
-                None,
-                CFRange {
-                    location: 0x1f600,
-                    length: 1,
-                },
-            )
+    #[ignore = "requires registered macOS Arial and PingFang SC faces"]
+    fn native_coverage_agrees_with_the_font_sent_to_the_shaper() {
+        for (family, ch) in [("Arial", '\u{a789}'), ("PingFang SC", '\u{2da5a}')] {
+            let face = named(family, Weight::NORMAL, Stretch::Normal, Style::Normal).unwrap();
+            let data = face.snapshot(usize::MAX, &OperationControl::new()).unwrap();
+            let physical = ttf_parser::Face::parse(&data, 0).unwrap();
+            assert_eq!(
+                face.covers(ch),
+                crate::font_selection::covers_character(&physical, ch),
+                "{family} {ch:?}"
+            );
         }
-        .expect("create a supplementary character set");
-        assert!(character_set_contains_scalar(&character_set, '\u{1f600}'));
-        assert!(!character_set_contains_scalar(&character_set, '\u{f600}'));
-        assert!(!character_set_contains_scalar(&character_set, '\u{1f601}'));
     }
 
     #[test]
@@ -657,9 +668,7 @@ mod tests {
             unsafe { font.post_script_name() }.to_string(),
             face.post_script_name
         );
-        // SAFETY: The retained font is live and the returned character set is owned.
-        let character_set = unsafe { font.character_set() };
-        assert!(character_set_contains_scalar(&character_set, '\u{2713}'));
+        assert!(font_covers(&font, '\u{2713}'));
     }
 
     #[test]

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import base64
 import copy
 import hashlib
 import io
@@ -69,12 +70,8 @@ SOURCE_ASSET_PATHS = (
     "assets/man/merman-cli-theme.1",
     "assets/man/merman-cli.1",
 )
-VALID_PNG = (
-    verifier.PNG_SIGNATURE
-    + b"\x00\x00\x00\rIHDR"
-    + b"\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00"
-    + b"\x00\x00\x00\x00"
-    + b"\x00\x00\x00\x00IEND\xaeB`\x82"
+VALID_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNgAAAAAgABSK+kcQAAAABJRU5ErkJggg=="
 )
 VALID_JPEG = verifier.JPEG_START + verifier.JPEG_END
 VALID_PDF = b"%PDF-1.7\n1 0 obj <</Type/Page>> endobj\n%%EOF\n"
@@ -1759,6 +1756,51 @@ class RuntimeContractTests(unittest.TestCase):
         self.assertEqual(calls[7][1], b"")
         self.assertEqual(calls[8][1], b"")
         self.assertEqual(calls[7][0][4], calls[8][0][4])
+
+    def test_macos_mixed_script_png_contract(self) -> None:
+        info = (
+            b"native fonts: shared layout, wrapping, bounds and computed lengths use the selected font context; "
+            b"missing glyphs fall back to deterministic measurement; SVG fonts are not embedded\n"
+        )
+        faces = b"native measurement faces: ArialMT#0, PingFangSC-Regular#0; context " + b"a" * 64 + b"\n"
+        binary = Path("/synthetic/merman-cli")
+        args = [str(binary), "render", "--format", "png", "--svg-id=font-smoke", "-"]
+
+        def result(png=VALID_PNG, stderr=b"", code=0):
+            return subprocess.CompletedProcess([], code, png, stderr)
+
+        for diagnostics in (b"", info, faces, faces + info):
+            with self.subTest(diagnostics=diagnostics), mock.patch.object(verifier, "_decode_macos_png") as decode:
+                runner = mock.Mock(side_effect=[result(), result(stderr=diagnostics)])
+                verifier._verify_macos_mixed_script_png(binary, runner=runner)
+                calls = runner.call_args_list
+                self.assertEqual([call.args[0] for call in calls], [args, [*args, "--font-system=platform"]])
+                self.assertEqual([call.kwargs["input"] for call in calls], [verifier.MACOS_FONT_SMOKE_SOURCE] * 2)
+                decode.assert_called_once_with(VALID_PNG)
+        self.assertIn("Latin 中文 日本語 한글".encode(), verifier.MACOS_FONT_SMOKE_SOURCE)
+
+        missing = b"warning: native export font resolution is incomplete: unresolved glyph fallback=true\n"
+        different_png = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGP4DwABAQEAsTj2FAAAAABJRU5ErkJggg=="
+        )
+        for default, platform, message in (
+            (result(stderr=info), result(), "unexpected stderr"),
+            (result(), result(stderr=info + missing), "unresolved glyph fallback"),
+            (result(), result(stderr=faces + b"warning: fallback_css_residual\n"), "fallback_css_residual"),
+            (result(), result(stderr=b"new diagnostic\n"), "new diagnostic"),
+            (result(), result(code=3), "exit 3"),
+            (result(), result(png=b""), "invalid container signature"),
+            (result(), result(png=different_png), "PNGs differ"),
+        ):
+            with self.subTest(message=message), self.assertRaisesRegex(verifier.ArchiveVerificationError, message):
+                verifier._verify_macos_mixed_script_png(binary, runner=mock.Mock(side_effect=[default, platform]))
+
+    @unittest.skipUnless(sys.platform == "darwin", "requires the macOS image decoder")
+    def test_macos_png_must_decode_pixels(self) -> None:
+        verifier._decode_macos_png(VALID_PNG)
+        # Preserve the PNG header and terminator but omit all image data.
+        with self.assertRaises(verifier.ArchiveVerificationError):
+            verifier._decode_macos_png(VALID_PNG[:33] + VALID_PNG[-12:])
 
     def test_runtime_skips_rustdoc_when_an_explicit_profile_omits_it(self) -> None:
         calls: list[list[str]] = []

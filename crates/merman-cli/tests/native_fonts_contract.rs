@@ -1161,7 +1161,7 @@ mod large_font_inventory {
         } else {
             "flowchart LR\nA[Draft] --> B[Review]\n"
         };
-        let render = |extra: &[&str]| {
+        let render = |file: &str, extra: &[&str]| {
             let mut command = assert_cmd::Command::new(&binary);
             if cfg!(windows) {
                 // DirectWrite queries the system catalog independently of the scan roots.
@@ -1178,7 +1178,10 @@ mod large_font_inventory {
                     .env("FONTCONFIG_FILE", &fontconfig);
             }
             command
-                .args(["-i", "-", "-o", "-", "-e", "png", "-t", "default"])
+                // mmdc suppresses export warnings when the destination is stdout.
+                .args(["-i", "-", "-o"])
+                .arg(temp.path().join(file))
+                .args(["-e", "png", "-t", "default"])
                 .args(["-b", "#FFFFFF", "-s", "2", "-c"])
                 .arg(&config)
                 .args(extra)
@@ -1187,7 +1190,7 @@ mod large_font_inventory {
                 .unwrap()
         };
 
-        let bounded = render(&["--font-system=bounded"]);
+        let bounded = render("bounded.png", &["--font-system=bounded"]);
         let stderr = String::from_utf8_lossy(&bounded.stderr);
         assert_eq!(bounded.status.code(), Some(3), "{stderr}");
         assert!(
@@ -1195,43 +1198,39 @@ mod large_font_inventory {
             "{stderr}"
         );
         assert!(bounded.stdout.is_empty());
+        assert!(!temp.path().join("bounded.png").exists());
 
-        let platform = render(&["--font-system=platform"]);
-        assert!(
-            platform.status.success(),
-            "{}",
-            String::from_utf8_lossy(&platform.stderr)
-        );
-        assert!(platform.stdout.starts_with(b"\x89PNG\r\n\x1a\n"));
+        let missing_glyph_warning = "native export font resolution is incomplete";
+        let render_complete_png = |file: &str, extra: &[&str]| {
+            let output = render(file, extra);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(output.status.success(), "{file}: {stderr}");
+            assert!(!stderr.contains(missing_glyph_warning), "{file}: {stderr}");
+            fs::read(temp.path().join(file)).unwrap()
+        };
+        let platform = render_complete_png("platform.png", &["--font-system=platform"]);
+        assert!(platform.starts_with(b"\x89PNG\r\n\x1a\n"));
         if cfg!(target_os = "linux") {
-            let explicit_font = render(&[
-                "--font-file",
-                &super::font(),
-                "--font-file",
-                cjk_font.to_str().unwrap(),
-            ]);
-            assert!(
-                explicit_font.status.success(),
-                "{}",
-                String::from_utf8_lossy(&explicit_font.stderr)
+            let latin = super::font();
+            let explicit_fonts = render_complete_png(
+                "explicit.png",
+                &[
+                    "--font-file",
+                    &latin,
+                    "--font-file",
+                    cjk_font.to_str().unwrap(),
+                ],
             );
-            for output in [&platform, &explicit_font] {
-                let diagnostic = String::from_utf8_lossy(&output.stderr);
-                assert!(
-                    !diagnostic.contains("native export font resolution is incomplete"),
-                    "{diagnostic}"
-                );
-            }
-            assert_eq!(platform.stdout, explicit_font.stdout);
+            assert_eq!(platform, explicit_fonts);
+
+            let incomplete = render("latin-only.png", &["--font-file", &latin]);
+            let stderr = String::from_utf8_lossy(&incomplete.stderr);
+            assert!(incomplete.status.success(), "{stderr}");
+            assert!(stderr.contains(missing_glyph_warning), "{stderr}");
         }
         if cfg!(any(windows, feature = "platform-system-font-default")) {
-            let default = render(&[]);
-            assert!(
-                default.status.success(),
-                "{}",
-                String::from_utf8_lossy(&default.stderr)
-            );
-            assert_eq!(platform.stdout, default.stdout);
+            let default = render_complete_png("default.png", &[]);
+            assert_eq!(platform, default);
         }
     }
 }
