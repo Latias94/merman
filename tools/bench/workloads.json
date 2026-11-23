@@ -2,7 +2,12 @@
   "inputs": {
     "flow-padding": "---\nconfig:\n  flowchart:\n    diagramPadding: 32\n---\nflowchart TD\nA-->B",
     "seq-message": "sequenceDiagram\nA->>B: hi",
-    "seq-margin": "---\nconfig:\n  sequence:\n    actorMargin: 75\n---\nsequenceDiagram\nA->>B: hi"
+    "seq-margin": "---\nconfig:\n  sequence:\n    actorMargin: 75\n---\nsequenceDiagram\nA->>B: hi",
+    "gantt-axis-only": "gantt\n  tickInterval 1week\n  weekday monday\n",
+    "flowchart-missing-target": "flowchart LR\n  A --> B\n  B -->\n",
+    "edit-draft": "flowchart LR\nA[Review] --> B[Draft]",
+    "edit-incomplete": "flowchart LR\nA[Review] -->",
+    "edit-repaired": "flowchart LR\nA[Review] --> C[Approved]"
   },
   "fixture_files": {
     "flowchart-cjk-approval": "fixtures/flowchart/upstream_html_demos_flowchart_flowchart_002.mmd",
@@ -15,6 +20,11 @@
     "zed_57363_flowchart_hyphen_edge_labels": "fixtures/zed_issues/zed_57363_flowchart_hyphen_edge_labels.mmd"
   },
   "expected_labels": {
+    "gantt-axis-only": [],
+    "flowchart-missing-target": [],
+    "edit-draft": ["Review", "Draft"],
+    "edit-incomplete": [],
+    "edit-repaired": ["Review", "Approved"],
     "flowchart_tiny": ["Start", "End"],
     "flow-padding": ["A", "B"],
     "seq-message": ["hi"],
@@ -44,6 +54,11 @@
     "zed_56767_flowchart_foreign_object_labels": ["Prepare change", "checks pass", "checks fail", "Release"],
     "zed_57323_er_entity_style_text": ["EMPRESA", "usuario_id", "employs"],
     "zed_57363_flowchart_hyphen_edge_labels": ["A", "single-string-with-hyphens", "F"]
+  },
+  "expected_outcomes": {
+    "gantt-axis-only": "allow-empty",
+    "flowchart-missing-target": "reject",
+    "edit-incomplete": "reject"
   },
   "drawing_facts": {
     "flowchart_tiny": {"arrows": [{"edge": "L_A_B_0", "from": "A", "to": "B"}]},
@@ -134,10 +149,28 @@
           "not handled", "approximate metrics", "SVG using measured geometry"
         ]
       }
-    }
+    },
+    {"id": "config-only-gantt", "origin": "mermaid@1fb7869866dd619168d840291c9c54b4f129758b/packages/mermaid/src/docs/syntax/gantt.md:291", "fixtures": ["gantt-axis-only"]},
+    {"id": "incomplete-flow", "origin": "Reduced missing-target example from mermaid@1fb7869866dd619168d840291c9c54b4f129758b/docs/config/8.6.0_docs.md:94", "fixtures": ["flowchart-missing-target"]},
+    {"id": "mermaid-examples-author", "manifest": "documents/mermaid-examples-author.json"},
+    {"id": "mermaid-c4-author", "manifest": "documents/mermaid-c4-author.json"},
+    {"id": "editor-fixed-id", "diagram_id": "preview-01", "fixtures": ["edit-draft", "edit-incomplete", "edit-repaired"]},
+    {"id": "editor-rotating-id", "fixtures": ["edit-draft", "edit-incomplete", "edit-repaired"]}
   ],
   "topologies": {
-    "quick": {"shapes":["fan-in","fan-out"], "nodes":[50,500]},
-    "full": {"shapes":["chain","fan-in","fan-out","ternary","fork-join"], "nodes":[50,100,250,500]}
+    "quick": [
+      {"shapes":["fan-in","fan-out"], "nodes":[50,500]},
+      {"shapes":["scc","scc-dag"], "nodes":[25]}
+    ],
+    "full": [
+      {"shapes":["chain","fan-in","fan-out","ternary","fork-join"], "nodes":[50,100,250,500]},
+      {"shapes":["scc","scc-dag"], "nodes":[25,50,75,100], "render_nodes":[25,75,100]},
+      {"shapes":["scc","scc-dag"], "nodes":[75], "orders":["declarations-2"], "render_nodes":[75]},
+      {"shapes":["scc","scc-dag"], "nodes":[100], "orders":["edges-reverse"], "render_nodes":[100]}
+    ],
+    "topology-orders": [
+      {"shapes":["scc","scc-dag"], "nodes":[75,100], "render_nodes":[75,100],
+       "orders":["canonical","declarations-reverse","declarations-1","declarations-2","declarations-3","edges-reverse","edges-1","edges-2","edges-3"]}
+    ]
   }
 }

@@ -89,6 +89,9 @@ For a headless Node product comparison, run `workloads node-matrix` from the
 [ordered workload runbook](../../../../docs/performance/RUNBOOK.md#run-an-ordered-workload).
 It executes the installed Merman, Pele and Mermaid v13 public APIs in a locked consumer and writes
 raw results and coverage beside the summary. `--pele-fixtures` imports upstream input text only.
+For a focused comparison across independent Node processes, add `--process-rounds 8` and inspect
+the eligible pairs, order and spread. `--samples` counts warm batches per worker. Check the
+recorded product files before attributing a result to a local build or published package.
 
 When a renderer appears to miss a label, inspect its SVG before changing its expected facts.
 For a Flowchart arrow, sibling membership, horizontal label overflow or a repeated Sequence message, declare the source fact
@@ -102,6 +105,8 @@ browser with a same-file control before attributing a visual difference.
 For startup, use a fresh CLI or the Node initialization and first-render observations. For a batch
 use the matching complete warm batch. For topology growth, use the `work` metric and record the
 first failing limit. Always identify the host, lifecycle, input population and operation in the finding.
+Use `workloads plan --suite topology-orders` to vary declaration or edge order with the same
+labeled directed graph. Inspect both the geometry boundary and the actual default SVG outcome.
 
 ## CPU Attribution
 

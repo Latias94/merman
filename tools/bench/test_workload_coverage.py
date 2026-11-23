@@ -58,7 +58,7 @@ def example_comparison(raw_plan, surface="cli"):
     scenario = json.loads(raw_plan)["scenarios"][0]
     requests = [{k: v for k, v in r.items() if k != "source"} for r in scenario["requests"]]
     times = [(1,) * len(requests)] * 2
-    left = reference_report(surface, "merman", times)
+    left = reference_report(surface, "merman", times, wasm=surface == "node")
     right = reference_report(surface, "mmdc" if surface == "cli" else "pele", times)
     for report in (left, right):
         report["plan_sha256"] = hashlib.sha256(raw_plan).hexdigest()
@@ -69,9 +69,6 @@ def example_comparison(raw_plan, surface="cli"):
             batch["results"][1]["status"] = "invalid_output"
         batches[0]["results"][4]["status"] = "timeout"
         left["scenarios"][0]["batches"][0]["results"][2]["sha256"] = "b" * 64
-    else:
-        left["package"]["name"] = "@mermanjs/node-wasm"
-        left["backend"] = "node-wasm"
     return compare_reference(left, right)
 
 
@@ -148,6 +145,41 @@ class WorkloadCoverageTests(unittest.TestCase):
         self.assertEqual(issues[2]["right"]["state"], "intermittent")
         self.assertNotIn("common_render_ms", row)
 
+    def test_expected_rejections_and_unmeasured_workers_keep_their_plan_identities(self):
+        plan = example_plan()
+        for req, outcome in zip(plan["scenarios"][0]["requests"], ("draw", "allow-empty", "reject", "reject", "unreviewed")):
+            req["expected_outcome"] = outcome
+            if outcome in ("allow-empty", "reject"):
+                req["expected_labels"] = []
+        raw = encode(plan)
+        left, right = reference_report("node", "merman", [(1,) * 5]), reference_report("node", "pele", [(2,) * 5])
+        for data in (left, right):
+            data["plan_sha256"] = hashlib.sha256(raw).hexdigest()
+            data["planned_scenarios"] = 2
+            row = data["scenarios"][0]
+            row["index"] = 0
+            row["requests"] = [{k: v for k, v in r.items() if k != "source"} for r in plan["scenarios"][0]["requests"]]
+            for batch in [row["cold_batch"], *row["warm_samples"]]:
+                batch["results"][1]["output_class"] = "empty"
+                batch["results"][2] = {"status": "expected-rejection"}
+                batch["results"][3] = {"status": "expected-rejection" if data is left else "render-error"}
+            alias = reference_report("node", data["engine"], [(1,)])["scenarios"][0]
+            alias.update(index=1, id="alias", requests=[{k: v for k, v in plan["scenarios"][1]["requests"][0].items() if k != "source"}])
+            data["scenarios"].append(alias)
+        left["status"] = "failed"
+        left["scenarios"][1].update(status="failed", error="worker exited", unmeasured_requests=1, cold_batch=None, warm_samples=[])
+        comparison = compare_reference(left, right)
+        coverage = summarize_coverage(raw, [comparison])
+        self.assertEqual(coverage["planned"]["expected_outcomes"], {"draw": 2, "allow-empty": 1, "reject": 2, "unreviewed": 1})
+        doc, alias = coverage["comparisons"][0]["scenarios"]
+        self.assertEqual((doc["common_completed"]["requests"], doc["common_stable"]["requests"], doc["common_expected_rejections"]), (3, 3, 1))
+        self.assertEqual([r["diagram_id"] for r in doc["non_stable_requests"]], ["four"])
+        self.assertEqual(alias["worker_failures"], {"left": {"status": "failed", "error": "worker exited"}})
+        self.assertEqual(alias["non_stable_requests"][0]["left"]["state"], "unmeasured")
+        comparison["scenarios"][0]["common_expected_rejections"] += 1
+        with self.assertRaisesRegex(ValueError, "common_expected_rejections"):
+            summarize_coverage(raw, [comparison])
+
     def test_rejects_wrong_plan_identity_order_and_claimed_counts(self):
         plan = example_plan()
         raw = encode(plan)
@@ -171,16 +203,17 @@ class WorkloadCoverageTests(unittest.TestCase):
             with self.subTest(key=key), self.assertRaisesRegex(ValueError, "request|intersection"):
                 summarize_coverage(raw, [{**comparison, "scenarios": [{**doc, key: value}]}])
         for key, value in (
-            ("expected_labels", []), ("fixture", "renamed"), ("source_sha256", "0" * 64)
+            ("expected_labels", []), ("fixture", "renamed"), ("source_sha256", "0" * 64), ("expected_outcome", "unreviewed")
         ):
             changed = deepcopy(comparison)
             changed["scenarios"][0]["requests"][0][key] = value
             with self.subTest(key=key), self.assertRaisesRegex(ValueError, "request identity"):
                 summarize_coverage(raw, [changed])
+
     def test_rejects_invalid_plan_occurrences_and_topology_hashes(self):
         plan = example_plan()
         for key, value in (
-            ("source_sha256", "a" * 64), ("diagram_id", "two"), ("expected_labels", "Café")
+            ("source_sha256", "a" * 64), ("diagram_id", ""), ("expected_labels", "Café"), ("expected_outcome", None)
         ):
             changed = deepcopy(plan)
             changed["scenarios"][0]["requests"][0][key] = value

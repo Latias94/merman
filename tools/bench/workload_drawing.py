@@ -8,8 +8,8 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 import stat
 import subprocess
 
-from workload_coverage import _indexed, _schema_v1, _source_digest
-from workload_reference import NODE_PRODUCTS, _output, _product
+from workload_coverage import _indexed, _schema_v1, _source_digest, ordered_requests
+from workload_reference import NODE_PRODUCTS, _output, _product, expected_outcome, node_worker_failures
 
 
 OBSERVER = Path(__file__).with_name("workload_drawing_browser.mjs").resolve()
@@ -26,6 +26,11 @@ def _declared(facts):
     return arrows + members + widths + messages
 
 
+def drawing_case(request, index):
+    return {**{key: request[key] for key in IDENTITY}, "request_index": index, "status": "unavailable",
+            "facts": [dict(f, status="unavailable") for f in _declared(request["drawing_facts"])]}
+
+
 def _inventory(raw):
     from run_workloads import parse_workload_json, validate_drawing_facts
 
@@ -35,20 +40,15 @@ def _inventory(raw):
     scenarios = _indexed(plan.get("scenarios"), "id")
     inventory = {}
     for name, scenario in scenarios.items():
-        requests = _indexed(scenario.get("requests"), "diagram_id")
-        if not requests:
-            raise ValueError(f"empty request sequence in {name!r}")
         cases = []
-        for index, request in enumerate(requests.values()):
+        for index, request in enumerate(ordered_requests(scenario)):
             if not isinstance(request.get("fixture"), str) or not request["fixture"]:
                 raise ValueError(f"expected a fixture in {name!r} at index {index}")
             request["source_sha256"] = _source_digest(request)
             if "drawing_facts" in request:
                 facts = validate_drawing_facts(request["drawing_facts"], f"{name}/{request['diagram_id']}")
                 request["drawing_facts"] = {"arrows": [], "groups": {}, "label_widths": {}, **facts}
-                case = {key: request[key] for key in IDENTITY}
-                cases.append(dict(case, request_index=index, status="unavailable",
-                                  facts=[dict(f, status="unavailable") for f in _declared(facts)]))
+                cases.append(drawing_case(request, index))
         inventory[name] = dict(occurrences=len(cases), facts=sum(len(c["facts"]) for c in cases), cases=cases)
     return scenarios, inventory
 
@@ -65,11 +65,14 @@ def _batches(scenario, row, index, node, samples):
         raise ValueError(f"incomplete request sequence in {name!r}")
     for j, (want, got) in enumerate(zip(planned, requests)):
         if (not isinstance(got, dict) or any(got.get(k) != want[k] for k in IDENTITY)
-                or got.get("expected_labels", []) != want.get("expected_labels", [])):
+                or got.get("expected_labels", []) != want.get("expected_labels", [])
+                or expected_outcome(got) != expected_outcome(want)):
             raise ValueError(f"different request identity in {name!r} at index {j}")
         required = "drawing_facts" in want
         if got.get("drawing_required", required) is not required:
             raise ValueError(f"drawing_required disagrees with the plan in {name!r} at index {j}")
+    if node and row.get("status") in ("failed", "timeout"):
+        return None
     batches = row.get("warm_samples" if node else "batches")
     if not isinstance(batches, list) or len(batches) != samples:
         raise ValueError(f"incomplete samples in {name!r}")
@@ -174,14 +177,16 @@ def _collect(report_path, report, scenarios, inventory, plan_sha256, pending):
         raise ValueError("expected collector scenarios")
     failed = report.get("failed_scenario")
     if failed is not None:
-        # The Node collector keeps a completed prefix and identifies the next scenario on failure.
+        # Historical Node reports identify one failed worker after a completed prefix.
         if (not node or not isinstance(failed, dict) or report.get("status") != "failed"
                 or len(rows) >= len(scenarios) or type(failed.get("index")) is not int
                 or failed["index"] != len(rows) or failed.get("id") != list(scenarios)[len(rows)]
                 or failed.get("status") not in ("failed", "timeout")):
             raise ValueError("inconsistent failed_scenario in Node report")
-    elif len(rows) != len(scenarios) or (node and (report.get("status") == "failed" or report.get("error"))):
+    elif len(rows) != len(scenarios):
         raise ValueError("incomplete scenario sequence")
+    elif node:
+        node_worker_failures(report)
     for i, (name, scenario) in enumerate(scenarios.items()):
         cases = product["scenarios"][name]["cases"]
         if i >= len(rows):
@@ -190,6 +195,10 @@ def _collect(report_path, report, scenarios, inventory, plan_sha256, pending):
             continue
         row = rows[i]
         batches = _batches(scenario, row, i, node, samples)
+        if batches is None:
+            for case in cases:
+                case.update(reason=f"worker-{row['status']}", detail=row["error"])
+            continue
         for case in cases:
             j = case["request_index"]
             results = [batch[j] for batch in batches]
@@ -198,7 +207,7 @@ def _collect(report_path, report, scenarios, inventory, plan_sha256, pending):
                 digest = result.get("output_sha256" if node else "sha256")
                 if (size is not None and type(size) is not int) or (digest is not None and not isinstance(digest, str)):
                     raise ValueError(f"invalid collector output identity in {name!r} at index {j}")
-            output = _output(results, node, False)
+            output = _output(results, node, False, expected_outcome(row["requests"][j]))
             case["output"] = output
             if output["state"] != "stable":
                 case["reason"] = "renderer-failed" if output["state"] == "missing" else output["state"]
@@ -248,7 +257,7 @@ def _status(statuses):
     return "failed" if "failed" in statuses else "unavailable"
 
 
-def _observe(pending, chrome):
+def observe_drawings(pending, chrome):
     if not pending:
         return None
     command = ["node", str(OBSERVER)]
@@ -300,7 +309,7 @@ def audit_drawings(
     planned = {key: sum(s[key] for s in inventory.values()) for key in ("occurrences", "facts")}
     pending = []
     products = [_collect(Path(path), report, scenarios, inventory, plan_sha256, pending) for path, report in reports]
-    observer = _observe(pending, chrome)
+    observer = observe_drawings(pending, chrome)
     for product in products:
         for scenario in product["scenarios"].values():
             scenario["status"] = _status({c["status"] for c in scenario["cases"]})

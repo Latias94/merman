@@ -53,10 +53,40 @@ For cross-renderer comparisons, report completion first. The common plan freezes
 sources, their SHA-256 digests and the request order. Scenarios can declare text expected in the
 rendered SVG. Output bytes, PNG dimensions and artifact checks describe the
 delivered product. Visual equivalence still requires the family-owned DOM or raster checks.
-The Rust, Node and CLI workloads use the same Python standard-library reader for SVG and
-expected labels. The Rust driver reads complete SVGs from separate verification processes
-before and after sampling. It stores their lengths, hashes and the reader's fingerprint in the
-report. Node checks each new output once outside the timed batch, with a scenario timeout.
+The Rust, Node and CLI workloads use the same Python SVG and label reader. In ordinary Rust
+batches the measured calls report their output sizes. Independent processes verify the outputs
+before and after sampling. A matching comparison reports `matching-verification-outputs` and
+`measured_output_check: size-only`. For a one-request SVG clock run, `--verify-measured-svg`
+stops the clock when the public call returns and verifies that same SVG against both witnesses.
+The report records a digest per sample and reserves `same-output` for that comparison. Dropping
+the returned string happens after this clock boundary. The batch clock includes each SVG drop.
+The two measurements have separate comparison options. Node checks each new output after the
+timed batch, with a scenario timeout.
+
+When a Rust SVG scenario declares drawing facts, `--check-drawings` runs the shared browser
+observer after sampling and binds the result to the verified SVG digest. Comparisons withhold
+deltas for that scenario until both sets of facts pass in matching observer environments. Raw
+metrics remain available. Historical reports that omit source expectations carry the status
+`source-outcomes-unverified`. A changed measured digest or size records a failed sample in the
+report, continues with later scenarios and gives a failing command exit status.
+
+Each frozen request has an `expected_outcome`. Older plans without the field use `draw`.
+
+| Source expectation | Evidence used by the comparison |
+| --- | --- |
+| `draw` | A drawable SVG or a decoded PNG with visible variation against white, plus any declared labels or drawing checks. An explicitly zero-sized SVG root fails the mechanical check. |
+| `allow-empty` | A valid artifact may be empty. External reports identify the observed class so two valid outputs with different content classes can both pass coverage and have their speed ratio withheld. |
+| `reject` | A recognized parser diagnostic counts as an expected rejection. It has its own coverage count and supplies no render time to a speed ratio. |
+| `unreviewed` | The collector records the observed output or error. Its timing stays outside the comparable render groups until the source has been reviewed. |
+
+An imported source with reviewed labels, drawing facts, or an explicit expectation carries that
+review in the plan. Other new imports are `unreviewed`. For PNG, the CLI checks the decoded pixels
+of the delivered file after timing. It also checks the auxiliary SVG for the source's required
+labels. Pixel variation is evidence of content. Geometry, label placement and shape ownership
+have their own drawing checks. A PNG above 64 MiB encoded or 16,777,216 pixels is recorded as
+`observer-limit` and its timing is excluded. An interrupted Node scenario records its worker failure and its
+unmeasured requests. The matrix continues with a new process for the next scenario and compares
+the observed common requests. The process exit status and bundle retain the collection failure.
 Keep the browser comparison in its existing Chromium harness. The [runbook](RUNBOOK.md#run-an-ordered-workload)
 includes reproduction commands and external corpus imports.
 
@@ -77,6 +107,21 @@ changing a variable such as layout, label content or input size. `quick` covers 
 checks. `full` adds family, downstream, configuration and scaling cases. An ordered document
 import preserves the weight of repeated examples. The coverage inventory counts both occurrences
 and distinct source digests and lists the layout-budget topology population separately.
+Within a frozen scenario, the request's position identifies the occurrence. The SVG `diagram_id`
+can repeat across editor revisions. `editor-fixed-id` and `editor-rotating-id` cover a valid edit,
+an incomplete edit and its repair through one engine per Node scenario.
+
+`full` includes the author order of the Mermaid examples and C4 pages at the revision named in
+their manifests. The generated examples page repeats each diagram in adjacent fences. Its
+manifest is opt-in so a generated duplicate does not add weight to the default author population.
+The work runner also calibrates paired five-node strongly connected components and a DAG formed
+by reversing each cycle's closing edge. The pair preserves every label and undirected connection.
+The default work report records both geometry and public SVG completion. High-budget evidence
+includes both output identities and the work consumed by SVG. The layout writer also checks
+the exact minimum passing budget and the adjacent failure. `topology-orders` freezes the nine
+statement orders of each 75- and 100-node graph. They preserve node names, directed edges,
+labels and input byte count. Check output stability for repeated runs of the same source.
+Different statement orders can legitimately produce different layouts.
 
 The `families` suite follows the same `family-baseline` entries and fixture files as the browser
 playground. `full` includes those one-request scenarios as well as ordered documents and scale
@@ -108,11 +153,24 @@ and raw reports with the measurement. Use a separate experiment if a product nee
 output format, font policy or process lifecycle.
 
 External reports include product versions, collector fingerprints and per-request results.
+`artifact_identity` describes the measured files for each arm. CLI collectors fingerprint the
+executable and any JavaScript entry in the resolved command. Node collectors fingerprint the
+public entry plus the Merman native addon or WASM glue and module observed by the worker.
+For JavaScript peers the scope is the public package entry, with the dependency lock in the
+bundle. An unknown or missing product fingerprint leaves raw observations available and
+withholds the product ratio.
+For `mmdc`, a configured browser file is recorded separately from the command. The collector
+reports the actual browser executable as unobserved.
 Read coverage before interpreting a time. A matching text assertion establishes presence in the
 SVG text representation. Clipping, overlap and shaping require the visual checks. Complete-batch
 ratios use the same successful, repeatable population on both sides. When a report comes from a
 different collector, both observed time series remain available and the ratio is withheld.
-The Node matrix runs products sequentially. A warm batch median describes that collection order.
+The default Node matrix measures one fresh process per product and scenario. For variation
+between processes, `--process-rounds` repeats the collection with an even number of rounds.
+Each consecutive pair of rounds reverses product order. Each independent observation is the
+median of one worker's warm batches. The summary reports the distribution of the within-round
+peer/Merman ratios, the counts on each side of one and the number of eligible rounds. A missing
+pair or a changed product or output withholds the aggregate for that scenario.
 Use the calibrated `compare_self.py` protocol for release claims about a Merman revision.
 
 ### SVG drawing checks
@@ -914,7 +972,7 @@ lanes with explicit lifecycle and output contracts.
 ## Browser comparison with Mermaid.js
 
 Use the generated family-baseline corpus for the web-to-web comparison. The full command builds the
-current Web artifact and measures one baseline from each supported generated-example family:
+Playground with the prepared Web package and measures one baseline from each supported generated-example family:
 
 ```bash
 npm --prefix playground run benchmark:corpus -- \
@@ -940,6 +998,8 @@ seeds. Within that fixture, Merman and Mermaid.js still use the same page, sourc
 viewport, warmup policy, iteration count, and deterministic AB/BA sample plan. Independent cold and
 warm controller runs report first-publishable SVG and reused-engine publishable SVG separately. Both
 engines pass through the production browser adapters and the same strict SVG evidence checks.
+Before sampling, the runner checks the built page's Merman version against the selected Web
+package manifest. Each successful mode also checks the versions returned by the running engines.
 
 Corpus schema `2` separates the single-fixture page envelope from the aggregate corpus report. A
 page returns exactly one success or structured failure row plus stable generated-catalog identity;
@@ -947,7 +1007,7 @@ it does not fabricate `pending` or `not-selected` rows for the rest of the catal
 page crashes, early closes, browser disconnects, timeouts, invalidation, and cancellation into the
 same fixture envelope, then one shared linear assembler validates order, seeds, options, catalog and
 version identity while deriving coverage, failures, and terminal status. The aggregate embeds raw
-schema-`6` controller reports, fixture byte counts and SHA-256 digests, actual execution order, and
+schema-`7` controller reports, fixture byte counts and SHA-256 digests, actual execution order, and
 fresh-process isolation. It never overwrites an existing output. A whole-corpus budget rejects plans
 that would retain more than 4,096 raw samples before the first fixture runs. In each successful
 fixture mode's `report.aggregates.ratios`, the numerator is Mermaid.js and the denominator is Merman,

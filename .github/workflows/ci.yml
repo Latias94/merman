@@ -1540,7 +1540,9 @@ jobs:
           python3 -m unittest tools.bench.test_layout_work_calibration
           python3 tools/bench/test_native_memory_contracts.py
           python3 tools/bench/test_native_memory_driver_contracts.py
-          python3 tools/bench/test_perf_contracts.py
+          python3 -m venv "$RUNNER_TEMP/merman-benchmark-python"
+          "$RUNNER_TEMP/merman-benchmark-python/bin/python" -m pip install -r tools/bench/requirements-png.txt
+          "$RUNNER_TEMP/merman-benchmark-python/bin/python" tools/bench/test_perf_contracts.py
 
   pr-gate:
     name: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'pr-gate' || format('{0}-gate', github.event_name) }}

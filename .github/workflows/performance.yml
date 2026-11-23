@@ -210,6 +210,11 @@ jobs:
           python3 -m unittest tools.bench.test_layout_work_calibration
           python3 tools/bench/test_native_memory_contracts.py
           python3 tools/bench/test_native_memory_driver_contracts.py
+          if [[ -f tools/bench/requirements-png.txt ]]; then
+            python3 -m venv "$RUNNER_TEMP/merman-benchmark-python"
+            source "$RUNNER_TEMP/merman-benchmark-python/bin/activate"
+            python3 -m pip install -r tools/bench/requirements-png.txt
+          fi
           python3 tools/bench/test_perf_contracts.py
 
       - name: Verify compiled pipeline benchmark list

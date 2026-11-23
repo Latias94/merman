@@ -12,13 +12,8 @@ const HIGH_BUDGET: usize = 2_000_000_000;
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
-enum LayoutOutcome {
-    Accepted {
-        sha256: String,
-        bytes: usize,
-        nodes: usize,
-        edges: usize,
-    },
+enum Outcome<T> {
+    Accepted(T),
     LayoutWorkRejected {
         id: &'static str,
         phase: &'static str,
@@ -29,6 +24,21 @@ enum LayoutOutcome {
         code: String,
         message: String,
     },
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+struct Geometry {
+    sha256: String,
+    bytes: usize,
+    nodes: usize,
+    edges: usize,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+struct Svg {
+    sha256: String,
+    bytes: usize,
+    layout_work_units: usize,
 }
 
 fn svg_request(budget: Option<usize>) -> Result<SvgRequest, String> {
@@ -42,7 +52,7 @@ fn svg_request(budget: Option<usize>) -> Result<SvgRequest, String> {
     Ok(request)
 }
 
-fn layout_signature(bytes: &[u8], nodes: usize, edges: usize) -> Result<LayoutOutcome, String> {
+fn layout_signature(bytes: &[u8], nodes: usize, edges: usize) -> Result<Outcome<Geometry>, String> {
     let geometry: Value =
         serde_json::from_slice(bytes).map_err(|e| format!("invalid layout JSON: {e}"))?;
     let flowchart = &geometry["layout"]["FlowchartV2"];
@@ -54,15 +64,15 @@ fn layout_signature(bytes: &[u8], nodes: usize, edges: usize) -> Result<LayoutOu
             return Err(format!("expected {expected} {field}, got {}", items.len()));
         }
     }
-    Ok(LayoutOutcome::Accepted {
+    Ok(Outcome::Accepted(Geometry {
         sha256: data_encoding::HEXLOWER.encode(&Sha256::digest(bytes)),
         bytes: bytes.len(),
         nodes,
         edges,
-    })
+    }))
 }
 
-fn classify_error(error: RenderError, budget: usize) -> Result<LayoutOutcome, String> {
+fn classify_error<T>(error: RenderError, budget: usize) -> Result<Outcome<T>, String> {
     match error {
         RenderError::ResourceLimitExceeded(limit)
             if limit.id == WORK.as_str()
@@ -71,7 +81,7 @@ fn classify_error(error: RenderError, budget: usize) -> Result<LayoutOutcome, St
                 && limit.maximum == budget as u64
                 && limit.actual > limit.maximum =>
         {
-            Ok(LayoutOutcome::LayoutWorkRejected {
+            Ok(Outcome::LayoutWorkRejected {
                 id: limit.id,
                 phase: limit.phase,
                 actual: limit.actual,
@@ -88,7 +98,7 @@ fn classify_error(error: RenderError, budget: usize) -> Result<LayoutOutcome, St
                 )
                 && message.contains("maxEdges budget")
             {
-                Ok(LayoutOutcome::SourceMaxEdgesRejected {
+                Ok(Outcome::SourceMaxEdgesRejected {
                     code: details.code,
                     message,
                 })
@@ -100,14 +110,17 @@ fn classify_error(error: RenderError, budget: usize) -> Result<LayoutOutcome, St
     }
 }
 
-fn svg_consumed_work(renderer: &Renderer, source: &str) -> Result<usize, String> {
-    let request = RenderRequest::svg(
-        source,
-        OperationControl::new(),
-        svg_request(Some(HIGH_BUDGET))?,
-    );
-    let RenderOutput::Svg(Some(svg)) = renderer.render(request).map_err(|e| e.to_string())? else {
-        return Err("missing SVG work evidence".into());
+fn svg_outcome(
+    renderer: &Renderer,
+    source: &str,
+    budget: Option<usize>,
+    default_budget: usize,
+) -> Result<Outcome<Svg>, String> {
+    let request = RenderRequest::svg(source, OperationControl::new(), svg_request(budget)?);
+    let svg = match renderer.render(request) {
+        Ok(RenderOutput::Svg(Some(svg))) => svg,
+        Ok(_) => return Err("missing SVG work evidence".into()),
+        Err(error) => return classify_error(error, budget.unwrap_or(default_budget)),
     };
     if !svg
         .evidence()
@@ -116,7 +129,11 @@ fn svg_consumed_work(renderer: &Renderer, source: &str) -> Result<usize, String>
     {
         return Err("topology workload requires the default ELK backend".into());
     }
-    Ok(svg.evidence().layout_work_units())
+    Ok(Outcome::Accepted(Svg {
+        sha256: data_encoding::HEXLOWER.encode(&Sha256::digest(svg.svg().as_bytes())),
+        bytes: svg.svg().len(),
+        layout_work_units: svg.evidence().layout_work_units(),
+    }))
 }
 
 pub(super) fn observe(
@@ -141,11 +158,26 @@ pub(super) fn observe(
 
     let default = layout(None)?;
     let high = layout(Some(HIGH_BUDGET))?;
-    let boundary = match (&default, &high) {
-        (LayoutOutcome::SourceMaxEdgesRejected { .. }, _) if default == high => Value::Null,
-        (_, LayoutOutcome::Accepted { .. }) => {
+    let default_svg = svg_outcome(renderer, source, None, default_budget)?;
+    let high_svg = svg_outcome(renderer, source, Some(HIGH_BUDGET), default_budget)?;
+    let boundary = match (&high, &high_svg) {
+        (Outcome::SourceMaxEdgesRejected { .. }, Outcome::SourceMaxEdgesRejected { .. })
+            if default == high && default_svg == high_svg =>
+        {
+            Value::Null
+        }
+        (Outcome::Accepted(_), Outcome::Accepted(svg)) => {
+            match &default_svg {
+                Outcome::Accepted(output) if output.sha256 == svg.sha256 => {}
+                Outcome::LayoutWorkRejected { .. } => {}
+                other => {
+                    return Err(format!(
+                        "default and high-budget SVG disagree: {other:?}, {svg:?}"
+                    ));
+                }
+            }
             let upper = match &default {
-                LayoutOutcome::LayoutWorkRejected { .. } => HIGH_BUDGET,
+                Outcome::LayoutWorkRejected { .. } => HIGH_BUDGET,
                 _ if default == high => default_budget,
                 _ => {
                     return Err(format!(
@@ -153,7 +185,7 @@ pub(super) fn observe(
                     ));
                 }
             };
-            let consumed = svg_consumed_work(renderer, source)?;
+            let consumed = svg.layout_work_units;
             let (minimum, below) =
                 minimum_budget(|budget| layout(Some(budget)), &high, upper, consumed)?;
             json!({
@@ -165,7 +197,7 @@ pub(super) fn observe(
         }
         _ => {
             return Err(format!(
-                "unexpected high-budget layout: {high:?} (default: {default:?})"
+                "unexpected topology outcomes: layout {default:?}/{high:?}, SVG {default_svg:?}/{high_svg:?}"
             ));
         }
     };
@@ -176,16 +208,17 @@ pub(super) fn observe(
         "default": default,
         "high_budget": HIGH_BUDGET,
         "high": high,
+        "svg": {"default": default_svg, "high": high_svg},
         "boundary": boundary,
     }))
 }
 
 fn minimum_budget(
-    probe: impl Fn(usize) -> Result<LayoutOutcome, String>,
-    reference: &LayoutOutcome,
+    probe: impl Fn(usize) -> Result<Outcome<Geometry>, String>,
+    reference: &Outcome<Geometry>,
     mut passing: usize,
     consumed: usize,
-) -> Result<(usize, LayoutOutcome), String> {
+) -> Result<(usize, Outcome<Geometry>), String> {
     // On this fixed graph only the ceiling varies. ELK can check work without consuming it,
     // so SVG evidence is a hint. Both adjacent limits must be observed on the layout writer.
     let mut hints = [consumed, consumed.saturating_sub(1)].into_iter();
@@ -197,9 +230,7 @@ fn minimum_budget(
             .unwrap_or_else(|| failing + (passing - failing) / 2);
         match probe(budget)? {
             outcome if &outcome == reference => passing = budget,
-            outcome @ LayoutOutcome::LayoutWorkRejected { actual, .. }
-                if actual <= passing as u64 =>
-            {
+            outcome @ Outcome::LayoutWorkRejected { actual, .. } if actual <= passing as u64 => {
                 failing = budget;
                 rejection = Some(outcome);
             }
@@ -208,7 +239,7 @@ fn minimum_budget(
     }
     match rejection {
         Some(
-            below @ LayoutOutcome::LayoutWorkRejected {
+            below @ Outcome::LayoutWorkRejected {
                 actual, maximum, ..
             },
         ) if actual == passing as u64 && maximum == (passing - 1) as u64 => Ok((passing, below)),

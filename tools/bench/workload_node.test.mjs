@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -14,7 +13,9 @@ const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const request = (source, diagram_id) => ({ source, diagram_id, fixture: "shared-fixture" });
 
 function project(t) {
-  const dir = mkdtempSync(path.join(tmpdir(), "workload-node-"));
+  const scratch = fileURLToPath(new URL("../../target/", import.meta.url));
+  mkdirSync(scratch, { recursive: true });
+  const dir = mkdtempSync(path.join(scratch, "workload-node-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   return dir;
 }
@@ -82,6 +83,11 @@ test("public entries isolate duplicate scenarios, reuse one engine and preserve 
     assert.equal(report.package.name, name);
     assert.equal(report.package.version, "1.2.3");
     assert.equal(report.backend, backend);
+    const identity = report.artifact_identity;
+    const entry = readFileSync(report.package.entry);
+    assert.equal(identity.scope, engine === "merman" ? "node-entry-and-transport" : "node-entry");
+    assert.equal(identity.status, engine === "merman" ? "unknown" : "recorded");
+    assert.deepEqual(identity.files, [{ role: "entry", path: report.package.entry, bytes: entry.length, sha256: sha256(entry) }]);
     assert.equal(report.surface, "node");
     assert.equal(report.output_format, "svg");
     assert.equal(report.host.node, process.version);
@@ -105,7 +111,7 @@ test("public entries isolate duplicate scenarios, reuse one engine and preserve 
         assert.ok(batch.elapsed_ms >= batch.successful_render_ms);
         for (const [i, result] of batch.results.entries()) {
           const { fixture, source, diagram_id } = requests[i];
-          assert.deepEqual(row.requests[i], { fixture, diagram_id, source_sha256: sha256(source) });
+          assert.deepEqual(row.requests[i], { fixture, diagram_id, source_sha256: sha256(source), expected_outcome: "draw" });
           const svg = `<svg><text>${diagram_id} ${Buffer.from(source).toString("base64")} 夜</text></svg>`;
           assert.equal(result.status, "ok");
           assert.equal(result.output_bytes, Buffer.byteLength(svg));
@@ -212,7 +218,7 @@ test("drawing capture is opt-in and a failed exclusive write fails its scenario"
   assert.equal(off.status, 0, off.stderr);
   assert.equal(Object.hasOwn(off.report, "drawing_dir"), false);
   assert.deepEqual(off.report.scenarios[1].requests[0], {
-    fixture: "shared-fixture", diagram_id: "b", source_sha256: sha256("new"), drawing_required: true,
+    fixture: "shared-fixture", diagram_id: "b", source_sha256: sha256("new"), expected_outcome: "draw", drawing_required: true,
   });
 
   const drawings = path.join(dir, "drawings");
@@ -223,10 +229,13 @@ test("drawing capture is opt-in and a failed exclusive write fails its scenario"
     const { report, status, stderr } = run(dir, "pele", ["--samples", "1", "--drawing-dir", destination]);
     assert.equal(status, 1, stderr);
     assert.equal(report.status, "failed");
-    assert.deepEqual(report.failed_scenario, { index: 1, id: "selected", status: "failed" });
-    assert.deepEqual(report.scenarios.map((row) => row.index), [0]);
+    assert.deepEqual(report.scenarios.map((row) => row.index), [0, 1]);
+    const failed = report.scenarios[1];
+    assert.equal(failed.status, "failed");
+    assert.equal(failed.requests[0].drawing_required, true);
+    assert.equal(Object.hasOwn(failed.requests[0], "drawing_artifact"), false);
     assert.equal(Object.hasOwn(report.scenarios[0].requests[0], "drawing_artifact"), false);
-    assert.ok(report.error.includes(existing), report.error);
+    assert.ok(failed.error.includes(existing), failed.error);
     assert.equal(readFileSync(existing, "utf8"), "previous report");
   }
 });
@@ -260,7 +269,7 @@ test("partial batches keep attempted time, error SVG identity and stable success
   assert.equal(row.first_render_ms, null);
   assert.deepEqual(row.coverage, {
     planned_requests: 11, label_reader: null, expected_label_request_indices: [], verified_label_request_indices: [],
-    successful_request_indices: [1, 7], comparable_request_indices: [1], full_batch_comparable: false,
+    successful_request_indices: [1, 7], expected_rejection_request_indices: [], comparable_request_indices: [1], full_batch_comparable: false,
   });
   const first = row.cold_batch.results;
   assert.deepEqual(first.map((item) => item.status), [
@@ -293,6 +302,53 @@ test("a word wrap on a shared SVG text baseline anchor preserves the label", (t)
   install(dir, "pele", "export const render = (source) => ({svg: '<svg>' + source + '</svg>'});");
   const { report } = run(dir, "pele", ["--samples", "1"]);
   assert.deepEqual(report.scenarios[0].cold_batch.results.map((r) => r.status), ["ok", "missing-labels", "missing-labels"]);
+});
+
+test("the public reader classifies expected rejections, allowed empty SVGs and unreviewed output", (t) => {
+  const dir = project(t);
+  const diagnostic = "Diagram parse error (flowchart-v2): unexpected end of input; expected node identifier, edge label";
+  const sources = [
+    ["syntax", "reject"], ["resource", "reject"], ["valid", "reject"], ["error-svg", "reject"],
+    ["changing", "reject"], ["empty", "allow-empty"], ["valid", "allow-empty"], ["empty", "draw"],
+    ["empty", "unreviewed"], ["valid", "draw"],
+  ];
+  plan(dir, [{ id: "outcomes", requests: sources.map(([source, expected_outcome], i) => ({
+    ...request(source, `r${i}`), expected_outcome,
+  })) }]);
+  install(dir, "pele", `
+    let calls = 0;
+    export function render(source) {
+      if (source === 'syntax' || (source === 'changing' && ++calls === 1)) {
+        throw Object.assign(new Error(${JSON.stringify(diagnostic)}), { codeName: 'MERMAN_PARSE_ERROR', code: 99 });
+      }
+      if (source === 'resource' || source === 'changing') throw Object.assign(new Error('limit'), { code: 'RESOURCE' });
+      if (source === 'error-svg') return { svg: '<svg aria-roledescription="error"><path/></svg>' };
+      if (source === 'empty') return { svg: '<svg viewBox="0 0 12 12"/>' };
+      return { svg: '<svg><rect/></svg>' };
+    }
+  `);
+  const { report, status, stderr } = run(dir, "pele", ["--samples", "2"]);
+  assert.equal(status, 0, stderr);
+  const [row] = report.scenarios;
+  assert.deepEqual(row.requests.map((r) => r.expected_outcome), sources.map(([, outcome]) => outcome));
+  assert.equal(row.first_render_ms, null);
+  assert.deepEqual(row.coverage.expected_rejection_request_indices, [0]);
+  assert.deepEqual(row.coverage.successful_request_indices, [5, 6, 8, 9]);
+  assert.deepEqual(row.coverage.comparable_request_indices, [5, 6, 9]);
+  assert.equal(row.coverage.full_batch_comparable, false);
+  for (const batch of [row.cold_batch, ...row.warm_samples]) {
+    const statuses = ["expected-rejection", "render-error", "unexpected-success", "error-svg",
+      batch === row.cold_batch ? "expected-rejection" : "render-error", "ok", "ok", "empty-svg", "ok", "ok"];
+    assert.deepEqual(batch.results.map((r) => r.status), statuses);
+    assert.equal(batch.results[0].code, "MERMAN_PARSE_ERROR");
+    assert.equal(batch.results[0].message, diagnostic);
+    assert.equal(batch.results[0].output_sha256, null);
+    assert.equal(batch.results[1].code, "RESOURCE");
+    assert.deepEqual(batch.results.slice(5, 7).map((r) => r.output_class), ["empty", "draw"]);
+    assert.equal(batch.expected_rejections, batch === row.cold_batch ? 2 : 1);
+    assert.equal(batch.successful_requests, 4);
+    assert.equal(batch.complete_batch_ms, null);
+  }
 });
 
 test("expected labels must appear as SVG or HTML label text, including on a changed warm output", (t) => {
@@ -382,27 +438,46 @@ test("each position reuses checked hashes and sends changed outputs in a single 
   assert.deepEqual(seen, [[[a, undefined], [a, ["B"]]], [[c, ["B"]]], [[c, undefined]]]);
 });
 
-test("a blocked scenario times out with its identity, host, plan and completed rows", (t) => {
+test("mid-plan request exceptions, process exits and timeouts preserve every independent worker", (t) => {
   const dir = project(t);
-  const raw = plan(dir, [
-    { id: "same", requests: [request("first", "d1")] },
-    { id: "same", requests: [request("hang", "d2")] },
-  ]);
+  const modes = ["before", "throw", "exit", "hang", "after"];
+  const raw = plan(dir, modes.map((mode) => ({ id: mode, requests: [
+    request("ok", "first"), { ...request(mode, "middle"), expected_labels: ["pass"] }, request("ok", "last"),
+  ] })));
   install(dir, "pele", `export function render(source) {
+    if (source === 'throw') throw new Error('render failed');
+    if (source === 'exit') process.exit(73);
     if (source === 'hang') Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);
-    return {svg: '<svg><rect/></svg>'};
+    return {svg: '<svg><text>pass</text></svg>'};
   }`);
   const { report, status, stderr } = run(dir, "pele", ["--samples", "1", "--timeout-seconds", "2"]);
-  assert.equal(status, 1);
+  assert.equal(status, 1, stderr);
   assert.equal(report.status, "failed");
-  assert.deepEqual(report.failed_scenario, { index: 1, id: "same", status: "timeout" });
   assert.equal(report.plan_sha256, sha256(raw));
   assert.equal(report.host.node, process.version);
   assert.equal(report.timeout_seconds, 2);
-  assert.deepEqual(report.scenarios.map((row) => row.index), [0]);
-  assert.equal(report.scenarios[0].coverage.full_batch_comparable, true);
-  assert.match(report.error, /timed out/);
-  assert.ok(stderr.includes(report.error));
+  assert.equal(report.planned_scenarios, modes.length);
+  assert.deepEqual(report.scenarios.map((row) => row.id), modes);
+  const [before, thrown, exited, timeout, after] = report.scenarios;
+  assert.ok(before.coverage.full_batch_comparable && after.coverage.full_batch_comparable);
+  for (const batch of [thrown.cold_batch, ...thrown.warm_samples]) {
+    assert.deepEqual(batch.results.map((r) => r.status), ["ok", "render-error", "ok"]);
+    assert.equal(batch.complete_batch_ms, null);
+  }
+  for (const [row, mode, workerStatus, message] of [[exited, "exit", "failed", /exit 73/], [timeout, "hang", "timeout", /timed out/]]) {
+    assert.equal(row.index, modes.indexOf(mode));
+    assert.equal(row.status, workerStatus);
+    assert.match(row.error, message);
+    assert.ok(stderr.includes(row.error));
+    assert.deepEqual(row.requests.map((r) => r.diagram_id), ["first", "middle", "last"]);
+    assert.deepEqual(row.requests[1], { fixture: "shared-fixture", diagram_id: "middle", source_sha256: sha256(mode),
+      expected_labels: ["pass"], expected_outcome: "draw" });
+    assert.equal(row.init_ms, null);
+    assert.equal(row.unmeasured_requests, 3);
+    assert.equal(row.first_render_ms, null);
+    assert.equal(row.cold_batch, null);
+    assert.deepEqual(row.warm_samples, []);
+  }
 });
 
 test("module identity distinguishes Node-WASM and rejects browser entries and mismatched runtimes", (t) => {
@@ -412,6 +487,7 @@ test("module identity distinguishes Node-WASM and rejects browser entries and mi
   const ok = run(dir, "merman", ["--module", path.relative(dir, wasm), "--samples", "1"]);
   assert.equal(ok.status, 0, ok.stderr);
   assert.equal(ok.report.backend, "node-wasm");
+  assert.equal(ok.report.artifact_identity.status, "unknown");
   assert.equal(ok.report.scenarios[0].transport_api_version, 2);
   const browser = install(dir, "@mermanjs/web", drawModule);
   const rejected = run(dir, "merman", ["--module", browser]);
@@ -421,20 +497,124 @@ test("module identity distinguishes Node-WASM and rejects browser entries and mi
   install(dir, "@mermanjs/node", drawModule.replace("package_version: '1.2.3'", "package_version: '1.0.0'"));
   const mismatch = run(dir, "merman");
   assert.equal(mismatch.status, 1);
-  assert.match(mismatch.report.error, /Runtime version 1\.0\.0 differs/);
+  assert.match(mismatch.report.scenarios[0].error, /Runtime version 1\.0\.0 differs/);
   assert.match(mismatch.stderr, /dispose/);
+});
+
+test("native identity follows the candidate's loaded optional addon across same-version rebuilds", (t) => {
+  const dir = project(t);
+  const candidate = path.join(dir, "candidate");
+  const entry = install(candidate, "@mermanjs/node", `
+    import { createRequire } from 'node:module';
+    const require = createRequire(import.meta.url);
+    // Exercise the CJS resolution/cache contract without compiling a test addon.
+    require.extensions['.node'] = require.extensions['.js'];
+    export function createNodeEngine() { return {
+      runtimeCatalog: {package_version: '1.2.3'}, dispose() {},
+      renderSvgSync(source) {
+        const name = '@mermanjs/node-' + (source === 'replace' ? 'selected' : source);
+        const render = require(name);
+        if (source === 'replace') require('node:fs').appendFileSync(require.resolve(name), '\\n// replaced');
+        return render();
+      },
+    }; }
+  `);
+  const pkg = path.join(candidate, "node_modules", "@mermanjs");
+  const manifest = path.join(pkg, "node", "package.json");
+  writeFileSync(manifest, JSON.stringify({ ...JSON.parse(readFileSync(manifest)),
+    optionalDependencies: { "@mermanjs/node-selected": "1.2.3", "@mermanjs/node-other": "1.2.3" } }));
+  const addon = (root, id, build) => {
+    const target = path.join(root, "node_modules", "@mermanjs", `node-${id}`);
+    mkdirSync(target, { recursive: true });
+    writeFileSync(path.join(target, "package.json"), JSON.stringify({ name: `@mermanjs/node-${id}`, version: "1.2.3", main: "merman.node" }));
+    const file = path.join(target, "merman.node");
+    writeFileSync(file, `module.exports = () => '<svg><rect/></svg>'; // ${build}`);
+    return file;
+  };
+  addon(dir, "selected", "unrelated consumer installation");
+  addon(candidate, "other", "other optional package");
+  const scenario = (id) => ({ id, requests: [request(id, "one")] });
+  plan(dir, [scenario("selected")]);
+  const digests = [];
+  for (const build of ["A", "B"]) {
+    const file = addon(candidate, "selected", build);
+    const { report, status, stderr } = run(dir, "merman", ["--module", entry, "--samples", "1"]);
+    assert.equal(status, 0, stderr);
+    assert.equal(report.package.version, "1.2.3");
+    assert.equal(report.artifact_identity.status, "recorded");
+    const [facade, native] = report.artifact_identity.files;
+    assert.equal(facade.sha256, sha256(readFileSync(entry)));
+    const bytes = readFileSync(file);
+    assert.deepEqual(native, { role: "native-addon", path: realpathSync(file), bytes: bytes.length, sha256: sha256(bytes) });
+    digests.push(native.sha256);
+  }
+  assert.notEqual(...digests);
+
+  plan(dir, [scenario("selected"), scenario("other")]);
+  const { report } = run(dir, "merman", ["--module", entry, "--samples", "1"]);
+  assert.equal(report.artifact_identity.status, "unknown");
+  assert.match(report.artifact_identity.reason, /different product files/);
+  assert.notEqual(...report.scenarios.map((row) => row.artifact_identity.files[1].sha256));
+
+  plan(dir, [scenario("replace")]);
+  const replaced = run(dir, "merman", ["--module", entry, "--samples", "1"]);
+  assert.equal(replaced.status, 0, replaced.stderr);
+  assert.equal(replaced.report.artifact_identity.status, "unknown");
+  assert.match(replaced.report.artifact_identity.reason, /changed or was unavailable/);
+  assert.deepEqual(replaced.report.artifact_identity.files.map((file) => file.role), ["entry"]);
+});
+
+test("WASM identity checks the loaded glue and the compiled module against the packaged bytes", (t) => {
+  const dir = project(t);
+  plan(dir, [{ id: "one", requests: [request("source", "one")] }]);
+  const entry = install(dir, "@mermanjs/node-wasm", `
+    import { createRequire } from 'node:module';
+    const wasm = createRequire(import.meta.url)('../artifact/merman_node.cjs');
+    export function createNodeEngine() { return { runtimeCatalog: { package_version: '1.2.3' },
+      renderSvgSync() { return '<svg><text>' + wasm.v() + '</text></svg>'; }, dispose() {} }; }
+  `);
+  const artifacts = path.join(path.dirname(entry), "..", "artifact");
+  mkdirSync(artifacts);
+  const glue = path.join(artifacts, "merman_node.cjs");
+  const wasm = path.join(artifacts, "merman_node_bg.wasm");
+  const load = (name) => `const bytes = require('node:fs').readFileSync(require('node:path').join(__dirname, '${name}'));
+    module.exports = new WebAssembly.Instance(new WebAssembly.Module(bytes)).exports;`;
+  writeFileSync(glue, load(path.basename(wasm)));
+  const moduleBytes = (n) => Buffer.from(`0061736d010000000105016000017f03020100070501017600000a0601040041${n}0b`, "hex");
+  for (const version of ["01", "02"]) {
+    const bytes = moduleBytes(version);
+    writeFileSync(wasm, bytes);
+    const { report, status, stderr } = run(dir, "merman", ["--module", entry, "--samples", "1"]);
+    assert.equal(status, 0, stderr);
+    const identity = report.artifact_identity;
+    assert.equal(identity.status, "recorded", identity.reason);
+    assert.deepEqual(identity.files.map((file) => file.role), ["entry", "wasm-glue", "wasm-module"]);
+    assert.equal(identity.files[1].sha256, sha256(readFileSync(glue)));
+    assert.deepEqual(identity.files[2], { role: "wasm-module", path: realpathSync(wasm), bytes: bytes.length, sha256: sha256(bytes) });
+  }
+  writeFileSync(glue, load("other.wasm"));
+  writeFileSync(path.join(artifacts, "other.wasm"), moduleBytes("03"));
+  const { report, status, stderr } = run(dir, "merman", ["--module", entry, "--samples", "1"]);
+  assert.equal(status, 0, stderr);
+  assert.equal(report.artifact_identity.status, "unknown");
+  assert.deepEqual(report.artifact_identity.files.map((file) => file.role), ["entry", "wasm-glue"]);
+  assert.match(report.artifact_identity.reason, /could not be matched/);
 });
 
 test("invalid request identity and sample counts fail before package loading", (t) => {
   const dir = project(t);
-  const item = request("", "duplicate");
-  plan(dir, [{ id: "one", requests: [item, item] }]);
-  assert.match(run(dir, "pele").report.error, /distinct diagram_id/);
+  const item = request("", "preview");
+  plan(dir, [{ id: "one", requests: [{ ...item, diagram_id: "" }] }]);
+  assert.match(run(dir, "pele").report.error, /nonempty diagram_id/);
   plan(dir, [{ id: "one", requests: [{ ...item, source_sha256: sha256("other") }] }]);
   assert.match(run(dir, "pele").report.error, /Source SHA-256 mismatch/);
   for (const expected_labels of ["not an array", [""], [[]], [["valid", " \t"]], [[["nested"]]], [["valid", 1]]]) {
     plan(dir, [{ id: "one", requests: [{ ...item, expected_labels }] }]);
     assert.match(run(dir, "pele").report.error, /Invalid expected_labels/);
+  }
+  for (const expected_outcome of ["other", null, true]) {
+    plan(dir, [{ id: "one", requests: [{ ...item, expected_outcome }] }]);
+    assert.match(run(dir, "pele").report.error, /Invalid expected_outcome/);
   }
   assert.match(run(dir, "pele", ["--samples", "0"]).report.error, /--samples/);
   assert.match(run(dir, "pele", ["--timeout-seconds", "0"]).report.error, /--timeout-seconds/);

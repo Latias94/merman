@@ -49,7 +49,11 @@ class PublicWorkloadsTest(unittest.TestCase):
         )
         recipes = bench.load(bench.HERE / "workloads.json")["scenarios"]
         self.assertEqual([s["id"] for s in full[:len(recipes)]], [r["id"] for r in recipes])
-        self.assertEqual(full[len(recipes):], plan("families")["scenarios"])
+        families = plan("families")["scenarios"]
+        self.assertEqual(full[len(recipes):len(recipes) + len(families)], families)
+        self.assertEqual([s["id"] for s in full[len(recipes) + len(families):]],
+                         ["scc-25", "scc-75", "scc-100", "scc-dag-25", "scc-dag-75", "scc-dag-100",
+                          "scc-75-declarations-2", "scc-dag-75-declarations-2", "scc-100-edges-reverse", "scc-dag-100-edges-reverse"])
         unchecked = [
             r["diagram_id"] for s in full for r in s["requests"] if "expected_labels" not in r
         ]
@@ -292,6 +296,15 @@ class PublicWorkloadsTest(unittest.TestCase):
         )
         self.assertEqual(mixed[1]["expected_labels"], ["hi"])
 
+    def test_editor_preview_reuses_the_output_id_through_a_rejected_revision(self):
+        fixed, rotating = plan(names=["editor-fixed-id", "editor-rotating-id"])["scenarios"]
+        requests = fixed["requests"]
+        self.assertEqual([r["diagram_id"] for r in requests], ["preview-01"] * 3)
+        self.assertEqual(len({r["diagram_id"] for r in rotating["requests"]}), 3)
+        self.assertEqual([r["expected_outcome"] for r in requests], ["draw", "reject", "draw"])
+        for a, b in zip(requests, rotating["requests"], strict=True):
+            self.assertEqual({**a, "diagram_id": b["diagram_id"]}, b)
+
     def test_custom_document_and_curated_document_order(self):
         with tempfile.TemporaryDirectory() as tmp:
             d = Path(tmp)
@@ -456,6 +469,68 @@ class PublicWorkloadsTest(unittest.TestCase):
         self.assertEqual(missing["status"], "missing-labels")
         self.assertEqual(missing["missing_labels"], ["event-050", "event-099"])
 
+    def test_cyclic_pairs_reuse_the_exact_work_input_across_public_surfaces(self):
+        full = plan("full")
+        topologies = {t["id"]: t for t in full["topologies"]}
+        self.assertEqual(len(topologies), 32)
+        names = ["scc-100", "scc-dag-100"]
+        for case in plan(names=names)["scenarios"]:
+            (request,) = case["requests"]
+            self.assertEqual(request["source_sha256"], topologies[case["id"]]["source_sha256"])
+            self.assertEqual(request["expected_labels"], [f"C{i}" for i in range(100)])
+        self.assertSetEqual({t["id"] for t in plan()["topologies"] if t["id"].startswith("scc")},
+                            {"scc-25", "scc-dag-25"})
+
+    def test_order_suite_replays_the_reviewed_bytes_in_work_and_public_svg(self):
+        result = plan("topology-orders")
+        groups = {}
+        for case, row in zip(result["scenarios"], result["topologies"], strict=True):
+            canonical = row.get("canonical_id", row["id"])
+            groups.setdefault(canonical, []).append(row["source_sha256"])
+            self.assertEqual((case["id"], case["requests"][0]["source"]), (row["id"], row["source"]))
+            self.assertEqual(case["requests"][0]["expected_labels"], [f"C{i}" for i in range(row["nodes"])])
+        # An algorithm or interpreter update must preserve the nine frozen sources per graph.
+        self.assertEqual({k: bench.digest("\n".join(v).encode()) for k, v in groups.items()}, {
+            "scc-75": "b8f0f9f1afe84bad035367fb202fd0e466806aa7efefbce3e05198242e99ef72",
+            "scc-dag-75": "73aa985a49bad8d2fba87be8d93295fa4282cf2d653f62491c836ffd5b9eda63",
+            "scc-100": "63db828896e69bb547bba5bbba673908bca16e20f77ee72983a6208aa88664a4",
+            "scc-dag-100": "4449550eb542897afeb4b8ae82715abf45f0e9329076d5ebb49378ef25d3d80b",
+        })
+        one = plan("topology-orders", ["scc-100-declarations-3"])
+        self.assertEqual([case["id"] for case in one["scenarios"]], ["scc-100-declarations-3"])
+
+    def test_work_comparison_distinguishes_geometry_svg_and_charged_work(self):
+        ok = {"status": "accepted", "bytes": 20, "sha256": "svg"}
+        old = {"default": {"status": "accepted"}, "high": {"sha256": "layout"}, "high_budget": 1000,
+               "boundary": {"minimum_passing_budget": 99}, "svg": {"default": {"status": "layout_work_rejected"},
+                                                                  "high": {**ok, "layout_work_units": 120}}}
+        new = {**old, "boundary": {"minimum_passing_budget": 90}, "svg": {"default": ok, "high": {**ok, "layout_work_units": 95}}}
+        compared = bench.compare_topology(old, new)
+        self.assertEqual((compared["default_status"], compared["default_svg_status"], compared["delta"]),
+                         (["accepted", "accepted"], ["layout_work_rejected", "accepted"], -9))
+        new["svg"]["high"]["sha256"] = "different svg"
+        self.assertIsNone(bench.compare_topology(old, new)["delta"])
+        del new["svg"]
+        with self.assertRaisesRegex(ValueError, "incompatible"):
+            bench.compare_topology(old, new)
+        self.assertNotIn("default_svg_status", bench.compare_topology(new, new))
+
+    def test_imported_outcomes_are_explicit_and_bind_to_the_original_occurrences(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "manifest.json"
+            for name in ("regular", "unread", "settings", "broken"):
+                (path.parent / name).write_text("info", encoding="utf-8")
+            doc = dict(id="custom", origin="local", files=["regular", "unread", "settings", "broken", "unread"],
+                       expected_labels={"regular": ["hello"]}, expected_outcomes={"settings": "allow-empty", "broken": "reject"})
+            bench.write(path, doc)
+            requests = bench.document_scenario(path)["requests"]
+            self.assertEqual([r["expected_outcome"] for r in requests], ["draw", "unreviewed", "allow-empty", "reject", "unreviewed"])
+            for mapping, reason in [({"absent": "draw"}, "refer to files"), ({"unread": "pass"}, "invalid expected_outcome"),
+                                    ({"regular": "reject"}, "conflict")]:
+                bench.write(path, {**doc, "expected_outcomes": mapping})
+                with self.assertRaisesRegex(ValueError, reason):
+                    bench.document_scenario(path)
+
     def test_compare_refuses_incompatible_inputs_and_withholds_changed_output(self):
         base = {
             "schema_version": 1,
@@ -465,10 +540,15 @@ class PublicWorkloadsTest(unittest.TestCase):
             "host": ["test"],
             "runner_sha256": "a",
             "harness_sha256": "same measurement code",
-            "rows": {"mixed": {"outputs": ["x"], "completed": 1, "samples": [{"allocated_bytes": 20}]}},
+            "rows": {"mixed": {"outputs": ["x"], "completed": 1, "expected_outcomes": ["draw"], "samples": [{"allocated_bytes": 20}]}},
         }
         head = copy.deepcopy(base)
         head["rows"]["mixed"]["samples"] = [{"allocated_bytes": 30}]
+        row = bench.compare(base, head)["rows"]["mixed"]
+        self.assertEqual((row["status"], row["measured_output_check"]), ("matching-verification-outputs", "size-only"))
+        legacy = copy.deepcopy(base)
+        del legacy["rows"]["mixed"]["expected_outcomes"]
+        self.assertEqual(bench.compare(legacy, legacy)["rows"]["mixed"], {"status": "source-outcomes-unverified"})
         self.assertEqual(
             bench.compare(base, head)["rows"]["mixed"]["metrics"]["allocated_bytes"]["change_percent"],
             50,
@@ -489,8 +569,9 @@ class RustSvgVerificationTests(unittest.TestCase):
         identities, shared = bench.rust_signatures([svg], [request], "svg-data")
         self.assertTrue(shared)
         self.assertEqual(identities, [dict(sha256=bench.digest(svg.encode()), bytes=len(svg), observed_size=len(svg))])
-        with self.assertRaisesRegex(ValueError, "c4.*missing expected SVG labels"):
-            bench.rust_signatures([svg.replace("System", "service")], [request], "svg-data")
+        changed, _ = bench.rust_signatures([svg.replace("System", "service")], [request], "svg-data")
+        self.assertEqual(changed[0]["status"], "missing-labels")
+        self.assertNotEqual(changed[0]["sha256"], identities[0]["sha256"])
         with self.assertRaisesRegex(ValueError, "alternative label spellings"):
             bench.rust_signatures(identities, [request], "svg-data")
         self.assertEqual(bench.rust_signatures(identities, [dict(request, expected_labels=["Banking System"])], "svg-data"),
@@ -500,6 +581,53 @@ class RustSvgVerificationTests(unittest.TestCase):
         base = dict(schema_version=1, surface="rust", plan_sha256="plan", options={}, host=[], rows={},
                     harness_sha256="one executable", svg_validator_sha256="first reader")
         self.assertEqual(bench.compare(base, dict(base, svg_validator_sha256="second reader"))["classification"], "harness-changed")
+
+    def test_exact_mode_checks_every_measured_value_outside_the_native_clock(self):
+        small = "<svg><text>A</text></svg>"
+        changed = small.replace(">A<", ">B<")
+        def run(actual, exact, require_arrow=False):
+            with tempfile.TemporaryDirectory() as tmp:
+                directory = Path(tmp)
+                runner = directory / "runner"
+                runner.write_bytes(b"stub")
+                selected = {"id": "case", "requests": [{"fixture": "tiny", "source": "info", "source_sha256": bench.digest(b"info"), "diagram_id": "one"}]}
+                if require_arrow:
+                    selected["requests"][0]["drawing_facts"] = {"arrows": [{"edge": "L_A_B_0", "from": "A", "to": "B"}]}
+                frozen = directory / "plan.json"
+                bench.write(frozen, {"schema_version": 1, "scenarios": [selected]})
+                def observe(_runner, job):
+                    if job.get("verify_only"):
+                        values = {"outputs": [small]}
+                    elif job.get("return_measured_svg"):
+                        values = {"outputs": [actual], "metrics": {"elapsed_ns": 100}}
+                    else:
+                        values = {"sizes": [len(actual)], "metrics": {"elapsed_ns": 100}}
+                    return {**values, "harness_sha256": "fixed"}
+                args = argparse.Namespace(plan=frozen, metric="clock", operation="svg-data", scenario=[], site_layout=None,
+                                          site_css_bytes=0, samples=2, warmups=0, runner=runner, revision="frozen",
+                                          verify_measured_svg=exact, check_drawings=False, chrome=None)
+                with patch.object(bench, "child", side_effect=observe):
+                    return bench.run_rust(args)
+        rejected = run(changed, True)["rows"]["case"]
+        self.assertEqual(rejected["status"], "measurement-mismatch")
+        self.assertEqual(rejected["samples"], [])
+        self.assertIn("measured SVG differs", rejected["error"])
+        before, after = run(small, False), run(changed, False)
+        self.assertEqual(bench.compare(before, after)["rows"]["case"]["measured_output_check"], "size-only")
+        same = run(small, True)
+        self.assertEqual(bench.compare(same, same)["rows"]["case"]["status"], "same-output")
+        missing_arrow = run(small, True, require_arrow=True)
+        row = bench.compare(missing_arrow, missing_arrow)["rows"]["case"]
+        self.assertEqual(row["status"], "drawing-not-verified")
+        self.assertNotIn("metrics", row)
+        wrong = copy.deepcopy(same)
+        wrong["rows"]["case"]["measured_svg_sha256"].pop()
+        with self.assertRaisesRegex(ValueError, "missing exact measured SVG evidence"):
+            bench.compare(same, wrong)
+        wrong = copy.deepcopy(same)
+        wrong["options"].update(operation="layout-json", metric="memory")
+        with self.assertRaisesRegex(ValueError, "measurement boundary"):
+            bench.compare(wrong, wrong)
 
 
 if __name__ == "__main__":

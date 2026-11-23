@@ -1,11 +1,14 @@
 """Inventory frozen workload inputs and the intersections reported by compare_reference."""
 
+from collections import Counter
 import hashlib
 import json
 
 if __package__:
+    from .workload_reference import expected_outcome
     from .workload_svg import valid_expected_labels
 else:
+    from workload_reference import expected_outcome
     from workload_svg import valid_expected_labels
 
 
@@ -24,6 +27,17 @@ def _indexed(rows, key):
             raise ValueError(f"missing or duplicate {key}: {name!r}")
         result[name] = row
     return result
+
+
+def ordered_requests(scenario):
+    requests = scenario.get("requests")
+    if not isinstance(requests, list) or not requests:
+        raise ValueError(f"empty or invalid request sequence in {scenario['id']!r}")
+    for index, request in enumerate(requests):
+        if (not isinstance(request, dict) or not isinstance(request.get("diagram_id"), str)
+                or not request["diagram_id"]):
+            raise ValueError(f"missing diagram_id in {scenario['id']!r} at index {index}")
+    return requests
 
 
 def _source_digest(row):
@@ -45,6 +59,8 @@ def _counts(requests, *, verified=False):
     if verified:
         counts["mechanical_only"] = len(requests) - len(labeled)
     else:
+        if any("expected_outcome" in r for r in requests):
+            counts["expected_outcomes"] = dict(Counter(map(expected_outcome, requests)))
         declared = [r for r in requests if "drawing_facts" in r]
         if declared:
             counts["with_drawing_facts"] = dict(requests=len(declared), distinct_sources=len({r["source_sha256"] for r in declared}))
@@ -58,14 +74,17 @@ def _intersection(row, planned, *, svg):
         raise ValueError(f"different request count in {name!r}")
 
     completed, stable, issues = [], [], []
+    rejections = 0
     for position, (request, result) in enumerate(zip(planned, observed), 1):
         # Older comparisons identify the source via the plan digest and ordered occurrence.
+        outcome = expected_outcome(request)
         if (
             not isinstance(result, dict)
             or result.get("fixture") != request["fixture"]
             or result.get("diagram_id") != request["diagram_id"]
             or result.get("source_sha256", request["source_sha256"]) != request["source_sha256"]
             or result.get("expected_labels", []) != request.get("expected_labels", [])
+            or expected_outcome(result) != outcome
             or result.get("drawing_required", False) is not (svg and "drawing_facts" in request)
         ):
             raise ValueError(f"different request identity in {name!r} at position {position}")
@@ -78,18 +97,26 @@ def _intersection(row, planned, *, svg):
                 or not isinstance(side.get("statuses"), list)
                 or not side["statuses"]
                 or (side["state"] == "stable" and side["statuses"] != ["ok"])
+                or (side["state"] == "expected-rejection") != (side["statuses"] == ["expected-rejection"])
+                or (side["state"] == "unmeasured") != (side["statuses"] == ["not-measured"])
+                or ("expected-rejection" in side["statuses"] and outcome != "reject")
+                or ("ok" in side["statuses"] and outcome == "reject")
             ):
                 raise ValueError(f"invalid comparison outcome in {name!r} at position {position}")
         if all(side["statuses"] == ["ok"] for side in sides):
             completed.append(request)
         if all(side["state"] == "stable" for side in sides):
             stable.append(request)
+        elif all(side["state"] == "expected-rejection" for side in sides):
+            rejections += 1
         else:
             issues.append(result)
 
     counts = dict(
         planned_requests=len(planned), common_completed=len(completed), common_stable=len(stable)
     )
+    if rejections or "common_expected_rejections" in row:
+        counts["common_expected_rejections"] = rejections
     for key, count in counts.items():
         if type(row.get(key)) is not int or row[key] != count:
             raise ValueError(f"comparison {key} disagrees with requests in {name!r}")
@@ -98,7 +125,9 @@ def _intersection(row, planned, *, svg):
         planned_requests=len(planned),
         common_completed=_counts(completed, verified=True),
         common_stable=_counts(stable, verified=True),
+        common_expected_rejections=rejections,
         non_stable_requests=issues,
+        **({"worker_failures": row["worker_failures"]} if "worker_failures" in row else {}),
         **({"drawing_checks": row["drawing_checks"]} if "drawing_checks" in row else {}),
     )
 
@@ -108,9 +137,11 @@ def _family_coverage(families, rows):
     result = dict(planned=len(families), reported=len(observed),
                   unreported=[family for name, family in families.items() if name not in rows])
     for side in ("left", "right"):
-        gaps = [{"family": family, **request[side]} for family, request in observed if request[side]["state"] != "stable"]
+        gaps = [{"family": family, **request[side]} for family, request in observed
+                if request[side]["state"] not in ("stable", "expected-rejection")]
+        rejections = sum(request[side]["state"] == "expected-rejection" for _, request in observed)
         result[side] = dict(completed=sum(request[side]["statuses"] == ["ok"] for _, request in observed),
-                            stable=len(observed) - len(gaps), gaps=gaps)
+                            stable=len(observed) - len(gaps) - rejections, expected_rejections=rejections, gaps=gaps)
     result["both_stable"] = sum(request["left"]["state"] == request["right"]["state"] == "stable" for _, request in observed)
     return result
 
@@ -153,11 +184,10 @@ def summarize_coverage(raw_plan: bytes, comparisons=()) -> dict:
     scenarios = _indexed(plan["scenarios"], "id")
     inventory, all_requests, families = [], [], {}
     for name, scenario in scenarios.items():
-        requests = scenario["requests"]
-        if not requests:
-            raise ValueError(f"empty request sequence in {name!r}")
+        requests = ordered_requests(scenario)
         missing_labels = []
-        for diagram_id, request in _indexed(requests, "diagram_id").items():
+        for request in requests:
+            diagram_id = request["diagram_id"]
             if not isinstance(request.get("fixture"), str) or not request["fixture"]:
                 raise ValueError(f"expected a fixture in {name!r}")
             labels = request.get("expected_labels", [])

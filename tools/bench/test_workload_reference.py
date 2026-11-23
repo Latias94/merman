@@ -7,7 +7,7 @@ else:
     from workload_reference import compare_reference
 
 
-def report(surface, engine, times=((1, 100), (2, 2), (100, 1)), fmt="svg"):
+def report(surface, engine, times=((1, 100), (2, 2), (100, 1)), fmt="svg", *, wasm=False):
     node = surface == "node"
     scale = 1 if engine == "merman" else 2
     requests = [
@@ -26,6 +26,8 @@ def report(surface, engine, times=((1, 100), (2, 2), (100, 1)), fmt="svg"):
         host=dict(hostname="bench", platform="win32", arch="x64"),
         scenarios=[row],
     )
+    if fmt == "png":
+        data["png_decoder"] = {"name": "Pillow", "version": "test"}
     batches = []
     for sample in times:
         results = []
@@ -41,11 +43,19 @@ def report(surface, engine, times=((1, 100), (2, 2), (100, 1)), fmt="svg"):
         )
     if node:
         merman = engine == "merman"
+        scope = "node-entry-and-transport" if merman else "node-entry"
+        if wasm:
+            package, backend, roles = "@mermanjs/node-wasm", "node-wasm", ["entry", "wasm-glue", "wasm-module"]
+        elif merman:
+            package, backend, roles = "@mermanjs/node", "napi", ["entry", "native-addon"]
+        else:
+            package, backend, roles = "pele", "javascript", ["entry"]
         data.update(
             output_format=fmt,
             process_lifecycle="fresh-per-scenario",
-            backend="napi" if merman else "javascript",
-            package=dict(name="@mermanjs/node" if merman else "pele", version="1.2.3"),
+            backend=backend,
+            package=dict(name=package, version="1.2.3",
+                         entry=f"/products/{engine}/entry", entry_sha256="f" * 64),
             render_api="MermanEngine.renderSvgSync" if merman else "render",
         )
         cold = deepcopy(batches[0])
@@ -54,9 +64,11 @@ def report(surface, engine, times=((1, 100), (2, 2), (100, 1)), fmt="svg"):
         cold["complete_batch_ms"] = 1
         row.update(cold_batch=cold, warm_samples=batches)
     else:
+        scope, roles = "command-prefix", ["executable"]
         data.update(
             format=fmt,
             binary=engine,
+            command_prefix=[f"/products/{engine}/executable"],
             version="1.2.3",
             version_probe=dict(status="ok"),
             process_lifecycle="fresh-process-per-diagram",
@@ -66,10 +78,68 @@ def report(surface, engine, times=((1, 100), (2, 2), (100, 1)), fmt="svg"):
             render_environment={},
         )
         row["batches"] = batches
+    data["artifact_identity"] = dict(scope=scope, status="recorded", files=[
+        dict(role=role, path=f"/products/{engine}/{role}", bytes=7, sha256="f" * 64) for role in roles
+    ])
     return data
 
 
 class ReferenceTests(unittest.TestCase):
+    def test_comparisons_distinguish_same_version_rebuilds_and_read_historical_reports(self):
+        for surface, peer in (("node", "pele"), ("cli", "mmdc")):
+            with self.subTest(surface=surface):
+                left, right = report(surface, "merman"), report(surface, peer)
+                if surface == "cli":
+                    right["command_prefix"].append("/mmdc.js")
+                    right["artifact_identity"]["files"].append(dict(role="script", path="/mmdc.js", bytes=7, sha256="a" * 64))
+                original = compare_reference(deepcopy(left), right)
+                left["artifact_identity"]["files"][-1] = {**left["artifact_identity"]["files"][-1], "sha256": "0" * 64}
+                rebuilt = compare_reference(deepcopy(left), right)
+                self.assertEqual(rebuilt["left"]["version"], original["left"]["version"])
+                self.assertNotEqual(rebuilt["left"], original["left"])
+                self.assertEqual(rebuilt["right"]["artifact_identity"], right["artifact_identity"])
+                self.assertEqual(rebuilt["left"]["artifact_identity"], left["artifact_identity"])
+                self.assertEqual(rebuilt["scenarios"][0]["complete_batch_ms"]["right_over_left"], 2)
+                del left["artifact_identity"]
+                if surface == "node":
+                    left["package"]["entry_sha256"] = "a" * 64
+                historical = compare_reference(left, right)
+                self.assertEqual(historical["left"]["artifact_identity"]["status"], "unknown")
+                self.assertIn("merman", historical["ratio_withheld_reason"])
+                row, = historical["scenarios"]
+                self.assertEqual((row["common_stable"], row["complete_batch_ms"]["left"]), (2, 111))
+                self.assertIsNone(row["complete_batch_ms"]["right_over_left"])
+
+    def test_partial_or_malformed_evidence_cannot_identify_a_transport(self):
+        left, right = report("node", "merman"), report("node", "pele")
+        identity = left["artifact_identity"]
+        identity["files"].pop()
+        with self.assertRaisesRegex(ValueError, "incomplete product artifact"):
+            compare_reference(left, right)
+        identity.update(status="unknown", reason="No loaded addon")
+        self.assertIsNone(compare_reference(left, right)["scenarios"][0]["common_render_ms"]["right_over_left"])
+        identity["files"][0]["sha256"] = "version-1.2.3"
+        with self.assertRaisesRegex(ValueError, "artifact file evidence"):
+            compare_reference(left, right)
+
+    def test_recorded_file_evidence_must_match_the_reported_entry_or_command(self):
+        left, right = report("node", "merman"), report("node", "pele")
+        left["package"]["entry_sha256"] = "b" * 64
+        with self.assertRaisesRegex(ValueError, "differs from the Node entry"):
+            compare_reference(left, right)
+        left, right = report("cli", "merman"), report("cli", "mmdc")
+        left["command_prefix"] = ["/path/to/old-binary"]
+        with self.assertRaisesRegex(ValueError, "differs from the CLI command"):
+            compare_reference(left, right)
+
+    def test_png_content_ratio_requires_matching_decoder_evidence(self):
+        left, right = (report("cli", engine, fmt="png") for engine in ("merman", "mmdc"))
+        for decoder in (None, {"name": "Pillow", "version": "different"}):
+            right["png_decoder"] = decoder
+            compared = compare_reference(left, right)
+            self.assertIn("PNG decoder", compared["ratio_withheld_reason"])
+            self.assertIsNone(compared["scenarios"][0]["complete_batch_ms"]["right_over_left"])
+
     def test_historical_or_changed_collector_preserves_coverage_and_withholds_ratios(self):
         left, right = report("cli", "merman"), report("cli", "mmdc")
         for fingerprint in (None, "f" * 64):
@@ -146,6 +216,93 @@ class ReferenceTests(unittest.TestCase):
         self.assertIsNone(row["common_render_ms"])
         self.assertIsNone(row["complete_batch_ms"])
 
+    def test_only_matching_reviewed_output_classes_get_warm_request_times(self):
+        outcomes = ["draw", "allow-empty", "allow-empty", "allow-empty", "unreviewed", "reject", "reject", "draw"]
+        times = [(1, 2, 3, 4, 5, 6, 7, 8)] * 2
+        left, right = report("node", "merman", times), report("node", "pele", times)
+        for data in (left, right):
+            row = data["scenarios"][0]
+            for req, outcome in zip(row["requests"], outcomes):
+                req["expected_outcome"] = outcome
+            for batch in [row["cold_batch"], *row["warm_samples"]]:
+                results = batch["results"]
+                results[1]["output_class"] = "empty"
+                results[2]["output_class"] = "empty" if data is left else "draw"
+                results[3]["output_class"] = "draw"
+                results[5] = dict(status="expected-rejection", elapsed_ms=9000)
+                results[6] = dict(status="expected-rejection" if data is left else "render-error", elapsed_ms=9000)
+        (row,) = compare_reference(left, right)["scenarios"]
+        self.assertEqual((row["common_stable"], row["common_completed"], row["common_expected_rejections"]), (6, 6, 1))
+        self.assertIsNone(row["complete_batch_ms"])
+        self.assertIsNone(row["common_render_ms"])
+        groups = [(g["expected_outcome"], g["output_class"], g["request_indices"], g["render_ms"]) for g in row["render_timing_groups"]]
+        self.assertEqual(groups, [(outcome, kind, indices, dict(left=ms, right=ms * 2, right_over_left=2))
+                                  for outcome, kind, indices, ms in [("draw", "draw", [0, 7], 9), ("allow-empty", "empty", [1], 2),
+                                                                    ("allow-empty", "draw", [3], 4)]])
+        self.assertEqual([r["expected_outcome"] for r in row["requests"]], outcomes)
+        self.assertEqual(row["requests"][5]["left"]["state"], "expected-rejection")
+        self.assertEqual(row["requests"][6]["right"]["statuses"], ["render-error"])
+
+    def test_unreviewed_and_unclassified_allowed_outputs_retain_observations_without_timings(self):
+        left, right = report("node", "merman", [(2,)]), report("node", "pele", [(3,)])
+        for outcome in ("allow-empty", "unreviewed"):
+            for data in (left, right):
+                row = data["scenarios"][0]
+                row["requests"][0]["expected_outcome"] = outcome
+                if outcome == "unreviewed":
+                    for batch in [row["cold_batch"], *row["warm_samples"]]:
+                        batch["results"][0]["output_class"] = "draw"
+            with self.subTest(outcome=outcome):
+                row, = compare_reference(left, right)["scenarios"]
+                self.assertEqual(row["common_stable"], 1)
+                self.assertEqual(row["render_timing_groups"], [])
+                self.assertIsNone(row["common_render_ms"])
+                self.assertIsNone(row["complete_batch_ms"])
+
+    def test_allow_empty_cli_wall_clock_requires_the_same_observed_class(self):
+        left, right = (report("cli", engine, [(2,), (3,)], fmt="png") for engine in ("merman", "mmdc"))
+        for kind in ("empty", "draw"):
+            for data in (left, right):
+                row = data["scenarios"][0]
+                row["requests"][0].update(expected_outcome="allow-empty", expected_labels=[])
+                for batch in row["batches"]:
+                    batch["results"][0].update(expected_outcome="allow-empty", output_class="empty" if data is left else kind)
+            row, = compare_reference(left, right)["scenarios"]
+            self.assertEqual(row["common_stable"], 1)
+            if kind == "empty":
+                self.assertEqual(row["complete_batch_ms"]["right_over_left"], 2)
+            else:
+                self.assertIsNone(row["complete_batch_ms"])
+                self.assertIsNone(row["common_render_ms"])
+
+    def test_failed_workers_need_a_complete_ordered_inventory_without_partial_measurements(self):
+        left, right = report("node", "merman"), report("node", "pele")
+        for raw in (left, right):
+            raw["planned_scenarios"] = 1
+            raw["scenarios"][0]["index"] = 0
+        left["status"] = "failed"
+        failed = left["scenarios"][0]
+        failed.update(status="timeout", error="scenario timed out", unmeasured_requests=2,
+                      init_ms=None, first_render_ms=None, cold_batch=None, warm_samples=[])
+        for a, b in [(left, right), (right, left)]:
+            row, = compare_reference(a, b)["scenarios"]
+            missing, measured = ("left", "right") if a is left else ("right", "left")
+            self.assertEqual(row["worker_failures"], {missing: {"status": "timeout", "error": "scenario timed out"}})
+            self.assertEqual([r[missing]["state"] for r in row["requests"]], ["unmeasured"] * 2)
+            self.assertEqual([r[measured]["state"] for r in row["requests"]], ["stable"] * 2)
+            self.assertEqual((row["common_completed"], row["common_stable"], row["common_expected_rejections"]), (0, 0, 0))
+            self.assertIsNone(row["complete_batch_ms"])
+            self.assertIsNone(row["common_render_ms"])
+        for attrs in ({"index": 1}, {"warm_samples": [{}]}, {"cold_batch": {}}, {"first_render_ms": 1}, {"status": "unavailable"},
+                      {"unmeasured_requests": 1}, {"requests": list(reversed(failed["requests"]))}):
+            with self.subTest(attrs=attrs), self.assertRaises(ValueError):
+                compare_reference({**left, "scenarios": [{**failed, **attrs}]}, right)
+        for change in ({"planned_scenarios": 2}, {"planned_scenarios": None}, {"status": "ok"}, {"failed_scenario": {}}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                compare_reference({**left, **change}, right)
+        with self.assertRaises(ValueError):
+            compare_reference({**right, "status": "failed"}, left)
+
     def test_default_png_and_explicit_options_keep_dimensions_and_coverage(self):
         left, right = report("cli", "merman", fmt="png"), report("cli", "mmdc", fmt="png")
         left["render_environment"] = right["render_environment"] = {
@@ -197,6 +354,7 @@ class ReferenceTests(unittest.TestCase):
             ("source_sha256", "d" * 64),
             ("diagram_id", "other"),
             ("expected_labels", []),
+            ("expected_outcome", "reject"),
         ):
             other = deepcopy(right)
             other["scenarios"][0]["requests"][0][key] = value

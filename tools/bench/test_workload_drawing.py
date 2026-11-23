@@ -40,6 +40,14 @@ def browser_reply(rows, **changes):
 
 
 class DrawingAuditTests(unittest.TestCase):
+    def test_reused_svg_id_keeps_each_occurrences_facts_at_its_original_position(self):
+        cases = [request("preview", FACTS), request("preview"), request("preview", {"label_widths": {"Z": "Approved"}})]
+        raw = json.dumps({"schema_version": 1, "scenarios": [{"id": "updates", "requests": cases}]}).encode()
+        _, inventory = drawing._inventory(raw)
+        checks = inventory["updates"]["cases"]
+        self.assertEqual([row["request_index"] for row in checks], [0, 2])
+        self.assertNotEqual(checks[0]["facts"], checks[1]["facts"])
+
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)

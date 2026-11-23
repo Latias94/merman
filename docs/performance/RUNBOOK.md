@@ -117,14 +117,60 @@ used by Node and the CLI. Historical runners can replay flat-label plans with th
 reader. Use a current harness on both revisions for wrapped labels or alternative spellings.
 `compare` classifies a different SVG reader fingerprint as a harness change.
 
+For a single SVG returned to a caller, select a one-request scenario and verify the bytes from
+each timed call. Supply the same option for both revisions. Batched clocks and the memory runner
+keep the original drop policy and expose a size check for the measured products.
+
+```console
+python tools/bench/perf_runner.py workloads rust --plan target/bench/plan.json --scenario small-svg --metric clock --verify-measured-svg --check-drawings --out target/bench/single-return.json
+```
+
 ```console
 python tools/bench/perf_runner.py workloads compare target/bench/base.json target/bench/head.json --out target/bench/diff.json
 ```
 
 The full plan includes a five-diagram project guide, Zed issue examples, configured multilingual
 labels, default and explicit Dagre layouts, mixed families, two equal-length 100-message Sequence
-inputs with repeated or unique labels, and 20 topology rows (five shapes at 50, 100, 250 and 500 nodes).
-It also includes the host text measurement guide's integration diagram and a Sequence loop with
+inputs with repeated or unique labels, and 32 topology rows. Five shapes have 50, 100, 250 and
+500 nodes. The `scc` and `scc-dag` pair have 25, 50, 75 and 100 nodes. The full render suite
+includes the 25-, 75- and 100-node pairs, a fixed 75-node declaration shuffle and a 100-node
+reversed-edge statement order for both orientations. To reproduce the original and reordered
+100-node sources alongside their orientation control, freeze the desired cases in one plan.
+
+```console
+python tools/bench/perf_runner.py workloads plan --scenario scc-100 --scenario scc-100-edges-reverse --scenario scc-dag-100 --scenario scc-dag-100-edges-reverse --out target/bench/cycles.json
+python tools/bench/perf_runner.py workloads rust --plan target/bench/cycles.json --metric work --out target/bench/cycle-work.json
+```
+
+For all 36 order variants use `workloads plan --suite topology-orders`. Each source is also a
+single-request public render case. In a work report, `default`, `high` and
+`boundary.minimum_passing_budget` describe the layout writer. `svg.default` and `svg.high`
+describe actual public SVG returns, including the digest and work consumed on success or the
+first observed resource error. The exact adjacent passing and failing ceilings apply to geometry.
+
+The `config-only-gantt` and `incomplete-flow` scenarios exercise an allowed empty diagram and an
+expected parser rejection. A Rust batch containing a rejected request has an untimed outcome
+record. The driver writes observed failures along with subsequent scenarios. Add `--require-complete`
+when the caller needs a failing exit status for a source that misses its declared outcome. With
+`--metric work` this option requires both geometry and SVG to succeed at the default budget.
+An incomplete collection or an inconsistent measurement fails independently of that option.
+
+`editor-fixed-id` submits a draft, an incomplete edit and the repaired diagram with the same
+SVG ID, `preview-01`. `editor-rotating-id` submits the same three source strings with new IDs.
+The Node matrix preserves this order in each engine. The rejected edit stays visible in coverage
+and the three-request batch has no render-speed ratio. For a custom document manifest set
+`"diagram_id":"preview-01"` to reuse one SVG ID across all its requests.
+
+The full plan also replays the pinned Mermaid examples (nine occurrences) and C4 (six occurrences)
+author pages from tracked fixtures. Each manifest links to the original fences and identifies
+trailing whitespace differences. To reproduce generated-site weighting for those same nine
+examples, select its 18-request manifest.
+
+```console
+python tools/bench/perf_runner.py workloads plan --document tools/bench/documents/mermaid-examples-generated.json --scenario mermaid-examples-generated --out target/bench/generated-examples.json
+```
+
+The host text measurement guide supplies an integration diagram. The Sequence loop includes
 1, 32 and 256 identical messages. Run the three `sequence-loop-messages-*` scenarios separately
 to see how end-to-end time and output size grow with the number of messages. The guide exercises
 rendering the documented interaction. Measuring callback cost requires a host that invokes it.
@@ -134,7 +180,9 @@ with `--document path/to/manifest.json`. For example, a manifest can contain
 `{"id":"guide","origin":"project@revision/chapter.md","files":["intro.mmd","example.mmd","intro.mmd"]}`.
 Paths are relative to the manifest. Keep repeated occurrences and pin the upstream revision.
 Add `"expected_labels":{"intro.mmd":["Start","End"]}` to check that file's reviewed labels
-at every occurrence. Other imported sources retain their mechanical SVG checks.
+at every occurrence. Use `"expected_outcomes":{"settings.mmd":"allow-empty","incomplete.mmd":"reject"}`
+for reviewed configuration or syntax cases. Imports without source facts retain their raw
+observations under `unreviewed`.
 `--pele-fixtures path/to/mermaid-v13/packages/bench/fixtures/pele` imports the five shared upstream
 inputs. Local `.mmd` text is decoded as UTF-8 with LF line endings before hashing.
 
@@ -153,14 +201,27 @@ Open `node-full/summary.md` for the complete-batch medians and how many requests
 products. The adjacent `coverage.json` lists distinct sources, label checks and individual
 failure or stability differences. Use `--peer mermaid-v13` or `--peer pele` for a focused run.
 `--merman-module PATH` selects a built local N-API or Node-WASM package entry while the peer
-versions and working directory stay fixed. A failed collector leaves its raw output, the
-independent peer results and an incomplete bundle. A diagram rejected by a functioning collector
-is recorded as an observed request outcome. The bundle includes the exact npm manifest and lock
+versions and working directory stay fixed. A worker exit or timeout leaves an unmeasured row for
+that scenario. The collector continues with later scenarios and the matrix still writes comparisons
+for the observed intersection. A collector-wide failure leaves an incomplete bundle and its raw
+diagnostics. A diagram rejected by a functioning collector is recorded as an observed request
+outcome. The bundle includes the exact npm manifest and lock
 under `consumer/`. Inspect a plan or existing external comparisons with these commands.
 
 ```console
 python tools/bench/perf_runner.py workloads coverage --plan target/bench/full-plan.json
 python tools/bench/perf_runner.py workloads coverage --plan target/bench/node-full/plan.json --comparison target/bench/node-full/merman-vs-mermaid-v13.json --out target/bench/v13-coverage.json
+```
+
+For independent process observations, freeze a small selection and run an even number of rounds.
+`--samples` controls the warm batches inside each worker. `--process-rounds` controls the
+number of independent workers per product and scenario. The default collection remains a single
+pass. Each numbered directory retains its raw observations, comparisons and coverage. Inspect
+`process-rounds.json` for every pair and the reason for any withheld ratio.
+
+```console
+python tools/bench/perf_runner.py workloads plan --scenario family-sequence --scenario family-pie --out target/bench/round-plan.json
+python tools/bench/perf_runner.py workloads node-matrix --peer pele --plan target/bench/round-plan.json --samples 8 --process-rounds 8 --out-dir target/bench/node-pairs
 ```
 
 For the declared arrows, groups, label widths and Sequence message counts, install the repository's existing Puppeteer
@@ -225,7 +286,12 @@ The Node adapter accepts `--module PATH` to select an explicit package entry. Th
 resolves an installed `mmdc` executable, including its npm shim on Windows. Use `--format png`
 on both commands to compare file-to-PNG exports. `--font-file PATH` selects a Merman font;
 `--extra-arg=ARG` records explicit CLI arguments, including renderer-specific font configuration.
-PNG validation records dimensions and checks an equivalent SVG after timing. The browser corpus
+Install the PNG observer with `python -m pip install -r tools/bench/requirements-png.txt`.
+PNG validation decodes each delivered file and records dimensions and pixel variation after timing.
+On Windows `peak_working_set_bytes` measures resident memory of the launched process and
+`peak_job_commit_bytes` measures peak committed memory across its job, including browser
+children. Compare each metric within its own definition.
+The exporter also checks labels on an auxiliary SVG. The browser corpus
 and its existing visual comparisons remain available separately.
 
 ```console

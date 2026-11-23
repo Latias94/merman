@@ -10,7 +10,7 @@ use merman::{
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use std::{hint::black_box, io};
+use std::{hint::black_box, io, time::Instant};
 
 #[derive(Deserialize)]
 struct Request {
@@ -38,6 +38,20 @@ enum Operation {
     PrepareRetained,
 }
 
+impl Operation {
+    fn svg_request(self, input: &Request) -> SvgRequest {
+        let mut request = input.svg();
+        request.pipeline = match self {
+            Self::StaticSvg => Some(SvgPipeline::parity().with_generation(SvgGeneration::Static)),
+            Self::ResvgSvg => {
+                Some(SvgPipeline::resvg_safe().with_generation(SvgGeneration::Static))
+            }
+            _ => None,
+        };
+        request
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(tag = "task", rename_all = "lowercase")]
 enum Job {
@@ -49,6 +63,8 @@ enum Job {
         site: Option<Value>,
         #[serde(default)]
         verify_only: bool,
+        #[serde(default)]
+        return_measured_svg: bool,
     },
     Topology {
         source: String,
@@ -68,23 +84,15 @@ fn execute(renderer: &Renderer, input: &Request, operation: Operation) -> Result
     let source = &input.source;
     let empty = || format!("{} returned no diagram", input.diagram_id);
     match operation {
-        Operation::SvgData | Operation::StaticSvg | Operation::ResvgSvg => {
-            let mut request = input.svg();
-            request.pipeline = match operation {
-                Operation::StaticSvg => {
-                    Some(SvgPipeline::parity().with_generation(SvgGeneration::Static))
-                }
-                Operation::ResvgSvg => {
-                    Some(SvgPipeline::resvg_safe().with_generation(SvgGeneration::Static))
-                }
-                _ => None,
-            };
-            renderer
-                .render_svg_data(RenderRequest::svg(source, control, request))
-                .map_err(|e| e.to_string())?
-                .map(Product::Data)
-                .ok_or_else(empty)
-        }
+        Operation::SvgData | Operation::StaticSvg | Operation::ResvgSvg => renderer
+            .render_svg_data(RenderRequest::svg(
+                source,
+                control,
+                operation.svg_request(input),
+            ))
+            .map_err(|e| e.to_string())?
+            .map(Product::Data)
+            .ok_or_else(empty),
         Operation::Svg => match renderer
             .render(RenderRequest::svg(source, control, input.svg()))
             .map_err(|e| e.to_string())?
@@ -131,7 +139,7 @@ impl Product {
     fn verification_output(self) -> Result<Value, String> {
         let size = self.result_size();
         let mut verified = match self {
-            // Only the untimed verification process sends SVG text to the shared artifact reader.
+            // The driver validates complete SVG text outside the measurement interval.
             Self::Data(svg) => return Ok(Value::String(svg)),
             Self::Layout(bytes) => {
                 let parsed: Value = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
@@ -190,22 +198,55 @@ impl Trial<'_> {
     }
 
     fn verify(&self) -> Result<Vec<Value>, String> {
-        // Match the observed retention policy before consuming the retained artifacts to verify them.
-        if matches!(self.operation, Operation::PrepareRetained) {
-            let products = self
-                .inputs
-                .iter()
-                .map(|i| execute(&self.renderer, i, self.operation))
-                .collect::<Result<Vec<_>, _>>()?;
-            return products
-                .into_iter()
-                .map(Product::verification_output)
-                .collect();
-        }
-        self.inputs
+        let products = self
+            .inputs
             .iter()
-            .map(|input| execute(&self.renderer, input, self.operation)?.verification_output())
-            .collect()
+            .map(|input| execute(&self.renderer, input, self.operation));
+        let verify = |result: Result<Product, String>| match result {
+            Ok(product) => product.verification_output(),
+            Err(message) => Ok(json!({"render_error": message})),
+        };
+        if matches!(self.operation, Operation::PrepareRetained) {
+            // Match the observed retention policy before consuming the artifacts for verification.
+            let retained: Vec<_> = products.collect();
+            return retained.into_iter().map(verify).collect();
+        }
+        products.map(verify).collect()
+    }
+
+    fn measure_returned_svg(&self) -> Result<Value, String> {
+        let [input] = self.inputs else {
+            return Err("returned-SVG timing requires exactly one request".into());
+        };
+        let request = RenderRequest::svg(
+            &input.source,
+            OperationControl::new(),
+            self.operation.svg_request(input),
+        );
+        let (elapsed, svg) = match self.operation {
+            Operation::Svg => {
+                let start = Instant::now();
+                let output = black_box(self.renderer.render(request));
+                let elapsed = start.elapsed();
+                let RenderOutput::Svg(Some(output)) = output.map_err(|e| e.to_string())? else {
+                    return Err("render returned no SVG".into());
+                };
+                (elapsed, output.into_parts().0)
+            }
+            Operation::SvgData | Operation::StaticSvg | Operation::ResvgSvg => {
+                let start = Instant::now();
+                let output = black_box(self.renderer.render_svg_data(request));
+                let elapsed = start.elapsed();
+                (
+                    elapsed,
+                    output
+                        .map_err(|e| e.to_string())?
+                        .ok_or("render returned no SVG")?,
+                )
+            }
+            _ => return Err("returned-SVG timing requires an SVG operation".into()),
+        };
+        Ok(json!({"metrics": {"elapsed_ns": elapsed.as_nanos() as u64}, "outputs": [svg]}))
     }
 }
 
@@ -227,9 +268,13 @@ pub(super) fn run(
             warmups,
             site,
             verify_only,
+            return_measured_svg,
         } => {
             if requested != metric || requests.is_empty() {
                 return Err("wrong runner or empty workload".into());
+            }
+            if return_measured_svg && (metric != "clock" || verify_only) {
+                return Err("returned-SVG timing requires a clock measurement".into());
             }
             let renderer = match site {
                 Some(site) => renderer.with_presentation_engine(
@@ -250,15 +295,22 @@ pub(super) fn run(
                 retained,
                 sizes: Vec::with_capacity(requests.len()),
             };
-            for _ in 0..warmups {
-                trial.batch()?;
-                trial.release();
-            }
             if verify_only {
+                for _ in 0..warmups {
+                    trial.verify()?;
+                }
                 json!({"outputs": trial.verify()?})
             } else {
-                let metrics = measure(&mut trial)?;
-                json!({"metrics": metrics, "sizes": trial.sizes})
+                for _ in 0..warmups {
+                    trial.batch()?;
+                    trial.release();
+                }
+                if return_measured_svg {
+                    trial.measure_returned_svg()?
+                } else {
+                    let metrics = measure(&mut trial)?;
+                    json!({"metrics": metrics, "sizes": trial.sizes})
+                }
             }
         }
         Job::Topology {

@@ -11,6 +11,7 @@ import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 import zlib
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import redirect_stdout
 from unittest.mock import patch
 
@@ -47,10 +48,25 @@ if mode == b'missing':
     sys.exit(0)
 if mode == b'timeout':
     time.sleep(15)
+if mode in (b'reject', b'partial', b'host'):
+    if mode == b'partial':
+        output.write_bytes(b'partial')
+    if mode == b'host':
+        print('Error: Failed to launch the browser', file=sys.stderr)
+    else:
+        print('Generating single mermaid chart', flush=True)
+        print('Error: Parse error on line 10:', file=sys.stderr)
+        print("------^\\nExpecting 'NODE_STRING', got 'EOF'", file=sys.stderr)
+    print('at renderer\\n' * 250, file=sys.stderr)
+    sys.exit(1)
 if output.suffix == '.png':
     output.write_bytes(Path(__file__).with_suffix('.png').read_bytes())
 else:
     svg = ET.Element('svg', id=diagram)
+    if mode == b'empty':
+        svg.set('viewBox', '0 0 17 17')
+        output.write_bytes(ET.tostring(svg))
+        sys.exit(0)
     if mode == b'error':
         svg.set('aria-roledescription', 'error')
     ET.SubElement(svg, 'desc').text = json.dumps(dict(pid=os.getpid(), args=args))
@@ -60,15 +76,16 @@ else:
 """
 
 
-def png(width=1, height=1):
-    def chunk(tag, data):
-        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data))
+def chunk(tag, data):
+    return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data))
 
+
+def png(width=2, height=1, compressed=None):
     ihdr = struct.pack(">2I5B", width, height, 8, 0, 0, 0, 0)
     return (
         b"\x89PNG\r\n\x1a\n"
         + chunk(b"IHDR", ihdr)
-        + chunk(b"IDAT", zlib.compress(b"\0\0"))
+        + chunk(b"IDAT", zlib.compress(b"\0\0\xff") if compressed is None else compressed)
         + chunk(b"IEND", b"")
     )
 
@@ -115,6 +132,12 @@ class WorkloadCliTests(unittest.TestCase):
             "--output-dir",
             str(self.root / "out"),
         ]
+
+    def set_outcomes(self, *outcomes):
+        plan = json.loads(self.plan.read_bytes())
+        for request, outcome in zip(plan["scenarios"][0]["requests"], outcomes, strict=True):
+            request["expected_outcome"] = outcome
+        self.plan.write_text(json.dumps(plan), encoding="utf-8")
 
     def measure(self, engine="merman", fmt="svg", samples=1, extra=()):
         output = io.StringIO()
@@ -181,6 +204,52 @@ class WorkloadCliTests(unittest.TestCase):
         self.assertTrue((Path(old["run_dir"]) / rows[0]["output"]).is_file())
         self.assertFalse((Path(report["run_dir"]) / rows[0]["output"]).exists())
 
+    def test_same_version_script_at_one_path_has_distinct_product_bytes(self):
+        self.write_plan("good")
+        identities = []
+        for build in ("A", "B"):
+            self.fake.write_text(FAKE_CLI + f"\n# build {build}\n", encoding="utf-8")
+            code, report = self.measure()
+            self.assertEqual((code, report["version"]), (0, "fixture-cli 1.0"))
+            identity = report["artifact_identity"]
+            self.assertEqual((identity["scope"], identity["status"]), ("command-prefix", "recorded"))
+            expected = [("executable", Path(sys.executable)), ("script", self.fake)]
+            self.assertEqual(identity["files"], [dict(role=role, path=str(path), bytes=path.stat().st_size,
+                                                     sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+                                                 for role, path in expected])
+            identities.append(identity["files"])
+        self.assertEqual(identities[0][0], identities[1][0])
+        self.assertNotEqual(identities[0][1]["sha256"], identities[1][1]["sha256"])
+
+    def test_changed_command_during_collection_preserves_results_with_unknown_identity(self):
+        self.write_plan("good")
+        self.fake.write_text(FAKE_CLI + "\nwith open(__file__, 'a') as f: f.write('\\n# replaced\\n')\n")
+        code, report = self.measure()
+        self.assertEqual((code, report["completed"]), (0, 1))
+        identity = report["artifact_identity"]
+        self.assertEqual(identity["status"], "unknown")
+        self.assertIn(str(self.fake), identity["reason"])
+        self.assertEqual([file["role"] for file in identity["files"]], ["executable"])
+
+    @unittest.skipUnless(os.name == "nt", "Windows job accounting")
+    def test_peak_job_commit_includes_simultaneous_parent_and_child_allocations(self):
+        allocation = "import sys; data = bytearray(int(sys.argv[1])); data[::4096] = b'x' * len(data[::4096])"
+        parent = allocation + "\nimport subprocess\nsubprocess.run([sys.executable, '-B', '-c', sys.argv[2], sys.argv[3]], check=True)"
+        # Start the interpreter directly so Windows venv launchers do not join the two-process job.
+        python = sys._base_executable
+        size = 32 * 1024 * 1024
+        peaks = []
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            for child_size in (0, size):
+                result = cli.invoke([python, "-B", "-c", parent, str(size), allocation, str(child_size)],
+                                    15, self.root, pool)
+                self.assertEqual(result["status"], "ok", result)
+                resources = result["resources"]
+                self.assertEqual(resources["job_processes"], 2)
+                self.assertGreater(resources["peak_working_set_bytes"], 0)
+                peaks.append(resources["peak_job_commit_bytes"])
+        self.assertGreater(peaks[1] - peaks[0], size * 0.75)
+
     def test_png_dimensions_and_error_diagram_postflight(self):
         self.write_plan("good", "error")
         code, report = self.measure(engine="mmdc", fmt="png", samples=2)
@@ -188,7 +257,7 @@ class WorkloadCliTests(unittest.TestCase):
         self.assertEqual(len(report["png_svg_checks"]), 2)
         for batch in report["scenarios"][0]["batches"]:
             good, bad = batch["results"]
-            self.assertEqual((good["width"], good["height"], good["status"]), (1, 1, "ok"))
+            self.assertEqual((good["width"], good["height"], good["status"]), (2, 1, "ok"))
             self.assertEqual(
                 (bad["status"], bad["error"]), ("failed_svg_check", "Mermaid error diagram")
             )
@@ -214,6 +283,160 @@ class WorkloadCliTests(unittest.TestCase):
             with self.subTest(png=data):
                 with self.assertRaises(ValueError):
                     cli.png_size(data)
+
+    def test_png_content_uses_composited_pixels_even_with_a_good_svg_sibling(self):
+        from PIL import Image
+
+        self.write_plan("good")
+        path = self.fake.with_suffix(".png")
+        cases = (
+            ([(255, 255, 255, 255)] * 2, False),
+            ([(40, 90, 130, 0), (220, 5, 9, 0)], False),
+            ([(0, 0, 0, 0), (255, 255, 255, 255)], False),
+            ([(0, 0, 0, 128), (127, 127, 127, 255)], False),
+            ([(2, 3, 4, 255)] * 2, False),
+            ([(2, 3, 4, 0), (2, 3, 4, 255)], True),
+        )
+        for pixels, painted in cases:
+            with self.subTest(pixels=pixels):
+                img = Image.new("RGBA", (2, 1))
+                img.putdata(pixels)
+                img.save(path)
+                code, report = self.measure(fmt="png")
+                row = report["scenarios"][0]["batches"][0]["results"][0]
+                self.assertEqual(row["nonuniform_on_white"], painted)
+                self.assertEqual((row["width"], row["height"]), (2, 1))
+                self.assertEqual(row["sha256"], hashlib.sha256(path.read_bytes()).hexdigest())
+                self.assertEqual((code, row["status"]), (0, "ok") if painted else (1, "invalid_output"))
+                if not painted:
+                    self.assertEqual(row["artifact_status"], "empty-png")
+                    self.assertEqual(report["png_svg_checks"], [])
+
+    def test_palette_transparency_and_16_bit_gray(self):
+        from PIL import Image
+
+        path = self.fake.with_suffix(".png")
+        palette = Image.frombytes("P", (2, 1), b"\x00\x01")
+        palette.putpalette([150, 0, 0, 20, 160, 99])
+        palette.save(path, transparency=b"\x00\x00")
+        with self.assertRaisesRegex(ValueError, "nonuniform"):
+            cli.verify_output(path, "png")
+        palette.save(path, transparency=b"\x00\xff")
+        self.assertTrue(cli.verify_output(path, "png")["nonuniform_on_white"])
+        gray = Image.frombytes("I;16", (2, 1), struct.pack("<HH", 32000, 65535))
+        gray.save(path)
+        self.assertTrue(cli.verify_output(path, "png")["nonuniform_on_white"])
+        gray.save(path, transparency=32000)
+        self.assertFalse(cli.verify_output(path, "png", expected_outcome="allow-empty")["nonuniform_on_white"])
+
+    def test_png_requires_decodable_pixels_and_strict_framing_within_budget(self):
+        path = self.fake.with_suffix(".png")
+        deflate = zlib.compress(b"\x00\x00\xff")
+        image = png()
+        for bad in (
+            png(compressed=b"not zlib"), png(compressed=deflate[:4]),
+            png(compressed=zlib.compress(b"\x00")), png(compressed=zlib.compress(b"\xff\x00\xff")),
+            image + b"trailing", image[:33] + png(1, 2)[8:33] + image[33:], png(4097, 4096),
+        ):
+            path.write_bytes(bad)
+            for outcome in cli.EXPECTED_OUTCOMES:
+                with self.subTest(outcome=outcome, bad=bad[:50]), self.assertRaises(ValueError):
+                    cli.verify_output(path, "png", expected_outcome=outcome)
+        with patch.object(cli, "MAX_PNG_BYTES", 48), patch.object(cli, "png_decoder") as decoder:
+            path.write_bytes(png())
+            with self.assertRaisesRegex(ValueError, "encoded bytes"):
+                cli.verify_output(path, "png")
+            result = {"status": "ok", "output": path.name}
+            cli.verify(result, path.parent, [])
+            self.assertEqual(result["status"], "observer-limit")
+            decoder.assert_not_called()
+
+    def test_missing_png_decoder_is_a_setup_error_before_any_render(self):
+        self.write_plan("good")
+        with patch.dict(sys.modules, {"PIL": None}), patch.object(cli, "invoke") as invoke:
+            code, report = self.measure(fmt="png")
+        self.assertEqual((code, report["status"]), (2, "failed"))
+        self.assertIn("python -m pip install -r tools/bench/requirements-png.txt", report["error"])
+        invoke.assert_not_called()
+
+    def test_rejections_are_diagnostics_separate_from_completed_renders(self):
+        for fmt in ("svg", "png"):
+            with self.subTest(fmt=fmt):
+                self.write_plan("reject", "good")
+                self.set_outcomes("reject", "draw")
+                code, report = self.measure(engine="mmdc", fmt=fmt, samples=2)
+                self.assertEqual(
+                    (code, report["completed"], report["expected_rejections"], report["failed"]), (0, 2, 2, 0)
+                )
+                (scenario,) = report["scenarios"]
+                self.assertIsNone(scenario["first_render_ms"])
+                self.assertEqual(scenario["batch_samples_ms"], [None, None])
+                self.assertEqual([r["expected_outcome"] for r in scenario["requests"]], ["reject", "draw"])
+                for batch in scenario["batches"]:
+                    rejected, drawn = batch["results"]
+                    self.assertEqual(
+                        (rejected["status"], rejected["returncode"], rejected["expected_outcome"]),
+                        ("expected-rejection", 1, "reject"),
+                    )
+                    self.assertIn("Parse error on line 10:", rejected["diagnostic"])
+                    self.assertNotIn("Parse error", rejected["log_tail"])
+                    self.assertGreater(rejected["elapsed_ms"], 0)
+                    self.assertFalse((Path(report["run_dir"]) / rejected["output"]).exists())
+                    self.assertNotIn("sha256", rejected)
+                    self.assertEqual(drawn["status"], "ok")
+
+    def test_rendered_missing_partial_and_host_results_do_not_satisfy_reject(self):
+        self.write_plan("good", "missing", "partial", "host", "error", "timeout")
+        self.set_outcomes(*(["reject"] * 6))
+        code, report = self.measure(extra=["--timeout-seconds=1"])
+        self.assertEqual((code, report["expected_rejections"], report["failed"]), (1, 0, 6))
+        rows = report["scenarios"][0]["batches"][0]["results"]
+        self.assertEqual(
+            [r["status"] for r in rows],
+            ["unexpected-success", "invalid_output", "exit_error", "exit_error", "invalid_output", "timeout"],
+        )
+        self.assertEqual(rows[4]["artifact_status"], "error-svg")
+        self.assertTrue(rows[0]["sha256"])
+
+    def test_sized_blank_png_respects_outcome_and_svg_sidecar(self):
+        self.write_plan("empty", "empty", "empty", "empty")
+        self.set_outcomes("allow-empty", "draw", "reject", "unreviewed")
+        self.fake.with_suffix(".png").write_bytes(png(compressed=zlib.compress(b"\x00\xff\xff")))
+        code, report = self.measure(fmt="png")
+        self.assertEqual(
+            (code, report["completed"], report["expected_rejections"], report["failed"]), (1, 2, 0, 2)
+        )
+        rows = report["scenarios"][0]["batches"][0]["results"]
+        self.assertEqual([r["status"] for r in rows], ["ok", "invalid_output", "unexpected-success", "ok"])
+        self.assertEqual([r["nonuniform_on_white"] for r in rows], [False] * 4)
+        self.assertEqual([rows[i]["output_class"] for i in (0, 3)], ["empty", "empty"])
+        self.assertEqual(report["png_decoder"]["name"], "Pillow")
+
+    def test_sibling_cache_respects_outcome_and_keeps_the_png_observation(self):
+        self.write_plan("empty", "empty")
+        self.set_outcomes("allow-empty", "draw")
+        plan = json.loads(self.plan.read_bytes())
+        first, second = plan["scenarios"][0]["requests"]
+        second["diagram_id"] = first["diagram_id"]
+        self.plan.write_text(json.dumps(plan), encoding="utf-8")
+        _, report = self.measure(fmt="png")
+        allowed, required = report["scenarios"][0]["batches"][0]["results"]
+        self.assertEqual((allowed["status"], allowed["output_class"]), ("ok", "draw"))
+        self.assertEqual(report["png_svg_checks"][0]["output_class"], "empty")
+        self.assertEqual(required["status"], "failed_svg_check")
+        self.assertNotEqual(allowed["svg_check"], required["svg_check"])
+
+    def test_outcome_validated_before_launch_and_defaults_to_draw(self):
+        self.write_plan("good")
+        _, report = self.measure()
+        self.assertEqual(report["scenarios"][0]["requests"][0]["expected_outcome"], "draw")
+        for outcome in (None, "", "unknown", []):
+            with self.subTest(outcome=outcome), patch.object(cli, "invoke") as invoke:
+                self.set_outcomes(outcome)
+                code, report = self.measure()
+                invoke.assert_not_called()
+                self.assertEqual(code, 2)
+                self.assertIn("invalid expected_outcome", report["error"])
 
     def test_visible_labels_use_text_nodes_and_join_inline_runs(self):
         svg = self.root / "labels.svg"
@@ -343,11 +566,20 @@ else fs.writeFileSync(args[args.indexOf('-o')+1], '<svg><text>'+JSON.stringify(a
                 literal = 'value "literal" & %PATH% | ! ^'
                 proc = subprocess.run(
                     [sys.executable, "-B", cli.__file__, *args, f"--extra-arg={literal}"],
+                    env={**os.environ, "PUPPETEER_EXECUTABLE_PATH": str(self.fake)},
                     capture_output=True,
                     check=True,
                     timeout=15,
                 )
                 report = json.loads(proc.stdout)
+                identity = report["artifact_identity"]
+                self.assertEqual(identity["status"], "recorded")
+                self.assertEqual([file["path"] for file in identity["files"]], report["command_prefix"])
+                self.assertEqual(Path(identity["files"][1]["path"]), package / "entry.cjs")
+                self.assertEqual(identity["files"][1]["sha256"], hashlib.sha256((package / "entry.cjs").read_bytes()).hexdigest())
+                self.assertEqual(identity["browser"]["status"], "unobserved")
+                self.assertEqual(identity["browser"]["configured_executable"]["sha256"], hashlib.sha256(self.fake.read_bytes()).hexdigest())
+                self.assertIn("committed bytes", report["resource_scope"]["peak_job_commit_bytes"])
                 row = report["scenarios"][0]["batches"][0]["results"][0]
                 echo = json.loads(ET.parse(Path(report["run_dir"]) / row["output"]).findtext("text"))
                 self.assertIn(literal, echo)

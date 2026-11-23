@@ -1,0 +1,19 @@
+{
+  "id": "mermaid-c4-author",
+  "origin": "https://github.com/mermaid-js/mermaid/blob/1fb7869866dd619168d840291c9c54b4f129758b/packages/mermaid/src/docs/syntax/c4.md#L7-L381 (opening fences at lines 7, 175, 225, 267, 309, 331). Lines 7 and 175 share one context fixture. The fixtures omit two trailing blank lines at line 7 and one at each subsequent fence.",
+  "files": [
+    "../../../fixtures/c4/upstream_docs_c4_c4_diagrams_001.mmd",
+    "../../../fixtures/c4/upstream_docs_c4_c4_diagrams_001.mmd",
+    "../../../fixtures/c4/upstream_docs_c4_c4_container_diagram_c4container_006.mmd",
+    "../../../fixtures/c4/upstream_docs_c4_c4_component_diagram_c4component_008.mmd",
+    "../../../fixtures/c4/upstream_docs_c4_c4_dynamic_diagram_c4dynamic_010.mmd",
+    "../../../fixtures/c4/upstream_docs_c4_c4_deployment_diagram_c4deployment_012.mmd"
+  ],
+  "expected_labels": {
+    "../../../fixtures/c4/upstream_docs_c4_c4_diagrams_001.mmd": ["Banking Customer A", "Sends e-mails"],
+    "../../../fixtures/c4/upstream_docs_c4_c4_container_diagram_c4container_006.mmd": ["E-Mail System", "Single-Page App"],
+    "../../../fixtures/c4/upstream_docs_c4_c4_component_diagram_c4component_008.mmd": ["Database", "Accounts Summary Controller"],
+    "../../../fixtures/c4/upstream_docs_c4_c4_dynamic_diagram_c4dynamic_010.mmd": ["API Application", "Single-Page Application"],
+    "../../../fixtures/c4/upstream_docs_c4_c4_deployment_diagram_c4deployment_012.mmd": ["Mobile App", "Oracle - Secondary"]
+  }
+}

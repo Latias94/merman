@@ -2,6 +2,7 @@
 
 import argparse
 import hashlib
+from itertools import product
 import json
 import os
 from pathlib import Path
@@ -12,8 +13,9 @@ import subprocess
 import sys
 
 from corpus_utils import load_corpus, select_corpus_fixtures
-from workload_svg import valid_expected_labels, validate_svg
-from workload_topology import topology_source
+from workload_drawing import drawing_case, observe_drawings
+from workload_svg import EXPECTED_OUTCOMES, valid_expected_labels, validate_rejection, validate_svg
+from workload_topology import SCC_SHAPES, topology_source
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -129,9 +131,11 @@ def _fixture_expectations(manifest, key, names, context):
     return values
 
 
-def scenario(name, origin, sources, labels=None, *, drawing_facts=None, allow_unlabeled=False):
+def scenario(name, origin, sources, labels=None, *, drawing_facts=None, outcomes=None, allow_unlabeled=False, diagram_id=None):
     if not re.fullmatch(r"[a-zA-Z0-9_-]+", name):
         raise ValueError(f"invalid scenario ID: {name!r}")
+    if diagram_id is not None and (not isinstance(diagram_id, str) or not diagram_id):
+        raise ValueError(f"invalid fixed diagram_id in {name!r}")
     requests = []
     for i, (fixture, text) in enumerate(sources):
         if not text.strip():
@@ -140,7 +144,7 @@ def scenario(name, origin, sources, labels=None, *, drawing_facts=None, allow_un
             "fixture": fixture,
             "source": text,
             "source_sha256": digest(text.encode()),
-            "diagram_id": f"wb-{name}-{i + 1}",
+            "diagram_id": diagram_id or f"wb-{name}-{i + 1}",
         }
         if labels is not None and (fixture in labels or not allow_unlabeled):
             expected = labels.get(fixture)
@@ -151,10 +155,36 @@ def scenario(name, origin, sources, labels=None, *, drawing_facts=None, allow_un
             request["drawing_facts"] = validate_drawing_facts(
                 drawing_facts[fixture], f"{name}/{fixture}"
             )
+        reviewed = "expected_labels" in request or "drawing_facts" in request
+        outcome = (outcomes or {}).get(fixture, "unreviewed" if allow_unlabeled and not reviewed else "draw")
+        if outcome not in EXPECTED_OUTCOMES:
+            raise ValueError(f"invalid expected_outcome for {name}/{fixture}: {outcome!r}")
+        if outcome in ("reject", "allow-empty") and (request.get("expected_labels") or "drawing_facts" in request):
+            raise ValueError(f"{name}/{fixture}: drawing facts or required labels conflict with {outcome}")
+        request["expected_outcome"] = outcome
         requests.append(request)
     if not requests:
         raise ValueError(f"empty scenario: {name}")
     return {"id": name, "origin": origin, "requests": requests}
+
+
+def document_scenario(manifest):
+    doc = parse_workload_json(manifest.read_bytes(), manifest)
+    if not isinstance(doc, dict):
+        raise ValueError(f"expected a document object in {manifest}")
+    unknown = doc.keys() - {"id", "origin", "files", "expected_labels", "drawing_facts", "expected_outcomes", "diagram_id"}
+    if unknown:
+        raise ValueError(f"unknown document fields in {manifest}: {sorted(unknown)}")
+    files = doc["files"]
+    if not isinstance(files, list) or not all(isinstance(f, str) and f.strip() for f in files):
+        raise ValueError(f"files must be a list of filenames in {manifest}")
+    return scenario(
+        doc["id"], doc["origin"], [(f, (manifest.parent / f).read_text(encoding="utf-8")) for f in files],
+        _fixture_expectations(doc, "expected_labels", files, manifest),
+        drawing_facts=_fixture_expectations(doc, "drawing_facts", files, manifest),
+        outcomes=_fixture_expectations(doc, "expected_outcomes", files, manifest), allow_unlabeled=True,
+        diagram_id=doc.get("diagram_id"),
+    )
 
 
 def family_scenarios():
@@ -224,10 +254,22 @@ def materialize(args):
     fixture_facts = _fixture_expectations(
         catalog, "drawing_facts", inputs.keys() | registered.keys(), "workloads.json"
     )
+    fixture_outcomes = _fixture_expectations(
+        catalog, "expected_outcomes", inputs.keys() | registered.keys(), "workloads.json"
+    )
     cases = []
+    builtin_documents = set()
     for recipe in catalog["scenarios"]:
         included = args.suite == "full" or (args.suite == "quick" and recipe.get("quick"))
         if not included and recipe["id"] not in args.scenario:
+            continue
+        if "manifest" in recipe:
+            manifest = (HERE / recipe["manifest"]).resolve()
+            case = document_scenario(manifest)
+            if case["id"] != recipe["id"]:
+                raise ValueError(f"document manifest ID differs from {recipe['id']!r}")
+            cases.append(case)
+            builtin_documents.add(manifest)
             continue
         if "document" in recipe:
             path = recipe["document"]
@@ -240,8 +282,10 @@ def materialize(args):
             if len(blocks) != len(labels):
                 raise ValueError(f"review the changed fence population in {path}")
             sources = [(f"block-{i}", block) for i, block in enumerate(blocks, 1)]
-            facts = _fixture_expectations(recipe, "drawing_facts", (f for f, _ in sources), path)
-            cases.append(scenario(recipe["id"], path, sources, labels, drawing_facts=facts))
+            names = [f for f, _ in sources]
+            cases.append(scenario(recipe["id"], path, sources, labels,
+                                  drawing_facts=_fixture_expectations(recipe, "drawing_facts", names, path),
+                                  outcomes=_fixture_expectations(recipe, "expected_outcomes", names, path)))
             continue
         sequence = recipe["fixtures"] * recipe.get("repeat", 1)
         for fixture in sequence:
@@ -253,7 +297,7 @@ def materialize(args):
                 recipe.get("origin", "merman"),
                 [(f, inputs[f]) for f in sequence],
                 catalog["expected_labels"],
-                drawing_facts=fixture_facts,
+                drawing_facts=fixture_facts, outcomes=fixture_outcomes, diagram_id=recipe.get("diagram_id"),
             )
         )
 
@@ -268,30 +312,11 @@ def materialize(args):
             cases.append(
                 scenario(
                     name, f"tools/bench/corpus.json#{suite}", sources, catalog["expected_labels"],
-                    drawing_facts=fixture_facts, allow_unlabeled=True,
+                    drawing_facts=fixture_facts, outcomes=fixture_outcomes, allow_unlabeled=True,
                 )
             )
 
-    for manifest in args.document:
-        doc = parse_workload_json(manifest.read_bytes(), manifest)
-        if not isinstance(doc, dict):
-            raise ValueError(f"expected a document object in {manifest}")
-        unknown = doc.keys() - {"id", "origin", "files", "expected_labels", "drawing_facts"}
-        if unknown:
-            raise ValueError(f"unknown document fields in {manifest}: {sorted(unknown)}")
-        files = doc["files"]
-        if not isinstance(files, list) or not all(isinstance(f, str) and f.strip() for f in files):
-            raise ValueError(f"files must be a list of filenames in {manifest}")
-        labels = _fixture_expectations(doc, "expected_labels", files, manifest)
-        facts = _fixture_expectations(doc, "drawing_facts", files, manifest)
-        cases.append(
-            scenario(
-                doc["id"],
-                doc["origin"],
-                [(f, (manifest.parent / f).read_text(encoding="utf-8")) for f in files],
-                labels, drawing_facts=facts, allow_unlabeled=True,
-            )
-        )
+    cases.extend(document_scenario(m) for m in args.document if m.resolve() not in builtin_documents)
     if args.pele_fixtures:
         upstream = load(args.pele_fixtures / "manifest.json")
         for entry in upstream["diagrams"]:
@@ -301,17 +326,21 @@ def materialize(args):
                     name,
                     upstream["source"],
                     [(entry["id"], (args.pele_fixtures / entry["file"]).read_text(encoding="utf-8"))],
+                    allow_unlabeled=True,
                 )
             )
 
     topologies = []
-    spec = catalog["topologies"]["full" if args.suite == "families" else args.suite]
-    for shape in spec["shapes"]:
-        for nodes in spec["nodes"]:
-            name = f"{shape}-{nodes}"
+    topology_suite = args.suite
+    if args.suite == "families" or (args.scenario and args.suite == "quick"):
+        topology_suite = "full"
+    for series in catalog["topologies"][topology_suite]:
+        for shape, nodes, order in product(series["shapes"], series["nodes"], series.get("orders", ["canonical"])):
+            canonical = f"{shape}-{nodes}"
+            name = canonical if order == "canonical" else f"{canonical}-{order}"
             if (args.scenario or args.suite == "families") and name not in args.scenario:
                 continue
-            source, edges = topology_source(shape, nodes)
+            source, edges = topology_source(shape, nodes, order)
             topologies.append(
                 {
                     "id": name,
@@ -319,10 +348,12 @@ def materialize(args):
                     "edges": edges,
                     "source": source,
                     "source_sha256": digest(source.encode()),
+                    **({"canonical_id": canonical, "statement_order": order} if name != canonical else {}),
                 }
             )
-            if name in args.scenario:
-                cases.append(scenario(name, "merman/topology", [(name, source)]))
+            if name in args.scenario or nodes in series.get("render_nodes", []):
+                labels = [f"C{i}" for i in range(nodes)] if shape in SCC_SHAPES else ["N0", f"N{nodes - 1}"]
+                cases.append(scenario(name, "merman/topology", [(name, source)], {name: labels}))
     names = [s["id"] for s in cases]
     if len(names) != len(set(names)):
         raise ValueError("duplicate scenario ID in workload sources")
@@ -370,28 +401,68 @@ def child(runner, job):
     return json.loads(result.stdout)
 
 
+SVG_OPERATIONS = {"svg-data", "svg", "static-svg", "resvg-svg"}
+
+
 def rust_signatures(outputs, requests, operation):
     if not isinstance(outputs, list) or len(outputs) != len(requests):
         raise ValueError("incomplete Rust verification outputs")
-    if operation not in ("svg-data", "svg", "static-svg", "resvg-svg"):
-        return outputs, False
-    if all(isinstance(output, str) for output in outputs):
-        signatures = []
-        for svg, request in zip(outputs, requests):
-            verdict = validate_svg(svg, request.get("expected_labels", []))
+    svg = operation in SVG_OPERATIONS
+    signatures = []
+    frozen = False
+    for output, request in zip(outputs, requests):
+        outcome = request.get("expected_outcome", "draw")
+        if isinstance(output, dict) and isinstance(output.get("render_error"), str):
+            message = output["render_error"]
+            verdict = validate_rejection(None, message) if outcome == "reject" else {"status": "render-error"}
+            signatures.append({**verdict, "message": message})
+        elif svg and isinstance(output, str):
+            verdict = validate_svg(output, request.get("expected_labels", []), outcome)
+            data = output.encode("utf-8")
+            signature = dict(bytes=len(data), sha256=digest(data), observed_size=len(data))
             if verdict["status"] != "ok":
-                raise ValueError(f"{request['diagram_id']}: {verdict['message']}")
-            data = svg.encode("utf-8")
-            signatures.append(dict(bytes=len(data), sha256=digest(data), observed_size=len(data)))
-        return signatures, True
-    # Frozen v1 runners performed their own artifact checks and returned only an identity.
-    if any(isinstance(label, list) for r in requests for label in r.get("expected_labels", [])):
-        raise ValueError("alternative label spellings require a Rust runner that returns the SVG")
-    for result in outputs:
-        if (not isinstance(result, dict) or type(result.get("bytes")) is not int or result["bytes"] <= 0
-                or result.get("observed_size") != result["bytes"] or not re.fullmatch(r"[0-9a-f]{64}", str(result.get("sha256")))):
-            raise ValueError("invalid verification identity from the frozen Rust runner")
-    return outputs, False
+                signature.update(verdict)
+            elif "output_class" in verdict:
+                signature["output_class"] = verdict["output_class"]
+            signatures.append(signature)
+        else:
+            if (not isinstance(output, dict) or type(output.get("bytes")) is not int or output["bytes"] <= 0
+                    or type(output.get("observed_size")) is not int or output["observed_size"] <= 0
+                    or not re.fullmatch(r"[0-9a-f]{64}", str(output.get("sha256")))):
+                raise ValueError("invalid Rust verification identity")
+            if svg:  # Frozen runners only return identities from their embedded reader.
+                if outcome not in ("draw", "unreviewed") or any(isinstance(label, list) for label in request.get("expected_labels", [])):
+                    raise ValueError("source outcomes and alternative label spellings require a Rust runner that returns the SVG")
+                if output["observed_size"] != output["bytes"]:
+                    raise ValueError("invalid verification identity from the frozen Rust runner")
+                frozen = True
+            signatures.append({"status": "unexpected-success"} if outcome == "reject" else output)
+    return signatures, svg and not frozen
+
+
+def measure_rust_samples(observe, job, signatures, count, exact):
+    sizes = [s["observed_size"] for s in signatures]
+    samples, measured_hashes = [], []
+    for sample_index in range(count):
+        sample = observe({**job, "return_measured_svg": True} if exact else job)
+        error = None
+        if exact:
+            outputs = sample.get("outputs")
+            if not isinstance(outputs, list) or len(outputs) != 1 or not isinstance(outputs[0], str):
+                error = "exact timing requires the SVG from the actual measured call"
+            else:
+                actual, _ = rust_signatures(outputs, job["requests"], job["operation"])
+                measured_hashes.append(actual[0]["sha256"])
+                if actual != signatures:
+                    error = f"measured SVG differs from verified output: {actual[0].get('message', 'digest mismatch')}"
+        elif sample["sizes"] != sizes:
+            error = f"unstable output size: measured {sample['sizes']}, verified {sizes}"
+        if error:
+            return dict(status="measurement-mismatch", error=error, completed=0, samples=[], failed_sample_index=sample_index,
+                        **({"measured_svg_sha256": measured_hashes} if exact else {}))
+        samples.append(sample["metrics"])
+    return dict(samples=samples, measured_output_check="returned-svg" if exact else "size-only",
+                **({"measured_svg_sha256": measured_hashes} if exact else {}))
 
 
 def run_rust(args):
@@ -400,6 +471,11 @@ def run_rust(args):
     if plan["schema_version"] != 1:
         raise ValueError("unsupported workload plan")
     work = args.metric == "work"
+    exact = args.verify_measured_svg
+    if exact and (args.metric != "clock" or args.operation not in SVG_OPERATIONS):
+        raise ValueError("--verify-measured-svg requires an SVG operation and --metric clock")
+    if args.check_drawings and (work or args.operation not in SVG_OPERATIONS):
+        raise ValueError("--check-drawings requires an SVG operation")
     if work and (args.site_layout or args.site_css_bytes or args.operation != "svg-data"):
         raise ValueError(
             "work observes default Flowchart geometry and accepts no site or operation override"
@@ -417,6 +493,8 @@ def run_rust(args):
         raise ValueError("empty selection or duplicate workload ID")
     if args.scenario:
         selected = [by_id[name] for name in args.scenario]
+    if exact and any(len(row["requests"]) != 1 for row in selected):
+        raise ValueError("--verify-measured-svg requires one request in each selected scenario")
     runner = args.runner.resolve() if args.runner else build_runner(args.metric)
     options = {
         "metric": args.metric,
@@ -425,8 +503,10 @@ def run_rust(args):
         "site_css_bytes": args.site_css_bytes,
         "site_layout": args.site_layout,
         "samples": 1 if work else args.samples,
+        **({"clock_boundary": "returned-svg"} if exact else {}),
     }
     rows = {}
+    pending_drawings = []
     fingerprints = set()
     validation_modes = set()
     validator_sha256 = digest((HERE / "workload_svg.py").read_bytes())
@@ -438,12 +518,24 @@ def run_rust(args):
             raise ValueError("workload runner changed during observation")
         return row
 
-    def verify(job):
+    def verify(job, row=None):
         outputs = observe({**job, "verify_only": True})["outputs"]
         signatures, shared = rust_signatures(outputs, job["requests"], job["operation"])
         validation_modes.add(shared)
         if len(validation_modes) > 1:
             raise ValueError("Rust verification protocol changed during observation")
+        if row is not None and job["operation"] in SVG_OPERATIONS:
+            for i, (request, output, signature) in enumerate(zip(job["requests"], outputs, signatures, strict=True)):
+                if "drawing_facts" not in request:
+                    continue
+                facts = validate_drawing_facts(request["drawing_facts"], request["diagram_id"])
+                check = drawing_case(request, i)
+                check["svg_sha256"] = signature.get("sha256")
+                row.setdefault("drawing_checks", []).append(check)
+                if not args.check_drawings:
+                    check["status"] = "not-checked"
+                elif isinstance(output, str) and "status" not in signature:
+                    pending_drawings.append((check, dict(svg=output, facts=facts)))
         return signatures
 
     for case in selected:
@@ -458,6 +550,11 @@ def run_rust(args):
             raise ValueError(f"input digest mismatch in {case['id']}")
         if any(not valid_expected_labels(r.get("expected_labels", [])) for r in requests):
             raise ValueError(f"invalid expected_labels in {case['id']}")
+        if not requests:
+            raise ValueError(f"empty request sequence in {case['id']}")
+        outcomes = [r.get("expected_outcome", "draw") for r in requests]
+        if any(value not in EXPECTED_OUTCOMES for value in outcomes):
+            raise ValueError(f"invalid expected_outcome in {case['id']}")
         job = {
             "task": "measure",
             "metric": args.metric,
@@ -466,16 +563,20 @@ def run_rust(args):
             "warmups": args.warmups,
             "site": site or None,
         }
-        signatures = verify(job)
-        sizes = [s["observed_size"] for s in signatures]
-        samples = [observe(job) for _ in range(args.samples)]
-        if any(s["sizes"] != sizes for s in samples) or verify(job) != signatures:
-            raise ValueError(f"unstable output in {case['id']}")
-        rows[case["id"]] = {
-            "completed": len(requests),
-            "outputs": signatures,
-            "samples": [s["metrics"] for s in samples],
-        }
+        row = rows[case["id"]] = {"expected_outcomes": outcomes}
+        signatures = verify(job, row)
+        statuses = [s.get("status", "ok") for s in signatures]
+        row.update(completed=statuses.count("ok"), outputs=signatures)
+        if any(status != "ok" for status in statuses):
+            row.update(status="expected-rejection" if all(s in ("ok", "expected-rejection") for s in statuses) else "failed",
+                       samples=[], expected_rejections=statuses.count("expected-rejection"))
+        else:
+            row.update(measure_rust_samples(observe, job, signatures, args.samples, exact))
+        if verify(job) != signatures:
+            row.update(status="measurement-mismatch", error="verification changed after sampling", completed=0, samples=[])
+        if row.get("error"):
+            print(f"{case['id']}: {row['error']}", file=sys.stderr)
+    observer = observe_drawings(pending_drawings, args.chrome)
     return {
         "schema_version": 1,
         "surface": "rust",
@@ -484,6 +585,7 @@ def run_rust(args):
         "host": [platform.system(), platform.machine(), platform.node()],
         "runner_sha256": digest(runner.read_bytes()),
         "harness_sha256": fingerprints.pop(),
+        **({"drawing_observer": observer} if observer else {}),
         **({"svg_validator_sha256": validator_sha256} if validation_modes == {True} else {}),
         "revision": args.revision
         or (
@@ -493,6 +595,39 @@ def run_rust(args):
         ),
         "rows": rows,
     }
+
+
+def verified_native_drawings(row):
+    """Bind each passing observation to the SVG identity at its original request position."""
+    identities = []
+    for check in row.get("drawing_checks", []):
+        index = check["request_index"]
+        if type(index) is not int or not 0 <= index < len(row["outputs"]):
+            raise ValueError("invalid native drawing request index")
+        if (check["status"] != "passed" or check["svg_sha256"] != row["outputs"][index]["sha256"]
+                or not check["facts"] or any(f["status"] != "passed" for f in check["facts"])):
+            return None
+        identities.append((index, check["diagram_id"], check["source_sha256"]))
+    return identities
+
+
+def compare_topology(old, new):
+    a, b = ((row["boundary"] or {}).get("minimum_passing_budget") for row in (old, new))
+    same = old["high_budget"] == new["high_budget"] and old["high"] == new["high"]
+    result = {"default_status": [row["default"]["status"] for row in (old, new)],
+              "base_minimum": a, "head_minimum": b}
+    if "svg" in old or "svg" in new:
+        if not all("svg" in row for row in (old, new)):
+            raise ValueError("incompatible topology SVG observation protocols")
+        result["default_svg_status"] = [row["svg"]["default"]["status"] for row in (old, new)]
+        # A work change can preserve the exact returned SVG.
+        def high_svg(row):
+            return {k: v for k, v in row["svg"]["high"].items() if k != "layout_work_units"}
+
+        same = same and high_svg(old) == high_svg(new)
+    result["status"] = "same-high-budget-result" if same else "output-changed"
+    result["delta"] = b - a if same and a is not None and b is not None else None
+    return result
 
 
 def compare(base, head, *, drawing_products=None):
@@ -516,31 +651,59 @@ def compare(base, head, *, drawing_products=None):
             "head_svg_validator": head.get("svg_validator_sha256"),
             "rows": {},
         }
+    options = base["options"]
+    exact = options.get("clock_boundary") == "returned-svg"
+    if "clock_boundary" in options and (not exact or options.get("metric") != "clock" or options.get("operation") not in SVG_OPERATIONS):
+        raise ValueError("invalid Rust returned-SVG measurement boundary")
     differences = {}
     for name, old in base["rows"].items():
         new = head["rows"][name]
         if base["options"]["metric"] == "work":
-            a = (old["boundary"] or {}).get("minimum_passing_budget")
-            b = (new["boundary"] or {}).get("minimum_passing_budget")
-            same = old["high_budget"] == new["high_budget"] and old["high"] == new["high"]
-            differences[name] = {
-                "status": "same-high-budget-result" if same else "output-changed",
-                "default_status": [old["default"]["status"], new["default"]["status"]],
-                "base_minimum": a,
-                "head_minimum": b,
-                "delta": b - a if same and a is not None and b is not None else None,
-            }
+            differences[name] = compare_topology(old, new)
+            continue
+        if old.get("status") or new.get("status"):
+            differences[name] = {"status": old.get("status") if old.get("status") == new.get("status") else "outcome-changed",
+                                 "base": old.get("status"), "head": new.get("status"),
+                                 "completed": [old["completed"], new["completed"]],
+                                 "expected_rejections": [r.get("expected_rejections", 0) for r in (old, new)]}
+            if old["outputs"] != new["outputs"]:
+                differences[name]["status"] = "outcome-changed"
             continue
         if old["outputs"] != new["outputs"]:
             differences[name] = {"status": "output-changed"}
             continue
+        if "expected_outcomes" not in old or "expected_outcomes" not in new:
+            differences[name] = {"status": "source-outcomes-unverified"}
+            continue
+        outcomes = old["expected_outcomes"]
+        if outcomes != new["expected_outcomes"] or len(outcomes) != old["completed"] or old["completed"] != new["completed"]:
+            raise ValueError(f"incompatible source outcomes for {name}")
+        if len(set(outcomes)) != 1 or outcomes[0] not in ("draw", "allow-empty"):
+            differences[name] = {"status": "no-comparable-outcome", "expected_outcomes": outcomes}
+            continue
+        if exact:
+            for row in (old, new):
+                if (row.get("measured_output_check") != "returned-svg" or len(row["outputs"]) != 1
+                        or not re.fullmatch(r"[0-9a-f]{64}", str(row["outputs"][0].get("sha256")))
+                        or not all(sample.keys() == {"elapsed_ns"} for sample in row["samples"])
+                        or row.get("measured_svg_sha256") != [row["outputs"][0]["sha256"]] * base["options"]["samples"]
+                        or len(row["samples"]) != base["options"]["samples"]):
+                    raise ValueError(f"missing exact measured SVG evidence for {name}")
+        if old.get("drawing_checks") or new.get("drawing_checks"):
+            old_drawings = verified_native_drawings(old)
+            if (not old_drawings or old_drawings != verified_native_drawings(new) or not base.get("drawing_observer")
+                    or base["drawing_observer"] != head.get("drawing_observer")):
+                differences[name] = {"status": "drawing-not-verified", "completed": new["completed"]}
+                continue
         metrics = {}
         for k in old["samples"][0]:
             a, b = (median(s[k] for s in r["samples"]) for r in (old, new))
             metrics[k] = {"base": a, "head": b, "delta": b - a}
             if a > 0:
                 metrics[k]["change_percent"] = 100 * (b - a) / a
-        differences[name] = {"status": "same-output", "completed": new["completed"], "metrics": metrics}
+        differences[name] = {"status": "same-output" if exact else "matching-verification-outputs",
+                             "measured_output_check": "returned-svg" if exact else "size-only",
+                             "completed": new["completed"], "metrics": metrics}
     return {
         "schema_version": 1,
         "plan_sha256": base["plan_sha256"],
@@ -559,7 +722,9 @@ def main(argv=None):
     matrix.add_argument("--plan", type=Path, required=True)
     matrix.add_argument("--out-dir", type=Path, required=True, help="directory for a new result bundle")
     matrix.add_argument("--peer", action="append", help="select a registered peer (repeatable, default: all)")
-    matrix.add_argument("--samples", type=int, default=3)
+    matrix.add_argument("--samples", type=int, default=3, help="warm batches inside each scenario worker")
+    matrix.add_argument("--process-rounds", type=int,
+                        help="even number of independent rounds with balanced product order (minimum 2)")
     matrix.add_argument("--timeout-seconds", type=float, default=300, help="time budget per scenario")
     matrix.add_argument("--merman-module", type=Path, help="public Node entry of a local Merman candidate")
     matrix.add_argument("--check-drawings", action="store_true", help="retain and inspect declared SVG drawing facts after timing")
@@ -570,7 +735,7 @@ def main(argv=None):
     drawings.add_argument("--chrome", type=Path, help="Chromium executable (default: Puppeteer configuration)")
     drawings.add_argument("--require-pass", action="store_true", help="return a failure for missing or failing drawing evidence")
     plan = sub.add_parser("plan", help="freeze portable source bytes and occurrence IDs")
-    plan.add_argument("--suite", choices=["quick", "full", "families"], default="quick")
+    plan.add_argument("--suite", choices=["quick", "full", "families", "topology-orders"], default="quick")
     plan.add_argument(
         "--document", type=Path, action="append", default=[], help="ordered local .mmd file manifest"
     )
@@ -592,6 +757,12 @@ def main(argv=None):
     )
     run.add_argument("--site-css-bytes", type=int, default=0)
     run.add_argument("--site-layout", choices=["dagre", "elk"])
+    run.add_argument("--verify-measured-svg", action="store_true",
+                     help="time a single public SVG return and verify its actual bytes after the clock stops")
+    run.add_argument("--check-drawings", action="store_true", help="inspect declared drawing facts on verified SVGs after sampling")
+    run.add_argument("--chrome", type=Path, help="Chromium executable for --check-drawings")
+    run.add_argument("--require-complete", action="store_true",
+                     help="fail after writing the report if a request missed its expected outcome, or default geometry or SVG failed for a work probe")
     run.add_argument(
         "--runner", type=Path, help="use a frozen executable built with the matching metric"
     )
@@ -615,7 +786,7 @@ def main(argv=None):
     for command in (plan, run, diff, drawings):
         command.add_argument("--out", required=True, type=Path)
     args = parser.parse_args(argv)
-    if args.action == "node-matrix" and args.chrome and not args.check_drawings:
+    if args.action in ("node-matrix", "rust") and args.chrome and not args.check_drawings:
         parser.error("--chrome requires --check-drawings")
     if args.action == "compare" and args.chrome and not args.drawing_plan:
         parser.error("--chrome requires --drawing-plan")
@@ -666,10 +837,22 @@ def main(argv=None):
             return int(not result["planned"]["facts"] or any(
                 s["status"] in {"failed", "unavailable"} for p in result["products"] for s in p["scenarios"].values()
             ))
+        if args.action == "rust":
+            rows = result["rows"].values()
+            if any(row.get("status") == "measurement-mismatch" for row in rows):
+                return 1
+            if args.require_complete:
+                if args.metric == "work":
+                    if any("svg" not in row for row in rows):
+                        raise ValueError("--require-complete for work needs a runner that observes default SVG")
+                    return int(any(row["default"]["status"] != "accepted" or row["svg"]["default"]["status"] != "accepted" for row in rows))
+                return int(any(row.get("status") == "failed" or (args.check_drawings and any(
+                    check["status"] != "passed" for check in row.get("drawing_checks", [])
+                )) for row in rows))
     except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as error:
         parser.exit(1, f"{parser.prog}: {error}\n")
     return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
