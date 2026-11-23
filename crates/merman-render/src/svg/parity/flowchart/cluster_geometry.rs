@@ -1,7 +1,56 @@
-//! Final ELK Markdown title geometry, after the provider's frame reservation.
+//! Flowchart cluster frames and final ELK Markdown title geometry.
 
 use super::*;
 use crate::text::TextMetrics;
+
+pub(super) struct PaintedClusterFrame {
+    pub(super) origin: kurbo::Point,
+    pub(super) size: kurbo::Size,
+}
+
+impl PaintedClusterFrame {
+    pub(super) fn bounds(&self) -> kurbo::Rect {
+        kurbo::Rect::from_origin_size(self.origin, self.size)
+    }
+}
+
+pub(super) fn painted_cluster_frame(
+    ctx: &FlowchartRenderCtx<'_>,
+    cluster: &LayoutCluster,
+) -> PaintedClusterFrame {
+    let width = ctx
+        .elk_cluster_geometry
+        .get(cluster.id.as_str())
+        .map_or(cluster.width, |geometry| geometry.width);
+    let natural = kurbo::Size::new(width, cluster.height);
+    let origin = kurbo::Point::new(
+        cluster.x - natural.width / 2.0,
+        cluster.y - natural.height / 2.0,
+    );
+    // The cluster renderer positions the frame before applying SVG geometry properties.
+    let size = if super::swimlane::is_lane_or_pool_cluster(ctx, cluster.id.as_str()) {
+        natural
+    } else {
+        let [width, height] = cluster_css_size(ctx, cluster.id.as_str()).unwrap_or_default();
+        kurbo::Size::new(
+            width.unwrap_or_else(|| natural.width.max(1.0)),
+            height.unwrap_or_else(|| natural.height.max(1.0)),
+        )
+    };
+    PaintedClusterFrame { origin, size }
+}
+
+pub(super) fn cluster_css_size(ctx: &FlowchartRenderCtx<'_>, id: &str) -> Option<[Option<f64>; 2]> {
+    if ctx.compatibility.look.is_hand_drawn() || super::swimlane::is_lane_or_pool_cluster(ctx, id) {
+        return None;
+    }
+    let terminal = ctx.prepared_nodes.cluster(id).ok()?;
+    if ctx.diagram_type == "agentflow" && !terminal.theme.requests_shape_style() {
+        return None;
+    }
+    let size = terminal.compiled.rectangle_size;
+    (size != [None; 2]).then_some(size)
+}
 
 #[derive(Clone, Copy)]
 pub(super) struct FlowchartElkClusterGeometry {

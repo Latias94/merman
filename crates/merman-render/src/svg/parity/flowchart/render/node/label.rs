@@ -520,6 +520,10 @@ fn render_flowchart_node_label_with_wrapper(
                 prepared_label,
                 crate::flowchart::FlowchartPreparedLabelResolution::PreparedMath(_)
             ) || ctx.math_renderer.is_some());
+        let label_box = (ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike
+            && !is_math_html_label)
+            .then(|| crate::graph_label::flowchart_html_label_box(ctx.measurer, &label_html))
+            .flatten();
 
         let mut label_below_minimum = false;
         let needs_wrap = if ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike {
@@ -542,8 +546,13 @@ fn render_flowchart_node_label_with_wrapper(
                 };
                 label_below_minimum = natural.width < min_width;
                 natural.width >= wrapping_width - 0.01
+            } else if let Some(width) =
+                label_box.and_then(|dimensions| dimensions.width_in_label(Some(wrapping_width)))
+            {
+                label_below_minimum = width.outer < min_width;
+                width.wrap.is_some()
             } else {
-                let raw = crate::graph_label::flowchart_html_label_metrics_for_layout(
+                let raw = crate::graph_label::flowchart_html_label_metrics_with_geometry(
                     crate::flowchart::FlowchartLabelMetricsRequest {
                         measurer: ctx.measurer,
                         raw_label: label.text,
@@ -555,6 +564,7 @@ fn render_flowchart_node_label_with_wrapper(
                         math_renderer: None,
                     },
                     &label_html,
+                    common.label_emission.compiled_styles.html_label_geometry(),
                 )
                 .width;
                 label_below_minimum = raw < min_width;
@@ -609,7 +619,11 @@ fn render_flowchart_node_label_with_wrapper(
             r#"<foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="{}"{}>{}</span></div></foreignObject>"#,
             fmt_display(metrics.width),
             fmt_display(metrics.height),
-            HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
+            if label_box.is_some() {
+                ""
+            } else {
+                HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR
+            },
             escape_xml_display(&div_style),
             super::helpers::flowchart_node_label_span_class(label.label_type),
             span_style_attr,

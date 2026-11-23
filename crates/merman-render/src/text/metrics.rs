@@ -17,6 +17,21 @@ use crate::environment::{
 
 mod xhtml_fonts;
 
+#[derive(Clone, Copy)]
+enum InlineHtmlWrap {
+    Fit(Option<f64>),
+    BreakSpaces(f64),
+}
+
+impl InlineHtmlWrap {
+    fn max_width(self) -> Option<f64> {
+        match self {
+            Self::Fit(width) => width,
+            Self::BreakSpaces(width) => Some(width),
+        }
+    }
+}
+
 #[cfg(any(feature = "diagram-block", feature = "diagram-class"))]
 pub(crate) fn measure_unwrapped_xhtml_label_fragment(
     measurer: &dyn TextMeasurer,
@@ -57,19 +72,39 @@ pub(crate) fn measure_html_with_document_root(
     max_width: Option<f64>,
     root_font_size: f64,
 ) -> TextMetrics {
-    let carrier = measurer
-        .builtin_operation_carrier(TextMeasurementOperation::WrappedWithRawWidth)
-        .and_then(BuiltinTextMeasurementOperationCarrier::into_inline_html)
-        .unwrap_or_else(InlineHtmlMeasurementCarrier::opaque);
     measure_html_with_inline_styles_and_terminal_fonts(
         measurer,
-        carrier,
+        inline_html_measurement_carrier(measurer),
         fragment,
         style,
-        max_width,
+        InlineHtmlWrap::Fit(max_width),
         WrapMode::HtmlLike,
         Some(xhtml_fonts::TerminalFonts::new(style, root_font_size)),
     )
+}
+
+pub(crate) fn measure_html_with_authored_width(
+    measurer: &dyn TextMeasurer,
+    fragment: &str,
+    style: &TextStyle,
+    wrap_width: Option<f64>,
+) -> TextMetrics {
+    measure_html_with_inline_styles_and_terminal_fonts(
+        measurer,
+        inline_html_measurement_carrier(measurer),
+        fragment,
+        style,
+        wrap_width.map_or(InlineHtmlWrap::Fit(None), InlineHtmlWrap::BreakSpaces),
+        WrapMode::HtmlLike,
+        Some(xhtml_fonts::TerminalFonts::new(style, style.font_size)),
+    )
+}
+
+fn inline_html_measurement_carrier(measurer: &dyn TextMeasurer) -> InlineHtmlMeasurementCarrier {
+    measurer
+        .builtin_operation_carrier(TextMeasurementOperation::WrappedWithRawWidth)
+        .and_then(BuiltinTextMeasurementOperationCarrier::into_inline_html)
+        .unwrap_or_else(InlineHtmlMeasurementCarrier::opaque)
 }
 
 #[test]
@@ -1711,36 +1746,37 @@ fn finish_inline_html_layout<M: TextMeasurer + ?Sized>(
     runs_by_line: &[Vec<InlineTextRun>],
     break_spaces_runs_by_line: Option<&[Vec<InlineTextRun>]>,
     style: &TextStyle,
-    max_width: Option<f64>,
+    wrapping: InlineHtmlWrap,
     line_boxes: InlineHtmlLineBoxes<'_>,
 ) -> TextMetrics {
-    let collapsed = measure_inline_html_layout(
-        measurer,
-        carrier,
-        runs_by_line,
-        style,
-        max_width,
-        line_boxes.font_sizes,
-    );
+    let max_width = wrapping.max_width();
+    let measure = |runs| {
+        measure_inline_html_layout(
+            measurer,
+            carrier,
+            runs,
+            style,
+            max_width,
+            line_boxes.font_sizes,
+        )
+    };
     let active_max_width = max_width.filter(|width| width.is_finite() && *width > 0.0);
-    let break_spaces_active = active_max_width.is_some_and(|max_width| {
-        collapsed.natural_width >= max_width && collapsed.min_content_width <= max_width
-    });
-    let layout = if break_spaces_active {
-        break_spaces_runs_by_line
-            .map(|runs| {
-                measure_inline_html_layout(
-                    measurer,
-                    carrier,
-                    runs,
-                    style,
-                    max_width,
-                    line_boxes.font_sizes,
-                )
-            })
-            .unwrap_or(collapsed)
+    let (layout, break_spaces_active) = if matches!(wrapping, InlineHtmlWrap::BreakSpaces(_)) {
+        (
+            measure(break_spaces_runs_by_line.unwrap_or(runs_by_line)),
+            true,
+        )
     } else {
-        collapsed
+        let collapsed = measure(runs_by_line);
+        let break_spaces_active = active_max_width.is_some_and(|max_width| {
+            collapsed.natural_width >= max_width && collapsed.min_content_width <= max_width
+        });
+        let layout = if break_spaces_active && let Some(runs) = break_spaces_runs_by_line {
+            measure(runs)
+        } else {
+            collapsed
+        };
+        (layout, break_spaces_active)
     };
     let width = if break_spaces_active {
         active_max_width
@@ -4202,6 +4238,44 @@ mod inline_planning_tests {
     }
 }
 
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+pub(crate) fn flowchart_label_xhtml_for_typography_admission(
+    label: &str,
+    label_type: &str,
+    config: &merman_model::presentation::PresentationConfig,
+    control: &merman_model::OperationControl,
+) -> Result<String, merman_model::OperationCancelled> {
+    control.checkpoint()?;
+    let html = crate::graph_label::flowchart_label_html_source(label, label_type, config);
+    // Sanitizer-removed attributes and encoded angle brackets cannot affect rendered typography.
+    let work_meter = crate::resources::OperationWorkMeter::new_with_control(
+        crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        control.clone(),
+    );
+    let parse_work = std::cell::Cell::new(0);
+    let sink = crate::html::HtmlSanitizeSink::new(
+        usize::MAX,
+        &work_meter,
+        &parse_work,
+        merman_model::OperationPhase::Layout,
+    );
+    let sanitize_config = crate::graph_label::flowchart_label_sanitize_config(config);
+    match merman_markup::sanitize::sanitize_xhtml_with_sink(&html, sanitize_config.as_ref(), &sink)
+    {
+        Ok(html) => Ok(html),
+        Err(merman_markup::sanitize::SanitizeFailure::Output(
+            crate::html::HtmlOutputError::Operation(
+                crate::resources::OperationWorkError::Cancelled(error),
+            ),
+        )) => Err(error),
+        Err(_) => Ok(String::new()),
+    }
+}
+
 /// Finds retained inline HTML typography that the caller's measurement policy cannot represent.
 /// Admission uses the same Markdown projection and HTML normalization as SVG emission.
 #[doc(hidden)]
@@ -4220,30 +4294,7 @@ pub fn unsupported_html_label_style(
     use cssparser::{Delimiter, Parser};
     use quick_xml::{Reader, events::Event};
 
-    control.checkpoint()?;
-    let html = crate::graph_label::flowchart_label_html_source(label, label_type, config);
-    // Sanitizer-removed attributes and encoded angle brackets cannot affect rendered typography.
-    let work_meter = crate::resources::OperationWorkMeter::new_with_control(
-        crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-        control.clone(),
-    );
-    let parse_work = std::cell::Cell::new(0);
-    let sink = crate::html::HtmlSanitizeSink::new(
-        usize::MAX,
-        &work_meter,
-        &parse_work,
-        merman_model::OperationPhase::Layout,
-    );
-    let html =
-        match merman_markup::sanitize::sanitize_xhtml_with_sink(&html, config.as_config(), &sink) {
-            Ok(html) => html,
-            Err(merman_markup::sanitize::SanitizeFailure::Output(
-                crate::html::HtmlOutputError::Operation(
-                    crate::resources::OperationWorkError::Cancelled(error),
-                ),
-            )) => return Err(error),
-            Err(_) => String::new(),
-        };
+    let html = flowchart_label_xhtml_for_typography_admission(label, label_type, config, control)?;
     let mut tags = Reader::from_str(&html);
     tags.config_mut().check_end_names = false;
     tags.config_mut().allow_unmatched_ends = true;
@@ -4350,11 +4401,8 @@ pub fn measure_html_with_inline_styles(
     // Keep the public `TextMeasurer` surface request-oriented. A whole-operation override would
     // let an opaque custom measurer bypass the established callback order; only the unnameable
     // routed carrier may select the built-in streaming implementation.
-    let carrier = measurer
-        .builtin_operation_carrier(TextMeasurementOperation::WrappedWithRawWidth)
-        .and_then(BuiltinTextMeasurementOperationCarrier::into_inline_html)
-        .unwrap_or_else(InlineHtmlMeasurementCarrier::opaque);
-    carrier.measure_html_with_inline_styles(measurer, html, style, max_width, wrap_mode)
+    inline_html_measurement_carrier(measurer)
+        .measure_html_with_inline_styles(measurer, html, style, max_width, wrap_mode)
 }
 
 impl InlineHtmlMeasurementCarrier {
@@ -4474,7 +4522,7 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
         carrier,
         html,
         style,
-        max_width,
+        InlineHtmlWrap::Fit(max_width),
         wrap_mode,
         (wrap_mode == WrapMode::HtmlLike)
             .then(|| xhtml_fonts::TerminalFonts::new(style, style.font_size)),
@@ -4487,10 +4535,11 @@ fn measure_html_with_inline_styles_and_terminal_fonts<M: TextMeasurer + ?Sized>(
     carrier: InlineHtmlMeasurementCarrier,
     html: &str,
     style: &TextStyle,
-    max_width: Option<f64>,
+    wrapping: InlineHtmlWrap,
     wrap_mode: WrapMode,
     mut terminal_fonts: Option<xhtml_fonts::TerminalFonts>,
 ) -> TextMetrics {
+    let max_width = wrapping.max_width();
     fn html_tag_class_attr(tag: &str) -> Option<String> {
         let lower = tag.to_ascii_lowercase();
         let idx = lower.find("class=")?;
@@ -4883,7 +4932,7 @@ fn measure_html_with_inline_styles_and_terminal_fonts<M: TextMeasurer + ?Sized>(
                     &inline_runs_by_line,
                     break_spaces_runs_by_line.as_deref(),
                     style,
-                    max_width,
+                    wrapping,
                     InlineHtmlLineBoxes {
                         explicit_count: explicit_line_boxes,
                         font_sizes: Some(fonts.line_sizes()),
@@ -4932,7 +4981,7 @@ fn measure_html_with_inline_styles_and_terminal_fonts<M: TextMeasurer + ?Sized>(
             &inline_runs_by_line,
             break_spaces_runs_by_line.as_deref(),
             style,
-            max_width,
+            wrapping,
             InlineHtmlLineBoxes {
                 explicit_count: explicit_line_boxes,
                 font_sizes: None,
@@ -4970,7 +5019,7 @@ fn measure_html_with_inline_styles_and_terminal_fonts<M: TextMeasurer + ?Sized>(
             &inline_runs_by_line,
             break_spaces_runs_by_line.as_deref(),
             style,
-            max_width,
+            wrapping,
             InlineHtmlLineBoxes {
                 explicit_count: explicit_line_boxes,
                 font_sizes: None,

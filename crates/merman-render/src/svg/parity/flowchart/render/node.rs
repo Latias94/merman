@@ -122,10 +122,19 @@ impl FlowchartNodeRenderCommon<'_> {
         }
     }
 
-    pub(super) fn write_rectangle_corner_style(
+    fn write_rectangle_start(
         &self,
         out: &mut impl crate::svg::parity::SvgOutput,
+        rect: kurbo::Rect,
     ) {
+        let _ = write!(
+            out,
+            r#"<rect class="basic label-container"{} style="{}"#,
+            self.effect_filter_attr,
+            escape_attr(self.style),
+        );
+        self.write_effect_style(out);
+
         // Keep admitted source winners and typed geometry consistent with native attributes.
         // Neo defaults and differently cased source spellings must not override them in CSS.
         for (axis, source) in ["rx", "ry"].into_iter().zip(self.source_corner_radii) {
@@ -134,6 +143,14 @@ impl FlowchartNodeRenderCommon<'_> {
                 let _ = write!(out, ";{axis}:{radius}px !important");
             }
         }
+        let _ = write!(
+            out,
+            r#"" x="{}" y="{}" width="{}" height="{}""#,
+            fmt(rect.x0),
+            fmt(rect.y0),
+            fmt(rect.width()),
+            fmt(rect.height()),
+        );
     }
 }
 

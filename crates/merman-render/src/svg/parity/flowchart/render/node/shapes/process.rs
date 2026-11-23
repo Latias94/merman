@@ -1,7 +1,7 @@
 //! Flowchart process rectangle.
 
-use crate::svg::parity::flowchart::escape_attr;
-use crate::svg::parity::{fmt, fmt_display};
+use crate::svg::parity::flowchart::{FlowchartRenderCtx, escape_attr};
+use crate::svg::parity::fmt_display;
 
 const HAND_DRAWN_ROUGHNESS: f32 = 0.7;
 const HAND_DRAWN_FILL_WEIGHT: f32 = 1.5;
@@ -9,11 +9,14 @@ const HAND_DRAWN_HACHURE_GAP: f32 = 1.5;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_process_rectangle(
     out: &mut impl crate::svg::parity::SvgOutput,
+    ctx: &FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) -> super::super::emission::FlowchartNodeShapeEmissionReceipt {
-    let width = common.layout_node.width.max(1.0);
-    let height = common.layout_node.height.max(1.0);
+    let geometry = ctx.rectangle_geometry(common.layout_node);
+    let rect = geometry.shape;
+    let width = rect.width();
+    let height = rect.height();
     let rough_paths = if common.look_is_hand_drawn() {
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             super::super::roughjs::roughjs_hachure_paths_for_rect(
@@ -55,25 +58,11 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_process_rectangle(
     let radius = common
         .typed_corner_radius
         .or(common.configured_corner_radius);
-    let _ = write!(
-        out,
-        r#"<rect class="basic label-container"{} style="{}"#,
-        common.effect_filter_attr,
-        escape_attr(common.style),
-    );
-    common.write_effect_style(out);
-    common.write_rectangle_corner_style(out);
-    let _ = write!(
-        out,
-        r#"" x="{}" y="{}" width="{}" height="{}""#,
-        fmt(-width / 2.0),
-        fmt(-height / 2.0),
-        fmt(width),
-        fmt(height),
-    );
+    common.write_rectangle_start(out, rect);
     common.write_rectangle_radii(out, radius);
     out.push_str(" />");
     super::super::emission::FlowchartNodeShapeEmissionReceipt::classic_process(radius.is_some())
+        .with_rectangle_dimensions(geometry.resolved_dimensions)
         .with_effect_reach(common.effect_selected)
 }
 

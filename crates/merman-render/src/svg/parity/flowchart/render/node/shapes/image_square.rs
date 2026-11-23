@@ -1,229 +1,175 @@
 //! Flowchart v2 image square shape.
 
+use crate::flowchart::{ImageSquareGeometry, ImageSquareSizing};
 use crate::svg::parity::flowchart::types::{FlowchartRenderCtx, FlowchartRenderDetails};
 use crate::svg::parity::{escape_xml_display, fmt_display};
+use merman_model::OperationPhase;
 
 use super::super::roughjs::roughjs_stroke_path_for_svg_path;
+use super::super::{FlowchartNodeGeometry, FlowchartNodeLabelState, FlowchartNodeRenderCommon};
 
 pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
     out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
-    common: &super::super::FlowchartNodeRenderCommon<'_>,
-    label: &super::super::FlowchartNodeLabelState<'_>,
+    common: &FlowchartNodeRenderCommon<'_>,
+    label: &FlowchartNodeLabelState<'_>,
     details: &mut FlowchartRenderDetails,
-) -> Option<super::super::emission::FlowchartNodeLabelEmissionReceipt> {
-    // Port of Mermaid `imageSquare.ts` (`image-shape default`).
-    if let Some(img_href) = common.node_img.filter(|s| !s.trim().is_empty()) {
-        let (
-            label_padding,
-            top_label,
-            label_bbox_w,
-            label_bbox_h,
-            image_width,
-            image_height,
-            outer_w,
-            outer_h,
-            rect_stroke_path,
-            icon_dy,
-        ) = prepare_image_geometry(ctx, common, label);
-        let x0 = -image_width / 2.0;
-        let y0 = -image_height / 2.0;
-        // Mermaid `imageSquare` fills with a straight rect (not rough).
-        let rect_fill_path = format!(
-            "M{} {} L{} {} L{} {} L{} {}",
-            fmt_display(x0),
-            fmt_display(y0),
-            fmt_display(x0 + image_width),
-            fmt_display(y0),
-            fmt_display(x0 + image_width),
-            fmt_display(y0 + image_height),
-            fmt_display(x0),
-            fmt_display(y0 + image_height)
-        );
+) -> crate::Result<Option<super::super::emission::FlowchartNodeLabelEmissionReceipt>> {
+    let Some(href) = common.node_img.filter(|href| !href.trim().is_empty()) else {
+        return Ok(None);
+    };
+    let geometry = image_geometry(ctx, common, label, href, OperationPhase::Emit)?;
+    let image = geometry.image;
+    let image_x = -image.width / 2.0;
+    let image_top = geometry.image_top();
+    let shape_y = image_top + image.height / 2.0;
+    let fill_path = image_fill_path(image);
+    let _ = write!(
+        out,
+        r#"<g transform="translate(0,{})"><path d="{}" stroke="none" stroke-width="0" fill="{}"/>"#,
+        fmt_display(shape_y),
+        escape_xml_display(&fill_path),
+        escape_xml_display(common.fill_color)
+    );
+    let stroke_path = close_image_path(fill_path, image);
+    if let Some(stroke_d) =
+        super::super::helpers::timed_node_roughjs(common.timing, details, || {
+            roughjs_stroke_path_for_svg_path(
+                &stroke_path,
+                common.stroke_width,
+                common.stroke_dasharray,
+                common.work_meter,
+                common.hand_drawn_seed,
+            )
+        })
+    {
         let _ = write!(
             out,
-            r#"<g transform="translate(0,{})">"#,
-            fmt_display(icon_dy)
+            r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
+            escape_xml_display(&stroke_d),
+            escape_xml_display(common.stroke_color),
+            fmt_display(common.stroke_width as f64),
+            escape_xml_display(common.stroke_dasharray)
         );
-        let _ = write!(
-            out,
-            r#"<path d="{}" stroke="none" stroke-width="0" fill="{}"/>"#,
-            escape_xml_display(&rect_fill_path),
-            escape_xml_display(common.fill_color)
-        );
-        if let Some(stroke_d) =
-            super::super::helpers::timed_node_roughjs(common.timing, details, || {
-                roughjs_stroke_path_for_svg_path(
-                    &rect_stroke_path,
-                    common.stroke_width,
-                    common.stroke_dasharray,
-                    common.work_meter,
-                    common.hand_drawn_seed,
-                )
-            })
-        {
-            let _ = write!(
-                out,
-                r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
-                escape_xml_display(&stroke_d),
-                escape_xml_display(common.stroke_color),
-                fmt_display(common.stroke_width as f64),
-                escape_xml_display(common.stroke_dasharray)
-            );
-        }
-        out.push_str("</g>");
-
-        // Label group uses a background class in Mermaid's image/icon helpers.
-        let label_dy = if top_label {
-            -image_height / 2.0 - label_bbox_h / 2.0 - label_padding / 2.0
-        } else {
-            image_height / 2.0 - label_bbox_h / 2.0 + label_padding / 2.0
-        };
-        let label_receipt = common.label_emission.write_special_html_label(
-            out,
-            ctx,
-            common,
-            label,
-            details,
-            -label_bbox_w / 2.0,
-            label_dy,
-            label_bbox_w,
-            label_bbox_h,
-        );
-
-        let outer_x0 = -outer_w / 2.0;
-        let outer_y0 = -outer_h / 2.0;
-        let outer_path = format!(
-            "M{} {} L{} {} L{} {} L{} {}",
-            outer_x0,
-            outer_y0,
-            outer_x0 + outer_w,
-            outer_y0,
-            outer_x0 + outer_w,
-            outer_y0 + outer_h,
-            outer_x0,
-            outer_y0 + outer_h
-        );
-        let _ = write!(
-            out,
-            r#"<g><path d="{}" stroke="none" stroke-width="0" fill="none"/></g>"#,
-            escape_xml_display(&outer_path)
-        );
-
-        let img_translate_y = if top_label {
-            outer_h / 2.0 - image_height
-        } else {
-            -outer_h / 2.0
-        };
-        let _ = write!(
-            out,
-            r#"<image href="{}" width="{}" height="{}" preserveAspectRatio="none" transform="translate({},{})"/>"#,
-            escape_xml_display(img_href),
-            fmt_display(image_width),
-            fmt_display(image_height),
-            fmt_display(-image_width / 2.0),
-            fmt_display(img_translate_y)
-        );
-
-        out.push_str("</g>");
-        if common.wrapped_in_a {
-            out.push_str("</a>");
-        }
-        return Some(label_receipt);
-    } else {
-        // Fall back to a normal node if the image URL is missing.
-        let w = common.layout_node.width.max(1.0);
-        let h = common.layout_node.height.max(1.0);
-        let _ = write!(
-            out,
-            r#"<rect class="basic label-container" style="{}" x="{}" y="{}" width="{}" height="{}"/>"#,
-            escape_xml_display(common.style),
-            fmt_display(-w / 2.0),
-            fmt_display(-h / 2.0),
-            fmt_display(w),
-            fmt_display(h)
-        );
-        // Keep default label rendering.
     }
+    out.push_str("</g>");
 
-    None
+    let label_y = if geometry.top_label {
+        -image.height / 2.0 - geometry.label.height / 2.0 - geometry.label_padding / 2.0
+    } else {
+        image.height / 2.0 - geometry.label.height / 2.0 + geometry.label_padding / 2.0
+    };
+    let label_receipt = common.label_emission.write_special_html_label(
+        out,
+        ctx,
+        common,
+        label,
+        details,
+        -geometry.label.width / 2.0,
+        label_y,
+        geometry.label.width,
+        geometry.label.height,
+    );
+
+    let outer = geometry.outer;
+    let outer_x = -outer.width / 2.0;
+    let outer_y = -outer.height / 2.0;
+    let outer_path = format!(
+        "M{outer_x} {outer_y} L{} {outer_y} L{} {} L{outer_x} {}",
+        outer.width / 2.0,
+        outer.width / 2.0,
+        outer.height / 2.0,
+        outer.height / 2.0,
+    );
+    let _ = write!(
+        out,
+        r#"<g><path d="{}" stroke="none" stroke-width="0" fill="none"/></g>"#,
+        escape_xml_display(&outer_path)
+    );
+    let _ = write!(
+        out,
+        r#"<image href="{}" width="{}" height="{}" preserveAspectRatio="none" transform="translate({},{})"/>"#,
+        escape_xml_display(href),
+        fmt_display(image.width),
+        fmt_display(image.height),
+        fmt_display(image_x),
+        fmt_display(image_top)
+    );
+
+    out.push_str("</g>");
+    if common.wrapped_in_a {
+        out.push_str("</a>");
+    }
+    Ok(Some(label_receipt))
 }
 
-fn prepare_image_geometry(
+fn image_geometry(
     ctx: &FlowchartRenderCtx<'_>,
-    common: &super::super::FlowchartNodeGeometry<'_>,
-    label: &super::super::FlowchartNodeLabelState<'_>,
-) -> (f64, bool, f64, f64, f64, f64, f64, f64, String, f64) {
-    let has_label = !label.text.is_empty();
-    let label_padding = if has_label { 8.0 } else { 0.0 };
-    let top_label = common.node_pos == Some("t");
-
-    let mut metrics = common.label_metrics(ctx, label);
-    if !has_label {
-        metrics.width = 0.0;
-        metrics.height = 0.0;
+    common: &FlowchartNodeGeometry<'_>,
+    label: &FlowchartNodeLabelState<'_>,
+    href: &str,
+    phase: OperationPhase,
+) -> crate::Result<ImageSquareGeometry> {
+    if let Some(geometry) = ctx.node_image(common.node_id) {
+        return Ok(geometry);
     }
-
-    // Mermaid's `labelHelper(...)` wraps image labels in `.labelBkg`; the flowchart
-    // stylesheet adds 2px padding to the nested `<p>`, so DOM `getBBox()` includes +4px.
-    let label_bbox_w = metrics.width + if has_label { 4.0 } else { 0.0 };
-    let label_bbox_h = metrics.height + if has_label { 4.0 } else { 0.0 };
-    let geometry = crate::flowchart::ImageSquareGeometry::from_label(
-        metrics,
-        has_label,
-        common.node_asset_width,
-        common.node_asset_height,
-        common.node_constraint == Some("on"),
+    // Low-level geometry controls can supply a layout without the prepared label sidecar.
+    ImageSquareGeometry::resolve(
+        ImageSquareSizing {
+            href,
+            width: common.node_asset_width,
+            height: common.node_asset_height,
+            constraint_on: common.node_constraint == Some("on"),
+        },
+        common.label_metrics(ctx, label),
+        !label.text.is_empty(),
         ctx.wrapping_width,
-    );
-    let image_width = geometry.image_width;
-    let image_height = geometry.image_height;
-    let outer_w = geometry.width;
-    let outer_h = geometry.height;
-
-    let x0 = -image_width / 2.0;
-    let y0 = -image_height / 2.0;
-    // Stroke uses RoughJS and must be a closed path so the left edge is included.
-    let rect_stroke_path = format!(
-        "M{} {} L{} {} L{} {} L{} {} L{} {}",
-        fmt_display(x0),
-        fmt_display(y0),
-        fmt_display(x0 + image_width),
-        fmt_display(y0),
-        fmt_display(x0 + image_width),
-        fmt_display(y0 + image_height),
-        fmt_display(x0),
-        fmt_display(y0 + image_height),
-        fmt_display(x0),
-        fmt_display(y0)
-    );
-
-    let icon_dy = if top_label {
-        label_bbox_h / 2.0 + label_padding / 2.0
-    } else {
-        -label_bbox_h / 2.0 - label_padding / 2.0
-    };
-    (
-        label_padding,
-        top_label,
-        label_bbox_w,
-        label_bbox_h,
-        image_width,
-        image_height,
-        outer_w,
-        outer_h,
-        rect_stroke_path,
-        icon_dy,
+        common.node_pos == Some("t"),
+        |units| {
+            common
+                .work_meter
+                .charge_work(units, phase)
+                .map_err(Into::into)
+        },
     )
+}
+
+fn image_fill_path(size: kurbo::Size) -> String {
+    let x = size.width / 2.0;
+    let y = size.height / 2.0;
+    format!(
+        "M{} {} L{} {} L{} {} L{} {}",
+        fmt_display(-x),
+        fmt_display(-y),
+        fmt_display(x),
+        fmt_display(-y),
+        fmt_display(x),
+        fmt_display(y),
+        fmt_display(-x),
+        fmt_display(y),
+    )
+}
+
+fn close_image_path(mut path: String, size: kurbo::Size) -> String {
+    use std::fmt::Write as _;
+
+    let _ = write!(
+        path,
+        " L{} {}",
+        fmt_display(-size.width / 2.0),
+        fmt_display(-size.height / 2.0)
+    );
+    path
 }
 
 pub(super) fn advance_rough_geometry(
     ctx: &FlowchartRenderCtx<'_>,
-    common: &super::super::FlowchartNodeGeometry<'_>,
-    label: &super::super::FlowchartNodeLabelState<'_>,
-) {
-    if common.node_img.is_some_and(|s| !s.trim().is_empty()) {
-        let (_, _, _, _, _, _, _, _, path, _) = prepare_image_geometry(ctx, common, label);
+    common: &FlowchartNodeGeometry<'_>,
+    label: &FlowchartNodeLabelState<'_>,
+) -> crate::Result<()> {
+    if let Some(href) = common.node_img.filter(|href| !href.trim().is_empty()) {
+        let geometry = image_geometry(ctx, common, label, href, OperationPhase::Layout)?;
+        let path = close_image_path(image_fill_path(geometry.image), geometry.image);
         let _ = super::super::roughjs::roughjs_prepare_stroke_path_for_svg_path(
             super::super::roughjs::RoughGeometryTarget::Query,
             &path,
@@ -233,4 +179,5 @@ pub(super) fn advance_rough_geometry(
             common.hand_drawn_seed,
         );
     }
+    Ok(())
 }

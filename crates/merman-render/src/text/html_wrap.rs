@@ -100,6 +100,12 @@ impl NormalizedHtmlText {
         self.text.len()
     }
 
+    pub(crate) fn at_line_start(&self) -> bool {
+        self.text.is_empty()
+            || self.text.ends_with('\n')
+            || (self.text == " " && !self.mode_at(0).preserves_spaces())
+    }
+
     pub(crate) fn inline_boundary(&mut self, depth: usize, mode: HtmlWhiteSpace) {
         if let Some((offset, previous_depth, previous_mode)) = self.boundaries.last_mut()
             && *offset == self.text.len()
@@ -493,7 +499,8 @@ pub(crate) fn plan_html_lines_with_ranges<E>(
     // A terminating preserved newline does not create another empty line box.
     for raw in source.text.split_terminator('\n') {
         checkpoint()?;
-        let mut whole = Candidate::new(builtin.clone());
+        // The full row needs one width probe and no growing-prefix snapshots.
+        let mut whole = Candidate::new(None);
         whole.append(raw, source, base, checkpoint)?;
         let natural = Candidate::measured(
             &mut whole.text,
@@ -505,6 +512,8 @@ pub(crate) fn plan_html_lines_with_ranges<E>(
             checkpoint,
         )?;
         if limit.is_none_or(|limit| natural <= limit) {
+            // Empty explicit rows still belong to their own source offset.
+            whole.source_start.get_or_insert(base);
             lines.push(whole.finish(false, false, limit, measure, checkpoint)?);
             base += raw.len() + 1;
             continue;

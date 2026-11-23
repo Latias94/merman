@@ -3,6 +3,8 @@ use merman_model::{OperationControl, OperationControlResult, OperationPhase};
 
 #[cfg(feature = "diagram-er")]
 mod er;
+#[cfg(feature = "diagram-flowchart")]
+mod flowchart;
 #[cfg(feature = "diagram-requirement")]
 mod requirement;
 #[cfg(any(
@@ -100,8 +102,15 @@ mod declaration_scan {
             }
             checked_styles.push(raw);
         }
+        root_dependent_size(checked_styles, control)
+    }
+
+    pub(super) fn root_dependent_size<'a>(
+        styles: impl IntoIterator<Item = &'a str>,
+        control: &OperationControl,
+    ) -> OperationControlResult<Option<String>> {
         Ok(
-            crate::mermaid_style::root_dependent_font_size(checked_styles, control)?
+            crate::mermaid_style::root_dependent_font_size(styles, control)?
                 .map(|_| "font-size (rem requires a document-root font size)".to_owned()),
         )
     }
@@ -279,6 +288,17 @@ pub fn unsupported_native_text_style(
             .render_context()
             .flowchart_render_context()
             .unwrap_or(&default_context);
+        #[cfg(feature = "diagram-flowchart")]
+        if parsed.metadata().diagram_type != "swimlane"
+            && parsed.metadata().effective_config.get_str("layout") != Some("swimlane")
+        {
+            return flowchart::unsupported_source_style(
+                model,
+                context,
+                &parsed.metadata().effective_config,
+                &control,
+            );
+        }
         for (ordinal, subgraph) in model.subgraphs.iter().enumerate() {
             let (_, styles) = context.effective_subgraph_css(ordinal, subgraph);
             if let Some(property) = declaration_scan::style_lists([styles], &control)? {

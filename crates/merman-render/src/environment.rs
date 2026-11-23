@@ -313,11 +313,48 @@ struct BuiltinInlineRawLineWidthState {
 /// The input is already decoded text: literal `<br>` spellings are never interpreted as markup.
 /// U+00AD retains its shaping boundary with zero advance until a discretionary break is selected.
 /// Other scalar-count semantics stay unchanged for uniform-advance profiles.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct BuiltinHtmlLineWidth {
     source: BuiltinHtmlLineWidthSource,
+    spacing: Option<Box<StreamingHtmlSpacing>>,
     #[cfg(test)]
     pub(crate) pushed_chunks: usize,
+}
+
+impl Clone for BuiltinHtmlLineWidth {
+    fn clone(&self) -> Self {
+        // Wrapping snapshots may outnumber width queries. Keep only the extendable final
+        // grapheme in each snapshot instead of copying every already measured prefix.
+        self.width_px();
+        Self {
+            source: self.source.clone(),
+            spacing: self.spacing.clone(),
+            #[cfg(test)]
+            pushed_chunks: self.pushed_chunks,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct StreamingHtmlSpacing {
+    geometry: crate::mermaid_style::HtmlTextSpacing,
+    pending: RefCell<(f64, String)>,
+}
+
+impl StreamingHtmlSpacing {
+    fn width_px(&self) -> f64 {
+        let mut pending = self.pending.borrow_mut();
+        let (total, text) = &mut *pending;
+        let tail = text
+            .grapheme_indices(true)
+            .next_back()
+            .map_or(0, |(tail, _)| tail);
+        if tail != 0 {
+            *total += self.geometry.advance(&text[..tail]);
+            text.drain(..tail);
+        }
+        *total + self.geometry.advance(text)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -343,9 +380,20 @@ impl BuiltinHtmlLineWidth {
         };
         Self {
             source,
+            spacing: None,
             #[cfg(test)]
             pushed_chunks: 0,
         }
+    }
+
+    pub(crate) fn with_spacing(mut self, geometry: crate::mermaid_style::HtmlTextSpacing) -> Self {
+        if !geometry.is_normal() {
+            self.spacing = Some(Box::new(StreamingHtmlSpacing {
+                geometry,
+                pending: RefCell::default(),
+            }));
+        }
+        self
     }
 
     pub(crate) fn push_text(&mut self, text: &str) {
@@ -360,6 +408,9 @@ impl BuiltinHtmlLineWidth {
                     char_count.saturating_add(text.chars().filter(|ch| *ch != '\u{00ad}').count());
             }
         }
+        if let Some(spacing) = &mut self.spacing {
+            spacing.pending.get_mut().1.push_str(text);
+        }
     }
 
     pub(crate) fn width_px(&self) -> f64 {
@@ -372,7 +423,12 @@ impl BuiltinHtmlLineWidth {
             } => *char_count as f64 * *font_size * *char_width_factor,
         };
         // An unwrapped built-in HTML measurement starts its maximum-width fold at zero.
-        width.max(0.0)
+        (width
+            + self
+                .spacing
+                .as_ref()
+                .map_or(0.0, |spacing| spacing.width_px()))
+        .max(0.0)
     }
 
     #[cfg(test)]
@@ -399,6 +455,11 @@ impl BuiltinHtmlLineWidth {
         match &mut self.source {
             BuiltinHtmlLineWidthSource::Heuristic(line) => line.reset(),
             BuiltinHtmlLineWidthSource::Uniform { char_count, .. } => *char_count = 0,
+        }
+        if let Some(spacing) = &mut self.spacing {
+            let (total, text) = spacing.pending.get_mut();
+            *total = 0.0;
+            text.clear();
         }
     }
 }

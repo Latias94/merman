@@ -76,13 +76,13 @@
     "version": "0.9.3",
     "command_profile": "artifact-profile-runtime",
     "offline": true,
-    "cargo_lock_sha256": "8740f4201687b0051225383657026ce1747bfbb846b61b42e94c5a05c335493f",
+    "cargo_lock_sha256": "4935ef5e6da6e8a378cd2d2c81b900be4aa95135e028e9f0bcec9c1019c70047",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_profile_sha256": "caaa99d16f01ecc804757b206a5d4d1eaf3d4f0d6c7e22ac4a27e239ee7a0dd1"
   },
   "dependency_closure": {
-    "package_count": 169,
-    "packages_sha256": "90d4d155364cf63e95226c5e80e79d1ecf956488c1f102ea01914f0596a0d626"
+    "package_count": 170,
+    "packages_sha256": "aa88916232498802a8247e98066a7a3f908881f54def6ae546454b2ce91533ce"
   },
   "licenses": [
     {
@@ -1425,6 +1425,24 @@
             "Robin Stocker <robin@nibor.org>"
           ],
           "repository": "https://github.com/fancy-regex/fancy-regex"
+        }
+      ]
+    },
+    {
+      "id": "MIT",
+      "name": "MIT License",
+      "text_sha256": "436637bd4909fde7e14c899e9ff2cdd440b5968df12d431f1651f11db19bc2ef",
+      "text": "MIT License\r\n\r\nCopyright (c) 2017 Maiddog\r\n\r\nPermission is hereby granted, free of charge, to any person obtaining a copy\r\nof this software and associated documentation files (the \"Software\"), to deal\r\nin the Software without restriction, including without limitation the rights\r\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\r\ncopies of the Software, and to permit persons to whom the Software is\r\nfurnished to do so, subject to the following conditions:\r\n\r\nThe above copyright notice and this permission notice shall be included in all\r\ncopies or substantial portions of the Software.\r\n\r\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\r\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\r\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\r\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\r\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\r\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\r\nSOFTWARE.\r\n",
+      "packages": [
+        {
+          "name": "imagesize",
+          "version": "0.14.0",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT",
+          "authors": [
+            "Maid Dog <maiddogsrl@gmail.com>"
+          ],
+          "repository": "https://github.com/Roughsketch/imagesize"
         }
       ]
     },

@@ -23,15 +23,14 @@ use merman_model::families::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdge
 
 use super::config::{FlowchartConfigView, FlowchartLayoutSettings};
 use super::label::compute_bounds;
-use super::node::{NodeLayoutDimensionsRequest, node_layout_dimensions};
+use super::node::NodeLayoutDimensionsRequest;
 use super::{
     FlowchartLabelMetricsRequest, FlowchartRenderModelRef, FlowchartSvgLabelOwner,
     FlowchartSvgLabelSidecarBuilder, FlowchartSvgWidthMode,
     flowchart_apply_html_node_class_box_metrics,
-    flowchart_effective_text_style_for_classes_with_provenance,
-    flowchart_effective_text_style_for_node_classes_with_provenance, flowchart_node_svg_width_mode,
-    measure_flowchart_svg_label_for_layout_with_metrics_style_and_terminal_foreground,
-    measure_flowchart_svg_label_for_layout_with_terminal_foreground,
+    flowchart_effective_text_style_for_classes_with_provenance, flowchart_node_svg_width_mode,
+    measure_flowchart_svg_label_for_layout_with_metrics_and_source_style,
+    measure_flowchart_svg_label_for_layout_with_source_style,
 };
 
 pub(crate) struct FlowchartElkLayoutExecution<'a> {
@@ -1660,7 +1659,7 @@ fn subgraph_label(
         (label_type == "markdown" || collapsed).then_some(ctx.cluster_title_wrapping_width);
     // The layout and writer share this occurrence-scoped artifact. Re-entering a width-sensitive
     // backend for emission would allow the terminal XHTML to diverge from the measured geometry.
-    let metrics = measure_flowchart_svg_label_for_layout_with_terminal_foreground(
+    let metrics = measure_flowchart_svg_label_for_layout_with_source_style(
         ctx.svg_label_sidecar,
         Some(owner),
         Some(sg.id.as_str()),
@@ -1674,7 +1673,7 @@ fn subgraph_label(
             config: ctx.effective_config,
             math_renderer: ctx.math_renderer,
         },
-        text_style.terminal_foreground(),
+        Some(&text_style),
         FlowchartSvgWidthMode::Bbox,
     );
     let height = if ctx
@@ -1701,6 +1700,7 @@ fn node_dimensions_and_label(
     let wrapping_width =
         super::bpmn::wrapping_width(node.layout_shape.as_deref(), ctx.wrapping_width);
     let label_type = node.label_type.as_deref().unwrap_or("text");
+    let look = crate::config::mermaid_config_diagram_look(ctx.effective_config);
     let typography = ctx.svg_label_sidecar.map_or_else(
         super::FlowchartLabelTypography::default,
         FlowchartSvgLabelSidecarBuilder::label_typography,
@@ -1712,7 +1712,7 @@ fn node_dimensions_and_label(
             raw_label,
             label_type,
             ctx.node_wrap_mode == WrapMode::HtmlLike,
-            crate::config::config_diagram_look(ctx.effective_config).is_hand_drawn(),
+            look.is_hand_drawn(),
         ),
     );
     let structural = super::FlowchartStructuralLabelTypography::prepare(
@@ -1727,7 +1727,7 @@ fn node_dimensions_and_label(
         (&node.classes, &node.styles, true),
         &structural,
     );
-    let mut node_text_style = flowchart_effective_text_style_for_node_classes_with_provenance(
+    let (mut node_text_style, rectangle_size) = super::style::flowchart_node_layout_style(
         node_parent.as_ref(),
         &ctx.model.class_defs,
         &node.classes,
@@ -1740,7 +1740,7 @@ fn node_dimensions_and_label(
         ctx.node_wrap_mode,
         node.layout_shape.as_deref().unwrap_or("squareRect"),
     );
-    let mut metrics = measure_flowchart_svg_label_for_layout_with_terminal_foreground(
+    let mut metrics = measure_flowchart_svg_label_for_layout_with_source_style(
         ctx.svg_label_sidecar,
         Some(owner),
         Some(node.id.as_str()),
@@ -1754,7 +1754,7 @@ fn node_dimensions_and_label(
             config: ctx.effective_config,
             math_renderer: ctx.math_renderer,
         },
-        node_text_style.terminal_foreground(),
+        Some(&node_text_style),
         svg_width_mode,
     );
     if ctx.node_wrap_mode == WrapMode::HtmlLike && ctx.class_html_labels {
@@ -1781,7 +1781,7 @@ fn node_dimensions_and_label(
         width: metrics.width,
         height: metrics.height,
     };
-    let (width, height) = node_layout_dimensions(NodeLayoutDimensionsRequest {
+    let (width, height) = NodeLayoutDimensionsRequest {
         layout_shape: node.layout_shape.as_deref(),
         layout_direction: match ctx.node_direction {
             elk::Direction::Left => "RL",
@@ -1794,14 +1794,20 @@ fn node_dimensions_and_label(
         wrapping_width,
         node_constraint: node.constraint.as_deref(),
         padding: ctx.node_padding,
-        look_is_neo: crate::config::mermaid_config_diagram_look(ctx.effective_config).is_neo(),
+        look_is_neo: look.is_neo(),
         state_padding: ctx.state_padding,
         node_icon: node.icon.as_deref(),
         node_img: node.img.as_deref(),
         node_pos: node.pos.as_deref(),
         node_asset_width: node.asset_width,
         node_asset_height: node.asset_height,
-    });
+    }
+    .measure(
+        rectangle_size,
+        look.is_hand_drawn(),
+        ctx.svg_label_sidecar.map(|builder| (builder, owner)),
+        |units| charge_adapter_work(work_control, units),
+    )?;
 
     Ok((width, height, label))
 }
@@ -1840,7 +1846,7 @@ fn edge_label(
             ctx.edge_wrap_mode,
         )
     } else if ctx.edge_wrap_mode == WrapMode::SvgLike {
-        measure_flowchart_svg_label_for_layout_with_metrics_style_and_terminal_foreground(
+        measure_flowchart_svg_label_for_layout_with_metrics_and_source_style(
             ctx.svg_label_sidecar,
             Some(owner),
             Some(edge.id.as_str()),
@@ -1856,11 +1862,11 @@ fn edge_label(
                 math_renderer: ctx.math_renderer,
             },
             edge_text_style.as_ref(),
-            edge_text_style.terminal_foreground(),
+            Some(&edge_text_style),
             FlowchartSvgWidthMode::Bbox,
         )
     } else {
-        measure_flowchart_svg_label_for_layout_with_terminal_foreground(
+        measure_flowchart_svg_label_for_layout_with_source_style(
             ctx.svg_label_sidecar,
             Some(owner),
             Some(edge.id.as_str()),
@@ -1874,7 +1880,7 @@ fn edge_label(
                 config: ctx.effective_config,
                 math_renderer: ctx.math_renderer,
             },
-            edge_text_style.terminal_foreground(),
+            Some(&edge_text_style),
             FlowchartSvgWidthMode::Bbox,
         )
     };

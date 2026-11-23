@@ -165,10 +165,6 @@ pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
                         tail_shape,
                         &interior[0],
                     );
-                    if is_rounded_intersect_shift_shape(tail_shape) {
-                        start.x += 0.5;
-                        start.y += 0.5;
-                    }
                 }
 
                 if is_compact_self_loop
@@ -182,10 +178,6 @@ pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
                         head_shape,
                         &interior[interior.len() - 1],
                     );
-                    if is_rounded_intersect_shift_shape(head_shape) {
-                        end.x += 0.5;
-                        end.y += 0.5;
-                    }
                 }
 
                 points_after_intersect.clear();

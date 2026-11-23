@@ -1,6 +1,11 @@
+use crate::mermaid_style::{
+    HtmlTextGeometryDeclarations, HtmlTextProperty, ParsedStyleDeclaration,
+};
 use crate::text::{TextMetrics, TextStyle};
-use indexmap::IndexMap;
+use indexmap::{IndexMap, map::Entry};
+use rustc_hash::FxBuildHasher;
 use std::borrow::Cow;
+use std::hash::Hash;
 
 fn parse_style_decl(s: &str) -> Option<(&str, &str, bool)> {
     let parsed = crate::mermaid_style::parse_style_declaration(s)?;
@@ -68,6 +73,7 @@ pub(crate) fn flowchart_is_source_spelled_label_style_key(key: &str) -> bool {
 pub(crate) struct FlowchartTextStyleResolution<'a> {
     pub(crate) style: Cow<'a, TextStyle>,
     pub(crate) terminal_foreground: Option<FlowchartTerminalForeground>,
+    pub(crate) html_geometry: HtmlTextGeometryDeclarations,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -136,6 +142,7 @@ impl<'a> FlowchartTextStyleResolution<'a> {
         Self {
             style: Cow::Borrowed(style),
             terminal_foreground: None,
+            html_geometry: HtmlTextGeometryDeclarations::default(),
         }
     }
 
@@ -156,6 +163,7 @@ struct FlowchartTextStyleResolver<'a, 's> {
     resolution: FlowchartTextStyleResolution<'a>,
     base: &'a TextStyle,
     typography: [Option<(&'s str, bool)>; 4],
+    html_geometry: [Option<(&'s str, bool)>; 4],
 }
 
 impl<'a, 's> FlowchartTextStyleResolver<'a, 's> {
@@ -164,6 +172,7 @@ impl<'a, 's> FlowchartTextStyleResolver<'a, 's> {
             resolution: FlowchartTextStyleResolution::borrowed(base),
             base,
             typography: Default::default(),
+            html_geometry: Default::default(),
         }
     }
 
@@ -192,6 +201,12 @@ impl<'a, 's> FlowchartTextStyleResolver<'a, 's> {
             // compileStyles replaces a declaration before the browser validates its value.
             self.typography[index] = Some((value, important));
         }
+        if let Some(property) = HtmlTextProperty::named(key) {
+            let winner = &mut self.html_geometry[property as usize];
+            if winner.is_none_or(|(_, previous)| important || !previous) {
+                *winner = Some((value, important));
+            }
+        }
         if key.trim() == "color" {
             FlowchartTerminalForeground::observe(
                 &mut self.resolution.terminal_foreground,
@@ -216,8 +231,67 @@ impl<'a, 's> FlowchartTextStyleResolver<'a, 's> {
             }
         }
         self.resolution.style = cascade.finish();
+        for (property, winner) in HtmlTextProperty::ALL.into_iter().zip(self.html_geometry) {
+            if let Some((value, _)) = winner {
+                self.resolution.html_geometry.set(property, value);
+            }
+        }
         self.resolution
     }
+}
+
+/// Keep the first position of each authored spelling while replacing its winning value.
+/// SVG emission and layout must agree on the order seen by the CSS cascade.
+pub(crate) fn flowchart_insert_style_by_spelling<K: Eq + Hash, V>(
+    declarations: &mut IndexMap<K, V, FxBuildHasher>,
+    spelling: K,
+    declaration: V,
+    is_important: impl Fn(&V) -> bool,
+) {
+    match declarations.entry(spelling) {
+        Entry::Vacant(entry) => {
+            entry.insert(declaration);
+        }
+        Entry::Occupied(mut entry) => {
+            if !is_important(entry.get()) || is_important(&declaration) {
+                entry.insert(declaration);
+            }
+        }
+    }
+}
+
+fn flowchart_style_declarations<'b, 's>(
+    class_defs: &'s IndexMap<String, Vec<String>>,
+    class_names: impl IntoIterator<Item = &'b str>,
+    inline_styles: &'s [String],
+) -> impl Iterator<
+    Item = (
+        ParsedStyleDeclaration<'s>,
+        FlowchartTerminalForegroundProvenance,
+    ),
+> {
+    let assigned = class_names
+        .into_iter()
+        .filter_map(move |class| class_defs.get(class))
+        .flatten()
+        .map(|declaration| {
+            (
+                declaration,
+                FlowchartTerminalForegroundProvenance::AssignedClass,
+            )
+        });
+    let inline = inline_styles.iter().map(|declaration| {
+        (
+            declaration,
+            FlowchartTerminalForegroundProvenance::InlineStyle,
+        )
+    });
+    assigned.chain(inline).flat_map(|(group, provenance)| {
+        flowchart_split_mermaid_style_decls(group).filter_map(move |raw| {
+            crate::mermaid_style::parse_style_declaration(raw)
+                .map(|declaration| (declaration, provenance))
+        })
+    })
 }
 
 fn flowchart_text_style_resolver_for_class_names<'a, 'b, 's>(
@@ -227,41 +301,125 @@ fn flowchart_text_style_resolver_for_class_names<'a, 'b, 's>(
     inline_styles: &'s [String],
 ) -> FlowchartTextStyleResolver<'a, 's> {
     let mut resolver = FlowchartTextStyleResolver::new(base);
+    for (declaration, provenance) in
+        flowchart_style_declarations(class_defs, class_names, inline_styles)
+    {
+        resolver.observe(
+            declaration.property_source(),
+            declaration.value(),
+            provenance,
+            declaration.important(),
+        );
+    }
+    resolver
+}
 
-    for class in class_names {
-        let Some(decls) = class_defs.get(class) else {
-            continue;
-        };
-        for d in decls {
-            for d in flowchart_split_mermaid_style_decls(d) {
-                let Some((k, v, important)) = parse_style_decl(d) else {
-                    continue;
-                };
-                resolver.observe(
-                    k,
-                    v,
-                    FlowchartTerminalForegroundProvenance::AssignedClass,
-                    important,
-                );
-            }
+#[derive(Default)]
+pub(crate) struct FlowchartRectangleCssSize {
+    pub(crate) size: [Option<f64>; 2],
+    important: [bool; 2],
+}
+
+impl FlowchartRectangleCssSize {
+    pub(crate) fn observe(
+        &mut self,
+        property: &str,
+        important: bool,
+        length: impl FnOnce() -> Result<Option<f64>, ()>,
+    ) {
+        if let Some(index) = rectangle_dimension_index(property)
+            && (important || !self.important[index])
+            && let Ok(length) = length()
+        {
+            self.size[index] = length;
+            self.important[index] = important;
         }
     }
 
-    for d in inline_styles {
-        for d in flowchart_split_mermaid_style_decls(d) {
-            let Some((k, v, important)) = parse_style_decl(d) else {
-                continue;
-            };
+    pub(crate) fn has_important(&self, property: &str) -> bool {
+        rectangle_dimension_index(property).is_some_and(|index| self.important[index])
+    }
+}
+
+fn rectangle_dimension_index(property: &str) -> Option<usize> {
+    match property {
+        "width" => Some(0),
+        "height" => Some(1),
+        _ => None,
+    }
+}
+
+#[derive(Default)]
+struct RectangleStyleDeclarations<'a>(IndexMap<&'a str, ParsedStyleDeclaration<'a>, FxBuildHasher>);
+
+impl<'a> RectangleStyleDeclarations<'a> {
+    fn observe(&mut self, declaration: ParsedStyleDeclaration<'a>) {
+        flowchart_insert_style_by_spelling(
+            &mut self.0,
+            declaration.property_source(),
+            declaration,
+            ParsedStyleDeclaration::important,
+        );
+    }
+
+    fn finish(self) -> [Option<f64>; 2] {
+        let mut dimensions = FlowchartRectangleCssSize::default();
+        for declaration in self.0.into_values() {
+            dimensions.observe(declaration.property(), declaration.important(), || {
+                declaration.svg_rect_length_px()
+            });
+        }
+        dimensions.size
+    }
+}
+
+pub(super) fn flowchart_subgraph_css_size(
+    class_defs: &IndexMap<String, Vec<String>>,
+    classes: &[String],
+    inline_styles: &[String],
+) -> [Option<f64>; 2] {
+    let mut dimensions = RectangleStyleDeclarations::default();
+    for (declaration, _) in flowchart_style_declarations(
+        class_defs,
+        classes.iter().map(String::as_str),
+        inline_styles,
+    ) {
+        if matches!(declaration.property(), "width" | "height") {
+            dimensions.observe(declaration);
+        }
+    }
+    dimensions.finish()
+}
+
+pub(crate) fn flowchart_node_layout_style<'a>(
+    base: &'a TextStyle,
+    class_defs: &IndexMap<String, Vec<String>>,
+    classes: &[String],
+    inline_styles: &[String],
+) -> (FlowchartTextStyleResolution<'a>, [Option<f64>; 2]) {
+    let classes = flowchart_effective_node_class_names(class_defs, classes);
+    if classes.is_empty() && inline_styles.is_empty() {
+        return (FlowchartTextStyleResolution::borrowed(base), [None; 2]);
+    }
+
+    let mut resolver = FlowchartTextStyleResolver::new(base);
+    let mut dimensions = RectangleStyleDeclarations::default();
+    for (declaration, provenance) in
+        flowchart_style_declarations(class_defs, classes, inline_styles)
+    {
+        if matches!(declaration.property(), "width" | "height") {
+            dimensions.observe(declaration);
+        } else {
             resolver.observe(
-                k,
-                v,
-                FlowchartTerminalForegroundProvenance::InlineStyle,
-                important,
+                declaration.property_source(),
+                declaration.value(),
+                provenance,
+                declaration.important(),
             );
         }
     }
 
-    resolver
+    (resolver.finish(), dimensions.finish())
 }
 
 pub(super) fn flowchart_declared_font_facets(
@@ -305,28 +463,13 @@ pub(crate) fn flowchart_effective_node_class_names<'a>(
 
 pub(crate) fn flowchart_effective_text_style_for_node_classes<'a>(
     base: &'a TextStyle,
-    class_defs: &'a IndexMap<String, Vec<String>>,
-    classes: &'a [String],
-    inline_styles: &[String],
-) -> std::borrow::Cow<'a, TextStyle> {
-    flowchart_effective_text_style_for_node_classes_with_provenance(
-        base,
-        class_defs,
-        classes,
-        inline_styles,
-    )
-    .style
-}
-
-pub(crate) fn flowchart_effective_text_style_for_node_classes_with_provenance<'a>(
-    base: &'a TextStyle,
     class_defs: &IndexMap<String, Vec<String>>,
     classes: &[String],
     inline_styles: &[String],
-) -> FlowchartTextStyleResolution<'a> {
+) -> Cow<'a, TextStyle> {
     let effective_classes = flowchart_effective_node_class_names(class_defs, classes);
     if effective_classes.is_empty() && inline_styles.is_empty() {
-        return FlowchartTextStyleResolution::borrowed(base);
+        return Cow::Borrowed(base);
     }
     flowchart_text_style_resolver_for_class_names(
         base,
@@ -335,12 +478,13 @@ pub(crate) fn flowchart_effective_text_style_for_node_classes_with_provenance<'a
         inline_styles,
     )
     .finish()
+    .style
 }
 
 pub(crate) fn flowchart_effective_text_style_for_classes<'a>(
     base: &'a TextStyle,
     class_defs: &IndexMap<String, Vec<String>>,
-    classes: &'a [String],
+    classes: &[String],
     inline_styles: &[String],
 ) -> std::borrow::Cow<'a, TextStyle> {
     flowchart_effective_text_style_for_classes_with_provenance(

@@ -2594,6 +2594,7 @@ dependencies = [
  "dugong",
  "euclid",
  "futures",
+ "imagesize",
  "indexmap",
  "kurbo 0.13.1",
  "libm",
