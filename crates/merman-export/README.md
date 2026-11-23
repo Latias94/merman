@@ -95,9 +95,11 @@ member points to the same byte range for an outline table larger than half the
 collection, then matches the selected Core Text face to an on-disk member by its
 font tables. Both faces can then use the same bytes, charged once. If the
 collection exceeds the remaining byte budget, Merman admits the standalone face
-when it fits. A face in an explicitly admitted file can also be reused after its
-tables match. Measurement and export use index zero in a standalone SFNT and the
-verified member index in a retained collection.
+when it fits. The first use charges the full size of a retained collection. With
+a tight byte budget, selecting a collection before an unrelated font can therefore
+reach the limit even when the reverse order fits. A face in an explicitly admitted
+file can also be reused after its tables match. Measurement and export use index
+zero in a standalone SFNT and the verified member index in a retained collection.
 
 Successful macOS family/style requests and character fallback requests are pinned
 within the operation and retained by `for_export()`. `for_operation()` resets them;
