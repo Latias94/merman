@@ -11,7 +11,9 @@ use std::{
 use objc2_core_foundation::{
     CFArray, CFData, CFRange, CFRetained, CFString, CFURL, CFURLPathStyle,
 };
-use objc2_core_text::{CTFont, CTFontDescriptor, CTFontTableOptions, kCTFontURLAttribute};
+use objc2_core_text::{
+    CTFont, CTFontDescriptor, CTFontOptions, CTFontTableOptions, kCTFontURLAttribute,
+};
 use usvg::fontdb::{FaceInfo, ID, Stretch, Style, Weight};
 
 use super::super::{
@@ -333,7 +335,9 @@ fn registered_base_font(base: &FaceInfo) -> Option<CFRetained<CTFont>> {
     }
     let name = CFString::from_str(&base.post_script_name);
     // SAFETY: The retained name is live and a null matrix requests identity.
-    let font = unsafe { CTFont::with_name(&name, 0.0, ptr::null()) };
+    let font = unsafe {
+        CTFont::with_name_and_options(&name, 0.0, ptr::null(), CTFontOptions::PreventAutoDownload)
+    };
     // CTFontCreateWithName may substitute a different font for an unknown name.
     // An explicit face may use this path only when the actual PS name is equal.
     // SAFETY: The retained font is live; the accessor returns an owned string.
@@ -497,7 +501,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "requires registered macOS Arial and PingFang SC faces"]
+    #[ignore = "requires a registered macOS Arial face"]
     fn cascade_coverage_and_snapshot_limits_follow_the_selected_cmap() {
         use crate::fonts::{
             NativeFontLimits, registry::FontSourceRegistry, resolver::FontCandidate,
@@ -510,9 +514,22 @@ mod tests {
         };
         let registry = FontSourceRegistry::new(Default::default(), Default::default(), 0, 0);
         let mut database = Arc::new(Database::new());
-        for (family, character) in [("Arial", '\u{a789}'), ("PingFang SC", '\u{2da5a}')] {
-            let face = named(family, Weight::NORMAL, Stretch::Normal, Style::Normal).unwrap();
-            // Read the installed revision's mapping without snapshotting the whole CJK face.
+        let arial = named("Arial", Weight::NORMAL, Stretch::Normal, Style::Normal)
+            .expect("registered Arial face");
+        assert!(font_covers(&arial.font, 'A'));
+        assert!(!font_covers(&arial.font, '\u{0378}'));
+        let pingfang = named(
+            "PingFang SC",
+            Weight::NORMAL,
+            Stretch::Normal,
+            Style::Normal,
+        );
+        let cases = [(&arial, 'A'), (&arial, '\u{0378}'), (&arial, '\u{a789}')]
+            .into_iter()
+            .chain(pingfang.as_ref().map(|face| (face, '\u{2da5a}')));
+        for (face, character) in cases {
+            let family = &face.family;
+            // Read the installed revision's mapping without acquiring a snapshot.
             // SAFETY: The selected font and its immutable cmap remain live during parsing.
             let cmap = unsafe {
                 face.font
@@ -530,7 +547,7 @@ mod tests {
                 "{family} {character:?}"
             );
             let result = registry.materialize(
-                FontCandidate::Native(face),
+                FontCandidate::Native(face.clone()),
                 Some(character),
                 &mut database,
                 &limits,

@@ -3,11 +3,12 @@
 use std::{collections::HashMap, ptr, sync::Arc};
 
 use objc2_core_foundation::{
-    CFArray, CFComparisonResult, CFDictionary, CFNumber, CFRetained, CFSet, CFString,
+    CFArray, CFBoolean, CFComparisonResult, CFDictionary, CFNumber, CFRetained, CFSet, CFString,
     CFStringCompareFlags, CFType, kCFTypeSetCallBacks,
 };
 use objc2_core_text::{
-    CTFont, CTFontDescriptor, CTFontSymbolicTraits, CTFontTableOptions, kCTFontFamilyNameAttribute,
+    CTFont, CTFontDescriptor, CTFontOptions, CTFontSymbolicTraits, CTFontTableOptions,
+    kCTFontDownloadableAttribute, kCTFontDownloadedAttribute, kCTFontFamilyNameAttribute,
     kCTFontNameAttribute, kCTFontWeightTrait, kCTFontWidthTrait,
 };
 use usvg::fontdb::{
@@ -142,6 +143,17 @@ fn family_descriptors(family: &str) -> Option<CFRetained<CFArray<CTFontDescripto
 }
 
 pub(super) fn font_from_descriptor(descriptor: &CTFontDescriptor) -> Option<CFRetained<CTFont>> {
+    let flag = |key| {
+        // SAFETY: The descriptor and attribute key are live.
+        unsafe { descriptor.attribute(key) }
+            .and_then(|value| value.downcast::<CFBoolean>().ok())
+            .is_some_and(|value| value.value())
+    };
+    // SAFETY: These keys are immutable Core Text constants.
+    if unsafe { flag(kCTFontDownloadableAttribute) && !flag(kCTFontDownloadedAttribute) } {
+        return None;
+    }
+
     // Compare the normalized descriptor's identity, not the input spelling:
     // Core Text owns case folding and recognition of localized names/aliases.
     // SAFETY: The descriptor is live; this accessor returns a retained CF object.
@@ -153,7 +165,14 @@ pub(super) fn font_from_descriptor(descriptor: &CTFontDescriptor) -> Option<CFRe
     }
     // SAFETY: The matched descriptor is live; zero size and null matrix use its
     // defaults. The returned CTFont is retained independently of the descriptor.
-    let font = unsafe { CTFont::with_font_descriptor(descriptor, 0.0, ptr::null()) };
+    let font = unsafe {
+        CTFont::with_font_descriptor_and_options(
+            descriptor,
+            0.0,
+            ptr::null(),
+            CTFontOptions::PreventAutoDownload,
+        )
+    };
     // SAFETY: The font is live and the returned name is retained.
     let actual_name = unsafe { font.post_script_name() };
     if expected_name.compare(
@@ -249,6 +268,31 @@ fn css_weight(weight: f64) -> Weight {
 mod tests {
     use super::super::named;
     use super::*;
+
+    #[test]
+    #[ignore = "requires a registered macOS Arial face"]
+    fn descriptor_matching_accepts_only_local_font_assets() {
+        let face = named("Arial", Weight::NORMAL, Stretch::Normal, Style::Normal)
+            .expect("registered Arial face");
+        // SAFETY: The live font returns its retained descriptor.
+        let descriptor = unsafe { face.font.font_descriptor() };
+        assert!(font_from_descriptor(&descriptor).is_some());
+        // SAFETY: These keys are immutable Core Text constants.
+        let keys = unsafe { [kCTFontDownloadableAttribute, kCTFontDownloadedAttribute] };
+        for downloaded in [true, false] {
+            let attributes = CFDictionary::from_slices(
+                &keys,
+                &[CFBoolean::new(true), CFBoolean::new(downloaded)],
+            );
+            // SAFETY: The descriptor and its new boolean attributes stay live through creation.
+            let asset = unsafe { descriptor.copy_with_attributes(attributes.as_opaque()) };
+            assert_eq!(
+                font_from_descriptor(&asset).is_some(),
+                downloaded,
+                "asset downloaded: {downloaded}"
+            );
+        }
+    }
 
     #[test]
     #[ignore = "requires macOS with registered Arial Regular, Bold, Italic and Bold Italic faces"]
