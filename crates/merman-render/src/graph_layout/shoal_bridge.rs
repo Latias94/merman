@@ -2,14 +2,24 @@
 
 use super::Marker;
 use super::ir::{
-    BorderStitch, Endpoint, MeasuredGraph, Point, Size, SolvedEdge, SolvedGraph, SolvedGroup,
+    Axis, BorderStitch, Endpoint, MeasuredGraph, Point, Size, SolvedEdge, SolvedGraph, SolvedGroup,
 };
 use super::route_paint::LEAD;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::LayoutLabel;
 use crate::{Error, Result};
 use merman_layout_shoal as shoal;
-pub(crate) use shoal::LayoutScratch;
+pub(crate) use shoal::{LayoutScratch, OrderHint, WidthPolicy};
+
+pub(crate) type NodeHint = (OrderHint, shoal::Direction);
+
+#[derive(Default)]
+pub(crate) struct Placement<'a> {
+    pub(crate) width: WidthPolicy,
+    pub(crate) capture_ranks: bool,
+    pub(crate) hints: &'a [Option<NodeHint>],
+    pub(crate) flow_relative_nodes: &'a [(usize, Axis)],
+}
 
 #[cfg(all(test, feature = "diagram-flowchart", feature = "layout-elk"))]
 #[path = "kernel_bench.rs"]
@@ -60,18 +70,27 @@ fn project_rows<I: ExactSizeIterator, T>(
 
 fn project_input(
     measured: &MeasuredGraph,
+    placement: &Placement<'_>,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<shoal::Graph> {
     let mut graph = shoal::Graph::default();
     graph.direction = measured.direction;
-    graph.nodes = project_rows(measured.nodes.iter(), work, |node| {
+    graph.nodes = project_rows(measured.nodes.iter().enumerate(), work, |(index, node)| {
         let mut spec = shoal::NodeSpec::new(node.size, node.seq);
         spec.parent = node.parent.map(shoal::GroupId);
         spec.port_span = node.port_span;
         spec.perpendicular_port_span = node.perpendicular_port_span;
         spec.anchor_y = node.anchor_y;
+        if let Some((hint, direction)) = placement.hints.get(index).copied().flatten() {
+            spec.order_hint = Some(hint);
+            spec.order_hint_direction = Some(direction);
+        }
         Ok(spec)
     })?;
+    work.charge_adapter(placement.flow_relative_nodes.len())?;
+    for &(index, axis) in placement.flow_relative_nodes {
+        graph.nodes[index].flow_relative_axis = Some(axis);
+    }
     graph.groups = project_rows(measured.groups.iter(), work, |group| {
         let mut spec = shoal::GroupSpec::new(group.seq);
         spec.parent = group.parent.map(shoal::GroupId);
@@ -103,6 +122,7 @@ fn project_input(
 
 pub(crate) fn solve(
     measured: &MeasuredGraph,
+    placement: Placement<'_>,
     scratch: &mut LayoutScratch,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<SolvedGraph> {
@@ -112,11 +132,13 @@ pub(crate) fn solve(
     options.spacing.rank = measured.rank_spacing;
     options.spacing.component = measured.component_spacing;
     options.group_policy.inherit_crossed_direction = measured.inherit_crossed_group_direction;
+    options.width_policy = placement.width;
+    options.capture_node_ranks = placement.capture_ranks;
     #[cfg(all(test, feature = "diagram-flowchart", feature = "layout-elk"))]
     kernel_bench::capture(measured, options);
-    let solved =
-        shoal::layout_with_control(&project_input(measured, work)?, &options, scratch, work)
-            .map_err(|error| work.map_shoal_error(error))?;
+    let graph = project_input(measured, &placement, work)?;
+    let solved = shoal::layout_with_control(&graph, &options, scratch, work)
+        .map_err(|error| work.map_shoal_error(error))?;
     project_output(measured, solved, work)
 }
 
@@ -204,6 +226,7 @@ pub(super) fn project_output(
     )?;
     Ok(SolvedGraph {
         nodes: solved.nodes,
+        node_ranks: solved.node_ranks,
         groups,
         edges,
         border_stitches: project_rows(solved.border_stitches.into_iter(), work, |stitch| {

@@ -38,7 +38,12 @@ pub(super) fn layout(
 ) -> Result<ErPreparedLayout> {
     let input = measure(model, measurer, settings, &prepared_labels, neo, work)?;
     let group_order = parent_first_groups(&input, work)?;
-    let solved = shoal_bridge::solve(&input.graph, &mut LayoutScratch::default(), work)?;
+    let solved = shoal_bridge::solve(
+        &input.graph,
+        Default::default(),
+        &mut LayoutScratch::default(),
+        work,
+    )?;
     let canonical_routes = CanonicalRoutes::from_solved(
         &input.graph,
         &solved,

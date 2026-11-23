@@ -71,8 +71,8 @@ pub use merman_render::text::{
 };
 pub use merman_render::{
     Error as RenderError, LayoutAdaptation, LayoutAdaptationObservation, LayoutOptions,
-    RenderCapability, RenderCapabilityPolicy, Result as RenderResult, layout_cytoscape_available,
-    layout_elk_available, math_available,
+    RenderCapability, RenderCapabilityPolicy, Result as RenderResult, ShoalLayoutFrame,
+    layout_cytoscape_available, layout_elk_available, math_available,
 };
 
 /// Reports whether this facade enables the experimental Shoal layout backend.

@@ -75,6 +75,7 @@ mod tests {
                 vec!["A".to_string(), "B".to_string()],
             )]),
             route_contract: crate::graph_layout::RouteContract::DagreParity,
+            placement: Default::default(),
             uses_elk_adapter_dom: false,
         };
         let swimlane_layout = SwimlaneLayout {

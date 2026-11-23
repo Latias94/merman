@@ -605,6 +605,7 @@ fn flowchart_layout_from_elk_with_render_labels_and_work_control(
         bounds,
         dom_node_order_by_root,
         route_contract: crate::graph_layout::RouteContract::ElkParity,
+        placement: Default::default(),
         uses_elk_adapter_dom: true,
     })
 }

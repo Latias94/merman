@@ -43,7 +43,12 @@ pub(crate) fn layout(
     )?;
     let (graph, profiles) =
         canonical_input(model, &measured, settings, render.look == "neo", work)?;
-    let solved = shoal_bridge::solve(&graph, &mut LayoutScratch::default(), work)?;
+    let solved = shoal_bridge::solve(
+        &graph,
+        Default::default(),
+        &mut LayoutScratch::default(),
+        work,
+    )?;
     let source = &measured.graph;
     measured.prepared_labels.canonical_routes = Some(CanonicalRoutes::from_solved(
         &graph,

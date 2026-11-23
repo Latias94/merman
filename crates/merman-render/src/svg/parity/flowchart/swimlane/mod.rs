@@ -261,6 +261,7 @@ fn adapt_swimlane_layout(layout: &SwimlaneLayout) -> FlowchartLayout {
         // Swimlane supplies its node schedule through the prepared node inventory.
         dom_node_order_by_root: Default::default(),
         route_contract: crate::graph_layout::RouteContract::Swimlane,
+        placement: Default::default(),
         uses_elk_adapter_dom: false,
     }
 }

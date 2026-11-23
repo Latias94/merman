@@ -12,7 +12,7 @@ use super::{
     Shaft, Violation, fork_join_offsets, validate,
 };
 use crate::{
-    LayoutOptions, RenderCapability,
+    LayoutAdaptation, LayoutAdaptationObservation, LayoutOptions, RenderCapability,
     environment::RenderEnvironment,
     family,
     model::{FlowchartLayout, LayoutNode, LayoutPoint},
@@ -51,6 +51,15 @@ fn engine() -> MermaidEngine {
 }
 
 fn render(source: &str, diagram_id: &str) -> crate::Result<Drawing> {
+    render_with_options(source, diagram_id, &LayoutOptions::headless_svg_defaults())
+        .map(|(drawing, _)| drawing)
+}
+
+fn render_with_options(
+    source: &str,
+    diagram_id: &str,
+    options: &LayoutOptions,
+) -> crate::Result<(Drawing, Option<LayoutAdaptationObservation>)> {
     let diagram = engine()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap_or_else(|e| panic!("{diagram_id}: {e}"))
@@ -59,7 +68,8 @@ fn render(source: &str, diagram_id: &str) -> crate::Result<Drawing> {
     let session = RenderEnvironment::deterministic()
         .begin_session()
         .expect("deterministic gallery render session");
-    let artifact = family::prepare(&diagram, &LayoutOptions::headless_svg_defaults(), session)?;
+    let artifact = family::prepare(&diagram, options, session)?;
+    let adaptation = artifact.layout_adaptation();
     let snapshot = artifact.layout_json()?;
     let rendered = artifact.render_svg(
         &SvgRenderOptions {
@@ -74,11 +84,14 @@ fn render(source: &str, diagram_id: &str) -> crate::Result<Drawing> {
             .contains(&RenderCapability::LayoutShoal),
         "{diagram_id}: expected Shoal"
     );
-    Ok(Drawing {
-        model: serde_json::from_value(snapshot["semantic"].clone())?,
-        layout: serde_json::from_value(snapshot["layout"]["FlowchartV2"].clone())?,
-        svg: rendered.svg().to_owned(),
-    })
+    Ok((
+        Drawing {
+            model: serde_json::from_value(snapshot["semantic"].clone())?,
+            layout: serde_json::from_value(snapshot["layout"]["FlowchartV2"].clone())?,
+            svg: rendered.svg().to_owned(),
+        },
+        adaptation,
+    ))
 }
 
 fn attr<'a>(n: Node<'a, '_>, key: &str) -> &'a str {
@@ -166,7 +179,19 @@ fn port_normal(
     (body_frame * outward - body_frame * Point::ORIGIN).normalize()
 }
 
-fn contour(owner: Node<'_, '_>, frame: Affine) -> BezPath {
+fn contour(owner: Node<'_, '_>, frame: Affine, fork_join: bool) -> BezPath {
+    if fork_join {
+        let fill = owner
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("path")
+                    && node.attribute("fill").is_some_and(|fill| fill != "none")
+            })
+            .expect("filled fork/join contour");
+        let mut outline = painted_outline(fill, frame);
+        outline.close_path();
+        return outline;
+    }
     let container = owner
         .descendants()
         .find(|n| has_class(*n, "label-container"))
@@ -351,6 +376,13 @@ impl Drawing {
         assert_eq!(paths.len(), self.layout.edges.len());
         assert_eq!(paths.len(), labels.len(), "one edge-label slot per shaft");
 
+        let bars: std::collections::HashSet<_> = self
+            .model
+            .nodes
+            .iter()
+            .filter(|node| matches!(node.layout_shape.as_deref(), Some("fork" | "join")))
+            .map(|node| node.id.as_str())
+            .collect();
         let mut scene = Scene::default();
         let mut body_ids = HashMap::new();
         for (i, n) in self.layout.nodes.iter().enumerate() {
@@ -362,10 +394,14 @@ impl Drawing {
             let bounds = body_frame
                 .transform_rect_bbox(Rect::from_center_size((0., 0.), (n.width, n.height)));
             assert!(bounds.is_finite() && bounds.width() > 0. && bounds.height() > 0.);
+            let fork_join = bars.contains(n.id.as_str());
             scene.bodies.push(Body {
-                contour: Some(contour(owner, frame)),
+                contour: Some(contour(owner, frame, fork_join)),
                 ..Body::node(bounds)
             });
+            if fork_join {
+                continue;
+            }
             let label = owner
                 .descendants()
                 .find(|n| n.has_tag_name("g") && has_class(*n, "label"))
@@ -685,6 +721,70 @@ fn labeled_cycle_and_self_loops_stay_clear() {
     );
     assert!(cycle.layout.edges.iter().all(|e| e.label.is_some()));
     replay("cycle-loops", &cycle).unwrap();
+}
+
+#[test]
+fn fit_width_folds_fan_in_250_with_all_painted_contacts_and_markers() {
+    let mut source = String::from("flowchart TD\n");
+    for leaf in 1..250 {
+        writeln!(&mut source, "N{leaf} --> N0").unwrap();
+    }
+    let options = LayoutOptions::headless_svg_defaults()
+        .with_adaptation(LayoutAdaptation::FitWidth)
+        .with_container_size(1200., 600.)
+        .with_fold_wide_ranks(true);
+    let (drawing, observation) = render_with_options(&source, "fan-in-250-fit-width", &options)
+        .expect("fit-width render under the default budget");
+    let observation = observation.expect("adapted layout observation");
+    assert_eq!(observation.requested_width(), 1200.);
+    assert!(
+        !observation.overflowed(),
+        "layout width {}",
+        observation.actual_width()
+    );
+    assert_eq!(drawing.layout.nodes.len(), 250);
+    assert_eq!(drawing.layout.edges.len(), 249);
+    let report = replay("fan-in-250-fit-width", &drawing).unwrap();
+    assert_eq!(report.markers_checked, 249);
+    eprintln!(
+        "fan-in-250 fit-width actual_width={:.6}px",
+        observation.actual_width()
+    );
+}
+
+#[test]
+fn fit_width_turn_preserves_fork_and_join_contacts_on_the_painted_bars() {
+    let source = "flowchart LR\nStart[Review queued change] --> F@{ shape: fork }\nF --> A[Verify upstream] & B[Check runtime]\nA --> J@{ shape: join }\nB --> J\nJ --> End[Publish verified change]";
+    let options = LayoutOptions::default()
+        .with_adaptation(LayoutAdaptation::FitWidth)
+        .with_container_size(350.0, 600.0);
+    let (drawing, observation) = render_with_options(source, "turned-bars", &options).unwrap();
+    assert!(!observation.unwrap().overflowed());
+    let document = Document::parse(&drawing.svg).unwrap();
+    let scene = drawing.scene(&document, view_box(document.root_element()).size());
+    for (id, end) in [("F", End::Start), ("J", End::End)] {
+        let body = drawing.node(id);
+        let bounds = scene.bodies[body].contour.as_ref().unwrap().bounding_box();
+        assert!(bounds.width() > bounds.height(), "{id} {bounds:?}");
+        let ports: Vec<_> = scene
+            .edges
+            .iter()
+            .filter_map(|edge| {
+                let endpoint = if end == End::Start {
+                    edge.start
+                } else {
+                    edge.end
+                };
+                (endpoint.body == body).then(|| Shaft::read(edge).unwrap().sample(end, 0.0))
+            })
+            .collect();
+        let [first, second] = ports[..] else {
+            panic!("expected two contacts on {id}");
+        };
+        assert!((first.x - second.x).abs() >= 8.0, "{id} {ports:?}");
+        assert!((first.y - second.y).abs() <= 1e-6, "{id} {ports:?}");
+    }
+    replay("turned-bars", &drawing).unwrap();
 }
 
 #[test]

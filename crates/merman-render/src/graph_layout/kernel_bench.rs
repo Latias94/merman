@@ -212,7 +212,7 @@ impl Frozen {
             nodes,
             edges,
         };
-        let shoal = project_input(&measured, &mut work).unwrap();
+        let shoal = project_input(&measured, &Default::default(), &mut work).unwrap();
         Self {
             measured,
             shoal,

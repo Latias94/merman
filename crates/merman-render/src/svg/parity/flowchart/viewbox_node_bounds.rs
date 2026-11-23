@@ -582,6 +582,7 @@ mod tests {
                 vec!["A".into()],
             )]),
             route_contract: crate::graph_layout::RouteContract::DagreParity,
+            placement: Default::default(),
             uses_elk_adapter_dom: false,
         };
         let session = RenderEnvironment::deterministic().begin_session().unwrap();

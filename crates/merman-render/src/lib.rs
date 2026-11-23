@@ -200,6 +200,8 @@ pub mod kanban;
     )
 )]
 mod layout_backend;
+mod layout_frame;
+pub use layout_frame::ShoalLayoutFrame;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -1028,14 +1030,20 @@ pub struct LayoutAdaptationObservation {
     overflowed: bool,
 }
 
-// Both widths are finite at construction; NaN cannot enter this immutable observation.
+// Both widths are finite at construction.
 impl Eq for LayoutAdaptationObservation {}
 
 impl LayoutAdaptationObservation {
-    #[cfg(feature = "diagram-kanban")]
+    #[cfg(any(
+        feature = "diagram-kanban",
+        all(
+            feature = "layout-shoal",
+            any(feature = "diagram-flowchart", feature = "diagram-agentflow")
+        )
+    ))]
     pub(crate) fn fit_width(requested_width: f64, actual_width: f64) -> Self {
         debug_assert!(requested_width.is_finite() && requested_width > 0.0);
-        debug_assert!(actual_width.is_finite() && actual_width > 0.0);
+        debug_assert!(actual_width.is_finite() && actual_width >= 0.0);
         Self {
             mode: LayoutAdaptation::FitWidth,
             requested_width,
@@ -1078,6 +1086,10 @@ pub struct LayoutOptions {
     /// Mermaid's C4 renderer uses the available screen width rather than its container width.
     /// `None` keeps headless rendering deterministic by falling back to `container_width`.
     pub screen_available_width: Option<f64>,
+    /// Allow eligible Shoal leaf fans to occupy multiple rows during fit-width layout.
+    pub fold_wide_ranks: bool,
+    pub(crate) capture_shoal_frame: bool,
+    pub(crate) previous_shoal_frame: Option<std::sync::Arc<ShoalLayoutFrame>>,
 }
 
 impl Default for LayoutOptions {
@@ -1087,6 +1099,9 @@ impl Default for LayoutOptions {
             container_width: 800.0,
             container_height: 600.0,
             screen_available_width: None,
+            fold_wide_ranks: false,
+            capture_shoal_frame: false,
+            previous_shoal_frame: None,
         }
     }
 }
@@ -1113,6 +1128,22 @@ impl LayoutOptions {
     /// Supplies the browser `screen.availWidth` observed by the host.
     pub fn with_screen_available_width(mut self, width: f64) -> Self {
         self.screen_available_width = Some(width);
+        self
+    }
+
+    /// Sets wide-rank fan folding for a Shoal fit-width operation.
+    pub fn with_fold_wide_ranks(mut self, fold: bool) -> Self {
+        self.fold_wide_ranks = fold;
+        self
+    }
+
+    /// Requests a Shoal preview frame and optionally reuses hints from the same diagram.
+    pub fn with_shoal_layout_frame(
+        mut self,
+        previous: Option<std::sync::Arc<ShoalLayoutFrame>>,
+    ) -> Self {
+        self.capture_shoal_frame = true;
+        self.previous_shoal_frame = previous;
         self
     }
 }

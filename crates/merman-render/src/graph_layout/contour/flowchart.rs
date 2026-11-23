@@ -7,6 +7,19 @@ use kurbo::{Arc, Point, SvgArc, Vec2};
 use std::f64::consts::{FRAC_PI_2, PI, TAU};
 
 impl ShapePortProfile {
+    pub(crate) fn fork_join(width: f64, height: f64) -> Self {
+        let (width, height) = if width >= height {
+            (70.0, 10.0)
+        } else {
+            (10.0, 70.0)
+        };
+        Self::new(
+            Outline::rect(width, height, 0.0, 0.0),
+            width - 8.0,
+            height - 8.0,
+        )
+    }
+
     /// `measured` supplies final paint dimensions and the label metrics retained by measurement.
     /// The position of this node is supplied separately when projecting a particular edge.
     #[cfg(test)]
@@ -97,10 +110,7 @@ impl ShapePortProfile {
             // basic_geoms::render_diamond translates the polygon half a pixel to the right.
             S::Diamond => Self::new(Outline::diamond(w, h, 0.5), w * 0.6, h * 0.6),
             S::Choice => Self::diamond(28.0, 28.0),
-            S::ForkJoin => {
-                let (w, h) = if w >= h { (70.0, 10.0) } else { (10.0, 70.0) };
-                Self::new(Outline::rect(w, h, 0.0, 0.0), w - 8.0, h - 8.0)
-            }
+            S::ForkJoin => Self::fork_join(w, h),
             S::Hexagon => {
                 let hex = flowchart::HexagonGeometry::from_bounds(w, h, neo);
                 let shoulder = hex.points[0].0;

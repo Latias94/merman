@@ -119,7 +119,12 @@ pub(super) fn layout(
         plans.push(plan);
     }
 
-    let solved = shoal_bridge::solve(&graph, &mut LayoutScratch::default(), &mut work)?;
+    let solved = shoal_bridge::solve(
+        &graph,
+        Default::default(),
+        &mut LayoutScratch::default(),
+        &mut work,
+    )?;
     let canonical_routes = CanonicalRoutes::from_solved(
         &graph,
         &solved,

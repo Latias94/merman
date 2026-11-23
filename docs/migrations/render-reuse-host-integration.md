@@ -239,15 +239,16 @@ do not compensate with arbitrary padding or smaller text.
 
 ## Request width adaptation explicitly
 
-`LayoutAdaptation::FitWidth` / `layout.adaptation: "fit-width"` currently applies to Kanban.
-It packs complete columns in source order, preserving labels, font sizes, tasks, IDs and links.
-The default `None` / `"none"` retains Mermaid placement. Other families reject explicit
-fit-width. A column wider than the container retains its natural width and reports overflow.
+`LayoutAdaptation::FitWidth` / `layout.adaptation: "fit-width"` applies to Kanban and to Flowchart
+and Agentflow when they select Shoal. Kanban packs complete columns in source order, preserving
+labels, font sizes, tasks, IDs and links. A column wider than the container retains its natural
+width and reports overflow. The default request mode is `None` / `"none"`.
 
 Read `layout_adaptation` on result metadata, or `meta.layout_adaptation` in layout JSON, for
 `mode`, `requested_width`, `actual_width` and `overflowed`. A mount supplies its measured content
 width for fit-width requests. This is family placement, independent of SVG viewport scaling.
-See [headless layout](../rendering/HEADLESS_LAYOUT.md#explicit-kanban-width-adaptation).
+See [Kanban width adaptation](../rendering/HEADLESS_LAYOUT.md#explicit-kanban-width-adaptation)
+and [Shoal width adaptation](../rendering/HEADLESS_LAYOUT.md#shoal-width-adaptation-and-preview-frames).
 
 ## ASCII terminal graph planning
 

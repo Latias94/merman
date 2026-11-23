@@ -757,6 +757,19 @@ pub struct FlowchartLayout {
     pub uses_elk_adapter_dom: bool,
     #[serde(skip)]
     pub(crate) route_contract: crate::graph_layout::RouteContract,
+    #[serde(skip)]
+    pub(crate) placement: FlowchartPlacement,
+}
+
+#[derive(Debug, Default, Clone)]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+pub(crate) struct FlowchartPlacement {
+    pub(crate) adaptation: Option<crate::LayoutAdaptationObservation>,
+    pub(crate) frame: Option<std::sync::Arc<crate::ShoalLayoutFrame>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

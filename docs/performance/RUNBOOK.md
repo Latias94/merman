@@ -405,6 +405,15 @@ fixtures cover all four directions, cycles, self-loops, parallel labels, and den
 cargo nextest run --locked -p merman-render --features diagram-flowchart,layout-shoal --lib -E 'test(graph_layout::validate::gallery::)' --success-output immediate
 ```
 
+The flat replay includes the final painted `fan-in-250` fit-width drawing with a 1,200 px
+geometry budget. The editor stability corpus prints the mean displacement and normalized
+sibling inversions for relabeling, link style changes, adding a leaf, and adding an edge.
+Compare hinted and stateless frames at equal crossings.
+
+```console
+cargo nextest run --locked -p merman-layout-shoal --test editor_stability --success-output immediate
+```
+
 The larger geometry replay is opt-in. Generate the standard full workload plan, then run its
 32 topologies; the `fork-join-500` input has 996 edges and must retain its parser rejection.
 

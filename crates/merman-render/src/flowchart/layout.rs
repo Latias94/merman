@@ -4313,6 +4313,7 @@ fn layout_flowchart_with_model(
         bounds,
         dom_node_order_by_root,
         route_contract: crate::graph_layout::RouteContract::DagreParity,
+        placement: Default::default(),
         uses_elk_adapter_dom: false,
     })
 }

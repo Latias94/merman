@@ -278,7 +278,12 @@ pub(super) fn layout(
             end_marker: marker(false),
         });
     }
-    let mut solved = shoal_bridge::solve(&graph, &mut LayoutScratch::default(), work)?;
+    let mut solved = shoal_bridge::solve(
+        &graph,
+        Default::default(),
+        &mut LayoutScratch::default(),
+        work,
+    )?;
     for edge in &mut solved.edges {
         work.charge_adapter(0)?;
         if let Endpoint::Node(node) = edge.source

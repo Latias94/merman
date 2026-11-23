@@ -126,9 +126,8 @@ for that request.
 
 Set `LayoutOptions.adaptation` to `LayoutAdaptation::FitWidth`, or use binding JSON
 `{"layout":{"adaptation":"fit-width","container_width":425}}`. The default is `None` / `"none"`.
-Only Kanban supports this mode; the SVG capability plan reports its supported modes in
-`supported_layout_adaptation_ids`. Other families reject explicit adaptation, including empty
-edge-geometry queries, without starting unused layout services.
+The SVG capability plan reports placement modes for the selected family and backend in
+`supported_layout_adaptation_ids`. Unsupported requests return a typed error before layout.
 
 Fit-width packs whole columns into rows in source order. It preserves configured section width,
 labels, fonts, task occurrences, IDs and ticket links. Labels and column heights are prepared once;
@@ -148,6 +147,29 @@ Kanban retains Mermaid's existing configuration precedence: effective `mindmap.p
 column needs 220px and two need 425px. Explicit `mindmap.padding: 8` gives 216px and 421px.
 Default rendering and fit-width requests wide enough for the natural strip produce identical SVG
 bytes. Reuse a prepared source to switch widths without reparsing.
+
+## Shoal Width Adaptation and Preview Frames
+
+Flowchart and Agentflow support explicit `FitWidth` when their effective configuration selects
+Shoal. The solver wraps disconnected components, tries tighter spacing, and can turn a horizontal
+flow downward for a container narrower than 640 CSS pixels. Opt into folding eligible wide leaf
+fans with `LayoutOptions::with_fold_wide_ranks(true)` or the binding options below.
+
+```json
+{"layout":{"adaptation":"fit-width","container_width":1200,"fold_wide_ranks":true}}
+```
+
+The `layout_adaptation` observation reports normalized geometry width before SVG viewBox padding
+and scaling. An empty diagram has a geometry width of zero. If the diagram cannot fit, the
+observation reports overflow and describes the narrowest applicable result.
+
+For an interactive Flowchart or Agentflow preview, call `LayoutOptions::with_shoal_layout_frame`
+with the previous successful `ShoalLayoutFrame`, or with `None` to start a session. Read the
+next frame from `SvgOutput::shoal_layout_frame()` after successful rendering. Full binding SVG
+results expose it as `shoal_layout_frame` metadata. Keep the frame with its document and pass
+it back on the next edit. Shoal matches surviving node IDs within their parent and local flow
+direction, then uses the previous rank and cross-axis order as placement hints. The frame is
+separate from layout JSON and SVG.
 
 ## Low-Level Use
 

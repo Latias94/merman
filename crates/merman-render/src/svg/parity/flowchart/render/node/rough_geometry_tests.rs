@@ -80,6 +80,7 @@ fn with_context<T>(
         bounds: None,
         dom_node_order_by_root: std::collections::HashMap::from([("S".into(), vec!["A".into()])]),
         route_contract: crate::graph_layout::RouteContract::DagreParity,
+        placement: Default::default(),
         uses_elk_adapter_dom: false,
     };
     let resources = if tiny_svg_budget {

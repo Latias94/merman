@@ -29,9 +29,12 @@ impl RenderCapabilityPlan {
         self.family_id
     }
 
-    /// Placement modes supported by this actual typed render family.
+    /// Placement modes supported by the selected family and backend.
     pub fn supported_layout_adaptations(&self) -> &'static [LayoutAdaptation] {
-        supported_layout_adaptations(self.family_id)
+        supported_layout_adaptations(
+            self.family_id,
+            self.required.contains(&RenderCapability::LayoutShoal),
+        )
     }
 
     /// Returns every optional capability this operation requires.
@@ -284,8 +287,17 @@ fn validate_paired_render_model(parsed: &PresentationDiagram) -> Result<DiagramF
     })
 }
 
-fn supported_layout_adaptations(family: DiagramFamilyId) -> &'static [LayoutAdaptation] {
-    if family == DiagramFamilyId::KANBAN {
+fn supported_layout_adaptations(
+    family: DiagramFamilyId,
+    shoal: bool,
+) -> &'static [LayoutAdaptation] {
+    if family == DiagramFamilyId::KANBAN
+        || (shoal
+            && matches!(
+                family,
+                DiagramFamilyId::FLOWCHART | DiagramFamilyId::AGENTFLOW
+            ))
+    {
         &[LayoutAdaptation::None, LayoutAdaptation::FitWidth]
     } else {
         &[LayoutAdaptation::None]
@@ -302,7 +314,12 @@ pub fn validate_layout_options(
         return Ok(());
     }
     let family = validate_paired_render_model(parsed)?;
-    if !supported_layout_adaptations(family).contains(&options.adaptation) {
+    let shoal = matches!(
+        family,
+        DiagramFamilyId::FLOWCHART | DiagramFamilyId::AGENTFLOW
+    ) && required_layout_capability(parsed, family)?
+        == Some(RenderCapability::LayoutShoal);
+    if !supported_layout_adaptations(family, shoal).contains(&options.adaptation) {
         return Err(Error::UnsupportedLayoutAdaptation {
             adaptation: options.adaptation.id(),
             diagram_type: parsed.metadata().diagram_type.clone(),

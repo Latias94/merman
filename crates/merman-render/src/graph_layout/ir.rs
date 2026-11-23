@@ -177,6 +177,7 @@ pub(crate) struct MeasuredEdge {
 #[derive(Debug)]
 pub(crate) struct SolvedGraph {
     pub(crate) nodes: Vec<Rect>,
+    pub(crate) node_ranks: Vec<u32>,
     pub(crate) groups: Vec<SolvedGroup>,
     pub(crate) edges: Vec<SolvedEdge>,
     pub(crate) border_stitches: Vec<BorderStitch>,

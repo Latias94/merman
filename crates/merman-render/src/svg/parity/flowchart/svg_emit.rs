@@ -694,6 +694,7 @@ mod integration_tests {
                 vec![node.id.clone()],
             )]),
             route_contract: crate::graph_layout::RouteContract::DagreParity,
+            placement: Default::default(),
             uses_elk_adapter_dom: false,
         };
         let policy = RenderResourcePolicy::unbounded_for_trusted_input()
@@ -865,6 +866,7 @@ mod integration_tests {
                     vec!["A".into(), "B".into()],
                 )]),
                 route_contract: crate::graph_layout::RouteContract::ElkParity,
+                placement: Default::default(),
                 uses_elk_adapter_dom: true,
             };
             let session = RenderEnvironment::deterministic().begin_session().unwrap();

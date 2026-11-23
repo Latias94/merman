@@ -79,6 +79,135 @@ fn agentflow_explicit_shoal_selection_respects_build_and_session_capability() {
     );
 }
 
+#[cfg(feature = "diagram-flowchart")]
+#[test]
+fn fit_width_admission_follows_the_selected_flowchart_backend() {
+    use merman_render::LayoutAdaptation;
+
+    let options = LayoutOptions::default()
+        .with_adaptation(LayoutAdaptation::FitWidth)
+        .with_container_size(240.0, 600.0);
+    for (layout, expected) in [
+        (
+            "shoal",
+            &[LayoutAdaptation::None, LayoutAdaptation::FitWidth][..],
+        ),
+        ("dagre", &[LayoutAdaptation::None][..]),
+        ("elk", &[LayoutAdaptation::None][..]),
+    ] {
+        let source = format!("---\nconfig:\n  layout: {layout}\n---\nflowchart TB\nA --> B");
+        let parsed = parse(&source);
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let plan = family::plan_render(&parsed, &session).unwrap();
+        assert_eq!(plan.supported_layout_adaptations(), expected);
+        match (layout, cfg!(feature = "layout-shoal")) {
+            ("shoal", true) => {
+                let result = family::prepare(&parsed, &options, session).unwrap();
+                let width = result.layout_adaptation().unwrap();
+                assert_eq!(width.requested_width(), 240.0);
+                assert!(!width.overflowed());
+                assert!(width.actual_width() > 0.0);
+            }
+            ("shoal", false) => {
+                assert!(matches!(
+                    family::prepare(&parsed, &options, session),
+                    Err(Error::MissingCapability {
+                        capability: RenderCapability::LayoutShoal,
+                        ..
+                    })
+                ));
+            }
+            _ => assert!(matches!(
+                family::prepare(&parsed, &options, session),
+                Err(Error::UnsupportedLayoutAdaptation { .. })
+            )),
+        }
+    }
+}
+
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+#[test]
+fn shoal_preview_reuses_semantic_node_order_after_an_edit() {
+    use merman_render::ShoalLayoutFrame;
+    use std::sync::Arc;
+
+    let render = |diagram: &str, options: LayoutOptions| {
+        let parsed = parse(&format!("---\nconfig:\n  layout: shoal\n---\n{diagram}"));
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let artifact = family::prepare(&parsed, &options, session).unwrap();
+        let json = artifact.layout_json().unwrap().to_string();
+        let svg = artifact
+            .render_svg(&Default::default(), &Default::default())
+            .unwrap();
+        (svg, json)
+    };
+    let first = "flowchart TB\nA --> C\nA --> B";
+    let (plain, plain_json) = render(first, LayoutOptions::default());
+    let (captured, captured_json) = render(
+        first,
+        LayoutOptions::default().with_shoal_layout_frame(None),
+    );
+    assert!(plain.shoal_layout_frame().is_none());
+    assert_eq!(plain.svg(), captured.svg());
+    assert_eq!(plain_json, captured_json);
+    let frame = captured.shoal_layout_frame().unwrap();
+    let bytes = serde_json::to_vec(frame.as_ref()).unwrap();
+    let frame: ShoalLayoutFrame = serde_json::from_slice(&bytes).unwrap();
+    let nodes = |frame: &ShoalLayoutFrame| serde_json::to_value(frame).unwrap()["nodes"].clone();
+    let edited = "flowchart TB\nA --> B[Relabeled]\nA --> C\nA --> D[New]";
+    let (stateless, _) = render(
+        edited,
+        LayoutOptions::default().with_shoal_layout_frame(None),
+    );
+    let (stabilized, _) = render(
+        edited,
+        LayoutOptions::default().with_shoal_layout_frame(Some(Arc::new(frame.clone()))),
+    );
+    let before = nodes(&frame);
+    let after = nodes(stabilized.shoal_layout_frame().unwrap().as_ref());
+    let stateless = nodes(stateless.shoal_layout_frame().unwrap().as_ref());
+    let cross_key = |frame: &serde_json::Value, id: &str| frame[id]["cross_key"].as_f64().unwrap();
+    assert_eq!(before["A"]["rank"], 0);
+    assert_eq!(before["B"]["rank"], 1);
+    assert_eq!(after["D"]["rank"], 1);
+    assert!(cross_key(&before, "C") < cross_key(&before, "B"));
+    assert!(cross_key(&stateless, "B") < cross_key(&stateless, "C"));
+    assert!(cross_key(&after, "C") < cross_key(&after, "B"));
+}
+
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+#[test]
+fn shoal_preview_uses_local_ranks_and_discards_hints_after_a_parent_or_direction_change() {
+    let render = |group, direction, declarations, options| {
+        let source = format!(
+            "---\nconfig:\n  layout: shoal\n---\nflowchart TB\nsubgraph {group}\n  direction {direction}\n{declarations}\nend"
+        );
+        let parsed = parse(&source);
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        family::prepare(&parsed, options, session)
+            .unwrap()
+            .render_svg(&Default::default(), &Default::default())
+            .unwrap()
+    };
+    let capture = LayoutOptions::default().with_shoal_layout_frame(None);
+    let previous = render("G", "LR", "  A --> C\n  A --> B", &capture)
+        .shoal_layout_frame()
+        .unwrap();
+    let measured = serde_json::to_value(previous.as_ref()).unwrap();
+    let parent = measured["nodes"]["B"]["parent"].as_u64().unwrap() as usize;
+    assert_eq!(measured["groups"][parent], "G");
+    assert_eq!(measured["nodes"]["B"]["rank"], 1);
+    assert_eq!(measured["nodes"]["B"]["direction"], "right");
+    let reuse = LayoutOptions::default().with_shoal_layout_frame(Some(previous));
+    for (group, direction) in [("H", "LR"), ("G", "RL")] {
+        let edited = "  A --> B[Relabeled]\n  A --> C\n  A --> D[New]";
+        let stateless = render(group, direction, edited, &capture);
+        let hinted = render(group, direction, edited, &reuse);
+        assert_eq!(hinted.svg(), stateless.svg());
+        assert_eq!(hinted.shoal_layout_frame(), stateless.shoal_layout_frame());
+    }
+}
+
 #[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
 #[test]
 fn shoal_paints_the_routes_and_anchors_of_each_visible_occurrence() {

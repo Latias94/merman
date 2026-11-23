@@ -61,7 +61,12 @@ pub(crate) fn layout_state_diagram_shoal(
         execution.text_measurer(),
         &mut work,
     )?;
-    let mut solved = shoal_bridge::solve(&input.graph, &mut LayoutScratch::default(), &mut work)?;
+    let mut solved = shoal_bridge::solve(
+        &input.graph,
+        Default::default(),
+        &mut LayoutScratch::default(),
+        &mut work,
+    )?;
     regions::stretch(&input, &mut solved, &mut work)?;
     let routes = CanonicalRoutes::from_solved(
         &input.graph,
