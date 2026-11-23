@@ -999,11 +999,13 @@ fn process_chunk(
         return Vec::new();
     };
     let (levels, runs) = bidi.visual_runs(paragraph, paragraph.range.clone());
+    let default_language = options.text_fallback.language.as_deref();
     let mut styles: Vec<(&TextSpan, Range<usize>)> = Vec::new();
     for span in &chunk.spans {
         match styles.last_mut() {
             Some((previous, bytes))
-                if bytes.end == span.start && same_shaping_style(previous, span) =>
+                if bytes.end == span.start
+                    && same_shaping_style(previous, span, default_language) =>
             {
                 bytes.end = span.end;
             }
@@ -1031,6 +1033,7 @@ fn process_chunk(
                 bytes: run.clone(),
                 ltr,
                 span,
+                language: shaping_language(span, default_language),
             };
             glyphs.extend(run.shape_text(bytes, font, options, fontdb));
         }
@@ -1051,13 +1054,28 @@ fn process_chunk(
     clusters
 }
 
-fn same_shaping_style(a: &TextSpan, b: &TextSpan) -> bool {
+fn shaping_language<'a>(span: &'a TextSpan, default: Option<&'a str>) -> Option<&'a str> {
+    span.language
+        .as_deref()
+        .or(default)
+        .filter(|tag| super::is_language_tag(tag))
+}
+
+fn same_shaping_style(a: &TextSpan, b: &TextSpan, default_language: Option<&str>) -> bool {
     a.font == b.font
         && a.font_size == b.font_size
-        && a.language == b.language
         && a.small_caps == b.small_caps
         && a.apply_kerning == b.apply_kerning
         && a.font_optical_sizing == b.font_optical_sizing
+        && (a.language == b.language
+            || match (
+                shaping_language(a, default_language),
+                shaping_language(b, default_language),
+            ) {
+                (Some(a), Some(b)) => a.eq_ignore_ascii_case(b),
+                (None, None) => true,
+                _ => false,
+            })
 }
 
 fn apply_length_adjust(chunk: &TextChunk, clusters: &mut [GlyphCluster]) {
@@ -1374,6 +1392,7 @@ struct ShapingRun<'a> {
     bytes: Range<usize>,
     ltr: bool,
     span: &'a TextSpan,
+    language: Option<&'a str>,
 }
 
 impl ShapingRun<'_> {
@@ -1384,13 +1403,7 @@ impl ShapingRun<'_> {
         options: &crate::Options,
         fontdb: &mut Arc<Database>,
     ) -> Vec<Glyph> {
-        let language = self
-            .span
-            .language
-            .as_deref()
-            .or(options.text_fallback.language.as_deref())
-            .filter(|tag| is_language_tag(tag));
-        let Some(primary) = self.shape(bytes, font, 1.0, language, fontdb) else {
+        let Some(primary) = self.shape(bytes, font, 1.0, fontdb) else {
             return Vec::new();
         };
         if primary.iter().all(|glyph| !glyph.is_missing()) {
@@ -1402,9 +1415,7 @@ impl ShapingRun<'_> {
             let cluster = &primary[range];
             if cluster.iter().any(Glyph::is_missing) {
                 let end = start.value() + cluster.iter().map(|g| g.cluster_len).max().unwrap_or(0);
-                if let Some(repaired) =
-                    self.repair(start.value()..end, font.id, language, options, fontdb)
-                {
+                if let Some(repaired) = self.repair(start.value()..end, font.id, options, fontdb) {
                     glyphs.extend(repaired);
                     continue;
                 }
@@ -1424,7 +1435,6 @@ impl ShapingRun<'_> {
         &self,
         bytes: Range<usize>,
         primary: ID,
-        language: Option<&str>,
         options: &crate::Options,
         fontdb: &mut Arc<Database>,
     ) -> Option<Vec<Glyph>> {
@@ -1435,7 +1445,14 @@ impl ShapingRun<'_> {
         let mut used = vec![primary];
         loop {
             let (id, scale) = if let Some(select) = &options.text_fallback.select {
-                select(&self.span.font, cluster, language, !self.ltr, &used, fontdb)?
+                select(
+                    &self.span.font,
+                    cluster,
+                    self.language,
+                    !self.ltr,
+                    &used,
+                    fontdb,
+                )?
             } else {
                 (
                     (options.font_resolver.select_fallback)(
@@ -1457,9 +1474,7 @@ impl ShapingRun<'_> {
             let Some(font) = fontdb.load_font(id) else {
                 continue;
             };
-            let Some(mut glyphs) =
-                self.shape(bytes.clone(), &Arc::new(font), scale, language, fontdb)
-            else {
+            let Some(mut glyphs) = self.shape(bytes.clone(), &Arc::new(font), scale, fontdb) else {
                 continue;
             };
             if glyphs.is_empty() || glyphs.iter().any(Glyph::is_missing) {
@@ -1480,7 +1495,6 @@ impl ShapingRun<'_> {
         bytes: Range<usize>,
         font: &Arc<ResolvedFont>,
         scale: f32,
-        language: Option<&str>,
         fontdb: &Database,
     ) -> Option<Vec<Glyph>> {
         let text = self.text.get(bytes.clone())?;
@@ -1502,7 +1516,7 @@ impl ShapingRun<'_> {
             } else {
                 rustybuzz::Direction::RightToLeft
             });
-            if let Some(language) = language.and_then(|tag| tag.parse().ok()) {
+            if let Some(language) = self.language.and_then(|tag| tag.parse().ok()) {
                 buffer.set_language(language);
             }
             let mut features = Vec::new();
@@ -1544,20 +1558,6 @@ impl ShapingRun<'_> {
             Some(glyphs)
         })?
     }
-}
-
-// Reject malformed language attributes before sending them to platform APIs.
-fn is_language_tag(tag: &str) -> bool {
-    let mut parts = tag.split('-');
-    let Some(first) = parts.next() else {
-        return false;
-    };
-    !first.is_empty()
-        && first.len() <= 8
-        && first.bytes().all(|b| b.is_ascii_alphabetic())
-        && parts.all(|part| {
-            !part.is_empty() && part.len() <= 8 && part.bytes().all(|b| b.is_ascii_alphanumeric())
-        })
 }
 
 /// An iterator over glyph clusters.

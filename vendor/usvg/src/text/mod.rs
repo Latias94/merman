@@ -15,6 +15,87 @@ mod colr;
 /// Provides access to the layout of a text node.
 pub mod layout;
 
+/// Checks the syntax of a BCP 47 tag (RFC 5646, sections 2.1 and 2.2).
+/// Language selection does not require looking up subtags in the IANA registry.
+pub(crate) fn is_language_tag(tag: &str) -> bool {
+    // These grandfathered tags are the exceptions to the regular grammar.
+    const IRREGULAR: &[&str] = &[
+        "en-GB-oed",
+        "i-ami",
+        "i-bnn",
+        "i-default",
+        "i-enochian",
+        "i-hak",
+        "i-klingon",
+        "i-lux",
+        "i-mingo",
+        "i-navajo",
+        "i-pwn",
+        "i-tao",
+        "i-tay",
+        "i-tsu",
+        "sgn-BE-FR",
+        "sgn-BE-NL",
+        "sgn-CH-DE",
+    ];
+    let alpha = |s: &str| s.bytes().all(|b| b.is_ascii_alphabetic());
+    let mut parts = tag.split('-').peekable();
+    if !parts
+        .clone()
+        .all(|s| (1..=8).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_alphanumeric()))
+    {
+        return false;
+    }
+    let language = parts.next().unwrap();
+    if language.eq_ignore_ascii_case("x") {
+        return parts.peek().is_some();
+    }
+    if parts.peek().is_none() {
+        return language.len() >= 2 && alpha(language);
+    }
+    if IRREGULAR.iter().any(|s| s.eq_ignore_ascii_case(tag)) {
+        return true;
+    }
+    if language.len() < 2 || !alpha(language) {
+        return false;
+    }
+    if language.len() <= 3 {
+        for _ in 0..3 {
+            if parts.next_if(|s| s.len() == 3 && alpha(s)).is_none() {
+                break;
+            }
+        }
+    }
+    // The optional script must precede the optional region.
+    parts.next_if(|s| s.len() == 4 && alpha(s));
+    parts.next_if(|s| {
+        (s.len() == 2 && alpha(s)) || (s.len() == 3 && s.bytes().all(|b| b.is_ascii_digit()))
+    });
+
+    // Variants and extension singletons must each be unique within the tag.
+    let mut seen = std::collections::HashSet::new();
+    while let Some(variant) =
+        parts.next_if(|s| s.len() >= 5 || (s.len() == 4 && s.as_bytes()[0].is_ascii_digit()))
+    {
+        if !seen.insert(variant.to_ascii_lowercase()) {
+            return false;
+        }
+    }
+    while let Some(singleton) = parts.next() {
+        if singleton.eq_ignore_ascii_case("x") {
+            return parts.peek().is_some();
+        }
+        if singleton.len() != 1
+            || !seen.insert(singleton.to_ascii_lowercase())
+            || parts.next_if(|s| s.len() >= 2).is_none()
+        {
+            return false;
+        }
+        while parts.next_if(|s| s.len() >= 2).is_some() {}
+    }
+    true
+}
+
 // Use the same coordinates for shaping and outline extraction.
 fn apply_variations(
     face: &mut rustybuzz::ttf_parser::Face<'_>,
