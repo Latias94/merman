@@ -178,6 +178,14 @@ pub(crate) enum CliError {
     #[cfg(any(feature = "svg", feature = "ascii"))]
     #[error("{0}")]
     Render(merman::RenderError),
+    #[cfg(feature = "svg")]
+    #[error(
+        "{source}\nhelp: set {option} or simplify the input. The reported usage is the first rejected total."
+    )]
+    GraphicalResourceLimit {
+        source: merman::render::ResourceLimitExceeded,
+        option: String,
+    },
     #[cfg(feature = "native-fonts")]
     #[error(
         "native font measurement budget (`native_font_measurements`) exhausted: actual={actual} maximum={maximum}\nhelp: simplify the diagram or retry with --font-max-measurements COUNT above {maximum}; actual is the first rejected probe, not the total required; render resource profiles do not change this limit",
@@ -227,7 +235,7 @@ pub(crate) enum CliError {
     },
     #[error("No Mermaid diagram detected")]
     NoDiagram,
-    #[error("{error}")]
+    #[error("{error}{help}", help = Self::input_limit_help(*role, error))]
     Input {
         role: InputRole,
         #[source]
@@ -297,6 +305,63 @@ impl From<merman::Error> for CliError {
     }
 }
 
+#[cfg(feature = "svg")]
+fn retry_budget(actual: u64, default: u64) -> u64 {
+    let needed = actual.max(default);
+    needed.checked_next_power_of_two().unwrap_or(needed)
+}
+
+#[cfg(feature = "svg")]
+fn graphical_retry_option(limit: &merman::render::ResourceLimitExceeded) -> Option<String> {
+    if limit.cause != merman::ResourceLimitCause::Ceiling || limit.actual <= limit.maximum {
+        return None;
+    }
+    if let Some(id) = merman::svg::ResourceLimitId::from_stable_id(limit.id) {
+        if !id.descriptor().overridable || limit.actual > usize::MAX as u64 {
+            return None;
+        }
+        let default = limit
+            .provenance
+            .as_ref()
+            .and_then(|p| p.profile)
+            .and_then(|profile| merman::svg::RenderResourcePolicy::for_profile(profile).value(id));
+        let size =
+            retry_budget(limit.actual, default.unwrap_or_default() as u64).min(usize::MAX as u64);
+        return Some(format!("--resource-limit {}={size}", limit.id));
+    }
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+    {
+        use merman::svg::export::*;
+        let (flag, default) = match limit.id {
+            MAX_EMBEDDED_IMAGE_BYTES_RESOURCE_LIMIT_ID => (
+                "--embedded-image-max-bytes",
+                DEFAULT_MAX_EMBEDDED_IMAGE_BYTES,
+            ),
+            MAX_TOTAL_EMBEDDED_IMAGE_BYTES_RESOURCE_LIMIT_ID => (
+                "--embedded-image-max-total-bytes",
+                DEFAULT_MAX_TOTAL_EMBEDDED_IMAGE_BYTES,
+            ),
+            MAX_EMBEDDED_IMAGE_PIXELS_RESOURCE_LIMIT_ID => (
+                "--embedded-image-max-pixels",
+                DEFAULT_MAX_DECODED_IMAGE_PIXELS,
+            ),
+            MAX_TOTAL_EMBEDDED_IMAGE_PIXELS_RESOURCE_LIMIT_ID => (
+                "--embedded-image-max-total-pixels",
+                DEFAULT_MAX_TOTAL_DECODED_IMAGE_PIXELS,
+            ),
+            #[cfg(feature = "pdf")]
+            MAX_PDF_FILTER_IMAGE_PIXELS_RESOURCE_LIMIT_ID => (
+                "--pdf-max-filter-image-pixels",
+                DEFAULT_MAX_PDF_FILTER_IMAGE_PIXELS,
+            ),
+            _ => return None,
+        };
+        Some(format!("{flag} {}", retry_budget(limit.actual, default)))
+    }
+    #[cfg(not(any(feature = "png", feature = "jpeg", feature = "pdf")))]
+    None
+}
+
 #[cfg(any(feature = "svg", feature = "ascii"))]
 impl From<merman::RenderError> for CliError {
     fn from(error: merman::RenderError) -> Self {
@@ -316,12 +381,64 @@ impl From<merman::RenderError> for CliError {
 }
 
 impl CliError {
+    #[cfg(feature = "svg")]
+    pub(crate) fn with_graphical_limit_help(self) -> Self {
+        let Self::Render(merman::RenderError::ResourceLimitExceeded(source)) = self else {
+            return self;
+        };
+        match graphical_retry_option(&source) {
+            Some(option) => Self::GraphicalResourceLimit { source, option },
+            None => Self::Render(source.into()),
+        }
+    }
+
     #[cfg(feature = "ascii")]
     pub(crate) fn ascii_resource(
         details: merman::render::ResourceLimitExceeded,
         profile: merman::model::resources::ResourceProfile,
     ) -> Self {
         Self::AsciiResource(AsciiResourceError { details, profile })
+    }
+
+    fn input_limit_help(role: InputRole, error: &InputReadError) -> String {
+        use crate::input::{IO_CHUNK_BYTES, ObservedSize};
+
+        let InputReadError::LimitExceeded {
+            actual, limit_id, ..
+        } = error
+        else {
+            return String::new();
+        };
+        // Rustdoc sets its own input policy. Icon and theme limits can be fixed or shared.
+        if !matches!(
+            (role, *limit_id),
+            (
+                InputRole::Primary,
+                "max_source_bytes" | "max_svg_bytes" | "max_markdown_document_bytes"
+            ) | (
+                InputRole::Auxiliary,
+                "max_css_bytes" | "max_puppeteer_config_bytes"
+            )
+        ) {
+            return String::new();
+        }
+        let max_buffer = isize::MAX as u64;
+        if actual.bytes() > max_buffer {
+            return "\nhelp: reduce the source size to fit this target's address space".to_owned();
+        }
+        let (size, note) = match *actual {
+            ObservedSize::Exact(bytes) => (bytes, ""),
+            ObservedSize::AtLeast(bytes) => (
+                bytes
+                    .max(IO_CHUNK_BYTES as u64)
+                    .next_power_of_two()
+                    .min(max_buffer),
+                " The full input size is unknown. Use a larger value if the source exceeds this budget.",
+            ),
+        };
+        format!(
+            "\nhelp: set `--resource-limit {limit_id}={size}`, replacing any existing {limit_id} override.{note}"
+        )
     }
 
     pub(crate) fn primary_input(error: InputReadError) -> Self {
@@ -606,6 +723,8 @@ impl CliError {
             Self::Resource(_) => ErrorCategory::Content,
             #[cfg(any(feature = "svg", feature = "ascii"))]
             Self::Render(_) => ErrorCategory::Content,
+            #[cfg(feature = "svg")]
+            Self::GraphicalResourceLimit { .. } => ErrorCategory::Content,
             #[cfg(feature = "native-fonts")]
             Self::NativeFontMeasurementLimit(_) => ErrorCategory::Content,
         }

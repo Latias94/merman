@@ -159,6 +159,7 @@ pub(crate) fn execute_graphical(
         #[cfg(feature = "markdown")]
         writes_document,
     )
+    .map_err(CliError::with_graphical_limit_help)
 }
 
 #[cfg(feature = "rustdoc")]
