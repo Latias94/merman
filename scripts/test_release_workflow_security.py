@@ -591,6 +591,16 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
         self.assertIn("overwrite: true", build)
         self.assertIn("overwrite: true", workflow_job(read(WORKFLOW_ROOT / "cli-distribution.yml"), "gnu-archives"))
 
+    def test_fontconfig_absence_is_checked_in_the_verified_gnu_archive_image(self) -> None:
+        job = workflow_job(read(WORKFLOW_ROOT / "cli-distribution.yml"), "container")
+        build, probe = job.split("      - name: Check the archived CLI without the Fontconfig runtime\n", 1)
+        self.assertIn("needs: gnu-archives", build)
+        self.assertIn("--tag merman-cli:ci container-context", build)
+        self.assertIn("--entrypoint sh merman-cli:ci", probe)
+        self.assertIn("rm /usr/lib/*-linux-gnu/libfontconfig.so.*", probe)
+        self.assertIn("test -s /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", probe)
+        self.assertNotIn("continue-on-error:", job)
+
     def test_ci_is_the_only_pull_request_entrypoint_for_reusable_owners(self) -> None:
         ci = read(CI_WORKFLOW)
         self.assertIn("  pull_request:\n", ci)
@@ -1132,7 +1142,7 @@ jobs:
             text,
         )
 
-    def test_release_preflight_executes_linux_archives_before_publication(self) -> None:
+    def test_release_preflight_executes_linux_and_macos_archives_before_publication(self) -> None:
         text = read(WORKFLOW_ROOT / "release-preflight.yml")
         native = workflow_job(text, "cli-and-lsp-archives")
         for capability in WRITE_CAPABILITIES:
@@ -1143,6 +1153,8 @@ jobs:
         for target, runner in (
             ("x86_64-unknown-linux-gnu", "ubuntu-22.04"),
             ("aarch64-unknown-linux-gnu", "ubuntu-22.04-arm"),
+            ("x86_64-apple-darwin", "macos-15-intel"),
+            ("aarch64-apple-darwin", "macos-15"),
         ):
             self.assertIn(f"- target: {target}\n            runner: {runner}", native)
         self.assertIn("runs-on: ${{ matrix.runner }}", native)
@@ -1154,7 +1166,11 @@ jobs:
         self.assertLess(native.index("verify-plan"), native.index("dist build"))
         self.assertIn("scripts/verify_cli_release_archive.py", native)
         self.assertIn("scripts/verify_lsp_release_archive.py", native)
-        self.assertIn("if: matrix.target == 'aarch64-unknown-linux-gnu'", native)
+        for name, target in (
+            ("Install native qualification fonts", "x86_64-unknown-linux-gnu"),
+            ("Prepare ARM64 system resource probes", "aarch64-unknown-linux-gnu"),
+        ):
+            self.assertIn(f"- name: {name}\n        if: matrix.target == '{target}'", native)
         self.assertIn('openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt', native)
         self.assertEqual(native.count("--execute"), 2)
         self.assertIn("if-no-files-found: error", native)
@@ -1188,6 +1204,9 @@ jobs:
             for target, failure in (
                 ("x86_64-unknown-linux-gnu", ""),
                 ("aarch64-unknown-linux-gnu", ""),
+                ("x86_64-apple-darwin", ""),
+                ("aarch64-apple-darwin", ""),
+                ("aarch64-apple-darwin", "scripts/verify_cli_release_archive.py"),
                 ("x86_64-unknown-linux-gnu", "--preset-qualification-output"),
                 ("x86_64-unknown-linux-gnu", "--preset-qualification-check"),
                 ("aarch64-unknown-linux-gnu", "--resource-certificate"),
@@ -1213,11 +1232,13 @@ jobs:
                         expected = [expected_call("cli", ["--preset-qualification-output", "target/preset-qualification.json"])]
                         if failure != "--preset-qualification-output":
                             expected.append(expected_call("cli", ["--preset-qualification-check", "target/preset-qualification.json"]))
-                    else:
+                    elif target == "aarch64-unknown-linux-gnu":
                         resource_args = ["--resource-certificate", f"{root}/merman-resource.crt",
                                          "--resource-key", f"{root}/merman-resource.key"]
                         expected = [expected_call("cli", resource_args)]
-                    if not failure.startswith(("--preset-qualification-", "--resource-")):
+                    else:
+                        expected = [expected_call("cli", [])]
+                    if not failure or failure == "scripts/verify_lsp_release_archive.py":
                         expected.append(expected_call("lsp", []))
                     self.assertEqual(calls, expected)
 
@@ -1244,7 +1265,9 @@ jobs:
             self.assertIn("uses: actions/setup-python@v7.1.0", job)
             self.assertIn("python-version: '3.15.2'", job)
         for job in (local, preflight):
-            self.assertIn("scripts/linux_binary_compatibility.py", job)
+            glibc_step = job.split("      - name: Verify GNU glibc compatibility\n", 1)[1].split("\n      - ", 1)[0]
+            self.assertIn("if: runner.os == 'Linux'", glibc_step)
+            self.assertIn("scripts/linux_binary_compatibility.py", glibc_step)
             self.assertLess(job.index("dist build"), job.index("linux_binary_compatibility.py"))
 
 

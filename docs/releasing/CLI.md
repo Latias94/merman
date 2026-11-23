@@ -41,6 +41,11 @@ above GLIBC 2.35, and the final archive executes on that same baseline before pu
 The VS Code runtime builds use the same baseline. This supports systems such as Ubuntu 22.04
 and Debian 12 without relying on a newer build host's libc symbols.
 
+The CLI Distribution Checks workflow runs each verified GNU CLI in a disposable container with
+DejaVu Sans installed and the Fontconfig runtime removed. Default and `--font-system on` PNGs
+must match `--font-system bounded` byte for byte. Explicit `--font-system platform` must report
+the unavailable service, exit with code 3, and emit no PNG.
+
 Published archives retain their original compatibility. Both Linux CLI archives in `0.9.0`
 require GLIBC 2.38; this workflow change does not replace those assets. A lower baseline takes
 effect only in a subsequent release built and verified by the updated workflow. The GNU
