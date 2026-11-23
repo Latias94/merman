@@ -165,6 +165,7 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l font-sy
 on\t'Enable the build\'s default system font provider'
 bounded\t'Use Merman\'s bounded system font discovery'
 platform\t'Query the platform\'s font catalog. Platform metadata access is outside Merman\'s scan limits'"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l font-max-bytes -d 'Byte budget for the entire native font context, including explicit and selected system fonts (default 256 MiB). Use a positive integer in bytes or with a KiB, MiB, or GiB suffix, such as 256MiB' -r -f
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l font-max-measurements -d 'Maximum uncached native font shaping probes per diagram (default: 16384); independent of --resource-profile' -r -f
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-preset -d 'Compiled diagram-theme preset; each value reports its catalog maturity, and explicit Mermaid configuration takes precedence' -r -f -a "editor\t'[alpha] Editor'
 one-dark\t'[alpha] One Dark'
@@ -301,6 +302,7 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l font-sys
 on\t'Enable the build\'s default system font provider'
 bounded\t'Use Merman\'s bounded system font discovery'
 platform\t'Query the platform\'s font catalog. Platform metadata access is outside Merman\'s scan limits'"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l font-max-bytes -d 'Byte budget for the entire native font context, including explicit and selected system fonts (default 256 MiB). Use a positive integer in bytes or with a KiB, MiB, or GiB suffix, such as 256MiB' -r -f
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l font-max-measurements -d 'Maximum uncached native font shaping probes per diagram (default: 16384); independent of --resource-profile' -r -f
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-preset -d 'Compiled diagram-theme preset; each value reports its catalog maturity, and explicit Mermaid configuration takes precedence' -r -f -a "editor\t'[alpha] Editor'
 one-dark\t'[alpha] One Dark'
@@ -491,6 +493,7 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l font-syst
 on\t'Enable the build\'s default system font provider'
 bounded\t'Use Merman\'s bounded system font discovery'
 platform\t'Query the platform\'s font catalog. Platform metadata access is outside Merman\'s scan limits'"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l font-max-bytes -d 'Byte budget for the entire native font context, including explicit and selected system fonts (default 256 MiB). Use a positive integer in bytes or with a KiB, MiB, or GiB suffix, such as 256MiB' -r -f
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l font-max-measurements -d 'Maximum uncached native font shaping probes per diagram (default: 16384); independent of --resource-profile' -r -f
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default' -r -f -a "none\t''
 ratex\t''"

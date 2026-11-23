@@ -211,15 +211,13 @@ impl Discovery<'_> {
         self.files = self.files.saturating_add(1);
         check_limit("system-files", self.files, self.limits.max_system_files)?;
         // Only the current fontdb borrows the file buffer. Catalog entries retain metadata.
-        let remaining = self.limits.max_system_scan_bytes.saturating_sub(self.bytes);
+        let budget = FontByteBudget::new(
+            "system-scan-bytes",
+            self.bytes,
+            self.limits.max_system_scan_bytes,
+        );
         let bytes = Arc::make_mut(&mut self.file_bytes);
-        read_bounded_into(
-            path,
-            remaining,
-            self.control,
-            OperationPhase::Admission,
-            bytes,
-        )?;
+        read_bounded_into(path, budget, self.control, OperationPhase::Admission, bytes)?;
         self.bytes = self.bytes.saturating_add(bytes.len());
         let digest = Sha256::digest(bytes.as_slice()).to_vec();
         if !self.hashes.insert(digest.clone()) {
@@ -775,8 +773,9 @@ mod tests {
             context.check(),
             Err(NativeFontError::Limit {
                 resource: "system-font-bytes",
-                ..
-            })
+                actual,
+                limit,
+            }) if actual == max_bytes + 1 && limit == max_bytes
         ));
         assert_eq!(context.resident_font_bytes(), resident);
     }
@@ -1004,7 +1003,7 @@ mod tests {
                 &OperationControl::new(),
             ),
             Err(NativeFontError::Limit {
-                resource: "system-font-bytes",
+                resource: "system-scan-bytes",
                 actual,
                 limit,
             }) if actual == byte_count && limit == byte_count - 1

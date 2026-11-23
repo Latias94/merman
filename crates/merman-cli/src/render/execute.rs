@@ -412,7 +412,9 @@ fn execute_graphical_with_pipeline(
                     .as_ref()
                     .map(|context| context.for_operation(control));
                 if let Some(context) = &font_context {
-                    context.check().map_err(super::prepare::native_font_error)?;
+                    context
+                        .check()
+                        .map_err(|error| super::prepare::native_font_error(error, &[]))?;
                 }
                 prepared.output.clone().with_font_context(font_context)
             };

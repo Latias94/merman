@@ -971,7 +971,14 @@ mod tests {
             coretext::named("Arial", Weight::NORMAL, Stretch::Normal, Style::Normal).unwrap();
         let path = native.path.canonicalize().unwrap();
         let data = native
-            .snapshot(NativeFontLimits::default().max_bytes, &control)
+            .snapshot(
+                FontByteBudget::new(
+                    "system-font-bytes",
+                    0,
+                    NativeFontLimits::default().max_bytes,
+                ),
+                &control,
+            )
             .unwrap();
         // The loader can retain a source even when an earlier descriptor won admission.
         let registry = FontSourceRegistry::new(

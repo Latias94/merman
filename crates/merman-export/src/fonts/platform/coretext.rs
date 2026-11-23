@@ -14,7 +14,9 @@ use objc2_core_foundation::{
 use objc2_core_text::{CTFont, CTFontDescriptor, CTFontTableOptions, kCTFontURLAttribute};
 use usvg::fontdb::{FaceInfo, ID, Stretch, Style, Weight};
 
-use super::super::{NativeFontError, OperationControl, OperationPhase, check_limit, source_error};
+use super::super::{
+    FontByteBudget, NativeFontError, OperationControl, OperationPhase, check_limit, source_error,
+};
 
 mod query;
 
@@ -131,19 +133,18 @@ impl NativeFace {
     }
 
     /// Repackages this selection at index zero without opening its source file.
-    /// `limit` is the caller's remaining resident-font budget (64 MiB by default).
     pub(in crate::fonts) fn snapshot(
         &self,
-        limit: usize,
+        budget: FontByteBudget,
         control: &OperationControl,
     ) -> Result<Vec<u8>, NativeFontError> {
-        let tables = collect_tables(&self.font, &self.path, limit, control)?;
+        let tables = collect_tables(&self.font, &self.path, budget, control)?;
         super::super::sfnt::from_tables(
             tables.iter().map(|(tag, data)| {
                 // SAFETY: The retained immutable data outlives serialization.
                 (*tag, unsafe { data.as_bytes_unchecked() })
             }),
-            limit,
+            budget,
             control,
             &self.path,
         )
@@ -353,12 +354,12 @@ fn table_matches_snapshot(tag: u32, native: &[u8], source: &[u8]) -> bool {
 fn collect_tables(
     font: &CTFont,
     path: &Path,
-    limit: usize,
+    budget: FontByteBudget,
     control: &OperationControl,
 ) -> Result<FontTables, NativeFontError> {
     control.terminal_checkpoint_at(OperationPhase::Layout)?;
     let mut total = 12_usize;
-    check_limit("system-font-bytes", total, limit)?;
+    budget.check(total as u64)?;
     // SAFETY: The retained font is live; table tags are unboxed pointer-sized values.
     let tags = unsafe { font.available_tables(CTFontTableOptions::NoOptions) }
         .ok_or_else(|| source_error(path, "selected Core Text face exposes no tables"))?;
@@ -383,7 +384,7 @@ fn collect_tables(
             .and_then(|length| length.checked_add(16))
             .and_then(|length| total.checked_add(length))
             .ok_or_else(|| source_error(path, "selected font table sizes overflow"))?;
-        check_limit("system-font-bytes", total, limit)?;
+        budget.check(total as u64)?;
         tables.push((tag, table));
     }
     control.terminal_checkpoint_at(OperationPhase::Layout)?;
@@ -488,7 +489,10 @@ mod tests {
         assert_eq!(first_hash.finish(), second_hash.finish());
 
         let bytes = first
-            .snapshot(64 * 1024 * 1024, &OperationControl::new())
+            .snapshot(
+                FontByteBudget::new("system-font-bytes", 0, 64 * 1024 * 1024),
+                &OperationControl::new(),
+            )
             .expect("Core Text tables form a bounded standalone SFNT");
         let parsed = ttf_parser::Face::parse(&bytes, 0).expect("snapshot parses as SFNT");
         assert!(
@@ -529,7 +533,12 @@ mod tests {
     fn explicit_base_with_same_postscript_name_must_match_native_tables() {
         let native = named("Arial", Weight::NORMAL, Stretch::Normal, Style::Normal).unwrap();
         let control = OperationControl::new();
-        let mut bytes = native.snapshot(64 * 1024 * 1024, &control).unwrap();
+        let mut bytes = native
+            .snapshot(
+                FontByteBudget::new("system-font-bytes", 0, 64 * 1024 * 1024),
+                &control,
+            )
+            .unwrap();
         let mut database = Database::new();
         database.load_font_data(bytes.clone());
         assert!(
@@ -615,7 +624,14 @@ mod tests {
 
         let control = OperationControl::new();
         let data = small
-            .snapshot(NativeFontLimits::default().max_bytes, &control)
+            .snapshot(
+                FontByteBudget::new(
+                    "system-font-bytes",
+                    0,
+                    NativeFontLimits::default().max_bytes,
+                ),
+                &control,
+            )
             .unwrap();
         assert!(large.matches_data(&data, 0, &control).unwrap());
 

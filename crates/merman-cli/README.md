@@ -238,6 +238,16 @@ Selected font bytes have acquisition limits and serve both measurement and paint
 an unsupported named variable family may fall through to the next family in the requested stack.
 See [Optional CLI fonts](../../docs/FEATURES.md#optional-cli-fonts).
 
+Each native font context has a default budget of 256 MiB for explicit font files
+(including files from `--font-dir`) and selected system font data combined.
+Set `--font-max-bytes <SIZE>` to a positive integer in bytes, KiB, MiB, or GiB.
+For example, `--font-max-bytes 536870912` and `--font-max-bytes 512MiB`
+set the same limit. With only this option, ordinary Mermaid SVG uses deterministic
+measurement with system discovery off. For raw SVG conversion, pair the budget with
+`--font-system on` or an explicit font source. If the fonts exceed the budget, the CLI
+preserves the existing output file. Retry the same command with the
+`--font-max-bytes` argument from stderr, replacing any previous value.
+
 Native measurement allows 16,384 uncached shaping probes per diagram by default.
 Large diagrams can reach this budget because one label may need several probes.
 If the CLI reports `native_font_measurements`, simplify or split the diagram, or

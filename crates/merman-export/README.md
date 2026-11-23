@@ -114,7 +114,8 @@ against the registered Core Text face before using that face's native cascade.
 If no registered face matches, the resolver can use the Helvetica system cascade.
 The resolver declines non-default native variation coordinates before data admission.
 
-The default cumulative budget for admitted font data is 64 MiB. Explicit inputs
+`NativeFontLimits::max_bytes` defaults to 256 MiB. Each native context counts
+explicit inputs and selected system font data toward this total. Explicit files
 and bounded system discovery use whole-file snapshots. Temporary buffers for
 native tables, SFNT assembly and collection reads can contribute to peak process
 memory. SFNT assembly preserves the selected face's glyph data, so a large color

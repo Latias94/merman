@@ -399,6 +399,7 @@ fn prepare_single(
             if !common.render.fonts.sources.is_empty()
                 || common.render.fonts.measurement.is_some()
                 || common.render.fonts.system.is_some()
+                || common.render.fonts.max_bytes.is_some()
                 || common.render.fonts.max_measurements.is_some()
             {
                 return Err(CliError::InvalidInput(
@@ -560,6 +561,15 @@ pub(crate) fn prepare_graphical_output(
         control,
     )?;
     #[cfg(feature = "native-fonts")]
+    if common.render.fonts.max_bytes.is_some()
+        && font_context.is_none()
+        && !matches!(&output, PreparedGraphicalOutput::Svg)
+    {
+        return Err(CliError::InvalidInput(
+            "--font-max-bytes requires a native font context for encoded output. Use --font-system on or --font-file PATH and omit --font-measurement deterministic.".to_owned(),
+        ));
+    }
+    #[cfg(feature = "native-fonts")]
     if font_context.is_some() && !raw_svg && css.as_ref().is_some_and(|css| !css.trim().is_empty())
     {
         return Err(CliError::InvalidInput(
@@ -617,7 +627,7 @@ pub(crate) fn prepare_graphical_output(
                 .environment
                 .clone()
                 .with_native_font_context(context.clone())
-                .map_err(native_font_error)?;
+                .map_err(|error| native_font_error(error, &[]))?;
             renderer.with_svg_environment(environment)
         } else {
             renderer
@@ -767,6 +777,9 @@ fn prepare_font_context(
         return Ok(None);
     }
     let mut options = NativeFontOptions::default().with_system_fonts(use_system);
+    if let Some(maximum) = args.max_bytes {
+        options.limits.max_bytes = maximum;
+    }
     if let Some(maximum) = args.max_measurements {
         options.limits.max_measurements = maximum;
     }
@@ -798,12 +811,39 @@ fn prepare_font_context(
     #[cfg(not(feature = "platform-system-font-query"))]
     let result = options.load(control);
     crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
-    result.map(Some).map_err(native_font_error)
+    result
+        .map(Some)
+        .map_err(|error| native_font_error(error, &args.sources))
 }
 
 #[cfg(feature = "native-fonts")]
-pub(super) fn native_font_error(error: merman::svg::export::NativeFontError) -> CliError {
-    CliError::Io(std::io::Error::other(error))
+pub(super) fn native_font_error(
+    error: merman::svg::export::NativeFontError,
+    sources: &[crate::cli::FontSource],
+) -> CliError {
+    use crate::cli::FontSource;
+    use crate::error::FontBudgetActivity;
+    use merman::svg::export::NativeFontError;
+    match error {
+        NativeFontError::Limit {
+            resource: "font-bytes",
+            actual,
+            limit,
+        } => CliError::NativeFontByteLimit {
+            activity: FontBudgetActivity::Load(match sources {
+                [FontSource::File(path) | FontSource::Directory(path)] => Some(path.clone()),
+                _ => None,
+            }),
+            actual: actual as u64,
+            maximum: limit as u64,
+        },
+        NativeFontError::Source { path, message } => CliError::Io(std::io::Error::other(format!(
+            "font source {}: {}",
+            crate::error::safe_path(path),
+            merman::normalize_terminal_diagnostic(&message)
+        ))),
+        other => CliError::Io(std::io::Error::other(other)),
+    }
 }
 
 #[cfg(feature = "rustdoc")]
@@ -953,6 +993,10 @@ mod font_policy_tests {
     fn deterministic_svg_policies_do_not_prepare_a_font_context() {
         let policies = [
             FontCliArgs::default(),
+            FontCliArgs {
+                max_bytes: Some(1),
+                ..Default::default()
+            },
             FontCliArgs {
                 measurement: Some(FontMeasurementKind::Deterministic),
                 ..Default::default()

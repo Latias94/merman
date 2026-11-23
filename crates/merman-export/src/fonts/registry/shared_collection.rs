@@ -1,6 +1,7 @@
 use super::read_bounded_into;
 use crate::fonts::{
-    NativeFontError, OperationControl, OperationPhase, platform::coretext::NativeFace,
+    FontByteBudget, NativeFontError, OperationControl, OperationPhase,
+    platform::coretext::NativeFace,
 };
 use ttf_parser::RawFace;
 
@@ -8,13 +9,13 @@ use ttf_parser::RawFace;
 pub(super) fn shared_collection(
     candidate: &NativeFace,
     file_len: u64,
-    remaining: usize,
+    budget: FontByteBudget,
     max_faces: usize,
     control: &OperationControl,
 ) -> Result<Option<(Vec<u8>, u32)>, NativeFontError> {
     control.terminal_checkpoint_at(OperationPhase::Layout)?;
     if max_faces < 2
-        || file_len > remaining as u64
+        || file_len > budget.remaining() as u64
         || !candidate
             .path
             .extension()
@@ -34,7 +35,7 @@ pub(super) fn shared_collection(
     let mut data = Vec::new();
     read_bounded_into(
         &candidate.path,
-        remaining,
+        budget,
         control,
         OperationPhase::Layout,
         &mut data,

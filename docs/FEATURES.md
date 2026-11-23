@@ -208,9 +208,10 @@ tables at index zero. A TTC that fits the remaining budget can retain its origin
 indices when its members share an outline table large enough that two copies would
 cost more than the collection. The selected member is verified against the native
 tables before reuse. Explicit input files retain their whole-file ingestion policy.
-The cumulative font-data budget remains 64 MiB, and a large
-selected color/bitmap table can still exceed it. A context identity includes the policy, initial
-font bytes, and the system default family name when applicable.
+Explicit inputs and selected system font data share a 256 MiB budget per native
+context by default. A large color or bitmap table can exceed it. Use
+`--font-max-bytes` to set the budget. A context identity includes the policy,
+initial font bytes, and the system default family name when applicable.
 Successful macOS selections are fixed for measurement and its derived exports;
 new operations query the current system again. Their metadata is bounded separately
 from the optional measurement cache. Explicit unregistered fonts can use a system

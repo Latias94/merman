@@ -50,8 +50,8 @@ pub enum FontSource {
 pub struct NativeFontLimits {
     /// Maximum input sources, including duplicate files or memory buffers.
     pub max_files: usize,
-    /// Explicit input bytes are charged before content deduplication. Selected system
-    /// data is also bounded; macOS can retain a standalone face instead of its whole TTC.
+    /// Font data budget (default: 256 MiB). Explicit inputs are checked before deduplication.
+    /// Selected system data shares the resident budget with the retained explicit sources.
     pub max_bytes: usize,
     pub max_faces: usize,
     pub max_directory_entries: usize,
@@ -81,7 +81,7 @@ impl Default for NativeFontLimits {
     fn default() -> Self {
         Self {
             max_files: 256,
-            max_bytes: 64 * 1024 * 1024,
+            max_bytes: 256 * 1024 * 1024,
             max_faces: 1024,
             max_directory_entries: 16_384,
             max_directory_depth: 16,
@@ -214,6 +214,27 @@ pub enum NativeFontError {
     Measurement(String),
     #[error("the selected fonts cannot shape this label")]
     MissingGlyphCoverage,
+}
+
+impl NativeFontError {
+    /// Stable resource ID, first rejected total, and configured ceiling for a quota failure.
+    pub fn resource_limit(&self) -> Option<(&'static str, u64, u64)> {
+        let Self::Limit {
+            resource,
+            actual,
+            limit,
+        } = self
+        else {
+            return None;
+        };
+        let id = match *resource {
+            "font-bytes" | "system-font-bytes" => "native_font_bytes",
+            "label-bytes" => "native_font_label_bytes",
+            "measurements" => "native_font_measurements",
+            _ => "native_font_resources",
+        };
+        Some((id, *actual as u64, *limit as u64))
+    }
 }
 
 /// Shared font bytes and selection policy for text measurement and native export.
@@ -849,15 +870,8 @@ impl FontLoader {
             return Err(source_error(path, "expected a regular file, not a symlink"));
         }
         self.begin_source()?;
-        let remaining = self.limits.max_bytes.saturating_sub(self.bytes);
-        if metadata.len() > remaining as u64 {
-            return Err(limit_error(
-                "font-bytes",
-                self.bytes
-                    .saturating_add(usize::try_from(metadata.len()).unwrap_or(usize::MAX)),
-                self.limits.max_bytes,
-            ));
-        }
+        let budget = FontByteBudget::new("font-bytes", self.bytes, self.limits.max_bytes);
+        budget.check(metadata.len())?;
         let mut file = fs::File::open(path).map_err(|e| source_error(path, e))?;
         let mut bytes = Vec::new();
         let mut chunk = [0; 16 * 1024];
@@ -867,11 +881,7 @@ impl FontLoader {
             if count == 0 {
                 break;
             }
-            check_limit(
-                "font-bytes",
-                self.bytes.saturating_add(bytes.len()).saturating_add(count),
-                self.limits.max_bytes,
-            )?;
+            budget.check((bytes.len() as u64).saturating_add(count as u64))?;
             bytes.extend_from_slice(&chunk[..count]);
         }
         let admitted = self.admit_bytes(bytes, path)?;
@@ -892,8 +902,9 @@ impl FontLoader {
         path: &Path,
     ) -> Result<Option<Arc<Vec<u8>>>, NativeFontError> {
         self.checkpoint()?;
-        self.bytes = self.bytes.saturating_add(bytes.len());
-        check_limit("font-bytes", self.bytes, self.limits.max_bytes)?;
+        FontByteBudget::new("font-bytes", self.bytes, self.limits.max_bytes)
+            .check(bytes.len() as u64)?;
+        self.bytes += bytes.len();
         let digest = Sha256::digest(&bytes).to_vec();
         self.checkpoint()?;
         if !self.hashes.insert(digest.clone()) {
@@ -996,6 +1007,38 @@ fn limit_error(resource: &'static str, actual: usize, limit: usize) -> NativeFon
     }
 }
 
+/// Checks a growing source against the remaining allowance, reporting operation-wide totals.
+#[derive(Clone, Copy)]
+struct FontByteBudget {
+    resource: &'static str,
+    used: usize,
+    maximum: usize,
+}
+
+impl FontByteBudget {
+    fn new(resource: &'static str, used: usize, maximum: usize) -> Self {
+        Self {
+            resource,
+            used,
+            maximum,
+        }
+    }
+
+    fn remaining(self) -> usize {
+        self.maximum.saturating_sub(self.used)
+    }
+
+    fn check(self, source_bytes: u64) -> Result<(), NativeFontError> {
+        if source_bytes > self.remaining() as u64 {
+            let actual = self
+                .used
+                .saturating_add(usize::try_from(source_bytes).unwrap_or(usize::MAX));
+            return Err(limit_error(self.resource, actual, self.maximum));
+        }
+        Ok(())
+    }
+}
+
 fn check_limit(resource: &'static str, actual: usize, limit: usize) -> Result<(), NativeFontError> {
     if actual > limit {
         Err(limit_error(resource, actual, limit))
@@ -1018,25 +1061,14 @@ impl HostTextMeasurer for NativeFontContext {
             Ok(result) => Ok(Some(result)),
             Err(NativeFontError::MissingGlyphCoverage) if !self.strict_glyph_coverage() => Ok(None),
             Err(error) => {
-                if let NativeFontError::Limit {
-                    resource,
-                    actual,
-                    limit,
-                } = &error
-                {
-                    let id = match *resource {
-                        "label-bytes" => "native_font_label_bytes",
-                        "measurements" => "native_font_measurements",
-                        _ => "native_font_resources",
-                    };
-                    let maximum = u64::try_from(*limit).unwrap_or(u64::MAX);
+                if let Some((id, actual, maximum)) = error.resource_limit() {
                     control.terminate_resource_limit(OperationResourceLimitExceeded {
                         id,
                         phase: OperationPhase::Layout,
                         resource_phase: "native-font-measurement",
                         limit: maximum,
                         consumed: 0,
-                        requested: u64::try_from(*actual).unwrap_or(u64::MAX),
+                        requested: actual,
                         provenance: OperationResourceProvenance::new(
                             OperationResourceDomain::Render,
                             None,

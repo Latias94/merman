@@ -468,15 +468,9 @@ impl FontSourceRegistry {
             }
             self.check_file_limit(&state, &key_path, limits)?;
             let occupied = self.initial.bytes.saturating_add(state.bytes);
-            let remaining = limits.max_bytes.saturating_sub(occupied);
+            let budget = FontByteBudget::new("system-font-bytes", occupied, limits.max_bytes);
             let mut bytes = Vec::new();
-            read_bounded_into(
-                &path,
-                remaining,
-                control,
-                OperationPhase::Layout,
-                &mut bytes,
-            )?;
+            read_bounded_into(&path, budget, control, OperationPhase::Layout, &mut bytes)?;
             let discovery_digest = match &expected {
                 ExpectedFace::Bounded { digest, .. } => {
                     let actual: [u8; 32] = Sha256::digest(&bytes).into();
@@ -659,23 +653,22 @@ impl FontSourceRegistry {
             self.check_file_limit(&state, &key, limits)?;
             check_limit("font-faces", next_face, limits.max_faces)?;
             let file = verify_font_file(path, control, OperationPhase::Layout)?;
-            let remaining = limits
-                .max_bytes
-                .saturating_sub(self.initial.bytes.saturating_add(state.bytes));
+            let occupied = self.initial.bytes.saturating_add(state.bytes);
+            let budget = FontByteBudget::new("system-font-bytes", occupied, limits.max_bytes);
             let shared = if state.files.contains_key(&key) {
                 None
             } else {
                 shared_collection::shared_collection(
                     &candidate,
                     file.len(),
-                    remaining,
+                    budget,
                     limits.max_faces,
                     control,
                 )?
             };
             let (bytes, index) = match shared {
                 Some(collection) => collection,
-                None => (candidate.snapshot(remaining, control)?, 0),
+                None => (candidate.snapshot(budget, control)?, 0),
             };
             let length = bytes.len();
             (Arc::new(bytes), index, length)
@@ -782,14 +775,14 @@ pub(super) fn checked_cmap_bytes(
 
 pub(super) fn read_bounded_into(
     path: &Path,
-    limit: usize,
+    budget: FontByteBudget,
     control: &OperationControl,
     phase: OperationPhase,
     bytes: &mut Vec<u8>,
 ) -> Result<(), NativeFontError> {
     let metadata = verify_font_file(path, control, phase)?;
-    let size = usize::try_from(metadata.len()).unwrap_or(usize::MAX);
-    check_limit("system-font-bytes", size, limit)?;
+    budget.check(metadata.len())?;
+    let size = metadata.len() as usize;
     let mut file = fs::File::open(path).map_err(|error| source_error(path, error))?;
     // Keep at most one file length of spare capacity. Release an unsuitable buffer before
     // reserving so growth never needs to copy the previous font or keep two fonts live.
@@ -810,11 +803,7 @@ pub(super) fn read_bounded_into(
         if count == 0 {
             break;
         }
-        check_limit(
-            "system-font-bytes",
-            bytes.len().saturating_add(count),
-            limit,
-        )?;
+        budget.check((bytes.len() as u64).saturating_add(count as u64))?;
         bytes.extend_from_slice(&chunk[..count]);
     }
     Ok(())
@@ -1044,7 +1033,13 @@ mod tests {
         let mut bytes = vec![0xff; expected.len() + 1];
         let control = OperationControl::new();
         let read = |limit, bytes: &mut Vec<u8>| {
-            read_bounded_into(&path, limit, &control, OperationPhase::Admission, bytes)
+            read_bounded_into(
+                &path,
+                FontByteBudget::new("system-font-bytes", 0, limit),
+                &control,
+                OperationPhase::Admission,
+                bytes,
+            )
         };
         read(expected.len(), &mut bytes).unwrap();
         assert_eq!(bytes.as_slice(), expected);

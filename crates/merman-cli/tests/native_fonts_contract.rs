@@ -85,6 +85,85 @@ fn native_measurement_diagnostics_describe_the_executing_svg() {
 }
 
 #[test]
+fn cumulative_font_byte_limit_preserves_output_and_gives_a_working_retry() {
+    let regular = font();
+    let bold = std::path::Path::new(&regular).with_file_name("Cousine-Bold.ttf");
+    let total =
+        std::fs::metadata(&regular).unwrap().len() + std::fs::metadata(&bold).unwrap().len();
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("diagram.svg");
+    let destination = path.to_str().unwrap();
+    let previous = b"previous diagram";
+    std::fs::write(&path, previous).unwrap();
+
+    let render = |output: &str, size: &str| {
+        run_with_stdin(
+            &[
+                "render",
+                "-",
+                "--output",
+                output,
+                "--font-file",
+                &regular,
+                "--font-file",
+                bold.to_str().unwrap(),
+                "--font-system=off",
+                "--font-max-bytes",
+                size,
+            ],
+            "flowchart LR\nA[Font budget]\n",
+        )
+    };
+    let too_small = (total - 1).to_string();
+    let file_failure = render(destination, &too_small);
+    let stdout_failure = render("-", &too_small);
+    for failure in [&file_failure, &stdout_failure] {
+        let stderr = String::from_utf8_lossy(&failure.stderr);
+        assert_eq!(failure.status.code(), Some(3), "{stderr}");
+        assert!(failure.stdout.is_empty(), "{stderr}");
+        assert!(stderr.contains(&total.to_string()), "{stderr}");
+        assert!(stderr.contains(&too_small), "{stderr}");
+    }
+    assert_eq!(std::fs::read(&path).unwrap(), previous);
+
+    let stderr = String::from_utf8_lossy(&file_failure.stderr);
+    let suggested = stderr
+        .split_once("--font-max-bytes ")
+        .and_then(|(_, rest)| rest.split_whitespace().next())
+        .unwrap_or_else(|| panic!("missing --font-max-bytes retry value: {stderr}"));
+    let retry = render(destination, suggested);
+    assert!(
+        retry.status.success(),
+        "--font-max-bytes {suggested}: {}",
+        String::from_utf8_lossy(&retry.stderr)
+    );
+    let artifact = std::fs::read_to_string(&path).unwrap();
+    let document = roxmltree::Document::parse(&artifact).unwrap();
+    assert!(document.root_element().has_tag_name("svg"));
+
+    let exact = total.to_string();
+    for size in [exact.as_str(), "1MiB"] {
+        let output = render("-", size);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(output.status.success(), "{size}: {stderr}");
+        assert!(String::from_utf8_lossy(&output.stdout).contains("<svg"));
+    }
+}
+
+#[test]
+fn invalid_font_byte_limits_fail_before_rendering() {
+    for size in ["0", "1.5MiB"] {
+        let invalid = run_with_stdin(
+            &["mmdc", "--input=-", "--output=-", "--font-max-bytes", size],
+            "flowchart LR\nA --> B\n",
+        );
+        let stderr = String::from_utf8_lossy(&invalid.stderr);
+        assert_eq!(invalid.status.code(), Some(2), "{size}: {stderr}");
+        assert!(invalid.stdout.is_empty(), "{size}: {stderr}");
+    }
+}
+
+#[test]
 fn exhausted_measurement_budget_explains_how_to_retry() {
     let font = font();
     let source = "flowchart LR\nA[Measure this label] --> B[Destination]\n";
@@ -112,7 +191,8 @@ fn exhausted_measurement_budget_explains_how_to_retry() {
             assert!(output.stdout.is_empty(), "no partial SVG may be published");
             assert!(stderr.contains("native_font_measurements"), "{stderr}");
             assert!(stderr.contains("actual=2 maximum=1"), "{stderr}");
-            assert!(stderr.contains("--font-max-measurements"), "{stderr}");
+            assert!(stderr.contains("--font-max-measurements 16384"), "{stderr}");
+            assert!(!stderr.contains("--font-max-bytes"), "{stderr}");
             assert!(
                 stderr.contains("resource profiles do not change"),
                 "{stderr}"
@@ -123,7 +203,7 @@ fn exhausted_measurement_budget_explains_how_to_retry() {
             );
         }
         let mut retry = args;
-        retry[6] = "--font-max-measurements=8192";
+        retry[6] = "--font-max-measurements=16384";
         let output = svg(&retry, source);
         assert!(output.contains("<svg"));
     }
@@ -169,6 +249,35 @@ fn raw_svg_rejects_native_measurement_budget() {
     assert_eq!(output.status.code(), Some(2), "{stderr}");
     assert!(output.stdout.is_empty());
     assert!(stderr.contains("raw SVG is not relaid out"), "{stderr}");
+}
+
+#[cfg(feature = "png")]
+#[test]
+fn raw_svg_font_byte_limit_applies_to_native_painting() {
+    let source = r#"<svg xmlns="http://www.w3.org/2000/svg" width="50" height="20"><text y="14" font-family="Cousine">ABC</text></svg>"#;
+    let mut args = vec![
+        "render",
+        "-",
+        "--input-kind=svg",
+        "--format=png",
+        "--output=-",
+        "--font-max-bytes=1MiB",
+    ];
+    let missing_context = run_with_stdin(&args, source);
+    let stderr = String::from_utf8_lossy(&missing_context.stderr);
+    assert_eq!(missing_context.status.code(), Some(2), "{stderr}");
+    assert!(missing_context.stdout.is_empty());
+    assert!(stderr.contains("--font-system on"), "{stderr}");
+
+    let font = font();
+    args.extend(["--font-file", &font]);
+    let painted = run_with_stdin(&args, source);
+    assert!(
+        painted.status.success(),
+        "{}",
+        String::from_utf8_lossy(&painted.stderr)
+    );
+    assert!(painted.stdout.starts_with(b"\x89PNG\r\n\x1a\n"));
 }
 
 #[cfg(feature = "markdown")]
@@ -388,25 +497,16 @@ fn native_cli_sizes_node_text_without_a_title() {
 #[test]
 fn compiled_native_feature_does_not_change_default_rendering() {
     let source = "---\nconfig:\n  fontFamily: Cousine\n---\nflowchart LR\nA-->B\n";
-    let implicit = svg(
-        &["mmdc", "-i", "-", "-o", "-", "--svgId", "unchanged"],
-        source,
-    );
-    let explicit = svg(
-        &[
-            "mmdc",
-            "-i",
-            "-",
-            "-o",
-            "-",
-            "--svgId",
-            "unchanged",
-            "--font-measurement",
-            "deterministic",
-        ],
-        source,
-    );
-    assert_eq!(implicit, explicit);
+    let args = ["mmdc", "-i", "-", "-o", "-", "--svgId", "unchanged"];
+    let implicit = svg(&args, source);
+    for options in [
+        ["--font-measurement", "deterministic"],
+        ["--font-max-bytes", "1"],
+    ] {
+        let mut explicit = args.to_vec();
+        explicit.extend(options);
+        assert_eq!(implicit, svg(&explicit, source), "{options:?}");
+    }
 }
 
 #[test]
@@ -587,6 +687,7 @@ fn native_font_budget_failure_aborts_the_entire_batch_publication() {
                     || diagnostic.contains("label-bytes"),
                 "expected the native font label budget, not another failure: {diagnostic}"
             );
+            assert!(!diagnostic.contains("--font-max-bytes"), "{diagnostic}");
             assert!(
                 diagnostic.contains("Markdown chart 2 at line 5, column 1"),
                 "expected the second fence location: {diagnostic}"

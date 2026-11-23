@@ -169,6 +169,26 @@ impl std::fmt::Display for AsciiResourceError {
     }
 }
 
+#[cfg(feature = "native-fonts")]
+#[derive(Debug)]
+pub(crate) enum FontBudgetActivity {
+    Load(Option<PathBuf>),
+    Measure,
+    Paint,
+}
+
+#[cfg(feature = "native-fonts")]
+impl std::fmt::Display for FontBudgetActivity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Load(Some(path)) => write!(f, "loading fonts from {path:?}"),
+            Self::Load(None) => f.write_str("loading the supplied fonts"),
+            Self::Measure => f.write_str("measuring diagram text"),
+            Self::Paint => f.write_str("painting text"),
+        }
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum CliError {
     #[error("I/O error: {0}")]
@@ -188,9 +208,21 @@ pub(crate) enum CliError {
     },
     #[cfg(feature = "native-fonts")]
     #[error(
-        "native font measurement budget (`native_font_measurements`) exhausted: actual={actual} maximum={maximum}\nhelp: simplify the diagram or retry with --font-max-measurements COUNT above {maximum}; actual is the first rejected probe, not the total required; render resource profiles do not change this limit",
+        "native font data exceeded the {budget} budget while {activity}. The requested fonts need at least {actual} bytes in total.\nhelp: {hint}",
+        budget = font_budget_size(*maximum),
+        hint = font_budget_hint(*actual, *maximum)
+    )]
+    NativeFontByteLimit {
+        activity: FontBudgetActivity,
+        actual: u64,
+        maximum: u64,
+    },
+    #[cfg(feature = "native-fonts")]
+    #[error(
+        "native font measurement budget (`native_font_measurements`) exhausted: actual={actual} maximum={maximum}\nhelp: simplify the diagram or retry with --font-max-measurements {suggested}. Actual counts the first rejected probe. Render resource profiles do not change this limit.",
         actual = .0.actual,
-        maximum = .0.maximum
+        maximum = .0.maximum,
+        suggested = retry_budget(.0.actual, merman::svg::export::NativeFontLimits::default().max_measurements as u64).min(usize::MAX as u64)
     )]
     NativeFontMeasurementLimit(merman::render::ResourceLimitExceeded),
     #[cfg(feature = "ascii")]
@@ -305,6 +337,31 @@ impl From<merman::Error> for CliError {
     }
 }
 
+#[cfg(feature = "native-fonts")]
+fn font_budget_size(bytes: u64) -> String {
+    const MIB: u64 = 1024 * 1024;
+    if bytes >= MIB && bytes.is_multiple_of(MIB) {
+        format!("{} MiB", bytes / MIB)
+    } else {
+        format!("{bytes}-byte")
+    }
+}
+
+#[cfg(feature = "native-fonts")]
+fn font_budget_hint(actual: u64, maximum: u64) -> String {
+    const MIB: u64 = 1024 * 1024;
+    if actual > usize::MAX as u64 || actual <= maximum {
+        return "select fewer or smaller fonts to fit this target's address space".to_owned();
+    }
+    let suggested = retry_budget(actual, MIB).min(usize::MAX as u64);
+    let size = if suggested.is_multiple_of(MIB) {
+        format!("{}MiB", suggested / MIB)
+    } else {
+        suggested.to_string()
+    };
+    format!("retry with --font-max-bytes {size} or select fewer or smaller fonts")
+}
+
 #[cfg(feature = "svg")]
 fn retry_budget(actual: u64, default: u64) -> u64 {
     let needed = actual.max(default);
@@ -368,6 +425,34 @@ impl From<merman::RenderError> for CliError {
         match error {
             merman::RenderError::NoDiagram => Self::NoDiagram,
             merman::RenderError::Parse(error) => Self::Diagnostic(error),
+            #[cfg(feature = "native-fonts")]
+            merman::RenderError::ResourceLimitExceeded(limit)
+                if limit.id == "native_font_bytes"
+                    && limit.cause == merman::ResourceLimitCause::Ceiling =>
+            {
+                let activity = if limit.phase == "native-font-export" {
+                    FontBudgetActivity::Paint
+                } else {
+                    FontBudgetActivity::Measure
+                };
+                Self::NativeFontByteLimit {
+                    activity,
+                    actual: limit.actual,
+                    maximum: limit.maximum,
+                }
+            }
+            #[cfg(feature = "native-fonts")]
+            merman::RenderError::NativeFont(error) => {
+                if let Some(("native_font_bytes", actual, maximum)) = error.resource_limit() {
+                    Self::NativeFontByteLimit {
+                        activity: FontBudgetActivity::Measure,
+                        actual,
+                        maximum,
+                    }
+                } else {
+                    Self::Render(merman::RenderError::NativeFont(error))
+                }
+            }
             #[cfg(feature = "native-fonts")]
             merman::RenderError::ResourceLimitExceeded(limit)
                 if limit.id == "native_font_measurements"
@@ -725,6 +810,13 @@ impl CliError {
             Self::Render(_) => ErrorCategory::Content,
             #[cfg(feature = "svg")]
             Self::GraphicalResourceLimit { .. } => ErrorCategory::Content,
+            #[cfg(feature = "native-fonts")]
+            Self::NativeFontByteLimit {
+                activity: FontBudgetActivity::Load(_),
+                ..
+            } => ErrorCategory::Operational,
+            #[cfg(feature = "native-fonts")]
+            Self::NativeFontByteLimit { .. } => ErrorCategory::Content,
             #[cfg(feature = "native-fonts")]
             Self::NativeFontMeasurementLimit(_) => ErrorCategory::Content,
         }
