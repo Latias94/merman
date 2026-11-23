@@ -153,7 +153,7 @@ fn file_candidate(font: IDWriteFont, fallback_scale: f32) -> Option<FontCandidat
         let family = localized_name(&font.GetFontFamily().ok()?.GetFamilyNames().ok()?)?;
         let variable = variable_face(&face);
         let post_script_name = if let Some(instance) = &variable {
-            if has_non_default_axes(&face, instance) {
+            if !uses_physical_axis_defaults(instance)? {
                 // The resolver admits a file and collection index. These cannot carry the
                 // selected instance's coordinates, even when it shares the physical family.
                 return None;
@@ -243,8 +243,8 @@ fn variable_face(face: &IDWriteFontFace) -> Option<IDWriteFontFace5> {
     }
 }
 
-fn has_non_default_axes(face: &IDWriteFontFace, instance: &IDWriteFontFace5) -> bool {
-    with_font_table(face, b"fvar", |bytes| {
+fn uses_physical_axis_defaults(instance: &IDWriteFontFace5) -> Option<bool> {
+    with_font_table(instance, b"fvar", |bytes| {
         let table = fvar::Table::parse(bytes)?;
         // SAFETY: The slice has the exact number of writable slots reported by this face.
         let mut values = unsafe {
@@ -255,19 +255,22 @@ fn has_non_default_axes(face: &IDWriteFontFace, instance: &IDWriteFontFace5) -> 
             instance.GetFontAxisValues(&mut values).ok()?;
             values
         };
-        values.sort_unstable_by_key(|value| value.axisTag.0);
-        // DirectWrite can include static CSS axes with no corresponding physical axis.
-        Some(table.axes.into_iter().any(|axis| {
-            let tag = u32::from_le_bytes(axis.tag.to_bytes());
-            values
-                .binary_search_by_key(&tag, |value| value.axisTag.0)
-                .ok()
-                .is_some_and(|i| {
-                    let value = values[i].value;
-                    (axis.min_value..=axis.max_value).contains(&value) && value != axis.def_value
-                })
-        }))
-    }) == Some(true)
+        Some(axis_values_match_defaults(table, &mut values))
+    })
+}
+
+fn axis_values_match_defaults(
+    table: fvar::Table<'_>,
+    values: &mut [DWRITE_FONT_AXIS_VALUE],
+) -> bool {
+    values.sort_unstable_by_key(|value| value.axisTag.0);
+    // DirectWrite also reports static CSS axes. Only axes declared by the file need a match.
+    table.axes.into_iter().all(|axis| {
+        let tag = u32::from_le_bytes(axis.tag.to_bytes());
+        values
+            .binary_search_by_key(&tag, |value| value.axisTag.0)
+            .is_ok_and(|index| values[index].value == axis.def_value)
+    })
 }
 
 struct FontTableLease<'a> {
@@ -451,6 +454,7 @@ fn report_text(run: &[u16], text: *mut *mut u16, len: *mut u32) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use usvg::fontdb::Database;
 
     fn han() -> GlyphFallback<'static> {
         GlyphFallback {
@@ -460,7 +464,36 @@ mod tests {
             rtl: false,
         }
     }
-    use usvg::fontdb::Database;
+
+    #[test]
+    fn directwrite_requires_a_default_value_for_each_physical_axis() {
+        use windows::Win32::Graphics::DirectWrite::{
+            DWRITE_FONT_AXIS_TAG_WEIGHT, DWRITE_FONT_AXIS_TAG_WIDTH,
+        };
+
+        let bytes = include_bytes!("../../../tests/fonts/MermanVariableWeight.ttf");
+        let table = ttf_parser::Face::parse(bytes, 0)
+            .unwrap()
+            .tables()
+            .fvar
+            .unwrap();
+        let width = DWRITE_FONT_AXIS_VALUE {
+            axisTag: DWRITE_FONT_AXIS_TAG_WIDTH,
+            value: 100.0,
+        };
+        let weight = |value| DWRITE_FONT_AXIS_VALUE {
+            axisTag: DWRITE_FONT_AXIS_TAG_WEIGHT,
+            value,
+        };
+        assert!(axis_values_match_defaults(
+            table,
+            &mut [weight(100.0), width]
+        ));
+        assert!(!axis_values_match_defaults(table, &mut [width]));
+        for value in [400.0, 1000.0, f32::NAN] {
+            assert!(!axis_values_match_defaults(table, &mut [weight(value)]));
+        }
+    }
 
     #[test]
     #[ignore = "requires Windows Noto Sans SC with a physical weight of 100"]
