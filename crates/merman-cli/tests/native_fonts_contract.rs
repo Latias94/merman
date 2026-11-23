@@ -1326,6 +1326,11 @@ fn fontconfig_keeps_preferred_aliases_and_usable_coverage_alternatives() {
     <prefer><family>Cousine</family></prefer>
   </alias>
   <match target="scan">
+    <test name="family"><string>Cousine</string></test>
+    <edit name="family" mode="prepend"><string>Office Scan</string></edit>
+    <edit name="postscriptname" mode="assign"><string>Cousine-Regular</string></edit>
+  </match>
+  <match target="scan">
     <test name="family" compare="not_eq"><string>Merman Pictorial Test</string></test>
     <edit name="charset" mode="assign"><charset><int>65</int></charset></edit>
   </match>
@@ -1334,7 +1339,7 @@ fn fontconfig_keeps_preferred_aliases_and_usable_coverage_alternatives() {
     .unwrap();
 
     let input = temp.path().join("input.svg");
-    let render = |family| {
+    let run = |family: &str| {
         fs::write(
             &input,
             format!(
@@ -1342,7 +1347,7 @@ fn fontconfig_keeps_preferred_aliases_and_usable_coverage_alternatives() {
             ),
         )
         .unwrap();
-        let result = Command::new(assert_cmd::cargo_bin!("merman-cli"))
+        Command::new(assert_cmd::cargo_bin!("merman-cli"))
             .arg("render")
             .arg(&input)
             .args([
@@ -1352,10 +1357,14 @@ fn fontconfig_keeps_preferred_aliases_and_usable_coverage_alternatives() {
                 "--font-system=platform",
             ])
             .env("XDG_DATA_HOME", temp.path())
+            .env("XDG_DATA_DIRS", temp.path())
             .env("XDG_CACHE_HOME", temp.path())
             .env("FONTCONFIG_FILE", &config)
             .output()
-            .unwrap();
+            .unwrap()
+    };
+    let render = |family| {
+        let result = run(family);
         assert!(
             result.status.success(),
             "{family}: {}",
@@ -1368,6 +1377,7 @@ fn fontconfig_keeps_preferred_aliases_and_usable_coverage_alternatives() {
     let cousine = render("Cousine");
     let noto = render("Noto Sans");
     assert_ne!(noto, cousine);
+    assert_eq!(render("Office Scan, Noto Sans"), cousine);
     assert!(
         render("Office Body, Noto Sans") == cousine,
         "the preferred alias must win"
@@ -1383,6 +1393,21 @@ fn fontconfig_keeps_preferred_aliases_and_usable_coverage_alternatives() {
     assert!(
         render("sans-serif") == cousine,
         "the pictorial face must leave Cousine available"
+    );
+
+    // The scan rule retains the original PostScript name even if Fontconfig rescans the file.
+    fs::copy(
+        fixtures.join("Cousine-Bold.ttf"),
+        fonts.join("Cousine-Regular.ttf"),
+    )
+    .unwrap();
+    let replaced = run("Office Scan");
+    assert!(!replaced.status.success());
+    assert!(replaced.stdout.is_empty());
+    let diagnostic = String::from_utf8_lossy(&replaced.stderr);
+    assert!(
+        diagnostic.contains("font properties changed after platform lookup"),
+        "{diagnostic}"
     );
 }
 

@@ -363,7 +363,8 @@ impl Catalog {
 
     fn candidate(&self, face: PatternRef<'_>, character: Option<char>) -> Option<FontCandidate> {
         let filename = face.get_string(FC_FILE, 0)?;
-        let family = face.families().next()?;
+        let mut families = face.families();
+        let family = families.next()?;
         let index = u32::try_from(face.get_integer(FC_INDEX)?).ok()?;
         // The upper 16 bits encode a named instance. A physical face ID
         // cannot express this selection's effective variation settings.
@@ -384,6 +385,7 @@ impl Catalog {
             PlatformFace {
                 index,
                 family: family.to_owned(),
+                fontconfig_other_families: families.map(str::to_owned).collect(),
                 post_script_name: face
                     .get_string(FC_POSTSCRIPT_NAME, 0)
                     .and_then(|name| name.to_str().ok())

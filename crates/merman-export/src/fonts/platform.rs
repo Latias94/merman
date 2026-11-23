@@ -57,6 +57,8 @@ pub(super) struct PlatformFace {
     #[cfg(windows)]
     pub(super) fallback_scale: f32,
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    fontconfig_other_families: Vec<String>,
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     fontconfig_coverage: Option<bool>,
 }
 
@@ -552,7 +554,7 @@ impl PlatformFace {
     ) -> Result<(), NativeFontError> {
         if origin_index != self.index
             || !self.attributes.matches(face)
-            || !matches_family(face, &self.family)
+            || !self.matches_family(face)
             || self
                 .post_script_name
                 .as_ref()
@@ -564,6 +566,26 @@ impl PlatformFace {
             ));
         }
         Ok(())
+    }
+
+    fn matches_family(&self, face: &FaceInfo) -> bool {
+        if matches_family(face, &self.family) {
+            return true;
+        }
+        // A Fontconfig scan rule can prepend an alias to the physical family names.
+        // Require a corroborating PostScript name when accepting a later family.
+        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+        if self
+            .post_script_name
+            .as_deref()
+            .is_some_and(|name| !name.is_empty())
+        {
+            return self
+                .fontconfig_other_families
+                .iter()
+                .any(|name| matches_family(face, name));
+        }
+        false
     }
 }
 
@@ -654,6 +676,8 @@ impl PlatformCandidate {
             coverage_source: Some(self.font),
             #[cfg(windows)]
             fallback_scale: 1.0,
+            #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+            fontconfig_other_families: Vec::new(),
             #[cfg(any(target_os = "linux", target_os = "freebsd"))]
             fontconfig_coverage: None,
         }
