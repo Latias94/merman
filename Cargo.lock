@@ -2411,6 +2411,7 @@ dependencies = [
  "url",
  "usvg",
  "windows-sys 0.61.2",
+ "write-fonts",
 ]
 
 [[package]]

@@ -238,6 +238,10 @@ Selected font bytes have acquisition limits and serve both measurement and paint
 an unsupported named variable family may fall through to the next family in the requested stack.
 See [Optional CLI fonts](../../docs/FEATURES.md#optional-cli-fonts).
 
+If bounded discovery reports `native font limit system-cmap-bytes exceeded`, the installed fonts'
+combined character map tables exceeded the scan budget. Supply the diagram's fonts with
+`--font-file`, or select `--font-system platform` on a build that offers it.
+
 Native measurement allows 16,384 uncached shaping probes per diagram by default.
 Large diagrams can reach this budget because one label may need several probes.
 If the CLI reports `native_font_measurements`, simplify or split the diagram, or

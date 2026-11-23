@@ -430,6 +430,9 @@ usvg = { workspace = true, features = ["text"] }
 [target.'cfg(unix)'.dev-dependencies]
 libc.workspace = true
 
+[target.'cfg(any(windows, target_os = "linux"))'.dev-dependencies]
+write-fonts = { version = "0.48.1", features = ["read"] }
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true, optional = true, features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
 

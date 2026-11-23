@@ -1053,6 +1053,154 @@ fn explicit_platform_query_uses_shared_context_and_respects_explicit_fonts() {
     assert!(!String::from_utf8_lossy(&closed.stderr).contains(context.identity()));
 }
 
+#[cfg(all(
+    feature = "png",
+    any(
+        all(windows, feature = "windows-platform-font-default"),
+        all(target_os = "linux", feature = "platform-system-font-query")
+    )
+))]
+mod large_font_inventory {
+    use std::{fs, path::Path};
+    use write_fonts::read::FontRef;
+    use write_fonts::tables::cmap::{
+        Cmap, CmapSubtable, EncodingRecord, PlatformId, SequentialMapGroup,
+    };
+    use write_fonts::tables::name::{Name, NameRecord};
+    use write_fonts::types::{NameId, Tag};
+    use write_fonts::{FontBuilder, dump_table};
+
+    fn populate_inventory(directory: &Path) {
+        let seed = fs::read(
+            super::repo_root().join("crates/merman-export/tests/fonts/MermanProbeBase.ttf"),
+        )
+        .unwrap();
+        let seed = FontRef::new(&seed).unwrap();
+        // Distinct faces avoid catalog deduplication. Each cmap fits the per-face limit,
+        // and the sum exceeds the 16 MiB discovery limit.
+        let groups = (0x20000..0x48000)
+            .step_by(2)
+            .map(|codepoint| SequentialMapGroup::new(codepoint, codepoint, 1))
+            .collect();
+        let cmap = dump_table(&Cmap::new(vec![EncodingRecord::new(
+            PlatformId::Windows,
+            10,
+            CmapSubtable::format_12(0, groups),
+        )]))
+        .unwrap();
+        for index in 0..18 {
+            let family = format!("MermanInventory{index:02}");
+            let name = Name::new(
+                [
+                    NameId::FAMILY_NAME,
+                    NameId::FULL_NAME,
+                    NameId::POSTSCRIPT_NAME,
+                ]
+                .into_iter()
+                .map(|id| NameRecord::new(3, 1, 0x409, id, family.clone().into()))
+                .collect(),
+            );
+            let mut builder = FontBuilder::new();
+            builder.add_raw(Tag::new(b"cmap"), cmap.as_slice());
+            builder.add_table(&name).unwrap();
+            builder.copy_missing_tables(seed.clone());
+            fs::write(directory.join(format!("{family}.ttf")), builder.build()).unwrap();
+        }
+    }
+
+    #[test]
+    fn platform_png_succeeds_when_bounded_discovery_exhausts_cmap_budget() {
+        let temp = tempfile::tempdir().unwrap();
+        let fonts = temp
+            .path()
+            .join(if cfg!(windows) { "Fonts" } else { "fonts" });
+        fs::create_dir(&fonts).unwrap();
+        populate_inventory(&fonts);
+
+        let config_contents = if cfg!(windows) {
+            r#"{"look":"classic"}"#
+        } else {
+            r#"{"look":"classic","fontFamily":"Cousine"}"#
+        };
+        let config = temp.path().join("classic.json");
+        fs::write(&config, config_contents).unwrap();
+
+        let fontconfig = temp.path().join("fonts.conf");
+        if cfg!(target_os = "linux") {
+            // Give Fontconfig access to the same large inventory that bounded discovery scans.
+            fs::copy(super::font(), fonts.join("Cousine-Regular.ttf")).unwrap();
+            fs::write(
+                &fontconfig,
+                r#"<?xml version="1.0"?>
+<fontconfig>
+  <dir prefix="relative">fonts</dir>
+  <cachedir prefix="relative">cache</cachedir>
+  <alias><family>sans-serif</family><prefer><family>Cousine</family></prefer></alias>
+</fontconfig>"#,
+            )
+            .unwrap();
+        }
+
+        let render = |extra: &[&str]| {
+            let mut command = assert_cmd::Command::new(assert_cmd::cargo_bin!("merman-cli"));
+            if cfg!(windows) {
+                // DirectWrite queries the system catalog independently of the scan roots.
+                command
+                    .env("WINDIR", temp.path())
+                    .env("LOCALAPPDATA", temp.path());
+            } else {
+                command
+                    .env("HOME", temp.path())
+                    .env("XDG_DATA_HOME", temp.path())
+                    .env("FONTCONFIG_FILE", &fontconfig);
+            }
+            command
+                .args(["-i", "-", "-o", "-", "-e", "png", "-t", "default"])
+                .args(["-b", "#FFFFFF", "-s", "2", "-q", "-c"])
+                .arg(&config)
+                .args(extra)
+                .write_stdin("flowchart LR\nA[Draft] --> B[Review]\n")
+                .output()
+                .unwrap()
+        };
+
+        let bounded = render(&["--font-system=bounded"]);
+        let stderr = String::from_utf8_lossy(&bounded.stderr);
+        assert_eq!(bounded.status.code(), Some(3), "{stderr}");
+        assert!(
+            stderr.contains("native font limit system-cmap-bytes exceeded"),
+            "{stderr}"
+        );
+        assert!(bounded.stdout.is_empty());
+
+        let platform = render(&["--font-system=platform"]);
+        assert!(
+            platform.status.success(),
+            "{}",
+            String::from_utf8_lossy(&platform.stderr)
+        );
+        assert!(platform.stdout.starts_with(b"\x89PNG\r\n\x1a\n"));
+        if cfg!(target_os = "linux") {
+            let explicit_font = render(&["--font-file", &super::font()]);
+            assert!(
+                explicit_font.status.success(),
+                "{}",
+                String::from_utf8_lossy(&explicit_font.stderr)
+            );
+            assert_eq!(platform.stdout, explicit_font.stdout);
+        }
+        if cfg!(any(windows, feature = "experimental-system-font-query")) {
+            let default = render(&[]);
+            assert!(
+                default.status.success(),
+                "{}",
+                String::from_utf8_lossy(&default.stderr)
+            );
+            assert_eq!(platform.stdout, default.stdout);
+        }
+    }
+}
+
 #[cfg(all(target_os = "linux", feature = "platform-system-font-query"))]
 #[test]
 fn empty_fontconfig_policy_does_not_trigger_bounded_fallback() {
