@@ -92,7 +92,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_rendered_bounds<'data
             hierarchy_plan.effective_parent(&c.id)
         };
         let y_off = y_offset_for_root(root);
-        let frame = painted_cluster_frame(ctx, c);
+        let frame = painted_cluster_frame(ctx, c).bounds();
         if !frame.is_zero_area() {
             include_rect(frame.x0, frame.y0 + y_off, frame.x1, frame.y1 + y_off);
         }
@@ -407,7 +407,7 @@ fn builtin_neo_paint_bounds(
     for cluster in ctx.layout_clusters_by_id.values() {
         ctx.work_meter.charge(1)?;
         // The default cluster writer emits a one-pixel outline without a Neo filter.
-        let frame = painted_cluster_frame(ctx, cluster);
+        let frame = painted_cluster_frame(ctx, cluster).bounds();
         if frame.is_zero_area() {
             continue;
         }

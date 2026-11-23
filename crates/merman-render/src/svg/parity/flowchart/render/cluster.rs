@@ -34,10 +34,10 @@ pub(in crate::svg::parity::flowchart) fn advance_rough_geometry(
     }
     let terminal = ctx.prepared_nodes.cluster(cluster.id.as_str())?;
     let frame = painted_cluster_frame(ctx, cluster);
-    let width = frame.width();
-    let height = frame.height();
-    let left = frame.x0 + ctx.tx - origin_x;
-    let top = frame.y0 + ctx.ty - origin_y;
+    let width = frame.size.width;
+    let height = frame.size.height;
+    let left = frame.origin.x + ctx.tx - origin_x;
+    let top = frame.origin.y + ctx.ty - origin_y;
     let agentflow = ctx.diagram_type == "agentflow";
     if agentflow && (!terminal.theme.requests_shape_style() || terminal.fill == "none") {
         let path = rounded_rect_path_d(left, top, width, height, 10.0);
@@ -408,10 +408,10 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
 
     let elk_geometry = ctx.elk_cluster_geometry.get(cluster.id.as_str());
     let frame = painted_cluster_frame(ctx, cluster);
-    let rect_w = frame.width();
-    let rect_h = frame.height();
-    let left = frame.x0 + ctx.tx - origin_x;
-    let top = frame.y0 + ctx.ty - origin_y;
+    let rect_w = frame.size.width;
+    let rect_h = frame.size.height;
+    let left = frame.origin.x + ctx.tx - origin_x;
+    let top = frame.origin.y + ctx.ty - origin_y;
     let label_top = top + cluster.title_margin_top.max(0.0);
     let Some(cluster_dom_id) = ctx.document_ids().cluster(cluster.id.as_str()) else {
         return Err(crate::Error::InvalidModel {
