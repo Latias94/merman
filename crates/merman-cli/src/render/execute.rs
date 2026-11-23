@@ -610,7 +610,10 @@ fn report_export_font_resolution(
         || fonts.notdef_glyph_count() != 0
     {
         crate::diagnostics::DiagnosticSink::new(quiet, stderr).info(format!(
-            "warning: native export font resolution is incomplete: unresolved font request={}; unresolved glyph fallback={}; .notdef glyphs={}; provide fonts covering the output text",
+            "warning: native export font resolution is incomplete: unresolved font request={}; \
+             unresolved glyph fallback={}; .notdef glyphs={}\n\
+             help: some text may be missing from the output. Choose a font family that covers \
+             the text or pass --font-file PATH for each required font.",
             fonts.unresolved_font_request(),
             fonts.unresolved_glyph_fallback(),
             fonts.notdef_glyph_count(),

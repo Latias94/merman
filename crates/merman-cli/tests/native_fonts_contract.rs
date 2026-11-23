@@ -1797,6 +1797,8 @@ fn missing_glyph_exports_warn_with_real_font_resolution_details() {
             notice.contains("unresolved glyph fallback=true"),
             "{notice}"
         );
+        assert!(stderr.contains("some text may be missing"), "{stderr}");
+        assert!(stderr.contains("--font-file PATH"), "{stderr}");
         let notdef = notice
             .split(".notdef glyphs=")
             .nth(1)
