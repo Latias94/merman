@@ -192,8 +192,8 @@
       document.querySelector('#source').textContent = item.source;
       let context = pele ? 'Native Rust · Untimed' : 'Visual example · Untimed';
       if (item.comparison) {
-        const { samples, warmups, host, revision } = measurement;
-        context = `Exploratory timing · Native Rust · ${host} · ${samples} samples after ${warmups} warmups per process · Source to returned SVG`;
+        const { samples, warmups, host, revision, resourceProfile } = measurement;
+        context = `Exploratory timing · Native Rust · ${host} · ${resourceProfile} · ${samples} samples after ${warmups} warmups per process · Source to returned SVG`;
         if (revision) context += ` · ${revision.slice(0, 9)}`;
         if (item.comparison !== 'matching-inventories') context += ` · ${item.comparison.replaceAll('-', ' ')} comparison`;
       }

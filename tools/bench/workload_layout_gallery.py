@@ -28,10 +28,14 @@ def svg_card(svg, backend):
     return dict(svg=svg, width=width, height=height, nodes=nodes, edges=edges)
 
 
-def render_card(runner, request, backend, recorded):
+def render_card(runner, request, backend, recorded, resource_profile=None):
     job = dict(task="measure", metric="clock", operation="svg", requests=[request], site={"layout": backend},
                warmups=0, verify_only=True, verify_layout=True)
+    if resource_profile:
+        job["resource_profile"] = resource_profile
     response = child(runner, job)
+    if resource_profile and response.get("resource_profile") != resource_profile:
+        raise ValueError(f"workload runner did not confirm resource profile {resource_profile!r}")
     outputs = response["outputs"]
     signatures, _ = rust_signatures(outputs, job["requests"], "svg")
     receipts = check_layout_evidence(response, job, signatures, backend, inventory=recorded is not None)
@@ -148,15 +152,18 @@ def write_gallery(args):
             raise ValueError("use the clock executable that produced this comparison")
         run = report["runs"]["dagre"]["svg"]
         gallery["measurement"] = dict(warmups=run["options"]["warmups"], samples=run["options"]["samples"],
-                                      host=" ".join(run["host"][:2]), revision=run["revision"])
+                                      host=" ".join(run["host"][:2]), revision=run["revision"],
+                                      resourceProfile=run["options"].get("resource_profile", "interactive"))
 
     for index, (name, request, measured) in enumerate(cases):
         case = dict(name=name, source=request["source"], cards={})
         if measured:
             case["comparison"] = report["rows"][name]["status"]
         for backend in LAYOUTS:
-            recorded = report["runs"][backend]["svg"]["rows"][name] if measured else None
-            case["cards"][backend] = render_card(runner, request, backend, recorded)
+            run = report["runs"][backend]["svg"] if measured else None
+            recorded = run["rows"][name] if run else None
+            profile = run["options"].get("resource_profile") if run else None
+            case["cards"][backend] = render_card(runner, request, backend, recorded, profile)
         if pele_cards:
             case["cards"]["pele"] = pele_cards[index]
         gallery["cases"].append(case)

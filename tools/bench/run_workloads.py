@@ -542,13 +542,14 @@ def run_rust(args, *, raw=None, runner=None, layout_comparison=False):
     work = args.metric == "work"
     exact = args.verify_measured_svg
     verify_layout = args.site_layout == "shoal" or layout_comparison
+    resource_profile = getattr(args, "resource_profile", None)
     if exact and (args.metric != "clock" or args.operation not in SVG_OPERATIONS):
         raise ValueError("--verify-measured-svg requires an SVG operation and --metric clock")
     if args.check_drawings and (work or args.operation not in SVG_OPERATIONS):
         raise ValueError("--check-drawings requires an SVG operation")
-    if work and (args.site_layout or args.site_css_bytes or args.operation != "svg-data"):
+    if work and (args.site_layout or args.site_css_bytes or resource_profile or args.operation != "svg-data"):
         raise ValueError(
-            "work probes default ELK without site or operation overrides; use clock or memory for explicit layouts"
+            "work probes default ELK without resource, site or operation overrides; use clock or memory for explicit layouts"
         )
     if verify_layout and args.operation not in SVG_OPERATIONS | {"layout-json"}:
         raise ValueError("layout verification requires an SVG or layout-json operation")
@@ -576,6 +577,7 @@ def run_rust(args, *, raw=None, runner=None, layout_comparison=False):
         "site_css_bytes": args.site_css_bytes,
         "site_layout": args.site_layout,
         "samples": 1 if work else args.samples,
+        **({"resource_profile": resource_profile} if resource_profile else {}),
         **({"clock_boundary": "returned-svg"} if exact else {}),
     }
     rows = {}
@@ -586,6 +588,8 @@ def run_rust(args, *, raw=None, runner=None, layout_comparison=False):
 
     def observe(job):
         row = child(runner, job)
+        if resource_profile and row.get("resource_profile") != resource_profile:
+            raise ValueError(f"workload runner did not confirm resource profile {resource_profile!r}")
         fingerprints.add(row.pop("harness_sha256"))
         if len(fingerprints) != 1:
             raise ValueError("workload runner changed during observation")
@@ -641,6 +645,7 @@ def run_rust(args, *, raw=None, runner=None, layout_comparison=False):
             "requests": requests,
             "warmups": args.warmups,
             "site": site or None,
+            **({"resource_profile": resource_profile} if resource_profile else {}),
         }
         row = rows[case["id"]] = {"expected_outcomes": outcomes}
         signatures, evidence = verify(job, row)
@@ -887,6 +892,8 @@ def main(argv=None):
         command.add_argument("--samples", type=int, default=3, help="fresh processes per workload (work runs once)")
         command.add_argument("--runner", type=Path, help="use a frozen executable built with the matching metric")
         command.add_argument("--revision", help="revision label for a frozen runner")
+        command.add_argument("--resource-profile", choices=["interactive", "constrained"],
+                             help="resource profile for public operations (default: interactive)")
     run.add_argument("--metric", choices=["clock", "memory", "work"], default="memory")
     run.add_argument("--operation", choices=OPERATIONS, default="svg-data")
     run.add_argument("--site-css-bytes", type=int, default=0)

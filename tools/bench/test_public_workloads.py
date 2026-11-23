@@ -765,10 +765,13 @@ class RustLayoutTests(unittest.TestCase):
             binary.write_bytes(b"one Shoal-capable executable")
             out = path / "comparison.json"
             mutation = None
+            profile = None
+            runner_confirms_profile = True
 
             def child(runner, job):
-                self.assertEqual(runner, binary)
+                self.assertEqual(runner.resolve(), binary.resolve())
                 self.assertEqual(job["requests"], [request])
+                self.assertEqual(job.get("resource_profile"), profile)
                 backend = job["site"]["layout"]
                 different = mutation if backend == "shoal" else None
                 x = bench.LAYOUTS.index(backend) + 1
@@ -798,6 +801,8 @@ class RustLayoutTests(unittest.TestCase):
                     result = dict(metrics={"elapsed_ns": 10 * x}, sizes=[size])
                     if job.get("return_measured_svg"):
                         result["outputs"] = [svg.replace(f"L{x},0", f"L{x},1") if different == "unstable" else svg]
+                if profile and runner_confirms_profile:
+                    result["resource_profile"] = profile
                 return dict(**result, harness_sha256="one-harness")
 
             with patch.object(bench, "child", side_effect=child), patch.object(bench, "build_runner", return_value=binary) as build:
@@ -819,6 +824,17 @@ class RustLayoutTests(unittest.TestCase):
                             self.assertEqual(len({r["rows"]["parallel"]["outputs"][0]["sha256"] for r in svgs}), 3)
                             with self.assertRaisesRegex(ValueError, "options"):
                                 bench.compare(svgs[0], svgs[1])
+
+                mutation = None
+                profile = "constrained"
+                args = ["rust-layouts", "--plan", str(frozen), "--runner", str(binary), "--out", str(out),
+                        "--resource-profile", profile]
+                self.assertEqual(bench.main(args), 0)
+                for run in bench.load(out)["runs"].values():
+                    self.assertEqual([r["options"]["resource_profile"] for r in run.values()], [profile, profile])
+                runner_confirms_profile = False
+                with self.assertRaises(SystemExit):
+                    bench.main(args)
 
 
 if __name__ == "__main__":

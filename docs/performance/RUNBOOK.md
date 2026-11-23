@@ -326,8 +326,10 @@ when publishing results.
 
 Freeze one-request flat Flowcharts with a reviewed `draw` outcome. `rust-layouts` builds one
 release clock executable with `layout-shoal` and uses it for Dagre, ELK and Shoal on the same host.
-Each backend receives the frozen source and diagram ID, the default interactive resource policy
-and the same warmup and sample counts. Only the site `layout` setting varies.
+Each backend receives the frozen source and diagram ID, the same resource profile and the same
+warmup and sample counts. Only the site `layout` setting varies. The default profile is
+`interactive`. Use `--resource-profile constrained` in a separate run to observe layouts
+under the constrained policy.
 
 ```console
 python3 tools/bench/perf_runner.py workloads plan --scenario small-svg --scenario fan-in-50 --out target/bench/layouts/flat.json
