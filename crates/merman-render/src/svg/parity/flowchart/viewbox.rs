@@ -404,9 +404,10 @@ fn builtin_neo_paint_bounds(
             });
         }
     };
+    let builtin_shadow = ctx.compatibility.drop_shadow == "url(#drop-shadow)";
+    let shadow_offset = super::super::look_defs::NEO_SHADOW_OFFSET_PX;
     for cluster in ctx.layout_clusters_by_id.values() {
         ctx.work_meter.charge(1)?;
-        // The default cluster writer emits a one-pixel outline without a Neo filter.
         let frame = painted_cluster_frame(ctx, cluster).bounds();
         if frame.is_zero_area() {
             continue;
@@ -415,14 +416,25 @@ fn builtin_neo_paint_bounds(
             &cluster.id,
             ctx.recursive_clusters.contains(cluster.id.as_str()),
         );
+        let shadow = if builtin_shadow
+            && !super::swimlane::is_lane_or_pool_cluster(ctx, &cluster.id)
+            && ctx
+                .prepared_nodes
+                .cluster(&cluster.id)
+                .is_ok_and(|terminal| terminal.compiled.source_filter_status().is_absent())
+        {
+            shadow_offset
+        } else {
+            0.0
+        };
         include(
             frame.x0 - 0.5,
             frame.y0 + offset - 0.5,
-            frame.x1 + 0.5,
-            frame.y1 + offset + 0.5,
+            frame.x1 + 0.5 + shadow,
+            frame.y1 + offset + 0.5 + shadow,
         );
     }
-    if ctx.compatibility.drop_shadow != "url(#drop-shadow)" {
+    if !builtin_shadow {
         return Ok(bounds);
     }
     for id in hierarchy.rendered_node_ids() {
@@ -463,7 +475,6 @@ fn builtin_neo_paint_bounds(
                 .admitted_stroke_width_value()
                 .unwrap_or(ctx.node_stroke_width),
         ) / 2.0;
-        let offset = super::super::look_defs::NEO_SHADOW_OFFSET_PX;
         let y = node.y + y_offset(id, node.is_cluster && ctx.recursive_clusters.contains(id));
         let shape = ctx.rectangle_geometry(node).shape;
         if shape.width() == 0.0 || shape.height() == 0.0 {
@@ -472,8 +483,8 @@ fn builtin_neo_paint_bounds(
         include(
             node.x + shape.x0 - stroke,
             y + shape.y0 - stroke,
-            node.x + shape.x1 + stroke + offset,
-            y + shape.y1 + stroke + offset,
+            node.x + shape.x1 + stroke + shadow_offset,
+            y + shape.y1 + stroke + shadow_offset,
         );
     }
     Ok(bounds)
