@@ -185,6 +185,7 @@ fn measure(
         node_spacing: measurement.settings.nodesep,
         rank_spacing: measurement.settings.ranksep,
         component_spacing: measurement.settings.nodesep,
+        inherit_crossed_group_direction: true,
         nodes: Vec::with_capacity(view.nodes.len()),
         groups: Vec::new(),
         edges: Vec::with_capacity(view.edges.len()),

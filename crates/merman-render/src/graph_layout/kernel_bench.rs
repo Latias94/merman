@@ -289,7 +289,9 @@ impl Frozen {
         json!({
             "direction": format!("{:?}", self.measured.direction), "routing": format!("{:?}", self.measured.routing),
             "node_spacing": self.measured.node_spacing, "rank_spacing": self.measured.rank_spacing,
-            "component_spacing": self.measured.component_spacing, "nodes": nodes, "edges": edges, "groups": [],
+            "component_spacing": self.measured.component_spacing,
+            "inherit_crossed_group_direction": self.measured.inherit_crossed_group_direction,
+            "nodes": nodes, "edges": edges, "groups": [],
         })
     }
 }

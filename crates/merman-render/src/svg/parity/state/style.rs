@@ -83,6 +83,69 @@ fn state_gradient_defs<I>(
     );
 }
 
+pub(super) const STATE_BARB_TIP_X: u8 = 19;
+pub(super) const STATE_BARB_CENTER_Y: u8 = 7;
+pub(super) const STATE_BARB_VIEWPORT_WIDTH: u8 = 20;
+const STATE_BARB_VIEWPORT_HEIGHT: u8 = 2 * STATE_BARB_CENTER_Y;
+
+#[derive(Clone, Copy)]
+struct StateBarb {
+    ref_x: u8,
+    rear_x: u8,
+    notch_x: u8,
+    half_width: u8,
+}
+
+const STATE_CLASSIC_BARB: StateBarb = StateBarb {
+    ref_x: STATE_BARB_TIP_X,
+    rear_x: 9,
+    notch_x: 14,
+    half_width: 6,
+};
+const STATE_NEO_BARB: StateBarb = StateBarb {
+    ref_x: 17,
+    rear_x: 11,
+    notch_x: 13,
+    half_width: 7,
+};
+
+impl StateBarb {
+    fn for_look(neo: bool) -> Self {
+        if neo {
+            STATE_NEO_BARB
+        } else {
+            STATE_CLASSIC_BARB
+        }
+    }
+
+    fn glyph_path(self) -> String {
+        format!(
+            "M {STATE_BARB_TIP_X},{STATE_BARB_CENTER_Y} L{},{} L{},{STATE_BARB_CENTER_Y} L{},{} Z",
+            self.rear_x,
+            STATE_BARB_CENTER_Y + self.half_width,
+            self.notch_x,
+            self.rear_x,
+            STATE_BARB_CENTER_Y - self.half_width,
+        )
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+pub(crate) fn state_canonical_marker(
+    arrow_type_end: &str,
+    neo: bool,
+) -> crate::graph_layout::Marker {
+    if !matches!(arrow_type_end.trim(), "arrow_barb" | "arrow_barb_neo") {
+        return Default::default();
+    }
+    let barb = StateBarb::for_look(neo);
+    crate::graph_layout::Marker {
+        trim: f64::from(STATE_BARB_TIP_X - barb.ref_x),
+        depth: f64::from(barb.ref_x - barb.rear_x),
+        width: 2.0 * f64::from(barb.half_width),
+    }
+}
+
 pub(super) fn state_markers<I>(out: &mut impl SvgOutput, diagram_id: I, ctx: &StateRenderCtx<'_>)
 where
     I: SvgDiagramIdValue,
@@ -99,10 +162,14 @@ where
         )
     };
 
+    let barb = StateBarb::for_look(compatibility.is_neo());
+    let glyph_path = barb.glyph_path();
+    let ref_x = barb.ref_x;
+
     if compatibility.is_neo() {
         let _ = write!(
             out,
-            r#"<defs><marker id="{}_stateDiagram-barbEnd" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="strokeWidth" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z"{marker_style_attr}/></marker></defs><defs><marker id="{}_stateDiagram-barbEnd-margin" refX="17" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z" fill="{}"{marker_style_attr}/></marker></defs>"#,
+            r#"<defs><marker id="{}_stateDiagram-barbEnd" refX="{STATE_BARB_TIP_X}" refY="{STATE_BARB_CENTER_Y}" markerWidth="{STATE_BARB_VIEWPORT_WIDTH}" markerHeight="{STATE_BARB_VIEWPORT_HEIGHT}" markerUnits="strokeWidth" orient="auto"><path d="{glyph_path}"{marker_style_attr}/></marker></defs><defs><marker id="{}_stateDiagram-barbEnd-margin" refX="{ref_x}" refY="{STATE_BARB_CENTER_Y}" markerWidth="{STATE_BARB_VIEWPORT_WIDTH}" markerHeight="{STATE_BARB_VIEWPORT_HEIGHT}" markerUnits="userSpaceOnUse" orient="auto"><path d="{glyph_path}" fill="{}"{marker_style_attr}/></marker></defs>"#,
             escape_attr_display(diagram_id),
             escape_attr_display(diagram_id),
             escape_xml(transition_color)
@@ -110,7 +177,7 @@ where
     } else {
         let _ = write!(
             out,
-            r#"<defs><marker id="{}_stateDiagram-barbEnd" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L9,13 L14,7 L9,1 Z"{marker_style_attr}/></marker></defs>"#,
+            r#"<defs><marker id="{}_stateDiagram-barbEnd" refX="{ref_x}" refY="{STATE_BARB_CENTER_Y}" markerWidth="{STATE_BARB_VIEWPORT_WIDTH}" markerHeight="{STATE_BARB_VIEWPORT_HEIGHT}" markerUnits="userSpaceOnUse" orient="auto"><path d="{glyph_path}"{marker_style_attr}/></marker></defs>"#,
             escape_attr_display(diagram_id)
         );
     }
@@ -129,25 +196,11 @@ where
         let style = escape_attr(style);
         let transition_color = escape_attr(transition_color);
 
-        if compatibility.is_neo() {
-            let _ = write!(
-                out,
-                r#"<defs><marker id="{}" refX="17" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L11,14 L13,7 L11,0 Z" fill="{}" stroke="{}" style="{}"/></marker></defs>"#,
-                escape_attr_display(state_transition_marker_id(diagram_id, ordinal)),
-                transition_color,
-                transition_color,
-                style
-            );
-        } else {
-            let _ = write!(
-                out,
-                r#"<defs><marker id="{}" refX="19" refY="7" markerWidth="20" markerHeight="14" markerUnits="userSpaceOnUse" orient="auto"><path d="M 19,7 L9,13 L14,7 L9,1 Z" fill="{}" stroke="{}" style="{}"/></marker></defs>"#,
-                escape_attr_display(state_transition_marker_id(diagram_id, ordinal)),
-                transition_color,
-                transition_color,
-                style
-            );
-        }
+        let _ = write!(
+            out,
+            r#"<defs><marker id="{}" refX="{ref_x}" refY="{STATE_BARB_CENTER_Y}" markerWidth="{STATE_BARB_VIEWPORT_WIDTH}" markerHeight="{STATE_BARB_VIEWPORT_HEIGHT}" markerUnits="userSpaceOnUse" orient="auto"><path d="{glyph_path}" fill="{transition_color}" stroke="{transition_color}" style="{style}"/></marker></defs>"#,
+            escape_attr_display(state_transition_marker_id(diagram_id, ordinal)),
+        );
     }
 }
 

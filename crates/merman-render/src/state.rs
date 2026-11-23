@@ -70,6 +70,8 @@ mod effect_plan;
 #[cfg(feature = "layout-elk")]
 mod elk;
 mod layout;
+#[cfg(feature = "layout-shoal")]
+mod shoal;
 mod style_plan;
 mod theme_evidence;
 
@@ -87,6 +89,8 @@ pub(crate) use layout::layout_state_diagram_typed_with_work_meter;
 pub use layout::{
     debug_build_state_diagram_dagre_graph, debug_extract_state_diagram_cluster_graph,
 };
+#[cfg(feature = "layout-shoal")]
+pub(crate) use shoal::layout_state_diagram_shoal;
 
 #[cfg(all(test, feature = "diagram-state"))]
 mod tests {

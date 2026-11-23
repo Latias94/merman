@@ -129,6 +129,7 @@ pub(crate) struct MeasuredGraph {
     pub(crate) node_spacing: f64,
     pub(crate) rank_spacing: f64,
     pub(crate) component_spacing: f64,
+    pub(crate) inherit_crossed_group_direction: bool,
     pub(crate) nodes: Vec<MeasuredNode>,
     pub(crate) groups: Vec<MeasuredGroup>,
     pub(crate) edges: Vec<MeasuredEdge>,

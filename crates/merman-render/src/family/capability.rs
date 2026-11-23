@@ -177,7 +177,10 @@ fn required_layout_capability(
 
     let selection = crate::layout_backend::resolve_graph_layout(&meta.effective_config);
     if selection.backend == crate::layout_backend::GraphLayoutBackend::Shoal
-        && !matches!(family, DiagramFamilyId::AGENTFLOW | DiagramFamilyId::CLASS)
+        && !matches!(
+            family,
+            DiagramFamilyId::AGENTFLOW | DiagramFamilyId::CLASS | DiagramFamilyId::STATE
+        )
         && !(family == DiagramFamilyId::FLOWCHART
             && matches!(meta.diagram_type.as_str(), "flowchart" | "flowchart-v2"))
     {

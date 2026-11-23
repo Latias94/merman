@@ -413,14 +413,7 @@ fn group(node: Node<'_, '_>, name: &str) -> bool {
 }
 
 fn transform(node: Node<'_, '_>, frame: Affine) -> Affine {
-    let local = node
-        .ancestors()
-        .filter_map(|parent| parent.attribute("transform"))
-        .fold(Affine::IDENTITY, |local, value| {
-            let t: svgtypes::Transform = value.parse().unwrap();
-            Affine::new([t.a, t.b, t.c, t.d, t.e, t.f]) * local
-        });
-    frame * local
+    frame * super::svg_group_transform(node)
 }
 
 fn number(node: Node<'_, '_>, name: &str) -> f64 {

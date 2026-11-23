@@ -111,6 +111,7 @@ pub(crate) fn solve(
     options.spacing.node = measured.node_spacing;
     options.spacing.rank = measured.rank_spacing;
     options.spacing.component = measured.component_spacing;
+    options.group_policy.inherit_crossed_direction = measured.inherit_crossed_group_direction;
     #[cfg(all(test, feature = "diagram-flowchart", feature = "layout-elk"))]
     kernel_bench::capture(measured, options);
     let solved =

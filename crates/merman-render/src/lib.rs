@@ -163,7 +163,10 @@ mod graph_label;
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-agentflow",
-    all(feature = "diagram-class", feature = "layout-shoal")
+    all(
+        feature = "layout-shoal",
+        any(feature = "diagram-class", feature = "diagram-state")
+    )
 ))]
 mod graph_layout;
 #[cfg_attr(
@@ -2132,7 +2135,6 @@ id1(Start)-->id2(Stop)
             "erDiagram\nA ||--o{ B : relates",
             "mindmap\n  root((Demo))\n    Leaf",
             "requirementDiagram\nrequirement r {\nid: 1\ntext: Demo\nrisk: low\nverifymethod: test\n}",
-            "stateDiagram-v2\nA --> B",
             "usecase-beta\nactor A\nA --> B",
         ] {
             let source = format!("---\nconfig:\n  layout: shoal\n---\n{body}\n");
@@ -2178,6 +2180,10 @@ id1(Start)-->id2(Stop)
                 Some(RenderCapability::LayoutShoal),
             ),
             ("classDiagram\nA --> B", Some(RenderCapability::LayoutShoal)),
+            (
+                "stateDiagram-v2\nA --> B",
+                Some(RenderCapability::LayoutShoal),
+            ),
             (
                 "---\nconfig:\n  flowchart:\n    layout: shoal\n---\nflowchart-elk LR\nA --> B",
                 layout_elk_available().then_some(RenderCapability::LayoutElk),

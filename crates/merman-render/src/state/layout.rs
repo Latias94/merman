@@ -1332,7 +1332,7 @@ fn compact_self_loop_edges(
     edges
 }
 
-fn state_layout_adapter_work(
+pub(super) fn state_layout_adapter_work(
     model: &StateDiagramModel,
     work_control: &OperationLayoutWorkControl,
 ) -> Result<usize> {

@@ -200,7 +200,10 @@ mod look_defs;
 mod markers;
 pub(crate) use markers::BaseEdgeMarkerKind;
 #[cfg(any(
-    all(feature = "layout-shoal", feature = "diagram-class"),
+    all(
+        feature = "layout-shoal",
+        any(feature = "diagram-class", feature = "diagram-state")
+    ),
     all(
         any(feature = "layout-shoal", test),
         any(
@@ -260,6 +263,8 @@ mod sequence;
 mod shadow;
 #[cfg(feature = "diagram-state")]
 mod state;
+#[cfg(all(feature = "diagram-state", feature = "layout-shoal"))]
+pub(crate) use state::state_canonical_marker;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -1364,6 +1369,8 @@ fn render_builtin_family_artifact_raw(
             artifact.pair().layout(),
             artifact.pair().semantic(),
             artifact.label_sidecar(),
+            #[cfg(feature = "layout-shoal")]
+            artifact.canonical_routes(),
             artifact.effect_evidence(),
             effective_config.as_value(),
             title,

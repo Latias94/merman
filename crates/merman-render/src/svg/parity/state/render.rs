@@ -15,6 +15,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     layout: &StateDiagramLayout,
     model: &StateSvgModel,
     label_sidecar: &crate::state::StateLabelSidecar,
+    #[cfg(feature = "layout-shoal")] canonical_routes: Option<&CanonicalRoutes>,
     effect_evidence: &crate::diagram_theme::SvgShadowEvidenceRecorder,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
@@ -30,6 +31,8 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         layout,
         model,
         label_sidecar,
+        #[cfg(feature = "layout-shoal")]
+        canonical_routes,
         effect_evidence,
         style_plan,
         effective_config,
@@ -44,6 +47,7 @@ fn render_state_diagram_svg_with_plan(
     layout: &StateDiagramLayout,
     model: &StateSvgModel,
     label_sidecar: &crate::state::StateLabelSidecar,
+    #[cfg(feature = "layout-shoal")] canonical_routes: Option<&CanonicalRoutes>,
     effect_evidence: &crate::diagram_theme::SvgShadowEvidenceRecorder,
     style_plan: &crate::state::StateStylePlan,
     effective_config: &serde_json::Value,
@@ -154,6 +158,8 @@ fn render_state_diagram_svg_with_plan(
         layout_nodes_by_id,
         layout_edges_by_id,
         layout_clusters_by_id,
+        #[cfg(feature = "layout-shoal")]
+        canonical_routes,
         parent,
         nested_roots: std::collections::BTreeSet::new(),
         hidden_prefixes,
@@ -426,6 +432,13 @@ fn render_state_diagram_svg_with_plan(
     paint_bounds.max_x += effect_outsets.right;
     paint_bounds.min_y -= effect_outsets.top;
     paint_bounds.max_y += effect_outsets.bottom;
+    #[cfg(feature = "layout-shoal")]
+    if let Some(bounds) = detail.canonical_edge_bounds {
+        paint_bounds.min_x = paint_bounds.min_x.min(bounds.x0);
+        paint_bounds.min_y = paint_bounds.min_y.min(bounds.y0);
+        paint_bounds.max_x = paint_bounds.max_x.max(bounds.x1);
+        paint_bounds.max_y = paint_bounds.max_y.max(bounds.y1);
+    }
     drop(_g_scan);
 
     let title_emission = if let Some(title) = diagram_title.as_deref() {
@@ -647,6 +660,14 @@ fn render_state_root(
             let origin_y = top - GRAPH_MARGIN_PX;
             let tx = origin_x - parent_origin_x;
             let ty = origin_y - parent_origin_y;
+            let (origin_x, origin_y) = if ctx.uses_canonical_routes() {
+                (
+                    parent_origin_x + crate::number_format::canonicalize_number(tx),
+                    parent_origin_y + crate::number_format::canonicalize_number(ty),
+                )
+            } else {
+                (origin_x, origin_y)
+            };
             (
                 origin_x,
                 origin_y,
@@ -744,10 +765,17 @@ fn render_state_root(
             let x = left - origin_x;
             let y = top - origin_y;
             let dom_id = state_node_scoped_dom_id(ctx, cluster_id);
+            let _ = write!(out, r#"<g id="{}" class="note-cluster""#, dom_id.attr());
+            if ctx.uses_canonical_routes() {
+                let _ = write!(
+                    out,
+                    r#" data-et="cluster" data-id="{}""#,
+                    escape_attr_display(cluster_id),
+                );
+            }
             let _ = write!(
                 out,
-                r#"<g id="{}" class="note-cluster"><rect x="{}" y="{}" width="{}" height="{}" fill="none"/></g>"#,
-                dom_id.attr(),
+                r#"><rect x="{}" y="{}" width="{}" height="{}" fill="none"/></g>"#,
                 fmt_display(x),
                 fmt_display(y),
                 fmt_display(cluster.width.max(1.0)),
@@ -788,7 +816,16 @@ fn render_state_root(
                         .map_or(layout_edge.points.len(), Vec::len);
                     options.work_meter().charge(original_path_work)?;
                 }
-                render_state_edge_path(out, ctx, edge, origin_x, origin_y, options.work_meter())?;
+                render_state_edge_path(
+                    out,
+                    ctx,
+                    edge,
+                    origin_x,
+                    origin_y,
+                    options.work_meter(),
+                    #[cfg(feature = "layout-shoal")]
+                    &mut details.canonical_edge_bounds,
+                )?;
                 options.checkpoint_emit()?;
             }
         }
@@ -812,7 +849,9 @@ fn render_state_root(
                 if state_is_shadowed_self_loop_edge(ctx, edge) {
                     continue;
                 }
-                if let Some(layout_edge) = ctx.layout_edges_by_id.get(edge.id.as_str()) {
+                if !ctx.uses_canonical_routes()
+                    && let Some(layout_edge) = ctx.layout_edges_by_id.get(edge.id.as_str())
+                {
                     let original_path_work = ctx
                         .elk_edge_paths
                         .get(&layout_edge.id)
@@ -892,7 +931,11 @@ fn render_state_root(
     }
 
     // Dagre adds dummy edgeLabel nodes for self loops; ELK retains the original edges.
-    if ctx.include_edges && !ctx.uses_elk_adapter_dom && pass != StateRenderPass::Depth {
+    if ctx.include_edges
+        && !ctx.uses_elk_adapter_dom
+        && !ctx.uses_canonical_routes()
+        && pass != StateRenderPass::Depth
+    {
         let _g_placeholders = detail_guard(timing, &mut details.self_loop_placeholders);
         for edge in ctx.edges {
             if state_is_hidden(ctx, edge.start.as_str())
@@ -1083,13 +1126,23 @@ fn render_state_cluster(
     let outer_radius_attrs = radius_attributes(outer_radius_override);
 
     let _ = write!(out, r#"<g class="{}""#, escape_attr(class));
-    if pass == StateRenderPass::Depth && shape != "divider" {
+    let is_cluster_depth = pass == StateRenderPass::Depth && shape != "divider";
+    let uses_canonical_routes = ctx.uses_canonical_routes();
+    if is_cluster_depth {
         out.push_str(r#" data-state-depth="cluster""#);
     } else {
         let _ = write!(out, r#" id="{}""#, dom_id.attr());
-        if shape != "divider" {
-            let _ = write!(out, r#" data-id="{}""#, escape_attr(cluster_id));
+        if uses_canonical_routes {
+            let element = if shape == "divider" {
+                "divider"
+            } else {
+                "cluster"
+            };
+            let _ = write!(out, r#" data-et="{element}""#);
         }
+    }
+    if uses_canonical_routes || (!is_cluster_depth && shape != "divider") {
+        let _ = write!(out, r#" data-id="{}""#, escape_attr(cluster_id));
     }
     let _ = write!(out, r#" data-look="{}""#, escape_attr(data_look));
     if ctx.palette_size > 0
@@ -1174,9 +1227,30 @@ fn render_state_cluster(
     let measured_title = ctx
         .label_sidecar
         .measured_native_geometry(crate::state::StateLabelOwner::ClusterTitle(cluster_id));
+    let title_width = cluster.title_label.width.max(0.0);
     let title_height = cluster.title_label.height.max(0.0);
-    let inner_y = y + title_height + 2.0;
-    let inner_height = (cluster.height - title_height - 6.0).max(1.0);
+    let (title_x, title_y, inner_y, inner_height) = if uses_canonical_routes {
+        let title_x = cluster.title_label.x - title_width / 2.0 - origin_x;
+        let title_y = cluster.title_label.y - title_height / 2.0 - origin_y;
+        let inner_y = title_y + title_height + 1.0;
+        (
+            title_x,
+            title_y,
+            inner_y,
+            (y + cluster.height - 4.0 - inner_y).max(1.0),
+        )
+    } else {
+        (
+            x + (cluster.width.max(1.0) - title_width) / 2.0,
+            if ctx.html_labels || measured_title.is_some() {
+                y + 1.0
+            } else {
+                y - 2.0
+            },
+            y + title_height + 2.0,
+            (cluster.height - title_height - 6.0).max(1.0),
+        )
+    };
     let (outer_shape, inner_shape) = if pass == StateRenderPass::Foreground {
         (String::new(), String::new())
     } else if effective_look == "handDrawn" {
@@ -1299,9 +1373,9 @@ fn render_state_cluster(
             out,
             r#"<g class="cluster-label" style="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g>"#,
             escape_attr(title_style),
-            fmt(x + (cluster.width.max(1.0) - cluster.title_label.width.max(0.0)) / 2.0),
-            fmt(y + 1.0),
-            fmt(cluster.title_label.width.max(0.0)),
+            fmt(title_x),
+            fmt(title_y),
+            fmt(title_width),
             fmt(title_height),
             escape_attr(&label_div_style),
             state_node_label_plain_html(&title),
@@ -1316,12 +1390,8 @@ fn render_state_cluster(
         let _ = write!(
             out,
             r#"<g class="cluster-label" transform="translate({}, {})">{}</g>"#,
-            fmt(x + (cluster.width.max(1.0) - cluster.title_label.width.max(0.0)) / 2.0),
-            fmt(if measured_title.is_some() {
-                y + 1.0
-            } else {
-                y - 2.0
-            }),
+            fmt(title_x),
+            fmt(title_y),
             title_dom,
         );
     }
@@ -1418,6 +1488,8 @@ mod tests {
                         &layout,
                         model,
                         &labels,
+                        #[cfg(feature = "layout-shoal")]
+                        None,
                         &effects,
                         &plan,
                         &config,

@@ -2615,6 +2615,8 @@ impl<'parsed> GanttFamilyArtifact<'parsed> {
 pub(crate) struct StateFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::state::StateDiagramRenderModel, StateDiagramLayout>,
     label_sidecar: crate::state::StateLabelSidecar,
+    #[cfg(feature = "layout-shoal")]
+    canonical_routes: Option<crate::graph_layout::canonical::CanonicalRoutes>,
     effect_evidence: crate::diagram_theme::SvgShadowEvidenceRecorder,
 }
 
@@ -2628,6 +2630,13 @@ impl<'parsed> StateFamilyArtifact<'parsed> {
 
     pub(crate) const fn label_sidecar(&self) -> &crate::state::StateLabelSidecar {
         &self.label_sidecar
+    }
+
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) const fn canonical_routes(
+        &self,
+    ) -> Option<&crate::graph_layout::canonical::CanonicalRoutes> {
+        self.canonical_routes.as_ref()
     }
 
     pub(crate) const fn effect_evidence(&self) -> &crate::diagram_theme::SvgShadowEvidenceRecorder {

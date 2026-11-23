@@ -876,6 +876,29 @@ pub(crate) fn validate(scene: &Scene<'_>) -> Report {
 #[cfg(all(test, feature = "diagram-class", feature = "layout-shoal"))]
 mod class;
 
+#[cfg(all(test, feature = "diagram-state", feature = "layout-shoal"))]
+mod state;
+
+#[cfg(all(
+    feature = "layout-shoal",
+    any(feature = "diagram-class", feature = "diagram-state")
+))]
+fn svg_group_transform(node: roxmltree::Node<'_, '_>) -> Affine {
+    node.ancestors()
+        .filter_map(|parent| parent.attribute("transform"))
+        .fold(Affine::IDENTITY, |local, value| {
+            let transform: svgtypes::Transform = value.parse().unwrap();
+            Affine::new([
+                transform.a,
+                transform.b,
+                transform.c,
+                transform.d,
+                transform.e,
+                transform.f,
+            ]) * local
+        })
+}
+
 #[cfg(test)]
 mod gallery;
 

@@ -427,7 +427,10 @@ impl Terminal {
     }
 }
 
-#[cfg(all(feature = "layout-shoal", feature = "diagram-class"))]
+#[cfg(all(
+    feature = "layout-shoal",
+    any(feature = "diagram-class", feature = "diagram-state")
+))]
 pub(super) fn marker_lead(
     port: RoutePoint,
     side: Side,

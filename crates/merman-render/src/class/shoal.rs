@@ -187,6 +187,7 @@ fn canonical_input(
         node_spacing: source.nodesep,
         rank_spacing: source.ranksep,
         component_spacing: source.nodesep.max(source.ranksep),
+        inherit_crossed_group_direction: true,
         nodes: Vec::new(),
         groups: Vec::new(),
         edges: Vec::new(),
