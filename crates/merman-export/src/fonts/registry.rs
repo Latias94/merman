@@ -37,7 +37,13 @@ pub(super) struct SnapshotState {
 #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
 #[derive(Clone, Hash, Eq, PartialEq)]
 pub(super) enum SelectionRequest {
-    Font(usvg::Font),
+    /// usvg applies variation coordinates during shaping, after selecting the physical face.
+    Primary {
+        families: Box<[usvg::FontFamily]>,
+        weight: u16,
+        stretch: usvg::FontStretch,
+        style: usvg::FontStyle,
+    },
     Fallback(char, Vec<AdmittedFaceKey>),
 }
 
@@ -93,6 +99,15 @@ impl std::hash::Hash for AdmittedFaceKey {
 
 #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
 impl SelectionRequest {
+    pub(super) fn primary(font: &usvg::Font) -> Self {
+        Self::Primary {
+            families: font.families().into(),
+            weight: font.weight(),
+            stretch: font.stretch(),
+            style: font.style(),
+        }
+    }
+
     pub(super) fn fallback(character: char, excluded: &[FaceInfo]) -> Option<Self> {
         let keys = excluded
             .iter()
@@ -103,19 +118,15 @@ impl SelectionRequest {
 
     fn heap_bytes(&self) -> usize {
         match self {
-            Self::Font(font) => font.families().iter().fold(
-                font.variations()
-                    .len()
-                    .saturating_mul(size_of::<usvg::FontVariation>()),
-                |bytes, family| {
-                    bytes
-                        .saturating_add(size_of::<usvg::FontFamily>())
-                        .saturating_add(match family {
-                            usvg::FontFamily::Named(name) => name.len(),
-                            _ => 0,
-                        })
-                },
-            ),
+            Self::Primary { families, .. } => {
+                let family_bytes = std::mem::size_of_val(families.as_ref());
+                families
+                    .iter()
+                    .fold(family_bytes, |bytes, family| match family {
+                        usvg::FontFamily::Named(name) => bytes.saturating_add(name.len()),
+                        _ => bytes,
+                    })
+            }
             Self::Fallback(_, keys) => keys.len().saturating_mul(size_of::<AdmittedFaceKey>()),
         }
     }

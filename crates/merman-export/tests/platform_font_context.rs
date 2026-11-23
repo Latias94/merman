@@ -446,6 +446,48 @@ fn macos_heiti_sc_and_tc_share_outline_bytes_through_export() {
 
 #[cfg(target_os = "macos")]
 #[test]
+fn macos_variations_share_one_primary_selection_per_css_weight() {
+    let context = NativeFontOptions::default()
+        .with_font_file(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fonts/MermanVariableWeight.ttf"),
+        )
+        .with_system_fonts(true)
+        .with_limits(NativeFontLimits {
+            max_selection_entries: 1,
+            ..Default::default()
+        })
+        .load_platform(&OperationControl::new())
+        .unwrap();
+    let mut options = usvg::Options::default();
+    context.apply_to_usvg_options(&mut options);
+    let ink_width = |css_weight: u16, axis_weight: u16| -> Result<f32, NativeFontError> {
+        let svg = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="160" height="60">
+                <text id="sample" y="45" font-family="Merman Variable Weight" font-size="32"
+                      font-weight="{css_weight}" font-variation-settings="'wght' {axis_weight}">AV</text>
+            </svg>"#
+        );
+        let tree = usvg::Tree::from_str(&svg, &options).unwrap();
+        context.check()?;
+        let sample = painted_text(&tree, "sample");
+        Ok(sample.flattened().bounding_box().width())
+    };
+
+    let thin = ink_width(400, 100).unwrap();
+    let bold = ink_width(400, 700).unwrap();
+    assert!(thin < bold);
+    assert!(matches!(
+        ink_width(700, 700),
+        Err(NativeFontError::Limit {
+            resource: "font-selections",
+            actual: 2,
+            limit: 1,
+        })
+    ));
+}
+
+#[cfg(target_os = "macos")]
+#[test]
 #[ignore = "requires macOS Arial; run explicitly in CI"]
 fn macos_selection_pinning_has_independent_terminal_metadata_limits() {
     for limits in [

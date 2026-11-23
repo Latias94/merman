@@ -152,7 +152,7 @@ pub(super) fn resolver(
                 };
                 #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
                 let mut request = matches!(provider, DiscoveryProvider::Platform { .. })
-                    .then(|| SelectionRequest::Font(font.clone()));
+                    .then(|| SelectionRequest::primary(font));
                 #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
                 if let Some(request) = &request
                     && let Some((id, source, family_fallback_used)) =
