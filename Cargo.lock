@@ -2474,6 +2474,7 @@ dependencies = [
  "image",
  "krilla",
  "krilla-svg",
+ "libloading 0.8.9",
  "merman-model",
  "merman-render",
  "objc2-core-foundation",

@@ -1,8 +1,9 @@
 // Copyright 2022 the Resvg Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::num::NonZeroU16;
+use std::ops::Range;
 use std::sync::Arc;
 
 use fontdb::{Database, ID};
@@ -16,8 +17,8 @@ use unicode_script::UnicodeScript;
 use crate::tree::{BBox, IsValidLength};
 use crate::{
     AlignmentBaseline, ApproxZeroUlps, BaselineShift, DominantBaseline, Fill, FillRule, Font,
-    FontResolver, LengthAdjust, PaintOrder, Path, ShapeRendering, Stroke, Text, TextAnchor,
-    TextChunk, TextDecorationStyle, TextFlow, TextPath, TextSpan, WritingMode,
+    LengthAdjust, PaintOrder, Path, ShapeRendering, Stroke, Text, TextAnchor, TextChunk,
+    TextDecorationStyle, TextFlow, TextPath, TextSpan, WritingMode,
 };
 
 /// A glyph that has already been positioned correctly.
@@ -237,7 +238,7 @@ pub(crate) fn can_probe_end_anchor(text: &Text) -> bool {
 
 pub(crate) fn layout_text(
     text_node: &Text,
-    resolver: &FontResolver,
+    options: &crate::Options,
     fontdb: &mut Arc<fontdb::Database>,
     probe_end_anchor: bool,
     no_primary_face: &mut bool,
@@ -248,8 +249,8 @@ pub(crate) fn layout_text(
     for chunk in &text_node.chunks {
         for span in &chunk.spans {
             if !fonts_cache.contains_key(&span.font) {
-                if let Some(font) =
-                    (resolver.select_font)(&span.font, fontdb).and_then(|id| fontdb.load_font(id))
+                if let Some(font) = (options.font_resolver.select_font)(&span.font, fontdb)
+                    .and_then(|id| fontdb.load_font(id))
                 {
                     fonts_cache.insert(span.font.clone(), Arc::new(font));
                 } else {
@@ -281,7 +282,7 @@ pub(crate) fn layout_text(
             TextFlow::Path(_) => (0.0, 0.0),
         };
 
-        let mut clusters = process_chunk(chunk, &fonts_cache, resolver, fontdb);
+        let mut clusters = process_chunk(chunk, &fonts_cache, options, fontdb);
         if clusters.is_empty() {
             char_offset += chunk.text.chars().count();
             continue;
@@ -452,21 +453,60 @@ fn append_chunk_geometry(
                 })
                 .collect();
 
-            geometry.spans.push(Span {
-                fill,
-                stroke: span.stroke.clone(),
-                paint_order: span.paint_order,
-                font_size: span.font_size,
-                variations: span.font.variations.clone(),
-                font_optical_sizing: span.font_optical_sizing,
-                visible: span.visible,
-                positioned_glyphs,
-                underline,
-                overline,
-                line_through,
-            });
+            append_sized_spans(
+                &mut geometry.spans,
+                Span {
+                    fill,
+                    stroke: span.stroke.clone(),
+                    paint_order: span.paint_order,
+                    font_size: span.font_size,
+                    variations: span.font.variations.clone(),
+                    font_optical_sizing: span.font_optical_sizing,
+                    visible: span.visible,
+                    positioned_glyphs,
+                    underline,
+                    overline,
+                    line_through,
+                },
+            );
         }
     }
+}
+
+fn append_sized_spans(spans: &mut Vec<Span>, mut span: Span) {
+    if span
+        .positioned_glyphs
+        .iter()
+        .all(|glyph| glyph.font_size() == span.font_size.get())
+    {
+        spans.push(span);
+        return;
+    }
+
+    // PDF adapters use the span size for optical sizing and glyph drawing.
+    // Keep decorations around the original paint span when its glyph sizes differ.
+    let first = spans.len();
+    let mut glyphs = std::mem::take(&mut span.positioned_glyphs)
+        .into_iter()
+        .peekable();
+    let underline = span.underline.take();
+    let overline = span.overline.take();
+    let line_through = span.line_through.take();
+    while let Some(glyph) = glyphs.next() {
+        let size = glyph.font_size();
+        let mut positioned_glyphs = vec![glyph];
+        while let Some(glyph) = glyphs.next_if(|next| next.font_size() == size) {
+            positioned_glyphs.push(glyph);
+        }
+        spans.push(Span {
+            font_size: NonZeroPositiveF32::new(size).unwrap_or(span.font_size),
+            positioned_glyphs,
+            ..span.clone()
+        });
+    }
+    spans[first].underline = underline;
+    spans[first].overline = overline;
+    spans.last_mut().unwrap().line_through = line_through;
 }
 
 fn convert_span(
@@ -949,107 +989,50 @@ fn collect_normals(
 fn process_chunk(
     chunk: &TextChunk,
     fonts_cache: &FontsCache,
-    resolver: &FontResolver,
+    options: &crate::Options,
     fontdb: &mut Arc<fontdb::Database>,
 ) -> Vec<GlyphCluster> {
-    // The way this function works is a bit tricky.
-    //
-    // The first problem is BIDI reordering.
-    // We cannot shape text span-by-span, because glyph clusters are not guarantee to be continuous.
-    //
-    // For example:
-    // <text>Hel<tspan fill="url(#lg1)">lo של</tspan>ום.</text>
-    //
-    // Would be shaped as:
-    // H e l l o   ש ל  ו  ם .   (characters)
-    // 0 1 2 3 4 5 12 10 8 6 14  (cluster indices in UTF-8)
-    //       ---         ---     (green span)
-    //
-    // As you can see, our continuous `lo של` span was split into two separated one.
-    // So our 3 spans: black - green - black, become 5 spans: black - green - black - green - black.
-    // If we shape `Hel`, then `lo של` an then `ום` separately - we would get an incorrect output.
-    // To properly handle this we simply shape the whole chunk.
-    //
-    // But this introduces another issue - what to do when we have multiple fonts?
-    // The easy solution would be to simply shape text with each font,
-    // where the first font output is used as a base one and all others overwrite it.
-    // This way in case of:
-    // <text font-family="Arial">Hello <tspan font-family="Helvetica">world</tspan></text>
-    // we would replace Arial glyphs for `world` with Helvetica one. Pretty simple.
-    //
-    // Well, it would work most of the time, but not always.
-    // This is because different fonts can produce different amount of glyphs for the same text.
-    // The most common example are ligatures. Some fonts can shape `fi` as two glyphs `f` and `i`,
-    // but some can use `ﬁ` (U+FB01) instead.
-    // Meaning that during merging we have to overwrite not individual glyphs, but clusters.
-
-    // Glyph splitting assigns distinct glyphs to the same index in the original text, we need to
-    // store previously used indices to make sure we do not re-use the same index while overwriting
-    // span glyphs.
-    let mut positions = HashSet::new();
+    // Reorder the full chunk once. Intersect its visual runs with shaping styles,
+    // retaining ligatures and kerning across spans that only change paint.
+    let bidi = unicode_bidi::BidiInfo::new(&chunk.text, Some(unicode_bidi::Level::ltr()));
+    let Some(paragraph) = bidi.paragraphs.first() else {
+        return Vec::new();
+    };
+    let (levels, runs) = bidi.visual_runs(paragraph, paragraph.range.clone());
+    let mut styles: Vec<(&TextSpan, Range<usize>)> = Vec::new();
+    for span in &chunk.spans {
+        match styles.last_mut() {
+            Some((previous, bytes))
+                if bytes.end == span.start && same_shaping_style(previous, span) =>
+            {
+                bytes.end = span.end;
+            }
+            _ => styles.push((span, span.start..span.end)),
+        }
+    }
 
     let mut glyphs = Vec::new();
-    for span in &chunk.spans {
-        let font = match fonts_cache.get(&span.font) {
-            Some(v) => v.clone(),
-            None => continue,
-        };
-
-        let tmp_glyphs = shape_text(
-            &chunk.text,
-            font,
-            span.small_caps,
-            span.apply_kerning,
-            &span.font.variations,
-            span.font_size.get(),
-            span.font_optical_sizing,
-            resolver,
-            fontdb,
-        );
-
-        // Do nothing with the first run.
-        if glyphs.is_empty() {
-            glyphs = tmp_glyphs;
-            continue;
-        }
-
-        positions.clear();
-
-        // Overwrite span's glyphs.
-        let mut iter = tmp_glyphs.into_iter();
-        while let Some(new_glyph) = iter.next() {
-            if !span_contains(span, new_glyph.byte_idx) {
-                continue;
-            }
-
-            let Some(idx) = glyphs
-                .iter()
-                .position(|g| g.byte_idx == new_glyph.byte_idx)
-                .filter(|pos| !positions.contains(pos))
-            else {
+    for run in runs.into_iter().filter(|run| !run.is_empty()) {
+        let ltr = levels[run.start].is_ltr();
+        let start = styles.partition_point(|(_, bytes)| bytes.end <= run.start);
+        let end = styles.partition_point(|(_, bytes)| bytes.start < run.end);
+        for index in start..end {
+            let (span, bytes) = &styles[if ltr {
+                index
+            } else {
+                end - 1 - (index - start)
+            }];
+            let Some(font) = fonts_cache.get(&span.font) else {
                 continue;
             };
-
-            positions.insert(idx);
-
-            let prev_cluster_len = glyphs[idx].cluster_len;
-            if prev_cluster_len < new_glyph.cluster_len {
-                // If the new font represents the same cluster with fewer glyphs
-                // then remove remaining glyphs.
-                for _ in 1..new_glyph.cluster_len {
-                    glyphs.remove(idx + 1);
-                }
-            } else if prev_cluster_len > new_glyph.cluster_len {
-                // If the new font represents the same cluster with more glyphs
-                // then insert them after the current one.
-                for j in 1..prev_cluster_len {
-                    if let Some(g) = iter.next() {
-                        glyphs.insert(idx + j, g);
-                    }
-                }
-            }
-
-            glyphs[idx] = new_glyph;
+            let bytes = run.start.max(bytes.start)..run.end.min(bytes.end);
+            let run = ShapingRun {
+                text: &chunk.text,
+                bytes: run.clone(),
+                ltr,
+                span,
+            };
+            glyphs.extend(run.shape_text(bytes, font, options, fontdb));
         }
     }
 
@@ -1066,6 +1049,15 @@ fn process_chunk(
     }
 
     clusters
+}
+
+fn same_shaping_style(a: &TextSpan, b: &TextSpan) -> bool {
+    a.font == b.font
+        && a.font_size == b.font_size
+        && a.language == b.language
+        && a.small_caps == b.small_caps
+        && a.apply_kerning == b.apply_kerning
+        && a.font_optical_sizing == b.font_optical_sizing
 }
 
 fn apply_length_adjust(chunk: &TextChunk, clusters: &mut [GlyphCluster]) {
@@ -1240,7 +1232,7 @@ fn form_glyph_clusters(glyphs: &[Glyph], text: &str, font_size: f32) -> GlyphClu
     let mut positioned_glyphs = vec![];
 
     for glyph in glyphs {
-        let sx = glyph.font.scale(font_size);
+        let font_size = font_size * glyph.scale;
 
         // Apply offset.
         //
@@ -1265,14 +1257,12 @@ fn form_glyph_clusters(glyphs: &[Glyph], text: &str, font_size: f32) -> GlyphClu
 
         x += glyph.width as f32;
 
-        let glyph_width = glyph.width as f32 * sx;
-        if glyph_width > width {
-            width = glyph_width;
-        }
+        width += glyph.width as f32 * glyph.font.scale(font_size);
     }
 
     let byte_idx = glyphs[0].byte_idx;
-    let font = glyphs[0].font.clone();
+    let font = &glyphs[0].font;
+    let font_size = font_size * glyphs[0].scale;
     GlyphCluster {
         byte_idx,
         codepoint: byte_idx.char_from(text),
@@ -1379,228 +1369,195 @@ impl DatabaseExt for Database {
     }
 }
 
-/// Text shaping with font fallback.
-pub(crate) fn shape_text(
-    text: &str,
-    font: Arc<ResolvedFont>,
-    small_caps: bool,
-    apply_kerning: bool,
-    variations: &[crate::FontVariation],
-    font_size: f32,
-    font_optical_sizing: crate::FontOpticalSizing,
-    resolver: &FontResolver,
-    fontdb: &mut Arc<fontdb::Database>,
-) -> Vec<Glyph> {
-    let mut glyphs = shape_text_with_font(
-        text,
-        font.clone(),
-        small_caps,
-        apply_kerning,
-        variations,
-        font_size,
-        font_optical_sizing,
-        fontdb,
-    )
-    .unwrap_or_default();
+struct ShapingRun<'a> {
+    text: &'a str,
+    bytes: Range<usize>,
+    ltr: bool,
+    span: &'a TextSpan,
+}
 
-    // Remember every attempted face. An exhausted character may still be repaired by a face
-    // selected for a later character, since each candidate is shaped over the whole run.
-    let mut used_fonts = vec![font.id];
-    let mut exhausted = HashSet::new();
+impl ShapingRun<'_> {
+    fn shape_text(
+        &self,
+        bytes: Range<usize>,
+        font: &Arc<ResolvedFont>,
+        options: &crate::Options,
+        fontdb: &mut Arc<Database>,
+    ) -> Vec<Glyph> {
+        let language = self
+            .span
+            .language
+            .as_deref()
+            .or(options.text_fallback.language.as_deref())
+            .filter(|tag| is_language_tag(tag));
+        let Some(primary) = self.shape(bytes, font, 1.0, language, fontdb) else {
+            return Vec::new();
+        };
+        if primary.iter().all(|glyph| !glyph.is_missing()) {
+            return primary;
+        }
 
-    while let Some(id) = glyphs
-        .iter()
-        .filter(|glyph| glyph.is_missing())
-        .find_map(|glyph| {
-            let c = glyph.byte_idx.char_from(text);
-            if exhausted.contains(&c) {
+        let mut glyphs = Vec::with_capacity(primary.len());
+        for (range, start) in GlyphClusters::new(&primary) {
+            let cluster = &primary[range];
+            if cluster.iter().any(Glyph::is_missing) {
+                let end = start.value() + cluster.iter().map(|g| g.cluster_len).max().unwrap_or(0);
+                if let Some(repaired) =
+                    self.repair(start.value()..end, font.id, language, options, fontdb)
+                {
+                    glyphs.extend(repaired);
+                    continue;
+                }
+                let c = start.char_from(self.text);
+                log::warn!(
+                    "No fonts with a {}/U+{:X} character were found.",
+                    c,
+                    c as u32
+                );
+            }
+            glyphs.extend_from_slice(cluster);
+        }
+        glyphs
+    }
+
+    fn repair(
+        &self,
+        bytes: Range<usize>,
+        primary: ID,
+        language: Option<&str>,
+        options: &crate::Options,
+        fontdb: &mut Arc<Database>,
+    ) -> Option<Vec<Glyph>> {
+        if bytes.is_empty() {
+            return None;
+        }
+        let cluster = self.text.get(bytes.clone())?;
+        let mut used = vec![primary];
+        loop {
+            let (id, scale) = if let Some(select) = &options.text_fallback.select {
+                select(&self.span.font, cluster, language, !self.ltr, &used, fontdb)?
+            } else {
+                (
+                    (options.font_resolver.select_fallback)(
+                        cluster.chars().next()?,
+                        &used,
+                        fontdb,
+                    )?,
+                    1.0,
+                )
+            };
+            if used.contains(&id) {
                 return None;
             }
-
-            match (resolver.select_fallback)(c, &used_fonts, fontdb) {
-                Some(id) if !used_fonts.contains(&id) => Some(id),
-                _ => {
-                    exhausted.insert(c);
-                    None
-                }
-            }
-        })
-    {
-        used_fonts.push(id);
-        let Some(fallback_font) = fontdb.load_font(id) else {
-            continue;
-        };
-
-        // Shape again, using a new font.
-        let fallback_glyphs = shape_text_with_font(
-            text,
-            Arc::new(fallback_font),
-            small_caps,
-            apply_kerning,
-            variations,
-            font_size,
-            font_optical_sizing,
-            fontdb,
-        )
-        .unwrap_or_default();
-        if fallback_glyphs.is_empty() {
-            continue;
-        }
-
-        let all_matched = fallback_glyphs.iter().all(|g| !g.is_missing());
-        if all_matched {
-            // Replace all glyphs when all of them were matched.
-            glyphs = fallback_glyphs;
-            break;
-        }
-
-        // Only use positional substitution when both shapes describe the same clusters.
-        if glyphs.len() != fallback_glyphs.len()
-            || glyphs.iter().zip(&fallback_glyphs).any(|(base, fallback)| {
-                base.byte_idx != fallback.byte_idx || base.cluster_len != fallback.cluster_len
-            })
-        {
-            fill_matching_clusters(&mut glyphs, &fallback_glyphs);
-            continue;
-        }
-
-        for (base, fallback) in glyphs.iter_mut().zip(fallback_glyphs) {
-            if base.is_missing() && !fallback.is_missing() {
-                *base = fallback;
-            }
-        }
-    }
-
-    // Warn about missing glyphs.
-    for glyph in &glyphs {
-        if glyph.is_missing() {
-            let c = glyph.byte_idx.char_from(text);
-            // TODO: print a full grapheme
-            log::warn!(
-                "No fonts with a {}/U+{:X} character were found.",
-                c,
-                c as u32
-            );
-        }
-    }
-
-    glyphs
-}
-
-fn fill_matching_clusters(glyphs: &mut Vec<Glyph>, fallback: &[Glyph]) {
-    fn extent(glyphs: &[Glyph]) -> usize {
-        glyphs
-            .iter()
-            .map(|glyph| glyph.cluster_len)
-            .max()
-            .unwrap_or(0)
-    }
-
-    let fallback_by_start: HashMap<_, _> = GlyphClusters::new(fallback)
-        .map(|(range, start)| (start.value(), &fallback[range]))
-        .filter(|(_, glyphs)| glyphs.iter().all(|glyph| !glyph.is_missing()))
-        .collect();
-    let mut repaired = Vec::with_capacity(glyphs.len());
-    for (range, start) in GlyphClusters::new(glyphs) {
-        let base = &glyphs[range];
-        let replacement = fallback_by_start
-            .get(&start.value())
-            .copied()
-            .filter(|candidate| {
-                let length = extent(base);
-                length > 0 && base.iter().any(Glyph::is_missing) && length == extent(candidate)
-            });
-        repaired.extend_from_slice(replacement.unwrap_or(base));
-    }
-    *glyphs = repaired;
-}
-
-/// Converts a text into a list of glyph IDs.
-///
-/// This function will do the BIDI reordering and text shaping.
-fn shape_text_with_font(
-    text: &str,
-    font: Arc<ResolvedFont>,
-    small_caps: bool,
-    apply_kerning: bool,
-    variations: &[crate::FontVariation],
-    font_size: f32,
-    font_optical_sizing: crate::FontOpticalSizing,
-    fontdb: &fontdb::Database,
-) -> Option<Vec<Glyph>> {
-    fontdb.with_face_data(font.id, |font_data, face_index| -> Option<Vec<Glyph>> {
-        let mut rb_font = rustybuzz::Face::from_slice(font_data, face_index)?;
-
-        super::apply_variations(rb_font.as_mut(), variations, font_size, font_optical_sizing);
-
-        let bidi_info = unicode_bidi::BidiInfo::new(text, Some(unicode_bidi::Level::ltr()));
-        let paragraph = &bidi_info.paragraphs[0];
-        let line = paragraph.range.clone();
-
-        let mut glyphs = Vec::new();
-
-        let (levels, runs) = bidi_info.visual_runs(paragraph, line);
-        for run in runs.iter() {
-            let sub_text = &text[run.clone()];
-            if sub_text.is_empty() {
+            used.push(id);
+            let size = self.span.font_size.get() * scale;
+            if !size.is_finite() || size <= 0.0 {
                 continue;
             }
+            let Some(font) = fontdb.load_font(id) else {
+                continue;
+            };
+            let Some(mut glyphs) =
+                self.shape(bytes.clone(), &Arc::new(font), scale, language, fontdb)
+            else {
+                continue;
+            };
+            if glyphs.is_empty() || glyphs.iter().any(Glyph::is_missing) {
+                continue;
+            }
+            // One source cluster can expand to multiple glyphs in the replacement
+            // font. Keep its original extent for positioning and span ownership.
+            for glyph in &mut glyphs {
+                glyph.byte_idx = ByteIndex::new(bytes.start);
+                glyph.cluster_len = bytes.len();
+            }
+            return Some(glyphs);
+        }
+    }
 
-            let ltr = levels[run.start].is_ltr();
-            let hb_direction = if ltr {
+    fn shape(
+        &self,
+        bytes: Range<usize>,
+        font: &Arc<ResolvedFont>,
+        scale: f32,
+        language: Option<&str>,
+        fontdb: &Database,
+    ) -> Option<Vec<Glyph>> {
+        let text = self.text.get(bytes.clone())?;
+        fontdb.with_face_data(font.id, |font_data, face_index| {
+            let mut rb_font = rustybuzz::Face::from_slice(font_data, face_index)?;
+            super::apply_variations(
+                rb_font.as_mut(),
+                &self.span.font.variations,
+                self.span.font_size.get() * scale,
+                self.span.font_optical_sizing,
+            );
+
+            let mut buffer = rustybuzz::UnicodeBuffer::new();
+            buffer.push_str(text);
+            buffer.set_pre_context(&self.text[self.bytes.start..bytes.start]);
+            buffer.set_post_context(&self.text[bytes.end..self.bytes.end]);
+            buffer.set_direction(if self.ltr {
                 rustybuzz::Direction::LeftToRight
             } else {
                 rustybuzz::Direction::RightToLeft
-            };
-
-            let mut buffer = rustybuzz::UnicodeBuffer::new();
-            buffer.push_str(sub_text);
-            buffer.set_direction(hb_direction);
-
+            });
+            if let Some(language) = language.and_then(|tag| tag.parse().ok()) {
+                buffer.set_language(language);
+            }
             let mut features = Vec::new();
-            if small_caps {
+            if self.span.small_caps {
                 features.push(rustybuzz::Feature::new(Tag::from_bytes(b"smcp"), 1, ..));
             }
-
-            if !apply_kerning {
+            if !self.span.apply_kerning {
                 features.push(rustybuzz::Feature::new(Tag::from_bytes(b"kern"), 0, ..));
             }
-
             let output = rustybuzz::shape(&rb_font, &features, buffer);
-
-            let positions = output.glyph_positions();
             let infos = output.glyph_infos();
+            let glyphs = infos
+                .iter()
+                .zip(output.glyph_positions())
+                .enumerate()
+                .map(|(i, (info, pos))| {
+                    let start = info.cluster as usize;
+                    let next = if self.ltr {
+                        i.checked_add(1)
+                    } else {
+                        i.checked_sub(1)
+                    };
+                    let end = next
+                        .and_then(|j| infos.get(j))
+                        .map_or(text.len(), |next| next.cluster as usize);
+                    Glyph {
+                        byte_idx: ByteIndex::new(bytes.start + start),
+                        cluster_len: end.saturating_sub(start),
+                        text: text.get(start..end).unwrap_or_default().to_owned(),
+                        id: GlyphId(info.glyph_id as u16),
+                        dx: pos.x_offset,
+                        dy: pos.y_offset,
+                        width: pos.x_advance,
+                        font: Arc::clone(font),
+                        scale,
+                    }
+                })
+                .collect();
+            Some(glyphs)
+        })?
+    }
+}
 
-            for i in 0..output.len() {
-                let pos = positions[i];
-                let info = infos[i];
-                let idx = run.start + info.cluster as usize;
-
-                let start = info.cluster as usize;
-
-                let end = if ltr {
-                    i.checked_add(1)
-                } else {
-                    i.checked_sub(1)
-                }
-                .and_then(|last| infos.get(last))
-                .map_or(sub_text.len(), |info| info.cluster as usize);
-
-                glyphs.push(Glyph {
-                    byte_idx: ByteIndex::new(idx),
-                    cluster_len: end.checked_sub(start).unwrap_or(0), // TODO: can fail?
-                    text: sub_text[start..end].to_string(),
-                    id: GlyphId(info.glyph_id as u16),
-                    dx: pos.x_offset,
-                    dy: pos.y_offset,
-                    width: pos.x_advance,
-                    font: font.clone(),
-                });
-            }
-        }
-
-        Some(glyphs)
-    })?
+// Reject malformed language attributes before sending them to platform APIs.
+fn is_language_tag(tag: &str) -> bool {
+    let mut parts = tag.split('-');
+    let Some(first) = parts.next() else {
+        return false;
+    };
+    !first.is_empty()
+        && first.len() <= 8
+        && first.bytes().all(|b| b.is_ascii_alphabetic())
+        && parts.all(|part| {
+            !part.is_empty() && part.len() <= 8 && part.bytes().all(|b| b.is_ascii_alphanumeric())
+        })
 }
 
 /// An iterator over glyph clusters.
@@ -1701,6 +1658,7 @@ pub(crate) struct Glyph {
     ///
     /// Each glyph can have it's own source font.
     pub(crate) font: Arc<ResolvedFont>,
+    scale: f32,
 }
 
 impl Glyph {

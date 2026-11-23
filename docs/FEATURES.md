@@ -170,7 +170,8 @@ estimates.
 
 The optional CLI feature `platform-system-font-query` adds an explicit system
 font policy. Use `--font-system platform` to query the operating system's font
-service (Fontique on Windows/Linux, direct Core Text descriptors on macOS).
+service. The backend uses Fontique and DirectWrite on Windows, Core Text on macOS,
+and Fontconfig on Linux and FreeBSD.
 `--font-system bounded` explicitly selects bounded
 discovery in builds with platform query support. `--font-system on` selects the
 build's default system provider. Automatic Mermaid encoded output uses the same
@@ -189,11 +190,13 @@ fallback, and neither do font-data, resource-limit, or cancellation errors.
 Platform queries and metadata mappings run outside Merman's scan budgets.
 Selected font bytes use bounded immutable snapshots shared by measurement and
 painting. Platform mode acquires those bytes on demand, including the default
-system face. On Windows, explicit faces are tried first. DirectWrite queries the
-actual missing character for script-specific fallback. Shared symbols and
-combining marks try the catalog fallback order before the single-character
-query. On macOS, family/style queries avoid constructing a full font catalog, and
-Core Text queries the actual missing Unicode scalar using the registered base face.
+system face. Workspace builds try the authored font stack for each missing
+shaping cluster, then consult caller fonts and the platform fallback. Resolution
+uses inherited `xml:lang` in SVG. Windows carries the fallback scale from
+DirectWrite into shaping and drawing. Linux and FreeBSD preserve Fontconfig's
+family aliases and retain alternatives for glyph coverage and text suitability
+checks. On macOS, family/style queries avoid constructing a full font catalog.
+Core Text receives the missing cluster and uses the registered base face.
 The selected native object is retained as the origin of the admitted data; no
 physical collection index is inferred from its name. Generic family lookup stops after the
 first accepted candidate. Non-covering fallback candidates are filtered before
@@ -204,8 +207,8 @@ object, while the standalone data's face index is zero. Explicit input files ret
 ingestion policy. The cumulative font-data budget remains 64 MiB, and a large
 selected color/bitmap table can still exceed it. A context identity includes the policy, initial
 font bytes, and the system default family name when applicable.
-Successful macOS selections are fixed for measurement and its derived exports;
-new operations query the current system again. Their metadata is bounded separately
+Successful platform selections are fixed for measurement and its derived exports.
+New operations query the current system again. Selection metadata is bounded separately
 from the optional measurement cache. Explicit unregistered fonts can use a system
 cascade when system fallback is enabled. Native instances with non-default variation
 coordinates are currently declined because those coordinates cannot yet be passed

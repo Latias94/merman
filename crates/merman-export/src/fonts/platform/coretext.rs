@@ -18,6 +18,7 @@ use objc2_core_text::{
 use usvg::fontdb::{FaceInfo, ID, Stretch, Style, Weight};
 
 use super::super::{NativeFontError, OperationControl, OperationPhase, check_limit, source_error};
+use super::GlyphFallback;
 
 mod query;
 
@@ -145,8 +146,8 @@ impl NativeFace {
     }
 
     /// Preserves the exact native origin when following its character cascade.
-    pub(in crate::fonts) fn fallback(&self, character: char) -> Option<Self> {
-        fallback_from_font(&self.font, character)
+    fn fallback(&self, request: GlyphFallback<'_>) -> Option<Self> {
+        fallback_from_font(&self.font, request.text, request.language, request.scalar())
     }
 
     /// Proves that already admitted bytes describe this selected physical face.
@@ -227,7 +228,7 @@ impl NativeFace {
 /// continue. Its errors, including cancellation and resource limits, stop the
 /// cascade and are returned unchanged. No system font directory is enumerated.
 pub(in crate::fonts) fn fallback_candidates(
-    character: char,
+    request: GlyphFallback<'_>,
     base: &FaceInfo,
     origin: Option<&NativeFace>,
     control: &OperationControl,
@@ -243,7 +244,7 @@ pub(in crate::fonts) fn fallback_candidates(
     };
 
     let mut seen = HashSet::new();
-    if let Some(candidate) = native_base.fallback(character)
+    if let Some(candidate) = native_base.fallback(request)
         && seen.insert(candidate.clone())
     {
         control.terminal_checkpoint_at(OperationPhase::Layout)?;
@@ -253,8 +254,16 @@ pub(in crate::fonts) fn fallback_candidates(
     }
 
     control.terminal_checkpoint_at(OperationPhase::Layout)?;
-    let Some(cascade) = (unsafe { native_base.font.default_cascade_list_for_languages(None) })
-    else {
+    let language = request.language.map(CFString::from_str);
+    let languages = language
+        .as_deref()
+        .map(|language| CFArray::from_objects(&[language]));
+    // SAFETY: A supplied language list contains only retained CFString objects.
+    let Some(cascade) = (unsafe {
+        native_base
+            .font
+            .default_cascade_list_for_languages(languages.as_deref().map(|list| list.as_opaque()))
+    }) else {
         control.terminal_checkpoint_at(OperationPhase::Layout)?;
         return Ok(None);
     };
@@ -274,7 +283,11 @@ pub(in crate::fonts) fn fallback_candidates(
         let Some(candidate) = NativeFace::from_font(font) else {
             continue;
         };
-        if !candidate.covers(character) || !seen.insert(candidate.clone()) {
+        if request
+            .scalar()
+            .is_some_and(|character| !candidate.covers(character))
+            || !seen.insert(candidate.clone())
+        {
             continue;
         }
         if let Some(id) = accept(candidate)? {
@@ -472,21 +485,34 @@ fn tables_match_source(
 #[cfg(test)]
 pub(super) fn fallback(character: char, base: &FaceInfo) -> Option<NativeFace> {
     let base_font = registered_base_font(base)?;
-    fallback_from_font(&base_font, character)
+    let mut text = [0; 4];
+    fallback_from_font(
+        &base_font,
+        character.encode_utf8(&mut text),
+        None,
+        Some(character),
+    )
 }
 
-fn fallback_from_font(base: &CTFont, character: char) -> Option<NativeFace> {
-    let mut utf8 = [0; 4];
-    let text = CFString::from_str(character.encode_utf8(&mut utf8));
+fn fallback_from_font(
+    base: &CTFont,
+    text: &str,
+    language: Option<&str>,
+    scalar: Option<char>,
+) -> Option<NativeFace> {
+    let text = CFString::from_str(text);
+    let language = language.map(CFString::from_str);
     let range = CFRange {
         location: 0,
         length: text.length(),
     };
     // SAFETY: The retained base and string are live and the range covers the complete
     // CFString in UTF-16 code units, including both halves of a surrogate pair.
-    let font = unsafe { CTFont::for_string(base, &text, range) };
+    let font = unsafe { CTFont::for_string_with_language(base, &text, range, language.as_deref()) };
     let selected = NativeFace::from_font(font)?;
-    selected.covers(character).then_some(selected)
+    scalar
+        .is_none_or(|character| selected.covers(character))
+        .then_some(selected)
 }
 
 fn is_last_resort(name: &str) -> bool {
@@ -636,7 +662,12 @@ mod tests {
         );
 
         let fallback = first
-            .fallback('\u{2713}')
+            .fallback(GlyphFallback {
+                text: "✓",
+                font: None,
+                language: None,
+                rtl: false,
+            })
             .expect("Arial fallback for check mark");
         assert!(fallback.covers('\u{2713}'));
     }

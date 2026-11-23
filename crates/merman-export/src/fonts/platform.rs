@@ -1,8 +1,11 @@
 //! Platform-managed discovery with bounded, operation-local binary snapshots.
 
-use super::resolver::{ExpectedFace, FontCandidate};
+use super::resolver::{ExpectedFace, FontCandidate, FontSelection, GlyphFallback};
 use super::*;
-#[cfg(any(not(target_os = "macos"), test))]
+#[cfg(any(
+    not(any(target_os = "macos", target_os = "linux", target_os = "freebsd")),
+    test
+))]
 use fontique::CollectionOptions;
 use fontique::{
     Collection, FallbackKey, FamilyId, FamilyInfo, FontInfo, FontStyle, FontWeight, FontWidth,
@@ -13,6 +16,7 @@ use unicode_script::UnicodeScript;
 use usvg::fontdb::{Database, FaceInfo, Family, ID, Source, Stretch, Style, Weight};
 
 type AcceptFallback<'a> = dyn FnMut(FontCandidate) -> Result<Option<ID>, NativeFontError> + 'a;
+type AcceptFont<'a> = dyn FnMut(FontSelection, bool) -> Result<Option<ID>, NativeFontError> + 'a;
 
 #[cfg(windows)]
 #[allow(unsafe_code)]
@@ -23,6 +27,7 @@ mod dwrite;
 pub(super) mod coretext;
 
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+#[allow(unsafe_code)]
 mod fontconfig;
 
 pub(super) fn ensure_available(control: &OperationControl) -> Result<(), NativeFontError> {
@@ -49,6 +54,12 @@ pub(super) struct PlatformFace {
     post_script_name: Option<String>,
     attributes: FaceAttributes,
     coverage_source: Option<FontInfo>,
+    #[cfg(windows)]
+    pub(super) fallback_scale: f32,
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    fontconfig_other_families: Vec<String>,
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    fontconfig_coverage: Option<bool>,
 }
 
 #[derive(Default)]
@@ -61,6 +72,8 @@ struct FaceAttributes {
 pub(super) struct PlatformCatalog {
     collection: Option<Mutex<Collection>>,
     invalid: std::sync::atomic::AtomicBool,
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    fontconfig: Option<fontconfig::Catalog>,
     #[cfg(windows)]
     character_fallback: OnceLock<Option<dwrite::CharacterFallback>>,
     #[cfg(test)]
@@ -72,16 +85,20 @@ impl PlatformCatalog {
         ensure_available(control)?;
         // Native discovery may map candidate files internally. This is an explicitly
         // authorized platform policy, not the bounded metadata discovery policy.
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "freebsd")))]
         let collection = Some(Mutex::new(platform_call(|| {
             Collection::new(CollectionOptions::default())
         })?));
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "linux", target_os = "freebsd"))]
         let collection = None;
+        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+        let fontconfig = Some(fontconfig::Catalog::new()?);
         control.terminal_checkpoint_at(OperationPhase::Admission)?;
         Ok(Self {
             collection,
             invalid: std::sync::atomic::AtomicBool::new(false),
+            #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+            fontconfig,
             #[cfg(windows)]
             character_fallback: OnceLock::new(),
             #[cfg(test)]
@@ -108,6 +125,10 @@ impl PlatformCatalog {
         control: &OperationControl,
     ) -> Result<Option<String>, NativeFontError> {
         control.terminal_checkpoint_at(OperationPhase::Admission)?;
+        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+        if let Some(fontconfig) = &self.fontconfig {
+            return fontconfig.default_family(control);
+        }
         #[cfg(target_os = "macos")]
         if self.collection.is_none() {
             let face = self.call(|| {
@@ -205,7 +226,7 @@ impl PlatformCatalog {
 
     pub(super) fn fallback(
         &self,
-        character: char,
+        request: GlyphFallback<'_>,
         base: &FaceInfo,
         control: &OperationControl,
         sources: &super::registry::FontSourceRegistry,
@@ -213,12 +234,29 @@ impl PlatformCatalog {
     ) -> Result<Option<ID>, NativeFontError> {
         control.terminal_checkpoint_at(OperationPhase::Layout)?;
         let _ = sources;
+        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+        if let Some(fontconfig) = &self.fontconfig {
+            let family = base.families.first().map(|(name, _)| name.as_str());
+            return fontconfig.candidates(
+                fontconfig::Query {
+                    families: family.as_slice(),
+                    only_family: false,
+                    weight: base.weight,
+                    stretch: base.stretch,
+                    style: base.style,
+                    text: Some(request.text),
+                    language: request.language,
+                },
+                control,
+                |candidate, _| accept(candidate),
+            );
+        }
         #[cfg(target_os = "macos")]
         if self.collection.is_none() {
             let origin = sources.native_origin(base)?;
             return self.call(|| {
                 coretext::fallback_candidates(
-                    character,
+                    request,
                     base,
                     origin.as_ref(),
                     control,
@@ -226,24 +264,28 @@ impl PlatformCatalog {
                 )
             })?;
         }
+        let Some(character) = request.text.chars().next() else {
+            return Ok(None);
+        };
         #[cfg(windows)]
         let prefer_exact = !matches!(
             character.script(),
             unicode_script::Script::Common
                 | unicode_script::Script::Inherited
                 | unicode_script::Script::Unknown
-        );
+        ) || request.language.is_some()
+            || request.scalar().is_none();
         #[cfg(windows)]
         if prefer_exact {
             // A script sample can miss the needed subset. Use the exact character
             // before opening the sample's candidate files.
-            if let Some(id) = self.exact_fallback(character, base, control, accept)? {
+            if let Some(id) = self.exact_fallback(request, base, control, accept)? {
                 return Ok(Some(id));
             }
         }
         // Shared symbols and combining characters don't identify a run's script on their own.
         // Keep the established fallback order for them before trying a scalar-only lookup.
-        for family_id in self.fallback_families(character, control)? {
+        for family_id in self.fallback_families(character, request.language, control)? {
             if let Some(family) = self.family(family_id, control)?
                 && let Some(candidate) =
                     matching_candidate(&family, base.weight, base.stretch, base.style)
@@ -255,7 +297,7 @@ impl PlatformCatalog {
         }
         #[cfg(windows)]
         if !prefer_exact {
-            return self.exact_fallback(character, base, control, accept);
+            return self.exact_fallback(request, base, control, accept);
         }
         Ok(None)
     }
@@ -284,14 +326,14 @@ impl PlatformCatalog {
     #[cfg(windows)]
     fn exact_fallback(
         &self,
-        character: char,
+        request: GlyphFallback<'_>,
         base: &FaceInfo,
         control: &OperationControl,
         accept: &mut AcceptFallback<'_>,
     ) -> Result<Option<ID>, NativeFontError> {
         let exact = self
             .directwrite()
-            .and_then(|fallback| fallback.lookup(character, base));
+            .and_then(|fallback| fallback.lookup(request, base));
         control.terminal_checkpoint_at(OperationPhase::Layout)?;
         match exact {
             Some(candidate) => accept(candidate),
@@ -302,6 +344,7 @@ impl PlatformCatalog {
     fn fallback_families(
         &self,
         character: char,
+        language: Option<&str>,
         control: &OperationControl,
     ) -> Result<Vec<FamilyId>, NativeFontError> {
         control.terminal_checkpoint_at(OperationPhase::Layout)?;
@@ -320,11 +363,11 @@ impl PlatformCatalog {
             std::iter::once(character.script()).chain(character.script_extension().iter());
         for script in scripts {
             let script = fontique::Script::from_bytes(script.as_iso15924_tag().to_be_bytes());
-            for id in self.call(|| {
-                collection
-                    .fallback_families(FallbackKey::new(script, None))
-                    .collect::<Vec<_>>()
-            })? {
+            let key = language.map_or_else(
+                || FallbackKey::from(script),
+                |language| (script, language).into(),
+            );
+            for id in self.call(|| collection.fallback_families(key).collect::<Vec<_>>())? {
                 if !ids.contains(&id) {
                     ids.push(id);
                 }
@@ -481,6 +524,10 @@ impl PlatformFace {
         &self,
         character: char,
     ) -> Result<Option<bool>, NativeFontError> {
+        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+        if self.fontconfig_coverage.is_some() {
+            return Ok(self.fontconfig_coverage);
+        }
         platform_call(|| {
             let font = self.coverage_source.as_ref()?;
             // Fontique maps path sources without copying the whole binary. Reuse the
@@ -507,7 +554,7 @@ impl PlatformFace {
     ) -> Result<(), NativeFontError> {
         if origin_index != self.index
             || !self.attributes.matches(face)
-            || !matches_family(face, &self.family)
+            || !self.matches_family(face)
             || self
                 .post_script_name
                 .as_ref()
@@ -519,6 +566,26 @@ impl PlatformFace {
             ));
         }
         Ok(())
+    }
+
+    fn matches_family(&self, face: &FaceInfo) -> bool {
+        if matches_family(face, &self.family) {
+            return true;
+        }
+        // A Fontconfig scan rule can prepend an alias to the physical family names.
+        // Require a corroborating PostScript name when accepting a later family.
+        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+        if self
+            .post_script_name
+            .as_deref()
+            .is_some_and(|name| !name.is_empty())
+        {
+            return self
+                .fontconfig_other_families
+                .iter()
+                .any(|name| matches_family(face, name));
+        }
+        false
     }
 }
 
@@ -607,6 +674,12 @@ impl PlatformCandidate {
                 weight: Some(self.font.weight()),
             },
             coverage_source: Some(self.font),
+            #[cfg(windows)]
+            fallback_scale: 1.0,
+            #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+            fontconfig_other_families: Vec::new(),
+            #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+            fontconfig_coverage: None,
         }
     }
 }
@@ -660,20 +733,22 @@ impl PlatformCatalog {
         &self,
         font: &usvg::Font,
         explicit: &Database,
+        fallback: Option<GlyphFallback<'_>>,
         control: &OperationControl,
-        accept: &mut dyn FnMut(
-            super::resolver::FontSelection,
-            bool,
-        ) -> Result<Option<usvg::fontdb::ID>, NativeFontError>,
-    ) -> Result<Option<usvg::fontdb::ID>, NativeFontError> {
+        accept: &mut AcceptFont<'_>,
+    ) -> Result<Option<ID>, NativeFontError> {
         control.terminal_checkpoint_at(OperationPhase::Layout)?;
+        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+        if let Some(fontconfig) = &self.fontconfig {
+            return fontconfig.select(font, explicit, fallback, control, accept);
+        }
         let weight = Weight(font.weight());
         let stretch = font.stretch().into();
         let style = font.style().into();
         for (index, family) in font
             .families()
             .iter()
-            .chain(std::iter::once(&usvg::FontFamily::Serif))
+            .chain(fallback.is_none().then_some(&usvg::FontFamily::Serif))
             .enumerate()
         {
             let family = if matches!(family, usvg::FontFamily::Named(name) if name.is_empty())
@@ -767,6 +842,8 @@ mod tests {
         PlatformCatalog {
             collection: Some(Mutex::new(collection)),
             invalid: AtomicBool::new(false),
+            #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+            fontconfig: None,
             #[cfg(windows)]
             character_fallback: OnceLock::from(None),
             family_queries: std::sync::atomic::AtomicUsize::new(0),
@@ -1156,6 +1233,8 @@ mod tests {
                 catalog: Arc::new(PlatformCatalog {
                     collection: Some(Mutex::new(collection)),
                     invalid: AtomicBool::new(false),
+                    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+                    fontconfig: None,
                     #[cfg(windows)]
                     character_fallback: OnceLock::from(None),
                     family_queries: std::sync::atomic::AtomicUsize::new(0),
@@ -1169,6 +1248,7 @@ mod tests {
                 0,
             ),
             default_family: String::new(),
+            language: None,
             identity: "poisoned-platform-fixture".to_owned(),
             limits,
             control: OperationControl::new(),
@@ -1311,6 +1391,37 @@ mod tests {
     }
 
     #[test]
+    fn named_pictorial_font_is_eligible_for_authored_glyph_fallback() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts");
+        let mut context = NativeFontOptions::default()
+            .with_font_file(root.join("MermanProbeBase.ttf"))
+            .with_font_file(root.join("MermanPictorialTest.ttf"))
+            .with_font_file(root.join("Cousine-Regular.ttf"))
+            .load(&OperationControl::new())
+            .unwrap();
+        let inner = Arc::get_mut(&mut context.0).unwrap();
+        inner.discovery = Some(super::super::resolver::DiscoveryProvider::Platform {
+            catalog: Arc::new(test_catalog()),
+            explicit: Arc::clone(&inner.database),
+        });
+        for (family, expected) in [
+            ("Merman Pictorial Test", "MermanPictorialTest"),
+            (
+                "MermanProbeBase, Merman Pictorial Test, Cousine",
+                "MermanPictorialTest",
+            ),
+            ("MermanProbeBase", "Cousine-Regular"),
+        ] {
+            assert_eq!(
+                platform_painted_families(&context, Some(family)),
+                BTreeSet::from([expected.to_owned()]),
+                "{family}"
+            );
+            context.check().unwrap();
+        }
+    }
+
+    #[test]
     fn platform_glyph_fallback_rejects_symbolic_faces_after_binary_admission() {
         for fixture in ["MermanSymbolicTest.ttf", "MermanPictorialTest.ttf"] {
             for include_text_fallback in [false, true] {
@@ -1336,14 +1447,13 @@ mod tests {
                     catalog: Arc::clone(catalog),
                     explicit: Arc::clone(&inner.database),
                 });
-                let expected = if include_text_fallback {
-                    "Cousine-Regular"
-                } else {
-                    "NotoSans-Regular"
-                };
+                let mut expected = BTreeSet::from(["NotoSans-Regular"]);
+                if include_text_fallback {
+                    expected.insert("Cousine-Regular");
+                }
                 assert_eq!(
                     platform_painted_families(&context, Some("Noto Sans")),
-                    BTreeSet::from([expected.to_owned()]),
+                    expected.into_iter().map(str::to_owned).collect(),
                     "{fixture}, include_text_fallback={include_text_fallback}"
                 );
                 context.check().unwrap();
