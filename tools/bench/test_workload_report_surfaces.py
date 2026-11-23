@@ -19,8 +19,8 @@ def fingerprint(data):
 
 class SurfaceTests(unittest.TestCase):
     def setUp(self):
-        target = Path(__file__).resolve().parents[2] / "target"
-        target.mkdir(exist_ok=True)
+        target = Path(__file__).resolve().parents[2] / "target" / "bench"
+        target.mkdir(parents=True, exist_ok=True)
         scratch = TemporaryDirectory(dir=target, prefix="reader-surfaces-")
         self.addCleanup(scratch.cleanup)
         self.root = Path(scratch.name)
@@ -205,11 +205,16 @@ class SurfaceTests(unittest.TestCase):
             plan = dict(mode=mode, iterations=2, seed=19)
             if key == "warm":
                 plan["warmups"] = 1
-            stats = {engine: {metric: dict(count=2, median=value)} for engine, value in (("merman", 4), ("mermaid", 5))}
+            stats = {
+                engine: {metric: dict(count=2, median=value),
+                         "warmBudgetedSvgMs": dict(count=2, median=budgeted) if key == "warm" else None}
+                for engine, value, budgeted in (("merman", 4, 2), ("mermaid", 5, 3))
+            }
+            ratios = {metric: 1.25 if key == "cold" else None, "warmBudgetedSvgMs": 1.5 if key == "warm" else None}
             report = dict(schemaVersion=7, terminalStatus="success", input=dict(source=source), plan=plan,
                           versions=dict(expected=versions, observed={engine: [ver] for engine, ver in versions.items()}),
                           environment=dict(platform="Linux x86_64", userAgent="HeadlessChrome/133.0.0.0 C:/private-host"),
-                          aggregates=dict(engines=stats, ratios={metric: 1.25 if key == "cold" else None}))
+                          aggregates=dict(engines=stats, ratios=ratios))
             fixture[key] = dict(mode=mode, seed=19, status="success", report=report, failure=None, skipReason=None)
         return dict(kind="merman-browser-family-corpus", schemaVersion=2, benchmarkReportSchemaVersion=7,
                     execution=dict(fixtureIsolation="fresh-browser-process-per-fixture"), versions=versions, terminalStatus="success",
@@ -224,7 +229,9 @@ class SurfaceTests(unittest.TestCase):
         lane = load_browser(path)
         row, = lane["rows"]
         self.assertEqual(row["cold"]["median_ms"], dict(left=4, right=5, right_over_left=1.25))
+        self.assertNotIn("budgeted_svg_ms", row["cold"])
         self.assertEqual(row["warm"]["median_ms"], dict(left=4, right=5, right_over_left=None))
+        self.assertEqual(row["warm"]["budgeted_svg_ms"], dict(left=2, right=3, right_over_left=1.5))
         self.assertTrue(row["warm"]["ratio_withheld_reason"])
         self.assertEqual(row["warm"]["samples"], dict(left=2, right=2))
         self.assertEqual(lane["provenance"]["report_sha256"], fingerprint(path.read_bytes()))
@@ -238,10 +245,67 @@ class SurfaceTests(unittest.TestCase):
         self.assertEqual(lane["coverage"]["failed_families"], 1)
         self.assertEqual(lane["rows"][0]["cold"]["median_ms"]["right_over_left"], 1.25)
         self.assertIsNone(lane["rows"][0]["warm"]["median_ms"]["left"])
+        self.assertNotIn("budgeted_svg_ms", lane["rows"][0]["warm"])
         self.assertNotIn("private log", json.dumps(lane))
-        fixture["warm"].update(report=dict(schemaVersion=7, terminalStatus="complete-with-errors"))
+        stopped = self.browser()["fixtures"][0]["warm"]["report"]
+        stopped["terminalStatus"] = "complete-with-errors"
+        fixture["warm"].update(report=stopped)
         failed = load_browser(self.write("browser.json", original))["rows"][0]["warm"]
         self.assertEqual(failed["samples"], dict(left=None, right=None))
+        self.assertNotIn("budgeted_svg_ms", failed)
+        fixture["warm"].update(status="skipped", report=None, failure=None, skipReason="cancelled")
+        fixture["failure"] = {"message": "cancelled"}
+        original["terminalStatus"] = "cancelled"
+        skipped = load_browser(self.write("browser.json", original))["rows"][0]["warm"]
+        self.assertEqual(skipped["ratio_withheld_reason"], "skipped")
+        self.assertNotIn("budgeted_svg_ms", skipped)
+
+    def test_browser_withholds_budgeted_ratio_and_partial_medians_independently(self):
+        raw = self.browser()
+        aggregates = raw["fixtures"][0]["warm"]["report"]["aggregates"]
+        metric = "warmBudgetedSvgMs"
+        aggregates["ratios"]["warmPublishableSvgMs"] = 1.25
+        for left_count, left_ms, right_ms, ratio, expected_left in (
+            (2, 2, 3, None, 2), (1, 2, 3, None, None), (2, 0, 3, None, 0), (2, 2, 0, 0, 2),
+        ):
+            with self.subTest(left_count=left_count, left_ms=left_ms, right_ms=right_ms, ratio=ratio):
+                aggregates["engines"]["merman"][metric] = dict(count=left_count, median=left_ms)
+                aggregates["engines"]["mermaid"][metric] = dict(count=2, median=right_ms)
+                aggregates["ratios"][metric] = ratio
+                warm = load_browser(self.write("browser.json", raw))["rows"][0]["warm"]
+                self.assertEqual(warm["budgeted_svg_ms"], dict(left=expected_left, right=right_ms, right_over_left=ratio))
+                self.assertEqual(warm["median_ms"], dict(left=4, right=5, right_over_left=1.25))
+                self.assertEqual(warm["samples"], dict(left=2, right=2))
+
+    def test_browser_omits_historical_budgeted_metric_and_rejects_incomplete_declaration(self):
+        raw = self.browser()
+        report = raw["fixtures"][0]["warm"]["report"]
+        aggregates = report["aggregates"]
+        metric = "warmBudgetedSvgMs"
+        aggregates["ratios"]["warmPublishableSvgMs"] = 1.25
+        del aggregates["ratios"][metric]
+        with self.assertRaises(ValueError):
+            load_browser(self.write("browser.json", raw))
+        for stats in aggregates["engines"].values():
+            del stats[metric]
+        report["samples"] = [dict(engine=engine, mode="warm", purpose="measured", outcome="success", blockIndex=block,
+                                  trace=dict(render_start=0, budgeted_svg_ready=value))
+                             for block in range(2) for engine, value in (("merman", 2), ("mermaid", 3))]
+        warm = load_browser(self.write("browser.json", raw))["rows"][0]["warm"]
+        self.assertNotIn("budgeted_svg_ms", warm)
+        self.assertEqual(warm["median_ms"], dict(left=4, right=5, right_over_left=1.25))
+
+    def test_browser_rejects_invalid_budgeted_sample_counts_medians_or_owner_ratios(self):
+        raw = self.browser()
+        aggregates = raw["fixtures"][0]["warm"]["report"]["aggregates"]
+        metric = "warmBudgetedSvgMs"
+        for count, median, ratio in ((1, 3, 1.5), (3, 3, None), (True, 3, None), (2, -1, None),
+                                     (2, float("nan"), None), (2, 3, 2 / 3), (2, 3, float("inf"))):
+            with self.subTest(count=count, median=median, ratio=ratio):
+                aggregates["engines"]["mermaid"][metric] = dict(count=count, median=median)
+                aggregates["ratios"][metric] = ratio
+                with self.assertRaisesRegex(ValueError, metric):
+                    load_browser(self.write("browser.json", raw))
 
     def test_browser_rejects_other_report_kinds_and_drifted_source_version_or_mode(self):
         browser = self.browser()

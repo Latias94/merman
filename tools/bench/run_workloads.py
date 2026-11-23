@@ -168,6 +168,25 @@ def scenario(name, origin, sources, labels=None, *, drawing_facts=None, outcomes
     return {"id": name, "origin": origin, "requests": requests}
 
 
+def four_node_control(name):
+    """Hold the public diagram ID, source length and graph size fixed over eight requests."""
+    edge_sets = ("AB BC CD", "AB AC AD", "AB BC BD", "AB AC CD",
+                 "AB CB BD", "AB CB DB", "AB CB CD", "AB DC CA")
+    sources, labels, facts = [], {}, {}
+    for index in range(8):
+        suffix = str(index if name == "four-node-relabel" else 0)
+        edges = edge_sets[index if name == "four-node-edges" else 0].split()
+        names = {node: label + suffix for node, label in zip("ABCD", ("Plan", "Edit", "Test", "Ship"), strict=True)}
+        lines = ["flowchart TD", *(f"{node}{suffix}[{label}]" for node, label in names.items()),
+                 *(f"{a}{suffix} --> {b}{suffix}" for a, b in edges)]
+        fixture = f"{name}-{index + 1}"
+        sources.append((fixture, "\n".join(lines) + "\n"))
+        labels[fixture] = list(names.values())
+        facts[fixture] = {"label_widths": {node + suffix: label for node, label in names.items()},
+                          "arrows": [{"edge": f"L_A{suffix}_B{suffix}_0", "from": f"A{suffix}", "to": f"B{suffix}"}]}
+    return scenario(name, "merman/four-node-controls", sources, labels, drawing_facts=facts, diagram_id="four-node-preview")
+
+
 def document_scenario(manifest):
     doc = parse_workload_json(manifest.read_bytes(), manifest)
     if not isinstance(doc, dict):
@@ -316,6 +335,8 @@ def materialize(args):
                 )
             )
 
+    cases.extend(four_node_control(name) for name in ("four-node-repeat", "four-node-relabel", "four-node-edges")
+                 if name in args.scenario)
     cases.extend(document_scenario(m) for m in args.document if m.resolve() not in builtin_documents)
     if args.pele_fixtures:
         upstream = load(args.pele_fixtures / "manifest.json")

@@ -1,19 +1,20 @@
 """Project finalized Node matrix evidence onto portable counts and independent pair timings."""
 
-from collections import Counter
+from collections import Counter, defaultdict
 from hashlib import sha256
 import json
 from math import isfinite
 from pathlib import Path
 import re
 from statistics import median
+from sys import float_info
 
 if __package__:
-    from .workload_coverage import _schema_v1, summarize_coverage
-    from .workload_reference import NODE_PRODUCTS
+    from .workload_coverage import _schema_v1, _source_digest, summarize_coverage
+    from .workload_reference import NODE_PRODUCTS, _product as reference_product, node_worker_failures
 else:
-    from workload_coverage import _schema_v1, summarize_coverage
-    from workload_reference import NODE_PRODUCTS
+    from workload_coverage import _schema_v1, _source_digest, summarize_coverage
+    from workload_reference import NODE_PRODUCTS, _product as reference_product, node_worker_failures
 
 
 INCOMPLETE = {"missing-evidence", "evidence-mismatch", "missing-frozen-input", "frozen-input-mismatch",
@@ -71,7 +72,7 @@ def _positive(value):
     return type(value) in (int, float) and isfinite(value) and value > 0
 
 
-def _latency(peer, title, requests, row, cases):
+def _latency(peer, title, scenario, row, cases):
     """Join each finalized independent observation to the same round's complete batch."""
     pairs, reasons = [], set()
     count = len(cases)
@@ -107,7 +108,9 @@ def _latency(peer, title, requests, row, cases):
         peer_ms = median(p["peer_ms"] for p in pairs)
         ratios = [p["ratio"] for p in pairs]
         ratio = dict(min=min(ratios), median=median(ratios), max=max(ratios))
-    return dict(peer=peer, scenario=title, requests_per_batch=requests,
+    return dict(peer=peer, scenario=title, requests_per_batch=scenario["requests"], distinct_sources=scenario["distinct_sources"],
+                visual_checks=dict(planned=scenario.get("with_drawing_facts", {}).get("requests", 0),
+                                   passed_pairs=sum(case["visual_passed"] for case in cases)),
                 status="complete" if len(pairs) == count else "partial" if pairs else "unavailable",
                 planned_pairs=count, eligible_pairs=len(pairs), merman_ms=merman_ms, peer_ms=peer_ms, ratio=ratio,
                 pairs=pairs, reasons=sorted(reasons))
@@ -183,6 +186,17 @@ def _round(directory, rounds, index, digest):
     return (folder, coverage, order, None) if isinstance(order, list) else (folder, {}, None, "missing-evidence")
 
 
+def _frozen_issue(product, frozen):
+    observed = (product.get("node_project") or {}).get("digests", {})
+    for name, fingerprint in frozen.items():
+        if name == "package-lock.json" or name in observed:
+            if fingerprint is None:
+                return "missing-frozen-input"
+            if name in observed and observed[name] != fingerprint:
+                return "frozen-input-mismatch"
+    return None
+
+
 def _comparison(folder, peer, summary, digest, frozen, records, rounds, runs):
     data, issue = _sidecar(folder / f"merman-vs-{peer}.json", digest)
     if issue:
@@ -203,13 +217,9 @@ def _comparison(folder, peer, summary, digest, frozen, records, rounds, runs):
             return {}, "collector-withheld"
         if rounds and rounds.get("reference_identities", {}).get(engine) != identity:
             return {}, "evidence-mismatch"
-        observed = (product.get("node_project") or {}).get("digests", {})
-        for name, fingerprint in frozen.items():
-            if name == "package-lock.json" or name in observed:
-                if fingerprint is None:
-                    return {}, "missing-frozen-input"
-                if name in observed and observed[name] != fingerprint:
-                    return {}, "frozen-input-mismatch"
+        issue = _frozen_issue(product, frozen)
+        if issue:
+            return {}, issue
     collectors = data["collector_sha256"]
     if data.get("ratio_withheld_reason") or not _hash(collectors.get("left")) or collectors["left"] != collectors.get("right"):
         return {}, "collector-withheld"
@@ -250,9 +260,174 @@ def _case(scenario, observation, compared, issue, failures, audit_issue):
     return dict(observation=observation, batch=batch, reason=issue)
 
 
+def _worker_report(folder, engine, run, rounds, frozen, plan):
+    """Read the scheduled product's local sidecar against its finalized round identity."""
+    filename = f"{engine}.json"
+    reference = rounds.get("reference_identities", {}).get(engine, {})
+    samples = rounds.get("warm_batches_per_worker")
+    if (run.get("report") != filename or "error" in run or not _hash(reference.get("collector_sha256"))
+            or type(samples) is not int or samples < 1):
+        return {}
+    try:
+        raw = _read(folder / filename, rounds["plan_sha256"])
+        host = raw.get("host")
+        if (raw.get("engine") != engine or raw.get("surface") != "node" or raw.get("output_format") != "svg"
+                or raw.get("process_lifecycle") != "fresh-per-scenario" or type(raw.get("samples")) is not int
+                or raw["samples"] != samples or not isinstance(host, dict) or host != reference.get("host")
+                or not all(host.get(k) for k in ("hostname", "platform", "arch"))
+                or raw.get("collector_sha256") != reference["collector_sha256"]):
+            return {}
+        product = reference_product(raw, node=True)
+        if (product != reference.get("product") or product["artifact_identity"]["status"] != "recorded"
+                or any(product[k] != run.get(k) for k in ("package", "version")) or _frozen_issue(product, frozen)
+                or node_worker_failures(raw) != run.get("worker_failures", [])
+                or [row["id"] for row in raw["scenarios"]] != list(plan)):
+            return {}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return {}
+    return raw
+
+
+def _matches_requests(observed, planned, *, raw=False):
+    return isinstance(observed, list) and len(observed) == len(planned) and all(
+        isinstance(got, dict) and all(got.get(k) == want[k] for k in ("fixture", "diagram_id", "source_sha256"))
+        and got.get("expected_labels", []) == want.get("expected_labels", [])
+        and got.get("expected_outcome", "draw") == want.get("expected_outcome", "draw")
+        and got.get("drawing_required", raw and "drawing_facts" in want) is ("drawing_facts" in want)
+        for got, want in zip(observed, planned))
+
+
+def _measured_worker(row, index, requests, raw):
+    warm = row.get("warm_samples")
+    return ("status" not in row and type(row.get("index")) is int and row["index"] == index
+            and row.get("artifact_identity", raw["artifact_identity"]) == raw["artifact_identity"]
+            and _matches_requests(row.get("requests"), requests, raw=True) and isinstance(warm, list) and len(warm) == raw["samples"]
+            and all(isinstance(batch, dict) and isinstance(batch.get("results"), list)
+                    and len(batch["results"]) == len(requests)
+                    and all(isinstance(r, dict) and isinstance(r.get("status"), str) and r["status"] for r in batch["results"])
+                    for batch in [row.get("cold_batch"), *warm]))
+
+
+def _duration(value):
+    return value if type(value) in (int, float) and 0 <= value <= float_info.max else None
+
+
+def _worker_measurements(row, init_scope):
+    import_scoped = init_scope == "package-import-and-engine-creation"
+    init = _duration(row.get("init_ms")) if import_scoped else None
+    cold = row["cold_batch"]
+    first = cold["results"][0]
+    outcome = row["requests"][0].get("expected_outcome", "draw")
+    elapsed = through = None
+    if (first.get("status") == "ok" and outcome != "reject" and first.get("expected_outcome", outcome) == outcome
+            and first.get("output_class", "draw" if outcome == "draw" else None) == "draw"
+            and type(first.get("output_bytes")) is int and first["output_bytes"] > 0 and _hash(first.get("output_sha256"))):
+        call = _duration(first.get("elapsed_ms"))
+        if call == _duration(row.get("first_render_ms")):
+            elapsed = call
+        if import_scoped:
+            through = _duration(cold.get("init_through_first_svg_ms"))
+            if through is not None and any(v is not None and v > through for v in (init, call)):
+                through = None
+    rss = row.get("peak_rss_kib")
+    return dict(initialize_ms=init, first_svg_ms=elapsed, init_through_first_svg_ms=through,
+                peak_rss_mib=rss / 1024 if type(rss) is int and 0 < rss <= float_info.max else None)
+
+
+def _drawing_rows(audit, reference, samples):
+    product = reference["product"]
+    if not isinstance(audit.get("products"), list):
+        return {}
+    matching = [p for p in audit["products"] if isinstance(p, dict) and p.get("engine") == product["engine"]]
+    if len(matching) == 1:
+        proof = matching[0]
+        if (all(proof.get(k) == v for k, v in product.items()) and proof.get("collector_sha256") == reference["collector_sha256"]
+                and proof.get("surface") == "node" and proof.get("format") == "svg"
+                and type(proof.get("samples")) is int and proof["samples"] == samples
+                and isinstance(proof.get("scenarios"), dict)):
+            return proof["scenarios"]
+    return {}
+
+
+def _passed_facts(declared, facts):
+    """The auditor stores verdicts in declaration order within each request."""
+    if not isinstance(declared, dict) or not isinstance(facts, list) or not facts:
+        return False
+    if declared.keys() - {"arrows", "groups", "label_widths", "sequence_messages"}:
+        return False
+    try:
+        expected = [dict(kind="arrow", **a) for a in declared.get("arrows", [])]
+        expected.extend(dict(kind="membership", group=g, node=n) for g, nodes in declared.get("groups", {}).items() for n in nodes)
+        expected.extend(dict(kind="label-width", node=n, label=label) for n, label in declared.get("label_widths", {}).items())
+        expected.extend(dict(kind="sequence-message-count", label=label, expected=n, observed=n)
+                        for label, n in declared.get("sequence_messages", {}).items())
+    except (TypeError, AttributeError):
+        return False
+    return len(expected) == len(facts) and all(
+        isinstance(got, dict) and got.get("status") == "passed"
+        and all(k in got and got[k] == v and type(got[k]) is type(v) for k, v in want.items())
+        for want, got in zip(expected, facts))
+
+
+def _passed_drawing(proof, row, planned):
+    """Count the auditor's verdict once, bound to each declared occurrence and retained warm output."""
+    if not isinstance(proof, dict) or proof.get("status") != "passed":
+        return False
+    positions = [i for i, r in enumerate(planned) if "drawing_facts" in r]
+    cases = proof.get("cases")
+    if (not positions or type(proof.get("occurrences")) is not int or proof["occurrences"] != len(positions) or not isinstance(cases, list)
+            or len(cases) != len(positions)):
+        return False
+    warm = row["warm_samples"]
+    fact_count = 0
+    for index, case in zip(positions, cases):
+        if (not isinstance(case, dict) or case.get("status") != "passed" or type(case.get("request_index")) is not int
+                or case["request_index"] != index or any(case.get(k) != planned[index][k] for k in ("fixture", "diagram_id", "source_sha256"))):
+            return False
+        artifact, facts = case.get("artifact"), case.get("facts")
+        result = warm[-1]["results"][index]
+        if (not isinstance(artifact, dict) or type(artifact.get("sample_index")) is not int or artifact["sample_index"] != len(warm) - 1
+                or result.get("status") != "ok" or type(result.get("output_bytes")) is not int
+                or not _hash(artifact.get("sha256")) or artifact["sha256"] != result.get("output_sha256")
+                or type(artifact.get("bytes")) is not int or artifact["bytes"] <= 0 or artifact["bytes"] != result.get("output_bytes")
+                or not _passed_facts(planned[index]["drawing_facts"], facts)):
+            return False
+        fact_count += len(facts)
+    return type(proof.get("facts")) is int and fact_count == proof["facts"]
+
+
+def _round_workers(folder, order, collection, rounds, frozen, plan, audit, measurements):
+    """Visit each fresh worker once even when Merman is paired with multiple peers."""
+    passed = set()
+    for engine, run in collection.get("runs", {}).items():
+        if (engine not in NODE_PRODUCTS or order.count(engine) != 1
+                or (engine in collection.get("errors", {}) and not run.get("worker_failures"))):
+            continue
+        raw = _worker_report(folder, engine, run, rounds, frozen, plan)
+        if not raw:
+            continue
+        drawings = _drawing_rows(audit, rounds["reference_identities"][engine], raw["samples"])
+        for index, row in enumerate(raw["scenarios"]):
+            name = row["id"]
+            if _measured_worker(row, index, plan[name], raw):
+                measurements[name, engine].append(_worker_measurements(row, raw.get("init_scope")))
+                if _passed_drawing(drawings.get(name), row, plan[name]):
+                    passed.add((name, engine))
+    return passed
+
+
+def _startup(title, engine, workers, count):
+    result = dict(scenario=title, engine=engine, workers=len(workers), planned_workers=count)
+    for field in ("initialize_ms", "first_svg_ms", "init_through_first_svg_ms", "peak_rss_mib"):
+        values = [w[field] for w in workers]
+        result[field] = _duration(median(values)) if len(values) == count and None not in values else None
+    return result
+
+
 def _load(directory, *, independent):
     try:
-        inventory = summarize_coverage((directory / "plan.json").read_bytes())
+        raw_plan = (directory / "plan.json").read_bytes()
+        inventory = summarize_coverage(raw_plan)
     except (OSError, ValueError, KeyError, TypeError):
         raise ValueError("missing or invalid frozen Node plan") from None
     digest, scenarios = inventory["plan_sha256"], inventory["scenarios"]
@@ -284,6 +459,15 @@ def _load(directory, *, independent):
 
     records = dict(rounds.get("reference_identities", {}))
     warm_batches = rounds.get("warm_batches_per_worker")
+    plan = {}
+    if independent:
+        for s in json.loads(raw_plan)["scenarios"]:
+            plan[s["id"]] = s["requests"]
+            for request in s["requests"]:
+                if "source_sha256" not in request:
+                    request["source_sha256"] = _source_digest(request)
+    measurements = defaultdict(list)
+    reference_observer = None
     observations = []
     status = rounds.get("collection_status") if independent else "complete"
     incomplete = status != "complete"
@@ -299,11 +483,21 @@ def _load(directory, *, independent):
         if unexplained or errors.keys() - {"drawing-audit.json", *selected, *(f"merman-vs-{p}.json" for p in peers)}:
             issue = issue or "collection-incomplete"
         audit_issue = "drawing-unchecked" if "drawing-audit.json" in errors else None
+        audit = {}
         if "drawing_audit" in coverage and not audit_issue:
             if coverage["drawing_audit"] == "drawing-audit.json":
-                _, audit_issue = _sidecar(folder / "drawing-audit.json", digest)
+                audit, audit_issue = _sidecar(folder / "drawing-audit.json", digest)
             else:
                 audit_issue = "evidence-mismatch"
+        passed_drawings = set()
+        if independent and not issue:
+            observer = audit.get("observer")
+            if (isinstance(observer, dict) and isinstance(observer.get("browser"), str) and observer["browser"].strip()
+                    and _hash(observer.get("observer_sha256"))):
+                reference_observer = reference_observer or observer
+            if not reference_observer or observer != reference_observer:
+                audit = {}
+            passed_drawings = _round_workers(folder, order, collection, rounds, frozen, plan, audit, measurements)
         summaries = {s["right"]["engine"]: s for s in coverage.get("comparisons", [])}
         cases = {}
         for peer in peers:
@@ -328,7 +522,17 @@ def _load(directory, *, independent):
             rows = {r["id"]: r for r in summary.get("scenarios", [])} if problem != "evidence-mismatch" else {}
             for s in scenarios:
                 name = s["id"]
-                cases[peer, name] = _case(s, rows.get(name, {}), compared.get(name, {}), problem, failures, audit_issue)
+                comparison = compared.get(name, {})
+                case = _case(s, rows.get(name, {}), comparison, problem, failures, audit_issue)
+                if independent:
+                    checks = {"left": "passed", "right": "passed"}
+                    case["visual_passed"] = (
+                        (name, "merman") in passed_drawings and (name, peer) in passed_drawings
+                        and case["observation"].get("drawing_checks") == checks == comparison.get("drawing_checks")
+                        and comparison.get("planned_requests") == s["requests"]
+                        and not comparison.get("worker_failures") and not case["observation"].get("worker_failures")
+                        and _matches_requests(comparison.get("requests"), plan[name]))
+                cases[peer, name] = case
         observations.append(cases)
 
     products = {}
@@ -345,13 +549,16 @@ def _load(directory, *, independent):
                     break
         products[engine] = _product(engine, records.get(engine, {}), runs, scenarios)
     latency = []
+    startup = []
     if independent:
         for peer in peers:
             for position, scenario in enumerate(scenarios, 1):
                 name = scenario["id"]
                 row = rounds.get("comparisons", {}).get(peer, {}).get(name, {})
-                latency.append(_latency(peer, _text(name) or f"scenario #{position}", scenario["requests"], row,
+                latency.append(_latency(peer, _text(name) or f"scenario #{position}", scenario, row,
                                         [cases[peer, name] for cases in observations]))
+        startup = [_startup(_text(s["id"]) or f"scenario #{i}", engine, measurements[s["id"], engine], count)
+                   for i, s in enumerate(scenarios, 1) for engine in ("merman", *peers)]
     incomplete |= any(case["reason"] in INCOMPLETE for cases in observations for case in cases.values())
     host = next((records[e]["host"] for e in products if records.get(e, {}).get("host")), {})
     planned = inventory["planned"]
@@ -363,7 +570,8 @@ def _load(directory, *, independent):
                           cpu=_text(host.get("cpu"), r"[A-Za-z0-9 ().,@_+-]{1,160}"), runtime=_text(host.get("node"))),
                 hashes=dict(plan_sha256=digest, lock_sha256=frozen["package-lock.json"]),
                 products=products, coverage={p: _coverage(p, scenarios, observations) for p in peers},
-                process_rounds=count, warm_batches_per_worker=warm_batches if type(warm_batches) is int else None, latency=latency)
+                process_rounds=count, warm_batches_per_worker=warm_batches if type(warm_batches) is int else None, latency=latency,
+                **({"startup": startup} if independent else {}))
 
 
 def load_matrix(path: Path) -> dict:
@@ -377,5 +585,15 @@ def load_rounds(path: Path) -> dict:
     Each latency pair is one fresh worker's warm-batch median per product. A complete series
     releases the two medians in milliseconds and the range and median of within-pair ratios.
     Partial series retain only their individually supported pairs. Reasons are public codes.
+    Visual coverage counts declared request positions per batch and independently audited rounds.
+
+    Startup counts identified, measured fresh workers per scenario and engine. Each timing is a
+    median requiring a value from every scheduled worker. Initialization times package import and
+    Merman engine creation. First SVG times only the cold batch's first call when it returned a
+    drawable SVG. Import through first SVG uses the recorded interval from before import until
+    that call returns, including intervening setup. Both SVG timers end before validation.
+    Peak RSS is the worker's own high-water mark after cold/warm batches and output checks and
+    before artifact hashing, converted from KiB to MiB. Older collectors omit these latter two
+    observations. Process launch is outside all three timers.
     """
     return _load(path.parent if path.name == "process-rounds.json" else path, independent=True)

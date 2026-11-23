@@ -4,8 +4,8 @@ These reports show how released renderers and identified local builds handle sel
 
 | Measurement date | Report | Coverage |
 | --- | --- | --- |
-| 2026-11-23 | [Windows x64 renderer comparison](2026-11-23-windows-x64.md) · [Measurements](2026-11-23-windows-x64.json) | Merman, Pele and Mermaid v13 in Node, Merman CLI and mmdc file exports, browser Merman Web and Mermaid.js, and native Merman layout work. |
+| 2026-11-23 | [Windows x64 comparison](2026-11-23-windows-x64.md) · [Measurements](2026-11-23-windows-x64.json) · [Raw samples and outputs](https://raw.githubusercontent.com/Latias94/merman/d17b7feaf461775b4a27db6edf4b08b21fef12b3/windows-x64-20261123.zip) · [ZIP checksum](https://raw.githubusercontent.com/Latias94/merman/d17b7feaf461775b4a27db6edf4b08b21fef12b3/SHA256SUMS) | 12 Node timing scenarios with startup and peak RSS, a 25-chart CLI document, browser delivery and SVG return times, and 32 native layout stress controls. |
 
 **Other benchmark results.** The earlier [native Rust comparison with mmdr](../renderer_comparison_2026-07-28_75c9fd156_vs_mmdr.md) uses a separate corpus and toolchain. The [alignment dashboard](../../alignment/STATUS.md) tracks Mermaid compatibility. For changes between Merman releases, see the [release comparison guide](../../release/RELEASE_REPORTS.md).
 
-**For maintainers.** Put dated reader-facing Markdown here, beside its portable measurements in JSON. Keep raw bundles, SVGs, PNGs and logs under `target/bench` or in a linked CI artifact. Add a row above for each published snapshot. The [publication procedure](../RUNBOOK.md#publish-a-reader-report) covers collection, generation and verification.
+**For maintainers.** Put dated Markdown and its portable measurements here. Use `target/bench` for local collection. For a durable public snapshot, the `benchmark-data` branch holds a dated ZIP with the frozen inputs, samples, retained outputs, replay instructions and `SHA256SUMS`. Link to its full commit SHA. Manual CI runs can link to the corresponding Actions artifact. [Publication procedure](../RUNBOOK.md#publish-a-reader-report)

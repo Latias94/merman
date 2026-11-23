@@ -239,16 +239,19 @@ function observedOutput(attempt) {
 
 export async function measureBatch(requests, render, {
   now = () => performance.now(), validate = validateOutputs, cache = requests.map(() => new Map()), asyncSvg = false,
-  afterBatch,
+  afterBatch, importStart,
 } = {}) {
   const attempts = new Array(requests.length);
+  let firstReturnMs;
   const batchStart = now();
   for (let index = 0; index < requests.length; index++) {
     const start = now();
     try {
       const output = render(requests[index]);
       const svg = asyncSvg ? (await output)?.svg : output;
-      attempts[index] = { elapsed_ms: now() - start, svg };
+      const end = now();
+      attempts[index] = { elapsed_ms: end - start, svg };
+      if (index === 0 && importStart !== undefined) firstReturnMs = end - importStart;
     } catch (error) {
       attempts[index] = { elapsed_ms: now() - start, error };
     }
@@ -283,7 +286,11 @@ export async function measureBatch(requests, render, {
   }
   afterBatch?.(attempts, results);
   const successes = results.filter((item) => item.status === "ok");
+  const first = results[0];
+  const firstDrew = first?.status === "ok" &&
+    (first.output_class === "draw" || (first.output_class === undefined && (requests[0].expected_outcome ?? "draw") === "draw"));
   return {
+    ...(importStart === undefined ? {} : { init_through_first_svg_ms: firstDrew ? firstReturnMs : null }),
     elapsed_ms, complete_batch_ms: successes.length === results.length ? elapsed_ms : null,
     successful_requests: successes.length,
     expected_rejections: results.filter((item) => item.status === "expected-rejection").length,
@@ -321,7 +328,7 @@ async function runScenario({ product, engine, scenario, samples, drawingDir }) {
       throw new Error(`Missing ${products[engine].render_api} in ${product.entry}`);
     }
     const options = { cache, asyncSvg: engine === "mermaid-v13" };
-    const cold_batch = await measureBatch(requests, render, options);
+    const cold_batch = await measureBatch(requests, render, { ...options, importStart: start });
     const warm_samples = [];
     for (let i = 0; i < samples - 1; i++) warm_samples.push(await measureBatch(requests, render, options));
     if (drawingDir && scenario.drawingIndices.length) {
@@ -357,6 +364,7 @@ async function runScenario({ product, engine, scenario, samples, drawingDir }) {
     const first = cold_batch.results[0];
     return {
       ...scenarioIdentity(scenario), init_ms,
+      peak_rss_kib: process.resourceUsage().maxRSS,
       artifact_identity: await productArtifacts(product, previousModules),
       first_render_ms: first.status === "ok" ? first.elapsed_ms : null,
       transport_api_version: catalog?.transport_api_version ?? null,

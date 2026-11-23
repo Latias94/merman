@@ -23,8 +23,8 @@ def write(path, value):
 
 class NodeReaderReportTests(unittest.TestCase):
     def setUp(self):
-        scratch = Path(__file__).resolve().parents[2] / "target"
-        scratch.mkdir(exist_ok=True)
+        scratch = Path(__file__).resolve().parents[2] / "target/bench"
+        scratch.mkdir(parents=True, exist_ok=True)
         tmp = tempfile.TemporaryDirectory(dir=scratch)
         self.addCleanup(tmp.cleanup)
         self.root = Path(tmp.name)
@@ -43,47 +43,74 @@ class NodeReaderReportTests(unittest.TestCase):
             if name == "document":
                 scenario["requests"].append(deepcopy(request))
             self.plan["scenarios"].append(scenario)
-        write(self.root / "plan.json", self.plan)
-        self.raw_plan = (self.root / "plan.json").read_bytes()
-        self.plan_hash = sha256(self.raw_plan).hexdigest()
+        self.freeze()
         (self.root / "consumer").mkdir()
         (self.root / "consumer/package-lock.json").write_bytes(b'{}\n')
         (self.root / "consumer/package.json").write_bytes(b'{}\n')
 
-    def matrix(self, folder):
-        raw = {}
+    def freeze(self):
+        write(self.root / "plan.json", self.plan)
+        self.raw_plan = (self.root / "plan.json").read_bytes()
+        self.plan_hash = sha256(self.raw_plan).hexdigest()
+
+    def matrix(self, folder, round_number=1):
+        raw, drawings = {}, {}
         for engine in ("merman", "pele"):
             product = worker_report("node", engine, [(2,), (4,)], wasm=engine == "merman")
             product["host"].update(hostname="private-workstation", node="v22.3.4", cpu="Test CPU @ 2.5 GHz")
-            product.update(plan_sha256=self.plan_hash, planned_scenarios=len(self.plan["scenarios"]),
+            product.update(plan_sha256=self.plan_hash, planned_scenarios=len(self.plan["scenarios"]), init_scope="package-import-and-engine-creation",
                            node_project=dict(cwd="/private/project", digests={"package-lock.json": sha256(b'{}\n').hexdigest()}))
             template = product["scenarios"].pop()
+            drawings[engine] = {}
             for index, scenario in enumerate(self.plan["scenarios"]):
                 name = scenario["id"]
-                request = scenario["requests"][0]
                 row = deepcopy(template)
-                row.update(id=name, index=index, requests=[dict(fixture=request["fixture"], diagram_id=request["diagram_id"],
-                           source_sha256=sha256(request["source"].encode()).hexdigest(), drawing_required="drawing_facts" in request,
-                           expected_outcome=request.get("expected_outcome", "draw"))])
+                row.update(id=name, index=index, init_ms=round_number * 10, peak_rss_kib=round_number * 1536,
+                           requests=[dict(fixture=r["fixture"], diagram_id=r["diagram_id"], source_sha256=sha256(r["source"].encode()).hexdigest(),
+                                          expected_outcome=r.get("expected_outcome", "draw"), drawing_required="drawing_facts" in r)
+                                     for r in scenario["requests"]])
                 for batch in [row["cold_batch"], *row["warm_samples"]]:
                     if name == "reject" or (engine == "pele" and name == "zenuml"):
                         batch["results"] = [dict(status="expected-rejection" if name == "reject" else "render-error", error=self.secret)]
-                    batch["results"] *= len(scenario["requests"])
-                row["requests"] *= len(scenario["requests"])
+                    batch["results"] = [deepcopy(batch["results"][0]) for _ in scenario["requests"]]
+                    for result, req in zip(batch["results"], row["requests"]):
+                        if req["expected_outcome"] == "allow-empty" and result["status"] == "ok":
+                            result["output_class"] = "draw"
+                first = row["cold_batch"]["results"][0]
+                row["first_render_ms"] = row["cold_batch"]["init_through_first_svg_ms"] = None
+                if first["status"] == "ok":
+                    row["first_render_ms"] = first["elapsed_ms"] = round_number + 0.25
+                    row["cold_batch"]["init_through_first_svg_ms"] = 17 * round_number
                 if name == "timeout" and engine == "pele":
                     product["status"] = "failed"
                     row.update(status="timeout", unmeasured_requests=1, error=self.secret, cold_batch=None, warm_samples=[],
-                               init_ms=None, first_render_ms=None)
+                               init_ms=None, first_render_ms=None, peak_rss_kib=None)
+                cases = []
+                for i, request in enumerate(scenario["requests"]):
+                    if "drawing_facts" in request:
+                        status = ("unavailable" if name == "drawing-unchecked" else "failed" if name == "drawing-failure" and engine == "pele" else "passed")
+                        output = row["warm_samples"][-1]["results"][i]
+                        facts = [dict(kind="label-width", node=node, label=label, status=status)
+                                 for node, label in request["drawing_facts"]["label_widths"].items()]
+                        cases.append(dict(row["requests"][i], request_index=i, status=status, facts=facts,
+                                          artifact=dict(bytes=output["output_bytes"], sha256=output["output_sha256"], sample_index=1)))
+                if cases:
+                    drawings[engine][name] = dict(status=cases[0]["status"], occurrences=len(cases),
+                                                  facts=sum(len(c["facts"]) for c in cases), cases=cases)
                 product["scenarios"].append(row)
             raw[engine] = product
-        drawings = {e: {"pie": {"status": "passed"}, "drawing-failure": {"status": "failed" if e == "pele" else "passed"}}
-                    for e in raw}
+            write(folder / f"{engine}.json", product)
         comparison = compare_reference(raw["merman"], raw["pele"], drawing_products=drawings)
         coverage = summarize_coverage(self.raw_plan, [comparison])
-        runs = {e: dict(package=p["package"]["name"], version=p["package"]["version"], worker_failures=node_worker_failures(p))
+        runs = {e: dict(report=f"{e}.json", package=p["package"]["name"], version=p["package"]["version"], worker_failures=node_worker_failures(p))
                 for e, p in raw.items()}
         runs["mermaid-v13"] = dict(report=self.secret, error=self.secret)
         coverage["collection"] = dict(status="incomplete", runs=runs, errors={"mermaid-v13": self.secret})
+        coverage["drawing_audit"] = "drawing-audit.json"
+        write(folder / "drawing-audit.json", dict(schema_version=1, plan_sha256=self.plan_hash,
+              observer=dict(browser="Chrome/test", observer_sha256="d" * 64), products=[
+                  dict(comparison[side], collector_sha256=comparison["collector_sha256"][side], scenarios=drawings[engine],
+                       surface="node", format="svg", samples=2) for side, engine in (("left", "merman"), ("right", "pele"))]))
         write(folder / "coverage.json", coverage)
         write(folder / "merman-vs-pele.json", comparison)
         return comparison
@@ -97,6 +124,7 @@ class NodeReaderReportTests(unittest.TestCase):
         self.matrix(self.root)
         data = load_matrix(self.root / "coverage.json")
         self.assertEqual((data["kind"], data["suite"], data["status"], data["latency"]), ("node-matrix", "quick", "incomplete", []))
+        self.assertNotIn("startup", data)
         self.assertEqual(data["planned"], dict(scenarios=7, requests=8, distinct_sources=1, families=2))
         self.assertEqual(data["host"], dict(os="win32", arch="x64", cpu="Test CPU @ 2.5 GHz", runtime="v22.3.4"))
         self.assertEqual(data["hashes"], dict(plan_sha256=self.plan_hash, lock_sha256=sha256(b'{}\n').hexdigest()))
@@ -120,7 +148,7 @@ class NodeReaderReportTests(unittest.TestCase):
         for index in (1, 2):
             folder = self.root / "rounds" / f"{index:03d}"
             folder.mkdir(parents=True, exist_ok=True)
-            comparison = self.matrix(folder)
+            comparison = self.matrix(folder, index)
             values = {1: dict(left=1, right=8, right_over_left=8), 2: dict(left=4, right=2, right_over_left=0.5)}
             for row in comparison["scenarios"]:
                 if row["id"] in ("pie", "document"):
@@ -155,6 +183,10 @@ class NodeReaderReportTests(unittest.TestCase):
                          (2, 2, 2.5, 5, dict(min=0.5, median=4.25, max=8)))
         part = rows["pele", "document"]
         self.assertEqual((full["requests_per_batch"], part["requests_per_batch"]), (1, 2))
+        self.assertEqual(full["visual_checks"], {"planned": 1, "passed_pairs": 2})
+        self.assertEqual(part["visual_checks"], {"planned": 0, "passed_pairs": 0})
+        for row in (rows["pele", "drawing-failure"], rows["pele", "drawing-unchecked"], rows["mermaid-v13", "pie"]):
+            self.assertEqual(row["visual_checks"], {"planned": 1, "passed_pairs": 0})
         self.assertEqual((part["reasons"], rows["pele", "reject"]["reasons"], rows["pele", "timeout"]["reasons"]),
                          (["collector-withheld"], ["expected-rejection"], ["worker-failure"]))
         self.assertEqual(part["pairs"], [dict(round=1, merman_ms=1, peer_ms=8, ratio=8)])
@@ -166,6 +198,136 @@ class NodeReaderReportTests(unittest.TestCase):
         self.assertEqual((c["planned_requests"], c["common_completed"], c["eligible_scenarios"]), (16, 10, 3))
         self.assertEqual(data["products"]["mermaid-v13"]["workers"]["missing"], 14)
         self.assert_public(data)
+
+    def test_visual_pass_requires_both_audits_for_every_declared_position_even_with_reused_ids(self):
+        doc = self.plan["scenarios"][-1]
+        first, last = doc["requests"]
+        doc["requests"].insert(1, dict(first, source="another source"))
+        first["drawing_facts"] = {"label_widths": {"A": "first", "B": "second"}}
+        last["drawing_facts"] = {"label_widths": {"C": "third"}}
+        self.freeze()
+        evidence = self.rounds()
+
+        def document():
+            return next(r for r in load_rounds(evidence)["latency"] if (r["peer"], r["scenario"]) == ("pele", "document"))
+
+        row = document()
+        self.assertEqual((row["distinct_sources"], row["requests_per_batch"], row["eligible_pairs"]), (2, 3, 1))
+        self.assertEqual(row["visual_checks"], {"planned": 2, "passed_pairs": 2})
+        path = self.root / "rounds/002/drawing-audit.json"
+        original = json.loads(path.read_bytes())
+        for defect in ("missing-occurrence", "duplicate-position", "partial-facts", "wrong-fact", "source", "output", "product", "observer"):
+            with self.subTest(defect=defect):
+                audit = deepcopy(original)
+                peer = audit["products"][1]
+                cases = peer["scenarios"]["document"]["cases"]
+                if defect == "missing-occurrence":
+                    cases.pop()
+                elif defect == "duplicate-position":
+                    cases[-1]["request_index"] = 0
+                elif defect == "partial-facts":
+                    cases[0]["facts"].pop()
+                    peer["scenarios"]["document"]["facts"] -= 1
+                elif defect == "wrong-fact":
+                    cases[-1]["facts"][0]["label"] = "another label"
+                elif defect == "source":
+                    cases[-1]["source_sha256"] = "1" * 64
+                elif defect == "output":
+                    cases[-1]["artifact"]["sha256"] = "5" * 64
+                elif defect == "product":
+                    peer["artifact_identity"]["files"][0]["sha256"] = "3" * 64
+                else:
+                    audit["observer"]["observer_sha256"] = "4" * 64
+                write(path, audit)
+                row = document()
+                self.assertEqual((row["visual_checks"], row["eligible_pairs"]), ({"planned": 2, "passed_pairs": 1}, 1))
+
+    def test_startup_uses_one_recorded_cold_interval_and_worker_rss_per_round(self):
+        evidence = self.rounds()
+        data = load_rounds(evidence)
+        rows = {(r["scenario"], r["engine"]): r for r in data["startup"]}
+        self.assertEqual(len(rows), 7 * 3)
+        expected = dict(scenario="pie", engine="merman", workers=2, planned_workers=2, initialize_ms=15,
+                        first_svg_ms=1.75, init_through_first_svg_ms=25.5, peak_rss_mib=2.25)
+        self.assertEqual(rows["pie", "merman"], expected)
+        self.assertEqual(rows["timeout", "pele"], dict(scenario="timeout", engine="pele", workers=0, planned_workers=2,
+                         initialize_ms=None, first_svg_ms=None, init_through_first_svg_ms=None, peak_rss_mib=None))
+        self.assertEqual(rows["pie", "mermaid-v13"]["workers"], 0)
+
+        # Only the final round lacks the two newer observations. Other scopes cannot supply them.
+        path = self.root / "rounds/002/merman.json"
+        raw = json.loads(path.read_bytes())
+        worker = raw["scenarios"][0]
+        del worker["cold_batch"]["init_through_first_svg_ms"], worker["peak_rss_kib"]
+        raw["peak_rss_kib"] = 999999
+        worker["coverage"] = dict(peak_rss_kib=999999, init_through_first_svg_ms=999999, detail=self.secret)
+        worker["warm_samples"][0]["init_through_first_svg_ms"] = 999999
+        write(path, raw)
+        result = load_rounds(evidence)
+        row = next(r for r in result["startup"] if (r["scenario"], r["engine"]) == ("pie", "merman"))
+        self.assertEqual(row, dict(expected, init_through_first_svg_ms=None, peak_rss_mib=None))
+        self.assert_public(result)
+
+    def test_first_svg_requires_a_drawable_first_cold_result(self):
+        doc = self.plan["scenarios"][-1]
+        doc["requests"][0]["expected_outcome"] = "allow-empty"
+        self.freeze()
+        evidence = self.rounds()
+        path = self.root / "rounds/001/merman.json"
+        original = json.loads(path.read_bytes())
+        good = next(r for r in load_rounds(evidence)["startup"] if (r["scenario"], r["engine"]) == ("document", "merman"))
+        self.assertEqual((good["first_svg_ms"], good["init_through_first_svg_ms"]), (1.75, 25.5))
+        for status, output_class in (("ok", "empty"), ("ok", None), ("expected-rejection", None), ("render-error", None)):
+            with self.subTest(status=status, output_class=output_class):
+                raw = deepcopy(original)
+                first = raw["scenarios"][-1]["cold_batch"]["results"][0]
+                first["status"] = status
+                if output_class is None:
+                    del first["output_class"]
+                else:
+                    first["output_class"] = output_class
+                write(path, raw)
+                rows = {(r["scenario"], r["engine"]): r for r in load_rounds(evidence)["startup"]}
+                for row in (rows["document", "merman"], rows["reject", "merman"], rows["zenuml", "pele"]):
+                    self.assertEqual((row["workers"], row["initialize_ms"], row["peak_rss_mib"]), (2, 15, 2.25))
+                    self.assertEqual((row["first_svg_ms"], row["init_through_first_svg_ms"]), (None, None))
+
+    def test_startup_requires_a_scheduled_local_report_and_matching_worker_identity(self):
+        evidence = self.rounds()
+        folder = self.root / "rounds/002"
+        coverage_path, raw_path = folder / "coverage.json", folder / "pele.json"
+        coverage, original = (json.loads(path.read_bytes()) for path in (coverage_path, raw_path))
+        for defect in ("report-link", "missing-raw", "plan", "host", "product", "collector", "lifecycle", "sample-count", "request-source"):
+            with self.subTest(defect=defect):
+                manifest, raw = deepcopy(coverage), deepcopy(original)
+                if defect == "report-link":
+                    manifest["collection"]["runs"]["pele"]["report"] = "../001/pele.json"
+                elif defect == "plan":
+                    raw["plan_sha256"] = "0" * 64
+                elif defect == "host":
+                    raw["host"]["hostname"] += "-other"
+                elif defect == "product":
+                    raw["package"]["version"] = "1.2.4"
+                elif defect == "collector":
+                    raw["collector_sha256"] = "1" * 64
+                elif defect == "lifecycle":
+                    raw["process_lifecycle"] = "reused"
+                elif defect == "sample-count":
+                    raw["samples"] += 1
+                elif defect == "request-source":
+                    raw["scenarios"][0]["requests"][0]["source_sha256"] = "0" * 64
+                if defect == "missing-raw":
+                    raw_path.unlink()
+                else:
+                    write(raw_path, raw)
+                write(coverage_path, manifest)
+                data = load_rounds(evidence)
+                workers = {r["engine"]: r for r in data["startup"] if r["scenario"] == "pie"}
+                peer = workers["pele"]
+                self.assertEqual((peer["workers"], peer["planned_workers"], workers["merman"]["workers"]), (1, 2, 2))
+                self.assertEqual([peer[k] for k in ("initialize_ms", "first_svg_ms", "init_through_first_svg_ms", "peak_rss_mib")], [None] * 4)
+                pair = next(r for r in data["latency"] if (r["peer"], r["scenario"]) == ("pele", "pie"))
+                self.assertEqual((pair["eligible_pairs"], pair["visual_checks"]["passed_pairs"]), (2, 1))
 
     def test_stale_rounds_and_missing_sidecars_withhold_only_the_affected_pairs(self):
         for defect, reason in (("wrong-link", "evidence-mismatch"), ("missing-round", "missing-evidence"),
@@ -188,7 +350,7 @@ class NodeReaderReportTests(unittest.TestCase):
                 elif defect == "stale-median":
                     data["comparisons"]["pele"]["pie"]["rounds"][1]["left"] = 99
                 elif defect == "missing-audit":
-                    coverage["drawing_audit"] = "drawing-audit.json"
+                    (folder / "drawing-audit.json").unlink()
                 else:
                     coverage["collection"]["errors"]["merman-vs-pele.json"] = self.secret
                 write(folder / "coverage.json", coverage)

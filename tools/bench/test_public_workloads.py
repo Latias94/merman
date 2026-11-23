@@ -17,6 +17,24 @@ def plan(suite="quick", names=(), documents=()):
 
 
 class PublicWorkloadsTest(unittest.TestCase):
+    def test_source_reuse_controls_hold_size_topology_or_labels_as_declared(self):
+        names = ["four-node-repeat", "four-node-relabel", "four-node-edges"]
+        cases = [case["requests"] for case in plan(names=names)["scenarios"]]
+        self.assertEqual([len(case) for case in cases], [8, 8, 8])
+        self.assertEqual([len({r["source_sha256"] for r in case}) for case in cases], [1, 8, 8])
+        self.assertEqual(len({case[0]["source"] for case in cases}), 1)
+        lengths = {len(r["source"].encode()) for case in cases for r in case}
+        self.assertEqual(len(lengths), 1)
+        for case in cases:
+            for request in case:
+                self.assertEqual(request["diagram_id"], "four-node-preview")
+                self.assertEqual(request["source"].count(" --> "), 3)
+                self.assertEqual(list(request["drawing_facts"]["label_widths"].values()), request["expected_labels"])
+        for i, request in enumerate(cases[1]):
+            self.assertEqual(request["source"].replace(str(i), "0"), cases[0][i]["source"])
+        for request in cases[2]:
+            self.assertEqual(request["source"].splitlines()[:5], cases[0][0]["source"].splitlines()[:5])
+
     def test_named_native_suite_replays_the_existing_fixture_selection(self):
         corpus = bench.load_corpus(bench.HERE / "corpus.json")
         for suite in ("cross_family", "full"):
@@ -203,7 +221,14 @@ class PublicWorkloadsTest(unittest.TestCase):
         }
         full = plan("full")
         corpus = bench.load_corpus(bench.HERE / "corpus.json")
-        corpus_facts = {"flowchart_tiny": tiny}
+        medium = {"label_widths": {"A1": "Service 1"}}
+        corpus_facts = {"flowchart_tiny": tiny, "flowchart_medium": medium}
+        reviewed = {"flowchart_medium": medium, "flow-padding": {**tiny, "label_widths": {"A": "A", "B": "B"}},
+                    "seq-message": {"sequence_messages": {"hi": 1}}}
+        for case in full["scenarios"]:
+            for index, request in enumerate(case["requests"], 1):
+                if request["fixture"] in reviewed:
+                    expected[case["id"], index, request["fixture"]] = reviewed[request["fixture"]]
         sources = {f.name: bench.ROOT / f.source for f in corpus.fixtures}
         full_by_id = {s["id"]: s for s in full["scenarios"]}
         for tier, count in (("low", 1), ("medium", 32), ("high", 256)):

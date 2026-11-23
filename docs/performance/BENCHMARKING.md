@@ -998,6 +998,11 @@ seeds. Within that fixture, Merman and Mermaid.js still use the same page, sourc
 viewport, warmup policy, iteration count, and deterministic AB/BA sample plan. Independent cold and
 warm controller runs report first-publishable SVG and reused-engine publishable SVG separately. Both
 engines pass through the production browser adapters and the same strict SVG evidence checks.
+For warm rendering, `warmBudgetedSvgMs` ends when the adapter has returned an SVG and the output
+byte check has passed. The fixture then inserts the SVG, checks its layout box and waits for one
+`requestAnimationFrame` callback. `warmPublishableSvgMs` includes that wait, response delivery and
+validation on the parent page. Read the two medians separately. The adapter can itself perform DOM
+layout and the frame callback does not timestamp pixels on the display.
 Before sampling, the runner checks the built page's Merman version against the selected Web
 package manifest. Each successful mode also checks the versions returned by the running engines.
 

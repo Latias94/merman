@@ -331,7 +331,7 @@ Keep exploratory drafts and raw collector bundles in `target/bench/`. The
 interpretation and section order. Each section uses the host, operation and sample units of its
 own inputs. Review the exact product versions and their upstream descriptions on each update.
 
-The following recipe reproduces the populations used in the November 23 Windows report. Run it
+The following recipe collects the populations used in the November 23 Windows report. Run it
 from the repository root with the Node consumer, drawing checks and PNG decoder installed as
 described above. Select an installed Chrome executable for the drawing observer and mmdc. The
 published run used the Merman CLI 0.11.0 release binary and mmdc 12.2.0. Use a fresh raw directory
@@ -340,7 +340,7 @@ for each collection.
 ```console
 python tools/bench/perf_runner.py workloads plan --suite full --out target/bench/readers/full.json
 python tools/bench/perf_runner.py workloads node-matrix --plan target/bench/readers/full.json --samples 3 --check-drawings --out-dir target/bench/readers/coverage
-python tools/bench/perf_runner.py workloads plan --scenario small-svg --scenario family-sequence --scenario mixed-families --scenario mixed-document --out target/bench/readers/pairs.json
+python tools/bench/perf_runner.py workloads plan --scenario small-svg --scenario different-flowcharts --scenario scc-75 --scenario family-sequence --scenario mixed-document --scenario mixed-families --scenario four-node-repeat --scenario four-node-relabel --scenario four-node-edges --scenario configured-labels --scenario editor-fixed-id --scenario merman-issue-guide --out target/bench/readers/pairs.json
 python tools/bench/perf_runner.py workloads node-matrix --plan target/bench/readers/pairs.json --samples 5 --process-rounds 8 --check-drawings --out-dir target/bench/readers/rounds
 python tools/bench/perf_runner.py workloads plan --scenario family-flowchart --scenario family-sequence --out target/bench/readers/cli.json
 python tools/bench/workload_cli.py --engine merman --binary merman-cli --format svg --samples 3 --plan target/bench/readers/cli.json --output-dir target/bench/readers/files > target/bench/readers/merman-svg.json
@@ -349,6 +349,22 @@ python tools/bench/workload_cli.py --engine merman --binary merman-cli --format 
 python tools/bench/workload_cli.py --engine mmdc --binary mmdc --format png --samples 3 --plan target/bench/readers/cli.json --output-dir target/bench/readers/files > target/bench/readers/mmdc-png.json
 python tools/bench/perf_runner.py workloads rust --plan target/bench/readers/full.json --metric work --out target/bench/readers/work.json
 ```
+
+Use the frozen plans from the report's evidence archive for an exact replay. The original breadth
+survey and subsequent process rounds used different revisions of the drawing declarations.
+The 12 timed scenarios include three eight-request controls. Each has four nodes, three edges,
+equal source byte lengths and the same public SVG ID. `four-node-repeat` repeats the same bytes,
+`four-node-relabel` changes node IDs and labels together, and `four-node-edges` changes the labeled
+edge set. The first request is identical in all three arms. These controls measure reuse-sensitive
+workloads. Establish cache hits separately with implementation evidence.
+
+For each product and scenario, the Node worker records package import and engine creation,
+the first successful draw at request index zero, and the continuous interval from import start
+through that call's return. Node process startup happens before this clock. Peak RSS includes
+the worker runtime, renderer and in-process checks over its cold and warm batches. The worker
+reads the high-water mark before fingerprinting product files and excludes validator children.
+The report uses independent workers as its sample unit. A direction that repeats in all eligible
+rounds describes those rounds. Identify the tested drawing properties alongside the timings.
 
 For the independent browser comparison, use the [browser family corpus](BENCHMARKING.md#browser-comparison-with-mermaidjs)
 against an identified built playground. The example below collects Flowchart and Sequence with

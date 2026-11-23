@@ -229,6 +229,30 @@ def load_rust(plan: Path, report: Path) -> dict:
     )
 
 
+def _browser_interval(by_side, ratios, metric, iterations, *, include_partial=False):
+    samples = dict(left=0, right=0)
+    medians = dict(left=None, right=None)
+    for side, metrics in by_side.items():
+        stats = metrics[metric]
+        if stats is None:
+            continue
+        count, value = stats["count"], stats["median"]
+        if (type(count) is not int or not 0 < count <= iterations
+                or type(value) not in (int, float) or not isfinite(value) or value < 0):
+            raise ValueError(f"invalid browser {metric} statistics")
+        samples[side] = count
+        if count == iterations or include_partial:
+            medians[side] = value
+    ratio = ratios[metric]
+    if ratio is not None and (
+        type(ratio) not in (int, float) or not isfinite(ratio) or min(samples.values()) != iterations
+        or not medians["left"] or ratio != medians["right"] / medians["left"]
+    ):
+        raise ValueError(f"browser ratio disagrees with its {metric} statistics")
+    medians["right_over_left"] = ratio
+    return samples, medians
+
+
 def _browser_mode(evidence, mode, metric, source, versions, run):
     status = evidence["status"]
     report = evidence["report"]
@@ -236,13 +260,14 @@ def _browser_mode(evidence, mode, metric, source, versions, run):
         raise ValueError("unexpected browser corpus mode or outcome")
     if report is not None and report["schemaVersion"] != 7:
         raise ValueError("unexpected browser mode report schema")
-    # A stopped controller can retain partial samples without publishing this interval.
-    count = None if status != "success" and report is not None else 0
-    result = dict(metric=metric, status=status, seed=evidence["seed"], samples=dict(left=count, right=count),
-                  median_ms=dict(left=None, right=None, right_over_left=None), ratio_withheld_reason=status)
+    result = dict(metric=metric, status=status, seed=evidence["seed"])
     if type(result["seed"]) is not int or not 0 <= result["seed"] <= 0xffffffff:
         raise ValueError("invalid browser sample plan seed")
     if status != "success":
+        # A stopped controller can retain partial samples without publishing this interval.
+        count = None if report is not None else 0
+        result.update(samples=dict(left=count, right=count), median_ms=dict(left=None, right=None, right_over_left=None),
+                      ratio_withheld_reason=status)
         return result, None
     plan = report["plan"]
     if (evidence["failure"] is not None or evidence["skipReason"] is not None or report["terminalStatus"] != "success"
@@ -255,23 +280,16 @@ def _browser_mode(evidence, mode, metric, source, versions, run):
     if len(raw_source) != source["bytes"] or sha256(raw_source).hexdigest() != source["sha256"]:
         raise ValueError("browser report source differs from the selected fixture")
     aggregates = report["aggregates"]
-    for side, engine in (("left", "merman"), ("right", "mermaid")):
-        stats = aggregates["engines"][engine][metric]
-        if stats is not None:
-            count, value = stats["count"], stats["median"]
-            if (type(count) is not int or not 0 < count <= run["iterations"]
-                    or type(value) not in (int, float) or not isfinite(value) or value < 0):
-                raise ValueError("invalid browser publishable SVG statistics")
-            result["samples"][side] = count
-            result["median_ms"][side] = value
-    ratio = aggregates["ratios"][metric]
-    medians = result["median_ms"]
-    if ratio is not None:
-        if (type(ratio) not in (int, float) or not isfinite(ratio) or min(result["samples"].values()) != run["iterations"]
-                or not medians["left"] or ratio != medians["right"] / medians["left"]):
-            raise ValueError("browser ratio disagrees with its publishable SVG statistics")
-    medians["right_over_left"] = ratio
-    result["ratio_withheld_reason"] = "Withheld by the browser report." if ratio is None else None
+    by_side = dict(left=aggregates["engines"]["merman"], right=aggregates["engines"]["mermaid"])
+    ratios = aggregates["ratios"]
+    iterations = run["iterations"]
+    samples, medians = _browser_interval(by_side, ratios, metric, iterations, include_partial=True)
+    result.update(samples=samples, median_ms=medians,
+                  ratio_withheld_reason="Withheld by the browser report." if medians["right_over_left"] is None else None)
+    budgeted = "warmBudgetedSvgMs"
+    if mode == "warm" and any(budgeted in fields for fields in (ratios, *by_side.values())):
+        # This interval has no per-side counts in the receipt. Publish only complete medians.
+        _, result["budgeted_svg_ms"] = _browser_interval(by_side, ratios, budgeted, iterations)
     env = report["environment"]
     platform = env["platform"]
     if not re.fullmatch(r"[A-Za-z0-9_.-]+(?: [A-Za-z0-9_.-]+)*", platform):
@@ -281,7 +299,7 @@ def _browser_mode(evidence, mode, metric, source, versions, run):
 
 
 def load_browser(path: Path) -> dict:
-    """Read only owner-published cold and warm SVG intervals from the playground corpus."""
+    """Read publishable SVG intervals and any recorded warm budgeted SVG interval from the playground corpus."""
     corpus, report_sha = _read_report(path)
     if (corpus.get("kind") != "merman-browser-family-corpus" or corpus.get("schemaVersion") != 2
             or corpus.get("benchmarkReportSchemaVersion") != 7

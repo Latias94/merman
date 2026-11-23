@@ -62,6 +62,9 @@
   },
   "drawing_facts": {
     "flowchart_tiny": {"arrows": [{"edge": "L_A_B_0", "from": "A", "to": "B"}]},
+    "flow-padding": {"label_widths": {"A": "A", "B": "B"}, "arrows": [{"edge": "L_A_B_0", "from": "A", "to": "B"}]},
+    "seq-message": {"sequence_messages": {"hi": 1}},
+    "flowchart_medium": {"label_widths": {"A1": "Service 1"}},
     "sequence_block_repeat_low": {"sequence_messages": {"message-000000": 1}},
     "sequence_block_repeat_medium": {"sequence_messages": {"message-000000": 32}},
     "sequence_block_repeat_high": {"sequence_messages": {"message-000000": 256}},

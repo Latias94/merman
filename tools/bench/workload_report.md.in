@@ -1,19 +1,8 @@
 # Renderer benchmark report · $date
 
-Merman's benchmarks help us choose where to investigate rendering costs. A renderer can accept the same Mermaid source and choose different node sizes, edge routes, fonts and SVG structure. The observations below apply to the named products, workloads and machines.
+## Overview
 
-$highlights
-
-## What the renderers aim to do
-
-| Product | Design and public operation |
-| --- | --- |
-| Merman | A headless Rust renderer aiming for compatibility with a pinned Mermaid.js release across syntax, configuration, themes and SVG structure. The Rust library, Node binding and CLI expose different operation boundaries. |
-| Pele | An independent renderer of Mermaid syntax with its own layout and visual style. Its public `render` call returns a themeable SVG synchronously. |
-| Mermaid v13 | The upstream v13 package exposes a headless Node rendering API. The exact package version and the diagram plugins available to the consumer matter when interpreting coverage. |
-| Mermaid CLI (`mmdc`) | The upstream command-line tool uses Mermaid in a browser process to produce files. Startup, font selection and painting can contribute to the cost of a PNG export. |
-
-[Merman compatibility](https://github.com/Latias94/merman#rendering-quality-and-performance) · [Pele design](https://github.com/obsidianmd/pele/tree/1.13.0#compatibility) · [Mermaid v13](https://github.com/mermaid-js/mermaid-v13) · [Mermaid CLI](https://github.com/mermaid-js/mermaid-cli)
+$overview
 
 ## Node rendering coverage
 
@@ -23,6 +12,10 @@ $coverage
 
 $rounds
 
+## Node startup and peak memory
+
+$startup
+
 ## Command-line exports
 
 $cli
@@ -31,24 +24,24 @@ $cli
 
 $browser
 
-## Merman layout work
+## Native Rust layout stress controls$rust_build
 
 $rust
 
-## Interpreting the comparison
+## Product context
 
-Use a row that resembles your application. Rendering one preview, updating an existing engine and starting a CLI for each file incur different costs. Successful artifact and label checks cover the features asserted for those inputs. Visual fidelity, clipping, accessibility and interaction need their own checks. A performance difference between products can suggest an experiment. Establish its cause by comparing Merman revisions on the same source, settings and output contract.
+Merman targets compatibility with a pinned Mermaid.js release. Pele supplies its own layout and visual style. Mermaid v13 discovers diagram plugins in the Node consumer. The Mermaid CLI uses a browser to write files. [Merman compatibility](https://github.com/Latias94/merman#rendering-quality-and-performance) · [Pele design](https://github.com/obsidianmd/pele/tree/1.13.0#compatibility) · [Mermaid v13](https://github.com/mermaid-js/mermaid-v13) · [Mermaid CLI](https://github.com/mermaid-js/mermaid-cli)
 
-For native Rust peers and comparisons between Merman revisions, consult the dedicated measurements. [Native Merman and mmdr comparison](https://github.com/Latias94/merman/blob/main/docs/performance/renderer_comparison_2026-07-28_75c9fd156_vs_mmdr.md) · [Same-implementation release evidence](https://github.com/Latias94/merman/blob/main/docs/release/RELEASE_REPORTS.md)
+Separate measurements compare native renderers and changes between Merman releases. [Native Merman and mmdr comparison](https://github.com/Latias94/merman/blob/main/docs/performance/renderer_comparison_2026-07-28_75c9fd156_vs_mmdr.md) · [Same-implementation release evidence](https://github.com/Latias94/merman/blob/main/docs/release/RELEASE_REPORTS.md)
 
 ## Reproduce this report
 
-The [portable measurements]($receipt) contain the sample units, workload fingerprints and observations used here. To regenerate this Markdown from the adjacent receipt, run the following from a checkout that contains the report generator.
+The portable receipt records the measured builds, workload fingerprints and observations. For each eligible Node timing pair it includes both workers' batch medians and their within-round ratio. [Portable measurement receipt]($receipt). $raw_bundle
+
+To regenerate the Markdown beside the receipt, run this command from the repository root with the downloaded JSON path. For the original wording of an archived report, use the generator and template from its publication revision.
 
 ```console
 python tools/bench/perf_runner.py workloads report --from path/to/measurements.json
 ```
 
-Use the path of the linked JSON in place of `path/to/measurements.json`. Add `--check` to verify the adjacent Markdown. The JSON records the plan and product fingerprints for each measurement. $raw_bundle
-
-See the [measurement contract](https://github.com/Latias94/merman/blob/main/docs/performance/BENCHMARKING.md) and [collection and publication procedure](https://github.com/Latias94/merman/blob/main/docs/performance/RUNBOOK.md#publish-a-reader-report) to repeat the measurements with a new build.
+Add `--check` to verify an existing Markdown file. To collect a new run, match the product versions, inputs, settings and sample counts for the operation you want to compare. [Measurement contract](https://github.com/Latias94/merman/blob/main/docs/performance/BENCHMARKING.md) · [Collection and publication procedure](https://github.com/Latias94/merman/blob/main/docs/performance/RUNBOOK.md#publish-a-reader-report)

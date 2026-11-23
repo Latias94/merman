@@ -12,6 +12,25 @@ const cli = fileURLToPath(new URL("./workload_node.mjs", import.meta.url));
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const request = (source, diagram_id) => ({ source, diagram_id, fixture: "shared-fixture" });
 
+test("import-to-first uses the first returned drawing and excludes later calls and output checks", async () => {
+  const requests = [{}, {}];
+  for (const outputClass of [undefined, "draw", "empty"]) {
+    let time = 100;
+    const options = {
+      now: () => ++time,
+      importStart: 95,
+      validate(jobs) {
+        time += 1000;
+        return jobs.map(() => ({ status: "ok", output_class: outputClass }));
+      },
+    };
+    const result = await measureBatch(requests, () => "<svg/>", options);
+    assert.equal(result.init_through_first_svg_ms, outputClass === "empty" ? null : 8);
+    const warm = await measureBatch(requests, () => "<svg/>", { ...options, importStart: undefined });
+    assert.equal(Object.hasOwn(warm, "init_through_first_svg_ms"), false);
+  }
+});
+
 function project(t) {
   const scratch = fileURLToPath(new URL("../../target/", import.meta.url));
   mkdirSync(scratch, { recursive: true });
