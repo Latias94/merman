@@ -11,6 +11,8 @@ pub(crate) mod shoal_bridge;
 pub(crate) mod validate;
 
 #[cfg(any(feature = "layout-shoal", test))]
+pub(crate) use ir::Marker;
+#[cfg(any(feature = "layout-shoal", test))]
 use ir::{Axis, Side};
 
 /// Render-only metadata. Compatibility JSON already carries the coordinates in occurrence order.
@@ -45,12 +47,4 @@ impl RouteContract {
             Self::DagreParity | Self::Swimlane => false,
         }
     }
-}
-
-/// The SVG marker's setback and footprint in drawing units, measured before routing.
-#[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct Marker {
-    pub(crate) trim: f64,
-    pub(crate) depth: f64,
-    pub(crate) width: f64,
 }

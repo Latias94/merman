@@ -1,0 +1,7 @@
+flowchart TD
+A[Read] --> C[Cache]
+A --> D[Audit]
+B[Write] --> C
+B --> D
+C --> Z[Commit]
+D --> Z

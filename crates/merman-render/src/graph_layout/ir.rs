@@ -5,13 +5,20 @@
     reason = "The shared IR includes groups and terminal labels for families beyond the flat Flowchart consumer."
 )]
 
-use super::Marker;
 use crate::model::LayoutLabel;
+
+/// The marker's setback and footprint in drawing units, measured before routing.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct Marker {
+    pub(crate) trim: f64,
+    pub(crate) depth: f64,
+    pub(crate) width: f64,
+}
 
 // Share plain geometry so a solver can transfer entire rectangle and route buffers to the IR.
 #[cfg(feature = "layout-shoal")]
 pub(crate) use merman_layout_shoal::{
-    Axis, Direction, Point, Rect, RoutePoint, Side, Size, TitlePosition,
+    Axis, Direction, Point, Rect, RoutePoint, RoutingStyle, Side, Size, TitlePosition,
 };
 
 #[cfg(not(feature = "layout-shoal"))]
@@ -56,6 +63,13 @@ mod geometry {
         Up,
         Right,
         Left,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub(crate) enum RoutingStyle {
+        Curved,
+        Orthogonal,
+        Polyline,
     }
 
     #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -110,6 +124,7 @@ pub(crate) enum Endpoint {
 #[derive(Debug)]
 pub(crate) struct MeasuredGraph {
     pub(crate) direction: Direction,
+    pub(crate) routing: RoutingStyle,
     pub(crate) node_spacing: f64,
     pub(crate) rank_spacing: f64,
     pub(crate) component_spacing: f64,

@@ -9,6 +9,7 @@ use std::f64::consts::{FRAC_PI_2, PI, TAU};
 impl ShapePortProfile {
     /// `measured` supplies final paint dimensions and the label metrics retained by measurement.
     /// The position of this node is supplied separately when projecting a particular edge.
+    #[cfg(test)]
     pub(crate) fn flowchart(
         node: &FlowNode,
         measured: &LayoutNode,
@@ -94,7 +95,7 @@ impl ShapePortProfile {
             ),
             S::Ellipse => Self::ellipse(w, h),
             // basic_geoms::render_diamond translates the polygon half a pixel to the right.
-            S::Diamond => fixed(Outline::diamond(w, h, 0.5)),
+            S::Diamond => Self::new(Outline::diamond(w, h, 0.5), w * 0.6, h * 0.6),
             S::Choice => Self::diamond(28.0, 28.0),
             S::ForkJoin => {
                 let (w, h) = if w >= h { (70.0, 10.0) } else { (10.0, 70.0) };

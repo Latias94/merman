@@ -53,7 +53,7 @@ pub(super) fn paint(
     let style = route_paint::RouteStyle::from_interpolate(
         edge.interpolate
             .as_deref()
-            .unwrap_or(&ctx.default_edge_interpolate),
+            .unwrap_or(ctx.default_edge_interpolate),
         ctx.edge_corner_radius,
     );
     let painted = route_paint::build_svg_path(

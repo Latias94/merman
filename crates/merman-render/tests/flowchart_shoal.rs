@@ -212,22 +212,146 @@ fn shoal_keeps_the_shaft_aligned_through_the_arrowhead() {
 
 #[cfg(feature = "layout-shoal")]
 #[test]
-fn shoal_reports_graphs_outside_the_preview() {
-    for (body, expected) in [
-        ("A --> A", "self-loops"),
-        ("A --> B --> A", "directed cycles"),
-        ("subgraph G\nA --> B\nend", "subgraphs"),
-    ] {
-        let parsed = parse(&format!(
-            "---\nconfig:\n  layout: shoal\n---\nflowchart TD\n{body}"
-        ));
-        let result = family::prepare(
-            &parsed,
-            &LayoutOptions::default(),
-            RenderEnvironment::deterministic().begin_session().unwrap(),
-        );
+fn shoal_paints_labeled_self_loops_and_the_semantic_return_edge() {
+    use kurbo::{BezPath, ParamCurve, Rect, Shape};
+    use merman_render::model::FlowchartLayout;
+
+    let parsed = parse(concat!(
+        "---\nconfig:\n  layout: shoal\n---\n",
+        include_str!("fixtures/shoal-cycle-loops.mmd")
+    ));
+    let artifact = family::prepare(
+        &parsed,
+        &LayoutOptions::default(),
+        RenderEnvironment::deterministic().begin_session().unwrap(),
+    )
+    .unwrap();
+    let geometry: FlowchartLayout =
+        serde_json::from_value(artifact.layout_json().unwrap()["layout"]["FlowchartV2"].clone())
+            .unwrap();
+    let svg = artifact
+        .render_svg(&Default::default(), &Default::default())
+        .unwrap();
+    let doc = roxmltree::Document::parse(svg.svg()).unwrap();
+    let mut loops = Vec::new();
+    let mut saw_return = false;
+    for edge in &geometry.edges {
+        let path = doc
+            .descendants()
+            .find(|n| {
+                n.attribute("data-et") == Some("edge")
+                    && n.attribute("data-id") == Some(edge.id.as_str())
+            })
+            .unwrap();
         assert!(
-            matches!(result, Err(Error::UnsupportedLayoutConstruct { backend: "shoal", construct }) if construct == expected)
+            path.attribute("marker-start").is_none() && path.attribute("marker-end").is_some(),
+            "{}",
+            edge.id
+        );
+        assert!(edge.label.is_some());
+        if edge.from == edge.to {
+            let node = geometry.nodes.iter().find(|n| n.id == edge.from).unwrap();
+            let body = Rect::from_center_size((node.x, node.y), (node.width, node.height));
+            let d = path.attribute("d").unwrap();
+            let bounds = BezPath::from_svg(d).unwrap().bounding_box();
+            assert!(
+                !body.contains_rect(bounds),
+                "{}: self-loop stays inside its node",
+                edge.id
+            );
+            loops.push(d);
+        } else if edge.from == "check" && edge.to == "receive" {
+            let curve = BezPath::from_svg(path.attribute("d").unwrap()).unwrap();
+            let first = curve.segments().next().unwrap().start();
+            let last = curve.segments().last().unwrap().end();
+            let source = geometry.nodes.iter().find(|n| n.id == edge.from).unwrap();
+            let target = geometry.nodes.iter().find(|n| n.id == edge.to).unwrap();
+            let at_source = kurbo::Point::new(source.x, source.y);
+            let at_target = kurbo::Point::new(target.x, target.y);
+            assert!(
+                first.distance(at_source) < first.distance(at_target)
+                    && last.distance(at_target) < last.distance(at_source),
+                "{}: painted shaft lost semantic direction",
+                edge.id
+            );
+            saw_return = true;
+        }
+    }
+    assert!(saw_return);
+    assert_eq!(loops.len(), 2);
+    assert_ne!(
+        loops[0], loops[1],
+        "repeated loops require distinct visible paths"
+    );
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn graph_curve_and_edge_overrides_reach_the_solver_and_painter() {
+    use kurbo::BezPath;
+    use merman_render::model::FlowchartLayout;
+
+    let source = "---\nconfig:\n  layout: shoal\n  flowchart:\n    curve: linear\n---\nflowchart TD\nA bend@--> B\nA line@--> B\nlinkStyle default interpolate rounded\nline@{ curve: linear }";
+    let parsed = parse(source);
+    let artifact = family::prepare(
+        &parsed,
+        &LayoutOptions::default(),
+        RenderEnvironment::deterministic().begin_session().unwrap(),
+    )
+    .unwrap();
+    let layout: FlowchartLayout =
+        serde_json::from_value(artifact.layout_json().unwrap()["layout"]["FlowchartV2"].clone())
+            .unwrap();
+    assert_eq!(layout.edges.len(), 2);
+    for edge in &layout.edges {
+        assert!(
+            edge.points
+                .windows(2)
+                .all(|p| p[0].x == p[1].x || p[0].y == p[1].y),
+            "{}: graph default requests orthogonal route points",
+            edge.id
         );
     }
+    let svg = artifact
+        .render_svg(&Default::default(), &Default::default())
+        .unwrap();
+    let doc = roxmltree::Document::parse(svg.svg()).unwrap();
+    let path = |id: &str| {
+        let edge = doc
+            .descendants()
+            .find(|n| n.attribute("data-et") == Some("edge") && n.attribute("data-id") == Some(id))
+            .unwrap();
+        BezPath::from_svg(edge.attribute("d").unwrap()).unwrap()
+    };
+    assert!(
+        path("bend")
+            .segments()
+            .any(|s| !matches!(s, kurbo::PathSeg::Line(_))),
+        "rounded parallel lane must bend"
+    );
+    assert!(
+        path("line")
+            .segments()
+            .all(|s| matches!(s, kurbo::PathSeg::Line(_))),
+        "the individual edge requested a polyline"
+    );
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_rejects_subgraphs_until_compound_layout_is_available() {
+    let parsed =
+        parse("---\nconfig:\n  layout: shoal\n---\nflowchart TD\nsubgraph G\nA --> B\nend");
+    let result = family::prepare(
+        &parsed,
+        &LayoutOptions::default(),
+        RenderEnvironment::deterministic().begin_session().unwrap(),
+    );
+    assert!(matches!(
+        result,
+        Err(Error::UnsupportedLayoutConstruct {
+            backend: "shoal",
+            construct: "subgraphs"
+        })
+    ));
 }

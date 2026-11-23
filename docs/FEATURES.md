@@ -118,7 +118,7 @@ flowchart LR
     A[Review] -->|approved| B[Publish]
 ```
 
-Run `target/debug/merman-cli render diagram.mmd --theme-preset editor --theme-appearance dark -o diagram.svg` from the checkout. Select `dagre` or `elk` in the same field to compare drawings in a build containing those engines. Shoal uses Flowchart's measured shapes and labels, including effective theme fonts and edge-label padding. The preview supports flat directed acyclic Flowcharts in all four directions, including disconnected nodes and parallel edges. Explicit requests report unsupported cycles, self-loops and subgraphs. A build without Shoal reports the missing capability for a Shoal Flowchart. Rust callers can also pass measured graphs directly to the standalone crate. [Shoal crate](../crates/merman-layout-shoal/README.md)
+Run `target/debug/merman-cli render diagram.mmd --theme-preset editor --theme-appearance dark -o diagram.svg` from the checkout. Select `dagre` or `elk` in the same field to compare drawings in a build containing those engines. Shoal uses Flowchart's measured shapes and labels, including effective theme fonts and edge-label padding. The experimental engine draws flat directed Flowcharts in all four directions, including cycles, self-loops, parallel labeled edges and disconnected components. A request containing a subgraph currently returns an unsupported-layout diagnostic. A build without Shoal reports the missing capability for a Shoal Flowchart. Rust callers can also pass measured graphs directly to the standalone crate. [Shoal crate](../crates/merman-layout-shoal/README.md)
 
 ### Optional CLI Fonts
 

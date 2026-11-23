@@ -2,12 +2,13 @@
 
 use super::measured::FlowchartMeasurement;
 use super::{
-    FlowchartEdgeKey, FlowchartEdgeOwners, FlowchartRenderModelRef, FlowchartSvgLabelOwner,
-    FlowchartSvgLabelSidecarBuilder,
+    FlowchartConfigView, FlowchartEdgeKey, FlowchartEdgeOwners, FlowchartRenderModelRef,
+    FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder,
 };
 use crate::graph_layout::contour::ShapePortProfile;
 use crate::graph_layout::ir::{
-    Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredNode, Side, Size, SolvedGraph,
+    Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredNode, RoutingStyle, Side, Size,
+    SolvedGraph,
 };
 use crate::graph_layout::{RouteAxes, RouteContract, shoal_bridge};
 use crate::layout_work::OperationLayoutWorkControl;
@@ -44,12 +45,7 @@ pub(crate) fn layout(
         labels,
         edge_styles,
     );
-    let (graph, bindings) = measure(
-        view,
-        &measurement,
-        crate::config::mermaid_config_diagram_look(config).is_neo(),
-        &mut work,
-    )?;
+    let (graph, bindings) = measure(view, &measurement, config, &mut work)?;
     let solved = shoal_bridge::solve(
         &graph,
         &mut shoal_bridge::LayoutScratch::default(),
@@ -70,7 +66,7 @@ struct FlowchartBindings {
 fn measure(
     view: FlowchartRenderModelRef<'_>,
     measurement: &FlowchartMeasurement<'_>,
-    look_is_neo: bool,
+    config: &PresentationConfig,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<(MeasuredGraph, FlowchartBindings)> {
     let (direction, direction_name, face) = match view
@@ -93,8 +89,31 @@ fn measure(
     };
     work.charge_adapter(view.nodes.len())?;
     work.charge_adapter(view.edges.len())?;
+    let config_view = FlowchartConfigView::new(config);
+    let configured_curve = config_view.render_curve();
+    // Mermaid's `linkStyle default interpolate` takes precedence over flowchart.curve.
+    // Each edge still selects its own interpolation when the final SVG path is painted.
+    let curve = view
+        .edge_defaults
+        .as_ref()
+        .and_then(|d| d.interpolate.as_deref())
+        .or(configured_curve.as_deref())
+        .unwrap_or("basis");
+    let look_is_neo = crate::config::mermaid_config_diagram_look(config).is_neo();
+    let wrapping_width = config_view.render_wrapping_width();
+    let theme_radius = crate::config::config_f64(config, &["themeVariables", "radius"])
+        .map(|r| (r.max(0.), r.max(0.)));
+    let process_radius = (look_is_neo
+        && config.config_path_overrides_typed_default("themeVariables.radius"))
+    .then_some(theme_radius)
+    .flatten();
     let mut graph = MeasuredGraph {
         direction,
+        routing: match curve {
+            "rounded" | "step" | "stepBefore" | "stepAfter" => RoutingStyle::Orthogonal,
+            "linear" => RoutingStyle::Polyline,
+            _ => RoutingStyle::Curved,
+        },
         node_spacing: measurement.settings.nodesep,
         rank_spacing: measurement.settings.ranksep,
         component_spacing: measurement.settings.nodesep,
@@ -133,11 +152,20 @@ fn measure(
             label_width: Some(size.label.width),
             label_height: Some(size.label.height),
         };
-        let profile = ShapePortProfile::flowchart(
+        let rectangle_radii = match super::FlowchartShape::resolve(
+            node.layout_shape.as_deref().unwrap_or("squareRect"),
+        )? {
+            super::FlowchartShape::Process => process_radius,
+            super::FlowchartShape::RoundedRectangle => theme_radius,
+            _ => None,
+        };
+        let profile = ShapePortProfile::flowchart_with_paint_metrics(
             node,
             &layout_node,
             measurement.settings.node_padding,
             look_is_neo,
+            wrapping_width,
+            rectangle_radii,
         )?;
         graph.nodes.push(MeasuredNode {
             size: Size {

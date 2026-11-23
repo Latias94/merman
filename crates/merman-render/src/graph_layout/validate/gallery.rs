@@ -1,28 +1,37 @@
 //! Replay flat Shoal drawings at their intrinsic viewBox size (one SVG unit per pixel).
-//! `MERMAN_SHOAL_GALLERY` optionally names the evidence directory containing gallery-facts.json
-//! and sources/flat. Each replay paints the current renderer, including when the corpus is frozen.
+//! The 19 visual fixtures run by default. `MERMAN_SHOAL_GALLERY` selects the archived sources.
+//! The ignored stress replay reads `MERMAN_SHOAL_STRESS_PLAN` or the archive's `stress.json`.
 
 #![cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
 
 use super::{
     Body, CrossAxis, Edge, End, Endpoint, FLATNESS, Label, LabelOwner, PointMarker, Report, Scene,
-    Violation, fork_join_offsets, validate,
+    Shaft, Violation, fork_join_offsets, validate,
 };
 use crate::{
-    Error, LayoutOptions, RenderCapability,
+    LayoutOptions, RenderCapability,
     environment::RenderEnvironment,
     family,
     model::{FlowchartLayout, LayoutNode, LayoutPoint},
     svg::SvgRenderOptions,
 };
-use kurbo::{Affine, BezPath, Circle, Point, Rect, RoundedRect, Shape, Size, Vec2};
+use kurbo::{
+    Affine, BezPath, Circle, Line, ParamCurve, ParamCurveNearest, PathSeg, Point, Rect,
+    RoundedRect, Shape, Size, Vec2,
+};
 use merman_core::{MermaidEngine, ParseOptions, presentation::SourcePresentationConfig};
 use merman_model::families::flowchart::{FlowEdgeMarker, FlowchartModel};
 use roxmltree::{Document, Node};
 use serde_json::json;
-use std::{collections::HashMap, fs, path::PathBuf};
+use std::{
+    collections::HashMap,
+    fmt::Write as _,
+    fs,
+    path::{Path, PathBuf},
+};
 
 const RELEASE: &str = include_str!("../../../tests/fixtures/shoal-release.mmd");
+const CYCLE_LOOPS: &str = include_str!("../../../tests/fixtures/shoal-cycle-loops.mmd");
 const PORTS_HEAVY: &str =
     include_str!("../../../../merman/benches/fixtures/flowchart_ports_heavy.mmd");
 
@@ -32,11 +41,14 @@ struct Drawing {
     svg: String,
 }
 
-fn render(source: &str, diagram_id: &str) -> crate::Result<Drawing> {
-    let engine = MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(
+fn engine() -> MermaidEngine {
+    MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(
         json!({"layout": "shoal", "htmlLabels": true}),
-    ));
-    let diagram = engine
+    ))
+}
+
+fn render(source: &str, diagram_id: &str) -> crate::Result<Drawing> {
+    let diagram = engine()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap_or_else(|e| panic!("{diagram_id}: {e}"))
         .expect("flowchart")
@@ -87,10 +99,9 @@ fn number(n: Node<'_, '_>, key: &str) -> f64 {
 
 fn rect(n: Node<'_, '_>) -> Rect {
     let origin = |key| n.attribute(key).map_or(0., |s| s.parse::<f64>().unwrap());
-    Rect::from_origin_size(
-        (origin("x"), origin("y")),
-        (number(n, "width"), number(n, "height")),
-    )
+    let size = Size::new(number(n, "width"), number(n, "height"));
+    assert!(size.is_finite() && size.width >= 0. && size.height >= 0.);
+    Rect::from_origin_size((origin("x"), origin("y")), size)
 }
 
 fn view_box(n: Node<'_, '_>) -> Rect {
@@ -124,7 +135,12 @@ fn to_viewport(n: Node<'_, '_>, frame: Affine) -> Affine {
 /// The first and last layout JSON waypoints are the declared ports on the measured boxes,
 /// before the painter insets a contact to the actual shape and trims the marker. Read the
 /// face independently at each end, so reverse edges and same-side loops retain their sign.
-fn port_normal(body: &LayoutNode, port: &LayoutPoint, body_frame: Affine) -> Vec2 {
+fn port_normal(
+    body: &LayoutNode,
+    port: &LayoutPoint,
+    shoulder: &LayoutPoint,
+    body_frame: Affine,
+) -> Vec2 {
     let (x, y) = (port.x - body.x, port.y - body.y);
     let (w, h) = (body.width * 0.5, body.height * 0.5);
     let on_x = (x.abs() - w).abs() < 1e-6 && y.abs() <= h + 1e-6;
@@ -132,6 +148,16 @@ fn port_normal(body: &LayoutNode, port: &LayoutPoint, body_frame: Affine) -> Vec
     let outward = match (on_x, on_y) {
         (true, false) => Point::new(x.signum(), 0.),
         (false, true) => Point::new(0., y.signum()),
+        (true, true)
+            if (shoulder.y - port.y).abs() < 1e-6 && (shoulder.x - port.x) * x.signum() > 0. =>
+        {
+            Point::new(x.signum(), 0.)
+        }
+        (true, true)
+            if (shoulder.x - port.x).abs() < 1e-6 && (shoulder.y - port.y) * y.signum() > 0. =>
+        {
+            Point::new(0., y.signum())
+        }
         _ => panic!("{}: port {port:?} does not identify one box face", body.id),
     };
     (body_frame * outward - body_frame * Point::ORIGIN).normalize()
@@ -158,12 +184,17 @@ fn contour(owner: Node<'_, '_>, frame: Affine) -> BezPath {
             let r = rect(shape);
             let radius = |key| shape.attribute(key).map(|s| s.parse::<f64>().unwrap());
             let (rx, ry) = (radius("rx"), radius("ry"));
-            assert_eq!(
-                rx.or(ry),
-                ry.or(rx),
-                "gallery rectangle has elliptical corners"
+            let (rx, ry) = (
+                rx.or(ry).unwrap_or(0.).min(r.width() / 2.),
+                ry.or(rx).unwrap_or(0.).min(r.height() / 2.),
             );
-            RoundedRect::from_rect(r, rx.or(ry).unwrap_or(0.)).to_path(FLATNESS)
+            if rx > 0. && ry > 0. {
+                let scale = Affine::scale_non_uniform(rx, ry);
+                let unit = scale.inverse().transform_rect_bbox(r);
+                scale * RoundedRect::from_rect(unit, 1.).to_path(FLATNESS / rx.max(ry))
+            } else {
+                r.to_path(FLATNESS)
+            }
         }
         "polygon" => {
             let mut vertices = svgtypes::PointsParser::from(attr(shape, "points"));
@@ -367,9 +398,18 @@ impl Drawing {
             let [first, .., last] = le.points.as_slice() else {
                 panic!("{}: missing layout ports", le.id)
             };
-            edge.start.outward_normal =
-                Some(port_normal(&self.layout.nodes[from], first, from_frame));
-            edge.end.outward_normal = Some(port_normal(&self.layout.nodes[to], last, to_frame));
+            edge.start.outward_normal = Some(port_normal(
+                &self.layout.nodes[from],
+                first,
+                &le.points[1],
+                from_frame,
+            ));
+            edge.end.outward_normal = Some(port_normal(
+                &self.layout.nodes[to],
+                last,
+                &le.points[le.points.len() - 2],
+                to_frame,
+            ));
             edge.transform = to_viewport(path, frame);
             let (start, end) = crate::svg::flowchart_marker_metrics(semantic);
             read_marker(
@@ -409,9 +449,53 @@ impl Drawing {
     }
 }
 
-fn replay(name: &str, drawing: &Drawing) -> Report {
+fn replay(name: &str, drawing: &Drawing) -> Result<Report, String> {
     let doc = Document::parse(&drawing.svg).expect("well-formed rendered SVG");
-    let scene = drawing.scene(&doc, view_box(doc.root_element()).size());
+    let root = doc.root_element();
+    let size = view_box(root).size();
+    let scene = drawing.scene(&doc, size);
+    let frame = viewport(root, size);
+    let nonnegative = |value: f64| value.is_finite() && value >= -1e-6;
+    for node in &drawing.layout.nodes {
+        assert!(
+            node.width > 0.
+                && node.height > 0.
+                && nonnegative(node.x - node.width / 2.)
+                && nonnegative(node.y - node.height / 2.),
+            "{name}: invalid measured box for {}",
+            node.id
+        );
+    }
+    for edge in &drawing.layout.edges {
+        assert!(
+            edge.points
+                .iter()
+                .all(|p| nonnegative(p.x) && nonnegative(p.y)),
+            "{name}: invalid layout waypoint for {}",
+            edge.id
+        );
+    }
+    for label in &scene.labels {
+        if let LabelOwner::Edge(i) = label.owner {
+            let edge = &drawing.layout.edges[i];
+            let anchor = edge.label.as_ref().unwrap();
+            assert!(
+                anchor.width > 0.
+                    && anchor.height > 0.
+                    && nonnegative(anchor.x - anchor.width / 2.)
+                    && nonnegative(anchor.y - anchor.height / 2.),
+                "{name}: invalid layout label for {}",
+                edge.id
+            );
+            let painted = label.bounds.center();
+            let expected = frame * Point::new(anchor.x, anchor.y);
+            assert!(
+                painted.distance(expected) < 1e-4,
+                "{name}: {} painted label {painted:?} differs from layout anchor {expected:?}",
+                edge.id
+            );
+        }
+    }
     let report = validate(&scene);
     assert_eq!(report.edges.len(), scene.edges.len());
     for (i, measured) in report.edges.iter().enumerate() {
@@ -423,17 +507,6 @@ fn replay(name: &str, drawing: &Drawing) -> Report {
             drawing.layout.edges[i].id
         );
     }
-    assert!(
-        !report.hard.iter().any(|v| matches!(
-            v,
-            Violation::InvalidOwner { .. }
-                | Violation::InvalidPath { .. }
-                | Violation::InvalidNormal { .. }
-        )),
-        "{name}: {:?}",
-        report.hard
-    );
-
     let edge_labels = scene
         .labels
         .iter()
@@ -485,6 +558,10 @@ fn replay(name: &str, drawing: &Drawing) -> Report {
         report.crossings.len(),
         report.hard.len()
     );
+    let mut failures = Vec::new();
+    if name == "release" && !has_painted_bend(&scene) {
+        failures.push("expected a painted cubic bend larger than the 0.15 px tolerance".into());
+    }
     if name == "release" || name.starts_with("release-") {
         let (fork, join) = fork_join_offsets(
             &scene,
@@ -500,51 +577,104 @@ fn replay(name: &str, drawing: &Drawing) -> Report {
             .iter()
             .position(|e| e.from == "audit" && e.to == "ship")
             .unwrap();
-        assert!(fork.is_finite() && join.is_finite());
+        let metrics = report.edges[audit_ship].unwrap();
+        let painted_return = metrics.sideways_return;
+        let shaft = Shaft::read(&scene.edges[audit_ship]).unwrap();
+        let across = |distance| {
+            drawing
+                .axis()
+                .coordinate(shaft.sample(End::Start, distance))
+        };
+        let (start, end) = (across(0.), across(metrics.length));
+        let mut previous = start;
+        let mut variation = 0.;
+        for index in 1..=32 {
+            let position = across(metrics.length * (f64::from(index) / 32.));
+            variation += (position - previous).abs();
+            previous = position;
+        }
+        let sampled_return = (variation - (end - start).abs()).max(0.) * 0.5;
         eprintln!(
-            "{name} fork_offset={fork} join_offset={join} audit_ship_return={}",
-            report.edges[audit_ship].unwrap().sideways_return
+            "{name} fork_offset={fork} join_offset={join} audit_ship_return={painted_return} sampled_return={sampled_return}"
         );
+        // Only floating-point roundoff is admissible at the zero-pixel target.
+        if !(fork <= 1e-9 && join <= 1e-9 && painted_return <= 1e-9 && sampled_return <= 1e-9) {
+            failures.push(format!("stage offset {fork}, ship offset {join}, painted audit → ship return {painted_return} (sampled {sampled_return})"));
+        }
     }
-    report
+    if !report.hard.is_empty() {
+        for v in report.hard.iter().take(12) {
+            let edge_id = |i: usize| &drawing.layout.edges[i].id;
+            match *v {
+                Violation::ForeignNodeHit { edge, node } => eprintln!(
+                    "{v:?}: {} enters {}",
+                    edge_id(edge),
+                    drawing.layout.nodes[node].id
+                ),
+                Violation::ForeignLabelHit { edge, label } => {
+                    let owner = match scene.labels[label].owner {
+                        LabelOwner::Body(i) => &drawing.layout.nodes[i].id,
+                        LabelOwner::Edge(i) => edge_id(i),
+                    };
+                    eprintln!("{v:?}: {} enters label of {owner}", edge_id(edge));
+                }
+                Violation::EndpointNormal { edge, .. }
+                | Violation::EndpointContour { edge, .. }
+                | Violation::MarkerAngle { edge, .. } => eprintln!("{v:?}: {}", edge_id(edge)),
+                _ => eprintln!("{v:?}"),
+            }
+        }
+        failures.push(format!("{} hard geometric violations", report.hard.len()));
+    }
+    if !report.label_overlaps.is_empty() || !report.label_node_overlaps.is_empty() {
+        failures.push(format!(
+            "{} overlapping label pairs, {} label/node pairs",
+            report.label_overlaps.len(),
+            report.label_node_overlaps.len()
+        ));
+    }
+    // The foreign-obstacle scan exempts a loop's own rectangular body.
+    for (i, edge) in scene
+        .edges
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.start.body == e.end.body)
+    {
+        let id = &drawing.layout.nodes[edge.start.body].id;
+        let node = drawing.model.nodes.iter().find(|n| &n.id == id).unwrap();
+        if node
+            .layout_shape
+            .as_deref()
+            .is_none_or(|shape| shape == "squareRect")
+        {
+            if Shaft::read(edge)
+                .unwrap()
+                .hits(scene.bodies[edge.start.body].bounds)
+            {
+                failures.push(format!(
+                    "self-loop {} enters its body {id}",
+                    drawing.layout.edges[i].id
+                ));
+            }
+        }
+    }
+    if failures.is_empty() {
+        Ok(report)
+    } else {
+        Err(format!("{name}: {}", failures.join(", ")))
+    }
 }
 
-fn replay_ci_fixtures() {
-    for (dir, canonical) in [("TD", "TB"), ("BT", "BT"), ("LR", "LR"), ("RL", "RL")] {
-        let name = format!("release-{}", dir.to_ascii_lowercase());
-        let source = RELEASE.replacen("flowchart TD", &format!("flowchart {dir}"), 1);
-        let drawing = render(&source, &name).unwrap();
-        assert_eq!(drawing.model.direction.as_deref(), Some(canonical));
-        assert_eq!(
-            (drawing.layout.nodes.len(), drawing.layout.edges.len()),
-            (8, 8)
-        );
-        assert_eq!(
-            drawing
-                .layout
-                .edges
-                .iter()
-                .filter(|e| e.label.is_some())
-                .count(),
-            2
-        );
-        replay(&name, &drawing);
-    }
-    let dense = render(PORTS_HEAVY, "ports-heavy").unwrap();
+#[test]
+fn labeled_cycle_and_self_loops_stay_clear() {
+    let cycle = render(CYCLE_LOOPS, "cycle-loops").unwrap();
+    assert_eq!((cycle.layout.nodes.len(), cycle.layout.edges.len()), (4, 6));
     assert_eq!(
-        (dense.layout.nodes.len(), dense.layout.edges.len()),
-        (18, 39)
+        cycle.layout.edges.iter().filter(|e| e.from == e.to).count(),
+        2
     );
-    assert_eq!(
-        dense
-            .layout
-            .edges
-            .iter()
-            .filter(|e| e.label.is_some())
-            .count(),
-        7
-    );
-    replay("ports-heavy", &dense);
+    assert!(cycle.layout.edges.iter().all(|e| e.label.is_some()));
+    replay("cycle-loops", &cycle).unwrap();
 }
 
 #[test]
@@ -552,8 +682,87 @@ fn duplicate_edge_ids_and_markers_at_both_ends() {
     // The authored id on X -> Y collides with the generated id on A -> B.
     let drawing = render("flowchart LR\nX((Circle)) L_A_B_0@-->|first| Y{Diamond}\nA -->|second| B\nA o--o X\nB <--> Y\nX x--x B", "marker-occurrences").unwrap();
     assert_eq!(drawing.layout.edges[0].id, drawing.layout.edges[1].id);
-    let report = replay("marker-occurrences", &drawing);
+    let report = replay("marker-occurrences", &drawing).unwrap();
     assert_eq!(report.markers_checked, 4); // Three target points and one source point.
+}
+
+#[test]
+fn basic_decision_branches_leave_separate_points_on_the_painted_diamond() {
+    let source = include_str!("../../../../../fixtures/flowchart/basic.mmd");
+    let pitch = merman_layout_shoal::Spacing::default().port_pitch;
+    for direction in ["TD", "BT", "LR", "RL"] {
+        let source = source.replacen("flowchart TD", &format!("flowchart {direction}"), 1);
+        let drawing = render(&source, "basic-decision").unwrap();
+        let doc = Document::parse(&drawing.svg).unwrap();
+        let scene = drawing.scene(&doc, view_box(doc.root_element()).size());
+        let decision = drawing.node("B");
+        let axis = drawing.axis();
+        let center = axis.coordinate(scene.bodies[decision].bounds.center());
+        let mut exits: Vec<_> = scene
+            .edges
+            .iter()
+            .filter(|edge| edge.start.body == decision)
+            .map(|edge| {
+                let shaft = Shaft::read(edge).unwrap();
+                let tip = axis.coordinate(shaft.sample(End::Start, 0.));
+                let target = axis.coordinate(scene.bodies[edge.end.body].bounds.center());
+                (target, tip)
+            })
+            .collect();
+        exits.sort_by(|left, right| left.0.total_cmp(&right.0));
+        let [(_, left), (_, right)] = exits[..] else {
+            panic!("{direction}: expected the Yes and No branches");
+        };
+        assert!(
+            left < center && center < right && right - left >= pitch - 1e-6,
+            "{direction}: branch contacts {left} and {right} around {center}"
+        );
+        replay("basic-decision", &drawing).unwrap();
+    }
+}
+
+#[test]
+fn neo_rectangle_ports_respect_the_configured_painted_radius() {
+    let source = "---\nconfig:\n  layout: shoal\n  look: neo\n  themeVariables:\n    radius: 45\n---\nflowchart TD\nA[Build] --> B & C & D & E";
+    let drawing = render(source, "rounded-ports").unwrap();
+    let doc = Document::parse(&drawing.svg).unwrap();
+    let owner = doc
+        .descendants()
+        .find(|n| n.attribute("data-et") == Some("node") && n.attribute("data-id") == Some("A"))
+        .unwrap();
+    let shape = owner
+        .descendants()
+        .find(|n| n.has_tag_name("rect") && has_class(*n, "label-container"))
+        .unwrap();
+    let rx = number(shape, "rx");
+    assert_eq!(rx, 45.);
+    let node = &drawing.layout.nodes[drawing.node("A")];
+    let half_flat = (node.width * 0.5 - rx).max(0.);
+    assert_eq!(drawing.layout.edges.len(), 4);
+    for edge in &drawing.layout.edges {
+        assert_eq!(edge.from, "A");
+        assert!(
+            (edge.points[0].x - node.x).abs() <= half_flat + 1e-6,
+            "{}: port reaches into the rounded corner",
+            edge.id
+        );
+    }
+    replay("rounded-ports", &drawing).unwrap();
+}
+
+fn has_painted_bend(scene: &Scene<'_>) -> bool {
+    scene.edges.iter().any(|edge| {
+        let path = edge.transform * BezPath::from_svg(edge.d).unwrap();
+        path.segments().any(|segment| {
+            if let PathSeg::Cubic(curve) = segment {
+                let chord = Line::new(curve.start(), curve.end());
+                return [0.25, 0.5, 0.75]
+                    .into_iter()
+                    .any(|t| chord.nearest(curve.eval(t), 1e-6).distance_sq > FLATNESS * FLATNESS);
+            }
+            false
+        })
+    })
 }
 
 #[test]
@@ -763,55 +972,228 @@ fn foreign_hits_follow_the_svg_curve_with_the_same_layout_json() {
     }
 }
 
+fn evidence_dir() -> Option<PathBuf> {
+    std::env::var_os("MERMAN_SHOAL_GALLERY").map(PathBuf::from)
+}
+
+fn read_json(path: &Path) -> serde_json::Value {
+    let bytes = fs::read(path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+    serde_json::from_slice(&bytes).unwrap_or_else(|error| panic!("{}: {error}", path.display()))
+}
+
+fn for_each_visual_fixture(mut check: impl FnMut(&str, &str, &str, &str, (usize, usize, usize))) {
+    macro_rules! gallery_source {
+        ($name:literal) => {
+            include_str!(concat!(
+                "../../../tests/fixtures/shoal-gallery/",
+                $name,
+                ".mmd"
+            ))
+        };
+    }
+    check("release", "gallery-1", RELEASE, "TB", (8, 8, 2));
+    for (name, direction) in [
+        ("release-lr", "LR"),
+        ("release-bt", "BT"),
+        ("release-rl", "RL"),
+    ] {
+        let source = RELEASE.replacen("flowchart TD", &format!("flowchart {direction}"), 1);
+        check(
+            name,
+            &format!("route-study-{name}"),
+            &source,
+            direction,
+            (8, 8, 2),
+        );
+    }
+    for (name, source, direction, counts) in [
+        ("balanced", gallery_source!("balanced"), "TB", (4, 4, 0)),
+        ("uneven", gallery_source!("uneven"), "TB", (6, 7, 0)),
+        ("parallel", gallery_source!("parallel"), "LR", (5, 7, 3)),
+        (
+            "disconnected",
+            gallery_source!("disconnected"),
+            "TB",
+            (7, 4, 0),
+        ),
+        ("weave", gallery_source!("weave"), "TB", (5, 6, 0)),
+        ("ports-heavy", PORTS_HEAVY, "TB", (18, 39, 7)),
+        ("two-joins", gallery_source!("two-joins"), "TB", (10, 12, 0)),
+    ] {
+        check(
+            name,
+            &format!("route-study-{name}"),
+            source,
+            direction,
+            counts,
+        );
+    }
+    let diamonds = gallery_source!("diamonds").trim_end();
+    let diamonds_lr = diamonds.replacen("flowchart TD", "flowchart LR", 1);
+    for (name, source, direction, counts) in [
+        ("diamonds-td", diamonds, "TB", (5, 6, 0)),
+        ("diamonds-lr", diamonds_lr.as_str(), "LR", (5, 6, 0)),
+        ("self-loop", gallery_source!("self-loop"), "TB", (4, 10, 6)),
+        (
+            "cycle",
+            include_str!(
+                "../../../../merman-ascii/tests/testdata/local-semantic/flowchart/scene_planning/labelled-cycle-capacity.mmd"
+            ),
+            "TB",
+            (8, 12, 6),
+        ),
+        (
+            "both-markers",
+            include_str!(
+                "../../../../../fixtures/flowchart/upstream_docs_flowchart_multi_directional_arrows_180.mmd"
+            ),
+            "LR",
+            (4, 3, 0),
+        ),
+    ] {
+        check(name, &format!("flat-{name}"), source, direction, counts);
+    }
+    for (shape, nodes) in [("fan-in", 50), ("chain", 100), ("fan-in", 250)] {
+        let name = format!("{shape}-{nodes}");
+        let mut source = String::from("flowchart TD\n");
+        for node in 1..nodes {
+            let (from, to) = if shape == "chain" {
+                (node - 1, node)
+            } else {
+                (node, 0)
+            };
+            writeln!(source, "N{from} --> N{to}").unwrap();
+        }
+        check(
+            &name,
+            &format!("wb-{name}-1"),
+            &source,
+            "TB",
+            (nodes, nodes - 1, 0),
+        );
+    }
+}
+
 #[test]
 fn replay_visual_corpus() {
-    let Some(dir) = std::env::var_os("MERMAN_SHOAL_GALLERY") else {
-        return replay_ci_fixtures();
-    };
-    let dir = PathBuf::from(dir);
-    let path = dir.join("gallery-facts.json");
-    let facts: serde_json::Value = serde_json::from_slice(
-        &fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display())),
-    )
-    .unwrap();
-    let cases = facts["cases"].as_object().expect("gallery cases");
-    assert!(!cases.is_empty());
-    for (name, case) in cases {
-        let path = dir.join("sources/flat").join(format!("{name}.mmd"));
-        let source =
-            fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-        let drawing = match render(&source, case["diagram_id"].as_str().unwrap()) {
+    let archive = evidence_dir().map(|dir| {
+        let facts = read_json(&dir.join("gallery-facts.json"));
+        assert_eq!(facts["cases"].as_object().expect("gallery cases").len(), 19);
+        (dir, facts)
+    });
+    let (mut drawn, mut nodes, mut shafts, mut edge_labels) = (0, 0, 0, 0);
+    let mut failures = Vec::new();
+    for_each_visual_fixture(|name, id, source, direction, expected| {
+        let archived = archive.as_ref().map(|(dir, facts)| {
+            let case = &facts["cases"][name];
+            assert_eq!(case["diagram_id"], id, "{name}");
+            assert_eq!(case["direction"], direction, "{name}");
+            assert_eq!(
+                case["nodes"].as_array().unwrap().len(),
+                expected.0,
+                "{name}"
+            );
+            assert_eq!(
+                case["edges"].as_array().unwrap().len(),
+                expected.1,
+                "{name}"
+            );
+            let path = dir.join("sources/flat").join(format!("{name}.mmd"));
+            fs::read_to_string(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()))
+        });
+        let drawing = match render(archived.as_deref().unwrap_or(source), id) {
             Ok(drawing) => drawing,
-            // These two frozen inputs predate preview support. Start measuring each as soon as
-            // the backend accepts it. Other rejections are collection failures.
-            Err(Error::UnsupportedLayoutConstruct {
-                backend: "shoal",
-                construct,
-            }) if matches!(
-                (name.as_str(), construct),
-                ("self-loop", "self-loops") | ("cycle", "directed cycles")
-            ) =>
-            {
-                eprintln!("{name} unsupported={construct}");
-                continue;
+            Err(error) => {
+                failures.push(format!("{name}: {error}"));
+                return;
             }
-            Err(e) => panic!("{name}: {e}"),
         };
         assert_eq!(
             drawing.model.direction.as_deref(),
-            case["direction"].as_str(),
+            Some(direction),
             "{name}"
         );
-        assert_eq!(
+        let edges = &drawing.layout.edges;
+        let counts = (
             drawing.layout.nodes.len(),
-            case["nodes"].as_array().unwrap().len(),
+            edges.len(),
+            edges.iter().filter(|edge| edge.label.is_some()).count(),
+        );
+        assert_eq!(counts, expected, "{name}: nodes, shafts, edge labels");
+        drawn += 1;
+        nodes += counts.0;
+        shafts += counts.1;
+        edge_labels += counts.2;
+        failures.extend(replay(name, &drawing).err());
+    });
+    eprintln!(
+        "flat gallery: {drawn}/19 drawn, {nodes} nodes, {shafts} shafts, {edge_labels} edge labels"
+    );
+    assert!(
+        failures.is_empty(),
+        "{drawn}/19 drawn\n{}",
+        failures.join("\n")
+    );
+    assert_eq!((drawn, nodes, shafts, edge_labels), (19, 513, 545, 30));
+}
+
+#[test]
+#[ignore = "set MERMAN_SHOAL_STRESS_PLAN to a full workload plan or MERMAN_SHOAL_GALLERY to frozen evidence"]
+fn replay_stress_corpus() {
+    let path = std::env::var_os("MERMAN_SHOAL_STRESS_PLAN")
+        .map(PathBuf::from)
+        .or_else(|| evidence_dir().map(|dir| dir.join("stress.json")))
+        .expect("set MERMAN_SHOAL_STRESS_PLAN to a workloads plan --suite full output or MERMAN_SHOAL_GALLERY to the frozen evidence directory");
+    let plan = read_json(&path);
+    let topologies = plan["topologies"].as_array().expect("workload topologies");
+    assert_eq!(topologies.len(), 32, "expected the full topology suite");
+    let mut seen = std::collections::HashSet::new();
+    let mut drawn = 0;
+    let mut failures = Vec::new();
+    for topology in topologies {
+        let name = topology["id"].as_str().unwrap();
+        assert!(seen.insert(name), "{name}: duplicate topology");
+        let source = topology["source"].as_str().unwrap();
+        if name == "fork-join-500" {
+            assert_eq!(topology["edges"], 996, "{name}");
+            let result =
+                engine().parse_diagram_for_render_model_sync(source, ParseOptions::strict());
+            let Err(merman_core::Error::DiagramParse { diagnostic, .. }) = result else {
+                panic!("{name}: expected source maxEdges rejection");
+            };
+            assert!(
+                diagnostic.message().contains("maxEdges")
+                    && diagnostic.message().contains("edge limit exceeded"),
+                "{name}: {diagnostic:?}"
+            );
+            eprintln!("{name}: expected maxEdges rejection (996 edges)");
+            continue;
+        }
+        let drawing = match render(source, &format!("wb-{name}-1")) {
+            Ok(drawing) => drawing,
+            Err(error) => {
+                failures.push(format!("{name}: {error}"));
+                continue;
+            }
+        };
+        assert_eq!(
+            Some(drawing.layout.nodes.len() as u64),
+            topology["nodes"].as_u64(),
             "{name}"
         );
         assert_eq!(
-            drawing.layout.edges.len(),
-            case["edges"].as_array().unwrap().len(),
+            Some(drawing.layout.edges.len() as u64),
+            topology["edges"].as_u64(),
             "{name}"
         );
-        replay(name, &drawing);
+        failures.extend(replay(name, &drawing).err());
+        drawn += 1;
     }
+    assert!(
+        failures.is_empty(),
+        "{drawn}/31 drawn\n{}",
+        failures.join("\n")
+    );
+    assert_eq!(drawn, 31);
+    eprintln!("stress: {drawn}/32 drawn, one expected maxEdges rejection");
 }

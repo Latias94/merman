@@ -11,6 +11,7 @@ pub(crate) use shoal::LayoutScratch;
 
 fn marker_metrics(marker: Marker) -> shoal::MarkerMetrics {
     shoal::MarkerMetrics {
+        // The painter keeps a straight normal lead even at an unmarked end (zero width).
         length: marker.trim + marker.depth.max(LEAD),
         width: marker.width,
     }
@@ -92,6 +93,7 @@ pub(crate) fn solve(
     work: &mut OperationLayoutWorkControl,
 ) -> Result<SolvedGraph> {
     let mut options = shoal::Options::default();
+    options.routing = measured.routing;
     options.spacing.node = measured.node_spacing;
     options.spacing.rank = measured.rank_spacing;
     options.spacing.component = measured.component_spacing;

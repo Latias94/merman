@@ -383,6 +383,33 @@ Node.js interval. Medians from `--comparison` apply only to the three native pan
 Pass `--runner PATH` to reuse an existing Shoal-enabled clock executable. Opening or sharing
 the resulting HTML requires only the file.
 
+Shoal's geometry checks use the final SVG, not Mermaid 12 pixel snapshots. The default flat
+fixtures cover all four directions, cycles, self-loops, parallel labels, and dense ports:
+
+```console
+cargo nextest run --locked -p merman-render --features diagram-flowchart,layout-shoal --lib -E 'test(graph_layout::validate::gallery::)' --success-output immediate
+```
+
+The larger geometry replay is opt-in. Generate the standard full workload plan, then run its
+32 topologies; the `fork-join-500` input has 996 edges and must retain its parser rejection.
+
+```console
+python3 tools/bench/perf_runner.py workloads plan --suite full --out target/bench/layouts/full.json
+MERMAN_SHOAL_STRESS_PLAN="$PWD/target/bench/layouts/full.json" cargo nextest run --locked -p merman-render --features diagram-flowchart,layout-shoal --lib --run-ignored only -E 'test(replay_stress_corpus)' --success-output immediate
+```
+
+To inspect the release workflow and dense hub visually without a frozen comparison report:
+
+```console
+python3 tools/bench/perf_runner.py workloads layout-gallery crates/merman-render/tests/fixtures/shoal-release.mmd crates/merman/benches/fixtures/flowchart_ports_heavy.mmd --pele --out target/bench/layouts/gallery-v2.html
+```
+
+Read fork/join offsets and return distances in SVG units. A foreign-box hit counts a painted
+shaft entering a different node or another occurrence's label. Crossings between edges are a
+separate measurement. Compare statement permutations within each engine using the minimum
+passing budget for the **same operation**; its work units are not milliseconds and are not
+interchangeable between engines. Compare end-to-end latency separately on the same host.
+
 For a single Shoal run, `--site-layout shoal` enables the Cargo feature on either the clock or
 memory executable and checks each successful SVG or layout JSON request outside measurement.
 A frozen `--runner` must supply per-request capability evidence tied to the source digest and

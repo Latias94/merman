@@ -1,0 +1,7 @@
+flowchart TD
+  receive[Receive] -->|request| build[Build]
+  build -->|candidate| check{Ready?}
+  check -->|retry| receive
+  check -->|approved| ship[Ship]
+  build -->|retry locally| build
+  build -->|record attempt| build
