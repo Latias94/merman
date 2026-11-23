@@ -49,6 +49,12 @@ export const CAPABILITY_SPECS = [
     ]
   },
   {
+    "id": "layout-shoal",
+    "implication_ids": [
+      "svg"
+    ]
+  },
+  {
     "id": "markdown",
     "implication_ids": []
   },

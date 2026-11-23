@@ -56,6 +56,10 @@ pub(super) fn with_flowchart_paint_context<T>(
 
     let diagram_id = options.diagram_id_or("merman");
 
+    // Family preparation admits an explicit Shoal request before either paint operation.
+    let uses_shoal_routes = options.family_id() == crate::DiagramFamilyId::FLOWCHART
+        && crate::layout_backend::resolve_graph_layout(effective_config).backend
+            == crate::layout_backend::GraphLayoutBackend::Shoal;
     let FlowchartRenderInputs {
         mut render_edges,
         extra_nodes,
@@ -63,7 +67,7 @@ pub(super) fn with_flowchart_paint_context<T>(
         model,
         render_context,
         &layout.edge_owners,
-        layout.uses_elk_adapter_dom,
+        layout.uses_elk_adapter_dom || uses_shoal_routes,
     );
     if let Some(swimlane_layout) = swimlane_layout {
         super::swimlane::apply_swimlane_edge_curves(&mut render_edges, swimlane_layout);
@@ -260,6 +264,7 @@ pub(super) fn with_flowchart_paint_context<T>(
         edge_html_labels,
         swimlane_title_html_labels,
         uses_elk_adapter_dom: layout.uses_elk_adapter_dom,
+        uses_shoal_routes,
         class_defs: &model.class_defs,
         edge_style_plan,
         steps: super::step::FlowchartSteps::new(model, effective_config),
@@ -546,6 +551,16 @@ impl FlowchartEdgeLabels {
                     false,
                 )
             } else {
+                if ctx.uses_shoal_routes
+                    && !crate::flowchart::flowchart_label_is_empty_for_render(text)
+                {
+                    return Err(crate::Error::InvalidModel {
+                        message: format!(
+                            "Shoal omitted the label anchor for Flowchart edge occurrence {}",
+                            edge.key.semantic_index()
+                        ),
+                    });
+                }
                 if ctx.swimlane_direction.is_some() || empty {
                     continue;
                 }
@@ -745,6 +760,15 @@ mod tests {
         tiny_svg_budget: bool,
         consume: impl FnOnce(FlowchartSvgModelRequest<'_>, &SvgExecution<'_>) -> Result<T>,
     ) -> T {
+        with_layout(source, None, tiny_svg_budget, consume)
+    }
+
+    fn with_layout<T>(
+        source: &str,
+        layout: Option<FlowchartLayout>,
+        tiny_svg_budget: bool,
+        consume: impl FnOnce(FlowchartSvgModelRequest<'_>, &SvgExecution<'_>) -> Result<T>,
+    ) -> T {
         let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
             .unwrap()
@@ -756,15 +780,27 @@ mod tests {
             panic!("Flowchart model")
         };
         let context = parsed.render_context().flowchart_render_context().unwrap();
-        let layout_session = environment.clone().begin_session().unwrap();
-        let layout_style = FlowchartEdgeStylePlan::prepare_for_model(
-            model,
-            &parsed.metadata().effective_config,
-            false,
-            layout_session.work_meter(),
-        )
-        .unwrap();
-        let layout = crate::flowchart::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(model, context, &parsed.metadata().effective_config, &layout_session.text_measurer(crate::environment::TextMeasurementPhase::Layout), None, None, &layout_style, std::sync::Arc::clone(layout_session.work_meter())).unwrap();
+        let layout = layout.unwrap_or_else(|| {
+            let session = environment.clone().begin_session().unwrap();
+            let style = FlowchartEdgeStylePlan::prepare_for_model(
+                model,
+                &parsed.metadata().effective_config,
+                false,
+                session.work_meter(),
+            )
+            .unwrap();
+            crate::flowchart::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
+                model,
+                context,
+                &parsed.metadata().effective_config,
+                &session.text_measurer(crate::environment::TextMeasurementPhase::Layout),
+                None,
+                None,
+                &style,
+                std::sync::Arc::clone(session.work_meter()),
+            )
+            .unwrap()
+        });
         let mut resources = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input();
         if tiny_svg_budget {
             resources = resources
@@ -942,6 +978,135 @@ mod tests {
     }
 
     #[test]
+    fn shoal_projects_each_route_and_its_solver_label_in_layout_coordinates() {
+        // The solver rows are deliberately reversed. Both semantic edges have the same id and
+        // endpoints, but only the first is bidirectional. Neither label is at a path midpoint.
+        let mut layout: FlowchartLayout = serde_json::from_value(serde_json::json!({
+            "nodes": [
+                {"id":"A", "x":10, "y":20, "width":48, "height":36, "is_cluster":false},
+                {"id":"B", "x":130, "y":110, "width":40, "height":30, "is_cluster":false}
+            ],
+            "edges": [
+                {"id":"L_A_B_2", "from":"A", "to":"B", "points":[
+                    {"x":10,"y":20}, {"x":10,"y":2}, {"x":10,"y":-40},
+                    {"x":130,"y":-40}, {"x":130,"y":95}, {"x":130,"y":110}
+                ], "label":{"x":94.5,"y":36.25,"width":32,"height":16}},
+                {"id":"L_A_B_2", "from":"A", "to":"B", "points":[
+                    {"x":10,"y":20}, {"x":130,"y":110}
+                ], "label":{"x":41.25,"y":-7.5,"width":48,"height":16}}
+            ],
+            "clusters": []
+        }))
+        .unwrap();
+        layout.edge_owners = crate::flowchart::FlowchartEdgeOwners::from_semantic_indices([1, 0]);
+
+        for (html, look) in [(false, "classic"), (true, "handDrawn")] {
+            let source = format!(
+                "---
+config:
+  layout: shoal
+  htmlLabels: {html}
+  look: {look}
+  handDrawnSeed: 7
+  flowchart:
+    curve: linear
+---
+flowchart LR
+A{{A}} L_A_B_2@<-->|direct| B[B]
+A -->|bent| B"
+            );
+            with_layout(
+                &source,
+                Some(layout.clone()),
+                false,
+                |request, execution| {
+                    let geometry = edge_geometry(request, execution)?;
+                    let svg =
+                        super::super::svg_emit::render_flowchart_svg_model(request, execution)?;
+                    let document = crate::xml_dom::Document::parse(svg.as_str()).unwrap();
+                    let paths: Vec<_> = document
+                        .descendants()
+                        .filter(|node| {
+                            node.has_tag_name("path") && node.attribute("data-points").is_some()
+                        })
+                        .collect();
+                    let labels: Vec<_> = document
+                        .descendants()
+                        .filter(|node| {
+                            node.has_tag_name("g") && node.attribute("class") == Some("edgeLabel")
+                        })
+                        .collect();
+                    assert_eq!(geometry.len(), 2);
+                    assert_eq!(paths.len(), 2);
+                    assert_eq!(labels.len(), 2);
+                    assert_ne!(paths[0].attribute("id"), paths[1].attribute("id"));
+
+                    let direct = [(22.0, 29.0), (110.0, 95.0)];
+                    let bent = [(10.0, 2.0), (10.0, -40.0), (130.0, -40.0), (130.0, 95.0)];
+                    for (i, (points, (x, y), text)) in [
+                        (direct.as_slice(), (41.25, -7.5), "direct"),
+                        (bent.as_slice(), (94.5, 36.25), "bent"),
+                    ]
+                    .into_iter()
+                    .enumerate()
+                    {
+                        let path = paths[i];
+                        let query = &geometry[i];
+                        assert_eq!(query.id, "L_A_B_2");
+                        assert_eq!(path.attribute("data-id"), Some(query.id.as_str()));
+                        let svg_points = decode_path_points(path);
+                        for projected in [svg_points.as_slice(), query.points.as_deref().unwrap()] {
+                            assert_eq!(
+                                projected.iter().map(|p| (p.x, p.y)).collect::<Vec<_>>(),
+                                points
+                            );
+                        }
+                        let label = query.label_position.as_ref().unwrap();
+                        assert_eq!((label.x, label.y), (x, y));
+                        assert_eq!(
+                            labels[i].attribute("transform").unwrap(),
+                            format!("translate({x},{y})")
+                        );
+                        assert!(
+                            labels[i]
+                                .descendants()
+                                .any(|node| node.is_text() && node.text() == Some(text))
+                        );
+                    }
+                    assert!(
+                        paths[0]
+                            .attribute("marker-start")
+                            .unwrap()
+                            .contains("pointStart")
+                    );
+                    assert!(
+                        paths[0]
+                            .attribute("marker-end")
+                            .unwrap()
+                            .contains("pointEnd")
+                    );
+                    assert!(paths[1].attribute("marker-start").is_none());
+                    if look == "classic" {
+                        // Four units along each terminal tangent, after the diamond and rect contacts.
+                        assert_eq!(paths[0].attribute("d"), Some("M25.2,31.4L106.8,92.6"));
+                    }
+                    Ok(())
+                },
+            );
+        }
+    }
+
+    fn decode_path_points(path: crate::xml_dom::Node<'_, '_>) -> Vec<crate::model::LayoutPoint> {
+        use base64::Engine as _;
+        serde_json::from_slice(
+            &base64::engine::general_purpose::STANDARD
+                .decode(path.attribute("data-points").unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+    }
+
+    #[test]
     fn geometry_preserves_the_elk_missing_section_path_and_label() {
         with_source(
             "flowchart LR\nA((Circle)) -->|label| B{Diamond}",
@@ -961,13 +1126,7 @@ mod tests {
                     .descendants()
                     .find(|node| node.attribute("data-points").is_some())
                     .unwrap();
-                use base64::Engine as _;
-                let points: Vec<crate::model::LayoutPoint> = serde_json::from_slice(
-                    &base64::engine::general_purpose::STANDARD
-                        .decode(path.attribute("data-points").unwrap())
-                        .unwrap(),
-                )
-                .unwrap();
+                let points = decode_path_points(path);
                 let query = geometry[0]
                     .points
                     .as_ref()

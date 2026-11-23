@@ -536,6 +536,7 @@ fn compiled_capability_ids() -> Vec<&'static str> {
     include_capability!("jpeg", "jpeg");
     include_capability!("layout-cytoscape", "layout-cytoscape");
     include_capability!("layout-elk", "layout-elk");
+    include_capability!("layout-shoal", "layout-shoal");
     include_capability!("markdown", "markdown");
     include_capability!("math", "math");
     include_capability!("native-fonts", "native-fonts");
@@ -602,6 +603,10 @@ mod tests {
         let ids = compiled_capability_ids();
 
         assert_eq!(ids.contains(&"fixes"), cfg!(feature = "fixes"));
+        assert_eq!(
+            ids.contains(&"layout-shoal"),
+            cfg!(feature = "layout-shoal")
+        );
         assert_eq!(
             compiled_command_ids().contains(&"fix".to_string()),
             cfg!(feature = "fixes")

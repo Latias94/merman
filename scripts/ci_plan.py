@@ -134,6 +134,7 @@ _CRATE_OWNER_RULES = (
     ("crates/merman-elk-layered/", _CORE_OWNERS),
     ("crates/merman-fixture-render-context/", _CORE_OWNERS),
     ("crates/merman-layout-elk/", _CORE_OWNERS),
+    ("crates/merman-layout-shoal/", _CORE_OWNERS),
     ("crates/merman-render/", {"core", "fuzz", "hygiene"}),
     ("crates/merman-rustdoc/", _CORE_OWNERS),
     ("crates/roughr/", _CORE_OWNERS),

@@ -40,6 +40,10 @@ CAPABILITY_SPECS = (
         "implication_ids": ("svg",),
     },
     {
+        "id": "layout-shoal",
+        "implication_ids": ("svg",),
+    },
+    {
         "id": "markdown",
         "implication_ids": (),
     },

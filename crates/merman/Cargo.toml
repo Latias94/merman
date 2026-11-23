@@ -369,6 +369,7 @@ editor = ["analysis", "dep:merman-editor-core"]
 ascii = ["dep:merman-ascii"]
 layout-cytoscape = ["svg", "merman-render/layout-cytoscape"]
 layout-elk = ["svg", "merman-render/layout-elk"]
+layout-shoal = ["svg", "merman-render/layout-shoal"]
 math = ["svg", "merman-render/math"]
 # Convenience output/layout bundles; mathematical labels require explicit `math`.
 complete-svg = ["svg", "layout-cytoscape"]

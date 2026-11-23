@@ -45,6 +45,7 @@ The public capability leaves are:
 | `ascii` | Terminal text output | None |
 | `png`, `jpeg`, `pdf` | Independent binary exports | None |
 | `layout-cytoscape`, `layout-elk` | Mermaid-compatible layout engines | Each implies `svg` |
+| `layout-shoal` | Experimental Merman layered layout for Flowchart | Implies `svg` |
 | `math` | Math-label rendering | Implies `svg` |
 | `native-fonts` | Explicit font contexts for shared text measurement and native painting | Facade and CLI forward SVG; no codec requirement |
 | `system-clock`, `system-timezone`, `system-random`, `system-timing` | Optional native adapters | None; compiled separately and selected explicitly at runtime |
@@ -103,6 +104,21 @@ runtime policy, transport packages, and release recipes. Product packages and ar
 select their own direct leaf set instead.
 
 ## Pick a workflow
+
+### Try the experimental Shoal layout
+
+Enable `layout-shoal` on the Rust `merman` facade or build the CLI with `cargo build -p merman-cli --features layout-shoal`. Use Mermaid configuration to select the engine for a document.
+
+```mermaid
+---
+config:
+  layout: shoal
+---
+flowchart LR
+    A[Review] -->|approved| B[Publish]
+```
+
+Run `target/debug/merman-cli render diagram.mmd --theme-preset editor --theme-appearance dark -o diagram.svg` from the checkout. Select `dagre` or `elk` in the same field to compare drawings in a build containing those engines. Shoal uses Flowchart's measured shapes and labels, including effective theme fonts and edge-label padding. The preview supports flat directed acyclic Flowcharts in all four directions, including disconnected nodes and parallel edges. Explicit requests report unsupported cycles, self-loops and subgraphs. A build without Shoal reports the missing capability for a Shoal Flowchart. Rust callers can also pass measured graphs directly to the standalone crate. [Shoal crate](../crates/merman-layout-shoal/README.md)
 
 ### Optional CLI Fonts
 

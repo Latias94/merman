@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 pub const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
-pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:a979bad1c2c244a56d592eb0e6a261425edf031bb8f30235d739e62670b5cafb";
+pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:cc47000df26116a384dbf1a207dbbe6e6747cd369dd90931020a916bdaa77bec";
 
 pub const TARGET_IDS: &[&str] = &[
     "native",
@@ -19,6 +19,7 @@ pub const CAPABILITY_IDS: &[&str] = &[
     "jpeg",
     "layout-cytoscape",
     "layout-elk",
+    "layout-shoal",
     "markdown",
     "math",
     "native-fonts",
@@ -111,6 +112,7 @@ pub enum CapabilityKey {
     Jpeg,
     LayoutCytoscape,
     LayoutElk,
+    LayoutShoal,
     Markdown,
     Math,
     NativeFonts,
@@ -137,6 +139,7 @@ impl CapabilityKey {
         Self::Jpeg,
         Self::LayoutCytoscape,
         Self::LayoutElk,
+        Self::LayoutShoal,
         Self::Markdown,
         Self::Math,
         Self::NativeFonts,
@@ -163,6 +166,7 @@ impl CapabilityKey {
             "jpeg" => Some(Self::Jpeg),
             "layout-cytoscape" => Some(Self::LayoutCytoscape),
             "layout-elk" => Some(Self::LayoutElk),
+            "layout-shoal" => Some(Self::LayoutShoal),
             "markdown" => Some(Self::Markdown),
             "math" => Some(Self::Math),
             "native-fonts" => Some(Self::NativeFonts),
@@ -195,20 +199,21 @@ impl CapabilityKey {
             Self::Jpeg => &CAPABILITIES[5],
             Self::LayoutCytoscape => &CAPABILITIES[6],
             Self::LayoutElk => &CAPABILITIES[7],
-            Self::Markdown => &CAPABILITIES[8],
-            Self::Math => &CAPABILITIES[9],
-            Self::NativeFonts => &CAPABILITIES[10],
-            Self::NetworkIcons => &CAPABILITIES[11],
-            Self::ParallelMarkdown => &CAPABILITIES[12],
-            Self::Pdf => &CAPABILITIES[13],
-            Self::Png => &CAPABILITIES[14],
-            Self::Rustdoc => &CAPABILITIES[15],
-            Self::ShellCompletions => &CAPABILITIES[16],
-            Self::Svg => &CAPABILITIES[17],
-            Self::SystemClock => &CAPABILITIES[18],
-            Self::SystemRandom => &CAPABILITIES[19],
-            Self::SystemTimezone => &CAPABILITIES[20],
-            Self::SystemTiming => &CAPABILITIES[21],
+            Self::LayoutShoal => &CAPABILITIES[8],
+            Self::Markdown => &CAPABILITIES[9],
+            Self::Math => &CAPABILITIES[10],
+            Self::NativeFonts => &CAPABILITIES[11],
+            Self::NetworkIcons => &CAPABILITIES[12],
+            Self::ParallelMarkdown => &CAPABILITIES[13],
+            Self::Pdf => &CAPABILITIES[14],
+            Self::Png => &CAPABILITIES[15],
+            Self::Rustdoc => &CAPABILITIES[16],
+            Self::ShellCompletions => &CAPABILITIES[17],
+            Self::Svg => &CAPABILITIES[18],
+            Self::SystemClock => &CAPABILITIES[19],
+            Self::SystemRandom => &CAPABILITIES[20],
+            Self::SystemTimezone => &CAPABILITIES[21],
+            Self::SystemTiming => &CAPABILITIES[22],
         }
     }
 }
@@ -238,6 +243,7 @@ impl CapabilityKey {
             Self::SystemTimezone => 1_u64 << 19,
             Self::SystemTiming => 1_u64 << 20,
             Self::Fixes => 1_u64 << 21,
+            Self::LayoutShoal => 1_u64 << 22,
         }
     }
 }
@@ -708,6 +714,14 @@ pub const CAPABILITIES: &[CapabilityDescriptor] = &[
         kind: "engine",
         description: "Enable Mermaid ELK-backed layout behavior.",
         targets: &[TargetKey::Native, TargetKey::Typst, TargetKey::Web, ],
+        implications: &[CapabilityKey::Svg, ],
+    },
+    CapabilityDescriptor {
+        key: CapabilityKey::LayoutShoal,
+        id: "layout-shoal",
+        kind: "engine",
+        description: "Select the experimental Shoal layout for ordinary Flowcharts.",
+        targets: &[TargetKey::Native, ],
         implications: &[CapabilityKey::Svg, ],
     },
     CapabilityDescriptor {

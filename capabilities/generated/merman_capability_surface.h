@@ -7,7 +7,7 @@
 #include <stddef.h>
 
 #define MERMAN_CAPABILITY_DESCRIPTOR_SCHEMA_VERSION 1
-#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:a979bad1c2c244a56d592eb0e6a261425edf031bb8f30235d739e62670b5cafb"
+#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:cc47000df26116a384dbf1a207dbbe6e6747cd369dd90931020a916bdaa77bec"
 
 #define MERMAN_TARGET_NATIVE "native"
 #define MERMAN_TARGET_TYPST "typst"
@@ -21,6 +21,7 @@
 #define MERMAN_CAPABILITY_JPEG "jpeg"
 #define MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE "layout-cytoscape"
 #define MERMAN_CAPABILITY_LAYOUT_ELK "layout-elk"
+#define MERMAN_CAPABILITY_LAYOUT_SHOAL "layout-shoal"
 #define MERMAN_CAPABILITY_MARKDOWN "markdown"
 #define MERMAN_CAPABILITY_MATH "math"
 #define MERMAN_CAPABILITY_NATIVE_FONTS "native-fonts"
@@ -147,6 +148,14 @@ static const char *const MERMAN_CAPABILITY_LAYOUT_ELK_IMPLICATIONS[] = {
     "svg",
 };
 
+static const char *const MERMAN_CAPABILITY_LAYOUT_SHOAL_TARGETS[] = {
+    "native",
+};
+
+static const char *const MERMAN_CAPABILITY_LAYOUT_SHOAL_IMPLICATIONS[] = {
+    "svg",
+};
+
 static const char *const MERMAN_CAPABILITY_MARKDOWN_TARGETS[] = {
     "native",
 };
@@ -224,6 +233,7 @@ static const MermanCapabilityDescriptor MERMAN_CAPABILITIES[] = {
     { "jpeg", "output", "Export rendered diagrams as JPEG.", MERMAN_CAPABILITY_JPEG_TARGETS, 1, NULL, 0 },
     { "layout-cytoscape", "engine", "Enable Mermaid Cytoscape-backed layout behavior.", MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE_TARGETS, 3, MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE_IMPLICATIONS, 1 },
     { "layout-elk", "engine", "Enable Mermaid ELK-backed layout behavior.", MERMAN_CAPABILITY_LAYOUT_ELK_TARGETS, 3, MERMAN_CAPABILITY_LAYOUT_ELK_IMPLICATIONS, 1 },
+    { "layout-shoal", "engine", "Select the experimental Shoal layout for ordinary Flowcharts.", MERMAN_CAPABILITY_LAYOUT_SHOAL_TARGETS, 1, MERMAN_CAPABILITY_LAYOUT_SHOAL_IMPLICATIONS, 1 },
     { "markdown", "tool", "Compile CLI Markdown batch conversion.", MERMAN_CAPABILITY_MARKDOWN_TARGETS, 1, NULL, 0 },
     { "math", "engine", "Render Mermaid math labels with the selected math engine.", MERMAN_CAPABILITY_MATH_TARGETS, 2, MERMAN_CAPABILITY_MATH_IMPLICATIONS, 1 },
     { "native-fonts", "adapter", "Compile reusable native font measurement for shared graphical text, wrapping, bounds and computed lengths; CLI use requires runtime opt-in and shares selected font bytes with native painting while reporting unsupported or missing-glyph fallbacks.", MERMAN_CAPABILITY_NATIVE_FONTS_TARGETS, 1, NULL, 0 },
@@ -239,7 +249,7 @@ static const MermanCapabilityDescriptor MERMAN_CAPABILITIES[] = {
     { "system-timezone", "adapter", "Compile the native system time-zone adapter.", MERMAN_CAPABILITY_SYSTEM_TIMEZONE_TARGETS, 1, NULL, 0 },
     { "system-timing", "adapter", "Compile the native monotonic timing adapter.", MERMAN_CAPABILITY_SYSTEM_TIMING_TARGETS, 1, NULL, 0 },
 };
-#define MERMAN_CAPABILITY_COUNT 22u
+#define MERMAN_CAPABILITY_COUNT 23u
 
 static const char *const MERMAN_OUTPUT_ASCII_TARGETS[] = {
     "native",

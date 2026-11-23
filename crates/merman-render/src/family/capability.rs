@@ -156,79 +156,44 @@ fn parsed_render_requires_math(parsed: &PresentationDiagram) -> bool {
     }
 }
 
-fn capability_is_available(capability: RenderCapability, session: &RenderSession) -> bool {
-    session.supports_capability(capability)
-}
-
-#[allow(
-    unused_variables,
-    reason = "Dispatch inputs depend on the selected diagram families."
-)]
-fn required_capabilities(parsed: &PresentationDiagram) -> Vec<RenderCapability> {
-    let mut required = Vec::with_capacity(2);
+fn required_layout_capability(
+    parsed: &PresentationDiagram,
+    family: DiagramFamilyId,
+) -> Result<Option<RenderCapability>> {
     let meta = parsed.metadata();
-    let model = parsed.model();
-    let effective_config = &meta.effective_config;
-    match model {
-        #[cfg(feature = "diagram-architecture")]
-        RenderSemanticModel::Architecture(_) => {
-            required.push(RenderCapability::LayoutCytoscape);
-        }
-        #[cfg(feature = "diagram-mindmap")]
-        RenderSemanticModel::Mindmap(_) => {
-            if let Some(capability) = crate::mindmap::required_layout_capability(effective_config) {
-                required.push(capability);
-            }
-        }
-        #[cfg(feature = "diagram-agentflow")]
-        RenderSemanticModel::Agentflow(_) => {
-            required.extend(
-                crate::layout_backend::resolve_graph_layout(effective_config).required_capability(),
-            );
-        }
-        #[cfg(feature = "diagram-usecase")]
-        RenderSemanticModel::Usecase(_) => {
-            required.extend(
-                crate::layout_backend::resolve_graph_layout(effective_config).required_capability(),
-            );
-        }
-        #[cfg(feature = "diagram-state")]
-        RenderSemanticModel::State(_) => {
-            required.extend(
-                crate::layout_backend::resolve_graph_layout(effective_config).required_capability(),
-            );
-        }
-        #[cfg(feature = "diagram-requirement")]
-        RenderSemanticModel::Requirement(_) => {
-            required.extend(
-                crate::layout_backend::resolve_graph_layout(effective_config).required_capability(),
-            );
-        }
-        #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-        RenderSemanticModel::Flowchart(_) => {
-            required.extend(
-                crate::layout_backend::resolve_graph_layout(effective_config).required_capability(),
-            );
-        }
-        #[cfg(feature = "diagram-class")]
-        RenderSemanticModel::Class(_) => {
-            required.extend(
-                crate::layout_backend::resolve_graph_layout(effective_config).required_capability(),
-            );
-        }
-        #[cfg(feature = "diagram-er")]
-        RenderSemanticModel::Er(_) => {
-            required.extend(
-                crate::layout_backend::resolve_graph_layout(effective_config).required_capability(),
-            );
-        }
-        _ => {}
+    match family {
+        DiagramFamilyId::ARCHITECTURE => return Ok(Some(RenderCapability::LayoutCytoscape)),
+        DiagramFamilyId::AGENTFLOW
+        | DiagramFamilyId::CLASS
+        | DiagramFamilyId::ER
+        | DiagramFamilyId::FLOWCHART
+        | DiagramFamilyId::MINDMAP
+        | DiagramFamilyId::REQUIREMENT
+        | DiagramFamilyId::STATE
+        | DiagramFamilyId::SWIMLANE
+        | DiagramFamilyId::USECASE => {}
+        _ => return Ok(None),
     }
 
-    if parsed_render_requires_math(parsed) {
-        required.push(RenderCapability::Math);
+    let selection = crate::layout_backend::resolve_graph_layout(&meta.effective_config);
+    // Swimlane syntax can resolve to the Flowchart render family. Agentflow also projects a
+    // Flowchart model. Only the ordinary Flowchart source types have a Shoal adapter.
+    if selection.backend == crate::layout_backend::GraphLayoutBackend::Shoal
+        && !(family == DiagramFamilyId::FLOWCHART
+            && matches!(meta.diagram_type.as_str(), "flowchart" | "flowchart-v2"))
+    {
+        return Err(Error::UnsupportedLayoutBackend {
+            backend: "shoal",
+            diagram_type: meta.diagram_type.clone(),
+        });
     }
-    required
+    #[cfg(feature = "diagram-mindmap")]
+    if family == DiagramFamilyId::MINDMAP {
+        return Ok(crate::mindmap::required_layout_capability(
+            &meta.effective_config,
+        ));
+    }
+    Ok(selection.required_capability())
 }
 
 /// Reports whether this renderer contains the logical family handler for a known diagram type.
@@ -379,11 +344,15 @@ pub fn plan_render(
     session.checkpoint(OperationPhase::Layout)?;
     let meta = parsed.metadata();
     let family_id = validate_render_input(parsed, session)?;
-    let required = required_capabilities(parsed);
+    let mut required = Vec::with_capacity(2);
+    required.extend(required_layout_capability(parsed, family_id)?);
+    if parsed_render_requires_math(parsed) {
+        required.push(RenderCapability::Math);
+    }
     let missing = required
         .iter()
         .copied()
-        .filter(|capability| !capability_is_available(*capability, session))
+        .filter(|capability| !session.supports_capability(*capability))
         .collect();
     let plan = RenderCapabilityPlan {
         diagram_type: meta.diagram_type.clone(),

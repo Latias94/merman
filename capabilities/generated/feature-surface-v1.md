@@ -2,7 +2,7 @@
 
 # Capability Surface v1
 
-Semantic digest: `sha256:a979bad1c2c244a56d592eb0e6a261425edf031bb8f30235d739e62670b5cafb`
+Semantic digest: `sha256:cc47000df26116a384dbf1a207dbbe6e6747cd369dd90931020a916bdaa77bec`
 
 ## Public Leaves
 
@@ -16,6 +16,7 @@ Semantic digest: `sha256:a979bad1c2c244a56d592eb0e6a261425edf031bb8f30235d739e62
 | `jpeg` | `Output` | `native` | none | Export rendered diagrams as JPEG. |
 | `layout-cytoscape` | `Engine` | `native`, `web`, `typst` | `svg` | Enable Mermaid Cytoscape-backed layout behavior. |
 | `layout-elk` | `Engine` | `native`, `web`, `typst` | `svg` | Enable Mermaid ELK-backed layout behavior. |
+| `layout-shoal` | `Engine` | `native` | `svg` | Select the experimental Shoal layout for ordinary Flowcharts. |
 | `markdown` | `Tool` | `native` | none | Compile CLI Markdown batch conversion. |
 | `math` | `Engine` | `native`, `web` | `svg` | Render Mermaid math labels with the selected math engine. |
 | `native-fonts` | `Adapter` | `native` | none | Compile reusable native font measurement for shared graphical text, wrapping, bounds and computed lengths; CLI use requires runtime opt-in and shares selected font bytes with native painting while reporting unsupported or missing-glyph fallbacks. |

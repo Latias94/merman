@@ -101,6 +101,7 @@ system-random = ["merman-model/system-random"]
 system-timing = ["merman-model/system-timing"]
 layout-cytoscape = ["dep:manatee"]
 layout-elk = ["dep:merman-layout-elk"]
+layout-shoal = ["dep:merman-layout-shoal"]
 math = [
   "dep:ratex-font",
   "dep:ratex-layout",
@@ -125,6 +126,7 @@ libm.workspace = true
 manatee = { workspace = true, optional = true }
 memchr = "2"
 merman-layout-elk = { workspace = true, optional = true }
+merman-layout-shoal = { workspace = true, optional = true }
 merman-theme-contract.workspace = true
 pulldown-cmark.workspace = true
 ratex-font = { workspace = true, optional = true }

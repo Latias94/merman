@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:a979bad1c2c244a56d592eb0e6a261425edf031bb8f30235d739e62670b5cafb" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:cc47000df26116a384dbf1a207dbbe6e6747cd369dd90931020a916bdaa77bec" as const;
 
 export const TARGETS = [
   {
@@ -102,6 +102,17 @@ export const CAPABILITIES = [
       "native",
       "typst",
       "web"
+    ],
+    "implications": [
+      "svg"
+    ]
+  },
+  {
+    "id": "layout-shoal",
+    "kind": "engine",
+    "description": "Select the experimental Shoal layout for ordinary Flowcharts.",
+    "targets": [
+      "native"
     ],
     "implications": [
       "svg"
@@ -577,6 +588,7 @@ export const CAPABILITY_IDS = [
   "jpeg",
   "layout-cytoscape",
   "layout-elk",
+  "layout-shoal",
   "markdown",
   "math",
   "native-fonts",

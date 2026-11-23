@@ -2286,6 +2286,7 @@ impl RenderSession {
         match capability {
             RenderCapability::LayoutCytoscape => crate::layout_cytoscape_available(),
             RenderCapability::LayoutElk => crate::layout_elk_available(),
+            RenderCapability::LayoutShoal => crate::layout_shoal_available(),
             RenderCapability::Math => self
                 .math_backend
                 .as_ref()
@@ -4650,6 +4651,7 @@ mod tests {
 
         assert!(!session.supports_capability(RenderCapability::LayoutCytoscape));
         assert!(!session.supports_capability(RenderCapability::LayoutElk));
+        assert!(!session.supports_capability(RenderCapability::LayoutShoal));
         assert!(!session.supports_capability(RenderCapability::Math));
         assert!(session.math_renderer().is_none());
 

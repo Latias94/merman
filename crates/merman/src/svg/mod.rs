@@ -75,6 +75,11 @@ pub use merman_render::{
     layout_elk_available, math_available,
 };
 
+/// Reports whether this facade enables the experimental Shoal layout backend.
+pub const fn layout_shoal_available() -> bool {
+    cfg!(feature = "layout-shoal")
+}
+
 /// Binary export APIs accept only terminally validated [`ResvgCompatibleSvg`] values.
 #[cfg(any(
     feature = "native-fonts",

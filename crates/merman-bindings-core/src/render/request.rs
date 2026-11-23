@@ -797,6 +797,10 @@ fn classify_render_error(
                 err.to_string(),
             )
         }
+        merman::RenderError::Svg(
+            err @ (merman::svg::RenderError::UnsupportedLayoutBackend { .. }
+            | merman::svg::RenderError::UnsupportedLayoutConstruct { .. }),
+        ) => BindingError::unsupported_operation(err.to_string()),
         merman::RenderError::Svg(err @ merman::svg::RenderError::InvalidIconOutput { .. }) => {
             BindingError::new(BindingStatus::InvalidArgument, err.to_string())
         }

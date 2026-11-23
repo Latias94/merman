@@ -122,6 +122,32 @@ pub(in crate::svg::parity::flowchart) fn rounded_line_with_marker_offsets_for_ed
 mod tests {
     use super::*;
 
+    #[cfg(feature = "layout-shoal")]
+    #[test]
+    fn shoal_clearances_match_both_painted_path_ends() {
+        let points = [
+            crate::model::LayoutPoint { x: 0.0, y: 0.0 },
+            crate::model::LayoutPoint { x: 100.0, y: 0.0 },
+        ];
+        for edge_type in [
+            None,
+            Some("arrow_open"),
+            Some("double_arrow_point"),
+            Some("double_arrow_circle"),
+            Some("double_arrow_cross"),
+            Some("arrow_open_head"),
+            Some("arrow_hollow_circle"),
+        ] {
+            let clearances = crate::svg::flowchart_marker_clearances(edge_type);
+            for path in [
+                line_with_offset_for_edge_type(&points, edge_type),
+                rounded_line_with_marker_offsets_for_edge_type(&points, edge_type),
+            ] {
+                assert_eq!(clearances, (path[0].x, 100.0 - path[1].x), "{edge_type:?}");
+            }
+        }
+    }
+
     #[test]
     fn compact_marker_geometry_collapses_only_short_forward_terminal_stubs() {
         let mut short = vec![

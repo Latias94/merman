@@ -6,6 +6,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+### Added
+
+- **Experimental Shoal layout.** Rust and CLI source builds can enable `layout-shoal` and select `layout: shoal` for flat acyclic Flowcharts. The standalone `merman-layout-shoal` crate also accepts measured graphs directly. [Usage and supported graphs](docs/FEATURES.md#try-the-experimental-shoal-layout)
+
 ### Changed
 
 - **CLI fonts on macOS and Linux.** Official archives use Core Text or Fontconfig by default for native Mermaid PNG, JPEG, and PDF exports. Platform lookup opens the selected fonts on demand and avoids the bounded scan's aggregate character-map limit. On Linux the automatic policy retries bounded discovery if the Fontconfig runtime cannot load. Use `--font-system bounded` to select the previous provider, or `--font-file` to pin the fonts used for both measurement and painting. [CLI font guide](crates/merman-cli/README.md#explicit-fonts)

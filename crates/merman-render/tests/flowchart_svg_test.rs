@@ -401,6 +401,42 @@ fn render_dagre_flowchart_svg_from_text(text: &str) -> String {
     )
 }
 
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_color_changes_reach_svg_with_identical_layout() {
+    let draw = |color: &str| {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Edge,
+                        ThemeStylePatch::default().with_fill(CanvasPaint::solid(color).unwrap()),
+                    ),
+                )),
+            )
+            .unwrap();
+        let source = "---\nconfig:\n  layout: shoal\n---\nflowchart TD\nA -->|label| B";
+        let (parsed, options, session) = prepare_flowchart_family_with_theme(source, &theme);
+        let artifact = family::prepare(&parsed, &options, session).unwrap();
+        let layout = artifact.layout_json().unwrap()["layout"].clone();
+        let svg = artifact
+            .render_svg(&Default::default(), &Default::default())
+            .unwrap();
+        let xml = roxmltree::Document::parse(svg.svg()).unwrap();
+        let path = xml
+            .descendants()
+            .find(|node| node.attribute("data-edge") == Some("true"))
+            .unwrap();
+        assert!(
+            path.attribute("style")
+                .unwrap()
+                .contains(&format!("stroke:{color}"))
+        );
+        (layout, path.attribute("d").unwrap().to_owned())
+    };
+    assert_eq!(draw("#ca3579"), draw("#25458c"));
+}
+
 #[cfg(feature = "layout-elk")]
 #[test]
 fn flowchart_elk_svg_keeps_upstream_flat_node_order_across_subgraphs() {
@@ -5661,6 +5697,12 @@ fn flowchart_and_swimlane_edge_label_padding_changes_layout_and_terminal_content
 
     let theme = edge_label_padding_theme(PADDING);
     for (family_name, source, layout_key) in [
+        #[cfg(feature = "layout-shoal")]
+        (
+            "Shoal",
+            "---\nconfig:\n  layout: shoal\n---\nflowchart LR\nA padded@-->|edge label padding| B\n",
+            "FlowchartV2",
+        ),
         (
             "Flowchart",
             "flowchart LR\nA padded@-->|edge label padding| B\n",
@@ -5748,7 +5790,7 @@ fn flowchart_and_swimlane_edge_label_padding_changes_layout_and_terminal_content
 
         let document = roxmltree::Document::parse(themed_svg.svg())
             .unwrap_or_else(|error| panic!("valid themed {family_name} SVG: {error}"));
-        let label_group = if family_name == "Flowchart" {
+        let label_group = if layout_key == "FlowchartV2" {
             document
                 .descendants()
                 .find(|node| {

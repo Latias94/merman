@@ -1,0 +1,13 @@
+[package]
+name = "merman-layout-shoal"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Experimental layered layout for measured directed graphs."
+documentation = "https://docs.rs/merman-layout-shoal"
+readme = "README.md"
+keywords = ["mermaid", "graph", "layout", "diagrams"]
+categories = ["algorithms", "visualization"]

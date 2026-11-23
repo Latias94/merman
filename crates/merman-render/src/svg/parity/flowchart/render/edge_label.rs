@@ -387,10 +387,13 @@ pub(in crate::svg::parity::flowchart) fn resolve_flowchart_edge_label_position(
     edge_cache: &FxHashMap<crate::flowchart::FlowchartEdgeKey, FlowchartEdgePathCacheEntry>,
     always_recompute: bool,
 ) -> crate::model::LayoutPoint {
-    let dagre_anchor = crate::model::LayoutPoint {
+    let layout_anchor = crate::model::LayoutPoint {
         x: label.x + ctx.tx - origin_x,
         y: label.y + ctx.ty - origin_y,
     };
+    if ctx.uses_shoal_routes {
+        return layout_anchor;
+    }
 
     if let Some(geom) = edge_cache
         .get(&key)
@@ -399,7 +402,7 @@ pub(in crate::svg::parity::flowchart) fn resolve_flowchart_edge_label_position(
         })
         .map(|entry| &entry.geom)
     {
-        return position_flowchart_edge_label(dagre_anchor, geom, always_recompute);
+        return position_flowchart_edge_label(layout_anchor, geom, always_recompute);
     }
 
     if let Some(midpoint) =
@@ -420,7 +423,7 @@ pub(in crate::svg::parity::flowchart) fn resolve_flowchart_edge_label_position(
             })
             .collect::<Vec<_>>();
         return crate::svg::parity::edge_label_geometry::position_edge_label(
-            dagre_anchor.clone(),
+            layout_anchor,
             (!always_recompute).then_some(points.as_slice()),
             &points,
             "",
@@ -428,7 +431,7 @@ pub(in crate::svg::parity::flowchart) fn resolve_flowchart_edge_label_position(
         );
     }
 
-    dagre_anchor
+    layout_anchor
 }
 
 pub(in crate::svg::parity) fn render_flowchart_edge_label(

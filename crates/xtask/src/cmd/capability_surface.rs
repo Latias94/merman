@@ -33,6 +33,7 @@ const CAPABILITY_BIT_IDS: &[&str] = &[
     "system-timezone",
     "system-timing",
     "fixes",
+    "layout-shoal",
 ];
 const GENERATED_OUTPUTS: &[(&str, ArtifactKind)] = &[
     (

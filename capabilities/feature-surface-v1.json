@@ -116,6 +116,17 @@
       }
     },
     {
+      "id": "layout-shoal",
+      "kind": "engine",
+      "description": "Select the experimental Shoal layout for ordinary Flowcharts.",
+      "targets": ["native"],
+      "implications": ["svg"],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "An explicit Shoal request for an ordinary Flowchart requires layout-shoal. An absent or host-denied engine returns a typed missing-capability error. Other families with selectable graph layouts reject Shoal as unsupported."
+      }
+    },
+    {
       "id": "math",
       "kind": "engine",
       "description": "Render Mermaid math labels with the selected math engine.",

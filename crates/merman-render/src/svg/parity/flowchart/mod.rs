@@ -44,6 +44,16 @@ pub(crate) use render_config::{
 };
 pub(super) use style::*;
 
+/// Distances from the shape contacts to the start and end of the painted path.
+#[cfg(feature = "layout-shoal")]
+pub(crate) fn flowchart_marker_clearances(edge_type: Option<&str>) -> (f64, f64) {
+    let (start, end) = edge_geom::arrow_types_for_edge(edge_type);
+    (
+        super::edge_path::marker_offset_for(start).unwrap_or(0.0),
+        super::edge_path::marker_offset_for(end).unwrap_or(0.0),
+    )
+}
+
 use render::{
     FlowchartRootRenderSession, render_flowchart_edge_path, render_flowchart_elk_root_groups,
     render_flowchart_node, render_flowchart_root,

@@ -122,6 +122,15 @@ mod eventmodeling;
     feature = "diagram-agentflow"
 ))]
 mod flowchart;
+#[cfg(all(
+    feature = "layout-shoal",
+    any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    )
+))]
+pub(crate) use flowchart::flowchart_marker_clearances;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",

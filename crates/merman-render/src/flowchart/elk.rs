@@ -15,22 +15,19 @@ use merman_model::presentation::{PresentationDiagram, RenderSemanticModel};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
-use merman_model::families::flowchart::{
-    FlowEdge, FlowNode, FlowSubgraph, FlowchartModel, FlowchartRenderContext,
-};
 #[cfg(test)]
-use merman_model::families::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
+use merman_model::families::flowchart::{
+    FlowEdge, FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility, FlowNode,
+};
+use merman_model::families::flowchart::{FlowSubgraph, FlowchartModel, FlowchartRenderContext};
 
 use super::config::{FlowchartConfigView, FlowchartLayoutSettings};
 use super::label::compute_bounds;
-use super::node::{NodeLayoutDimensionsRequest, node_layout_dimensions};
+use super::measured::FlowchartMeasurement;
 use super::{
     FlowchartLabelMetricsRequest, FlowchartRenderModelRef, FlowchartSvgLabelOwner,
     FlowchartSvgLabelSidecarBuilder, FlowchartSvgWidthMode,
-    flowchart_apply_html_node_class_box_metrics,
     flowchart_effective_text_style_for_classes_with_provenance,
-    flowchart_effective_text_style_for_node_classes_with_provenance, flowchart_node_svg_width_mode,
-    measure_flowchart_svg_label_for_layout_with_metrics_style_and_terminal_foreground,
     measure_flowchart_svg_label_for_layout_with_terminal_foreground,
 };
 
@@ -1146,26 +1143,15 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
     // hierarchy and edge tranches are charged by their actual owners below.
     charge_adapter_work(&mut work_control, model.nodes.len())?;
     super::validate_flowchart_model_shapes(model)?;
-    let FlowchartLayoutSettings {
-        node_padding,
-        state_padding,
-        wrapping_width,
-        edge_label_wrapping_width,
-        cluster_title_wrapping_width: _,
-        edge_html_labels,
-        node_wrap_mode,
-        edge_wrap_mode,
-        cluster_wrap_mode,
-        cluster_padding,
-        nodesep,
-        ranksep,
-        text_style,
-        html_label_text_style,
-        ..
-    } = svg_label_sidecar.map_or_else(
-        || FlowchartConfigView::new(effective_config).layout_settings(),
-        |sidecar| sidecar.layout_settings(effective_config),
+    let measurement = FlowchartMeasurement::new(
+        render_model,
+        effective_config,
+        measurer,
+        math_renderer,
+        svg_label_sidecar,
+        edge_style_plan,
     );
+    let settings = &measurement.settings;
 
     let diagram_direction = model
         .direction
@@ -1173,34 +1159,20 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
         .map(dir_to_elk_direction)
         .unwrap_or_default();
 
-    let node_label_base_style = if node_wrap_mode == WrapMode::HtmlLike {
-        &html_label_text_style
+    let cluster_label_base_style = if settings.cluster_wrap_mode == WrapMode::HtmlLike {
+        &settings.html_label_text_style
     } else {
-        &text_style
+        &settings.text_style
     };
-    let cluster_label_base_style = if cluster_wrap_mode == WrapMode::HtmlLike {
-        &html_label_text_style
-    } else {
-        &text_style
-    };
-    let edge_label_base_style = if edge_wrap_mode == WrapMode::HtmlLike {
-        &html_label_text_style
-    } else {
-        &text_style
-    };
-    let edge_label_padding = svg_label_sidecar.map_or_else(
-        super::FlowchartEdgeLabelPadding::default,
-        FlowchartSvgLabelSidecarBuilder::edge_label_padding,
-    );
 
     let mut graph = elk::Graph {
         id: "root".to_string(),
         direction: diagram_direction,
         spacing: elk::Spacing {
-            node_node: nodesep,
-            layer_layer: ranksep,
-            group_padding_x: cluster_padding,
-            group_padding_y: cluster_padding,
+            node_node: settings.nodesep,
+            layer_layer: settings.ranksep,
+            group_padding_x: settings.cluster_padding,
+            group_padding_y: settings.cluster_padding,
             ..Default::default()
         },
         options: elk_layout_options(effective_config),
@@ -1240,25 +1212,11 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
         measurer,
         math_renderer,
         cluster_label_base_style,
-        cluster_title_wrapping_width: wrapping_width,
-        cluster_wrap_mode,
-        class_html_labels: edge_html_labels,
+        cluster_title_wrapping_width: settings.wrapping_width,
+        cluster_wrap_mode: settings.cluster_wrap_mode,
+        class_html_labels: settings.edge_html_labels,
         svg_label_sidecar,
-        title_padding: cluster_padding,
-    };
-    let node_measure_ctx = NodeMeasureContext {
-        model: render_model,
-        effective_config,
-        measurer,
-        math_renderer,
-        node_label_base_style,
-        wrapping_width,
-        node_direction: diagram_direction,
-        node_padding,
-        state_padding,
-        node_wrap_mode,
-        class_html_labels: edge_html_labels,
-        svg_label_sidecar,
+        title_padding: settings.cluster_padding,
     };
     let mut inserted_ids: HashSet<&str> = HashSet::new();
     // FlowDB emits subgraphs in reverse storage order before leaf vertices, and Mermaid derives
@@ -1293,19 +1251,38 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
         let owner_index = node_owner_indices
             .and_then(|indices| indices.get(node_index).copied())
             .unwrap_or(node_index);
-        graph.nodes.push(flow_node_to_elk_node(
+        let direction = node_directions
+            .get(node.id.as_str())
+            .copied()
+            .unwrap_or(diagram_direction);
+        let measured = measurement.node(
             node,
-            parent_by_id.get(&node.id).cloned(),
             FlowchartSvgLabelOwner::Node(owner_index),
-            NodeMeasureContext {
-                node_direction: node_directions
-                    .get(node.id.as_str())
-                    .copied()
-                    .unwrap_or(diagram_direction),
-                ..node_measure_ctx
+            match direction {
+                elk::Direction::Left => "RL",
+                elk::Direction::Right => "LR",
+                elk::Direction::Up => "BT",
+                elk::Direction::Down => "TB",
             },
-            &mut work_control,
-        )?);
+            |units| charge_adapter_work(&mut work_control, units),
+        )?;
+        graph.nodes.push(elk::Node {
+            id: node.id.clone(),
+            kind: elk::NodeKind::Leaf,
+            container: Default::default(),
+            label_text: None,
+            width: measured.width,
+            height: measured.height,
+            parent: parent_by_id.get(&node.id).cloned(),
+            direction: None,
+            hierarchy_handling: None,
+            layer_constraint: None,
+            port_alignment: None,
+            label: Some(elk::Label {
+                width: measured.label.width,
+                height: measured.label.height,
+            }),
+        });
     }
 
     if config_bool(effective_config, &["elk", "keepEntryNodeOnTop"]).unwrap_or(false) {
@@ -1325,24 +1302,12 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
         let owner_index = edge_owner_indices
             .and_then(|indices| indices.get(edge_index).copied())
             .unwrap_or(edge_index);
-        let label = edge_label(
-            edge,
-            crate::flowchart::FlowchartEdgeKey::new(owner_index),
-            FlowchartSvgLabelOwner::Edge(owner_index),
-            EdgeMeasureContext {
-                model: render_model,
-                effective_config,
-                measurer,
-                math_renderer,
-                edge_label_base_style,
-                edge_label_wrapping_width,
-                edge_wrap_mode,
-                edge_html_labels,
-                edge_label_padding,
-                svg_label_sidecar,
-                edge_style_plan,
-            },
-        )?;
+        let label = measurement
+            .edge_label(edge, super::FlowchartEdgeKey::new(owner_index))?
+            .map(|label| elk::Label {
+                width: label.width,
+                height: label.height,
+            });
         edges.push(elk::Edge {
             id: edge.id.clone(),
             source: edge.from.clone(),
@@ -1381,37 +1346,6 @@ fn canonical_subgraphs(model: &FlowchartModel) -> Vec<(usize, &FlowSubgraph)> {
         }
     }
     canonical
-}
-
-#[derive(Clone, Copy)]
-struct NodeMeasureContext<'a> {
-    model: FlowchartRenderModelRef<'a>,
-    effective_config: &'a PresentationConfig,
-    measurer: &'a dyn TextMeasurer,
-    math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
-    node_label_base_style: &'a TextStyle,
-    wrapping_width: f64,
-    node_direction: elk::Direction,
-    node_padding: f64,
-    state_padding: f64,
-    node_wrap_mode: WrapMode,
-    class_html_labels: bool,
-    svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
-}
-
-#[derive(Clone, Copy)]
-struct EdgeMeasureContext<'a> {
-    model: FlowchartRenderModelRef<'a>,
-    effective_config: &'a PresentationConfig,
-    measurer: &'a dyn TextMeasurer,
-    math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
-    edge_label_base_style: &'a TextStyle,
-    edge_label_wrapping_width: f64,
-    edge_wrap_mode: WrapMode,
-    edge_html_labels: bool,
-    edge_label_padding: super::FlowchartEdgeLabelPadding,
-    svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
-    edge_style_plan: &'a crate::svg::FlowchartEdgeStylePlan,
 }
 
 fn dir_to_elk_direction(dir: &str) -> elk::Direction {
@@ -1689,231 +1623,6 @@ fn subgraph_label(
         width: metrics.width.max(1.0),
         height,
     }))
-}
-
-fn node_dimensions_and_label(
-    node: &FlowNode,
-    owner: FlowchartSvgLabelOwner,
-    ctx: NodeMeasureContext<'_>,
-    work_control: &mut Option<&mut ElkOperationWorkControl>,
-) -> Result<(f64, f64, elk::Label)> {
-    let raw_label = ctx.model.node_label_for_render(node).unwrap_or(&node.id);
-    let wrapping_width =
-        super::bpmn::wrapping_width(node.layout_shape.as_deref(), ctx.wrapping_width);
-    let label_type = node.label_type.as_deref().unwrap_or("text");
-    let typography = ctx.svg_label_sidecar.map_or_else(
-        super::FlowchartLabelTypography::default,
-        FlowchartSvgLabelSidecarBuilder::label_typography,
-    );
-    let label_dom = (
-        ctx.class_html_labels,
-        super::FlowchartLabelDom::node(
-            node.layout_shape.as_deref().unwrap_or("squareRect"),
-            raw_label,
-            label_type,
-            ctx.node_wrap_mode == WrapMode::HtmlLike,
-            crate::config::config_diagram_look(ctx.effective_config).is_hand_drawn(),
-        ),
-    );
-    let structural = super::FlowchartStructuralLabelTypography::prepare(
-        &ctx.model.class_defs,
-        label_dom.0,
-        label_dom.1,
-        |units| charge_adapter_work(work_control, units),
-    )?;
-    let node_parent = typography.node_source_parent_style(
-        ctx.node_label_base_style,
-        &ctx.model.class_defs,
-        (&node.classes, &node.styles, true),
-        &structural,
-    );
-    let mut node_text_style = flowchart_effective_text_style_for_node_classes_with_provenance(
-        node_parent.as_ref(),
-        &ctx.model.class_defs,
-        &node.classes,
-        &node.styles,
-    );
-    structural.apply_to_content(&mut node_text_style.style);
-    let svg_width_mode = flowchart_node_svg_width_mode(
-        raw_label,
-        label_type,
-        ctx.node_wrap_mode,
-        node.layout_shape.as_deref().unwrap_or("squareRect"),
-    );
-    let mut metrics = measure_flowchart_svg_label_for_layout_with_terminal_foreground(
-        ctx.svg_label_sidecar,
-        Some(owner),
-        Some(node.id.as_str()),
-        FlowchartLabelMetricsRequest {
-            measurer: ctx.measurer,
-            raw_label,
-            label_type,
-            style: node_text_style.as_ref(),
-            max_width_px: Some(wrapping_width),
-            wrap_mode: ctx.node_wrap_mode,
-            config: ctx.effective_config,
-            math_renderer: ctx.math_renderer,
-        },
-        node_text_style.terminal_foreground(),
-        svg_width_mode,
-    );
-    if ctx.node_wrap_mode == WrapMode::HtmlLike && ctx.class_html_labels {
-        flowchart_apply_html_node_class_box_metrics(
-            &mut metrics,
-            raw_label,
-            label_type,
-            node_text_style.as_ref(),
-            &ctx.model.class_defs,
-            &node.classes,
-        );
-    }
-
-    metrics = metrics.with_label_min_width(
-        raw_label,
-        super::flowchart_node_label_min_width(
-            raw_label,
-            node.layout_shape.as_deref(),
-            ctx.effective_config,
-        ),
-        None,
-    );
-    let label = elk::Label {
-        width: metrics.width,
-        height: metrics.height,
-    };
-    let (width, height) = node_layout_dimensions(NodeLayoutDimensionsRequest {
-        layout_shape: node.layout_shape.as_deref(),
-        layout_direction: match ctx.node_direction {
-            elk::Direction::Left => "RL",
-            elk::Direction::Right => "LR",
-            elk::Direction::Up => "BT",
-            elk::Direction::Down => "TB",
-        },
-        metrics,
-        has_label: !raw_label.is_empty(),
-        wrapping_width,
-        node_constraint: node.constraint.as_deref(),
-        padding: ctx.node_padding,
-        look_is_neo: crate::config::mermaid_config_diagram_look(ctx.effective_config).is_neo(),
-        state_padding: ctx.state_padding,
-        node_icon: node.icon.as_deref(),
-        node_img: node.img.as_deref(),
-        node_pos: node.pos.as_deref(),
-        node_asset_width: node.asset_width,
-        node_asset_height: node.asset_height,
-    });
-
-    Ok((width, height, label))
-}
-
-fn edge_label(
-    edge: &FlowEdge,
-    key: crate::flowchart::FlowchartEdgeKey,
-    owner: FlowchartSvgLabelOwner,
-    ctx: EdgeMeasureContext<'_>,
-) -> Result<Option<elk::Label>> {
-    let label_text = ctx
-        .model
-        .edge_label_for_render(key.semantic_index(), edge)
-        .unwrap_or_default();
-    let label_type = edge.label_type.as_deref().unwrap_or("text");
-    if crate::flowchart::flowchart_label_is_empty_for_render(label_text) {
-        return Ok(None);
-    }
-
-    let typography = ctx.svg_label_sidecar.map_or_else(
-        super::FlowchartLabelTypography::default,
-        FlowchartSvgLabelSidecarBuilder::label_typography,
-    );
-    let edge_parent =
-        ctx.edge_style_plan
-            .label_parent_style_for(key, ctx.edge_label_base_style, &typography)?;
-    let edge_text_style = ctx
-        .edge_style_plan
-        .edge_label_text_style_for(key, edge_parent.as_ref())?;
-    let metrics = if label_type == "markdown" && ctx.edge_wrap_mode != WrapMode::HtmlLike {
-        crate::text::measure_wrapped_markdown_with_inline_styles(
-            ctx.measurer,
-            label_text,
-            edge_text_style.as_ref(),
-            Some(ctx.edge_label_wrapping_width),
-            ctx.edge_wrap_mode,
-        )
-    } else if ctx.edge_wrap_mode == WrapMode::SvgLike {
-        measure_flowchart_svg_label_for_layout_with_metrics_style_and_terminal_foreground(
-            ctx.svg_label_sidecar,
-            Some(owner),
-            Some(edge.id.as_str()),
-            FlowchartLabelMetricsRequest {
-                measurer: ctx.measurer,
-                raw_label: label_text,
-                label_type,
-                // Mermaid wraps the temporary SVG text before applying `labelStyle`.
-                style: edge_parent.as_ref(),
-                max_width_px: Some(ctx.edge_label_wrapping_width),
-                wrap_mode: ctx.edge_wrap_mode,
-                config: ctx.effective_config,
-                math_renderer: ctx.math_renderer,
-            },
-            edge_text_style.as_ref(),
-            edge_text_style.terminal_foreground(),
-            FlowchartSvgWidthMode::Bbox,
-        )
-    } else {
-        measure_flowchart_svg_label_for_layout_with_terminal_foreground(
-            ctx.svg_label_sidecar,
-            Some(owner),
-            Some(edge.id.as_str()),
-            FlowchartLabelMetricsRequest {
-                measurer: ctx.measurer,
-                raw_label: label_text,
-                label_type,
-                style: edge_text_style.as_ref(),
-                max_width_px: Some(ctx.edge_label_wrapping_width),
-                wrap_mode: ctx.edge_wrap_mode,
-                config: ctx.effective_config,
-                math_renderer: ctx.math_renderer,
-            },
-            edge_text_style.terminal_foreground(),
-            FlowchartSvgWidthMode::Bbox,
-        )
-    };
-
-    let (width, height) = if ctx.edge_html_labels {
-        (metrics.width.max(1.0), metrics.height.max(1.0))
-    } else {
-        (
-            (metrics.width + 4.0).max(1.0),
-            (metrics.height + 4.0).max(1.0),
-        )
-    };
-    let (width, height) = ctx.edge_label_padding.padded_size(width, height);
-
-    Ok(Some(elk::Label { width, height }))
-}
-
-fn flow_node_to_elk_node(
-    node: &FlowNode,
-    parent: Option<String>,
-    owner: FlowchartSvgLabelOwner,
-    ctx: NodeMeasureContext<'_>,
-    work_control: &mut Option<&mut ElkOperationWorkControl>,
-) -> Result<elk::Node> {
-    let (width, height, label) = node_dimensions_and_label(node, owner, ctx, work_control)?;
-    Ok(elk::Node {
-        id: node.id.clone(),
-        kind: elk::NodeKind::Leaf,
-        container: Default::default(),
-        label_text: None,
-        width,
-        height,
-        parent,
-        direction: None,
-        hierarchy_handling: None,
-        layer_constraint: None,
-        port_alignment: None,
-        label: Some(label),
-    })
 }
 
 fn subgraph_to_elk_node(

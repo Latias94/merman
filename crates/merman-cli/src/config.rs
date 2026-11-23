@@ -508,6 +508,13 @@ fn renderer_from_config(
         .with_theme_admission_policy(ThemeAdmissionPolicy::permissive().with_trusted_lanes(
             TrustedThemeLanes::from_allowed([TrustedThemeLane::RawThemeCss]),
         ));
+    #[cfg(not(feature = "layout-shoal"))]
+    {
+        use merman::svg::{RenderCapability, RenderCapabilityPolicy};
+        environment = environment.with_capability_policy(
+            RenderCapabilityPolicy::unrestricted().with_denied(RenderCapability::LayoutShoal),
+        );
+    }
     #[cfg(not(feature = "math"))]
     {
         environment = environment.without_math_renderer();

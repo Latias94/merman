@@ -44,33 +44,39 @@ pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
         return None;
     }
 
-    scratch.local_points.clear();
-    scratch.local_points.reserve(le.points.len());
-    for p in &le.points {
-        scratch.local_points.push(crate::model::LayoutPoint {
-            x: p.x + ctx.tx - origin_x,
-            y: p.y + ctx.ty - origin_y,
-        });
-    }
-    let local_points = scratch.local_points.as_slice();
-
+    let base_points = &mut scratch.tmp_points_a;
+    base_points.clear();
+    base_points.extend(le.points.iter().map(|p| crate::model::LayoutPoint {
+        x: p.x + ctx.tx - origin_x,
+        y: p.y + ctx.ty - origin_y,
+    }));
     let is_elk_layout = ctx.uses_elk_adapter_dom;
     let is_swimlane_layout = ctx.swimlane_direction.is_some();
-    if is_elk_layout || is_swimlane_layout {
-        // Swimlane endpoint duplicates pin ports and must survive until clipping.
-        scratch.tmp_points_a.clear();
-        scratch.tmp_points_a.extend_from_slice(local_points);
-    } else {
-        dedup_consecutive_points_into(local_points, &mut scratch.tmp_points_a);
+    // Swimlane endpoint duplicates pin ports and must survive until clipping.
+    if !is_elk_layout && !is_swimlane_layout {
+        dedup_consecutive_points(base_points);
     }
-    let base_points: &mut Vec<crate::model::LayoutPoint> = &mut scratch.tmp_points_a;
-
-    scratch.tmp_points_b.clear();
-    scratch.tmp_points_b.extend_from_slice(base_points);
-    let points_after_intersect: &mut Vec<crate::model::LayoutPoint> = &mut scratch.tmp_points_b;
+    let points_after_intersect = &mut scratch.tmp_points_b;
+    points_after_intersect.clone_from(base_points);
 
     let mut elk_endpoint_adapters = super::ElkEndpointAdapterCorners::default();
-    if is_swimlane_layout {
+    if ctx.uses_shoal_routes {
+        // Shoal supplies centers and exterior approach points. A straight two-point route
+        // approaches each shape from the opposite center, using the same uncut input at both ends.
+        let contact = |id: &str, towards: &crate::model::LayoutPoint| {
+            let boundary = boundary_for_node(ctx, id, origin_x, origin_y)?;
+            let shape = ctx.nodes_by_id.get(id)?.layout_shape.as_deref();
+            Some(intersect_for_layout_shape(
+                ctx, id, &boundary, shape, towards,
+            ))
+        };
+        let first_approach = base_points.get(1)?;
+        let last = base_points.len() - 1;
+        points_after_intersect[0] = contact(&le.from, first_approach)?;
+        points_after_intersect[last] = contact(&le.to, &base_points[last - 1])?;
+        // A zero-clearance approach can already lie on the contour. The marker needs a tangent.
+        dedup_consecutive_points(points_after_intersect);
+    } else if is_swimlane_layout {
         let layout_from = le.from.as_str();
         let layout_to = le.to.as_str();
         let layout_shape = |id: &str| {
@@ -222,6 +228,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
     } = request;
     let le = ctx.layout_edges_by_key.get(&key)?;
     let is_elk_layout = ctx.uses_elk_adapter_dom;
+    let clip_clusters = !is_elk_layout && !ctx.uses_shoal_routes;
     let ClippedEdgeRoute {
         base_points,
         points,
@@ -238,7 +245,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
     scratch.tmp_points_c.clear();
     // ELK groups were clipped by sanitizeElkEdgePoints. The local cluster metadata is
     // not Dagre's toCluster/fromCluster rewrite; clipping again would discard that route.
-    if !is_elk_layout && let Some(tc) = le.to_cluster.as_deref() {
+    if clip_clusters && let Some(tc) = le.to_cluster.as_deref() {
         if let Some(boundary) = boundary_for_cluster(ctx, tc, origin_x, origin_y) {
             cut_path_at_intersect_into(base_points, &boundary, &mut scratch.tmp_points_c);
         } else {
@@ -251,7 +258,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
             .tmp_points_c
             .extend_from_slice(points_after_intersect);
     }
-    if !is_elk_layout
+    if clip_clusters
         && let Some(fc) = le.from_cluster.as_deref()
         && let Some(boundary) = boundary_for_cluster(ctx, fc, origin_x, origin_y)
     {
@@ -268,11 +275,6 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
         );
         scratch.tmp_points_c.reverse();
     }
-    let original_label_path_points = if is_elk_layout {
-        points_after_intersect.clone()
-    } else {
-        base_points.clone()
-    };
     let points_for_render: &mut Vec<crate::model::LayoutPoint> = &mut scratch.tmp_points_c;
 
     // Mermaid sets `data-points` as `btoa(JSON.stringify(points))` *before* any cluster clipping
@@ -306,24 +308,30 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
             | "rounded"
     );
 
-    let is_cluster_edge = !is_elk_layout && (le.to_cluster.is_some() || le.from_cluster.is_some());
+    let is_cluster_edge = clip_clusters && (le.to_cluster.is_some() || le.from_cluster.is_some());
     // `positionEdgeLabel` consumes the polyline held by `points`; `fixCorners`, marker offsets,
     // and the D3 curve generator operate on the separate `lineData` copy below.
-    let label_path_points = if ctx
-        .model
-        .edge_label_for_occurrence(key, edge)
-        .is_some_and(|label| !label.is_empty())
+    let (original_label_path_points, label_path_points) = if !ctx.uses_shoal_routes
+        && ctx
+            .model
+            .edge_label_for_occurrence(key, edge)
+            .is_some_and(|label| !label.is_empty())
     {
-        points_for_render.clone()
+        let original = if is_elk_layout {
+            points_after_intersect
+        } else {
+            base_points
+        };
+        (original.clone(), points_for_render.clone())
     } else {
-        Vec::new()
+        (Vec::new(), Vec::new())
     };
 
     if is_basis && is_cluster_edge {
         maybe_remove_redundant_cluster_run_point(points_for_render);
     }
 
-    if !is_elk_layout && points_for_render.len() == 1 {
+    if clip_clusters && points_for_render.len() == 1 {
         // Avoid emitting a degenerate `M x,y` path for clipped cluster-adjacent edges.
         points_for_render.clear();
         points_for_render.extend(le.points.iter().map(|point| crate::model::LayoutPoint {
