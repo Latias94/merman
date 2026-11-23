@@ -46,6 +46,7 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
         &'a merman_model::presentation::PresentationConfig,
     pub(in crate::svg::parity::flowchart) compatibility:
         &'a crate::flowchart::FlowchartCompatibilityBinding,
+    pub(in crate::svg::parity::flowchart) palette: super::agentflow::ContainerPalette<'a>,
     pub(in crate::svg::parity::flowchart) effect_eligibility:
         &'a crate::flowchart::FlowchartEffectEligibility,
     pub(in crate::svg::parity::flowchart) hand_drawn_seed: roughr::core::RoughRandomness,

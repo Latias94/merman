@@ -143,12 +143,7 @@ where
     clippy::too_many_arguments,
     reason = "The streaming CSS writer keeps independently typed SVG definition IDs and theme inputs explicit."
 )]
-pub(in crate::svg::parity) fn write_flowchart_css<
-    DiagramId,
-    DropShadowId,
-    DropShadowSmallId,
-    GradientId,
->(
+pub(super) fn write_flowchart_css<DiagramId, DropShadowId, DropShadowSmallId, GradientId>(
     out: &mut impl crate::svg::parity::SvgOutput,
     diagram_id: DiagramId,
     diagram_type: &str,
@@ -156,6 +151,7 @@ pub(in crate::svg::parity) fn write_flowchart_css<
     drop_shadow_small_id: DropShadowSmallId,
     gradient_id: GradientId,
     theme: &crate::flowchart::FlowchartCompatibilityBinding,
+    palette: &super::agentflow::ContainerPalette<'_>,
     font_family: &str,
     font_size: f64,
     class_defs: &IndexMap<String, Vec<String>>,
@@ -268,7 +264,12 @@ where
     } else if defer_palette {
         Some(out.len())
     } else {
-        super::agentflow::write_flowchart_container_css(out, id, theme, 0..theme.palette.len())?;
+        super::agentflow::write_flowchart_container_css(
+            out,
+            id,
+            palette,
+            0..palette.color_count(),
+        )?;
         None
     };
     let _ = write!(
@@ -457,6 +458,7 @@ fn flowchart_css(
         format!("{diagram_id}-merman-flowchart-document-filter-drop-shadow-small"),
         format!("{diagram_id}-merman-flowchart-document-gradient-root"),
         &crate::flowchart::FlowchartCompatibilityBinding::resolve(effective_config),
+        &super::agentflow::ContainerPalette::new(effective_config),
         font_family,
         font_size,
         class_defs,
@@ -549,6 +551,7 @@ mod tests {
         let mut out = BoundedSvgOutput::new(&meter);
         let class_defs =
             IndexMap::from([("late-class".to_string(), vec!["fill:#123456".to_string()])]);
+        let config = json!({});
 
         let error = write_flowchart_css(
             &mut out,
@@ -557,7 +560,8 @@ mod tests {
             "bounded-css-merman-flowchart-document-filter-drop-shadow",
             "bounded-css-merman-flowchart-document-filter-drop-shadow-small",
             "bounded-css-merman-flowchart-document-gradient-root",
-            &crate::flowchart::FlowchartCompatibilityBinding::resolve(&json!({})),
+            &crate::flowchart::FlowchartCompatibilityBinding::resolve(&config),
+            &super::super::agentflow::ContainerPalette::new(&config),
             "sans-serif",
             16.0,
             &class_defs,
@@ -577,6 +581,7 @@ mod tests {
     fn flowchart_class_selectors_are_css_encoded_before_terminal_xml_encoding() {
         let class = "class&<:quoted\"Ω";
         let class_defs = IndexMap::from([(class.to_owned(), vec!["fill:#123456".to_owned()])]);
+        let config = json!({"htmlLabels": true});
         let mut svg = String::from("<svg><style>");
         write_flowchart_css(
             &mut super::super::super::output::XmlTextOutput::new(&mut svg),
@@ -585,7 +590,8 @@ mod tests {
             "shadow",
             "shadow-small",
             "gradient",
-            &crate::flowchart::FlowchartCompatibilityBinding::resolve(&json!({"htmlLabels": true})),
+            &crate::flowchart::FlowchartCompatibilityBinding::resolve(&config),
+            &super::super::agentflow::ContainerPalette::new(&config),
             "sans-serif",
             16.0,
             &class_defs,

@@ -246,6 +246,7 @@ pub(super) fn with_flowchart_paint_context<T>(
         measurer,
         config: effective_config,
         compatibility: &prepared_theme.compatibility,
+        palette: super::agentflow::ContainerPalette::new(effective_config),
         effect_eligibility: &prepared_theme.effects,
         hand_drawn_seed,
         work_meter: options.work_meter(),
