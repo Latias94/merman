@@ -71,22 +71,24 @@ impl FlowchartNodeEffects {
                 continue;
             };
             let style = &prepared.style;
+            if style.effect().is_none() && !style.effect_is_cleared() {
+                continue;
+            }
             let source = &prepared.source;
             let selection = &prepared.selection;
             let source_filter = source.source_filter_status();
             let source_stroke_width = source.source_stroke_width_status();
             let shape = FlowchartShape::resolve(info.shape)?;
-            let source_geometry_bounded = source.node_shadow_source_is_bounded()
+            let resolved_dimensions = ctx
+                .node_rectangle(id)
+                .map_or([false; 2], |rectangle| rectangle.resolved_dimensions);
+            let source_geometry_bounded = source.node_shadow_source_is_bounded(resolved_dimensions)
                 && if shape == FlowchartShape::DoubleCircle {
                     double_circle_source_bounded
                 } else {
                     structural_source_bounded
                 };
-            let geometry = if style.effect().is_some() || style.effect_is_cleared() {
-                node_shadow_geometry(shape, node.width, node.height, look == "neo")
-            } else {
-                None
-            };
+            let geometry = node_shadow_geometry(ctx, shape, node);
             // Relative CSS widths require host geometry. Do not attach a filter whose region
             // would clip the source by substituting the renderer default stroke width.
             let shadow = if source_filter.is_absent()
@@ -94,7 +96,8 @@ impl FlowchartNodeEffects {
                 && source_stroke_width != FlowchartSourceFacetStatus::Unverified
                 && supported_look
             {
-                if let (Some(effect), Some((_, _, width, height))) = (style.effect(), geometry) {
+                if let (Some(effect), Some(rect)) = (style.effect(), geometry) {
+                    let (width, height) = (rect.width(), rect.height());
                     let half_stroke = f64::from(selection.effect_stroke_width) / 2.0;
                     let (horizontal, vertical) = if shape == FlowchartShape::Diamond {
                         // Use the full miter envelope. A smaller source miter limit or a round/
@@ -142,13 +145,13 @@ impl FlowchartNodeEffects {
             } else {
                 PreparedNodeFilter::Retain
             };
-            let bounds = shadow.zip(geometry).map(|(shadow, (x, y, width, height))| {
+            let bounds = shadow.zip(geometry).map(|(shadow, rect)| {
                 let outsets = shadow.outsets();
                 (
-                    x - outsets.left,
-                    y - outsets.top,
-                    x + width + outsets.right,
-                    y + height + outsets.bottom,
+                    rect.x0 - outsets.left,
+                    rect.y0 - outsets.top,
+                    rect.x1 + outsets.right,
+                    rect.y1 + outsets.bottom,
                 )
             });
             if plan
@@ -196,28 +199,30 @@ impl FlowchartNodeEffects {
 // These terminals paint a complete shape before the separate label writer runs. Other
 // shapes retain an explicit residual until their actual paint geometry has a terminal adapter.
 fn node_shadow_geometry(
+    ctx: &FlowchartRenderCtx<'_>,
     shape: FlowchartShape,
-    width: f64,
-    height: f64,
-    neo: bool,
-) -> Option<(f64, f64, f64, f64)> {
-    let width = width.max(1.0);
-    let height = height.max(1.0);
-    match shape {
+    node: &LayoutNode,
+) -> Option<kurbo::Rect> {
+    let width = node.width.max(1.0);
+    let height = node.height.max(1.0);
+    let rect = match shape {
         FlowchartShape::Process | FlowchartShape::RoundedRectangle => {
-            Some((-width / 2.0, -height / 2.0, width, height))
+            ctx.rectangle_geometry(node).shape
         }
-        FlowchartShape::Diamond => Some((-width / 2.0 + 0.5, -height / 2.0, width, height)),
-        FlowchartShape::Circle => {
-            let diameter = width.min(height).max(1.0);
-            Some((-diameter / 2.0, -diameter / 2.0, diameter, diameter))
-        }
+        FlowchartShape::Diamond => kurbo::Rect::from_center_size((0.5, 0.0), (width, height)),
+        FlowchartShape::Circle => kurbo::Rect::from_center_size(
+            kurbo::Point::ORIGIN,
+            (width.min(height), width.min(height)),
+        ),
         FlowchartShape::DoubleCircle => {
-            let geometry =
-                crate::flowchart::DoubleCircleGeometry::from_outer_diameter(width.min(height), neo);
+            let geometry = crate::flowchart::DoubleCircleGeometry::from_outer_diameter(
+                width.min(height),
+                ctx.compatibility.look.is_neo(),
+            );
             let radius = geometry.outer_radius;
-            Some((-radius, -radius, radius * 2.0, radius * 2.0))
+            kurbo::Rect::new(-radius, -radius, radius, radius)
         }
-        _ => None,
-    }
+        _ => return None,
+    };
+    (rect.width() > 0.0 && rect.height() > 0.0).then_some(rect)
 }

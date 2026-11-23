@@ -1,7 +1,39 @@
-//! Final ELK Markdown title geometry, after the provider's frame reservation.
+//! Flowchart cluster frames and final ELK Markdown title geometry.
 
 use super::*;
 use crate::text::TextMetrics;
+
+pub(super) fn painted_cluster_frame(
+    ctx: &FlowchartRenderCtx<'_>,
+    cluster: &LayoutCluster,
+) -> kurbo::Rect {
+    let width = ctx
+        .elk_cluster_geometry
+        .get(cluster.id.as_str())
+        .map_or(cluster.width, |geometry| geometry.width);
+    let frame = kurbo::Rect::from_center_size((cluster.x, cluster.y), (width, cluster.height));
+    if super::swimlane::is_lane_or_pool_cluster(ctx, cluster.id.as_str()) {
+        return frame;
+    }
+    let [width, height] = cluster_css_size(ctx, cluster.id.as_str()).unwrap_or_default();
+    // The cluster renderer positions the frame before applying SVG geometry properties.
+    frame.with_size((
+        width.unwrap_or_else(|| frame.width().max(1.0)),
+        height.unwrap_or_else(|| frame.height().max(1.0)),
+    ))
+}
+
+pub(super) fn cluster_css_size(ctx: &FlowchartRenderCtx<'_>, id: &str) -> Option<[Option<f64>; 2]> {
+    if ctx.compatibility.look.is_hand_drawn() || super::swimlane::is_lane_or_pool_cluster(ctx, id) {
+        return None;
+    }
+    let terminal = ctx.prepared_nodes.cluster(id).ok()?;
+    if ctx.diagram_type == "agentflow" && !terminal.theme.requests_shape_style() {
+        return None;
+    }
+    let size = terminal.compiled.rectangle_size;
+    (size != [None; 2]).then_some(size)
+}
 
 #[derive(Clone, Copy)]
 pub(super) struct FlowchartElkClusterGeometry {

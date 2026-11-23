@@ -25,7 +25,10 @@ use std::fmt::{self, Write};
 use attr::is_self_closing;
 use cascade::{CascadeIndex, Namespace, SourceElement};
 use context::{SourceFrame, attribute, source_class_attr_tokens};
-use html::{foreign_object_html_wrapping, normalized_foreign_object_text};
+pub(crate) use html::measure_styled_html_label;
+use html::{
+    foreign_object_html_wrapping, normalized_foreign_object_text, standalone_node_label_box,
+};
 
 /// A writer's glyph-only HTML filter request; the matching paragraph is checked before projection.
 pub(crate) const FALLBACK_TEXT_FILTER_DATA_ATTR: &str = "data-merman-fallback-text-filter";
@@ -211,12 +214,14 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                     i = i_next;
                     continue;
                 }
+                let label_box = standalone_node_label_box(inner, checkpoint)?;
+                let block_width = label_box.and_then(|label_box| label_box.width);
+                let text_width = block_width.unwrap_or(width);
                 let (anchor, text_x) = match attribute(tag, "text-anchor", checkpoint)?.as_deref() {
                     Some("start") => ("start", x),
-                    Some("end") => ("end", x + width),
-                    _ => ("middle", x + width / 2.0),
+                    Some("end") => ("end", x + text_width),
+                    _ => ("middle", x + text_width / 2.0),
                 };
-                let text_y = y + height / 2.0;
 
                 checkpoint()?;
                 let cascade = match cascade_index.as_mut() {
@@ -294,11 +299,21 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         .map(|classes| format!(r#" data-merman-source-classes="{classes}""#))
                         .unwrap_or_default();
                     let measure_style = typography.text_style();
-                    let wrapping = foreign_object_html_wrapping(tag, inner, checkpoint)?;
+                    let wrapping = match block_width {
+                        Some(width) => (width > 0.0).then_some(width),
+                        None => foreign_object_html_wrapping(tag, inner, checkpoint)?,
+                    };
                     let lines =
                         normalized.wrap(wrapping, text_measurer, &measure_style, checkpoint)?;
-                    let line_height = typography.line_height;
-                    let y0 = text_y - line_height * (lines.len() as f64 - 1.0) / 2.0;
+                    let line_heights = lines
+                        .iter()
+                        .map(|line| normalized.line_box_height(line, typography.line_height))
+                        .collect::<Vec<_>>();
+                    let mut top = if label_box.is_some_and(|label_box| label_box.height.is_some()) {
+                        y
+                    } else {
+                        y + (height - line_heights.iter().sum::<f64>()) / 2.0
+                    };
                     let mut positions = Vec::with_capacity(lines.len());
                     let mut valid = true;
                     for (idx, line) in lines.iter().enumerate() {
@@ -308,8 +323,15 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                             "end" => 1.0,
                             _ => 0.0,
                         };
-                        let line_x = text_x + (line.width - line.alignment_width) * anchor_factor;
-                        let y_line = y0 + idx as f64 * line_height;
+                        // HTML retains the trailing letter spacing in the line width. Native
+                        // SVG text anchors against the advance without that final spacing.
+                        let trailing_spacing = normalized.trailing_letter_spacing(line);
+                        let line_x = text_x
+                            + (line.width - line.alignment_width - trailing_spacing)
+                                * anchor_factor;
+                        let line_height = line_heights[idx];
+                        let y_line = top + line_height / 2.0;
+                        top += line_height;
                         checkpoint()?;
                         // Emitted rows are decoded SVG text, not a new HTML label.
                         let (bbox_width, bbox_height) = if normalized
@@ -523,6 +545,15 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         typography.font_style.as_deref().unwrap_or("normal"),
                     )
                     .expect("writing into a string");
+                    let spacing = typography.text_geometry.spacing;
+                    if !spacing.is_normal() {
+                        write!(
+                            text_style,
+                            " letter-spacing: {}px; word-spacing: {}px;",
+                            spacing.letters, spacing.words,
+                        )
+                        .expect("writing into a string");
+                    }
                     let escaped_fill =
                         escape_xml_attr_with_checkpoints(&typography.fill, checkpoint)?;
                     let escaped_style = escape_xml_attr_with_checkpoints(&text_style, checkpoint)?;
@@ -561,7 +592,7 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                                         String::new()
                                     };
                                 let text = escape_xml_text_with_checkpoints(run.text, checkpoint)?;
-                                let style = format!(
+                                let mut style = format!(
                                     "font-family: {} !important; font-size: {}px !important; font-weight: {} !important; font-style: {} !important; fill: {} !important; fill-opacity: 1 !important; stroke: none !important; opacity: 1 !important; display: inline !important; visibility: inherit !important; clip-path: none !important; mask: none !important; filter: none !important; transform: none !important;",
                                     run.typography.font_family,
                                     run.typography.font_size,
@@ -569,6 +600,15 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                                     run.typography.font_style.as_deref().unwrap_or("normal"),
                                     run.typography.fill,
                                 );
+                                let run_spacing = run.typography.text_geometry.spacing;
+                                if run_spacing != spacing {
+                                    write!(
+                                        style,
+                                        " letter-spacing: {}px !important; word-spacing: {}px !important;",
+                                        run_spacing.letters, run_spacing.words,
+                                    )
+                                    .expect("writing into a string");
+                                }
                                 let style = escape_xml_attr_with_checkpoints(&style, checkpoint)?;
                                 push_generated_fmt(
                                     &mut overlays,

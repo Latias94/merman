@@ -15,6 +15,7 @@ pub(in crate::svg::parity) struct FlowchartCompiledStyles {
     edge_animation_active: Option<bool>,
     edge_class_shape_sources: Vec<PendingSourceDeclaration>,
     pub(super) node_style: String,
+    pub(super) rectangle_size: [Option<f64>; 2],
     pub(super) label_style: String,
     pub(super) label_div_decls: Vec<(String, String)>,
     pub(super) fill: Option<String>,
@@ -384,11 +385,14 @@ impl FlowchartCompiledStyles {
         })
     }
 
-    pub(super) fn node_shadow_source_is_bounded(&self) -> bool {
-        !self
-            .shape_sources
+    pub(super) fn node_shadow_source_is_bounded(&self, [width, height]: [bool; 2]) -> bool {
+        self.shape_sources
             .iter()
-            .any(|source| node_shadow_geometry_is_overridden(source.prepared.property()))
+            .all(|source| match source.prepared.property() {
+                "width" => width,
+                "height" => height,
+                property => !node_shadow_geometry_is_overridden(property),
+            })
     }
 
     pub(super) fn source_filter_status(&self) -> crate::flowchart::FlowchartSourceFacetStatus {
@@ -553,7 +557,19 @@ impl FlowchartCompiledStyles {
         crate::flowchart::FlowchartTextStyleResolution {
             style: cascade.finish(),
             terminal_foreground,
+            html_geometry: self.html_label_geometry(),
         }
+    }
+
+    pub(super) fn html_label_geometry(&self) -> crate::mermaid_style::HtmlTextGeometryDeclarations {
+        use crate::mermaid_style::HtmlTextProperty;
+        let mut geometry = crate::mermaid_style::HtmlTextGeometryDeclarations::default();
+        for declaration in &self.label_sources {
+            if let Some(property) = HtmlTextProperty::named(declaration.prepared.property()) {
+                geometry.set(property, declaration.prepared.value());
+            }
+        }
+        geometry
     }
 
     pub(super) fn source_fill_status(&self) -> crate::flowchart::FlowchartSourceFacetStatus {
@@ -811,6 +827,7 @@ impl FlowchartCompiledStyles {
                 property,
                 "fill" | "stroke" | "stroke-width" | "stroke-dasharray" | "rx" | "ry"
             ) || property.starts_with("--")
+                || receipt.verifies_rectangle_dimension(property)
             {
                 continue;
             }
@@ -2251,10 +2268,8 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
     inline_styles_b: &[String],
     work_meter: Option<&crate::resources::OperationWorkMeter>,
 ) -> std::result::Result<FlowchartCompiledStyles, crate::resources::OperationWorkError> {
-    // Ported from Mermaid `handDrawnShapeStyles.compileStyles()` / `styles2String()`:
-    // - preserve insertion order of the first occurrence of a key
-    // - later declarations of equal priority override values without changing order
-    // - an earlier `!important` declaration remains the winner over later normal declarations
+    // Preserve Mermaid's insertion order from compileStyles() and styles2String(). Merman
+    // also honors authored !important priority before emitting the winners as important CSS.
     struct OrderedDeclaration {
         prepared: Arc<crate::diagram_theme::PreparedSourceStyleDeclaration>,
         provenance: PendingSourceProvenance,
@@ -2295,27 +2310,6 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
     }
 
     #[derive(Default)]
-    struct EmissionMap {
-        order: Vec<Arc<crate::diagram_theme::PreparedSourceStyleDeclaration>>,
-        idx: FxHashMap<String, usize>,
-    }
-
-    impl EmissionMap {
-        fn set(&mut self, prepared: Arc<crate::diagram_theme::PreparedSourceStyleDeclaration>) {
-            let property = prepared.property_css().to_string();
-            if let Some(&index) = self.idx.get(&property) {
-                if self.order[index].important() && !prepared.important() {
-                    return;
-                }
-                self.order[index] = prepared;
-                return;
-            }
-            self.idx.insert(property, self.order.len());
-            self.order.push(prepared);
-        }
-    }
-
-    #[derive(Default)]
     struct AnimationNameCascade {
         winner: Option<(bool, bool)>,
     }
@@ -2351,7 +2345,7 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
     let mut semantic = SemanticMap::default();
     let mut inline_semantic = SemanticMap::default();
     let mut inline_declarations = Vec::new();
-    let mut emission = EmissionMap::default();
+    let mut emission = IndexMap::default();
     let mut animation_name = AnimationNameCascade::default();
     let mut edge_class_declarations = Vec::new();
     let mut edge_class_shape_sources = Vec::new();
@@ -2397,7 +2391,12 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
                 });
             }
             animation_name.observe(&prepared, work_meter)?;
-            emission.set(Arc::clone(&prepared));
+            crate::flowchart::flowchart_insert_style_by_spelling(
+                &mut emission,
+                prepared.property_css().to_owned(),
+                Arc::clone(&prepared),
+                |declaration| declaration.important(),
+            );
             semantic.set(prepared, provenance);
         }
     }
@@ -2429,7 +2428,12 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
                 provenance: provenance.clone(),
             });
             animation_name.observe(&prepared, work_meter)?;
-            emission.set(Arc::clone(&prepared));
+            crate::flowchart::flowchart_insert_style_by_spelling(
+                &mut emission,
+                prepared.property_css().to_owned(),
+                Arc::clone(&prepared),
+                |declaration| declaration.important(),
+            );
             inline_semantic.set(Arc::clone(&prepared), provenance.clone());
             semantic.set(prepared, provenance);
         }
@@ -2498,7 +2502,8 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
         }
     }
 
-    for declaration in &emission.order {
+    let mut rectangle_size = [None; 2];
+    for declaration in emission.into_values() {
         let property_css = declaration.property_css();
         let v = declaration.value();
         if crate::flowchart::flowchart_is_source_spelled_label_style_key(property_css) {
@@ -2508,6 +2513,11 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
             let _ = write!(&mut label_style, "{property_css}:{v} !important");
             label_div_decls.push((property_css.to_string(), v.to_string()));
         } else {
+            if matches!(declaration.property(), "width" | "height")
+                && let Ok(length) = declaration.svg_rect_length_px()
+            {
+                rectangle_size[usize::from(declaration.property() == "height")] = length;
+            }
             if !node_style.is_empty() {
                 node_style.push(';');
             }
@@ -2654,6 +2664,7 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
         edge_animation_active: animation_name.active(),
         edge_class_shape_sources,
         node_style,
+        rectangle_size,
         label_style,
         label_div_decls,
         fill,
@@ -3037,6 +3048,7 @@ mod tests {
             edge_animation_active: None,
             edge_class_shape_sources: Vec::new(),
             node_style: String::new(),
+            rectangle_size: [None; 2],
             label_style: String::new(),
             label_div_decls: vec![("color".to_string(), value.to_string())],
             fill: None,

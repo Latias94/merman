@@ -3,6 +3,7 @@
 use rustc_hash::FxHashMap;
 
 use super::super::timing::RenderTiming;
+use super::cluster_geometry::painted_cluster_frame;
 use super::viewbox_node_bounds::include_flowchart_node_rendered_bounds;
 use super::*;
 
@@ -91,42 +92,14 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_rendered_bounds<'data
             hierarchy_plan.effective_parent(&c.id)
         };
         let y_off = y_offset_for_root(root);
-        let elk_geometry = ctx.elk_cluster_geometry.get(c.id.as_str());
-        let hw = elk_geometry.map_or(c.width, |geometry| geometry.width) / 2.0;
-        let hh = c.height / 2.0;
-        let mut painted_width = hw * 2.0;
-        let mut painted_height = c.height;
-        if ctx.compatibility.look.as_str() != "handDrawn"
-            && !super::swimlane::is_lane_or_pool_cluster(ctx, c.id.as_str())
-        {
-            let terminal = ctx.prepared_nodes.cluster(c.id.as_str())?;
-            crate::mermaid_style::visit_parsed_style_declarations(
-                &terminal.rect_style,
-                |declaration| {
-                    if let Some(value) =
-                        declaration.svg_number_or_px().filter(|value| *value >= 0.0)
-                    {
-                        match declaration.property() {
-                            "width" => painted_width = value,
-                            "height" => painted_height = value,
-                            _ => {}
-                        }
-                    }
-                },
-            );
+        let frame = painted_cluster_frame(ctx, c);
+        if !frame.is_zero_area() {
+            include_rect(frame.x0, frame.y0 + y_off, frame.x1, frame.y1 + y_off);
         }
-        // CSS geometry overrides the rect dimensions without changing its attribute origin.
-        // Mermaid's final getBBox includes that painted extent, not only the provider frame.
-        include_rect(
-            c.x - hw,
-            c.y + y_off - hh,
-            c.x - hw + painted_width,
-            c.y + y_off - hh + painted_height,
-        );
 
-        if let Some(geometry) = elk_geometry {
+        if let Some(geometry) = ctx.elk_cluster_geometry.get(c.id.as_str()) {
             let lhw = geometry.label.width / 2.0;
-            let label_top = c.y + y_off - hh + c.title_margin_top.max(0.0);
+            let label_top = frame.y0 + y_off + c.title_margin_top.max(0.0);
             include_rect(
                 c.x - lhw,
                 label_top,
@@ -434,21 +407,19 @@ fn builtin_neo_paint_bounds(
     for cluster in ctx.layout_clusters_by_id.values() {
         ctx.work_meter.charge(1)?;
         // The default cluster writer emits a one-pixel outline without a Neo filter.
-        let y = cluster.y
-            + y_offset(
-                &cluster.id,
-                ctx.recursive_clusters.contains(cluster.id.as_str()),
-            );
-        let half_width = ctx
-            .elk_cluster_geometry
-            .get(cluster.id.as_str())
-            .map_or(cluster.width, |geometry| geometry.width)
-            / 2.0;
+        let frame = painted_cluster_frame(ctx, cluster);
+        if frame.is_zero_area() {
+            continue;
+        }
+        let offset = y_offset(
+            &cluster.id,
+            ctx.recursive_clusters.contains(cluster.id.as_str()),
+        );
         include(
-            cluster.x - half_width - 0.5,
-            y - cluster.height / 2.0 - 0.5,
-            cluster.x + half_width + 0.5,
-            y + cluster.height / 2.0 + 0.5,
+            frame.x0 - 0.5,
+            frame.y0 + offset - 0.5,
+            frame.x1 + 0.5,
+            frame.y1 + offset + 0.5,
         );
     }
     if ctx.compatibility.drop_shadow != "url(#drop-shadow)" {
@@ -459,6 +430,9 @@ fn builtin_neo_paint_bounds(
         let Some(node) = ctx.layout_nodes_by_id.get(id) else {
             continue;
         };
+        if node.is_cluster && ctx.layout_clusters_by_id.contains_key(id) {
+            continue;
+        }
         let Some(info) = super::render::node::helpers::resolve_node_render_info(ctx, id) else {
             continue;
         };
@@ -491,11 +465,15 @@ fn builtin_neo_paint_bounds(
         ) / 2.0;
         let offset = super::super::look_defs::NEO_SHADOW_OFFSET_PX;
         let y = node.y + y_offset(id, node.is_cluster && ctx.recursive_clusters.contains(id));
+        let shape = ctx.rectangle_geometry(node).shape;
+        if shape.width() == 0.0 || shape.height() == 0.0 {
+            continue;
+        }
         include(
-            node.x - node.width / 2.0 - stroke,
-            y - node.height / 2.0 - stroke,
-            node.x + node.width / 2.0 + stroke + offset,
-            y + node.height / 2.0 + stroke + offset,
+            node.x + shape.x0 - stroke,
+            y + shape.y0 - stroke,
+            node.x + shape.x1 + stroke + offset,
+            y + shape.y1 + stroke + offset,
         );
     }
     Ok(bounds)

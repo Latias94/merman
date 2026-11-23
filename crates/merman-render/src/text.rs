@@ -43,6 +43,8 @@ pub(crate) use measure::{
     MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, measure_mermaid_text_dimensions,
     measure_mermaid_text_dimensions_with_checkpoint,
 };
+#[cfg(feature = "diagram-flowchart")]
+pub(crate) use metrics::flowchart_label_xhtml_for_typography_admission;
 #[cfg(any(feature = "diagram-block", feature = "diagram-class"))]
 pub(crate) use metrics::measure_unwrapped_xhtml_label_fragment;
 #[doc(hidden)]
@@ -53,10 +55,10 @@ pub(crate) use metrics::measure_unwrapped_xhtml_label_fragment;
 ))]
 pub use metrics::unsupported_html_label_style;
 pub(crate) use metrics::{
-    measure_html_with_document_root, measure_svg_markdown_word_lines,
-    measure_svg_markdown_word_lines_with_origin, measure_wrapped_markdown_with_inline_styles,
-    measure_xhtml_label_fragment_with_terminal_fonts, mermaid_markdown_to_wrapped_word_lines,
-    svg_markdown_word_style, wrap_markdown_word_lines,
+    measure_html_with_authored_width, measure_html_with_document_root,
+    measure_svg_markdown_word_lines, measure_svg_markdown_word_lines_with_origin,
+    measure_wrapped_markdown_with_inline_styles, measure_xhtml_label_fragment_with_terminal_fonts,
+    mermaid_markdown_to_wrapped_word_lines, svg_markdown_word_style, wrap_markdown_word_lines,
 };
 pub use metrics::{measure_html_with_inline_styles, measure_markdown_with_inline_styles};
 

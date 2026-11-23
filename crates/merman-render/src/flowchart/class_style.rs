@@ -76,7 +76,7 @@ impl<'a> FlowchartLabelDom<'a> {
 
     /// The number is the fixed terminal depth, used only to distinguish direct glyph/content
     /// declarations from inherited outer-shell fonts. ClassDef order breaks ties at one depth.
-    fn classes(self) -> Vec<(&'static str, u8)> {
+    pub(crate) fn classes(self) -> Vec<(&'static str, u8)> {
         let mut classes = if let Some((shape, hand_drawn)) = self.node {
             let wrapper = if shape == "imageSquare" {
                 "image-shape"

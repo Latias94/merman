@@ -1276,7 +1276,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
             prepared_label,
         );
         let needs_wrap = ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike
-            && crate::graph_label::flowchart_html_label_metrics_for_layout(
+            && crate::graph_label::flowchart_html_label_metrics_with_geometry(
                 crate::flowchart::FlowchartLabelMetricsRequest {
                     measurer: ctx.measurer,
                     raw_label: label_text,
@@ -1288,6 +1288,10 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
                     math_renderer: None,
                 },
                 &label_html,
+                compiled_label_styles.map_or(
+                    Default::default(),
+                    FlowchartCompiledStyles::html_label_geometry,
+                ),
             )
             .width
                 > ctx.wrapping_width;

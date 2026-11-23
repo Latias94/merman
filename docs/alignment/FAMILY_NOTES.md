@@ -360,6 +360,96 @@ provide actual bounds; a font-agnostic estimate cannot guarantee containment aft
 substitution. Root-paint residuals remain independently signed by the browser oracle under the
 [viewport policy](PARITY_POLICY.md#root-viewport-transition).
 
+### Node dimensions
+
+Set `flowchart.minNodeWidth` to give short labels a common minimum width. The shape adds its own
+padding. Longer labels can grow, and label content still determines height. In the `neo` look,
+this configuration gives ordinary rectangles with short labels a width of 220 px.
+
+```mermaid
+---
+config:
+  look: neo
+  flowchart:
+    minNodeWidth: 188
+---
+flowchart TB
+  A[API] --> B[Worker]
+```
+
+For selected nodes, an HTML label can set the size of a single block-level `<div>`. A 188 × 66 px
+label box and the `neo` rectangle's padding make each node 220 × 90 px. Set a height that fits
+the label text.
+
+```mermaid
+---
+config:
+  look: neo
+  htmlLabels: true
+---
+flowchart TB
+  A["<div style='width:188px;height:66px'>API</div>"]
+  B@{ shape: rect, label: "<div style='width:188px;height:66px'>Queue<br/>worker</div>" }
+  A --> B
+```
+
+Headless layout supports inline pixel `width` and `height` on that block. The existing minimum
+still applies to the outer label area, and text uses the selected measurement provider. Relative
+sizes, other display modes, nested layout, and stylesheet-driven geometry remain browser-dependent.
+
+Set `width` and `height` with `style` or an assigned `classDef` to size the native rectangle
+itself. This works for process and rounded rectangles in the `classic` and `neo` looks, including
+PNG export. Unitless SVG numbers and absolute CSS lengths are resolved before layout. Mermaid
+keeps the rectangle's label-derived origin and measures the union of the resized shape and its
+centered label. Dagre, ELK, and Swimlane use those measured dimensions for placement and routing.
+For equal boxes with centered labels, size the HTML label boxes as shown above.
+
+Mermaid's `@{ w: ..., h: ... }` fields describe image and icon assets. Hand-drawn rectangles
+are paths and continue to use label-derived dimensions. Relative lengths, inherited styles, and
+stylesheet fallbacks require consumer geometry. Merman preserves its authored `!important`
+precedence when compiling source styles. Mermaid 12.3.0 appends `!important` even to a value
+that already has it, which can invalidate the inline declaration in a browser.
+
+Image nodes read intrinsic dimensions from inline PNG, JPEG, GIF, and WebP data URLs during
+layout. With `constraint: off`, each absent dimension uses the corresponding intrinsic dimension.
+With `constraint: on`, a nonzero `h` takes priority and the intrinsic aspect ratio determines
+the width. Otherwise the width determines the height. A nonempty label establishes a minimum
+raw width of `flowchart.wrappingWidth` before the constraint is applied. The resolved box feeds
+Dagre, ELK, Swimlane, and SVG output. Images without readable raster dimensions use declared
+sizes and the headless 60 px fallback. Raster export applies its own decode limits to the image
+data. See the [image shape in Mermaid 12.3.0](https://github.com/mermaid-js/mermaid/blob/2086904e76c692331e34a45d7cc3bc30860d040e/packages/mermaid/src/rendering-util/rendering-elements/shapes/imageSquare.ts).
+
+HTML label images retain their authored `width` and `height` attributes in SVG. For mixed
+text-and-image labels, Mermaid sets the image width to the label width. Merman measures the text
+and an explicit pixel height together, or uses the intrinsic aspect ratio of an inline raster image
+to obtain its height. An image-only label with one image uses the existing 80 px headless width.
+Images with no readable dimensions retain a headless estimate. The native text fallback projects
+the label text, while SVG consumers can display the retained HTML image. See the
+[label image sizing in Mermaid 12.3.0](https://github.com/mermaid-js/mermaid/blob/2086904e76c692331e34a45d7cc3bc30860d040e/packages/mermaid/src/rendering-util/rendering-elements/shapes/labelImageUtils.ts).
+
+Absolute `width` and `height` from `style` or an assigned `classDef` resize ordinary rectangular
+subgraph frames. The SVG attributes carry the resolved size to native export, and the viewport
+uses the painted frame and the visible cluster contents. The frame starts at the layout-derived
+origin, and the title keeps its layout-derived anchor. Dagre measures a recursively rendered
+subgraph using the union of its painted frame, title, and laid-out contents. The resulting group
+size controls the subgraph's footprint and edge clipping in the parent graph. A CSS resize leaves
+the inner nodes and edges in their original local coordinate system.
+[Label geometry tests](../../crates/merman-render/tests/flowchart_label_geometry_test.rs)
+
+Flowchart measures `line-height`, `letter-spacing`, `word-spacing`, and the `uppercase`,
+`lowercase`, and `capitalize` values of `text-transform` for text-only HTML labels. Simple
+declarations from node and edge styles and the retained inline markup apply before wrapping and
+layout. Native export uses the same line planner for these text properties. Retained inline font
+declarations also participate in deterministic layout. A label such as
+`<span style='font-size:32px'>Alpha Beta</span>` reserves space for 32 px text before wrapping.
+Native font measurement accepts these four properties from assigned `classDef` and direct `style`
+declarations on process and rounded rectangles, and from default and indexed `linkStyle`
+declarations for edges. Admission follows the winning declarations on each label. The supported
+labels use plain HTML text and line breaks, and their values resolve without a document root.
+Structural class selectors, cluster styles, and inline HTML use their own admission checks.
+Font shaping, contextual case mapping, SVG-only text geometry, and CSS that needs a document
+cascade remain compatibility limits. Replaced elements and math have their own measurement paths.
+
 ## Gantt
 
 Task-data tokens stop before a semicolon without discarding the remaining physical-line input.

@@ -64,7 +64,7 @@ fn native_flowchart_admits_px_size_and_node_font_weight() {
 #[test]
 fn native_source_geometry_guards_follow_normalized_css_properties() {
     let families = [
-        "flowchart LR\nA[Measured label]\n",
+        "%%{init: {\"htmlLabels\":false}}%%\nflowchart LR\nA[Measured label]\n",
         #[cfg(feature = "diagram-class")]
         "classDiagram\nclass A\n",
     ];
@@ -119,6 +119,87 @@ style A font-family:"Face;letter-spacing:20px",monospace
         OperationControl::new(),
     ));
     assert!(result.is_ok(), "{:?}", result.err());
+}
+
+#[test]
+fn native_flowchart_measures_static_html_label_typography() {
+    let source = "%%{init: {\"fontFamily\":\"Cousine\",\"flowchart\":{\"minNodeWidth\":0,\"wrappingWidth\":400}}}%%\nflowchart TB\nA[\"Alpha Beta<br/>Gamma Delta\"] -->|Alpha Beta| B[End]\n";
+    let svg_request = request(true);
+    let render = |source: &str| {
+        let merman::RenderOutput::Svg(Some(output)) = Renderer::new()
+            .render(RenderRequest::svg(
+                source,
+                OperationControl::new(),
+                svg_request.clone(),
+            ))
+            .unwrap_or_else(|error| panic!("{source}: {error}"))
+        else {
+            panic!("expected SVG");
+        };
+        let document = roxmltree::Document::parse(output.svg()).unwrap();
+        let size = |class| {
+            let label = document
+                .descendants()
+                .find(|element| {
+                    element.has_tag_name("foreignObject")
+                        && element.ancestors().any(|parent| {
+                            parent.attribute("class").is_some_and(|classes| {
+                                classes.split_ascii_whitespace().any(|name| name == class)
+                            })
+                        })
+                })
+                .unwrap();
+            let number = |name| label.attribute(name).unwrap().parse::<f64>().unwrap();
+            (number("width"), number("height"))
+        };
+        (size("node"), size("edgeLabel"))
+    };
+    let (unstyled_node, unstyled_edge) = render(source);
+    let (styled_node, styled_edge) = render(&format!(
+        "{source}style A letter-spacing:4px,word-spacing:8px,line-height:3,text-transform:uppercase\nlinkStyle 0 letter-spacing:4px\n"
+    ));
+    assert_eq!(styled_node.0 - unstyled_node.0, 52.0);
+    assert_eq!(styled_node.1, 84.0);
+    assert!((styled_edge.0 - unstyled_edge.0 - 40.0).abs() < 1.0 / 64.0);
+    assert_eq!(
+        render(&format!(
+            "{source}classDef measured letter-spacing:4px,word-spacing:8px,line-height:3,text-transform:uppercase\nclass A measured\nlinkStyle default letter-spacing:4px\n"
+        )),
+        (styled_node, styled_edge),
+    );
+}
+
+#[test]
+fn native_flowchart_checks_only_active_source_typography() {
+    let source = "flowchart LR\nA[\"Alpha<br/>Beta\"] -->|Measured label| B[End]\n";
+    let render = |source: &str| {
+        Renderer::new().render(RenderRequest::new(
+            source,
+            RenderTarget::Svg(request(true)),
+            OperationControl::new(),
+        ))
+    };
+    for styles in [
+        "classDef unused line-height:2rem\n",
+        "classDef tall line-height:2rem\nclass A tall\nstyle A line-height:3\n",
+        "linkStyle default line-height:2rem\nlinkStyle 0 line-height:3\n",
+    ] {
+        let result = render(&format!("{source}{styles}"));
+        assert!(result.is_ok(), "{styles}: {:?}", result.err());
+    }
+    for styles in [
+        "classDef tall line-height:2rem\nclass A tall\n",
+        "classDef root line-height:2rem\n",
+        "classDef tall line-height:2rem !important\nclass A tall\nstyle A line-height:3\n",
+        "linkStyle default line-height:2rem\n",
+    ] {
+        let error = render(&format!("{source}{styles}")).expect_err("unmeasured active style");
+        assert!(
+            error.to_string().contains("line-height"),
+            "{styles}: {error}"
+        );
+    }
+    assert!(render("flowchart LR\nA --> B\nlinkStyle default line-height:2rem\n").is_ok());
 }
 
 #[test]

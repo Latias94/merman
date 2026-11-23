@@ -158,7 +158,7 @@ fn compiled_body_depth_precedes_all_connections_in_nested_dagre_and_elk_roots() 
     for layout in ["dagre", "elk"] {
         for look in ["classic", "neo"] {
             let source = format!(
-                "---\nconfig:\n  layout: {layout}\n---\nflowchart TB\nsubgraph Outer\nsubgraph Inner\nA[Rect] -->|Advance| B(Round) --> C{{Diamond}} --> D((Circle)) --> E(((Double)))\nend\nend\nE --> Z[Result]"
+                "---\nconfig:\n  layout: {layout}\n---\nflowchart TB\nsubgraph Outer\nsubgraph Inner\nA[Rect] -->|Advance| B(Round) --> C{{Diamond}} --> D((Circle)) --> E(((Double)))\nend\nend\nE --> Z[Result]\nstyle A width:220px,height:90px\nstyle B width:130px"
             );
             let rendered = render(&source, &theme, look, true).unwrap();
             let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
@@ -518,14 +518,15 @@ fn structural_source_filters_keep_ownership_over_body_shadow_and_clear() {
 #[test]
 fn source_css_geometry_cannot_certify_layout_based_shadow_regions() {
     let themed = theme(ThemeRuleSet::default());
-    for declaration in [
-        "classDef basic r:1px",
-        "classDef label-container cx:1000px",
-        "classDef nodes r:1000px",
-        "style A r:1px",
-        "style A transform:scale(4)",
+    for (node, declaration) in [
+        ("A(((Double)))", "classDef basic r:1px"),
+        ("A(((Double)))", "classDef label-container cx:1000px"),
+        ("A(((Double)))", "classDef nodes r:1000px"),
+        ("A(((Double)))", "style A r:1px"),
+        ("A(((Double)))", "style A transform:scale(4)"),
+        ("A[Rect]", "style A width:25%,height:90px"),
     ] {
-        let source = format!("flowchart LR\nA(((Double)))\n{declaration}");
+        let source = format!("flowchart LR\n{node}\n{declaration}");
         for look in ["classic", "neo"] {
             let rendered = render(&source, &themed, look, false).unwrap();
             assert_eq!(applications(rendered.svg()), 0, "{look}, {declaration}");

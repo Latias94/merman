@@ -1,4 +1,6 @@
+use crate::html::label_box::HtmlLabelBox;
 use crate::math::MathRenderer;
+use crate::mermaid_style::HtmlTextGeometryDeclarations;
 use crate::model::{Bounds, LayoutEdge, LayoutNode};
 #[cfg(all(
     test,
@@ -14,6 +16,10 @@ use crate::text::{
     is_html_collapsible_ascii_whitespace, trim_html_collapsible_ascii_whitespace,
 };
 use merman_model::presentation::PresentationConfig;
+use quick_xml::{
+    Reader, XmlVersion,
+    events::{BytesStart, Event},
+};
 use std::borrow::Cow;
 use std::fmt::Write as _;
 use unicode_segmentation::UnicodeSegmentation;
@@ -629,6 +635,13 @@ pub(crate) fn flowchart_label_is_empty_for_render(label: &str) -> bool {
 pub(crate) fn flowchart_label_metrics_for_layout(
     request: FlowchartLabelMetricsRequest<'_>,
 ) -> crate::text::TextMetrics {
+    flowchart_label_metrics_with_html_geometry(request, HtmlTextGeometryDeclarations::default())
+}
+
+pub(crate) fn flowchart_label_metrics_with_html_geometry(
+    request: FlowchartLabelMetricsRequest<'_>,
+    geometry: HtmlTextGeometryDeclarations,
+) -> crate::text::TextMetrics {
     if request.raw_label.is_empty() {
         return crate::text::TextMetrics {
             width: 0.0,
@@ -644,7 +657,7 @@ pub(crate) fn flowchart_label_metrics_for_layout(
             flowchart_label_html_source(request.raw_label, request.label_type, request.config);
         let sanitize_config = flowchart_label_sanitize_config(request.config);
         let xhtml = merman_markup::sanitize::sanitize_xhtml(&source, &sanitize_config);
-        return flowchart_html_label_metrics_for_layout(request, &xhtml);
+        return flowchart_html_label_metrics_with_geometry(request, &xhtml, geometry);
     }
     if request.label_type == "markdown" {
         crate::text::measure_wrapped_markdown_with_inline_styles(
@@ -724,9 +737,73 @@ pub(crate) fn flowchart_label_sanitize_config(
 }
 
 /// Measures the exact sanitized XHTML retained for the corresponding HTML-label terminal.
+#[cfg(test)]
 pub(crate) fn flowchart_html_label_metrics_for_layout(
     request: FlowchartLabelMetricsRequest<'_>,
     xhtml: &str,
+) -> crate::text::TextMetrics {
+    flowchart_html_label_metrics_with_geometry(
+        request,
+        xhtml,
+        HtmlTextGeometryDeclarations::default(),
+    )
+}
+
+pub(crate) fn flowchart_html_label_metrics_with_geometry(
+    mut request: FlowchartLabelMetricsRequest<'_>,
+    xhtml: &str,
+    geometry: HtmlTextGeometryDeclarations,
+) -> crate::text::TextMetrics {
+    let dimensions = flowchart_html_label_box(request.measurer, xhtml);
+    let width = dimensions.and_then(|dimensions| dimensions.width_in_label(request.max_width_px));
+    let mut metrics = if let Some(metrics) = crate::svg::measure_styled_html_label(
+        request.measurer,
+        xhtml,
+        request.style,
+        geometry,
+        width.map_or(request.max_width_px, |width| width.wrap),
+        width.is_some(),
+    ) {
+        metrics
+    } else if let Some(width) = width {
+        if xhtml.contains("<img") {
+            request.max_width_px = width.wrap;
+            flowchart_html_label_content_metrics(request, xhtml, geometry)
+        } else {
+            crate::text::measure_html_with_authored_width(
+                request.measurer,
+                xhtml,
+                request.style,
+                width.wrap,
+            )
+        }
+    } else {
+        flowchart_html_label_content_metrics(request, xhtml, geometry)
+    };
+    if let Some(width) = width {
+        metrics.width = width.outer;
+    }
+    if let Some(dimensions) = dimensions {
+        metrics.height = dimensions.height.unwrap_or(metrics.height);
+    }
+    metrics
+}
+
+pub(crate) fn flowchart_html_label_box(
+    measurer: &dyn TextMeasurer,
+    xhtml: &str,
+) -> Option<HtmlLabelBox> {
+    HtmlLabelBox::from_xhtml(xhtml, &mut || {
+        (!measurer.cancellation_requested()).then_some(()).ok_or(())
+    })
+    .ok()
+    .flatten()
+}
+
+fn flowchart_html_label_content_metrics(
+    request: FlowchartLabelMetricsRequest<'_>,
+    xhtml: &str,
+    geometry: HtmlTextGeometryDeclarations,
 ) -> crate::text::TextMetrics {
     let FlowchartLabelMetricsRequest {
         measurer,
@@ -743,7 +820,14 @@ pub(crate) fn flowchart_html_label_metrics_for_layout(
             line_count: 0,
         };
     }
-    if let Some(plain) = crate::text::mermaid_xhtml_label_plain_text(xhtml)
+    let has_inline_style = xhtml.contains(" style=\"")
+        && xhtml.split('<').skip(1).any(|element| {
+            element
+                .split_once('>')
+                .is_some_and(|(tag, _)| tag.contains(" style=\""))
+        });
+    if !has_inline_style
+        && let Some(plain) = crate::text::mermaid_xhtml_label_plain_text(xhtml)
         && !plain.contains('<')
     {
         // A host profile may provide the complete paragraph's browser measurement. Keep that
@@ -860,8 +944,16 @@ pub(crate) fn flowchart_html_label_metrics_for_layout(
             .unwrap_or(xhtml);
         let fixed_img_width = is_single_img_label(inner)
             && (lower.contains("min-width: 80px;") || label_type == "markdown");
-        measure_flowchart_html_images(measurer, xhtml, style, max_width_px, fixed_img_width)
-    } else if crate::text::flowchart_html_has_inline_style_tags(&lower)
+        measure_flowchart_html_images(
+            measurer,
+            xhtml,
+            style,
+            geometry,
+            max_width_px,
+            fixed_img_width,
+        )
+    } else if has_inline_style
+        || crate::text::flowchart_html_has_inline_style_tags(&lower)
         || lower.contains("<i ")
         || lower.contains("<br")
         || (label_type == "markdown" && !markdown_has_unwrapped_text)
@@ -923,106 +1015,109 @@ fn measure_flowchart_html_images(
     measurer: &dyn TextMeasurer,
     html: &str,
     style: &TextStyle,
+    geometry: HtmlTextGeometryDeclarations,
     max_width_px: Option<f64>,
     fixed_img_width: bool,
 ) -> crate::text::TextMetrics {
     let max_width = max_width_px.unwrap_or(200.0).max(1.0);
-    let lower = html.to_ascii_lowercase();
-    if !lower.contains("<img") {
-        return measurer.measure_wrapped(html, style, max_width_px, WrapMode::HtmlLike);
-    }
-
-    fn has_img_src(tag: &str) -> bool {
-        let lower = tag.to_ascii_lowercase();
-        let Some(idx) = lower.find("src=") else {
-            return false;
-        };
-        let rest = tag[idx + 4..].trim_start();
-        let Some(quote) = rest.chars().next() else {
-            return false;
-        };
-        if quote != '"' && quote != '\'' {
-            return false;
-        }
-        let mut it = rest.chars();
-        let _ = it.next();
-        let mut val = String::new();
-        for ch in it {
-            if ch == quote {
-                break;
-            }
-            val.push(ch);
-        }
-        !val.trim().is_empty()
-    }
-
-    let img_w = if fixed_img_width { 80.0 } else { max_width };
-
-    if fixed_img_width {
-        let img_h = if has_img_src(html) { img_w } else { 0.0 };
-        return crate::text::TextMetrics {
-            width: crate::text::ceil_to_1_64_px(img_w),
-            height: crate::text::ceil_to_1_64_px(img_h),
-            line_count: if img_h > 0.0 { 1 } else { 0 },
-        };
-    }
-
-    #[derive(Debug, Clone)]
-    enum Block {
-        Text(String),
-        Img { has_src: bool },
-    }
-
-    let mut blocks: Vec<Block> = Vec::new();
+    let fallback_width = if fixed_img_width { 80.0 } else { max_width };
+    let mut metrics = crate::text::TextMetrics {
+        width: 0.0,
+        height: 0.0,
+        line_count: 0,
+    };
     let mut text_buf = String::new();
-
-    let bytes = html.as_bytes();
-    let mut i = 0usize;
-    while i < bytes.len() {
-        if bytes[i] == b'<' {
-            let rest = &html[i..];
-            let Some(rel_end) = rest.find('>') else {
-                // No later tag can close either; preserve the remaining text once.
-                text_buf.push_str(rest);
-                break;
-            };
-            if rest
-                .get(..4)
-                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("<img"))
-            {
-                if !flowchart_trim_html_collapsible_whitespace(&text_buf).is_empty() {
-                    blocks.push(Block::Text(std::mem::take(&mut text_buf)));
-                } else {
-                    text_buf.clear();
-                }
-                let tag = &rest[..=rel_end];
-                blocks.push(Block::Img {
-                    has_src: has_img_src(tag),
-                });
-                i += rel_end + 1;
-                continue;
-            }
-            if rest
-                .get(..3)
-                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("<br"))
-            {
-                text_buf.push('\n');
-                i += rel_end + 1;
-                continue;
-            }
-            i += rel_end + 1;
-            continue;
-        }
-        let Some(ch) = html[i..].chars().next() else {
+    let mut height_per_px = 0.0;
+    let mut reader = Reader::from_str(html);
+    loop {
+        if measurer.cancellation_requested() {
             break;
-        };
-        text_buf.push(ch);
-        i += ch.len_utf8();
+        }
+        match reader.read_event() {
+            Ok(Event::Start(tag) | Event::Empty(tag)) if tag.name().as_ref() == "img" => {
+                measure_image_label_text(
+                    &mut metrics,
+                    &text_buf,
+                    measurer,
+                    style,
+                    geometry,
+                    max_width,
+                );
+                text_buf.clear();
+                if let Some(height) = html_image_dimension(&tag, "height") {
+                    // With width:100%, a presentational width does not size the mixed label.
+                    // The authored height still controls the image's block contribution.
+                    if fixed_img_width {
+                        metrics.width = metrics.width.max(fallback_width);
+                    }
+                    metrics.height += height;
+                    metrics.line_count += usize::from(height > 0.0);
+                    continue;
+                }
+                let src = tag.try_get_attribute("src").ok().flatten();
+                let src = src
+                    .as_ref()
+                    .and_then(|attr| attr.normalized_value(XmlVersion::Implicit1_0).ok());
+                let src = src.as_deref().unwrap_or_default().trim();
+                if let Some(natural) = intrinsic_label_image_size(src) {
+                    let width = if fixed_img_width {
+                        fallback_width
+                    } else {
+                        natural.width.min(max_width)
+                    };
+                    metrics.width = metrics.width.max(width);
+                    // The image is fitted to the final label width after text is measured.
+                    height_per_px += natural.height / natural.width;
+                    metrics.line_count += 1;
+                } else {
+                    let width = if fixed_img_width {
+                        fallback_width
+                    } else {
+                        html_image_dimension(&tag, "width").unwrap_or(fallback_width)
+                    };
+                    let height = if src.is_empty() { 0.0 } else { width };
+                    metrics.width = metrics.width.max(width);
+                    metrics.height += height;
+                    metrics.line_count += usize::from(height > 0.0);
+                }
+            }
+            Ok(Event::Start(tag) | Event::Empty(tag)) if tag.name().as_ref() == "br" => {
+                text_buf.push('\n')
+            }
+            Ok(Event::Text(text)) => text_buf.push_str(text.as_ref()),
+            Ok(Event::GeneralRef(reference)) => {
+                text_buf.push('&');
+                text_buf.push_str(reference.as_ref());
+                text_buf.push(';');
+            }
+            Ok(Event::Eof) | Err(_) => break,
+            _ => {}
+        }
     }
-    if !flowchart_trim_html_collapsible_whitespace(&text_buf).is_empty() {
-        blocks.push(Block::Text(text_buf));
-    }
+    measure_image_label_text(
+        &mut metrics,
+        &text_buf,
+        measurer,
+        style,
+        geometry,
+        max_width,
+    );
+    metrics.width = crate::text::ceil_to_1_64_px(metrics.width);
+    metrics.height = crate::text::ceil_to_1_64_px(metrics.height + metrics.width * height_per_px);
+    metrics
+}
 
+fn measure_image_label_text(
+    metrics: &mut crate::text::TextMetrics,
+    text: &str,
+    measurer: &dyn TextMeasurer,
+    style: &TextStyle,
+    geometry: HtmlTextGeometryDeclarations,
+    max_width: f64,
+) {
+    if flowchart_trim_html_collapsible_whitespace(text).is_empty() {
+        return;
+    }
     fn normalize_text_block(input: &str) -> String {
         // The scanner separates already-sanitized markup before measuring its DOM text. Decode
         // the XHTML representation once so entities do not become visible glyph spellings.
@@ -1056,37 +1151,53 @@ fn measure_flowchart_html_images(
             .to_string()
     }
 
-    let mut width: f64 = 0.0;
-    let mut height: f64 = 0.0;
-    let mut lines = 0usize;
-
-    for b in blocks {
-        match b {
-            Block::Img { has_src } => {
-                width = width.max(img_w);
-                let img_h = if has_src { img_w } else { 0.0 };
-                height += img_h;
-                if img_h > 0.0 {
-                    lines += 1;
-                }
-            }
-            Block::Text(t) => {
-                let t = normalize_text_block(&t);
-                if t.is_empty() {
-                    continue;
-                }
-                let m = measurer.measure_wrapped(&t, style, Some(max_width), WrapMode::HtmlLike);
-                width = width.max(m.width);
-                height += m.height;
-                lines += m.line_count;
-            }
-        }
+    let text = normalize_text_block(text);
+    if !text.is_empty() {
+        let styled = (!geometry.is_empty())
+            .then(|| {
+                let fragment = crate::svg::escape_xml(&text).replace('\n', "<br />");
+                crate::svg::measure_styled_html_label(
+                    measurer,
+                    &fragment,
+                    style,
+                    geometry,
+                    Some(max_width),
+                    false,
+                )
+            })
+            .flatten();
+        let text = styled.unwrap_or_else(|| {
+            measurer.measure_wrapped(&text, style, Some(max_width), WrapMode::HtmlLike)
+        });
+        metrics.width = metrics.width.max(text.width);
+        metrics.height += text.height;
+        metrics.line_count += text.line_count;
     }
+}
 
-    crate::text::TextMetrics {
-        width: crate::text::ceil_to_1_64_px(width),
-        height: crate::text::ceil_to_1_64_px(height),
-        line_count: lines,
+fn html_image_dimension(tag: &BytesStart<'_>, name: &str) -> Option<f64> {
+    let attr = tag.try_get_attribute(name).ok()??;
+    let value = attr.normalized_value(XmlVersion::Implicit1_0).ok()?;
+    value.trim().parse::<u32>().ok().map(f64::from)
+}
+
+fn intrinsic_label_image_size(src: &str) -> Option<kurbo::Size> {
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    ))]
+    {
+        crate::raster_data_url::intrinsic_raster_size(src)
+    }
+    #[cfg(not(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    )))]
+    {
+        let _ = src;
+        None
     }
 }
 
@@ -1494,22 +1605,12 @@ fn find_ascii_case_insensitive(input: &str, needle: &[u8]) -> Option<usize> {
         .position(|candidate| candidate.eq_ignore_ascii_case(needle))
 }
 
-fn extract_flowchart_img_src(tag: &str) -> Option<&str> {
-    let idx = find_ascii_case_insensitive(tag, b"src=")?;
-    let rest = tag.get(idx + 4..)?.trim_start();
-    let quote = *rest.as_bytes().first()?;
-    if quote != b'"' && quote != b'\'' {
-        return None;
-    }
-
-    let value = rest.get(1..)?;
-    let end = value
-        .as_bytes()
-        .iter()
-        .position(|candidate| *candidate == quote)
-        .unwrap_or(value.len());
-    let value = value.get(..end)?.trim();
-    (!value.is_empty()).then_some(value)
+fn starts_with_img_tag(input: &str) -> bool {
+    starts_with_ascii_case_insensitive(input, b"<img")
+        && input
+            .as_bytes()
+            .get(4)
+            .is_some_and(|byte| byte.is_ascii_whitespace() || matches!(*byte, b'/' | b'>'))
 }
 
 pub(crate) fn normalize_flowchart_img_tags(input: &str, fixed_width: bool) -> Cow<'_, str> {
@@ -1526,43 +1627,58 @@ pub(crate) fn normalize_flowchart_img_tags(input: &str, fixed_width: bool) -> Co
     };
 
     let mut out = String::with_capacity(input.len());
-    let bytes = input.as_bytes();
-    let mut i = 0usize;
-    while i < bytes.len() {
-        if bytes[i] == b'<' && starts_with_ascii_case_insensitive(&input[i..], b"<img") {
-            let rest = &input[i..];
-            let Some(rel_end) = rest.find('>') else {
-                out.push_str(rest);
-                break;
-            };
-            let tag = &rest[..=rel_end];
-            let src = extract_flowchart_img_src(tag);
-            out.push_str("<img");
-            if let Some(src) = src {
-                let _ = write!(out, r#" src="{}""#, crate::svg::escape_attr(src));
-            }
-            out.push_str(r#" style=""#);
-            out.push_str(style);
-            out.push('"');
-            out.push('>');
-            i += rel_end + 1;
+    let mut cursor = 0;
+    while let Some(offset) = input[cursor..].find('<') {
+        let start = cursor + offset;
+        out.push_str(&input[cursor..start]);
+        let rest = &input[start..];
+        if !rest.as_bytes().get(1).is_some_and(u8::is_ascii_alphabetic) {
+            out.push('<');
+            cursor = start + 1;
             continue;
         }
-        let Some(ch) = input[i..].chars().next() else {
+        let Some(end) = crate::svg::scanner::find_tag_end(input, start) else {
+            cursor = start;
             break;
         };
-        out.push(ch);
-        i += ch.len_utf8();
+        cursor = end + 1;
+        if !starts_with_img_tag(rest) {
+            out.push_str(&input[start..cursor]);
+            continue;
+        }
+
+        let tag = BytesStart::from_content(&input[start + 1..end], 3);
+        let mut attrs = [None, None, None];
+        let names = ["src", "width", "height"];
+        for attr in tag.html_attributes().with_checks(false).flatten() {
+            if let Some(index) = names
+                .iter()
+                .position(|name| attr.key.as_ref().eq_ignore_ascii_case(name))
+                && attrs[index].is_none()
+            {
+                attrs[index] = Some(
+                    merman_model::text::decode_html_entities_to_unicode(&attr.value).into_owned(),
+                );
+            }
+        }
+        out.push_str("<img");
+        for (name, value) in names.into_iter().zip(attrs) {
+            if let Some(value) = value.filter(|value| name != "src" || !value.trim().is_empty()) {
+                let _ = write!(out, r#" {name}="{}""#, crate::svg::escape_attr(&value));
+            }
+        }
+        let _ = write!(out, r#" style="{style}">"#);
     }
+    out.push_str(&input[cursor..]);
     Cow::Owned(out)
 }
 
 pub(crate) fn is_single_img_label(label: &str) -> bool {
     let label = flowchart_trim_html_collapsible_whitespace(label);
-    if !starts_with_ascii_case_insensitive(label, b"<img") {
+    if !starts_with_img_tag(label) {
         return false;
     }
-    let Some(end) = label.find('>') else {
+    let Some(end) = crate::svg::scanner::find_tag_end(label, 0) else {
         return false;
     };
     flowchart_trim_html_collapsible_whitespace(&label[end + 1..]).is_empty()
@@ -1786,30 +1902,31 @@ mod tests {
 
     #[test]
     fn html_image_layout_preserves_metrics_and_measurement_requests() {
-        // Prefix and src recognition are deliberately the existing headless rules.
+        // Keep the headless fallback for images without intrinsic metadata, and only use
+        // actual img elements and src attributes from the sanitized label.
         let cases: &[(&str, &[&str], usize, f64)] = &[
             ("<img src='x'>", &[], 1, 80.0),
             ("<IMG src=''>", &[], 0, 80.0),
             (
-                "<span>中😀</span><IMGx src='图'><BRx>尾",
+                "<span>中😀</span><IMGx src='not-an-image'><IMG src='图'>尾",
                 &["中😀", "尾"],
                 1,
                 120.0,
             ),
             ("a<im😀>b<img src='x'>", &["ab"], 1, 120.0),
-            ("a<img😀 src='x'><br中>b", &["a", "b"], 1, 120.0),
+            ("a<img😀 src='x'><br中>b<img src='x'>", &["ab"], 1, 120.0),
             ("a<img>", &["a"], 0, 120.0),
             ("a<img src='  '>", &["a"], 0, 120.0),
-            ("a<img src=x>", &["a"], 0, 120.0),
-            ("a<img src = 'x'>", &["a"], 0, 120.0),
+            ("a<img src=x>", &["a"], 1, 120.0),
+            ("a<img src = 'x'>", &["a"], 1, 120.0),
             (
                 "<span style='min-width: 80px;'>long text</span><img src='x'>",
                 &["long text"],
                 1,
                 120.0,
             ),
-            ("a<img data-src='x'>", &["a"], 1, 120.0),
-            ("a<img src='a>b'>尾", &["a", "b'>尾"], 1, 120.0),
+            ("a<img data-src='x'>", &["a"], 0, 120.0),
+            ("a<img src='a>b'>尾", &["a", "尾"], 1, 120.0),
             (
                 "<span> \tA\u{00a0} </span><BR><br /> B <img SRC=' x '> C",
                 &["A\u{00a0}\n\nB", "C"],
