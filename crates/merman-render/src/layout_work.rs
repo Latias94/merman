@@ -5,10 +5,10 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::sync::Arc;
 
-/// One renderer-owned adapter shared by the Dagre and ELK lower layout kernels.
+/// One renderer-owned adapter shared by the lower layout kernels.
 ///
-/// The kernels expose different neutral control traits, but both are owned by the same render
-/// operation and must consume one cumulative resource budget. Keeping the concrete adapter here
+/// The kernels expose different neutral control traits and consume the same render operation's
+/// cumulative resource budget. Keeping the concrete adapter here
 /// prevents each family from inventing a subtly different sticky-error or overflow mapping.
 pub(crate) struct OperationLayoutWorkControl {
     meter: Arc<OperationWorkMeter>,
@@ -102,6 +102,35 @@ impl OperationLayoutWorkControl {
         }
     }
 
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) fn map_shoal_error(&self, error: merman_layout_shoal::LayoutError) -> Error {
+        use merman_layout_shoal::{LayoutError, WorkError};
+
+        match error {
+            LayoutError::Work(WorkError::Interrupted) => {
+                self.rejection.borrow().clone().map_or_else(
+                    || Error::InvalidModel {
+                        message: "Shoal interrupted without an operation failure".into(),
+                    },
+                    Error::from,
+                )
+            }
+            LayoutError::Work(WorkError::ArithmeticOverflow) => {
+                self.record_arithmetic_overflow().into()
+            }
+            LayoutError::Unsupported(construct) => Error::UnsupportedLayoutConstruct {
+                backend: "shoal",
+                construct,
+            },
+            LayoutError::InvalidInput(detail) => Error::InvalidModel {
+                message: format!("Invalid Shoal graph: {detail}"),
+            },
+            LayoutError::AllocationLimit => Error::InvalidModel {
+                message: error.to_string(),
+            },
+        }
+    }
+
     #[cfg(feature = "layout-elk")]
     pub(crate) fn map_elk_error(&mut self, error: merman_layout_elk::Error) -> Error {
         self.map_elk_error_with_context(error, "ELK")
@@ -169,6 +198,23 @@ impl dugong::WorkControl for OperationLayoutWorkControl {
         self.meter.charge(units).map_err(|error| {
             *self.rejection.borrow_mut() = Some(error);
             dugong::WorkError::Interrupted
+        })
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+impl merman_layout_shoal::WorkControl for OperationLayoutWorkControl {
+    fn check(&mut self) -> std::result::Result<(), merman_layout_shoal::WorkError> {
+        self.charge(0)
+    }
+
+    fn charge(&mut self, units: usize) -> std::result::Result<(), merman_layout_shoal::WorkError> {
+        if self.rejection.borrow().is_some() {
+            return Err(merman_layout_shoal::WorkError::Interrupted);
+        }
+        self.meter.charge(units).map_err(|error| {
+            *self.rejection.borrow_mut() = Some(error);
+            merman_layout_shoal::WorkError::Interrupted
         })
     }
 }

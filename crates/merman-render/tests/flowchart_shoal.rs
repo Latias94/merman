@@ -113,7 +113,8 @@ fn shoal_paints_the_routes_and_anchors_of_each_visible_occurrence() {
         }
         let src = raw.nodes.iter().find(|node| node.id == edge.from).unwrap();
         let dst = raw.nodes.iter().find(|node| node.id == edge.to).unwrap();
-        assert_eq!((edge.points[0].x, edge.points[0].y), (src.x, src.y));
+        assert!((edge.points[0].x - (src.x + src.width / 2.0)).abs() < 1e-6);
+        assert!((edge.points.last().unwrap().x - (dst.x - dst.width / 2.0)).abs() < 1e-6);
         assert!(points.first().unwrap().x > src.x && points.last().unwrap().x < dst.x);
         let label = edge.label.as_ref().unwrap();
         let position = painted.label_position.as_ref().unwrap();

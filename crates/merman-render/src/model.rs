@@ -752,9 +752,11 @@ pub struct FlowchartLayout {
     /// Mermaid's DOM insertion order for each extracted root graph (`""` = top-level root).
     #[serde(skip)]
     pub dom_node_order_by_root: std::collections::HashMap<String, Vec<String>>,
-    /// Whether SVG emission follows Mermaid's ELK adapter DOM structure.
+    /// Retained for callers that inspect the Mermaid 12 DOM mode independently of layout geometry.
     #[serde(skip)]
     pub uses_elk_adapter_dom: bool,
+    #[serde(skip)]
+    pub(crate) route_contract: crate::graph_layout::RouteContract,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

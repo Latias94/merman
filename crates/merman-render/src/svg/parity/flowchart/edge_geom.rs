@@ -6,6 +6,8 @@ use super::*;
 
 mod basis;
 mod boundary;
+#[cfg(any(feature = "layout-shoal", test))]
+mod canonical;
 mod compute;
 mod curve_path;
 mod elk_points;
@@ -59,6 +61,16 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compute_edge_path_geom(
     request: FlowchartEdgePathGeomRequest<'_>,
     scratch: &mut FlowchartEdgeDataPointsScratch,
 ) -> Option<FlowchartEdgePathGeom> {
+    #[cfg(any(feature = "layout-shoal", test))]
+    if let crate::graph_layout::RouteContract::CanonicalAxis { nodes, routes } =
+        &request.ctx.layout.route_contract
+    {
+        return canonical::paint(
+            request,
+            nodes,
+            routes.get(request.key.semantic_index())?.as_ref()?,
+        );
+    }
     let route = prepare_edge_route(request, scratch)?;
     finish_edge_route(request, route, scratch)
 }

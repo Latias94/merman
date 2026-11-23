@@ -391,10 +391,6 @@ pub(in crate::svg::parity::flowchart) fn resolve_flowchart_edge_label_position(
         x: label.x + ctx.tx - origin_x,
         y: label.y + ctx.ty - origin_y,
     };
-    if ctx.uses_shoal_routes {
-        return layout_anchor;
-    }
-
     if let Some(geom) = edge_cache
         .get(&key)
         .filter(|entry| {

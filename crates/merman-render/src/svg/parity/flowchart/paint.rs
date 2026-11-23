@@ -56,10 +56,6 @@ pub(super) fn with_flowchart_paint_context<T>(
 
     let diagram_id = options.diagram_id_or("merman");
 
-    // Family preparation admits an explicit Shoal request before either paint operation.
-    let uses_shoal_routes = options.family_id() == crate::DiagramFamilyId::FLOWCHART
-        && crate::layout_backend::resolve_graph_layout(effective_config).backend
-            == crate::layout_backend::GraphLayoutBackend::Shoal;
     let FlowchartRenderInputs {
         mut render_edges,
         extra_nodes,
@@ -67,7 +63,7 @@ pub(super) fn with_flowchart_paint_context<T>(
         model,
         render_context,
         &layout.edge_owners,
-        layout.uses_elk_adapter_dom || uses_shoal_routes,
+        layout.uses_elk_adapter_dom || layout.route_contract.uses_projected_edges(),
     );
     if let Some(swimlane_layout) = swimlane_layout {
         super::swimlane::apply_swimlane_edge_curves(&mut render_edges, swimlane_layout);
@@ -264,7 +260,6 @@ pub(super) fn with_flowchart_paint_context<T>(
         edge_html_labels,
         swimlane_title_html_labels,
         uses_elk_adapter_dom: layout.uses_elk_adapter_dom,
-        uses_shoal_routes,
         class_defs: &model.class_defs,
         edge_style_plan,
         steps: super::step::FlowchartSteps::new(model, effective_config),
@@ -551,16 +546,6 @@ impl FlowchartEdgeLabels {
                     false,
                 )
             } else {
-                if ctx.uses_shoal_routes
-                    && !crate::flowchart::flowchart_label_is_empty_for_render(text)
-                {
-                    return Err(crate::Error::InvalidModel {
-                        message: format!(
-                            "Shoal omitted the label anchor for Flowchart edge occurrence {}",
-                            edge.key.semantic_index()
-                        ),
-                    });
-                }
                 if ctx.swimlane_direction.is_some() || empty {
                     continue;
                 }
@@ -978,7 +963,7 @@ mod tests {
     }
 
     #[test]
-    fn shoal_projects_each_route_and_its_solver_label_in_layout_coordinates() {
+    fn canonical_route_contract_owns_ports_and_labels_even_with_a_different_config() {
         // The solver rows are deliberately reversed. Both semantic edges have the same id and
         // endpoints, but only the first is bidirectional. Neither label is at a path midpoint.
         let mut layout: FlowchartLayout = serde_json::from_value(serde_json::json!({
@@ -988,11 +973,11 @@ mod tests {
             ],
             "edges": [
                 {"id":"L_A_B_2", "from":"A", "to":"B", "points":[
-                    {"x":10,"y":20}, {"x":10,"y":2}, {"x":10,"y":-40},
-                    {"x":130,"y":-40}, {"x":130,"y":95}, {"x":130,"y":110}
+                    {"x":10,"y":2}, {"x":10,"y":-40},
+                    {"x":130,"y":-40}, {"x":130,"y":95}
                 ], "label":{"x":94.5,"y":36.25,"width":32,"height":16}},
                 {"id":"L_A_B_2", "from":"A", "to":"B", "points":[
-                    {"x":10,"y":20}, {"x":130,"y":110}
+                    {"x":34,"y":20}, {"x":64,"y":20}, {"x":80,"y":110}, {"x":110,"y":110}
                 ], "label":{"x":41.25,"y":-7.5,"width":48,"height":16}}
             ],
             "clusters": []
@@ -1000,11 +985,40 @@ mod tests {
         .unwrap();
         layout.edge_owners = crate::flowchart::FlowchartEdgeOwners::from_semantic_indices([1, 0]);
 
+        use crate::graph_layout::contour::ShapePortProfile;
+        use crate::graph_layout::{
+            RouteAxes, RouteContract,
+            ir::{Axis, Side},
+        };
+        layout.route_contract = RouteContract::CanonicalAxis {
+            nodes: vec![
+                ShapePortProfile::diamond(48.0, 36.0),
+                ShapePortProfile::rectangle(40.0, 30.0),
+            ],
+            routes: vec![
+                Some(RouteAxes {
+                    endpoints: (0, 1),
+                    ports: (Side::Right, Side::Left),
+                    axes: vec![Axis::Horizontal; 4],
+                }),
+                Some(RouteAxes {
+                    endpoints: (0, 1),
+                    ports: (Side::Top, Side::Top),
+                    axes: vec![
+                        Axis::Vertical,
+                        Axis::Vertical,
+                        Axis::Horizontal,
+                        Axis::Vertical,
+                    ],
+                }),
+            ],
+        };
+
         for (html, look) in [(false, "classic"), (true, "handDrawn")] {
             let source = format!(
                 "---
 config:
-  layout: shoal
+  layout: dagre
   htmlLabels: {html}
   look: {look}
   handDrawnSeed: 7
@@ -1041,7 +1055,7 @@ A -->|bent| B"
                     assert_eq!(labels.len(), 2);
                     assert_ne!(paths[0].attribute("id"), paths[1].attribute("id"));
 
-                    let direct = [(22.0, 29.0), (110.0, 95.0)];
+                    let direct = [(34.0, 20.0), (64.0, 20.0), (80.0, 110.0), (110.0, 110.0)];
                     let bent = [(10.0, 2.0), (10.0, -40.0), (130.0, -40.0), (130.0, 95.0)];
                     for (i, (points, (x, y), text)) in [
                         (direct.as_slice(), (41.25, -7.5), "direct"),
@@ -1088,7 +1102,17 @@ A -->|bent| B"
                     assert!(paths[1].attribute("marker-start").is_none());
                     if look == "classic" {
                         // Four units along each terminal tangent, after the diamond and rect contacts.
-                        assert_eq!(paths[0].attribute("d"), Some("M25.2,31.4L106.8,92.6"));
+                        let path =
+                            kurbo::BezPath::from_svg(paths[0].attribute("d").unwrap()).unwrap();
+                        use kurbo::ParamCurve;
+                        assert_eq!(
+                            path.segments().next().unwrap().start(),
+                            kurbo::Point::new(38.0, 20.0)
+                        );
+                        assert_eq!(
+                            path.segments().last().unwrap().end(),
+                            kurbo::Point::new(106.0, 110.0)
+                        );
                     }
                     Ok(())
                 },

@@ -44,15 +44,21 @@ pub(crate) use render_config::{
 };
 pub(super) use style::*;
 
-/// Reserve each marker's setback and painted footprint before the route can bend.
-#[cfg(feature = "layout-shoal")]
-pub(crate) fn flowchart_marker_clearances(edge: &crate::flowchart::FlowEdge) -> (f64, f64) {
+/// Measure the same marker descriptors used by SVG emission in drawing units.
+#[cfg(any(feature = "layout-shoal", test))]
+pub(crate) fn flowchart_marker_metrics(
+    edge: &crate::flowchart::FlowEdge,
+) -> (crate::graph_layout::Marker, crate::graph_layout::Marker) {
     let (start, end) = edge_geom::arrow_types_for_edge(edge.edge_type.as_deref());
     (
-        super::edge_path::marker_offset_for(start).unwrap_or(0.0)
-            + defs::marker_approach(flowchart_edge_marker_start_base(edge)),
-        super::edge_path::marker_offset_for(end).unwrap_or(0.0)
-            + defs::marker_approach(flowchart_edge_marker_end_base(edge)),
+        defs::measure_marker(
+            flowchart_edge_marker_start_base(edge),
+            super::edge_path::marker_offset_for(start),
+        ),
+        defs::measure_marker(
+            flowchart_edge_marker_end_base(edge),
+            super::edge_path::marker_offset_for(end),
+        ),
     )
 }
 

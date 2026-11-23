@@ -1,0 +1,14 @@
+flowchart TD
+  change([Change ready]) --> checks{Checks pass?}
+  checks -->|Yes| stage[Stage release]
+  checks -->|No| fix[Review failures]
+  stage --> smoke[Smoke test]
+  stage --> audit[Audit]
+  smoke --> ship([Publish])
+  audit --> ship
+  fix --> hold([Hold])
+
+  classDef gate fill:#fff0ce,stroke:#896122,color:#392a11
+  classDef finish fill:#ddf2ed,stroke:#2e786b,color:#17453c
+  class checks gate
+  class ship,hold finish

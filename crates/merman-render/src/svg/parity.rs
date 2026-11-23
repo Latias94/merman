@@ -130,7 +130,7 @@ mod flowchart;
         feature = "diagram-agentflow"
     )
 ))]
-pub(crate) use flowchart::flowchart_marker_clearances;
+pub(crate) use flowchart::flowchart_marker_metrics;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",

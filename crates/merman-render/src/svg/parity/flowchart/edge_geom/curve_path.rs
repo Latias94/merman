@@ -23,51 +23,6 @@ pub(in crate::svg::parity::flowchart) fn curve_path_d_and_bounds(
     (d, bounds, false)
 }
 
-/// Shoal reserves the section from each shape contact to its exterior waypoint. The SVG
-/// marker follows that straight shaft. Only the route between the two waypoints is curved.
-pub(super) fn shoal_path_d_and_bounds(
-    points: &[crate::model::LayoutPoint],
-    edge_type: Option<&str>,
-    interpolate: &str,
-    rounded_radius: f64,
-    compact_edge_corners: bool,
-) -> CurveGeometry {
-    let line_data = rounded_line_with_marker_offsets_for_edge_type(points, edge_type);
-    if line_data.len() < 4 {
-        return curve_path_d_and_bounds(
-            &line_data,
-            interpolate,
-            rounded_radius,
-            compact_edge_corners,
-            None,
-        );
-    }
-    let last = line_data.len() - 1;
-    let start = &line_data[0];
-    let end = &line_data[last];
-    let interior = &line_data[1..last];
-    let (d, _) = interpolate_route(
-        interior,
-        interpolate,
-        rounded_radius,
-        compact_edge_corners,
-        None,
-    );
-    let mut path = String::with_capacity(d.len() + 48);
-    let point_command = |path: &mut String, command, point: &crate::model::LayoutPoint| {
-        path.push(command);
-        fmt_path_into(path, point.x);
-        path.push(',');
-        fmt_path_into(path, point.y);
-    };
-    point_command(&mut path, 'M', start);
-    path.push('L');
-    path.push_str(d.strip_prefix('M').expect("curve starts with moveto"));
-    point_command(&mut path, 'L', end);
-    let bounds = svg_path_bounds_from_d(&path);
-    (path, bounds, false)
-}
-
 fn interpolate_route(
     points: &[crate::model::LayoutPoint],
     interpolate: &str,

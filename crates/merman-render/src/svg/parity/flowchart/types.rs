@@ -67,7 +67,6 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) edge_html_labels: bool,
     pub(in crate::svg::parity::flowchart) swimlane_title_html_labels: bool,
     pub(in crate::svg::parity::flowchart) uses_elk_adapter_dom: bool,
-    pub(in crate::svg::parity::flowchart) uses_shoal_routes: bool,
     pub(in crate::svg::parity::flowchart) class_defs: &'a IndexMap<String, Vec<String>>,
     pub(in crate::svg::parity::flowchart) edge_style_plan: &'a FlowchartEdgeStylePlan,
     pub(in crate::svg::parity::flowchart) steps: super::step::FlowchartSteps,

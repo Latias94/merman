@@ -1,134 +1,199 @@
-use crate::LayoutError;
-use std::cmp::Ordering;
+use std::{cmp::Ordering, error::Error, fmt};
 
-pub(crate) type Result<T, E> = std::result::Result<T, LayoutError<E>>;
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WorkError {
+    Interrupted,
+    ArithmeticOverflow,
+}
 
-pub(crate) fn reserved<T, E>(len: usize) -> Result<Vec<T>, E> {
+impl fmt::Display for WorkError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Interrupted => "layout work interrupted",
+            Self::ArithmeticOverflow => "layout arithmetic overflow",
+        })
+    }
+}
+
+impl Error for WorkError {}
+
+/// One control per operation. `check` polls cancellation without consuming units.
+pub trait WorkControl {
+    fn check(&mut self) -> Result<(), WorkError>;
+    fn charge(&mut self, units: usize) -> Result<(), WorkError>;
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NoopWorkControl;
+
+impl WorkControl for NoopWorkControl {
+    fn check(&mut self) -> Result<(), WorkError> {
+        Ok(())
+    }
+    fn charge(&mut self, _units: usize) -> Result<(), WorkError> {
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LayoutError {
+    InvalidInput(&'static str),
+    Unsupported(&'static str),
+    AllocationLimit,
+    Work(WorkError),
+}
+
+impl fmt::Display for LayoutError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidInput(reason) => f.write_str(reason),
+            Self::Unsupported(construct) => write!(f, "Shoal does not support {construct}"),
+            Self::AllocationLimit => f.write_str("Shoal could not allocate layout storage"),
+            Self::Work(error) => error.fmt(f),
+        }
+    }
+}
+
+impl Error for LayoutError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Work(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+
+impl From<WorkError> for LayoutError {
+    fn from(error: WorkError) -> Self {
+        Self::Work(error)
+    }
+}
+
+pub(crate) type LayoutResult<T> = Result<T, LayoutError>;
+
+pub(crate) fn reserved<T>(len: usize) -> LayoutResult<Vec<T>> {
     let mut vec = Vec::new();
     vec.try_reserve_exact(len)
-        .map_err(|_| LayoutError::Overflow)?;
+        .map_err(|_| LayoutError::AllocationLimit)?;
     Ok(vec)
 }
 
-pub(crate) fn filled<T: Clone, E>(len: usize, value: T) -> Result<Vec<T>, E> {
+pub(crate) fn filled<T: Clone>(len: usize, value: T) -> LayoutResult<Vec<T>> {
     let mut vec = reserved(len)?;
     vec.resize(len, value);
     Ok(vec)
 }
 
-pub(crate) fn push<T, E>(vec: &mut Vec<T>, value: T) -> Result<(), E> {
-    vec.try_reserve(1).map_err(|_| LayoutError::Overflow)?;
+pub(crate) fn push<T>(vec: &mut Vec<T>, value: T) -> LayoutResult<()> {
+    vec.try_reserve(1)
+        .map_err(|_| LayoutError::AllocationLimit)?;
     vec.push(value);
     Ok(())
 }
 
-pub(crate) struct Work<'a, E> {
-    callback: &'a mut dyn FnMut(usize) -> std::result::Result<(), E>,
+pub(crate) struct Work<'a> {
+    control: &'a mut dyn WorkControl,
     pending: usize,
     total: usize,
 }
 
-impl<'a, E> Work<'a, E> {
-    pub(crate) fn new(callback: &'a mut dyn FnMut(usize) -> std::result::Result<(), E>) -> Self {
+impl<'a> Work<'a> {
+    pub(crate) fn new(control: &'a mut dyn WorkControl) -> Self {
         Self {
-            callback,
+            control,
             pending: 0,
             total: 0,
         }
     }
 
-    /// Admit a bulk allocation or flush the final partial traversal batch.
-    pub(crate) fn charge(&mut self, units: usize) -> Result<(), E> {
+    fn check(&mut self) -> LayoutResult<()> {
+        Ok(self.control.check()?)
+    }
+
+    /// Admit a bulk operation and any preceding partial traversal batch.
+    pub(crate) fn charge(&mut self, units: usize) -> LayoutResult<()> {
         let units = self
             .pending
             .checked_add(units)
-            .ok_or(LayoutError::Overflow)?;
-        if units > 0 {
-            self.total = self.total.checked_add(units).ok_or(LayoutError::Overflow)?;
-            (self.callback)(units).map_err(LayoutError::Interrupted)?;
+            .ok_or(WorkError::ArithmeticOverflow)?;
+        if units != 0 {
+            self.total = self
+                .total
+                .checked_add(units)
+                .ok_or(WorkError::ArithmeticOverflow)?;
+            self.check()?;
+            self.control.charge(units)?;
             self.pending = 0;
         }
         Ok(())
     }
 
-    pub(crate) fn visit(&mut self, units: usize) -> Result<(), E> {
+    pub(crate) fn visit(&mut self, units: usize) -> LayoutResult<()> {
         self.pending = self
             .pending
             .checked_add(units)
-            .ok_or(LayoutError::Overflow)?;
+            .ok_or(WorkError::ArithmeticOverflow)?;
         if self.pending >= 128 {
             self.charge(0)?;
         }
         Ok(())
     }
 
-    /// Sort bounded runs with the standard library. The merge of a very wide rank or fan
-    /// polls the same control as the graph walks, even after its sort budget was admitted.
+    pub(crate) fn finish(&mut self) -> LayoutResult<()> {
+        self.charge(0)?;
+        self.check()
+    }
+
+    /// Admit the full comparison budget before entering the standard library sort.
     pub(crate) fn sort(
         &mut self,
         ids: &mut [usize],
         cmp: impl Fn(&usize, &usize) -> Ordering,
-    ) -> Result<(), E> {
-        const RUN: usize = 1024;
-        let mut ordered = true;
-        for pair in ids.windows(2) {
-            self.visit(1)?;
-            if cmp(&pair[0], &pair[1]).is_gt() {
-                ordered = false;
-                break;
-            }
-        }
-        if ordered {
-            return Ok(());
-        }
-        for run in ids.chunks_mut(RUN) {
-            let levels = run.len().ilog2() as usize + 1;
-            self.visit(run.len() * levels)?;
-            run.sort_unstable_by(&cmp);
-        }
-        if ids.len() <= RUN {
-            return Ok(());
-        }
-        let mut merged = Vec::new();
-        let mut width = RUN;
-        while width < ids.len() {
-            let pair = width.checked_mul(2).ok_or(LayoutError::Overflow)?;
-            for block in ids.chunks_mut(pair) {
-                self.visit(1)?;
-                if block.len() <= width || cmp(&block[width - 1], &block[width]).is_le() {
-                    continue;
-                }
-                merged.clear();
-                if merged.capacity() < block.len() {
-                    self.charge(block.len())?;
-                    merged
-                        .try_reserve_exact(block.len())
-                        .map_err(|_| LayoutError::Overflow)?;
-                }
-                let (mut left, mut right) = block.split_at(width);
-                while let ([a, rest_a @ ..], [b, rest_b @ ..]) = (left, right) {
-                    self.visit(1)?;
-                    if cmp(a, b).is_le() {
-                        merged.push(*a);
-                        left = rest_a;
-                    } else {
-                        merged.push(*b);
-                        right = rest_b;
-                    }
-                }
-                // Only the prefix consumed by the merge needs copying if the right tail
-                // already occupies its final position.
-                for tail in left.chunks(RUN) {
-                    self.visit(tail.len())?;
-                    merged.extend_from_slice(tail);
-                }
-                for (dest, src) in block.chunks_mut(RUN).zip(merged.chunks(RUN)) {
-                    self.visit(src.len())?;
-                    dest[..src.len()].copy_from_slice(src);
-                }
-            }
-            width = pair;
+    ) -> LayoutResult<()> {
+        if ids.len() > 1 {
+            let levels = ids.len().ilog2() as usize + 1;
+            self.charge(
+                ids.len()
+                    .checked_mul(levels)
+                    .ok_or(WorkError::ArithmeticOverflow)?,
+            )?;
+            ids.sort_unstable_by(cmp);
+            self.check()?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_failed_reservation_is_an_allocation_error() {
+        assert_eq!(
+            reserved::<usize>(usize::MAX),
+            Err(LayoutError::AllocationLimit)
+        );
+    }
+
+    #[test]
+    fn sort_admits_its_checked_budget_before_comparing() {
+        struct Denied;
+        impl WorkControl for Denied {
+            fn check(&mut self) -> Result<(), WorkError> {
+                Ok(())
+            }
+            fn charge(&mut self, units: usize) -> Result<(), WorkError> {
+                assert_eq!(units, 4 * (2 + 1));
+                Err(WorkError::ArithmeticOverflow)
+            }
+        }
+        let mut ids = [1, 3, 2, 0];
+        let result = Work::new(&mut Denied).sort(&mut ids, |_, _| panic!("sort was denied"));
+        assert_eq!(
+            result,
+            Err(LayoutError::Work(WorkError::ArithmeticOverflow))
+        );
+        assert_eq!(ids, [1, 3, 2, 0]);
     }
 }

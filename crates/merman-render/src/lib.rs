@@ -159,6 +159,12 @@ pub mod gitgraph;
     )
 )]
 mod graph_label;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+mod graph_layout;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(

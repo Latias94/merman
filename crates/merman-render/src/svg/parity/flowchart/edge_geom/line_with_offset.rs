@@ -122,9 +122,8 @@ pub(in crate::svg::parity::flowchart) fn rounded_line_with_marker_offsets_for_ed
 mod tests {
     use super::*;
 
-    #[cfg(feature = "layout-shoal")]
     #[test]
-    fn shoal_clearances_cover_each_marker_and_its_path_setback() {
+    fn marker_measurements_cover_the_painted_viewport_and_setback() {
         let points = [
             crate::model::LayoutPoint { x: 0.0, y: 0.0 },
             crate::model::LayoutPoint { x: 100.0, y: 0.0 },
@@ -142,7 +141,8 @@ mod tests {
                 "id": "ab", "from": "a", "to": "b", "length": 1, "type": edge_type
             }))
             .unwrap();
-            let (start, end) = crate::svg::flowchart_marker_clearances(&edge);
+            let (start, end) = super::super::super::flowchart_marker_metrics(&edge);
+            let (start, end) = (start.trim + start.depth, end.trim + end.depth);
             let (start_marker, end_marker) = arrow_types_for_edge(edge_type);
             for path in [
                 line_with_offset_for_edge_type(&points, edge_type),

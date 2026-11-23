@@ -693,6 +693,7 @@ mod integration_tests {
                 String::new(),
                 vec![node.id.clone()],
             )]),
+            route_contract: crate::graph_layout::RouteContract::DagreParity,
             uses_elk_adapter_dom: false,
         };
         let policy = RenderResourcePolicy::unbounded_for_trusted_input()
@@ -863,6 +864,7 @@ mod integration_tests {
                     String::new(),
                     vec!["A".into(), "B".into()],
                 )]),
+                route_contract: crate::graph_layout::RouteContract::ElkParity,
                 uses_elk_adapter_dom: true,
             };
             let session = RenderEnvironment::deterministic().begin_session().unwrap();

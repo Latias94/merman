@@ -60,23 +60,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
     points_after_intersect.clone_from(base_points);
 
     let mut elk_endpoint_adapters = super::ElkEndpointAdapterCorners::default();
-    if ctx.uses_shoal_routes {
-        // Shoal supplies centers and exterior approach points. A straight two-point route
-        // approaches each shape from the opposite center, using the same uncut input at both ends.
-        let contact = |id: &str, towards: &crate::model::LayoutPoint| {
-            let boundary = boundary_for_node(ctx, id, origin_x, origin_y)?;
-            let shape = ctx.nodes_by_id.get(id)?.layout_shape.as_deref();
-            Some(intersect_for_layout_shape(
-                ctx, id, &boundary, shape, towards,
-            ))
-        };
-        let first_approach = base_points.get(1)?;
-        let last = base_points.len() - 1;
-        points_after_intersect[0] = contact(&le.from, first_approach)?;
-        points_after_intersect[last] = contact(&le.to, &base_points[last - 1])?;
-        // A zero-clearance approach can already lie on the contour. The marker needs a tangent.
-        dedup_consecutive_points(points_after_intersect);
-    } else if is_swimlane_layout {
+    if is_swimlane_layout {
         let layout_from = le.from.as_str();
         let layout_to = le.to.as_str();
         let layout_shape = |id: &str| {
@@ -228,7 +212,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
     } = request;
     let le = ctx.layout_edges_by_key.get(&key)?;
     let is_elk_layout = ctx.uses_elk_adapter_dom;
-    let clip_clusters = !is_elk_layout && !ctx.uses_shoal_routes;
+    let clip_clusters = !is_elk_layout;
     let ClippedEdgeRoute {
         base_points,
         points,
@@ -311,11 +295,10 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
     let is_cluster_edge = clip_clusters && (le.to_cluster.is_some() || le.from_cluster.is_some());
     // `positionEdgeLabel` consumes the polyline held by `points`; `fixCorners`, marker offsets,
     // and the D3 curve generator operate on the separate `lineData` copy below.
-    let (original_label_path_points, label_path_points) = if !ctx.uses_shoal_routes
-        && ctx
-            .model
-            .edge_label_for_occurrence(key, edge)
-            .is_some_and(|label| !label.is_empty())
+    let (original_label_path_points, label_path_points) = if ctx
+        .model
+        .edge_label_for_occurrence(key, edge)
+        .is_some_and(|label| !label.is_empty())
     {
         let original = if is_elk_layout {
             points_after_intersect
@@ -340,15 +323,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
         }));
     }
 
-    let (d, pb, skipped_bounds_for_viewbox) = if ctx.uses_shoal_routes {
-        super::curve_path::shoal_path_d_and_bounds(
-            points_for_render,
-            edge.edge_type.as_deref(),
-            interpolate,
-            ctx.edge_corner_radius,
-            ctx.compact_edge_corners,
-        )
-    } else {
+    let (d, pb, skipped_bounds_for_viewbox) = {
         let mut line_data: Vec<crate::model::LayoutPoint> = points_for_render
             .iter()
             .filter(|p| !p.y.is_nan())

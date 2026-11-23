@@ -2,12 +2,17 @@
 
 use super::measured::FlowchartMeasurement;
 use super::{
-    FlowchartEdgeOwners, FlowchartRenderModelRef, FlowchartSvgLabelOwner,
+    FlowchartEdgeKey, FlowchartEdgeOwners, FlowchartRenderModelRef, FlowchartSvgLabelOwner,
     FlowchartSvgLabelSidecarBuilder,
 };
-use crate::model::{Bounds, FlowchartLayout, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint};
+use crate::graph_layout::contour::ShapePortProfile;
+use crate::graph_layout::ir::{
+    Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredNode, Side, Size, SolvedGraph,
+};
+use crate::graph_layout::{RouteAxes, RouteContract, shoal_bridge};
+use crate::layout_work::OperationLayoutWorkControl;
+use crate::model::{Bounds, FlowchartLayout, LayoutEdge, LayoutNode, LayoutPoint};
 use crate::{Error, LayoutExecution, Result};
-use merman_layout_shoal as shoal;
 use merman_model::families::flowchart::{FlowchartModel, FlowchartRenderContext};
 use merman_model::presentation::PresentationConfig;
 use std::collections::HashMap;
@@ -20,16 +25,15 @@ pub(crate) fn layout(
     labels: Option<&FlowchartSvgLabelSidecarBuilder>,
     edge_styles: &crate::svg::FlowchartEdgeStylePlan,
 ) -> Result<FlowchartLayout> {
-    let meter = execution.work_meter_ref();
-    let charge = |units| meter.charge(units).map_err(Error::from);
-    charge(0)?;
+    let mut work = OperationLayoutWorkControl::new(execution.work_meter());
+    work.charge_adapter(0)?;
     if !model.subgraphs.is_empty() {
         return Err(Error::UnsupportedLayoutConstruct {
             backend: "shoal",
             construct: "subgraphs",
         });
     }
-    charge(model.nodes.len())?;
+    work.charge_adapter(model.nodes.len())?;
     super::validate_flowchart_model_shapes(model)?;
     let view = FlowchartRenderModelRef::new(model, render_context);
     let measurement = FlowchartMeasurement::new(
@@ -40,7 +44,36 @@ pub(crate) fn layout(
         labels,
         edge_styles,
     );
-    let (direction, direction_name) = match model
+    let (graph, bindings) = measure(
+        view,
+        &measurement,
+        crate::config::mermaid_config_diagram_look(config).is_neo(),
+        &mut work,
+    )?;
+    let solved = shoal_bridge::solve(
+        &graph,
+        &mut shoal_bridge::LayoutScratch::default(),
+        &mut work,
+    )?;
+    drop(graph);
+    bindings.project(model, solved, &mut work)
+}
+
+/// Node order matches the measured graph. Edge keys retain the semantic occurrence even when
+/// projection hides an edge or distinct occurrences share a public ID.
+struct FlowchartBindings {
+    nodes: Vec<LayoutNode>,
+    profiles: Vec<ShapePortProfile>,
+    owners: Vec<FlowchartEdgeKey>,
+}
+
+fn measure(
+    view: FlowchartRenderModelRef<'_>,
+    measurement: &FlowchartMeasurement<'_>,
+    look_is_neo: bool,
+    work: &mut OperationLayoutWorkControl,
+) -> Result<(MeasuredGraph, FlowchartBindings)> {
+    let (direction, direction_name, face) = match view
         .direction
         .as_deref()
         .unwrap_or("TB")
@@ -48,31 +81,35 @@ pub(crate) fn layout(
         .to_ascii_uppercase()
         .as_str()
     {
-        "LR" => (shoal::Direction::Right, "LR"),
-        "RL" => (shoal::Direction::Left, "RL"),
-        "BT" => (shoal::Direction::Up, "BT"),
-        "TB" | "TD" => (shoal::Direction::Down, "TB"),
+        "LR" => (Direction::Right, "LR", Side::Right),
+        "RL" => (Direction::Left, "RL", Side::Left),
+        "BT" => (Direction::Up, "BT", Side::Top),
+        "TB" | "TD" => (Direction::Down, "TB", Side::Bottom),
         other => {
             return Err(Error::InvalidModel {
                 message: format!("Unsupported Shoal Flowchart direction `{other}`"),
             });
         }
     };
-    charge(model.nodes.len())?;
-    charge(model.edges.len())?;
-    let mut graph = shoal::Graph {
+    work.charge_adapter(view.nodes.len())?;
+    work.charge_adapter(view.edges.len())?;
+    let mut graph = MeasuredGraph {
         direction,
         node_spacing: measurement.settings.nodesep,
         rank_spacing: measurement.settings.ranksep,
-        nodes: Vec::with_capacity(model.nodes.len()),
-        edges: Vec::with_capacity(model.edges.len()),
+        component_spacing: measurement.settings.nodesep,
+        nodes: Vec::with_capacity(view.nodes.len()),
+        groups: Vec::new(),
+        edges: Vec::with_capacity(view.edges.len()),
     };
-    let mut node_ids = HashMap::with_capacity(model.nodes.len());
-    let mut nodes = Vec::with_capacity(model.nodes.len());
-    for (index, node) in model.nodes.iter().enumerate() {
-        charge(node.id.len())?;
+    let mut node_ids = HashMap::with_capacity(view.nodes.len());
+    let mut nodes = Vec::with_capacity(view.nodes.len());
+    let mut profiles = Vec::with_capacity(view.nodes.len());
+    for (index, node) in view.nodes.iter().enumerate() {
+        work.charge_adapter(node.id.len())?;
+        let seq = u32::try_from(index).map_err(|_| work.record_arithmetic_overflow())?;
         if node_ids
-            .insert(node.id.as_str(), shoal::NodeId(index))
+            .insert(node.id.as_str(), Endpoint::Node(seq))
             .is_some()
         {
             return Err(Error::InvalidModel {
@@ -84,13 +121,9 @@ pub(crate) fn layout(
             node,
             FlowchartSvgLabelOwner::Node(index),
             direction_name,
-            charge,
+            |units| work.charge_adapter(units),
         )?;
-        graph.nodes.push(shoal::Size {
-            width: size.width,
-            height: size.height,
-        });
-        nodes.push(LayoutNode {
+        let layout_node = LayoutNode {
             id: node.id.clone(),
             x: 0.0,
             y: 0.0,
@@ -99,10 +132,28 @@ pub(crate) fn layout(
             is_cluster: false,
             label_width: Some(size.label.width),
             label_height: Some(size.label.height),
+        };
+        let profile = ShapePortProfile::flowchart(
+            node,
+            &layout_node,
+            measurement.settings.node_padding,
+            look_is_neo,
+        )?;
+        graph.nodes.push(MeasuredNode {
+            size: Size {
+                width: size.width,
+                height: size.height,
+            },
+            seq,
+            parent: None,
+            port_span: Some(profile.port_span(face)),
+            anchor_y: profile.anchor_y(),
         });
+        nodes.push(layout_node);
+        profiles.push(profile);
     }
 
-    let mut owners = Vec::with_capacity(model.edges.len());
+    let mut owners = Vec::with_capacity(view.edges.len());
     for (key, projected) in view.projected_edges() {
         let endpoint = |id: &str| {
             node_ids
@@ -115,88 +166,113 @@ pub(crate) fn layout(
                     ),
                 })
         };
-        charge(1)?;
+        work.charge_adapter(1)?;
         let edge = projected.semantic;
         let label = measurement.edge_label(edge, key)?;
-        let (start_clearance, end_clearance) = crate::svg::flowchart_marker_clearances(edge);
-        graph.edges.push(shoal::Edge {
+        let (start_marker, end_marker) = crate::svg::flowchart_marker_metrics(edge);
+        graph.edges.push(MeasuredEdge {
             source: endpoint(projected.from)?,
             target: endpoint(projected.to)?,
-            min_rank_span: edge.length.max(1),
-            label: label.map(|label| shoal::Size {
+            min_rank_span: u32::try_from(edge.length.max(1))
+                .map_err(|_| work.record_arithmetic_overflow())?,
+            weight: 1.0,
+            label: label.map(|label| Size {
                 width: label.width,
                 height: label.height,
             }),
-            start_clearance,
-            end_clearance,
+            start_label: None,
+            end_label: None,
+            start_marker,
+            end_marker,
         });
         owners.push(key);
     }
 
-    let solved = shoal::layout_with_control(&graph, charge).map_err(|error| match error {
-        shoal::LayoutError::Interrupted(error) => error,
-        shoal::LayoutError::Overflow => meter.arithmetic_overflow().into(),
-        shoal::LayoutError::Unsupported(construct) => Error::UnsupportedLayoutConstruct {
-            backend: "shoal",
-            construct,
+    Ok((
+        graph,
+        FlowchartBindings {
+            nodes,
+            profiles,
+            owners,
         },
-        shoal::LayoutError::InvalidInput(detail) => Error::InvalidModel {
-            message: format!("Invalid Shoal Flowchart: {detail}"),
-        },
-    })?;
-    charge(nodes.len())?;
-    for (node, center) in nodes.iter_mut().zip(solved.centers) {
-        node.x = center.x;
-        node.y = center.y;
-    }
-    charge(owners.len())?;
-    let mut edges = Vec::with_capacity(owners.len());
-    for ((key, measured), route) in owners.iter().zip(graph.edges).zip(solved.edges) {
-        charge(route.points.len())?;
-        let edge = &model.edges[key.semantic_index()];
-        let label = measured
-            .label
-            .zip(route.label_center)
-            .map(|(size, center)| LayoutLabel {
-                x: center.x,
-                y: center.y,
-                width: size.width,
-                height: size.height,
-            });
-        edges.push(LayoutEdge {
-            id: edge.id.clone(),
-            from: nodes[measured.source.0].id.clone(),
-            to: nodes[measured.target.0].id.clone(),
-            from_cluster: None,
-            to_cluster: None,
-            points: route
+    ))
+}
+
+impl FlowchartBindings {
+    fn project(
+        mut self,
+        model: &FlowchartModel,
+        solved: SolvedGraph,
+        work: &mut OperationLayoutWorkControl,
+    ) -> Result<FlowchartLayout> {
+        work.charge_adapter(self.nodes.len())?;
+        for (node, rect) in self.nodes.iter_mut().zip(solved.nodes) {
+            let center = rect.center();
+            node.x = center.x;
+            node.y = center.y;
+            node.width = rect.width;
+            node.height = rect.height;
+        }
+        work.charge_adapter(model.edges.len())?;
+        let mut routes = vec![None; model.edges.len()];
+        work.charge_adapter(self.owners.len())?;
+        let mut edges = Vec::with_capacity(self.owners.len());
+        for (key, route) in self.owners.iter().zip(solved.edges) {
+            let (Endpoint::Node(source), Endpoint::Node(target)) = (route.source, route.target)
+            else {
+                return Err(Error::UnsupportedLayoutConstruct {
+                    backend: "shoal",
+                    construct: "subgraphs",
+                });
+            };
+            let (source, target) = (source as usize, target as usize);
+            work.charge_adapter(route.points.len())?;
+            let (points, axes) = route
                 .points
                 .into_iter()
-                .map(|p| LayoutPoint { x: p.x, y: p.y })
-                .collect(),
-            label,
-            start_label_left: None,
-            start_label_right: None,
-            end_label_left: None,
-            end_label_right: None,
-            start_marker: None,
-            end_marker: None,
-            stroke_dasharray: None,
+                .map(|p| (LayoutPoint { x: p.x, y: p.y }, p.axis))
+                .unzip();
+            let index = key.semantic_index();
+            routes[index] = Some(RouteAxes {
+                endpoints: (source, target),
+                ports: route.ports,
+                axes,
+            });
+            edges.push(LayoutEdge {
+                id: model.edges[index].id.clone(),
+                from: self.nodes[source].id.clone(),
+                to: self.nodes[target].id.clone(),
+                from_cluster: None,
+                to_cluster: None,
+                points,
+                label: route.label,
+                start_label_left: None,
+                start_label_right: None,
+                end_label_left: None,
+                end_label_right: None,
+                start_marker: None,
+                end_marker: None,
+                stroke_dasharray: None,
+            });
+        }
+        let bounds = (!self.nodes.is_empty()).then_some(Bounds {
+            min_x: 0.0,
+            min_y: 0.0,
+            max_x: solved.bounds.width,
+            max_y: solved.bounds.height,
         });
+        Ok(FlowchartLayout {
+            nodes: self.nodes,
+            edges,
+            clusters: Vec::new(),
+            edge_owners: FlowchartEdgeOwners::new(self.owners),
+            bounds,
+            dom_node_order_by_root: HashMap::new(),
+            uses_elk_adapter_dom: false,
+            route_contract: RouteContract::CanonicalAxis {
+                nodes: self.profiles,
+                routes,
+            },
+        })
     }
-    let bounds = (!nodes.is_empty()).then_some(Bounds {
-        min_x: solved.bounds.min_x,
-        min_y: solved.bounds.min_y,
-        max_x: solved.bounds.max_x,
-        max_y: solved.bounds.max_y,
-    });
-    Ok(FlowchartLayout {
-        nodes,
-        edges,
-        clusters: Vec::new(),
-        edge_owners: FlowchartEdgeOwners::new(owners),
-        bounds,
-        dom_node_order_by_root: HashMap::new(),
-        uses_elk_adapter_dom: false,
-    })
 }

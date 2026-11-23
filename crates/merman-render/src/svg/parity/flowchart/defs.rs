@@ -305,17 +305,24 @@ fn flowchart_marker_shape_spec(
         .expect("Flowchart marker shape descriptor")
 }
 
-/// Leave a straight shaft underneath either painted variant of a Shoal marker.
-#[cfg(feature = "layout-shoal")]
-pub(super) fn marker_approach(base: Option<FlowchartMarkerBase>) -> f64 {
-    base.map_or(0.0, |base| {
-        let radius = |margin| {
-            flowchart_marker_shape_spec(base, margin)
-                .viewport
-                .rotation_radius()
-        };
-        radius(false).max(radius(base.supports_margin()))
-    })
+#[cfg(any(feature = "layout-shoal", test))]
+pub(super) fn measure_marker(
+    base: Option<FlowchartMarkerBase>,
+    setback: Option<f64>,
+) -> crate::graph_layout::Marker {
+    let Some(base) = base else {
+        return Default::default();
+    };
+    let classic = flowchart_marker_shape_spec(base, false).viewport;
+    let margin = flowchart_marker_shape_spec(base, base.supports_margin()).viewport;
+    crate::graph_layout::Marker {
+        trim: setback.unwrap_or_default(),
+        depth: classic.size[0]
+            .max(margin.size[0])
+            .max(classic.rotation_radius())
+            .max(margin.rotation_radius()),
+        width: classic.size[1].max(margin.size[1]),
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
