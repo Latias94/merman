@@ -47,19 +47,233 @@ class PublicWorkloadsTest(unittest.TestCase):
                 "merman-issue-guide",
             ],
         )
+        recipes = bench.load(bench.HERE / "workloads.json")["scenarios"]
+        self.assertEqual([s["id"] for s in full[:len(recipes)]], [r["id"] for r in recipes])
+        self.assertEqual(full[len(recipes):], plan("families")["scenarios"])
         unchecked = [
             r["diagram_id"] for s in full for r in s["requests"] if "expected_labels" not in r
         ]
         self.assertEqual(unchecked, [])
+
+    def test_families_freeze_one_source_per_playground_baseline_in_catalog_order(self):
+        examples = bench.load(bench.FAMILY_MANIFEST)["examples"]
+        rows = sorted(
+            (r for r in examples if r["evidence"]["role"] == "family-baseline"), key=lambda r: r["order"]
+        )
+        result = plan("families")
+        self.assertEqual(result["topologies"], [])
+        self.assertEqual({s["family"] for s in result["scenarios"]}, {r["diagramType"] for r in examples})
+        for case, row in zip(result["scenarios"], rows, strict=True):
+            with self.subTest(example=row["id"]):
+                self.assertEqual(case["id"], f"family-{row['diagramType']}")
+                self.assertEqual(case["family"], row["diagramType"])
+                self.assertEqual(case["order"], row["order"])
+                self.assertEqual(case["origin"], row["fixture"])
+                (request,) = case["requests"]
+                source = (bench.ROOT / row["fixture"]).read_text(encoding="utf-8")
+                self.assertEqual(request["fixture"], row["id"])
+                self.assertEqual(request["diagram_id"], f"wb-{case['id']}-1")
+                self.assertEqual(request["source"], source)
+                self.assertEqual(request["source_sha256"], bench.digest(source.encode()))
+
+    def test_family_labels_match_reference_svgs_and_zenuml_layout(self):
+        for case in plan("families")["scenarios"]:
+            with self.subTest(family=case["family"]):
+                (request,) = case["requests"]
+                labels = request["expected_labels"]
+                if not labels:
+                    self.assertTrue(request["empty_label_reason"].strip())
+                    continue
+                fixture = Path(case["origin"]).relative_to("fixtures")
+                svg = bench.ROOT / "fixtures/upstream-svgs" / fixture.with_suffix(".svg")
+                if svg.is_file():
+                    self.assertEqual(validate_svg(svg.read_bytes(), labels), {"status": "ok"})
+                elif case["family"] == "zenuml":
+                    golden = (bench.ROOT / case["origin"]).with_suffix(".layout.golden.json")
+                    layout = bench.load(golden)["layout"]["ZenumlDiagram"]
+                    visible = {
+                        row["label"] for key in ("participants", "messages", "returns") for row in layout[key]
+                    }
+                    for fact in labels:
+                        self.assertTrue(visible.intersection([fact] if isinstance(fact, str) else fact), fact)
+
+    def test_requirement_and_sankey_accept_only_the_reviewed_complete_label_spellings(self):
+        requirement, sankey = plan(names=["family-requirement", "family-sankey"])["scenarios"]
+
+        def check(case, texts):
+            svg = "<svg>" + "".join(f"<text>{text}</text>" for text in texts) + "</svg>"
+            return validate_svg(svg, case["requests"][0]["expected_labels"])["status"]
+
+        for label in ("A requirement", "Text: A requirement"):
+            self.assertEqual(check(requirement, ["req1", label]), "ok")
+        self.assertEqual(check(requirement, ["req1", "A requirement extended"]), "missing-labels")
+        self.assertEqual(check(requirement, ["req10", "A requirement"]), "missing-labels")
+
+        names = ["Electricity grid", "Over generation / exports", "H2 conversion"]
+        totals = ["Electricity grid 245.32", "Over generation / exports 104.45", "H2 conversion 27.14"]
+        for texts in (names, totals, [names[0], *totals[1:]]):
+            self.assertEqual(check(sankey, texts), "ok")
+        for i in range(len(totals)):
+            wrong = totals.copy()
+            wrong[i] = names[i] + " 0.00"
+            self.assertEqual(check(sankey, wrong), "missing-labels")
+
+    def test_explicit_family_selection_preserves_caller_order_across_suites(self):
+        names = ["family-treeView", "small-svg", "family-er", "family-railroadPeg"]
+        reference = {s["id"]: s for s in plan("full")["scenarios"]}
+        for suite in ("quick", "full", "families"):
+            with self.subTest(suite=suite):
+                result = plan(suite, names)
+                self.assertEqual(result["scenarios"], [reference[name] for name in names])
+                self.assertEqual(result["topologies"], [])
+        result = plan("families", ["family-er", "chain-50"])
+        self.assertEqual([t["id"] for t in result["topologies"]], ["chain-50"])
+        self.assertEqual([s["id"] for s in result["scenarios"]], ["family-er", "chain-50"])
+
+    def test_family_projection_rejects_duplicate_and_missing_baselines(self):
+        manifest = bench.load(bench.FAMILY_MANIFEST)
+        rows = [r for r in manifest["examples"] if r["evidence"]["role"] == "family-baseline"]
+        first, second = rows[:2]
+        expected = plan("families")
+        with tempfile.TemporaryDirectory() as tmp, patch.object(bench, "FAMILY_MANIFEST", Path(tmp) / "catalog.json"):
+            bench.write(bench.FAMILY_MANIFEST, {**manifest, "examples": list(reversed(manifest["examples"]))})
+            self.assertEqual(plan("families"), expected)
+            for field in ("diagramType", "id", "order", "fixture"):
+                with self.subTest(field=field), self.assertRaisesRegex(ValueError, f"duplicate family-baseline {field}"):
+                    bench.write(bench.FAMILY_MANIFEST, {**manifest, "examples": [first, {**second, field: first[field]}]})
+                    plan("families")
+            variant = {**second, "evidence": {"role": "variant"}}
+            bench.write(bench.FAMILY_MANIFEST, {**manifest, "examples": [first, variant]})
+            with self.assertRaisesRegex(ValueError, f"missing family-baseline.*{second['diagramType']}"):
+                plan("families")
+
+    def test_family_label_catalog_rejects_stale_missing_and_unreviewed_facts(self):
+        reviews = bench.load(bench.FAMILY_LABELS)
+        labels = reviews["expected_labels"]
+        er = "entity-relationships"
+        stale = labels.copy()
+        stale["retired-example"] = stale.pop(er)
+        cases = [
+            ({"expected_labels": stale}, "missing.*entity-relationships.*stale.*retired-example"),
+            ({"empty_label_reasons": {}}, "empty_label_reasons"),
+            ({"expected_labels": {**labels, er: ["places", "places"]}}, "duplicate expected label"),
+            ({"expected_labels": {**labels, er: [["A", "B"], ["B", "A"]]}}, "duplicate expected label"),
+        ]
+        with tempfile.TemporaryDirectory() as tmp, patch.object(bench, "FAMILY_LABELS", Path(tmp) / "labels.json"):
+            for overrides, error in cases:
+                with self.subTest(error=error), self.assertRaisesRegex(ValueError, error):
+                    bench.write(bench.FAMILY_LABELS, {**reviews, **overrides})
+                    plan("families")
+            four = ["CUSTOMER", "LINE_ITEM", "places", "contains"]
+            bench.write(bench.FAMILY_LABELS, {**reviews, "expected_labels": {**labels, er: four}})
+            (case,) = plan(names=["family-er"])["scenarios"]
+            self.assertEqual(case["requests"][0]["expected_labels"], four)
 
     def test_missing_builtin_label_facts_block_materialization(self):
         catalog = bench.load(bench.HERE / "workloads.json")
         empty = bench.scenario("shape", "local", [("shape", "pie\n\"\" : 1")], {"shape": []})
         self.assertEqual(empty["requests"][0]["expected_labels"], [])
         del catalog["expected_labels"]["er_medium"]
-        with patch.object(bench, "load", return_value=catalog):
+        with patch.object(bench, "parse_workload_json", return_value=catalog):
             with self.assertRaisesRegex(ValueError, "service-design-document/er_medium"):
                 plan(names=["service-design-document"])
+
+    def test_malformed_label_alternatives_identify_the_request(self):
+        for facts in ([[]], [["x", " "]], [["x", 1]], [[["x"]]]):
+            with self.subTest(facts=facts), self.assertRaisesRegex(ValueError, "review expected labels for doc/x"):
+                bench.scenario("doc", "local", [("x", "info")], {"x": facts})
+
+    def test_only_reviewed_builtin_and_corpus_occurrences_have_drawing_facts(self):
+        tiny = {"arrows": [{"edge": "L_A_B_0", "from": "A", "to": "B"}]}
+        expected = {
+            ("small-svg", 1, "flowchart_tiny"): tiny,
+            ("zed-issue-examples", 2, "zed_56767_flowchart_foreign_object_labels"): {
+                "label_widths": {"C": "feature/example-branch"},
+            },
+            ("different-flowcharts", 1, "flowchart_tiny"): tiny,
+            ("merman-issue-guide", 1, "block-1"): {"arrows": [{"edge": "L_B_A_0", "from": "B", "to": "A"}]},
+            ("merman-issue-guide", 4, "block-4"): {
+                "arrows": [{"edge": "L_T_S_0", "from": "T", "to": "S"}],
+                "groups": {"CI": ["L", "T"], "Deploy": ["S", "P"]},
+            },
+        }
+        full = plan("full")
+        corpus = bench.load_corpus(bench.HERE / "corpus.json")
+        corpus_facts = {"flowchart_tiny": tiny}
+        sources = {f.name: bench.ROOT / f.source for f in corpus.fixtures}
+        full_by_id = {s["id"]: s for s in full["scenarios"]}
+        for tier, count in (("low", 1), ("medium", 32), ("high", 256)):
+            fixture = f"sequence_block_repeat_{tier}"
+            name = f"sequence-loop-messages-{count:03}"
+            (request,) = full_by_id[name]["requests"]
+            self.assertEqual(request["source"], sources[fixture].read_text(encoding="utf-8"))
+            self.assertEqual(request["source"].count("message-000000"), count)
+            facts = {"sequence_messages": {"message-000000": count}}
+            expected[name, 1, request["fixture"]] = facts
+            corpus_facts[fixture] = facts
+        for suite in corpus.suites:
+            for i, fixture in enumerate(bench.select_corpus_fixtures(corpus, suite), 1):
+                if fixture.name in corpus_facts:
+                    expected[f"corpus-{suite}", i, fixture.name] = corpus_facts[fixture.name]
+        names = [f"corpus-{suite}" for suite in corpus.suites] + [t["id"] for t in full["topologies"]]
+        cases = full["scenarios"] + plan("full", names)["scenarios"]
+        actual = {
+            (case["id"], i, r["fixture"]): r["drawing_facts"]
+            for case in cases for i, r in enumerate(case["requests"], 1) if "drawing_facts" in r
+        }
+        self.assertEqual(actual, expected)
+
+    def test_single_request_drawing_facts_keep_optional_fields_and_literal_ids(self):
+        arrows = [{"edge": "second", "from": "A", "to": "B"}]
+        groups = {"CI": ["A"], "Deploy": ["B"]}
+        messages = {"message-000000": 256, "Another message?": 2**53 - 1}
+        for facts in (
+            {"arrows": arrows}, {"groups": groups}, {"arrows": [], "groups": groups},
+            {"arrows": arrows, "groups": {}},
+            {"label_widths": {"A": "feature/example-branch"}},
+            {"sequence_messages": messages},
+            {"arrows": arrows, "groups": groups, "label_widths": {"A": "From"}, "sequence_messages": messages},
+        ):
+            with self.subTest(facts=facts):
+                self.assertIs(bench.validate_drawing_facts(facts), facts)
+
+    def test_invalid_drawing_contracts_are_rejected_with_request_context(self):
+        arrow = {"edge": "back", "from": "B", "to": "A"}
+        invalid = {
+            "null": None,
+            "empty": {},
+            "no facts": {"arrows": [], "groups": {}},
+            "invalid message mapping": {"sequence_messages": []},
+            "empty message mapping alone": {"sequence_messages": {}},
+            "blank message text": {"sequence_messages": {"  ": 1}},
+            "non-string message text": {"sequence_messages": {42: 1}},
+            "missing label": {"label_widths": {"A": ""}},
+            "multiline source label": {"label_widths": {"A": "ab\ncd"}},
+            "cluster as text node": {"groups": {"CI": ["A"]}, "label_widths": {"CI": "CI"}},
+            "unknown alongside valid": {"arrows": [arrow], "group": {}},
+            "malformed arrows": {"arrows": arrow},
+            "implicit edge": {"arrows": [{"from": "B", "to": "A"}]},
+            "unsupported arrow field": {"arrows": [{**arrow, "orientation": "left"}]},
+            "blank endpoint": {"arrows": [{**arrow, "to": " "}]},
+            "non-string ID": {"arrows": [{**arrow, "edge": 1}]},
+            "self-loop": {"arrows": [{**arrow, "to": "B"}]},
+            "repeated edge ID": {"arrows": [arrow, {**arrow, "to": "C"}]},
+            "cluster endpoint": {"arrows": [arrow], "groups": {"A": ["X"]}},
+            "malformed groups": {"groups": []},
+            "empty group ID": {"groups": {"": ["L"]}},
+            "no members": {"groups": {"CI": []}},
+            "single string": {"groups": {"CI": "L"}},
+            "malformed member": {"groups": {"CI": [["L"]]}},
+            "repeated member": {"groups": {"CI": ["L", "L"]}},
+            "two owners": {"groups": {"CI": ["L"], "Deploy": ["L"]}},
+            "nested groups": {"groups": {"CI": ["Deploy"], "Deploy": ["S"]}},
+        }
+        for reason, facts in invalid.items():
+            with self.subTest(reason=reason), self.assertRaisesRegex(ValueError, r"guide/block-1\.drawing_facts"):
+                bench.validate_drawing_facts(facts, "guide/block-1")
+        for count in (0, -1, True, False, 1.0, 1.5, "1", None, 2**53):
+            with self.subTest(count=count), self.assertRaisesRegex(ValueError, r"guide/block-1\.drawing_facts\.sequence_messages"):
+                bench.validate_drawing_facts({"sequence_messages": {"message-000000": count}}, "guide/block-1")
 
     def test_only_instantiated_svg_definitions_contribute_labels(self):
         source = '<svg xmlns:xlink="http://www.w3.org/1999/xlink"><defs><g id="label"><text>Start</text></g><symbol id="unused"><text>Hidden</text></symbol><g id="loop"><use href="#loop"/></g></defs><use href="#loop"/><use xlink:href="#label"/></svg>'
@@ -109,6 +323,67 @@ class PublicWorkloadsTest(unittest.TestCase):
         facts = ["Tests pass?", "changes requested", "find user by email", "Deploy", "Merge"]
         for request, fact in zip(issues["requests"], facts, strict=True):
             self.assertIn(fact, request["expected_labels"], request["fixture"])
+
+    def test_external_drawings_follow_only_the_declaring_document_and_filename(self):
+        files = ["block-4", "block-1", "flowchart_tiny", "block-1"]
+        source = (
+            "flowchart LR\n  subgraph First\n    X_in\n  end\n  subgraph Second\n    Y_out\n  end\n"
+            "  X_in first@--> Y_out\n  X_in reviewed@--> Y_out\n"
+        )
+        tiny = bench.ROOT / "crates/merman/benches/fixtures/flowchart_tiny.mmd"
+        sources = {"block-1": source, "block-4": source, "flowchart_tiny": tiny.read_text(encoding="utf-8")}
+        facts = {
+            "arrows": [{"edge": "reviewed", "from": "X_in", "to": "Y_out"}],
+            "groups": {"First": ["X_in"], "Second": ["Y_out"]},
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            for name, text in sources.items():
+                (directory / name).write_bytes(text.replace("\n", "\r\n").encode())
+            plain = directory / "plain.json"
+            annotated = directory / "annotated.json"
+            doc = {"id": "plain", "origin": "local/guide", "files": files}
+            bench.write(plain, doc)
+            bench.write(annotated, {**doc, "id": "annotated", "drawing_facts": {"block-1": facts}})
+            names = ["annotated", "merman-issue-guide", "plain"]
+            cases = plan(names=names, documents=[plain, annotated])["scenarios"]
+
+        self.assertEqual([case["id"] for case in cases], names)
+        annotated_case, guide, plain_case = cases
+        self.assertEqual(guide, plan(names=["merman-issue-guide"])["scenarios"][0])
+        for case, reviewed in [(annotated_case, [(2, facts), (4, facts)]), (plain_case, [])]:
+            with self.subTest(document=case["id"]):
+                requests = case["requests"]
+                self.assertEqual([r["fixture"] for r in requests], files)
+                self.assertEqual([r["source"] for r in requests], [sources[f] for f in files])
+                self.assertEqual(
+                    [r["source_sha256"] for r in requests], [bench.digest(sources[f].encode()) for f in files]
+                )
+                self.assertEqual(
+                    [r["diagram_id"] for r in requests], [f"wb-{case['id']}-{i}" for i in range(1, 5)]
+                )
+                actual = [(i, r["drawing_facts"]) for i, r in enumerate(requests, 1) if "drawing_facts" in r]
+                self.assertEqual(actual, reviewed)
+
+    def test_external_manifest_rejects_unknown_and_duplicate_drawing_fields(self):
+        prefix = '{"id":"guide","origin":"local","files":["a.mmd"],'
+        cases = [
+            ('"drawing_fact":{}', "drawing_fact"),
+            ('"drawing_facts":[]', "keyed by fixture"),
+            ('"drawing_facts":{"b.mmd":{"groups":{"CI":["L"]}}}', "b.mmd"),
+            ('"drawing_facts":{"a.mmd":{"arrow":[]}}', r"guide/a.mmd\.drawing_facts"),
+            ('"drawing_facts":{},"drawing_facts":{}', "duplicate JSON key 'drawing_facts'"),
+            ('"drawing_facts":{"a.mmd":{},"a.mmd":{"groups":{"CI":["L"]}}}', "duplicate JSON key 'a.mmd'"),
+            ('"drawing_facts":{"a.mmd":{"groups":{"CI":["L"],"CI":["T"]}}}', "duplicate JSON key 'CI'"),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            (directory / "a.mmd").write_text("flowchart LR\n  L --> T\n", encoding="utf-8")
+            manifest = directory / "doc.json"
+            for fields, error in cases:
+                with self.subTest(fields=fields), self.assertRaisesRegex(ValueError, error):
+                    manifest.write_text(prefix + fields + "}", encoding="utf-8")
+                    plan(names=["guide"], documents=[manifest])
 
     def test_service_design_revisits_architecture_after_er_and_swimlane(self):
         requests = plan(names=["service-design-document"])["scenarios"][0]["requests"]
@@ -205,6 +480,26 @@ class PublicWorkloadsTest(unittest.TestCase):
         head["plan_sha256"] = "changed"
         with self.assertRaisesRegex(ValueError, "plan_sha256"):
             bench.compare(base, head)
+
+
+class RustSvgVerificationTests(unittest.TestCase):
+    def test_wrapped_text_uses_the_shared_checker_outside_the_native_observation(self):
+        svg = '<svg><text><tspan x="0" y="0">Banking</tspan><tspan x="0" y="15">System</tspan></text></svg>'
+        request = dict(diagram_id="c4", expected_labels=[["Banking System", "Banking system"]])
+        identities, shared = bench.rust_signatures([svg], [request], "svg-data")
+        self.assertTrue(shared)
+        self.assertEqual(identities, [dict(sha256=bench.digest(svg.encode()), bytes=len(svg), observed_size=len(svg))])
+        with self.assertRaisesRegex(ValueError, "c4.*missing expected SVG labels"):
+            bench.rust_signatures([svg.replace("System", "service")], [request], "svg-data")
+        with self.assertRaisesRegex(ValueError, "alternative label spellings"):
+            bench.rust_signatures(identities, [request], "svg-data")
+        self.assertEqual(bench.rust_signatures(identities, [dict(request, expected_labels=["Banking System"])], "svg-data"),
+                         (identities, False))
+
+    def test_changed_shared_svg_validator_withholds_the_rust_delta(self):
+        base = dict(schema_version=1, surface="rust", plan_sha256="plan", options={}, host=[], rows={},
+                    harness_sha256="one executable", svg_validator_sha256="first reader")
+        self.assertEqual(bench.compare(base, dict(base, svg_validator_sha256="second reader"))["classification"], "harness-changed")
 
 
 if __name__ == "__main__":

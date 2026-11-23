@@ -502,7 +502,19 @@ jobs:
         with:
           node-version: "26.13.0"
           cache: npm
-          cache-dependency-path: tools/bench/node-reference/package-lock.json
+          cache-dependency-path: |
+            tools/bench/node-reference/package-lock.json
+            tools/mermaid-cli/package-lock.json
+
+      - name: Check the SVG drawing observer in Chromium
+        if: steps.project.outputs.available == 'true' && hashFiles('tools/bench/workload_drawing_browser.mjs') != ''
+        run: |
+          npm ci --prefix tools/mermaid-cli --ignore-scripts --no-audit --no-fund
+          chrome="$(command -v google-chrome)"
+          observers=(tools/bench/workload_drawing_browser.test.mjs)
+          if [[ -f tools/bench/workload_svg_pixels.test.mjs ]]; then observers+=(tools/bench/workload_svg_pixels.test.mjs); fi
+          PUPPETEER_EXECUTABLE_PATH="$chrome" node --test "${observers[@]}"
+          echo "PUPPETEER_EXECUTABLE_PATH=$chrome" >> "$GITHUB_ENV"
 
       - name: Collect the locked Node SVG references
         if: steps.project.outputs.available == 'true'
@@ -510,7 +522,9 @@ jobs:
           npm ci --prefix tools/bench/node-reference --ignore-scripts --no-audit --no-fund
           node --test tools/bench/workload_node.test.mjs
           python3 tools/bench/perf_runner.py workloads plan --suite full --out target/bench/reference-plan.json
-          python3 tools/bench/perf_runner.py workloads node-matrix --plan target/bench/reference-plan.json --out-dir target/bench/node-reference
+          checks=()
+          if [[ -f tools/bench/workload_drawing_browser.mjs ]]; then checks+=(--check-drawings); fi
+          python3 tools/bench/perf_runner.py workloads node-matrix --plan target/bench/reference-plan.json --out-dir target/bench/node-reference "${checks[@]}"
 
       - name: Replay the native cross-family suite
         if: steps.project.outputs.available == 'true' && inputs.run == 'full'

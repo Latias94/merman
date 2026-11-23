@@ -76,6 +76,34 @@ def example_comparison(raw_plan, surface="cli"):
 
 
 class WorkloadCoverageTests(unittest.TestCase):
+    def test_family_baselines_count_failed_unstable_and_unreported_independently(self):
+        source = example_plan()["scenarios"][1]["requests"][0]
+        plan = {"schema_version": 1, "scenarios": [dict(id=f"family-{name}", family=name, requests=[source])
+                                                    for name in ("er", "state", "pie", "packet")]}
+        raw = encode(plan)
+        comparison = example_comparison(raw, "node")
+        first = comparison["scenarios"][0]
+        for family in ("state", "pie"):
+            row = deepcopy(first)
+            row["id"] = f"family-{family}"
+            row["common_stable"] = 0
+            if family == "state":
+                row["requests"][0]["left"].update(state="unstable-output")
+            else:
+                row["requests"][0]["right"].update(state="missing", statuses=["missing-labels"])
+                row["common_completed"] = 0
+            comparison["scenarios"].append(row)
+        report = summarize_coverage(raw, [comparison])
+        self.assertEqual(report["planned"]["family_baselines"], 4)
+        counts = report["comparisons"][0]["family_baselines"]
+        self.assertEqual((counts["planned"], counts["reported"], counts["both_stable"], counts["unreported"]), (4, 3, 1, ["packet"]))
+        for side, completed, missing in (("left", 3, "state"), ("right", 2, "pie")):
+            self.assertEqual((counts[side]["completed"], counts[side]["stable"]), (completed, 2))
+            self.assertEqual([g["family"] for g in counts[side]["gaps"]], [missing])
+        plan["scenarios"][-1]["family"] = "state"
+        with self.assertRaisesRegex(ValueError, "uniquely identified family baseline"):
+            summarize_coverage(encode(plan))
+
     def test_plan_counts_exact_bytes_occurrences_and_independent_topologies(self):
         plan = example_plan()
         del plan["scenarios"][0]["requests"][0]["source_sha256"]

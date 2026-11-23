@@ -91,6 +91,14 @@ It executes the installed Merman, Pele and Mermaid v13 public APIs in a locked c
 raw results and coverage beside the summary. `--pele-fixtures` imports upstream input text only.
 
 When a renderer appears to miss a label, inspect its SVG before changing its expected facts.
+For a Flowchart arrow, sibling membership, horizontal label overflow or a repeated Sequence message, declare the source fact
+and run `node-matrix --check-drawings` or replay the retained CLI SVGs. Inspect the occurrence's
+`drawing-audit.json` result before drawing timing conclusions. The [drawing contract](../../../../docs/performance/BENCHMARKING.md#svg-drawing-checks)
+identifies the supported geometry and the boundary of the evidence.
+For family breadth use `workloads plan --suite families` and inspect the per-product gaps in
+`coverage.json`. For input growth use the Sequence loop message counts or the topology series.
+For an unstable SVG, preserve the original hashes and compare the retained files in a fixed
+browser with a same-file control before attributing a visual difference.
 For startup, use a fresh CLI or the Node initialization and first-render observations. For a batch
 use the matching complete warm batch. For topology growth, use the `work` metric and record the
 first failing limit. Always identify the host, lifecycle, input population and operation in the finding.

@@ -22,10 +22,10 @@ from pathlib import Path
 
 if __package__:
     from .run_layout_work_calibration import WindowsJob, windows_peak_working_set
-    from .workload_svg import validate_svg
+    from .workload_svg import valid_expected_labels, validate_svg
 else:
     from run_layout_work_calibration import WindowsJob, windows_peak_working_set
-    from workload_svg import validate_svg
+    from workload_svg import valid_expected_labels, validate_svg
 
 
 def command_prefix(engine: str, binary: str) -> list[str]:
@@ -64,7 +64,7 @@ def command_prefix(engine: str, binary: str) -> list[str]:
     return [str(path)]
 
 
-def prepare_plan(data: bytes, run_dir: Path) -> tuple[str | None, list[dict]]:
+def prepare_plan(data: bytes, run_dir: Path, *, svg=True) -> tuple[str | None, list[dict]]:
     plan = json.loads(data)
     version = plan.get("schema_version") if isinstance(plan, dict) else None
     if type(version) is not int or version != 1:
@@ -94,9 +94,7 @@ def prepare_plan(data: bytes, run_dir: Path) -> tuple[str | None, list[dict]]:
                     f"invalid fixture, source or diagram_id in {sid!r} request {index + 1}"
                 )
             labels = request.get("expected_labels", [])
-            if not isinstance(labels, list) or not all(
-                isinstance(label, str) and label.strip() for label in labels
-            ):
+            if not valid_expected_labels(labels):
                 raise ValueError(f"invalid expected_labels in {sid!r} request {index + 1}")
             source = request["source"].encode("utf-8")
             digest = hashlib.sha256(source).hexdigest()
@@ -113,6 +111,7 @@ def prepare_plan(data: bytes, run_dir: Path) -> tuple[str | None, list[dict]]:
                     "source_sha256": digest,
                     "source_bytes": len(source),
                     "expected_labels": labels,
+                    **({"drawing_required": True} if svg and "drawing_facts" in request else {}),
                 }
             )
         prepared.append(dict(id=sid, requests=rows, batches=[]))
@@ -285,7 +284,7 @@ def check_batches(scenario, run_dir, render, png_checks):
             verify(result, run_dir, labels)
             if png_checks is None or result["status"] != "ok":
                 continue
-            key = (request["input"], request["diagram_id"], tuple(labels))
+            key = (request["input"], request["diagram_id"], json.dumps(labels))
             if key not in png_checks:
                 check = render(request, f"check-{len(png_checks) + 1}.svg")
                 verify(check, run_dir, labels)
@@ -311,7 +310,7 @@ def benchmark(args, raw: bytes) -> dict:
     run_dir = Path(
         tempfile.mkdtemp(prefix=f"{args.engine}-{args.format}-", dir=args.output_dir.resolve())
     )
-    suite, scenarios = prepare_plan(raw, run_dir)
+    suite, scenarios = prepare_plan(raw, run_dir, svg=args.format == "svg")
     font_files = []
     render_prefix = [*prefix, "render"] if args.engine == "merman" else prefix.copy()
     render_prefix.extend(args.extra_arg)

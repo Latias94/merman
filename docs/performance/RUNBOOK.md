@@ -112,6 +112,11 @@ target directory. For a historical revision, apply the identical benchmark sourc
 worktree and keep each built executable separately. `--runner PATH --revision SHA` replays a
 frozen binary. The source label is supplied by the caller.
 
+Current Rust SVG runners return the verification render to the driver for the same text checks
+used by Node and the CLI. Historical runners can replay flat-label plans with their embedded
+reader. Use a current harness on both revisions for wrapped labels or alternative spellings.
+`compare` classifies a different SVG reader fingerprint as a harness change.
+
 ```console
 python tools/bench/perf_runner.py workloads compare target/bench/base.json target/bench/head.json --out target/bench/diff.json
 ```
@@ -119,6 +124,10 @@ python tools/bench/perf_runner.py workloads compare target/bench/base.json targe
 The full plan includes a five-diagram project guide, Zed issue examples, configured multilingual
 labels, default and explicit Dagre layouts, mixed families, two equal-length 100-message Sequence
 inputs with repeated or unique labels, and 20 topology rows (five shapes at 50, 100, 250 and 500 nodes).
+It also includes the host text measurement guide's integration diagram and a Sequence loop with
+1, 32 and 256 identical messages. Run the three `sequence-loop-messages-*` scenarios separately
+to see how end-to-end time and output size grow with the number of messages. The guide exercises
+rendering the documented interaction. Measuring callback cost requires a host that invokes it.
 `--scenario fan-in-500` when creating the plan also makes that topology available as an ordinary
 SVG scenario for the external adapters. A reviewed downstream or Trident document can be imported
 with `--document path/to/manifest.json`. For example, a manifest can contain
@@ -154,11 +163,62 @@ python tools/bench/perf_runner.py workloads coverage --plan target/bench/full-pl
 python tools/bench/perf_runner.py workloads coverage --plan target/bench/node-full/plan.json --comparison target/bench/node-full/merman-vs-mermaid-v13.json --out target/bench/v13-coverage.json
 ```
 
+For the declared arrows, groups, label widths and Sequence message counts, install the repository's existing Puppeteer
+toolchain and pass `--check-drawings`. Use `--chrome` for a known Chrome executable or set
+`PUPPETEER_EXECUTABLE_PATH`. The manual Performance reference job uses Chrome from the runner
+image and records its version in the audit.
+
+```console
+npm ci --prefix tools/mermaid-cli --ignore-scripts --no-audit --no-fund
+python tools/bench/perf_runner.py workloads node-matrix --plan target/bench/full-plan.json --out-dir target/bench/node-drawings --check-drawings --chrome /path/to/chrome
+```
+
+`drawing-audit.json` contains the evidence for each occurrence and product. `drawings/` contains
+only the selected Node outputs. Keep that directory with the raw reports to replay the checks.
+The SVG CLI reports refer to files in their recorded `run_dir`. For standalone Node collection,
+use `workload_node.mjs --drawing-dir DIR` with the usual plan, engine and sample arguments.
+
+```console
+python tools/bench/perf_runner.py workloads drawings --plan target/bench/node-drawings/plan.json --report target/bench/node-drawings/merman.json --out target/bench/merman-drawings.json --require-pass
+python tools/bench/perf_runner.py workloads compare target/bench/cli-merman.json target/bench/cli-mmdc.json --drawing-plan target/bench/one.json --out target/bench/cli-checked.json
+```
+
+`--require-pass` returns a nonzero status for failed or unavailable facts, or for a plan with no
+declared facts. The default matrix records observed differences and withholds affected ratios.
+Add `drawing_facts` to an external document manifest by filename, using the same syntax as a
+built-in fixture, for example `{"arrows":[{"edge":"L_A_B_0","from":"A","to":"B"}]}`.
+The [drawing check contract](BENCHMARKING.md#svg-drawing-checks) describes the supported observations.
+
+To investigate two retained SVGs with different hashes, compare their standalone appearance
+in the same offline Chrome. Choose a fresh output directory. `report.json` includes decoded
+pixel differences at 1× and 2× in an 800 × 600 CSS-pixel viewport, a same-file repeat, a visible
+control and the SVG root bounds. An incomplete view or failed control is `inconclusive`.
+Keep the byte stability result alongside the pixel observation.
+
+```console
+node tools/bench/workload_svg_pixels.mjs --left first.svg --right second.svg --out-dir target/bench/svg-pixels --chrome /path/to/chrome
+```
+
 For a breadth check, `workloads plan --scenario corpus-cross_family --out target/bench/families.json`
 replays the native `cross_family` suite in catalog order across the public adapters.
 `--scenario corpus-full` selects every registered native fixture. These batches retain the label
 facts available for each source and report the other inputs as mechanically checked. Keep intended
 error drawings and unsupported families visible in the coverage results.
+
+To exercise the canonical playground example for every family on the Rust, Node or CLI public
+entry, freeze the `families` suite. Each family has a separate scenario and can be replayed with
+`--scenario family-er`, for example. The `full` suite appends the same family baselines. The
+Node summary and coverage JSON report the number tried, completed and repeatable for each peer.
+
+```console
+python tools/bench/perf_runner.py workloads plan --suite families --out target/bench/family-baselines.json
+python tools/bench/perf_runner.py workloads node-matrix --plan target/bench/family-baselines.json --out-dir target/bench/family-node
+python tools/bench/perf_runner.py workloads rust --plan target/bench/family-baselines.json --operation svg-data --metric clock --out target/bench/family-rust.json
+```
+
+When adding a family, register its example in `playground/examples/manifest.json` and review the
+expected SVG text in `tools/bench/workload_family_labels.json`. Use the fixture owned by the
+playground. Include a reason for an empty label list when the source has no portable visible label.
 
 For a package or CLI comparison, install the two releases of interest and run them on one host.
 The Node adapter accepts `--module PATH` to select an explicit package entry. The CLI adapter

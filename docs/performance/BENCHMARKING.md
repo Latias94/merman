@@ -53,8 +53,10 @@ For cross-renderer comparisons, report completion first. The common plan freezes
 sources, their SHA-256 digests and the request order. Scenarios can declare text expected in the
 rendered SVG. Output bytes, PNG dimensions and artifact checks describe the
 delivered product. Visual equivalence still requires the family-owned DOM or raster checks.
-The Node and CLI adapters use the same Python standard-library validator for SVG and expected
-labels. Node checks each new output once outside the timed batch, with a scenario timeout.
+The Rust, Node and CLI workloads use the same Python standard-library reader for SVG and
+expected labels. The Rust driver reads complete SVGs from separate verification processes
+before and after sampling. It stores their lengths, hashes and the reader's fingerprint in the
+report. Node checks each new output once outside the timed batch, with a scenario timeout.
 Keep the browser comparison in its existing Chromium harness. The [runbook](RUNBOOK.md#run-an-ordered-workload)
 includes reproduction commands and external corpus imports.
 
@@ -75,6 +77,19 @@ changing a variable such as layout, label content or input size. `quick` covers 
 checks. `full` adds family, downstream, configuration and scaling cases. An ordered document
 import preserves the weight of repeated examples. The coverage inventory counts both occurrences
 and distinct source digests and lists the layout-budget topology population separately.
+
+The `families` suite follows the same `family-baseline` entries and fixture files as the browser
+playground. `full` includes those one-request scenarios as well as ordered documents and scale
+controls. `coverage.json` gives each product's completed and byte-repeatable family counts and
+names missing, unstable and unreported baselines. Each count describes the selected example at
+that product's installed features and defaults. The `info` and numeric-only XY examples carry
+their reason for using mechanical artifact checks in the frozen plan.
+
+Every entry in `expected_labels` is required. A string matches a complete text spelling. A nested
+list accepts one of the listed complete spellings for that fact. For example, the Requirement
+fixture accepts both `A requirement` and `Text: A requirement` because renderers place the field
+name and value in different text elements. Keep alternatives tied to the authored value and
+retain a negative check that removes or changes that value.
 
 The native Criterion `pipeline` takes fixture registration from `tools/bench/corpus.json`.
 After editing that catalog, run `python tools/bench/pipeline_fixtures.py --write` to refresh the
@@ -99,6 +114,36 @@ ratios use the same successful, repeatable population on both sides. When a repo
 different collector, both observed time series remain available and the ratio is withheld.
 The Node matrix runs products sequentially. A warm batch median describes that collection order.
 Use the calibrated `compare_self.py` protocol for release claims about a Merman revision.
+
+### SVG drawing checks
+
+A fixture or document occurrence in `workloads.json` can declare `drawing_facts`. Each fact names
+an observable property of the source. The current cases include the loop-back arrow from issue
+#183, the two sibling groups and their connecting edge from #186, and the branch-name label from
+Zed #56767, and the Sequence loop's repeated message labels. Choose the type of evidence that
+would change if the drawing were wrong.
+
+| Fact | Chromium observation |
+| --- | --- |
+| `arrows` | The edge ID identifies the route. Its visible triangular arrowhead must face out of the route at the destination. The source and destination must be the unique nearest node outlines, within one rendered arrowhead of the respective endpoints. Both referenced SVG markers and inline triangular heads are supported. |
+| `groups` | The node's outline bounds must fit inside the visible rectangular cluster border and remain clear of the other sibling borders named in the same fact set. |
+| `label_widths` | The named rectangular node must contain the expected text. Chromium text ranges must fit horizontally within the node and a clipping `foreignObject` viewport. Signed left and right clearances are in CSS pixels. The report records the computed CSS font-family lists and observer environment. Physical font selection depends on the host. |
+| `sequence_messages` | In a Sequence diagram, count visible message labels with exactly the declared text. The loop workload exercises the same message at 1, 32 and 256 occurrences. Removing an occurrence fails the check even when other copies of its text survive. |
+
+The Node collector can save the actual SVG from the last warm batch after its clock stops. The SVG
+CLI already retains each rendered file. The observer verifies repeated output identity, the raw
+file size and its SHA-256 before inspecting the bytes in a sandboxed, offline Chromium frame.
+Missing artifacts, unstable draws and unsupported representations are reported as `unavailable`.
+Definite geometry mismatches are `failed`. A scenario with declared facts publishes a timing ratio
+only when both products pass every declared fact in that scenario. Raw milliseconds and artifact
+completion counts remain available. PNG pixel checks, arbitrary SVG paint and vertical glyph
+clipping require their own evidence.
+
+For an `unstable-output` investigation, retain both original files and their hashes. Compare
+their DOM changes, then replay the files in one offline browser at a fixed viewport, font setup
+and device scale. Compare decoded RGBA pixels, include a same-file repeat and a visibly changed
+control, and record the browser and scale with the result. A matching raster at the sampled sizes
+can explain a byte difference. The raw SVG repeatability result remains part of the benchmark.
 
 ## Native Criterion benchmarks
 

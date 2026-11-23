@@ -16,8 +16,10 @@ from unittest.mock import patch
 
 if __package__:
     from . import workload_cli as cli
+    from .workload_svg import validate_svg
 else:
     import workload_cli as cli
+    from workload_svg import validate_svg
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -244,18 +246,63 @@ class WorkloadCliTests(unittest.TestCase):
             ):
                 cli.verify_output(svg, "svg", [value])
 
+    def test_required_facts_match_either_complete_label(self):
+        grid = ["Electricity grid", " Electricity  grid 245.32 "]
+        labels = ["H2 conversion", grid]
+        sink = "<text>H2 conversion</text>"
+        cases = [
+            (sink + "<text>Electricity grid</text>", []),
+            (sink + "<foreignObject><p>Electricity grid\n245.32</p></foreignObject>", []),
+            ("<text>Electricity grid</text>", ["H2 conversion"]),
+            (sink + "<rect/>", [grid]),
+            (sink + "<text>Electricity grid 245.33</text>", [grid]),
+            (sink + "<text>Electricity </text><text>grid 245.32</text>", [grid]),
+            ("<rect/>", labels),
+        ]
+        for elements, missing in cases:
+            with self.subTest(elements=elements):
+                result = validate_svg(f"<svg>{elements}</svg>", labels)
+                if missing:
+                    self.assertEqual(result["status"], "missing-labels")
+                    self.assertEqual(result["missing_labels"], missing)
+                else:
+                    self.assertEqual(result, {"status": "ok"})
+
     def test_png_sibling_checks_each_label_expectation(self):
         self.write_plan("good", "good")
         plan = json.loads(self.plan.read_bytes())
         first, second = plan["scenarios"][0]["requests"]
-        first["expected_labels"] = ["Syntax error in text"]
-        second.update(diagram_id=first["diagram_id"], expected_labels=["not a label"])
+        short, full = "Syntax error", "Syntax error in text"
+        first["expected_labels"] = [[short, full]]
+        second.update(diagram_id=first["diagram_id"], expected_labels=[[short], full])
         self.plan.write_text(json.dumps(plan), encoding="utf-8")
-        code, report = self.measure(fmt="png")
-        self.assertEqual((code, report["completed"], report["failed"]), (1, 1, 1))
-        rows = report["scenarios"][0]["batches"][0]["results"]
-        self.assertEqual(rows[1]["status"], "failed_svg_check")
-        self.assertIn("not a label", rows[1]["error"])
+        code, report = self.measure(fmt="png", samples=2)
+        self.assertEqual((code, report["completed"], report["failed"]), (1, 2, 2))
+        checks = [check["output"] for check in report["png_svg_checks"]]
+        self.assertEqual(len(set(checks)), 2)
+        (scenario,) = report["scenarios"]
+        self.assertEqual(
+            [r["expected_labels"] for r in scenario["requests"]],
+            [first["expected_labels"], second["expected_labels"]],
+        )
+        for batch in scenario["batches"]:
+            good, bad = batch["results"]
+            self.assertEqual([good["svg_check"], bad["svg_check"]], checks)
+            self.assertEqual((good["status"], bad["status"]), ("ok", "failed_svg_check"))
+            self.assertEqual(bad["error"], f"missing expected SVG labels: {[[short]]!r}")
+
+    def test_invalid_label_groups_fail_before_launch(self):
+        self.write_plan("good")
+        plan = json.loads(self.plan.read_bytes())
+        request = plan["scenarios"][0]["requests"][0]
+        for labels in ("plain", [""], [[]], [["valid", " \t"]], [[["nested"]]], [["valid", 1]]):
+            with self.subTest(labels=labels), patch.object(cli, "invoke") as invoke:
+                request["expected_labels"] = labels
+                self.plan.write_text(json.dumps(plan), encoding="utf-8")
+                code, report = self.measure()
+                invoke.assert_not_called()
+                self.assertEqual(code, 2)
+                self.assertIn("invalid expected_labels", report["error"])
 
     def test_bad_input_digest_reports_raw_plan_hash_without_launching(self):
         self.write_plan("good")

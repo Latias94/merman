@@ -5,6 +5,21 @@ import sys
 import xml.etree.ElementTree as ET
 
 
+def _label_options(fact):
+    return fact if isinstance(fact, list) else (fact,)
+
+
+def valid_expected_labels(labels) -> bool:
+    """Each required fact is a nonblank string or a nonempty list of nonblank alternatives."""
+    if not isinstance(labels, list):
+        return False
+    for fact in labels:
+        options = _label_options(fact)
+        if not options or not all(isinstance(text, str) and text.strip() for text in options):
+            return False
+    return True
+
+
 def label_text(element):
     """Collect text runs, lines and joined inline text within one SVG/HTML label."""
 
@@ -56,7 +71,11 @@ def validate_svg(svg, expected_labels=()):
     visited = set()
     ids = None
     painted = False
-    missing = {" ".join(label.split()) for label in expected_labels}
+    missing = set(range(len(expected_labels)))
+    facts_by_text = {}
+    for index, fact in enumerate(expected_labels):
+        for text in _label_options(fact):
+            facts_by_text.setdefault(" ".join(text.split()), []).append(index)
     while elements:
         element = elements.pop()
         if element in visited:
@@ -79,7 +98,8 @@ def validate_svg(svg, expected_labels=()):
                 painted = True
         elif tag in {"text", "tspan", "foreignObject"} and (missing or not painted):
             texts = label_text(element)
-            missing.difference_update(texts)
+            for text in texts:
+                missing.difference_update(facts_by_text.pop(text, ()))
             if texts or (
                 tag == "foreignObject"
                 and any(
@@ -102,7 +122,7 @@ def validate_svg(svg, expected_labels=()):
     if not painted:
         return {"status": "empty-svg", "message": "empty SVG diagram"}
     if missing:
-        labels = [label for label in expected_labels if " ".join(label.split()) in missing]
+        labels = [fact for index, fact in enumerate(expected_labels) if index in missing]
         return {
             "status": "missing-labels",
             "missing_labels": labels,

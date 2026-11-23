@@ -27,6 +27,9 @@
     "mindmap_medium": ["Root", "Research", "Community"],
     "sequence-100-repeated": ["A", "B", "event-000"],
     "sequence-100-unique": ["A", "B", "event-000", "event-050", "event-099"],
+    "sequence_block_repeat_low": ["A", "B", "loop", "message-000000"],
+    "sequence_block_repeat_medium": ["A", "B", "loop", "message-000000"],
+    "sequence_block_repeat_high": ["A", "B", "loop", "message-000000"],
     "architecture_medium": ["API", "Web", "DB"],
     "er_medium": ["CUSTOMER", "ordered_at", "quantity", "supplies"],
     "swimlane_medium": ["Engineering", "Prepare fix", "Needs code change", "Receive update"],
@@ -41,6 +44,13 @@
     "zed_56767_flowchart_foreign_object_labels": ["Prepare change", "checks pass", "checks fail", "Release"],
     "zed_57323_er_entity_style_text": ["EMPRESA", "usuario_id", "employs"],
     "zed_57363_flowchart_hyphen_edge_labels": ["A", "single-string-with-hyphens", "F"]
+  },
+  "drawing_facts": {
+    "flowchart_tiny": {"arrows": [{"edge": "L_A_B_0", "from": "A", "to": "B"}]},
+    "sequence_block_repeat_low": {"sequence_messages": {"message-000000": 1}},
+    "sequence_block_repeat_medium": {"sequence_messages": {"message-000000": 32}},
+    "sequence_block_repeat_high": {"sequence_messages": {"message-000000": 256}},
+    "zed_56767_flowchart_foreign_object_labels": {"label_widths": {"C": "feature/example-branch"}}
   },
   "scenarios": [
     {"id":"small-svg", "fixtures":["flowchart_tiny"], "quick":true},
@@ -61,6 +71,13 @@
         "block-3": ["API", "DB", "find user by email"],
         "block-4": ["CI", "Lint", "Test", "Deploy", "Staging", "Prod"],
         "block-5": ["Write code", "Open PR", "Merge"]
+      },
+      "drawing_facts": {
+        "block-1": {"arrows": [{"edge": "L_B_A_0", "from": "B", "to": "A"}]},
+        "block-4": {
+          "arrows": [{"edge": "L_T_S_0", "from": "T", "to": "S"}],
+          "groups": {"CI": ["L", "T"], "Deploy": ["S", "P"]}
+        }
       }
     },
     {
@@ -91,6 +108,32 @@
         "zed_51142_sequence_rect_rgb", "zed_56767_flowchart_foreign_object_labels",
         "zed_57323_er_entity_style_text", "zed_57363_flowchart_hyphen_edge_labels"
       ]
+    },
+    {
+      "id": "sequence-loop-messages-001",
+      "origin": "tools/bench/corpus.json#stress",
+      "fixtures": ["sequence_block_repeat_low"]
+    },
+    {
+      "id": "sequence-loop-messages-032",
+      "origin": "tools/bench/corpus.json#stress",
+      "fixtures": ["sequence_block_repeat_medium"]
+    },
+    {
+      "id": "sequence-loop-messages-256",
+      "origin": "tools/bench/corpus.json#stress",
+      "fixtures": ["sequence_block_repeat_high"]
+    },
+    {
+      "id": "host-text-measurement-guide",
+      "document": "docs/bindings/HOST_TEXT_MEASUREMENT.md",
+      "expected_labels": {
+        "block-1": [
+          "Host UI / preview surface", "Host text measurer", "MermanEngine", "Deterministic fallback",
+          "renderSvg(source)", "measure request", "alt", "tagged operation-specific result",
+          "not handled", "approximate metrics", "SVG using measured geometry"
+        ]
+      }
     }
   ],
   "topologies": {

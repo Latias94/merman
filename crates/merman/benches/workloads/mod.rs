@@ -16,8 +16,6 @@ use std::{hint::black_box, io};
 struct Request {
     source: String,
     diagram_id: String,
-    #[serde(default)]
-    expected_labels: Vec<String>,
 }
 
 impl Request {
@@ -121,68 +119,6 @@ fn identity(bytes: &[u8]) -> Value {
     json!({"bytes": bytes.len(), "sha256": data_encoding::HEXLOWER.encode(&Sha256::digest(bytes))})
 }
 
-fn svg_identity(svg: &str, labels: &[String]) -> Result<Value, String> {
-    let xml = roxmltree::Document::parse(svg).map_err(|e| e.to_string())?;
-    if xml.root_element().tag_name().name() != "svg"
-        || xml.root_element().first_element_child().is_none()
-    {
-        return Err("expected a nonempty SVG document".into());
-    }
-    if !labels.is_empty() {
-        let ids: std::collections::HashMap<_, _> = xml
-            .descendants()
-            .filter_map(|n| n.attribute("id").map(|id| (id, n)))
-            .collect();
-        let mut missing: std::collections::HashSet<_> = labels.iter().map(String::as_str).collect();
-        let mut seen = std::collections::HashSet::new();
-        let mut pending = vec![xml.root_element()];
-        while let Some(node) = pending.pop() {
-            if !seen.insert(node.id()) {
-                continue;
-            }
-            match node.tag_name().name() {
-                "svg" | "g" | "a" | "switch" | "symbol" => pending.extend(
-                    node.children()
-                        .filter(|n| n.is_element() && !n.has_tag_name("symbol")),
-                ),
-                "use" => {
-                    let href = node
-                        .attribute("href")
-                        .or_else(|| node.attribute(("http://www.w3.org/1999/xlink", "href")));
-                    if let Some(target) = href
-                        .and_then(|s| s.strip_prefix('#'))
-                        .and_then(|id| ids.get(id))
-                    {
-                        pending.push(*target);
-                    }
-                }
-                "text" | "foreignObject" => {
-                    for text in node
-                        .descendants()
-                        .filter(|n| {
-                            n.is_text()
-                                && !n.ancestors().take_while(|p| p.id() != node.id()).any(|p| {
-                                    matches!(
-                                        p.tag_name().name(),
-                                        "style" | "script" | "title" | "desc" | "defs" | "metadata"
-                                    )
-                                })
-                        })
-                        .filter_map(|n| n.text())
-                    {
-                        missing.remove(text.trim());
-                    }
-                }
-                _ => {}
-            }
-        }
-        if !missing.is_empty() {
-            return Err(format!("missing expected SVG labels {missing:?}"));
-        }
-    }
-    Ok(identity(svg.as_bytes()))
-}
-
 impl Product {
     fn result_size(&self) -> usize {
         match self {
@@ -192,15 +128,17 @@ impl Product {
         }
     }
 
-    fn verify(self, input: &Request) -> Result<Value, String> {
-        match self {
-            Self::Data(svg) => svg_identity(&svg, &input.expected_labels),
+    fn verification_output(self) -> Result<Value, String> {
+        let size = self.result_size();
+        let mut verified = match self {
+            // Only the untimed verification process sends SVG text to the shared artifact reader.
+            Self::Data(svg) => return Ok(Value::String(svg)),
             Self::Layout(bytes) => {
                 let parsed: Value = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
                 if parsed.get("layout").is_none() {
                     return Err("missing layout in JSON".into());
                 }
-                Ok(identity(&bytes))
+                identity(&bytes)
             }
             Self::Prepared(artifact) => {
                 // Hash the public preparation result without applying a second target's export policy.
@@ -216,9 +154,11 @@ impl Product {
                         .collect::<Vec<_>>(),
                 ))
                 .map_err(|e| e.to_string())?;
-                Ok(identity(&metadata))
+                identity(&metadata)
             }
-        }
+        };
+        verified["observed_size"] = json!(size);
+        Ok(verified)
     }
 }
 
@@ -259,21 +199,13 @@ impl Trial<'_> {
                 .collect::<Result<Vec<_>, _>>()?;
             return products
                 .into_iter()
-                .zip(self.inputs)
-                .map(|(p, i)| Self::verify_one(p, i))
+                .map(Product::verification_output)
                 .collect();
         }
         self.inputs
             .iter()
-            .map(|input| Self::verify_one(execute(&self.renderer, input, self.operation)?, input))
+            .map(|input| execute(&self.renderer, input, self.operation)?.verification_output())
             .collect()
-    }
-
-    fn verify_one(product: Product, input: &Request) -> Result<Value, String> {
-        let size = product.result_size();
-        let mut verified = product.verify(input)?;
-        verified["observed_size"] = json!(size);
-        Ok(verified)
     }
 }
 

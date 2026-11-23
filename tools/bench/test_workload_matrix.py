@@ -8,9 +8,33 @@ from unittest.mock import patch
 
 from test_workload_reference import report as node_report
 from workload_matrix import collect_node_matrix
+from workload_reference import compare_reference
 
 
 class NodeMatrixTests(unittest.TestCase):
+    def test_only_matching_passed_drawings_release_a_declared_scenario_ratio(self):
+        for left, right in [("passed", "passed"), ("passed", "failed"), ("unavailable", "passed"), (None, None)]:
+            products = {name: {"doc": {"status": state}} for name, state in (("merman", left), ("pele", right)) if state}
+            raw = [node_report("node", name) for name in ("merman", "pele")]
+            for report in raw:
+                report["scenarios"][0]["requests"][0]["drawing_required"] = True
+            result = compare_reference(*raw, drawing_products=products)
+            row = result["scenarios"][0]
+            self.assertEqual(row["drawing_checks"], {"left": left or "not-checked", "right": right or "not-checked"})
+            for key in ("complete_batch_ms", "common_render_ms"):
+                self.assertGreater(row[key]["left"], 0)
+                self.assertEqual(row[key]["right_over_left"] is not None, left == right == "passed")
+
+    def test_audited_plan_still_gates_older_collectors_without_request_flags(self):
+        reports = [node_report("node", name) for name in ("merman", "pele")]
+        for status in ("passed", "failed", "unavailable"):
+            products = {name: {"doc": {"status": state, "cases": [{"request_index": 0}]}}
+                        for name, state in (("merman", "passed"), ("pele", status))}
+            row = compare_reference(*reports, drawing_products=products)["scenarios"][0]
+            self.assertTrue(row["requests"][0]["drawing_required"])
+            self.assertEqual(row["drawing_checks"], {"left": "passed", "right": status})
+            self.assertEqual(row["complete_batch_ms"]["right_over_left"] is not None, status == "passed")
+
     def test_failed_peer_keeps_the_other_comparison_and_raw_inputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -20,7 +44,7 @@ class NodeMatrixTests(unittest.TestCase):
             data = dict(schema_version=1, scenarios=[dict(id="doc", requests=[dict(request, source=source)])], topologies=[])
             plan_bytes = json.dumps(data).encode()
             args = SimpleNamespace(plan=root / "input.json", out_dir=root / "results", peer=None, samples=2,
-                                   timeout_seconds=30, merman_module=None)
+                                   timeout_seconds=30, merman_module=None, check_drawings=False, chrome=None)
             args.plan.write_bytes(plan_bytes)
             order = []
 

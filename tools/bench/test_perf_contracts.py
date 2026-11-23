@@ -21,6 +21,7 @@ TEST_MODULES = (
     "test_workload_cli",
     "test_workload_coverage",
     "test_workload_matrix",
+    "test_workload_drawing",
 )
 
 

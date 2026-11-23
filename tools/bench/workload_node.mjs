@@ -1,7 +1,7 @@
 // Run an expanded workload plan against one installed Node SVG renderer.
 import { execFileSync, fork } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { arch, cpus, hostname, platform, release } from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
@@ -71,6 +71,12 @@ function consumerProject() {
   return { cwd, digests };
 }
 
+function validExpectedLabels(labels) {
+  const nonblank = (text) => typeof text === "string" && text.trim().length > 0;
+  return Array.isArray(labels) && labels.every((fact) =>
+    Array.isArray(fact) ? fact.length > 0 && fact.every(nonblank) : nonblank(fact));
+}
+
 function readPlan(file) {
   const raw = readFileSync(file);
   const plan = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(raw));
@@ -83,6 +89,7 @@ function readPlan(file) {
       throw new Error(`Invalid scenario at index ${index}`);
     }
     const ids = new Set();
+    const drawingIndices = [];
     const requests = scenario.requests.map((request, position) => {
       const { fixture, source, diagram_id, source_sha256, expected_labels = [] } = request ?? {};
       const label = `scenarios[${index}].requests[${position}]`;
@@ -95,12 +102,14 @@ function readPlan(file) {
       if (source_sha256 !== undefined && source_sha256 !== digest) {
         throw new Error(`Source SHA-256 mismatch at ${label}`);
       }
-      if (!Array.isArray(expected_labels) || expected_labels.some((text) => typeof text !== "string" || !text.trim())) {
+      if (!validExpectedLabels(expected_labels)) {
         throw new Error(`Invalid expected_labels at ${label}`);
       }
-      return { fixture, diagram_id, source, source_sha256: digest, expected_labels };
+      const drawing_required = Object.hasOwn(request, "drawing_facts");
+      if (drawing_required) drawingIndices.push(position);
+      return { fixture, diagram_id, source, source_sha256: digest, expected_labels, drawing_required };
     });
-    return { index, id: scenario.id, origin: scenario.origin, requests };
+    return { index, id: scenario.id, origin: scenario.origin, requests, drawingIndices };
   });
   return { sha256: sha256(raw), suite: plan.suite, scenarios };
 }
@@ -130,6 +139,7 @@ function observedOutput(attempt) {
 
 export async function measureBatch(requests, render, {
   now = () => performance.now(), validate = validateOutputs, cache = requests.map(() => new Map()), asyncSvg = false,
+  afterBatch,
 } = {}) {
   const attempts = new Array(requests.length);
   const batchStart = now();
@@ -165,6 +175,7 @@ export async function measureBatch(requests, render, {
       Object.assign(result, verdict);
     }
   }
+  afterBatch?.(attempts, results);
   const successes = results.filter((item) => item.status === "ok");
   return {
     elapsed_ms, complete_batch_ms: successes.length === results.length ? elapsed_ms : null,
@@ -175,7 +186,7 @@ export async function measureBatch(requests, render, {
   };
 }
 
-async function runScenario({ product, engine, scenario, samples }) {
+async function runScenario({ product, engine, scenario, samples, drawingDir }) {
   const merman = engine === "merman";
   const requests = scenario.requests.map(({ source, diagram_id, expected_labels }) => {
     const request = { source, diagram_id, expected_labels };
@@ -204,7 +215,19 @@ async function runScenario({ product, engine, scenario, samples }) {
     const options = { cache, asyncSvg: engine === "mermaid-v13" };
     const cold_batch = await measureBatch(requests, render, options);
     const warm_samples = [];
-    for (let i = 0; i < samples; i++) warm_samples.push(await measureBatch(requests, render, options));
+    for (let i = 0; i < samples - 1; i++) warm_samples.push(await measureBatch(requests, render, options));
+    if (drawingDir && scenario.drawingIndices.length) {
+      options.afterBatch = (attempts, results) => {
+        mkdirSync(drawingDir, { recursive: true });
+        for (const index of scenario.drawingIndices) {
+          if (results[index].output_sha256 === null) continue;
+          const basename = `${scenario.index}-${index}.svg`;
+          writeFileSync(path.join(drawingDir, basename), attempts[index].svg, { encoding: "utf8", flag: "wx" });
+          scenario.requests[index].drawing_artifact = basename;
+        }
+      };
+    }
+    warm_samples.push(await measureBatch(requests, render, options));
     const catalog = instance?.runtimeCatalog;
     if (merman && catalog?.package_version !== product.version) {
       throw new Error(`Runtime version ${catalog?.package_version} differs from ${product.name}@${product.version}`);
@@ -224,8 +247,10 @@ async function runScenario({ product, engine, scenario, samples }) {
       index: scenario.index, id: scenario.id, origin: scenario.origin, init_ms,
       first_render_ms: first.status === "ok" ? first.elapsed_ms : null,
       transport_api_version: catalog?.transport_api_version ?? null,
-      requests: scenario.requests.map(({ fixture, diagram_id, source_sha256, expected_labels }) => ({
+      requests: scenario.requests.map(({ fixture, diagram_id, source_sha256, expected_labels, drawing_required, drawing_artifact }) => ({
         fixture, diagram_id, source_sha256, ...(expected_labels.length ? { expected_labels } : {}),
+        ...(drawing_required ? { drawing_required } : {}),
+        ...(drawing_artifact ? { drawing_artifact } : {}),
       })),
       cold_batch, warm_samples,
       coverage: {
@@ -277,21 +302,24 @@ function isolatedScenario(input, timeoutSeconds) {
 async function main() {
   const { values } = parseArgs({ options: {
     plan: { type: "string" }, engine: { type: "string" }, module: { type: "string" },
+    "drawing-dir": { type: "string" },
     samples: { type: "string", default: "3" }, "timeout-seconds": { type: "string", default: "300" },
   } });
   const samples = Number(values.samples);
   const timeoutSeconds = Number(values["timeout-seconds"]);
-  if (!values.plan || !Object.hasOwn(products, values.engine) ||
+  if (!values.plan || !Object.hasOwn(products, values.engine) || values["drawing-dir"] === "" ||
       !/^[1-9]\d*$/u.test(values.samples) || !Number.isSafeInteger(samples) ||
       !(timeoutSeconds > 0 && timeoutSeconds * 1000 <= 2_147_483_647)) {
-    throw new Error(`Usage: node tools/bench/workload_node.mjs --plan FILE --engine ${Object.keys(products).join("|")} [--module ENTRY] [--samples N] [--timeout-seconds N]`);
+    throw new Error(`Usage: node tools/bench/workload_node.mjs --plan FILE --engine ${Object.keys(products).join("|")} [--module ENTRY] [--samples N] [--timeout-seconds N] [--drawing-dir DIR]`);
   }
+  const drawingDir = values["drawing-dir"] && path.resolve(values["drawing-dir"]);
   const plan = readPlan(values.plan);
   const engine = values.engine;
   const product = installedPackage(values.module ?? products[engine].package, engine);
   const collectorFiles = ["workload_node.mjs", "workload_node_products.json", "workload_svg.py"];
   const report = {
     schema_version: 1, surface: "node", output_format: "svg", engine, backend: product.backend,
+    ...(drawingDir ? { drawing_dir: drawingDir } : {}),
     collector_sha256: sha256(collectorFiles.map((name) => sha256(readFileSync(new URL(name, import.meta.url)))).join("\n")),
     package: { name: product.name, version: product.version, entry: product.entry, entry_sha256: sha256(readFileSync(product.entry)) },
     render_api: products[engine].render_api,
@@ -306,7 +334,7 @@ async function main() {
   for (const scenario of plan.scenarios) {
     let row;
     try {
-      row = await isolatedScenario({ product, engine, scenario, samples }, timeoutSeconds);
+      row = await isolatedScenario({ product, engine, scenario, samples, drawingDir }, timeoutSeconds);
     } catch (error) {
       const status = error.code === "ETIMEDOUT" ? "timeout" : "failed";
       return { ...report, status: "failed", failed_scenario: { index: scenario.index, id: scenario.id, status },

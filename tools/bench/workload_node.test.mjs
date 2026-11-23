@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -149,6 +149,88 @@ test("Mermaid v13 awaits the public Node render in request order and retains a r
   assert.match(run(dir, "mermaid-v13").report.error, /Expected mermaid 13\.x/);
 });
 
+test("drawing files retain the last timed UTF-8 output at declared positions in isolated workers", (t) => {
+  const dir = project(t);
+  const relative = path.join("bundle", "drawings", "mermaid-v13");
+  const drawings = path.join(dir, relative);
+  const svg = "\uFEFF<svg>\r\n  <text>夜🚀 e\u0301 BATCH</text>\r\n</svg>\r\n";
+  const selected = { ...request(svg, "../shared"), drawing_facts: {} };
+  const lostOutput = { ...request("loses output", "lost"), drawing_facts: {} };
+  plan(dir, [
+    { id: "doc/repeated", requests: [request(svg, "unchecked"), { ...selected, expected_labels: ["absent"] }, lostOutput] },
+    { id: "doc/repeated", requests: [{ ...selected, drawing_facts: null }] },
+  ]);
+  install(dir, "mermaid", `
+    import { existsSync } from 'node:fs';
+    process.chdir('node_modules');
+    const calls = new Map();
+    export default { async render(id, source) {
+      const call = (calls.get(id) ?? 0) + 1;
+      calls.set(id, call);
+      console.log('render', id, call);
+      if (source === 'loses output') {
+        if (existsSync(${JSON.stringify(path.join(drawings, "0-1.svg"))})) throw new Error('drawing already visible during render');
+        return { svg: call === 3 ? null : '<svg><rect/></svg>' };
+      }
+      return { svg: source.replace('BATCH', String(call)) };
+    } };
+  `, "13.0.0-alpha.3");
+
+  const { report, status, stderr } = run(dir, "mermaid-v13", ["--drawing-dir", relative, "--samples", "2"]);
+  assert.equal(status, 0, stderr);
+  assert.equal(stderr.match(/^render /gm)?.length, 12);
+  assert.ok(path.isAbsolute(report.drawing_dir));
+  assert.equal(realpathSync(report.drawing_dir), realpathSync(drawings));
+  assert.deepEqual(readdirSync(drawings).sort(), ["0-1.svg", "1-0.svg"]);
+  const [first, second] = report.scenarios;
+  for (const [row, index, basename] of [[first, 1, "0-1.svg"], [second, 0, "1-0.svg"]]) {
+    assert.equal(row.requests[index].drawing_artifact, basename);
+    const bytes = readFileSync(path.join(drawings, basename));
+    assert.deepEqual(bytes, Buffer.from(svg.replace("BATCH", "3"), "utf8"));
+    const last = row.warm_samples.at(-1).results[index];
+    assert.equal(last.output_sha256, sha256(bytes));
+    assert.equal(last.output_bytes, bytes.length);
+    assert.notEqual(row.warm_samples[0].results[index].output_sha256, last.output_sha256);
+  }
+  assert.equal(first.warm_samples.at(-1).results[1].status, "missing-labels");
+  assert.equal(first.cold_batch.results[2].status, "ok");
+  const lost = first.warm_samples.at(-1).results[2];
+  assert.equal(lost.status, "invalid-svg", lost.message);
+  assert.equal(lost.output_sha256, null);
+  assert.equal(Object.hasOwn(first.requests[0], "drawing_artifact"), false);
+  assert.equal(Object.hasOwn(first.requests[2], "drawing_artifact"), false);
+});
+
+test("drawing capture is opt-in and a failed exclusive write fails its scenario", (t) => {
+  const dir = project(t);
+  plan(dir, [
+    { id: "old", requests: [request("old", "a")] },
+    { id: "selected", requests: [{ ...request("new", "b"), drawing_facts: {} }] },
+  ]);
+  install(dir, "pele", drawModule);
+  const off = run(dir, "pele", ["--samples", "1"]);
+  assert.equal(off.status, 0, off.stderr);
+  assert.equal(Object.hasOwn(off.report, "drawing_dir"), false);
+  assert.deepEqual(off.report.scenarios[1].requests[0], {
+    fixture: "shared-fixture", diagram_id: "b", source_sha256: sha256("new"), drawing_required: true,
+  });
+
+  const drawings = path.join(dir, "drawings");
+  mkdirSync(drawings);
+  const existing = path.join(drawings, "1-0.svg");
+  writeFileSync(existing, "previous report");
+  for (const destination of [drawings, existing]) {
+    const { report, status, stderr } = run(dir, "pele", ["--samples", "1", "--drawing-dir", destination]);
+    assert.equal(status, 1, stderr);
+    assert.equal(report.status, "failed");
+    assert.deepEqual(report.failed_scenario, { index: 1, id: "selected", status: "failed" });
+    assert.deepEqual(report.scenarios.map((row) => row.index), [0]);
+    assert.equal(Object.hasOwn(report.scenarios[0].requests[0], "drawing_artifact"), false);
+    assert.ok(report.error.includes(existing), report.error);
+    assert.equal(readFileSync(existing, "utf8"), "previous report");
+  }
+});
+
 test("partial batches keep attempted time, error SVG identity and stable successful coverage by index", (t) => {
   const dir = project(t);
   const cases = ["role", "ok", "blank", "shell", "defs", "throw", "marker", "unstable", "flaky", "html", "malformed"];
@@ -222,11 +304,12 @@ test("expected labels must appear as SVG or HTML label text, including on a chan
     <foreignObject><div xmlns="http://www.w3.org/1999/xhtml" data-id="AttributeOnly">
       <style>.InnerCss{color:blue}</style><p>End &amp; <strong>夜</strong></p><p>Second line</p>
     </div></foreignObject></g></svg>`;
-  const absent = ["IdOnly", "CssOnly", "DefsOnly", "TitleOnly", "CommentOnly", "AttributeOnly", "InnerCss", "WrongNamespace", "tart", "StartOther"];
+  const start = ["Begin", " Start "];
+  const absent = ["IdOnly", "CssOnly", "DefsOnly", "TitleOnly", "CommentOnly", "AttributeOnly", "InnerCss", "WrongNamespace", ["tart", "StartOther"]];
   const sources = [
-    { ...request("good", "g"), expected_labels: ["Start", "End & 夜", "Second line"] },
+    { ...request("good", "g"), expected_labels: [start, ["End & 夜", "Finish"], "Second line"] },
     { ...request("missing", "m"), expected_labels: absent },
-    { ...request("changes", "c"), expected_labels: ["Start"] },
+    { ...request("changes", "c"), expected_labels: [start] },
     { ...request("broken", "b"), expected_labels: ["Start"] },
     request("unchecked", "u"),
   ];
@@ -249,7 +332,7 @@ test("expected labels must appear as SVG or HTML label text, including on a chan
   assert.deepEqual(row.requests[0].expected_labels, sources[0].expected_labels);
   assert.deepEqual(row.cold_batch.results.map((result) => result.status), ["ok", "missing-labels", "ok", "invalid-svg", "ok"]);
   assert.deepEqual(row.cold_batch.results[1].missing_labels, absent);
-  assert.deepEqual(row.warm_samples[0].results[2].missing_labels, ["Start"]);
+  assert.deepEqual(row.warm_samples[0].results[2].missing_labels, [start]);
   assert.equal(row.warm_samples[1].complete_batch_ms, null);
 });
 
@@ -273,9 +356,10 @@ test("the batch clock stops before byte counts, hashing, label checks and error 
   }, {
     now() { events.push("clock"); return ++ticks; },
     validate(jobs) { events.push(`validate-${jobs.length}`); return jobs.map(() => ({ status: "ok" })); },
+    afterBatch() { events.push("afterBatch"); },
   });
   assert.deepEqual(events, ["clock", "clock", "render-1", "clock", "clock", "render-2", "clock", "clock", "render-3", "clock", "clock",
-    "bytes", "hash", "message", "bytes", "hash", "validate-2"]);
+    "bytes", "hash", "message", "bytes", "hash", "validate-2", "afterBatch"]);
   assert.equal(batch.elapsed_ms, 7);
   assert.equal(batch.successful_render_ms, 2);
 });
@@ -348,8 +432,10 @@ test("invalid request identity and sample counts fail before package loading", (
   assert.match(run(dir, "pele").report.error, /distinct diagram_id/);
   plan(dir, [{ id: "one", requests: [{ ...item, source_sha256: sha256("other") }] }]);
   assert.match(run(dir, "pele").report.error, /Source SHA-256 mismatch/);
-  plan(dir, [{ id: "one", requests: [{ ...item, expected_labels: "not an array" }] }]);
-  assert.match(run(dir, "pele").report.error, /Invalid expected_labels/);
+  for (const expected_labels of ["not an array", [""], [[]], [["valid", " \t"]], [[["nested"]]], [["valid", 1]]]) {
+    plan(dir, [{ id: "one", requests: [{ ...item, expected_labels }] }]);
+    assert.match(run(dir, "pele").report.error, /Invalid expected_labels/);
+  }
   assert.match(run(dir, "pele", ["--samples", "0"]).report.error, /--samples/);
   assert.match(run(dir, "pele", ["--timeout-seconds", "0"]).report.error, /--timeout-seconds/);
 });

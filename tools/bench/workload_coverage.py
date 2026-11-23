@@ -3,6 +3,11 @@
 import hashlib
 import json
 
+if __package__:
+    from .workload_svg import valid_expected_labels
+else:
+    from workload_svg import valid_expected_labels
+
 
 def _schema_v1(data):
     version = data.get("schema_version") if isinstance(data, dict) else None
@@ -39,10 +44,14 @@ def _counts(requests, *, verified=False):
     )
     if verified:
         counts["mechanical_only"] = len(requests) - len(labeled)
+    else:
+        declared = [r for r in requests if "drawing_facts" in r]
+        if declared:
+            counts["with_drawing_facts"] = dict(requests=len(declared), distinct_sources=len({r["source_sha256"] for r in declared}))
     return counts
 
 
-def _intersection(row, planned):
+def _intersection(row, planned, *, svg):
     name = row["id"]
     observed = row["requests"]
     if not isinstance(observed, list) or len(observed) != len(planned):
@@ -57,6 +66,7 @@ def _intersection(row, planned):
             or result.get("diagram_id") != request["diagram_id"]
             or result.get("source_sha256", request["source_sha256"]) != request["source_sha256"]
             or result.get("expected_labels", []) != request.get("expected_labels", [])
+            or result.get("drawing_required", False) is not (svg and "drawing_facts" in request)
         ):
             raise ValueError(f"different request identity in {name!r} at position {position}")
         sides = (result.get("left"), result.get("right"))
@@ -89,10 +99,23 @@ def _intersection(row, planned):
         common_completed=_counts(completed, verified=True),
         common_stable=_counts(stable, verified=True),
         non_stable_requests=issues,
+        **({"drawing_checks": row["drawing_checks"]} if "drawing_checks" in row else {}),
     )
 
 
-def _comparison(report, plan_digest, scenarios):
+def _family_coverage(families, rows):
+    observed = [(family, rows[name]["requests"][0]) for name, family in families.items() if name in rows]
+    result = dict(planned=len(families), reported=len(observed),
+                  unreported=[family for name, family in families.items() if name not in rows])
+    for side in ("left", "right"):
+        gaps = [{"family": family, **request[side]} for family, request in observed if request[side]["state"] != "stable"]
+        result[side] = dict(completed=sum(request[side]["statuses"] == ["ok"] for _, request in observed),
+                            stable=len(observed) - len(gaps), gaps=gaps)
+    result["both_stable"] = sum(request["left"]["state"] == request["right"]["state"] == "stable" for _, request in observed)
+    return result
+
+
+def _comparison(report, plan_digest, scenarios, families):
     if (
         not _schema_v1(report)
         or report.get("classification") != "diagnostic"
@@ -113,9 +136,11 @@ def _comparison(report, plan_digest, scenarios):
     fields = ("surface", "format", "left", "right", "host", "samples")
     summary = {key: report[key] for key in fields}
     summary["scenarios"] = [
-        _intersection(row, scenarios[name]["requests"]) for name, row in rows.items()
+        _intersection(row, scenarios[name]["requests"], svg=report["format"] == "svg") for name, row in rows.items()
     ]
     summary["unreported_scenarios"] = [name for name in scenarios if name not in rows]
+    if families:
+        summary["family_baselines"] = _family_coverage(families, rows)
     return summary
 
 
@@ -126,7 +151,7 @@ def summarize_coverage(raw_plan: bytes, comparisons=()) -> dict:
         raise ValueError("expected workload plan schema_version 1")
     plan_digest = hashlib.sha256(raw_plan).hexdigest()
     scenarios = _indexed(plan["scenarios"], "id")
-    inventory, all_requests = [], []
+    inventory, all_requests, families = [], [], {}
     for name, scenario in scenarios.items():
         requests = scenario["requests"]
         if not requests:
@@ -136,14 +161,18 @@ def summarize_coverage(raw_plan: bytes, comparisons=()) -> dict:
             if not isinstance(request.get("fixture"), str) or not request["fixture"]:
                 raise ValueError(f"expected a fixture in {name!r}")
             labels = request.get("expected_labels", [])
-            if not isinstance(labels, list) or any(
-                not isinstance(s, str) or not s.strip() for s in labels
-            ):
+            if not valid_expected_labels(labels):
                 raise ValueError(f"invalid expected_labels for {diagram_id!r}")
             if not labels:
                 missing_labels.append(dict(fixture=request["fixture"], diagram_id=diagram_id))
             request["source_sha256"] = _source_digest(request)
         item = dict(id=name, origin=scenario.get("origin"), **_counts(requests))
+        if "family" in scenario:
+            family = scenario["family"]
+            if (not isinstance(family, str) or not family.strip() or family != family.strip()
+                    or family in families.values() or len(requests) != 1):
+                raise ValueError(f"expected one uniquely identified family baseline and request in {name!r}")
+            families[name] = item["family"] = family
         if missing_labels:
             item["requests_without_expected_labels"] = missing_labels
         inventory.append(item)
@@ -152,11 +181,13 @@ def summarize_coverage(raw_plan: bytes, comparisons=()) -> dict:
     for topology in topologies.values():
         _source_digest(topology)
     planned = dict(scenarios=len(scenarios), topology_rows=len(topologies), **_counts(all_requests))
+    if families:
+        planned["family_baselines"] = len(families)
     return dict(
         schema_version=1,
         plan_sha256=plan_digest,
         suite=plan.get("suite"),
         planned=planned,
         scenarios=inventory,
-        comparisons=[_comparison(report, plan_digest, scenarios) for report in comparisons],
+        comparisons=[_comparison(report, plan_digest, scenarios, families) for report in comparisons],
     )

@@ -82,7 +82,7 @@ def _timing(timed_batches, measure, allow_ratio):
     )
 
 
-def _scenario(left, right, node, png, samples, allow_ratio):
+def _scenario(left, right, node, png, samples, allow_ratio, drawings):
     name = left["id"]
     planned = len(left["requests"])
     if (
@@ -105,10 +105,15 @@ def _scenario(left, right, node, png, samples, allow_ratio):
 
     requests, common = [], []
     completed = 0
+    # Older raw reports omit the request flag. An audit binds the declared indices to the plan.
+    declared = {case["request_index"] for side in drawings.values() for case in side.get("cases", [])}
     for i, (a, b) in enumerate(zip(left["requests"], right["requests"])):
         keys = ("fixture", "diagram_id", "source_sha256")
         same_labels = a.get("expected_labels", []) == b.get("expected_labels", [])
-        if not same_labels or any(not a.get(k) or a[k] != b.get(k) for k in keys):
+        drawing_required = a.get("drawing_required", i in declared)
+        if (not same_labels or type(drawing_required) is not bool or drawing_required is not b.get("drawing_required", i in declared)
+                or (i in declared and not drawing_required)
+                or any(not a.get(k) or a[k] != b.get(k) for k in keys)):
             raise ValueError(f"different request identity in {name!r} at index {i}")
         outputs = [_output([batch["results"][i] for batch in side], node, png) for side in observed]
         request = dict(
@@ -117,6 +122,8 @@ def _scenario(left, right, node, png, samples, allow_ratio):
         )
         if a.get("expected_labels"):
             request["expected_labels"] = a["expected_labels"]
+        if drawing_required:
+            request["drawing_required"] = True
         requests.append(request)
         if all(output["statuses"] == ["ok"] for output in outputs):
             completed += 1
@@ -132,6 +139,10 @@ def _scenario(left, right, node, png, samples, allow_ratio):
         common_render_ms=None,
         complete_batch_ms=None,
     )
+    if any(r.get("drawing_required") for r in requests):
+        checks = {side: audit.get("status", "not-checked") for side, audit in drawings.items()}
+        result["drawing_checks"] = checks
+        allow_ratio = allow_ratio and all(s == "passed" for s in checks.values())
     if common:
 
         def render_ms(batch):
@@ -144,7 +155,7 @@ def _scenario(left, right, node, png, samples, allow_ratio):
     return result
 
 
-def compare_reference(left: dict, right: dict) -> dict:
+def compare_reference(left: dict, right: dict, *, drawing_products=None) -> dict:
     """Use warm Node batches (cold also checks identity) or fresh CLI processes per request.
 
     common_completed counts requests that passed every adapter check on both sides. common_stable
@@ -206,6 +217,14 @@ def compare_reference(left: dict, right: dict) -> dict:
     if not collectors[0] or collectors[0] != collectors[1]:
         reason = "The collector or its output checks differ or lack a recorded fingerprint."
         withheld = f"{withheld} {reason}" if withheld else reason
+    drawing_products = drawing_products or {}
+    scenarios = []
+    for a, b in zip(rows, right["scenarios"]):
+        drawings = {
+            side: drawing_products.get(report["engine"], {}).get(a["id"], {})
+            for side, report in (("left", left), ("right", right))
+        }
+        scenarios.append(_scenario(a, b, node, fmt == "png", samples, withheld is None, drawings))
     return dict(
         schema_version=1,
         classification="diagnostic",
@@ -223,8 +242,5 @@ def compare_reference(left: dict, right: dict) -> dict:
         if fmt == "png"
         else "SVG at each renderer's font and layout settings",
         ratio_withheld_reason=withheld,
-        scenarios=[
-            _scenario(a, b, node, fmt == "png", samples, withheld is None)
-            for a, b in zip(rows, right["scenarios"])
-        ],
+        scenarios=scenarios,
     )
