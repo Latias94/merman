@@ -214,13 +214,21 @@ pub(crate) fn fallback_style_matches(base: &FaceInfo, face: &FaceInfo) -> bool {
 }
 
 pub(crate) fn covers_character(face: &ttf_parser::Face<'_>, character: char) -> bool {
-    face.tables().cmap.is_some_and(|cmap| {
-        cmap.subtables.into_iter().any(|table| {
-            table.is_unicode()
-                && table
-                    .glyph_index(u32::from(character))
-                    .is_some_and(|glyph| glyph.0 != 0 && glyph.0 < face.number_of_glyphs())
-        })
+    face.tables()
+        .cmap
+        .is_some_and(|cmap| cmap_covers_character(cmap, face.number_of_glyphs(), character))
+}
+
+pub(crate) fn cmap_covers_character(
+    cmap: ttf_parser::cmap::Table<'_>,
+    num_glyphs: u16,
+    character: char,
+) -> bool {
+    cmap.subtables.into_iter().any(|table| {
+        table.is_unicode()
+            && table
+                .glyph_index(u32::from(character))
+                .is_some_and(|glyph| glyph.0 != 0 && glyph.0 < num_glyphs)
     })
 }
 

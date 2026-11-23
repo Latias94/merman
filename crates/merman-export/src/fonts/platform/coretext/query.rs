@@ -14,7 +14,7 @@ use usvg::fontdb::{
     Database, FaceInfo, Family, ID, Language, Query, Source, Stretch, Style, Weight,
 };
 
-use super::NativeFace;
+use super::{NativeFace, font_covers};
 
 // Core Text already selected one family. The ranking database only needs a shared key.
 const QUERY_FAMILY: &str = "";
@@ -41,7 +41,7 @@ pub(super) fn match_family(
             continue;
         };
         let (native_weight, native_stretch, native_style) = native_attributes(&face.font);
-        let table = table_attributes(&face.font, native_style);
+        let table = table_attributes(&face.font, native_stretch, native_style);
         if let (Some(attributes), Some(weight)) = (table, native_weight) {
             let (first, differs) = weight_groups.entry(attributes).or_insert((weight, false));
             *differs |= *first != weight;
@@ -113,12 +113,6 @@ pub(super) fn fallback_face(font: CFRetained<CTFont>, character: char) -> Option
     )
 }
 
-fn font_covers(font: &CTFont, character: char) -> bool {
-    // SAFETY: The live font returns a retained, immutable character set.
-    let character_set = unsafe { font.character_set() };
-    super::character_set_contains_scalar(&character_set, character)
-}
-
 fn family_descriptors(family: &str) -> Option<CFRetained<CFArray<CTFontDescriptor>>> {
     if family.is_empty() {
         return None;
@@ -170,19 +164,29 @@ pub(super) fn font_from_descriptor(descriptor: &CTFontDescriptor) -> Option<CFRe
     Some(font)
 }
 
-fn table_attributes(font: &CTFont, native_style: Style) -> Option<(Weight, Stretch, Style)> {
+fn table_attributes(
+    font: &CTFont,
+    native_stretch: Stretch,
+    native_style: Style,
+) -> Option<(Weight, Stretch, Style)> {
     // Only supported default instances reach here, so OS/2 describes the physical face.
     // SAFETY: The live font returns immutable retained table data.
     let data = unsafe { font.table(u32::from_be_bytes(*b"OS/2"), CTFontTableOptions::NoOptions) }?;
     // SAFETY: The retained CFData outlives the borrowed table parser.
     let table = ttf_parser::os2::Table::parse(unsafe { data.as_bytes_unchecked() })?;
+    // Some families mark every face as normal width in OS/2, including the
+    // condensed Sukhumvit Set Thin. Preserve an explicit non-normal table width.
+    let stretch = match table.width() {
+        Stretch::Normal => native_stretch,
+        stretch => stretch,
+    };
     let style = match table.style() {
         // Some legacy fonts report italic only through native/post traits.
         ttf_parser::Style::Normal => native_style,
         ttf_parser::Style::Italic => Style::Italic,
         ttf_parser::Style::Oblique => Style::Oblique,
     };
-    Some((Weight(table.weight().to_number()), table.width(), style))
+    Some((Weight(table.weight().to_number()), stretch, style))
 }
 
 fn native_attributes(font: &CTFont) -> (Option<Weight>, Stretch, Style) {
@@ -351,10 +355,10 @@ mod tests {
             if !face.path.is_file() {
                 continue;
             }
-            let (Some(weight), _, Style::Normal) = native_attributes(&face.font) else {
+            let (Some(weight), stretch, Style::Normal) = native_attributes(&face.font) else {
                 continue;
             };
-            if table_attributes(&face.font, Style::Normal)
+            if table_attributes(&face.font, stretch, Style::Normal)
                 == Some((Weight::NORMAL, Stretch::Normal, Style::Normal))
             {
                 weights.entry(weight).or_insert_with(Vec::new).push(face);
@@ -370,6 +374,33 @@ mod tests {
                 expected.iter().any(|candidate| candidate.path == face.path
                     && candidate.post_script_name == face.post_script_name),
                 "Kaiti SC {weight:?} selected {}",
+                face.post_script_name
+            );
+        }
+    }
+
+    #[test]
+    #[ignore = "optional qualification with the registered Sukhumvit Set collection"]
+    fn condensed_native_face_is_ranked_by_width_before_weight() {
+        let Some(descriptors) = family_descriptors("Sukhumvit Set") else {
+            return;
+        };
+        if !descriptors
+            .iter()
+            .filter_map(|desc| font_from_descriptor(&desc))
+            .any(|font| native_attributes(&font).1 == Stretch::Condensed)
+        {
+            return;
+        }
+        for (stretch, weight) in [
+            (Stretch::Condensed, Weight::NORMAL),
+            (Stretch::Normal, Weight(200)),
+        ] {
+            let face = named("Sukhumvit Set", weight, stretch, Style::Normal).unwrap();
+            assert_eq!(
+                native_attributes(&face.font).1,
+                stretch,
+                "{}",
                 face.post_script_name
             );
         }
