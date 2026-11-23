@@ -80,18 +80,9 @@ pub(crate) fn prepare_flowchart_render_config(
     let use_max_width = config.render_use_max_width();
     let title_top_margin = config.render_title_top_margin();
     let node_padding = config.render_node_padding();
-    let cfg_curve = if is_elk_layout {
-        Some("rounded".to_string())
-    } else {
-        config.render_curve()
-    };
-    let default_edge_interpolate = model
-        .edge_defaults
-        .as_ref()
-        .and_then(|d| d.interpolate.as_deref())
-        .or(cfg_curve.as_deref())
-        .unwrap_or("basis")
-        .to_string();
+    let default_edge_interpolate = config
+        .effective_edge_interpolation(model, is_elk_layout)
+        .to_owned();
     let default_edge_style = model
         .edge_defaults
         .as_ref()

@@ -129,7 +129,7 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         .as_ref()
         .and_then(|defaults| defaults.interpolate.as_deref())
         .filter(|curve| !curve.is_empty())
-        .or(config_curve.as_deref())
+        .or(config_curve)
         .unwrap_or("basis");
     if working.original_edges.len() != visible_edges.len() {
         return Err(crate::Error::InvalidModel {

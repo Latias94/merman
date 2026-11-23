@@ -204,15 +204,7 @@ fn measure(
     work.charge_adapter(view.nodes.len())?;
     work.charge_adapter(view.edges.len())?;
     let config_view = FlowchartConfigView::new(config);
-    let configured_curve = config_view.render_curve();
-    // Mermaid's `linkStyle default interpolate` takes precedence over flowchart.curve.
-    // Each edge still selects its own interpolation when the final SVG path is painted.
-    let curve = view
-        .edge_defaults
-        .as_ref()
-        .and_then(|d| d.interpolate.as_deref())
-        .or(configured_curve.as_deref())
-        .unwrap_or("basis");
+    let curve = config_view.effective_edge_interpolation(&view, false);
     let look_is_neo = crate::config::mermaid_config_diagram_look(config).is_neo();
     let wrapping_width = config_view.render_wrapping_width();
     let theme_radius = crate::config::config_f64(config, &["themeVariables", "radius"])
