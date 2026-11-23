@@ -3,7 +3,7 @@
 
 use super::ir::{RoutePoint, Side};
 use crate::model::LayoutPoint;
-use kurbo::{Arc, Point, Vec2};
+use kurbo::{Arc, Point};
 use std::f64::consts::TAU;
 
 mod flowchart;
@@ -34,6 +34,8 @@ impl ShapePortProfile {
     }
 
     pub(crate) fn rounded_rectangle(width: f64, height: f64, rx: f64, ry: f64) -> Self {
+        let rx = rx.clamp(0.0, width.max(0.0) / 2.0);
+        let ry = ry.clamp(0.0, height.max(0.0) / 2.0);
         Self::new(
             Outline::rect(width, height, rx, ry),
             width - 2.0 * rx,
@@ -191,10 +193,14 @@ fn arc_hit(side: Side, across: f64, arc: &Arc) -> Option<f64> {
 
 impl Outline {
     fn rect(w: f64, h: f64, rx: f64, ry: f64) -> Self {
+        Self::rect_at((0.0, 0.0), w, h, rx, ry)
+    }
+
+    fn rect_at((cx, cy): (f64, f64), w: f64, h: f64, rx: f64, ry: f64) -> Self {
         let (hw, hh) = (w.max(0.0) * 0.5, h.max(0.0) * 0.5);
         Self::Box {
-            cx: 0.0,
-            cy: 0.0,
+            cx,
+            cy,
             hw,
             hh,
             rx: rx.clamp(0.0, hw),
@@ -215,41 +221,8 @@ impl Outline {
         ])
     }
 
-    fn translated(mut self, dx: f64, dy: f64) -> Self {
-        match &mut self {
-            Self::Box { cx, cy, .. } => {
-                *cx += dx;
-                *cy += dy;
-            }
-            Self::Polygon(points) => {
-                for (x, y) in points {
-                    *x += dx;
-                    *y += dy;
-                }
-            }
-            Self::Path { start, edges } => {
-                let delta = Vec2::new(dx, dy);
-                *start += delta;
-                for edge in edges {
-                    match edge {
-                        Edge::Line(p) => *p += delta,
-                        Edge::Arc(arc, p) => {
-                            arc.center += delta;
-                            *p += delta;
-                        }
-                    }
-                }
-            }
-            Self::Parts(parts) => {
-                return Self::Parts(
-                    std::mem::take(parts)
-                        .into_iter()
-                        .map(|p| p.translated(dx, dy))
-                        .collect(),
-                );
-            }
-        }
-        self
+    fn polygon_at(points: impl IntoIterator<Item = (f64, f64)>, dx: f64, dy: f64) -> Self {
+        Self::Polygon(points.into_iter().map(|(x, y)| (x + dx, y + dy)).collect())
     }
 
     fn crossing(&self, side: Side, across: f64) -> Option<f64> {
@@ -495,9 +468,53 @@ mod tests {
         close(event.contact(&c, Side::Bottom, v(0.0, 50.0)).y, 18.0);
         let gateway = profile("bpmn-gateway", 140.0, 110.0, 140.0, 24.0, false);
         close(gateway.contact(&c, Side::Left, h(-70.0, 0.0)).x, -25.0);
+        let note = profile("bpmn-annotation", 102.0, 40.0, 80.0, 24.0, false);
+        close(note.contact(&c, Side::Right, h(51.0, 0.0)).x, 43.0);
+        close(note.contact(&c, Side::Right, h(51.0, 19.0)).x, -51.0);
+        close(note.contact(&c, Side::Top, v(0.0, -20.0)).y, -12.0);
         let icon = profile("iconRounded", 104.0, 95.0, 100.0, 20.0, false);
         close(icon.anchor_y().unwrap(), 31.5);
         close(icon.contact(&c, Side::Right, h(52.0, -16.0)).x, 31.5);
         close(icon.contact(&c, Side::Bottom, v(0.0, 47.5)).y, 47.5);
+    }
+
+    #[test]
+    fn paint_metrics_preserve_rect_radius_overrides_and_the_image_behind_a_wider_caption() {
+        let mut node: FlowNode = serde_json::from_value(serde_json::json!({
+            "id":"n", "layoutShape":"imageSquare", "assetWidth":40.0, "assetHeight":60.0,
+            "pos":"t", "img":"image.png", "label":"caption"
+        }))
+        .unwrap();
+        let measured = LayoutNode {
+            id: "n".into(),
+            x: 0.0,
+            y: 0.0,
+            width: 244.0,
+            height: 92.0,
+            is_cluster: false,
+            label_width: Some(240.0),
+            label_height: Some(20.0),
+        };
+        let c = p(0.0, 0.0);
+        let image = ShapePortProfile::flowchart_with_paint_metrics(
+            &node, &measured, 15.0, false, 160.0, None,
+        )
+        .unwrap();
+        close(image.contact(&c, Side::Right, h(122.0, 16.0)).x, 80.0);
+        close(image.contact(&c, Side::Right, h(122.0, -36.0)).x, 122.0);
+        for name in ["process", "rounded"] {
+            node.layout_shape = Some(name.into());
+            let shape = ShapePortProfile::flowchart_with_paint_metrics(
+                &node,
+                &measured,
+                15.0,
+                false,
+                160.0,
+                Some((30.0, 10.0)),
+            )
+            .unwrap();
+            close(shape.contact(&c, Side::Top, v(110.0, -46.0)).y, -44.0);
+            close(shape.port_span(Side::Top), 184.0);
+        }
     }
 }

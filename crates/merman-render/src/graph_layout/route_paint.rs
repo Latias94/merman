@@ -72,6 +72,12 @@ fn aligned(a: Point, b: Point) -> bool {
     a.x == b.x || a.y == b.y
 }
 
+fn has_offset_leg(route: &[RoutePoint]) -> bool {
+    route
+        .windows(2)
+        .any(|leg| !aligned(position(leg[0]), position(leg[1])))
+}
+
 /// Drop only redundant orthogonal knots. In particular a U-turn or a shelf between two
 /// diagonal legs carries geometry even if two of its coordinates match nearby points.
 fn push_knot(knots: &mut Vec<RoutePoint>, p: RoutePoint) {
@@ -268,7 +274,10 @@ impl Pen {
     }
 
     fn finish(self) -> Option<PaintedRoute> {
-        self.finite.then_some(PaintedRoute { d: self.d, bounds: self.bounds })
+        self.finite.then_some(PaintedRoute {
+            d: self.d,
+            bounds: self.bounds,
+        })
     }
 }
 
@@ -647,6 +656,8 @@ mod tests {
         assert!(paint(&[h(0.0, 0.0); 2]).is_none());
         assert!(paint(&[h(0.0, 0.0), h(f64::NAN, 1.0)]).is_none());
         assert!(paint(&[h(0.0, 0.0), h(5.0, 0.0)]).is_none());
+        assert!(paint(&[h(0.0, 0.0), h(19.0, 0.0)]).is_none());
+        assert!(paint(&[h(-f64::MAX, 2.0), h(f64::MAX, 1.0)]).is_none());
     }
 
     #[test]

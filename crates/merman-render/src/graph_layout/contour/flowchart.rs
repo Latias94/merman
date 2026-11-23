@@ -15,6 +15,33 @@ impl ShapePortProfile {
         padding: f64,
         look_is_neo: bool,
     ) -> crate::Result<Self> {
+        // If the image itself sets the outer width, that width already includes wrapping.
+        // A wider caption hides the image width; use Flowchart's standard wrap in this entry.
+        let wrapping_width = if measured.width > measured.label_width.unwrap_or(0.0) + 4.0 {
+            measured.width
+        } else {
+            200.0_f64.min(measured.width)
+        };
+        Self::flowchart_with_paint_metrics(
+            node,
+            measured,
+            padding,
+            look_is_neo,
+            wrapping_width,
+            None,
+        )
+    }
+
+    /// Receives the same image wrap and resolved native rectangle radii as the SVG writer.
+    /// A caption can own the measured box width independently of the painted asset width.
+    pub(crate) fn flowchart_with_paint_metrics(
+        node: &FlowNode,
+        measured: &LayoutNode,
+        padding: f64,
+        look_is_neo: bool,
+        wrapping_width: f64,
+        rectangle_radii: Option<(f64, f64)>,
+    ) -> crate::Result<Self> {
         let name = node.layout_shape.as_deref().unwrap_or("squareRect");
         let shape = S::resolve(name)?;
         let (w, h) = (measured.width.max(0.0), measured.height.max(0.0));
@@ -29,8 +56,15 @@ impl ShapePortProfile {
         let fixed = |outline| Self::new(outline, 0.0, 0.0);
         let circle = |radius| Self::ellipse(2.0 * radius, 2.0 * radius);
         let profile = match shape {
-            S::Process
-            | S::Subroutine
+            S::Process => match rectangle_radii {
+                Some((rx, ry)) => Self::new(
+                    Outline::rect(w, h, rx, ry),
+                    w - 2.0 * rx.max(8.0),
+                    h - 2.0 * ry.max(8.0),
+                ),
+                None => Self::rectangle(w, h),
+            },
+            S::Subroutine
             | S::DividedRectangle
             | S::WindowPane
             | S::ShadedProcess
@@ -38,7 +72,10 @@ impl ShapePortProfile {
             | S::Note
             | S::Datastore
             | S::Text => Self::rectangle(w, h),
-            S::RoundedRectangle => Self::rounded_rectangle(w, h, 5.0, 5.0),
+            S::RoundedRectangle => {
+                let (rx, ry) = rectangle_radii.unwrap_or((5.0, 5.0));
+                Self::rounded_rectangle(w, h, rx, ry)
+            }
             S::Browser | S::Console => Self::rounded_rectangle(w, h, 12.0, 12.0),
             S::CollapsedGroup => Self::rounded_rectangle(w, h, 8.0, 8.0),
             S::Stadium => {
@@ -67,7 +104,7 @@ impl ShapePortProfile {
                 let hex = flowchart::HexagonGeometry::from_bounds(w, h, neo);
                 let shoulder = hex.points[0].0;
                 Self::new(
-                    Outline::Polygon(hex.points.to_vec()).translated(-x, y),
+                    Outline::polygon_at(hex.points, -x, y),
                     w - 2.0 * shoulder - 8.0,
                     h * 0.5,
                 )
@@ -79,7 +116,7 @@ impl ShapePortProfile {
             S::Odd => {
                 let g = flowchart::OddGeometry::from_bounds(w, h);
                 Self::new(
-                    Outline::Polygon(g.points.to_vec()).translated(g.shift_x, 0.0),
+                    Outline::polygon_at(g.points, g.shift_x, 0.0),
                     w - h / 4.0 - 16.0,
                     0.0,
                 )
@@ -139,7 +176,7 @@ impl ShapePortProfile {
             )),
             S::CurvedTrapezoid => {
                 let g = flowchart::DisplayGeometry::from_label(lw, lh, p, neo);
-                fixed(Outline::Polygon(g.points).translated(g.tx, g.ty))
+                fixed(Outline::polygon_at(g.points, g.tx, g.ty))
             }
             S::BowTieRectangle => {
                 let w = lw + 2.0 * if neo { 16.0 } else { p };
@@ -150,7 +187,7 @@ impl ShapePortProfile {
                 let mut pts = vec![(x, -y)];
                 sampled_arc(&mut pts, (-x, 0.0), (rx, y), -FRAC_PI_2, -PI, 20);
                 sampled_arc(&mut pts, (x, 0.0), (rx, y), FRAC_PI_2, PI, 20);
-                fixed(Outline::Polygon(pts).translated(rx / 2.0, 0.0))
+                fixed(Outline::polygon_at(pts, rx / 2.0, 0.0))
             }
             S::StackedRectangle => {
                 let d = if neo { 10.0 } else { 5.0 };
@@ -177,7 +214,7 @@ impl ShapePortProfile {
             }
             S::StackedDocument => {
                 let g = flowchart::flowchart_stacked_document_geometry(lw, lh, p, neo);
-                fixed(Outline::Polygon(g.outer_points).translated(0.0, g.group_dy))
+                fixed(Outline::polygon_at(g.outer_points, 0.0, g.group_dy))
             }
             S::Document | S::LinedDocument | S::TaggedDocument => {
                 fixed(document(shape, lw, lh, p, neo))
@@ -228,16 +265,16 @@ impl ShapePortProfile {
                 let body_h = (h - 2.0 * r + 0.27 * r).max(lh + 2.0 * p);
                 let body_r = (w * 0.177).min(body_h * 0.45);
                 fixed(Outline::Parts(vec![
-                    Outline::ellipse(2.0 * r, 2.0 * r).translated(0.0, -y + r),
-                    Outline::rect(w, body_h, body_r, body_r).translated(0.0, y - body_h / 2.0),
+                    Outline::rect_at((0.0, -y + r), 2.0 * r, 2.0 * r, r, r),
+                    Outline::rect_at((0.0, y - body_h / 2.0), w, body_h, body_r, body_r),
                 ]))
             }
             S::Bang => fixed(organic(flowchart::bang_geometry(lw, lh, p))),
             S::Cloud => fixed(organic(flowchart::cloud_geometry(lw, lh, p))),
             S::BraceLeft | S::BraceRight | S::Braces => fixed(brace(shape, name, lw, lh, p, neo)),
-            S::Bpmn(bpmn) => bpmn_profile(bpmn, w, h),
+            S::Bpmn(bpmn) => bpmn_profile(bpmn, w, h, lw, lh),
             S::Icon | S::IconCircle | S::IconRounded | S::IconSquare | S::ImageSquare => {
-                asset(shape, node, measured, p)
+                asset(shape, node, measured, p, wrapping_width)
             }
         };
         Ok(profile)
@@ -247,7 +284,7 @@ impl ShapePortProfile {
 fn lean(kind: LeanKind, w: f64, h: f64) -> ShapePortProfile {
     let g = flowchart::LeanGeometry::from_bounds(kind, w, h);
     ShapePortProfile::new(
-        Outline::Polygon(g.points.to_vec()).translated(g.translate_x, g.translate_y),
+        Outline::polygon_at(g.points, g.translate_x, g.translate_y),
         w - h / 2.0 - 16.0,
         0.0,
     )
@@ -329,7 +366,7 @@ fn document(shape: S, lw: f64, lh: f64, p: f64, neo: bool) -> Outline {
             -h * 0.02,
             0.5,
         ));
-        Outline::Parts(vec![main, Outline::Polygon(tag).translated(0.0, -a / 2.0)])
+        Outline::Parts(vec![main, Outline::polygon_at(tag, 0.0, -a / 2.0)])
     } else if shape == S::LinedDocument {
         let rule_bottom = (h + a) * 0.55 - a / 2.0;
         Outline::Parts(vec![
@@ -400,10 +437,10 @@ fn brace(shape: S, name: &str, lw: f64, lh: f64, p: f64, neo: bool) -> Outline {
     } else {
         r
     };
-    Outline::Polygon(points).translated(dx, 0.0)
+    Outline::polygon_at(points, dx, 0.0)
 }
 
-fn bpmn_profile(shape: BpmnShape, w: f64, h: f64) -> ShapePortProfile {
+fn bpmn_profile(shape: BpmnShape, w: f64, h: f64, lw: f64, lh: f64) -> ShapePortProfile {
     use flowchart::bpmn::{EVENT_DIAMETER, GATEWAY_SIZE};
     match shape {
         BpmnShape::Start | BpmnShape::End | BpmnShape::Boundary | BpmnShape::Intermediate => {
@@ -425,13 +462,30 @@ fn bpmn_profile(shape: BpmnShape, w: f64, h: f64) -> ShapePortProfile {
         BpmnShape::DataStore => {
             ShapePortProfile::new(Outline::rect(50.0, 50.0, 25.0, 6.0), 30.0, 22.0)
         }
-        // A BPMN annotation exposes an open bracket on its left edge. The matching label
-        // enclosure supplies attachment faces for paths approaching the other sides.
-        BpmnShape::Annotation => ShapePortProfile::rectangle(w, h),
+        // The open bracket and the label have independent extents. The transparent bpmn-bounds
+        // rectangle can be much wider than the first painted object on a right-hand port ray.
+        BpmnShape::Annotation => {
+            let (left, y) = (-w / 2.0, h / 2.0);
+            let mut ink = vec![
+                Outline::Polygon(vec![(left, -y), (left, y)]),
+                Outline::Polygon(vec![(left, -y), (left + 6.0, -y)]),
+                Outline::Polygon(vec![(left, y), (left + 6.0, y)]),
+            ];
+            if lw > 0.0 && lh > 0.0 {
+                ink.push(Outline::rect_at((3.0, 0.0), lw, lh, 0.0, 0.0));
+            }
+            ShapePortProfile::new(Outline::Parts(ink), 0.0, 0.0)
+        }
     }
 }
 
-fn asset(shape: S, node: &FlowNode, measured: &LayoutNode, p: f64) -> ShapePortProfile {
+fn asset(
+    shape: S,
+    node: &FlowNode,
+    measured: &LayoutNode,
+    p: f64,
+    wrapping_width: f64,
+) -> ShapePortProfile {
     let size = node
         .asset_width
         .unwrap_or(48.0)
@@ -450,8 +504,6 @@ fn asset(shape: S, node: &FlowNode, measured: &LayoutNode, p: f64) -> ShapePortP
             (d, d, d / 2.0, d / 2.0)
         }
         S::ImageSquare => {
-            // The measured image includes wrapping-width expansion. Preserve an independently
-            // sized image when a wider caption owns the measured box width.
             let g = flowchart::ImageSquareGeometry::from_label(
                 crate::text::TextMetrics {
                     width: lw,
@@ -462,11 +514,7 @@ fn asset(shape: S, node: &FlowNode, measured: &LayoutNode, p: f64) -> ShapePortP
                 node.asset_width,
                 node.asset_height,
                 node.constraint.as_deref() == Some("on"),
-                if measured.width > lw + 4.0 {
-                    measured.width
-                } else {
-                    0.0
-                },
+                wrapping_width,
             );
             (g.image_width, g.image_height, 0.0, 0.0)
         }
@@ -481,10 +529,15 @@ fn asset(shape: S, node: &FlowNode, measured: &LayoutNode, p: f64) -> ShapePortP
         -1.0
     };
     let cy = shift * if has_label { (lh + 12.0) / 2.0 } else { 0.0 };
-    let body = Outline::rect(w, h, rx, ry).translated(0.0, cy);
+    let body = Outline::rect_at((0.0, cy), w, h, rx, ry);
     let outline = if has_label {
-        let caption =
-            Outline::rect(lw + 4.0, lh + 4.0, 0.0, 0.0).translated(0.0, -shift * (h + 8.0) / 2.0);
+        let caption = Outline::rect_at(
+            (0.0, -shift * (h + 8.0) / 2.0),
+            lw + 4.0,
+            lh + 4.0,
+            0.0,
+            0.0,
+        );
         Outline::Parts(vec![body, caption])
     } else {
         body
