@@ -64,6 +64,8 @@ enum Job {
         #[serde(default)]
         verify_only: bool,
         #[serde(default)]
+        verify_layout: bool,
+        #[serde(default)]
         return_measured_svg: bool,
     },
     Topology {
@@ -136,7 +138,7 @@ impl Product {
         }
     }
 
-    fn verification_output(self) -> Result<Value, String> {
+    fn verification_output(self, verify_layout: bool) -> Result<Value, String> {
         let size = self.result_size();
         let mut verified = match self {
             // The driver validates complete SVG text outside the measurement interval.
@@ -146,7 +148,11 @@ impl Product {
                 if parsed.get("layout").is_none() {
                     return Err("missing layout in JSON".into());
                 }
-                identity(&bytes)
+                let mut signature = identity(&bytes);
+                if verify_layout {
+                    signature["layout_json"] = parsed;
+                }
+                signature
             }
             Self::Prepared(artifact) => {
                 // Hash the public preparation result without applying a second target's export policy.
@@ -197,13 +203,13 @@ impl Trial<'_> {
         self.retained.clear();
     }
 
-    fn verify(&self) -> Result<Vec<Value>, String> {
+    fn verify(&self, verify_layout: bool) -> Result<Vec<Value>, String> {
         let products = self
             .inputs
             .iter()
             .map(|input| execute(&self.renderer, input, self.operation));
         let verify = |result: Result<Product, String>| match result {
-            Ok(product) => product.verification_output(),
+            Ok(product) => product.verification_output(verify_layout),
             Err(message) => Ok(json!({"render_error": message})),
         };
         if matches!(self.operation, Operation::PrepareRetained) {
@@ -212,6 +218,54 @@ impl Trial<'_> {
             return retained.into_iter().map(verify).collect();
         }
         products.map(verify).collect()
+    }
+
+    fn layout_evidence(&self, input: &Request, output: &Value) -> Result<Value, String> {
+        if output.get("render_error").is_some() {
+            return Ok(Value::Null);
+        }
+        let request = self.operation.svg_request(input);
+        let control = OperationControl::new();
+        let (family, required) = if matches!(self.operation, Operation::LayoutJson) {
+            // The layout writer returns bytes. Query the public planner with the same input.
+            let RenderOutput::SvgPlan(Some(plan)) = self
+                .renderer
+                .render(RenderRequest::svg_plan(&input.source, control, request))
+                .map_err(|e| e.to_string())?
+            else {
+                return Err("missing layout capability plan".into());
+            };
+            if !plan.is_ready() {
+                return Err(
+                    "layout writer succeeded with an unavailable planned capability".into(),
+                );
+            }
+            (plan.family_id(), plan.required_capabilities().to_vec())
+        } else {
+            let RenderOutput::Svg(Some(svg)) = self
+                .renderer
+                .render(RenderRequest::svg(&input.source, control, request))
+                .map_err(|e| e.to_string())?
+            else {
+                return Err("missing completed SVG layout evidence".into());
+            };
+            if output.as_str() != Some(svg.svg()) {
+                return Err(format!(
+                    "{}: SVG differs from its layout witness",
+                    input.diagram_id
+                ));
+            }
+            let evidence = svg.evidence();
+            (
+                evidence.family_id(),
+                evidence.required_capabilities().to_vec(),
+            )
+        };
+        Ok(json!({
+            "diagram_id": input.diagram_id, "family": family.as_str(),
+            "source_sha256": data_encoding::HEXLOWER.encode(&Sha256::digest(input.source.as_bytes())),
+            "required_capabilities": required.iter().map(|c| c.id()).collect::<Vec<_>>(),
+        }))
     }
 
     fn measure_returned_svg(&self) -> Result<Value, String> {
@@ -268,6 +322,7 @@ pub(super) fn run(
             warmups,
             site,
             verify_only,
+            verify_layout,
             return_measured_svg,
         } => {
             if requested != metric || requests.is_empty() {
@@ -297,9 +352,20 @@ pub(super) fn run(
             };
             if verify_only {
                 for _ in 0..warmups {
-                    trial.verify()?;
+                    trial.verify(false)?;
                 }
-                json!({"outputs": trial.verify()?})
+                let outputs = trial.verify(verify_layout)?;
+                let mut verified = json!({});
+                if verify_layout {
+                    let evidence = requests
+                        .iter()
+                        .zip(&outputs)
+                        .map(|(input, output)| trial.layout_evidence(input, output))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    verified["layout_evidence"] = Value::Array(evidence);
+                }
+                verified["outputs"] = Value::Array(outputs);
+                verified
             } else {
                 for _ in 0..warmups {
                     trial.batch()?;

@@ -322,6 +322,53 @@ Explicit font settings or different rendering environments retain their observat
 comparison qualification. Use the [measurement boundaries](BENCHMARKING.md#ordered-public-workloads)
 when publishing results.
 
+### Compare native Flowchart layouts
+
+Freeze one-request flat Flowcharts with a reviewed `draw` outcome. `rust-layouts` builds one
+release clock executable with `layout-shoal` and uses it for Dagre, ELK and Shoal on the same host.
+Each backend receives the frozen source and diagram ID, the default interactive resource policy
+and the same warmup and sample counts. Only the site `layout` setting varies.
+
+```console
+python3 tools/bench/perf_runner.py workloads plan --scenario small-svg --scenario fan-in-50 --out target/bench/layouts/flat.json
+python3 tools/bench/perf_runner.py workloads rust-layouts --plan target/bench/layouts/flat.json --warmups 1 --samples 3 --out target/bench/layouts/comparison.json
+```
+
+Each scenario has six scheduled operations. Every backend writes public layout JSON and returns
+a public SVG in separate processes. Layout verification checks the public capability plan and
+the full geometry digest before and after sampling. Timed layout batches check the byte count.
+SVG verification reads the completed render's required capabilities, checks the returned root ID,
+and checks each timed SVG against that backend's own digest. A source override that selects
+another backend records `layout-backend-mismatch` and skips timing for that batch.
+
+Read `rows.<scenario>` for completion and median nanoseconds per operation. `matching-inventories`
+requires the same node IDs, directed endpoints, painted edge occurrences, marker ends and
+node/edge label text across backends. Coordinates, paths and byte counts may differ. The check
+covers structural agreement on the drawing. Visual quality can be inspected separately.
+`runs.<backend>.<operation>` holds the individual receipts, output digests, samples and failures.
+The command exits with a failure if any scenario misses the comparison criteria. Treat these
+fixed-order medians as diagnostics.
+
+For a single Shoal run, `--site-layout shoal` enables the Cargo feature on either the clock or
+memory executable and checks each successful SVG or layout JSON request outside measurement.
+A frozen `--runner` must supply per-request capability evidence tied to the source digest and
+diagram ID. Historical identity-only runners can still replay ordinary workloads. The existing
+`compare` command requires identical options and verification outputs. `--metric work` probes
+the default ELK layout-work ceiling and accepts only the original default layout.
+
+```console
+python3 tools/bench/perf_runner.py workloads rust --plan target/bench/layouts/flat.json --metric memory --operation svg --site-layout shoal --require-complete --out target/bench/layouts/shoal-memory.json
+```
+
+To check source precedence, run the Dagre-pinned control under a Shoal site default. The second
+command exits with status 1. Inspect `layout_evidence[].backend` for `dagre` and `samples` for
+the empty array in the scenario row.
+
+```console
+python3 tools/bench/perf_runner.py workloads plan --scenario flowchart-layout-dagre-classic --out target/bench/layouts/pinned.json
+python3 tools/bench/perf_runner.py workloads rust --plan target/bench/layouts/pinned.json --metric clock --operation layout-json --site-layout shoal --out target/bench/layouts/pinned-result.json
+```
+
 ## Publish a reader report
 
 Use `workloads report` to turn completed benchmark evidence into a dated Markdown page and a

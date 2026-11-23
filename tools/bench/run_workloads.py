@@ -11,17 +11,19 @@ import re
 from statistics import median
 import subprocess
 import sys
+from xml.etree import ElementTree as ET
 
 from corpus_utils import load_corpus, select_corpus_fixtures
 from workload_drawing import drawing_case, observe_drawings
 from workload_svg import EXPECTED_OUTCOMES, valid_expected_labels, validate_rejection, validate_svg
-from workload_topology import SCC_SHAPES, topology_source
+from workload_topology import SCC_SHAPES, flat_layout_inventory, flat_svg_inventory, topology_source
 
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
 FAMILY_MANIFEST = ROOT / "playground/examples/manifest.json"
 FAMILY_LABELS = HERE / "workload_family_labels.json"
+LAYOUTS = ("dagre", "elk", "shoal")
 OPERATIONS = (
     "svg-data",
     "svg",
@@ -384,7 +386,7 @@ def materialize(args):
     return {"schema_version": 1, "suite": args.suite, "scenarios": cases, "topologies": topologies}
 
 
-def build_runner(metric):
+def build_runner(metric, *, shoal=False):
     name = "public_workload_memory" if metric == "memory" else "public_workloads"
     # Path dependencies have the same crate names and versions in two revision worktrees.
     # Keep a reusable build slot per checkout even when the caller normally shares targets.
@@ -401,6 +403,7 @@ def build_runner(metric):
         "merman",
         "--bench",
         name,
+        *(["--features", "layout-shoal"] if shoal else []),
         "--message-format=json-render-diagnostics",
     ]
     result = subprocess.run(cmd, cwd=ROOT, stdout=subprocess.PIPE, check=True)
@@ -486,21 +489,69 @@ def measure_rust_samples(observe, job, signatures, count, exact):
                 **({"measured_svg_sha256": measured_hashes} if exact else {}))
 
 
-def run_rust(args):
-    raw = args.plan.read_bytes()
+def check_layout_evidence(response, job, signatures, requested, *, inventory):
+    receipts = response.get("layout_evidence")
+    if not isinstance(receipts, list) or len(receipts) != len(signatures):
+        raise ValueError("layout verification requires a runner that returns per-request layout evidence")
+    for receipt, request, output, signature in zip(receipts, job["requests"], response["outputs"], signatures, strict=True):
+        if isinstance(output, dict) and "render_error" in output and receipt is None:
+            continue
+        diagram_id = request["diagram_id"]
+        if (not isinstance(receipt, dict) or receipt.get("diagram_id") != diagram_id
+                or receipt.get("source_sha256") != request["source_sha256"]
+                or not isinstance(receipt.get("required_capabilities"), list)
+                or not all(isinstance(c, str) for c in receipt["required_capabilities"])):
+            raise ValueError(f"missing or misidentified layout evidence for {diagram_id}")
+        required = [c for c in receipt["required_capabilities"] if c.startswith("layout-")]
+        # Dagre is the built-in Flowchart backend and has no optional capability.
+        actual = None
+        if receipt["family"] == "flowchart" and len(required) <= 1:
+            actual = required[0].removeprefix("layout-") if required else "dagre"
+        receipt["backend"] = actual
+        if actual != requested:
+            signature.update(status="layout-backend-mismatch",
+                             message=f"requested {requested}, observed {actual} ({receipt['family']})")
+        if "status" in signature:
+            continue
+        if job["operation"] == "layout-json":
+            product = output.get("layout_json")
+            if not isinstance(product, dict):
+                raise ValueError("layout verification requires layout JSON from the runner")
+            read_inventory = flat_layout_inventory
+        else:
+            if not isinstance(output, str):
+                raise ValueError("layout verification requires SVG bytes from the runner")
+            product = ET.fromstring(output)
+            if product.get("id") != diagram_id:
+                raise ValueError(f"returned SVG ID differs from frozen ID {diagram_id!r}")
+            read_inventory = flat_svg_inventory
+        if inventory:
+            try:
+                receipt["inventory"] = read_inventory(product)
+            except ValueError as error:
+                signature.update(status="invalid-inventory", message=str(error))
+    return receipts
+
+
+def run_rust(args, *, raw=None, runner=None, layout_comparison=False):
+    if raw is None:
+        raw = args.plan.read_bytes()
     plan = json.loads(raw)
     if plan["schema_version"] != 1:
         raise ValueError("unsupported workload plan")
     work = args.metric == "work"
     exact = args.verify_measured_svg
+    verify_layout = args.site_layout == "shoal" or layout_comparison
     if exact and (args.metric != "clock" or args.operation not in SVG_OPERATIONS):
         raise ValueError("--verify-measured-svg requires an SVG operation and --metric clock")
     if args.check_drawings and (work or args.operation not in SVG_OPERATIONS):
         raise ValueError("--check-drawings requires an SVG operation")
     if work and (args.site_layout or args.site_css_bytes or args.operation != "svg-data"):
         raise ValueError(
-            "work observes default Flowchart geometry and accepts no site or operation override"
+            "work probes default ELK without site or operation overrides; use clock or memory for explicit layouts"
         )
+    if verify_layout and args.operation not in SVG_OPERATIONS | {"layout-json"}:
+        raise ValueError("layout verification requires an SVG or layout-json operation")
     site = {}
     if args.site_css_bytes:
         rule = ".r{opacity:0.8;}"
@@ -514,9 +565,10 @@ def run_rust(args):
         raise ValueError("empty selection or duplicate workload ID")
     if args.scenario:
         selected = [by_id[name] for name in args.scenario]
-    if exact and any(len(row["requests"]) != 1 for row in selected):
+    if (exact or layout_comparison) and any(len(row["requests"]) != 1 for row in selected):
         raise ValueError("--verify-measured-svg requires one request in each selected scenario")
-    runner = args.runner.resolve() if args.runner else build_runner(args.metric)
+    if runner is None:
+        runner = args.runner.resolve() if args.runner else build_runner(args.metric, shoal=verify_layout)
     options = {
         "metric": args.metric,
         "operation": "layout-work" if work else args.operation,
@@ -540,8 +592,14 @@ def run_rust(args):
         return row
 
     def verify(job, row=None):
-        outputs = observe({**job, "verify_only": True})["outputs"]
+        response = observe({**job, "verify_only": True, **({"verify_layout": True} if verify_layout else {})})
+        outputs = response["outputs"]
         signatures, shared = rust_signatures(outputs, job["requests"], job["operation"])
+        evidence = None
+        if verify_layout:
+            evidence = check_layout_evidence(response, job, signatures, args.site_layout, inventory=layout_comparison)
+            if job["operation"] == "layout-json":
+                signatures = [{k: v for k, v in signature.items() if k != "layout_json"} for signature in signatures]
         validation_modes.add(shared)
         if len(validation_modes) > 1:
             raise ValueError("Rust verification protocol changed during observation")
@@ -557,7 +615,7 @@ def run_rust(args):
                     check["status"] = "not-checked"
                 elif isinstance(output, str) and "status" not in signature:
                     pending_drawings.append((check, dict(svg=output, facts=facts)))
-        return signatures
+        return signatures, evidence
 
     for case in selected:
         print(case["id"], file=sys.stderr, flush=True)
@@ -585,7 +643,9 @@ def run_rust(args):
             "site": site or None,
         }
         row = rows[case["id"]] = {"expected_outcomes": outcomes}
-        signatures = verify(job, row)
+        signatures, evidence = verify(job, row)
+        if verify_layout:
+            row["layout_evidence"] = evidence
         statuses = [s.get("status", "ok") for s in signatures]
         row.update(completed=statuses.count("ok"), outputs=signatures)
         if any(status != "ok" for status in statuses):
@@ -593,7 +653,7 @@ def run_rust(args):
                        samples=[], expected_rejections=statuses.count("expected-rejection"))
         else:
             row.update(measure_rust_samples(observe, job, signatures, args.samples, exact))
-        if verify(job) != signatures:
+        if verify(job) != (signatures, evidence):
             row.update(status="measurement-mismatch", error="verification changed after sampling", completed=0, samples=[])
         if row.get("error"):
             print(f"{case['id']}: {row['error']}", file=sys.stderr)
@@ -630,6 +690,51 @@ def verified_native_drawings(row):
             return None
         identities.append((index, check["diagram_id"], check["source_sha256"]))
     return identities
+
+
+def run_rust_layouts(args):
+    """Collect both public operations from one executable and one snapshot of the plan."""
+    raw = args.plan.read_bytes()
+    runner = args.runner.resolve() if args.runner else build_runner("clock", shoal=True)
+    runner_sha = digest(runner.read_bytes())
+    runs = {}
+    for backend in LAYOUTS:
+        runs[backend] = {}
+        for operation in ("layout-json", "svg"):
+            options = argparse.Namespace(**vars(args), site_layout=backend, operation=operation,
+                                         verify_measured_svg=operation == "svg")
+            report = run_rust(options, raw=raw, runner=runner, layout_comparison=True)
+            if report["runner_sha256"] != runner_sha:
+                raise ValueError("workload executable changed during layout comparison")
+            runs[backend][operation] = report
+    cases = {}
+    for name in runs["dagre"]["svg"]["rows"]:
+        inventories, medians = [], {}
+        completed = 0
+        reviewed = runs["dagre"]["svg"]["rows"][name]["expected_outcomes"] == ["draw"]
+        for backend, reports in runs.items():
+            layout, svg = (reports[op]["rows"][name] for op in ("layout-json", "svg"))
+            completed += layout["completed"] + svg["completed"]
+            if not reviewed or any(row.get("status") for row in (layout, svg)):
+                continue
+            graph, painting = (row["layout_evidence"][0]["inventory"] for row in (layout, svg))
+            if (graph["nodes"] != [node for node, _ in painting["nodes"]]
+                    or [edge[0] for edge in graph["edges"]] != [edge[0] for edge in painting["edges"]]):
+                continue
+            inventories.append((graph, painting))
+            medians[backend] = {op: median(s["elapsed_ns"] for s in row["samples"])
+                                for op, row in (("layout-json", layout), ("svg", svg))}
+        case = cases[name] = dict(planned=2 * len(LAYOUTS), completed=completed)
+        if not reviewed:
+            case["status"] = "source-outcome-not-draw"
+        elif completed != case["planned"]:
+            case["status"] = "incomplete"
+        elif len(inventories) != len(LAYOUTS) or any(i != inventories[0] for i in inventories):
+            case["status"] = "inventory-mismatch"
+        else:
+            case.update(status="matching-inventories", median_ns=medians)
+    return dict(schema_version=1, surface="rust-layouts", classification="diagnostic", plan_sha256=digest(raw),
+                runner_sha256=runner_sha, rows=cases, runs=runs)
 
 
 def compare_topology(old, new):
@@ -767,30 +872,24 @@ def main(argv=None):
         "--pele-fixtures", type=Path, help="pinned mermaid-v13 packages/bench/fixtures/pele directory"
     )
     run = sub.add_parser("rust", help="run each sample in a fresh child process")
-    run.add_argument("--plan", required=True, type=Path)
+    layouts = sub.add_parser("rust-layouts", help="compare Dagre, ELK and Shoal on single-request flat Flowcharts")
+    layouts.set_defaults(metric="clock", check_drawings=False, chrome=None, site_css_bytes=0)
+    for command in (run, layouts):
+        command.add_argument("--plan", required=True, type=Path)
+        command.add_argument("--warmups", type=int, default=1, help="untimed workload passes before each observation")
+        command.add_argument("--samples", type=int, default=3, help="fresh processes per workload (work runs once)")
+        command.add_argument("--runner", type=Path, help="use a frozen executable built with the matching metric")
+        command.add_argument("--revision", help="revision label for a frozen runner")
     run.add_argument("--metric", choices=["clock", "memory", "work"], default="memory")
     run.add_argument("--operation", choices=OPERATIONS, default="svg-data")
-    run.add_argument(
-        "--warmups", type=int, default=1, help="untimed workload passes before each observation"
-    )
-    run.add_argument(
-        "--samples",
-        type=int,
-        default=3,
-        help="fresh processes per workload (work is exact and runs once)",
-    )
     run.add_argument("--site-css-bytes", type=int, default=0)
-    run.add_argument("--site-layout", choices=["dagre", "elk"])
+    run.add_argument("--site-layout", choices=LAYOUTS, help="site default for clock or memory (Shoal requires layout evidence)")
     run.add_argument("--verify-measured-svg", action="store_true",
                      help="time a single public SVG return and verify its actual bytes after the clock stops")
     run.add_argument("--check-drawings", action="store_true", help="inspect declared drawing facts on verified SVGs after sampling")
     run.add_argument("--chrome", type=Path, help="Chromium executable for --check-drawings")
     run.add_argument("--require-complete", action="store_true",
                      help="fail after writing the report if a request missed its expected outcome, or default geometry or SVG failed for a work probe")
-    run.add_argument(
-        "--runner", type=Path, help="use a frozen executable built with the matching metric"
-    )
-    run.add_argument("--revision", help="revision label for a frozen runner")
     diff = sub.add_parser("compare", help="compare two reports for the same surface and plan")
     diff.add_argument("base", type=Path)
     diff.add_argument("head", type=Path)
@@ -803,11 +902,11 @@ def main(argv=None):
         help="external workload comparison JSON (repeatable)",
     )
     coverage.add_argument("--out", type=Path, help="write JSON to a file (default: stdout)")
-    for command in (plan, run):
+    for command in (plan, run, layouts):
         command.add_argument(
             "--scenario", action="append", default=[], help="select an ID (repeatable)"
         )
-    for command in (plan, run, diff, drawings):
+    for command in (plan, run, layouts, diff, drawings):
         command.add_argument("--out", required=True, type=Path)
     args = parser.parse_args(argv)
     if args.action in ("node-matrix", "rust") and args.chrome and not args.check_drawings:
@@ -816,8 +915,10 @@ def main(argv=None):
         parser.error("--chrome requires --drawing-plan")
     if hasattr(args, "scenario") and len(set(args.scenario)) != len(args.scenario):
         parser.error("a scenario may only be selected once")
-    if args.action == "rust" and (args.samples <= 0 or args.warmups < 0 or args.site_css_bytes < 0):
+    if args.action in ("rust", "rust-layouts") and (args.samples <= 0 or args.warmups < 0 or args.site_css_bytes < 0):
         parser.error("samples must be positive; warmups and site CSS size must be nonnegative")
+    if args.action in ("rust", "rust-layouts") and args.out.resolve() in {p.resolve() for p in (args.plan, args.runner) if p}:
+        parser.error("choose a report output distinct from the frozen plan and runner")
     try:
         if args.action == "report":
             from workload_report import generate_report
@@ -839,6 +940,8 @@ def main(argv=None):
             result = materialize(args)
         elif args.action == "rust":
             result = run_rust(args)
+        elif args.action == "rust-layouts":
+            result = run_rust_layouts(args)
         elif args.action == "coverage":
             from workload_coverage import summarize_coverage
 
@@ -866,9 +969,13 @@ def main(argv=None):
             return int(not result["planned"]["facts"] or any(
                 s["status"] in {"failed", "unavailable"} for p in result["products"] for s in p["scenarios"].values()
             ))
+        if args.action == "rust-layouts":
+            return int(any(row["status"] != "matching-inventories" for row in result["rows"].values()))
         if args.action == "rust":
             rows = result["rows"].values()
-            if any(row.get("status") == "measurement-mismatch" for row in rows):
+            if any(row.get("status") == "measurement-mismatch" or any(
+                output.get("status") == "layout-backend-mismatch" for output in row.get("outputs", [])
+            ) for row in rows):
                 return 1
             if args.require_complete:
                 if args.metric == "work":
