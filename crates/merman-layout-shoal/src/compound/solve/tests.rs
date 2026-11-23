@@ -450,8 +450,10 @@ fn mixed_member_and_own_border_markers_have_a_full_shaft_on_both_sides_of_a_wide
 
 #[test]
 fn perpendicular_group_entry_clears_a_self_loop_label_with_the_full_marker() {
-    let mut graph = Graph::default();
-    graph.direction = Direction::Up;
+    let mut graph = Graph {
+        direction: Direction::Up,
+        ..Default::default()
+    };
     let mut frame = group(0, None, Direction::Right);
     frame.padding = Insets {
         top: 37.,
@@ -518,20 +520,15 @@ fn perpendicular_group_entry_clears_a_self_loop_label_with_the_full_marker() {
             height: entry,
         };
         assert!(!overlap(footprint, label));
-        assert!(inside(
-            Point {
-                x: footprint.x,
-                y: footprint.y + footprint.height,
-            },
-            group,
-        ));
-        assert!(inside(
-            Point {
-                x: footprint.x + footprint.width,
-                y: footprint.y + footprint.height,
-            },
-            group,
-        ));
+        for x in [footprint.x, footprint.x + footprint.width] {
+            assert!(inside(
+                Point {
+                    x,
+                    y: footprint.y + footprint.height,
+                },
+                group,
+            ));
+        }
         for segment in route.points.windows(2) {
             assert!(!enters(label, point(segment[0]), point(segment[1])));
         }
