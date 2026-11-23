@@ -106,7 +106,7 @@ impl<'a> Work<'a> {
         }
     }
 
-    fn check(&mut self) -> LayoutResult<()> {
+    pub(crate) fn check(&mut self) -> LayoutResult<()> {
         Ok(self.control.check()?)
     }
 

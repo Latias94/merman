@@ -2,6 +2,9 @@
 
 #![forbid(unsafe_code)]
 
+// Coordinates and painting are integrated after the topology stages pass their independent gates.
+#[cfg(test)]
+mod flat;
 mod model;
 mod options;
 mod preview;

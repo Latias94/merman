@@ -5,7 +5,7 @@ use crate::{LayoutError, work::LayoutResult};
 #[derive(Debug)]
 pub struct LayoutScratch {
     max_retained_bytes: usize,
-    buffers: Buffers,
+    pub(crate) buffers: Buffers,
 }
 
 impl Default for LayoutScratch {
@@ -23,7 +23,14 @@ impl LayoutScratch {
     }
 
     pub fn retained_bytes(&self) -> usize {
-        (self.buffers.remaining.capacity() + self.buffers.worklist.capacity()) * size_of::<u32>()
+        let traversals = (self.buffers.remaining.capacity() + self.buffers.worklist.capacity())
+            * size_of::<u32>();
+        #[cfg(test)]
+        {
+            return traversals + self.buffers.expanded.retained_bytes();
+        }
+        #[cfg(not(test))]
+        traversals
     }
 
     pub(crate) fn frame(&mut self) -> Frame<'_> {
@@ -37,6 +44,8 @@ impl LayoutScratch {
 /// Both lists contain dense counts or handles and can be reused by any flat solve.
 #[derive(Debug, Default)]
 pub(crate) struct Buffers {
+    #[cfg(test)]
+    pub(crate) expanded: crate::flat::Expanded,
     pub(crate) remaining: Vec<u32>,
     pub(crate) worklist: Vec<u32>,
 }
@@ -61,6 +70,15 @@ pub(crate) struct Frame<'a> {
 impl Drop for Frame<'_> {
     fn drop(&mut self) {
         let mut available = self.limit / size_of::<u32>();
+        #[cfg(test)]
+        {
+            let bytes = self.buffers.expanded.retained_bytes();
+            if bytes > self.limit {
+                self.buffers.expanded = Default::default()
+            } else {
+                available = (self.limit - bytes) / size_of::<u32>();
+            }
+        }
         for buffer in [&mut self.buffers.remaining, &mut self.buffers.worklist] {
             buffer.clear();
             if buffer.capacity() <= available {
