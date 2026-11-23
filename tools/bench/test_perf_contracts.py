@@ -15,6 +15,18 @@ TEST_MODULES = (
     "test_perf_joint_protocol_contracts",
     "test_perf_report_contracts",
     "test_perf_workflow_contracts",
+    "test_public_workloads",
+    "test_workload_topology",
+    "test_workload_documents",
+    "test_workload_reference",
+    "test_workload_cli",
+    "test_workload_svg",
+    "test_workload_coverage",
+    "test_workload_matrix",
+    "test_workload_drawing",
+    "test_workload_report",
+    "test_workload_report_node",
+    "test_workload_report_surfaces",
 )
 
 

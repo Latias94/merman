@@ -1,0 +1,49 @@
+{
+  "expected_labels": {
+    "agentflow-basic": ["Support", "Question", "Resolve"],
+    "usecase-basic": ["Customer", "Order system", "Place order"],
+    "architecture-services": ["API", "Database", "Server"],
+    "block-layout": ["DB", "A wide one in the middle"],
+    "c4-system-context": ["Customer", "Banking System", "Uses"],
+    "class-relationships": ["Animal", "Dog", "+bark()"],
+    "cynefin-domains": ["Runbook", "Retrospective", "Probe"],
+    "entity-relationships": ["CUSTOMER", "LINE_ITEM", "places"],
+    "event-model": ["AddItem", "ItemAdded", "CartSummary"],
+    "basic-flowchart": ["Start", "Choice", "No"],
+    "project-gantt": ["A Gantt Diagram", "Task1"],
+    "git-commit-flow": ["1", "2", "3"],
+    "mermaid-version": [],
+    "cause-and-effect": ["Equipment", "Out of focus", "Dirty sensor"],
+    "working-day-journey": ["My working day", "Make tea", "Sit down"],
+    "kanban-board": ["Todo", "item1", "item2"],
+    "mind-map": ["root", "a", "b"],
+    "packet-layout": ["Hello world", "hello"],
+    "pie-distribution": ["NETFLIX", "Time spent looking for movie", "Time spent watching it"],
+    "quadrant-priorities": ["Low Reach", "We should expand", "Campaign F"],
+    "radar-comparison": ["Math", "Alice", "Bob"],
+    "railroad-grammar": ["a", "other", "b"],
+    "abnf-grammar": ["hello", "other-rule", "%x41"],
+    "ebnf-grammar": ["a", "other", "? special ?"],
+    "peg-grammar": ["other"],
+    "requirement-trace": ["req1", ["A requirement", "Text: A requirement"]],
+    "sankey-energy-flow": [
+      ["Electricity grid", "Electricity grid 245.32"],
+      ["Over generation / exports", "Over generation / exports 104.45"],
+      ["H2 conversion", "H2 conversion 27.14"]
+    ],
+    "sequence-interaction": ["Hello", "World"],
+    "state-machine": ["Idle", "Active", "start"],
+    "customer-support-swimlane": ["Engineering", "Needs code change", "Prepare fix"],
+    "project-timeline": ["History of Social Media Platform", "LinkedIn", "Twitter"],
+    "project-tree": ["packages", "mermaid", "parser"],
+    "treemap-hierarchy": ["Section 1", "Leaf 1.2.1", "Leaf 2.2"],
+    "team-overlap": ["Frontend", "Backend", "APIs"],
+    "tea-shop-wardley-map": ["Tea Shop", "Cup of Tea", "Kettle"],
+    "xy-series": [],
+    "zenuml-interaction": ["Alice", "Hello", "Reply"]
+  },
+  "empty_label_reasons": {
+    "mermaid-version": "The info diagram displays the renderer's runtime version.",
+    "xy-series": "The source supplies only line values. The renderer generates the axis tick labels."
+  }
+}

@@ -22,6 +22,7 @@ from compare_self import (
     parse_preflight_receipts,
 )
 from corpus_utils import Corpus, lane_selector_group, load_corpus
+from pipeline_fixtures import PIPELINE, sync_pipeline_fixtures
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -252,6 +253,8 @@ def verify_compiled_pipeline(
     package: str = "merman",
     bench: str = "pipeline",
 ) -> dict[str, object]:
+    if (package, bench) == ("merman", "pipeline") and (root / PIPELINE).is_file():
+        sync_pipeline_fixtures(root, root / PIPELINE)
     recipe = RunnerRecipe(
         label=f"{package}-{bench}-bench-list",
         checkout=root,

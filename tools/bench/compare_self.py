@@ -50,6 +50,7 @@ from corpus_utils import (
     resolve_merman_fixture_path,
     select_corpus_fixtures,
 )
+from pipeline_fixtures import sync_pipeline_fixtures
 
 
 DEFAULT_CORPUS = "tools/bench/corpus.json"
@@ -1153,6 +1154,11 @@ def _describe_cargo_bench_target(
         bench=bench,
         package=package,
     )
+    if (package, bench) == ("merman", "pipeline") and source.is_file():
+        try:
+            sync_pipeline_fixtures(checkout, source)
+        except (OSError, ValueError) as error:
+            raise ContractViolation(f"{checkout}: pipeline fixture registry: {error}") from error
     return manifest, target_description, source
 
 

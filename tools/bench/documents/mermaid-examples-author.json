@@ -1,0 +1,26 @@
+{
+  "id": "mermaid-examples-author",
+  "origin": "https://github.com/mermaid-js/mermaid/blob/1fb7869866dd619168d840291c9c54b4f129758b/packages/mermaid/src/docs/syntax/examples.md#L11-L158 (opening fences at lines 11, 17, 26, 40, 50, 76, 94, 110, 144). The fixture for line 110 omits one trailing blank line.",
+  "files": [
+    "../../../fixtures/pie/upstream_docs_examples_basic_pie_chart_001.mmd",
+    "../../../fixtures/pie/upstream_docs_examples_basic_pie_chart_003.mmd",
+    "../../../fixtures/sequence/upstream_docs_examples_basic_sequence_diagram_005.mmd",
+    "../../../fixtures/flowchart/upstream_docs_examples_basic_flowchart_007.mmd",
+    "../../../fixtures/flowchart/upstream_docs_examples_larger_flowchart_with_some_styling_009.mmd",
+    "../../../fixtures/sequence/upstream_docs_examples_sequencediagram_loops_alt_and_opt_011.mmd",
+    "../../../fixtures/sequence/upstream_docs_examples_sequencediagram_message_to_self_in_loop_013.mmd",
+    "../../../fixtures/sequence/upstream_docs_examples_sequence_diagram_blogging_app_service_communication_015.mmd",
+    "../../../fixtures/gitgraph/upstream_docs_examples_a_commit_flow_diagram_017.mmd"
+  ],
+  "expected_labels": {
+    "../../../fixtures/pie/upstream_docs_examples_basic_pie_chart_001.mmd": ["NETFLIX", "Time spent looking for movie"],
+    "../../../fixtures/pie/upstream_docs_examples_basic_pie_chart_003.mmd": ["FRIENDS", "NOSE"],
+    "../../../fixtures/sequence/upstream_docs_examples_basic_sequence_diagram_005.mmd": ["Hello Bob, how are you?", "Checking with John..."],
+    "../../../fixtures/flowchart/upstream_docs_examples_basic_flowchart_007.mmd": ["Circle", "Link text"],
+    "../../../fixtures/flowchart/upstream_docs_examples_larger_flowchart_with_some_styling_009.mmd": ["Circle shape", "Circle shape Начало"],
+    "../../../fixtures/sequence/upstream_docs_examples_sequencediagram_loops_alt_and_opt_011.mmd": ["[Daily query]", "Feeling fresh like a daisy"],
+    "../../../fixtures/sequence/upstream_docs_examples_sequencediagram_message_to_self_in_loop_013.mmd": ["[HealthCheck]", "Fight against hypochondria"],
+    "../../../fixtures/sequence/upstream_docs_examples_sequence_diagram_blogging_app_service_communication_015.mmd": ["[Credentials not found]", "Respond with query result"],
+    "../../../fixtures/gitgraph/upstream_docs_examples_a_commit_flow_diagram_017.mmd": ["newbranch", "1111"]
+  }
+}

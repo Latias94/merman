@@ -18,7 +18,7 @@ owners rather than being duplicated across Markdown files.
 | Render terminal diagrams or inspect ASCII support and tradeoffs | [ASCII and Unicode rendering](rendering/ascii/README.md) and [support matrix](rendering/ASCII_SUPPORT_MATRIX.md) |
 | Understand current architecture | [Repository context](../CONTEXT.md), [model/source ownership](adr/0099-model-and-source-boundaries.md), and [family/operation contract](adr/0073-family-owned-diagram-architecture.md) |
 | Contribute or understand CI ownership | [CI guide](development/CI.md) |
-| Measure or investigate performance | [Benchmark contract](performance/BENCHMARKING.md) and [runbook](performance/RUNBOOK.md) |
+| Read renderer benchmarks or investigate performance | [Reader-facing results](performance/reports/README.md), [benchmark contract](performance/BENCHMARKING.md) and [runbook](performance/RUNBOOK.md) |
 | Prepare or operate a release | [Release operator guide](release/RELEASING.md) |
 | Compare releases or substantiate release claims | [Comparative release reports](release/RELEASE_REPORTS.md) |
 | Upgrade between releases or native/query contracts | [Versioned upgrade index](release/README.md), including [alpha.7 → 0.8.0](release/ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md) |

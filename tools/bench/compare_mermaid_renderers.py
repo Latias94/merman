@@ -35,6 +35,7 @@ from corpus_utils import (
     resolve_merman_fixture_path,
     select_corpus_fixtures,
 )
+from pipeline_fixtures import PIPELINE, sync_pipeline_fixtures
 
 
 DEFAULT_CORPUS = "tools/bench/corpus.json"
@@ -1847,7 +1848,7 @@ def main(argv: list[str]) -> int:
         "merman_workspace_manifest": repo_root / "Cargo.toml",
         "merman_package_manifest": repo_root / "crates" / "merman" / "Cargo.toml",
         "merman_lockfile": repo_root / "Cargo.lock",
-        "merman_pipeline_bench": repo_root / "crates" / "merman" / "benches" / "pipeline.rs",
+        "merman_pipeline_bench": repo_root / PIPELINE,
         "mmdr_manifest": mmdr_dir / "Cargo.toml",
         "mmdr_lockfile": mmdr_dir / "Cargo.lock",
         "mmdr_renderer_bench": mmdr_dir / "benches" / "renderer.rs",
@@ -1862,6 +1863,14 @@ def main(argv: list[str]) -> int:
         / "dist"
         / "index.html",
     }
+    try:
+        pipeline = repo_root / PIPELINE
+        for path in sync_pipeline_fixtures(repo_root, pipeline):
+            if path != pipeline:
+                provenance_files[f"merman_fixture_copy_{path.stem}"] = path
+    except (OSError, ValueError) as error:
+        print(f"[bench][contract] {error}", file=sys.stderr)
+        return 2
     for output_label, output_path in (("--out", out_path), ("--json-out", json_out_path)):
         for input_label, input_path in provenance_files.items():
             if output_path == input_path.resolve():

@@ -478,8 +478,13 @@ def run_step(step: Step, *, dry_run: bool) -> None:
 
 
 def main(argv: list[str]) -> int:
+    if argv[:1] == ["workloads"]:
+        import run_workloads
+
+        return run_workloads.main(argv[1:])
     parser = argparse.ArgumentParser(
-        description="Run the documented performance workflow in one pass."
+        description="Run the documented performance workflow in one pass.",
+        epilog="Use `perf_runner.py workloads --help` for ordered public-operation and topology benchmarks.",
     )
     parser.add_argument(
         "--profile",

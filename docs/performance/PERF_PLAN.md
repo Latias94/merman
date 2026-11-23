@@ -74,6 +74,14 @@ optimization, changed runtime contract or different release baseline does not cl
    Contract-bypassing interventions are not production candidates or recoveries.
 2. Resolve identity/capability blockers before timing; use size/density curves for Flowchart and
    separate native PDF filter/export allocation, cold startup and explicit system-font costs.
+   For Flowchart ELK, the [paired SCC workloads](RUNBOOK.md#run-an-ordered-workload) reproduce a
+   default-budget refusal in the published 0.11.0 Node, Web and CLI entries. At 100 nodes and
+   195 edges, reversing twenty closing edges lets the same set of connections complete. Even
+   with all edge directions fixed, reversing the order of the edge statements reduces the exact
+   layout-writer minimum from 18,692,634 to 5,086,088 units in the reviewed worktree. At 75 nodes
+   a declaration shuffle lets geometry pass at 14,041,681 while public SVG exceeds the default
+   14,100,000 ceiling. Use the paired `topology-orders` cases to attribute work to an ELK stage
+   and inspect both endpoints before changing the ceiling.
    [CLI font policy](../../crates/merman-cli/README.md#explicit-fonts) distinguishes deterministic
    layout from native measurement and codec painting. Keep native, N-API, Node-WASM and browser lanes separate.
    The [native-font checkpoint](native_font_runtime_2026-11-22.md) records direct macOS queries,

@@ -7,6 +7,7 @@ the registered question.
 
 - Rust pipeline and stress benches
 - Same-implementation revision A/B
+- Ordered public workloads and corpus coverage
 - External renderer reference
 - CPU attribution
 - Node N-API and Node-WASM
@@ -60,7 +61,8 @@ a literal substring and measure no rows. Run four commands when all four stages 
 
 ## External Renderer Reference
 
-Use these only after the Merman base/head result is understood:
+For a native peer comparison, reuse the existing `mermaid-rs-renderer` runner. For a Merman
+optimization decision, measure base and head with `compare_self.py`.
 
 ```console
 python3 tools/bench/stage_spotcheck.py \
@@ -78,6 +80,33 @@ python3 tools/bench/compare_mermaid_renderers.py \
 The local reference checkout defaults to `repo-ref/mermaid-rs-renderer`. Pin its revision and
 toolchain. Keep warm native Merman, mmdr, and warm browser Mermaid.js as separate implementations;
 coverage or failed renders are not latency samples.
+
+## Ordered Public Workloads and Corpus Coverage
+
+Use `perf_runner.py workloads plan` for a sequence of public Rust, Node or CLI calls. For fixture
+growth, inspect `workloads coverage` for distinct sources, repeated occurrences and label facts.
+For a headless Node product comparison, run `workloads node-matrix` from the
+[ordered workload runbook](../../../../docs/performance/RUNBOOK.md#run-an-ordered-workload).
+It executes the installed Merman, Pele and Mermaid v13 public APIs in a locked consumer and writes
+raw results and coverage beside the summary. `--pele-fixtures` imports upstream input text only.
+For a focused comparison across independent Node processes, add `--process-rounds 8` and inspect
+the eligible pairs, order and spread. `--samples` counts warm batches per worker. Check the
+recorded product files before attributing a result to a local build or published package.
+
+When a renderer appears to miss a label, inspect its SVG before changing its expected facts.
+For a Flowchart arrow, sibling membership, horizontal label overflow or a repeated Sequence message, declare the source fact
+and run `node-matrix --check-drawings` or replay the retained CLI SVGs. Inspect the occurrence's
+`drawing-audit.json` result before drawing timing conclusions. The [drawing contract](../../../../docs/performance/BENCHMARKING.md#svg-drawing-checks)
+identifies the supported geometry and the boundary of the evidence.
+For family breadth use `workloads plan --suite families` and inspect the per-product gaps in
+`coverage.json`. For input growth use the Sequence loop message counts or the topology series.
+For an unstable SVG, preserve the original hashes and compare the retained files in a fixed
+browser with a same-file control before attributing a visual difference.
+For startup, use a fresh CLI or the Node initialization and first-render observations. For a batch
+use the matching complete warm batch. For topology growth, use the `work` metric and record the
+first failing limit. Always identify the host, lifecycle, input population and operation in the finding.
+Use `workloads plan --suite topology-orders` to vary declaration or edge order with the same
+labeled directed graph. Inspect both the geometry boundary and the actual default SVG outcome.
 
 ## CPU Attribution
 

@@ -19,6 +19,23 @@ under a frozen recipe and fixed maximum budget.
 
 ## GitHub Actions lanes
 
+The `regression` measurement job uploads separate memory, retention and topology observations.
+Labelled PRs and ordinary regression dispatches use `perf-public-workloads` and the quick
+suite. Scheduled runs and full dispatches use the full suite. It compares both revisions when the
+base contains the workload runner. On older bases the artifact identifies the missing observation.
+The [local recipe](#run-an-ordered-workload) uses the same inputs and commands.
+
+Scheduled regression selects the last measured ancestor from this workflow and branch with a
+compatible workload receipt. The current runner measures both ends of the interval. The step
+summary names the SHAs and the earlier run, attempt and artifact. On the first run, or after
+all eligible artifacts have expired or become unreachable, it measures the current SHA against
+itself (`bootstrap`). A change in the sentinel, measurement code, runner recipe or toolchain
+starts another same-SHA baseline (`protocol-change`). `frontmatter` keeps its own parent-to-head
+comparison. A scheduled receipt contains `weekly-interval.json`, the full raw observations and
+`weekly-sentinel.json`, a standalone `mixed-families` plan. Check the per-side coverage in the
+receipt for product errors, including default-budget refusals. An incomplete measurement is
+uploaded under a separate artifact name and cannot become the next baseline.
+
 Performance automation is isolated in the `Performance` workflow:
 
 - `perf-contracts` checks Python syntax and benchmark-helper contracts on manual and scheduled
@@ -40,6 +57,10 @@ Performance automation is isolated in the `Performance` workflow:
 - `perf-frontmatter` owns its preprocessing comparison and uses a separate sticky marker.
 - `perf-reference` checks out the pinned `mermaid-rs-renderer` reference and provides cross-renderer
   context. It does not decide a Merman base/head candidate.
+- Manual `reference` and `full` dispatches also run `perf-node-reference` on revisions containing
+  the locked Node consumer. Its artifact contains the plan, raw product reports, coverage and
+  per-scenario comparisons of the pinned npm releases. A `full` dispatch also replays the native
+  `cross_family` catalog in those packages and retains a separate result bundle.
 
 Manual confirmation example:
 
@@ -79,6 +100,319 @@ plain `main` unless it already satisfies that identity contract.
 Use `-f ascii_suite=closeout` for the five-family medium closeout observation. `run=full` explicitly
 selects the ordinary regression, ASCII, frontmatter, and reference lanes; the weekly schedule does
 not add ASCII timing.
+
+## Run an ordered workload
+
+Run these commands from the checkout root. `plan` freezes request order, source bytes and SVG IDs
+in one portable JSON file. Keep that exact file for every implementation in a comparison.
+
+```console
+python tools/bench/perf_runner.py workloads plan --suite quick --out target/bench/plan.json
+python tools/bench/perf_runner.py workloads rust --plan target/bench/plan.json --metric memory --site-layout dagre --out target/bench/memory.json
+python tools/bench/perf_runner.py workloads rust --plan target/bench/plan.json --metric work --out target/bench/elk.json
+```
+
+`mixed-families` alternates a configured Flowchart and an unconfigured Sequence four times.
+Compare it with `repeat-flow` and `repeat-sequence`. To investigate site sharing, select
+`--scenario retained-configs --operation prepare-retained --warmups 0 --site-css-bytes 65536`.
+Repeat with `--operation prepare-drop` and with 8,192 CSS bytes. Both operations use the same
+eight requests. A retained result is released after the checkpoint and before the final live-byte
+reading. Use `--metric clock` for a separate time observation. Each Rust report records the
+executable, embedded measurement-source and plan digests. Automatic builds use a stable per-checkout slot under the Cargo
+target directory. For a historical revision, apply the identical benchmark sources in its own
+worktree and keep each built executable separately. `--runner PATH --revision SHA` replays a
+frozen binary. The source label is supplied by the caller.
+
+Current Rust SVG runners return the verification render to the driver for the same text checks
+used by Node and the CLI. Historical runners can replay flat-label plans with their embedded
+reader. Use a current harness on both revisions for wrapped labels or alternative spellings.
+`compare` classifies a different SVG reader fingerprint as a harness change.
+
+For a single SVG returned to a caller, select a one-request scenario and verify the bytes from
+each timed call. Supply the same option for both revisions. Batched clocks and the memory runner
+keep the original drop policy and expose a size check for the measured products.
+
+```console
+python tools/bench/perf_runner.py workloads rust --plan target/bench/plan.json --scenario small-svg --metric clock --verify-measured-svg --check-drawings --out target/bench/single-return.json
+```
+
+```console
+python tools/bench/perf_runner.py workloads compare target/bench/base.json target/bench/head.json --out target/bench/diff.json
+```
+
+The full plan includes a five-diagram project guide, Zed issue examples, configured multilingual
+labels, default and explicit Dagre layouts, mixed families, two equal-length 100-message Sequence
+inputs with repeated or unique labels, and 32 topology rows. Five shapes have 50, 100, 250 and
+500 nodes. The `scc` and `scc-dag` pair have 25, 50, 75 and 100 nodes. The full render suite
+includes the 25-, 75- and 100-node pairs, a fixed 75-node declaration shuffle and a 100-node
+reversed-edge statement order for both orientations. To reproduce the original and reordered
+100-node sources alongside their orientation control, freeze the desired cases in one plan.
+
+```console
+python tools/bench/perf_runner.py workloads plan --scenario scc-100 --scenario scc-100-edges-reverse --scenario scc-dag-100 --scenario scc-dag-100-edges-reverse --out target/bench/cycles.json
+python tools/bench/perf_runner.py workloads rust --plan target/bench/cycles.json --metric work --out target/bench/cycle-work.json
+```
+
+For all 36 order variants use `workloads plan --suite topology-orders`. Each source is also a
+single-request public render case. In a work report, `default`, `high` and
+`boundary.minimum_passing_budget` describe the layout writer. `svg.default` and `svg.high`
+describe actual public SVG returns, including the digest and work consumed on success or the
+first observed resource error. The exact adjacent passing and failing ceilings apply to geometry.
+
+The `config-only-gantt` and `incomplete-flow` scenarios exercise an allowed empty diagram and an
+expected parser rejection. A Rust batch containing a rejected request has an untimed outcome
+record. The driver writes observed failures along with subsequent scenarios. Add `--require-complete`
+when the caller needs a failing exit status for a source that misses its declared outcome. With
+`--metric work` this option requires both geometry and SVG to succeed at the default budget.
+An incomplete collection or an inconsistent measurement fails independently of that option.
+
+`editor-fixed-id` submits a draft, an incomplete edit and the repaired diagram with the same
+SVG ID, `preview-01`. `editor-rotating-id` submits the same three source strings with new IDs.
+The Node matrix preserves this order in each engine. The rejected edit stays visible in coverage
+and the three-request batch has no render-speed ratio. For a custom document manifest set
+`"diagram_id":"preview-01"` to reuse one SVG ID across all its requests.
+
+The full plan also replays the pinned Mermaid examples (nine occurrences) and C4 (six occurrences)
+author pages from tracked fixtures. Each manifest links to the original fences and identifies
+trailing whitespace differences. To reproduce generated-site weighting for those same nine
+examples, select its 18-request manifest.
+
+```console
+python tools/bench/perf_runner.py workloads plan --document tools/bench/documents/mermaid-examples-generated.json --scenario mermaid-examples-generated --out target/bench/generated-examples.json
+```
+
+The host text measurement guide supplies an integration diagram. The Sequence loop includes
+1, 32 and 256 identical messages. Run the three `sequence-loop-messages-*` scenarios separately
+to see how end-to-end time and output size grow with the number of messages. The guide exercises
+rendering the documented interaction. Measuring callback cost requires a host that invokes it.
+`--scenario fan-in-500` when creating the plan also makes that topology available as an ordinary
+SVG scenario for the external adapters. A reviewed downstream or Trident document can be imported
+with `--document path/to/manifest.json`. For example, a manifest can contain
+`{"id":"guide","origin":"project@revision/chapter.md","files":["intro.mmd","example.mmd","intro.mmd"]}`.
+Paths are relative to the manifest. Keep repeated occurrences and pin the upstream revision.
+Add `"expected_labels":{"intro.mmd":["Start","End"]}` to check that file's reviewed labels
+at every occurrence. Use `"expected_outcomes":{"settings.mmd":"allow-empty","incomplete.mmd":"reject"}`
+for reviewed configuration or syntax cases. Imports without source facts retain their raw
+observations under `unreviewed`.
+`--pele-fixtures path/to/mermaid-v13/packages/bench/fixtures/pele` imports the five shared upstream
+inputs. Local `.mmd` text is decoded as UTF-8 with LF line endings before hashing.
+
+To reproduce the Node comparison from the repository root, install the locked consumer once and
+choose a fresh results directory for each run. This consumer pins Merman N-API, Pele and the
+Mermaid v13 package. Node selects the public `mermaid` Node export and awaits each SVG. Default
+v13 plugin discovery runs in the same consumer project for the whole comparison.
+
+```console
+npm ci --prefix tools/bench/node-reference --ignore-scripts --no-audit --no-fund
+python tools/bench/perf_runner.py workloads plan --suite full --out target/bench/full-plan.json
+python tools/bench/perf_runner.py workloads node-matrix --plan target/bench/full-plan.json --out-dir target/bench/node-full
+```
+
+Open `node-full/summary.md` for the complete-batch medians and how many requests passed in both
+products. The adjacent `coverage.json` lists distinct sources, label checks and individual
+failure or stability differences. Use `--peer mermaid-v13` or `--peer pele` for a focused run.
+`--merman-module PATH` selects a built local N-API or Node-WASM package entry while the peer
+versions and working directory stay fixed. A worker exit or timeout leaves an unmeasured row for
+that scenario. The collector continues with later scenarios and the matrix still writes comparisons
+for the observed intersection. A collector-wide failure leaves an incomplete bundle and its raw
+diagnostics. A diagram rejected by a functioning collector is recorded as an observed request
+outcome. The bundle includes the exact npm manifest and lock
+under `consumer/`. Inspect a plan or existing external comparisons with these commands.
+
+```console
+python tools/bench/perf_runner.py workloads coverage --plan target/bench/full-plan.json
+python tools/bench/perf_runner.py workloads coverage --plan target/bench/node-full/plan.json --comparison target/bench/node-full/merman-vs-mermaid-v13.json --out target/bench/v13-coverage.json
+```
+
+For independent process observations, freeze a small selection and run an even number of rounds.
+`--samples` controls the warm batches inside each worker. `--process-rounds` controls the
+number of independent workers per product and scenario. The default collection remains a single
+pass. Each numbered directory retains its raw observations, comparisons and coverage. Inspect
+`process-rounds.json` for every pair and the reason for any withheld ratio.
+
+```console
+python tools/bench/perf_runner.py workloads plan --scenario family-sequence --scenario family-pie --out target/bench/round-plan.json
+python tools/bench/perf_runner.py workloads node-matrix --peer pele --plan target/bench/round-plan.json --samples 8 --process-rounds 8 --out-dir target/bench/node-pairs
+```
+
+For the declared arrows, groups, label widths and Sequence message counts, install the repository's existing Puppeteer
+toolchain and pass `--check-drawings`. Use `--chrome` for a known Chrome executable or set
+`PUPPETEER_EXECUTABLE_PATH`. The manual Performance reference job uses Chrome from the runner
+image and records its version in the audit.
+
+```console
+npm ci --prefix tools/mermaid-cli --ignore-scripts --no-audit --no-fund
+python tools/bench/perf_runner.py workloads node-matrix --plan target/bench/full-plan.json --out-dir target/bench/node-drawings --check-drawings --chrome /path/to/chrome
+```
+
+`drawing-audit.json` contains the evidence for each occurrence and product. `drawings/` contains
+only the selected Node outputs. Keep that directory with the raw reports to replay the checks.
+The SVG CLI reports refer to files in their recorded `run_dir`. For standalone Node collection,
+use `workload_node.mjs --drawing-dir DIR` with the usual plan, engine and sample arguments.
+
+```console
+python tools/bench/perf_runner.py workloads drawings --plan target/bench/node-drawings/plan.json --report target/bench/node-drawings/merman.json --out target/bench/merman-drawings.json --require-pass
+python tools/bench/perf_runner.py workloads compare target/bench/cli-merman.json target/bench/cli-mmdc.json --drawing-plan target/bench/one.json --out target/bench/cli-checked.json
+```
+
+`--require-pass` returns a nonzero status for failed or unavailable facts, or for a plan with no
+declared facts. The default matrix records observed differences and withholds affected ratios.
+Add `drawing_facts` to an external document manifest by filename, using the same syntax as a
+built-in fixture, for example `{"arrows":[{"edge":"L_A_B_0","from":"A","to":"B"}]}`.
+The [drawing check contract](BENCHMARKING.md#svg-drawing-checks) describes the supported observations.
+
+To investigate two retained SVGs with different hashes, compare their standalone appearance
+in the same offline Chrome. Choose a fresh output directory. `report.json` includes decoded
+pixel differences at 1× and 2× in an 800 × 600 CSS-pixel viewport, a same-file repeat, a visible
+control and the SVG root bounds. An incomplete view or failed control is `inconclusive`.
+Keep the byte stability result alongside the pixel observation.
+
+```console
+node tools/bench/workload_svg_pixels.mjs --left first.svg --right second.svg --out-dir target/bench/svg-pixels --chrome /path/to/chrome
+```
+
+For a breadth check, `workloads plan --scenario corpus-cross_family --out target/bench/families.json`
+replays the native `cross_family` suite in catalog order across the public adapters.
+`--scenario corpus-full` selects every registered native fixture. These batches retain the label
+facts available for each source and report the other inputs as mechanically checked. Keep intended
+error drawings and unsupported families visible in the coverage results.
+
+To exercise the canonical playground example for every family on the Rust, Node or CLI public
+entry, freeze the `families` suite. Each family has a separate scenario and can be replayed with
+`--scenario family-er`, for example. The `full` suite appends the same family baselines. The
+Node summary and coverage JSON report the number tried, completed and repeatable for each peer.
+
+```console
+python tools/bench/perf_runner.py workloads plan --suite families --out target/bench/family-baselines.json
+python tools/bench/perf_runner.py workloads node-matrix --plan target/bench/family-baselines.json --out-dir target/bench/family-node
+python tools/bench/perf_runner.py workloads rust --plan target/bench/family-baselines.json --operation svg-data --metric clock --out target/bench/family-rust.json
+```
+
+When adding a family, register its example in `playground/examples/manifest.json` and review the
+expected SVG text in `tools/bench/workload_family_labels.json`. Use the fixture owned by the
+playground. Include a reason for an empty label list when the source has no portable visible label.
+
+For a package or CLI comparison, install the two releases of interest and run them on one host.
+The Node adapter accepts `--module PATH` to select an explicit package entry. The CLI adapter
+resolves an installed `mmdc` executable, including its npm shim on Windows. Use `--format png`
+on both commands to compare file-to-PNG exports. `--font-file PATH` selects a Merman font;
+`--extra-arg=ARG` records explicit CLI arguments, including renderer-specific font configuration.
+Install the PNG observer with `python -m pip install -r tools/bench/requirements-png.txt`.
+PNG validation decodes each delivered file and records dimensions and pixel variation after timing.
+On Windows `peak_working_set_bytes` measures resident memory of the launched process and
+`peak_job_commit_bytes` measures peak committed memory across its job, including browser
+children. Compare each metric within its own definition.
+The exporter also checks labels on an auxiliary SVG. The browser corpus
+and its existing visual comparisons remain available separately.
+
+```console
+python tools/bench/perf_runner.py workloads plan --scenario small-svg --out target/bench/one.json
+node tools/bench/workload_node.mjs --engine merman --plan target/bench/one.json --samples 3 > target/bench/node-merman.json
+node tools/bench/workload_node.mjs --engine pele --plan target/bench/one.json --samples 3 > target/bench/node-pele.json
+python tools/bench/perf_runner.py workloads compare target/bench/node-merman.json target/bench/node-pele.json --out target/bench/node-comparison.json
+python tools/bench/workload_cli.py --engine merman --binary merman-cli --format svg --plan target/bench/one.json --output-dir target/bench/cli-runs > target/bench/cli-merman.json
+python tools/bench/workload_cli.py --engine mmdc --binary mmdc --format svg --plan target/bench/one.json --output-dir target/bench/cli-runs > target/bench/cli-mmdc.json
+python tools/bench/perf_runner.py workloads compare target/bench/cli-merman.json target/bench/cli-mmdc.json --out target/bench/cli-comparison.json
+```
+
+Reference reports show planned, completed and repeatable requests per scenario. Time ratios use
+right divided by left. Complete-batch ratios require every request to complete with stable output
+in both engines. The report also exposes the fixed common subset and each product's output bytes.
+Explicit font settings or different rendering environments retain their observations with the
+comparison qualification. Use the [measurement boundaries](BENCHMARKING.md#ordered-public-workloads)
+when publishing results.
+
+## Publish a reader report
+
+Use `workloads report` to turn completed benchmark evidence into a dated Markdown page and a
+portable JSON receipt. [Published comparisons](reports/README.md) live in `docs/performance/reports/`.
+Keep exploratory drafts and raw collector bundles in `target/bench/`. The
+[Markdown template](../../tools/bench/workload_report.md.in) owns the common product descriptions,
+interpretation and section order. Each section uses the host, operation and sample units of its
+own inputs. Review the exact product versions and their upstream descriptions on each update.
+
+The following recipe collects the populations used in the November 23 Windows report. Run it
+from the repository root with the Node consumer, drawing checks and PNG decoder installed as
+described above. Select an installed Chrome executable for the drawing observer and mmdc. The
+published run used the Merman CLI 0.11.0 release binary and mmdc 12.2.0. Use a fresh raw directory
+for each collection.
+
+```console
+python tools/bench/perf_runner.py workloads plan --suite full --out target/bench/readers/full.json
+python tools/bench/perf_runner.py workloads node-matrix --plan target/bench/readers/full.json --samples 3 --check-drawings --out-dir target/bench/readers/coverage
+python tools/bench/perf_runner.py workloads plan --scenario small-svg --scenario different-flowcharts --scenario scc-75 --scenario family-sequence --scenario mixed-document --scenario mixed-families --scenario four-node-repeat --scenario four-node-relabel --scenario four-node-edges --scenario configured-labels --scenario editor-fixed-id --scenario merman-issue-guide --out target/bench/readers/pairs.json
+python tools/bench/perf_runner.py workloads node-matrix --plan target/bench/readers/pairs.json --samples 5 --process-rounds 8 --check-drawings --out-dir target/bench/readers/rounds
+python tools/bench/perf_runner.py workloads plan --scenario family-flowchart --scenario family-sequence --out target/bench/readers/cli.json
+python tools/bench/workload_cli.py --engine merman --binary merman-cli --format svg --samples 3 --plan target/bench/readers/cli.json --output-dir target/bench/readers/files > target/bench/readers/merman-svg.json
+python tools/bench/workload_cli.py --engine mmdc --binary mmdc --format svg --samples 3 --plan target/bench/readers/cli.json --output-dir target/bench/readers/files > target/bench/readers/mmdc-svg.json
+python tools/bench/workload_cli.py --engine merman --binary merman-cli --format png --samples 3 --plan target/bench/readers/cli.json --output-dir target/bench/readers/files > target/bench/readers/merman-png.json
+python tools/bench/workload_cli.py --engine mmdc --binary mmdc --format png --samples 3 --plan target/bench/readers/cli.json --output-dir target/bench/readers/files > target/bench/readers/mmdc-png.json
+python tools/bench/perf_runner.py workloads rust --plan target/bench/readers/full.json --metric work --out target/bench/readers/work.json
+```
+
+Use the frozen plans from the report's evidence archive for an exact replay. The original breadth
+survey and subsequent process rounds used different revisions of the drawing declarations.
+The 12 timed scenarios include three eight-request controls. Each has four nodes, three edges,
+equal source byte lengths and the same public SVG ID. `four-node-repeat` repeats the same bytes,
+`four-node-relabel` changes node IDs and labels together, and `four-node-edges` changes the labeled
+edge set. The first request is identical in all three arms. These controls measure reuse-sensitive
+workloads. Establish cache hits separately with implementation evidence.
+
+For each product and scenario, the Node worker records package import and engine creation,
+the first successful draw at request index zero, and the continuous interval from import start
+through that call's return. Node process startup happens before this clock. Peak RSS includes
+the worker runtime, renderer and in-process checks over its cold and warm batches. The worker
+reads the high-water mark before fingerprinting product files and excludes validator children.
+The report uses independent workers as its sample unit. A direction that repeats in all eligible
+rounds describes those rounds. Identify the tested drawing properties alongside the timings.
+
+For the independent browser comparison, use the [browser family corpus](BENCHMARKING.md#browser-comparison-with-mermaidjs)
+against an identified built playground. The example below collects Flowchart and Sequence with
+six measured blocks per mode. Select the browser SDK version independently of the Node binding.
+
+For a published SDK measurement, start with a fresh export of the matching release tag.
+Run `npm pack @mermanjs/web@<version>` and check the archive against `dist.integrity` from
+`npm view @mermanjs/web@<version> dist.integrity`. Extract the archive under
+`platforms/web/packages/full/`, stripping its leading `package/` directory. Both the Playground
+package link and the benchmark's direct WASM glue import resolve there. From the exported root, run:
+
+```console
+npm ci --prefix playground
+npm ci --prefix playground/tests
+npm --prefix playground run build:opaque-realm
+npm --prefix playground run verify:opaque-realm
+npm --prefix playground run build:prepared
+```
+
+Compare the SHA-256 of `playground/dist/assets/merman_wasm_bg-*.wasm` with the WASM entry in the
+package's `artifacts/provenance.json`. Record the tag, npm integrity and served WASM digest with the
+raw corpus. For a source-build measurement, record the checkout and identify it as a local build.
+
+```console
+npm --prefix playground run benchmark:corpus:built -- --fixtures basic-flowchart,sequence-interaction --iterations 6 --warmups 2 --out target/bench/readers/browser.json
+```
+
+Generate a report with the measurements you collected. `--date` is the observation date. Use
+`--note` to disclose a local candidate build or material host condition. `--raw-url` links to an
+already published evidence bundle when available. The portable JSON stores output counts, compact
+measurements and fingerprints without machine-specific installation paths. A single supplied
+surface is sufficient to generate a report. Empty sections identify unmeasured operations.
+
+```console
+python tools/bench/perf_runner.py workloads report --date 2026-11-23 --node-matrix target/bench/readers/coverage --node-rounds target/bench/readers/rounds --cli target/bench/readers/cli.json target/bench/readers/merman-svg.json target/bench/readers/mmdc-svg.json --cli target/bench/readers/cli.json target/bench/readers/merman-png.json target/bench/readers/mmdc-png.json --browser target/bench/readers/browser.json --rust-work target/bench/readers/full.json target/bench/readers/work.json --out target/bench/readers/2026-11-23-windows-x64.md
+python tools/bench/perf_runner.py workloads report --from target/bench/readers/2026-11-23-windows-x64.json --check
+```
+
+For publication use a new dated output basename, place its `.md` and `.json` together under
+`docs/performance/reports/`, and update the [results index](reports/README.md). `--from` renders
+the adjacent Markdown from that JSON, and `--from ... --check` verifies its contents across LF and CRLF checkouts without
+collecting any measurements. Treat these cross-product observations as inputs for choosing a
+workload to investigate. Use the calibrated same-implementation workflow below for a Merman
+release performance claim.
+
+Manual `reference` and `full` Performance runs also generate a coverage-only reader report
+under `node-reference/reader/` inside the `perf-node-reference` artifact. That page links to
+the run containing the raw observations. Curated snapshots enter the repository through review.
 
 ## 1. Freeze the question and revisions
 

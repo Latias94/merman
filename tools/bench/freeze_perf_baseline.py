@@ -29,6 +29,7 @@ from native_memory import (
     validate_response,
     validate_sample_matrix,
 )
+from pipeline_fixtures import PIPELINE, sync_pipeline_fixtures
 from run_native_memory import (
     DriverContractError,
     analyze_samples,
@@ -1900,6 +1901,16 @@ def freeze_baseline(
     if len(source_paths) != len(set(source_paths)) or len(manifest_paths) != len(set(manifest_paths)):
         raise ManifestError("source_paths and manifest_paths must not contain duplicates")
 
+    if PIPELINE.as_posix() in source_paths:
+        try:
+            generated = sync_pipeline_fixtures(resolved_root, resolved_root / PIPELINE)
+        except (OSError, ValueError) as error:
+            raise ManifestError(f"pipeline fixture registry: {error}") from error
+        if generated:
+            source_paths = tuple(dict.fromkeys((
+                *source_paths, "tools/bench/pipeline_fixtures.py",
+                *(path.relative_to(resolved_root).as_posix() for path in generated),
+            )))
     sources = [
         _record_repo_file(resolved_root, path, f"source[{index}]")
         for index, path in enumerate(source_paths)
