@@ -110,6 +110,18 @@ impl Fit {
                 after_title = after_title.max(shaft + spacing.edge);
             }
             inset[index] = inset[index].max(markers[end].length + spacing.edge);
+            if (flat.is_none() || wire.own) && markers[1 - end].width > 0.0 {
+                let radius = markers[1 - end].width / 2.0 + spacing.edge;
+                let at = cross(inner.side, inner.at);
+                let (near, far) = if inner.side.axis() == Axis::Vertical {
+                    (Side::Left, Side::Right)
+                } else {
+                    (Side::Top, Side::Bottom)
+                };
+                inset[near as usize] = inset[near as usize].max(radius - at);
+                let opposite = across(inner.side, content) - at;
+                inset[far as usize] = inset[far as usize].max(radius - opposite);
+            }
             if flat.is_none() {
                 let inner_side = inner.side as usize;
                 let to_body_edge = match inner.side {

@@ -135,6 +135,36 @@ struct Walls {
     title: Option<Rect>,
 }
 
+pub(super) fn item_boxes(
+    nodes: &[Rect],
+    wires: &[Wire],
+    work: &mut Work<'_>,
+) -> LayoutResult<Vec<Rect>> {
+    work.charge(nodes.len())?;
+    let mut boxes = reserved(nodes.len())?;
+    boxes.extend(
+        nodes
+            .iter()
+            .copied()
+            .filter(|rect| rect.width > 0.0 && rect.height > 0.0),
+    );
+    for wire in wires {
+        work.visit(1)?;
+        if let Some(route) = &wire.route {
+            for (center, size) in [
+                (route.label_center, wire.spec.label),
+                (route.start_label_center, wire.spec.start_label),
+                (route.end_label_center, wire.spec.end_label),
+            ] {
+                if let (Some(center), Some(size)) = (center, size) {
+                    push(&mut boxes, centered(center, size))?;
+                }
+            }
+        }
+    }
+    Ok(boxes)
+}
+
 impl Walls {
     fn new(
         nodes: &[Rect],
@@ -142,28 +172,10 @@ impl Walls {
         title: Option<Rect>,
         work: &mut Work<'_>,
     ) -> LayoutResult<Self> {
-        work.charge(nodes.len())?;
-        let mut boxes = reserved(nodes.len())?;
-        boxes.extend(
-            nodes
-                .iter()
-                .copied()
-                .filter(|rect| rect.width > 0.0 && rect.height > 0.0),
-        );
+        let boxes = item_boxes(nodes, wires, work)?;
         let mut markers = Vec::new();
         for (index, wire) in wires.iter().enumerate() {
             work.visit(1)?;
-            if let Some(route) = &wire.route {
-                for (center, size) in [
-                    (route.label_center, wire.spec.label),
-                    (route.start_label_center, wire.spec.start_label),
-                    (route.end_label_center, wire.spec.end_label),
-                ] {
-                    if let (Some(center), Some(size)) = (center, size) {
-                        push(&mut boxes, centered(center, size))?;
-                    }
-                }
-            }
             for (end, marker) in [wire.spec.start_marker, wire.spec.end_marker]
                 .into_iter()
                 .enumerate()

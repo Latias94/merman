@@ -1,8 +1,8 @@
 use super::*;
 use crate::compound::{hierarchy, sides};
 use crate::{
-    Direction, GroupId, GroupSpec, Insets, MarkerMetrics, NoopWorkControl, Options, TitlePosition,
-    layout,
+    Direction, EdgeId, GroupId, GroupSpec, Insets, MarkerMetrics, NoopWorkControl, Options,
+    TitlePosition, layout,
 };
 
 fn size(width: f64, height: f64) -> Size {
@@ -445,6 +445,104 @@ fn mixed_member_and_own_border_markers_have_a_full_shaft_on_both_sides_of_a_wide
         for segment in route.points.windows(2) {
             assert!(!enters(title, point(segment[0]), point(segment[1])));
         }
+    }
+}
+
+#[test]
+fn perpendicular_group_entry_clears_a_self_loop_label_with_the_full_marker() {
+    let mut graph = Graph::default();
+    graph.direction = Direction::Up;
+    let mut frame = group(0, None, Direction::Right);
+    frame.padding = Insets {
+        top: 37.,
+        right: 8.,
+        bottom: 8.,
+        left: 8.,
+    };
+    frame.title = Some(size(32.48, 21.));
+    graph.groups.push(frame);
+    graph.nodes = vec![node(1, 100., 81., Some(0)), node(2, 100., 81., None)];
+    graph.nodes[0].port_span = Some(84.);
+    graph.nodes[0].perpendicular_port_span = Some(65.);
+    let mut loop_edge = edge(NodeId(0), NodeId(0));
+    loop_edge.label = Some(size(21.98, 21.));
+    let mut incoming = edge(NodeId(1), NodeId(0));
+    incoming.label = Some(size(48.16, 21.));
+    let mut options = independent();
+    options.spacing.node = 140.;
+    options.spacing.rank = 80.;
+    options.spacing.component = 140.;
+
+    for (loop_start, loop_end, entry, width) in [(42.5, 27.5, 54.5, 19.), (45., 30., 57., 36.)] {
+        loop_edge.start_marker = MarkerMetrics {
+            length: loop_start,
+            width,
+        };
+        loop_edge.end_marker = MarkerMetrics {
+            length: loop_end,
+            width: 18.,
+        };
+        incoming.start_marker = MarkerMetrics {
+            length: 18.,
+            width: 18.,
+        };
+        incoming.end_marker = MarkerMetrics {
+            length: entry,
+            width,
+        };
+        graph.edges = vec![loop_edge, incoming];
+        let drawing = layout(&graph, &options).unwrap();
+        let member = drawing.nodes[0];
+        let group = drawing.groups[0].rect;
+        let route = &drawing.edges[1];
+        assert_eq!(route.ports.1, Side::Bottom);
+        let end = tip(route, 1);
+        assert_eq!(end.y, member.y + member.height);
+        assert!(end.x > member.x && end.x < member.x + member.width);
+        let shaft = route
+            .points
+            .iter()
+            .rev()
+            .take_while(|point| point.x == end.x)
+            .last()
+            .unwrap();
+        assert!(shaft.y - end.y >= entry);
+        let label = centered(
+            drawing.edges[0].label_center.unwrap(),
+            loop_edge.label.unwrap(),
+        );
+        let footprint = Rect {
+            x: end.x - width / 2.,
+            y: end.y,
+            width,
+            height: entry,
+        };
+        assert!(!overlap(footprint, label));
+        assert!(inside(
+            Point {
+                x: footprint.x,
+                y: footprint.y + footprint.height,
+            },
+            group,
+        ));
+        assert!(inside(
+            Point {
+                x: footprint.x + footprint.width,
+                y: footprint.y + footprint.height,
+            },
+            group,
+        ));
+        for segment in route.points.windows(2) {
+            assert!(!enters(label, point(segment[0]), point(segment[1])));
+        }
+        let [stitch] = drawing.border_stitches.as_slice() else {
+            panic!("expected one border stitch");
+        };
+        assert_eq!(
+            (stitch.edge, stitch.group, stitch.side),
+            (EdgeId(1), GroupId(0), Side::Bottom)
+        );
+        assert_eq!(route.points[stitch.point].y, group.y + group.height);
     }
 }
 

@@ -1,6 +1,6 @@
 use super::*;
-use crate::Options;
 use crate::work::push;
+use crate::{MarkerMetrics, Options};
 
 #[derive(Clone, Copy)]
 struct Slot {
@@ -106,6 +106,88 @@ fn spread(
     Ok(())
 }
 
+fn marker_blockers(
+    contact: Contact,
+    marker: MarkerMetrics,
+    clearance: f64,
+    walls: &[Rect],
+    blocked: &mut Vec<(f64, f64)>,
+    work: &mut Work<'_>,
+) -> LayoutResult<()> {
+    blocked.clear();
+    let side = contact.side;
+    let along = |point: Point| match side.axis() {
+        Axis::Vertical => point.y,
+        Axis::Horizontal => point.x,
+    };
+    let start = along(contact.at);
+    let end = along(towards(
+        contact.at,
+        side,
+        finite(marker.length + clearance)?,
+    ));
+    let half_width = marker.width / 2.0 + clearance;
+    for wall in walls {
+        work.visit(1)?;
+        if wall.width <= 0.0 || wall.height <= 0.0 {
+            continue;
+        }
+        let near = Point {
+            x: wall.x,
+            y: wall.y,
+        };
+        let far = Point {
+            x: wall.x + wall.width,
+            y: wall.y + wall.height,
+        };
+        if along(near) < start.max(end) && along(far) > start.min(end) {
+            push(
+                blocked,
+                (
+                    cross(side, near) - half_width,
+                    cross(side, far) + half_width,
+                ),
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn closest_clear_port(
+    preferred: f64,
+    (low, high): (f64, f64),
+    blocked: &[(f64, f64)],
+    work: &mut Work<'_>,
+) -> LayoutResult<Option<f64>> {
+    work.charge(blocked.len())?;
+    let mut order = reserved(blocked.len())?;
+    order.extend(0..blocked.len());
+    work.sort(&mut order, |&left, &right| {
+        blocked[left].0.total_cmp(&blocked[right].0)
+    })?;
+    let mut best = None::<f64>;
+    let mut consider = |first: f64, last: f64| {
+        if first <= last {
+            let candidate = preferred.clamp(first, last);
+            if best.is_none_or(|best| (preferred - candidate).abs() < (preferred - best).abs()) {
+                best = Some(candidate);
+            }
+        }
+    };
+    let mut first = low;
+    for index in order {
+        work.visit(1)?;
+        let (left, right) = blocked[index];
+        if left > high {
+            break;
+        }
+        consider(first, left);
+        first = first.max(right);
+    }
+    consider(first, high);
+    Ok(best)
+}
+
 pub(super) fn items(
     wires: &mut [Wire],
     graph: &Graph,
@@ -189,6 +271,8 @@ pub(super) fn items(
             }
         }
     }
+    let mut walls = None;
+    let mut blocked = Vec::new();
     for (slot, faces) in faces.iter_mut().enumerate() {
         let rect = rects[slot];
         for (slots, side) in faces.iter_mut().zip(SIDES) {
@@ -208,13 +292,47 @@ pub(super) fn items(
                 .unwrap_or(length - 2.0 * options.spacing.corner_clearance)
                 .clamp(0.0, length);
             let center = cross(side, rect.center());
-            spread(
-                slots,
-                center - span / 2.0,
-                center + span / 2.0,
-                options.spacing.port_pitch,
-                work,
-            )?;
+            let bounds = (center - span / 2.0, center + span / 2.0);
+            let pitch = options.spacing.port_pitch;
+            spread(slots, bounds.0, bounds.1, pitch, work)?;
+            for index in 0..slots.len() {
+                let entry = slots[index];
+                let wire = &wires[entry.wire];
+                let marker = [wire.spec.start_marker, wire.spec.end_marker][entry.end];
+                if entry.fixed || marker.length == 0.0 || span == 0.0 {
+                    continue;
+                }
+                if walls.is_none() {
+                    walls = Some(routes::item_boxes(rects, wires, work)?);
+                }
+                marker_blockers(
+                    Contact {
+                        at: face(rect, side, entry.at),
+                        side,
+                    },
+                    marker,
+                    options.spacing.edge,
+                    walls.as_deref().unwrap(),
+                    &mut blocked,
+                    work,
+                )?;
+                work.visit(blocked.len())?;
+                if blocked
+                    .iter()
+                    .any(|&(left, right)| left < entry.at && entry.at < right)
+                {
+                    for (other_index, other) in slots.iter().enumerate() {
+                        work.visit(1)?;
+                        let separation = (other.at - entry.at).abs().min(pitch);
+                        if other_index != index && separation > 0.0 {
+                            push(&mut blocked, (other.at - separation, other.at + separation))?;
+                        }
+                    }
+                    if let Some(clear) = closest_clear_port(entry.at, bounds, &blocked, work)? {
+                        slots[index].at = clear;
+                    }
+                }
+            }
             for entry in slots.iter().filter(|slot| !slot.fixed) {
                 wires[entry.wire].contacts[entry.end] = Some(Contact {
                     at: face(rect, side, entry.at),
