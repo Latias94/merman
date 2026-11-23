@@ -2,6 +2,7 @@
 
 #![forbid(unsafe_code)]
 
+mod compound;
 mod flat;
 mod model;
 mod options;
@@ -33,7 +34,11 @@ pub fn layout_with_control(
     let frame = scratch.frame();
     let mut work = work::Work::new(control);
     work.charge(1)?;
-    let output = flat::run(graph, options, frame.expanded, &mut work)?;
+    let output = if graph.groups.is_empty() {
+        flat::run(graph, options, frame.expanded, &mut work)?
+    } else {
+        compound::run(graph, options, frame.expanded, &mut work)?
+    };
     work.finish()?;
     Ok(output)
 }

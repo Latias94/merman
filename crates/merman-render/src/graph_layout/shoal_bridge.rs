@@ -1,7 +1,9 @@
 //! Solve a measured graph in its family's occurrence order.
 
 use super::Marker;
-use super::ir::{Endpoint, MeasuredGraph, Point, Size, SolvedEdge, SolvedGraph, SolvedGroup};
+use super::ir::{
+    BorderStitch, Endpoint, MeasuredGraph, Point, Size, SolvedEdge, SolvedGraph, SolvedGroup,
+};
 use super::route_paint::LEAD;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::LayoutLabel;
@@ -21,6 +23,13 @@ fn endpoint(endpoint: Endpoint) -> shoal::Endpoint {
     match endpoint {
         Endpoint::Node(index) => shoal::Endpoint::Node(shoal::NodeId(index)),
         Endpoint::Group(index) => shoal::Endpoint::Group(shoal::GroupId(index)),
+    }
+}
+
+fn physical_endpoint(endpoint: shoal::Endpoint) -> Endpoint {
+    match endpoint {
+        shoal::Endpoint::Node(id) => Endpoint::Node(id.0),
+        shoal::Endpoint::Group(id) => Endpoint::Group(id.0),
     }
 }
 
@@ -55,6 +64,7 @@ fn project_input(
         let mut spec = shoal::NodeSpec::new(node.size, node.seq);
         spec.parent = node.parent.map(shoal::GroupId);
         spec.port_span = node.port_span;
+        spec.perpendicular_port_span = node.perpendicular_port_span;
         spec.anchor_y = node.anchor_y;
         Ok(spec)
     })?;
@@ -147,19 +157,26 @@ pub(super) fn project_output(
         work,
         |(index, (group, geometry))| {
             Ok(SolvedGroup {
+                parent: geometry.parent.map(|id| id.0),
                 rect: geometry.rect,
                 title: placed_label(group.title, geometry.title_center, "group title", index)?,
                 direction: geometry.effective_direction,
             })
         },
     )?;
+    let mut truncated = solved.truncated_routes.into_iter().peekable();
     let edges = project_rows(
         measured.edges.iter().zip(solved.edges).enumerate(),
         work,
         |(index, (edge, route))| {
+            let (source, target) = truncated
+                .next_if(|row| row.edge.0 as usize == index)
+                .map_or((edge.source, edge.target), |row| {
+                    (physical_endpoint(row.source), physical_endpoint(row.target))
+                });
             Ok(SolvedEdge {
-                source: edge.source,
-                target: edge.target,
+                source,
+                target,
                 points: route.points,
                 ports: route.ports,
                 label: placed_label(edge.label, route.label_center, "edge label", index)?,
@@ -182,6 +199,14 @@ pub(super) fn project_output(
         nodes: solved.nodes,
         groups,
         edges,
+        border_stitches: project_rows(solved.border_stitches.into_iter(), work, |stitch| {
+            Ok(BorderStitch {
+                edge: stitch.edge.0 as usize,
+                point: stitch.point,
+                group: stitch.group.0,
+                side: stitch.side,
+            })
+        })?,
         direction: solved.direction,
         bounds: solved.bounds,
     })

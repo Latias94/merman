@@ -1,4 +1,4 @@
-#![cfg(feature = "diagram-flowchart")]
+#![cfg(any(feature = "diagram-flowchart", feature = "diagram-agentflow"))]
 
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_model::presentation::PresentationDiagram;
@@ -13,9 +13,8 @@ fn parse(source: &str) -> PresentationDiagram {
         .into_presentation()
 }
 
-#[test]
-fn explicit_shoal_selection_respects_build_and_session_capability() {
-    let parsed = parse("---\nconfig:\n  flowchart:\n    layout: shoal\n---\nflowchart LR\nA --> B");
+fn assert_shoal_capability(source: &str) {
+    let parsed = parse(source);
     for (policy, available) in [
         (
             RenderCapabilityPolicy::unrestricted(),
@@ -55,7 +54,32 @@ fn explicit_shoal_selection_respects_build_and_session_capability() {
     }
 }
 
-#[cfg(feature = "layout-shoal")]
+#[cfg(feature = "diagram-flowchart")]
+#[test]
+fn explicit_shoal_selection_respects_build_and_session_capability() {
+    assert_shoal_capability(
+        "---\nconfig:\n  flowchart:\n    layout: shoal\n---\nflowchart LR\nsubgraph G\nA --> B\nend",
+    );
+}
+
+#[cfg(feature = "diagram-agentflow")]
+#[test]
+fn agentflow_explicit_shoal_selection_respects_build_and_session_capability() {
+    assert_shoal_capability("---\nconfig:\n  layout: shoal\n---\nagentflow-beta LR\nA --> B");
+    let parsed = parse("agentflow-beta LR\nA --> B");
+    let session = RenderEnvironment::deterministic()
+        .with_capability_policy(RenderCapabilityPolicy::deny_all())
+        .begin_session()
+        .unwrap();
+    let plan = family::plan_render(&parsed, &session).unwrap();
+    assert!(
+        !plan
+            .required_capabilities()
+            .contains(&RenderCapability::LayoutShoal)
+    );
+}
+
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
 #[test]
 fn shoal_paints_the_routes_and_anchors_of_each_visible_occurrence() {
     use base64::Engine as _;
@@ -142,7 +166,7 @@ fn shoal_paints_the_routes_and_anchors_of_each_visible_occurrence() {
     }
 }
 
-#[cfg(feature = "layout-shoal")]
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
 #[test]
 fn shoal_keeps_the_shaft_aligned_through_the_arrowhead() {
     use kurbo::{BezPath, ParamCurve, ParamCurveArclen, Point};
@@ -210,7 +234,100 @@ fn shoal_keeps_the_shaft_aligned_through_the_arrowhead() {
     }
 }
 
-#[cfg(feature = "layout-shoal")]
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+#[test]
+fn hand_drawn_shoal_preserves_both_shafts_and_their_interior_strokes() {
+    use base64::Engine as _;
+    use kurbo::{BezPath, ParamCurve, Point};
+    use merman_render::model::LayoutPoint;
+
+    let parsed = parse(
+        "---\nconfig:\n  layout: shoal\n  look: handDrawn\n  handDrawnSeed: 42\n  flowchart:\n    rankSpacing: 160\n---\nflowchart LR\nA <--> B",
+    );
+    let prepare = || {
+        family::prepare(
+            &parsed,
+            &LayoutOptions::default(),
+            RenderEnvironment::deterministic().begin_session().unwrap(),
+        )
+        .unwrap()
+    };
+    let query = prepare().edge_geometry_json().unwrap();
+    let svg = prepare()
+        .render_svg(&Default::default(), &Default::default())
+        .unwrap();
+    let doc = roxmltree::Document::parse(svg.svg()).unwrap();
+    let edge = doc
+        .descendants()
+        .find(|node| node.attribute("data-et") == Some("edge"))
+        .unwrap();
+    assert_eq!(edge.attribute("data-look"), Some("handDrawn"));
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(edge.attribute("data-points").unwrap())
+        .unwrap();
+    let contacts: Vec<LayoutPoint> = serde_json::from_slice(&bytes).unwrap();
+    let points = query[0].points.as_ref().unwrap();
+    assert_eq!(contacts.len(), points.len());
+    for (svg, query) in contacts.iter().zip(points) {
+        assert!((svg.x - query.x).abs() < 1e-6 && (svg.y - query.y).abs() < 1e-6);
+    }
+
+    let ink = BezPath::from_svg(edge.attribute("d").unwrap()).unwrap();
+    let strokes: Vec<_> = ink.segments().collect();
+    assert_eq!(ink.subpaths().count(), strokes.len());
+    assert!(strokes.len() >= 6 && strokes.len().is_multiple_of(2));
+    let source = points.first().unwrap();
+    let target = points.last().unwrap();
+    let marker_width = |attribute| {
+        let url = edge.attribute(attribute).unwrap();
+        let id = url
+            .strip_prefix("url(#")
+            .unwrap()
+            .strip_suffix(')')
+            .unwrap();
+        doc.descendants()
+            .find(|node| node.attribute("id") == Some(id))
+            .unwrap()
+            .attribute("markerWidth")
+            .unwrap()
+            .parse::<f64>()
+            .unwrap()
+    };
+    for pass in [0, 1] {
+        let segments: Vec<_> = strokes.iter().skip(pass).step_by(2).collect();
+        assert!(
+            segments
+                .windows(2)
+                .all(|pair| pair[0].end() == pair[1].start())
+        );
+        let first = segments[0];
+        let last = segments.last().unwrap();
+        assert!(first.start().distance(Point::new(source.x + 4., source.y)) < 1e-6);
+        assert!(last.end().distance(Point::new(target.x - 4., target.y)) < 1e-6);
+        for (shaft, depth) in [
+            (first, marker_width("marker-start")),
+            (*last, marker_width("marker-end")),
+        ] {
+            assert!(shaft.end().x - shaft.start().x >= depth);
+            for sample in [0., 0.25, 0.5, 0.75, 1.] {
+                assert!((shaft.eval(sample).y - source.y).abs() < 1e-6);
+            }
+        }
+        assert!(
+            segments
+                .iter()
+                .any(|segment| (segment.eval(0.5).y - source.y).abs() > 1e-6)
+        );
+    }
+    let (passes, _) = strokes.as_chunks::<2>();
+    assert!(
+        passes
+            .iter()
+            .any(|pair| (pair[0].eval(0.5).y - pair[1].eval(0.5).y).abs() > 1e-6)
+    );
+}
+
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
 #[test]
 fn shoal_paints_labeled_self_loops_and_the_semantic_return_edge() {
     use kurbo::{BezPath, ParamCurve, Rect, Shape};
@@ -285,7 +402,7 @@ fn shoal_paints_labeled_self_loops_and_the_semantic_return_edge() {
     );
 }
 
-#[cfg(feature = "layout-shoal")]
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
 #[test]
 fn graph_curve_and_edge_overrides_reach_the_solver_and_painter() {
     use kurbo::BezPath;
@@ -338,20 +455,284 @@ fn graph_curve_and_edge_overrides_reach_the_solver_and_painter() {
 }
 
 #[cfg(feature = "layout-shoal")]
-#[test]
-fn shoal_rejects_subgraphs_until_compound_layout_is_available() {
-    let parsed =
-        parse("---\nconfig:\n  layout: shoal\n---\nflowchart TD\nsubgraph G\nA --> B\nend");
-    let result = family::prepare(
+fn render(source: &str, variant: &str) -> (merman_render::model::FlowchartLayout, String) {
+    let parsed = parse(source);
+    let artifact = family::prepare(
         &parsed,
         &LayoutOptions::default(),
         RenderEnvironment::deterministic().begin_session().unwrap(),
+    )
+    .unwrap();
+    let layout =
+        serde_json::from_value(artifact.layout_json().unwrap()["layout"][variant].clone()).unwrap();
+    let svg = artifact
+        .render_svg(&Default::default(), &Default::default())
+        .unwrap();
+    assert_eq!(
+        svg.required_capabilities(),
+        &[RenderCapability::LayoutShoal]
     );
-    assert!(matches!(
-        result,
-        Err(Error::UnsupportedLayoutConstruct {
-            backend: "shoal",
-            construct: "subgraphs"
-        })
-    ));
+    (layout, svg.svg().to_owned())
+}
+
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+#[test]
+fn compound_flowcharts_keep_named_groups_members_and_original_edges() {
+    use kurbo::Rect;
+    for (source, counts) in [
+        (
+            include_str!(
+                "../../../fixtures/flowchart/stress_flowchart_nested_subgraphs_titles_001.mmd"
+            ),
+            (7, 3, 7),
+        ),
+        (
+            include_str!(
+                "../../../fixtures/flowchart/stress_flowchart_subgraph_cross_edges_between_siblings_048.mmd"
+            ),
+            (4, 2, 4),
+        ),
+        (
+            include_str!(
+                "../../../fixtures/flowchart/stress_flowchart_subgraph_edges_to_subgraph_and_internal_edges_041.mmd"
+            ),
+            (5, 2, 4),
+        ),
+    ] {
+        let (layout, svg) = render(
+            &format!("---\nconfig:\n  layout: shoal\n---\n{source}"),
+            "FlowchartV2",
+        );
+        let doc = roxmltree::Document::parse(&svg).unwrap();
+        let count = |kind| {
+            doc.descendants()
+                .filter(|n| n.attribute("data-et") == Some(kind))
+                .count()
+        };
+        assert_eq!((count("node"), count("cluster"), count("edge")), counts);
+        let frame = |id: &str| {
+            let group = layout.clusters.iter().find(|group| group.id == id).unwrap();
+            Rect::from_center_size((group.x, group.y), (group.width, group.height))
+        };
+        for (id, group) in [
+            ("s", "A1"),
+            ("b1", "A1"),
+            ("d1", "A2"),
+            ("l1", "left"),
+            ("r2", "right"),
+            ("b", "sg_to"),
+            ("c", "sg_inherit"),
+        ] {
+            if let Some(node) = layout.nodes.iter().find(|node| node.id == id) {
+                assert!(
+                    frame(group).contains_rect(Rect::from_center_size(
+                        (node.x, node.y),
+                        (node.width, node.height)
+                    )),
+                    "{group}/{id}"
+                );
+            }
+        }
+        if layout.clusters.iter().any(|g| g.id == "A") {
+            assert!(frame("A").contains_rect(frame("A1")) && frame("A").contains_rect(frame("A2")));
+        }
+        if layout.clusters.iter().any(|g| g.id == "sg_to") {
+            let edge = layout
+                .edges
+                .iter()
+                .find(|e| e.from == "outside" && e.to == "sg_to")
+                .unwrap();
+            let port = edge.points.last().unwrap();
+            let group = frame("sg_to");
+            let error = [
+                port.x - group.x0,
+                port.x - group.x1,
+                port.y - group.y0,
+                port.y - group.y1,
+            ]
+            .into_iter()
+            .map(f64::abs)
+            .fold(f64::INFINITY, f64::min);
+            assert!(error < 1e-6, "group contact at {port:?}, frame {group:?}");
+        }
+    }
+}
+
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+#[test]
+fn positioned_titles_and_local_directions_reach_painted_group_frames() {
+    for (vertical, horizontal) in [
+        ("top", "left"),
+        ("top", "center"),
+        ("top", "right"),
+        ("bottom", "left"),
+        ("bottom", "center"),
+        ("bottom", "right"),
+    ] {
+        let (layout, svg) = render(
+            &format!(
+                "---\nconfig:\n  layout: shoal\n  htmlLabels: true\n  flowchart:\n    subGraphTitlePosition: {vertical}-{horizontal}\n---\nflowchart TB\nsubgraph A[Title]\ndirection LR\nstart[First node] --> endNode[Last node]\nend\nsubgraph B[Second]\ndirection RL\nfirst --> second\nend\nB@{{ titlePosition: bottom-right }}\nA --> B"
+            ),
+            "FlowchartV2",
+        );
+        let doc = roxmltree::Document::parse(&svg).unwrap();
+        for (id, y_side, x_side, direction) in [
+            ("A", vertical, horizontal, "LR"),
+            ("B", "bottom", "right", "RL"),
+        ] {
+            let group = layout.clusters.iter().find(|g| g.id == id).unwrap();
+            assert_eq!(group.effective_dir, direction);
+            let title = &group.title_label;
+            let element = doc
+                .descendants()
+                .find(|n| {
+                    n.attribute("data-et") == Some("cluster") && n.attribute("data-id") == Some(id)
+                })
+                .unwrap();
+            let label = element
+                .children()
+                .find(|n| n.attribute("class") == Some("cluster-label"))
+                .unwrap();
+            let (left, top) = label
+                .attribute("transform")
+                .unwrap()
+                .strip_prefix("translate(")
+                .unwrap()
+                .strip_suffix(')')
+                .unwrap()
+                .split_once(',')
+                .unwrap();
+            assert!(
+                (left.trim().parse::<f64>().unwrap() + title.width / 2.0 - title.x).abs() < 1e-4
+            );
+            assert!(
+                (top.trim().parse::<f64>().unwrap() + title.height / 2.0 - title.y).abs() < 1e-4
+            );
+            assert!(if y_side == "top" {
+                title.y < group.y
+            } else {
+                title.y > group.y
+            });
+            match x_side {
+                "left" => assert!(title.x < group.x),
+                "right" => assert!(title.x > group.x),
+                _ => assert!((title.x - group.x).abs() < 1e-4),
+            }
+        }
+        let x = |id: &str| layout.nodes.iter().find(|n| n.id == id).unwrap().x;
+        assert!(x("start") < x("endNode") && x("first") > x("second"));
+    }
+}
+
+#[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+#[test]
+fn own_member_markers_point_into_the_group_from_both_semantic_ends() {
+    use kurbo::{BezPath, ParamCurve, Rect};
+    let (layout, svg) = render(
+        "---\nconfig:\n  layout: shoal\n---\nflowchart TB\nsubgraph G[Group]\nA --> B\nend\nG forward@<-->|assign| A\nB returnEdge@--> G",
+        "FlowchartV2",
+    );
+    let doc = roxmltree::Document::parse(&svg).unwrap();
+    let group = &layout.clusters[0];
+    let inside = Rect::from_center_size((group.x, group.y), (group.width, group.height));
+    for (id, marker, reverse) in [
+        ("forward", "marker-start", false),
+        ("returnEdge", "marker-end", true),
+    ] {
+        let edge = doc
+            .descendants()
+            .find(|n| n.attribute("data-et") == Some("edge") && n.attribute("data-id") == Some(id))
+            .unwrap();
+        assert!(edge.attribute(marker).is_some());
+        let path = BezPath::from_svg(edge.attribute("d").unwrap()).unwrap();
+        let near_group = if reverse {
+            path.reverse_subpaths()
+        } else {
+            path
+        };
+        let first = near_group.segments().next().unwrap();
+        assert!(
+            inside.contains(first.eval(0.9)),
+            "{id} has an outward marker shaft"
+        );
+    }
+    assert!(
+        layout
+            .edges
+            .iter()
+            .find(|e| e.id == "forward")
+            .unwrap()
+            .label
+            .is_some()
+    );
+}
+
+#[cfg(all(feature = "diagram-agentflow", feature = "layout-shoal"))]
+#[test]
+fn collapsed_agentflow_redirects_edges_and_keeps_semantic_markers() {
+    let source = include_str!("../../../fixtures/agentflow/local_nested_collapse_routes.mmd")
+        .replace("layout: dagre", "layout: shoal");
+    let (layout, svg) = render(
+        &format!("{source}\nmanual[Manual]@{{ shape: refdoc }}\ntask cite@-.- manual"),
+        "AgentflowDiagram",
+    );
+    assert!(!layout.nodes.iter().any(|node| node.id == "task"));
+    assert_eq!(layout.clusters.len(), 1);
+    assert_eq!(layout.clusters[0].id, "outer");
+    let doc = roxmltree::Document::parse(&svg).unwrap();
+    let collapsed = doc
+        .descendants()
+        .find(|n| n.attribute("data-et") == Some("node") && n.attribute("data-id") == Some("inner"))
+        .unwrap();
+    assert!(collapsed.descendants().any(|n| {
+        n.attribute("class")
+            .is_some_and(|s| s.split_whitespace().any(|c| c == "flow-collapsed"))
+    }));
+    assert_eq!(layout.edges.len(), 4);
+    for (id, from, to) in [
+        ("enter", "start", "inner"),
+        ("exit", "inner", "api"),
+        ("loop", "inner", "inner"),
+        ("cite", "inner", "manual"),
+    ] {
+        let edge = layout.edges.iter().find(|e| e.id == id).unwrap();
+        assert_eq!((edge.from.as_str(), edge.to.as_str()), (from, to));
+        let path = doc
+            .descendants()
+            .find(|n| n.attribute("data-et") == Some("edge") && n.attribute("data-id") == Some(id))
+            .unwrap();
+        assert_eq!(path.attribute("marker-end").is_some(), id != "cite");
+        if id == "cite" {
+            assert!(path.attribute("marker-start").is_none());
+            assert!(
+                path.attribute("class")
+                    .unwrap()
+                    .contains("edge-pattern-dotted")
+            );
+        }
+    }
+}
+
+#[cfg(all(feature = "diagram-agentflow", feature = "layout-shoal"))]
+#[test]
+fn agentflow_shoal_consumes_its_family_spacing() {
+    let extents = |spacing| {
+        let (layout, _) = render(
+            &format!(
+                "---\nconfig:\n  layout: shoal\n  flowchart:\n    nodeSpacing: 17\n    rankSpacing: 17\n  agentflow:\n    nodeSpacing: {spacing}\n    rankSpacing: {spacing}\n---\nagentflow-beta TB\nA --> B\nA --> C"
+            ),
+            "AgentflowDiagram",
+        );
+        let node = |id: &str| layout.nodes.iter().find(|n| n.id == id).unwrap();
+        (
+            (node("B").x - node("C").x).abs(),
+            (node("A").y - node("B").y).abs(),
+        )
+    };
+    let small = extents(35);
+    let large = extents(135);
+    assert!(
+        large.0 > small.0 && large.1 > small.1,
+        "{small:?} -> {large:?}"
+    );
 }

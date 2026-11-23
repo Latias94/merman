@@ -4386,10 +4386,13 @@ fn project_agentflow_flowchart_config(
     // Mermaid's ELK adapter ignores all three configuration namespaces for spacing.
     // Our shared adapter reads Flowchart settings, so keep its default spacing for ELK.
     // Resolve registration first: an unavailable ELK loader executes Dagre instead.
-    let uses_dagre = crate::layout_backend::resolve_graph_layout(root).backend
-        == crate::layout_backend::GraphLayoutBackend::Dagre;
+    let uses_family_spacing = matches!(
+        crate::layout_backend::resolve_graph_layout(root).backend,
+        crate::layout_backend::GraphLayoutBackend::Dagre
+            | crate::layout_backend::GraphLayoutBackend::Shoal
+    );
     for key in ["nodeSpacing", "rankSpacing"] {
-        let value = uses_dagre
+        let value = uses_family_spacing
             .then(|| {
                 root.get(key)
                     .filter(|value| crate::config::json_value_is_truthy(value))

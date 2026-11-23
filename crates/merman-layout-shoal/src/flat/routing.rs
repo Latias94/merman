@@ -195,6 +195,24 @@ fn collect_pieces(
             ..Gap::default()
         });
     }
+    if ranked.component.boundaries && !gaps.is_empty() {
+        let start = g.kind[g.layers[0][0] as usize] == Kind::StartPort;
+        let end = g.kind[g.layers.last().unwrap()[0] as usize] == Kind::EndPort;
+        for (gap, outer) in [(0, start), (gap_count - 1, end)] {
+            if outer {
+                let distance = bands[gap + 1].logical - bands[gap].logical;
+                let ports = if gap_count == 1 && start && end {
+                    distance.min(2)
+                } else {
+                    1
+                };
+                gaps[gap].height = finite(
+                    (distance - ports) as f64 * options.spacing.rank
+                        + ports as f64 * options.spacing.port_sep,
+                )?;
+            }
+        }
+    }
     let mut segment = 0;
     for (edge, link) in ranked.component.links.iter().enumerate() {
         work.visit(1)?;

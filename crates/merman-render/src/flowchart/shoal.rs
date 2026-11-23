@@ -1,6 +1,8 @@
-//! Flat Flowchart projection for the experimental Shoal backend.
+//! Project visible Flowchart and Agentflow occurrences into Shoal's measured graph.
 
-use super::measured::FlowchartMeasurement;
+mod groups;
+
+use super::measured::{FlowchartMeasurement, MeasuredNode as LeafSize};
 use super::{
     FlowchartConfigView, FlowchartEdgeKey, FlowchartEdgeOwners, FlowchartRenderModelRef,
     FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder,
@@ -10,13 +12,66 @@ use crate::graph_layout::ir::{
     Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredNode, RoutingStyle, Side, Size,
     SolvedGraph,
 };
+use crate::graph_layout::route_paint::{Clearance, ObstacleOwner};
 use crate::graph_layout::{RouteAxes, RouteContract, shoal_bridge};
 use crate::layout_work::OperationLayoutWorkControl;
-use crate::model::{Bounds, FlowchartLayout, LayoutEdge, LayoutNode, LayoutPoint};
+use crate::model::{
+    Bounds, FlowchartLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
+};
 use crate::{Error, LayoutExecution, Result};
 use merman_model::families::flowchart::{FlowchartModel, FlowchartRenderContext};
 use merman_model::presentation::PresentationConfig;
 use std::collections::HashMap;
+
+fn paint_clearance(
+    nodes: &[LayoutNode],
+    clusters: &[LayoutCluster],
+    edges: &[LayoutEdge],
+    owners: &[FlowchartEdgeKey],
+    work: &mut OperationLayoutWorkControl,
+) -> Result<Clearance> {
+    if edges.is_empty() {
+        return Ok(Clearance::default());
+    }
+    let shapes = work.checked_add(nodes.len(), clusters.len())?;
+    work.charge_adapter(work.checked_add(shapes, edges.len())?)?;
+    let mut boxes = Vec::with_capacity(shapes);
+    let label_box = |label: &LayoutLabel| {
+        kurbo::Rect::from_center_size((label.x, label.y), (label.width, label.height))
+    };
+    for (index, node) in nodes.iter().enumerate() {
+        boxes.push((
+            kurbo::Rect::from_center_size((node.x, node.y), (node.width, node.height)),
+            ObstacleOwner::Node(index as u32),
+        ));
+    }
+    for (index, group) in clusters.iter().enumerate() {
+        boxes.push((
+            label_box(&group.title_label),
+            ObstacleOwner::GroupTitle(index as u32),
+        ));
+    }
+    for (edge, owner) in edges.iter().zip(owners) {
+        for label in [
+            &edge.label,
+            &edge.start_label_left,
+            &edge.start_label_right,
+            &edge.end_label_left,
+            &edge.end_label_right,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            boxes.push((
+                label_box(label),
+                ObstacleOwner::EdgeLabel(owner.semantic_index()),
+            ));
+        }
+    }
+    let levels = boxes.len().checked_ilog2().unwrap_or(0) as usize + 1;
+    work.charge_adapter(work.checked_mul(boxes.len(), levels)?)?;
+    Ok(Clearance::new(boxes))
+}
 
 pub(crate) fn layout(
     model: &FlowchartModel,
@@ -28,14 +83,6 @@ pub(crate) fn layout(
 ) -> Result<FlowchartLayout> {
     let mut work = OperationLayoutWorkControl::new(execution.work_meter());
     work.charge_adapter(0)?;
-    if !model.subgraphs.is_empty() {
-        return Err(Error::UnsupportedLayoutConstruct {
-            backend: "shoal",
-            construct: "subgraphs",
-        });
-    }
-    work.charge_adapter(model.nodes.len())?;
-    super::validate_flowchart_model_shapes(model)?;
     let view = FlowchartRenderModelRef::new(model, render_context);
     let measurement = FlowchartMeasurement::new(
         view,
@@ -52,7 +99,7 @@ pub(crate) fn layout(
         &mut work,
     )?;
     drop(graph);
-    bindings.project(model, solved, &mut work)
+    bindings.project(view, &measurement, solved, &mut work)
 }
 
 /// Node order matches the measured graph. Edge keys retain the semantic occurrence even when
@@ -60,7 +107,45 @@ pub(crate) fn layout(
 struct FlowchartBindings {
     nodes: Vec<LayoutNode>,
     profiles: Vec<ShapePortProfile>,
-    owners: Vec<FlowchartEdgeKey>,
+    groups: Vec<usize>,
+}
+
+fn direction(value: &str) -> Result<Direction> {
+    match value.trim().to_ascii_uppercase().as_str() {
+        "LR" => Ok(Direction::Right),
+        "RL" => Ok(Direction::Left),
+        "BT" => Ok(Direction::Up),
+        "TB" | "TD" => Ok(Direction::Down),
+        other => Err(Error::InvalidModel {
+            message: format!("Unsupported Shoal Flowchart direction `{other}`"),
+        }),
+    }
+}
+
+fn direction_name(dir: Direction) -> &'static str {
+    match dir {
+        Direction::Down => "TB",
+        Direction::Up => "BT",
+        Direction::Left => "RL",
+        Direction::Right => "LR",
+    }
+}
+
+fn index(value: usize, work: &OperationLayoutWorkControl) -> Result<u32> {
+    u32::try_from(value).map_err(|_| work.record_arithmetic_overflow().into())
+}
+
+fn layout_node(id: &str, size: LeafSize) -> LayoutNode {
+    LayoutNode {
+        id: id.to_owned(),
+        x: 0.0,
+        y: 0.0,
+        width: size.width,
+        height: size.height,
+        is_cluster: false,
+        label_width: Some(size.label.width),
+        label_height: Some(size.label.height),
+    }
 }
 
 fn measure(
@@ -69,24 +154,7 @@ fn measure(
     config: &PresentationConfig,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<(MeasuredGraph, FlowchartBindings)> {
-    let (direction, direction_name, face) = match view
-        .direction
-        .as_deref()
-        .unwrap_or("TB")
-        .trim()
-        .to_ascii_uppercase()
-        .as_str()
-    {
-        "LR" => (Direction::Right, "LR", Side::Right),
-        "RL" => (Direction::Left, "RL", Side::Left),
-        "BT" => (Direction::Up, "BT", Side::Top),
-        "TB" | "TD" => (Direction::Down, "TB", Side::Bottom),
-        other => {
-            return Err(Error::InvalidModel {
-                message: format!("Unsupported Shoal Flowchart direction `{other}`"),
-            });
-        }
-    };
+    let direction = direction(view.direction.as_deref().unwrap_or("TB"))?;
     work.charge_adapter(view.nodes.len())?;
     work.charge_adapter(view.edges.len())?;
     let config_view = FlowchartConfigView::new(config);
@@ -121,14 +189,28 @@ fn measure(
         groups: Vec::new(),
         edges: Vec::with_capacity(view.edges.len()),
     };
-    let mut node_ids = HashMap::with_capacity(view.nodes.len());
-    let mut nodes = Vec::with_capacity(view.nodes.len());
-    let mut profiles = Vec::with_capacity(view.nodes.len());
-    for (index, node) in view.nodes.iter().enumerate() {
+    let mut endpoints =
+        HashMap::with_capacity(work.checked_add(view.nodes.len(), view.subgraphs.len())?);
+    let groups = groups::measure(view, measurement, config, &mut graph, &mut endpoints, work)?;
+    let mut bindings = FlowchartBindings {
+        nodes: Vec::with_capacity(view.nodes.len()),
+        profiles: Vec::with_capacity(view.nodes.len()),
+        groups: groups.declarations,
+    };
+    for (ordinal, node) in view.nodes.iter().enumerate() {
+        if matches!(endpoints.get(node.id.as_str()), Some(Endpoint::Group(_)))
+            || view.collapsed_replacement(&node.id).is_some()
+            || view.is_subgraph_collapsed(&node.id)
+        {
+            continue;
+        }
         work.charge_adapter(node.id.len())?;
-        let seq = u32::try_from(index).map_err(|_| work.record_arithmetic_overflow())?;
-        if node_ids
-            .insert(node.id.as_str(), Endpoint::Node(seq))
+        let seq = index(ordinal, work)?;
+        if endpoints
+            .insert(
+                node.id.as_str(),
+                Endpoint::Node(index(graph.nodes.len(), work)?),
+            )
             .is_some()
         {
             return Err(Error::InvalidModel {
@@ -136,25 +218,18 @@ fn measure(
             });
         }
         super::validate_flowchart_node_asset_dimensions(node)?;
+        let parent = groups.parents.get(node.id.as_str()).copied();
+        let dir = parent.map_or(direction, |group| groups.directions[group as usize]);
+        let shape =
+            super::FlowchartShape::resolve(node.layout_shape.as_deref().unwrap_or("squareRect"))?;
         let size = measurement.node(
             node,
-            FlowchartSvgLabelOwner::Node(index),
-            direction_name,
+            FlowchartSvgLabelOwner::Node(ordinal),
+            direction_name(dir),
             |units| work.charge_adapter(units),
         )?;
-        let layout_node = LayoutNode {
-            id: node.id.clone(),
-            x: 0.0,
-            y: 0.0,
-            width: size.width,
-            height: size.height,
-            is_cluster: false,
-            label_width: Some(size.label.width),
-            label_height: Some(size.label.height),
-        };
-        let rectangle_radii = match super::FlowchartShape::resolve(
-            node.layout_shape.as_deref().unwrap_or("squareRect"),
-        )? {
+        let layout_node = layout_node(&node.id, size);
+        let rectangle_radii = match shape {
             super::FlowchartShape::Process => process_radius,
             super::FlowchartShape::RoundedRectangle => theme_radius,
             _ => None,
@@ -167,29 +242,50 @@ fn measure(
             wrapping_width,
             rectangle_radii,
         )?;
-        graph.nodes.push(MeasuredNode {
-            size: Size {
-                width: size.width,
-                height: size.height,
-            },
-            seq,
-            parent: None,
-            port_span: Some(profile.port_span(face)),
-            anchor_y: profile.anchor_y(),
-        });
-        nodes.push(layout_node);
-        profiles.push(profile);
+        bindings.push_leaf(&mut graph, layout_node, profile, seq, parent);
     }
 
-    let mut owners = Vec::with_capacity(view.edges.len());
+    for ordinal in groups.collapsed {
+        let group = &view.subgraphs[ordinal];
+        let parent = groups.parents.get(group.id.as_str()).copied();
+        let metrics =
+            measurement.subgraph_title(group, ordinal, |units| work.charge_adapter(units))?;
+        let (width, height) = super::flowchart_node_render_dimensions(
+            Some("collapsedGroup"),
+            metrics,
+            measurement.settings.cluster_padding,
+            look_is_neo,
+        );
+        let node = layout_node(
+            &group.id,
+            LeafSize {
+                width,
+                height,
+                label: super::measured::MeasuredLabel {
+                    width: metrics.width,
+                    height: metrics.height,
+                },
+            },
+        );
+        let radius = if view.keyword == "agentflow-beta" {
+            10.0
+        } else {
+            8.0
+        };
+        let profile = ShapePortProfile::rounded_rectangle(width, height, radius, radius);
+        let seq = index(work.checked_add(view.nodes.len(), ordinal)?, work)?;
+        endpoints.insert(&group.id, Endpoint::Node(index(graph.nodes.len(), work)?));
+        bindings.push_leaf(&mut graph, node, profile, seq, parent);
+    }
+
     for (key, projected) in view.projected_edges() {
         let endpoint = |id: &str| {
-            node_ids
+            endpoints
                 .get(id)
                 .copied()
                 .ok_or_else(|| Error::InvalidModel {
                     message: format!(
-                        "Missing node `{id}` for Shoal Flowchart edge `{}`",
+                        "Missing endpoint `{id}` for Shoal Flowchart edge `{}`",
                         projected.semantic.id
                     ),
                 })
@@ -213,23 +309,43 @@ fn measure(
             start_marker,
             end_marker,
         });
-        owners.push(key);
     }
 
-    Ok((
-        graph,
-        FlowchartBindings {
-            nodes,
-            profiles,
-            owners,
-        },
-    ))
+    Ok((graph, bindings))
 }
 
 impl FlowchartBindings {
+    fn push_leaf(
+        &mut self,
+        graph: &mut MeasuredGraph,
+        node: LayoutNode,
+        profile: ShapePortProfile,
+        seq: u32,
+        parent: Option<u32>,
+    ) {
+        let (face, perpendicular) = match graph.direction {
+            Direction::Down | Direction::Up => (Side::Top, Side::Left),
+            Direction::Left | Direction::Right => (Side::Left, Side::Top),
+        };
+        graph.nodes.push(MeasuredNode {
+            size: Size {
+                width: node.width,
+                height: node.height,
+            },
+            seq,
+            parent,
+            port_span: Some(profile.port_span(face)),
+            perpendicular_port_span: Some(profile.port_span(perpendicular)),
+            anchor_y: profile.anchor_y(),
+        });
+        self.nodes.push(node);
+        self.profiles.push(profile);
+    }
+
     fn project(
         mut self,
-        model: &FlowchartModel,
+        model: FlowchartRenderModelRef<'_>,
+        measurement: &FlowchartMeasurement<'_>,
         solved: SolvedGraph,
         work: &mut OperationLayoutWorkControl,
     ) -> Result<FlowchartLayout> {
@@ -241,19 +357,15 @@ impl FlowchartBindings {
             node.width = rect.width;
             node.height = rect.height;
         }
+        work.charge_adapter(self.groups.len())?;
+        let group_parents = solved.groups.iter().map(|group| group.parent).collect();
+        let clusters = groups::project(&self.groups, solved.groups, model, &measurement.settings);
         work.charge_adapter(model.edges.len())?;
         let mut routes = vec![None; model.edges.len()];
-        work.charge_adapter(self.owners.len())?;
-        let mut edges = Vec::with_capacity(self.owners.len());
-        for (key, route) in self.owners.iter().zip(solved.edges) {
-            let (Endpoint::Node(source), Endpoint::Node(target)) = (route.source, route.target)
-            else {
-                return Err(Error::UnsupportedLayoutConstruct {
-                    backend: "shoal",
-                    construct: "subgraphs",
-                });
-            };
-            let (source, target) = (source as usize, target as usize);
+        work.charge_adapter(solved.edges.len())?;
+        let mut owners = Vec::with_capacity(solved.edges.len());
+        let mut edges = Vec::with_capacity(solved.edges.len());
+        for ((key, projected), route) in model.projected_edges().zip(solved.edges) {
             work.charge_adapter(route.points.len())?;
             let (points, axes) = route
                 .points
@@ -262,14 +374,14 @@ impl FlowchartBindings {
                 .unzip();
             let index = key.semantic_index();
             routes[index] = Some(RouteAxes {
-                endpoints: (source, target),
+                endpoints: (route.source, route.target),
                 ports: route.ports,
                 axes,
             });
             edges.push(LayoutEdge {
-                id: model.edges[index].id.clone(),
-                from: self.nodes[source].id.clone(),
-                to: self.nodes[target].id.clone(),
+                id: projected.semantic.id.clone(),
+                from: projected.from.to_owned(),
+                to: projected.to.to_owned(),
                 from_cluster: None,
                 to_cluster: None,
                 points,
@@ -282,23 +394,40 @@ impl FlowchartBindings {
                 end_marker: None,
                 stroke_dasharray: None,
             });
+            owners.push(key);
         }
-        let bounds = (!self.nodes.is_empty()).then_some(Bounds {
+        let bounds = (!self.nodes.is_empty() || !clusters.is_empty()).then_some(Bounds {
             min_x: 0.0,
             min_y: 0.0,
             max_x: solved.bounds.width,
             max_y: solved.bounds.height,
         });
+        let mut border_stitches = solved.border_stitches;
+        work.charge_adapter(border_stitches.len())?;
+        for stitch in &mut border_stitches {
+            stitch.edge = owners[stitch.edge].semantic_index();
+        }
+        let mut dom_node_order_by_root = HashMap::new();
+        if !model.subgraphs.is_empty() {
+            dom_node_order_by_root.insert(
+                String::new(),
+                self.nodes.iter().map(|node| node.id.clone()).collect(),
+            );
+        }
+        let clearance = paint_clearance(&self.nodes, &clusters, &edges, &owners, work)?;
         Ok(FlowchartLayout {
             nodes: self.nodes,
             edges,
-            clusters: Vec::new(),
-            edge_owners: FlowchartEdgeOwners::new(self.owners),
+            clusters,
+            edge_owners: FlowchartEdgeOwners::new(owners),
             bounds,
-            dom_node_order_by_root: HashMap::new(),
+            dom_node_order_by_root,
             uses_elk_adapter_dom: false,
             route_contract: RouteContract::CanonicalAxis {
                 nodes: self.profiles,
+                group_parents,
+                border_stitches,
+                clearance,
                 routes,
             },
         })

@@ -1,9 +1,12 @@
 //! Crossing reduction on adjacent expanded ranks. Each distinct offset on a vertex face is
 //! a port. Incidences on the same port cannot cross each other at that end.
 
-use super::{Csr, Expanded};
+mod groups;
+
+use super::{Component, Csr, Expanded, Kind, validate};
 use crate::work::{LayoutResult, Work, filled, reserved};
-use crate::{LayoutError, NodeSpec, Options, WorkError};
+use crate::{GroupId, LayoutError, NodeSpec, Options, WorkError};
+use groups::Groups;
 use std::cmp::Ordering;
 use std::ops::Range;
 
@@ -377,14 +380,62 @@ struct Sweep {
     moving: Vec<usize>,
 }
 
+#[derive(Default)]
+struct Rules<'a> {
+    pins: &'a [NodeSpec],
+    fixed: [Option<usize>; 2],
+    groups: Option<Groups<'a>>,
+}
+
+impl Rules<'_> {
+    fn pin(&self, v: usize) -> i8 {
+        self.pins.get(v).map_or(0, |n| n.pin)
+    }
+
+    fn fixed(&self, rank: usize) -> bool {
+        self.fixed.contains(&Some(rank))
+    }
+
+    fn initial(
+        &mut self,
+        order: &mut Order,
+        ports: &Ports<'_>,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<()> {
+        for r in 0..order.ranks() {
+            let range = order.range(r);
+            let row = &mut order.ids[range];
+            if row.len() < 2 || self.fixed(r) {
+                continue;
+            }
+            if !self.pins.is_empty() {
+                validate::charge_sort(row.len(), work)?;
+                row.sort_unstable_by_key(|&v| (self.pin(v as usize), order.place[v as usize].pos));
+                order.reindex(r, ports, work)?;
+            }
+            if let Some(groups) = &mut self.groups {
+                let range = order.range(r);
+                groups.arrange(
+                    &mut order.ids[range],
+                    &order.place,
+                    |v| order.place[v].pos as f64,
+                    work,
+                )?;
+                order.reindex(r, ports, work)?;
+            }
+        }
+        Ok(())
+    }
+}
+
 impl Sweep {
-    fn run(
+    fn run<const LIMITED: bool>(
         &mut self,
         g: &Expanded,
         order: &mut Order,
         ports: &Ports<'_>,
-        down: bool,
-        right: bool,
+        (down, right): (bool, bool),
+        rules: &mut Rules<'_>,
         work: &mut Work<'_>,
     ) -> LayoutResult<()> {
         let face = if down { &ports.target } else { &ports.source };
@@ -392,13 +443,18 @@ impl Sweep {
             let rank = if down { step } else { order.ranks() - 1 - step };
             let row = order.range(rank);
             work.visit(row.len() + 1)?;
-            if row.len() < 2 {
+            if row.len() < 2 || LIMITED && rules.fixed(rank) {
                 continue;
             }
             self.moving.clear();
             for &v in &order.ids[row.clone()] {
                 let edges = face.at(v);
                 if edges.is_empty() {
+                    if LIMITED && rules.groups.is_some() {
+                        let across = order.range(if down { rank - 1 } else { rank + 1 }).len();
+                        self.mean[v as usize] =
+                            order.place[v as usize].pos as f64 * across as f64 / row.len() as f64;
+                    }
                     continue;
                 }
                 work.visit(edges.len())?;
@@ -421,14 +477,25 @@ impl Sweep {
                 self.mean[v as usize] = mean;
                 self.moving.push(v as usize);
             }
+            if LIMITED && let Some(groups) = &mut rules.groups {
+                groups.arrange(&mut order.ids[row], &order.place, |v| self.mean[v], work)?;
+                order.reindex(rank, ports, work)?;
+                continue;
+            }
             if self.moving.len() < 2 {
                 continue;
             }
             work.sort(&mut self.moving, |&a, &b| {
-                numeric_cmp(self.mean[a], self.mean[b]).then_with(|| {
-                    let old = order.place[a].pos.cmp(&order.place[b].pos);
-                    if right { old.reverse() } else { old }
-                })
+                let pin = if LIMITED {
+                    rules.pin(a).cmp(&rules.pin(b))
+                } else {
+                    Ordering::Equal
+                };
+                pin.then_with(|| numeric_cmp(self.mean[a], self.mean[b]))
+                    .then_with(|| {
+                        let old = order.place[a].pos.cmp(&order.place[b].pos);
+                        if right { old.reverse() } else { old }
+                    })
             })?;
             let slots = order.ids[row]
                 .iter_mut()
@@ -526,10 +593,11 @@ impl NeighborKeys {
     }
 }
 
-fn transpose(
+fn transpose<const LIMITED: bool>(
     order: &mut Order,
     ports: &Ports<'_>,
     mut count: u64,
+    rules: &Rules<'_>,
     work: &mut Work<'_>,
 ) -> LayoutResult<u64> {
     work.charge(ports.source.segments.len())?;
@@ -541,7 +609,7 @@ fn transpose(
         for r in 0..order.ranks() {
             let row = order.range(r);
             work.visit(row.len() + 1)?;
-            if row.len() < 2 {
+            if row.len() < 2 || LIMITED && rules.fixed(r) {
                 continue;
             }
             up.prepare(r, order, ports, true, work)?;
@@ -549,6 +617,14 @@ fn transpose(
             let mut moved = false;
             for i in row.start..row.end - 1 {
                 let (a, b) = (order.ids[i], order.ids[i + 1]);
+                if LIMITED
+                    && (rules.pin(a as usize) != rules.pin(b as usize)
+                        || rules.groups.as_ref().is_some_and(|groups| {
+                            groups.owner[a as usize] != groups.owner[b as usize]
+                        }))
+                {
+                    continue;
+                }
                 let (up_old, up_new) = up.pair(&ports.target, a, b, work)?;
                 let (down_old, down_new) = down.pair(&ports.source, a, b, work)?;
                 let (old, new) = (up_old + down_old, up_new + down_new);
@@ -587,10 +663,11 @@ fn snapshot(ids: &[u32], work: &mut Work<'_>) -> LayoutResult<Vec<u32>> {
 
 /// Minimize (crossings, real-node inversions) lexicographically. The second coordinate is
 /// needed only for candidates that can still win on crossings.
-fn minimize(
+fn minimize<const LIMITED: bool>(
     g: &Expanded,
     nodes: &[NodeSpec],
     options: &Options,
+    rules: &mut Rules<'_>,
     work: &mut Work<'_>,
 ) -> LayoutResult<(Vec<u32>, u64)> {
     let ports = Ports {
@@ -598,6 +675,9 @@ fn minimize(
         target: Face::new(g, true, work)?,
     };
     let (mut order, preference) = initial_order(g, nodes, &ports, work)?;
+    if LIMITED {
+        rules.initial(&mut order, &ports, work)?;
+    }
     let mut tree = Fenwick::default();
     let initial_count = crossings(&order, &ports, &mut tree, work)?;
     if initial_count == 0 {
@@ -627,7 +707,7 @@ fn minimize(
         let mut stale = 0;
         for i in 0..options.caps.max_sweeps {
             let down = (i % 2) == attempt;
-            sweep.run(g, &mut order, &ports, down, i % 4 >= 2, work)?;
+            sweep.run::<LIMITED>(g, &mut order, &ports, (down, i % 4 >= 2), rules, work)?;
             let c = crossings(&order, &ports, &mut tree, work)?;
             stale = if c < best_score.0 { 0 } else { stale + 1 };
             if c <= best_score.0 {
@@ -644,7 +724,7 @@ fn minimize(
         }
         if small && best_score.0 > 0 {
             order.restore(&best, &ports, work)?;
-            let c = transpose(&mut order, &ports, best_score.0, work)?;
+            let c = transpose::<LIMITED>(&mut order, &ports, best_score.0, rules, work)?;
             if c < best_score.0 {
                 best_score = (c, inversions(&order, &preference, &mut tree, work)?);
                 work.charge(best.len())?;
@@ -659,7 +739,7 @@ fn minimize(
             break;
         }
     }
-    if chosen_score != (0, 0) {
+    if chosen_score != (0, 0) && (!LIMITED || rules.pins.is_empty() && rules.fixed == [None; 2]) {
         work.charge(chosen.len())?;
         order.ids.copy_from_slice(&chosen);
         for r in 0..order.ranks() {
@@ -684,8 +764,52 @@ pub(super) fn reduce(
     options: &Options,
     work: &mut Work<'_>,
 ) -> LayoutResult<u64> {
+    publish::<false>(g, nodes, options, &mut Rules::default(), work)
+}
+
+type Membership<'a> = (&'a [Option<GroupId>], &'a [Option<GroupId>]);
+
+pub(super) fn constrained(
+    g: &mut Expanded,
+    c: &Component,
+    membership: Option<Membership<'_>>,
+    options: &Options,
+    work: &mut Work<'_>,
+) -> LayoutResult<u64> {
+    let mut rules = Rules {
+        pins: if c.pinned { &c.nodes } else { &[] },
+        groups: membership
+            .map(|(of, parents)| Groups::new(g, of, parents, work))
+            .transpose()?,
+        ..Rules::default()
+    };
+    if c.boundaries && !g.layers.is_empty() {
+        for (side, r, kind) in [
+            (0, 0, Kind::StartPort),
+            (1, g.layers.len() - 1, Kind::EndPort),
+        ] {
+            let row = &g.layers[r];
+            work.charge(row.len())?;
+            if row
+                .iter()
+                .all(|&v| g.kind[v as usize] == kind && c.nodes[v as usize].order_hint.is_some())
+            {
+                rules.fixed[side] = Some(r);
+            }
+        }
+    }
+    publish::<true>(g, &c.nodes, options, &mut rules, work)
+}
+
+fn publish<const LIMITED: bool>(
+    g: &mut Expanded,
+    nodes: &[NodeSpec],
+    options: &Options,
+    rules: &mut Rules<'_>,
+    work: &mut Work<'_>,
+) -> LayoutResult<u64> {
     work.charge(1)?;
-    let (ids, crossings) = minimize(g, nodes, options, work)?;
+    let (ids, crossings) = minimize::<LIMITED>(g, nodes, options, rules, work)?;
     work.charge(ids.len())?;
     work.finish()?;
     let mut rest = ids.as_slice();

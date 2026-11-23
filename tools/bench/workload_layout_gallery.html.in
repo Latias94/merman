@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src blob:; base-uri 'none'; form-action 'none'">
-  <title>Flowchart layout comparison · Merman</title>
+  <title>Graph layout comparison · Merman</title>
   <style>
     :root { color-scheme: light; --ink: #172e32; --muted: #4f6466; --line: #cbd5cf; --paper: #f6f8f5; --accent: #106c62; font: 15px/1.5 "DM Sans", Inter, system-ui, sans-serif; color: var(--ink); background: var(--paper); }
     * { box-sizing: border-box; }
@@ -64,7 +64,7 @@
 <body>
   <main>
     <div class="brand">Merman</div>
-    <h1>Flowchart layout comparison</h1>
+    <h1>Graph layout comparison</h1>
     <div class="toolbar">
       <div class="controls"><label for="diagram" class="field-label">Diagram</label><select id="diagram"></select></div>
       <div class="controls" role="group" aria-label="Scale for all diagrams">

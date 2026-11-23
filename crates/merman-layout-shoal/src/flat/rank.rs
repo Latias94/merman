@@ -1,8 +1,8 @@
 //! Feasible integer ranks for a component's already oriented edges.
 
-use super::{Csr, Link};
+use super::{BoundaryRank, Csr, Link, boundary};
 use crate::work::{LayoutResult, Work, filled, reserved};
-use crate::{RankPolicy, WorkError};
+use crate::{NodeSpec, RankPolicy, WorkError};
 
 struct Dag<'a> {
     arcs: &'a [Link],
@@ -15,6 +15,7 @@ pub(super) fn assign(
     arcs: &[Link],
     topo: &[u32],
     policy: RankPolicy,
+    boundaries: Option<&[NodeSpec]>,
     work: &mut Work<'_>,
 ) -> LayoutResult<Vec<u64>> {
     let dag = Dag {
@@ -24,6 +25,12 @@ pub(super) fn assign(
     };
     work.charge(n)?;
     let mut rank = filled(n, 0_u64)?;
+    if let Some(nodes) = boundaries {
+        for (value, node) in rank.iter_mut().zip(nodes) {
+            work.visit(1)?;
+            *value = u64::from(node.boundary != Some(BoundaryRank::Start));
+        }
+    }
     for &v in topo {
         work.visit(1)?;
         for &id in dag.succ.at(v) {
@@ -35,7 +42,7 @@ pub(super) fn assign(
             rank[edge.to as usize] = rank[edge.to as usize].max(lower);
         }
     }
-    if arcs.is_empty() {
+    if arcs.is_empty() && boundaries.is_none() {
         return Ok(rank);
     }
     for pass in 0..8 {
@@ -55,6 +62,9 @@ pub(super) fn assign(
         && n.saturating_add(arcs.len()) <= 1000
     {
         simplex(&dag, &mut rank, max_pivots, work)?;
+    }
+    if let Some(nodes) = boundaries {
+        boundary::normalize(nodes, arcs, &mut rank, work)?;
     }
     Ok(rank)
 }
@@ -342,7 +352,15 @@ mod tests {
 
     fn run(n: usize, arcs: &[Link], policy: RankPolicy) -> Vec<u64> {
         let topo = (0..n as u32).collect::<Vec<_>>();
-        assign(n, arcs, &topo, policy, &mut Work::new(&mut NoopWorkControl)).unwrap()
+        assign(
+            n,
+            arcs,
+            &topo,
+            policy,
+            None,
+            &mut Work::new(&mut NoopWorkControl),
+        )
+        .unwrap()
     }
 
     fn objective(arcs: &[Link], ranks: &[u64]) -> u64 {

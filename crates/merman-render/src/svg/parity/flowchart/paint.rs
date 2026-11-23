@@ -4,6 +4,9 @@ use super::render_input::{
 use super::svg_emit::FlowchartSvgModelRequest;
 use super::*;
 
+#[cfg(any(feature = "layout-shoal", test))]
+mod rough;
+
 pub(super) fn with_flowchart_paint_context<T>(
     request: FlowchartSvgModelRequest<'_>,
     options: &SvgExecution<'_>,
@@ -168,6 +171,7 @@ pub(super) fn with_flowchart_paint_context<T>(
     }
 
     let mut parent: FxHashMap<&str, &str> = model.visible_memberships().collect();
+    apply_solved_group_parents(layout, &mut parent, &mut subgraph_ids_with_children);
     for n in &extra_nodes {
         let id = n.id.as_str();
         let Some((base, _)) = id.split_once("---") else {
@@ -444,6 +448,19 @@ pub(super) fn prepare_rough_edge_paths(
             continue;
         }
         ctx.work_meter.charge(entry.geom.d.len().max(1))?;
+        #[cfg(any(feature = "layout-shoal", test))]
+        if matches!(
+            ctx.layout.route_contract,
+            crate::graph_layout::RouteContract::CanonicalAxis { .. }
+        ) {
+            entry.geom.emitted_d_for_label = Some(rough::edge_path(
+                &entry.geom.d,
+                flowchart_marker_metrics(edge.edge),
+                ctx.work_meter,
+                &ctx.hand_drawn_seed,
+            )?);
+            continue;
+        }
         entry.geom.emitted_d_for_label =
             render::node::roughjs::roughjs_hand_drawn_stroke_path_for_svg_path(
                 &entry.geom.d,
@@ -988,21 +1005,24 @@ mod tests {
         use crate::graph_layout::contour::ShapePortProfile;
         use crate::graph_layout::{
             RouteAxes, RouteContract,
-            ir::{Axis, Side},
+            ir::{Axis, Endpoint, Side},
         };
         layout.route_contract = RouteContract::CanonicalAxis {
+            clearance: Default::default(),
+            group_parents: Vec::new(),
+            border_stitches: Vec::new(),
             nodes: vec![
                 ShapePortProfile::diamond(48.0, 36.0),
                 ShapePortProfile::rectangle(40.0, 30.0),
             ],
             routes: vec![
                 Some(RouteAxes {
-                    endpoints: (0, 1),
+                    endpoints: (Endpoint::Node(0), Endpoint::Node(1)),
                     ports: (Side::Right, Side::Left),
                     axes: vec![Axis::Horizontal; 4],
                 }),
                 Some(RouteAxes {
-                    endpoints: (0, 1),
+                    endpoints: (Endpoint::Node(0), Endpoint::Node(1)),
                     ports: (Side::Top, Side::Top),
                     axes: vec![
                         Axis::Vertical,

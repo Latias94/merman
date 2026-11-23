@@ -1,6 +1,7 @@
 //! Component-local topology and geometry in the canonical top-to-bottom coordinate space.
 
 mod acyclic;
+mod boundary;
 mod crossings;
 mod expand;
 mod extras;
@@ -15,6 +16,17 @@ mod validate;
 use crate::work::{LayoutResult, Work, filled};
 use crate::{Direction, Graph, LayoutError, NodeSpec, Options, Size, WorkError};
 
+pub(crate) use extras::route_corridor as corridor;
+pub(crate) use validate::{
+    length, measured, validate_edge, validate_node, validate_options, validate_port,
+};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum BoundaryRank {
+    Start,
+    End,
+}
+
 /// Orientation is independent of the edge's semantic direction and input occurrence.
 #[derive(Clone, Copy, Debug)]
 struct Link {
@@ -25,11 +37,29 @@ struct Link {
     weight: f32,
 }
 
+impl Link {
+    fn flipped(self) -> Self {
+        Self {
+            from: self.to,
+            to: self.from,
+            ..self
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Kind {
     Node,
     Dummy,
     Label,
+    StartPort,
+    EndPort,
+}
+
+impl Kind {
+    fn interior(self) -> bool {
+        matches!(self, Self::Dummy | Self::Label)
+    }
 }
 
 #[derive(Debug, Default)]
@@ -117,6 +147,7 @@ pub(crate) struct Expanded {
     chains: Vec<Vec<u32>>,
     label_vertex: Vec<Option<u32>>,
     direct: Vec<bool>,
+    separated_proxies: Vec<(u32, u32)>,
     pred: Csr,
     succ: Csr,
 }
@@ -137,6 +168,9 @@ struct Component {
     loops: Vec<Loop>,
     margin_left: Vec<f64>,
     margin_right: Vec<f64>,
+    boundaries: bool,
+    pinned: bool,
+    group_proxies: bool,
 }
 
 fn canonical_size(dir: Direction, size: Size) -> Size {
@@ -154,6 +188,22 @@ mod tests;
 
 /// Footprint of owned allocations, including the individual paths and ranks.
 impl Expanded {
+    fn separate_ports(&self, ends: (u32, u32), work: &mut Work<'_>) -> LayoutResult<bool> {
+        if self.separated_proxies.is_empty() {
+            return Ok(false);
+        }
+        work.visit(self.separated_proxies.len().ilog2() as usize + 1)?;
+        Ok(self.separated_proxies.binary_search(&ends).is_ok())
+    }
+
+    pub(crate) fn order_ranks(&self) -> &[u32] {
+        &self.rank
+    }
+
+    pub(crate) fn order_chains(&self) -> &[Vec<u32>] {
+        &self.chains
+    }
+
     pub(super) fn retained_bytes(&self) -> usize {
         fn bytes<T>(v: &Vec<T>) -> usize {
             v.capacity() * size_of::<T>()
@@ -175,9 +225,22 @@ impl Expanded {
             + nested(&self.chains)
             + bytes(&self.label_vertex)
             + bytes(&self.direct)
+            + bytes(&self.separated_proxies)
             + csr(&self.pred)
             + csr(&self.succ)
     }
+}
+
+fn expand_component(
+    c: &Component,
+    graph: &Graph,
+    options: &Options,
+    work: &mut Work<'_>,
+    expanded: &mut Expanded,
+) -> LayoutResult<acyclic::Orientation> {
+    let orientation = boundary::orient(&c.nodes, &c.links, c.boundaries, options, work)?;
+    expand::build(c, &orientation, graph, options, work, expanded)?;
+    Ok(orientation)
 }
 
 fn prepare_component(
@@ -187,18 +250,86 @@ fn prepare_component(
     work: &mut Work<'_>,
     expanded: &mut Expanded,
 ) -> LayoutResult<(acyclic::Orientation, u64)> {
-    let orientation = acyclic::orient(&c.nodes, &c.links, options.cycle_policy, work)?;
-    expand::build(
-        &c.nodes,
-        &c.links,
-        &orientation,
-        graph,
-        options,
-        work,
-        expanded,
-    )?;
-    let crossings = order::reduce(expanded, &c.nodes, options, work)?;
+    let orientation = expand_component(c, graph, options, work, expanded)?;
+    let crossings = if c.boundaries || c.pinned {
+        order::constrained(expanded, c, None, options, work)?
+    } else {
+        order::reduce(expanded, &c.nodes, options, work)?
+    };
     Ok((orientation, crossings))
+}
+
+pub(crate) fn compound_order(
+    graph: &Graph,
+    groups: &[Option<crate::GroupId>],
+    parents: &[Option<crate::GroupId>],
+    options: &Options,
+    expanded: &mut Expanded,
+    work: &mut Work<'_>,
+) -> LayoutResult<(Vec<f64>, u64)> {
+    if groups.len() != graph.nodes.len() {
+        return Err(LayoutError::InvalidInput(
+            "incomplete order group membership",
+        ));
+    }
+    let c = validate::collect(graph, options, true, work)?
+        .pop()
+        .unwrap_or_default();
+    if !c.loops.is_empty() {
+        return Err(LayoutError::InvalidInput(
+            "order proxy requires loop-free edges",
+        ));
+    }
+    expand_component(&c, graph, options, work, expanded)?;
+    let crossings = order::constrained(expanded, &c, Some((groups, parents)), options, work)?;
+    let x = position::assign(expanded, &c, None, graph, options, work)?;
+    Ok((x, crossings))
+}
+
+pub(crate) fn orientations(
+    nodes: &[NodeSpec],
+    edges: &[(usize, usize)],
+    options: &Options,
+    work: &mut Work<'_>,
+) -> LayoutResult<Vec<bool>> {
+    u32::try_from(nodes.len()).map_err(|_| WorkError::ArithmeticOverflow)?;
+    u32::try_from(edges.len()).map_err(|_| WorkError::ArithmeticOverflow)?;
+    work.charge(nodes.len())?;
+    let boundaries = nodes.iter().any(|n| n.boundary.is_some());
+    work.charge(edges.len())?;
+    let mut links = crate::work::reserved(edges.len())?;
+    for (edge, &(from, to)) in edges.iter().enumerate() {
+        work.visit(1)?;
+        if from >= nodes.len() || to >= nodes.len() {
+            return Err(LayoutError::InvalidInput("invalid orientation endpoint"));
+        }
+        if from != to {
+            links.push(Link {
+                from: from as u32,
+                to: to as u32,
+                edge: edge as u32,
+                span: 1,
+                weight: 1.,
+            });
+        }
+    }
+    let direction = boundary::orient(nodes, &links, boundaries, options, work)?;
+    let arcs = expand::oriented(&links, &direction.reversed, work)?;
+    let ranks = rank::assign(
+        nodes.len(),
+        &arcs,
+        &direction.topo,
+        options.rank_policy,
+        boundaries.then_some(nodes),
+        work,
+    )?;
+    work.charge(edges.len())?;
+    let mut flipped = filled(edges.len(), false)?;
+    for link in &links {
+        work.visit(1)?;
+        flipped[link.edge as usize] = ranks[link.from as usize] > ranks[link.to as usize];
+    }
+    Ok(flipped)
 }
 
 use crate::{EdgeGeometry, LayoutOutput, LayoutStats, PortSideHint, Rect, Side};
@@ -289,7 +420,7 @@ pub(crate) fn run(
             .topological_crossings
             .checked_add(crossings)
             .ok_or(WorkError::ArithmeticOverflow)?;
-        let mut x = position::assign(g, &c, &orientation, graph, options, work)?;
+        let mut x = position::assign(g, &c, Some(&orientation), graph, options, work)?;
         refine::refine(g, &c, &orientation, graph, options, &mut x, work)?;
         let mut drawing = routing::route(g, &c, &orientation, graph, options, &x, work)?;
         extras::finish(&mut drawing, g, &c, graph, options, work)?;

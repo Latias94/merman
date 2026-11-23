@@ -1,6 +1,6 @@
 # Shoal
 
-`merman-layout-shoal` is an experimental Rust layout engine for measured directed multigraphs. It accepts cycles, self-loops, parallel edges, disconnected components, port hints, and middle or terminal labels. It returns rectangles, edge paths, label anchors and the drawing extent in any of four directions. The crate uses the Rust standard library.
+`merman-layout-shoal` is an experimental Rust layout engine for measured directed multigraphs. It accepts nested groups, cycles, self-loops, parallel edges, disconnected components, port hints, and middle or terminal labels. It returns rectangles, edge paths, label anchors and the drawing extent in any of four directions. The crate uses the Rust standard library.
 
 ```rust
 use merman_layout_shoal::{Direction, EdgeSpec, Graph, NodeId, NodeSpec, Options, Size, layout};
@@ -37,9 +37,15 @@ cargo run -p merman-layout-shoal --example measured_dag
 
 The default ranks the acyclic condensation of each connected component. Inside cyclic components, a greedy feedback-arc ordering uses node hints and declaration order to resolve ties. Weighted slack tightening, crossing reduction, four directional Brandes–Köpf alignments and ordered port adjustment use the measured node and label sizes. `CyclePolicy::SccDfs` and `RankPolicy::BoundedNetworkSimplex` provide alternative policies for comparisons on the same input.
 
-Long edges normally travel along intermediate channels inside the diagram. `BudgetCaps::max_dummies` bounds the number of expanded vertices across the drawing. The solver records each edge downgraded at this cap in `LayoutStats::direct_fallback_edges`. `topological_crossings` counts inversions between consecutive ranks. `routed_crossings` counts pairs of routing polylines with a proper intersection before the renderer draws curves. The rendered curve can have a different crossing count.
+Long edges normally travel along intermediate channels inside the diagram. `BudgetCaps::max_dummies` bounds the number of expanded vertices across the drawing. The solver records each edge downgraded at this cap in `LayoutStats::direct_fallback_edges`. `topological_crossings` counts inversions between consecutive ranks. For a flat graph, `routed_crossings` counts pairs of routing polylines with a proper intersection. For a compound graph it compares the assembled paths in the selected routing style and excludes the fan near a shared endpoint. Both measurements precede final outline clipping and SVG painting.
 
-`PackingPolicy::AspectTargeted` uses two-dimensional shelves with a target proportion across and along the flow. `Strip` packs in a single row across the flow. `PackingPolicy::FitWidth` wraps complete components within a physical width when they fit individually. Groups, whole-graph width adaptation and grid quantization currently return `Unsupported`.
+`PackingPolicy::AspectTargeted` uses two-dimensional shelves with a target proportion across and along the flow. `Strip` packs in a single row across the flow. `PackingPolicy::FitWidth` wraps complete components within a physical width when they fit individually. Whole-graph width adaptation and grid quantization currently return `Unsupported`.
+
+## Nested groups
+
+Set the `parent` of a node or group to its enclosing `GroupId`. Each group can supply a minimum size, padding, a measured title and a local direction. With the default `GroupPolicy`, a group crossed by an external edge inherits its parent's direction. Set `inherit_crossed_direction` to `false` to keep the declared direction across that boundary. `GroupGeometry` reports the effective direction, parent, rectangle and title center in drawing coordinates.
+
+Use `Endpoint::Group` to connect a group directly to an outside node, another group or its own member. `LayoutOutput.border_stitches` identifies each shared border point by edge, point index, group and side, in path order. A painter can interpolate each section through that point while applying markers only at the semantic endpoints. If the drawing exceeds `max_border_ports`, `LayoutOutput.truncated_routes` identifies the physical endpoints of the affected edge occurrences.
 
 ## Work control and buffer reuse
 

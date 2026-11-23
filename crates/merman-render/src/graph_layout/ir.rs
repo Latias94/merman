@@ -138,8 +138,9 @@ pub(crate) struct MeasuredNode {
     pub(crate) size: Size,
     pub(crate) seq: u32,
     pub(crate) parent: Option<u32>,
-    /// Usable length along the flow-facing side. Zero pins the port to its anchor.
+    /// Usable length along the root flow's facing side. Zero pins the port to its anchor.
     pub(crate) port_span: Option<f64>,
+    pub(crate) perpendicular_port_span: Option<f64>,
     pub(crate) anchor_y: Option<f64>,
 }
 
@@ -173,13 +174,23 @@ pub(crate) struct SolvedGraph {
     pub(crate) nodes: Vec<Rect>,
     pub(crate) groups: Vec<SolvedGroup>,
     pub(crate) edges: Vec<SolvedEdge>,
+    pub(crate) border_stitches: Vec<BorderStitch>,
     pub(crate) direction: Direction,
     /// Extent of the drawing after translation to the origin.
     pub(crate) bounds: Size,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct BorderStitch {
+    pub(crate) edge: usize,
+    pub(crate) point: usize,
+    pub(crate) group: u32,
+    pub(crate) side: Side,
+}
+
 #[derive(Debug)]
 pub(crate) struct SolvedGroup {
+    pub(crate) parent: Option<u32>,
     pub(crate) rect: Rect,
     pub(crate) title: Option<LayoutLabel>,
     pub(crate) direction: Direction,
@@ -187,6 +198,7 @@ pub(crate) struct SolvedGroup {
 
 #[derive(Debug)]
 pub(crate) struct SolvedEdge {
+    /// Physical contacts after any solver-side truncation. Semantic owners stay with the family.
     pub(crate) source: Endpoint,
     pub(crate) target: Endpoint,
     pub(crate) points: Vec<RoutePoint>,

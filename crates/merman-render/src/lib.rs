@@ -2116,7 +2116,6 @@ id1(Start)-->id2(Stop)
     fn shoal_rejects_other_graph_adapters_during_planning_and_execution() {
         for body in [
             "swimlane-beta LR\nA --> B",
-            "agentflow-beta\nA --> B",
             "classDiagram\nA --> B",
             "erDiagram\nA ||--o{ B : relates",
             "mindmap\n  root((Demo))\n    Leaf",

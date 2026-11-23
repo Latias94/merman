@@ -79,6 +79,93 @@ impl<'a> FlowchartMeasurement<'a> {
         }
     }
 
+    #[cfg(feature = "layout-shoal")]
+    pub fn subgraph_title(
+        &self,
+        group: &super::FlowSubgraph,
+        index: usize,
+        charge: impl FnMut(usize) -> Result<()>,
+    ) -> Result<crate::text::TextMetrics> {
+        let title = self.model.subgraph_title_for_render(index, group);
+        let label_type = group.label_type.as_deref().unwrap_or("text");
+        let collapsed = self.model.is_subgraph_collapsed(&group.id);
+        let mode = if collapsed {
+            self.settings.node_wrap_mode
+        } else {
+            self.settings.cluster_wrap_mode
+        };
+        let (classes, styles) = self.model.effective_subgraph_css(index, group);
+        let structural = collapsed
+            .then(|| {
+                super::FlowchartStructuralLabelTypography::prepare(
+                    &self.model.class_defs,
+                    self.settings.edge_html_labels,
+                    super::FlowchartLabelDom::node(
+                        "collapsedGroup",
+                        title,
+                        label_type,
+                        mode == WrapMode::HtmlLike,
+                        crate::config::config_diagram_look(self.effective_config).is_hand_drawn(),
+                    ),
+                    charge,
+                )
+            })
+            .transpose()?;
+        let base = self.label_base_style(mode);
+        let parent = structural
+            .as_ref()
+            .map_or(std::borrow::Cow::Borrowed(base), |structural| {
+                self.typography.node_source_parent_style(
+                    base,
+                    &self.model.class_defs,
+                    (classes, styles, false),
+                    structural,
+                )
+            });
+        let mut style = super::flowchart_effective_text_style_for_classes_with_provenance(
+            parent.as_ref(),
+            &self.model.class_defs,
+            classes,
+            styles,
+        );
+        if let Some(structural) = structural {
+            structural.apply_to_content(&mut style.style);
+        }
+        let max_width_px = if collapsed {
+            Some(self.settings.wrapping_width)
+        } else {
+            (label_type == "markdown").then_some(self.settings.cluster_title_wrapping_width)
+        };
+        let mut metrics = measure_flowchart_svg_label_for_layout_with_terminal_foreground(
+            self.svg_label_sidecar,
+            Some(FlowchartSvgLabelOwner::SubgraphTitle(index)),
+            Some(&group.id),
+            FlowchartLabelMetricsRequest {
+                measurer: self.measurer,
+                raw_label: title,
+                label_type,
+                style: style.as_ref(),
+                max_width_px,
+                wrap_mode: mode,
+                config: self.effective_config,
+                math_renderer: self.math_renderer,
+            },
+            style.terminal_foreground(),
+            FlowchartSvgWidthMode::Bbox,
+        );
+        if collapsed && mode == WrapMode::HtmlLike && self.settings.edge_html_labels {
+            flowchart_apply_html_node_class_box_metrics(
+                &mut metrics,
+                title,
+                label_type,
+                style.as_ref(),
+                &self.model.class_defs,
+                classes,
+            );
+        }
+        Ok(metrics)
+    }
+
     pub fn node(
         &self,
         node: &FlowNode,

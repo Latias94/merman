@@ -104,6 +104,13 @@ impl<'a> FlowchartNodeInventoryInput<'a> {
             crate::flowchart::FlowchartRenderModelRef::new(model, render_context)
                 .visible_memberships()
                 .collect();
+        if let FlowchartNodeLayoutView::Flowchart(layout) = layout {
+            super::hierarchy::apply_solved_group_parents(
+                layout,
+                &mut parent,
+                &mut subgraph_ids_with_children,
+            );
+        }
         for id in helper_ids {
             if let Some((base, _)) = id.split_once("---")
                 && let Some(owner) = parent.get(base).copied()
@@ -293,14 +300,19 @@ impl FlowchartPreparedNodes {
             &typography.text_style
         };
         let label_typography = svg_labels.label_typography();
-        let (owners, uses_elk) = match layout {
-            FlowchartNodeLayoutView::Flowchart(layout) => {
-                (&layout.edge_owners, layout.uses_elk_adapter_dom)
-            }
+        let (owners, use_projected_edges) = match layout {
+            FlowchartNodeLayoutView::Flowchart(layout) => (
+                &layout.edge_owners,
+                layout.uses_elk_adapter_dom || layout.route_contract.uses_projected_edges(),
+            ),
             FlowchartNodeLayoutView::Swimlane(layout) => (&layout.edge_owners, false),
         };
-        let helper_ids =
-            super::render_input::flowchart_helper_node_ids(model, render_context, owners, uses_elk);
+        let helper_ids = super::render_input::flowchart_helper_node_ids(
+            model,
+            render_context,
+            owners,
+            use_projected_edges,
+        );
         let input =
             FlowchartNodeInventoryInput::prepare(model, render_context, layout, &helper_ids, work);
         let schedule = FlowchartNodeRootSchedule::prepare(&input)?;
@@ -308,7 +320,7 @@ impl FlowchartPreparedNodes {
             &model.nodes,
             &model.subgraphs,
             render_context,
-            uses_elk,
+            use_projected_edges,
         );
         let render_model = crate::flowchart::FlowchartRenderModelRef::new(model, render_context);
         let selection_inputs = super::node_style::NodeSelectionInputs::new(

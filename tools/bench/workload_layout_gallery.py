@@ -1,4 +1,4 @@
-"""Compare native Flowchart layouts and optional Pele drawings in one offline HTML file."""
+"""Compare native Flowchart and Agentflow layouts with optional Pele drawings offline."""
 
 from collections import Counter
 import json
@@ -16,8 +16,8 @@ from workload_reference import node_worker_failures
 def svg_card(svg, backend):
     root = ET.fromstring(svg)
     if backend == "pele":
-        if "pele-flowchart" not in root.get("class", "").split():
-            return {"error": "Pele did not return a Flowchart drawing"}
+        if {"pele-flowchart", "pele-agentflow"}.isdisjoint(root.get("class", "").split()):
+            return {"error": "Pele did not return a Flowchart or Agentflow drawing"}
         classes = Counter(token for group in root.iter("{http://www.w3.org/2000/svg}g")
                           for token in group.get("class", "").split())
         nodes, edges = classes["pele-node"], classes["pele-edge"]
@@ -129,13 +129,13 @@ def write_gallery(args):
         by_id = {case["id"]: case for case in plan["scenarios"]}
         for name in report["rows"] if report is not None else by_id:
             if name not in by_id or len(by_id[name]["requests"]) != 1:
-                raise ValueError(f"{name}: expected one Flowchart request in the frozen plan")
+                raise ValueError(f"{name}: expected one drawing request in the frozen plan")
             request = by_id[name]["requests"][0]
             if digest(request["source"].encode()) != request["source_sha256"]:
                 raise ValueError(f"{name}: frozen source digest mismatch")
             cases.append((name, request, report is not None))
     if not cases:
-        raise ValueError("no Flowcharts to display")
+        raise ValueError("no drawings to display")
 
     gallery = {"cases": []}
     pele_cards = []

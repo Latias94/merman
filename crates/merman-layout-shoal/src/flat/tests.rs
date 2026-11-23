@@ -232,6 +232,81 @@ fn invalid_port_span_marker_and_end_label_fail_before_cycle_removal() {
 }
 
 #[test]
+fn perpendicular_span_is_validated_without_changing_flat_geometry_or_work() {
+    let mut g = graph(3);
+    g.edges = vec![edge(0, 1), edge(0, 2)];
+    let solve = |g: &Graph| {
+        let mut control = Meter::default();
+        let out = crate::layout_with_control(
+            g,
+            &Options::default(),
+            &mut LayoutScratch::default(),
+            &mut control,
+        )?;
+        Ok::<_, LayoutError>((out, control.used))
+    };
+    let baseline = solve(&g).unwrap();
+    assert_eq!(baseline.0.truncated_routes.capacity(), 0);
+    assert_eq!(baseline.0.border_stitches.capacity(), 0);
+    for span in [0., 150.] {
+        g.nodes[0].perpendicular_port_span = Some(span);
+        assert_eq!(solve(&g).unwrap(), baseline);
+    }
+    for invalid in [f64::NAN, f64::INFINITY, -1.] {
+        g.nodes[0].perpendicular_port_span = Some(invalid);
+        assert!(matches!(solve(&g), Err(LayoutError::InvalidInput(_))));
+    }
+}
+
+#[test]
+fn unsized_orientation_preserves_loop_occurrences_and_matches_both_full_fas_policies() {
+    use crate::{CyclePolicy, RankPolicy};
+    let mut graph = graph(5);
+    let pairs = [(0, 0), (1, 2), (2, 0), (0, 1), (2, 2), (3, 4), (1, 2)];
+    graph
+        .edges
+        .extend(pairs.map(|(from, to)| edge(from as u32, to as u32)));
+    graph.nodes[2].seq = 0;
+    for cycle_policy in [CyclePolicy::SccGreedyFas, CyclePolicy::SccDfs] {
+        let options = Options {
+            cycle_policy,
+            rank_policy: RankPolicy::BoundedNetworkSimplex { max_pivots: 20 },
+            ..Options::default()
+        };
+        let drawing = crate::layout(&graph, &options).unwrap();
+        let mut meter = Meter::default();
+        let mut work = Work::new(&mut meter);
+        let result = orientations(&graph.nodes, &pairs, &options, &mut work).unwrap();
+        work.finish().unwrap();
+        assert!(
+            drawing
+                .edges
+                .iter()
+                .map(|e| e.reversed_for_ranking)
+                .eq(result.iter().copied())
+        );
+        assert!(!result[0] && !result[4] && !result[5]);
+        let mut limit = Meter {
+            used: 0,
+            left: Some(meter.used - 1),
+        };
+        let mut work = Work::new(&mut limit);
+        let clipped =
+            orientations(&graph.nodes, &pairs, &options, &mut work).and_then(|_| work.finish());
+        assert_eq!(clipped, Err(LayoutError::Work(WorkError::Interrupted)));
+    }
+    assert!(matches!(
+        orientations(
+            &graph.nodes,
+            &[(99, 99)],
+            &Options::default(),
+            &mut Work::new(&mut NoopWorkControl)
+        ),
+        Err(LayoutError::InvalidInput(_))
+    ));
+}
+
+#[test]
 fn fixed_port_offsets_round_trip_on_all_four_faces_in_each_direction() {
     let sides = [Side::Top, Side::Right, Side::Bottom, Side::Left];
     for dir in [

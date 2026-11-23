@@ -404,6 +404,15 @@ To inspect the release workflow and dense hub visually without a frozen comparis
 python3 tools/bench/perf_runner.py workloads layout-gallery crates/merman-render/tests/fixtures/shoal-release.mmd crates/merman/benches/fixtures/flowchart_ports_heavy.mmd --pele --out target/bench/layouts/gallery-v2.html
 ```
 
+For nested Flowcharts and Agentflow, replay the checked-in compound fixtures and inspect
+group bounds, title placement, border stitches and sibling obstacles. The full replay
+requires a repository checkout.
+
+```console
+cargo nextest run --locked -p merman-render --features all-diagrams,layout-shoal,layout-elk --lib --run-ignored all -E 'test(replay_compound_examples) | test(replay_entire_compound_corpus)' --success-output immediate
+python3 tools/bench/perf_runner.py workloads layout-gallery fixtures/flowchart/stress_flowchart_subgraph_cross_edges_between_siblings_048.mmd fixtures/agentflow/container-and-shapes.mmd --pele --out target/bench/layouts/gallery-compound-v2.html
+```
+
 Read fork/join offsets and return distances in SVG units. A foreign-box hit counts a painted
 shaft entering a different node or another occurrence's label. Crossings between edges are a
 separate measurement. Compare statement permutations within each engine using the minimum

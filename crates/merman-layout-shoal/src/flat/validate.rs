@@ -1,30 +1,17 @@
 use super::*;
 use crate::work::{push, reserved};
-use crate::{Endpoint, PackingPolicy, PortSideHint, Side, WidthPolicy};
+use crate::{EdgeSpec, Endpoint, PackingPolicy, PortSideHint, Side, WidthPolicy};
 
-fn length(x: f64) -> bool {
+pub(crate) fn length(x: f64) -> bool {
     x.is_finite() && x >= 0.0
 }
-fn measured(s: Size) -> bool {
+pub(crate) fn measured(s: Size) -> bool {
     [s.width, s.height]
         .into_iter()
         .all(|extent| length(extent) && (extent == 0.0 || extent * 0.5 > 0.0))
 }
 
-pub(super) fn components(
-    graph: &Graph,
-    options: &Options,
-    work: &mut Work<'_>,
-) -> LayoutResult<Vec<Component>> {
-    work.check()?;
-    let n = graph.nodes.len();
-    let m = graph.edges.len();
-    if n > u32::MAX as usize || m > u32::MAX as usize {
-        return Err(WorkError::ArithmeticOverflow.into());
-    }
-    if !graph.groups.is_empty() {
-        return Err(LayoutError::Unsupported("subgraphs"));
-    }
+pub(crate) fn validate_options(options: &Options) -> LayoutResult<()> {
     let s = options.spacing;
     if ![
         s.node,
@@ -73,20 +60,94 @@ pub(super) fn components(
         }
         return Err(LayoutError::Unsupported("grid layout"));
     }
+    Ok(())
+}
+
+pub(crate) fn validate_node(node: &NodeSpec) -> LayoutResult<()> {
+    if !measured(node.size)
+        || node.port_span.is_some_and(|v| !length(v))
+        || node.perpendicular_port_span.is_some_and(|v| !length(v))
+        || node
+            .anchor_y
+            .is_some_and(|v| !length(v) || v > node.size.height)
+        || node.order_hint.is_some_and(|h| !h.cross_key.is_finite())
+        || !(-1..=1).contains(&node.pin)
+    {
+        return Err(LayoutError::InvalidInput(
+            "invalid node geometry, parent or order hint",
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_port(size: Size, port: PortSideHint) -> LayoutResult<()> {
+    if let PortSideHint::FixedOffset { side, offset } = port {
+        let face = match side {
+            Side::Top | Side::Bottom => size.width,
+            Side::Left | Side::Right => size.height,
+        };
+        if !offset.is_finite() || offset.abs() > face * 0.5 {
+            return Err(LayoutError::InvalidInput("port offset outside face"));
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_edge(edge: &EdgeSpec) -> LayoutResult<()> {
+    if !edge.weight.is_finite()
+        || edge.weight <= 0.0
+        || ![edge.label, edge.start_label, edge.end_label]
+            .into_iter()
+            .flatten()
+            .all(measured)
+        || ![edge.start_marker, edge.end_marker]
+            .into_iter()
+            .all(|m| length(m.length) && length(m.width))
+    {
+        return Err(LayoutError::InvalidInput(
+            "invalid edge label, marker or weight",
+        ));
+    }
+    Ok(())
+}
+
+pub(super) fn components(
+    graph: &Graph,
+    options: &Options,
+    work: &mut Work<'_>,
+) -> LayoutResult<Vec<Component>> {
+    collect(graph, options, false, work)
+}
+
+pub(super) fn collect(
+    graph: &Graph,
+    options: &Options,
+    all_nodes: bool,
+    work: &mut Work<'_>,
+) -> LayoutResult<Vec<Component>> {
+    work.check()?;
+    let n = graph.nodes.len();
+    let m = graph.edges.len();
+    if n > u32::MAX as usize || m > u32::MAX as usize {
+        return Err(WorkError::ArithmeticOverflow.into());
+    }
+    if !graph.groups.is_empty() {
+        return Err(LayoutError::Unsupported("subgraphs"));
+    }
+    validate_options(options)?;
+    let s = options.spacing;
+    let mut boundaries = false;
+    let mut pinned = false;
     work.charge(n)?;
     for node in &graph.nodes {
-        if node.parent.is_some()
-            || !measured(node.size)
-            || node.port_span.is_some_and(|v| !length(v))
-            || node
-                .anchor_y
-                .is_some_and(|v| !length(v) || v > node.size.height)
-            || node.order_hint.is_some_and(|h| !h.cross_key.is_finite())
-        {
+        if node.parent.is_some() {
             return Err(LayoutError::InvalidInput(
                 "invalid node geometry, parent or order hint",
             ));
         }
+        validate_node(node)?;
+        boundaries |= node.boundary.is_some();
+        pinned |= node.pin != 0;
     }
     let endpoint = |ep: Endpoint, port: PortSideHint| -> LayoutResult<u32> {
         let Endpoint::Node(id) = ep else {
@@ -98,15 +159,7 @@ pub(super) fn components(
             .ok_or(LayoutError::InvalidInput(
                 "edge endpoint is outside its input array",
             ))?;
-        if let PortSideHint::FixedOffset { side, offset } = port {
-            let face = match side {
-                Side::Top | Side::Bottom => node.size.width,
-                Side::Left | Side::Right => node.size.height,
-            };
-            if !offset.is_finite() || offset.abs() > face * 0.5 {
-                return Err(LayoutError::InvalidInput("port offset outside face"));
-            }
-        }
+        validate_port(node.size, port)?;
         Ok(id.0)
     };
     work.charge(m)?;
@@ -114,59 +167,69 @@ pub(super) fn components(
     for edge in &graph.edges {
         let u = endpoint(edge.source, edge.source_port)?;
         let v = endpoint(edge.target, edge.target_port)?;
-        if !positive(f64::from(edge.weight))
-            || ![edge.label, edge.start_label, edge.end_label]
-                .into_iter()
-                .flatten()
-                .all(measured)
-            || ![edge.start_marker, edge.end_marker]
-                .into_iter()
-                .all(|m| length(m.length) && length(m.width))
-        {
-            return Err(LayoutError::InvalidInput(
-                "invalid edge label, marker or weight",
-            ));
-        }
+        validate_edge(edge)?;
         endpoints.push((u, v));
     }
-    let succ = Csr::new(n, endpoints.iter().map(|&(u, _)| u), work)?;
-    let pred = Csr::new(n, endpoints.iter().map(|&(_, v)| v), work)?;
-    let mut owner = filled(n, u32::MAX)?;
+    let whole = all_nodes || boundaries || pinned;
+    let adjacency = if whole {
+        work.charge(n)?;
+        None
+    } else {
+        Some((
+            Csr::new(n, endpoints.iter().map(|&(u, _)| u), work)?,
+            Csr::new(n, endpoints.iter().map(|&(_, v)| v), work)?,
+        ))
+    };
+    let mut owner = filled(n, if whole { 0 } else { u32::MAX })?;
     let mut local = filled(n, 0u32)?;
-    let mut stack = reserved(n)?;
+    let mut stack = reserved(if whole { 0 } else { n })?;
     let mut components = Vec::new();
     for root in 0..n {
-        if owner[root] != u32::MAX {
+        if !whole && owner[root] != u32::MAX {
             continue;
         }
-        let index = components.len() as u32;
-        stack.push(root as u32);
-        owner[root] = index;
-        let mut component = Component::default();
-        while let Some(v) = stack.pop() {
-            work.visit(1)?;
-            push(&mut component.ids, v)?;
-            for &e in succ.at(v).iter().chain(pred.at(v)) {
+        let mut component = Component {
+            boundaries,
+            pinned,
+            ..Component::default()
+        };
+        if let Some((succ, pred)) = &adjacency {
+            let index = components.len() as u32;
+            stack.push(root as u32);
+            owner[root] = index;
+            while let Some(v) = stack.pop() {
                 work.visit(1)?;
-                let (a, b) = endpoints[e as usize];
-                let next = if a == v { b } else { a };
-                if owner[next as usize] == u32::MAX {
-                    owner[next as usize] = index;
-                    stack.push(next);
+                push(&mut component.ids, v)?;
+                for &e in succ.at(v).iter().chain(pred.at(v)) {
+                    work.visit(1)?;
+                    let (a, b) = endpoints[e as usize];
+                    let next = if a == v { b } else { a };
+                    if owner[next as usize] == u32::MAX {
+                        owner[next as usize] = index;
+                        stack.push(next);
+                    }
                 }
             }
+            charge_sort(component.ids.len(), work)?;
+            component
+                .ids
+                .sort_unstable_by_key(|&v| (graph.nodes[v as usize].seq, v));
+        } else {
+            component.ids = reserved(n)?;
+            component.ids.extend(0..n as u32);
         }
-        charge_sort(component.ids.len(), work)?;
-        component
-            .ids
-            .sort_unstable_by_key(|&v| (graph.nodes[v as usize].seq, v));
         for (i, &v) in component.ids.iter().enumerate() {
             local[v as usize] = i as u32;
-            push(&mut component.nodes, graph.nodes[v as usize])?;
+            let node = graph.nodes[v as usize];
+            component.group_proxies |= node.group_proxy;
+            push(&mut component.nodes, node)?;
         }
         component.margin_left = filled(component.ids.len(), 0.0)?;
         component.margin_right = filled(component.ids.len(), 0.0)?;
         push(&mut components, component)?;
+        if whole {
+            break;
+        }
     }
     let mut loop_count = filled(n, 0usize)?;
     for (e, &(a, b)) in endpoints.iter().enumerate() {

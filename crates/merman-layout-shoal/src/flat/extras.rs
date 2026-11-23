@@ -23,6 +23,23 @@ use crate::{
 };
 use obstacles::{Bounds, Obstacles, Owner, RouteWalls};
 
+pub(crate) fn route_corridor(
+    start: Point,
+    end: Point,
+    via: &[Point],
+    obstacles: &[Rect],
+    gap: f64,
+    work: &mut Work<'_>,
+) -> LayoutResult<Vec<Point>> {
+    work.charge(obstacles.len())?;
+    let mut bounds = reserved(obstacles.len())?;
+    for &rect in obstacles {
+        work.visit(1)?;
+        bounds.push(Bounds::of(rect)?);
+    }
+    corridor::path(start, end, via, &RouteWalls(bounds), gap, work)
+}
+
 const PRECISION: LayoutError =
     LayoutError::InvalidInput("extra route exceeds coordinate precision");
 fn finite(v: f64) -> LayoutResult<f64> {

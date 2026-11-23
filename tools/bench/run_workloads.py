@@ -503,9 +503,9 @@ def check_layout_evidence(response, job, signatures, requested, *, inventory):
                 or not all(isinstance(c, str) for c in receipt["required_capabilities"])):
             raise ValueError(f"missing or misidentified layout evidence for {diagram_id}")
         required = [c for c in receipt["required_capabilities"] if c.startswith("layout-")]
-        # Dagre is the built-in Flowchart backend and has no optional capability.
+        # Flowchart and the Agentflow projection use the built-in Dagre backend by default.
         actual = None
-        if receipt["family"] == "flowchart" and len(required) <= 1:
+        if receipt["family"] in ("flowchart", "agentflow") and len(required) <= 1:
             actual = required[0].removeprefix("layout-") if required else "dagre"
         receipt["backend"] = actual
         if actual != requested:
@@ -874,9 +874,9 @@ def main(argv=None):
     run = sub.add_parser("rust", help="run each sample in a fresh child process")
     layouts = sub.add_parser("rust-layouts", help="compare Dagre, ELK and Shoal on single-request flat Flowcharts")
     layouts.set_defaults(metric="clock", check_drawings=False, chrome=None, site_css_bytes=0)
-    gallery = sub.add_parser("layout-gallery", help="write an offline HTML comparison of Flowchart SVGs")
+    gallery = sub.add_parser("layout-gallery", help="write an offline HTML comparison of Flowchart and Agentflow SVGs")
     gallery.add_argument("sources", nargs="*", type=Path, help="additional Mermaid files to draw without native timing")
-    gallery.add_argument("--plan", type=Path, help="frozen single-request Flowchart plan")
+    gallery.add_argument("--plan", type=Path, help="frozen single-request Flowchart or Agentflow plan")
     gallery.add_argument("--comparison", type=Path, help="rust-layouts report for this plan and executable")
     gallery.add_argument("--runner", type=Path, help="use a frozen public_workloads clock executable")
     gallery.add_argument("--pele", action="store_true", help="add the locked Pele renderer and its separate Node.js SVG timing")

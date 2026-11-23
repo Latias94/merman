@@ -1,12 +1,29 @@
 //! Project graph geometry into the current SVG root's coordinate system exactly once.
 
 use super::*;
-use crate::graph_layout::{RouteAxes, contour, ir::RoutePoint, route_paint};
+use crate::graph_layout::{
+    RouteAxes, contour,
+    ir::{BorderStitch, Endpoint, RoutePoint, Side},
+    route_paint,
+};
+use std::borrow::Cow;
+
+fn group_lead_side(side: Side, port: RoutePoint, next: RoutePoint) -> Side {
+    match side {
+        Side::Top if next.y > port.y => Side::Bottom,
+        Side::Right if next.x < port.x => Side::Left,
+        Side::Bottom if next.y < port.y => Side::Top,
+        Side::Left if next.x > port.x => Side::Right,
+        _ => side,
+    }
+}
 
 pub(super) fn paint(
     request: FlowchartEdgePathGeomRequest<'_>,
     profiles: &[contour::ShapePortProfile],
     axes: &RouteAxes,
+    stitches: &[BorderStitch],
+    clearance: &route_paint::Clearance,
 ) -> Option<FlowchartEdgePathGeom> {
     let FlowchartEdgePathGeomRequest {
         ctx,
@@ -30,26 +47,61 @@ pub(super) fn paint(
             axis,
         })
         .collect();
-    let center = |id: &str| {
-        let bounds = boundary_for_node(ctx, id, origin_x, origin_y)?;
-        Some(crate::model::LayoutPoint {
-            x: bounds.x,
-            y: bounds.y,
+    let center = |x, y| crate::model::LayoutPoint {
+        x: x + ctx.tx - origin_x,
+        y: y + ctx.ty - origin_y,
+    };
+    let group_contour = |id: u32| {
+        let group = ctx.layout.clusters.get(id as usize)?;
+        let radius = if ctx.diagram_type == "agentflow" {
+            10.0
+        } else {
+            0.0
+        };
+        Some((
+            contour::ShapePortProfile::rounded_rectangle(group.width, group.height, radius, radius),
+            center(group.x, group.y),
+        ))
+    };
+    let terminal = |endpoint, side, port, next| {
+        Some(match endpoint {
+            Endpoint::Node(id) => {
+                let node = ctx.layout.nodes.get(id as usize)?;
+                (
+                    Cow::Borrowed(profiles.get(id as usize)?),
+                    center(node.x, node.y),
+                    side,
+                )
+            }
+            Endpoint::Group(id) => {
+                let (profile, center) = group_contour(id)?;
+                (
+                    Cow::Owned(profile),
+                    center,
+                    group_lead_side(side, port, next),
+                )
+            }
         })
     };
+    let last = points.len() - 1;
+    let (source_profile, source_center, source_lead) =
+        terminal(axes.endpoints.0, axes.ports.0, points[0], points[1])?;
+    let (target_profile, target_center, target_lead) = terminal(
+        axes.endpoints.1,
+        axes.ports.1,
+        points[last],
+        points[last - 1],
+    )?;
     contour::inset_endpoints(
         &mut points,
-        (
-            profiles.get(axes.endpoints.0)?,
-            &center(&solved.from)?,
-            axes.ports.0,
-        ),
-        (
-            profiles.get(axes.endpoints.1)?,
-            &center(&solved.to)?,
-            axes.ports.1,
-        ),
+        (&source_profile, &source_center, axes.ports.0),
+        (&target_profile, &target_center, axes.ports.1),
     );
+    for stitch in stitches {
+        let (profile, center) = group_contour(stitch.group)?;
+        let port = points.get_mut(stitch.point)?;
+        *port = profile.contact(&center, stitch.side, *port);
+    }
     let style = route_paint::RouteStyle::from_interpolate(
         edge.interpolate
             .as_deref()
@@ -58,9 +110,22 @@ pub(super) fn paint(
     );
     let painted = route_paint::build_svg_path(
         &points,
-        axes.ports,
+        (source_lead, target_lead),
         style,
         super::super::flowchart_marker_metrics(edge),
+        stitches,
+        Some(
+            clearance.for_edge(
+                key.semantic_index(),
+                axes.endpoints,
+                kurbo::Vec2::new(origin_x - ctx.tx, origin_y - ctx.ty),
+                ctx.edge_style_plan
+                    .stroke_width_for(key)
+                    .ok()
+                    .and_then(|stroke| stroke.paint_outset())
+                    .unwrap_or_default(),
+            ),
+        ),
     )?;
     let data_points: Vec<_> = points
         .iter()

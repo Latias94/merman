@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:cc47000df26116a384dbf1a207dbbe6e6747cd369dd90931020a916bdaa77bec";
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:2a34a0eb4553de248e8f65fee511d63bb0eb2d6348af1f4c7772070b57c670a3";
 
 export const NODE_BINDING_OPERATIONS = [
   {

@@ -62,13 +62,24 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compute_edge_path_geom(
     scratch: &mut FlowchartEdgeDataPointsScratch,
 ) -> Option<FlowchartEdgePathGeom> {
     #[cfg(any(feature = "layout-shoal", test))]
-    if let crate::graph_layout::RouteContract::CanonicalAxis { nodes, routes } =
-        &request.ctx.layout.route_contract
+    if let crate::graph_layout::RouteContract::CanonicalAxis {
+        nodes,
+        routes,
+        border_stitches,
+        clearance,
+        ..
+    } = &request.ctx.layout.route_contract
     {
+        let occurrence = request.key.semantic_index();
+        let first = border_stitches.partition_point(|stitch| stitch.edge < occurrence);
+        let tail = &border_stitches[first..];
+        let count = tail.partition_point(|stitch| stitch.edge == occurrence);
         return canonical::paint(
             request,
             nodes,
-            routes.get(request.key.semantic_index())?.as_ref()?,
+            routes.get(occurrence)?.as_ref()?,
+            &tail[..count],
+            clearance,
         );
     }
     let route = prepare_edge_route(request, scratch)?;

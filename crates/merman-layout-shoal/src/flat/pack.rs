@@ -268,6 +268,8 @@ pub(super) fn assemble(
         nodes,
         groups: Vec::new(),
         edges: routes,
+        truncated_routes: Vec::new(),
+        border_stitches: Vec::new(),
         direction: graph.direction,
         bounds,
         stats,

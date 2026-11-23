@@ -4,6 +4,9 @@
 
 #![cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
 
+#[cfg(feature = "diagram-agentflow")]
+mod compound;
+
 use super::{
     Body, CrossAxis, Edge, End, Endpoint, FLATNESS, Label, LabelOwner, PointMarker, Report, Scene,
     Shaft, Violation, fork_join_offsets, validate,
@@ -179,6 +182,10 @@ fn contour(owner: Node<'_, '_>, frame: Affine) -> BezPath {
     } else {
         container
     };
+    painted_outline(shape, frame)
+}
+
+fn painted_outline(shape: Node<'_, '_>, frame: Affine) -> BezPath {
     let path = match shape.tag_name().name() {
         "rect" => {
             let r = rect(shape);
@@ -206,16 +213,20 @@ fn contour(owner: Node<'_, '_>, frame: Affine) -> BezPath {
             path.close_path();
             path
         }
-        "circle" => Circle::new(
-            (number(shape, "cx"), number(shape, "cy")),
-            number(shape, "r"),
-        )
-        .to_path(FLATNESS),
+        "circle" | "ellipse" => {
+            let origin = |key| shape.attribute(key).unwrap_or("0").parse::<f64>().unwrap();
+            let center = (origin("cx"), origin("cy"));
+            if shape.has_tag_name("circle") {
+                Circle::new(center, number(shape, "r")).to_path(FLATNESS)
+            } else {
+                let (rx, ry) = (number(shape, "rx"), number(shape, "ry"));
+                Affine::translate(center)
+                    * Affine::scale_non_uniform(rx, ry)
+                    * Circle::new((0., 0.), 1.).to_path(FLATNESS / rx.max(ry))
+            }
+        }
         "path" => BezPath::from_svg(attr(shape, "d")).expect("node outline"),
-        tag => panic!(
-            "{}: unsupported gallery shape <{tag}>",
-            attr(owner, "data-id")
-        ),
+        tag => panic!("unsupported gallery shape <{tag}>"),
     };
     let path = to_viewport(shape, frame) * path;
     let bounds = path.bounding_box();
@@ -263,8 +274,9 @@ fn read_marker(
         .and_then(|s| s.strip_suffix(')'))
         .expect("local marker IRI");
     let marker = markers[id];
-    let base = id
-        .rsplit_once("flowchart-v2-")
+    let base = ["flowchart-v2-", "agentflow-", "flowchart-"]
+        .into_iter()
+        .find_map(|family| id.rsplit_once(family))
         .unwrap()
         .1
         .split(['-', '_'])
@@ -646,16 +658,14 @@ fn replay(name: &str, drawing: &Drawing) -> Result<Report, String> {
             .layout_shape
             .as_deref()
             .is_none_or(|shape| shape == "squareRect")
-        {
-            if Shaft::read(edge)
+            && Shaft::read(edge)
                 .unwrap()
                 .hits(scene.bodies[edge.start.body].bounds)
-            {
-                failures.push(format!(
-                    "self-loop {} enters its body {id}",
-                    drawing.layout.edges[i].id
-                ));
-            }
+        {
+            failures.push(format!(
+                "self-loop {} enters its body {id}",
+                drawing.layout.edges[i].id
+            ));
         }
     }
     if failures.is_empty() {

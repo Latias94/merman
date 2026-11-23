@@ -94,6 +94,7 @@ pub(in crate::svg::parity) fn write_svg_text_source_word_lines(
         include_style.then_some(""),
         center_text,
         None,
+        None,
     );
 }
 
@@ -104,7 +105,20 @@ pub(in crate::svg::parity) fn write_svg_text_source_word_lines_with_style(
     center_text: bool,
     font_weight: Option<u16>,
 ) {
-    write_svg_text_source_word_lines_impl(out, lines, Some(style), center_text, font_weight);
+    write_svg_text_source_word_lines_impl(out, lines, Some(style), center_text, font_weight, None);
+}
+
+pub(in crate::svg::parity) fn write_measured_svg_title(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    lines: &[Vec<String>],
+    style: &str,
+    font_weight: Option<u16>,
+    width: f64,
+) {
+    let length =
+        (matches!(lines, [words] if !words.is_empty()) && width.is_finite() && width > 0.0)
+            .then_some(width);
+    write_svg_text_source_word_lines_impl(out, lines, Some(style), false, font_weight, length);
 }
 
 fn write_svg_text_source_word_lines_impl(
@@ -113,8 +127,9 @@ fn write_svg_text_source_word_lines_impl(
     style: Option<&str>,
     center_text: bool,
     font_weight: Option<u16>,
+    text_length: Option<f64>,
 ) {
-    open_svg_text(out, style, center_text);
+    open_svg_text(out, style, center_text, text_length);
 
     if lines.len() == 1 && lines[0].is_empty() {
         write_empty_tspan(out, center_text, true, 1.1);
@@ -144,11 +159,19 @@ fn open_svg_text<'a>(
     out: &mut impl crate::svg::parity::SvgOutput,
     style: Option<&'a str>,
     center_text: bool,
+    text_length: Option<f64>,
 ) -> Option<&'a str> {
     out.push_str(r#"<text y="-10.1""#);
     let emitted_style = super::util::write_style_attribute(out, style);
     if center_text {
         out.push_str(r#" text-anchor="middle""#);
+    }
+    if let Some(length) = text_length {
+        let _ = write!(
+            out,
+            r#" textLength="{}" lengthAdjust="spacingAndGlyphs""#,
+            fmt_display(length)
+        );
     }
     out.push('>');
     emitted_style
@@ -240,7 +263,7 @@ fn write_svg_text_impl<'a>(
     include_row_class: bool,
     entity_mode: SvgTextEntityMode,
 ) -> Option<&'a str> {
-    let emitted_style = open_svg_text(out, style, center_text);
+    let emitted_style = open_svg_text(out, style, center_text, None);
 
     let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines(text);
     if lines.len() == 1 && lines[0].is_empty() {
@@ -325,7 +348,7 @@ fn write_svg_text_markdown_lines_with_style<'a>(
     entity_mode: SvgTextEntityMode,
     row_style: Option<SvgTextFirstRowStyle<'_>>,
 ) -> Option<&'a str> {
-    let emitted_style = open_svg_text(out, style, center_text);
+    let emitted_style = open_svg_text(out, style, center_text, None);
 
     if lines.len() == 1 && lines[0].is_empty() {
         write_empty_tspan(out, center_text, include_row_class, 1.1);
@@ -589,6 +612,41 @@ mod tests {
         write_svg_text_centered, write_svg_text_source_word_lines,
         write_svg_text_source_word_lines_with_style,
     };
+
+    #[test]
+    fn measured_svg_title_binds_only_one_nonempty_row_to_a_finite_positive_width() {
+        let single = vec![vec!["A".to_string(), "&amp;".to_string(), "B".to_string()]];
+        let multiple = vec![single[0].clone(), vec!["second".to_string()]];
+        let empty = vec![Vec::new()];
+        for (lines, width, binds) in [
+            (&single, 128.5, true),
+            (&multiple, 160., false),
+            (&empty, 20., false),
+            (&single, 0., false),
+            (&single, f64::INFINITY, false),
+            (&single, f64::NAN, false),
+        ] {
+            let mut actual = String::new();
+            let mut standard = String::new();
+            super::write_measured_svg_title(
+                &mut actual,
+                lines,
+                "font-weight:700",
+                Some(700),
+                width,
+            );
+            write_svg_text_source_word_lines_with_style(
+                &mut standard,
+                lines,
+                "font-weight:700",
+                false,
+                Some(700),
+            );
+            let length = r#" textLength="128.5" lengthAdjust="spacingAndGlyphs""#;
+            assert_eq!(actual.contains(length), binds);
+            assert_eq!(actual.replace(length, ""), standard);
+        }
+    }
 
     #[test]
     fn svg_text_style_preserves_hex_color_declarations_as_attribute_data() {

@@ -1,6 +1,130 @@
 use super::*;
 use crate::{NoopWorkControl, OrderHint, Size, WorkControl};
 
+#[test]
+fn compound_order_keeps_nested_siblings_and_their_internal_bend_contiguous() {
+    use crate::{EdgeSpec, Graph, GroupId, NodeId, PortSideHint, Side};
+    let mut graph = Graph::default();
+    for v in 0..8 {
+        graph.nodes.push(NodeSpec::new(
+            Size {
+                width: 80.,
+                height: 40.,
+            },
+            7 - v,
+        ));
+    }
+    for v in 1..7 {
+        let mut first = EdgeSpec::new(NodeId(0).into(), NodeId(v).into());
+        first.source_port = PortSideHint::FixedOffset {
+            side: Side::Bottom,
+            offset: f64::from(v) * 4. - 14.,
+        };
+        let mut last = EdgeSpec::new(NodeId(v).into(), NodeId(7).into());
+        last.target_port = PortSideHint::FixedOffset {
+            side: Side::Top,
+            offset: 14. - f64::from(v) * 4.,
+        };
+        graph.edges.extend([first, last]);
+    }
+    graph
+        .edges
+        .push(EdgeSpec::new(NodeId(0).into(), NodeId(7).into()));
+    let membership = [1, 1, 2, 3, 1, 2, 3, 1].map(|id| Some(GroupId(id)));
+    let parents = [None, Some(GroupId(0)), None, Some(GroupId(0))];
+    let mut expanded = Expanded::default();
+    let options = Options::default();
+    let (x, crossings) = crate::flat::compound_order(
+        &graph,
+        &membership,
+        &parents,
+        &options,
+        &mut expanded,
+        &mut Work::new(&mut NoopWorkControl),
+    )
+    .unwrap();
+    let chain = &expanded.order_chains()[12];
+    assert_eq!(chain.len(), 3);
+    assert_eq!((chain[0], chain[2]), (0, 7));
+    let bend = chain[1];
+    let rank = expanded.order_ranks()[bend as usize];
+    let row = &expanded.layers[rank as usize];
+    assert!(
+        row.windows(2)
+            .all(|pair| x[pair[0] as usize] < x[pair[1] as usize])
+    );
+    for group in [&[1, 4, bend][..], &[3, 6], &[2, 5], &[1, 3, 4, 6, bend]] {
+        let first = row.iter().position(|v| group.contains(v)).unwrap();
+        assert!(
+            row[first..first + group.len()]
+                .iter()
+                .all(|v| group.contains(v)),
+            "{row:?} {group:?}"
+        );
+    }
+    assert!(crossings > 0);
+    assert_eq!(
+        crossings,
+        brute(
+            &expanded,
+            &positions(x.len(), expanded.layers.iter().map(Vec::as_slice))
+        )
+    );
+}
+
+#[test]
+fn grouped_zero_crossing_order_and_deep_parent_chains_work_across_disconnected_nodes() {
+    use crate::{Graph, GroupId};
+    let graph = Graph {
+        nodes: (0..6)
+            .map(|seq| NodeSpec::new(Size::default(), seq))
+            .collect(),
+        ..Graph::default()
+    };
+    let mut parents: Vec<_> = (0..16_384).map(|id| Some(GroupId(id + 1))).collect();
+    parents.extend([None, None]);
+    let membership = [0, 16_385, 0, 16_385, 0, 16_385].map(|id| Some(GroupId(id)));
+    let mut expanded = Expanded::default();
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let (x, crossings) = crate::flat::compound_order(
+        &graph,
+        &membership,
+        &parents,
+        &Options::default(),
+        &mut expanded,
+        &mut work,
+    )
+    .unwrap();
+    assert_eq!(crossings, 0);
+    assert_eq!(expanded.layers, [vec![0, 2, 4, 1, 3, 5]]);
+    assert!(x[4] < x[1]);
+    parents[16_384] = Some(GroupId(0));
+    assert!(matches!(
+        crate::flat::compound_order(
+            &graph,
+            &membership,
+            &parents,
+            &Options::default(),
+            &mut expanded,
+            &mut work
+        ),
+        Err(LayoutError::InvalidInput(_))
+    ));
+    let (x, _) = crate::flat::compound_order(
+        &Graph::default(),
+        &[],
+        &[],
+        &Options::default(),
+        &mut expanded,
+        &mut work,
+    )
+    .unwrap();
+    assert!(
+        x.is_empty() && expanded.order_ranks().is_empty() && expanded.order_chains().is_empty()
+    );
+}
+
 struct Random(u64);
 
 impl Random {
@@ -178,7 +302,8 @@ fn randomized_fenwick_swap_deltas_and_cached_transpose_match_full_pair_enumerati
                 order.swap(i, &ports);
             }
         }
-        let got = transpose(&mut order, &ports, before, &mut work).unwrap();
+        let got =
+            transpose::<false>(&mut order, &ports, before, &Rules::default(), &mut work).unwrap();
         assert_eq!(got, brute_order(&g, &order));
         improved += usize::from(got < before);
         let final_count = reduce(&mut g, &nodes, &Options::default(), &mut work).unwrap();
@@ -241,7 +366,14 @@ fn weighted_barycenters_use_neighbor_offsets_and_hold_only_unconnected_slots() {
         moving: Vec::new(),
     };
     sweep
-        .run(&g, &mut order, &ports, true, false, &mut work)
+        .run::<false>(
+            &g,
+            &mut order,
+            &ports,
+            (true, false),
+            &mut Rules::default(),
+            &mut work,
+        )
         .unwrap();
     assert_eq!(order.ids[order.range(1)], [4, 3, 5, 2]);
     assert_eq!(
@@ -249,7 +381,14 @@ fn weighted_barycenters_use_neighbor_offsets_and_hold_only_unconnected_slots() {
         [0.9, 0.5, 0.5]
     );
     sweep
-        .run(&g, &mut order, &ports, true, true, &mut work)
+        .run::<false>(
+            &g,
+            &mut order,
+            &ports,
+            (true, true),
+            &mut Rules::default(),
+            &mut work,
+        )
         .unwrap();
     assert_eq!(order.ids[order.range(1)], [5, 3, 4, 2]);
 }

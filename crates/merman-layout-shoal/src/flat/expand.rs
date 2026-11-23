@@ -1,9 +1,11 @@
 //! Build the proper layered graph over occupied ranks. Numeric gaps stay in `logical_rank`.
 
+mod proxy;
+
 use super::acyclic::Orientation;
-use super::{Expanded, Kind, Link, canonical_size, rank};
+use super::{BoundaryRank, Component, Expanded, Kind, Link, canonical_size, rank};
 use crate::work::{LayoutResult, Work, filled, reserved};
-use crate::{Graph, LayoutError, NodeSpec, Options, PortSideHint, Size, WorkError};
+use crate::{Graph, LayoutError, Options, PortSideHint, Size, WorkError};
 use std::borrow::Cow;
 use std::collections::HashSet;
 
@@ -29,7 +31,7 @@ fn rows(vec: &mut Vec<Vec<u32>>, len: usize) -> LayoutResult<()> {
     Ok(())
 }
 
-fn oriented<'a>(
+pub(super) fn oriented<'a>(
     links: &'a [Link],
     rev: &[bool],
     work: &mut Work<'_>,
@@ -41,15 +43,7 @@ fn oriented<'a>(
     let mut arcs = reserved(links.len())?;
     for (&link, &back) in links.iter().zip(rev) {
         work.visit(1)?;
-        arcs.push(if back {
-            Link {
-                from: link.to,
-                to: link.from,
-                ..link
-            }
-        } else {
-            link
-        });
+        arcs.push(if back { link.flipped() } else { link });
     }
     Ok(Cow::Owned(arcs))
 }
@@ -60,6 +54,7 @@ fn sublayers(
     raw: &[u64],
     arcs: &[Link],
     graph: &Graph,
+    proxies: Option<proxy::ProxyPorts<'_>>,
     g: &mut Expanded,
     work: &mut Work<'_>,
 ) -> LayoutResult<Vec<u32>> {
@@ -78,6 +73,10 @@ fn sublayers(
         }
         g.rank[v] = count(occupied.len() - 1)?;
     }
+    g.separated_proxies = match proxies {
+        Some(proxies) => proxies.separated(arcs, raw, graph, work)?,
+        None => Vec::new(),
+    };
     work.charge(add(occupied.len(), arcs.len())?)?;
     let mut split = filled(occupied.len(), false)?;
     let mut pairs = HashSet::new();
@@ -95,7 +94,9 @@ fn sublayers(
             return Err(LayoutError::InvalidInput("edge opposes its ranking order"));
         }
         if b - a == 1 && !split[a as usize] {
-            split[a as usize] = spec.label.is_some() || !pairs.insert((edge.from, edge.to));
+            let ends = (edge.from, edge.to);
+            split[a as usize] =
+                spec.label.is_some() || !pairs.insert(ends) && !g.separate_ports(ends, work)?;
         }
     }
     let levels = add(occupied.len(), split.iter().filter(|&&yes| yes).count())?;
@@ -271,14 +272,15 @@ fn offset(port: PortSideHint) -> f64 {
 }
 
 pub(super) fn build(
-    nodes: &[NodeSpec],
-    links: &[Link],
+    component: &Component,
     orientation: &Orientation,
     graph: &Graph,
     options: &Options,
     work: &mut Work<'_>,
     g: &mut Expanded,
 ) -> LayoutResult<()> {
+    let nodes = component.nodes.as_slice();
+    let links = component.links.as_slice();
     let n = nodes.len();
     let m = links.len();
     count(n)?;
@@ -287,8 +289,20 @@ pub(super) fn build(
         return Err(LayoutError::InvalidInput("incomplete edge orientation"));
     }
     let arcs = oriented(links, &orientation.reversed, work)?;
-    let raw = rank::assign(n, &arcs, &orientation.topo, options.rank_policy, work)?;
-    let mut real = sublayers(&raw, &arcs, graph, g, work)?;
+    let raw = rank::assign(
+        n,
+        &arcs,
+        &orientation.topo,
+        options.rank_policy,
+        component.boundaries.then_some(nodes),
+        work,
+    )?;
+    let proxies = component.group_proxies.then_some(proxy::ProxyPorts {
+        nodes,
+        reversed: &orientation.reversed,
+        clearance: options.spacing.edge,
+    });
+    let mut real = sublayers(&raw, &arcs, graph, proxies, g, work)?;
     let (dummies, segments) = dummy_budget(&arcs, g, options.caps.max_dummies, work)?;
     let vertices = add(n, dummies)?;
     count(vertices)?;
@@ -324,7 +338,11 @@ pub(super) fn build(
         let size = canonical_size(graph.direction, node.size);
         g.width.push(size.width);
         g.height.push(size.height);
-        g.kind.push(Kind::Node);
+        g.kind.push(match node.boundary {
+            None => Kind::Node,
+            Some(BoundaryRank::Start) => Kind::StartPort,
+            Some(BoundaryRank::End) => Kind::EndPort,
+        });
         g.layers[g.rank[v] as usize].push(v as u32);
     }
     for (i, e) in arcs.iter().enumerate() {
@@ -400,7 +418,26 @@ pub(super) fn build(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Direction, EdgeSpec, Endpoint, NodeId, NoopWorkControl, Side, WorkControl};
+    use crate::{
+        Direction, EdgeSpec, Endpoint, NodeId, NodeSpec, NoopWorkControl, Side, WorkControl,
+    };
+
+    fn build(
+        nodes: &[NodeSpec],
+        links: &[Link],
+        orientation: &Orientation,
+        graph: &Graph,
+        options: &Options,
+        work: &mut Work<'_>,
+        g: &mut Expanded,
+    ) -> LayoutResult<()> {
+        let c = Component {
+            nodes: nodes.to_vec(),
+            links: links.to_vec(),
+            ..Default::default()
+        };
+        super::build(&c, orientation, graph, options, work, g)
+    }
 
     fn shape(w: f64, h: f64) -> Size {
         Size {

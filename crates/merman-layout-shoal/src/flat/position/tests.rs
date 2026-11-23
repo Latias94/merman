@@ -123,7 +123,7 @@ fn reverse_links_share_a_face_with_forward_tails_in_peer_order() {
     assign(
         &mut g,
         &c,
-        &o,
+        Some(&o),
         &graph,
         &Options::default(),
         &mut Work::new(&mut NoopWorkControl),
@@ -258,7 +258,7 @@ fn four_passes_align_ports_not_centers_in_real_expanded_chains() {
         let mut g = Expanded::default();
         let (o, _) =
             super::super::prepare_component(&cs[0], &graph, &opts, &mut work, &mut g).unwrap();
-        let xs = assign(&mut g, &cs[0], &o, &graph, &opts, &mut work).unwrap();
+        let xs = assign(&mut g, &cs[0], Some(&o), &graph, &opts, &mut work).unwrap();
         assert_eq!(g.source_offset, [12.0, 0.0]);
         assert_eq!(g.target_offset, [0.0, -4.0]);
         assert_eq!(xs[0] + 12.0, xs[1] - 4.0);
@@ -292,7 +292,7 @@ fn interruption_before_balance_is_published_preserves_both_offset_arrays() {
         assign(
             g,
             component,
-            &orientation,
+            Some(&orientation),
             &graph,
             &options,
             &mut Work::new(budget),

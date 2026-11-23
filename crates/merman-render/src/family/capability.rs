@@ -176,9 +176,8 @@ fn required_layout_capability(
     }
 
     let selection = crate::layout_backend::resolve_graph_layout(&meta.effective_config);
-    // Swimlane syntax can resolve to the Flowchart render family. Agentflow also projects a
-    // Flowchart model. Only the ordinary Flowchart source types have a Shoal adapter.
     if selection.backend == crate::layout_backend::GraphLayoutBackend::Shoal
+        && family != DiagramFamilyId::AGENTFLOW
         && !(family == DiagramFamilyId::FLOWCHART
             && matches!(meta.diagram_type.as_str(), "flowchart" | "flowchart-v2"))
     {

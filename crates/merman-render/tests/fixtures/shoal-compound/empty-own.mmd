@@ -1,0 +1,10 @@
+flowchart LR
+  subgraph empty[Staging]
+  end
+  subgraph owner[Worker]
+    child{Ready?}
+    peer[Queue]
+  end
+  owner -->|dispatch| child
+  empty L_child_owner_0@--> peer
+  child --> owner

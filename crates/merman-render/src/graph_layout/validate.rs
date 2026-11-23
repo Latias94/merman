@@ -479,11 +479,14 @@ impl Shaft {
             };
             path.push(edge.transform * el);
         }
+        Self::from_path(path, edge.cross_axis)
+    }
+
+    fn from_path(path: BezPath, axis: CrossAxis) -> Result<Self, String> {
         if !path.is_finite() {
             return Err("non-finite transformed path".into());
         }
 
-        let axis = edge.cross_axis;
         let mut segments = Vec::new();
         let mut lines = Vec::new();
         let mut length = 0.0;
@@ -684,6 +687,7 @@ fn check_endpoint(
     endpoint: Endpoint,
     body: &Body,
     shaft: &Shaft,
+    fixed_contact: Option<Point>,
     report: &mut Report,
 ) {
     let (first, _) = shaft.segment_from(end, 0);
@@ -717,7 +721,10 @@ fn check_endpoint(
     } else if valid_rect(body.bounds) && body.contour.as_ref().is_none_or(BezPath::is_finite) {
         report.contacts_checked += 1;
         let contact = origin - tangent * endpoint.setback;
-        let gap = contour_gap(body, contact);
+        let gap = fixed_contact.map_or_else(
+            || contour_gap(body, contact),
+            |point| point.distance(contact),
+        );
         if !gap.is_finite() || gap > CONTACT_TOLERANCE {
             report
                 .hard
@@ -759,7 +766,6 @@ fn check_edge(
     report: &mut Report,
 ) -> Option<Shaft> {
     let edge = &scene.edges[id];
-    let item = Item::Edge(id);
     let shaft = match Shaft::read(edge) {
         Ok(shaft) => shaft,
         Err(reason) => {
@@ -769,13 +775,27 @@ fn check_edge(
             return None;
         }
     };
+    check_shaft(scene, ancestry, id, &shaft, None, report);
+    Some(shaft)
+}
+
+fn check_shaft(
+    scene: &Scene<'_>,
+    ancestry: &[Vec<usize>],
+    id: usize,
+    shaft: &Shaft,
+    fixed_contacts: Option<[Point; 2]>,
+    report: &mut Report,
+) {
+    let edge = &scene.edges[id];
+    let item = Item::Edge(id);
     if !normalized_rect(shaft.bounds) {
         report.hard.push(Violation::InvalidGeometry { item });
     }
     let (from, to) = (edge.start.body, edge.end.body);
     if from >= scene.bodies.len() || to >= scene.bodies.len() {
         report.hard.push(Violation::InvalidOwner { item });
-        return Some(shaft);
+        return;
     }
     for (end, endpoint) in [(End::Start, edge.start), (End::End, edge.end)] {
         check_endpoint(
@@ -783,7 +803,8 @@ fn check_edge(
             end,
             endpoint,
             &scene.bodies[endpoint.body],
-            &shaft,
+            shaft,
+            fixed_contacts.map(|points| points[usize::from(end == End::End)]),
             report,
         );
     }
@@ -828,7 +849,6 @@ fn check_edge(
             });
         }
     }
-    Some(shaft)
 }
 
 /// Run the section 6 geometric checks. An empty `hard` accepts the invariants. Compare crossing

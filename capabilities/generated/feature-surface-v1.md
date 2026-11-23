@@ -2,7 +2,7 @@
 
 # Capability Surface v1
 
-Semantic digest: `sha256:cc47000df26116a384dbf1a207dbbe6e6747cd369dd90931020a916bdaa77bec`
+Semantic digest: `sha256:2a34a0eb4553de248e8f65fee511d63bb0eb2d6348af1f4c7772070b57c670a3`
 
 ## Public Leaves
 
@@ -16,7 +16,7 @@ Semantic digest: `sha256:cc47000df26116a384dbf1a207dbbe6e6747cd369dd90931020a916
 | `jpeg` | `Output` | `native` | none | Export rendered diagrams as JPEG. |
 | `layout-cytoscape` | `Engine` | `native`, `web`, `typst` | `svg` | Enable Mermaid Cytoscape-backed layout behavior. |
 | `layout-elk` | `Engine` | `native`, `web`, `typst` | `svg` | Enable Mermaid ELK-backed layout behavior. |
-| `layout-shoal` | `Engine` | `native` | `svg` | Select the experimental Shoal layout for ordinary Flowcharts. |
+| `layout-shoal` | `Engine` | `native` | `svg` | Select the experimental Shoal layout for Flowchart and Agentflow diagrams. |
 | `markdown` | `Tool` | `native` | none | Compile CLI Markdown batch conversion. |
 | `math` | `Engine` | `native`, `web` | `svg` | Render Mermaid math labels with the selected math engine. |
 | `native-fonts` | `Adapter` | `native` | none | Compile reusable native font measurement for shared graphical text, wrapping, bounds and computed lengths; CLI use requires runtime opt-in and shares selected font bytes with native painting while reporting unsupported or missing-glyph fallbacks. |

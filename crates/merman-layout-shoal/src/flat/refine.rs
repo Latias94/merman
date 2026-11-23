@@ -12,6 +12,7 @@ const COLLINEAR: f64 = 0.01;
 const NODE_SNAP: f64 = 12.;
 const BEND_SNAP: f64 = 24.;
 const LEAN_CLEAR: f64 = 40.;
+const MIN_BOUNDARY_PITCH: f64 = 1.;
 const TOP: usize = 0;
 const BOTTOM: usize = 1;
 
@@ -143,7 +144,7 @@ impl<'a> Geometry<'a> {
             s.bare
                 .push(row.iter().all(|&v| g.kind[v as usize] == Kind::Dummy));
             s.labels_only.push(
-                row.iter().all(|&v| g.kind[v as usize] != Kind::Node)
+                row.iter().all(|&v| g.kind[v as usize].interior())
                     && row.iter().any(|&v| g.kind[v as usize] == Kind::Label),
             );
             for (i, &v) in row.iter().enumerate() {
@@ -224,6 +225,9 @@ impl<'a> Geometry<'a> {
             .chunk_by(|&a, &b| ends(a) == ends(b))
             .filter(|ids| ids.len() > 1)
         {
+            if g.separate_ports(ends(twins[0]), work)? {
+                continue;
+            }
             for &i in twins {
                 let chain = &g.chains[i];
                 for &v in &chain[1..chain.len() - 1] {
@@ -895,6 +899,50 @@ fn lerp(s: &Geometry<'_>, a: u32, b: u32, v: u32, from: f64, to: f64) -> f64 {
     from + (to - from) * t
 }
 
+fn align_ports(s: &mut Geometry<'_>, work: &mut Work<'_>) -> LayoutResult<()> {
+    let g = s.g;
+    for (row, kind, side) in [
+        (g.layers.first(), Kind::StartPort, BOTTOM),
+        (g.layers.last(), Kind::EndPort, TOP),
+    ] {
+        let Some(row) = row.filter(|row| row.first().is_some_and(|&v| g.kind[v as usize] == kind))
+        else {
+            continue;
+        };
+        let target = |v: usize| -> Option<f64> {
+            let [edge] = incident(g, v, side) else {
+                return None;
+            };
+            if g.kind[v] != kind || s.direct_end[v][side] {
+                return None;
+            }
+            let edge = *edge as usize;
+            let attached = s.follow[side][edge];
+            Some(s.at(attached, 1 - side) - s.dx[side][edge])
+        };
+        work.charge(row.len())?;
+        let mut targets = reserved(row.len())?;
+        let mut last_right = f64::NEG_INFINITY;
+        for &v in row {
+            work.visit(1)?;
+            let v = v as usize;
+            let Some(at) = target(v) else { break };
+            let half = g.width[v] * 0.5;
+            if at - half < last_right + MIN_BOUNDARY_PITCH {
+                break;
+            }
+            targets.push(at);
+            last_right = at + half;
+        }
+        if targets.len() == row.len() {
+            for (&v, at) in row.iter().zip(targets) {
+                s.x[v as usize] = at;
+            }
+        }
+    }
+    Ok(())
+}
+
 fn straighten(s: &mut Geometry<'_>, sep: f64, work: &mut Work<'_>) -> LayoutResult<()> {
     let g = s.g;
     let mut want = copy(&s.x)?;
@@ -1066,6 +1114,9 @@ pub(super) fn refine(
     align_labels(&mut s, work)?;
     settle(&mut s, c.nodes.len(), options, work)?;
     snap(&mut s, work)?;
+    if c.boundaries {
+        align_ports(&mut s, work)?;
+    }
     straighten(&mut s, options.spacing.edge, work)?;
     if s.x
         .iter()

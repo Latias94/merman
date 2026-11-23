@@ -153,10 +153,16 @@ pub struct NodeSpec {
     pub parent: Option<GroupId>,
     /// Usable length centered on the face. Zero pins ports to the center.
     pub port_span: Option<f64>,
+    /// Usable face length when a child flows perpendicular to the root direction.
+    /// An unspecified length inherits `port_span`.
+    pub perpendicular_port_span: Option<f64>,
     /// Position of a left/right anchor measured from the top of the box.
     pub anchor_y: Option<f64>,
     pub seq: u32,
     pub order_hint: Option<OrderHint>,
+    pub(crate) boundary: Option<crate::flat::BoundaryRank>,
+    pub(crate) pin: i8,
+    pub(crate) group_proxy: bool,
 }
 
 impl NodeSpec {
@@ -165,9 +171,13 @@ impl NodeSpec {
             size,
             parent: None,
             port_span: None,
+            perpendicular_port_span: None,
             anchor_y: None,
             seq,
             order_hint: None,
+            boundary: None,
+            pin: 0,
+            group_proxy: false,
         }
     }
 }
@@ -252,12 +262,34 @@ pub struct EdgeGeometry {
 #[non_exhaustive]
 #[derive(Clone, Debug, PartialEq)]
 pub struct GroupGeometry {
+    /// Enclosing group after parent-cycle repair.
+    pub parent: Option<GroupId>,
     pub rect: Rect,
     pub title_center: Option<Point>,
     pub effective_direction: Direction,
 }
 
-/// Work attribution for the selected drawing. Routed crossings count pairs of polylines before painting.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TruncatedRoute {
+    pub edge: EdgeId,
+    /// Resolved source contact after applying the border-port budget.
+    pub source: Endpoint,
+    /// Resolved target contact after applying the border-port budget.
+    pub target: Endpoint,
+}
+
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BorderStitch {
+    pub edge: EdgeId,
+    /// Index into the edge's [`EdgeGeometry::points`] in semantic source-to-target order.
+    pub point: usize,
+    pub group: GroupId,
+    pub side: Side,
+}
+
+/// Work attribution for the selected drawing. Routed crossings use flat polylines or the sampled compound routing style.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct LayoutStats {
@@ -278,6 +310,8 @@ pub struct LayoutOutput {
     pub nodes: Vec<Rect>,
     pub groups: Vec<GroupGeometry>,
     pub edges: Vec<EdgeGeometry>,
+    pub truncated_routes: Vec<TruncatedRoute>,
+    pub border_stitches: Vec<BorderStitch>,
     pub direction: Direction,
     pub bounds: Size,
     pub stats: LayoutStats,

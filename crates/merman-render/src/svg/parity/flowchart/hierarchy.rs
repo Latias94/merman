@@ -3,6 +3,24 @@
 use super::node_inventory::FlowchartNodeInventoryInput;
 use super::*;
 
+pub(super) fn apply_solved_group_parents<'a>(
+    layout: &'a FlowchartLayout,
+    parents: &mut FxHashMap<&'a str, &'a str>,
+    clusters: &mut FxHashSet<&'a str>,
+) {
+    if let Some(solved_parents) = layout.route_contract.group_parents() {
+        for (group, parent) in layout.clusters.iter().zip(solved_parents) {
+            let id = group.id.as_str();
+            clusters.insert(id);
+            if let Some(index) = parent {
+                parents.insert(id, &layout.clusters[*index as usize].id);
+            } else {
+                parents.remove(id);
+            }
+        }
+    }
+}
+
 pub(super) fn flowchart_node_dom_indices<'a>(
     model: &'a crate::flowchart::FlowchartModel,
 ) -> FxHashMap<&'a str, usize> {

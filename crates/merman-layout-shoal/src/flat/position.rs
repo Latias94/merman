@@ -269,11 +269,11 @@ struct Neighbours {
 }
 
 fn inner(g: &Expanded, v: u32) -> Option<u32> {
-    if g.kind[v as usize] == Kind::Node {
+    if !g.kind[v as usize].interior() {
         return None;
     }
     let &e = g.pred.at(v).first()?;
-    (g.kind[g.from[e as usize] as usize] != Kind::Node).then_some(e)
+    g.kind[g.from[e as usize] as usize].interior().then_some(e)
 }
 
 /// Prefix maxima on occupied slots; zero denotes an empty prefix.
@@ -539,7 +539,7 @@ fn middle([a, b, c, d]: [f64; 4]) -> f64 {
 pub(super) fn assign(
     g: &mut Expanded,
     c: &Component,
-    orientation: &Orientation,
+    spread_ends: Option<&Orientation>,
     graph: &Graph,
     options: &Options,
     work: &mut Work<'_>,
@@ -564,7 +564,14 @@ pub(super) fn assign(
         pred: by_peer(g, &g.pred, &g.succ, &g.to, work)?,
         succ: by_peer(g, &g.succ, &g.pred, &g.from, work)?,
     };
-    let ports = spread(g, c, orientation, graph, &options.spacing, &lists, work)?;
+    let ports = spread_ends
+        .map(|o| spread(g, c, o, graph, &options.spacing, &lists, work))
+        .transpose()?;
+    let (source, target) = ports
+        .as_ref()
+        .map_or((&g.source_offset, &g.target_offset), |p| {
+            (&p.source, &p.target)
+        });
     let blocked = conflicts(g, &pos, work)?;
     let mut layouts: [Vec<f64>; 4] = Default::default();
     let mut bounds = [(0.0, 0.0); 4];
@@ -574,9 +581,9 @@ pub(super) fn assign(
         let top_down = k < 2;
         let right = k % 2 != 0;
         let (list, peer, own, other) = if top_down {
-            (&lists.pred, &g.from, &ports.target, &ports.source)
+            (&lists.pred, &g.from, target, source)
         } else {
-            (&lists.succ, &g.to, &ports.source, &ports.target)
+            (&lists.succ, &g.to, source, target)
         };
         let sweep = Sweep {
             pos: &pos,
@@ -625,8 +632,10 @@ pub(super) fn assign(
         layouts[0][v] = middle(candidates);
     }
     work.finish()?;
-    g.source_offset = ports.source;
-    g.target_offset = ports.target;
+    if let Some(ports) = ports {
+        g.source_offset = ports.source;
+        g.target_offset = ports.target;
+    }
     Ok(std::mem::take(&mut layouts[0]))
 }
 

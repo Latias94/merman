@@ -22,6 +22,13 @@ def gallery_data(path):
 
 
 class LayoutGalleryTests(unittest.TestCase):
+    def test_pele_agentflow_counts_visible_nodes_and_edges_inside_containers(self):
+        svg = ('<svg xmlns="http://www.w3.org/2000/svg" class="pele pele-agentflow" viewBox="0 0 40 30">'
+               '<g class="pele-cluster pele-flow"/><g class="pele-node pele-shape-collapsed"/>'
+               '<g class="pele-node pele-shape-rounded"/><g class="pele-edge pele-edge-sequence"/></svg>')
+        card = gallery.svg_card(svg, "pele")
+        self.assertEqual((card["nodes"], card["edges"]), (2, 1))
+
     def test_default_gallery_preserves_source_and_only_calls_native_renderers(self):
         with TemporaryDirectory() as tmp:
             root = Path(tmp)

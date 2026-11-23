@@ -104,6 +104,7 @@ pub struct BudgetCaps {
     pub max_sweeps: u32,
     pub max_transpose_nodes: usize,
     pub max_weighed_gap_pieces: usize,
+    /// Maximum intermediate group-boundary ports. An authored group endpoint remains an endpoint.
     pub max_border_ports: usize,
     pub max_ordered_compound_ports: usize,
     pub max_ordered_compound_edges: usize,

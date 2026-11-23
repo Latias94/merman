@@ -902,10 +902,8 @@ fn invalid_endpoints_and_measurements_report_input_errors() {
     };
     invalid(&bad);
     g.groups.push(GroupSpec::new(0));
-    assert_eq!(
-        layout(&g, &options),
-        Err(LayoutError::Unsupported("subgraphs"))
-    );
+    g.edges[0].target = GroupId(1).into();
+    invalid(&g);
 }
 #[derive(Default)]
 struct Meter {

@@ -413,7 +413,6 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
     let left = (cluster.x - frame_width / 2.0) + ctx.tx - origin_x;
     let top = (cluster.y - cluster.height / 2.0) + ctx.ty - origin_y;
     let rect_h = cluster.height.max(1.0);
-    let label_top = top + cluster.title_margin_top.max(0.0);
     let Some(cluster_dom_id) = ctx.document_ids().cluster(cluster.id.as_str()) else {
         return Err(crate::Error::InvalidModel {
             message: format!(
@@ -464,7 +463,17 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
     let label_h = painted_markdown
         .map_or(cluster.title_label.height, |metrics| metrics.height)
         .max(0.0);
-    let label_left = left + rect_w / 2.0 - label_w / 2.0;
+    let (label_left, label_top) = if ctx.layout.route_contract.group_parents().is_some() {
+        (
+            cluster.title_label.x + ctx.tx - origin_x - label_w / 2.0,
+            cluster.title_label.y + ctx.ty - origin_y - label_h / 2.0,
+        )
+    } else {
+        (
+            left + rect_w / 2.0 - label_w / 2.0,
+            top + cluster.title_margin_top.max(0.0),
+        )
+    };
 
     let mut class_attr = String::new();
     for c in classes {
@@ -566,7 +575,20 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
                 true,
                 crate::flowchart::FlowchartSvgWidthMode::Bbox,
             );
-            write_flowchart_svg_label_plan(out, &prepared, true);
+            if ctx.layout.route_contract.group_parents().is_some()
+                && matches!(label_type, "text" | "string")
+            {
+                let style = prepared.merge_emission_font_style(Some(""));
+                crate::svg::parity::label::write_measured_svg_title(
+                    out,
+                    &prepared.wrapped_lines(),
+                    style.as_deref().unwrap_or(""),
+                    prepared.font_weight(),
+                    cluster.title_label.width,
+                );
+            } else {
+                write_flowchart_svg_label_plan(out, &prepared, true);
+            }
         }
         out.push_str("</g></g></g>");
         if ctx.text_surface_paint.requested() {

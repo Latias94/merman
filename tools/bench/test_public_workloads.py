@@ -712,6 +712,9 @@ class RustLayoutTests(unittest.TestCase):
         receipts = [proof[0], dict(proof[1], family="sequence", required_capabilities=[])]
         self.assertEqual(check(outputs, receipts)[1]["status"], "layout-backend-mismatch")
         self.assertIsNone(receipts[1]["backend"])
+        receipts = [proof[0], dict(proof[1], family="agentflow")]
+        self.assertNotIn("status", check(outputs, receipts)[1])
+        self.assertEqual(receipts[1]["backend"], "shoal")
 
     def test_standalone_shoal_rejects_the_source_pinned_control_and_preserves_default_work(self):
         with tempfile.TemporaryDirectory() as tmp:
