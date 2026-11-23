@@ -411,8 +411,8 @@ fn macos_authored_emoji_face_is_skipped_before_acquiring_its_bitmap() {
 
 #[cfg(target_os = "macos")]
 #[test]
-#[ignore = "requires the macOS regional Han fonts; run explicitly in CI"]
-fn core_text_inherits_svg_language_and_keeps_regional_fallbacks_separate() {
+#[ignore = "requires macOS system Han fallback; run explicitly in CI"]
+fn core_text_inherits_svg_language_in_platform_fallback() {
     let context = options()
         .with_system_fonts(true)
         .load_platform(&OperationControl::new())
@@ -426,23 +426,21 @@ fn core_text_inherits_svg_language_and_keeps_regional_fallbacks_separate() {
         </g></svg>"#,
         &options,
     ).unwrap();
+    context.check().unwrap();
     let regional = painted_faces(&tree, "regions");
     assert_eq!(regional.len(), 4);
-    assert_eq!(
-        regional.iter().copied().collect::<BTreeSet<_>>().len(),
-        4,
-        "{regional:?}"
-    );
 
+    // Several languages may use the same installed face. Compare each span to
+    // a fresh context with that language and its own platform selections.
     for (tag, expected) in ["zh-Hans", "zh-Hant", "ja", "ko"].into_iter().zip(regional) {
         let localized = context.clone().with_language(tag);
         assert_ne!(localized.identity(), context.identity());
         assert_text_advance_and_faces(&localized, "Cousine", "骨");
-        assert_eq!(
-            localized.selected_faces(),
-            [format!("{expected}#0")],
-            "{tag}"
-        );
+        let selected = localized.selected_faces();
+        let [face] = selected.as_slice() else {
+            panic!("{tag}: expected one fallback face, got {selected:?}");
+        };
+        assert_eq!(face.rsplit_once('#').unwrap().0, expected, "{tag}");
     }
 }
 

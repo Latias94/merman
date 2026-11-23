@@ -267,6 +267,39 @@ fn equivalent_inherited_and_default_languages_keep_the_ligature() {
 }
 
 #[test]
+fn inherited_and_overridden_languages_select_their_own_fallbacks() {
+    let mut options = options(BASE);
+    let inherited = load(options.fontdb_mut(), FULL);
+    let overridden = load(
+        options.fontdb_mut(),
+        include_bytes!("fonts/NotoSansSC-subset.ttf"),
+    );
+    options.set_text_fallback(
+        Some("ja".into()),
+        Some(Box::new(move |_, cluster, language, _, _, _| {
+            assert_eq!(cluster, "中");
+            let face = match language {
+                Some("zh-Hans") => inherited,
+                Some("zh-Hant") => overridden,
+                other => panic!("unexpected fallback language {other:?}"),
+            };
+            Some((face, 1.0))
+        })),
+    );
+    let tree = render(
+        &options,
+        r#"<tspan xml:lang="zh-Hans">中<tspan xml:lang="zh-Hant">中</tspan>中</tspan>"#,
+    );
+    assert_eq!(
+        glyphs(&tree)
+            .into_iter()
+            .map(|(id, ..)| id)
+            .collect::<Vec<_>>(),
+        [inherited, overridden, inherited]
+    );
+}
+
+#[test]
 fn fallback_receives_well_formed_language_tags() {
     for (tag, expected) in [
         ("ja-x", None),
