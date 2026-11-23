@@ -15,8 +15,8 @@ caller-memory rules.
 Starting with 0.9.3, the CLI uses two output defaults for Mermaid input. SVG keeps
 deterministic, font-agnostic measurement without system discovery. PNG/JPEG/PDF
 automatically use a native font context when the CLI `system-fonts` capability is
-compiled. The official Windows 0.11.0 archive queries the platform catalog on demand. macOS
-and Linux archives and default Cargo builds use bounded system discovery before layout.
+compiled. The current archive profile queries the platform catalog on demand on Windows,
+macOS, and Linux. Default Cargo builds use bounded system discovery before layout.
 Measurement and painting share the selected context. Layout, wrapping, and image or PDF
 snapshots can change with the selected host fonts.
 

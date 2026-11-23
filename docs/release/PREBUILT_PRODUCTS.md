@@ -129,8 +129,9 @@ for commands, platform requirements, installed examples, and qualification.
 
 ## Fonts and Output Formats
 
-For CLI PNG, JPEG, and PDF, the official Windows archive uses platform font discovery by default.
-The macOS and Linux archives and ordinary Cargo installs default to bounded discovery. For a fixed
+For CLI PNG, JPEG, and PDF, the official Windows 0.11.0 archive uses platform font discovery by
+default. The macOS and Linux 0.11.0 archives and ordinary Cargo installs default to bounded discovery.
+Archives built from the current release profile select Platform on all three systems. For a fixed
 font set and quicker startup, pass `--font-file` for each required file and `--font-system off`.
 Ordinary Mermaid-to-SVG rendering uses deterministic measurement by default. [CLI font guide](../../crates/merman-cli/README.md#explicit-fonts)
 

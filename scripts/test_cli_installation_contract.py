@@ -186,7 +186,7 @@ class CliInstallationContractTests(unittest.TestCase):
         self.assertNotIn("math", defaults)
         self.assertIn("math", release)
         self.assertEqual(release, dist)
-        self.assertEqual(defaults, release - {"math", "windows-platform-font-default"})
+        self.assertEqual(defaults, release - {"math", "platform-system-font-default"})
 
     def test_default_features_must_match_release_features_except_math(self) -> None:
         with self.mutated_repository(

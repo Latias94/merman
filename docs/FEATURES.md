@@ -175,9 +175,9 @@ service (Fontique on Windows/Linux, direct Core Text descriptors on macOS).
 discovery in builds with platform query support. `--font-system on` selects the
 build's default system provider. Automatic Mermaid encoded output uses the same
 provider when no explicit fonts or font policy are supplied. The official release
-recipe selects `windows-platform-font-default`, which provides both policy options
-and makes platform discovery the default on Windows. Cargo source defaults continue
-to use bounded discovery.
+recipe selects `platform-system-font-default`, which provides both policy options
+and makes platform discovery the default on Windows, macOS, and Linux. Cargo
+source defaults use bounded discovery.
 
 On Linux/FreeBSD, platform discovery distinguishes an unavailable Fontconfig runtime
 from an available runtime with an empty configured font set. In a build whose default

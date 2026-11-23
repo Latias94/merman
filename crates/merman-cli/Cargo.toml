@@ -41,6 +41,7 @@ features = [
     "network-icons",
     "parallel-markdown",
     "pdf",
+    "platform-system-font-default",
     "png",
     "rustdoc",
     "shell-completions",
@@ -50,7 +51,6 @@ features = [
     "system-random",
     "system-timezone",
     "system-timing",
-    "windows-platform-font-default",
 ]
 
 [package.metadata.binstall]
@@ -347,8 +347,10 @@ svg = [
 native-fonts = ["svg", "merman/native-fonts"]
 system-fonts = ["native-fonts", "merman/system-fonts"]
 platform-system-font-query = ["system-fonts", "merman/experimental-system-font-query"]
-experimental-system-font-query = ["platform-system-font-query"]
-# The complete release uses the workspace's qualified usvg fallback on Windows.
+# The archive recipe opts into the platform provider for native exports.
+platform-system-font-default = ["platform-system-font-query"]
+experimental-system-font-query = ["platform-system-font-default"]
+# Keep the Windows-only opt-in available to existing source builds.
 windows-platform-font-default = ["platform-system-font-query"]
 ascii = ["dep:atomic-write-file", "dep:ctrlc", "dep:same-file", "merman/ascii"]
 # Native CLI codecs retain host font discovery; library codecs do not select it.

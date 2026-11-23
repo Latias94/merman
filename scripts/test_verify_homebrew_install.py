@@ -122,8 +122,8 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
             self.assertEqual(native["default_system_discovery"], "disabled")
             self.assertEqual(native["encoded_output_defaults"], {
                 "measurement": "native",
-                "font_source": "bounded-system-discovery",
-                "system_discovery": "before-layout",
+                "font_source": "platform-managed-system-query",
+                "system_discovery": "platform-initialization-then-on-demand-families",
             })
             self.assertEqual(fixture.capabilities["schema_version"], 2)
             self.assertEqual(fixture.capabilities["cli_contract_version"], 8)
@@ -543,10 +543,10 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
         rejected_values = {
             "measurement": ("deterministic", "unknown", None, [], {}, True, 1),
             "font_source": (
-                "none", "platform-managed-system-query", "unknown", None, [], {}, True, 1,
+                "none", "bounded-system-discovery", "unknown", None, [], {}, True, 1,
             ),
             "system_discovery": (
-                "disabled", "first-use", "platform-initialization-then-on-demand-families",
+                "disabled", "first-use", "before-layout",
                 "unknown", None, [], {}, True, 1,
             ),
         }
@@ -580,8 +580,8 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
             },
             {
                 "measurement": "native",
-                "font_source": "platform-managed-system-query",
-                "system_discovery": "platform-initialization-then-on-demand-families",
+                "font_source": "bounded-system-discovery",
+                "system_discovery": "before-layout",
             },
         ):
             with self.subTest(defaults=defaults), self.installation_fixture() as fixture:
@@ -686,8 +686,8 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                 result = fixture.run(command, **kwargs)
                 if command[1:] == ["capabilities", "--json"]:
                     result.stdout = result.stdout.replace(
-                        b'"system_resources_bounded": true',
-                        b'"system_resources_bounded": false, "system_resources_bounded": true',
+                        b'"system_resources_bounded": false',
+                        b'"system_resources_bounded": true, "system_resources_bounded": false',
                         1,
                     )
                 return result

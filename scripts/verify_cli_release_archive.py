@@ -114,6 +114,10 @@ __all__ = (
 PACKAGE_NAME = "merman-cli"
 CAPABILITIES_SCHEMA_VERSION = 2
 SVG_SMOKE_SOURCE = b"flowchart LR\nA --> B\n"
+MACOS_FONT_SMOKE_SOURCE = (
+    '---\nconfig:\n  fontFamily: Arial\n  htmlLabels: false\n---\n'
+    'flowchart LR\nA["Latin 中文 日本語 한글"] --> B["AVA"]\n'
+).encode()
 RUSTDOC_SMOKE_SOURCE = (
     b"# Release archive Rustdoc smoke test\n\n"
     b"```mermaid\nflowchart LR\nA --> B\n```\n"
@@ -398,7 +402,7 @@ def _cli_release_runtime_ids(
     _require_exact_json(
         "cli-release cargo.features",
         cargo_features,
-        sorted(["all-diagrams", "system-fonts", "windows-platform-font-default", *runtime_ids]),
+        sorted(["all-diagrams", "platform-system-font-default", "system-fonts", *runtime_ids]),
     )
     for label, values in (
         ("cli-release expected runtime_ids", runtime_ids),
@@ -794,6 +798,22 @@ def verify_runtime_contract(
             label=f"minimal {output_format.upper()} render",
         )
         validator(payload)
+
+    if target.endswith("-apple-darwin"):
+        args = [command, "render", "--format", "png", "--svg-id=font-smoke", "-"]
+        rendered = []
+        for options in ([], ["--font-system=platform"]):
+            result = run_checked(
+                args + options,
+                stdin=MACOS_FONT_SMOKE_SOURCE,
+                cwd=binary.parent,
+                runner=runner,
+            )
+            png = _require_quiet_success(result, label="macOS mixed-script PNG render")
+            _validate_png(png)
+            rendered.append(png)
+        if rendered[0] != rendered[1]:
+            raise ArchiveVerificationError("macOS default and explicit platform PNGs differ")
 
     if "rustdoc" in expected_capabilities["commands"]:
         _verify_rustdoc_runtime(command, runner=runner)

@@ -110,6 +110,7 @@ class CliProcessMatrixTests(unittest.TestCase):
         }
         expected_defaults = public_features - diagram_selectors - {
             "experimental-system-font-query",
+            "platform-system-font-default",
             "platform-system-font-query",
             "math",
             "windows-platform-font-default",
@@ -127,7 +128,7 @@ class CliProcessMatrixTests(unittest.TestCase):
         self.assertIn("rustdoc", features["default"])
         self.assertNotIn("math", features["default"])
         self.assertIn("math", CLI_RELEASE_FEATURES)
-        self.assertIn("windows-platform-font-default", CLI_RELEASE_FEATURES)
+        self.assertIn("platform-system-font-default", CLI_RELEASE_FEATURES)
 
     def test_unlocked_commands_project_every_selection_exactly(self) -> None:
         self.assertListEqual(

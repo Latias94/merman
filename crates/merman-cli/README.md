@@ -163,11 +163,11 @@ library behavior. For embedded integrations, use the
 
 Current-source default builds and the official release profile include
 `native-fonts` and `system-fonts`. Mermaid SVG keeps deterministic, font-agnostic
-measurement by default. For Mermaid PNG/JPEG/PDF, the Windows release archive
-queries the platform font catalog on demand and shares the selected fonts between
-native measurement and painting. Source defaults and release archives on other
-platforms use bounded system discovery. Font selection can change wrapping, node
-sizes, and image/PDF output across hosts or discovery providers.
+measurement by default. The current release profile queries system fonts through
+DirectWrite on Windows, Core Text on macOS, and Fontconfig on Linux for Mermaid
+PNG/JPEG/PDF. Measurement and painting share the selected fonts. Default Cargo
+builds use bounded discovery. Font selection can change wrapping, node sizes, and
+image/PDF output across hosts or discovery providers.
 
 With those CLI capabilities compiled:
 
@@ -231,9 +231,10 @@ merman-cli render diagram.mmd --output diagram.svg --font-measurement native
 
 Release archives and builds with the `platform-system-font-query` feature offer
 `--font-system platform` and `--font-system bounded`. `--font-system on` uses the
-build's default provider. When exporting Mermaid to PNG, JPEG, or PDF, the official Windows archive
-defaults to Platform. macOS and Linux archives and default Cargo builds use bounded discovery. Platform
-queries find fonts on demand, and their metadata queries run outside Merman's scan budgets.
+build's default provider. The current release profile selects Platform. On Linux,
+the default and `on` retry with bounded discovery if the Fontconfig runtime cannot
+load. An explicit `platform` request reports the load error. Platform metadata
+queries run outside Merman's scan budgets.
 Selected font bytes have acquisition limits and serve both measurement and painting. On Windows,
 an unsupported named variable family may fall through to the next family in the requested stack.
 See [Optional CLI fonts](../../docs/FEATURES.md#optional-cli-fonts).
@@ -686,7 +687,7 @@ For native-font builds, `native_fonts.default_policy_scope` is `mermaid-svg-inpu
 `deterministic`, `none`, and `disabled`. The additive `encoded_output_defaults`
 object reports `measurement: "native"`, `font_source: "bounded-system-discovery"`,
 and `system_discovery: "before-layout"` in source-default builds with `system-fonts`.
-The Windows release archive reports `platform-managed-system-query` and
+Current release-profile builds report `platform-managed-system-query` and
 `platform-initialization-then-on-demand-families` for the encoded font source and
 discovery policy. Without `system-fonts`, the three values are `deterministic`, `none`,
 and `disabled`. Explicit font sources enable native measurement with a closed set.

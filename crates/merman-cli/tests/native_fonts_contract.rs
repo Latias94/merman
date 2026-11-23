@@ -1056,12 +1056,21 @@ fn explicit_platform_query_uses_shared_context_and_respects_explicit_fonts() {
 #[cfg(all(
     feature = "png",
     any(
-        all(windows, feature = "windows-platform-font-default"),
+        all(
+            windows,
+            any(
+                feature = "platform-system-font-default",
+                feature = "windows-platform-font-default"
+            )
+        ),
         all(target_os = "linux", feature = "platform-system-font-query")
     )
 ))]
 mod large_font_inventory {
-    use std::{fs, path::Path};
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+    };
     use write_fonts::read::FontRef;
     use write_fonts::tables::cmap::{
         Cmap, CmapSubtable, EncodingRecord, PlatformId, SequentialMapGroup,
@@ -1116,11 +1125,13 @@ mod large_font_inventory {
             .join(if cfg!(windows) { "Fonts" } else { "fonts" });
         fs::create_dir(&fonts).unwrap();
         populate_inventory(&fonts);
+        let cjk_font =
+            super::repo_root().join("crates/merman-export/tests/fonts/NotoSansSC-subset.ttf");
 
         let config_contents = if cfg!(windows) {
             r#"{"look":"classic"}"#
         } else {
-            r#"{"look":"classic","fontFamily":"Cousine"}"#
+            r#"{"look":"classic","fontFamily":"Cousine","htmlLabels":false}"#
         };
         let config = temp.path().join("classic.json");
         fs::write(&config, config_contents).unwrap();
@@ -1129,6 +1140,7 @@ mod large_font_inventory {
         if cfg!(target_os = "linux") {
             // Give Fontconfig access to the same large inventory that bounded discovery scans.
             fs::copy(super::font(), fonts.join("Cousine-Regular.ttf")).unwrap();
+            fs::copy(&cjk_font, fonts.join("NotoSansSC-subset.ttf")).unwrap();
             fs::write(
                 &fontconfig,
                 r#"<?xml version="1.0"?>
@@ -1141,8 +1153,16 @@ mod large_font_inventory {
             .unwrap();
         }
 
+        let binary = std::env::var_os("MERMAN_TEST_FONT_INVENTORY_CLI_BIN")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| assert_cmd::cargo_bin!("merman-cli").to_path_buf());
+        let source = if cfg!(target_os = "linux") {
+            "flowchart LR\nA[Draft 中] --> B[Review]\n"
+        } else {
+            "flowchart LR\nA[Draft] --> B[Review]\n"
+        };
         let render = |extra: &[&str]| {
-            let mut command = assert_cmd::Command::new(assert_cmd::cargo_bin!("merman-cli"));
+            let mut command = assert_cmd::Command::new(&binary);
             if cfg!(windows) {
                 // DirectWrite queries the system catalog independently of the scan roots.
                 command
@@ -1156,10 +1176,10 @@ mod large_font_inventory {
             }
             command
                 .args(["-i", "-", "-o", "-", "-e", "png", "-t", "default"])
-                .args(["-b", "#FFFFFF", "-s", "2", "-q", "-c"])
+                .args(["-b", "#FFFFFF", "-s", "2", "-c"])
                 .arg(&config)
                 .args(extra)
-                .write_stdin("flowchart LR\nA[Draft] --> B[Review]\n")
+                .write_stdin(source)
                 .output()
                 .unwrap()
         };
@@ -1181,15 +1201,27 @@ mod large_font_inventory {
         );
         assert!(platform.stdout.starts_with(b"\x89PNG\r\n\x1a\n"));
         if cfg!(target_os = "linux") {
-            let explicit_font = render(&["--font-file", &super::font()]);
+            let explicit_font = render(&[
+                "--font-file",
+                &super::font(),
+                "--font-file",
+                cjk_font.to_str().unwrap(),
+            ]);
             assert!(
                 explicit_font.status.success(),
                 "{}",
                 String::from_utf8_lossy(&explicit_font.stderr)
             );
+            for output in [&platform, &explicit_font] {
+                let diagnostic = String::from_utf8_lossy(&output.stderr);
+                assert!(
+                    !diagnostic.contains("native export font resolution is incomplete"),
+                    "{diagnostic}"
+                );
+            }
             assert_eq!(platform.stdout, explicit_font.stdout);
         }
-        if cfg!(any(windows, feature = "experimental-system-font-query")) {
+        if cfg!(any(windows, feature = "platform-system-font-default")) {
             let default = render(&[]);
             assert!(
                 default.status.success(),
@@ -1210,27 +1242,28 @@ fn empty_fontconfig_policy_does_not_trigger_bounded_fallback() {
     std::fs::write(&config, "<?xml version=\"1.0\"?><fontconfig><dir prefix=\"relative\">empty</dir><cachedir prefix=\"relative\">cache</cachedir></fontconfig>").unwrap();
     let input = temp.path().join("input.mmd");
     std::fs::write(&input, "flowchart LR\nA[Empty font policy]\n").unwrap();
-    let mut modes = vec!["platform"];
-    if cfg!(feature = "experimental-system-font-query") {
-        modes.push("on");
+    let mut modes = vec![Some("platform")];
+    if cfg!(feature = "platform-system-font-default") {
+        modes.extend([Some("on"), None]);
     }
     for mode in modes {
-        let output = std::process::Command::new(assert_cmd::cargo_bin!("merman-cli"))
+        let mut command = std::process::Command::new(assert_cmd::cargo_bin!("merman-cli"));
+        command
             .arg("render")
             .arg(&input)
-            .args([
-                "--output=-",
-                "--font-measurement=native",
-                "--font-system",
-                mode,
-            ])
-            .env("FONTCONFIG_FILE", &config)
-            .output()
-            .unwrap();
+            .args(["--output=-", "--font-measurement=native"])
+            .env("FONTCONFIG_FILE", &config);
+        if let Some(mode) = mode {
+            command.args(["--font-system", mode]);
+        }
+        let output = command.output().unwrap();
         let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(!output.status.success(), "{mode}: {stderr}");
-        assert!(output.stdout.is_empty(), "{mode}");
-        assert!(stderr.contains("no usable font faces"), "{mode}: {stderr}");
+        assert!(!output.status.success(), "{mode:?}: {stderr}");
+        assert!(output.stdout.is_empty(), "{mode:?}");
+        assert!(
+            stderr.contains("no usable font faces"),
+            "{mode:?}: {stderr}"
+        );
     }
 }
 
@@ -1265,7 +1298,7 @@ fn capabilities_disclose_shared_coverage_and_cli_discovery_policy() {
     assert_eq!(native["default_system_discovery"], "disabled");
     assert_eq!(native["default_policy_scope"], "mermaid-svg-input");
     let platform_default = cfg!(any(
-        feature = "experimental-system-font-query",
+        feature = "platform-system-font-default",
         all(windows, feature = "windows-platform-font-default")
     ));
     let expected_encoded = if platform_default {

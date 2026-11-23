@@ -150,11 +150,15 @@ def release_capabilities_subcontract(
     SVG defaults stay deterministic. Native encoded output uses the artifact's
     default provider for the target platform.
     """
-    platform_default = "experimental-system-font-query" in cargo_features or (
+    platform_default = bool(cargo_features & {
+        "experimental-system-font-query",
+        "platform-system-font-default",
+    }) or (
         windows and "windows-platform-font-default" in cargo_features
     )
     platform_compiled = bool(cargo_features & {
         "experimental-system-font-query",
+        "platform-system-font-default",
         "platform-system-font-query",
         "windows-platform-font-default",
     })
