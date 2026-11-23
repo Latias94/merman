@@ -169,3 +169,29 @@ jobs:
           version="$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])')"
           docker build --file distribution/container/Dockerfile --tag merman-cli:ci container-context
           python3 scripts/cli_container_smoke.py merman-cli:ci --version "$version"
+
+      - name: Check the archived CLI without the Fontconfig runtime
+        run: |
+          docker run --rm -i --network none --user 0 --workdir /tmp --entrypoint sh merman-cli:ci -eu <<'SH'
+          rm /usr/lib/*-linux-gnu/libfontconfig.so.*
+          test -s /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
+          printf '%s\n' '---' 'config:' '  fontFamily: DejaVu Sans' '  htmlLabels: false' \
+            '---' 'flowchart LR' 'A[Font fallback] --> B[Ready]' > input.mmd
+          render() {
+            merman-cli render input.mmd --format png --output=- --svg-id=font-fallback "$@"
+          }
+
+          render --font-system=bounded > bounded.png
+          render > default.png
+          render --font-system=on > on.png
+          printf '\211PNG\r\n\032\n' > signature
+          head -c 8 bounded.png | cmp - signature
+          cmp bounded.png default.png
+          cmp bounded.png on.png
+
+          status=0
+          render --font-system=platform > platform.png 2> platform.err || status=$?
+          test "$status" -eq 3
+          test ! -s platform.png
+          grep -F 'platform system font service Fontconfig is unavailable' platform.err
+          SH

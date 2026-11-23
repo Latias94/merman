@@ -40,8 +40,24 @@ fn primary_stdin_accepts_exact_source_limit_and_rejects_one_more_byte() {
     assert_eq!(exit_code(oversized.status), 1);
     assert!(oversized.stdout.is_empty());
     let stderr = utf8(&oversized.stderr);
-    assert!(stderr.contains("max_source_bytes"), "{stderr}");
-    assert!(stderr.contains(&(SOURCE.len() + 1).to_string()), "{stderr}");
+    assert!(
+        stderr.contains(&format!("at least {} bytes", SOURCE.len() + 1)),
+        "{stderr}"
+    );
+    assert!(stderr.contains("full input size is unknown"), "{stderr}");
+    assert!(
+        stderr.contains("replacing any existing max_source_bytes"),
+        "{stderr}"
+    );
+    let (_, hint) = stderr
+        .split_once("`--resource-limit ")
+        .expect("retry option");
+    let (retry, _) = hint.split_once('`').expect("end of retry option");
+    let retried = run_with_stdin(
+        &["parse", "-", "--resource-limit", retry],
+        &oversized_source,
+    );
+    assert!(retried.status.success(), "{}", utf8(&retried.stderr));
 }
 
 #[test]
@@ -49,21 +65,26 @@ fn primary_file_length_hint_rejects_before_reading_content() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let input = tmp.path().join("diagram.mmd");
     fs::write(&input, SOURCE).expect("write source");
+    let retry_option = format!("`--resource-limit max_source_bytes={}`", SOURCE.len());
 
-    let output = Command::new(cargo_bin!("merman-cli"))
-        .args([
-            "parse",
-            input.to_str().expect("UTF-8 temp path"),
-            "--resource-limit",
-            "max_source_bytes=4",
-        ])
-        .output()
-        .expect("run cli");
+    for command in ["parse", "detect", "render"] {
+        let output = Command::new(cargo_bin!("merman-cli"))
+            .arg(command)
+            .arg(&input)
+            .args(["--resource-limit", "max_source_bytes=4"])
+            .output()
+            .expect("run cli");
 
-    assert_eq!(exit_code(output.status), 1);
-    let stderr = utf8(&output.stderr);
-    assert!(stderr.contains(&SOURCE.len().to_string()), "{stderr}");
-    assert!(!stderr.contains("at least"), "{stderr}");
+        assert_eq!(exit_code(output.status), 1, "{command}");
+        assert!(output.stdout.is_empty(), "{command}");
+        let stderr = utf8(&output.stderr);
+        assert!(
+            stderr.contains(&format!("is {} bytes", SOURCE.len())),
+            "{stderr}"
+        );
+        assert!(stderr.contains(&retry_option), "{stderr}");
+        assert!(!stderr.contains("at least"), "{stderr}");
+    }
 }
 
 #[test]
@@ -88,7 +109,7 @@ fn lint_json_projects_streaming_source_overflow_as_a_resource_diagnostic() {
             "--resource-limit",
             "max_source_bytes=4",
         ],
-        "12345",
+        SOURCE,
     );
 
     assert_eq!(exit_code(output.status), 1);
@@ -98,7 +119,17 @@ fn lint_json_projects_streaming_source_overflow_as_a_resource_diagnostic() {
     assert_eq!(diagnostic["id"], "merman.resource.source_bytes_exceeded");
     assert_eq!(diagnostic["category"], "resource");
     assert_eq!(diagnostic["code_name"], "MERMAN_RESOURCE_LIMIT_EXCEEDED");
+    let message = diagnostic["message"].as_str().expect("diagnostic message");
+    assert!(message.contains("at least 5 bytes"), "{message}");
     assert_eq!(payload["valid"], false);
+
+    let text = run_with_stdin(
+        &["lint", "-", "--resource-limit", "max_source_bytes=4"],
+        SOURCE,
+    );
+    assert_eq!(exit_code(text.status), 1);
+    assert!(text.stderr.is_empty());
+    assert!(utf8(&text.stdout).contains(message));
 }
 
 #[test]
@@ -163,7 +194,12 @@ fn css_and_puppeteer_files_use_their_owned_limits() {
     fs::write(&css, "a{ }").expect("write oversized CSS");
     let css_oversized = run_with_stdin(&css_args, SOURCE);
     assert_eq!(exit_code(css_oversized.status), 2);
-    assert!(utf8(&css_oversized.stderr).contains("CSS file"));
+    let stderr = utf8(&css_oversized.stderr);
+    assert!(stderr.contains("CSS file"), "{stderr}");
+    assert!(
+        stderr.contains("--resource-limit max_css_bytes=4"),
+        "{stderr}"
+    );
 
     let puppeteer = tmp.path().join("puppeteer.json");
     fs::write(&puppeteer, "{}").expect("write Puppeteer config");
@@ -203,7 +239,12 @@ fn css_and_puppeteer_files_use_their_owned_limits() {
         SOURCE,
     );
     assert_eq!(exit_code(puppeteer_oversized.status), 2);
-    assert!(utf8(&puppeteer_oversized.stderr).contains("Puppeteer configuration file"));
+    let stderr = utf8(&puppeteer_oversized.stderr);
+    assert!(stderr.contains("Puppeteer configuration file"), "{stderr}");
+    assert!(
+        stderr.contains("--resource-limit max_puppeteer_config_bytes=4"),
+        "{stderr}"
+    );
 }
 
 #[test]
@@ -272,7 +313,9 @@ fn local_icon_bodies_enforce_individual_and_aggregate_limits() {
         SOURCE,
     );
     assert_eq!(exit_code(aggregate.status), 2);
-    assert!(utf8(&aggregate.stderr).contains("max_aggregate_icon_bytes"));
+    let stderr = utf8(&aggregate.stderr);
+    assert!(stderr.contains("max_aggregate_icon_bytes"), "{stderr}");
+    assert!(!stderr.contains("--resource-limit"), "{stderr}");
 }
 
 #[test]

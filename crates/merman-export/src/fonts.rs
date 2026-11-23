@@ -21,7 +21,7 @@ use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 
 #[cfg(all(
     feature = "experimental-system-font-query",
@@ -50,8 +50,8 @@ pub enum FontSource {
 pub struct NativeFontLimits {
     /// Maximum input sources, including duplicate files or memory buffers.
     pub max_files: usize,
-    /// Explicit input bytes are charged before content deduplication. Selected system
-    /// data is also bounded; macOS can retain a standalone face instead of its whole TTC.
+    /// Font data budget (default: 256 MiB). Explicit inputs are checked before deduplication.
+    /// Selected system data shares the resident budget with the retained explicit sources.
     pub max_bytes: usize,
     pub max_faces: usize,
     pub max_directory_entries: usize,
@@ -81,7 +81,7 @@ impl Default for NativeFontLimits {
     fn default() -> Self {
         Self {
             max_files: 256,
-            max_bytes: 64 * 1024 * 1024,
+            max_bytes: 256 * 1024 * 1024,
             max_faces: 1024,
             max_directory_entries: 16_384,
             max_directory_depth: 16,
@@ -198,7 +198,7 @@ pub enum NativeFontError {
         "platform system font service {service} is unavailable; select bounded discovery or provide explicit fonts"
     )]
     PlatformDiscoveryUnavailable { service: &'static str },
-    #[error("explicit font sources contain no usable font faces")]
+    #[error("selected font sources contain no usable font faces")]
     EmptyFontSet,
     #[error("font source {path}: {message}")]
     Source { path: PathBuf, message: String },
@@ -214,6 +214,27 @@ pub enum NativeFontError {
     Measurement(String),
     #[error("the selected fonts cannot shape this label")]
     MissingGlyphCoverage,
+}
+
+impl NativeFontError {
+    /// Stable resource ID, first rejected total, and configured ceiling for a quota failure.
+    pub fn resource_limit(&self) -> Option<(&'static str, u64, u64)> {
+        let Self::Limit {
+            resource,
+            actual,
+            limit,
+        } = self
+        else {
+            return None;
+        };
+        let id = match *resource {
+            "font-bytes" | "system-font-bytes" => "native_font_bytes",
+            "label-bytes" => "native_font_label_bytes",
+            "measurements" => "native_font_measurements",
+            _ => "native_font_resources",
+        };
+        Some((id, *actual as u64, *limit as u64))
+    }
 }
 
 /// Shared font bytes and selection policy for text measurement and native export.
@@ -326,6 +347,7 @@ struct FontContextInner {
     #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
     sources: registry::FontSourceRegistry,
     default_family: String,
+    language: Option<String>,
     identity: String,
     limits: NativeFontLimits,
     control: OperationControl,
@@ -361,6 +383,18 @@ struct ProbeSemantics {
 }
 
 impl NativeFontContext {
+    /// Sets the default BCP 47 language for native measurements and untagged SVG text.
+    /// An empty string restores the platform preference. SVG `xml:lang` overrides
+    /// this default when the renderer supports language-aware shaping.
+    #[must_use]
+    pub fn with_language(self, language: impl Into<String>) -> Self {
+        let mut inner = self.operation_inner(&self.0.control);
+        let language = language.into();
+        inner.language = (!language.is_empty()).then_some(language);
+        inner.update_policy_identity(self.strict_glyph_coverage());
+        Self(Arc::new(inner))
+    }
+
     /// Admits owned OpenType buffers in caller order without filesystem or system discovery.
     ///
     /// Files and buffers share byte validation, deduplication, face ceilings, and identity
@@ -407,13 +441,7 @@ impl NativeFontContext {
             strict_glyph_coverage: enabled,
             ..Default::default()
         });
-        const SUFFIX: &str = "/strict-glyph-coverage-v1";
-        if let Some(identity) = inner.identity.strip_suffix(SUFFIX) {
-            inner.identity = identity.to_owned();
-        }
-        if enabled {
-            inner.identity.push_str(SUFFIX);
-        }
+        inner.update_policy_identity(enabled);
         Self(Arc::new(inner))
     }
 
@@ -468,11 +496,13 @@ impl NativeFontContext {
     ) {
         options.fontdb = Arc::clone(&self.0.database);
         options.font_family.clone_from(&self.0.default_family);
-        options.font_resolver = super::browser_like_font_resolver(Arc::clone(&self.0.selection));
         #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         if self.0.discovery.is_some() {
-            options.font_resolver = resolver::resolver(self.clone(), control.clone(), None);
+            resolver::install_resolver(options, self.clone(), control.clone(), None);
+            return;
         }
+        options.font_resolver = super::browser_like_font_resolver(Arc::clone(&self.0.selection));
+        options.set_text_fallback(self.0.language.clone(), None);
         #[cfg(not(all(feature = "system-fonts", not(target_family = "wasm"))))]
         let _ = control;
     }
@@ -486,13 +516,19 @@ impl NativeFontContext {
         let observer = NativeExportFontObserver::new(&self.0.database);
         options.fontdb = Arc::clone(&self.0.database);
         options.font_family.clone_from(&self.0.default_family);
-        options.font_resolver =
-            native_export_font_resolver(observer.clone(), Arc::clone(&self.0.selection));
         #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         if self.0.discovery.is_some() {
-            options.font_resolver =
-                resolver::resolver(self.clone(), control.clone(), Some(observer.clone()));
+            resolver::install_resolver(
+                options,
+                self.clone(),
+                control.clone(),
+                Some(observer.clone()),
+            );
+            return observer;
         }
+        options.font_resolver =
+            native_export_font_resolver(observer.clone(), Arc::clone(&self.0.selection));
+        options.set_text_fallback(self.0.language.clone(), None);
         #[cfg(not(all(feature = "system-fonts", not(target_family = "wasm"))))]
         let _ = control;
         observer
@@ -516,10 +552,15 @@ impl NativeFontContext {
             database: Arc::clone(&self.0.database),
             selection: Arc::clone(&self.0.selection),
             #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
-            discovery: self.0.discovery.clone(),
+            discovery: self
+                .0
+                .discovery
+                .as_ref()
+                .map(resolver::DiscoveryProvider::for_operation),
             #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
             sources: self.0.sources.for_operation(),
             default_family: self.0.default_family.clone(),
+            language: self.0.language.clone(),
             identity: self.0.identity.clone(),
             limits: self.0.limits.clone(),
             control: control.clone(),
@@ -547,6 +588,7 @@ impl NativeFontContext {
             #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
             sources: self.0.sources.for_export()?,
             default_family: self.0.default_family.clone(),
+            language: self.0.language.clone(),
             identity: self.0.identity.clone(),
             limits: self.0.limits.clone(),
             control: control.clone(),
@@ -598,6 +640,65 @@ impl NativeFontContext {
 
 impl Eq for NativeFontContext {}
 
+impl FontContextInner {
+    fn update_policy_identity(&mut self, strict: bool) {
+        // Acquisition produces a hex digest. Mode-specific policy is appended after it.
+        if let Some(end) = self.identity.find('/') {
+            self.identity.truncate(end);
+        }
+        if let Some(language) = &self.language {
+            use std::fmt::Write;
+            self.identity.push_str("/font-language-v1=");
+            for byte in Sha256::digest(language.as_bytes()) {
+                let _ = write!(self.identity, "{byte:02x}");
+            }
+        }
+        if strict {
+            self.identity.push_str("/strict-glyph-coverage-v1");
+        }
+    }
+}
+
+type ClusterFallbackFn<'a> = Box<
+    dyn Fn(
+            &usvg::Font,
+            &str,
+            Option<&str>,
+            bool,
+            &[usvg::fontdb::ID],
+            &mut Arc<usvg::fontdb::Database>,
+        ) -> Option<(usvg::fontdb::ID, f32)>
+        + Send
+        + Sync
+        + 'a,
+>;
+
+// Registry consumers use the public scalar resolver. In workspace builds the
+// inherent usvg method takes precedence and installs the contextual callback.
+#[allow(dead_code)]
+trait TextFallbackOptions<'a> {
+    fn set_text_fallback(
+        &mut self,
+        _language: Option<String>,
+        _select: Option<ClusterFallbackFn<'a>>,
+    ) {
+    }
+}
+
+impl<'a> TextFallbackOptions<'a> for usvg::Options<'a> {}
+
+// Published usvg lacks the workspace hook for language-aware primary selection.
+#[cfg(feature = "experimental-system-font-query")]
+#[allow(dead_code)]
+trait FontSelectionLanguage {
+    fn selection_language(&self) -> Option<&str> {
+        None
+    }
+}
+
+#[cfg(feature = "experimental-system-font-query")]
+impl FontSelectionLanguage for usvg::Font {}
+
 fn native_export_font_resolver(
     observer: NativeExportFontObserver,
     selection: Arc<FontSelectionPolicy>,
@@ -643,7 +744,8 @@ struct FontLoader {
     bytes: usize,
     #[cfg(not(target_family = "wasm"))]
     entries: usize,
-    hashes: BTreeSet<Vec<u8>>,
+    // Sources own their bytes. A digest also remembers duplicates with no surviving face.
+    data_by_digest: BTreeMap<Vec<u8>, Weak<Vec<u8>>>,
     descriptors: BTreeSet<String>,
     hash: Sha256,
 }
@@ -722,7 +824,7 @@ impl FontLoader {
             not(target_family = "wasm")
         ))]
         if platform.is_some() {
-            loader.hash.update(b"\0platform-query/native/v5");
+            loader.hash.update(b"\0platform-query/native/v6");
         }
         #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         if let Some(catalog) = &system {
@@ -764,6 +866,7 @@ impl FontLoader {
             #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
             sources,
             default_family,
+            language: None,
             identity,
             limits: loader.limits,
             control: control.clone(),
@@ -786,7 +889,7 @@ impl FontLoader {
             bytes: 0,
             #[cfg(not(target_family = "wasm"))]
             entries: 0,
-            hashes: BTreeSet::new(),
+            data_by_digest: BTreeMap::new(),
             descriptors: BTreeSet::new(),
             hash: Sha256::new(),
         }
@@ -849,15 +952,8 @@ impl FontLoader {
             return Err(source_error(path, "expected a regular file, not a symlink"));
         }
         self.begin_source()?;
-        let remaining = self.limits.max_bytes.saturating_sub(self.bytes);
-        if metadata.len() > remaining as u64 {
-            return Err(limit_error(
-                "font-bytes",
-                self.bytes
-                    .saturating_add(usize::try_from(metadata.len()).unwrap_or(usize::MAX)),
-                self.limits.max_bytes,
-            ));
-        }
+        let budget = FontByteBudget::new("font-bytes", self.bytes, self.limits.max_bytes);
+        budget.check(metadata.len())?;
         let mut file = fs::File::open(path).map_err(|e| source_error(path, e))?;
         let mut bytes = Vec::new();
         let mut chunk = [0; 16 * 1024];
@@ -867,17 +963,27 @@ impl FontLoader {
             if count == 0 {
                 break;
             }
-            check_limit(
-                "font-bytes",
-                self.bytes.saturating_add(bytes.len()).saturating_add(count),
-                self.limits.max_bytes,
-            )?;
+            budget.check((bytes.len() as u64).saturating_add(count as u64))?;
             bytes.extend_from_slice(&chunk[..count]);
         }
         let admitted = self.admit_bytes(bytes, path)?;
         #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         if let Some(bytes) = admitted {
             let key = fs::canonicalize(path).map_err(|error| source_error(path, error))?;
+            if self
+                .source_aliases
+                .get(path)
+                .is_some_and(|first| first != &key)
+                || self
+                    .initial_sources
+                    .get(&key)
+                    .is_some_and(|first| !Arc::ptr_eq(first, &bytes))
+            {
+                return Err(source_error(
+                    path,
+                    "explicit font changed between reads; retry the operation",
+                ));
+            }
             self.source_aliases.insert(path.to_owned(), key.clone());
             self.initial_sources.insert(key, bytes);
         }
@@ -892,12 +998,13 @@ impl FontLoader {
         path: &Path,
     ) -> Result<Option<Arc<Vec<u8>>>, NativeFontError> {
         self.checkpoint()?;
-        self.bytes = self.bytes.saturating_add(bytes.len());
-        check_limit("font-bytes", self.bytes, self.limits.max_bytes)?;
+        FontByteBudget::new("font-bytes", self.bytes, self.limits.max_bytes)
+            .check(bytes.len() as u64)?;
+        self.bytes += bytes.len();
         let digest = Sha256::digest(&bytes).to_vec();
         self.checkpoint()?;
-        if !self.hashes.insert(digest.clone()) {
-            return Ok(None);
+        if let Some(previous) = self.data_by_digest.get(&digest) {
+            return Ok(previous.upgrade());
         }
         // Check collection cardinality before fontdb allocates or parses all its faces.
         let faces = rustybuzz::ttf_parser::fonts_in_collection(&bytes).unwrap_or(1) as usize;
@@ -936,6 +1043,7 @@ impl FontLoader {
                 self.selection.admit(id, &candidate, face.id);
             }
         }
+        self.data_by_digest.insert(digest, Arc::downgrade(&bytes));
         Ok(Some(bytes))
     }
 }
@@ -996,6 +1104,38 @@ fn limit_error(resource: &'static str, actual: usize, limit: usize) -> NativeFon
     }
 }
 
+/// Checks a growing source against the remaining allowance, reporting operation-wide totals.
+#[derive(Clone, Copy)]
+struct FontByteBudget {
+    resource: &'static str,
+    used: usize,
+    maximum: usize,
+}
+
+impl FontByteBudget {
+    fn new(resource: &'static str, used: usize, maximum: usize) -> Self {
+        Self {
+            resource,
+            used,
+            maximum,
+        }
+    }
+
+    fn remaining(self) -> usize {
+        self.maximum.saturating_sub(self.used)
+    }
+
+    fn check(self, source_bytes: u64) -> Result<(), NativeFontError> {
+        if source_bytes > self.remaining() as u64 {
+            let actual = self
+                .used
+                .saturating_add(usize::try_from(source_bytes).unwrap_or(usize::MAX));
+            return Err(limit_error(self.resource, actual, self.maximum));
+        }
+        Ok(())
+    }
+}
+
 fn check_limit(resource: &'static str, actual: usize, limit: usize) -> Result<(), NativeFontError> {
     if actual > limit {
         Err(limit_error(resource, actual, limit))
@@ -1018,25 +1158,14 @@ impl HostTextMeasurer for NativeFontContext {
             Ok(result) => Ok(Some(result)),
             Err(NativeFontError::MissingGlyphCoverage) if !self.strict_glyph_coverage() => Ok(None),
             Err(error) => {
-                if let NativeFontError::Limit {
-                    resource,
-                    actual,
-                    limit,
-                } = &error
-                {
-                    let id = match *resource {
-                        "label-bytes" => "native_font_label_bytes",
-                        "measurements" => "native_font_measurements",
-                        _ => "native_font_resources",
-                    };
-                    let maximum = u64::try_from(*limit).unwrap_or(u64::MAX);
+                if let Some((id, actual, maximum)) = error.resource_limit() {
                     control.terminate_resource_limit(OperationResourceLimitExceeded {
                         id,
                         phase: OperationPhase::Layout,
                         resource_phase: "native-font-measurement",
                         limit: maximum,
                         consumed: 0,
-                        requested: u64::try_from(*actual).unwrap_or(u64::MAX),
+                        requested: actual,
                         provenance: OperationResourceProvenance::new(
                             OperationResourceDomain::Render,
                             None,
@@ -1251,7 +1380,8 @@ impl NativeFontContext {
                 &style.font_family,
                 style.font_size.to_bits(),
                 &style.font_weight,
-                &style.font_style
+                &style.font_style,
+                &self.0.language,
             )
         );
         let mut state = self.0.state.lock().map_err(|_| {
@@ -1331,7 +1461,8 @@ impl NativeFontContext {
             .len()
             .saturating_add(style.font_family.as_deref().map_or(0, str::len))
             .saturating_add(style.font_weight.as_deref().map_or(0, str::len))
-            .saturating_add(style.font_style.as_deref().map_or(0, str::len));
+            .saturating_add(style.font_style.as_deref().map_or(0, str::len))
+            .saturating_add(self.0.language.as_deref().map_or(0, str::len));
         check_limit("label-bytes", label_bytes, self.0.limits.max_label_bytes)?;
         Ok(())
     }
@@ -1638,7 +1769,10 @@ mod tests {
                 "fi✓\u{e000}",
                 ["MermanProbeBase", "MermanProbePartial", "MermanProbeBase"],
             ),
-            ("fi✓中", ["MermanProbeFull"; 3]),
+            (
+                "fi✓中",
+                ["MermanProbeBase", "MermanProbePartial", "MermanProbeFull"],
+            ),
         ] {
             let control = OperationControl::new();
             let context = NativeFontContext::from_font_bytes(
@@ -1716,20 +1850,26 @@ mod tests {
                 let Some(usvg::Node::Text(text)) = tree.node_by_id("probe") else {
                     panic!("partial text must still be painted");
                 };
-                let expected = if include_text_fallback {
-                    "Cousine-Regular"
-                } else {
-                    "NotoSans-Regular"
-                };
+                let mut expected = BTreeSet::from(["NotoSans-Regular"]);
+                if include_text_fallback {
+                    expected.insert("Cousine-Regular");
+                }
                 let glyphs: Vec<_> = text
                     .layouted()
                     .iter()
                     .flat_map(|span| &span.positioned_glyphs)
                     .collect();
-                assert!(!glyphs.is_empty());
-                assert!(glyphs.iter().all(|glyph| {
-                    tree.fontdb().face(glyph.font).unwrap().post_script_name == expected
-                }));
+                let selected: BTreeSet<_> = glyphs
+                    .iter()
+                    .map(|glyph| {
+                        tree.fontdb()
+                            .face(glyph.font)
+                            .unwrap()
+                            .post_script_name
+                            .as_str()
+                    })
+                    .collect();
+                assert_eq!(selected, expected);
                 assert_eq!(observer.glyph_fallback_used(), include_text_fallback);
                 assert_eq!(observer.unresolved_glyph_fallback(), !include_text_fallback);
                 context.check().unwrap();
@@ -1780,6 +1920,7 @@ mod tests {
             #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
             sources: registry::FontSourceRegistry::new(BTreeMap::new(), BTreeMap::new(), 0, 0),
             default_family: "sans-serif".to_owned(),
+            language: None,
             identity: "test".to_owned(),
             limits,
             control: OperationControl::new(),

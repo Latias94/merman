@@ -86,9 +86,11 @@ optimization, changed runtime contract or different release baseline does not cl
    layout from native measurement and codec painting. Keep native, N-API, Node-WASM and browser lanes separate.
    The [native-font checkpoint](native_font_runtime_2026-11-22.md) records direct macOS queries,
    selected-face snapshots that repair CJK admission, and Linux handling that distinguishes
-   unavailable Fontconfig from an intentionally empty configuration. It confirms same-output
-   macOS improvements for two bounded/platform inputs and two previous/current platform inputs;
-   other registered rows remain diagnostic after failed A/A calibration. The
+   unavailable Fontconfig from an intentionally empty configuration. On macOS, two of three
+   inputs met the CLI probe's per-input timing margins in each comparison (two providers in
+   one executable, then platform across two frozen executables). These host-specific results
+   used eight A/B pairs per passing input. Repository-level revision confirmation requires a
+   clean baseline and a fresh schedule sized across the registered inputs. The
    [earlier checkpoint](platform_font_query_2026-11-22.md) retains its ordered-family Linux
    work evidence. Remaining interface work covers Fontconfig alias-preserving native matching,
    oversized bitmap emoji data, native variation instances, and the packaged renderer dependency

@@ -729,20 +729,26 @@ mod tests {
                 let Some(usvg::Node::Text(text)) = tree.node_by_id("probe") else {
                     panic!("partial text must still be painted");
                 };
-                let expected = if include_text_fallback {
-                    "Cousine-Regular"
-                } else {
-                    "NotoSans-Regular"
-                };
+                let mut expected = std::collections::BTreeSet::from(["NotoSans-Regular"]);
+                if include_text_fallback {
+                    expected.insert("Cousine-Regular");
+                }
                 let glyphs: Vec<_> = text
                     .layouted()
                     .iter()
                     .flat_map(|span| &span.positioned_glyphs)
                     .collect();
-                assert!(!glyphs.is_empty());
-                assert!(glyphs.iter().all(|glyph| {
-                    tree.fontdb().face(glyph.font).unwrap().post_script_name == expected
-                }));
+                let selected: std::collections::BTreeSet<_> = glyphs
+                    .iter()
+                    .map(|glyph| {
+                        tree.fontdb()
+                            .face(glyph.font)
+                            .unwrap()
+                            .post_script_name
+                            .as_str()
+                    })
+                    .collect();
+                assert_eq!(selected, expected);
                 let plan = environment
                     .plan
                     .finish_with_tree(&tree, &OperationControl::new())

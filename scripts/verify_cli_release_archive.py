@@ -706,6 +706,38 @@ def _validate_pdf(payload: bytes) -> None:
         raise ArchiveVerificationError("minimal PDF render has an invalid container signature")
 
 
+def _decode_macos_png(png: bytes) -> None:
+    # Converting to BMP forces the system decoder to read the PNG pixels.
+    with tempfile.TemporaryDirectory(prefix="merman-cli-png-") as temp_dir:
+        root = Path(temp_dir)
+        (root / "render.png").write_bytes(png)
+        decoded = root / "decoded.bmp"
+        result = run_checked(
+            ["/usr/bin/sips", "-s", "format", "bmp", "render.png", "--out", decoded.name],
+            stdin=b"", cwd=root, runner=subprocess.run,
+        )
+        if result.stderr or not decoded.is_file() or not decoded.stat().st_size:
+            raise ArchiveVerificationError("macOS mixed-script PNG could not be decoded")
+
+
+def _verify_macos_mixed_script_png(binary: Path, *, runner: CommandRunner) -> None:
+    def render(*options: str) -> bytes:
+        result = run_checked(
+            [str(binary), "render", "--format", "png", "--svg-id=font-smoke", "-", *options],
+            stdin=MACOS_FONT_SMOKE_SOURCE, cwd=binary.parent, runner=runner,
+        )
+        for line in result.stderr.splitlines():
+            if not options or not line.startswith((b"native fonts: ", b"native measurement faces: ")):
+                raise ArchiveVerificationError(f"macOS mixed-script PNG render emitted unexpected stderr: {line!r}")
+        _validate_png(result.stdout)
+        return result.stdout
+
+    default_png = render()
+    if render("--font-system=platform") != default_png:
+        raise ArchiveVerificationError("macOS default and explicit platform PNGs differ")
+    _decode_macos_png(default_png)
+
+
 def verify_runtime_contract(
     binary: Path,
     *,
@@ -800,20 +832,7 @@ def verify_runtime_contract(
         validator(payload)
 
     if target.endswith("-apple-darwin"):
-        args = [command, "render", "--format", "png", "--svg-id=font-smoke", "-"]
-        rendered = []
-        for options in ([], ["--font-system=platform"]):
-            result = run_checked(
-                args + options,
-                stdin=MACOS_FONT_SMOKE_SOURCE,
-                cwd=binary.parent,
-                runner=runner,
-            )
-            png = _require_quiet_success(result, label="macOS mixed-script PNG render")
-            _validate_png(png)
-            rendered.append(png)
-        if rendered[0] != rendered[1]:
-            raise ArchiveVerificationError("macOS default and explicit platform PNGs differ")
+        _verify_macos_mixed_script_png(binary, runner=runner)
 
     if "rustdoc" in expected_capabilities["commands"]:
         _verify_rustdoc_runtime(command, runner=runner)

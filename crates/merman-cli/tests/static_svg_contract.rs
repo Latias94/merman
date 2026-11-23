@@ -51,7 +51,14 @@ fn native_cli_encoders_default_to_static_generation() {
     let limits = ["--resource-limit", "max_svg_bytes=18000"];
     let full = render("svg", &limits, FLAT);
     assert!(!full.status.success());
-    assert!(String::from_utf8_lossy(&full.stderr).contains("max_svg_bytes"));
+    assert!(full.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&full.stderr);
+    let setting = stderr
+        .split_once("--resource-limit ")
+        .and_then(|(_, rest)| rest.split_whitespace().next())
+        .expect("retry option");
+    assert!(setting.starts_with("max_svg_bytes="), "{stderr}");
+    success(render("svg", &["--resource-limit", setting], FLAT));
     success(render(
         "svg",
         &[limits[0], limits[1], "--svg-pipeline", "static"],
@@ -97,6 +104,32 @@ fn static_generation_preserves_target_quotas() {
         let result = render("pdf", &["--pdf-max-filter-image-pixels", "1"], &source);
         assert!(!result.status.success());
         assert!(result.stdout.is_empty());
-        assert!(String::from_utf8_lossy(&result.stderr).contains("max_pdf_filter_image_pixels"));
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        assert!(
+            stderr.contains("--pdf-max-filter-image-pixels "),
+            "{stderr}"
+        );
+        assert!(!stderr.contains("--resource-limit"), "{stderr}");
     }
+}
+
+#[cfg(feature = "png")]
+#[test]
+fn embedded_image_byte_limit_suggests_a_working_export_option() {
+    const BLUE_PIXEL: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgYPgPAAEDAQAIicLsAAAAAElFTkSuQmCC";
+    let source = format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="20" height="20"><image xlink:href="data:image/png;base64,{BLUE_PIXEL}" width="20" height="20"/></svg>"#
+    );
+    let flag = "--embedded-image-max-bytes";
+    let limited = render("png", &["--input-kind=svg", flag, "3"], &source);
+    assert_eq!(limited.status.code(), Some(1));
+    assert!(limited.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&limited.stderr);
+    let value = stderr
+        .split_once("--embedded-image-max-bytes ")
+        .and_then(|(_, rest)| rest.split_whitespace().next())
+        .expect("embedded image retry value");
+    assert!(
+        success(render("png", &["--input-kind=svg", flag, value], &source)).starts_with(b"\x89PNG")
+    );
 }
