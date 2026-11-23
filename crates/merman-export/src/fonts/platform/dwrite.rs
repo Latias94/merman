@@ -541,15 +541,15 @@ mod tests {
         let mut base = database.faces().next().unwrap().clone();
         base.style = Style::Italic;
         let selection = fallback.lookup(GlyphFallback::from("AA"), &base).unwrap();
-        assert_eq!(selection.fallback_scale(), 1.5);
         let FontCandidate::File {
             path,
             index,
-            expected,
+            expected: super::super::ExpectedFace::Platform(expected),
         } = selection
         else {
             panic!("the private fallback mapping must select a file");
         };
+        assert_eq!(expected.fallback_scale, 1.5);
         assert_eq!(
             path.canonicalize().unwrap(),
             fixture.canonicalize().unwrap()

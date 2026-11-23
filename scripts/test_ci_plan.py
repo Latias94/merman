@@ -1151,7 +1151,7 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
             core,
         )
         self.assertIn(
-            "--test platform_font_context ${{ runner.os == 'macOS' && '--lib' || '' }} --run-ignored only",
+            "--test platform_font_context ${{ runner.os == 'macOS' && '--lib --test fallback_shaping' || '' }} --run-ignored only",
             core,
         )
         fontconfig = core.split("- name: Test automatic Fontconfig fallback on Linux\n", 1)[1].split("\n      - ", 1)[0]

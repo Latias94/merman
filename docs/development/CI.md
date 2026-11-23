@@ -43,7 +43,8 @@ The core, native Node, and SVG/browser owners publish separate same-run results 
 
 - `build-test` retains the Linux workspace suite, generated checks with their pinned
   DOMPurify/Node inputs, and the three-host font/platform contracts. Its macOS host-font
-  run includes the library tests for Core Text matching, snapshot identity, and selection reuse.
+  run includes Core Text matching, snapshot identity and selection reuse, plus host-font
+  shaping comparisons for right-to-left and Indic text.
   Linux exercises automatic CLI selection with both provider defaults, an empty Fontconfig
   configuration, and an unloadable Fontconfig library.
 - `feature-contracts` owns Linux representative feature builds, isolated consumers, compile-fail
