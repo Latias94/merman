@@ -522,6 +522,10 @@ jobs:
       - name: Test release platform font CLI policy on every host
         run: cargo nextest run --locked -p merman-cli --no-default-features --features diagram-flowchart,png,windows-platform-font-default --test native_fonts_contract --cargo-quiet
 
+      - name: Test automatic Fontconfig fallback on Linux
+        if: runner.os == 'Linux'
+        run: cargo nextest run --locked -p merman-cli --no-default-features --features diagram-flowchart,png,experimental-system-font-query --test native_fonts_contract -E 'test(=fontconfig_availability_controls_automatic_fallback)' --cargo-quiet
+
       - name: Test host-sensitive contracts on ordinary runs
         if: runner.os != 'Linux' && github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
         shell: bash

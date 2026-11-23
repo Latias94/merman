@@ -1097,7 +1097,7 @@ fn explicit_platform_query_uses_shared_context_and_respects_explicit_fonts() {
 
 #[cfg(all(target_os = "linux", feature = "platform-system-font-query"))]
 #[test]
-fn empty_fontconfig_policy_does_not_trigger_bounded_fallback() {
+fn fontconfig_availability_controls_automatic_fallback() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::create_dir(temp.path().join("empty")).unwrap();
     let config = temp.path().join("fonts.conf");
@@ -1108,14 +1108,30 @@ fn empty_fontconfig_policy_does_not_trigger_bounded_fallback() {
     std::fs::copy(font(), fonts.join("Cousine-Regular.ttf")).unwrap();
     let input = temp.path().join("input.mmd");
     std::fs::write(&input, "---\nconfig:\n  fontFamily: Cousine\n  htmlLabels: false\n---\nflowchart LR\nA[Empty font policy]\n").unwrap();
-    let render = |mode: Option<&str>| {
+    // Give only the child process an unloadable Fontconfig, keeping its other library paths.
+    std::fs::write(
+        temp.path().join("libfontconfig.so.1"),
+        b"unloadable test library",
+    )
+    .unwrap();
+    let mut library_dirs = vec![temp.path().to_owned()];
+    if let Some(paths) = std::env::var_os("LD_LIBRARY_PATH") {
+        library_dirs.extend(std::env::split_paths(&paths));
+    }
+    let unavailable_path = std::env::join_paths(library_dirs).unwrap();
+    let render = |mode: Option<&str>, library_path: Option<&std::ffi::OsStr>| {
         let mut command = std::process::Command::new(assert_cmd::cargo_bin!("merman-cli"));
-        command
-            .arg("render")
-            .arg(&input)
-            .args(["--output=-", "--font-measurement=native"]);
+        command.arg("render").arg(&input).arg("--output=-");
+        if cfg!(feature = "png") {
+            command.arg("--format=png");
+        } else {
+            command.arg("--font-measurement=native");
+        }
         if let Some(mode) = mode {
             command.args(["--font-system", mode]);
+        }
+        if let Some(path) = library_path {
+            command.env("LD_LIBRARY_PATH", path);
         }
         command
             .env("FONTCONFIG_FILE", &config)
@@ -1124,31 +1140,41 @@ fn empty_fontconfig_policy_does_not_trigger_bounded_fallback() {
             .output()
             .unwrap()
     };
-    let fontconfig_available = platform_fonts::context_with_cousine().is_some();
-    let empty_set = "no usable font faces";
-    let platform_error = if fontconfig_available {
-        empty_set
-    } else {
-        platform_fonts::FONTCONFIG_UNAVAILABLE
-    };
-    platform_fonts::assert_error(&render(Some("platform")), "platform", platform_error);
-
-    let bounded = render(Some("bounded"));
+    let bounded = render(Some("bounded"), None);
     let bounded_stderr = String::from_utf8_lossy(&bounded.stderr);
     assert!(bounded.status.success(), "{bounded_stderr}");
     assert!(!bounded.stdout.is_empty());
-    let bounded_notices = measurement_notices(&bounded_stderr);
-    assert!(!bounded_notices.is_empty(), "{bounded_stderr}");
-    for mode in [None, Some("on")] {
-        let output = render(mode);
-        let name = mode.unwrap_or("default");
-        if cfg!(feature = "experimental-system-font-query") && fontconfig_available {
-            platform_fonts::assert_error(&output, name, empty_set);
+    assert!(
+        !measurement_notices(&bounded_stderr).is_empty(),
+        "{bounded_stderr}"
+    );
+    for (library_path, available) in [
+        (None, platform_fonts::context_with_cousine().is_some()),
+        (Some(unavailable_path.as_os_str()), false),
+    ] {
+        let platform_error = if available {
+            "no usable font faces"
         } else {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            assert!(output.status.success(), "{name}: {stderr}");
-            assert_eq!(output.stdout, bounded.stdout, "{name}");
-            assert_eq!(measurement_notices(&stderr), bounded_notices, "{name}");
+            platform_fonts::FONTCONFIG_UNAVAILABLE
+        };
+        platform_fonts::assert_error(
+            &render(Some("platform"), library_path),
+            "platform",
+            platform_error,
+        );
+        for mode in [None, Some("on")] {
+            let output = render(mode, library_path);
+            let name = mode.unwrap_or("default");
+            if available && cfg!(feature = "experimental-system-font-query") {
+                platform_fonts::assert_error(&output, name, platform_error);
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                assert!(
+                    output.status.success(),
+                    "{name}, {platform_error}: {stderr}"
+                );
+                assert_eq!(output.stdout, bounded.stdout, "{name}, {platform_error}");
+            }
         }
     }
 }

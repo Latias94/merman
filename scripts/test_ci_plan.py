@@ -1154,6 +1154,10 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
             "--test platform_font_context ${{ runner.os == 'macOS' && '--lib' || '' }} --run-ignored only",
             core,
         )
+        fontconfig = core.split("- name: Test automatic Fontconfig fallback on Linux\n", 1)[1].split("\n      - ", 1)[0]
+        self.assertIn("if: runner.os == 'Linux'", fontconfig)
+        self.assertIn("diagram-flowchart,png,experimental-system-font-query --test native_fonts_contract", fontconfig)
+        self.assertIn("test(=fontconfig_availability_controls_automatic_fallback)", fontconfig)
         self.assertNotIn("verify_theme_acceptance_boundary.py", feature)
         self.assertNotIn("verify_theme_acceptance_boundary.py", theme)
         self.assertIn("Test preset qualification and family terminal behavior", theme)
