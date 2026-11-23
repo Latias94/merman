@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 pub const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
-pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:a3bbb4ef50e8882c0523aec5f4e8a0d748caac1b0cb1e1c669b3b7f90791c18a";
+pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:8957a869ae1112ea4a82880dd70d9e4aac90b86000872fd00566890b3a624aa8";
 
 pub const TARGET_IDS: &[&str] = &[
     "native",
@@ -721,7 +721,7 @@ pub const CAPABILITIES: &[CapabilityDescriptor] = &[
         id: "layout-shoal",
         kind: "engine",
         description: "Select the experimental Shoal layout for Flowchart, Agentflow, Class, State, ER, Requirement, and Usecase diagrams.",
-        targets: &[TargetKey::Native, ],
+        targets: &[TargetKey::Native, TargetKey::Web, ],
         implications: &[CapabilityKey::Svg, ],
     },
     CapabilityDescriptor {

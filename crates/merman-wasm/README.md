@@ -141,7 +141,7 @@ npm run build:wasm:full --prefix platforms/web
 - `editor` implies `analysis` and adds protocol-neutral editor sessions.
 - `ascii` adds supported terminal output.
 - `svg` adds browser SVG operations and JavaScript interop.
-- `layout-cytoscape`, `layout-elk`, and `math` imply `svg`.
+- `layout-cytoscape`, `layout-elk`, `layout-shoal`, and `math` imply `svg`.
 
 The complete `@mermanjs/web` package uses the `web-full` profile. Other public packages map to their
 own descriptor-owned profiles and contain exactly one matching WASM artifact. Profiles that list
@@ -149,7 +149,8 @@ own descriptor-owned profiles and contain exactly one matching WASM artifact. Pr
 part of the package contract.
 
 The ordinary `web-full` and `web-render` recipes explicitly include `math`, Cytoscape, and ELK.
-Custom Rust source builds select the positive `math` feature independently.
+Custom Rust source builds select the positive `math` feature independently. Local experimental
+WASM builds can enable `layout-shoal` with the desired diagram features to use Shoal SVG previews.
 
 ## License And Notices
 

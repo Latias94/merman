@@ -47,6 +47,8 @@ export interface AppState {
   // Editor state
   code: string;
   setCode: (code: string) => void;
+  documentRevision: number;
+  replaceDocument: (code: string) => void;
   mermaidConfig: string;
   setMermaidConfig: (config: string) => void;
   editorMode: EditorMode;
@@ -174,6 +176,8 @@ export const useAppStore = create<AppState>((set, get) => {
     // Editor state
     code: DEFAULT_WORKSPACE_SNAPSHOT.code,
     setCode: (code) => set({ code }),
+    documentRevision: 0,
+    replaceDocument: (code) => set((state) => ({ code, documentRevision: state.documentRevision + 1 })),
     mermaidConfig: DEFAULT_WORKSPACE_SNAPSHOT.mermaidConfig,
     setMermaidConfig: (mermaidConfig) => set({ mermaidConfig }),
     editorMode: "code",
@@ -216,11 +220,19 @@ export const useAppStore = create<AppState>((set, get) => {
     setTextMeasurementMode: (textMeasurementMode) => set({ textMeasurementMode }),
     diagramFont: DEFAULT_WORKSPACE_SNAPSHOT.diagramFont,
     setDiagramFont: (diagramFont) => changeAppearance({ diagramFont }),
-    applyWorkspaceSnapshot: (snapshot) => set({ ...snapshot, themeRecipeLabel: snapshot.themeRecipeLabel ?? null, themeAppearance: snapshot.themeAppearance ?? "default", appearanceHistory: [], themePanelOpen: false }),
+    applyWorkspaceSnapshot: (snapshot) => set((state) => ({
+      ...snapshot,
+      documentRevision: state.documentRevision + 1,
+      themeRecipeLabel: snapshot.themeRecipeLabel ?? null,
+      themeAppearance: snapshot.themeAppearance ?? "default",
+      appearanceHistory: [],
+      themePanelOpen: false,
+    })),
     shareViewWarning: null,
     applyStartupShareHydration: ({ workspace, view, warning }) =>
-      set({
+      set((state) => ({
         ...workspace,
+        documentRevision: state.documentRevision + 1,
         themeRecipeLabel: workspace.themeRecipeLabel ?? null,
         themeAppearance: workspace.themeAppearance ?? "default",
         appearanceHistory: [],
@@ -231,7 +243,7 @@ export const useAppStore = create<AppState>((set, get) => {
         svgPresentationMode: view.svgPresentationMode,
         showSvgBounds: view.showSvgBounds,
         shareViewWarning: warning,
-      }),
+      })),
 
     // Workbench theme
     uiTheme: initialUITheme,

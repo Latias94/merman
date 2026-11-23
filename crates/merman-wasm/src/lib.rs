@@ -85,6 +85,8 @@ const WASM_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
     CapabilityKey::LayoutCytoscape,
     #[cfg(feature = "layout-elk")]
     CapabilityKey::LayoutElk,
+    #[cfg(feature = "layout-shoal")]
+    CapabilityKey::LayoutShoal,
     #[cfg(feature = "math")]
     CapabilityKey::Math,
 ];
@@ -1701,6 +1703,19 @@ mod tests {
         }
     }
 
+    #[cfg(all(feature = "layout-shoal", feature = "diagram-flowchart"))]
+    #[test]
+    fn wasm_svg_result_carries_an_opt_in_shoal_layout_frame() {
+        let source = b"---\nconfig:\n  layout: shoal\n---\nflowchart LR\nA --> B";
+        let options = br#"{"layout":{"capture_shoal_frame":true}}"#;
+        let result = execute_wasm_operation_result("svg", source, options, None).unwrap();
+        let metadata: serde_json::Value = serde_json::from_slice(result.metadata_json()).unwrap();
+        assert!(metadata["shoal_layout_frame"].is_object());
+        let plain = execute_wasm_operation_result("svg", source, b"", None).unwrap();
+        assert_eq!(plain.data(), result.data());
+        assert!(plain.metadata().shoal_layout_frame().is_none());
+    }
+
     #[test]
     fn wasm_execution_is_bound_to_the_deterministic_web_contract() {
         let error = execute_wasm_operation(
@@ -1757,6 +1772,10 @@ mod tests {
             assert_eq!(
                 capabilities.has_capability("layout-elk"),
                 cfg!(feature = "layout-elk")
+            );
+            assert_eq!(
+                capabilities.has_capability("layout-shoal"),
+                cfg!(feature = "layout-shoal")
             );
             assert_eq!(capabilities.has_capability("math"), cfg!(feature = "math"));
         }

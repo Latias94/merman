@@ -13,17 +13,19 @@ const PLAYGROUND_RENDER_VIEWPORT = captureRenderViewport();
 
 export function RenderCoordinatorBridge() {
   const workspace = useAppStore(useShallow(selectWorkspaceSnapshot));
+  const documentRevision = useAppStore((state) => state.documentRevision);
   const facade = useMermanRuntime(selectMermanFacade);
   const hostAppearance = useAppStore((state) => state.resolvedTheme);
 
   useEffect(() => {
     setRenderCoordinatorInput({
+      documentRevision,
       facade,
       renderViewport: PLAYGROUND_RENDER_VIEWPORT,
       workspace,
       hostAppearance,
     });
-  }, [facade, workspace, hostAppearance]);
+  }, [documentRevision, facade, workspace, hostAppearance]);
 
   return null;
 }

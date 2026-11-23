@@ -3,6 +3,7 @@ import {
   UNAVAILABLE_DIAGRAM_DETECTION,
   type DiagramDetectionFacts,
   type DiagramType,
+  type ShoalLayoutFrame,
   type SvgRenderMetadata,
   type ThemeAppearance,
 } from "@mermanjs/web";
@@ -13,6 +14,8 @@ import type {
 } from "./merman-core.ts";
 import {
   freezeRenderOperation,
+  previewRenderWithShoalFrame,
+  type ConfiguredMermanOperationInput,
   type FreezeRenderOperationInput,
   type FrozenRenderOperation,
 } from "./merman-operation-input.ts";
@@ -35,6 +38,7 @@ import {
 } from "./render-artifact.ts";
 
 export interface RenderCoordinatorInput {
+  readonly documentRevision: number;
   readonly facade: MermanDomainFacade | null;
   readonly renderViewport: Readonly<CapturedRenderViewport>;
   readonly workspace: Readonly<WorkspaceSnapshot>;
@@ -259,6 +263,7 @@ export function createRenderCoordinator({
   let timer: ReturnType<typeof setTimeout> | null = null;
   let active: Promise<void> | null = null;
   let activeRequest: ActiveRequest | null = null;
+  let shoalPreview: { readonly diagramType: DiagramType; readonly frame: ShoalLayoutFrame } | null = null;
   let themeContextCache: {
     facade: MermanDomainFacade;
     recipeJson: string | null;
@@ -382,7 +387,7 @@ export function createRenderCoordinator({
       });
       activeRequest = activeRequestForExecution;
       const execution = execute(activeRequestForExecution)
-        .then((completed) => {
+        .then(({ completed, frame }) => {
           if (
             !disposed &&
             enabled &&
@@ -390,6 +395,15 @@ export function createRenderCoordinator({
             pauseCount === 0 &&
             latest?.publicationId === request.publicationId
           ) {
+            const detection = completed.detection;
+            if (detection.status === "available" && detection.validity === "valid") {
+              if (detection.effectiveLayoutId !== "shoal" || shoalPreview?.diagramType !== detection.diagramType) {
+                shoalPreview = null;
+              }
+              if (frame !== undefined) {
+                shoalPreview = { diagramType: detection.diagramType, frame };
+              }
+            }
             replaceState(completed);
           }
         })
@@ -411,7 +425,7 @@ export function createRenderCoordinator({
 
   const execute = async (
     request: ActiveRequest,
-  ): Promise<CompletedRenderBatch> => {
+  ): Promise<{ completed: CompletedRenderBatch; frame?: ShoalLayoutFrame }> => {
     const { facade, snapshot } = request;
     const operation = snapshot.operation;
     const detection = detectDiagram(facade, operation);
@@ -421,7 +435,15 @@ export function createRenderCoordinator({
       operation,
       externalRequirements,
     );
-    const merman = renderMerman(facade, operation);
+    const standaloneShoal = !operation.compareEnabled && !operation.asciiEnabled &&
+      !operation.diagnosticsEnabled && detection.status === "available" &&
+      detection.validity === "valid" && detection.effectiveLayoutId === "shoal";
+    const optionsByteLimit = standaloneShoal ? shoalOptionsByteLimit(facade) : undefined;
+    const previous = shoalPreview?.diagramType === detection.diagramType ? shoalPreview.frame : undefined;
+    const preview = optionsByteLimit === undefined
+      ? operation
+      : previewRenderWithShoalFrame(operation, previous, optionsByteLimit);
+    const { merman, frame } = renderMerman(facade, preview, preview !== operation);
     const ascii = operation.asciiEnabled
       ? renderMermanAscii(facade, operation, detection)
       : null;
@@ -432,25 +454,23 @@ export function createRenderCoordinator({
     const mermaid = compareResult
       ? toMermaidBatchResult(compareResult, operation)
       : null;
-    return classifyBatch(
-      snapshot,
-      detection,
-      diagnostics,
-      merman,
-      ascii,
-      mermaid,
-      now(),
-    );
+    return {
+      completed: classifyBatch(snapshot, detection, diagnostics, merman, ascii, mermaid, now()),
+      ...(frame === undefined ? {} : { frame }),
+    };
   };
 
   const setInput = (input: RenderCoordinatorInput) => {
+    const identityChanged = currentInput?.documentRevision !== input.documentRevision ||
+      currentInput?.facade !== input.facade;
+    if (identityChanged) shoalPreview = null;
     currentInput = input;
     if (!enabled) {
       markCompletedInputStale();
       renderRequiredWhenEnabled = true;
       return;
     }
-    scheduleCurrent(false);
+    scheduleCurrent(identityChanged);
   };
 
   const markCompletedInputStale = () => {
@@ -609,6 +629,7 @@ export function createRenderCoordinator({
     clearTimer();
     latest = null;
     currentInput = null;
+    shoalPreview = null;
     renderRequiredWhenEnabled = false;
     compare.dispose();
     replaceState(EMPTY_STATE);
@@ -836,30 +857,55 @@ function renderCompare(
 
 function renderMerman(
   facade: MermanDomainFacade,
-  operation: FrozenRenderOperation,
-): MermanBatchResult {
+  operation: ConfiguredMermanOperationInput,
+  capturesShoalFrame: boolean,
+): { merman: MermanBatchResult; frame?: ShoalLayoutFrame } {
   let result;
   try {
     result = facade.render(operation);
   } catch (error) {
-    return mermanFailure("render", error);
+    return { merman: mermanFailure("render", error) };
   }
   if (result.status === "failure") {
-    return mermanFailure(result.stage, result.error);
+    return { merman: mermanFailure(result.stage, result.error) };
   }
   try {
     assertNavigableInlineSvgArtifact(result.artifact);
   } catch (error) {
-    return mermanFailure("svg-validation", error);
+    return { merman: mermanFailure("svg-validation", error) };
   }
-  return Object.freeze({
-    status: "success",
-    engine: "merman",
-    artifact: result.artifact,
-    metadata: freezeRenderMetadata(result.metadata ?? null),
-    renderTimeMs: result.renderTime,
-    presentedAt: null,
-  });
+  let metadata = result.metadata ?? null;
+  let frame: ShoalLayoutFrame | undefined;
+  if (metadata?.shoal_layout_frame !== undefined) {
+    const { shoal_layout_frame, ...rest } = metadata;
+    metadata = rest;
+    if (capturesShoalFrame && shoal_layout_frame && typeof shoal_layout_frame === "object" && !Array.isArray(shoal_layout_frame)) {
+      frame = shoal_layout_frame;
+    }
+  }
+  return {
+    merman: Object.freeze({
+      status: "success",
+      engine: "merman",
+      artifact: result.artifact,
+      metadata: freezeRenderMetadata(metadata),
+      renderTimeMs: result.renderTime,
+      presentedAt: null,
+    }),
+    ...(frame === undefined ? {} : { frame }),
+  };
+}
+
+function shoalOptionsByteLimit(facade: MermanDomainFacade): number | undefined {
+  try {
+    const { capabilities, resources } = facade.runtimeCatalog();
+    if (!capabilities.capability_ids.includes("layout-shoal")) return undefined;
+    const limit = resources.profiles.find(({ id }) => id === resources.general_binding_default_profile)
+      ?.limits.max_options_json_bytes;
+    return typeof limit === "number" && Number.isSafeInteger(limit) && limit > 0 ? limit : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function renderMermanAscii(

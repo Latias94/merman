@@ -124,6 +124,12 @@ Shoal draws Flowcharts in all four directions, including cycles, self-loops, par
 
 A build without Shoal reports the missing capability when one of these diagrams requests it. Rust callers can also pass measured graphs directly to the standalone crate. [Shoal crate](../crates/merman-layout-shoal/README.md)
 
+Shoal Flowchart and Agentflow support explicit container fitting and previous-frame hints for
+previews. Standalone Playground previews use frame hints with a custom WASM build that enables
+`layout-shoal`. VS Code preview uses frame hints when its CLI advertises the preview frame protocol.
+[Host integration](rendering/HEADLESS_LAYOUT.md#shoal-width-adaptation-and-preview-frames) ·
+[Playground experiment](../platforms/web/README.md#try-shoal-in-playground)
+
 ### Optional CLI Fonts
 
 The current-source default CLI build and official release profile include

@@ -16,8 +16,10 @@ import { legalProjectionForArtifactProfile } from "./legal-projection.mjs";
 import { packageDistClosure } from "./package-dist-closure.mjs";
 import { webPackages } from "./surface-manifest.mjs";
 import { WASM_INPUT_MANIFEST_NAME } from "./wasm-build/input-manifest.mjs";
+import { assertWasmTargetEvidence, parseWasmTargets } from "./wasm-build/targets.mjs";
 import {
   WASM_RUNTIME_TOP_LEVEL_FILES,
+  assertWasmRuntimeMatchesInput,
   packageDistFileRecords,
   wasmRuntimeFileRecords,
 } from "./wasm-runtime-files.mjs";
@@ -25,17 +27,23 @@ import {
 const webRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sourceRoot = path.join(webRoot, "src");
 const entriesRoot = path.join(sourceRoot, "package-entries");
-const packageBuildRoot = path.join(webRoot, "pkg");
 const distRoot = path.join(webRoot, "dist");
 
 if (isMainModule()) {
-  const phase = process.argv[2];
-  if (phase === "--entries") {
+  const [phase, ...args] = process.argv.slice(2);
+  if (phase === "--entries" && args.length === 0) {
     generatePackageEntries();
   } else if (phase === "--assemble") {
-    assemblePackageArtifacts();
+    let targets;
+    try {
+      targets = parseWasmTargets(args.length === 0 ? ["--all-packages"] : args);
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 2;
+    }
+    if (targets) assemblePackageArtifacts(targets);
   } else {
-    console.error("usage: node scripts/build-surface-packages.mjs --entries|--assemble");
+    console.error("usage: node scripts/build-surface-packages.mjs --entries | --assemble [--package <id>] [--local-shoal]");
     process.exitCode = 2;
   }
 }
@@ -55,11 +63,11 @@ export function generatePackageEntries() {
   }
 }
 
-export function assemblePackageArtifacts() {
+export function assemblePackageArtifacts(targets = parseWasmTargets(["--all-packages"])) {
   assertFile(path.join(distRoot, "index.js"), "compiled TypeScript output");
-  assertFile(path.join(distRoot, "package-entries", "full.js"), "compiled package entry");
-  for (const descriptor of webPackages) {
-    assemblePackageArtifact(descriptor);
+  for (const target of targets) {
+    assertFile(path.join(distRoot, "package-entries", `${target.descriptor.id}.js`), "compiled package entry");
+    assemblePackageArtifact(target);
   }
 }
 
@@ -136,9 +144,9 @@ export function packageEntrySource(descriptor) {
   ].join("\n");
 }
 
-function assemblePackageArtifact(descriptor) {
+function assemblePackageArtifact(target) {
+  const { descriptor, profile, outputDir } = target;
   const packageRoot = path.join(webRoot, descriptor.package_dir);
-  const wasmSource = path.join(packageBuildRoot, descriptor.id);
   const stage = siblingStage(path.join(packageRoot, "artifacts"), "artifacts");
   const backup = siblingStage(path.join(packageRoot, "artifacts"), "artifacts-backup");
   const packageJson = readJson(path.join(packageRoot, "package.json"));
@@ -151,16 +159,28 @@ function assemblePackageArtifact(descriptor) {
       `Package manifest ${descriptor.package_dir} private flag disagrees with ${descriptor.visibility} visibility.`,
     );
   }
-  assertFile(path.join(wasmSource, WASM_INPUT_MANIFEST_NAME), `WASM output for ${descriptor.id}`);
+  const input = readJson(path.join(outputDir.absolute, WASM_INPUT_MANIFEST_NAME));
+  assertWasmTargetEvidence(target, input);
 
   rmSync(stage, { recursive: true, force: true });
   mkdirSync(path.join(stage, "wasm"), { recursive: true });
   try {
-    copyWasmRuntime(wasmSource, path.join(stage, "wasm"));
+    const copiedWasmRoot = path.join(stage, "wasm");
+    copyWasmRuntime(outputDir.absolute, copiedWasmRoot);
+    const runtimeFiles = wasmRuntimeFileRecords(copiedWasmRoot, { strictTopLevel: true });
+    assertWasmRuntimeMatchesInput(runtimeFiles, input.artifacts);
     projectPackageDist(descriptor, packageRoot);
+    const provenance = buildProvenance(
+      descriptor,
+      profile,
+      packageJson,
+      input,
+      runtimeFiles,
+      path.join(packageRoot, "dist"),
+    );
     writeFileSync(
       path.join(stage, "provenance.json"),
-      `${JSON.stringify(buildProvenance(descriptor, packageJson, wasmSource, path.join(stage, "wasm"), path.join(packageRoot, "dist", "package-entries")), null, 2)}\n`,
+      `${JSON.stringify(provenance, null, 2)}\n`,
     );
     replaceDirectory({ target: path.join(packageRoot, "artifacts"), stage, backup });
   } finally {
@@ -199,8 +219,7 @@ function copyWasmRuntime(source, target) {
   if (existsSync(snippets)) cpSync(snippets, path.join(target, "snippets"), { recursive: true });
 }
 
-function buildProvenance(descriptor, packageJson, wasmSource, copiedWasmRoot, entryRoot) {
-  const input = readJson(path.join(wasmSource, WASM_INPUT_MANIFEST_NAME));
+function buildProvenance(descriptor, profile, packageJson, input, runtimeFiles, packageDistRoot) {
   return {
     schema_version: 2,
     package: {
@@ -209,12 +228,12 @@ function buildProvenance(descriptor, packageJson, wasmSource, copiedWasmRoot, en
       version: packageJson.version,
       visibility: descriptor.visibility,
     },
-    artifact_profile: descriptor.artifact_profile.id,
-    runtime_capability_ids: descriptor.artifact_profile.expected.runtime_ids,
-    outputs: descriptor.artifact_profile.expected.outputs,
+    artifact_profile: profile.name,
+    runtime_capability_ids: profile.runtime_capability_ids,
+    outputs: profile.runtime_output_ids,
     artifact_files: [
-      ...wasmRuntimeFileRecords(copiedWasmRoot, { strictTopLevel: true }),
-      ...packageDistFileRecords(path.dirname(entryRoot), descriptor.id),
+      ...runtimeFiles,
+      ...packageDistFileRecords(packageDistRoot, descriptor.id),
     ].sort(compareArtifactRecords),
     wasm: {
       path: "wasm/merman_wasm_bg.wasm",

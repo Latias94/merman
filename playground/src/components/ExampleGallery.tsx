@@ -49,7 +49,7 @@ export function ExampleGallery({
   restoreFocus(): void;
 }) {
   const { t } = useTranslation();
-  const setCode = useAppStore((state) => state.setCode);
+  const replaceDocument = useAppStore((state) => state.replaceDocument);
   const asciiSupport = useAsciiSupport();
   const searchRef = useRef<HTMLInputElement>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -165,7 +165,7 @@ export function ExampleGallery({
   }, [selectedCategory, visibleCategories]);
 
   const handleSelectExample = (example: Example) => {
-    setCode(example.source);
+    replaceDocument(example.source);
     handleOpenChange(false);
   };
 

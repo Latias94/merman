@@ -1,6 +1,8 @@
 import {
   BINDING_OPTIONS_SCHEMA_VERSION,
+  encodeOptions,
   type HostTextMeasurerSvgBindingOptions,
+  type ShoalLayoutFrame,
   type ThemePresetCatalogEntry,
   type ThemeCatalog,
   type ThemeAppearance,
@@ -8,6 +10,7 @@ import {
 
 import type { DiagramFont } from "../lib/diagram-font.ts";
 import { buildMermaidOperationInput, type InjectedMermaidConfigSpan, type MermaidConfigObject } from "../lib/mermaid-config.ts";
+import { exceedsUtf8ByteBudget } from "../lib/utf8.ts";
 import {
   DEFAULT_WORKSPACE_SNAPSHOT,
   type WorkspaceSnapshot,
@@ -214,6 +217,35 @@ export function renderOperationWithSvgPipeline(
       : null,
     svgPipeline,
   });
+}
+
+export function previewRenderWithShoalFrame(
+  operation: FrozenRenderOperation,
+  previous: ShoalLayoutFrame | undefined,
+  optionsByteLimit: number,
+): ConfiguredMermanOperationInput {
+  for (const frame of previous === undefined ? [undefined] : [previous, undefined]) {
+    const bindingOptions = Object.freeze({
+      ...operation.bindingOptions,
+      layout: Object.freeze({
+        ...operation.bindingOptions.layout,
+        capture_shoal_frame: true,
+        ...(frame === undefined ? {} : { previous_shoal_frame: frame }),
+      }),
+    });
+    let bindingOptionsJson: string | undefined;
+    try {
+      bindingOptionsJson = operation.bindingOptionsJson !== null && operation.themeRecipeJson !== null
+        ? themeRecipeOptionsJson(bindingOptions, operation.themeRecipeJson, operation.resolvedThemeAppearance)
+        : encodeOptions(bindingOptions);
+    } catch {
+      continue;
+    }
+    if (bindingOptionsJson !== undefined && !exceedsUtf8ByteBudget(bindingOptionsJson, optionsByteLimit)) {
+      return Object.freeze({ ...operation, bindingOptions, bindingOptionsJson });
+    }
+  }
+  return operation;
 }
 
 export function sameRenderOperation(

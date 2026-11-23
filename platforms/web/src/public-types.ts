@@ -45,12 +45,21 @@ export interface ParseOptions {
   suppress_errors?: boolean;
 }
 
+/** Opaque layout hints from a successful Shoal SVG result. Keep them in the owning document session. */
+export type ShoalLayoutFrame = Readonly<Record<string, unknown>>;
+
 export interface LayoutOptions {
-  /** Explicit whole-column packing, currently supported by Kanban only. */
+  /** Explicit width fitting for Kanban or a Flowchart/Agentflow using Shoal. */
   adaptation?: "none" | "fit-width";
   container_width?: number;
   container_height?: number;
   screen_available_width?: number;
+  /** Allow Shoal fit-width to fold wide leaf ranks. Defaults to false. */
+  fold_wide_ranks?: boolean;
+  /** Include a frame in the result metadata when rendering with Shoal. */
+  capture_shoal_frame?: boolean;
+  /** Replay the previous successful frame for this document and capture a new one. */
+  previous_shoal_frame?: ShoalLayoutFrame;
 }
 
 export interface RenderEnvironmentOptions {
@@ -1514,6 +1523,7 @@ export interface SvgRenderMetadata extends BindingOperationMetadata {
   media_type: "image/svg+xml";
   theme_execution_evidence: ThemeExecutionEvidence;
   layout_adaptation?: LayoutAdaptationObservation;
+  shoal_layout_frame?: ShoalLayoutFrame;
 }
 
 export interface SvgRenderResult {

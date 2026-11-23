@@ -184,6 +184,14 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
       "nullable": false,
       "integer_width_bits": null,
       "open_value": true
+    },
+    {
+      "name": "shoal_layout_frame",
+      "json_type": "object",
+      "required": false,
+      "nullable": false,
+      "integer_width_bits": null,
+      "open_value": true
     }
   ],
   "output_plans": [

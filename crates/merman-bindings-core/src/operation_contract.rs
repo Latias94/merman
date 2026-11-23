@@ -194,6 +194,7 @@ const TOP_LEVEL_FIELDS: &[BindingJsonFieldContract] = &[
     field("output_plan", "object", false, None, true),
     field("layout_adaptation", "object", false, None, true),
     field("theme_execution_evidence", "object", false, None, true),
+    field("shoal_layout_frame", "object", false, None, true),
 ];
 
 const LAYOUT_ADAPTATION_FIELDS: &[BindingJsonFieldContract] = &[

@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import { readFileSync } from "node:fs";
-import type { SvgRenderMetadata, ThemeExecutionEvidence } from "@mermanjs/web";
+import type { LayoutOptions, SvgRenderMetadata, ThemeExecutionEvidence } from "@mermanjs/web";
 import { projectNavigableInlineSvg } from "./render-artifact.ts";
 
 import type { MermanDomainFacade } from "./merman-core.ts";
 import { themeCatalogFixture, themeInspectionFixture } from "../lib/theme-appearance.test-fixture.ts";
+import { utf8ByteLength } from "../lib/utf8.ts";
 import {
   freezeRenderOperation,
+  previewRenderWithShoalFrame,
   type FreezeRenderOperationInput,
   type ConfiguredMermanOperationInput,
   type FrozenRenderOperation,
@@ -782,6 +784,7 @@ test("hidden input changes stale the visible publication without reading it", as
     },
   };
   coordinator.setInput({
+    documentRevision: 0,
     facade: facade(),
     renderViewport: captureRenderViewport(),
     workspace: hiddenWorkspace,
@@ -802,6 +805,7 @@ test("hidden input changes stale the visible publication without reading it", as
     },
   };
   coordinator.setInput({
+    documentRevision: 0,
     facade: facade(),
     renderViewport: captureRenderViewport(),
     workspace: newestWorkspace,
@@ -833,6 +837,7 @@ test("does not inspect hidden workspace source until rendering resumes", async (
 
   coordinator.setEnabled(false);
   coordinator.setInput({
+    documentRevision: 0,
     facade: facade(),
     renderViewport: captureRenderViewport(),
     workspace,
@@ -1655,6 +1660,178 @@ test("leaving a completed Compare publication resets its retained realm", async 
   await waitFor(() => coordinator.store.getState().status === "success");
 });
 
+test("standalone Shoal edits reuse only the last successful frame for that document and backend", async (t) => {
+  const base = facade();
+  const requests: (LayoutOptions | undefined)[] = [];
+  const domain = shoalFacade({
+    detectDiagram(operation) {
+      const facts = base.detectDiagram(operation);
+      assert.equal(facts.status, "available");
+      return {
+        ...facts,
+        effectiveLayoutId: operation.source === "dagre" ? "dagre" : "shoal",
+        validity: operation.source === "broken" ? "recoverable-invalid" : "valid",
+      };
+    },
+    render(operation) {
+      requests.push(operation.bindingOptions.layout);
+      if (operation.source === "broken") throw new Error("source is invalid");
+      const result = base.render(operation);
+      assert.equal(result.status, "success");
+      return {
+        ...result,
+        metadata: {
+          ...renderMetadata(operation.source),
+          shoal_layout_frame: { revision: operation.source },
+        },
+      };
+    },
+  });
+  const coordinator = createRenderCoordinator({ compare: fakeCompare([]), debounceMs: 0 });
+  t.after(() => coordinator.dispose());
+  const render = async (source: string, documentRevision = 0, status = "success") => {
+    coordinator.setInput({ ...input(source, domain), documentRevision });
+    await waitFor(() => coordinator.store.getState().status === status);
+  };
+
+  await render("first");
+  assert.equal(requests[0]?.capture_shoal_frame, true);
+  assert.equal(requests[0]?.previous_shoal_frame, undefined);
+  await render("relabel");
+  assert.deepEqual(requests[1]?.previous_shoal_frame, { revision: "first" });
+  await render("broken", 0, "failed");
+  assert.equal(requests[2]?.capture_shoal_frame, undefined);
+  await render("recovered");
+  assert.deepEqual(requests[3]?.previous_shoal_frame, { revision: "relabel" });
+  const result = coordinator.store.getState();
+  assert.equal(result.status, "success");
+  assert.equal(result.merman.metadata?.shoal_layout_frame, undefined);
+  assert.equal(result.snapshot.operation.bindingOptions.layout?.capture_shoal_frame, undefined);
+  assert.equal(result.snapshot.operation.bindingOptions.layout?.previous_shoal_frame, undefined);
+
+  await render("recovered", 1);
+  assert.equal(requests[4]?.previous_shoal_frame, undefined);
+  await render("dagre", 1);
+  assert.equal(requests[5]?.capture_shoal_frame, undefined);
+  await render("back to Shoal", 1);
+  assert.equal(requests[6]?.previous_shoal_frame, undefined);
+});
+
+test("two Shoal edits keep rendering when the previous frame would exceed the UTF-8 options budget", async (t) => {
+  const frame = { group: "界".repeat(Math.floor((OPTIONS_JSON_LIMIT_BYTES - 24) / 3)) };
+  assert.ok(utf8ByteLength(JSON.stringify(frame)) < OPTIONS_JSON_LIMIT_BYTES);
+
+  const base = facade();
+  const requests: ConfiguredMermanOperationInput[] = [];
+  const domain = shoalFacade({
+    render(operation) {
+      requests.push(operation);
+      const result = base.render(operation);
+      assert.equal(result.status, "success");
+      return {
+        ...result,
+        metadata: { ...renderMetadata(operation.source), shoal_layout_frame: frame },
+      };
+    },
+  });
+  const coordinator = createRenderCoordinator({ compare: fakeCompare([]), debounceMs: 0 });
+  t.after(() => coordinator.dispose());
+  for (const source of ["initial", "first edit", "second edit"]) {
+    coordinator.setInput(input(source, domain));
+    await waitFor(() => coordinator.store.getState().status === "success");
+  }
+
+  assert.equal(requests.length, 3);
+  for (const request of requests) {
+    assert.ok(request.bindingOptionsJson);
+    assert.ok(utf8ByteLength(request.bindingOptionsJson) <= OPTIONS_JSON_LIMIT_BYTES);
+    assert.equal(request.bindingOptions.layout?.capture_shoal_frame, true);
+    assert.equal(request.bindingOptions.layout?.previous_shoal_frame, undefined);
+  }
+  const edit = requests[1];
+  assert.ok(edit);
+  const oversizedReplay = JSON.stringify({
+    ...edit.bindingOptions,
+    layout: { ...edit.bindingOptions.layout, previous_shoal_frame: frame },
+  });
+  assert.ok(oversizedReplay.length < OPTIONS_JSON_LIMIT_BYTES);
+  assert.ok(utf8ByteLength(oversizedReplay) > OPTIONS_JSON_LIMIT_BYTES);
+});
+
+test("Shoal preview budgets the exact raw theme request and falls back to the original options", () => {
+  const recipe = '{ "schema_version": 1, "kind": "design", "design": { "name": "布局" } }';
+  const operation = freezeRenderOperation({
+    asciiEnabled: false,
+    compareEnabled: false,
+    diagnosticsEnabled: false,
+    layoutEnvironment: captureRenderViewport().layoutEnvironment,
+    versions: { merman: "test", mermaid: "test" },
+    viewport: null,
+    workspace: {
+      ...DEFAULT_WORKSPACE_SNAPSHOT,
+      code: "flowchart TD\nA --> B",
+      themePresetId: null,
+      themeRecipeJson: recipe,
+    },
+    themeRecipeInspection: themeInspectionFixture(),
+  });
+  const frame = { revision: "一" };
+  const replay = previewRenderWithShoalFrame(operation, frame, OPTIONS_JSON_LIMIT_BYTES);
+  assert.ok(replay.bindingOptionsJson);
+  assert.ok(replay.bindingOptionsJson.includes(recipe));
+  assert.deepEqual(replay.bindingOptions.layout?.previous_shoal_frame, frame);
+  const exactReplayBytes = utf8ByteLength(replay.bindingOptionsJson);
+  assert.equal(previewRenderWithShoalFrame(operation, frame, exactReplayBytes).bindingOptionsJson, replay.bindingOptionsJson);
+
+  const capture = previewRenderWithShoalFrame(operation, frame, exactReplayBytes - 1);
+  assert.ok(capture.bindingOptionsJson);
+  assert.ok(capture.bindingOptionsJson.includes(recipe));
+  assert.equal(capture.bindingOptions.layout?.capture_shoal_frame, true);
+  assert.equal(capture.bindingOptions.layout?.previous_shoal_frame, undefined);
+  const baselineLimit = utf8ByteLength(capture.bindingOptionsJson) - 1;
+  assert.ok(operation.bindingOptionsJson);
+  assert.ok(utf8ByteLength(operation.bindingOptionsJson) <= baselineLimit);
+  const baseline = previewRenderWithShoalFrame(operation, frame, baselineLimit);
+  assert.equal(baseline, operation);
+});
+
+test("Compare and superseded SVG renders cannot replace the standalone Shoal frame", async (t) => {
+  const compare = fakeCompare([Promise.resolve(mermaidSuccess("comparison"))]);
+  const coordinator = createRenderCoordinator({ compare, debounceMs: 0 });
+  t.after(() => coordinator.dispose());
+  const base = facade();
+  const requests: (LayoutOptions | undefined)[] = [];
+  const domain = shoalFacade({
+    render(operation) {
+      requests.push(operation.bindingOptions.layout);
+      if (operation.source === "superseded") coordinator.setInput(input("latest", domain));
+      const result = base.render(operation);
+      assert.equal(result.status, "success");
+      return {
+        ...result,
+        metadata: {
+          ...renderMetadata(operation.source),
+          shoal_layout_frame: { revision: requests.length },
+        },
+      };
+    },
+  });
+  coordinator.setInput(input("first", domain));
+  await waitFor(() => coordinator.store.getState().status === "success");
+  coordinator.setFeatures({ asciiEnabled: false, compareEnabled: true, diagnosticsEnabled: false });
+  await waitFor(() => requests.length === 2 && coordinator.store.getState().status === "success");
+  assert.equal(requests[1]?.capture_shoal_frame, undefined);
+
+  coordinator.setFeatures({ asciiEnabled: false, compareEnabled: false, diagnosticsEnabled: false });
+  coordinator.setInput(input("superseded", domain));
+  await waitFor(() => requests.length === 4 && coordinator.store.getState().status === "success");
+  assert.deepEqual(requests[2]?.previous_shoal_frame, { revision: 1 });
+  assert.deepEqual(requests[3]?.previous_shoal_frame, { revision: 1 });
+  const result = coordinator.store.getState();
+  assert.equal(result.status, "success");
+  assert.equal(result.snapshot.operation.source, "latest");
+});
+
 test("superseding Compare work is cancelled before publishing the latest SVG batch", async () => {
   const pending = deferred<MermaidRealmRenderResult>();
   const compare = fakeCompare([pending.promise]);
@@ -1862,6 +2039,7 @@ function input(
   renderViewport: CapturedRenderViewport = captureRenderViewport(),
 ): RenderCoordinatorInput {
   return {
+    documentRevision: 0,
     facade: domainFacade,
     renderViewport,
     workspace: {
@@ -1958,6 +2136,28 @@ function facade(packageVersion = "test-merman"): MermanDomainFacade {
       status: "success",
     }),
   } as unknown as MermanDomainFacade;
+}
+
+const OPTIONS_JSON_LIMIT_BYTES = 4 * 1024 * 1024;
+
+function shoalFacade(overrides: Partial<MermanDomainFacade>): MermanDomainFacade {
+  const base = facade();
+  return {
+    ...base,
+    runtimeCatalog: () => ({
+      capabilities: { capability_ids: ["layout-shoal", "svg"] },
+      resources: {
+        general_binding_default_profile: "interactive",
+        profiles: [{ id: "interactive", limits: { max_options_json_bytes: OPTIONS_JSON_LIMIT_BYTES } }],
+      },
+    }) as unknown as ReturnType<MermanDomainFacade["runtimeCatalog"]>,
+    detectDiagram(operation) {
+      const facts = base.detectDiagram(operation);
+      assert.equal(facts.status, "available");
+      return { ...facts, effectiveLayoutId: "shoal" };
+    },
+    ...overrides,
+  };
 }
 
 function renderMetadata(

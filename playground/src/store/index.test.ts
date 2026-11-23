@@ -61,6 +61,23 @@ test("applies one complete workspace snapshot with one coherent notification", (
   assert.deepEqual(selectWorkspaceSnapshot(useAppStore.getState()), next);
 });
 
+test("document replacement advances the preview identity even with identical source", () => {
+  const initial = useAppStore.getState();
+  const revision = initial.documentRevision;
+  initial.setCode("flowchart LR\nA --> B");
+  const edited = useAppStore.getState();
+  assert.equal(edited.documentRevision, revision);
+
+  edited.replaceDocument(edited.code);
+  const reopened = useAppStore.getState();
+  assert.equal(reopened.documentRevision, revision + 1);
+  assert.equal(reopened.code, edited.code);
+  assert.ok(!("documentRevision" in selectWorkspaceSnapshot(reopened)));
+
+  reopened.applyWorkspaceSnapshot(selectWorkspaceSnapshot(reopened));
+  assert.equal(useAppStore.getState().documentRevision, revision + 2);
+});
+
 test("stores Preview-owned SVG presentation preferences outside workspace snapshots", () => {
   useAppStore.setState({
     showSvgBounds: false,

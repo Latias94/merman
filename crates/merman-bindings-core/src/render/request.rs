@@ -137,11 +137,19 @@ impl RenderRequestPlan {
         let layout_adaptation = output.layout_adaptation();
         let evidence =
             BindingThemeExecutionEvidence::project(output.evidence(), output.admission())?;
-        Ok(crate::operation::BindingOperationOutput::svg(
+        #[cfg(feature = "layout-shoal")]
+        let shoal_layout_frame = match output.shoal_layout_frame() {
+            Some(frame) => project_shoal_layout_frame(frame)?,
+            None => None,
+        };
+        let output = crate::operation::BindingOperationOutput::svg(
             output.into_parts().0.into_bytes(),
             evidence,
         )
-        .with_layout_adaptation(layout_adaptation))
+        .with_layout_adaptation(layout_adaptation);
+        #[cfg(feature = "layout-shoal")]
+        let output = output.with_shoal_layout_frame(shoal_layout_frame);
+        Ok(output)
     }
 
     pub(super) fn layout_json(
@@ -481,6 +489,31 @@ impl RenderOperationConfig {
                 layout.screen_available_width =
                     Some(finite_positive(width, "layout.screen_available_width")?);
             }
+            let capture_shoal_frame = layout_json.capture_shoal_frame == Some(true)
+                || layout_json.previous_shoal_frame.is_some();
+            if (capture_shoal_frame || layout_json.fold_wide_ranks == Some(true))
+                && (!cfg!(feature = "layout-shoal")
+                    || !capability_policy.allows(RenderCapability::LayoutShoal))
+            {
+                return Err(BindingError::missing_capability(
+                    "layout-shoal",
+                    "Shoal frame options and fold_wide_ranks require the layout-shoal capability",
+                ));
+            }
+            #[cfg(feature = "layout-shoal")]
+            {
+                if let Some(fold) = layout_json.fold_wide_ranks {
+                    layout = layout.with_fold_wide_ranks(fold);
+                }
+                if capture_shoal_frame {
+                    let previous = layout_json
+                        .previous_shoal_frame
+                        .as_deref()
+                        .map(parse_previous_shoal_frame)
+                        .transpose()?;
+                    layout = layout.with_shoal_layout_frame(previous.map(std::sync::Arc::new));
+                }
+            }
         }
 
         let mut svg_options = merman::svg::SvgRenderOptions::default();
@@ -727,6 +760,52 @@ fn finite_positive_f32(value: f64, name: &'static str) -> Result<f32, BindingErr
     }
 }
 
+#[cfg(feature = "layout-shoal")]
+fn project_shoal_layout_frame(
+    frame: &impl serde::Serialize,
+) -> Result<Option<serde_json::Value>, BindingError> {
+    let mut budget = ShoalFrameJsonBudget(crate::BINDING_OPTIONS_JSON_MAX_BYTES);
+    match serde_json::to_writer(&mut budget, frame) {
+        Ok(()) => serde_json::to_value(frame)
+            .map(Some)
+            .map_err(internal_json_error),
+        Err(error) if error.io_error_kind() == Some(std::io::ErrorKind::StorageFull) => Ok(None),
+        Err(error) => Err(internal_json_error(error)),
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+struct ShoalFrameJsonBudget(usize);
+
+#[cfg(feature = "layout-shoal")]
+impl std::io::Write for ShoalFrameJsonBudget {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0 = self
+            .0
+            .checked_sub(bytes.len())
+            .ok_or(std::io::ErrorKind::StorageFull)?;
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+fn parse_previous_shoal_frame(
+    raw: &serde_json::value::RawValue,
+) -> Result<merman::svg::ShoalLayoutFrame, BindingError> {
+    if !raw.get().trim_start().starts_with('{') {
+        return Err(BindingError::invalid_argument(
+            "layout.previous_shoal_frame must be an object",
+        ));
+    }
+    serde_json::from_str(raw.get()).map_err(|_| {
+        BindingError::invalid_argument("layout.previous_shoal_frame is not a valid Shoal frame")
+    })
+}
+
 fn finite_nonnegative(value: f64, name: &'static str) -> Result<f64, BindingError> {
     if value.is_finite() && value >= 0.0 {
         Ok(value)
@@ -850,6 +929,36 @@ fn unexpected_render_output(target: &str) -> BindingError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "layout-shoal")]
+    #[test]
+    fn shoal_capture_omits_frames_beyond_the_options_byte_limit() {
+        #[derive(serde::Serialize)]
+        struct Frame<'a> {
+            node_id: &'a str,
+        }
+
+        let mut node_id = String::from("界\"");
+        let overhead = serde_json::to_vec(&Frame { node_id: &node_id })
+            .unwrap()
+            .len();
+        node_id.extend(std::iter::repeat_n(
+            'x',
+            crate::BINDING_OPTIONS_JSON_MAX_BYTES - overhead,
+        ));
+        let frame = project_shoal_layout_frame(&Frame { node_id: &node_id })
+            .unwrap()
+            .unwrap();
+        assert_eq!(frame["node_id"].as_str(), Some(node_id.as_str()));
+        drop(frame);
+
+        node_id.push('x');
+        assert!(
+            project_shoal_layout_frame(&Frame { node_id: &node_id })
+                .unwrap()
+                .is_none()
+        );
+    }
 
     #[cfg(feature = "native-fonts")]
     #[test]

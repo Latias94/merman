@@ -201,12 +201,16 @@ The Node wire request's optional `include_metadata: false` selects a success res
 timeout handling. There is no metadata fallback on the string route, so SDK and runtime artifacts
 must match.
 
-Explicit fit-width Kanban results also include `layout_adaptation` metadata with `mode`,
+Explicit fit-width results also include `layout_adaptation` metadata with `mode`,
 `requested_width`, `actual_width`, and `overflowed`. Layout JSON places this observation under
 `meta.layout_adaptation`. The fields describe actual family bounds before SVG viewport scaling;
 they do not change the independent terminal `output_plan` or theme evidence. Absent/default
 adaptation omits the observation. Native wrappers retain it in their existing complete metadata
 JSON. See [headless layout](../rendering/HEADLESS_LAYOUT.md#explicit-kanban-width-adaptation).
+
+Successful Shoal Flowchart and Agentflow SVG results can carry `shoal_layout_frame` metadata.
+Pass that object back as `layout.previous_shoal_frame` for the next edit of the same diagram.
+Treat its contents as experimental placement state scoped to the preview session.
 
 PNG and JPEG operations also include an `output_plan` object with requested and effective pixel
 dimensions and scale. PDF operations include requested and effective filter-image scale and pixel
@@ -748,10 +752,13 @@ The terminal-grid budget is resource policy, not an ASCII presentation option. S
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `layout.adaptation` | `"none"` or `"fit-width"` | `"none"` | Explicit whole-column Kanban packing. Other families reject `"fit-width"`; query the SVG plan's `supported_layout_adaptation_ids`. |
+| `layout.adaptation` | `"none"` or `"fit-width"` | `"none"` | Explicit placement adaptation for Kanban and Shoal Flowchart or Agentflow. Query `supported_layout_adaptation_ids` on the SVG plan. |
 | `layout.container_width` | positive finite number | renderer default | Available width of the host layout container in CSS pixels. |
 | `layout.container_height` | positive finite number | renderer default | Available height of the host layout container in CSS pixels. |
 | `layout.screen_available_width` | positive finite number | `layout.container_width` | Browser `screen.availWidth` in CSS pixels. This is distinct because Mermaid's C4 renderer uses the available screen width rather than the owning container width. |
+| `layout.fold_wide_ranks` | boolean | `false` | Allow Shoal fit-width layout to fold eligible leaf fans into multiple rows. |
+| `layout.capture_shoal_frame` | boolean | `false` | Return experimental placement hints in the complete SVG result. |
+| `layout.previous_shoal_frame` | object | omitted | Replay the last successful Shoal frame for the same diagram and capture the new one. |
 
 Container dimensions describe the element that owns diagram layout, not the browser page viewport
 or the final SVG viewBox. Browser hosts that need C4 parity should also pass

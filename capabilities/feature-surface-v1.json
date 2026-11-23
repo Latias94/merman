@@ -119,7 +119,7 @@
       "id": "layout-shoal",
       "kind": "engine",
       "description": "Select the experimental Shoal layout for Flowchart, Agentflow, Class, State, ER, Requirement, and Usecase diagrams.",
-      "targets": ["native"],
+      "targets": ["native", "web"],
       "implications": ["svg"],
       "absence": {
         "error_id": "missing-capability",

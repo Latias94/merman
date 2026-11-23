@@ -17,6 +17,7 @@ import path from "node:path";
 
 export const WASM_INPUT_MANIFEST_SCHEMA_VERSION = 1;
 export const WASM_INPUT_MANIFEST_NAME = "merman_wasm_inputs.json";
+export const WASM_ARTIFACT_PROFILE_NAME = "merman_wasm_artifact_profile.json";
 
 const ROOT_FILE_INPUTS = [
   ".cargo/config",
@@ -38,7 +39,7 @@ const REQUIRED_ARTIFACT_FILES = Object.freeze([
   "merman_wasm.js",
   "merman_wasm_bg.wasm",
   "merman_wasm_bg.wasm.d.ts",
-  "merman_wasm_artifact_profile.json",
+  WASM_ARTIFACT_PROFILE_NAME,
   "package.json",
 ]);
 export const WASM_ARTIFACT_FILE_NAMES = Object.freeze([

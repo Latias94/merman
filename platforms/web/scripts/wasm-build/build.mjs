@@ -2,14 +2,10 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import {
-  assertKnownArgs,
-  hasHelpFlag,
-  parseArgValue,
-  resolvePackageSubdir,
-} from "./arg-parse.mjs";
+import { hasHelpFlag } from "./arg-parse.mjs";
 import { cleanPackageOutput } from "./clean-package.mjs";
 import {
+  WASM_ARTIFACT_PROFILE_NAME,
   WASM_INPUT_MANIFEST_NAME,
   buildWasmInputManifest,
   cargoMetadataForPreset,
@@ -30,11 +26,12 @@ import {
 } from "./output-transaction.mjs";
 import { repositoryRoot, webPackageRoot } from "./paths.mjs";
 import {
-  defaultWebPackage,
-  webPackageDescriptors,
-} from "./web-surface-descriptor.mjs";
+  parseWasmTargets,
+  wasmArtifactProfile,
+  wasmArtifactProfileManifest,
+} from "./targets.mjs";
 
-const packagesById = new Map(webPackageDescriptors.map((item) => [item.id, item]));
+export { wasmArtifactProfile, wasmArtifactProfileManifest };
 
 export function runBuildWasmCli(args = process.argv.slice(2)) {
   if (hasHelpFlag(args)) {
@@ -44,7 +41,7 @@ export function runBuildWasmCli(args = process.argv.slice(2)) {
 
   let selected;
   try {
-    selected = parseCli(args);
+    selected = parseWasmTargets(args);
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     printUsage();
@@ -55,17 +52,8 @@ export function runBuildWasmCli(args = process.argv.slice(2)) {
   try {
     const repositoryMetadata = cargoRepositoryMetadata({ repoRoot: repositoryRoot });
     const toolVersions = currentWasmBuildToolVersions(repositoryRoot);
-    for (const descriptor of selected) {
-      buildWasm({
-        outputDir: resolvePackageSubdir(
-          webPackageRoot,
-          `pkg/${descriptor.id}`,
-          `package ${descriptor.id} output`,
-        ),
-        descriptor,
-        repositoryMetadata,
-        toolVersions,
-      });
+    for (const target of selected) {
+      buildWasm({ ...target, repositoryMetadata, toolVersions });
     }
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
@@ -79,11 +67,12 @@ export function runBuildWasmCli(args = process.argv.slice(2)) {
 export function buildWasm({
   outputDir,
   descriptor,
+  profile = wasmArtifactProfile(descriptor),
   repositoryMetadata = null,
   toolVersions = null,
 }) {
-  const profile = wasmArtifactProfile(descriptor);
   const outputRoot = outputDir.absolute;
+  const outputName = outputDir.relative ?? descriptor.id;
   const releaseLock = acquireOutputLock(outputRoot);
   let stageRoot = null;
 
@@ -96,6 +85,7 @@ export function buildWasm({
       [
         `build-wasm: package=${descriptor.name}`,
         `artifact_profile=${profile.name}`,
+        `output=${outputName}`,
         `default_features=${profile.default_features}`,
         `features=${profile.features.length > 0 ? profile.features.join("+") : "none"}`,
       ].join(" "),
@@ -119,7 +109,10 @@ export function buildWasm({
     }
     writePackageMetadata(buildMetadata, stageRoot);
     cleanPackageOutput(stageRoot);
-    writeArtifactProfileManifest(descriptor, stageRoot);
+    writeFileSync(
+      path.join(stageRoot, WASM_ARTIFACT_PROFILE_NAME),
+      `${JSON.stringify(wasmArtifactProfileManifest(descriptor, profile), null, 2)}\n`,
+    );
 
     const postBuildInputs = collectWasmInputEntries({
       metadata: buildMetadata,
@@ -158,7 +151,7 @@ export function buildWasm({
     publishStagedOutput(stageRoot, outputRoot);
     stageRoot = null;
     console.log(
-      `[merman-web] Published ${descriptor.id} WASM transaction (${manifest.input_digest.slice(0, 12)}).`,
+      `[merman-web] Published ${outputName} WASM transaction (${manifest.input_digest.slice(0, 12)}).`,
     );
   } finally {
     try {
@@ -169,35 +162,6 @@ export function buildWasm({
   }
 }
 
-export function wasmArtifactProfile(descriptor) {
-  if (!descriptor || typeof descriptor !== "object" || !descriptor.artifact_profile) {
-    throw new Error("Web package descriptor is invalid.");
-  }
-  const profile = descriptor.artifact_profile;
-  return {
-    name: profile.id,
-    surface: "web",
-    default_features: profile.cargo.default_features,
-    features: [...profile.cargo.features],
-    runtime_capability_ids: [...profile.expected.runtime_ids],
-    runtime_output_ids: [...profile.expected.outputs],
-  };
-}
-
-export function wasmArtifactProfileManifest(descriptor) {
-  const profile = wasmArtifactProfile(descriptor);
-  return {
-    schema_version: 1,
-    package: descriptor.name,
-    package_id: descriptor.id,
-    artifact_profile: profile.name,
-    default_features: profile.default_features,
-    features: profile.features,
-    runtime_capability_ids: profile.runtime_capability_ids,
-    runtime_output_ids: profile.runtime_output_ids,
-  };
-}
-
 export function wasmPackEnvironment(metadata, environment = process.env) {
   if (typeof metadata?.target_directory !== "string" || metadata.target_directory.length === 0) {
     throw new Error("cargo metadata is missing target_directory.");
@@ -206,26 +170,6 @@ export function wasmPackEnvironment(metadata, environment = process.env) {
     ...environment,
     CARGO_TARGET_DIR: path.resolve(metadata.target_directory),
   };
-}
-
-function parseCli(args) {
-  assertKnownArgs(args, {
-    valueArgs: ["--package"],
-    booleanArgs: ["--all-packages", "--help", "-h"],
-  });
-  const allPackages = args.includes("--all-packages");
-  const id = parseArgValue(args, "--package");
-  if (allPackages && id !== null) {
-    throw new Error("--all-packages and --package are mutually exclusive.");
-  }
-  if (allPackages) return webPackageDescriptors;
-  const descriptor = packagesById.get(id ?? defaultWebPackage.id);
-  if (!descriptor) {
-    throw new Error(
-      `Unknown @mermanjs browser package '${id}'; expected one of: ${[...packagesById.keys()].join(", ")}.`,
-    );
-  }
-  return [descriptor];
 }
 
 function wasmPackArgs(profile, outputRoot) {
@@ -244,14 +188,6 @@ function wasmPackArgs(profile, outputRoot) {
   if (profile.features.length > 0) cargoArgs.push("--features", profile.features.join(","));
   args.push("--", ...cargoArgs);
   return args;
-}
-
-function writeArtifactProfileManifest(descriptor, outputRoot) {
-  mkdirSync(outputRoot, { recursive: true });
-  writeFileSync(
-    path.join(outputRoot, "merman_wasm_artifact_profile.json"),
-    `${JSON.stringify(wasmArtifactProfileManifest(descriptor), null, 2)}\n`,
-  );
 }
 
 function writePackageMetadata(metadata, outputRoot) {
@@ -307,5 +243,5 @@ function run(command, args, { env = process.env } = {}) {
 }
 
 function printUsage() {
-  console.log("usage: node scripts/build-wasm.mjs [--package <full|analysis|render|editor|ascii> | --all-packages]");
+  console.log("usage: node scripts/build-wasm.mjs [--package <full|analysis|render|editor|ascii> | --all-packages] [--local-shoal]");
 }
