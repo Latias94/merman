@@ -268,7 +268,7 @@ fn randomized_fenwick_swap_deltas_and_cached_transpose_match_full_pair_enumerati
             })
             .collect();
         segments.extend([(0, 13, 0., 0., 1.), segments[0]]); // A direct fallback and a parallel occurrence.
-        let (mut g, nodes) = graph(&sizes, &segments);
+        let (mut g, mut nodes) = graph(&sizes, &segments);
         for row in &mut g.layers {
             for i in 1..row.len() {
                 row.swap(i, random.below(i + 1));
@@ -277,7 +277,7 @@ fn randomized_fenwick_swap_deltas_and_cached_transpose_match_full_pair_enumerati
         let mut control = NoopWorkControl;
         let mut work = Work::new(&mut control);
         let ports = ports(&g, &mut work);
-        let (mut order, _) = initial_order(&g, &nodes, &ports, &mut work).unwrap();
+        let (mut order, _, _) = initial_order(&g, &nodes, &ports, &mut work).unwrap();
         let initial = brute_order(&g, &order);
         order
             .restore(&g.layers.concat(), &ports, &mut work)
@@ -310,6 +310,21 @@ fn randomized_fenwick_swap_deltas_and_cached_transpose_match_full_pair_enumerati
         assert!(final_count <= initial);
         assert_eq!(
             final_count,
+            brute(
+                &g,
+                &positions(g.rank.len(), g.layers.iter().map(Vec::as_slice))
+            )
+        );
+        for node in &mut nodes {
+            node.order_hint = (random.below(4) != 0).then(|| OrderHint {
+                rank: 0,
+                cross_key: random.below(19) as f64 + 500.,
+            });
+        }
+        let hinted_count = reduce(&mut g, &nodes, &Options::default(), &mut work).unwrap();
+        assert!(hinted_count <= final_count);
+        assert_eq!(
+            hinted_count,
             brute(
                 &g,
                 &positions(g.rank.len(), g.layers.iter().map(Vec::as_slice))
@@ -357,7 +372,7 @@ fn weighted_barycenters_use_neighbor_offsets_and_hold_only_unconnected_slots() {
     let mut control = NoopWorkControl;
     let mut work = Work::new(&mut control);
     let ports = ports(&g, &mut work);
-    let (mut order, _) = initial_order(&g, &nodes, &ports, &mut work).unwrap();
+    let (mut order, _, _) = initial_order(&g, &nodes, &ports, &mut work).unwrap();
     order
         .restore(&g.layers.concat(), &ports, &mut work)
         .unwrap();
@@ -394,7 +409,7 @@ fn weighted_barycenters_use_neighbor_offsets_and_hold_only_unconnected_slots() {
 }
 
 #[test]
-fn dfs_initialization_and_complete_hints_preserve_dummy_slots() {
+fn internal_hints_keep_the_legacy_dfs_and_complete_rank_ordering() {
     let (g, mut nodes) = graph(
         &[2, 3],
         &[(0, 2, 0., 0., 1.), (0, 3, 0., 0., 1.), (1, 4, 0., 0., 1.)],
@@ -406,26 +421,106 @@ fn dfs_initialization_and_complete_hints_preserve_dummy_slots() {
     let mut control = NoopWorkControl;
     let mut work = Work::new(&mut control);
     let ports = ports(&g, &mut work);
-    nodes[2].order_hint = Some(OrderHint {
+    nodes[2].internal_order_hint = Some(OrderHint {
         rank: 1,
         cross_key: -9.,
     });
-    let (order, preference) = initial_order(&g, &nodes, &ports, &mut work).unwrap();
+    let (order, preference, has_editor_hint) =
+        initial_order(&g, &nodes, &ports, &mut work).unwrap();
+    assert!(!has_editor_hint);
     assert_eq!(order.ids, [1, 0, 4, 3, 2]);
     assert_eq!(
-        inversions(&order, &preference, &mut Fenwick::default(), &mut work).unwrap(),
+        inversions::<false>(
+            &order.ids,
+            &order.start,
+            &preference,
+            &mut Fenwick::default(),
+            &mut work,
+        )
+        .unwrap(),
         1
     );
-    nodes[3].order_hint = Some(OrderHint {
+    nodes[3].internal_order_hint = Some(OrderHint {
         rank: 1,
         cross_key: -1.,
     });
-    let (order, preference) = initial_order(&g, &nodes, &ports, &mut work).unwrap();
+    let (order, preference, has_editor_hint) =
+        initial_order(&g, &nodes, &ports, &mut work).unwrap();
+    assert!(!has_editor_hint);
     assert_eq!(order.ids, [1, 0, 4, 2, 3]);
     assert_eq!(
-        inversions(&order, &preference, &mut Fenwick::default(), &mut work).unwrap(),
+        inversions::<false>(
+            &order.ids,
+            &order.start,
+            &preference,
+            &mut Fenwick::default(),
+            &mut work,
+        )
+        .unwrap(),
         0
     );
+}
+
+#[test]
+fn partial_editor_hints_keep_new_and_dummy_slots() {
+    let edges: Vec<_> = (1..=5).map(|vertex| (0, vertex, 0., 0., 1.)).collect();
+    let (mut g, mut nodes) = graph(&[1, 5], &edges);
+    nodes.truncate(5);
+    for (vertex, cross_key) in [(1, 190.), (3, 910.), (4, 80.)] {
+        nodes[vertex].order_hint = Some(OrderHint { rank: 1, cross_key });
+    }
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    assert_eq!(
+        reduce(&mut g, &nodes, &Options::default(), &mut work).unwrap(),
+        0
+    );
+    assert_eq!(g.layers[1], [4, 2, 1, 3, 5]);
+}
+
+#[test]
+fn editor_tie_preserves_boundary_proxy_and_pin_slots() {
+    use crate::flat::BoundaryRank;
+
+    let edges: Vec<_> = (1..=7).map(|vertex| (0, vertex, 0., 0., 1.)).collect();
+    let (mut g, mut nodes) = graph(&[1, 7], &edges);
+    nodes.truncate(7);
+    g.kind = vec![Kind::Node; g.rank.len()];
+    g.kind[0] = Kind::StartPort;
+    g.kind[7] = Kind::Dummy;
+    nodes[0].boundary = Some(BoundaryRank::Start);
+    nodes[0].order_hint = Some(OrderHint {
+        rank: 0,
+        cross_key: -5.,
+    });
+    nodes[4].group_proxy = true;
+    nodes[4].internal_order_hint = Some(OrderHint {
+        rank: 0,
+        cross_key: 4.,
+    });
+    nodes[1].pin = -1;
+    nodes[2].pin = -1;
+    let mut c = Component {
+        boundaries: true,
+        pinned: true,
+        nodes,
+        ..Default::default()
+    };
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    assert_eq!(
+        constrained(&mut g, &c, None, &Options::default(), &mut work).unwrap(),
+        0
+    );
+    assert_eq!(g.layers, [vec![0], vec![1, 2, 3, 4, 5, 6, 7]]);
+    for (vertex, cross_key) in [(1, 100.), (2, 80.), (3, 600.), (5, 110.), (6, 70.)] {
+        c.nodes[vertex].order_hint = Some(OrderHint { rank: 1, cross_key });
+    }
+    assert_eq!(
+        constrained(&mut g, &c, None, &Options::default(), &mut work).unwrap(),
+        0
+    );
+    assert_eq!(g.layers, [vec![0], vec![2, 1, 3, 4, 6, 5, 7]]);
 }
 
 #[test]

@@ -18,6 +18,7 @@ use crate::{
 pub(super) struct Frame {
     pub(super) bounds: Size,
     pub(super) items: Vec<Rect>,
+    pub(super) item_ranks: Vec<u32>,
     pub(super) title: Option<Point>,
     pub(super) legs: Vec<EdgeGeometry>,
     pub(super) ports: Vec<Point>,
@@ -279,8 +280,10 @@ fn measure(
         };
         node.parent = None;
         node.seq = slot as u32;
+        node.align_flow(level.direction);
+        node.order_hint = node.order_hint_in(level.direction);
         if let Some(cross_key) = ctx.items[super::item_index(ctx.graph, item)] {
-            node.order_hint = Some(OrderHint {
+            node.internal_order_hint = Some(OrderHint {
                 rank: node.order_hint.map_or(0, |hint| hint.rank),
                 cross_key,
             });
@@ -300,7 +303,8 @@ fn measure(
             } else {
                 BoundaryRank::End
             });
-            node.order_hint = ctx.ports[border].map(|cross_key| OrderHint { rank: 0, cross_key });
+            node.internal_order_hint =
+                ctx.ports[border].map(|cross_key| OrderHint { rank: 0, cross_key });
             graph.nodes.push(node);
             dummies.push(Some(NodeId(index)));
         } else {
@@ -414,6 +418,8 @@ pub(super) fn level(
     }
     let level = &ctx.hierarchy.levels[id];
     let mut nodes = drawing.nodes;
+    let mut item_ranks = drawing.node_ranks;
+    item_ranks.truncate(level.items.len());
     ports::items(
         &mut wires,
         &graph,
@@ -432,7 +438,7 @@ pub(super) fn level(
                 &mut ports,
                 title,
                 fit::title_side(group.title_position),
-                fit.size.width,
+                fit,
                 ctx.options,
                 work,
             )?;
@@ -458,6 +464,7 @@ pub(super) fn level(
     Ok(Frame {
         bounds: fit.size,
         items: nodes,
+        item_ranks,
         title: title.map(Rect::center),
         legs,
         ports,

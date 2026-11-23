@@ -2,7 +2,7 @@ use super::*;
 use crate::compound::{hierarchy, sides};
 use crate::{
     Direction, EdgeId, GroupId, GroupSpec, Insets, MarkerMetrics, NoopWorkControl, Options,
-    TitlePosition, layout,
+    PackingPolicy, TitlePosition, WidthPolicy, layout,
 };
 
 fn size(width: f64, height: f64) -> Size {
@@ -127,12 +127,13 @@ fn measured_parallel_ports_enter_flat_as_boundary_ranks_and_perpendicular_ports_
     assert_eq!(local.nodes[0].pin, -1);
     assert_eq!(local.nodes[0].boundary, None);
     assert_eq!(
-        local.nodes[0].order_hint,
+        local.nodes[0].effective_order_hint(),
         Some(OrderHint {
             rank: 6,
             cross_key: 9.
         })
     );
+    assert_eq!(local.nodes[0].order_hint, graph.nodes[0].order_hint);
     assert_eq!(
         (
             local.nodes[0].port_span,
@@ -145,7 +146,8 @@ fn measured_parallel_ports_enter_flat_as_boundary_ranks_and_perpendicular_ports_
     assert!(
         local.nodes[1..]
             .iter()
-            .all(|node| node.size == Size::default() && node.order_hint.unwrap().cross_key == 17.)
+            .all(|node| node.size == Size::default()
+                && node.effective_order_hint().unwrap().cross_key == 17.)
     );
 }
 
@@ -722,4 +724,105 @@ fn a_mixed_leg_reserves_the_marker_on_its_requested_member_face() {
         assert_eq!(cross(side, before), cross(side, target));
         assert!((before.x - target.x).abs() + (before.y - target.y).abs() >= 70.);
     }
+}
+
+fn oversized_boundary_marker() -> (Graph, Options) {
+    let mut graph = Graph::default();
+    let mut owner = GroupSpec::new(0);
+    owner.direction = Some(Direction::Right);
+    owner.min_size = size(60.0, 50.0);
+    graph.groups.push(owner);
+    graph.nodes = vec![node(0, 40.0, 30.0, Some(0)), node(1, 40.0, 100.0, None)];
+    let mut own = edge(GroupId(0), NodeId(0));
+    own.start_marker = MarkerMetrics {
+        length: 12.0,
+        width: 180.0,
+    };
+    graph.edges.push(own);
+    let mut options = independent();
+    options.width_policy = WidthPolicy::FitWidth {
+        max_width: 160.0,
+        allow_turn: false,
+        turn_breakpoint: 640.0,
+        fold_wide_ranks: false,
+    };
+    (graph, options)
+}
+
+#[test]
+fn fit_width_packs_an_inward_oversized_marker_clear_of_the_next_component() {
+    let (mut graph, options) = oversized_boundary_marker();
+    let fixed = |offset| PortSideHint::FixedOffset {
+        side: Side::Top,
+        offset,
+    };
+    graph.edges[0].source_port = fixed(0.0);
+    let mut legacy = options;
+    legacy.width_policy = WidthPolicy::Natural;
+    legacy.packing = PackingPolicy::FitWidth { max_width: 160.0 };
+    let natural = layout(&graph, &legacy).unwrap();
+    assert_eq!(natural.bounds.width, 150.0);
+    assert_eq!(natural.groups[0].rect.width, 60.0);
+
+    for (hint, expected_width) in [
+        (fixed(0.0), 180.0),
+        (fixed(20.0), 220.0),
+        (fixed(-20.0), 220.0),
+        (PortSideHint::Side(Side::Top), 180.0),
+    ] {
+        graph.edges[0].source_port = hint;
+        let drawing = layout(&graph, &options).unwrap();
+        let group = drawing.groups[0].rect;
+        let route = &drawing.edges[0];
+        let contact = tip(route, 0);
+        let next = point(route.points[1]);
+        let footprint = Rect {
+            x: contact.x - 90.0,
+            y: contact.y,
+            width: 180.0,
+            height: 12.0,
+        };
+        assert_eq!(drawing.bounds.width, expected_width, "{hint:?}");
+        assert_eq!(group.width, expected_width, "{hint:?}");
+        assert_eq!(drawing.groups[0].effective_direction, Direction::Right);
+        assert_eq!(route.ports.0, Side::Top);
+        assert_eq!(contact.y, group.y);
+        assert_eq!(next.x, contact.x);
+        assert!(next.y - contact.y >= footprint.height);
+        assert!(footprint.x >= group.x);
+        assert!(footprint.x + footprint.width <= group.x + group.width);
+        assert!(!overlap(footprint, drawing.nodes[1]));
+        if let PortSideHint::FixedOffset { offset, .. } = hint {
+            assert_eq!(contact.x - group.center().x, offset);
+        }
+    }
+    graph.edges[0].source_port = fixed(31.0);
+    assert_eq!(
+        layout(&graph, &options),
+        Err(LayoutError::InvalidInput("port offset outside group face"))
+    );
+}
+
+#[test]
+fn fit_width_preserves_marker_room_when_moving_a_port_beside_the_title() {
+    let (mut graph, options) = oversized_boundary_marker();
+    graph.groups[0].title = Some(size(80.0, 12.0));
+    graph.groups[0].title_position = TitlePosition::TopLeft;
+    graph.edges[0].source_port = PortSideHint::Side(Side::Top);
+    let drawing = layout(&graph, &options).unwrap();
+    let group = &drawing.groups[0];
+    let title = centered(group.title_center.unwrap(), graph.groups[0].title.unwrap());
+    let route = &drawing.edges[0];
+    let contact = tip(route, 0);
+    let footprint = Rect {
+        x: contact.x - 90.0,
+        y: contact.y,
+        width: 180.0,
+        height: 12.0,
+    };
+    assert_eq!(route.ports.0, Side::Top);
+    assert_eq!(contact.y, group.rect.y);
+    assert!(footprint.x >= title.x + title.width + fit::TITLE_CLEAR);
+    assert!(footprint.x + footprint.width <= group.rect.x + group.rect.width);
+    assert!(!overlap(footprint, drawing.nodes[1]));
 }

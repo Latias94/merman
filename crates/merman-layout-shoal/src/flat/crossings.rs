@@ -17,6 +17,16 @@ impl Segment {
         };
         (a.min(b), a.max(b))
     }
+
+    fn coordinates(&self) -> [u64; 4] {
+        [
+            self.a.x.to_bits(),
+            self.a.y.to_bits(),
+            self.b.x.to_bits(),
+            self.b.y.to_bits(),
+        ]
+    }
+
     fn straddles(&self, other: &Segment) -> bool {
         let cross = |p: RoutePoint| {
             (self.b.x - self.a.x) * (p.y - self.a.y) - (self.b.y - self.a.y) * (p.x - self.a.x)
@@ -27,7 +37,11 @@ impl Segment {
     }
 }
 
-pub(super) fn pairs(edges: &[(u32, EdgeGeometry)], work: &mut Work<'_>) -> LayoutResult<u64> {
+pub(super) fn pairs(
+    edges: &[(u32, EdgeGeometry)],
+    compress_shared: bool,
+    work: &mut Work<'_>,
+) -> LayoutResult<u64> {
     if edges.len() < 2 {
         return Ok(0);
     }
@@ -70,6 +84,19 @@ pub(super) fn pairs(edges: &[(u32, EdgeGeometry)], work: &mut Work<'_>) -> Layou
     };
     let horizontal = crowding(true) < crowding(false);
     validate::charge_sort(segments.len(), work)?;
+    if compress_shared {
+        segments.sort_unstable_by(|a, b| {
+            a.interval(horizontal)
+                .0
+                .total_cmp(&b.interval(horizontal).0)
+                .then_with(|| a.coordinates().cmp(&b.coordinates()))
+                .then(a.edge.cmp(&b.edge))
+        });
+        work.charge(segments.len())?;
+        segments.dedup_by(|a, b| a.edge == b.edge && a.coordinates() == b.coordinates());
+        return shared_pairs(&segments, horizontal, work);
+    }
+
     segments.sort_unstable_by(|a, b| {
         a.interval(horizontal)
             .0
@@ -93,6 +120,35 @@ pub(super) fn pairs(edges: &[(u32, EdgeGeometry)], work: &mut Work<'_>) -> Layou
             }
         }
         crate::work::push(&mut active, index)?;
+    }
+    Ok(pairs.len() as u64)
+}
+
+fn shared_pairs(segments: &[Segment], horizontal: bool, work: &mut Work<'_>) -> LayoutResult<u64> {
+    let mut pairs = BTreeSet::new();
+    let mut active: Vec<&[Segment]> = Vec::new();
+    for owners in segments.chunk_by(|a, b| a.coordinates() == b.coordinates()) {
+        let s = &owners[0];
+        work.visit(active.len() + owners.len())?;
+        let start = s.interval(horizontal).0;
+        active.retain(|neighbors| neighbors[0].interval(horizontal).1 >= start);
+        let (low, high) = s.interval(!horizontal);
+        for &neighbors in &active {
+            let t = &neighbors[0];
+            let (l, h) = t.interval(!horizontal);
+            if !(l <= high && h >= low && s.straddles(t) && t.straddles(s)) {
+                continue;
+            }
+            for first in owners {
+                for second in neighbors {
+                    work.visit(1 + pairs.len().checked_ilog2().unwrap_or(0) as usize)?;
+                    if first.edge != second.edge {
+                        pairs.insert((first.edge.min(second.edge), first.edge.max(second.edge)));
+                    }
+                }
+            }
+        }
+        crate::work::push(&mut active, owners)?;
     }
     Ok(pairs.len() as u64)
 }
@@ -125,6 +181,68 @@ mod tests {
             (1, route(&[(2.0, 5.0), (3.0, 0.0), (5.0, 5.0)])),
             (2, route(&[(0.0, 3.0), (-1.0, 6.0)])),
         ];
-        assert_eq!(pairs(&g, &mut Work::new(&mut NoopWorkControl)).unwrap(), 1);
+        for compress_shared in [false, true] {
+            assert_eq!(
+                pairs(&g, compress_shared, &mut Work::new(&mut NoopWorkControl)).unwrap(),
+                1
+            );
+        }
+    }
+
+    #[test]
+    fn shared_segments_credit_each_crossing_edge_pair_once() {
+        let edges = [
+            (0, route(&[(0., 0.), (0., 10.), (0., 0.), (0., 10.)])),
+            (1, route(&[(0., 0.), (0., 10.)])),
+            (2, route(&[(0., 5.), (0., 10.)])),
+            (3, route(&[(-4., 2.), (4., 2.), (4., 7.), (-4., 7.)])),
+            (4, route(&[(4., 7.), (-4., 7.)])),
+            (5, route(&[(0., 10.), (2., 12.)])),
+        ];
+        for compress_shared in [false, true] {
+            assert_eq!(
+                pairs(
+                    &edges,
+                    compress_shared,
+                    &mut Work::new(&mut NoopWorkControl)
+                )
+                .unwrap(),
+                6
+            );
+        }
+    }
+
+    #[test]
+    fn shared_trunk_avoids_pairwise_work_and_still_crosses_a_foreign_edge() {
+        #[derive(Default)]
+        struct Meter(usize);
+
+        impl crate::WorkControl for Meter {
+            fn check(&mut self) -> Result<(), WorkError> {
+                Ok(())
+            }
+
+            fn charge(&mut self, units: usize) -> Result<(), WorkError> {
+                self.0 += units;
+                Ok(())
+            }
+        }
+
+        let count = 512;
+        let mut edges: Vec<_> = (0..count)
+            .map(|edge| (edge, route(&[(0., 0.), (0., 10.)])))
+            .collect();
+        edges.push((count, route(&[(-10., 5.), (10., 5.)])));
+        let mut legacy = Meter::default();
+        let mut shared = Meter::default();
+        for (compress_shared, meter) in [(false, &mut legacy), (true, &mut shared)] {
+            let mut work = Work::new(meter);
+            assert_eq!(
+                pairs(&edges, compress_shared, &mut work),
+                Ok(u64::from(count))
+            );
+            work.finish().unwrap();
+        }
+        assert!(shared.0 * 4 < legacy.0, "{}/{}", shared.0, legacy.0);
     }
 }

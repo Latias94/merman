@@ -65,7 +65,7 @@ pub(super) fn assign(
                 u32::try_from(slot).map_err(|_| WorkError::ArithmeticOverflow)?,
             );
             if let Endpoint::Node(id) = item {
-                node.order_hint = graph.nodes[id.0 as usize].order_hint;
+                node.order_hint = graph.nodes[id.0 as usize].order_hint_in(level.direction);
             }
             nodes.push(node);
         }

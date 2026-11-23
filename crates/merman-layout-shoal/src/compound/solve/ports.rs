@@ -393,7 +393,7 @@ pub(super) fn border(
     };
     for (slots, side) in faces.iter_mut().zip(SIDES) {
         let length = across(side, fit.size);
-        let inset = options.spacing.corner_clearance.min(length / 2.0);
+        let inset = fit.border_inset(side, options.spacing.corner_clearance);
         spread(
             slots,
             inset,
@@ -413,7 +413,7 @@ pub(super) fn beside_title(
     ports: &mut [Point],
     title: Rect,
     side: Side,
-    width: f64,
+    fit: &fit::Fit,
     options: &Options,
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
@@ -455,7 +455,8 @@ pub(super) fn beside_title(
     if !obstructed {
         return Ok(());
     }
-    let inset = options.spacing.corner_clearance.min(width / 2.0);
+    let width = fit.size.width;
+    let inset = fit.border_inset(side, options.spacing.corner_clearance);
     let left = (title.x - clearance).min(width - inset);
     let right = (title.x + title.width + clearance).max(inset);
     let pitch = options.spacing.min_port_pitch;

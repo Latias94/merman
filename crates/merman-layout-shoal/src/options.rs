@@ -136,4 +136,6 @@ pub struct Options {
     pub width_policy: WidthPolicy,
     pub caps: BudgetCaps,
     pub grid_quantum: Option<f64>,
+    /// Include each node's local layered rank in the result for editor sessions.
+    pub capture_node_ranks: bool,
 }

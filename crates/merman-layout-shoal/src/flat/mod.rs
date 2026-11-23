@@ -5,6 +5,7 @@ mod boundary;
 mod crossings;
 mod expand;
 mod extras;
+mod fan;
 mod order;
 mod pack;
 mod position;
@@ -398,37 +399,113 @@ pub(crate) fn run(
     g: &mut Expanded,
     work: &mut Work<'_>,
 ) -> LayoutResult<LayoutOutput> {
+    run_packed(graph, options, g, None, work).map(|(drawing, _)| drawing)
+}
+
+pub(crate) fn fold(
+    graph: &Graph,
+    options: &Options,
+    g: &mut Expanded,
+    max_width: f64,
+    work: &mut Work<'_>,
+) -> LayoutResult<Option<LayoutOutput>> {
+    if !graph.groups.is_empty() || !matches!(graph.direction, Direction::Down | Direction::Up) {
+        return Ok(None);
+    }
+    run_packed(graph, options, g, Some(max_width), work)
+        .map(|(drawing, folded)| folded.then_some(drawing))
+}
+
+fn draw_component(
+    g: &mut Expanded,
+    c: &Component,
+    orientation: &acyclic::Orientation,
+    graph: &Graph,
+    options: &Options,
+    work: &mut Work<'_>,
+) -> LayoutResult<Drawing> {
+    let mut x = position::assign(g, c, Some(orientation), graph, options, work)?;
+    refine::refine(g, c, orientation, graph, options, &mut x, work)?;
+    let mut drawing = routing::route(g, c, orientation, graph, options, &x, work)?;
+    extras::finish(&mut drawing, g, c, graph, options, work)?;
+    Ok(drawing)
+}
+
+fn run_packed(
+    graph: &Graph,
+    options: &Options,
+    g: &mut Expanded,
+    fold_limit: Option<f64>,
+    work: &mut Work<'_>,
+) -> LayoutResult<(LayoutOutput, bool)> {
     let components = validate::components(graph, options, work)?;
     let mut stats = LayoutStats {
         components: components.len(),
         ..Default::default()
     };
     let mut tiles = crate::work::reserved(components.len())?;
+    let mut folded = false;
     for c in components {
         let mut local = *options;
         local.caps.max_dummies -= stats.dummy_nodes;
         let (orientation, crossings) = prepare_component(&c, graph, &local, work, g)?;
         stats.scc_cyclic_count += orientation.cyclic_sccs;
-        stats.reversed_edges += orientation
+        let reversed = orientation
             .reversed
             .iter()
             .filter(|&&flipped| flipped)
             .count();
-        stats.dummy_nodes += g.rank.len() - c.nodes.len();
-        stats.direct_fallback_edges += g.direct.iter().filter(|&&direct| direct).count();
+        let dummies = g.rank.len() - c.nodes.len();
+        let fallbacks = g.direct.iter().filter(|&&direct| direct).count();
         stats.topological_crossings = stats
             .topological_crossings
             .checked_add(crossings)
             .ok_or(WorkError::ArithmeticOverflow)?;
-        let mut x = position::assign(g, &c, Some(&orientation), graph, options, work)?;
-        refine::refine(g, &c, &orientation, graph, options, &mut x, work)?;
-        let mut drawing = routing::route(g, &c, &orientation, graph, options, &x, work)?;
-        extras::finish(&mut drawing, g, &c, graph, options, work)?;
+        let ranks = if options.capture_node_ranks {
+            work.charge(c.nodes.len())?;
+            let mut ranks = crate::work::reserved(c.nodes.len())?;
+            ranks.extend_from_slice(&g.rank[..c.nodes.len()]);
+            ranks
+        } else {
+            Vec::new()
+        };
+        let candidate = match fold_limit {
+            Some(max_width) => fan::fold(g, &c, graph, &local, max_width, work)?,
+            None => None,
+        };
+        let compress_shared = candidate.is_some();
+        let (drawing, dummies, fallbacks, reversed) = match candidate {
+            Some(candidate) => {
+                folded = true;
+                (
+                    candidate.drawing,
+                    candidate.dummies,
+                    candidate.fallbacks,
+                    candidate.reversed,
+                )
+            }
+            None => (
+                draw_component(g, &c, &orientation, graph, options, work)?,
+                dummies,
+                fallbacks,
+                reversed,
+            ),
+        };
+        stats.dummy_nodes += dummies;
+        stats.direct_fallback_edges += fallbacks;
+        stats.reversed_edges += reversed;
         stats.routed_crossings = stats
             .routed_crossings
-            .checked_add(crossings::pairs(&drawing.edges, work)?)
+            .checked_add(crossings::pairs(&drawing.edges, compress_shared, work)?)
             .ok_or(WorkError::ArithmeticOverflow)?;
-        tiles.push(pack::Tile::new(c.ids, drawing, graph, work)?);
+        tiles.push(pack::Tile::new(
+            c.ids,
+            ranks,
+            drawing,
+            graph,
+            options.width_policy,
+            work,
+        )?);
     }
-    pack::assemble(tiles, graph, options, stats, work)
+    Ok((pack::assemble(tiles, graph, options, stats, work)?, folded))
 }

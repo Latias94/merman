@@ -39,7 +39,13 @@ The default ranks the acyclic condensation of each connected component. Inside c
 
 Long edges normally travel along intermediate channels inside the diagram. `BudgetCaps::max_dummies` bounds the number of expanded vertices across the drawing. The solver records each edge downgraded at this cap in `LayoutStats::direct_fallback_edges`. `topological_crossings` counts inversions between consecutive ranks. For a flat graph, `routed_crossings` counts pairs of routing polylines with a proper intersection. For a compound graph it compares the assembled paths in the selected routing style and excludes the fan near a shared endpoint. Both measurements precede final outline clipping and SVG painting.
 
-`PackingPolicy::AspectTargeted` uses two-dimensional shelves with a target proportion across and along the flow. `Strip` packs in a single row across the flow. `PackingPolicy::FitWidth` wraps complete components within a physical width when they fit individually. Whole-graph width adaptation and grid quantization currently return `Unsupported`.
+`PackingPolicy::AspectTargeted` uses two-dimensional shelves with a target proportion across and along the flow. `Strip` packs in a single row across the flow. `PackingPolicy::FitWidth` wraps complete components within a physical width when they fit individually.
+
+`WidthPolicy::FitWidth` tries component wrapping and tighter spacing. It can also turn a horizontal flow below a configured breakpoint and fold eligible leaf fans across rows. Set `allow_turn` and `fold_wide_ranks` explicitly. Read the selected direction and width from `LayoutOutput`, including when the result still exceeds the requested width. Grid quantization is reserved for a future policy.
+
+Set `Options::capture_node_ranks` for interactive layouts. Each `LayoutOutput::node_ranks` entry uses its component's or compound container's local rank origin. Match surviving nodes by the caller's semantic IDs and populate `NodeSpec::order_hint` with the previous rank and physical cross-axis center. Set `order_hint_direction` to associate the hints with the prior local direction.
+
+When the hinted drawing has crossings, Shoal compares it with a stateless solve within the same work budget. It keeps the stateless drawing if hints increased either crossing count.
 
 ## Nested groups
 

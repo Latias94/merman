@@ -331,7 +331,7 @@ impl Priority {
 
     fn new(node: &NodeSpec, vertex: u32, bucket: u64) -> Self {
         let rank = node
-            .order_hint
+            .effective_order_hint()
             .map_or(1u64 << 32, |hint| u64::from((hint.rank as u32) ^ (1 << 31)));
         Self([
             (u64::from(node.seq) << 32) | u64::from(vertex),

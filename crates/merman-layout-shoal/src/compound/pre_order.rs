@@ -106,13 +106,15 @@ pub(super) fn ordered(
         nodes: reserved(nodes)?,
         ..Default::default()
     };
-    for &node in &graph.nodes {
+    for &original in &graph.nodes {
         work.visit(1)?;
-        groups.push(node.parent);
-        proxy.nodes.push(crate::NodeSpec {
+        groups.push(original.parent);
+        let mut node = crate::NodeSpec {
             parent: None,
-            ..node
-        });
+            ..original
+        };
+        node.align_flow(graph.direction);
+        proxy.nodes.push(node);
     }
     for (parent, level) in hierarchy.levels[..root].iter().enumerate() {
         work.visit(1)?;

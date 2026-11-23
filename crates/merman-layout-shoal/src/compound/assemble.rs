@@ -81,6 +81,7 @@ fn on_face(point: Point, rect: Rect, side: Side) -> LayoutResult<Point> {
 
 struct Coordinates {
     nodes: Vec<Rect>,
+    node_ranks: Vec<u32>,
     groups: Vec<GroupGeometry>,
     origins: Vec<Point>,
     borders: Vec<Point>,
@@ -102,6 +103,12 @@ impl Coordinates {
         );
         let mut result = Self {
             nodes: filled(ctx.graph.nodes.len(), Rect::default())?,
+            node_ranks: if ctx.options.capture_node_ranks {
+                work.charge(ctx.graph.nodes.len())?;
+                filled(ctx.graph.nodes.len(), 0)?
+            } else {
+                Vec::new()
+            },
             groups,
             origins: filled(frames.len(), Point::default())?,
             borders: filled(hierarchy.borders.len(), Point::default())?,
@@ -112,15 +119,22 @@ impl Coordinates {
             let origin = result.origins[id];
             work.visit(level.items.len() + level.ports.len() + 1)?;
             if level.items.len() != frame.items.len()
+                || (ctx.options.capture_node_ranks && level.items.len() != frame.item_ranks.len())
                 || level.ports.len() != frame.ports.len()
                 || level.legs.len() != frame.legs.len()
             {
                 return Err(LayoutError::InvalidInput("incomplete compound level"));
             }
-            for (&item, &rect) in level.items.iter().zip(&frame.items) {
+            for (slot, (&item, &rect)) in level.items.iter().zip(&frame.items).enumerate() {
                 let rect = place(rect, origin)?;
                 match item {
-                    Endpoint::Node(node) => result.nodes[node.0 as usize] = rect,
+                    Endpoint::Node(node) => {
+                        let index = node.0 as usize;
+                        result.nodes[index] = rect;
+                        if let Some(rank) = result.node_ranks.get_mut(index) {
+                            *rank = frame.item_ranks[slot];
+                        }
+                    }
                     Endpoint::Group(group) => {
                         let child = group.0 as usize;
                         result.groups[child].rect = rect;
@@ -329,6 +343,7 @@ pub(super) fn drawing(
     }
     Ok(LayoutOutput {
         nodes: coordinates.nodes,
+        node_ranks: coordinates.node_ranks,
         groups: coordinates.groups,
         edges,
         truncated_routes,

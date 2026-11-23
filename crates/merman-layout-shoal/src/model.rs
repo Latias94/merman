@@ -40,6 +40,15 @@ pub enum Direction {
     Left,
 }
 
+impl Direction {
+    pub(crate) fn axis(self) -> Axis {
+        match self {
+            Self::Down | Self::Up => Axis::Vertical,
+            Self::Left | Self::Right => Axis::Horizontal,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Side {
     Top,
@@ -158,8 +167,14 @@ pub struct NodeSpec {
     pub perpendicular_port_span: Option<f64>,
     /// Position of a left/right anchor measured from the top of the box.
     pub anchor_y: Option<f64>,
+    /// Flow axis for which this rotatable box and its centered faces were measured.
+    /// Responsive trials can transpose the box and its face spans for another local axis.
+    pub flow_relative_axis: Option<Axis>,
     pub seq: u32,
     pub order_hint: Option<OrderHint>,
+    /// Local flow direction of the previous frame, if known.
+    pub order_hint_direction: Option<Direction>,
+    pub(crate) internal_order_hint: Option<OrderHint>,
     pub(crate) boundary: Option<crate::flat::BoundaryRank>,
     pub(crate) pin: i8,
     pub(crate) group_proxy: bool,
@@ -173,11 +188,42 @@ impl NodeSpec {
             port_span: None,
             perpendicular_port_span: None,
             anchor_y: None,
+            flow_relative_axis: None,
             seq,
             order_hint: None,
+            order_hint_direction: None,
+            internal_order_hint: None,
             boundary: None,
             pin: 0,
             group_proxy: false,
+        }
+    }
+
+    pub(crate) fn effective_order_hint(&self) -> Option<OrderHint> {
+        self.internal_order_hint.or(self.order_hint)
+    }
+
+    pub(crate) fn editor_order_hint(&self) -> Option<OrderHint> {
+        self.order_hint
+            .filter(|_| self.boundary.is_none() && !self.group_proxy)
+    }
+
+    pub(crate) fn order_hint_in(&self, direction: Direction) -> Option<OrderHint> {
+        self.order_hint.filter(|_| {
+            self.order_hint_direction
+                .is_none_or(|hint| hint == direction)
+        })
+    }
+
+    pub(crate) fn align_flow(&mut self, direction: Direction) {
+        let axis = direction.axis();
+        if self
+            .flow_relative_axis
+            .is_some_and(|measured| measured != axis)
+        {
+            std::mem::swap(&mut self.size.width, &mut self.size.height);
+            std::mem::swap(&mut self.port_span, &mut self.perpendicular_port_span);
+            self.flow_relative_axis = Some(axis);
         }
     }
 }
@@ -308,6 +354,9 @@ pub struct LayoutStats {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct LayoutOutput {
     pub nodes: Vec<Rect>,
+    /// Local ranks in node input order when [`crate::Options::capture_node_ranks`] is enabled.
+    /// Disconnected components and compound containers have their own rank origins.
+    pub node_ranks: Vec<u32>,
     pub groups: Vec<GroupGeometry>,
     pub edges: Vec<EdgeGeometry>,
     pub truncated_routes: Vec<TruncatedRoute>,

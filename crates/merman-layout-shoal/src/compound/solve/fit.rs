@@ -1,12 +1,13 @@
 use super::*;
 use crate::work::push;
-use crate::{GroupSpec, Options, TitlePosition};
+use crate::{GroupSpec, Options, TitlePosition, WidthPolicy};
 
 pub(super) struct Fit {
     pub size: Size,
     pub offset: Point,
     pub seats: Vec<[Option<Rect>; 3]>,
     pub corridor: [f64; 4],
+    marker_insets: [f64; 4],
     title_drop: f64,
     vertical_slack: f64,
 }
@@ -80,6 +81,10 @@ impl Fit {
         let mut counts = [0usize; 4];
         let mut movable_at_title = 0usize;
         let mut title_clear = TITLE_CLEAR;
+        let fit_width = matches!(options.width_policy, WidthPolicy::FitWidth { .. });
+        let mut marker_insets = [0.0_f64; 4];
+        let mut fixed_offsets = [0.0_f64; 4];
+        let mut fixed_reach = [0.0_f64; 4];
         for wire in wires {
             work.visit(1)?;
             let Some((end, _, side)) = wire.border() else {
@@ -96,6 +101,24 @@ impl Fit {
                 .max(cross(side, inner.at))
                 .max(cross(side, preferred));
             let markers = [wire.spec.start_marker, wire.spec.end_marker];
+            if fit_width {
+                let marker = markers[end];
+                let offset = if let PortSideHint::FixedOffset { offset, .. } = hint {
+                    fixed_offsets[index] = fixed_offsets[index].max(offset.abs());
+                    Some(offset.abs())
+                } else {
+                    None
+                };
+                if marker.length > 0.0 && marker.width > 0.0 {
+                    work.visit(1)?;
+                    let half = marker.width / 2.0;
+                    if let Some(offset) = offset {
+                        fixed_reach[index] = fixed_reach[index].max(offset + half);
+                    } else {
+                        marker_insets[index] = marker_insets[index].max(half);
+                    }
+                }
+            }
             if index == title_side && title.width > 0.0 && title.height > 0.0 {
                 if !matches!(hint, PortSideHint::FixedOffset { .. }) {
                     movable_at_title += 1;
@@ -217,11 +240,13 @@ impl Fit {
         };
         let needed_width = finite(room(Side::Left) + core.width + room(Side::Right))?;
         let needed_height = finite(room(Side::Top) + core.height + room(Side::Bottom))?;
-        let mut title_width = padding.left + title.width + padding.right;
-        if movable_at_title > 0 {
-            let lane = |count: usize| {
-                title_clear + spacing.corner_clearance + (count - 1) as f64 * spacing.min_port_pitch
-            };
+        let title_width = |inset: f64| {
+            let padded = padding.left + title.width + padding.right;
+            if movable_at_title == 0 {
+                return padded;
+            }
+            let lane =
+                |count: usize| title_clear + inset + (count - 1) as f64 * spacing.min_port_pitch;
             let with_ports = match group.title_position {
                 TitlePosition::TopLeft | TitlePosition::BottomLeft => {
                     padding.left + title.width + lane(movable_at_title)
@@ -231,31 +256,55 @@ impl Fit {
                 }
                 _ => title.width + 2.0 * lane(movable_at_title.div_ceil(2)),
             };
-            title_width = title_width.max(with_ports);
-        }
-        let port_span = |side: Side| {
+            padded.max(with_ports)
+        };
+        let port_span = |side: Side, inset: f64| {
             let n = counts[side as usize];
             if n == 0 {
                 0.0
             } else {
-                2.0 * spacing.corner_clearance + (n - 1) as f64 * spacing.min_port_pitch
+                2.0 * inset + (n - 1) as f64 * spacing.min_port_pitch
             }
         };
-        let size = Size {
+        let corner = spacing.corner_clearance;
+        let mut size = Size {
             width: finite(
                 needed_width
                     .max(group.min_size.width)
-                    .max(title_width)
-                    .max(port_span(Side::Top))
-                    .max(port_span(Side::Bottom)),
+                    .max(title_width(corner))
+                    .max(port_span(Side::Top, corner))
+                    .max(port_span(Side::Bottom, corner)),
             )?,
             height: finite(
                 needed_height
                     .max(group.min_size.height)
-                    .max(port_span(Side::Left))
-                    .max(port_span(Side::Right)),
+                    .max(port_span(Side::Left, corner))
+                    .max(port_span(Side::Right, corner)),
             )?,
         };
+        if fit_width && (marker_insets != [0.0; 4] || fixed_reach != [0.0; 4]) {
+            for side in SIDES {
+                work.visit(1)?;
+                if fixed_offsets[side as usize] > across(side, size) / 2.0 {
+                    return Err(LayoutError::InvalidInput("port offset outside group face"));
+                }
+            }
+            let marker_span = |side: Side| {
+                let index = side as usize;
+                port_span(side, corner.max(marker_insets[index])).max(2.0 * fixed_reach[index])
+            };
+            size.width = finite(
+                size.width
+                    .max(marker_span(Side::Top))
+                    .max(marker_span(Side::Bottom))
+                    .max(title_width(corner.max(marker_insets[title_side]))),
+            )?;
+            size.height = finite(
+                size.height
+                    .max(marker_span(Side::Left))
+                    .max(marker_span(Side::Right)),
+            )?;
+        }
         let offset = Point {
             x: finite(room(Side::Left) + (size.width - needed_width) / 2.0)?,
             y: finite(room(Side::Top) + (size.height - needed_height) / 2.0)?,
@@ -291,9 +340,16 @@ impl Fit {
             offset,
             seats,
             corridor,
+            marker_insets,
             title_drop: before_title + title.height / 2.0,
             vertical_slack: (size.height - needed_height) / 2.0,
         })
+    }
+
+    pub(super) fn border_inset(&self, side: Side, corner: f64) -> f64 {
+        let marker = self.marker_insets[side as usize];
+        let inset = if marker > corner { marker } else { corner };
+        inset.min(across(side, self.size) / 2.0)
     }
 
     pub(super) fn reserve_title_room(

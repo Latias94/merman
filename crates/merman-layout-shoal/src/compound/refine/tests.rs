@@ -430,6 +430,7 @@ fn suggested(
                 ports: vec![Point::default(); level.ports.len()],
                 legs: vec![],
                 items: vec![],
+                item_ranks: vec![],
                 stats: Default::default(),
                 title: None,
             })

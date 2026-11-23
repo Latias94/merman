@@ -48,11 +48,9 @@ pub(crate) fn validate_options(options: &Options) -> LayoutResult<()> {
         turn_breakpoint,
         ..
     } = options.width_policy
+        && (!positive(max_width) || !length(turn_breakpoint))
     {
-        if !positive(max_width) || !length(turn_breakpoint) {
-            return Err(LayoutError::InvalidInput("invalid width policy"));
-        }
-        return Err(LayoutError::Unsupported("fit-width layout"));
+        return Err(LayoutError::InvalidInput("invalid width policy"));
     }
     if let Some(q) = options.grid_quantum {
         if !positive(q) {
@@ -70,6 +68,7 @@ pub(crate) fn validate_node(node: &NodeSpec) -> LayoutResult<()> {
         || node
             .anchor_y
             .is_some_and(|v| !length(v) || v > node.size.height)
+        || (node.flow_relative_axis.is_some() && node.anchor_y.is_some())
         || node.order_hint.is_some_and(|h| !h.cross_key.is_finite())
         || !(-1..=1).contains(&node.pin)
     {
@@ -220,7 +219,8 @@ pub(super) fn collect(
         }
         for (i, &v) in component.ids.iter().enumerate() {
             local[v as usize] = i as u32;
-            let node = graph.nodes[v as usize];
+            let mut node = graph.nodes[v as usize];
+            node.order_hint = node.order_hint_in(graph.direction);
             component.group_proxies |= node.group_proxy;
             push(&mut component.nodes, node)?;
         }

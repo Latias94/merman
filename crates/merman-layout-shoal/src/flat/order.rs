@@ -5,7 +5,7 @@ mod groups;
 
 use super::{Component, Csr, Expanded, Kind, validate};
 use crate::work::{LayoutResult, Work, filled, reserved};
-use crate::{GroupId, LayoutError, NodeSpec, Options, WorkError};
+use crate::{GroupId, LayoutError, NodeSpec, Options, OrderHint, WorkError};
 use groups::Groups;
 use std::cmp::Ordering;
 use std::ops::Range;
@@ -15,6 +15,18 @@ fn numeric_cmp(a: f64, b: f64) -> Ordering {
         Ordering::Equal
     } else {
         a.total_cmp(&b)
+    }
+}
+
+fn synthetic(node: &NodeSpec) -> bool {
+    node.boundary.is_some() || node.group_proxy
+}
+
+fn stateless_hint(node: &NodeSpec) -> Option<OrderHint> {
+    if node.editor_order_hint().is_some() {
+        node.internal_order_hint
+    } else {
+        node.effective_order_hint()
     }
 }
 
@@ -164,7 +176,7 @@ fn initial_order(
     nodes: &[NodeSpec],
     ports: &Ports<'_>,
     work: &mut Work<'_>,
-) -> LayoutResult<(Order, Vec<usize>)> {
+) -> LayoutResult<(Order, Vec<usize>, bool)> {
     let n = g.rank.len();
     work.charge(n)?;
     let mut start = reserved(
@@ -223,13 +235,13 @@ fn initial_order(
 
     let preference = |v: usize| {
         let node = &nodes[v];
-        node.order_hint
-            .map_or(f64::from(node.seq), |hint| hint.cross_key)
+        stateless_hint(node).map_or(f64::from(node.seq), |hint| hint.cross_key)
     };
     let compare = |a: usize, b: usize| {
         numeric_cmp(preference(a), preference(b)).then(nodes[a].seq.cmp(&nodes[b].seq))
     };
     let mut preference_slot = filled(nodes.len(), 0)?;
+    let mut has_editor_hint = false;
     for r in 0..order.ranks() {
         let range = order.range(r);
         work.visit(range.len() + 1)?;
@@ -243,12 +255,13 @@ fn initial_order(
         work.sort(&mut roots, |&a, &b| compare(a, b).then(a.cmp(&b)))?;
         let mut slot = 0;
         for (i, &v) in roots.iter().enumerate() {
+            has_editor_hint |= nodes[v].editor_order_hint().is_some();
             if i > 0 && compare(roots[i - 1], v) != Ordering::Equal {
                 slot += 1;
             }
             preference_slot[v] = slot;
         }
-        if !roots.is_empty() && roots.iter().all(|&v| nodes[v].order_hint.is_some()) {
+        if !roots.is_empty() && roots.iter().all(|&v| stateless_hint(&nodes[v]).is_some()) {
             let real_slots = order.ids[range]
                 .iter_mut()
                 .filter(|v| (**v as usize) < nodes.len());
@@ -258,7 +271,7 @@ fn initial_order(
         }
         order.reindex(r, ports, work)?;
     }
-    Ok((order, preference_slot))
+    Ok((order, preference_slot, has_editor_hint))
 }
 
 #[derive(Default)]
@@ -350,15 +363,18 @@ fn crossings(
     Ok(count)
 }
 
-fn inversions(
-    order: &Order,
+const NO_PREFERENCE: usize = usize::MAX;
+
+fn inversions<const EDITOR: bool>(
+    ids: &[u32],
+    starts: &[usize],
     preference: &[usize],
     tree: &mut Fenwick,
     work: &mut Work<'_>,
 ) -> LayoutResult<u64> {
     let mut total = 0;
-    for r in 0..order.ranks() {
-        let row = &order.ids[order.range(r)];
+    for bounds in starts.windows(2) {
+        let row = &ids[bounds[0]..bounds[1]];
         work.visit(1)?;
         if row.len() < 2 {
             continue;
@@ -366,13 +382,105 @@ fn inversions(
         tree.reset(row.len(), work)?;
         tree.charge_entries(row.len(), work)?;
         for &v in row {
-            if let Some(&slot) = preference.get(v as usize) {
+            if let Some(&slot) = preference.get(v as usize)
+                && (!EDITOR || slot != NO_PREFERENCE)
+            {
                 total += tree.greater(slot);
                 tree.insert(slot);
             }
         }
     }
     Ok(total)
+}
+
+struct EditorSeed {
+    ids: Vec<u32>,
+    preference: Vec<usize>,
+    anchored: bool,
+}
+
+fn editor_seed(
+    stateless: &[u32],
+    order: &Order,
+    nodes: &[NodeSpec],
+    rules: &Rules<'_>,
+    work: &mut Work<'_>,
+) -> LayoutResult<Option<EditorSeed>> {
+    work.charge(nodes.len())?;
+    let mut preference = filled(nodes.len(), NO_PREFERENCE)?;
+    let anchored = !rules.pins.is_empty() || nodes.iter().any(synthetic);
+    let mut ids = snapshot(stateless, work)?;
+    let mut survivors = reserved(
+        order
+            .start
+            .windows(2)
+            .map(|row| row[1] - row[0])
+            .max()
+            .unwrap_or(0),
+    )?;
+    let hint = |vertex: usize| nodes.get(vertex).and_then(NodeSpec::editor_order_hint);
+    let cross = |vertex: usize| hint(vertex).unwrap().cross_key;
+    let adjacent = |&left: &u32, &right: &u32| {
+        let (left, right) = (left as usize, right as usize);
+        !anchored
+            || !nodes.get(left).is_some_and(synthetic)
+                && !nodes.get(right).is_some_and(synthetic)
+                && rules.pin(left) == rules.pin(right)
+                && rules
+                    .groups
+                    .as_ref()
+                    .is_none_or(|groups| groups.owner[left] == groups.owner[right])
+    };
+    let mut comparable = false;
+    for rank in 0..order.ranks() {
+        let row = order.range(rank);
+        work.visit(row.len() + 1)?;
+        if row.len() < 2 || rules.fixed(rank) {
+            continue;
+        }
+        let mut offset = 0;
+        for run in ids[row].chunk_by_mut(adjacent) {
+            let first = offset;
+            offset += run.len();
+            if run.len() < 2 {
+                continue;
+            }
+            survivors.clear();
+            survivors.extend(
+                run.iter()
+                    .map(|&vertex| vertex as usize)
+                    .filter(|&vertex| hint(vertex).is_some()),
+            );
+            if survivors.len() < 2 {
+                continue;
+            }
+            work.sort(&mut survivors, |&left, &right| {
+                numeric_cmp(cross(left), cross(right))
+                    .then(nodes[left].seq.cmp(&nodes[right].seq))
+                    .then(left.cmp(&right))
+            })?;
+            let mut slot = first;
+            for (index, &vertex) in survivors.iter().enumerate() {
+                if index > 0 && cross(survivors[index - 1]) != cross(vertex) {
+                    slot += 1;
+                }
+                preference[vertex] = slot;
+            }
+            if slot == first {
+                continue;
+            }
+            comparable = true;
+            let slots = run.iter_mut().filter(|at| hint(**at as usize).is_some());
+            for (at, &vertex) in slots.zip(&survivors) {
+                *at = vertex as u32;
+            }
+        }
+    }
+    Ok(comparable.then_some(EditorSeed {
+        ids,
+        preference,
+        anchored,
+    }))
 }
 
 struct Sweep {
@@ -394,6 +502,10 @@ impl Rules<'_> {
 
     fn fixed(&self, rank: usize) -> bool {
         self.fixed.contains(&Some(rank))
+    }
+
+    fn can_mirror<const LIMITED: bool>(&self) -> bool {
+        !LIMITED || self.pins.is_empty() && self.fixed == [None; 2]
     }
 
     fn initial(
@@ -661,33 +773,63 @@ fn snapshot(ids: &[u32], work: &mut Work<'_>) -> LayoutResult<Vec<u32>> {
     Ok(copy)
 }
 
-/// Minimize (crossings, real-node inversions) lexicographically. The second coordinate is
-/// needed only for candidates that can still win on crossings.
-fn minimize<const LIMITED: bool>(
+type Score = (u64, u64);
+
+fn improved_mirror<const EDITOR: bool>(
+    order: &mut Order,
+    ports: &Ports<'_>,
+    ids: &[u32],
+    score: Score,
+    preference: &[usize],
+    tree: &mut Fenwick,
+    work: &mut Work<'_>,
+) -> LayoutResult<Option<Score>> {
+    if order.ids.len() == ids.len() {
+        work.charge(ids.len())?;
+        order.ids.copy_from_slice(ids);
+    } else {
+        order.ids = snapshot(ids, work)?;
+    }
+    for rank in 0..order.ranks() {
+        let row = order.range(rank);
+        order.ids[row].reverse();
+        order.reindex(rank, ports, work)?;
+    }
+    let count = crossings(order, ports, tree, work)?;
+    if count <= score.0 {
+        let candidate = (
+            count,
+            inversions::<EDITOR>(&order.ids, &order.start, preference, tree, work)?,
+        );
+        if candidate < score {
+            return Ok(Some(candidate));
+        }
+    }
+    Ok(None)
+}
+
+fn search<const LIMITED: bool, const EDITOR: bool>(
     g: &Expanded,
-    nodes: &[NodeSpec],
+    order: &mut Order,
+    preference: &[usize],
+    ports: &Ports<'_>,
     options: &Options,
     rules: &mut Rules<'_>,
     work: &mut Work<'_>,
-) -> LayoutResult<(Vec<u32>, u64)> {
-    let ports = Ports {
-        source: Face::new(g, false, work)?,
-        target: Face::new(g, true, work)?,
-    };
-    let (mut order, preference) = initial_order(g, nodes, &ports, work)?;
-    if LIMITED {
-        rules.initial(&mut order, &ports, work)?;
-    }
+) -> LayoutResult<(Vec<u32>, Score)> {
     let mut tree = Fenwick::default();
-    let initial_count = crossings(&order, &ports, &mut tree, work)?;
-    if initial_count == 0 {
-        return Ok((order.ids, 0));
+    let initial_count = crossings(order, ports, &mut tree, work)?;
+    if !EDITOR && initial_count == 0 {
+        return Ok((std::mem::take(&mut order.ids), (0, 0)));
     }
 
     let initial_score = (
         initial_count,
-        inversions(&order, &preference, &mut tree, work)?,
+        inversions::<EDITOR>(&order.ids, &order.start, preference, &mut tree, work)?,
     );
+    if initial_score == (0, 0) {
+        return Ok((std::mem::take(&mut order.ids), initial_score));
+    }
     let initial = snapshot(&order.ids, work)?;
     let mut chosen = snapshot(&initial, work)?;
     let mut chosen_score = initial_score;
@@ -699,7 +841,7 @@ fn minimize<const LIMITED: bool>(
     let small = order.ids.len() <= options.caps.max_transpose_nodes;
     for attempt in 0..if small { 2 } else { 1 } {
         if attempt != 0 {
-            order.restore(&initial, &ports, work)?;
+            order.restore(&initial, ports, work)?;
             work.charge(initial.len())?;
             best.copy_from_slice(&initial);
         }
@@ -707,26 +849,32 @@ fn minimize<const LIMITED: bool>(
         let mut stale = 0;
         for i in 0..options.caps.max_sweeps {
             let down = (i % 2) == attempt;
-            sweep.run::<LIMITED>(g, &mut order, &ports, (down, i % 4 >= 2), rules, work)?;
-            let c = crossings(&order, &ports, &mut tree, work)?;
+            sweep.run::<LIMITED>(g, order, ports, (down, i % 4 >= 2), rules, work)?;
+            let c = crossings(order, ports, &mut tree, work)?;
             stale = if c < best_score.0 { 0 } else { stale + 1 };
             if c <= best_score.0 {
-                let score = (c, inversions(&order, &preference, &mut tree, work)?);
+                let score = (
+                    c,
+                    inversions::<EDITOR>(&order.ids, &order.start, preference, &mut tree, work)?,
+                );
                 if score < best_score {
                     best_score = score;
                     work.charge(best.len())?;
                     best.copy_from_slice(&order.ids);
                 }
             }
-            if c == 0 || stale == 4 {
+            if c == 0 && (!EDITOR || best_score.1 == 0) || stale == 4 {
                 break;
             }
         }
         if small && best_score.0 > 0 {
-            order.restore(&best, &ports, work)?;
-            let c = transpose::<LIMITED>(&mut order, &ports, best_score.0, rules, work)?;
+            order.restore(&best, ports, work)?;
+            let c = transpose::<LIMITED>(order, ports, best_score.0, rules, work)?;
             if c < best_score.0 {
-                best_score = (c, inversions(&order, &preference, &mut tree, work)?);
+                best_score = (
+                    c,
+                    inversions::<EDITOR>(&order.ids, &order.start, preference, &mut tree, work)?,
+                );
                 work.charge(best.len())?;
                 best.copy_from_slice(&order.ids);
             }
@@ -739,23 +887,104 @@ fn minimize<const LIMITED: bool>(
             break;
         }
     }
-    if chosen_score != (0, 0) && (!LIMITED || rules.pins.is_empty() && rules.fixed == [None; 2]) {
-        work.charge(chosen.len())?;
-        order.ids.copy_from_slice(&chosen);
-        for r in 0..order.ranks() {
-            let row = order.range(r);
-            order.ids[row].reverse();
-            order.reindex(r, &ports, work)?;
-        }
-        // Port offsets retain their signs in a mirror, so crossings can change too.
-        let c = crossings(&order, &ports, &mut tree, work)?;
-        if c <= chosen_score.0
-            && (c, inversions(&order, &preference, &mut tree, work)?) < chosen_score
-        {
-            return Ok((order.ids, c));
-        }
+    if chosen_score != (0, 0)
+        && rules.can_mirror::<LIMITED>()
+        && let Some(score) = improved_mirror::<EDITOR>(
+            order,
+            ports,
+            &chosen,
+            chosen_score,
+            preference,
+            &mut tree,
+            work,
+        )?
+    {
+        return Ok((std::mem::take(&mut order.ids), score));
     }
-    Ok((chosen, chosen_score.0))
+    Ok((chosen, chosen_score))
+}
+
+fn minimize<const LIMITED: bool>(
+    g: &Expanded,
+    nodes: &[NodeSpec],
+    options: &Options,
+    rules: &mut Rules<'_>,
+    work: &mut Work<'_>,
+) -> LayoutResult<(Vec<u32>, u64)> {
+    let ports = Ports {
+        source: Face::new(g, false, work)?,
+        target: Face::new(g, true, work)?,
+    };
+    let (mut order, declaration, has_editor_hint) = initial_order(g, nodes, &ports, work)?;
+    if LIMITED {
+        rules.initial(&mut order, &ports, work)?;
+    }
+    let (stateless, (count, _)) =
+        search::<LIMITED, false>(g, &mut order, &declaration, &ports, options, rules, work)?;
+    if !has_editor_hint {
+        return Ok((stateless, count));
+    }
+    let Some(seed) = editor_seed(&stateless, &order, nodes, rules, work)? else {
+        return Ok((stateless, count));
+    };
+
+    let mut tree = Fenwick::default();
+    let stateless_score = (
+        count,
+        inversions::<true>(&stateless, &order.start, &seed.preference, &mut tree, work)?,
+    );
+    if stateless_score == (0, 0) {
+        return Ok((stateless, 0));
+    }
+
+    order.ids = seed.ids;
+    for rank in 0..order.ranks() {
+        order.reindex(rank, &ports, work)?;
+    }
+    if seed.anchored {
+        let candidate_count = crossings(&order, &ports, &mut tree, work)?;
+        if candidate_count <= count
+            && (
+                candidate_count,
+                inversions::<true>(&order.ids, &order.start, &seed.preference, &mut tree, work)?,
+            ) < stateless_score
+        {
+            return Ok((order.ids, candidate_count));
+        }
+        return Ok((stateless, count));
+    }
+    if LIMITED {
+        rules.initial(&mut order, &ports, work)?;
+    }
+    let (hinted, hint_score) = search::<LIMITED, true>(
+        g,
+        &mut order,
+        &seed.preference,
+        &ports,
+        options,
+        rules,
+        work,
+    )?;
+    let score = stateless_score.min(hint_score);
+    if score.1 > 0
+        && rules.can_mirror::<LIMITED>()
+        && let Some(mirror) = improved_mirror::<true>(
+            &mut order,
+            &ports,
+            &stateless,
+            score,
+            &seed.preference,
+            &mut tree,
+            work,
+        )?
+    {
+        return Ok((std::mem::take(&mut order.ids), mirror.0));
+    }
+    if hint_score < stateless_score {
+        Ok((hinted, hint_score.0))
+    } else {
+        Ok((stateless, stateless_score.0))
+    }
 }
 
 pub(super) fn reduce(
@@ -790,10 +1019,9 @@ pub(super) fn constrained(
         ] {
             let row = &g.layers[r];
             work.charge(row.len())?;
-            if row
-                .iter()
-                .all(|&v| g.kind[v as usize] == kind && c.nodes[v as usize].order_hint.is_some())
-            {
+            if row.iter().all(|&v| {
+                g.kind[v as usize] == kind && c.nodes[v as usize].effective_order_hint().is_some()
+            }) {
                 rules.fixed[side] = Some(r);
             }
         }

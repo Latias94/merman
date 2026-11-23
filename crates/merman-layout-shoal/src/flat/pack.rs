@@ -2,7 +2,10 @@
 
 use super::*;
 use crate::work::reserved;
-use crate::{EdgeGeometry, Endpoint, LayoutOutput, LayoutStats, PackingPolicy, Point, Rect, Side};
+use crate::{
+    EdgeGeometry, Endpoint, LayoutOutput, LayoutStats, PackingPolicy, Point, Rect, Side,
+    WidthPolicy,
+};
 
 const PRECISION: LayoutError = LayoutError::InvalidInput("layout exceeds coordinate precision");
 
@@ -58,7 +61,12 @@ impl Drawing {
         }
     }
 
-    fn bounds(&self, graph: &Graph, work: &mut Work<'_>) -> LayoutResult<Rect> {
+    fn bounds(
+        &self,
+        graph: &Graph,
+        include_markers: bool,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<Rect> {
         let (mut min_x, mut min_y, mut max_x, mut max_y) = (
             f64::INFINITY,
             f64::INFINITY,
@@ -105,6 +113,28 @@ impl Drawing {
                 work.visit(1)?;
                 include(p.x, p.y)?;
             }
+            if include_markers {
+                for (contact, side, marker) in [
+                    (geom.points.first(), geom.ports.0, e.start_marker),
+                    (geom.points.last(), geom.ports.1, e.end_marker),
+                ] {
+                    if marker.length == 0.0 || marker.width == 0.0 {
+                        continue;
+                    }
+                    work.visit(1)?;
+                    let contact = contact.ok_or(PRECISION)?;
+                    let (x, y) = (contact.x, contact.y);
+                    let half = marker.width * 0.5;
+                    let [near, far] = match side {
+                        Side::Top => [(x - half, y - marker.length), (x + half, y)],
+                        Side::Bottom => [(x - half, y), (x + half, y + marker.length)],
+                        Side::Left => [(x - marker.length, y - half), (x, y + half)],
+                        Side::Right => [(x, y - half), (x + marker.length, y + half)],
+                    };
+                    include(near.0, near.1)?;
+                    include(far.0, far.1)?;
+                }
+            }
         }
         let (width, height) = (max_x - min_x, max_y - min_y);
         if !width.is_finite() || !height.is_finite() {
@@ -121,20 +151,28 @@ impl Drawing {
 
 pub(super) struct Tile {
     ids: Vec<u32>,
+    ranks: Vec<u32>,
     drawing: Drawing,
     bounds: Rect,
 }
 impl Tile {
     pub(super) fn new(
         ids: Vec<u32>,
+        ranks: Vec<u32>,
         mut drawing: Drawing,
         graph: &Graph,
+        width_policy: WidthPolicy,
         work: &mut Work<'_>,
     ) -> LayoutResult<Self> {
         drawing.transform(graph.direction, Point::default());
-        let bounds = drawing.bounds(graph, work)?;
+        let bounds = drawing.bounds(
+            graph,
+            matches!(width_policy, WidthPolicy::FitWidth { .. }),
+            work,
+        )?;
         Ok(Self {
             ids,
+            ranks,
             drawing,
             bounds,
         })
@@ -239,9 +277,19 @@ pub(super) fn assemble(
         }
     };
     let mut nodes = filled(graph.nodes.len(), Rect::default())?;
+    let mut node_ranks = if options.capture_node_ranks {
+        work.charge(graph.nodes.len())?;
+        filled(graph.nodes.len(), 0)?
+    } else {
+        Vec::new()
+    };
     let mut edges = filled(graph.edges.len(), None)?;
     for (mut tile, offset) in tiles.into_iter().zip(offsets) {
         tile.drawing.transform(Direction::Down, offset);
+        for (&id, rank) in tile.ids.iter().zip(tile.ranks) {
+            work.visit(1)?;
+            node_ranks[id as usize] = rank;
+        }
         for (id, r) in tile.ids.into_iter().zip(tile.drawing.nodes) {
             work.visit(1)?;
             if (r.width > 0.0 && r.x + r.width <= r.x) || (r.height > 0.0 && r.y + r.height <= r.y)
@@ -266,6 +314,7 @@ pub(super) fn assemble(
     }
     Ok(LayoutOutput {
         nodes,
+        node_ranks,
         groups: Vec::new(),
         edges: routes,
         truncated_routes: Vec::new(),
