@@ -2217,34 +2217,29 @@ id1(Start)-->id2(Stop)
     }
 
     #[test]
-    fn shoal_rejects_other_graph_adapters_during_planning_and_execution() {
-        for body in [
-            "swimlane-beta LR\nA --> B",
-            "mindmap\n  root((Demo))\n    Leaf",
+    fn shoal_rejects_mindmap_during_planning_and_execution() {
+        let source = "---\nconfig:\n  layout: shoal\n---\nmindmap\n  root((Demo))\n    Leaf\n";
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
+        for error in [
+            family::plan_render(&parsed, &session).err(),
+            family::prepare(&parsed, &LayoutOptions::default(), session).err(),
         ] {
-            let source = format!("---\nconfig:\n  layout: shoal\n---\n{body}\n");
-            let parsed = MermaidEngine::new()
-                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
-                .unwrap()
-                .unwrap()
-                .into_presentation();
-            let session = crate::environment::RenderEnvironment::deterministic()
-                .begin_session()
-                .unwrap();
-            for error in [
-                family::plan_render(&parsed, &session).err(),
-                family::prepare(&parsed, &LayoutOptions::default(), session).err(),
-            ] {
-                let Some(Error::UnsupportedLayoutBackend {
-                    backend,
-                    diagram_type,
-                }) = error
-                else {
-                    panic!("expected an unsupported Shoal layout for {body}, got {error:?}");
-                };
-                assert_eq!(backend, "shoal");
-                assert_eq!(diagram_type, parsed.metadata().diagram_type);
-            }
+            let Some(Error::UnsupportedLayoutBackend {
+                backend,
+                diagram_type,
+            }) = error
+            else {
+                panic!("expected an unsupported Shoal layout for Mindmap, got {error:?}");
+            };
+            assert_eq!(backend, "shoal");
+            assert_eq!(diagram_type, parsed.metadata().diagram_type);
         }
     }
 
@@ -2287,7 +2282,15 @@ id1(Start)-->id2(Stop)
             ),
             ("sequenceDiagram\nA->>B: Hello", None),
             (
+                "swimlane-beta LR\nA --> B",
+                Some(RenderCapability::LayoutShoal),
+            ),
+            (
                 "architecture-beta\nservice api(server)[API]",
+                Some(RenderCapability::LayoutShoal),
+            ),
+            (
+                "---\nconfig:\n  layout: cose-bilkent\n---\narchitecture-beta\nservice api(server)[API]",
                 Some(RenderCapability::LayoutCytoscape),
             ),
         ] {
