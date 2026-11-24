@@ -367,63 +367,6 @@ fn flowchart_node_wrapper<'a, 'input>(
 }
 
 #[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
-fn flowchart_node_shape_style(svg: &str, node_id: &str) -> String {
-    let document = crate::xml_dom::Document::parse(svg).expect("valid Flowchart SVG");
-    let wrapper = flowchart_node_wrapper(&document, node_id);
-    wrapper
-        .descendants()
-        .find(|node| {
-            node.is_element()
-                && node.attribute("class").is_some_and(|class| {
-                    class
-                        .split_ascii_whitespace()
-                        .any(|part| part == "label-container")
-                })
-        })
-        .and_then(|node| node.attribute("style"))
-        .unwrap_or_else(|| panic!("Flowchart node shape style for {node_id}"))
-        .to_string()
-}
-
-fn flowchart_edge_path_style(svg: &str) -> String {
-    let document = crate::xml_dom::Document::parse(svg).expect("valid Flowchart SVG");
-    document
-        .descendants()
-        .find(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
-        .and_then(|node| node.attribute("style"))
-        .expect("Flowchart edge path style")
-        .to_string()
-}
-
-fn flowchart_edge_marker_id(svg: &str) -> String {
-    let document = crate::xml_dom::Document::parse(svg).expect("valid Flowchart SVG");
-    let marker = document
-        .descendants()
-        .find(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
-        .and_then(|node| node.attribute("marker-end"))
-        .expect("Flowchart edge marker-end");
-    marker
-        .strip_prefix("url(#")
-        .and_then(|value| value.strip_suffix(')'))
-        .expect("Flowchart marker-end URL")
-        .to_string()
-}
-
-fn assert_flowchart_point_marker_paint(svg: &str, marker_id: &str, paint: &str) {
-    let document = crate::xml_dom::Document::parse(svg).expect("valid Flowchart SVG");
-    let marker = document
-        .descendants()
-        .find(|node| node.has_tag_name("marker") && node.attribute("id") == Some(marker_id))
-        .unwrap_or_else(|| panic!("Flowchart marker {marker_id}"));
-    let path = marker
-        .descendants()
-        .find(|node| node.has_tag_name("path"))
-        .expect("referenced point marker path");
-    assert_eq!(path.attribute("fill"), Some(paint));
-    assert_eq!(path.attribute("stroke"), Some(paint));
-}
-
-#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn flowchart_node_shape_attribute(svg: &str, node_id: &str, attribute: &str) -> Option<String> {
     let document = crate::xml_dom::Document::parse(svg).expect("valid Flowchart SVG");
     let wrapper = flowchart_node_wrapper(&document, node_id);

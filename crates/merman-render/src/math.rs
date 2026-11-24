@@ -13,8 +13,7 @@ mod prepared;
 
 pub(crate) use evidence::{
     PREPARED_MATH_NATIVE_CLASS, PreparedMathEvidenceLease, PreparedMathExpectation,
-    PreparedMathOccurrenceId, PreparedMathProjectionFingerprint, PreparedMathStyleAssurance,
-    PreparedMathTerminalReceipt,
+    PreparedMathOccurrenceId, PreparedMathProjectionFingerprint, PreparedMathTerminalReceipt,
 };
 pub(crate) use prepared::{
     BROWSER_ONLY_MATH_NATIVE_UNAVAILABLE_ATTRIBUTE, ConfiguredMathBackend, MathPreparationOutcome,

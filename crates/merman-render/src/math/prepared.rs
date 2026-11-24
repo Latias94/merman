@@ -217,7 +217,6 @@ pub(crate) struct PreparedMathLabel {
     max_line_height_px: f64,
     max_math_height_px: Option<f64>,
     browser_xhtml: Arc<str>,
-    style_assurance: super::PreparedMathStyleAssurance,
     occurrence_id: Option<super::PreparedMathOccurrenceId>,
     native_projection: Option<Arc<PreparedMathNativeProjection>>,
 }
@@ -230,7 +229,6 @@ impl PreparedMathLabel {
             max_line_height_px: metrics.height,
             max_math_height_px: None,
             browser_xhtml: Arc::from("<span/>"),
-            style_assurance: super::PreparedMathStyleAssurance::opaque_html("", 16.0),
             occurrence_id: None,
             native_projection: None,
         }
@@ -254,10 +252,6 @@ impl PreparedMathLabel {
 
     pub(crate) fn native_projection(&self) -> Option<&Arc<PreparedMathNativeProjection>> {
         self.native_projection.as_ref()
-    }
-
-    pub(crate) const fn style_assurance(&self) -> &super::PreparedMathStyleAssurance {
-        &self.style_assurance
     }
 
     pub(crate) fn expectation(
@@ -286,7 +280,6 @@ impl PreparedMathLabel {
                         .map_or(0, |projection| projection.retained_bytes()),
                 )
             })
-            .and_then(|bytes| bytes.checked_add(self.style_assurance.retained_heap_bytes()))
             .and_then(|bytes| {
                 bytes.checked_add(
                     self.occurrence_id
@@ -611,18 +604,12 @@ fn prepare_external(
         .zip(html)
         .map(|(metrics, html)| RawPreparedMathLabel::new(html, metrics));
     Ok(match prepared {
-        Some(prepared) => {
-            let style_assurance = super::PreparedMathStyleAssurance::opaque_html(
-                request.foreground,
-                request.style.font_size,
-            );
-            match finish_external_preparation(prepared, request, style_assurance, work_meter)? {
-                Some(prepared) => MathPreparationOutcome::Prepared(Arc::new(prepared)),
-                None => {
-                    MathPreparationOutcome::Unavailable(MathPreparationUnavailable::BackendDeclined)
-                }
+        Some(prepared) => match finish_external_preparation(prepared, request, work_meter)? {
+            Some(prepared) => MathPreparationOutcome::Prepared(Arc::new(prepared)),
+            None => {
+                MathPreparationOutcome::Unavailable(MathPreparationUnavailable::BackendDeclined)
             }
-        }
+        },
         None => MathPreparationOutcome::Unavailable(MathPreparationUnavailable::BackendDeclined),
     })
 }
@@ -630,7 +617,6 @@ fn prepare_external(
 fn finish_external_preparation(
     prepared: RawPreparedMathLabel,
     request: PrepareMathLabelRequest<'_>,
-    style_assurance: super::PreparedMathStyleAssurance,
     work_meter: &Arc<OperationWorkMeter>,
 ) -> Result<Option<PreparedMathLabel>, OperationWorkError> {
     let RawPreparedMathLabel {
@@ -659,7 +645,6 @@ fn finish_external_preparation(
         max_line_height_px,
         max_math_height_px,
         browser_xhtml: Arc::from(browser_xhtml),
-        style_assurance,
         occurrence_id: request.occurrence_id.cloned(),
         native_projection,
     };
@@ -985,13 +970,7 @@ fn prepare_compiled_ratex(
             MathPreparationUnavailable::BackendDeclined,
         ));
     };
-    let style_assurance = super::PreparedMathStyleAssurance::compiled_ratex(
-        request.foreground,
-        request.style.font_size,
-    );
-    let Some(prepared) =
-        finish_external_preparation(prepared, request, style_assurance, work_meter)?
-    else {
+    let Some(prepared) = finish_external_preparation(prepared, request, work_meter)? else {
         return Ok(MathPreparationOutcome::Unavailable(
             MathPreparationUnavailable::BackendDeclined,
         ));
@@ -1481,7 +1460,6 @@ mod tests {
             std::mem::size_of::<PreparedMathLabel>()
                 + artifact.browser_xhtml().len()
                 + native.retained_bytes()
-                + "#e5e7eb".len()
         );
     }
 

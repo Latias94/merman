@@ -2,7 +2,7 @@
 
 Run `merman-cli theme list --json` and read `families[].capabilities` for the installed build. SDKs expose the same data through the `theme-catalog` metadata operation. An SVG-enabled full build has 34 logical families and 37 syntax entry points, including the Railroad dialects. [Renderer registry](../../crates/merman-render/src/theme/mod.rs) · [Capability flags](../../crates/merman-theme-contract/src/v2/mod.rs)
 
-The family adapter maps semantic settings to visible objects. For example, a connector color applies to Flowchart arrows, Sequence messages, and XY Chart axes. Categorical slots supply the arms of series, slices, or branches where a family consumes them. The root canvas is shared. Families place typography during layout when it affects geometry.
+Each renderer family maps semantic settings to visible objects. A connector color applies to Flowchart arrows, Sequence messages, and XY Chart axes. Categorical slots supply the colors of series, slices, or branches where a family consumes them. The root canvas is shared. Families apply typography during layout when it affects geometry.
 
 For charts, inspect the plotted series, labels, and legend together. XY Chart consumes gridlines, bar radius and wireframe, line point markers, and categorical patterns. Pie uses a canvas-colored gap and the series' paired text color. Sankey and Treemap draw categorical fills in their own layers. Tree View and Railroad use the code font slot for their notation.
 
