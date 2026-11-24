@@ -4,7 +4,6 @@ use crate::Result;
 use crate::elk_edge_geometry;
 use crate::model::{Bounds, LayoutEdge, LayoutNode};
 use crate::text::{TextMetrics, TextStyle};
-use crate::theme::{FamilyThemeAdapter, ThemeCapabilityFlags};
 use merman_model::families::usecase::{UsecaseDiagramModel, UsecaseLabelType};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -22,19 +21,6 @@ mod theme;
 #[cfg(feature = "layout-shoal")]
 pub(crate) use shoal::{UsecaseMarker, canonical_route_style};
 pub(crate) use theme::UsecaseCssBinding;
-
-pub(crate) struct UsecaseThemeAdapter;
-
-impl FamilyThemeAdapter for UsecaseThemeAdapter {
-    const FAMILY: crate::DiagramFamilyId = crate::DiagramFamilyId::USECASE;
-    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
-        .union(ThemeCapabilityFlags::NODE_SURFACE)
-        .union(ThemeCapabilityFlags::CONTAINER)
-        .union(ThemeCapabilityFlags::CALLOUT)
-        .union(ThemeCapabilityFlags::CONNECTOR)
-        .union(ThemeCapabilityFlags::ELEVATION)
-        .union(ThemeCapabilityFlags::TYPOGRAPHY);
-}
 
 /// Mermaid's nonMarkdownToHTML/nonMarkdownToLines treat a literal \n as a line break.
 /// Keep the source label intact for accessibility while sharing its rendered text with measurement.
@@ -294,7 +280,7 @@ pub(crate) fn prepare_usecase_diagram(
     work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
     let config_value = effective_config.as_value();
     let mut css_binding = UsecaseCssBinding::new(config_value);
-    if let Some(theme) = execution.native_family_theme::<UsecaseThemeAdapter>() {
+    if let Some(theme) = execution.native_family_theme() {
         css_binding.apply_native(
             effective_config,
             theme,

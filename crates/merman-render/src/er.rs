@@ -22,7 +22,7 @@ mod native_theme;
 mod shoal;
 mod swimlane;
 mod theme;
-pub(crate) use native_theme::{ErNativeStyle, ErThemeAdapter};
+pub(crate) use native_theme::ErNativeStyle;
 
 use crate::layout_backend::GraphLayoutBackend;
 pub(crate) use config::{ErConfigView, ErEntityMeasurementSettings, ErLayoutSettings};

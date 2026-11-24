@@ -1,24 +1,8 @@
 use merman_theme_contract::v2::{EdgeLabelBackground, Elevation, Form};
 
-use crate::DiagramFamilyId;
-use crate::theme::{Color, FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags, font_family_css};
+use crate::theme::{Color, FamilyTheme, font_family_css};
 
 use super::BlockCssThemeBinding;
-
-pub(crate) struct BlockThemeAdapter;
-
-impl FamilyThemeAdapter for BlockThemeAdapter {
-    const FAMILY: DiagramFamilyId = DiagramFamilyId::BLOCK;
-    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
-        .union(ThemeCapabilityFlags::NODE_SURFACE)
-        .union(ThemeCapabilityFlags::CONTAINER)
-        .union(ThemeCapabilityFlags::CONNECTOR)
-        .union(ThemeCapabilityFlags::ELEVATION)
-        .union(ThemeCapabilityFlags::RADIUS)
-        .union(ThemeCapabilityFlags::EDGE_STYLE)
-        .union(ThemeCapabilityFlags::MARKER_STYLE)
-        .union(ThemeCapabilityFlags::TYPOGRAPHY);
-}
 
 #[derive(Debug)]
 pub(crate) struct BlockNativeStyle {

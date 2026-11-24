@@ -18,7 +18,6 @@ mod theme;
 
 pub(crate) use config::RadarConfigView;
 pub(crate) use css_binding::RadarCssBinding;
-pub(crate) use native_theme::RadarThemeAdapter;
 pub(crate) use theme::{RadarSeriesPaintPlan, RadarTypographyThemePlan};
 
 pub(crate) fn effective_title<'a>(

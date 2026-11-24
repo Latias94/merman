@@ -1,22 +1,7 @@
 use merman_model::presentation::PresentationConfig;
 use merman_theme_contract::v2::{EdgeStyle, MarkerStyle};
 
-use crate::theme::{FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags, font_family_css};
-
-pub(crate) struct C4ThemeAdapter;
-
-impl FamilyThemeAdapter for C4ThemeAdapter {
-    const FAMILY: crate::DiagramFamilyId = crate::DiagramFamilyId::C4;
-    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
-        .union(ThemeCapabilityFlags::NODE_SURFACE)
-        .union(ThemeCapabilityFlags::CONTAINER)
-        .union(ThemeCapabilityFlags::DATA_FILL)
-        .union(ThemeCapabilityFlags::CONNECTOR)
-        .union(ThemeCapabilityFlags::RADIUS)
-        .union(ThemeCapabilityFlags::EDGE_STYLE)
-        .union(ThemeCapabilityFlags::MARKER_STYLE)
-        .union(ThemeCapabilityFlags::TYPOGRAPHY);
-}
+use crate::theme::{FamilyTheme, font_family_css};
 
 #[derive(Debug)]
 pub(crate) struct C4NativeStyle {

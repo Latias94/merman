@@ -1,9 +1,7 @@
 //! Mermaid 12 Usecase paint over its prepared graph and measured labels.
 
 use super::*;
-use crate::usecase::{
-    UsecaseLabelPlan, UsecaseNodePlan, UsecasePreparedArtifact, UsecaseThemeAdapter,
-};
+use crate::usecase::{UsecaseLabelPlan, UsecaseNodePlan, UsecasePreparedArtifact};
 use kurbo::{Ellipse, Rect, Shape};
 use merman_model::families::usecase::{
     UsecaseActorType, UsecaseAnimation, UsecaseDiagramModel, UsecaseLabelType, UsecaseNodeKind,
@@ -277,7 +275,7 @@ pub(crate) fn render_usecase_diagram_svg_model(
     let diagram_id = options.diagram_id_or("usecase");
     let cfg = config.as_value();
     let css_binding = &prepared.css_binding;
-    let native = options.native_family_theme::<UsecaseThemeAdapter>();
+    let native = options.native_family_theme();
     let labels = UsecaseLabelRenderContext { config, measurer };
     let layout = prepared.layout();
     let geometry: HashMap<_, _> = layout

@@ -2,22 +2,7 @@ use merman_model::presentation::PresentationConfig;
 use merman_theme_contract::v2::{EdgeLabelBackground, EdgeStyle};
 
 use crate::text::TextStyle;
-use crate::theme::{Color, FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags, font_family_css};
-
-pub(crate) struct ClassThemeAdapter;
-
-impl FamilyThemeAdapter for ClassThemeAdapter {
-    const FAMILY: crate::DiagramFamilyId = crate::DiagramFamilyId::CLASS;
-    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
-        .union(ThemeCapabilityFlags::NODE_SURFACE)
-        .union(ThemeCapabilityFlags::CONTAINER)
-        .union(ThemeCapabilityFlags::CALLOUT)
-        .union(ThemeCapabilityFlags::EMPHASIS)
-        .union(ThemeCapabilityFlags::CONNECTOR)
-        .union(ThemeCapabilityFlags::RADIUS)
-        .union(ThemeCapabilityFlags::EDGE_STYLE)
-        .union(ThemeCapabilityFlags::TYPOGRAPHY);
-}
+use crate::theme::{Color, FamilyTheme, font_family_css};
 
 #[derive(Debug)]
 pub(crate) struct ClassNativeStyle {

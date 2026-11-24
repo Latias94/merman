@@ -1,5 +1,6 @@
 use crate::config::{config_css_number_or_string, config_string};
 use crate::svg::PreparedCommonCss;
+use crate::svg::render_theme::default_c_scale;
 use merman_markup::theme_color::{ColorChannel, ThemeColor, invert};
 
 #[derive(Debug)]
@@ -152,23 +153,6 @@ impl TreemapCssBinding {
         } else {
             leaf_label_fill
         }
-    }
-}
-
-fn default_c_scale(index: usize) -> &'static str {
-    match index {
-        0 => "hsl(240, 100%, 76.2745098039%)",
-        1 => "hsl(60, 100%, 73.5294117647%)",
-        2 => "hsl(80, 100%, 76.2745098039%)",
-        3 => "hsl(270, 100%, 76.2745098039%)",
-        4 => "hsl(300, 100%, 76.2745098039%)",
-        5 => "hsl(330, 100%, 76.2745098039%)",
-        6 => "hsl(0, 100%, 76.2745098039%)",
-        7 => "hsl(30, 100%, 76.2745098039%)",
-        8 => "hsl(90, 100%, 76.2745098039%)",
-        9 => "hsl(150, 100%, 76.2745098039%)",
-        10 => "hsl(180, 100%, 76.2745098039%)",
-        _ => "hsl(210, 100%, 76.2745098039%)",
     }
 }
 

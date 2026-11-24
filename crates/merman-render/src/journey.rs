@@ -15,7 +15,7 @@ mod typography;
 
 pub(crate) use config::{JourneyTextPlacement, default_use_max_width};
 pub(crate) use css_binding::JourneyCssBinding;
-pub(crate) use native_theme::{JourneyNativeStyle, JourneyThemeAdapter};
+pub(crate) use native_theme::JourneyNativeStyle;
 pub(crate) use typography::JourneyStyle;
 
 const JOURNEY_LEGEND_CIRCLE_R_PX: f64 = 7.0;

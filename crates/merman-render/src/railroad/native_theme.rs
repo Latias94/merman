@@ -4,19 +4,7 @@ use super::{
     RailroadStyle, is_valid_color_value, parse_number_value, railroad_config_value,
     sanitize_font_family_value, theme_config_value, trim_ecmascript_whitespace,
 };
-use crate::theme::{Color, FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags, font_family_css};
-
-pub(crate) struct RailroadThemeAdapter;
-
-impl FamilyThemeAdapter for RailroadThemeAdapter {
-    const FAMILY: crate::DiagramFamilyId = crate::DiagramFamilyId::RAILROAD;
-    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
-        .union(ThemeCapabilityFlags::NODE_SURFACE)
-        .union(ThemeCapabilityFlags::EMPHASIS)
-        .union(ThemeCapabilityFlags::CONNECTOR)
-        .union(ThemeCapabilityFlags::RADIUS)
-        .union(ThemeCapabilityFlags::TYPOGRAPHY);
-}
+use crate::theme::{Color, FamilyTheme, font_family_css};
 
 #[derive(Clone, Debug)]
 pub(crate) struct RailroadNativeTypography {

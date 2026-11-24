@@ -51,7 +51,7 @@ pub(crate) use self::config::ClassRenderConfig;
 pub use self::dagre::debug_build_class_diagram_dagre_graph;
 #[cfg(feature = "layout-dagre")]
 pub(crate) use self::dagre::layout as layout_class_diagram_typed_with_config;
-pub(crate) use self::native_theme::{ClassNativeStyle, ClassThemeAdapter};
+pub(crate) use self::native_theme::ClassNativeStyle;
 pub(crate) use node_binding::ClassNodeVisualPlan;
 mod theme;
 #[cfg(feature = "layout-elk")]

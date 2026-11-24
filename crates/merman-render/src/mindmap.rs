@@ -19,7 +19,7 @@ mod native_theme;
 mod theme;
 mod tidy_tree;
 
-pub(crate) use native_theme::{MindmapNativeStyle, MindmapThemeAdapter};
+pub(crate) use native_theme::MindmapNativeStyle;
 pub(crate) use theme::MindmapAppearance;
 
 pub(crate) fn mindmap_label_wrapping_width_px(

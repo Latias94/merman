@@ -20,27 +20,14 @@ impl MindmapAppearance {
 }
 
 const MINDMAP_THEME_COLOR_LIMIT_DEFAULT: usize = 12;
-const MINDMAP_DEFAULT_COLOR_SCALE: [&str; MINDMAP_THEME_COLOR_LIMIT_DEFAULT] = [
-    "hsl(240, 100%, 76.2745098039%)",
-    "hsl(60, 100%, 73.5294117647%)",
-    "hsl(80, 100%, 76.2745098039%)",
-    "hsl(270, 100%, 76.2745098039%)",
-    "hsl(300, 100%, 76.2745098039%)",
-    "hsl(330, 100%, 76.2745098039%)",
-    "hsl(0, 100%, 76.2745098039%)",
-    "hsl(30, 100%, 76.2745098039%)",
-    "hsl(90, 100%, 76.2745098039%)",
-    "hsl(150, 100%, 76.2745098039%)",
-    "hsl(180, 100%, 76.2745098039%)",
-    "hsl(210, 100%, 76.2745098039%)",
-];
 
 pub(super) fn mindmap_color_scale_css(config: &PresentationConfig, slot: usize) -> String {
     config
         .get_str(&format!("themeVariables.cScale{slot}"))
         .map(str::to_string)
         .unwrap_or_else(|| {
-            MINDMAP_DEFAULT_COLOR_SCALE[slot % MINDMAP_DEFAULT_COLOR_SCALE.len()].to_string()
+            crate::svg::render_theme::default_c_scale(slot % MINDMAP_THEME_COLOR_LIMIT_DEFAULT)
+                .to_owned()
         })
 }
 

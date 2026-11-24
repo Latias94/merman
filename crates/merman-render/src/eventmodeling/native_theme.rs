@@ -1,24 +1,9 @@
 use merman_theme_contract::v2::{DataPalette, Form};
 
-use crate::DiagramFamilyId;
 use crate::text::TextStyle;
-use crate::theme::{Color, FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags, font_family_css};
+use crate::theme::{Color, FamilyTheme, font_family_css};
 
 use super::EventModelingCssBinding;
-
-pub(crate) struct EventModelingThemeAdapter;
-
-impl FamilyThemeAdapter for EventModelingThemeAdapter {
-    const FAMILY: DiagramFamilyId = DiagramFamilyId::EVENT_MODELING;
-    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
-        .union(ThemeCapabilityFlags::NODE_SURFACE)
-        .union(ThemeCapabilityFlags::CONTAINER)
-        .union(ThemeCapabilityFlags::DATA_FILL)
-        .union(ThemeCapabilityFlags::STATUS_COLORS)
-        .union(ThemeCapabilityFlags::CONNECTOR)
-        .union(ThemeCapabilityFlags::RADIUS)
-        .union(ThemeCapabilityFlags::TYPOGRAPHY);
-}
 
 #[derive(Debug)]
 pub(crate) struct EventModelingNativeStyle {

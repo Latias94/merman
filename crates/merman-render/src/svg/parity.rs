@@ -1009,10 +1009,8 @@ impl<'a> SvgExecution<'a> {
     }
 
     #[allow(dead_code, reason = "Used by enabled diagram families.")]
-    pub(crate) fn native_family_theme<A: crate::theme::FamilyThemeAdapter>(
-        &self,
-    ) -> Option<&crate::theme::FamilyTheme> {
-        self.family.native_theme::<A>()
+    pub(crate) fn native_family_theme(&self) -> Option<&crate::theme::FamilyTheme> {
+        self.family.native_theme()
     }
 
     pub(crate) fn text_measurer_for(&self, phase: TextMeasurementPhase) -> RoutedTextMeasurer<'_> {

@@ -61,7 +61,7 @@ mod css_binding;
 mod native_theme;
 pub(crate) use config::{KanbanConfigView, default_use_max_width};
 pub(crate) use css_binding::KanbanCssBinding;
-pub(crate) use native_theme::{KanbanNativeStyle, KanbanThemeAdapter, task_body};
+pub(crate) use native_theme::{KanbanNativeStyle, task_body};
 #[derive(Debug)]
 pub(crate) struct KanbanPreparedArtifact {
     layout: KanbanDiagramLayout,

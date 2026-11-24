@@ -7,7 +7,7 @@ use merman_theme_contract::v2::DataPalette;
 use crate::model::TreemapDiagramLayout;
 use crate::resources::{OperationWorkMeter, PreparedTextRetainedReservation};
 use crate::svg::PreparedCommonCss;
-use crate::theme::{Color, FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags};
+use crate::theme::{Color, FamilyTheme};
 
 use super::css_binding::TreemapCssBinding;
 
@@ -16,18 +16,6 @@ mod node_visual;
 
 use font_size::TreemapInlineFontSize;
 use node_visual::TreemapNodeVisual;
-
-pub(crate) struct TreemapThemeAdapter;
-
-impl FamilyThemeAdapter for TreemapThemeAdapter {
-    const FAMILY: crate::DiagramFamilyId = crate::DiagramFamilyId::TREEMAP;
-    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
-        .union(ThemeCapabilityFlags::CONTAINER)
-        .union(ThemeCapabilityFlags::DATA_FILL)
-        .union(ThemeCapabilityFlags::RADIUS)
-        .union(ThemeCapabilityFlags::PATTERN_ENCODING)
-        .union(ThemeCapabilityFlags::TYPOGRAPHY);
-}
 
 #[derive(Debug, Clone, Default)]
 enum TreemapSourceTextOverride<T> {

@@ -2,7 +2,7 @@ mod font_binding;
 mod theme;
 
 use theme::CynefinNativeStyle;
-pub(crate) use theme::{CynefinStyle, CynefinTextRole, CynefinThemeAdapter};
+pub(crate) use theme::{CynefinStyle, CynefinTextRole};
 
 use crate::Result;
 use crate::config::{config_bool, config_f64, config_string};

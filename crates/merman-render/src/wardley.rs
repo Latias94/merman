@@ -2,7 +2,7 @@ mod font_size;
 mod theme;
 
 pub(crate) use font_size::WardleyFontSize;
-pub(crate) use theme::{WardleyPaintBinding, WardleyStyle, WardleyTextRole, WardleyThemeAdapter};
+pub(crate) use theme::{WardleyPaintBinding, WardleyStyle, WardleyTextRole};
 
 use crate::config::{config_bool, config_f64_or};
 use crate::text::{TextMeasurer, TextStyle};

@@ -34,15 +34,7 @@ fn prepare_flowchart_artifact<'parsed, L>(
         &crate::svg::FlowchartEdgeStylePlan,
     ) -> Result<L>,
 ) -> Result<Box<FlowchartFamilyArtifact<'parsed, L>>> {
-    use crate::flowchart::native_theme::{
-        AgentflowThemeAdapter, FlowchartThemeAdapter, SwimlaneThemeAdapter,
-    };
-
-    let native = match execution.family_id() {
-        DiagramFamilyId::AGENTFLOW => execution.native_family_theme::<AgentflowThemeAdapter>(),
-        DiagramFamilyId::SWIMLANE => execution.native_family_theme::<SwimlaneThemeAdapter>(),
-        _ => execution.native_family_theme::<FlowchartThemeAdapter>(),
-    };
+    let native = execution.native_family_theme();
     let work_meter = execution.work_meter();
     let class_defs = crate::flowchart::FlowchartClassDefinitions::new(&semantic.class_defs);
     let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_with_class_definitions(
@@ -148,11 +140,9 @@ fn prepare_mindmap_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    use crate::mindmap::{
-        MindmapAppearance, MindmapCssBinding, MindmapNativeStyle, MindmapThemeAdapter,
-    };
+    use crate::mindmap::{MindmapAppearance, MindmapCssBinding, MindmapNativeStyle};
 
-    let appearance = match execution.native_family_theme::<MindmapThemeAdapter>() {
+    let appearance = match execution.native_family_theme() {
         Some(theme) => MindmapAppearance::Native(MindmapNativeStyle::resolve(theme)),
         None => {
             execution
@@ -195,7 +185,7 @@ fn prepare_sankey_family<'parsed>(
         execution.text_measurer(),
         execution.work_meter_ref(),
     )?;
-    let native = execution.native_family_theme::<crate::sankey::SankeyThemeAdapter>();
+    let native = execution.native_family_theme();
     let style = crate::sankey::SankeyStyle::resolve(
         &meta.effective_config,
         &layout,
@@ -218,7 +208,7 @@ fn prepare_block_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme::<crate::block::BlockThemeAdapter>();
+    let native = execution.native_family_theme();
     let mut typography_theme = match native {
         Some(theme) => crate::block::BlockTypographyThemePlan::resolve_native(
             theme,
@@ -268,7 +258,7 @@ fn prepare_railroad_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme::<crate::railroad::RailroadThemeAdapter>();
+    let native = execution.native_family_theme();
     let style = crate::railroad::resolve_railroad_style(&meta.effective_config, native);
     let layout = crate::railroad::layout_railroad_diagram_typed_for_type_with_style(
         model,
@@ -311,9 +301,9 @@ fn prepare_info_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    use crate::info::{InfoAppearance, InfoClassicStyle, InfoNativeStyle, InfoThemeAdapter};
+    use crate::info::{InfoAppearance, InfoClassicStyle, InfoNativeStyle};
 
-    let (layout, typography_theme) = match execution.native_family_theme::<InfoThemeAdapter>() {
+    let (layout, typography_theme) = match execution.native_family_theme() {
         Some(theme) => {
             let (layout, style) = InfoNativeStyle::resolve(theme, execution.text_measurer());
             (layout, InfoAppearance::Native(style))
@@ -337,7 +327,7 @@ fn prepare_cynefin_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme::<crate::cynefin::CynefinThemeAdapter>();
+    let native = execution.native_family_theme();
     let style = crate::cynefin::CynefinStyle::resolve(&meta.effective_config, native);
     let layout = crate::cynefin::layout_cynefin_diagram_typed_with_style(
         model,
@@ -360,7 +350,7 @@ fn prepare_wardley_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme::<crate::wardley::WardleyThemeAdapter>();
+    let native = execution.native_family_theme();
     let style = crate::wardley::WardleyStyle::resolve(&meta.effective_config, native);
     let layout = crate::wardley::layout_wardley_diagram_typed_with_style(
         model,
@@ -390,7 +380,7 @@ fn prepare_state_family<'parsed>(
         model,
         &meta.effective_config,
         execution.layout_backend(),
-        execution.native_family_theme::<crate::state::StateThemeAdapter>(),
+        execution.native_family_theme(),
         execution.family.session().canvas_background(),
     );
     let (layout, route_contract) = crate::state::layout_state_diagram_typed_with_work_meter(
@@ -480,7 +470,7 @@ fn prepare_architecture_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme::<crate::architecture::ArchitectureThemeAdapter>();
+    let native = execution.native_family_theme();
     let group_theme =
         crate::architecture::ArchitectureGroupThemePlan::resolve(native, &meta.effective_config);
     #[cfg(feature = "layout-cytoscape")]
@@ -532,7 +522,7 @@ fn prepare_c4_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme::<crate::c4::C4ThemeAdapter>();
+    let native = execution.native_family_theme();
     let mut typography_theme =
         crate::c4::C4TypographyThemePlan::resolve(native, &meta.effective_config, model);
     let cluster_theme =
@@ -588,7 +578,7 @@ fn prepare_gantt_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme::<crate::gantt::GanttThemeAdapter>();
+    let native = execution.native_family_theme();
     let style = crate::gantt::GanttStyle::resolve(&meta.effective_config, native);
     let (layout, task_source_indices) = crate::gantt::layout_gantt_diagram_typed(
         model,
@@ -616,9 +606,9 @@ fn prepare_pie_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    use crate::pie::{PieAppearance, PieNativeStyle, PieThemeAdapter};
+    use crate::pie::{PieAppearance, PieNativeStyle};
 
-    if let Some(theme) = execution.native_family_theme::<PieThemeAdapter>() {
+    if let Some(theme) = execution.native_family_theme() {
         let (layout, style) = PieNativeStyle::prepare(
             theme,
             model,
@@ -652,7 +642,7 @@ fn prepare_timeline_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme::<crate::timeline::TimelineThemeAdapter>();
+    let native = execution.native_family_theme();
     let style = crate::timeline::TimelineStyle::resolve(&meta.effective_config, native);
     let layout = crate::timeline::layout_timeline_diagram_typed_with_binding(
         model,
@@ -675,7 +665,7 @@ fn prepare_journey_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme::<crate::journey::JourneyThemeAdapter>();
+    let native = execution.native_family_theme();
     let style = crate::journey::JourneyStyle::resolve(&meta.effective_config, native);
     let layout = crate::journey::layout_journey_diagram_typed_with_resolved_typography(
         model,
@@ -698,7 +688,7 @@ fn prepare_radar_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme::<crate::radar::RadarThemeAdapter>();
+    let native = execution.native_family_theme();
     let typography_theme =
         crate::radar::RadarTypographyThemePlan::resolve(native, &meta.effective_config);
     let series_paint =
@@ -731,7 +721,7 @@ fn prepare_treemap_family<'parsed>(
         meta.effective_config.as_value(),
         execution.work_meter_ref(),
     )?;
-    let native = execution.native_family_theme::<crate::treemap::TreemapThemeAdapter>();
+    let native = execution.native_family_theme();
     let style = crate::treemap::TreemapStyle::resolve(
         &meta.effective_config,
         &layout,
@@ -754,7 +744,7 @@ fn prepare_er_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let theme = execution.native_family_theme::<crate::er::ErThemeAdapter>();
+    let theme = execution.native_family_theme();
     let native = theme.map(|theme| {
         crate::er::ErNativeStyle::resolve(
             theme,
@@ -810,7 +800,7 @@ fn prepare_quadrant_chart_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme::<crate::quadrantchart::QuadrantChartThemeAdapter>();
+    let native = execution.native_family_theme();
     let point_theme = crate::quadrantchart::QuadrantChartPointThemePlan::resolve(
         native,
         &meta.effective_config,
@@ -839,9 +829,9 @@ fn prepare_xy_chart_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    use crate::xychart::{XyChartSeriesPaintPlan, XyChartThemeAdapter, XyChartTypographyThemePlan};
+    use crate::xychart::{XyChartSeriesPaintPlan, XyChartTypographyThemePlan};
 
-    let native = execution.native_family_theme::<XyChartThemeAdapter>();
+    let native = execution.native_family_theme();
     let config = &meta.effective_config;
     let series_paint = XyChartSeriesPaintPlan::new(config.as_value(), model, native);
     let typography_theme = native.map_or_else(
@@ -878,11 +868,10 @@ fn prepare_gitgraph_family<'parsed>(
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     use crate::gitgraph::GitGraphTypographyThemePlan;
 
-    let typography_theme =
-        match execution.native_family_theme::<crate::gitgraph::GitGraphThemeAdapter>() {
-            Some(theme) => GitGraphTypographyThemePlan::for_native(&meta.effective_config, theme),
-            None => GitGraphTypographyThemePlan::resolve(&meta.effective_config),
-        };
+    let typography_theme = match execution.native_family_theme() {
+        Some(theme) => GitGraphTypographyThemePlan::for_native(&meta.effective_config, theme),
+        None => GitGraphTypographyThemePlan::resolve(&meta.effective_config),
+    };
     let layout = crate::gitgraph::layout_gitgraph_diagram_typed(
         model,
         meta.effective_config.as_value(),
@@ -904,9 +893,9 @@ fn prepare_tree_view_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    use crate::tree_view::{TreeViewCssBinding, TreeViewThemeAdapter};
+    use crate::tree_view::TreeViewCssBinding;
 
-    let theme = match execution.native_family_theme::<TreeViewThemeAdapter>() {
+    let theme = match execution.native_family_theme() {
         Some(theme) => TreeViewCssBinding::for_native(&meta.effective_config, theme),
         None => TreeViewCssBinding::from_config(meta.effective_config.as_value()),
     };
@@ -933,7 +922,7 @@ fn prepare_packet_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme::<crate::packet::PacketThemeAdapter>();
+    let native = execution.native_family_theme();
     let typography_theme =
         crate::packet::PacketTypographyThemePlan::resolve(native, &meta.effective_config);
     let layout = crate::packet::layout_packet_diagram_typed(
@@ -957,7 +946,7 @@ fn prepare_requirement_family<'parsed>(
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let native = execution
-        .native_family_theme::<crate::requirement::RequirementThemeAdapter>()
+        .native_family_theme()
         .map(|theme| (theme, execution.family.session().canvas_background()));
     let paint_theme = crate::requirement::RequirementPaintThemePlan::resolve(
         native,
@@ -991,7 +980,7 @@ fn prepare_class_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme::<crate::class::ClassThemeAdapter>();
+    let native = execution.native_family_theme();
     let relation_theme = crate::class::ClassRelationThemePlan::resolve(
         native,
         &meta.effective_config,
@@ -1032,7 +1021,7 @@ fn prepare_venn_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme::<crate::venn::VennThemeAdapter>();
+    let native = execution.native_family_theme();
     let layout = crate::venn::layout_venn_diagram_typed_with_work_meter(
         model,
         meta.title.as_deref(),
@@ -1061,10 +1050,10 @@ fn prepare_zenuml_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    use crate::zenuml::{ZenumlSourceStyle, ZenumlThemeAdapter};
+    use crate::zenuml::ZenumlSourceStyle;
 
     let background = execution.family.session().canvas_background();
-    let mut style = if let Some(native) = execution.native_family_theme::<ZenumlThemeAdapter>() {
+    let mut style = if let Some(native) = execution.native_family_theme() {
         ZenumlSourceStyle::for_native(native, background)
     } else {
         let style = ZenumlSourceStyle::new(meta.effective_config.as_value());
@@ -1102,7 +1091,7 @@ fn prepare_eventmodeling_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme::<crate::eventmodeling::EventModelingThemeAdapter>();
+    let native = execution.native_family_theme();
     let style = crate::eventmodeling::EventModelingStyle::resolve(&meta.effective_config, native);
     let (layout, prepared_labels) =
         crate::eventmodeling::prepare_eventmodeling_diagram_typed_with_binding(
@@ -1129,7 +1118,7 @@ fn prepare_ishikawa_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let native = execution.native_family_theme::<crate::ishikawa::IshikawaThemeAdapter>();
+    let native = execution.native_family_theme();
     let mut cfg = crate::ishikawa::IshikawaConfigView::new(meta.effective_config.as_value())
         .layout_settings();
     let mut typography =
@@ -1229,7 +1218,7 @@ pub(super) fn prepare_non_class_render<'parsed>(
                     title,
                     &meta.effective_config,
                     execution
-                        .native_family_theme::<crate::sequence::SequenceThemeAdapter>()
+                        .native_family_theme()
                         .map(|theme| (theme, execution.family.session().canvas_background())),
                     execution.text_measurer(),
                     execution.math_backend(),
@@ -1280,7 +1269,7 @@ pub(super) fn prepare_non_class_render<'parsed>(
                 crate::kanban::prepare_kanban_diagram_typed_with_work_meter(
                     model,
                     &meta.effective_config,
-                    execution.native_family_theme::<crate::kanban::KanbanThemeAdapter>(),
+                    execution.native_family_theme(),
                     execution.text_measurer(),
                     execution.work_meter_ref(),
                     options,

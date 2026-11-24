@@ -10,7 +10,7 @@ mod shoal;
 mod theme;
 
 pub(crate) use css_binding::ArchitectureCssBinding;
-pub(crate) use native_theme::{ArchitectureNativeStyle, ArchitectureThemeAdapter};
+pub(crate) use native_theme::ArchitectureNativeStyle;
 pub(crate) use theme::{ArchitectureGroupThemePlan, ArchitectureTypographyThemePlan};
 
 #[cfg(feature = "layout-cytoscape")]

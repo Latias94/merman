@@ -1,7 +1,7 @@
 use crate::model::{Bounds, InfoDiagramLayout};
 use crate::svg::PreparedCommonCss;
 use crate::text::{TextMeasurer, TextStyle};
-use crate::theme::{Color, FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags};
+use crate::theme::{Color, FamilyTheme};
 use merman_model::baseline::PINNED_MERMAID_BASELINE_VERSION;
 use merman_model::presentation::PresentationConfig;
 
@@ -10,14 +10,6 @@ pub(crate) const INFO_BASELINE_HEIGHT_PX: f64 = 100.0;
 const INFO_VERSION_FONT_SIZE_PX: f64 = 32.0;
 const INFO_VERSION_BASELINE_X_PX: f64 = 100.0;
 const INFO_VERSION_BASELINE_Y_PX: f64 = 40.0;
-
-pub(crate) struct InfoThemeAdapter;
-
-impl FamilyThemeAdapter for InfoThemeAdapter {
-    const FAMILY: crate::DiagramFamilyId = crate::DiagramFamilyId::INFO;
-    const CAPS: ThemeCapabilityFlags =
-        ThemeCapabilityFlags::CANVAS.union(ThemeCapabilityFlags::TYPOGRAPHY);
-}
 
 #[derive(Debug)]
 pub(crate) enum InfoAppearance {

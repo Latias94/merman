@@ -89,105 +89,272 @@ impl NativeTheme {
     }
 }
 
-/// Connects a diagram family's measurement and rendering to its native theme values.
-pub trait FamilyThemeAdapter {
-    /// Logical family that consumes the values.
-    const FAMILY: crate::DiagramFamilyId;
-    /// Visual capabilities implemented by this family.
-    const CAPS: ThemeCapabilityFlags;
+use ThemeCapabilityFlags as Cap;
 
-    /// Returns the family-specific settings or shared theme defaults.
-    fn resolve(theme: &ResolvedThemeV2) -> &FamilyTheme {
-        theme.family(Self::FAMILY.as_str())
-    }
+macro_rules! caps {
+    ($first:ident $(| $rest:ident)*) => {
+        Cap::$first$(.union(Cap::$rest))*
+    };
 }
+
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-agentflow",
+    feature = "diagram-swimlane"
+))]
+const FLOWCHART_BASE_CAPABILITIES: Cap = caps!(
+    CANVAS
+        | NODE_SURFACE
+        | CONTAINER
+        | CALLOUT
+        | EMPHASIS
+        | CONNECTOR
+        | DATA_FILL
+        | ELEVATION
+        | RADIUS
+        | MARKER_STYLE
+        | TYPOGRAPHY
+);
 
 /// Returns the native theme capabilities implemented by this build for a logical family.
 pub fn family_capabilities(family: crate::DiagramFamilyId) -> ThemeCapabilityFlags {
     match family {
         #[cfg(feature = "diagram-flowchart")]
-        crate::DiagramFamilyId::FLOWCHART => {
-            crate::flowchart::native_theme::FlowchartThemeAdapter::CAPS
-        }
+        crate::DiagramFamilyId::FLOWCHART => FLOWCHART_BASE_CAPABILITIES.union(Cap::EDGE_STYLE),
         #[cfg(feature = "diagram-agentflow")]
-        crate::DiagramFamilyId::AGENTFLOW => {
-            crate::flowchart::native_theme::AgentflowThemeAdapter::CAPS
-        }
+        crate::DiagramFamilyId::AGENTFLOW => FLOWCHART_BASE_CAPABILITIES.union(Cap::EDGE_STYLE),
         #[cfg(feature = "diagram-swimlane")]
-        crate::DiagramFamilyId::SWIMLANE => {
-            crate::flowchart::native_theme::SwimlaneThemeAdapter::CAPS
-        }
+        crate::DiagramFamilyId::SWIMLANE => FLOWCHART_BASE_CAPABILITIES,
         #[cfg(feature = "diagram-class")]
-        crate::DiagramFamilyId::CLASS => crate::class::ClassThemeAdapter::CAPS,
+        crate::DiagramFamilyId::CLASS => caps!(
+            CANVAS
+                | NODE_SURFACE
+                | CONTAINER
+                | CALLOUT
+                | EMPHASIS
+                | CONNECTOR
+                | RADIUS
+                | EDGE_STYLE
+                | TYPOGRAPHY
+        ),
         #[cfg(feature = "diagram-er")]
-        crate::DiagramFamilyId::ER => crate::er::ErThemeAdapter::CAPS,
+        crate::DiagramFamilyId::ER => caps!(
+            CANVAS
+                | NODE_SURFACE
+                | CONTAINER
+                | EMPHASIS
+                | CONNECTOR
+                | RADIUS
+                | EDGE_STYLE
+                | TYPOGRAPHY
+        ),
         #[cfg(feature = "diagram-requirement")]
-        crate::DiagramFamilyId::REQUIREMENT => crate::requirement::RequirementThemeAdapter::CAPS,
+        crate::DiagramFamilyId::REQUIREMENT => caps!(
+            CANVAS
+                | NODE_SURFACE
+                | EMPHASIS
+                | CONNECTOR
+                | STATUS_COLORS
+                | RADIUS
+                | EDGE_STYLE
+                | TYPOGRAPHY
+        ),
         #[cfg(feature = "diagram-sequence")]
-        crate::DiagramFamilyId::SEQUENCE => crate::sequence::SequenceThemeAdapter::CAPS,
+        crate::DiagramFamilyId::SEQUENCE => caps!(
+            CANVAS
+                | NODE_SURFACE
+                | CONTAINER
+                | CALLOUT
+                | EMPHASIS
+                | CONNECTOR
+                | ELEVATION
+                | RADIUS
+                | MARKER_STYLE
+                | TYPOGRAPHY
+        ),
         #[cfg(feature = "diagram-zenuml")]
-        crate::DiagramFamilyId::ZENUML => crate::zenuml::ZenumlThemeAdapter::CAPS,
+        crate::DiagramFamilyId::ZENUML => caps!(
+            CANVAS
+                | NODE_SURFACE
+                | CONTAINER
+                | CALLOUT
+                | EMPHASIS
+                | CONNECTOR
+                | ELEVATION
+                | RADIUS
+                | MARKER_STYLE
+                | TYPOGRAPHY
+        ),
         #[cfg(feature = "diagram-kanban")]
-        crate::DiagramFamilyId::KANBAN => crate::kanban::KanbanThemeAdapter::CAPS,
+        crate::DiagramFamilyId::KANBAN => caps!(
+            CANVAS
+                | NODE_SURFACE
+                | CONTAINER
+                | DATA_INK
+                | STATUS_COLORS
+                | ELEVATION
+                | RADIUS
+                | TYPOGRAPHY
+        ),
         #[cfg(feature = "diagram-packet")]
-        crate::DiagramFamilyId::PACKET => crate::packet::PacketThemeAdapter::CAPS,
+        crate::DiagramFamilyId::PACKET => caps!(CANVAS | NODE_SURFACE | TYPOGRAPHY),
         #[cfg(feature = "diagram-railroad")]
-        crate::DiagramFamilyId::RAILROAD => crate::railroad::RailroadThemeAdapter::CAPS,
+        crate::DiagramFamilyId::RAILROAD => {
+            caps!(CANVAS | NODE_SURFACE | EMPHASIS | CONNECTOR | RADIUS | TYPOGRAPHY)
+        }
         #[cfg(feature = "diagram-ishikawa")]
-        crate::DiagramFamilyId::ISHIKAWA => crate::ishikawa::IshikawaThemeAdapter::CAPS,
+        crate::DiagramFamilyId::ISHIKAWA => {
+            caps!(CANVAS | NODE_SURFACE | EMPHASIS | CONNECTOR | TYPOGRAPHY)
+        }
         #[cfg(feature = "diagram-wardley")]
-        crate::DiagramFamilyId::WARDLEY => crate::wardley::WardleyThemeAdapter::CAPS,
+        crate::DiagramFamilyId::WARDLEY => {
+            caps!(CANVAS | NODE_SURFACE | CONNECTOR | DATA_INK | CHART_POLISH | TYPOGRAPHY)
+        }
         #[cfg(feature = "diagram-cynefin")]
-        crate::DiagramFamilyId::CYNEFIN => crate::cynefin::CynefinThemeAdapter::CAPS,
+        crate::DiagramFamilyId::CYNEFIN => {
+            caps!(CANVAS | NODE_SURFACE | CONTAINER | DATA_FILL | CONNECTOR | TYPOGRAPHY)
+        }
         #[cfg(feature = "diagram-quadrant-chart")]
         crate::DiagramFamilyId::QUADRANT_CHART => {
-            crate::quadrantchart::QuadrantChartThemeAdapter::CAPS
+            caps!(CANVAS | NODE_SURFACE | CONTAINER | CONNECTOR | DATA_INK | TYPOGRAPHY)
         }
         #[cfg(feature = "diagram-radar")]
-        crate::DiagramFamilyId::RADAR => crate::radar::RadarThemeAdapter::CAPS,
+        crate::DiagramFamilyId::RADAR => {
+            caps!(CANVAS | CONNECTOR | DATA_INK | DATA_FILL | CHART_POLISH | TYPOGRAPHY)
+        }
         #[cfg(feature = "diagram-venn")]
-        crate::DiagramFamilyId::VENN => crate::venn::VennThemeAdapter::CAPS,
+        crate::DiagramFamilyId::VENN => caps!(CANVAS | DATA_INK | DATA_FILL | TYPOGRAPHY),
         #[cfg(feature = "diagram-git-graph")]
-        crate::DiagramFamilyId::GIT_GRAPH => crate::gitgraph::GitGraphThemeAdapter::CAPS,
+        crate::DiagramFamilyId::GIT_GRAPH => {
+            caps!(CANVAS | NODE_SURFACE | CONNECTOR | CALLOUT | DATA_INK | DATA_FILL | TYPOGRAPHY)
+        }
         #[cfg(feature = "diagram-mindmap")]
-        crate::DiagramFamilyId::MINDMAP => crate::mindmap::MindmapThemeAdapter::CAPS,
+        crate::DiagramFamilyId::MINDMAP => caps!(
+            CANVAS
+                | NODE_SURFACE
+                | EMPHASIS
+                | CONNECTOR
+                | DATA_INK
+                | DATA_FILL
+                | RADIUS
+                | TYPOGRAPHY
+        ),
         #[cfg(feature = "diagram-tree-view")]
-        crate::DiagramFamilyId::TREE_VIEW => crate::tree_view::TreeViewThemeAdapter::CAPS,
+        crate::DiagramFamilyId::TREE_VIEW => {
+            caps!(CANVAS | NODE_SURFACE | EMPHASIS | CONNECTOR | TYPOGRAPHY)
+        }
         #[cfg(feature = "diagram-usecase")]
-        crate::DiagramFamilyId::USECASE => crate::usecase::UsecaseThemeAdapter::CAPS,
+        crate::DiagramFamilyId::USECASE => {
+            caps!(CANVAS | NODE_SURFACE | CONTAINER | CALLOUT | CONNECTOR | ELEVATION | TYPOGRAPHY)
+        }
         #[cfg(feature = "diagram-state")]
-        crate::DiagramFamilyId::STATE => crate::state::StateThemeAdapter::CAPS,
+        crate::DiagramFamilyId::STATE => caps!(
+            CANVAS
+                | NODE_SURFACE
+                | CONTAINER
+                | CALLOUT
+                | EMPHASIS
+                | CONNECTOR
+                | ELEVATION
+                | RADIUS
+                | MARKER_STYLE
+                | TYPOGRAPHY
+        ),
         #[cfg(all(
             feature = "diagram-architecture",
             any(feature = "layout-cytoscape", feature = "layout-shoal")
         ))]
-        crate::DiagramFamilyId::ARCHITECTURE => crate::architecture::ArchitectureThemeAdapter::CAPS,
+        crate::DiagramFamilyId::ARCHITECTURE => caps!(
+            CANVAS
+                | NODE_SURFACE
+                | CONTAINER
+                | CONNECTOR
+                | ELEVATION
+                | RADIUS
+                | EDGE_STYLE
+                | MARKER_STYLE
+                | TYPOGRAPHY
+        ),
         #[cfg(feature = "diagram-c4")]
-        crate::DiagramFamilyId::C4 => crate::c4::C4ThemeAdapter::CAPS,
+        crate::DiagramFamilyId::C4 => caps!(
+            CANVAS
+                | NODE_SURFACE
+                | CONTAINER
+                | DATA_FILL
+                | CONNECTOR
+                | RADIUS
+                | EDGE_STYLE
+                | MARKER_STYLE
+                | TYPOGRAPHY
+        ),
         #[cfg(feature = "diagram-block")]
-        crate::DiagramFamilyId::BLOCK => crate::block::BlockThemeAdapter::CAPS,
+        crate::DiagramFamilyId::BLOCK => caps!(
+            CANVAS
+                | NODE_SURFACE
+                | CONTAINER
+                | CONNECTOR
+                | ELEVATION
+                | RADIUS
+                | EDGE_STYLE
+                | MARKER_STYLE
+                | TYPOGRAPHY
+        ),
         #[cfg(feature = "diagram-event-modeling")]
-        crate::DiagramFamilyId::EVENT_MODELING => {
-            crate::eventmodeling::EventModelingThemeAdapter::CAPS
-        }
+        crate::DiagramFamilyId::EVENT_MODELING => caps!(
+            CANVAS
+                | NODE_SURFACE
+                | CONTAINER
+                | DATA_FILL
+                | STATUS_COLORS
+                | CONNECTOR
+                | RADIUS
+                | TYPOGRAPHY
+        ),
         #[cfg(feature = "diagram-gantt")]
-        crate::DiagramFamilyId::GANTT => crate::gantt::GanttThemeAdapter::CAPS,
+        crate::DiagramFamilyId::GANTT => caps!(
+            CANVAS
+                | NODE_SURFACE
+                | CONTAINER
+                | STATUS_COLORS
+                | DATA_FILL
+                | CHART_POLISH
+                | RADIUS
+                | TYPOGRAPHY
+        ),
         #[cfg(feature = "diagram-timeline")]
-        crate::DiagramFamilyId::TIMELINE => crate::timeline::TimelineThemeAdapter::CAPS,
+        crate::DiagramFamilyId::TIMELINE => {
+            caps!(CANVAS | NODE_SURFACE | CONTAINER | DATA_FILL | CONNECTOR | RADIUS | TYPOGRAPHY)
+        }
         #[cfg(feature = "diagram-journey")]
-        crate::DiagramFamilyId::JOURNEY => crate::journey::JourneyThemeAdapter::CAPS,
+        crate::DiagramFamilyId::JOURNEY => caps!(
+            CANVAS | NODE_SURFACE | CONTAINER | DATA_FILL | STATUS_COLORS | RADIUS | TYPOGRAPHY
+        ),
         #[cfg(feature = "diagram-info")]
-        crate::DiagramFamilyId::INFO => crate::info::InfoThemeAdapter::CAPS,
+        crate::DiagramFamilyId::INFO => caps!(CANVAS | TYPOGRAPHY),
         #[cfg(feature = "diagram-pie")]
-        crate::DiagramFamilyId::PIE => crate::pie::PieThemeAdapter::CAPS,
+        crate::DiagramFamilyId::PIE => {
+            caps!(CANVAS | DATA_FILL | CHART_POLISH | PATTERN_ENCODING | TYPOGRAPHY)
+        }
         #[cfg(feature = "diagram-sankey")]
-        crate::DiagramFamilyId::SANKEY => crate::sankey::SankeyThemeAdapter::CAPS,
+        crate::DiagramFamilyId::SANKEY => caps!(CANVAS | DATA_INK | DATA_FILL | TYPOGRAPHY),
         #[cfg(feature = "diagram-treemap")]
-        crate::DiagramFamilyId::TREEMAP => crate::treemap::TreemapThemeAdapter::CAPS,
+        crate::DiagramFamilyId::TREEMAP => {
+            caps!(CANVAS | CONTAINER | DATA_FILL | RADIUS | PATTERN_ENCODING | TYPOGRAPHY)
+        }
         #[cfg(feature = "diagram-xychart")]
-        crate::DiagramFamilyId::XY_CHART => crate::xychart::XyChartThemeAdapter::CAPS,
-        _ if crate::family::supports_diagram_type(family.as_str()) => ThemeCapabilityFlags::CANVAS,
-        _ => ThemeCapabilityFlags::default(),
+        crate::DiagramFamilyId::XY_CHART => caps!(
+            CANVAS
+                | CONNECTOR
+                | DATA_INK
+                | DATA_FILL
+                | CHART_POLISH
+                | ELEVATION
+                | RADIUS
+                | PATTERN_ENCODING
+                | TYPOGRAPHY
+        ),
+        _ if crate::family::supports_diagram_type(family.as_str()) => caps!(CANVAS),
+        _ => Cap::default(),
     }
 }
 

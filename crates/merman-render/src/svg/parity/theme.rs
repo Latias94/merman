@@ -2,6 +2,9 @@ mod helpers;
 
 use helpers::*;
 
+#[cfg(any(feature = "diagram-mindmap", feature = "diagram-treemap"))]
+pub(crate) use helpers::default_c_scale;
+
 #[cfg(feature = "diagram-radar")]
 pub(crate) fn radar_default_series_color(index: usize) -> &'static str {
     default_c_scale(index)

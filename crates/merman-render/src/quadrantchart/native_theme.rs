@@ -1,21 +1,9 @@
 use merman_model::presentation::PresentationConfig;
 
-use crate::theme::{Color, FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags, font_family_css};
+use crate::theme::{Color, FamilyTheme, font_family_css};
 
 use super::config::QuadrantChartLayoutSettings;
 use super::theme::QuadrantChartCssBinding;
-
-pub(crate) struct QuadrantChartThemeAdapter;
-
-impl FamilyThemeAdapter for QuadrantChartThemeAdapter {
-    const FAMILY: crate::DiagramFamilyId = crate::DiagramFamilyId::QUADRANT_CHART;
-    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
-        .union(ThemeCapabilityFlags::NODE_SURFACE)
-        .union(ThemeCapabilityFlags::CONTAINER)
-        .union(ThemeCapabilityFlags::CONNECTOR)
-        .union(ThemeCapabilityFlags::DATA_INK)
-        .union(ThemeCapabilityFlags::TYPOGRAPHY);
-}
 
 #[derive(Debug)]
 pub(super) struct QuadrantNativeStyle {

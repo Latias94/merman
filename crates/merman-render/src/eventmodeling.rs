@@ -21,7 +21,7 @@ mod native_theme;
 mod theme;
 
 pub(crate) use css_binding::EventModelingCssBinding;
-pub(crate) use native_theme::{EventModelingNativeStyle, EventModelingThemeAdapter};
+pub(crate) use native_theme::EventModelingNativeStyle;
 pub(crate) use theme::EventModelingStyle;
 
 const SWIMLANE_MIN_HEIGHT: f64 = 70.0;

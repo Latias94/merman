@@ -887,8 +887,7 @@ mod tests {
 
     #[test]
     fn wardley_evolved_model_label_keeps_its_source_evolution_paint() {
-        use crate::theme::{FamilyThemeAdapter, ThemeCompiler};
-        use crate::wardley::WardleyThemeAdapter;
+        use crate::theme::ThemeCompiler;
 
         let native = ThemeCompiler::new()
             .compile_json(br#"{"schema_version":2,"extends":"blueprint"}"#, None)
@@ -896,7 +895,10 @@ mod tests {
         let config = crate::test_support::presentation_config(serde_json::json!({
             "themeVariables": { "wardley": { "evolutionStroke": "#ab1234" } }
         }));
-        let style = WardleyStyle::resolve(&config, Some(WardleyThemeAdapter::resolve(&native)));
+        let style = WardleyStyle::resolve(
+            &config,
+            Some(native.family(crate::DiagramFamilyId::WARDLEY.as_str())),
+        );
         let model: WardleyDiagramModel = serde_json::from_value(serde_json::json!({
             "nodes": [{
                 "id": "evolved", "label": "Evolved API", "x": 0.8, "y": 0.6,

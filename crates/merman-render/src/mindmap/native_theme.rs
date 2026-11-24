@@ -1,21 +1,7 @@
 use merman_theme_contract::v2::DataPalette;
 
 use crate::text::TextStyle;
-use crate::theme::{Color, FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags, font_family_css};
-
-pub(crate) struct MindmapThemeAdapter;
-
-impl FamilyThemeAdapter for MindmapThemeAdapter {
-    const FAMILY: crate::DiagramFamilyId = crate::DiagramFamilyId::MINDMAP;
-    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
-        .union(ThemeCapabilityFlags::NODE_SURFACE)
-        .union(ThemeCapabilityFlags::EMPHASIS)
-        .union(ThemeCapabilityFlags::CONNECTOR)
-        .union(ThemeCapabilityFlags::DATA_INK)
-        .union(ThemeCapabilityFlags::DATA_FILL)
-        .union(ThemeCapabilityFlags::RADIUS)
-        .union(ThemeCapabilityFlags::TYPOGRAPHY);
-}
+use crate::theme::{Color, FamilyTheme, font_family_css};
 
 #[derive(Debug)]
 pub(crate) struct MindmapNativeStyle {

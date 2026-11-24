@@ -3,21 +3,10 @@ use merman_theme_contract::v2::{DataPalette, Paint};
 
 use crate::model::PieDiagramLayout;
 use crate::text::{TextMeasurer, TextStyle};
-use crate::theme::{Color, FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags, font_family_css};
+use crate::theme::{Color, FamilyTheme, font_family_css};
 use crate::{DiagramFamilyId, Result};
 
 use super::{PieLayoutPaint, layout_pie};
-
-pub(crate) struct PieThemeAdapter;
-
-impl FamilyThemeAdapter for PieThemeAdapter {
-    const FAMILY: DiagramFamilyId = DiagramFamilyId::PIE;
-    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
-        .union(ThemeCapabilityFlags::DATA_FILL)
-        .union(ThemeCapabilityFlags::CHART_POLISH)
-        .union(ThemeCapabilityFlags::PATTERN_ENCODING)
-        .union(ThemeCapabilityFlags::TYPOGRAPHY);
-}
 
 #[derive(Debug)]
 pub(crate) struct PieNativeStyle {

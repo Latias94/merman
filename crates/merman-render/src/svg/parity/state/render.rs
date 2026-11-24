@@ -109,7 +109,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     // `nodes` already preserves that first-seen insertion order, so use it directly.
     let node_order: Vec<&str> = model.nodes.iter().map(|n| n.id.as_str()).collect();
 
-    let native = options.native_family_theme::<crate::state::StateThemeAdapter>();
+    let native = options.native_family_theme();
     let native_elevation = native
         .map(|theme| &theme.elevation)
         .filter(|elevation| **elevation != merman_theme_contract::v2::Elevation::Flat);

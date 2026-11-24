@@ -18,22 +18,7 @@ mod theme;
 pub(crate) use series::XyChartSeriesPaintPlan;
 pub(crate) use theme::{XyChartTextRole, XyChartTypographyThemePlan};
 
-use crate::theme::{FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags};
-
-pub(crate) struct XyChartThemeAdapter;
-
-impl FamilyThemeAdapter for XyChartThemeAdapter {
-    const FAMILY: crate::DiagramFamilyId = crate::DiagramFamilyId::XY_CHART;
-    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
-        .union(ThemeCapabilityFlags::CONNECTOR)
-        .union(ThemeCapabilityFlags::DATA_INK)
-        .union(ThemeCapabilityFlags::DATA_FILL)
-        .union(ThemeCapabilityFlags::CHART_POLISH)
-        .union(ThemeCapabilityFlags::ELEVATION)
-        .union(ThemeCapabilityFlags::RADIUS)
-        .union(ThemeCapabilityFlags::PATTERN_ENCODING)
-        .union(ThemeCapabilityFlags::TYPOGRAPHY);
-}
+use crate::theme::FamilyTheme;
 
 #[derive(Debug, Clone)]
 struct AxisThemeConfig {

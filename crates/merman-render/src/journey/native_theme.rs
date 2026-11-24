@@ -4,20 +4,7 @@ use merman_model::presentation::PresentationConfig;
 use merman_theme_contract::v2::DataPalette;
 
 use crate::model::JourneyMouthKind;
-use crate::theme::{Color, FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags};
-
-pub(crate) struct JourneyThemeAdapter;
-
-impl FamilyThemeAdapter for JourneyThemeAdapter {
-    const FAMILY: crate::DiagramFamilyId = crate::DiagramFamilyId::JOURNEY;
-    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
-        .union(ThemeCapabilityFlags::NODE_SURFACE)
-        .union(ThemeCapabilityFlags::CONTAINER)
-        .union(ThemeCapabilityFlags::DATA_FILL)
-        .union(ThemeCapabilityFlags::STATUS_COLORS)
-        .union(ThemeCapabilityFlags::RADIUS)
-        .union(ThemeCapabilityFlags::TYPOGRAPHY);
-}
+use crate::theme::{Color, FamilyTheme};
 
 #[derive(Debug)]
 pub(crate) struct JourneyNativeStyle {

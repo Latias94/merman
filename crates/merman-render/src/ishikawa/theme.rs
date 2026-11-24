@@ -1,21 +1,10 @@
 use merman_model::presentation::PresentationConfig;
 
 use crate::mermaid_style::{CssFontSizeOwnership, css_font_size_value_override};
-use crate::theme::{FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags, font_family_css};
+use crate::theme::{FamilyTheme, font_family_css};
 
 mod css_binding;
 pub(crate) use css_binding::IshikawaCssBinding;
-
-pub(crate) struct IshikawaThemeAdapter;
-
-impl FamilyThemeAdapter for IshikawaThemeAdapter {
-    const FAMILY: crate::DiagramFamilyId = crate::DiagramFamilyId::ISHIKAWA;
-    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
-        .union(ThemeCapabilityFlags::NODE_SURFACE)
-        .union(ThemeCapabilityFlags::EMPHASIS)
-        .union(ThemeCapabilityFlags::CONNECTOR)
-        .union(ThemeCapabilityFlags::TYPOGRAPHY);
-}
 
 /// Final typography prepared before measuring any Ishikawa text.
 /// Root `fontSize` separately owns Mermaid's bone spacing, wrapping, and tspan line step.

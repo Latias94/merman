@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-pub(crate) use native_theme::{ZenumlNativeStyle, ZenumlThemeAdapter};
+pub(crate) use native_theme::ZenumlNativeStyle;
 pub(crate) use theme::ZenumlSourceStyle;
 
 pub(crate) const ZENUML_FRAME_TITLE_CLASS: &str = "frame-title";

@@ -226,12 +226,10 @@ impl<'a> FamilyExecutionView<'a> {
         self.session
     }
 
-    pub(crate) fn native_theme<A: crate::theme::FamilyThemeAdapter>(
-        self,
-    ) -> Option<&'a crate::theme::FamilyTheme> {
+    pub(crate) fn native_theme(self) -> Option<&'a crate::theme::FamilyTheme> {
         self.session
             .native_theme()
-            .map(|theme| A::resolve(theme.resolved()))
+            .map(|theme| theme.resolved().family(self.family_id.as_str()))
     }
 
     #[cfg(test)]

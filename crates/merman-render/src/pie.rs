@@ -15,7 +15,7 @@ mod native_theme;
 mod theme;
 
 pub(crate) use config::{PieConfigView, PieLegendPosition};
-pub(crate) use native_theme::{PieNativeStyle, PieThemeAdapter};
+pub(crate) use native_theme::PieNativeStyle;
 pub(crate) use theme::{PieTextRole, PieThemePlan};
 
 #[derive(Debug)]

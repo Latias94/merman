@@ -14,7 +14,6 @@ mod native_theme;
 mod theme;
 
 pub(crate) use config::QuadrantChartConfigView;
-pub(crate) use native_theme::QuadrantChartThemeAdapter;
 pub(crate) use theme::QuadrantChartPointThemePlan;
 
 fn point_class_styles<'a>(

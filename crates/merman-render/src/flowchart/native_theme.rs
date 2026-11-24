@@ -1,40 +1,8 @@
 use merman_theme_contract::v2::{DataPalette, Density, EdgeStyle, Elevation, Form};
 
-use crate::DiagramFamilyId;
-use crate::theme::{Color, FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags};
+use crate::theme::{Color, FamilyTheme};
 
 use super::{FlowchartCompatibilityBinding, FlowchartLayoutSettings, FlowchartShape};
-
-const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
-    .union(ThemeCapabilityFlags::NODE_SURFACE)
-    .union(ThemeCapabilityFlags::CONTAINER)
-    .union(ThemeCapabilityFlags::CALLOUT)
-    .union(ThemeCapabilityFlags::EMPHASIS)
-    .union(ThemeCapabilityFlags::CONNECTOR)
-    .union(ThemeCapabilityFlags::DATA_FILL)
-    .union(ThemeCapabilityFlags::ELEVATION)
-    .union(ThemeCapabilityFlags::RADIUS)
-    .union(ThemeCapabilityFlags::MARKER_STYLE)
-    .union(ThemeCapabilityFlags::TYPOGRAPHY);
-
-pub(crate) struct FlowchartThemeAdapter;
-pub(crate) struct AgentflowThemeAdapter;
-pub(crate) struct SwimlaneThemeAdapter;
-
-impl FamilyThemeAdapter for FlowchartThemeAdapter {
-    const FAMILY: DiagramFamilyId = DiagramFamilyId::FLOWCHART;
-    const CAPS: ThemeCapabilityFlags = CAPS.union(ThemeCapabilityFlags::EDGE_STYLE);
-}
-
-impl FamilyThemeAdapter for AgentflowThemeAdapter {
-    const FAMILY: DiagramFamilyId = DiagramFamilyId::AGENTFLOW;
-    const CAPS: ThemeCapabilityFlags = FlowchartThemeAdapter::CAPS;
-}
-
-impl FamilyThemeAdapter for SwimlaneThemeAdapter {
-    const FAMILY: DiagramFamilyId = DiagramFamilyId::SWIMLANE;
-    const CAPS: ThemeCapabilityFlags = CAPS;
-}
 
 #[derive(Debug)]
 pub(crate) struct FlowchartNativeStyle {

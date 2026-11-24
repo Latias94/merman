@@ -15,7 +15,7 @@ mod theme;
 
 use config::TreemapConfigView;
 
-pub(crate) use theme::{TreemapStyle, TreemapThemeAdapter};
+pub(crate) use theme::TreemapStyle;
 
 #[derive(Debug, Clone)]
 struct HierNode {

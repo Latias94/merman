@@ -3,22 +3,9 @@ use std::borrow::Cow;
 use merman_model::presentation::PresentationConfig;
 use merman_theme_contract::v2::DataPalette;
 
-use crate::theme::{FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags};
+use crate::theme::FamilyTheme;
 
 use super::TimelineCssBinding;
-
-pub(crate) struct TimelineThemeAdapter;
-
-impl FamilyThemeAdapter for TimelineThemeAdapter {
-    const FAMILY: crate::DiagramFamilyId = crate::DiagramFamilyId::TIMELINE;
-    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
-        .union(ThemeCapabilityFlags::NODE_SURFACE)
-        .union(ThemeCapabilityFlags::CONTAINER)
-        .union(ThemeCapabilityFlags::DATA_FILL)
-        .union(ThemeCapabilityFlags::CONNECTOR)
-        .union(ThemeCapabilityFlags::RADIUS)
-        .union(ThemeCapabilityFlags::TYPOGRAPHY);
-}
 
 #[derive(Debug)]
 struct TimelineSectionPaint {

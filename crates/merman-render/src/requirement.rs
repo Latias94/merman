@@ -38,7 +38,7 @@ pub(crate) use config::RequirementConfigView;
 pub(crate) use css_binding::{RequirementCssBinding, requirement_color_indices};
 use html_label::RequirementHtmlLabel;
 pub(crate) use html_label::sanitize_label_with_sink;
-pub(crate) use native_theme::{RequirementNativeStyle, RequirementThemeAdapter};
+pub(crate) use native_theme::RequirementNativeStyle;
 pub(crate) use source_typography::RequirementNodeTypography;
 pub(crate) use theme::RequirementPaintThemePlan;
 

@@ -19,7 +19,7 @@ use task_index::TimelineTaskIndex;
 
 pub(crate) use config::{TimelineConfigView, timeline_theme_color_limit};
 pub(crate) use css_binding::TimelineCssBinding;
-pub(crate) use native_theme::{TimelineNativeStyle, TimelineThemeAdapter};
+pub(crate) use native_theme::TimelineNativeStyle;
 pub(crate) use typography::TimelineStyle;
 
 pub(crate) const MERMAID_EVENT_RADIUS_PX: f64 = 5.0;

@@ -15,7 +15,7 @@ use merman_model::families::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 mod native_theme;
 mod task_bar;
 mod theme;
-pub(crate) use native_theme::{GanttNativeStyle, GanttThemeAdapter};
+pub(crate) use native_theme::GanttNativeStyle;
 use task_bar::GanttTaskBarState;
 pub(crate) use task_bar::label_state_classes;
 pub(crate) use theme::{GanttCssBinding, GanttStyle, unsupported_native_font_size};

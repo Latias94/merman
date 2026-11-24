@@ -9,19 +9,9 @@ use crate::Result;
 use crate::model::SankeyDiagramLayout;
 use crate::resources::{OperationWorkError, OperationWorkMeter, PreparedTextRetainedReservation};
 use crate::svg::PreparedCommonCss;
-use crate::theme::{Color, FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags};
+use crate::theme::{Color, FamilyTheme};
 
 use super::SankeyConfigView;
-
-pub(crate) struct SankeyThemeAdapter;
-
-impl FamilyThemeAdapter for SankeyThemeAdapter {
-    const FAMILY: crate::DiagramFamilyId = crate::DiagramFamilyId::SANKEY;
-    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
-        .union(ThemeCapabilityFlags::DATA_INK)
-        .union(ThemeCapabilityFlags::DATA_FILL)
-        .union(ThemeCapabilityFlags::TYPOGRAPHY);
-}
 
 const TABLEAU10: [&str; 10] = [
     "#4e79a7", "#f28e2c", "#e15759", "#76b7b2", "#59a14f", "#edc949", "#af7aa1", "#ff9da7",

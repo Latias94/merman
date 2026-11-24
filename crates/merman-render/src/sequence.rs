@@ -45,7 +45,7 @@ mod root_bounds;
 mod terminal_css;
 mod theme_binding;
 mod typography;
-pub(crate) use native_theme::{SequenceNativeStyle, SequenceThemeAdapter};
+pub(crate) use native_theme::SequenceNativeStyle;
 pub(crate) use terminal_css::SequencePreparedCss;
 pub(crate) use theme_binding::SequenceCompatBinding;
 

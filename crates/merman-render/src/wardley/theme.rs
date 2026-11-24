@@ -1,19 +1,7 @@
 use merman_model::presentation::PresentationConfig;
 
 use crate::config::config_string;
-use crate::theme::{Color, FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags, font_family_css};
-
-pub(crate) struct WardleyThemeAdapter;
-
-impl FamilyThemeAdapter for WardleyThemeAdapter {
-    const FAMILY: crate::DiagramFamilyId = crate::DiagramFamilyId::WARDLEY;
-    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
-        .union(ThemeCapabilityFlags::NODE_SURFACE)
-        .union(ThemeCapabilityFlags::CONNECTOR)
-        .union(ThemeCapabilityFlags::DATA_INK)
-        .union(ThemeCapabilityFlags::CHART_POLISH)
-        .union(ThemeCapabilityFlags::TYPOGRAPHY);
-}
+use crate::theme::{Color, FamilyTheme, font_family_css};
 
 #[derive(Debug)]
 pub(crate) struct WardleyPaintBinding {

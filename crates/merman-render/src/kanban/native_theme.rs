@@ -2,21 +2,7 @@ use merman_theme_contract::v2::{DataPalette, Elevation, Form};
 
 use crate::model::KanbanItemLayout;
 use crate::text::TextStyle;
-use crate::theme::{Color, FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags, font_family_css};
-
-pub(crate) struct KanbanThemeAdapter;
-
-impl FamilyThemeAdapter for KanbanThemeAdapter {
-    const FAMILY: crate::DiagramFamilyId = crate::DiagramFamilyId::KANBAN;
-    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
-        .union(ThemeCapabilityFlags::NODE_SURFACE)
-        .union(ThemeCapabilityFlags::CONTAINER)
-        .union(ThemeCapabilityFlags::DATA_INK)
-        .union(ThemeCapabilityFlags::STATUS_COLORS)
-        .union(ThemeCapabilityFlags::ELEVATION)
-        .union(ThemeCapabilityFlags::RADIUS)
-        .union(ThemeCapabilityFlags::TYPOGRAPHY);
-}
+use crate::theme::{Color, FamilyTheme, font_family_css};
 
 #[derive(Debug)]
 pub(crate) struct KanbanNativeStyle {

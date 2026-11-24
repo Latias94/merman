@@ -2,25 +2,9 @@ use merman_theme_contract::v2::{Elevation, Form, MarkerStyle};
 use rustc_hash::FxHashMap;
 
 use crate::text::TextMeasurer;
-use crate::theme::{Color, FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags, font_family_css};
+use crate::theme::{Color, FamilyTheme, font_family_css};
 
 use super::{ZenumlDiagramLayout, ZenumlTypography};
-
-pub(crate) struct ZenumlThemeAdapter;
-
-impl FamilyThemeAdapter for ZenumlThemeAdapter {
-    const FAMILY: crate::DiagramFamilyId = crate::DiagramFamilyId::ZENUML;
-    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
-        .union(ThemeCapabilityFlags::NODE_SURFACE)
-        .union(ThemeCapabilityFlags::CONTAINER)
-        .union(ThemeCapabilityFlags::CALLOUT)
-        .union(ThemeCapabilityFlags::EMPHASIS)
-        .union(ThemeCapabilityFlags::CONNECTOR)
-        .union(ThemeCapabilityFlags::ELEVATION)
-        .union(ThemeCapabilityFlags::RADIUS)
-        .union(ThemeCapabilityFlags::MARKER_STYLE)
-        .union(ThemeCapabilityFlags::TYPOGRAPHY);
-}
 
 #[derive(Debug)]
 pub(crate) struct ZenumlNativeStyle {

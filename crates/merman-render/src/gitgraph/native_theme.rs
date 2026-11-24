@@ -1,19 +1,6 @@
 use merman_theme_contract::v2::DataPalette;
 
-use crate::theme::{Color, FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags, font_family_css};
-
-pub(crate) struct GitGraphThemeAdapter;
-
-impl FamilyThemeAdapter for GitGraphThemeAdapter {
-    const FAMILY: crate::DiagramFamilyId = crate::DiagramFamilyId::GIT_GRAPH;
-    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
-        .union(ThemeCapabilityFlags::NODE_SURFACE)
-        .union(ThemeCapabilityFlags::CONNECTOR)
-        .union(ThemeCapabilityFlags::CALLOUT)
-        .union(ThemeCapabilityFlags::DATA_INK)
-        .union(ThemeCapabilityFlags::DATA_FILL)
-        .union(ThemeCapabilityFlags::TYPOGRAPHY);
-}
+use crate::theme::{Color, FamilyTheme, font_family_css};
 
 #[derive(Debug)]
 pub(crate) struct GitGraphNativeStyle {

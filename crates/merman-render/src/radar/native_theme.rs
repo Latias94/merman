@@ -1,20 +1,8 @@
 use merman_model::presentation::PresentationConfig;
 
-use crate::theme::{FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags, font_family_css};
+use crate::theme::{FamilyTheme, font_family_css};
 
 use super::css_binding::RadarRoleFontSize;
-
-pub(crate) struct RadarThemeAdapter;
-
-impl FamilyThemeAdapter for RadarThemeAdapter {
-    const FAMILY: crate::DiagramFamilyId = crate::DiagramFamilyId::RADAR;
-    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
-        .union(ThemeCapabilityFlags::CONNECTOR)
-        .union(ThemeCapabilityFlags::DATA_INK)
-        .union(ThemeCapabilityFlags::DATA_FILL)
-        .union(ThemeCapabilityFlags::CHART_POLISH)
-        .union(ThemeCapabilityFlags::TYPOGRAPHY);
-}
 
 #[derive(Debug)]
 pub(super) struct RadarNativeStyle {

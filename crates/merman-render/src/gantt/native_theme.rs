@@ -1,23 +1,9 @@
 use merman_model::families::gantt::GanttRenderTask;
 use merman_model::presentation::PresentationConfig;
 
-use crate::theme::{Color, FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags, font_family_css};
+use crate::theme::{Color, FamilyTheme, font_family_css};
 
 use super::task_bar::GanttTaskBarState;
-
-pub(crate) struct GanttThemeAdapter;
-
-impl FamilyThemeAdapter for GanttThemeAdapter {
-    const FAMILY: crate::DiagramFamilyId = crate::DiagramFamilyId::GANTT;
-    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
-        .union(ThemeCapabilityFlags::NODE_SURFACE)
-        .union(ThemeCapabilityFlags::CONTAINER)
-        .union(ThemeCapabilityFlags::STATUS_COLORS)
-        .union(ThemeCapabilityFlags::DATA_FILL)
-        .union(ThemeCapabilityFlags::CHART_POLISH)
-        .union(ThemeCapabilityFlags::RADIUS)
-        .union(ThemeCapabilityFlags::TYPOGRAPHY);
-}
 
 #[derive(Debug)]
 struct GanttBarPaint {

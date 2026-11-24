@@ -1,7 +1,6 @@
 use super::super::*;
 use crate::model::{XyChartDrawableElem, XyChartRectData};
 use crate::theme::{FamilyTheme, elevation_svg, pattern_svg::data_pattern};
-use crate::xychart::XyChartThemeAdapter;
 use kurbo::{BezPath, PathEl, Rect, RoundedRect, RoundedRectRadii, Shape};
 use merman_model::families::xy_chart::{
     XyChartAxisModel, XyChartDiagramRenderModel, XyChartPlotType,
@@ -200,7 +199,7 @@ pub(crate) fn render_xychart_diagram_svg(
     let layout = artifact.pair().layout();
     let model = artifact.pair().semantic();
     let typography_theme = artifact.typography_theme();
-    let native = options.native_family_theme::<XyChartThemeAdapter>();
+    let native = options.native_family_theme();
     use rustc_hash::FxHashMap;
     use std::collections::hash_map::Entry;
 

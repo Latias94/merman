@@ -96,12 +96,7 @@ pub(crate) fn layout(
         edge_styles,
     );
     let fit_width = execution.adaptation == LayoutAdaptation::FitWidth;
-    let native = match execution.family_id() {
-        crate::DiagramFamilyId::AGENTFLOW => {
-            execution.native_family_theme::<super::native_theme::AgentflowThemeAdapter>()
-        }
-        _ => execution.native_family_theme::<super::native_theme::FlowchartThemeAdapter>(),
-    };
+    let native = execution.native_family_theme();
     let (graph, bindings) = measure(view, &measurement, config, native, fit_width, &mut work)?;
     let (solved, placement) = placement::solve(
         &graph,

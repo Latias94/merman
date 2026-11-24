@@ -5,24 +5,6 @@
 type StateDiagramModel = merman_model::families::state::StateDiagramRenderModel;
 type StateNode = merman_model::families::state::StateDiagramRenderNode;
 
-use crate::theme::{FamilyThemeAdapter, ThemeCapabilityFlags};
-
-pub(crate) struct StateThemeAdapter;
-
-impl FamilyThemeAdapter for StateThemeAdapter {
-    const FAMILY: crate::DiagramFamilyId = crate::DiagramFamilyId::STATE;
-    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
-        .union(ThemeCapabilityFlags::NODE_SURFACE)
-        .union(ThemeCapabilityFlags::CONTAINER)
-        .union(ThemeCapabilityFlags::CALLOUT)
-        .union(ThemeCapabilityFlags::EMPHASIS)
-        .union(ThemeCapabilityFlags::CONNECTOR)
-        .union(ThemeCapabilityFlags::ELEVATION)
-        .union(ThemeCapabilityFlags::RADIUS)
-        .union(ThemeCapabilityFlags::MARKER_STYLE)
-        .union(ThemeCapabilityFlags::TYPOGRAPHY);
-}
-
 mod label;
 pub(crate) use label::{
     StateLabelMeasurement, measure_state_markdown_label, state_edge_label_xhtml,

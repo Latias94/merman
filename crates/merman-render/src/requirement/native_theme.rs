@@ -1,21 +1,7 @@
 use merman_model::presentation::PresentationConfig;
 use merman_theme_contract::v2::{EdgeLabelBackground, EdgeStyle};
 
-use crate::theme::{Color, FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags, font_family_css};
-
-pub(crate) struct RequirementThemeAdapter;
-
-impl FamilyThemeAdapter for RequirementThemeAdapter {
-    const FAMILY: crate::DiagramFamilyId = crate::DiagramFamilyId::REQUIREMENT;
-    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
-        .union(ThemeCapabilityFlags::NODE_SURFACE)
-        .union(ThemeCapabilityFlags::EMPHASIS)
-        .union(ThemeCapabilityFlags::CONNECTOR)
-        .union(ThemeCapabilityFlags::STATUS_COLORS)
-        .union(ThemeCapabilityFlags::RADIUS)
-        .union(ThemeCapabilityFlags::EDGE_STYLE)
-        .union(ThemeCapabilityFlags::TYPOGRAPHY);
-}
+use crate::theme::{Color, FamilyTheme, font_family_css};
 
 #[derive(Debug)]
 pub(crate) struct RequirementNativeStyle {

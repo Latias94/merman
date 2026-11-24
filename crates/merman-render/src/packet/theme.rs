@@ -1,15 +1,6 @@
 use merman_model::presentation::PresentationConfig;
 
-use crate::theme::{FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags, font_family_css};
-
-pub(crate) struct PacketThemeAdapter;
-
-impl FamilyThemeAdapter for PacketThemeAdapter {
-    const FAMILY: crate::DiagramFamilyId = crate::DiagramFamilyId::PACKET;
-    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
-        .union(ThemeCapabilityFlags::NODE_SURFACE)
-        .union(ThemeCapabilityFlags::TYPOGRAPHY);
-}
+use crate::theme::{FamilyTheme, font_family_css};
 
 /// Final Packet stylesheet values used by the SVG writer.
 #[derive(Debug)]

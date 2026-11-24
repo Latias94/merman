@@ -1,18 +1,6 @@
 use merman_model::presentation::PresentationConfig;
 
-use crate::theme::{Color, FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags, font_family_css};
-
-pub(crate) struct CynefinThemeAdapter;
-
-impl FamilyThemeAdapter for CynefinThemeAdapter {
-    const FAMILY: crate::DiagramFamilyId = crate::DiagramFamilyId::CYNEFIN;
-    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
-        .union(ThemeCapabilityFlags::NODE_SURFACE)
-        .union(ThemeCapabilityFlags::CONTAINER)
-        .union(ThemeCapabilityFlags::DATA_FILL)
-        .union(ThemeCapabilityFlags::CONNECTOR)
-        .union(ThemeCapabilityFlags::TYPOGRAPHY);
-}
+use crate::theme::{Color, FamilyTheme, font_family_css};
 
 #[derive(Debug)]
 pub(crate) struct CynefinNativeStyle {

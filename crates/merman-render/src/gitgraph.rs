@@ -15,7 +15,7 @@ mod typography;
 
 pub(crate) use css_binding::GitGraphCssBinding;
 
-pub(crate) use native_theme::{GitGraphNativeStyle, GitGraphThemeAdapter};
+pub(crate) use native_theme::GitGraphNativeStyle;
 pub(crate) use typography::{
     GitGraphTypographyThemePlan, gitgraph_commit_label_is_visible, gitgraph_tags_in_output_order,
     unsupported_native_font_size,

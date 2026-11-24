@@ -6,7 +6,7 @@ mod config;
 mod theme;
 
 pub(crate) use config::{PacketBitOrder, PacketConfigView};
-pub(crate) use theme::{PacketThemeAdapter, PacketTypographyThemePlan};
+pub(crate) use theme::PacketTypographyThemePlan;
 
 pub(crate) fn layout_packet_diagram_typed(
     model: &PacketDiagramModel,

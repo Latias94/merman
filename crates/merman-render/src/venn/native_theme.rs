@@ -1,16 +1,6 @@
 use merman_model::presentation::PresentationConfig;
 
-use crate::theme::{Color, FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags, font_family_css};
-
-pub(crate) struct VennThemeAdapter;
-
-impl FamilyThemeAdapter for VennThemeAdapter {
-    const FAMILY: crate::DiagramFamilyId = crate::DiagramFamilyId::VENN;
-    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
-        .union(ThemeCapabilityFlags::DATA_INK)
-        .union(ThemeCapabilityFlags::DATA_FILL)
-        .union(ThemeCapabilityFlags::TYPOGRAPHY);
-}
+use crate::theme::{Color, FamilyTheme, font_family_css};
 
 const CIRCLE_OPACITY: f64 = 0.45;
 

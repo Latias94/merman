@@ -21,7 +21,7 @@ mod typography;
 
 pub(crate) use css_binding::BlockCssThemeBinding;
 pub(crate) use edge_geometry::{BlockEdgeRoutes, block_render_edge_points};
-pub(crate) use native_theme::{BlockNativeStyle, BlockThemeAdapter};
+pub(crate) use native_theme::BlockNativeStyle;
 pub(crate) use node_binding::BlockNodeBindings;
 
 pub(crate) use config::BlockShapeSettings;

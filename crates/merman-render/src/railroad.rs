@@ -13,8 +13,6 @@ use merman_model::families::railroad::{
 
 mod native_theme;
 
-pub(crate) use native_theme::RailroadThemeAdapter;
-
 #[derive(Debug, Clone)]
 pub(crate) struct RailroadStyle {
     pub padding: f64,

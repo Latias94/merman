@@ -10,7 +10,6 @@ mod config;
 mod native_theme;
 mod theme;
 
-pub(crate) use native_theme::TreeViewThemeAdapter;
 pub(crate) use theme::TreeViewCssBinding;
 
 use config::{TreeViewConfigView, TreeViewLayoutSettings};

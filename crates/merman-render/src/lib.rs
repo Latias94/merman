@@ -888,10 +888,8 @@ impl<'a> LayoutExecution<'a> {
     }
 
     #[allow(dead_code, reason = "Used by enabled diagram families.")]
-    pub(crate) fn native_family_theme<A: crate::theme::FamilyThemeAdapter>(
-        &self,
-    ) -> Option<&crate::theme::FamilyTheme> {
-        self.family.native_theme::<A>()
+    pub(crate) fn native_family_theme(&self) -> Option<&crate::theme::FamilyTheme> {
+        self.family.native_theme()
     }
 
     pub(crate) fn math_renderer(&self) -> Option<&(dyn crate::math::MathRenderer + Send + Sync)> {

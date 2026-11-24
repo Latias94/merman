@@ -28,7 +28,7 @@ mod native_theme;
 mod theme;
 
 use config::VennConfigView;
-pub(crate) use native_theme::{VennThemeAdapter, native_font_size};
+pub(crate) use native_theme::native_font_size;
 pub(crate) use theme::{VennAreaPaintBinding, VennTypographyThemePlan};
 
 pub(crate) const VENN_TITLE_CLASS: &str = "venn-title";

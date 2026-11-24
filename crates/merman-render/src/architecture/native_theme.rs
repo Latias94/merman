@@ -2,22 +2,7 @@ use merman_model::presentation::PresentationConfig;
 use merman_theme_contract::v2::{EdgeStyle, Elevation, MarkerStyle};
 
 use crate::text::TextStyle;
-use crate::theme::{FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags, font_family_css};
-
-pub(crate) struct ArchitectureThemeAdapter;
-
-impl FamilyThemeAdapter for ArchitectureThemeAdapter {
-    const FAMILY: crate::DiagramFamilyId = crate::DiagramFamilyId::ARCHITECTURE;
-    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
-        .union(ThemeCapabilityFlags::NODE_SURFACE)
-        .union(ThemeCapabilityFlags::CONTAINER)
-        .union(ThemeCapabilityFlags::CONNECTOR)
-        .union(ThemeCapabilityFlags::ELEVATION)
-        .union(ThemeCapabilityFlags::RADIUS)
-        .union(ThemeCapabilityFlags::EDGE_STYLE)
-        .union(ThemeCapabilityFlags::MARKER_STYLE)
-        .union(ThemeCapabilityFlags::TYPOGRAPHY);
-}
+use crate::theme::{FamilyTheme, font_family_css};
 
 #[derive(Debug)]
 pub(crate) struct ArchitectureNativeStyle {
