@@ -141,6 +141,8 @@ impl Csr {
 pub(crate) struct Expanded {
     rank: Vec<u32>,
     logical_rank: Vec<u64>,
+    /// Tiers inserted between previously adjacent logical ranks.
+    inserted_ranks: Vec<u32>,
     layers: Vec<Vec<u32>>,
     width: Vec<f64>,
     height: Vec<f64>,
@@ -151,6 +153,7 @@ pub(crate) struct Expanded {
     weight: Vec<f32>,
     source_offset: Vec<f64>,
     target_offset: Vec<f64>,
+    spine_ports: position::SpinePorts,
     chains: Vec<Vec<u32>>,
     label_vertex: Vec<Option<u32>>,
     inline_labels: Vec<label_place::InlineLabel>,
@@ -224,6 +227,7 @@ impl Expanded {
         let csr = |c: &Csr| bytes(&c.start) + bytes(&c.entries);
         bytes(&self.rank)
             + bytes(&self.logical_rank)
+            + bytes(&self.inserted_ranks)
             + nested(&self.layers)
             + bytes(&self.width)
             + bytes(&self.height)
@@ -234,6 +238,7 @@ impl Expanded {
             + bytes(&self.weight)
             + bytes(&self.source_offset)
             + bytes(&self.target_offset)
+            + self.spine_ports.retained_bytes()
             + nested(&self.chains)
             + bytes(&self.label_vertex)
             + bytes(&self.inline_labels)

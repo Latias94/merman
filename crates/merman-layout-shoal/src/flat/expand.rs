@@ -141,10 +141,12 @@ fn sublayers(
         work.charge(g.inline_labels.len())?;
         g.inline_labels.retain(|label| !split[label.gap as usize]);
     }
-    let levels = add(occupied.len(), split.iter().filter(|&&yes| yes).count())?;
+    let splits = split.iter().filter(|&&yes| yes).count();
+    let levels = add(occupied.len(), splits)?;
     count(levels)?;
-    work.charge(add(levels, occupied.len())?)?;
+    work.charge(add(add(levels, occupied.len())?, splits)?)?;
     clear_reserve(&mut g.logical_rank, levels)?;
+    clear_reserve(&mut g.inserted_ranks, splits)?;
     let mut real = reserved(occupied.len())?;
     let mut extra = 0_u64;
     for (i, &r) in occupied.iter().enumerate() {
@@ -155,6 +157,7 @@ fn sublayers(
         if split[i] {
             let gap = occupied[i + 1] - r;
             if gap == 1 {
+                g.inserted_ranks.push(count(g.logical_rank.len())?);
                 extra += 1;
             }
             g.logical_rank.push(
@@ -254,6 +257,11 @@ fn prepare_layers(
         }
     }
     g.logical_rank.truncate(used);
+    work.visit(g.inserted_ranks.len())?;
+    g.inserted_ranks.retain_mut(|rank| {
+        *rank = dense[*rank as usize];
+        *rank != u32::MAX
+    });
     rows(&mut g.layers, used)?;
     for (layer, size) in g.layers.iter_mut().zip(members) {
         clear_reserve(layer, size)?;
@@ -554,6 +562,7 @@ mod tests {
         .unwrap();
         let m = u64::from(u32::MAX);
         assert_eq!(g.logical_rank, [0, m / 2, m, 2 * m]);
+        assert!(g.inserted_ranks.is_empty());
         assert_eq!(g.rank, [0, 2, 3, 1]);
         assert_eq!(g.kind, [Kind::Node, Kind::Node, Kind::Node, Kind::Label]);
         assert_eq!(g.chains, [vec![0, 3, 1], vec![1, 2]]);
@@ -591,6 +600,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(g.logical_rank, [0, 1, 2]);
+        assert_eq!(g.inserted_ranks, [1]);
         assert_eq!(g.label_vertex, [Some(2), None]);
         assert_eq!(g.kind, [Kind::Node, Kind::Node, Kind::Label, Kind::Dummy]);
         assert_eq!((g.width[0], g.height[0]), (23.0, 12.0));

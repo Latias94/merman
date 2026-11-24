@@ -1321,6 +1321,12 @@ fn cycle_keeps_its_backbone_and_paints_straight_exterior_lanes_in_four_direction
                 .unwrap()
         };
         let edge = |source, target| &scene.edges[edge_index(source, target)];
+        for center in centers {
+            assert!(
+                (across(center) - across(centers[0])).abs() < FLATNESS,
+                "{direction}: node centers must share the backbone"
+            );
+        }
         for i in 0..ids.len() - 1 {
             assert!(
                 along(centers[i]) < along(centers[i + 1]),
@@ -1335,6 +1341,26 @@ fn cycle_keeps_its_backbone_and_paints_straight_exterior_lanes_in_four_direction
                 "{direction}: {} main shaft drifts {drift}px",
                 ids[i]
             );
+            assert!(
+                (across(shaft.lines[0].p0) - across(centers[0])).abs() < FLATNESS,
+                "{direction}: {} must leave at the center of its face",
+                ids[i]
+            );
+            let ends = [ids[i], ids[i + 1]].map(|id| {
+                let bounds = scene.bodies[drawing.node(id)].bounds;
+                let a = along(Point::new(bounds.x0, bounds.y0));
+                let b = along(Point::new(bounds.x1, bounds.y1));
+                (a.min(b), a.max(b))
+            });
+            let gap = ends[1].0 - ends[0].1;
+            if matches!(i, 1 | 3 | 5) {
+                assert!(gap < 110.0, "{direction}: labeled gap takes {gap:.2}px");
+            } else {
+                assert!(
+                    (gap - 50.0).abs() < FLATNESS,
+                    "{direction}: unlabeled gap takes {gap:.2}px"
+                );
+            }
         }
         for (source, target, side) in [(7usize, 0usize, 1.0), (5, 2, 1.0), (1, 7, -1.0)] {
             let edge = edge(source, target);
@@ -1349,6 +1375,30 @@ fn cycle_keeps_its_backbone_and_paints_straight_exterior_lanes_in_four_direction
                 );
             }
             let shaft = Shaft::read(edge).unwrap();
+            let corners: Vec<_> = shaft
+                .segments
+                .iter()
+                .filter_map(|(segment, _)| {
+                    if let PathSeg::Cubic(curve) = segment {
+                        Some(curve)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            assert_eq!(
+                corners.len(),
+                2,
+                "{direction}: each side contact needs one turn"
+            );
+            for corner in corners {
+                let leg_along = (along(corner.p3) - along(corner.p0)).abs();
+                let leg_across = (across(corner.p3) - across(corner.p0)).abs();
+                assert!(
+                    (leg_along - leg_across).abs() < FLATNESS && leg_along <= 24.0 + FLATNESS,
+                    "{direction}: unequal exterior corner arms ({leg_along:.2}, {leg_across:.2})"
+                );
+            }
             let mut rail = None::<f64>;
             for &id in &ids[source.min(target) + 1..source.max(target)] {
                 let bounds = scene.bodies[drawing.node(id)].bounds;

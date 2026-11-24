@@ -7,6 +7,9 @@ use crate::{
     Direction, Graph, LayoutError, NodeSpec, Options, PortSideHint, Side, Spacing, WorkError,
 };
 
+mod spine;
+pub(super) use spine::SpinePorts;
+
 pub(super) fn extents(g: &Expanded, c: &Component, opts: &Options, v: u32) -> (f64, f64) {
     let v = v as usize;
     let half = g.width[v] * 0.5;
@@ -188,6 +191,7 @@ struct Ports {
     target: Vec<f64>,
     starts: Vec<End>,
     ends: Vec<End>,
+    spine: SpinePorts,
 }
 
 fn spread_face(
@@ -269,9 +273,11 @@ fn spread(
         target,
         starts,
         ends,
+        spine,
     }: &mut Ports,
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
+    spine.clear();
     let m = g.from.len();
     work.charge(m.checked_mul(4).ok_or(WorkError::ArithmeticOverflow)?)?;
     for offsets in [&mut *source, &mut *target] {
@@ -350,89 +356,6 @@ fn spread(
 struct Neighbours {
     pred: Csr,
     succ: Csr,
-}
-
-impl Neighbours {
-    fn prefer_spine(
-        &mut self,
-        g: &Expanded,
-        orientation: &Orientation,
-        work: &mut Work<'_>,
-    ) -> LayoutResult<()> {
-        if g.exterior_lanes.is_empty() {
-            return Ok(());
-        }
-        // The full incidence lists have already spread the ports. For block alignment, a
-        // short forward link takes precedence over a shortcut at the same node face.
-        work.charge(g.layers.len() + g.from.len() * 2 + g.rank.len())?;
-        let occupied = g
-            .layers
-            .iter()
-            .map(|row| row.iter().any(|&v| g.kind[v as usize] == Kind::Node));
-        let mut node_ranks = 0usize;
-        let mut rank_count = crate::work::reserved(g.layers.len())?;
-        for occupied in occupied {
-            node_ranks += usize::from(occupied);
-            rank_count.push(node_ranks);
-        }
-        let mut keep = filled(g.from.len(), true)?;
-        let mut short = filled(g.from.len(), false)?;
-        for lane in &g.exterior_lanes {
-            let bends = &g.chains[lane.edge];
-            keep[g.pred.at(bends[1])[0] as usize] = false;
-            keep[g.succ.at(bends[bends.len() - 2])[0] as usize] = false;
-        }
-        let mut first = 0;
-        for (edge, chain) in g.chains.iter().enumerate() {
-            work.visit(1)?;
-            if g.direct[edge] {
-                continue;
-            }
-            let last = first + chain.len() - 2;
-            let (from, to) = (chain[0], *chain.last().unwrap());
-            if !orientation.reversed[edge]
-                && rank_count[g.rank[to as usize] as usize]
-                    == rank_count[g.rank[from as usize] as usize] + 1
-            {
-                short[first] = true;
-                short[last] = true;
-            }
-            first = last + 1;
-        }
-        for (vertex, kind) in g.kind.iter().enumerate() {
-            work.visit(1)?;
-            if *kind != Kind::Node {
-                continue;
-            }
-            for face in [self.pred.at(vertex as u32), self.succ.at(vertex as u32)] {
-                work.visit(face.len() * 2)?;
-                if face.iter().any(|&e| short[e as usize]) {
-                    for &e in face {
-                        keep[e as usize] &= short[e as usize];
-                    }
-                }
-            }
-        }
-        for list in [&mut self.pred, &mut self.succ] {
-            let mut write = 0;
-            for v in 0..g.rank.len() {
-                work.visit(1)?;
-                let (start, end) = (list.start[v] as usize, list.start[v + 1] as usize);
-                list.start[v] = write as u32;
-                work.visit(end - start)?;
-                for read in start..end {
-                    let edge = list.entries[read];
-                    if keep[edge as usize] {
-                        list.entries[write] = edge;
-                        write += 1;
-                    }
-                }
-            }
-            *list.start.last_mut().unwrap() = write as u32;
-            list.entries.truncate(write);
-        }
-        Ok(())
-    }
 }
 
 fn inner(g: &Expanded, v: u32) -> Option<u32> {
@@ -796,6 +719,7 @@ impl PositionScratch {
             + capacity_bytes(&self.ports.target)
             + capacity_bytes(&self.ports.starts)
             + capacity_bytes(&self.ports.ends)
+            + self.ports.spine.retained_bytes()
             + capacity_bytes(&self.conflicts.blocked)
             + capacity_bytes(&self.conflicts.anchors)
             + capacity_bytes(left)
@@ -829,6 +753,7 @@ pub(super) fn assign(
     if result.is_ok() && spread_ends.is_some() {
         std::mem::swap(&mut g.source_offset, &mut scratch.ports.source);
         std::mem::swap(&mut g.target_offset, &mut scratch.ports.target);
+        std::mem::swap(&mut g.spine_ports, &mut scratch.ports.spine);
     }
     g.position_scratch = scratch;
     result
@@ -870,7 +795,7 @@ fn assign_with_scratch(
     by_peer(g, &g.succ, &g.pred, &g.from, &mut lists.succ, work)?;
     let (source, target) = if let Some(o) = spread_ends {
         spread(g, (c, o), graph, &options.spacing, lists, ports, work)?;
-        lists.prefer_spine(g, o, work)?;
+        lists.prefer_spine(g, (c, o), graph, &options.spacing, ports, work)?;
         (&ports.source, &ports.target)
     } else {
         (&g.source_offset, &g.target_offset)

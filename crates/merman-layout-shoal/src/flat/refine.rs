@@ -205,7 +205,9 @@ impl<'a> Geometry<'a> {
                     .flatten()
                     .map(|p| p - g.width[v] * 0.5);
                 let fixed = match to_canonical_port(graph.direction, hint) {
-                    PortSideHint::Auto => anchor,
+                    PortSideHint::Auto => {
+                        anchor.or_else(|| g.spine_ports.centered(v, side, e).then_some(0.0))
+                    }
                     PortSideHint::FixedOffset {
                         side: Side::Top | Side::Bottom,
                         offset,

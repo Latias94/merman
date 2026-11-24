@@ -10,6 +10,8 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 Choose `layout: shoal` for Flowchart, Agentflow, Architecture, Block, C4, Class, State, ER, Requirement, Swimlane, or Usecase diagrams in a build with the `layout-shoal` feature. Small cycles start near their entry and can route long return edges outside the graph. Crowded arrows can spread across adjacent faces, and edges between sibling groups can align through both borders. Architecture honors the declared port faces. C4 routes relationships across nested boundaries. Swimlane aligns work across lanes on a shared rank grid. Block keeps its authored grid and routes edges around placed blocks where there is room. [Usage and supported graphs](docs/FEATURES.md#try-the-experimental-shoal-layout)
 
+Labels on edges between adjacent ranks share the usual rank gap, with extra room added for arrows and bends. Eligible main paths in cycles connect through centered node ports, and the outside lanes use evenly rounded turns.
+
 ```text
 ---
 config:

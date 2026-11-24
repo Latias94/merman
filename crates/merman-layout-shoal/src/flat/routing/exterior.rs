@@ -19,6 +19,24 @@ impl SidePort {
     }
 }
 
+pub(in crate::flat) fn side_docking_allowed(
+    g: &Expanded,
+    c: &Component,
+    graph: &Graph,
+    work: &mut Work<'_>,
+) -> LayoutResult<bool> {
+    work.visit(g.direct.len() + c.links.len())?;
+    Ok(c.loops.is_empty()
+        && !g.direct.contains(&true)
+        && c.links.iter().all(|link| {
+            let edge = &graph.edges[link.edge as usize];
+            edge.source_port == PortSideHint::Auto
+                && edge.target_port == PortSideHint::Auto
+                && edge.start_label.is_none()
+                && edge.end_label.is_none()
+        }))
+}
+
 /// A terminal can turn inside its own rank when the horizontal leg has an unobstructed
 /// run to the rail. Keep the other shafts pinned through that rank to preserve the clearance.
 pub(super) fn attach_exterior_ports(
@@ -35,16 +53,7 @@ pub(super) fn attach_exterior_ports(
     }
     let mut side_ports = Vec::new();
     let mut used: Vec<(u32, f64, f64)> = Vec::new();
-    work.visit(c.links.len())?;
-    let allow_side = c.loops.is_empty()
-        && !g.direct.contains(&true)
-        && c.links.iter().all(|link| {
-            let edge = &graph.edges[link.edge as usize];
-            edge.source_port == PortSideHint::Auto
-                && edge.target_port == PortSideHint::Auto
-                && edge.start_label.is_none()
-                && edge.end_label.is_none()
-        });
+    let allow_side = side_docking_allowed(g, c, graph, work)?;
     if allow_side {
         work.charge(c.links.len() + 2 * g.exterior_lanes.len())?;
         side_ports = filled(c.links.len(), [None; 2])?;

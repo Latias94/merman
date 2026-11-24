@@ -5,6 +5,7 @@ mod exterior;
 
 pub(super) use compact::compact_ranks;
 use exterior::SidePort;
+pub(super) use exterior::side_docking_allowed;
 
 use super::{Component, Drawing, Expanded, Kind, acyclic::Orientation, canonical_size};
 use crate::work::{LayoutResult, Work, filled, push, reserved};
@@ -55,6 +56,7 @@ struct Band {
     arrives: bool,
     label_directions: u8,
     label_count: usize,
+    inserted_label_tier: bool,
     optical_shift: f64,
 }
 
@@ -138,6 +140,7 @@ impl Span {
 struct Piece {
     span: Span,
     occupied: Span,
+    leads: [f64; 2],
     lower: usize,
     track: Option<usize>,
 }
@@ -151,6 +154,7 @@ struct Gap {
     curved_guards: [f64; 2],
     marker_half_width: f64,
     has_end_labels: bool,
+    allow_local_sweeps: bool,
     minimum: f64,
     height: f64,
     tracks: usize,
@@ -167,18 +171,22 @@ fn bands(g: &Expanded, work: &mut Work<'_>) -> LayoutResult<(Vec<Band>, Vec<usiz
     work.charge(g.layers.len())?;
     let mut bands = reserved(g.layers.len())?;
     let mut index = filled(g.layers.len(), usize::MAX)?;
+    let mut inserted = g.inserted_ranks.iter().copied().peekable();
     for (rank, layer) in g.layers.iter().enumerate() {
         let mut band = Band {
             logical: g.logical_rank[rank],
             ..Band::default()
         };
         let mut retained = false;
+        let inserted_between_nodes = inserted.next_if_eq(&(rank as u32)).is_some();
         for &vertex in layer {
             work.visit(1)?;
             let vertex = vertex as usize;
             band.height = band.height.max(g.height[vertex]);
-            band.has_node |= g.kind[vertex] == Kind::Node;
-            retained |= g.kind[vertex] != Kind::Dummy || g.keep[vertex];
+            let kind = g.kind[vertex];
+            band.has_node |= kind == Kind::Node;
+            retained |= kind != Kind::Dummy || g.keep[vertex];
+            band.inserted_label_tier |= inserted_between_nodes && kind == Kind::Label;
         }
         if retained {
             index[rank] = bands.len();
@@ -221,14 +229,29 @@ fn collect_pieces(
     }
     let mut gaps = reserved(gap_count)?;
     let mut crossing = 0i64;
+    // Flat gap intervals see neither the approach knots of a compound border stitch nor
+    // routes that bypass the expansion. Those paths still use the shared runway.
+    let allow_local_sweeps = options.routing == RoutingStyle::Curved
+        && !ranked.component.boundaries
+        && !ranked.component.group_proxies
+        && !g.direct.contains(&true);
     for (pair, change) in bands.windows(2).zip(delta) {
         crossing += change;
         let count = usize::try_from(crossing).map_err(|_| WorkError::ArithmeticOverflow)?;
         work.charge(count)?;
         let distance = pair[1].logical - pair[0].logical;
+        // A short edge's inserted label tier shares the original gap with its two
+        // neighbors. Gap::grade still reserves the space the actual routes require.
+        let ranks = if distance == 1 && (pair[0].inserted_label_tier || pair[1].inserted_label_tier)
+        {
+            0.5
+        } else {
+            distance as f64
+        };
         gaps.push(Gap {
             pieces: reserved(count)?,
-            height: finite(distance as f64 * options.spacing.rank)?,
+            height: finite(ranks * options.spacing.rank)?,
+            allow_local_sweeps,
             ..Gap::default()
         });
     }
@@ -292,6 +315,11 @@ fn collect_pieces(
             continue;
         }
         let mut upper = row(first);
+        let mut start_lead = if side_start.is_none() {
+            terminals[0].0.length
+        } else {
+            0.0
+        };
         let mut from =
             finite(side_start.map_or(x[first] + g.source_offset[segment], |port| port.rail))?;
         for &lower in &chain[1..] {
@@ -311,9 +339,18 @@ fn collect_pieces(
                 gaps[upper].pieces.push(Piece {
                     span,
                     occupied: span,
+                    leads: [
+                        start_lead,
+                        if lower == last && side_end.is_none() {
+                            terminals[1].0.length
+                        } else {
+                            0.0
+                        },
+                    ],
                     lower,
                     track: None,
                 });
+                start_lead = 0.0;
                 upper = next;
                 if lower != last {
                     from = finite(x[lower] + g.source_offset[segment + 1])?;
@@ -764,6 +801,20 @@ impl Gap {
         &self.pieces[self.cursor]
     }
 
+    fn clear_of_peers(&self, span: Span, sep: f64, work: &mut Work<'_>) -> LayoutResult<bool> {
+        let margin = sep.max(self.marker_half_width);
+        for (i, peer) in self.pieces.iter().enumerate() {
+            work.visit(1)?;
+            if i != self.cursor
+                && span.lo() - peer.occupied.hi() < margin
+                && peer.occupied.lo() - span.hi() < margin
+            {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
     fn grade(&mut self, options: &Options, work: &mut Work<'_>) -> LayoutResult<()> {
         work.charge(self.pieces.len())?;
         let mut ids = reserved(self.pieces.len())?;
@@ -1001,15 +1052,8 @@ fn prove_sweep(
         work.visit(1)?;
         let top = sweep.at(lower.top, work)?;
         let aisle = above.hull(top);
-        let margin = sep.max(gap.marker_half_width);
-        for (id, peer) in gap.pieces.iter().enumerate() {
-            work.visit(1)?;
-            if id != gap.cursor
-                && aisle.from - peer.occupied.hi() < margin
-                && peer.occupied.lo() - aisle.to < margin
-            {
-                return Ok(None);
-            }
+        if !gap.clear_of_peers(aisle, sep, work)? {
+            return Ok(None);
         }
         occupied[step] = aisle;
         if step + 1 < gaps.len() {
@@ -1096,13 +1140,27 @@ fn draw_piece(
     lower: &Band,
     gap: &Gap,
     options: &Options,
+    work: &mut Work<'_>,
 ) -> LayoutResult<()> {
     let Span { from, to } = piece.span;
     if from == to {
         return Ok(());
     }
-    let start = advance(upper.bottom, gap.upper_guard)?;
-    let end = -advance(-lower.top, gap.lower_guard)?;
+    let mut guides = [gap.upper_guard, gap.lower_guard];
+    // Keep the shared runway for tracks and nearby shafts. A separated curve may use
+    // the free part of the gap while keeping the leads at its own physical terminals.
+    if gap.allow_local_sweeps
+        && piece.track.is_none()
+        && !gap.has_end_labels
+        && (2..=MAX_SWEEP_PEERS).contains(&gap.pieces.len())
+        && gap.clear_of_peers(piece.span, options.spacing.edge, work)?
+    {
+        for (guide, lead) in guides.iter_mut().zip(piece.leads) {
+            *guide = guide.min(lead);
+        }
+    }
+    let start = advance(upper.bottom, guides[0])?;
+    let end = -advance(-lower.top, guides[1])?;
     if end <= start {
         return Err(PRECISION);
     }
@@ -1182,6 +1240,16 @@ pub(super) fn route_with_label_gaps(
     work: &mut Work<'_>,
 ) -> LayoutResult<(Drawing, Vec<[f64; 2]>)> {
     let side_ports = exterior::attach_exterior_ports(g, c, orientation, graph, options, x, work)?;
+    g.spine_ports.resolve(
+        [&mut g.target_offset, &mut g.source_offset],
+        &options.spacing,
+        |edge, end| {
+            side_ports
+                .get(edge)
+                .is_some_and(|ports| ports[end].is_some())
+        },
+        work,
+    )?;
     let ranked = RankedComponent {
         component: c,
         expanded: g,
@@ -1363,6 +1431,7 @@ fn route_ranked(
                         &bands[level + 1],
                         gap,
                         options,
+                        work,
                     )?;
                     level + 1
                 };
