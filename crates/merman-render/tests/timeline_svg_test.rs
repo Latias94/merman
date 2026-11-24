@@ -106,6 +106,11 @@ fn timeline_repeated_sections_expand_svg_without_duplicating_canonical_tasks() {
 #[test]
 fn timeline_repeated_sections_observe_cancellation_during_expansion_and_before_emit() {
     use merman_model::OperationControl;
+    use merman_render::environment::{
+        HostMeasurementResult, HostTextMeasurementRequest, HostTextMeasurer, MeasurementProfileId,
+        TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity,
+    };
+    use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     struct CancelRepeatedTask(AtomicUsize);
