@@ -1,11 +1,9 @@
 use merman_model::presentation::PresentationConfig;
 
-/// The authored CSS token and its measurable width share the same source selection.
+/// The CSS token and its measurable width share the same source selection.
 #[derive(Debug)]
 pub(crate) struct ClassRelationWidthBinding {
-    configured_css: String,
-    native_css: Option<String>,
-    authored: bool,
+    css: String,
     paint_width: Option<f32>,
 }
 
@@ -24,26 +22,20 @@ impl ClassRelationWidthBinding {
             })
             .flatten();
         Self {
-            configured_css: css.unwrap_or_else(|| "1".to_owned()),
-            native_css: None,
-            authored,
+            css: css.unwrap_or_else(|| "1".to_owned()),
             paint_width,
         }
     }
 
-    pub(super) fn apply_native(&mut self, width: f64) {
-        if !self.authored {
-            self.native_css = Some(width.to_string());
-            self.paint_width = Some(width as f32);
+    pub(super) fn from_native(width: f64) -> Self {
+        Self {
+            css: width.to_string(),
+            paint_width: Some(width as f32),
         }
     }
 
     pub(crate) fn css(&self) -> &str {
-        self.native_css.as_deref().unwrap_or(&self.configured_css)
-    }
-
-    pub(crate) fn configured_css(&self) -> &str {
-        &self.configured_css
+        &self.css
     }
 
     pub(crate) fn paint_width(&self) -> Option<f32> {

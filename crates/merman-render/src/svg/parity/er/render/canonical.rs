@@ -24,10 +24,9 @@ pub(super) fn paint_edge(
     randomness: &RoughRandomness,
 ) -> Result<PaintedEdge> {
     let neo = look == "neo";
-    let stroke_outset = native
-        .and_then(|style| style.connector_width)
-        .unwrap_or(if neo { neo_stroke_width } else { 1.0 })
-        / 2.0;
+    let stroke_outset = native.map_or(if neo { neo_stroke_width } else { 1.0 }, |style| {
+        style.connector_width
+    }) / 2.0;
     work_meter.charge(edge.points.len())?;
     use merman_theme_contract::v2::EdgeStyle;
     let style = match native.map(|style| style.edge_style) {

@@ -370,10 +370,11 @@ impl ErEntityThemePlan {
             .enumerate()
             .map(|(index, entity)| (entity.id.clone(), index))
             .collect::<BTreeMap<_, _>>();
-        let mut css_binding = ErCssBinding::resolve(config.as_value());
-        if let Some((theme, native)) = native {
-            css_binding.apply_native(theme, native, config);
-        }
+        let config = config.as_value();
+        let css_binding = match native {
+            Some((theme, native)) => ErCssBinding::from_native(theme, native, config),
+            None => ErCssBinding::resolve(config),
+        };
         let entity_source_styles = model
             .entities
             .values()
@@ -409,7 +410,7 @@ impl ErEntityThemePlan {
                 compile_er_subgraph_source_style(subgraph, &model.classes),
             );
         }
-        let config = super::ErConfigView::new(config.as_value());
+        let config = super::ErConfigView::new(config);
         // Only top-level lanes use flowchart.htmlLabels and unconditional Markdown titles.
         // Nested groups retain the ordinary cluster writer's root mode and label type.
         let swimlane_lanes = layout

@@ -24,11 +24,11 @@ pub(crate) struct ErNativeStyle {
     pub(crate) title_family: Option<String>,
     pub(crate) font_size: Option<f64>,
     pub(crate) title_weight: String,
-    pub(crate) heading_ink: Option<String>,
+    pub(crate) heading_ink: String,
     pub(crate) guide: String,
     pub(crate) radius: f64,
     pub(crate) border_width: f64,
-    pub(crate) connector_width: Option<f64>,
+    pub(crate) connector_width: f64,
     pub(crate) edge_style: EdgeStyle,
     pub(crate) label_background: String,
 }
@@ -48,25 +48,14 @@ impl ErNativeStyle {
         };
         let family = |role| font_family_css(typography.stack(role));
         let theme_family_active = !owns(&["fontFamily", "themeVariables.fontFamily"]);
-        let label_background =
-            if config.explicit_config_owns_path("themeVariables.edgeLabelBackground") {
-                crate::config::config_string(
-                    config.as_value(),
-                    &["themeVariables", "edgeLabelBackground"],
-                )
-            } else {
-                None
+        let label_background = match theme.form.edge_label_bg {
+            EdgeLabelBackground::Transparent => Color::TRANSPARENT,
+            EdgeLabelBackground::Pill => roles.surface_node.first_color(),
+            EdgeLabelBackground::Auto | EdgeLabelBackground::Canvas => {
+                canvas.unwrap_or_else(|| roles.canvas.first_color())
             }
-            .unwrap_or_else(|| {
-                match theme.form.edge_label_bg {
-                    EdgeLabelBackground::Transparent => Color::TRANSPARENT,
-                    EdgeLabelBackground::Pill => roles.surface_node.first_color(),
-                    EdgeLabelBackground::Auto | EdgeLabelBackground::Canvas => {
-                        canvas.unwrap_or_else(|| roles.canvas.first_color())
-                    }
-                }
-                .to_string()
-            });
+        }
+        .to_string();
         Self {
             body_family: theme_family_active.then(|| family(typography.body_family)),
             code_family: family(typography.code_family),
@@ -74,17 +63,11 @@ impl ErNativeStyle {
             font_size: (!owns(&["fontSize", "themeVariables.fontSize", "er.fontSize"]))
                 .then_some(typography.base_size_px),
             title_weight: typography.title_weight.to_string(),
-            heading_ink: (!owns(&[
-                "themeVariables.nodeTextColor",
-                "themeVariables.textColor",
-                "themeVariables.mainBkg",
-            ]))
-            .then(|| roles.text_on_emphasis.to_string()),
+            heading_ink: roles.text_on_emphasis.to_string(),
             guide: roles.stroke_guide.first_color().to_string(),
             radius: theme.form.radius,
             border_width: theme.form.stroke_width,
-            connector_width: (!owns(&["themeVariables.strokeWidth"]))
-                .then_some(theme.form.connector_width),
+            connector_width: theme.form.connector_width,
             edge_style: theme.form.edge_style,
             label_background,
         }

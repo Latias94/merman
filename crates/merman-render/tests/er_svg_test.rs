@@ -5,7 +5,8 @@ use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 
 use merman_render::environment::{
-    MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfileIdentity,
+    MeasurementProfileId, RenderEnvironment, RenderSession, TextMeasurementPolicy,
+    TextMeasurementProfileIdentity,
 };
 use merman_render::family;
 use merman_render::resources::{
@@ -48,6 +49,15 @@ fn render_er_svg_from_text_with_engine(
     let session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
+    render_er_svg_from_text_with_session(text, options, engine, session)
+}
+
+fn render_er_svg_from_text_with_session(
+    text: &str,
+    options: &SvgRenderOptions,
+    engine: MermaidEngine,
+    session: RenderSession,
+) -> String {
     let parsed = engine
         .parse_diagram_for_render_model_sync(text, ParseOptions::default())
         .expect("parse ok")
@@ -60,6 +70,122 @@ fn render_er_svg_from_text_with_engine(
         .expect("render svg")
         .svg()
         .to_owned()
+}
+
+#[cfg(feature = "layout-dagre")]
+#[test]
+fn native_theme_v2_er_owns_global_paints_and_keeps_local_styles() {
+    use merman_render::theme::{BuiltinPreset, NativeTheme, ThemeCompiler};
+
+    let source = |theme_config: &str| {
+        format!(
+            r##"---
+config:
+  layout: dagre
+  look: neo
+  htmlLabels: false
+{theme_config}---
+erDiagram
+ORDER ||--o{{ LINE : contains
+LINE {{
+    string sku
+    int quantity
+}}
+ACCOUNT {{
+    int id
+    string name
+}}
+LINE ||..o{{ ACCOUNT : includes
+classDef accent fill:#FEDCBA,stroke:#195724,color:#495865
+class ORDER accent
+style ACCOUNT fill:#BADA55,stroke:#112233,color:#445566
+"##
+        )
+    };
+    let plain = source("");
+    let palette = source(
+        r#"  theme: redux-color
+  themeVariables:
+    lineColor: '#A504C7'
+    mainBkg: '#A604C7'
+    nodeBorder: '#A704C7'
+    rowOdd: '#A804C7'
+    erEdgeLabelBackground: '#A904C7'
+    useGradient: true
+    gradientStart: '#AA04C7'
+    strokeWidth: 9
+"#,
+    );
+    let theme = ThemeCompiler::new()
+        .compile_preset(BuiltinPreset::Studio, None)
+        .unwrap();
+    let resolved = theme.family("er");
+    let default_relation = format!(
+        ".relationshipLine{{stroke:{};stroke-width:{}px;",
+        resolved.roles.stroke_connector.first_color(),
+        resolved.form.connector_width,
+    );
+    let node_fill = format!("fill:{}", resolved.roles.surface_node.first_color());
+    let local_relation = ".relationshipLine { stroke: #157A55; }";
+    let render = |text: &str, site_theme, native| {
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                "theme": site_theme,
+                "themeCSS": local_relation,
+            })),
+        );
+        let environment = RenderEnvironment::deterministic().with_trusted_theme_css(true);
+        let session = if native {
+            environment.begin_session_with_native_theme(NativeTheme::new(theme.clone()))
+        } else {
+            environment.begin_session()
+        };
+        render_er_svg_from_text_with_session(
+            text,
+            &SvgRenderOptions::default(),
+            engine,
+            session.unwrap(),
+        )
+    };
+    let native = render(&plain, "default", true);
+    assert!(
+        render(&palette, "default", true) == native,
+        "source palette changed native SVG"
+    );
+    assert!(
+        render(&plain, "redux-dark-color", true) == native,
+        "site palette changed native SVG"
+    );
+    assert!(!native.contains("data-color-id"));
+    assert!(!native.contains("linearGradient"));
+    let document = roxmltree::Document::parse(&native).unwrap();
+    let css = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .unwrap();
+    assert!(css.find(&default_relation).unwrap() < css.find(local_relation).unwrap());
+    for (role, style) in [
+        ("basic label-container", "fill:#FEDCBA !important"),
+        ("er-native-header", "fill:#BADA55"),
+        ("er-native-outline", "stroke:#112233"),
+        ("row-rect-odd", node_fill.as_str()),
+    ] {
+        assert!(
+            document.descendants().any(|node| {
+                node.has_tag_name("rect")
+                    && node.attribute("class") == Some(role)
+                    && node
+                        .attribute("style")
+                        .is_some_and(|value| value.contains(style))
+            }),
+            "missing {role} paint {style}"
+        );
+    }
+    assert!(native.contains("edge-pattern-dashed relationshipLine"));
+    let classic = render(&palette, "redux-dark-color", false);
+    assert!(classic.contains(".relationshipLine{stroke:#A504C7;stroke-width:9;"));
+    assert!(classic.contains("data-color-id"));
 }
 
 fn try_render_er_svg_with_resource_policy(

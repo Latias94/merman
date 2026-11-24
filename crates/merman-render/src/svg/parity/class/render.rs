@@ -74,11 +74,6 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     let root_context = options.root_viewport(crate::DiagramFamilyId::CLASS, diagram_id);
     emit.checkpoint()?;
 
-    let divider_guide = settings
-        .native_style
-        .as_ref()
-        .filter(|_| !mermaid_config.explicit_config_owns_path("themeVariables.borderColorArray"))
-        .map(|native| native.guide.as_str());
     // Mermaid emits a single `<style>` element with diagram-scoped CSS.
     out.push_str("<style>");
     write_class_css(
@@ -86,7 +81,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         diagram_id.semantic_str(),
         typography_theme,
         relation_theme,
-        divider_guide,
+        settings.native_style.as_ref(),
     )?;
     if let Some(native) = &settings.native_style {
         super::css::write_class_native_css(

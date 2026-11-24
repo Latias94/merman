@@ -155,19 +155,17 @@ fn write_er_style_with_font_family(
             let text = &binding.node_text_color;
             let title = &binding.title_color;
             let border = native.border_width;
+            let guide = &native.guide;
+            let heading_ink = &native.heading_ink;
             let _ = write!(
                 &mut css_out,
                 "#{id} .node .label{{fill:{text};}}\
                  #{id} .label.attribute-type{{font-family:{code_family};}}\
                  #{id} .erDiagramTitleText{{font-family:{title_family};font-weight:{title_weight};fill:{title};}}\
-                 #{id} .node > .basic.label-container{{stroke-width:{border};}}"
+                 #{id} .node > .basic.label-container{{stroke-width:{border};}}\
+                 #{id} .node[data-look] .divider path + path{{stroke:{guide};}}\
+                 #{id} .node[data-native-er-heading] > .label.name,#{id} .node[data-native-er-heading] > .basic + .label{{fill:{heading_ink};color:{heading_ink};}}"
             );
-            if let Some(ink) = &native.heading_ink {
-                let _ = write!(
-                    &mut css_out,
-                    "#{id} .node[data-native-er-heading] > .label.name,#{id} .node[data-native-er-heading] > .basic + .label{{fill:{ink};color:{ink};}}"
-                );
-            }
         }
     }
     out.push_str("</style>");

@@ -13,7 +13,6 @@ pub(crate) struct ClassCssThemeBinding {
     pub(crate) node_default_fill: String,
     pub(crate) node_default_stroke: String,
     pub(crate) node_border: String,
-    pub(crate) edge_label_background: String,
     pub(crate) palette: Vec<(String, Option<String>)>,
     pub(crate) palette_look: String,
 }
@@ -108,9 +107,28 @@ impl ClassCssThemeBinding {
                 "#9370DB",
             ),
             node_border: token("nodeBorder", "#9370DB"),
-            edge_label_background: token("edgeLabelBackground", "rgba(232,232,232, 0.8)"),
             palette,
             palette_look,
+        }
+    }
+
+    pub(super) fn from_native(theme: &crate::theme::FamilyTheme) -> Self {
+        let roles = &theme.roles;
+        let main_bkg = roles.surface_node.first_color().to_string();
+        let node_border = roles.stroke_border.first_color().to_string();
+        let class_text = roles.text_primary.to_string();
+        Self {
+            look_defs: crate::svg::PreparedLookDefs::new(&Value::Null),
+            class_group_text: class_text.clone(),
+            class_text,
+            note_text: roles.text_callout.to_string(),
+            text_color: roles.text_title.to_string(),
+            node_default_fill: main_bkg.clone(),
+            main_bkg,
+            node_default_stroke: node_border.clone(),
+            node_border,
+            palette: Vec::new(),
+            palette_look: String::new(),
         }
     }
 }

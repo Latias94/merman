@@ -3,6 +3,7 @@ use crate::config::{
     config_f64_explicit_css_absolute_px, config_string,
 };
 use crate::text::{TextStyle, WrapMode};
+use merman_theme_contract::v2::Density;
 use serde_json::Value;
 
 const DEFAULT_CLASS_FONT_FAMILY: &str = "\"trebuchet ms\", verdana, arial, sans-serif";
@@ -273,6 +274,15 @@ impl ClassRenderConfig {
             self.layout.html_calc_text_style.font_size = native.typography.base_size_px;
             self.layout.wrap_probe_font_size = native.typography.base_size_px;
             self.line_height = native.typography.base_size_px * 1.5;
+        }
+        if !config.explicit_config_owns_path("class.padding") {
+            let scale = match native.form.density {
+                Density::Compact => 0.85,
+                Density::Balanced => 1.0,
+                Density::Airy => 1.25,
+            };
+            self.layout.class_padding *= scale;
+            self.class_padding *= scale;
         }
         self.native_style = Some(super::ClassNativeStyle::resolve(
             native,

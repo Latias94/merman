@@ -22,24 +22,17 @@ pub(super) fn write_class_native_css(
     let title_color = relation.diagram_title_css_default();
     let guide = &native.guide;
     let note = &theme.note_text;
-    let connector = relation.relation_css_default();
-    let width = relation.relation_width().css();
+    let heading_ink = &native.on_emphasis;
     let _ = write!(
         out,
         "#{id} .members-group,#{id} .methods-group{{font-family:{code};}}\
          #{id} .label-group,#{id} .classDiagramTitleText{{font-family:{title};font-weight:{weight};}}\
          #{id} .classDiagramTitleText{{fill:{title_color};}}\
-         #{id} .node .divider path{{stroke:{guide};fill:none;}}\
+         #{id} .node .divider path,#{id} .node .divider.neo-line path{{stroke:{guide};fill:none;}}\
          #{id} .noteLabel text{{fill:{note};}}\
-         #{id} path.relation[data-edge='true']{{stroke:{connector};stroke-width:{width};}}"
+         #{id} .class-native-heading .label text{{fill:{heading_ink};}}\
+         #{id} .class-native-heading .nodeLabel{{color:{heading_ink};}}"
     );
-    if let Some(color) = &native.on_emphasis {
-        let _ = write!(
-            out,
-            "#{id} .class-native-heading .label text{{fill:{color};}}\
-             #{id} .class-native-heading .nodeLabel{{color:{color};}}"
-        );
-    }
     out.checkpoint()
 }
 
@@ -69,7 +62,6 @@ fn write_class_palette_css(
     out: &mut impl SvgOutput,
     id: &str,
     theme: &crate::class::ClassCssThemeBinding,
-    divider_guide: Option<&str>,
 ) -> Result<()> {
     if theme.palette.is_empty() {
         return out.checkpoint();
@@ -84,10 +76,9 @@ fn write_class_palette_css(
             let _ = write!(out, "fill:{background};");
         }
         out.push('}');
-        let divider = divider_guide.unwrap_or(border);
         let _ = write!(
             out,
-            r#"#{id} [data-look="{look}"][data-color-id="color-{index}"].node .divider path{{stroke:{divider};}}"#
+            r#"#{id} [data-look="{look}"][data-color-id="color-{index}"].node .divider path{{stroke:{border};}}"#
         );
         out.checkpoint()?;
     }
@@ -99,7 +90,7 @@ pub(super) fn write_class_css(
     diagram_id: &str,
     typography_theme: &crate::class::ClassTextThemePlan,
     relation_theme: &crate::class::ClassRelationThemePlan,
-    divider_guide: Option<&str>,
+    native: Option<&crate::class::ClassNativeStyle>,
 ) -> Result<()> {
     let theme = typography_theme.css_binding();
     let id = crate::svg::escape_css_identifier(diagram_id);
@@ -115,10 +106,14 @@ pub(super) fn write_class_css(
     let title_color = relation_theme.namespace_title_css_default();
     let text_color = theme.text_color.as_str();
     let relation_width = relation_theme.relation_width();
-    let edge_label_background = theme.edge_label_background.as_str();
+    let node_width = native.map_or_else(|| relation_width.css(), |style| style.width.as_str());
+    let label_background = relation_theme
+        .native_edge_label_background()
+        .unwrap_or(main_bkg);
+    let edge_label_background = relation_theme.edge_label_background();
 
     info_css.write_prefix(out, diagram_id)?;
-    write_class_palette_css(out, &id, theme, divider_guide)?;
+    write_class_palette_css(out, &id, theme)?;
 
     let _ = write!(
         out,
@@ -146,13 +141,13 @@ pub(super) fn write_class_css(
         id.as_ref(),
         note_text,
         id.as_ref(),
-        main_bkg,
+        label_background,
         id.as_ref(),
         class_text,
         id.as_ref(),
-        main_bkg,
+        label_background,
         id.as_ref(),
-        main_bkg,
+        label_background,
         id.as_ref()
     );
     out.checkpoint()?;
@@ -166,7 +161,7 @@ pub(super) fn write_class_css(
         id.as_ref(),
         main_bkg,
         node_border,
-        relation_width.configured_css(),
+        node_width,
         id.as_ref(),
         node_border,
         id.as_ref(),

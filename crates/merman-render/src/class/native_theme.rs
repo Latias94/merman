@@ -24,11 +24,10 @@ pub(crate) struct ClassNativeStyle {
     pub(crate) code_style: TextStyle,
     pub(crate) title_style: TextStyle,
     pub(crate) emphasis: String,
-    pub(crate) on_emphasis: Option<String>,
+    pub(crate) on_emphasis: String,
     pub(crate) guide: String,
     pub(crate) width: String,
     pub(crate) radius: f64,
-    pub(crate) node_fill_is_authored: bool,
 }
 
 impl ClassNativeStyle {
@@ -39,20 +38,16 @@ impl ClassNativeStyle {
     ) -> Self {
         let typography = &theme.typography;
         let roles = &theme.roles;
-        let paint = |paths: &[&str]| {
-            paths
-                .iter()
-                .any(|path| config.explicit_config_owns_path(path))
-        };
-        let node_fill_is_authored =
-            paint(&["themeVariables.mainBkg", "themeVariables.primaryColor"]);
+        let has_configured_family = ["fontFamily", "themeVariables.fontFamily"]
+            .into_iter()
+            .any(|path| config.explicit_config_owns_path(path));
         Self {
             code_style: TextStyle {
                 font_family: Some(font_family_css(typography.stack(typography.code_family))),
                 ..body_style.clone()
             },
             title_style: TextStyle {
-                font_family: if paint(&["fontFamily", "themeVariables.fontFamily"]) {
+                font_family: if has_configured_family {
                     body_style.font_family.clone()
                 } else {
                     Some(font_family_css(typography.stack(typography.title_family)))
@@ -61,16 +56,10 @@ impl ClassNativeStyle {
                 ..body_style.clone()
             },
             emphasis: roles.surface_emphasis.first_color().to_string(),
-            on_emphasis: (!paint(&[
-                "themeVariables.classText",
-                "themeVariables.primaryTextColor",
-                "themeVariables.textColor",
-            ]))
-            .then(|| roles.text_on_emphasis.to_string()),
+            on_emphasis: roles.text_on_emphasis.to_string(),
             guide: roles.stroke_guide.first_color().to_string(),
             width: theme.form.stroke_width.to_string(),
             radius: theme.form.radius,
-            node_fill_is_authored,
         }
     }
 }

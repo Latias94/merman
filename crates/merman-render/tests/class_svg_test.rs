@@ -64,6 +64,165 @@ fn render_class_svg_from_text_with_session(
         .to_owned()
 }
 
+#[cfg(feature = "layout-dagre")]
+#[test]
+fn native_theme_v2_class_owns_global_paints_and_keeps_local_styles() {
+    use merman_render::theme::{BuiltinPreset, NativeTheme, ThemeCompiler};
+
+    let source = |theme_config: &str| {
+        format!(
+            r##"---
+config:
+  layout: dagre
+  look: neo
+  htmlLabels: false
+{theme_config}---
+classDiagram
+class Order:::accent {{
+    +total()
+}}
+class Invoice
+class Customer
+classDef accent fill:#FEDCBA,stroke:#195724,color:#495865
+style Invoice fill:#BADA55,stroke:#112233,color:#445566
+Order ..> Invoice : records
+Customer <|-- Invoice
+"##
+        )
+    };
+    let plain = source("");
+    let palette = source(
+        r#"  theme: redux-color
+  themeVariables:
+    lineColor: '#A504C7'
+    mainBkg: '#A604C7'
+    nodeBorder: '#A704C7'
+    edgeLabelBackground: '#A904C7'
+    useGradient: true
+    gradientStart: '#AA04C7'
+    strokeWidth: 9
+"#,
+    );
+    let theme = ThemeCompiler::new()
+        .compile_preset(BuiltinPreset::Studio, None)
+        .unwrap();
+    let resolved = theme.family("class");
+    let default_relation = format!(
+        ".relation{{stroke:{};stroke-width:{};",
+        resolved.roles.stroke_connector.first_color(),
+        resolved.form.connector_width,
+    );
+    let local_relation = ".relation { stroke: #157A55; }";
+    let render = |text: &str, site_theme, native| {
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                "theme": site_theme,
+                "themeCSS": local_relation,
+            })),
+        );
+        let environment = RenderEnvironment::deterministic().with_trusted_theme_css(true);
+        let session = if native {
+            environment.begin_session_with_native_theme(NativeTheme::new(theme.clone()))
+        } else {
+            environment.begin_session()
+        };
+        render_class_svg_from_text_with_session(
+            engine,
+            text,
+            &LayoutOptions::headless_svg_defaults(),
+            &SvgRenderOptions::default(),
+            session.unwrap(),
+        )
+    };
+    let native = render(&plain, "default", true);
+    assert!(
+        render(&palette, "default", true) == native,
+        "source palette changed native SVG"
+    );
+    assert!(
+        render(&plain, "redux-dark-color", true) == native,
+        "site palette changed native SVG"
+    );
+    assert!(!native.contains("data-color-id"));
+    assert!(!native.contains("linearGradient"));
+    let css = embedded_stylesheet(&native);
+    assert!(css.find(&default_relation).unwrap() < css.find(local_relation).unwrap());
+    assert!(!css.contains("path.relation[data-edge"));
+    let document = roxmltree::Document::parse(&native).unwrap();
+    for (id, fill, stroke) in [
+        ("merman-classId-Order-0", "fill:#FEDCBA", "stroke:#195724"),
+        ("merman-classId-Invoice-1", "fill:#BADA55", "stroke:#112233"),
+    ] {
+        let node = document
+            .descendants()
+            .find(|node| node.attribute("id") == Some(id))
+            .unwrap();
+        assert_eq!(node.attribute("data-look"), Some("neo"));
+        let box_style = node
+            .descendants()
+            .find(|node| node.attribute("class") == Some("class-native-box"))
+            .and_then(|node| node.attribute("style"))
+            .unwrap();
+        assert!(box_style.contains(fill) && box_style.contains(stroke));
+    }
+    assert_eq!(
+        document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("class-native-header"))
+            .count(),
+        1,
+        "only the class without a local fill uses the native heading"
+    );
+    assert!(native.contains("edge-pattern-dashed relation"));
+    let classic = render(&palette, "redux-dark-color", false);
+    assert!(classic.contains(".relation{stroke:#A504C7;stroke-width:9;"));
+    assert!(classic.contains("data-color-id"));
+}
+
+#[cfg(feature = "layout-dagre")]
+#[test]
+fn native_theme_v2_class_density_scales_default_padding() {
+    use merman_render::theme::{NativeTheme, ThemeCompiler};
+
+    let render = |density: &str, padding: &str| {
+        let theme =
+            format!(r#"{{"schema_version":2,"extends":"paper","form":{{"density":"{density}"}}}}"#);
+        let theme = ThemeCompiler::new()
+            .compile_json(theme.as_bytes(), None)
+            .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .begin_session_with_native_theme(NativeTheme::new(theme))
+            .unwrap();
+        let source = format!(
+            "---\nconfig:\n  layout: dagre\n  htmlLabels: false\n  class:\n    hideEmptyMembersBox: true\n{padding}---\nclassDiagram\nclass Invoice {{\n+total()\n}}\n"
+        );
+        render_class_svg_from_text_with_session(
+            MermaidEngine::new(),
+            &source,
+            &LayoutOptions::headless_svg_defaults(),
+            &SvgRenderOptions::default(),
+            session,
+        )
+    };
+    let width = |svg: &str| -> f64 {
+        roxmltree::Document::parse(svg)
+            .unwrap()
+            .descendants()
+            .find(|node| node.attribute("class") == Some("class-native-box"))
+            .and_then(|node| node.attribute("width"))
+            .unwrap()
+            .parse()
+            .unwrap()
+    };
+    let compact = width(&render("compact", ""));
+    let airy = width(&render("airy", ""));
+    assert!((airy - compact - 2.0 * 12.0 * (1.25 - 0.85)).abs() < 1.0e-6);
+
+    let explicit = "    padding: 24\n";
+    assert!(render("compact", explicit) == render("airy", explicit));
+    assert!(width(&render("compact", explicit)) > airy);
+}
+
 #[test]
 fn class_svg_numeric_collisions_keep_nodes_members_and_interaction_owners_distinct() {
     let source = concat!(

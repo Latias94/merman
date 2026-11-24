@@ -741,9 +741,8 @@ fn render_class_node_id<O: SvgOutput>(
     let node_stroke_width =
         binding.stroke_width(native.map_or("1.3", |style| style.width.as_str()));
     let guide_stroke = native.map_or(node_stroke, |style| binding.guide_stroke(&style.guide));
-    let paint_heading = native.is_some_and(|style| !style.node_fill_is_authored)
-        && !binding.has_fill_override()
-        && settings.look != "handDrawn";
+    let paint_heading =
+        native.is_some() && !binding.has_fill_override() && settings.look != "handDrawn";
     let node_stroke_dasharray = binding.stroke_dasharray();
 
     let node_link_open = render_class_node_shell_open(

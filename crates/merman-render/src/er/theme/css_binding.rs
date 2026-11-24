@@ -10,7 +10,7 @@ pub(crate) struct ErCssBinding {
     pub(crate) native: Option<crate::er::ErNativeStyle>,
     pub(crate) common: PreparedCommonCss,
     pub(crate) font_family: String,
-    pub(crate) theme_name: String,
+    source_fill_owns_odd_rows: bool,
     pub(crate) redux_border_colors: Vec<String>,
     pub(crate) redux_background_colors: Vec<String>,
     pub(crate) text_color: String,
@@ -34,68 +34,65 @@ pub(crate) struct ErCssBinding {
 }
 
 impl ErCssBinding {
-    pub(super) fn apply_native(
-        &mut self,
+    pub(super) fn from_native(
         theme: &crate::theme::FamilyTheme,
         native: crate::er::ErNativeStyle,
-        config: &merman_model::presentation::PresentationConfig,
-    ) {
+        config: &serde_json::Value,
+    ) -> Self {
         let roles = &theme.roles;
-        let owns = |key: &str| config.explicit_config_owns_path(key);
-        let cfg = config.as_value();
-        self.render_settings = super::super::ErConfigView::new(cfg)
+        let render_settings = super::super::ErConfigView::new(config)
             .render_settings_with_resolved_typography(
                 native.body_family.as_deref(),
                 native.font_size,
             );
-        if let Some(family) = &native.body_family {
-            self.font_family.clone_from(family);
+        let font_family = render_settings.font_family.clone();
+        let text_color = roles.text_primary.to_string();
+        let line_color = roles.stroke_connector.first_color().to_string();
+        let node_border = roles.stroke_border.first_color().to_string();
+        let cluster_bkg = roles.surface_container.first_color().to_string();
+        let label_background = &native.label_background;
+        // The shared Neo and marker rules must use the same paints as the ER writer.
+        let paints = serde_json::json!({"themeVariables": {
+            "textColor": text_color,
+            "nodeBorder": node_border,
+            "lineColor": line_color,
+            "strokeWidth": native.border_width,
+        }});
+        let mut common = PreparedCommonCss::with_resolved_typography(
+            &paints,
+            font_family.clone(),
+            format!("{}px", render_settings.font_size),
+        );
+        if native.body_family.is_none() {
+            common = common.with_configured_root_font_family(config);
         }
-        let size = format!("{}px", self.render_settings.font_size);
-        self.common =
-            PreparedCommonCss::bind(cfg, &self.font_family, &size, native.body_family.is_some());
-        if !owns("themeVariables.mainBkg") {
-            self.main_bkg = roles.surface_emphasis.first_color().to_string();
+        Self {
+            render_settings,
+            common,
+            font_family,
+            source_fill_owns_odd_rows: false,
+            redux_border_colors: Vec::new(),
+            redux_background_colors: Vec::new(),
+            node_text_color: text_color.clone(),
+            text_color,
+            line_color,
+            main_bkg: roles.surface_emphasis.first_color().to_string(),
+            cluster_border: node_border.clone(),
+            node_border,
+            row_odd: Some(roles.surface_node.first_color().to_string()),
+            row_even: Some(cluster_bkg.clone()),
+            cluster_bkg,
+            title_color: roles.text_title.to_string(),
+            tertiary_color: label_background.clone(),
+            edge_label_background: label_background.clone(),
+            label_background: Ok(label_background.clone()),
+            neo_label_background: Ok(label_background.clone()),
+            stroke_width: format!("{}px", native.connector_width),
+            neo_marker_stroke_width: native.connector_width,
+            shadow_flood: "#000000",
+            gradient: None,
+            native: Some(native),
         }
-        if !owns("themeVariables.nodeBorder") {
-            self.node_border = roles.stroke_border.first_color().to_string();
-        }
-        if !owns("themeVariables.clusterBkg") {
-            self.cluster_bkg = roles.surface_container.first_color().to_string();
-        }
-        if !owns("themeVariables.clusterBorder") {
-            self.cluster_border.clone_from(&self.node_border);
-        }
-        if !owns("themeVariables.rowOdd") {
-            self.row_odd = Some(roles.surface_node.first_color().to_string());
-        }
-        if !owns("themeVariables.rowEven") {
-            self.row_even = Some(roles.surface_container.first_color().to_string());
-        }
-        if !owns("themeVariables.lineColor") {
-            self.line_color = roles.stroke_connector.first_color().to_string();
-        }
-        if !owns("themeVariables.textColor") {
-            self.text_color = roles.text_primary.to_string();
-        }
-        if !owns("themeVariables.nodeTextColor") {
-            self.node_text_color.clone_from(&self.text_color);
-        }
-        if !owns("themeVariables.titleColor") && !owns("themeVariables.textColor") {
-            self.title_color = roles.text_title.to_string();
-        }
-        if let Some(width) = native.connector_width {
-            self.stroke_width = format!("{width}px");
-        } else if let Some(width) =
-            crate::config::config_css_number_or_string(cfg, &["themeVariables", "strokeWidth"])
-        {
-            self.stroke_width = width;
-        }
-        self.edge_label_background
-            .clone_from(&native.label_background);
-        self.label_background = Ok(native.label_background.clone());
-        self.neo_label_background = Ok(native.label_background.clone());
-        self.native = Some(native);
     }
 
     pub(super) fn title_color_source(config: &serde_json::Value) -> (Option<&'static str>, &str) {
@@ -114,10 +111,7 @@ impl ErCssBinding {
     }
 
     pub(super) fn source_fill_owns_odd_rows(&self) -> bool {
-        matches!(
-            self.theme_name.as_str(),
-            "redux" | "redux-dark" | "redux-color" | "redux-dark-color"
-        )
+        self.source_fill_owns_odd_rows
     }
 
     pub(crate) fn resolve(config: &serde_json::Value) -> Self {
@@ -159,6 +153,10 @@ impl ErCssBinding {
                 .render_settings_with_resolved_typography(None, None),
             common: PreparedCommonCss::bind(config, &font_family, &format!("{font_size}px"), false),
             font_family,
+            source_fill_owns_odd_rows: matches!(
+                theme_name.as_str(),
+                "redux" | "redux-dark" | "redux-color" | "redux-dark-color"
+            ),
             redux_border_colors: if redux_color_theme {
                 config_string_vec(config, &["themeVariables", "borderColorArray"])
             } else {
@@ -202,7 +200,6 @@ impl ErCssBinding {
             } else {
                 "#000000"
             },
-            theme_name,
             gradient,
         }
     }
