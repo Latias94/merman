@@ -14,7 +14,7 @@ use crate::graph_layout::ir::{
 };
 use crate::graph_layout::route_paint::{Clearance, ObstacleOwner};
 use crate::graph_layout::{RouteAxes, RouteContract, shoal_bridge};
-use crate::layout_frame::ShoalFrameNode;
+use crate::layout_frame::{FrameDirection, ShoalFrameNode};
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{
     Bounds, FlowchartLayout, FlowchartPlacement, LayoutCluster, LayoutEdge, LayoutLabel,
@@ -405,7 +405,7 @@ impl FlowchartBindings {
                     rank: i32::try_from(node.rank).unwrap_or(i32::MAX),
                     cross_key: node.cross_key,
                 },
-                node.direction,
+                Direction::from(node.direction),
             )));
         }
         Ok(hints)
@@ -454,7 +454,7 @@ impl FlowchartBindings {
                     parent: measured.parent,
                     rank,
                     cross_key,
-                    direction,
+                    direction: direction.into(),
                 },
             );
         }
@@ -588,5 +588,27 @@ impl FlowchartBindings {
                 routes,
             },
         })
+    }
+}
+
+impl From<FrameDirection> for Direction {
+    fn from(direction: FrameDirection) -> Self {
+        match direction {
+            FrameDirection::Down => Self::Down,
+            FrameDirection::Up => Self::Up,
+            FrameDirection::Left => Self::Left,
+            FrameDirection::Right => Self::Right,
+        }
+    }
+}
+
+impl From<Direction> for FrameDirection {
+    fn from(direction: Direction) -> Self {
+        match direction {
+            Direction::Down => Self::Down,
+            Direction::Up => Self::Up,
+            Direction::Left => Self::Left,
+            Direction::Right => Self::Right,
+        }
     }
 }

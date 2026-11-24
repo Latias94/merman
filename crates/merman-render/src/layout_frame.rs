@@ -1,4 +1,3 @@
-use crate::graph_layout::ir::Direction;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::BTreeMap;
 
@@ -20,15 +19,14 @@ pub(crate) struct ShoalFrameNode {
     pub(crate) rank: u32,
     #[serde(deserialize_with = "finite")]
     pub(crate) cross_key: f64,
-    #[serde(with = "FrameDirection")]
-    pub(crate) direction: Direction,
+    pub(crate) direction: FrameDirection,
 }
 
 impl Eq for ShoalFrameNode {}
 
-#[derive(Serialize, Deserialize)]
-#[serde(remote = "Direction", rename_all = "kebab-case")]
-enum FrameDirection {
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum FrameDirection {
     Down,
     Up,
     Left,
@@ -43,5 +41,26 @@ fn finite<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f64, D::Error> {
         Err(serde::de::Error::custom(
             "expected a finite cross coordinate",
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::FrameDirection;
+
+    #[test]
+    fn frame_directions_round_trip_the_existing_wire_names() {
+        for (direction, json) in [
+            (FrameDirection::Down, "\"down\""),
+            (FrameDirection::Up, "\"up\""),
+            (FrameDirection::Left, "\"left\""),
+            (FrameDirection::Right, "\"right\""),
+        ] {
+            assert_eq!(serde_json::to_string(&direction).unwrap(), json);
+            assert_eq!(
+                serde_json::from_str::<FrameDirection>(json).unwrap(),
+                direction
+            );
+        }
     }
 }
