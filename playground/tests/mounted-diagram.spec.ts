@@ -1,10 +1,8 @@
-import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
-import { promisify } from "node:util";
 import { expect, test } from "@playwright/test";
 import type { HostTextMeasureRequest, MountedDiagram } from "../../platforms/web/packages/full/dist/public-types.js";
+import { verifyAssembledFullWebPackage } from "./helpers/web-package.ts";
 
 type MountApi = typeof import("../../platforms/web/packages/full/dist/package-entries/full.js");
 type FullModule = Awaited<ReturnType<MountApi["initMerman"]>>;
@@ -18,14 +16,7 @@ const packageRoot = path.join(repositoryRoot, "platforms/web/packages/full");
 const kanban = "kanban\n  todo[Todo]\n    a[First]\n  doing[Doing]\n    b[Second]\n  done[Done]\n    c[Third]";
 
 test.beforeAll(async () => {
-  await promisify(execFile)(process.execPath, ["platforms/web/scripts/verify-wasm-inputs.mjs", "--package", "full"], { cwd: repositoryRoot });
-  const { assertArtifactFileEvidence } = await import(pathToFileURL(path.join(repositoryRoot, "platforms/web/scripts/prepack-check.mjs")).href);
-  const provenance = JSON.parse(await readFile(path.join(packageRoot, "artifacts/provenance.json"), "utf8"));
-  assertArtifactFileEvidence({
-    packageWasmRoot: path.join(packageRoot, "artifacts/wasm"), sourceWasmRoot: path.join(repositoryRoot, "platforms/web/pkg/full"),
-    packageDistRoot: path.join(packageRoot, "dist"), sourceDistRoot: path.join(repositoryRoot, "platforms/web/dist"),
-    packageId: "full", artifactFiles: provenance.artifact_files, label: "persistent mount public browser package",
-  });
+  await verifyAssembledFullWebPackage("persistent mount public browser package");
 });
 
 test.beforeEach(async ({ page }) => {

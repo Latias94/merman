@@ -107,7 +107,7 @@ select their own direct leaf set instead.
 
 ### Try the experimental Shoal layout
 
-Enable `layout-shoal` on the Rust `merman` facade or build the CLI with `cargo build --locked -p merman-cli --features layout-shoal`. Check `merman-cli capabilities` for `layout-shoal`, then select the engine in the diagram's Mermaid frontmatter.
+The hosted Playground includes Shoal for the Merman SVG preview. Enable `layout-shoal` on the Rust `merman` dependency or build the CLI with `cargo build --locked -p merman-cli --features layout-shoal`. Check `merman-cli capabilities` for `layout-shoal`, then select the engine in the diagram's Mermaid frontmatter.
 
 ```text
 ---
@@ -120,6 +120,8 @@ flowchart LR
 
 Run `target/debug/merman-cli render diagram.mmd --theme-preset editor --theme-appearance dark -o diagram.svg` from the checkout. Select `dagre` or `elk` in the same field to compare drawings in a build containing those engines. Shoal uses the family's measured shapes and labels, including effective theme fonts and edge-label padding.
 
+Set `{"layout":"shoal"}` in the Playground's **Config** tab to select Shoal for the workspace. A `layout` value in **Config** takes precedence over frontmatter. To make Shoal the CLI default for supported diagrams, save the same JSON to a file and pass `--config-file path/to/mermaid.json`. A diagram's frontmatter can override the CLI default. Rust hosts can set the same site configuration on `MermaidEngine`. [Rust embedding guide](rendering/RUST_EMBEDDING.md#replace-the-previous-renderer)
+
 Shoal draws Flowcharts in all four directions, including cycles, self-loops, parallel labeled edges, nested subgraphs and group endpoints. Agentflow uses the same engine after projecting visible nodes, collapsed flows and connectors. Architecture uses the declared port faces on services, junctions and groups for orthogonal routing. C4 keeps its measured elements and routes relationships across nested boundaries. Class retains measured class boxes, namespaces and multiplicity labels. State supports explicit composite directions, concurrent regions and self-transitions. ER routes identifying and non-identifying relations with cardinality markers at both ends. Requirement supports relation labels and containment markers. Usecase routes relationships across system boundaries and clips them to actor and use-case contours.
 
 Use a `swimlane-beta` header with `layout: shoal` to align work across lanes. Root lanes share rank positions and align their borders. Use `layout: shoal` in Block to try orthogonal edge routing on the authored grid. Block uses its usual route for an edge if the router cannot find a clear alternative.
@@ -127,7 +129,7 @@ Use a `swimlane-beta` header with `layout: shoal` to align work across lanes. Ro
 A build without Shoal reports the missing capability when one of these diagrams requests it. Rust callers can also pass measured graphs directly to the standalone crate. [Shoal crate](../crates/merman-layout-shoal/README.md)
 
 For supported diagrams, request a width with `merman-cli render diagram.mmd --fit-width --width 640 -o diagram.svg`.
-In a Shoal-enabled Playground build, use **Tools → Fit preview width**. In VS Code, select a
+In the Merman SVG preview, use **Tools → Fit preview width** when the diagram selects Shoal. In VS Code, select a
 Shoal-enabled CLI with `merman.cli.path` and set `merman.preview.fitWidth` to the desired width in
 CSS pixels. Use `0` for natural placement. The extension reuses hints across successive SVG
 previews when the CLI advertises frame support. Swimlane can capture a placement frame with its

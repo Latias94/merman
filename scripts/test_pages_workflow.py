@@ -39,7 +39,10 @@ class PagesWorkflowTests(unittest.TestCase):
         report = workflow_job(text, "size-report")
         self.assertEqual(text.count("npm run build --prefix platforms/web"), 1)
         self.assertIn("npm run smoke --prefix platforms/web", web)
-        self.assertLess(web.index("npm run smoke"), web.index("actions/upload-artifact@"))
+        shoal_build = "npm run build:wasm:full --prefix platforms/web -- --local-shoal"
+        self.assertEqual(text.count(shoal_build), 1)
+        self.assertLess(web.index("npm run smoke"), web.index(shoal_build))
+        self.assertLess(web.index(shoal_build), web.index("actions/upload-artifact@"))
         self.assertIn("platforms/web/packages", web)
         self.assertIn("platforms/web/pkg", web)
         self.assertIn("platforms/web/dist", web)
@@ -58,6 +61,16 @@ class PagesWorkflowTests(unittest.TestCase):
         self.assertIn("--web-package-root platforms/web/packages", report)
         self.assertNotIn("--budget-file", report)
         self.assertIn("tool: wasm-tools@1.263.0", report)
+
+    def test_playground_assembles_shoal_after_qualifying_standard_packages(self) -> None:
+        text = PAGES.read_text(encoding="utf-8")
+        assembly = "npm run assemble:shoal --prefix playground"
+        prepare = "npm run prepare:browser-runtime:shoal --prefix playground"
+        self.assertEqual(text.count(assembly), 1)
+        browser = workflow_job(text, "build")
+        self.assertLess(browser.index("installed-browser-consumer.mjs"), browser.index(assembly))
+        self.assertLess(browser.index(assembly), browser.index(prepare))
+        self.assertLess(browser.index(prepare), browser.index("npm run build:prepared"))
 
     def test_web_ci_and_release_report_sizes_without_byte_ceilings(self) -> None:
         for workflow in ("pages.yml", "release-web.yml", "release-preflight.yml"):
@@ -98,7 +111,7 @@ class PagesWorkflowTests(unittest.TestCase):
         text = PAGES.read_text(encoding="utf-8")
         browser = workflow_job(text, "build")
         for command in (
-            "npm run prepare:browser-runtime --prefix playground",
+            "npm run prepare:browser-runtime:shoal --prefix playground",
             "npm run test:prepared --prefix playground",
             "npm run lint --prefix playground",
             "npm run build:prepared --prefix playground",
