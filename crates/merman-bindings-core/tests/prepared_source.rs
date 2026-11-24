@@ -5,6 +5,26 @@ use merman_bindings_core::{
 };
 
 #[test]
+fn source_theme_precedence_only_checks_a_preset_appearance_when_selected() {
+    let engine = BindingEngine::new(
+        br#"{"theme":{"preset":"blueprint","appearance":"light","precedence":"source"}}"#,
+    )
+    .unwrap();
+    let source = b"---\nconfig:\n  theme: forest\n---\nflowchart LR\nA --> B";
+    let plain = BindingEngine::new(b"").unwrap();
+    assert_eq!(
+        engine.render_svg(source).unwrap(),
+        plain.render_svg(source).unwrap()
+    );
+    let unavailable = engine.render_svg(b"flowchart LR\nA --> B").unwrap_err();
+    assert!(
+        unavailable
+            .message()
+            .contains("does not have a light appearance")
+    );
+}
+
+#[test]
 fn retained_source_outputs_share_frozen_semantics_and_independent_controls() {
     let engine =
         BindingEngine::new(br#"{"site_config":{"flowchart":{"htmlLabels":false}}}"#).unwrap();

@@ -892,6 +892,40 @@ fn unsupported_native_treatments_are_reported_or_rejected() {
     }
 }
 
+#[cfg(all(feature = "svg", feature = "diagram-packet"))]
+#[test]
+fn portable_packet_rejects_a_requested_corner_radius() {
+    use merman::svg::{RenderError as SvgRenderError, ThemePortabilityRequirement};
+    use merman::theme::ThemeCompiler;
+
+    let theme = ThemeCompiler::new()
+        .compile_json(
+            br##"{"schema_version":2,"appearances":{"light":{"seed":{
+                "canvas":"#FFFFFF","ink":"#111111","accent":"#324466"
+            }}},"overrides":[{"families":["packet"],"form":{"radius":12}}]}"##,
+            None,
+        )
+        .unwrap();
+    let request = merman::SvgRequest {
+        environment: merman::SvgEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable),
+        ..Default::default()
+    }
+    .with_native_theme(ThemeSelection::compiled(theme));
+    let error = Renderer::new()
+        .render(RenderRequest::svg(
+            "packet-beta\n0-7: \"Header\"",
+            OperationControl::new(),
+            request,
+        ))
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        RenderError::Svg(SvgRenderError::UnsupportedNativeThemeFeature { message, .. })
+            if message == "This diagram family does not support theme corner radii."
+    ));
+}
+
 #[cfg(all(feature = "svg", feature = "diagram-class"))]
 #[test]
 fn standalone_native_class_svg_preserves_font_portability() {

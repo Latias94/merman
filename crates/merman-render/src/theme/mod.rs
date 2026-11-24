@@ -196,14 +196,29 @@ pub fn unsupported_features(
     theme: &ResolvedThemeV2,
     family: crate::DiagramFamilyId,
 ) -> impl Iterator<Item = &'static str> {
+    use merman_theme_contract::v2::{Elevation, Form};
+
     let caps = family_capabilities(family);
     let theme = theme.family(family.as_str());
+    let defaults = Form::default();
     [
-        (!matches!(theme.elevation, merman_theme_contract::v2::Elevation::Flat)
+        (!matches!(theme.elevation, Elevation::Flat)
             && !caps.contains(ThemeCapabilityFlags::ELEVATION))
         .then_some("This diagram family does not support theme elevation."),
         (theme.data.pattern_encoding && !caps.contains(ThemeCapabilityFlags::PATTERN_ENCODING))
             .then_some("This diagram family does not support categorical theme patterns."),
+        ((theme.form.radius != defaults.radius
+            || theme.form.container_radius != defaults.container_radius)
+            && !caps.contains(ThemeCapabilityFlags::RADIUS))
+        .then_some("This diagram family does not support theme corner radii."),
+        (theme.form.edge_style != defaults.edge_style
+            && !caps.contains(ThemeCapabilityFlags::EDGE_STYLE))
+        .then_some("This diagram family does not support theme connector styles."),
+        (theme.form.marker_style != defaults.marker_style
+            && !caps.contains(ThemeCapabilityFlags::MARKER_STYLE))
+        .then_some("This diagram family does not support theme marker styles."),
+        (theme.form.chart != defaults.chart && !caps.contains(ThemeCapabilityFlags::CHART_POLISH))
+            .then_some("This diagram family does not support theme chart styling."),
     ]
     .into_iter()
     .flatten()

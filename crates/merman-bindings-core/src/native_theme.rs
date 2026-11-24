@@ -8,6 +8,9 @@ use serde_json::{Value, value::RawValue};
 
 use crate::common::{BindingError, internal_json_error};
 
+// One document byte can occupy six bytes in a JSON string escape. Leave room for the envelope.
+const RESOLVE_REQUEST_MAX_BYTES: usize = ThemeCompiler::new().max_bytes() * 6 + 1024;
+
 #[derive(Deserialize)]
 struct OptionsWithTheme<'a> {
     #[serde(borrow)]
@@ -54,7 +57,7 @@ pub(crate) fn binding_theme(
         return Ok(None);
     }
     if let Some(preset) = value.as_str() {
-        return select_preset(preset, None).map(Some);
+        return select_preset(preset, None, ThemePrecedence::Host).map(Some);
     }
     if value.get("schema_version").is_some() {
         return compile_document(raw, None).map(Some);
@@ -69,7 +72,7 @@ pub(crate) fn binding_theme(
         BindingError::invalid_options_json(format!("invalid theme selection: {error}"))
     })?;
     let theme = match (selection.preset.as_deref(), selection.document) {
-        (Some(preset), None) => select_preset(preset, selection.appearance)?,
+        (Some(preset), None) => select_preset(preset, selection.appearance, selection.precedence)?,
         (None, Some(document)) => compile_document(document, selection.appearance)?,
         _ => {
             return Err(BindingError::invalid_options_json(
@@ -121,9 +124,11 @@ where
 fn select_preset(
     preset: &str,
     appearance: Option<Appearance>,
+    precedence: ThemePrecedence,
 ) -> Result<ThemeSelection, BindingError> {
     let preset = preset_from_id(preset)?;
-    if let Some(appearance) = appearance
+    if precedence == ThemePrecedence::Host
+        && let Some(appearance) = appearance
         && !preset
             .appearances()
             .map_err(|error| compile_error("theme", error))?
@@ -208,6 +213,11 @@ struct ResolveRequest<'a> {
 
 /// Resolves a `resolve-theme` request with an inline document or its original JSON text.
 pub fn resolve_theme_request_json(request_json: &[u8]) -> Result<Vec<u8>, BindingError> {
+    if request_json.len() > RESOLVE_REQUEST_MAX_BYTES {
+        return Err(BindingError::invalid_argument(format!(
+            "resolve-theme request exceeds the {RESOLVE_REQUEST_MAX_BYTES} byte limit"
+        )));
+    }
     if !is_object(request_json) {
         return Err(BindingError::invalid_argument(
             "resolve-theme request must be a JSON object",
@@ -298,6 +308,23 @@ fn resolve_document(document: &[u8], options: ResolveOptions) -> Result<Vec<u8>,
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resolution_bounds_the_envelope_before_decoding() {
+        let mut oversized = br#"{"document":{"schema_version":2,"extends":"studio"}}"#.to_vec();
+        oversized.resize(RESOLVE_REQUEST_MAX_BYTES + 1, b' ');
+        let error = resolve_theme_request_json(&oversized).unwrap_err();
+        assert!(error.message().contains("resolve-theme request exceeds"));
+
+        let document = r#"{\"schema_version\":2,\"extends\":\"studio\"}"#;
+        let decoded_len = br#"{"schema_version":2,"extends":"studio"}"#.len();
+        let padding = "\\u0020".repeat(ThemeCompiler::new().max_bytes() - decoded_len);
+        let request = format!(r#"{{"document":"{document}{padding}"}}"#);
+        let result: Value =
+            serde_json::from_slice(&resolve_theme_request_json(request.as_bytes()).unwrap())
+                .unwrap();
+        assert_eq!(result["ok"], true);
+    }
 
     #[test]
     fn raw_resolution_keeps_the_document_syntax_location() {
