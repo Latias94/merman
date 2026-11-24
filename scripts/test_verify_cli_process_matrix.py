@@ -110,6 +110,7 @@ class CliProcessMatrixTests(unittest.TestCase):
         }
         expected_defaults = public_features - diagram_selectors - {
             "experimental-system-font-query",
+            "layout-shoal",
             "platform-system-font-default",
             "platform-system-font-query",
             "math",
