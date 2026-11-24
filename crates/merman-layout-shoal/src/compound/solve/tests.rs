@@ -633,14 +633,14 @@ fn nested_title_fan_stitches_beside_the_measured_title_and_never_doubles_back() 
             } else {
                 entry.x - title.x - title.width
             };
-            assert!(clearance >= fit::TITLE_CLEAR - 1e-8, "{run:?}");
+            assert!(clearance >= TITLE_CLEAR - 1e-8, "{run:?}");
             assert_eq!(entry.x, run[1].x);
             let past_title = if top {
                 run[1].y - title.y - title.height
             } else {
                 title.y - run[1].y
             };
-            assert!(past_title >= fit::TITLE_CLEAR - 1e-8);
+            assert!(past_title >= TITLE_CLEAR - 1e-8);
             assert!((run[2].x - run[1].x).abs() <= 2.0 * (run[2].y - run[1].y).abs() + 1e-8);
             let across: f64 = run
                 .windows(2)
@@ -822,7 +822,7 @@ fn fit_width_preserves_marker_room_when_moving_a_port_beside_the_title() {
     };
     assert_eq!(route.ports.0, Side::Top);
     assert_eq!(contact.y, group.rect.y);
-    assert!(footprint.x >= title.x + title.width + fit::TITLE_CLEAR);
+    assert!(footprint.x >= title.x + title.width + TITLE_CLEAR);
     assert!(footprint.x + footprint.width <= group.rect.x + group.rect.width);
     assert!(!overlap(footprint, drawing.nodes[1]));
 }

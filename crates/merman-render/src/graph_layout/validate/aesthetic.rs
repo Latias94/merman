@@ -24,20 +24,21 @@ pub(super) struct Seam {
     pub landmarks: Vec<Landmark>,
 }
 
-pub(super) struct Metrics {
+pub(super) struct Metrics<'a> {
     pub(super) cubic_count: usize,
     pub(super) max_commands_per_edge: usize,
     pub(super) micro_kink_count: usize,
     pub(super) border_seam_bump: Option<f64>,
+    pub(super) seams: Vec<SeamMetrics<'a>>,
 }
 
 #[derive(Serialize)]
-struct SeamMetrics<'a> {
+pub(super) struct SeamMetrics<'a> {
     edge: &'a str,
     bump_px: f64,
     cubic_count: usize,
     landmarks: Vec<LandmarkPosition>,
-    legs: Vec<SeamLeg>,
+    pub(super) legs: Vec<SeamLeg>,
 }
 
 #[derive(Serialize)]
@@ -48,10 +49,10 @@ struct LandmarkPosition {
 }
 
 #[derive(Serialize)]
-struct SeamLeg {
-    from: &'static str,
-    to: &'static str,
-    cubic_count: usize,
+pub(super) struct SeamLeg {
+    pub(super) from: &'static str,
+    pub(super) to: &'static str,
+    pub(super) cubic_count: usize,
 }
 
 struct MarkerSample<'a> {
@@ -71,14 +72,14 @@ struct MarkerCrowding<'a> {
     pitch_over_width: f64,
 }
 
-pub(super) fn emit(
+pub(super) fn emit<'a>(
     case: &str,
     direction: &str,
     scene: &Scene<'_>,
     body_names: &[impl AsRef<str>],
-    edge_names: &[impl AsRef<str>],
+    edge_names: &'a [impl AsRef<str>],
     seams: &[Seam],
-) -> Metrics {
+) -> Metrics<'a> {
     let mut cubic_count = 0;
     let mut max_commands_per_edge = 0;
     let mut micro_kink_count = 0;
@@ -159,6 +160,7 @@ pub(super) fn emit(
         max_commands_per_edge,
         micro_kink_count,
         border_seam_bump,
+        seams: border_seams,
     }
 }
 

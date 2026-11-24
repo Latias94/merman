@@ -1248,6 +1248,27 @@ fn replay_aesthetic_witnesses() {
             if name == "cycle" {
                 assert_eq!(metrics.micro_kink_count, 0, "{name}: micro kinks");
             }
+            if name.starts_with("release") {
+                let across = |point| drawing.axis().coordinate(point);
+                for (edge, layout) in scene.edges.iter().zip(&drawing.layout.edges) {
+                    if !matches!(layout.from.as_str(), "checks" | "stage") {
+                        continue;
+                    }
+                    let shaft = Shaft::read(edge).unwrap();
+                    let PathSeg::Cubic(curve) = shaft.segment_from(End::Start, 0).0 else {
+                        panic!("{name}: {} must curve from its unmarked contact", layout.id);
+                    };
+                    if layout.from == "checks" {
+                        let departure = across(curve.p1) - across(curve.p0);
+                        let sweep = across(curve.p3) - across(curve.p0);
+                        assert!(
+                            departure * sweep > 0.,
+                            "{name}: {} diamond tangent",
+                            layout.id
+                        );
+                    }
+                }
+            }
         }
     });
     compound::aesthetic_witnesses();

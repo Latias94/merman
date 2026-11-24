@@ -29,7 +29,7 @@ cargo run -p merman-layout-shoal --example measured_dag
 
 - `NodeId`, `GroupId` and `EdgeId` are dense `u32` indices into `Graph`'s respective arrays. Outputs use the same indices. Each parallel edge keeps its own route and measured label.
 - Node and label sizes use the final drawing axes. Supply finite, nonnegative outer dimensions including padding. `Rect.x` and `Rect.y` give the top-left corner. `Rect::center()` gives the center for renderers that place shapes by their center.
-- The first and last `RoutePoint` are contacts on the source and target box faces named by `EdgeGeometry.ports`. `axis` is the incoming leg's axis in drawing coordinates. At the first point it is the departing axis. A curved leg can change both coordinates while keeping flow-axis tangents. `Orthogonal` produces axis-aligned legs.
+- The first and last `RoutePoint` are contacts on the source and target box faces named by `EdgeGeometry.ports`. `axis` is the incoming leg's axis in drawing coordinates. At the first point it is the departing axis. A curved leg can change both coordinates while keeping flow-axis tangents. `KnotKind::GapBoundary` limits the extent of rounding into the neighboring rank. `Orthogonal` produces axis-aligned legs.
 - Supply marker and label footprints in drawing units. The renderer moves box contacts onto the actual shape along the indicated side normal and applies the marker setback once. The solver reserves intermediate ranks for labels and parallel lenses where needed.
 - `LayoutOutput.bounds` is the size of the normalized drawing. The union of its node boxes, label boxes and routing points begins at `(0, 0)`. Edge occurrences are returned in semantic source-to-target order, including edges reversed internally for ranking.
 
@@ -53,9 +53,11 @@ Set the `parent` of a node or group to its enclosing `GroupId`. Each group can s
 
 Use `Endpoint::Group` to connect a group directly to an outside node, another group or its own member. `LayoutOutput.border_stitches` identifies each shared border point by edge, point index, group and side, in path order. A painter can interpolate each section through that point while applying markers only at the semantic endpoints. If the drawing exceeds `max_border_ports`, `LayoutOutput.truncated_routes` identifies the physical endpoints of the affected edge occurrences.
 
+For curved routes between facing sibling boundaries, Shoal can straighten the corridor between the groups and align both contacts on a shared lane. It preserves the order and spacing of adjacent ports and checks the change against nodes, labels, markers and other routes.
+
 ## Work control and buffer reuse
 
-Use `layout_with_control(&graph, &options, &mut scratch, &mut control)` to share buffers across a batch or apply an operation budget. `WorkControl::check` polls cancellation. `charge(units)` admits work before bulk operations and during graph walks. The standard library handles sorting after admission of its comparison budget. Two sufficient budgets produce the same geometry. `NoopWorkControl` runs without a caller limit.
+Use `layout_with_control(&graph, &options, &mut scratch, &mut control)` to share buffers across a batch or apply an operation budget. `WorkControl::check` polls cancellation. `charge(units)` admits work before bulk operations and during graph walks. The standard library handles sorting after admission of its comparison budget. `WorkControl::try_charge_optional` admits refinements such as compound seam alignment. Declining optional work keeps a valid drawing from the preceding pass. `NoopWorkControl` runs without a caller limit.
 
 `LayoutScratch::default()` retains up to 2 MiB of reusable vertex, segment, adjacency and layer storage. `LayoutScratch::with_max_retained_bytes(bytes)` sets the total retention cap. `retained_bytes()` reports the retained vector capacities in bytes. A solve can temporarily exceed the cap. On return, including on cancellation and input errors, the retention cap is reapplied. A zero cap releases all scratch storage after every call. Each `LayoutOutput` owns its geometry independently.
 

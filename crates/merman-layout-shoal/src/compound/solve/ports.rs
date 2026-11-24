@@ -422,7 +422,7 @@ pub(super) fn beside_title(
     }
     let mut slots = Vec::new();
     let mut obstructed = false;
-    let mut clearance = fit::TITLE_CLEAR;
+    let mut clearance = TITLE_CLEAR;
     for wire in wires {
         work.visit(1)?;
         let Some((end, slot, port_side)) = wire.border() else {
@@ -438,7 +438,7 @@ pub(super) fn beside_title(
         let at = ports[slot].x;
         if !fixed {
             let marker = [wire.spec.start_marker, wire.spec.end_marker][end];
-            let half = fit::TITLE_CLEAR + marker.width / 2.0;
+            let half = TITLE_CLEAR + marker.width / 2.0;
             clearance = clearance.max(half);
             obstructed |= at > title.x - half && at < title.x + title.width + half;
         }

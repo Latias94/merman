@@ -631,10 +631,22 @@ pub(super) fn aesthetic_witnesses() {
             &seams,
         );
         if name.ends_with("_048") {
+            let bump = metrics.border_seam_bump.expect("measured sibling corridor");
             assert!(
-                metrics.border_seam_bump.is_some(),
-                "missing seam measurement"
+                bump <= 1e-7,
+                "r2 → l1 reversed by {bump}px between its inboard tracks"
             );
+        }
+        if name.ends_with("_001") {
+            assert_eq!(metrics.seams.len(), 2);
+            for seam in metrics.seams {
+                let [outside, inside] = seam.legs.as_slice() else {
+                    panic!("expected one outer gap and one inboard approach");
+                };
+                assert_eq!((outside.from, outside.to), ("A1.bottom", "A2.top"));
+                assert_eq!(outside.cubic_count, 1, "single sweep between groups");
+                assert_eq!(inside.cubic_count, 1, "title clearance before the marker");
+            }
         }
     }
 }

@@ -26,6 +26,7 @@ pub(super) struct Frame {
 }
 
 const SIDES: [Side; 4] = [Side::Top, Side::Right, Side::Bottom, Side::Left];
+pub(super) const TITLE_CLEAR: f64 = 6.0;
 
 fn finite(value: f64) -> LayoutResult<f64> {
     if value.is_finite() {

@@ -30,6 +30,18 @@ pub(crate) enum RouteStyle {
 pub(crate) enum CurveTerminals {
     #[default]
     Fixed,
+    #[cfg_attr(
+        not(any(
+            test,
+            feature = "diagram-flowchart",
+            feature = "diagram-swimlane",
+            feature = "diagram-agentflow"
+        )),
+        allow(
+            dead_code,
+            reason = "Only Flowchart-family SVGs use smooth unmarked leads."
+        )
+    )]
     Smooth {
         inset: (f64, f64),
         departure_across: Option<f64>,

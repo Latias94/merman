@@ -4,6 +4,7 @@ mod assemble;
 mod hierarchy;
 mod pre_order;
 mod refine;
+mod seam_relax;
 mod sides;
 mod solve;
 #[cfg(test)]
@@ -134,38 +135,42 @@ pub(super) fn run(
         ..independent
     };
     let mut frames = Frames::new(hierarchy.levels.len())?;
-    let first_output = frames.draw(&first, None, expanded, work)?;
-    let crossings = first_output.stats.routed_crossings;
-    if crossings == 0
-        || hierarchy.borders.len() < 2
-        || hierarchy.borders.len() > options.caps.max_ordered_compound_ports
-        || graph.edges.len() > options.caps.max_ordered_compound_edges
-    {
-        return Ok(first_output);
-    }
-    let suggestions = refine::port_hints(&first, &frames.levels, &first_output, work)?;
-    let mut previous = &first;
-    if ordered.as_ref().is_some_and(|h| {
-        crossings
-            > h.flat_crossings
-                .saturating_add(h.flat_crossings / 2)
-                .saturating_add(4)
-    }) {
-        let alternative = frames.draw(&independent, Some(&first), expanded, work)?;
-        if alternative.stats.routed_crossings < crossings {
-            return Ok(alternative);
+    let mut output = 'selected: {
+        let first_output = frames.draw(&first, None, expanded, work)?;
+        let crossings = first_output.stats.routed_crossings;
+        if crossings == 0
+            || hierarchy.borders.len() < 2
+            || hierarchy.borders.len() > options.caps.max_ordered_compound_ports
+            || graph.edges.len() > options.caps.max_ordered_compound_edges
+        {
+            break 'selected first_output;
         }
-        previous = &independent;
-    }
-    if let Some(ports) = suggestions {
-        let adjusted = Pass {
-            ports: &ports,
-            ..first
-        };
-        let alternative = frames.draw(&adjusted, Some(previous), expanded, work)?;
-        if alternative.stats.routed_crossings < crossings {
-            return Ok(alternative);
+        let suggestions = refine::port_hints(&first, &frames.levels, &first_output, work)?;
+        let mut previous = &first;
+        if ordered.as_ref().is_some_and(|h| {
+            crossings
+                > h.flat_crossings
+                    .saturating_add(h.flat_crossings / 2)
+                    .saturating_add(4)
+        }) {
+            let alternative = frames.draw(&independent, Some(&first), expanded, work)?;
+            if alternative.stats.routed_crossings < crossings {
+                break 'selected alternative;
+            }
+            previous = &independent;
         }
-    }
-    Ok(first_output)
+        if let Some(ports) = suggestions {
+            let adjusted = Pass {
+                ports: &ports,
+                ..first
+            };
+            let alternative = frames.draw(&adjusted, Some(previous), expanded, work)?;
+            if alternative.stats.routed_crossings < crossings {
+                break 'selected alternative;
+            }
+        }
+        first_output
+    };
+    seam_relax::relax(&first, &mut output, work)?;
+    Ok(output)
 }

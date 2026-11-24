@@ -12,8 +12,6 @@ pub(super) struct Fit {
     vertical_slack: f64,
 }
 
-pub(super) const TITLE_CLEAR: f64 = 6.0;
-
 pub(super) fn title_side(position: TitlePosition) -> Side {
     match position {
         TitlePosition::TopLeft | TitlePosition::TopCenter | TitlePosition::TopRight => Side::Top,

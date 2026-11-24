@@ -541,7 +541,7 @@ fn title_sweep(
     shaft: f64,
     work: &mut Work<'_>,
 ) -> LayoutResult<Option<TitleSweep>> {
-    let clearance = fit::TITLE_CLEAR;
+    let clearance = TITLE_CLEAR;
     if outer.side.axis() != Axis::Vertical
         || (outer.at.x > title.x - clearance && outer.at.x < title.x + title.width + clearance)
     {
