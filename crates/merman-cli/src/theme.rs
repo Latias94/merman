@@ -141,11 +141,11 @@ pub(crate) fn list(json: bool, color: bool, stdout: &SharedWriter) -> Result<(),
     let catalog =
         merman::theme::catalog().map_err(|error| CliError::Io(std::io::Error::other(error)))?;
     if json {
-        return crate::diagnostics::write_json_stdout(&catalog, true, stdout);
+        return crate::diagnostics::write_json_stdout(catalog, true, stdout);
     }
 
     let mut output = String::new();
-    for preset in catalog.presets {
+    for preset in &catalog.presets {
         let category = match preset.category {
             Category::Reading => "reading",
             Category::Editor => "editor",

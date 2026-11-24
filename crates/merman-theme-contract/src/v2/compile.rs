@@ -22,7 +22,7 @@ const BLACK: Color = Color::rgb(0, 0, 0);
 const WHITE: Color = Color::rgb(255, 255, 255);
 
 /// An invalid theme document, unavailable appearance, or failed contrast check.
-#[derive(Debug, thiserror::Error)]
+#[derive(Clone, Debug, thiserror::Error)]
 #[error("{message}")]
 pub struct ThemeError {
     message: String,
@@ -153,7 +153,13 @@ impl ThemeCompiler {
         preset: BuiltinPreset,
         appearance: Option<Appearance>,
     ) -> Result<Arc<ResolvedThemeV2>, ThemeError> {
-        self.resolve(&preset.document()?, appearance, true, false)
+        let appearance = appearance.unwrap_or_else(|| preset.default_appearance());
+        if !preset.supported_appearances().contains(&appearance) {
+            return Err(unavailable_appearance("appearance", appearance));
+        }
+        preset.resolved(appearance, || {
+            self.resolve(preset.document()?, Some(appearance), true, false)
+        })
     }
 
     fn resolve(
@@ -165,7 +171,7 @@ impl ThemeCompiler {
     ) -> Result<Arc<ResolvedThemeV2>, ThemeError> {
         validate::document(document)?;
         let inherited = document.extends().map(load_base).transpose()?;
-        let documents: Vec<_> = inherited.iter().chain([document]).collect();
+        let documents: Vec<_> = inherited.into_iter().chain([document]).collect();
         let appearance = select_appearance(&documents, requested)?;
         let mut form = Form::default();
         let mut typography = Typography::default();
@@ -305,7 +311,7 @@ impl ThemeCompiler {
     }
 }
 
-fn load_base(id: &str) -> Result<ThemeDocumentV2, ThemeError> {
+fn load_base(id: &str) -> Result<&'static ThemeDocumentV2, ThemeError> {
     let preset = BuiltinPreset::from_id(id)
         .ok_or_else(|| ThemeError::invalid("extends", format!("unknown built-in preset `{id}`")))?;
     let document = preset.document()?;
@@ -315,7 +321,7 @@ fn load_base(id: &str) -> Result<ThemeDocumentV2, ThemeError> {
             "preset extension is limited to one level",
         ));
     }
-    validate::document(&document)?;
+    validate::document(document)?;
     Ok(document)
 }
 

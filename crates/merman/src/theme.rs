@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use merman_model::family::DiagramFamilyId;
 use merman_theme_contract::v2::SCHEMA_VERSION;
@@ -78,7 +78,15 @@ pub struct FamilyThemeEntry {
 }
 
 /// Lists built-in themes and the native visual capabilities supported by this build.
-pub fn catalog() -> Result<ThemeCatalog, ThemeError> {
+pub fn catalog() -> Result<&'static ThemeCatalog, ThemeError> {
+    static CATALOG: OnceLock<Result<ThemeCatalog, ThemeError>> = OnceLock::new();
+    CATALOG
+        .get_or_init(build_catalog)
+        .as_ref()
+        .map_err(Clone::clone)
+}
+
+fn build_catalog() -> Result<ThemeCatalog, ThemeError> {
     let compiler = ThemeCompiler::new();
     let presets = BuiltinPreset::ALL
         .iter()
@@ -91,8 +99,8 @@ pub fn catalog() -> Result<ThemeCatalog, ThemeError> {
                 name: document.name().unwrap_or(id.as_str()).to_owned(),
                 description: document.description().unwrap_or_default().to_owned(),
                 category: document.category().unwrap_or(Category::Custom),
-                appearances: document.appearances().collect(),
-                default_appearance: theme.appearance(),
+                appearances: id.supported_appearances().to_vec(),
+                default_appearance: id.default_appearance(),
                 swatches: [
                     roles.canvas.first_color(),
                     roles.surface_node.first_color(),
@@ -134,7 +142,10 @@ pub struct ThemeSelection {
 #[derive(Clone, Debug)]
 enum ThemeInput {
     Preset(BuiltinPreset, Option<Appearance>),
-    Compiled(Arc<ResolvedThemeV2>),
+    Compiled {
+        preset: Option<BuiltinPreset>,
+        theme: Arc<ResolvedThemeV2>,
+    },
 }
 
 impl ThemeSelection {
@@ -147,10 +158,29 @@ impl ThemeSelection {
         }
     }
 
+    /// Selects a built-in design and resolves it immediately for reuse across diagrams.
+    pub fn resolved_preset(
+        preset: BuiltinPreset,
+        appearance: Option<Appearance>,
+    ) -> Result<Self, ThemeError> {
+        let theme = ThemeCompiler::new().compile_preset(preset, appearance)?;
+        Ok(Self {
+            input: ThemeInput::Compiled {
+                preset: Some(preset),
+                theme,
+            },
+            precedence: ThemePrecedence::Host,
+            background: None,
+        })
+    }
+
     /// Selects a compiled design for reuse across diagrams.
     pub fn compiled(theme: Arc<ResolvedThemeV2>) -> Self {
         Self {
-            input: ThemeInput::Compiled(theme),
+            input: ThemeInput::Compiled {
+                preset: None,
+                theme,
+            },
             precedence: ThemePrecedence::Host,
             background: None,
         }
@@ -180,7 +210,7 @@ impl ThemeSelection {
             ThemeInput::Preset(preset, appearance) => {
                 ThemeCompiler::new().compile_preset(*preset, *appearance)?
             }
-            ThemeInput::Compiled(theme) => Arc::clone(theme),
+            ThemeInput::Compiled { theme, .. } => Arc::clone(theme),
         }))
     }
 
@@ -200,7 +230,7 @@ impl ThemeSelection {
                 mode: ThemeMode::MermanNative,
                 preset_id: match self.input {
                     ThemeInput::Preset(preset, _) => Some(preset),
-                    ThemeInput::Compiled(_) => None,
+                    ThemeInput::Compiled { preset, .. } => preset,
                 },
                 appearance: Some(resolved.appearance()),
                 notices: resolved

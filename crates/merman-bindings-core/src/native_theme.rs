@@ -127,18 +127,18 @@ fn select_preset(
     precedence: ThemePrecedence,
 ) -> Result<ThemeSelection, BindingError> {
     let preset = preset_from_id(preset)?;
-    if precedence == ThemePrecedence::Host
-        && let Some(appearance) = appearance
-        && !preset
-            .appearances()
-            .map_err(|error| compile_error("theme", error))?
-            .contains(&appearance)
+    if let Some(requested) = appearance
+        && !preset.supported_appearances().contains(&requested)
     {
-        return Err(BindingError::invalid_argument(format!(
-            "theme.appearance `{appearance}` is unavailable for preset `{preset}`"
-        )));
+        return match precedence {
+            ThemePrecedence::Source => Ok(ThemeSelection::preset(preset, appearance)),
+            ThemePrecedence::Host => Err(BindingError::invalid_argument(format!(
+                "theme.appearance `{requested}` is unavailable for preset `{preset}`"
+            ))),
+        };
     }
-    Ok(ThemeSelection::preset(preset, appearance))
+    ThemeSelection::resolved_preset(preset, appearance)
+        .map_err(|error| compile_error("theme", error))
 }
 
 fn compile_document(

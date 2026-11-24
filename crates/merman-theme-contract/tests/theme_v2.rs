@@ -13,7 +13,20 @@ fn builtin_presets_match_reference_colors_in_every_appearance() {
 
     assert_eq!(BuiltinPreset::ALL.len(), 13);
     for preset in BuiltinPreset::ALL {
-        for appearance in preset.appearances().unwrap() {
+        let document = preset.document().unwrap();
+        assert_eq!(
+            preset.supported_appearances(),
+            document.appearances().collect::<Vec<_>>()
+        );
+        let implicit = compiler.compile(document, None).unwrap();
+        assert_eq!(preset.default_appearance(), implicit.appearance());
+        assert!(std::sync::Arc::ptr_eq(
+            &compiler.compile_preset(*preset, None).unwrap(),
+            &compiler
+                .compile_preset(*preset, Some(preset.default_appearance()))
+                .unwrap(),
+        ));
+        for &appearance in preset.supported_appearances() {
             appearances += 1;
             let key = format!("{preset}:{appearance}");
             let actual = compiler.compile_preset(*preset, Some(appearance)).unwrap();
