@@ -93,7 +93,7 @@
     "version": "0.9.3",
     "command_profile": "artifact-profile-target-union",
     "offline": true,
-    "cargo_lock_sha256": "882f6aae02fa4723a249b1d83bc486c36331611c6dc909f1a326a52670c94a4c",
+    "cargo_lock_sha256": "74b2c00837a7e1a78b761cf8632a2857d705e08decde59ccb0e84ca03787f482",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "cbc891a4b853c0a5639d299a773b329aaab24d9134a38542a3d4feff7b5da473"
   },
@@ -101,19 +101,19 @@
     {
       "artifact_profile_id": "android-native",
       "target": "aarch64-linux-android",
-      "package_count": 168,
-      "packages_sha256": "356ae68fce2d90243764236bf9abe40320e67ad224aafbf02236511c3a910354"
+      "package_count": 169,
+      "packages_sha256": "57c03f9fd59262cf9e7a3a9397bcea46c5d8ac18419edccb3620a78b768a998c"
     },
     {
       "artifact_profile_id": "android-native",
       "target": "x86_64-linux-android",
-      "package_count": 168,
-      "packages_sha256": "356ae68fce2d90243764236bf9abe40320e67ad224aafbf02236511c3a910354"
+      "package_count": 169,
+      "packages_sha256": "57c03f9fd59262cf9e7a3a9397bcea46c5d8ac18419edccb3620a78b768a998c"
     }
   ],
   "dependency_closure": {
-    "package_count": 168,
-    "packages_sha256": "356ae68fce2d90243764236bf9abe40320e67ad224aafbf02236511c3a910354"
+    "package_count": 169,
+    "packages_sha256": "57c03f9fd59262cf9e7a3a9397bcea46c5d8ac18419edccb3620a78b768a998c"
   },
   "licenses": [
     {
@@ -363,6 +363,16 @@
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
           "repository": "https://github.com/serde-rs/json"
+        },
+        {
+          "name": "serde_path_to_error",
+          "version": "0.1.20",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "David Tolnay <dtolnay@gmail.com>"
+          ],
+          "repository": "https://github.com/dtolnay/path-to-error"
         },
         {
           "name": "simdutf8",

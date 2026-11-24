@@ -96,7 +96,7 @@
     "version": "0.9.3",
     "command_profile": "artifact-profile-target",
     "offline": true,
-    "cargo_lock_sha256": "882f6aae02fa4723a249b1d83bc486c36331611c6dc909f1a326a52670c94a4c",
+    "cargo_lock_sha256": "74b2c00837a7e1a78b761cf8632a2857d705e08decde59ccb0e84ca03787f482",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "bfed985bb4271458ac0531e9f0f0efce8b419c043ca3e8fbf1583057c73e847d"
   },
@@ -104,13 +104,13 @@
     {
       "artifact_profile_id": "python-uniffi-native",
       "target": "x86_64-unknown-linux-gnu",
-      "package_count": 185,
-      "packages_sha256": "fda0eb69ec86a7aaa5757a6e5fc2f2cfd73018f208c5e921e920ba4b50ed796b"
+      "package_count": 186,
+      "packages_sha256": "afb30adc0ed3a2b75fb8b14824d139cb30b5fccf1d7ba0d41fe9a3b5b080f30a"
     }
   ],
   "dependency_closure": {
-    "package_count": 185,
-    "packages_sha256": "fda0eb69ec86a7aaa5757a6e5fc2f2cfd73018f208c5e921e920ba4b50ed796b"
+    "package_count": 186,
+    "packages_sha256": "afb30adc0ed3a2b75fb8b14824d139cb30b5fccf1d7ba0d41fe9a3b5b080f30a"
   },
   "licenses": [
     {
@@ -342,6 +342,16 @@
           "license_expression": "MIT OR Apache-2.0",
           "authors": [],
           "repository": "https://github.com/serde-rs/json"
+        },
+        {
+          "name": "serde_path_to_error",
+          "version": "0.1.20",
+          "source": "registry+https://github.com/rust-lang/crates.io-index",
+          "license_expression": "MIT OR Apache-2.0",
+          "authors": [
+            "David Tolnay <dtolnay@gmail.com>"
+          ],
+          "repository": "https://github.com/dtolnay/path-to-error"
         },
         {
           "name": "syn",
