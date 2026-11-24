@@ -521,13 +521,15 @@ mod tests {
                 assert!(instance.covers_cluster("A".into()));
                 assert_eq!(instance.path.as_deref(), Some(path.as_path()));
                 assert_eq!(instance.post_script_name, expected);
+                // A descriptor copied from an installed font may omit a no-op axis change.
+                // The effective coordinate then comes from the physical face's default.
                 assert_eq!(
                     instance
                         .variations
                         .iter()
                         .find(|coord| coord.tag == *b"wght")
-                        .map(|coord| coord.value),
-                    Some(value)
+                        .map_or(axis.def_value, |coord| coord.value),
+                    value
                 );
                 assert!(
                     instance
