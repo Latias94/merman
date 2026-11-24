@@ -267,14 +267,15 @@ test("export workbench targets toolbar and Compare artifacts through one dialog"
   ).toHaveAttribute("aria-pressed", "true");
   await expect(dialog.getByRole("status")).toHaveText("Ready");
   const outputCompatibility = dialog.getByTestId("output-compatibility");
+  const sourcePipeline = "SVG pipeline: Mermaid SVG (default)";
   await expect(outputCompatibility).toBeVisible();
-  const frozenEvidence = await outputCompatibility.getAttribute("data-output-target-state");
-  await expect(outputCompatibility).toContainText("SVG pipeline: Mermaid SVG (default)");
+  await expect(outputCompatibility).toContainText(sourcePipeline);
   await expect(dialog.getByRole("combobox", { name: "SVG output" })).toHaveCount(0);
 
   await dialog.getByRole("button", { name: "PNG", exact: true }).click();
-  await expect(outputCompatibility).toHaveAttribute("data-output-target-state", frozenEvidence!);
   await expect(outputCompatibility).toHaveAccessibleName("Source SVG compatibility");
+  await expect(outputCompatibility).toContainText(sourcePipeline);
+  await expect(outputCompatibility).toContainText("The raster export uses the resvg-compatible SVG pipeline with the captured diagram settings.");
   await dialog.getByRole("button", { name: "Transparent", exact: true }).click();
   await dialog.getByRole("button", { name: "Width", exact: true }).click();
   await dialog.getByRole("textbox", { name: /^Width/u }).fill("320");
@@ -360,8 +361,11 @@ test("export workbench targets toolbar and Compare artifacts through one dialog"
   const mermaidPane = page.locator('[data-merman-compare-engine="mermaid"]');
   await mermaidPane.getByRole("button", { name: "Export image" }).click();
   await expect(dialog).toHaveAttribute("data-export-engine", "mermaid");
-  await expect(outputCompatibility).toHaveAttribute("data-output-target-state", "unknown");
   await expect(dialog).toContainText("Mermaid JS");
+  await expect(outputCompatibility).toHaveCount(0);
+  await dialog.getByRole("button", { name: "PNG", exact: true }).click();
+  await expect(outputCompatibility).toHaveAccessibleName("Source SVG compatibility");
+  await expect(outputCompatibility).toContainText("The raster export uses the captured Mermaid SVG.");
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   errors.assertNone();
