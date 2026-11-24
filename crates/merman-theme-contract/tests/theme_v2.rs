@@ -116,31 +116,6 @@ fn rejects_invalid_documents_and_unavailable_appearances() {
 }
 
 #[test]
-fn equivalent_documents_produce_the_same_fingerprint() {
-    let compiler = ThemeCompiler::new();
-    let first = compiler
-        .compile_json(
-            br##"{"schema_version":2,"extends":"studio","seed":{"accent":"#0052CC"}}"##,
-            None,
-        )
-        .unwrap();
-    let second = compiler
-        .compile_json(
-            br##"{"seed":{"accent":"#0052cc"},"extends":"studio","schema_version":2}"##,
-            None,
-        )
-        .unwrap();
-    let dark = compiler
-        .compile_json(
-            br##"{"seed":{"accent":"#0052CC"},"extends":"studio","schema_version":2}"##,
-            Some(Appearance::Dark),
-        )
-        .unwrap();
-    assert_eq!(first.fingerprint(), second.fingerprint());
-    assert_ne!(first.fingerprint(), dark.fingerprint());
-}
-
-#[test]
 fn a_custom_theme_reports_low_contrast_and_can_adjust_it() {
     let input = br##"{
       "schema_version": 2,

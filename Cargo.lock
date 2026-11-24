@@ -2652,9 +2652,7 @@ version = "0.11.0"
 dependencies = [
  "serde",
  "serde_json",
- "serde_json_canonicalizer",
  "serde_path_to_error",
- "sha2",
  "thiserror 2.0.21",
 ]
 
@@ -4243,17 +4241,6 @@ dependencies = [
  "serde",
  "serde_core",
  "zmij",
-]
-
-[[package]]
-name = "serde_json_canonicalizer"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87f7bb64f8c7e9f783fdfe883b5fe93a90bee1597c63705baa91842c5f698620"
-dependencies = [
- "ryu-js",
- "serde",
- "serde_json",
 ]
 
 [[package]]

@@ -101,7 +101,6 @@ tokio = { version = "1.54.1", default-features = false }
 granit-parser = { version = "2.1.0", default-features = false, features = ["error_messages"] }
 serde-saphyr = { version = "2.1.1", default-features = false }
 toml = { version = "1.2.0", default-features = false, features = ["std", "serde", "parse"] }
-serde_json_canonicalizer = "0.4.1"
 json5 = "1.3.7"
 jsonschema = { version = "0.60.2", default-features = false }
 kurbo = "0.13.1"

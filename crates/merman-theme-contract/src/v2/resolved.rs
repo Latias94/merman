@@ -144,8 +144,6 @@ pub struct ResolvedThemeV2 {
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub(super) family_overrides: BTreeMap<String, FamilyTheme>,
     #[serde(skip)]
-    pub(super) fingerprint: [u8; 32],
-    #[serde(skip)]
     pub(super) notices: Vec<ThemeNotice>,
 }
 
@@ -193,12 +191,6 @@ impl ResolvedThemeV2 {
     /// Returns precomputed overrides for a family, or the shared values.
     pub fn family(&self, id: &str) -> &FamilyTheme {
         self.family_overrides.get(id).unwrap_or(&self.base)
-    }
-
-    /// SHA-256 of the canonical compiled theme, excluding notices.
-    /// Automatic fill ink adds a marker to distinguish it from identical authored colors.
-    pub const fn fingerprint(&self) -> &[u8; 32] {
-        &self.fingerprint
     }
 
     /// Contrast results from compilation.

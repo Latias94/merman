@@ -1,8 +1,6 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use sha2::{Digest, Sha256};
-
 use super::contrast::backdrop;
 use super::document::{
     CanvasPatch, DataPatch, ElevationEffect, ElevationPreset, ElevationSpec, FamilyOverride,
@@ -296,24 +294,14 @@ impl ThemeCompiler {
             ));
         }
 
-        let mut result = ResolvedThemeV2 {
+        Ok(Arc::new(ResolvedThemeV2 {
             id: document.id.clone(),
             appearance,
             base,
             canvas,
             family_overrides,
-            fingerprint: [0; 32],
             notices,
-        };
-        let canonical = crate::canonical_json::canonical_json_bytes(&result)
-            .map_err(|error| ThemeError::invalid(".", error.to_string()))?;
-        let mut fingerprint = Sha256::new();
-        fingerprint.update(canonical);
-        if result.base.data.automatic_fill_ink {
-            fingerprint.update(b"\0data.fill_ink=auto");
-        }
-        result.fingerprint = fingerprint.finalize().into();
-        Ok(Arc::new(result))
+        }))
     }
 }
 

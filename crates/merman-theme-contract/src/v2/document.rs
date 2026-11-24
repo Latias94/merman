@@ -11,12 +11,12 @@ fn present<'de, D: Deserializer<'de>, T: Deserialize<'de>>(d: D) -> Result<Optio
 
 macro_rules! patch {
     ($name:ident { $($(#[$attr:meta])* $field:ident : $kind:ty),+ $(,)? }) => {
-        #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+        #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
         #[serde(default, deny_unknown_fields)]
         pub(super) struct $name {
             $(
                 $(#[$attr])*
-                #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "present")]
+                #[serde(deserialize_with = "present")]
                 pub(super) $field: Option<$kind>,
             )+
         }
@@ -80,84 +80,35 @@ pub enum Category {
 }
 
 /// A version 2 theme document. Use [`super::ThemeCompiler`] to admit and resolve it.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct ThemeDocumentV2 {
-    #[serde(
-        rename = "$schema",
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
+    #[serde(rename = "$schema", default, deserialize_with = "present")]
     schema: Option<String>,
     pub(super) schema_version: u32,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
+    #[serde(default, deserialize_with = "present")]
     pub(super) id: Option<String>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
+    #[serde(default, deserialize_with = "present")]
     pub(super) name: Option<String>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
+    #[serde(default, deserialize_with = "present")]
     pub(super) description: Option<String>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
+    #[serde(default, deserialize_with = "present")]
     pub(super) category: Option<Category>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
+    #[serde(default, deserialize_with = "present")]
     pub(super) extends: Option<String>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
+    #[serde(default, deserialize_with = "present")]
     pub(super) default_appearance: Option<Appearance>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
+    #[serde(default, deserialize_with = "present")]
     pub(super) seed: Option<SeedPatch>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
+    #[serde(default, deserialize_with = "present")]
     pub(super) roles: Option<RoleOverrides>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
+    #[serde(default, deserialize_with = "present")]
     pub(super) typography: Option<TypographyPatch>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
+    #[serde(default, deserialize_with = "present")]
     pub(super) form: Option<FormPatch>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
+    #[serde(default, deserialize_with = "present")]
     pub(super) appearances: Option<Appearances>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     pub(super) overrides: Vec<FamilyOverride>,
 }
 
@@ -303,14 +254,14 @@ impl DataPatch {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub(super) enum FillInk {
     Auto(Auto),
     Color(Color),
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub(super) enum Auto {
     Auto,
@@ -541,14 +492,14 @@ impl ShadowLayer {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub(super) enum ElevationSpec {
     Preset(ElevationPreset),
     Effect(ElevationEffect),
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub(super) enum ElevationPreset {
     Flat,
@@ -556,7 +507,7 @@ pub(super) enum ElevationPreset {
     Crisp,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub(super) enum ElevationEffect {
     LayeredStack {
@@ -835,44 +786,20 @@ patch!(FormPatch {
     chart: ChartPatch,
 });
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub(super) struct FamilyOverride {
     pub(super) families: Vec<String>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
+    #[serde(default, deserialize_with = "present")]
     pub(super) appearance: Option<Appearance>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
+    #[serde(default, deserialize_with = "present")]
     pub(super) roles: Option<RoleOverrides>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
+    #[serde(default, deserialize_with = "present")]
     pub(super) form: Option<FormPatch>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
+    #[serde(default, deserialize_with = "present")]
     pub(super) elevation: Option<ElevationSpec>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
+    #[serde(default, deserialize_with = "present")]
     pub(super) typography: Option<TypographyPatch>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "present"
-    )]
+    #[serde(default, deserialize_with = "present")]
     pub(super) node_ordinal_palette: Option<bool>,
 }
