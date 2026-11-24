@@ -1232,14 +1232,24 @@ jobs:
             self.assertNotIn(forbidden, workflow)
         prepare = workflow_job(workflow, "prepare")
         self.assertIn(".draft == false and .prerelease == false", prepare)
+        self.assertIn("ref: ${{ github.workflow_sha }}\n          fetch-depth: 0", prepare)
+        self.assertIn('gh api "repos/$GH_REPO/commits/refs/tags/$RELEASE_TAG" --jq .sha', prepare)
         self.assertIn("ref: ${{ steps.release.outputs.source_sha }}", prepare)
         self.assertIn('gh release download "$RELEASE_TAG"', prepare)
         self.assertIn("gh attestation verify release-assets/release-verification.json", prepare)
         self.assertIn('--signer-workflow "$GH_REPO/.github/workflows/release.yml"', prepare)
         self.assertIn('--version "$RELEASE_VERSION" --source-sha "$SOURCE_SHA"', prepare)
         self.assertIn("--repo-root release-source", prepare)
-        self.assertLess(prepare.index("gh attestation verify"), prepare.index("verify-bundle"))
-        self.assertLess(prepare.index("verify-bundle"), prepare.index("generate_cli_registry_candidates.py"))
+        self.assertIn(
+            "          verifier=scripts/release_artifact_bundle.py\n"
+            '          if git merge-base --is-ancestor "$SOURCE_SHA" "$GITHUB_WORKFLOW_SHA"; then\n'
+            '            verifier="release-source/$verifier"\n'
+            "          fi\n"
+            '          python3 "$verifier" verify-bundle release-assets',
+            prepare,
+        )
+        self.assertLess(prepare.index("gh attestation verify"), prepare.index("path: release-source"))
+        self.assertLess(prepare.index("verify-bundle"), prepare.index("python3 scripts/generate_cli_registry_candidates.py"))
         winget = workflow_job(workflow, "winget")
         scoop = workflow_job(workflow, "scoop")
         for job in (winget, scoop):
