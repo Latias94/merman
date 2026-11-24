@@ -112,6 +112,29 @@ fn explicit_shoal_swimlane_retains_the_family_and_checks_capability() {
 
 #[cfg(feature = "layout-shoal")]
 #[test]
+fn shoal_swimlane_keeps_a_node_named_like_the_synthetic_lane() {
+    let id = "__swimlane_default__";
+    let source =
+        format!("---\nconfig:\n  layout: shoal\n---\nswimlane-beta TB\n{id}[Review] --> B");
+    let (svg, layout) = render_swimlane_with_layout(&source, "shoal-lane-id");
+    assert_eq!(layout.lanes.len(), 1);
+    assert_ne!(layout.lanes[0].id, id);
+    assert!(
+        layout
+            .nodes
+            .iter()
+            .any(|node| node.id == id && node.parent_id.as_ref() == Some(&layout.lanes[0].id))
+    );
+    let doc = roxmltree::Document::parse(&svg).unwrap();
+    assert!(
+        doc.descendants()
+            .any(|part| part.attribute("data-id") == Some(id)
+                && part.attribute("data-et") == Some("node"))
+    );
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
 fn shoal_swimlane_aligns_ranks_and_paints_headers_and_markers_in_four_directions() {
     for direction in ["TB", "BT", "LR", "RL"] {
         let source = format!(
