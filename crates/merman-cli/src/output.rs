@@ -2247,6 +2247,17 @@ pub(crate) trait PublicationBackend {
         self.publish_file_verified(path, bytes, publications, &mut verify)
     }
 
+    #[cfg(feature = "layout-shoal")]
+    fn publish_preview_frame(
+        &mut self,
+        path: &Path,
+        bytes: &[u8],
+        publications: &PublicationGuards,
+        control: &merman::OperationControl,
+    ) -> Result<(), CliError> {
+        self.publish_file_controlled(path, bytes, publications, control)
+    }
+
     #[cfg(feature = "markdown")]
     fn acquire_transaction(
         &mut self,
@@ -2413,7 +2424,30 @@ impl PublicationBackend for SystemPublicationBackend {
         publications: &PublicationGuards,
         control: &merman::OperationControl,
     ) -> Result<(), CliError> {
-        publish_atomic_file_controlled(path, bytes, publications, control)
+        publish_atomic_file_controlled(
+            path,
+            bytes,
+            publications,
+            control,
+            &SystemAtomicBackend::Normal,
+        )
+    }
+
+    #[cfg(feature = "layout-shoal")]
+    fn publish_preview_frame(
+        &mut self,
+        path: &Path,
+        bytes: &[u8],
+        publications: &PublicationGuards,
+        control: &merman::OperationControl,
+    ) -> Result<(), CliError> {
+        publish_atomic_file_controlled(
+            path,
+            bytes,
+            publications,
+            control,
+            &SystemAtomicBackend::PreviewFrame,
+        )
     }
 
     #[cfg(feature = "markdown")]
@@ -2440,7 +2474,7 @@ pub(crate) fn publish_atomic_file_verified(
         path,
         bytes,
         publications,
-        &SystemAtomicBackend,
+        &SystemAtomicBackend::Normal,
         verify,
         || Ok(()),
     )
@@ -2452,12 +2486,13 @@ fn publish_atomic_file_controlled(
     bytes: &[u8],
     publications: &PublicationGuards,
     control: &merman::OperationControl,
+    backend: &SystemAtomicBackend,
 ) -> Result<(), CliError> {
     publish_with_backend_and_callbacks(
         path,
         bytes,
         publications,
-        &SystemAtomicBackend,
+        backend,
         |_| crate::operation::checkpoint(control, merman::OperationPhase::Emit),
         || crate::operation::checkpoint(control, merman::OperationPhase::Emit),
     )
@@ -2478,13 +2513,27 @@ trait AtomicBackend {
 }
 
 #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
-struct SystemAtomicBackend;
+enum SystemAtomicBackend {
+    Normal,
+    #[cfg(feature = "layout-shoal")]
+    PreviewFrame,
+}
 
 #[cfg(any(feature = "fixes", feature = "svg", feature = "ascii"))]
 impl AtomicBackend for SystemAtomicBackend {
     type Stage = atomic_write_file::AtomicWriteFile;
 
     fn open(&self, path: &Path) -> std::io::Result<Self::Stage> {
+        #[cfg(all(unix, feature = "layout-shoal"))]
+        if matches!(self, Self::PreviewFrame) {
+            use atomic_write_file::unix::OpenOptionsExt as _;
+            use std::os::unix::fs::OpenOptionsExt as _;
+
+            return atomic_write_file::OpenOptions::new()
+                .preserve_mode(false)
+                .mode(0o600)
+                .open(path);
+        }
         atomic_write_file::AtomicWriteFile::open(path)
     }
 
@@ -3265,7 +3314,7 @@ mod tests {
             &target,
             b"replacement",
             &guards,
-            &SystemAtomicBackend,
+            &SystemAtomicBackend::Normal,
             |_| {
                 control.cancel();
                 crate::operation::checkpoint(&control, merman::OperationPhase::Emit)
@@ -3305,7 +3354,7 @@ mod tests {
             &target,
             &replacement,
             &guards,
-            &SystemAtomicBackend,
+            &SystemAtomicBackend::Normal,
             |_| Ok(()),
             || {
                 checkpoints = checkpoints.saturating_add(1);
@@ -3400,7 +3449,7 @@ mod tests {
             &target,
             b"our replacement",
             &guards,
-            &SystemAtomicBackend,
+            &SystemAtomicBackend::Normal,
             |approved| {
                 std::fs::remove_file(approved).unwrap();
                 std::fs::write(approved, b"mutation after snapshot comparison").unwrap();
@@ -3448,7 +3497,7 @@ mod tests {
             &target,
             b"our replacement",
             &guards,
-            &SystemAtomicBackend,
+            &SystemAtomicBackend::Normal,
             |approved| {
                 checks = checks.saturating_add(1);
                 acquired.verify_unchanged(approved)?;

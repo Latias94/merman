@@ -534,6 +534,9 @@ npm --prefix playground run assemble:shoal
 npm --prefix playground run dev:shoal
 ```
 
+When the preview uses Shoal, choose **Tools → Fit preview width** to fit the SVG layout to a
+width in CSS pixels. Turn the setting off to return to the solver's natural width.
+
 The local recipe adds `layout-shoal` to `web-full` and writes the raw build to
 `platforms/web/pkg/full-local-shoal`. Assembly sets the existing `@mermanjs/web` package to use
 that build for the Playground's file dependency after checking its wasm-bindgen declarations.

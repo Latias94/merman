@@ -147,6 +147,11 @@ With a supporting CLI, Shoal SVG previews reuse placement hints from the last su
 the same source. The preview session keeps those hints in memory and exchanges them with the CLI
 through temporary files. Text previews and exports run independently.
 
+Set `merman.preview.fitWidth` to a target such as `640` CSS pixels to opt in to experimental
+width adaptation in SVG previews. It uses the diagram's current layout and requires Shoal or Kanban.
+The result may exceed the target if the layout cannot fit. `0` disables adaptation. Older CLIs
+omit the adaptation, and source exports use their usual layout.
+
 ### Themes and appearance
 
 Choose a design in the preview's single **Theme** selector. The connected CLI supplies the Mermaid designs and Merman presets; the extension does not infer pairs from names. A paired design offers **Follow editor**, **Light**, and **Dark**. Single-appearance designs show their supported appearance without inventing another version. Follow uses VS Code's active appearance, including the light/dark interpretation of high-contrast editor themes; this does not certify a diagram as high-contrast accessible.
@@ -207,6 +212,7 @@ Merman contributes native VS Code settings grouped under Runtime, Language Intel
 - `merman.preview.appearance`: `follow-editor`, `light`, or `dark` for paired themes
 - `merman.preview.themeFile`: portable recipe path when the theme is `file`
 - `merman.preview.displayMode`: default `svg`, `ascii`, or `unicode` preview mode
+- `merman.preview.fitWidth`: experimental SVG placement target in CSS pixels, `0` (default) to disable
 - `merman.preview.background`: rendered canvas override, `theme` (default), `paper`, `transparent`, or `dark`
 - `merman.preview.viewerBackground`: viewer-only backing, `auto` (default), `paper`, `transparent`, or `dark`
 - `merman.analysis.*`: analysis/lint settings forwarded to `merman-lsp`

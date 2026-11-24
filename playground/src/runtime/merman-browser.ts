@@ -21,6 +21,7 @@ import {
   runtimeCatalog,
   supportedDiagrams,
   supportedThemes,
+  svgPlanJson,
   themeCatalog,
   exportThemePreset,
   UNAVAILABLE_DIAGRAM_DETECTION,
@@ -109,6 +110,11 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
     parseJson(input) {
       assertConfiguredOperation(input);
       return parseJson(input.configuredSource, input.bindingOptionsJson ?? input.bindingOptions);
+    },
+
+    svgPlan(input) {
+      assertConfiguredOperation(input);
+      return svgPlanJson(input.configuredSource, input.bindingOptionsJson ?? input.bindingOptions);
     },
 
     render(input) {

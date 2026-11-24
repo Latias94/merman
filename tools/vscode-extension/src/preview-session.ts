@@ -81,7 +81,10 @@ export class PreviewSession {
   private viewerBackground: PreviewViewerBackground;
   private themeRevision = 0;
 
-  constructor(defaults: Partial<PreviewSessionDefaults> = {}) {
+  constructor(
+    defaults: Partial<PreviewSessionDefaults> = {},
+    private readonly fitWidthForDocument?: (documentUri: string) => number | undefined,
+  ) {
     this.defaults = {
       ...DEFAULT_PREVIEW_SESSION_DEFAULTS,
       ...defaults,
@@ -255,6 +258,7 @@ export class PreviewSession {
       displayMode: this.displayMode,
       background: this.background,
       locked: this.locked,
+      fitWidth: this.fitWidthForDocument?.(editor.document.uri.toString()),
       ...this.themeSnapshotSettings(),
     });
   }
@@ -511,6 +515,7 @@ export class PreviewSession {
       displayMode: this.displayMode,
       background: this.background,
       locked: this.locked,
+      fitWidth: this.fitWidthForDocument?.(this.currentSnapshot.documentUri),
       ...this.themeSnapshotSettings(),
     });
   }

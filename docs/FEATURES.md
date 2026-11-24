@@ -124,11 +124,12 @@ Shoal draws Flowcharts in all four directions, including cycles, self-loops, par
 
 A build without Shoal reports the missing capability when one of these diagrams requests it. Rust callers can also pass measured graphs directly to the standalone crate. [Shoal crate](../crates/merman-layout-shoal/README.md)
 
-Shoal Flowchart and Agentflow support explicit container fitting and previous-frame hints for
-previews. Standalone Playground previews use frame hints with a custom WASM build that enables
-`layout-shoal`. To try Shoal in VS Code, set `merman.cli.path` to the absolute path of the built
-CLI and open the SVG preview. The extension reuses placement hints when the CLI advertises the
-preview frame protocol.
+All seven Shoal families can fit a container and reuse placement hints while you edit. To request
+a width from the CLI, run `merman-cli render diagram.mmd --fit-width --width 640 -o diagram.svg`.
+In a Shoal-enabled Playground build, use **Tools → Fit preview width**. In VS Code, select a
+Shoal-enabled CLI with `merman.cli.path` and set `merman.preview.fitWidth` to the desired width in
+CSS pixels. Use `0` for natural placement. The extension reuses hints across successive SVG
+previews when the CLI advertises frame support.
 [Host integration](rendering/HEADLESS_LAYOUT.md#shoal-width-adaptation-and-preview-frames) ·
 [Playground experiment](../platforms/web/README.md#try-shoal-in-playground) ·
 [Layout benchmark](performance/2026-11-24-shoal.md)

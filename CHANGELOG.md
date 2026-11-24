@@ -8,7 +8,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Experimental Shoal layout
 
-Choose `layout: shoal` for Flowchart, Agentflow, Class, State, ER, Requirement, or Usecase diagrams in a build with the `layout-shoal` feature. Shoal handles cycles and nested groups using the diagram's measured labels and shapes. Flowchart branches use smooth curves, and edges between sibling groups can follow a shared lane through both borders. Flowchart and Agentflow hosts can also fit graphs to a requested width and reuse placement hints while editing. [Usage and supported graphs](docs/FEATURES.md#try-the-experimental-shoal-layout)
+Choose `layout: shoal` for Flowchart, Agentflow, Class, State, ER, Requirement, or Usecase diagrams in a build with the `layout-shoal` feature. Shoal uses the diagram's measured labels and shapes. Small cycles start at their entry node and can route long return edges along the outside. On crowded nodes, arrows can spread across adjacent faces. Edges between sibling groups can follow a shared lane through both borders. [Usage and supported graphs](docs/FEATURES.md#try-the-experimental-shoal-layout)
 
 ```text
 ---
@@ -26,6 +26,8 @@ Save the example as `diagram.mmd` and run this command from the Merman checkout.
 ```sh
 cargo run --locked -p merman-cli --features layout-shoal -- render diagram.mmd -f svg -o diagram.svg
 ```
+
+Add `--fit-width --width 640` to fit the diagram to a 640 CSS pixel container. All seven Shoal families support width fitting and placement hints across edits. Use **Tools → Fit preview width** in a Shoal-enabled Playground, or set `merman.preview.fitWidth` in VS Code with a Shoal-enabled CLI.
 
 <img width="450" alt="Release workflow laid out with Shoal, with separate branches for review and for publishing after smoke testing and audit" src="docs/rendering/shoal-release.png">
 

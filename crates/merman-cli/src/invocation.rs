@@ -452,6 +452,7 @@ pub(crate) struct ResolvedRenderOptions {
     #[cfg(feature = "native-fonts")]
     pub(crate) fonts: crate::cli::FontCliArgs,
     pub(crate) math_renderer: Option<crate::cli::MathRendererKind>,
+    pub(crate) adaptation: merman::svg::LayoutAdaptation,
     pub(crate) container_width: Option<f64>,
     pub(crate) container_height: Option<f64>,
     pub(crate) svg_id: Option<String>,
@@ -819,6 +820,25 @@ fn normalize_render(
     let format = infer_native_format(args.output.as_deref(), args.options.format)?;
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     let input_kind = resolve_input_kind(args.input_kind, &input);
+    #[cfg(all(
+        feature = "svg",
+        feature = "ascii",
+        any(feature = "layout-shoal", feature = "diagram-kanban")
+    ))]
+    if args.fit_width && format.is_text() {
+        return Err(CliError::InvalidInput(
+            "--fit-width requires SVG-based output".to_owned(),
+        ));
+    }
+    #[cfg(all(
+        any(feature = "png", feature = "jpeg", feature = "pdf"),
+        any(feature = "layout-shoal", feature = "diagram-kanban")
+    ))]
+    if args.fit_width && input_kind == RenderInputKind::Svg {
+        return Err(CliError::InvalidInput(
+            "--fit-width requires Mermaid input".to_owned(),
+        ));
+    }
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     if input_kind == RenderInputKind::Svg && !format.requires_svg_encoding() {
         return Err(CliError::InvalidInput(
@@ -857,11 +877,20 @@ fn normalize_render(
         resources,
         working_directory(facts)?,
     );
-    #[cfg(feature = "layout-shoal")]
+    #[cfg(all(
+        feature = "svg",
+        any(feature = "layout-shoal", feature = "diagram-kanban")
+    ))]
     let common = {
         let mut common = common;
-        common.render.preview_frame_in = args.preview_frame_in;
-        common.render.preview_frame_out = args.preview_frame_out;
+        if args.fit_width {
+            common.render.adaptation = merman::svg::LayoutAdaptation::FitWidth;
+        }
+        #[cfg(feature = "layout-shoal")]
+        {
+            common.render.preview_frame_in = args.preview_frame_in;
+            common.render.preview_frame_out = args.preview_frame_out;
+        }
         common
     };
 
@@ -1654,6 +1683,7 @@ fn resolve_render_options(args: RenderCliArgs) -> ResolvedRenderOptions {
         #[cfg(feature = "native-fonts")]
         fonts: args.fonts,
         math_renderer: args.math_renderer,
+        adaptation: merman::svg::LayoutAdaptation::None,
         container_width: args.container_width,
         container_height: args.container_height,
         svg_id: args.svg_id,

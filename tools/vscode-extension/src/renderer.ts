@@ -2,12 +2,13 @@ import * as vscode from "vscode";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { randomUUID } from "node:crypto";
 
 import { resolveMermanBinary, type BinaryInvocation } from "./binaries.js";
-import { previewLayoutFrameLimit, readCliCapabilities } from "./cli-capabilities.js";
+import { previewLayoutFrameCapability, readCliCapabilities, supportsLayoutFitWidth } from "./cli-capabilities.js";
 import { getCliSettings } from "./config.js";
 import { runRenderProcess } from "./render-process.js";
-import { renderMermanArgs, type DiagramRenderSettings, type RenderFormat } from "./render-options.js";
+import { isFitWidth, renderMermanArgs, type DiagramRenderSettings, type RenderFormat } from "./render-options.js";
 import { workspaceRoots } from "./workspace.js";
 
 export type { RenderFormat } from "./render-options.js";
@@ -21,6 +22,7 @@ export interface RenderRequest extends DiagramRenderSettings {
   outputChannel: vscode.LogOutputChannel;
   signalLabel?: string;
   signal?: AbortSignal;
+  previewFitWidth?: number;
   previewLayoutFrame?: { previous?: Buffer };
 }
 
@@ -55,30 +57,36 @@ export async function renderMermanSource(request: RenderRequest): Promise<Render
     ({ ...base, args: [...base.args, ...args] });
   const writeTheme = request.themeFileContent !== undefined &&
     request.format !== "ascii" && request.format !== "unicode";
-  const frameLimit = request.previewLayoutFrame && request.format === "svg" &&
-    request.outputPath === undefined && request.inputKind === undefined
-    ? await readCliCapabilities(withArgs(["capabilities", "--json"]))
-      .then(previewLayoutFrameLimit, () => undefined)
+  const preview = request.format === "svg" && request.outputPath === undefined && request.inputKind === undefined;
+  const fitWidth = preview && isFitWidth(request.previewFitWidth) ? request.previewFitWidth : undefined;
+  const capabilities = preview && (request.previewLayoutFrame || fitWidth !== undefined)
+    ? await readCliCapabilities(withArgs(["capabilities", "--json"])).catch(() => undefined)
     : undefined;
+  const frame = preview && request.previewLayoutFrame ? previewLayoutFrameCapability(capabilities) : undefined;
+  const previous = request.previewLayoutFrame?.previous;
+  const replayFrame = frame && previous && previous.byteLength <= frame.maxBytes ? previous : undefined;
   request.signal?.throwIfAborted();
-  const directory = writeTheme || frameLimit
+  const directory = writeTheme || replayFrame || (frame && !frame.privateOutput)
     ? await fs.mkdtemp(path.join(os.tmpdir(), "merman-render-"))
     : undefined;
+  const frameOutput = frame && (directory
+    ? path.join(directory, "frame-out.json")
+    : path.join(os.tmpdir(), `merman-frame-${randomUUID()}.json`));
   try {
     const themeFilePath = writeTheme && directory ? path.join(directory, "theme.json") : undefined;
     if (themeFilePath) {
       await fs.writeFile(themeFilePath, request.themeFileContent!, { encoding: "utf8", mode: 0o600 });
     }
     const args = renderMermanArgs({ ...request, themeFilePath });
-    let frameOutput: string | undefined;
-    if (directory && frameLimit !== undefined) {
-      frameOutput = path.join(directory, "frame-out.json");
-      const previous = request.previewLayoutFrame?.previous;
-      if (previous && previous.byteLength <= frameLimit) {
-        const frameInput = path.join(directory, "frame-in.json");
-        await fs.writeFile(frameInput, previous, { mode: 0o600 });
-        args.push("--preview-frame-in", frameInput);
-      }
+    if (fitWidth !== undefined && supportsLayoutFitWidth(capabilities)) {
+      args.push("--fit-width", "--width", String(fitWidth));
+    }
+    if (replayFrame && directory) {
+      const frameInput = path.join(directory, "frame-in.json");
+      await fs.writeFile(frameInput, replayFrame, { mode: 0o600 });
+      args.push("--preview-frame-in", frameInput);
+    }
+    if (frameOutput) {
       args.push("--preview-frame-out", frameOutput);
     }
     const invocation = withArgs(args);
@@ -90,14 +98,16 @@ export async function renderMermanSource(request: RenderRequest): Promise<Render
       source: request.source,
       signal: request.signal,
     });
-    if (!frameOutput || !frameLimit || request.signal?.aborted) {
+    if (!frameOutput || !frame || request.signal?.aborted) {
       return result;
     }
-    const previewLayoutFrame = await readPreviewLayoutFrame(frameOutput, frameLimit);
+    const previewLayoutFrame = await readPreviewLayoutFrame(frameOutput, frame.maxBytes);
     return previewLayoutFrame ? { ...result, previewLayoutFrame } : result;
   } finally {
     if (directory) {
       await fs.rm(directory, { recursive: true, force: true });
+    } else if (frameOutput) {
+      await fs.rm(frameOutput, { force: true });
     }
   }
 }
