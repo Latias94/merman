@@ -173,9 +173,10 @@ next frame from `SvgOutput::shoal_layout_frame()` after successful rendering. Fu
 results expose it as `shoal_layout_frame` metadata. Keep the frame with its document and pass
 it back on the next edit. Shoal matches surviving node IDs within their parent and local flow
 direction, then uses the previous rank and cross-axis order as placement hints. Flat diagrams
-also use component-relative coordinates to reduce movement. A render worker can reuse a flat
-component when the prior frame, measurements and topology still agree. The frame is separate from
-layout JSON and SVG.
+also use component-relative coordinates to reduce movement. In-memory Rust frames can pass reusable
+layout storage to the next render when measurements and topology still agree. Constrained renders
+and renders with an equally tight layout work limit release their scratch after solving. Serialized
+frames carry placement hints only. The frame is separate from layout JSON and SVG.
 
 ## Low-Level Use
 

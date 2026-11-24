@@ -280,6 +280,7 @@ mod tests {
                     )
                 })
                 .collect(),
+            scratch: None,
         };
         for (edges, expected) in [
             (&[(0, 1), (2, 3)][..], [true, true, true, true]),

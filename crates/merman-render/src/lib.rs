@@ -1242,34 +1242,27 @@ impl<'a> LayoutExecution<'a> {
         self.family.session().work_meter().as_ref()
     }
 
-    /// Reuses one bounded scratch buffer on a render worker across operation sessions.
+    /// Transfers scratch only from the preview frame selected by this operation.
     #[cfg(feature = "layout-shoal")]
-    pub(crate) fn with_shoal_scratch<T>(
-        solve: impl FnOnce(&mut merman_layout_shoal::LayoutScratch) -> T,
-    ) -> T {
+    pub(crate) fn shoal_preview_scratch(
+        &self,
+        previous: Option<&ShoalLayoutFrame>,
+    ) -> merman_layout_shoal::LayoutScratch {
         use merman_layout_shoal::LayoutScratch;
-        use std::cell::RefCell;
 
-        std::thread_local! {
-            static IDLE: RefCell<Option<LayoutScratch>> = const { RefCell::new(None) };
+        let policy = self.family.session().resource_policy();
+        let limit = ResourceLimitId::MaxLayoutWorkUnits;
+        let constrained = RenderResourcePolicy::constrained().value(limit);
+        if policy.profile() == RenderResourceProfile::Constrained
+            || policy
+                .value(limit)
+                .is_some_and(|units| constrained.is_some_and(|cap| units <= cap))
+        {
+            return LayoutScratch::with_max_retained_bytes(0);
         }
-
-        let mut scratch = IDLE
-            .try_with(|idle| idle.borrow_mut().take())
-            .ok()
-            .flatten()
-            .unwrap_or_default();
-        let result = solve(&mut scratch);
-        let _ = IDLE.try_with(|idle| {
-            let mut idle = idle.borrow_mut();
-            if idle
-                .as_ref()
-                .is_none_or(|other| other.retained_bytes() < scratch.retained_bytes())
-            {
-                *idle = Some(scratch);
-            }
-        });
-        result
+        previous
+            .and_then(ShoalLayoutFrame::take_scratch)
+            .unwrap_or_default()
     }
 
     pub(crate) fn local_time_zone(&self) -> &merman_model::time::LocalTimeZone {

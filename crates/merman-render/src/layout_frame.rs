@@ -1,6 +1,9 @@
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::BTreeMap;
+use std::fmt;
 use std::sync::Arc;
+#[cfg(feature = "layout-shoal")]
+use std::sync::Mutex;
 
 #[derive(Debug, Default, Clone)]
 pub(crate) struct GraphPlacement {
@@ -11,13 +14,43 @@ pub(crate) struct GraphPlacement {
 /// Placement hints from a successful experimental Shoal preview.
 ///
 /// Retain the frame within one diagram editing session and pass it to the next render of
-/// that diagram. Geometry is measured again from the current model.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// that diagram. Geometry is measured again from the current model. An in-memory frame can
+/// also transfer its reusable layout storage to the next render.
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ShoalLayoutFrame {
     pub(crate) family: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) groups: Vec<String>,
     pub(crate) nodes: BTreeMap<String, ShoalFrameNode>,
+    #[cfg(feature = "layout-shoal")]
+    #[serde(skip)]
+    pub(crate) scratch: Option<Arc<Mutex<Option<merman_layout_shoal::LayoutScratch>>>>,
+}
+
+impl fmt::Debug for ShoalLayoutFrame {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ShoalLayoutFrame")
+            .field("family", &self.family)
+            .field("groups", &self.groups)
+            .field("nodes", &self.nodes)
+            .finish()
+    }
+}
+
+impl PartialEq for ShoalLayoutFrame {
+    fn eq(&self, other: &Self) -> bool {
+        self.family == other.family && self.groups == other.groups && self.nodes == other.nodes
+    }
+}
+
+impl Eq for ShoalLayoutFrame {}
+
+#[cfg(feature = "layout-shoal")]
+impl ShoalLayoutFrame {
+    pub(crate) fn take_scratch(&self) -> Option<merman_layout_shoal::LayoutScratch> {
+        // Concurrent replays of the same frame can always compute a fresh layout.
+        self.scratch.as_ref()?.try_lock().ok()?.take()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

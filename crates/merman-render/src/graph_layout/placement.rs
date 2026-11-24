@@ -8,8 +8,9 @@ use crate::layout_work::OperationLayoutWorkControl;
 use crate::{
     Error, LayoutAdaptation, LayoutAdaptationObservation, LayoutExecution, Result, ShoalLayoutFrame,
 };
+use merman_layout_shoal::LayoutScratch;
 use std::collections::{BTreeMap, HashMap};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// IDs are supplied in measured node and group order so persisted hints survive reindexing.
 pub(crate) fn solve<'id>(
@@ -27,6 +28,7 @@ pub(crate) fn solve<'id>(
                 constraints,
                 ..Placement::default()
             },
+            &mut LayoutScratch::with_max_retained_bytes(0),
             work,
         )?;
         return Ok((solved, GraphPlacement::default()));
@@ -75,18 +77,25 @@ pub(crate) fn solve<'id>(
     } else {
         Vec::new()
     };
+    let reuse_components = !fit_width && anchors.is_some();
+    let mut scratch = if reuse_components {
+        execution.shoal_preview_scratch(previous)
+    } else {
+        LayoutScratch::with_max_retained_bytes(0)
+    };
     let solved = shoal_bridge::solve(
         graph,
         Placement {
             width,
             capture_ranks: capture,
-            reuse_components: !fit_width && anchors.is_some(),
+            reuse_components,
             hints: &hints,
             incident_signatures: anchors
                 .as_ref()
                 .map_or(&[], anchors::Components::signatures),
             constraints,
         },
+        &mut scratch,
         work,
     )?;
     let placement = GraphPlacement {
@@ -94,9 +103,11 @@ pub(crate) fn solve<'id>(
             LayoutAdaptationObservation::fit_width(execution.container_width, solved.bounds.width)
         }),
         frame: if capture {
-            Some(Arc::new(frame(
-                graph, &solved, node_ids, group_ids, family, anchors, work,
-            )?))
+            let mut frame = frame(graph, &solved, node_ids, group_ids, family, anchors, work)?;
+            if scratch.retained_bytes() != 0 {
+                frame.scratch = Some(Arc::new(Mutex::new(Some(scratch))));
+            }
+            Some(Arc::new(frame))
         } else {
             None
         },
@@ -225,6 +236,7 @@ fn frame<'id>(
         family: family.to_owned(),
         groups,
         nodes,
+        scratch: None,
     })
 }
 
@@ -248,4 +260,71 @@ impl From<Direction> for FrameDirection {
             Direction::Right => Self::Right,
         }
     }
+}
+
+#[cfg(all(test, feature = "diagram-flowchart"))]
+#[test]
+fn flat_preview_reuses_scratch_only_from_its_in_memory_frame() {
+    use crate::environment::RenderEnvironment;
+    use crate::{LayoutOptions, RenderResourcePolicy, ResourceLimitId};
+    use merman_core::{MermaidEngine, ParseOptions};
+
+    let parse = |source| {
+        MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation()
+    };
+    let before = parse(
+        "---\nconfig:\n  layout: shoal\n---\nflowchart TB\nA --> B --> C --> D --> E --> F\nX --> Y",
+    );
+    let after = parse(
+        "---\nconfig:\n  layout: shoal\n---\nflowchart TB\nA --> B --> C --> D --> E --> F\nX[Edited] --> Y",
+    );
+    let render = |parsed, policy, previous| {
+        let session = RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session()
+            .unwrap();
+        let options = LayoutOptions::default().with_shoal_layout_frame(previous);
+        let svg = crate::family::prepare(parsed, &options, session)
+            .unwrap()
+            .render_svg(&Default::default(), &Default::default())
+            .unwrap();
+        let frame = svg.shoal_layout_frame().unwrap();
+        let (svg, report) = svg.into_completion().into_output_and_report();
+        (svg, frame, report.session_report().layout_work_units())
+    };
+
+    let interactive = RenderResourcePolicy::interactive();
+    let (_, first, _) = render(&before, interactive, None);
+    let (_, independent, _) = render(&before, interactive, None);
+    assert!(!Arc::ptr_eq(
+        first.scratch.as_ref().unwrap(),
+        independent.scratch.as_ref().unwrap(),
+    ));
+    let wire = serde_json::to_value(&*first).unwrap();
+    assert!(!wire.as_object().unwrap().contains_key("scratch"));
+    let decoded = Arc::new(serde_json::from_value::<ShoalLayoutFrame>(wire).unwrap());
+    assert_eq!(first, decoded);
+    assert!(decoded.scratch.is_none());
+
+    let constrained = RenderResourcePolicy::constrained();
+    let mut restricted = interactive;
+    let limit = ResourceLimitId::MaxLayoutWorkUnits;
+    restricted
+        .apply_limit(limit, constrained.value(limit).unwrap())
+        .unwrap();
+    for policy in [constrained, restricted] {
+        let (_, next, _) = render(&after, policy, Some(first.clone()));
+        assert!(next.scratch.is_none());
+    }
+
+    let (cold, cold_frame, cold_work) = render(&after, interactive, Some(decoded));
+    let (warm, warm_frame, warm_work) = render(&after, interactive, Some(first.clone()));
+    assert_eq!(warm, cold);
+    assert_eq!(warm_frame, cold_frame);
+    assert!(warm_work < cold_work, "{warm_work} >= {cold_work}");
+    assert!(first.take_scratch().is_none());
 }
