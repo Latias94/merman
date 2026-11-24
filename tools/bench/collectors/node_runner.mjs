@@ -281,11 +281,14 @@ async function warmRenderer(requests, render, { now, asyncSvg, max_calls, max_ms
 function deferredValidation(requests, validate, directory, maxBytes) {
   const resultsByCheck = new Map();
   const files = [];
-  let checks;
+  const checks = requests.map(({ expected_labels, expected_outcome = "draw" }) => {
+    const policy = JSON.stringify([expected_outcome, expected_labels ?? []]);
+    return { expected_labels, expected_outcome, digest: sha256(policy), bytes: Buffer.byteLength(policy) };
+  });
   let jobs = [];
   let bytes = 0;
 
-  // Bound the retained payload bytes between batches. Oversized jobs spill on their own.
+  // Bound the validator's input batches. Oversized jobs spill on their own.
   function spill() {
     const file = path.join(directory, `${files.length}.json`);
     writeFileSync(file, JSON.stringify(jobs), { encoding: "utf8", flag: "wx" });
@@ -296,10 +299,6 @@ function deferredValidation(requests, validate, directory, maxBytes) {
 
   return {
     observe({ attempts, ...batch }) {
-      checks ??= requests.map(({ expected_labels, expected_outcome = "draw" }) => {
-        const policy = JSON.stringify([expected_outcome, expected_labels ?? []]);
-        return { expected_labels, expected_outcome, digest: sha256(policy), bytes: Buffer.byteLength(policy) };
-      });
       const results = attempts.map((attempt, index) => {
         const result = observedOutput(attempt);
         const check = checks[index];
@@ -354,21 +353,21 @@ export async function measureScenario(requests, render, {
   samples, now = () => performance.now(), asyncSvg = false, importStart, afterLastBatch,
   warmup = DEFAULT_WARMUP, validate = validateOutputs, validationDirectory, validationBatchBytes = VALIDATION_BATCH_BYTES,
 }) {
-  const validation = deferredValidation(requests, validate, validationDirectory, validationBatchBytes);
   const timing = { now, asyncSvg };
-  const cold = validation.observe(await measureBatch(requests, render, { ...timing, importStart }));
+  const cold = await measureBatch(requests, render, { ...timing, importStart });
   const observedWarmup = await warmRenderer(requests, render, { ...timing, ...warmup });
   const warm = [];
-  let lastAttempts;
   for (let i = 0; i < samples; i++) {
-    const measured = await measureBatch(requests, render, timing);
-    if (afterLastBatch && i === samples - 1) lastAttempts = measured.attempts;
-    warm.push(validation.observe(measured));
+    warm.push(await measureBatch(requests, render, timing));
   }
+  const lastAttempts = afterLastBatch ? warm.at(-1).attempts : undefined;
+  const validation = deferredValidation(requests, validate, validationDirectory, validationBatchBytes);
+  const observedCold = validation.observe(cold);
+  for (let i = 0; i < warm.length; i++) warm[i] = validation.observe(warm[i]);
   validation.finish();
   afterLastBatch?.(lastAttempts, warm.at(-1).results);
   return {
-    cold_batch: summarizeBatch(requests, cold, importStart),
+    cold_batch: summarizeBatch(requests, observedCold, importStart),
     warmup: observedWarmup,
     warm_samples: warm.map((batch) => summarizeBatch(requests, batch)),
   };

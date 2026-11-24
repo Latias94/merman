@@ -204,7 +204,7 @@ def _timing(timed_batches, measure, allow_ratio):
     )
 
 
-def _scenario(left, right, node, png, samples, allow_ratio, drawings):
+def _scenario(left, right, node, png, samples, allow_ratio, drawings, *, identical_svg=False):
     name = left["id"]
     planned = len(left["requests"])
     if (
@@ -235,6 +235,7 @@ def _scenario(left, right, node, png, samples, allow_ratio, drawings):
 
     requests, timing_groups = [], {}
     completed = stable = rejections = 0
+    different_svg = False
     # Older raw reports omit the request flag. An audit binds the declared indices to the plan.
     declared = {case["request_index"] for side in drawings.values() for case in side.get("cases", [])}
     for i, (a, b) in enumerate(zip(left["requests"], right["requests"])):
@@ -267,6 +268,11 @@ def _scenario(left, right, node, png, samples, allow_ratio, drawings):
             rejections += 1
         if all(output["state"] == "stable" for output in outputs):
             stable += 1
+            if identical_svg:
+                first, second = (side[0]["results"][i] for side in observed)
+                different_svg |= (first["output_sha256"], first["output_bytes"]) != (
+                    second["output_sha256"], second["output_bytes"],
+                )
             kind = outputs[0].get("output_class")
             if outcome in ("draw", "allow-empty") and kind and kind == outputs[1].get("output_class"):
                 timing_groups.setdefault((outcome, kind), []).append(i)
@@ -283,6 +289,9 @@ def _scenario(left, right, node, png, samples, allow_ratio, drawings):
     )
     if worker_failures:
         result["worker_failures"] = worker_failures
+    if different_svg:
+        result["ratio_withheld_reason"] = "Same-backend Merman settings returned different SVG bytes."
+        allow_ratio = False
     if any(r.get("drawing_required") for r in requests):
         checks = {side: audit.get("status", "not-checked") for side, audit in drawings.items()}
         result["drawing_checks"] = checks
@@ -372,6 +381,11 @@ def compare_reference(left: dict, right: dict, *, drawing_products=None) -> dict
     settings = "explicit, different or unknown" if withheld else "renderer defaults"
     if variants:
         settings = "declared Node variants"
+    identical_svg = (
+        variants == 2 and engines == {"merman"}
+        and products[0]["backend"] == products[1]["backend"]
+        and left["variant"].get("site_layout") == right["variant"].get("site_layout")
+    )
     collectors = [report.get("collector_sha256") for report in (left, right)]
     if not collectors[0] or collectors[0] != collectors[1]:
         reason = "The collector or its output checks differ or lack a recorded fingerprint."
@@ -393,7 +407,8 @@ def compare_reference(left: dict, right: dict, *, drawing_products=None) -> dict
             side: drawing_products.get(product_label(product), {}).get(a["id"], {})
             for side, product in zip(("left", "right"), products, strict=True)
         }
-        scenarios.append(_scenario(a, b, node, fmt == "png", samples, withheld is None, drawings))
+        scenarios.append(_scenario(a, b, node, fmt == "png", samples, withheld is None, drawings,
+                                   identical_svg=identical_svg))
     return dict(
         schema_version=1,
         classification="diagnostic",

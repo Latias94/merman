@@ -117,6 +117,8 @@ def _paired_samples(comparison, raw, reference_products, reference_outputs, same
         batch = row["complete_batch_ms"]
         if comparison["ratio_withheld_reason"]:
             issues.append(comparison["ratio_withheld_reason"])
+        if row.get("ratio_withheld_reason"):
+            issues.append(row["ratio_withheld_reason"])
         for side, failure in row.get("worker_failures", {}).items():
             issues.append(f"{product_label(comparison[side])} worker {failure['status']}")
         checks = row.get("drawing_checks", {})

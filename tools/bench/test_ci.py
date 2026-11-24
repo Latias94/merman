@@ -7,21 +7,202 @@ import io
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import tomllib
+import time
 import unittest
 from contextlib import chdir, redirect_stderr
 from hashlib import sha256
 from pathlib import Path
+from unittest import mock
 from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlsplit
 
 from merman_bench import ci as performance_workflow
+from merman_bench import layout_calibration as calibration
 from merman_bench import weekly as weekly
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+class LayoutCalibrationProcessContractsTest(unittest.TestCase):
+    def test_timeout_terminates_the_managed_process_group(self) -> None:
+        if not sys.platform.startswith(("darwin", "linux", "win32")):
+            self.skipTest("supported hosts only")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            started = root / "grandchild-started"
+            orphan = root / "grandchild-survived"
+            grandchild = (
+                "import signal, time; from pathlib import Path; "
+                "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+                f"Path({str(started)!r}).write_text('started'); "
+                "time.sleep(1.5); "
+                f"Path({str(orphan)!r}).write_text('orphan'); "
+                "time.sleep(60)"
+            )
+            parent = (
+                "import subprocess, sys, time; "
+                f"subprocess.Popen([sys.executable, '-c', {grandchild!r}]); "
+                "time.sleep(60)"
+            )
+
+            result = calibration.run_managed_process(
+                [sys.executable, "-c", parent],
+                cwd=calibration.ROOT,
+                timeout_seconds=1.0,
+                termination_grace_seconds=0.1,
+            )
+
+            self.assertTrue(result["timed_out"])
+            self.assertTrue(started.is_file(), "grandchild never started")
+            time.sleep(1.7)
+            self.assertFalse(orphan.exists(), "grandchild survived the timeout")
+
+    def test_timeout_terminates_descendants_after_group_leader_exits(self) -> None:
+        if not sys.platform.startswith(("darwin", "linux", "win32")):
+            self.skipTest("supported hosts only")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            started = root / "grandchild-started"
+            orphan = root / "grandchild-survived"
+            grandchild = (
+                "import signal, time; from pathlib import Path; "
+                "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+                f"Path({str(started)!r}).write_text('started'); "
+                "time.sleep(1.5); "
+                f"Path({str(orphan)!r}).write_text('orphan'); "
+                "time.sleep(60)"
+            )
+            parent = (
+                "import subprocess, sys; "
+                f"subprocess.Popen([sys.executable, '-c', {grandchild!r}])"
+            )
+
+            result = calibration.run_managed_process(
+                [sys.executable, "-c", parent],
+                cwd=calibration.ROOT,
+                timeout_seconds=1.0,
+                termination_grace_seconds=0.1,
+            )
+
+            self.assertTrue(result["timed_out"])
+            self.assertEqual(result["returncode"], 0)
+            self.assertTrue(started.is_file(), "grandchild never started")
+            time.sleep(1.7)
+            self.assertFalse(orphan.exists(), "grandchild survived the timeout")
+
+    def test_timeout_terminates_descendants_that_close_output_pipes(self) -> None:
+        if not sys.platform.startswith(("darwin", "linux", "win32")):
+            self.skipTest("supported hosts only")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            started = root / "grandchild-started"
+            orphan = root / "grandchild-survived"
+            grandchild = (
+                "import os, signal, time; from pathlib import Path; "
+                "sink = os.open(os.devnull, os.O_WRONLY); "
+                "os.dup2(sink, 1); os.dup2(sink, 2); os.close(sink); "
+                "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+                f"Path({str(started)!r}).write_text('started'); "
+                "time.sleep(1.5); "
+                f"Path({str(orphan)!r}).write_text('orphan'); "
+                "time.sleep(60)"
+            )
+            parent = (
+                "import subprocess, sys, time; "
+                f"subprocess.Popen([sys.executable, '-c', {grandchild!r}]); "
+                "time.sleep(60)"
+            )
+
+            result = calibration.run_managed_process(
+                [sys.executable, "-c", parent],
+                cwd=calibration.ROOT,
+                timeout_seconds=1.0,
+                termination_grace_seconds=0.1,
+            )
+
+            self.assertTrue(result["timed_out"])
+            self.assertTrue(started.is_file(), "grandchild never started")
+            time.sleep(1.7)
+            self.assertFalse(orphan.exists(), "grandchild survived the timeout")
+
+    def test_windows_reads_peak_working_set_after_target_releases_memory(self) -> None:
+        if sys.platform != "win32":
+            self.skipTest("Windows only")
+        result = calibration.run_managed_process(
+            [sys.executable, "-c", "memory = bytearray(64 * 1024 * 1024); del memory; print('done')"],
+            cwd=calibration.ROOT,
+            timeout_seconds=10,
+        )
+        self.assertEqual(result["returncode"], 0)
+        self.assertFalse(result["timed_out"])
+        self.assertEqual(result["stdout"].strip(), "done")
+        self.assertGreaterEqual(result["maximum_resident_set_size_bytes"], 64 * 1024 * 1024)
+
+    def test_windows_preserves_target_exit_code_and_stderr(self) -> None:
+        if sys.platform != "win32":
+            self.skipTest("Windows only")
+        result = calibration.run_managed_process(
+            [sys.executable, "-c", "import sys; print('failed', file=sys.stderr); sys.exit(7)"],
+            cwd=calibration.ROOT,
+            timeout_seconds=10,
+        )
+        self.assertEqual(result["returncode"], 7)
+        self.assertFalse(result["timed_out"])
+        self.assertEqual(result["stderr"].strip(), "failed")
+
+    def test_windows_launch_gate_prevents_execution_when_job_assignment_fails(self) -> None:
+        if sys.platform != "win32":
+            self.skipTest("Windows only")
+        with tempfile.TemporaryDirectory() as directory:
+            marker = Path(directory) / "must-not-run"
+            command = [
+                sys.executable,
+                "-c",
+                f"from pathlib import Path; Path({str(marker)!r}).write_text('ran')",
+            ]
+            with mock.patch.object(calibration.WindowsJob, "assign", side_effect=OSError("assignment failed")):
+                with self.assertRaisesRegex(OSError, "assignment failed"):
+                    calibration.run_managed_process(
+                        command, cwd=calibration.ROOT, timeout_seconds=10
+                    )
+            self.assertFalse(marker.exists())
+
+    def test_successful_windows_leader_cannot_leave_background_descendants(self) -> None:
+        if sys.platform != "win32":
+            self.skipTest("Windows only")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            started = root / "grandchild-started"
+            orphan = root / "grandchild-survived"
+            grandchild = (
+                "import time; from pathlib import Path; "
+                f"Path({str(started)!r}).write_text('started'); "
+                "time.sleep(1.0); "
+                f"Path({str(orphan)!r}).write_text('orphan'); "
+                "time.sleep(60)"
+            )
+            parent = (
+                "import subprocess, sys, time; from pathlib import Path; "
+                f"subprocess.Popen([sys.executable, '-c', {grandchild!r}], "
+                "stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); "
+                f"marker = Path({str(started)!r}); "
+                "\nwhile not marker.exists(): time.sleep(0.01)"
+            )
+            result = calibration.run_managed_process(
+                [sys.executable, "-c", parent],
+                cwd=calibration.ROOT,
+                timeout_seconds=10,
+            )
+            self.assertEqual(result["returncode"], 0)
+            self.assertFalse(result["timed_out"])
+            self.assertTrue(started.is_file(), "grandchild never started")
+            time.sleep(1.2)
+            self.assertFalse(orphan.exists(), "grandchild survived successful completion")
 
 
 class PerformanceWorkflowContractsTest(unittest.TestCase):

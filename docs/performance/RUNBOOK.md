@@ -251,9 +251,11 @@ python tools/bench/bench.py node --plan target/bench/node-layout-plan.json --var
 Each worker runs the cold batch, warms the same renderer for up to 20 calls or 150 ms, then
 collects the measured warm batches. Override the warmup with `--warmup-calls` and `--warmup-ms`.
 Set either to zero to skip it. The SVG validator starts after the last measured batch. The collector
-deduplicates checks and spills pending validation payloads beyond 32 MiB to worker scratch. The
-variant bundle freezes settings in `variants.json`. See its `summary.md` and `process-rounds.json`
-for diagnostic comparisons and any incomplete rounds.
+retains rendered strings until sampling ends, then hashes the outputs, deduplicates checks and
+spills validation jobs beyond 32 MiB to worker scratch. Worker RSS can include all sampled strings.
+The variant bundle freezes settings in `variants.json`. See its `summary.md` and `process-rounds.json`
+for diagnostic comparisons and any incomplete rounds. For an Options JSON bridge control on the
+same Merman transport and backend, eligible output must also match byte for byte.
 
 For the declared arrows, groups, label widths and Sequence message counts, install the repository's existing Puppeteer
 toolchain and pass `--check-drawings`. Use `--chrome` for a known Chrome executable or set

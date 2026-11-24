@@ -378,19 +378,24 @@ match the workflow's build recipes even when the contributor branch predates a f
 Measurement jobs retain the actual base and head revisions, with lane descriptors loaded from the
 head checkout. Manual contract runs honor the explicit head repository and revision inputs.
 
-The performance workflow selects regression and frontmatter descriptors into one measurement
-matrix. The `performance_workflow` section in `tools/bench/corpus.json` owns the lane recipes, labels,
-scheduled set, and manual selection groups; `tools/bench/performance_workflow.py` validates that registry and writes the
-matrix consumed by GitHub Actions. Contract tests exercise the same structured interface instead
-of parsing workflow YAML or shell text. Corpus, runner/recipe, statistics, report-consumer, and
-workflow contracts live in focused test modules behind the legacy aggregate command. Workflow
-syntax and expression checks remain owned by actionlint; security checks remain owned by zizmor.
-Each descriptor uses the same base/head runner, receipt, artifact, summary, and outcome consumer.
-Its standalone contracts run for pull requests only when the shared CI classifier selects the
-performance owner or an explicit `perf` or `perf-frontmatter` label requests a measurement. ASCII
-timing requires a manual dispatch with a compatible benchmark-only base backport. Pull requests
-remain read-only and write only to the job summary; schedules run both
-self-comparison descriptors plus the independent external-renderer reference lane.
+`python3 tools/bench/bench.py ci select` validates the `performance_workflow` registry in
+`tools/bench/corpus.json` and writes the measurement matrix for GitHub Actions. The registry owns
+lane recipes, pull-request labels, scheduled lanes, and manual dispatch groups. Each descriptor uses
+the same base/head runner, receipt, artifact, summary, and outcome consumer.
+
+Central CI runs `python3 -m unittest discover -s tools/bench` and
+`node --test tools/bench/collectors/node_runner.test.mjs` when the classifier selects the performance
+owner. The standalone Performance workflow also runs these tests on scheduled and manual runs. Its
+standalone pull-request contracts require the performance selector or a `perf` or `perf-frontmatter`
+label. For those pull requests, it verifies the compiled ASCII benchmark list. It also verifies the
+broader native list and memory smoke contract on `perf` pull requests and on scheduled and manual
+runs. Actionlint owns workflow syntax and expressions, and zizmor owns workflow security checks.
+
+The weekly schedule runs regression and frontmatter self-comparisons. Manual `reference` and
+`full` dispatches run the locked Node reference collector when the selected revision contains the
+collector and its consumer lockfile. ASCII timing requires a manual dispatch with a compatible
+benchmark-only base backport. Pull-request measurements use read-only repository permissions and
+publish their artifacts and job summaries in the same run.
 
 ## Release Preflight
 

@@ -232,6 +232,20 @@ class ReaderReportsTest(unittest.TestCase):
         rust["products"]["merman"]["revision"] = None
         self.assertIn("local Rust runner (revision unreported)", page_for(rust_work=rust))
 
+    def test_native_stage_layout_displays_realized_backends_when_they_differ(self):
+        row = dict(layout="shoal", status="ok", stages=[dict(stage="layout", elapsed_ns=1_500_000)])
+        page = page_for(rust_stages=dict(rows=[
+            dict(row, scenario="changed", backends=["native"]),
+            dict(row, scenario="mixed", backends=["shoal", "native"]),
+            dict(row, scenario="matched", backends=["shoal"]),
+            dict(row, scenario="historical"),
+            dict(row, scenario="unobserved", backends=[], stages=[], status="unavailable"),
+        ]))
+        for name, layout in (("changed", "shoal → native"), ("mixed", "shoal → shoal, native"),
+                             ("matched", "shoal"), ("historical", "shoal")):
+            self.assertIn(f"| {name} | {layout} | layout | 1.500 |", page)
+        self.assertIn("| unobserved | shoal | unavailable | — |", page)
+
     def test_refuses_to_publish_over_an_existing_dated_pair(self):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)

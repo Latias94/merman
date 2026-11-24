@@ -178,6 +178,37 @@ def _verify_source_unchanged(
         )
 
 
+def _input_file_records(inputs: Mapping[str, Any]) -> list[Mapping[str, object]]:
+    return [
+        inputs["workspace_manifest"],
+        inputs["package_manifest"],
+        inputs["cargo_lock"],
+        inputs["corpus"],
+        inputs["owner_contract"],
+        *inputs.get("probe_inputs", []),
+    ]
+
+
+def _merge_input_records(
+    target: dict[Path, dict[str, object]], inputs: Mapping[str, Any], *, root: Path
+) -> None:
+    for record in _input_file_records(inputs):
+        path = root / str(record["path"])
+        identity = {
+            "path": record["path"],
+            "bytes": record["bytes"],
+            "sha256": record["sha256"],
+        }
+        previous = target.setdefault(path, identity)
+        if (previous["bytes"], previous["sha256"]) != (
+            identity["bytes"],
+            identity["sha256"],
+        ):
+            raise DriverContractError(
+                f"native-memory input changed during batch preflight: {path}"
+            )
+
+
 def _verify_input_files_unchanged(
     root: Path, records: Sequence[Mapping[str, object]]
 ) -> None:
@@ -873,6 +904,7 @@ def _execute(
     args: argparse.Namespace,
     *,
     build_executable: Callable[..., tuple[Path, dict[str, object]]],
+    preflight_inputs: Mapping[str, object] | None = None,
 ) -> tuple[dict[str, object], int]:
     root = requested_repo_root(args)
     output = Path(args.json_out)
@@ -1009,6 +1041,11 @@ def _execute(
         if probe_inputs:
             report_inputs["probe_inputs"] = probe_inputs
         report["inputs"] = report_inputs
+        if preflight_inputs is not None and report_inputs != preflight_inputs:
+            _verify_input_files_unchanged(root, _input_file_records(preflight_inputs))
+            raise DriverContractError(
+                "native-memory lane input identity changed after batch preflight"
+            )
         build_command = cargo_prebuild_command(recipe)
         profile_reset_command = cargo_clean_bench_profile_command(recipe)
         report["recipe"] = {
@@ -1089,8 +1126,7 @@ def _execute(
         if _sha256_path(executable) != executable_digest:
             raise DriverContractError("native-memory executable changed during sampling")
         _verify_source_unchanged(source, _git_provenance(root))
-        records = [*input_files.values(), *probe_inputs]
-        _verify_input_files_unchanged(root, records)
+        _verify_input_files_unchanged(root, _input_file_records(report_inputs))
 
         if args.smoke:
             matrix = validate_sample_matrix(samples)
@@ -1142,8 +1178,9 @@ def _execute_batch(args: argparse.Namespace) -> int:
         output_dir = Path(args.json_out_dir)
         if not output_dir.is_absolute():
             output_dir = root / output_dir
-        planned: list[argparse.Namespace] = []
+        planned: list[tuple[argparse.Namespace, dict[str, object]]] = []
         outputs: set[Path] = set()
+        batch_inputs: dict[Path, dict[str, object]] = {}
         expected_recipe = None
         expected_source = None
         expected_environment = None
@@ -1182,7 +1219,9 @@ def _execute_batch(args: argparse.Namespace) -> int:
             elif recipe != expected_recipe or environment != expected_environment:
                 raise DriverContractError("batch lanes must use the same native-memory build recipe and environment")
             _verify_source_unchanged(expected_source, report["source"])
-            planned.append(lane_args)
+            inputs = report["inputs"]
+            _merge_input_records(batch_inputs, inputs, root=root)
+            planned.append((lane_args, inputs))
 
         if args.dry_run:
             print("$ " + " ".join(cargo_clean_bench_profile_command(expected_recipe)))
@@ -1193,6 +1232,7 @@ def _execute_batch(args: argparse.Namespace) -> int:
         built = None
         executable_digest = None
         expected_tool_versions = None
+        frozen_inputs = list(batch_inputs.values())
 
         def tool_versions():
             return tuple(
@@ -1206,25 +1246,30 @@ def _execute_batch(args: argparse.Namespace) -> int:
                 raise DriverContractError("native-memory batch build recipe or environment changed")
             _verify_source_unchanged(expected_source, _git_provenance(root))
             versions = tool_versions()
+            _verify_input_files_unchanged(root, frozen_inputs)
             if built is None:
                 expected_tool_versions = versions
             elif versions != expected_tool_versions:
                 raise DriverContractError("native-memory batch tool versions changed before reuse")
             if built is None:
-                built = discover_executable(recipe, timeout_seconds=timeout_seconds)
-                executable_digest = _sha256_path(built[0])
+                executable, receipt = discover_executable(recipe, timeout_seconds=timeout_seconds)
+                executable_digest = _sha256_path(executable)
                 _verify_source_unchanged(expected_source, _git_provenance(root))
                 if _build_environment() != expected_environment:
                     raise DriverContractError("native-memory batch build environment changed")
                 if tool_versions() != expected_tool_versions:
                     raise DriverContractError("native-memory batch tool versions changed during build")
+                _verify_input_files_unchanged(root, frozen_inputs)
+                built = executable, {**receipt, "inputs": frozen_inputs}
             elif _sha256_path(built[0]) != executable_digest:
                 raise DriverContractError("native-memory batch executable changed before reuse")
             return built[0], copy.deepcopy(built[1])
 
         outcomes = []
-        for lane_args in planned:
-            report, exit_code = _execute(lane_args, build_executable=build_once)
+        for lane_args, inputs in planned:
+            report, exit_code = _execute(
+                lane_args, build_executable=build_once, preflight_inputs=inputs
+            )
             written_exit = _write_report(lane_args, report, exit_code)
             if written_exit == 2:
                 return 2

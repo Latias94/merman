@@ -494,7 +494,7 @@ test("expected labels must appear as SVG or HTML label text, including on a chan
   assert.equal(row.warm_samples[1].complete_batch_ms, null);
 });
 
-test("each batch clock stops before byte counts, hashing and error inspection", async (t) => {
+test("all batch clocks stop before byte counts, hashing and error inspection", async (t) => {
   const events = [];
   const hashPrototype = Object.getPrototypeOf(createHash("sha256"));
   const originalUpdate = hashPrototype.update;
@@ -519,11 +519,10 @@ test("each batch clock stops before byte counts, hashing and error inspection", 
     afterLastBatch() { events.push("drawing"); },
   });
   const measured = ["clock", "clock", "render-1", "clock", "clock", "render-2", "clock", "clock", "render-3", "clock", "clock"];
-  const warmStart = events.indexOf("clock", measured.length);
-  assert.deepEqual(events.slice(0, measured.length), measured);
-  assert.deepEqual(events.slice(warmStart, warmStart + measured.length), measured);
-  assert.deepEqual(events.slice(warmStart + measured.length), ["bytes", "hash", "message", "bytes", "hash", "validate-2", "drawing"]);
-  assert.equal(events.filter((event) => event.startsWith("validate-")).length, 1);
+  assert.deepEqual(events.slice(0, measured.length * 2), [...measured, ...measured]);
+  const validation = events.slice(measured.length * 2, -2);
+  assert.deepEqual([...new Set(validation)].sort(), ["bytes", "hash", "message"]);
+  assert.deepEqual(events.slice(-2), ["validate-2", "drawing"]);
   assert.deepEqual(warmup, { calls: 0, elapsed_ms: 0 });
   for (const batch of [cold_batch, ...warm_samples]) {
     assert.equal(batch.elapsed_ms, 7);
@@ -616,7 +615,10 @@ test("spilled SVGs are checked after sampling and reused across validation batch
   const outputs = [a, large, c, a];
   const seen = [];
   let calls = 0;
-  const report = await measureScenario([{}], () => outputs[calls++], {
+  const report = await measureScenario([{}], () => {
+    assert.deepEqual(readdirSync(validationDirectory), []);
+    return outputs[calls++];
+  }, {
     samples: 3,
     warmup: noWarmup,
     now: () => 0,

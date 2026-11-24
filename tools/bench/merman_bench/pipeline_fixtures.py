@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[3]
 PIPELINE = Path("crates/merman/benches/pipeline.rs")
 PIPELINE_STAGE_MODULE = Path("pipeline/stages.rs")
 BEGIN = b"// Generated from tools/bench/corpus.json by tools/bench/bench.py sync-fixtures --write."
+LEGACY_BEGIN = b"// Generated from tools/bench/corpus.json by tools/bench/pipeline_fixtures.py --write."
 END = b"// End of generated pipeline fixtures."
 
 
@@ -22,11 +23,19 @@ def sync_pipeline_fixtures(root: Path, source: Path, *, write: bool = False) -> 
     """Return the verified generated paths, or an empty tuple for a hand-written harness."""
     benches = source.resolve().parent
     stages = benches / PIPELINE_STAGE_MODULE
-    if source.name == PIPELINE.name and stages.parent.is_dir():
-        source = stages
-
     raw = source.read_bytes()
+    if (
+        source.name == PIPELINE.name
+        and BEGIN not in raw
+        and LEGACY_BEGIN not in raw
+        and stages.parent.is_dir()
+    ):
+        source = stages
+        raw = source.read_bytes()
+
     before, marker, rest = raw.partition(BEGIN)
+    if not marker:
+        before, marker, rest = raw.partition(LEGACY_BEGIN)
     if not marker:
         return ()
     _, end, after = rest.partition(END)
@@ -66,7 +75,12 @@ def sync_pipeline_fixtures(root: Path, source: Path, *, write: bool = False) -> 
     for path, data in expected.items():
         if not path.is_file() or path.read_bytes() != data:
             if not write:
-                raise ValueError(f"stale {path}: run python tools/bench/bench.py sync-fixtures --write")
+                command = (
+                    "tools/bench/pipeline_fixtures.py"
+                    if marker == LEGACY_BEGIN
+                    else "tools/bench/bench.py sync-fixtures"
+                )
+                raise ValueError(f"stale {path}: run python {command} --write")
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(data)
     return tuple(expected)

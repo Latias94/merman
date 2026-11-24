@@ -1,6 +1,8 @@
 from collections import Counter
+from contextlib import redirect_stdout
 from copy import deepcopy
 import hashlib
+import io
 import json
 from pathlib import Path
 import shutil
@@ -10,6 +12,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
+from bench import main as bench_main
 from merman_bench.drawing import OBSERVER, audit_drawings
 from merman_bench.node import _variant_recipes, collect_node_matrix
 from merman_bench.reference import NODE_PRODUCTS, compare_reference
@@ -311,6 +314,15 @@ class ProcessRoundTests(unittest.TestCase):
             self.assertEqual(collect_node_matrix(self.args), self.args.out_dir / "summary.md")
         return json.loads((self.args.out_dir / "process-rounds.json").read_bytes())
 
+    def publish_rounds(self):
+        markdown = self.args.out_dir.parent / "reader.md"
+        receipt = markdown.with_suffix(".json")
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(bench_main(["report", "--node-rounds", str(self.args.out_dir), "--date", "2026-11-25",
+                                         "--out", str(markdown)]), 0)
+            self.assertEqual(bench_main(["report", "--from", str(receipt), "--check"]), 0)
+        return json.loads(receipt.read_bytes())["measurements"]["node_rounds"], markdown.read_text(encoding="utf-8")
+
     def test_order_and_paired_distribution_from_each_workers_warm_median(self):
         self.args.process_rounds = 6
         left = [2, 4, 10, 20, 30, 40]
@@ -358,15 +370,17 @@ class ProcessRoundTests(unittest.TestCase):
         self.args.variant_layout = ["base.0=dagre", "explicit=dagre"]
         self.args.process_rounds = None
         self.args.warmup_calls = 4
+        plan = json.loads(self.args.plan.read_bytes())
+        plan["scenarios"][1]["family"] = "flowchart"
+        self.args.plan.write_bytes(json.dumps(plan).encode())
 
-        def output(round_no, raw):
+        def slower_variant(round_no, raw):
             if raw["variant"]["label"] == "explicit":
                 for row in raw["scenarios"]:
-                    for batch in [row["cold_batch"], *row["warm_samples"]]:
-                        for result in batch["results"]:
-                            result["output_sha256"] = "b" * 64
+                    for batch in row["warm_samples"]:
+                        batch["complete_batch_ms"] *= 2
 
-        self.edit = output
+        self.edit = slower_variant
         report = self.run_matrix()
         self.assertEqual(self.calls, [(1, "base.0"), (1, "explicit"), (2, "explicit"), (2, "base.0")])
         self.assertEqual(report["left"], "base.0")
@@ -382,11 +396,94 @@ class ProcessRoundTests(unittest.TestCase):
         self.assertEqual(comparison["left"]["variant"], dict(label="base.0", options_json=None, site_layout="dagre"))
         self.assertEqual(comparison["right"]["variant"], dict(label="explicit", options_json=options, site_layout="dagre"))
         self.assertEqual(json.loads((directory / "explicit.json").read_bytes())["warmup"], {"max_calls": 4, "max_ms": 150})
-        with self.assertRaisesRegex(ValueError, "Node variant bundles are diagnostic"):
-            load_rounds(self.args.out_dir)
+        projected, markdown = self.publish_rounds()
+        self.assertEqual(projected["baseline"], "base.0")
+        for label in ("base.0", "explicit"):
+            product = projected["products"][label]
+            self.assertEqual((product["engine"], product["package"], product["backend"]), ("merman", "@mermanjs/node", "napi"))
+            self.assertEqual(product["transport_sha256"], {"native-addon": "f" * 64})
+            self.assertIn(f"{label} — Merman {product['version']} (N-API)", markdown)
+        doc = next(row for row in projected["latency"] if row["scenario"] == "doc")
+        self.assertEqual((doc["baseline_ms"], doc["peer_ms"], doc["ratio"]["median"]), (13, 26, 2))
+        self.assertEqual(projected["coverage"]["explicit"]["families"]["baseline_stable"], 2)
+        self.assertIn("The baseline variant is base.0.", markdown)
+        self.assertIn("| base.0 ms | Peer ms | Peer / base.0 (range) |", markdown)
+        self.assertIn("| doc | explicit | 2 / 2 | 13.000 | 26.000 | 2.000 (2.000–2.000) | Timing only. base.0 faster", markdown)
+        self.assertIn("| doc | explicit | 2/2 |", markdown)
+        self.assertNotIn(json.dumps(str(module)), json.dumps(projected))
         shutil.copyfile(self.args.out_dir / "plan.json", directory / "plan.json")
-        with self.assertRaisesRegex(ValueError, "Node variant bundles are diagnostic"):
+        with self.assertRaisesRegex(ValueError, "use --node-rounds with the finalized Node variant bundle"):
             load_matrix(directory / "coverage.json")
+
+    def test_named_report_withholds_ratio_for_repeatable_but_different_svg(self):
+        self.args.variant = ["direct=merman", "with_json=merman::{}"]
+        self.args.variant_layout = ["direct=dagre", "with_json=dagre"]
+
+        def change_svg(round_no, raw):
+            if raw["variant"]["label"] == "with_json":
+                doc = raw["scenarios"][0]
+                for batch in [doc["cold_batch"], *doc["warm_samples"]]:
+                    batch["results"][1]["output_sha256"] = "b" * 64
+
+        self.edit = change_svg
+        finalized = self.run_matrix()["comparisons"]["with_json"]
+        self.assertEqual(finalized["doc"]["eligible_pairs"], 0)
+        self.assertIn("different SVG bytes", finalized["doc"]["rounds"][0]["withheld_reason"])
+        self.assertEqual(finalized["control"]["eligible_pairs"], 2)
+        comparison = self.args.out_dir / "rounds" / "001" / "direct-vs-with_json.json"
+        doc = json.loads(comparison.read_bytes())["scenarios"][0]
+        self.assertEqual(doc["common_stable"], 2)
+        self.assertEqual(doc["complete_batch_ms"], dict(left=13, right=13, right_over_left=None))
+
+        projected, markdown = self.publish_rounds()
+        rows = {row["scenario"]: row for row in projected["latency"]}
+        self.assertEqual(projected["status"], "complete")
+        self.assertEqual(projected["coverage"]["with_json"]["common_stable"], 6)
+        self.assertEqual(rows["doc"]["reasons"], ["different-svg"])
+        self.assertIsNone(rows["doc"]["ratio"])
+        self.assertEqual(rows["control"]["ratio"]["median"], 1)
+        self.assertIn(r"| doc | with\_json | 2 / 2 | — | — | — | Warm ratio withheld.", markdown)
+        self.assertIn("Same-backend variants returned different SVG bytes", markdown)
+
+    def test_named_rounds_check_every_finalized_product_identity(self):
+        self.args.variant = ["upstream=pele", "current=merman", "candidate=merman"]
+        finalized = self.run_matrix()
+        bundle = self.args.out_dir
+        rounds_path = bundle / "process-rounds.json"
+        verified = load_rounds(rounds_path)
+        self.assertEqual(verified["baseline"], "upstream")
+        self.assertEqual(list(verified["products"]), ["upstream", "current", "candidate"])
+        self.assertEqual(verified["products"]["upstream"]["engine"], "pele")
+        self.assertTrue(all(row["eligible_pairs"] == 2 for row in verified["latency"]))
+
+        for label in verified["products"]:
+            with self.subTest(label=label):
+                wrong = deepcopy(finalized)
+                files = wrong["reference_identities"][label]["product"]["artifact_identity"]["files"]
+                files[-1]["sha256"] = "d" * 64
+                rounds_path.write_bytes(json.dumps(wrong).encode())
+                projected = load_rounds(rounds_path)
+                self.assertEqual(projected["status"], "incomplete")
+                for row in projected["latency"]:
+                    if label in ("upstream", row["peer"]):
+                        self.assertEqual(row["reasons"], ["evidence-mismatch"])
+                        self.assertIsNone(row["ratio"])
+                    else:
+                        self.assertEqual(row["eligible_pairs"], 2)
+                self.assertTrue(all(row["workers"] == (0 if row["variant"] == label else 2)
+                                    for row in projected["startup"]))
+
+        rounds_path.write_bytes(json.dumps(finalized).encode())
+        worker_path = bundle / "rounds" / "002" / "candidate.json"
+        worker = json.loads(worker_path.read_bytes())
+        worker["artifact_identity"]["files"][-1]["sha256"] = "d" * 64
+        worker_path.write_bytes(json.dumps(worker).encode())
+        projected = load_rounds(rounds_path)
+        for row in projected["latency"]:
+            self.assertEqual(row["eligible_pairs"], 1 if row["peer"] == "candidate" else 2)
+            if row["peer"] == "candidate":
+                self.assertEqual(row["reasons"], ["evidence-mismatch"])
+                self.assertIsNone(row["ratio"])
 
     def test_incomplete_collectors_keep_other_rounds_peers_and_scenarios(self):
         def fail(round_no, raw):

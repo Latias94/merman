@@ -85,18 +85,28 @@ def host_label(host):
     return text(" · ".join(v for v in (platform, host.get("cpu"), f"Node {runtime}" if runtime else None) if v))
 
 
+def node_title(raw, label):
+    return label if "baseline" in raw else PRODUCTS[label]
+
+
 def node_context(raw):
     products = []
     missing = []
-    for engine, package in raw["products"].items():
+    named = "baseline" in raw
+    for label, package in raw["products"].items():
+        engine = PRODUCTS[package.get("engine", label)]
+        title = node_title(raw, label)
         if package["version"] and package["backend"]:
-            products.append(f"{PRODUCTS[engine]} {package['version']} ({BACKENDS[package['backend']]})")
+            build = f"{engine} {package['version']} ({BACKENDS[package['backend']]})"
         else:
-            products.append(f"{PRODUCTS[engine]} (build unavailable)")
+            build = f"{engine} (build unavailable)"
+        products.append(f"{title} — {build}" if named else build)
         workers = package["workers"]
         if workers["missing"]:
-            missing.append(f"{PRODUCTS[engine]} {workers['missing']}/{workers['planned']}")
+            missing.append(f"{title} {workers['missing']}/{workers['planned']}")
     message = f"{host_label(raw['host'])}. The collection scheduled {text(', '.join(products))}."
+    if named:
+        message += f" The baseline variant is {text(raw['baseline'])}."
     if raw["status"] != "complete" or missing:
         message += " Collection incomplete." + (f" Fraction of scenario workers missing by product — {text(', '.join(missing))}." if missing else "")
     return message
@@ -106,6 +116,8 @@ def coverage_section(raw):
     if not raw:
         return "No Node coverage sweep was included."
     plan = raw["planned"]
+    baseline = node_title(raw, raw.get("baseline", "merman"))
+    stable_field = "baseline_stable" if "baseline" in raw else "merman_stable"
     blocks = [f"The **{text(raw['suite'] or 'custom')}** plan contains {plan['requests']} requests in {plan['scenarios']} "
               f"scenarios with {plan['distinct_sources']} distinct sources. Each occurrence counts, including repeated "
               "diagrams in a document. Repeatability means each product returned the same bytes on repeated calls "
@@ -114,18 +126,19 @@ def coverage_section(raw):
     for peer, counts in raw["coverage"].items():
         family = counts["families"]
         drawing = counts["drawing_checks"]
-        rows.append([PRODUCTS[peer], f"{counts['common_completed']}/{counts['planned_requests']}",
+        title = node_title(raw, peer)
+        rows.append([title, f"{counts['common_completed']}/{counts['planned_requests']}",
                      f"{counts['common_stable']}/{counts['planned_requests']}", counts["common_expected_rejections"],
-                     f"{family['merman_stable']} / {family['peer_stable']} of {family['planned']}" if family['planned'] else "—",
+                     f"{family[stable_field]} / {family['peer_stable']} of {family['planned']}" if family['planned'] else "—",
                      f"{drawing['passed']}/{drawing['planned']}" if drawing['planned'] else "—"])
         gapnames = [g["family"] for g in counts["family_gaps"]]
         if gapnames:
-            gaps.append(f"- Merman and {PRODUCTS[peer]} lacked a shared repeatable output for {text(', '.join(gapnames))}.")
+            gaps.append(f"- {text(baseline)} and {text(title)} lacked a shared repeatable output for {text(', '.join(gapnames))}.")
         if drawing["failed"] or drawing["unchecked"]:
-            gaps.append(f"- Drawing checks for Merman and {PRODUCTS[peer]} had {drawing['failed']} failed "
+            gaps.append(f"- Drawing checks for {text(baseline)} and {text(title)} had {drawing['failed']} failed "
                         f"and {drawing['unchecked']} unchecked scenarios.")
-    blocks.append(table(["Compared with Merman", "Both completed", "Both repeatable", "Both rejected as expected",
-                         "Repeatable family examples (Merman / peer)", "Drawing scenarios passing on both"], rows))
+    blocks.append(table([f"Compared with {baseline}", "Both completed", "Both repeatable", "Both rejected as expected",
+                         f"Repeatable family examples ({baseline} / peer)", "Drawing scenarios passing on both"], rows))
     blocks.append("Higher fractions mean broader coverage of these inputs. Expected rejections count separately from "
                   "renders. The family counts use one reviewed example per "
                   "family. The final column counts scenarios where both products passed every declared drawing property "
@@ -135,8 +148,7 @@ def coverage_section(raw):
     return "\n\n".join(blocks)
 
 
-def node_reading(row):
-    peer = PRODUCTS[row["peer"]]
+def node_reading(row, baseline, peer):
     planned, eligible = row["planned_pairs"], row["eligible_pairs"]
     checks = row.get("visual_checks")
     if checks is None:
@@ -151,54 +163,60 @@ def node_reading(row):
     if "expected-rejection" in reasons:
         direction = f"Warm ratio withheld. The batch includes an expected rejection ({eligible}/{planned} eligible pairs)."
         return "expected_rejection", direction, drawing
+    if "different-svg" in reasons:
+        direction = f"Warm ratio withheld. Same-backend variants returned different SVG bytes ({eligible}/{planned} eligible pairs)."
+        return "different_svg", direction, drawing
     pairs = row["pairs"]
     if row["status"] != "complete" or not row["ratio"] or not planned or eligible != planned or len(pairs) != planned:
         detail = f" ({', '.join(reasons)})" if reasons else ""
         return "insufficient", f"Insufficient data. {eligible}/{planned} eligible pairs{detail}.", drawing
 
     peer_faster = sum(p["ratio"] < 1 for p in pairs)
-    merman_faster = sum(p["ratio"] > 1 for p in pairs)
-    if peer_faster == planned or merman_faster == planned:
-        faster = peer if peer_faster == planned else "Merman"
+    baseline_faster = sum(p["ratio"] > 1 for p in pairs)
+    if peer_faster == planned or baseline_faster == planned:
+        faster = peer if peer_faster == planned else baseline
         direction = f"{faster} faster in {planned}/{planned} rounds"
         if checks and checks["planned"] > 0 and checks["passed_pairs"] == planned:
             return "checked", f"{direction} with the declared drawing properties verified.", drawing
         return "timing", f"Timing only. {direction}.", drawing
 
-    tied = planned - peer_faster - merman_faster
+    tied = planned - peer_faster - baseline_faster
     if tied == planned:
         return "uncertain", f"No direction. All {planned} pairs tied.", drawing
-    direction = f"Uncertain. {peer} faster in {peer_faster}/{planned} rounds, Merman in {merman_faster}/{planned}"
+    direction = f"Uncertain. {peer} faster in {peer_faster}/{planned} rounds, {baseline} in {baseline_faster}/{planned}"
     return "uncertain", direction + (f", {tied} tied." if tied else "."), drawing
 
 
 def rounds_section(raw, survey):
     if not raw:
         return "", "No independent Node timing rounds were included."
+    baseline = node_title(raw, raw.get("baseline", "merman"))
+    baseline_field = "baseline_ms" if "baseline" in raw else "merman_ms"
     batches = raw["warm_batches_per_worker"]
     batch_count = f"{batches} warm batches per worker" if batches is not None else "warm batch count unreported"
     blocks = [f"The plan scheduled {raw['process_rounds']} independent process rounds per scenario ({batch_count}). "
               "Each millisecond column is the median of one product's worker medians for a complete warm batch. "
               "Lower times mean the batch finished sooner. "
-              "In each round, divide the peer's batch median by Merman's batch median from that same round. "
+              f"In each round, divide the peer's batch median by {text(baseline)}'s batch median from that same round. "
               "The ratio column shows the median and observed range of those quotients. Below 1 favors the peer, "
-              "above 1 favors Merman. The endpoints are the smallest and largest ratios observed on this host. "
+              f"above 1 favors {text(baseline)}. The endpoints are the smallest and largest ratios observed on this host. "
               "When the faster product changes between rounds, the direction remains uncertain even if the median favors one."]
     context = node_context(raw)
     if not survey or node_context(survey) != context:
         blocks.append(context)
     rows = []
-    counts = dict(checked=0, timing=0, uncertain=0, expected_rejection=0, insufficient=0)
+    counts = dict(checked=0, timing=0, uncertain=0, expected_rejection=0, different_svg=0, insufficient=0)
     for row in raw["latency"]:
-        result, direction, drawing = node_reading(row)
+        peer = node_title(raw, row["peer"])
+        result, direction, drawing = node_reading(row, baseline, peer)
         counts[result] += 1
         ratio = row["ratio"] if result in ("checked", "timing", "uncertain") else None
-        rows.append([row["scenario"], PRODUCTS[row["peer"]], f"{row['requests_per_batch']} / {row.get('distinct_sources', '—')}",
-                     number(row["merman_ms"]) if ratio else "—", number(row["peer_ms"]) if ratio else "—",
+        rows.append([row["scenario"], peer, f"{row['requests_per_batch']} / {row.get('distinct_sources', '—')}",
+                     number(row[baseline_field]) if ratio else "—", number(row["peer_ms"]) if ratio else "—",
                      f"{number(ratio['median'])} ({number(ratio['min'])}–{number(ratio['max'])})" if ratio else "—",
                      direction, drawing])
-    blocks.append(table(["Scenario", "Peer", "Requests / distinct sources per batch", "Merman ms", "Peer ms",
-                         "Peer / Merman (range)", "Observed direction", "Drawing evidence"], rows))
+    blocks.append(table(["Scenario", "Peer", "Requests / distinct sources per batch", f"{baseline} ms", "Peer ms",
+                         f"Peer / {baseline} (range)", "Observed direction", "Drawing evidence"], rows))
     blocks.append("The batch clock stops before output validation. Eligible pairs have repeatable SVG and pass any "
                   "declared label checks. A timing direction with "
                   "verified drawing properties requires the same faster product and passing checks on both sides "
@@ -207,6 +225,7 @@ def rounds_section(raw, survey):
     summary = ", ".join(f"{counts[key]} {label}" for key, label in (
         ("checked", "consistent with verified drawing properties"), ("timing", "consistent on timing alone"),
         ("uncertain", "with mixed or tied rounds"), ("expected_rejection", "withheld for expected rejections"),
+        ("different_svg", "withheld for different SVG bytes"),
         ("insufficient", "with insufficient data")) if counts[key] or key == "checked")
     comparison = "comparison" if len(rows) == 1 else "comparisons"
     return f"{len(rows)} scenario/peer {comparison} in the {raw['planned']['scenarios']}-scenario plan ({summary}).", "\n\n".join(blocks)
@@ -222,7 +241,7 @@ def startup_section(rounds):
              "SVG timers end before output validation. Peak resident set size (RSS) covers the "
              "worker's lifetime through the measurement, including warm batches and output validation. Lower milliseconds "
              "mean less waiting and lower MiB means a smaller process peak. A dash means the measurement is unavailable.")
-    rows = [[r["scenario"], PRODUCTS[r["engine"]], f"{r['workers']}/{r['planned_workers']}", number(r["initialize_ms"]),
+    rows = [[r["scenario"], node_title(rounds, r.get("variant", r["engine"])), f"{r['workers']}/{r['planned_workers']}", number(r["initialize_ms"]),
              number(r["first_svg_ms"]), number(r["init_through_first_svg_ms"]), number(r["peak_rss_mib"])]
             for r in rounds["startup"]]
     return intro + "\n\n" + table(["Scenario", "Product", "Measured / planned workers", "Initialize ms", "First SVG ms",
@@ -356,12 +375,16 @@ def native_attribution(stages, layouts):
     if stages:
         rows = []
         for case in stages["rows"]:
+            layout = case["layout"]
+            backends = case.get("backends")
+            if backends and backends != [layout]:
+                layout = f"{layout} → {', '.join(backends)}"
             for stage in case["stages"]:
-                rows.append((case["scenario"], case["layout"], stage["stage"], number(stage["elapsed_ns"] / 1e6),
+                rows.append((case["scenario"], layout, stage["stage"], number(stage["elapsed_ns"] / 1e6),
                              number(stage.get("allocations")), number(stage.get("allocated_bytes")),
                              number(stage.get("peak_growth_bytes"))))
             if not case["stages"]:
-                rows.append((case["scenario"], case["layout"], case["status"], "—", "—", "—", "—"))
+                rows.append((case["scenario"], layout, case["status"], "—", "—", "—", "—"))
         sections.append("## Native phase attribution\n\n"
                         "Times and allocations come from independent executables on the same workload.\n\n" +
                         table(("Scenario", "Layout", "Phase", "Median ms", "Allocations", "Allocated bytes", "Peak growth bytes"), rows))
@@ -387,9 +410,10 @@ def render(data, filename):
     rounds_summary, rounds_detail = rounds_section(rounds, matrix)
     overview = []
     if matrix:
-        stable = ", ".join(f"{counts['common_stable']}/{counts['planned_requests']} with {PRODUCTS[peer]}"
+        baseline = node_title(matrix, matrix.get("baseline", "merman"))
+        stable = ", ".join(f"{counts['common_stable']}/{counts['planned_requests']} with {text(node_title(matrix, peer))}"
                            for peer, counts in matrix["coverage"].items())
-        overview.append(f"- **Node coverage.** Merman and its peers returned repeatable SVG on {stable}. "
+        overview.append(f"- **Node coverage.** {text(baseline)} and its peers returned repeatable SVG on {stable}. "
                         f"The plan contains {matrix['planned']['distinct_sources']} distinct sources.")
     if rounds:
         overview.append(f"- **Warm Node rendering.** {rounds_summary}")

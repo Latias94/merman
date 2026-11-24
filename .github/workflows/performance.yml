@@ -527,10 +527,10 @@ jobs:
       - name: Check for a locked Node reference project
         id: project
         run: |
-          if test -f tools/bench/node-reference/package-lock.json; then
+          if test -f tools/bench/bench.py && test -f tools/bench/node-reference/package-lock.json; then
             echo 'available=true' >> "$GITHUB_OUTPUT"
           else
-            echo 'The selected revision predates the Node reference matrix.' >> "$GITHUB_STEP_SUMMARY"
+            echo 'The selected revision predates the unified Node reference collector.' >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - uses: actions/setup-node@v7.1.0
@@ -556,7 +556,7 @@ jobs:
         if: steps.project.outputs.available == 'true'
         run: |
           npm ci --prefix tools/bench/node-reference --ignore-scripts --no-audit --no-fund
-          node --test tools/bench/workload_node.test.mjs
+          node --test tools/bench/collectors/node_runner.test.mjs
           python3 tools/bench/bench.py plan --suite full --out target/bench/reference-plan.json
           checks=()
           if [[ -f tools/bench/workload_drawing_browser.mjs ]]; then checks+=(--check-drawings); fi
@@ -569,7 +569,7 @@ jobs:
           python3 tools/bench/bench.py node --plan target/bench/families-plan.json --out-dir target/bench/node-cross-family
 
       - name: Generate a reader report from the Node coverage bundle
-        if: ${{ !cancelled() && hashFiles('tools/bench/workload_report.py') != '' && hashFiles('target/bench/node-reference/coverage.json') != '' }}
+        if: ${{ !cancelled() && steps.project.outputs.available == 'true' && hashFiles('target/bench/node-reference/coverage.json') != '' }}
         env:
           RAW_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
         run: |

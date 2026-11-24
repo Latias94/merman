@@ -10,7 +10,9 @@ from statistics import median
 from sys import float_info
 
 from .coverage import _schema_v1, _source_digest, summarize_coverage
-from .reference import NODE_PRODUCTS, _product as reference_product, node_worker_failures
+from .node import _comparison_file, _process_order
+from .reference import (LAYOUTS, NODE_PRODUCTS, _product as reference_product,
+                        node_worker_failures, product_label, valid_node_variant_label)
 
 
 INCOMPLETE = {"missing-evidence", "evidence-mismatch", "missing-frozen-input", "frozen-input-mismatch",
@@ -68,8 +70,9 @@ def _positive(value):
     return type(value) in (int, float) and isfinite(value) and value > 0
 
 
-def _latency(peer, title, scenario, row, cases):
+def _latency(peer, title, scenario, row, cases, *, named):
     """Join each finalized independent observation to the same round's complete batch."""
+    baseline_field = "baseline_ms" if named else "merman_ms"
     pairs, reasons = [], set()
     count = len(cases)
     samples = row.get("rounds", [])
@@ -96,11 +99,11 @@ def _latency(peer, title, scenario, row, cases):
             case["reason"] = reason
             reasons.add(reason)
         else:
-            pairs.append(dict(round=index, merman_ms=batch["left"], peer_ms=batch["right"], ratio=batch["right_over_left"]))
+            pairs.append(dict(round=index, **{baseline_field: batch["left"]}, peer_ms=batch["right"], ratio=batch["right_over_left"]))
 
-    merman_ms = peer_ms = ratio = None
+    baseline_ms = peer_ms = ratio = None
     if len(pairs) == count:
-        merman_ms = median(p["merman_ms"] for p in pairs)
+        baseline_ms = median(p[baseline_field] for p in pairs)
         peer_ms = median(p["peer_ms"] for p in pairs)
         ratios = [p["ratio"] for p in pairs]
         ratio = dict(min=min(ratios), median=median(ratios), max=max(ratios))
@@ -108,12 +111,13 @@ def _latency(peer, title, scenario, row, cases):
                 visual_checks=dict(planned=scenario.get("with_drawing_facts", {}).get("requests", 0),
                                    passed_pairs=sum(case["visual_passed"] for case in cases)),
                 status="complete" if len(pairs) == count else "partial" if pairs else "unavailable",
-                planned_pairs=count, eligible_pairs=len(pairs), merman_ms=merman_ms, peer_ms=peer_ms, ratio=ratio,
+                planned_pairs=count, eligible_pairs=len(pairs), **{baseline_field: baseline_ms}, peer_ms=peer_ms, ratio=ratio,
                 pairs=pairs, reasons=sorted(reasons))
 
 
-def _coverage(peer, scenarios, observations):
+def _coverage(peer, scenarios, observations, *, named):
     """Count scenario/round occurrences. Completion and stability count request occurrences."""
+    baseline_field = "baseline_stable" if named else "merman_stable"
     counts = dict(planned_scenarios=len(scenarios) * len(observations), reported_scenarios=0,
                   planned_requests=sum(s["requests"] for s in scenarios) * len(observations), reported_requests=0,
                   common_completed=0, common_stable=0, common_expected_rejections=0,
@@ -150,17 +154,17 @@ def _coverage(peer, scenarios, observations):
 
             if "family" in scenario:
                 family = _text(scenario["family"]) or f"family #{position}"
-                entry = families.setdefault(family, dict(planned=0, reported=0, merman_stable=0, peer_stable=0, both_stable=0))
+                entry = families.setdefault(family, dict(planned=0, reported=0, **{baseline_field: 0}, peer_stable=0, both_stable=0))
                 entry["planned"] += 1
                 entry["reported"] += bool(row)
                 both = row.get("common_stable", {}).get("requests", 0)
                 entry["both_stable"] += both
                 # Each family baseline is one request, including when a worker was unmeasured.
-                for side, field in (("left", "merman_stable"), ("right", "peer_stable")):
+                for side, field in (("left", baseline_field), ("right", "peer_stable")):
                     entry[field] += both or sum(issue[side]["state"] == "stable" for issue in issues)
     return dict(**counts, drawing_checks=drawing, reasons=sorted(reasons),
                 families={key: sum(f[key] for f in families.values())
-                          for key in ("planned", "reported", "merman_stable", "peer_stable", "both_stable")},
+                          for key in ("planned", "reported", baseline_field, "peer_stable", "both_stable")},
                 family_gaps=[dict(family=name, **f) for name, f in families.items() if f["both_stable"] < f["planned"]])
 
 
@@ -193,8 +197,8 @@ def _frozen_issue(product, frozen):
     return None
 
 
-def _comparison(folder, peer, summary, digest, frozen, records, rounds, runs):
-    data, issue = _sidecar(folder / f"merman-vs-{peer}.json", digest)
+def _comparison(path, left, peer, summary, digest, frozen, records, rounds, runs):
+    data, issue = _sidecar(path, digest)
     if issue:
         return {}, issue
     samples = rounds.get("warm_batches_per_worker") if rounds else summary.get("samples")
@@ -202,16 +206,16 @@ def _comparison(folder, peer, summary, digest, frozen, records, rounds, runs):
             or data.get("classification") != "diagnostic"
             or type(samples) is not int or samples < 1 or data.get("samples") != samples):
         return {}, "evidence-mismatch"
-    for side, engine in (("left", "merman"), ("right", peer)):
+    for side, label in (("left", left), ("right", peer)):
         product = data[side]
-        if (product.get("engine") != engine or product != summary[side] or data["host"] != summary["host"]
-                or any(product.get(k) != runs[engine].get(k) for k in ("package", "version"))):
+        if (product_label(product) != label or product != summary[side] or data["host"] != summary["host"]
+                or any(product.get(k) != runs[label].get(k) for k in ("package", "version"))):
             return {}, "evidence-mismatch"
         identity = dict(product=product, host=data["host"], collector_sha256=data["collector_sha256"][side])
-        records.setdefault(engine, identity)
+        records.setdefault(label, identity)
         if (product.get("artifact_identity") or {}).get("status") != "recorded":
             return {}, "collector-withheld"
-        if rounds and rounds.get("reference_identities", {}).get(engine) != identity:
+        if rounds and rounds.get("reference_identities", {}).get(label) != identity:
             return {}, "evidence-mismatch"
         issue = _frozen_issue(product, frozen)
         if issue:
@@ -249,6 +253,8 @@ def _case(scenario, observation, compared, issue, failures, audit_issue):
             issue = "expected-rejection"
         elif compared.get("common_stable") != scenario["requests"] or observation["common_stable"]["requests"] != scenario["requests"]:
             issue = "output-not-stable"
+        elif compared.get("ratio_withheld_reason"):
+            issue = "different-svg"
         elif batch.get("right_over_left") is None:
             issue = "collector-withheld"
         elif not all(_positive(batch.get(k)) for k in ("left", "right", "right_over_left")):
@@ -256,10 +262,10 @@ def _case(scenario, observation, compared, issue, failures, audit_issue):
     return dict(observation=observation, batch=batch, reason=issue)
 
 
-def _worker_report(folder, engine, run, rounds, frozen, plan):
+def _worker_report(folder, label, run, rounds, frozen, plan):
     """Read the scheduled product's local sidecar against its finalized round identity."""
-    filename = f"{engine}.json"
-    reference = rounds.get("reference_identities", {}).get(engine, {})
+    filename = f"{label}.json"
+    reference = rounds.get("reference_identities", {}).get(label, {})
     samples = rounds.get("warm_batches_per_worker")
     if (run.get("report") != filename or "error" in run or not _hash(reference.get("collector_sha256"))
             or type(samples) is not int or samples < 1):
@@ -267,7 +273,7 @@ def _worker_report(folder, engine, run, rounds, frozen, plan):
     try:
         raw = _read(folder / filename, rounds["plan_sha256"])
         host = raw.get("host")
-        if (raw.get("engine") != engine or raw.get("surface") != "node" or raw.get("output_format") != "svg"
+        if (product_label(raw) != label or raw.get("surface") != "node" or raw.get("output_format") != "svg"
                 or raw.get("process_lifecycle") != "fresh-per-scenario" or type(raw.get("samples")) is not int
                 or raw["samples"] != samples or not isinstance(host, dict) or host != reference.get("host")
                 or not all(host.get(k) for k in ("hostname", "platform", "arch"))
@@ -334,7 +340,7 @@ def _drawing_rows(audit, reference, samples):
     product = reference["product"]
     if not isinstance(audit.get("products"), list):
         return {}
-    matching = [p for p in audit["products"] if isinstance(p, dict) and p.get("engine") == product["engine"]]
+    matching = [p for p in audit["products"] if isinstance(p, dict) and product_label(p) == product_label(product)]
     if len(matching) == 1:
         proof = matching[0]
         if (all(proof.get(k) == v for k, v in product.items()) and proof.get("collector_sha256") == reference["collector_sha256"]
@@ -393,31 +399,74 @@ def _passed_drawing(proof, row, planned):
 
 
 def _round_workers(folder, order, collection, rounds, frozen, plan, audit, measurements):
-    """Visit each fresh worker once even when Merman is paired with multiple peers."""
-    passed = set()
-    for engine, run in collection.get("runs", {}).items():
-        if (engine not in NODE_PRODUCTS or order.count(engine) != 1
-                or (engine in collection.get("errors", {}) and not run.get("worker_failures"))):
+    """Verify each product once and collect its worker measurements and drawing checks."""
+    verified, passed = set(), set()
+    for label, run in collection.get("runs", {}).items():
+        if (order.count(label) != 1
+                or (label in collection.get("errors", {}) and not run.get("worker_failures"))):
             continue
-        raw = _worker_report(folder, engine, run, rounds, frozen, plan)
+        raw = _worker_report(folder, label, run, rounds, frozen, plan)
         if not raw:
             continue
-        drawings = _drawing_rows(audit, rounds["reference_identities"][engine], raw["samples"])
+        verified.add(label)
+        drawings = _drawing_rows(audit, rounds["reference_identities"][label], raw["samples"])
         for index, row in enumerate(raw["scenarios"]):
             name = row["id"]
             if _measured_worker(row, index, plan[name], raw):
-                measurements[name, engine].append(_worker_measurements(row, raw.get("init_scope")))
+                measurements[name, label].append(_worker_measurements(row, raw.get("init_scope")))
                 if _passed_drawing(drawings.get(name), row, plan[name]):
-                    passed.add((name, engine))
-    return passed
+                    passed.add((name, label))
+    return verified, passed
 
 
-def _startup(title, engine, workers, count):
+def _startup(title, engine, workers, count, *, variant=None):
     result = dict(scenario=title, engine=engine, workers=len(workers), planned_workers=count)
+    if variant is not None:
+        result["variant"] = variant
     for field in ("initialize_ms", "first_svg_ms", "init_through_first_svg_ms", "peak_rss_mib"):
         values = [w[field] for w in workers]
         result[field] = _duration(median(values)) if len(values) == count and None not in values else None
     return result
+
+
+def _variant_engines(directory, rounds, digest):
+    if rounds.get("variants") != "variants.json":
+        raise ValueError("missing frozen Node variant settings")
+    recipe = _read(directory / "variants.json", digest)
+    if (recipe.get("left") != rounds.get("left") or recipe.get("process_rounds") != rounds.get("process_rounds")
+            or recipe.get("samples") != rounds.get("warm_batches_per_worker")):
+        raise ValueError("frozen Node variant settings differ from the finalized rounds")
+    roster = recipe.get("variants")
+    identities = rounds.get("reference_identities", {})
+    if not isinstance(roster, list) or not isinstance(identities, dict):
+        raise ValueError("invalid frozen Node variant roster or finalized identities")
+    variants = {}
+    for row in roster:
+        if not isinstance(row, dict):
+            raise ValueError("invalid Node variant recipe")
+        label, engine = row.get("label"), row.get("engine")
+        if not valid_node_variant_label(label) or engine not in NODE_PRODUCTS or label in variants:
+            raise ValueError("invalid Node variant label or engine")
+        variants[label] = engine
+        options = row["options_json"]
+        if options is not None and (engine != "merman" or not isinstance(options, str) or not options.strip()):
+            raise ValueError("invalid Node variant Options JSON")
+        expected = dict(label=label, options_json=options)
+        if "site_layout" in row:
+            if engine != "merman" or row["site_layout"] not in LAYOUTS:
+                raise ValueError("invalid Node variant layout")
+            expected["site_layout"] = row["site_layout"]
+        if label in identities:
+            identity = identities[label]
+            product = identity.get("product") if isinstance(identity, dict) else None
+            if not isinstance(product, dict) or product.get("engine") != engine or product.get("variant") != expected:
+                raise ValueError("finalized Node variant identity differs from its frozen settings")
+    if (len(variants) < 2 or len({name.casefold() for name in variants}) != len(variants)
+            or next(iter(variants)) != recipe["left"]
+            or identities.keys() - variants.keys()
+            or rounds.get("comparisons", {}).keys() - (variants.keys() - {recipe["left"]})):
+        raise ValueError("inconsistent Node variant roster")
+    return variants
 
 
 def _load(directory, *, independent):
@@ -431,27 +480,34 @@ def _load(directory, *, independent):
         rounds = _read(directory / "process-rounds.json", digest) if independent else {}
     except FileNotFoundError:
         raise ValueError("missing finalized Node process rounds") from None
-    if "variants" in rounds:
-        raise ValueError("Node variant bundles are diagnostic. See their bundled summary.md.")
+    variants = _variant_engines(directory, rounds, digest) if "variants" in rounds else {}
+    named = bool(variants)
+    left = rounds.get("left") if independent else "merman"
     count = rounds.get("process_rounds") if independent else 1
-    if independent and (rounds.get("left") != "merman" or rounds.get("classification") != "diagnostic"
+    if independent and (left not in (variants or {"merman"}) or rounds.get("classification") != "diagnostic"
                         or type(count) is not int or count < 2 or count % 2):
-        raise ValueError("expected a balanced Merman Node process-round bundle")
+        raise ValueError("expected a balanced Node process-round bundle")
     frames = [_round(directory, rounds, index, digest) for index in range(1, count + 1)]
-    if any("variants" in coverage for _, coverage, _, _ in frames):
-        raise ValueError("Node variant bundles are diagnostic. See their bundled summary.md.")
-    selected = {"merman", *rounds.get("comparisons", {}), *rounds.get("reference_identities", {})}
-    for r in rounds.get("rounds", []):
-        selected.update(r.get("order", []))
-    for _, coverage, _, _ in frames:
-        collection = coverage.get("collection", {})
-        selected.update(collection.get("runs", {}))
-        selected.update(name for name in NODE_PRODUCTS if name in collection.get("errors", {})
-                        or f"merman-vs-{name}.json" in collection.get("errors", {}))
-        selected.update(c["right"]["engine"] for c in coverage.get("comparisons", []))
-    peers = [name for name in NODE_PRODUCTS if name in selected and name != "merman"]
+    if variants and any(order is not None and order != _process_order(list(variants), index)
+                        for index, (_, _, order, _) in enumerate(frames)):
+        raise ValueError("finalized Node variants are out of balanced order")
+    if not variants and any("variants" in coverage for _, coverage, _, _ in frames):
+        raise ValueError("use --node-rounds with the finalized Node variant bundle")
+    selected = set(variants)
+    if not named:
+        selected = {left, *rounds.get("comparisons", {}), *rounds.get("reference_identities", {})}
+        for r in rounds.get("rounds", []):
+            selected.update(r.get("order", []))
+        for _, coverage, _, _ in frames:
+            collection = coverage.get("collection", {})
+            selected.update(collection.get("runs", {}))
+            errors = collection.get("errors", {})
+            selected.update(name for name in NODE_PRODUCTS if name in errors or _comparison_file(left, name) in errors)
+            selected.update(product_label(c["right"]) for c in coverage.get("comparisons", []))
+    peers = [name for name in (variants or NODE_PRODUCTS) if name != left and name in selected]
     if not peers:
         raise ValueError("expected at least one scheduled Node peer")
+    comparison_files = {peer: _comparison_file(left, peer) for peer in peers}
     frozen = {}
     for name in ("package.json", "package-lock.json"):
         path = directory / "consumer" / name
@@ -476,11 +532,16 @@ def _load(directory, *, independent):
     for folder, coverage, order, issue in frames:
         collection = coverage.get("collection", {})
         runs, errors = collection.get("runs", {}), collection.get("errors", {})
+        entries = coverage.get("comparisons", [])
+        summaries = {product_label(s["right"]): s for s in entries}
+        if named and coverage and (coverage.get("variants") != "../../variants.json" or runs.keys() - selected
+                                   or summaries.keys() - comparison_files.keys() or len(summaries) != len(entries)):
+            issue = issue or "evidence-mismatch"
         incomplete |= bool(errors) or collection.get("status") != "complete"
         known_failure = errors or selected - runs.keys() or any("error" in r or r.get("worker_failures") for r in runs.values())
         if collection.get("status") not in ("complete", "incomplete") or (collection["status"] == "incomplete" and not known_failure):
             issue = issue or "collection-incomplete"
-        if unexplained or errors.keys() - {"drawing-audit.json", *selected, *(f"merman-vs-{p}.json" for p in peers)}:
+        if unexplained or errors.keys() - {"drawing-audit.json", *selected, *comparison_files.values()}:
             issue = issue or "collection-incomplete"
         audit_issue = "drawing-unchecked" if "drawing-audit.json" in errors else None
         audit = {}
@@ -489,7 +550,7 @@ def _load(directory, *, independent):
                 audit, audit_issue = _sidecar(folder / "drawing-audit.json", digest)
             else:
                 audit_issue = "evidence-mismatch"
-        passed_drawings = set()
+        verified, passed_drawings = set(), set()
         if independent and not issue:
             observer = audit.get("observer")
             if (isinstance(observer, dict) and isinstance(observer.get("browser"), str) and observer["browser"].strip()
@@ -497,26 +558,28 @@ def _load(directory, *, independent):
                 reference_observer = reference_observer or observer
             if not reference_observer or observer != reference_observer:
                 audit = {}
-            passed_drawings = _round_workers(folder, order, collection, rounds, frozen, plan, audit, measurements)
-        summaries = {s["right"]["engine"]: s for s in coverage.get("comparisons", [])}
+            verified, passed_drawings = _round_workers(folder, order, collection, rounds, frozen, plan, audit, measurements)
         cases = {}
         for peer in peers:
             problem = issue
             failures = set()
-            for engine in ("merman", peer):
+            for engine in (left, peer):
                 run = runs.get(engine, {})
                 if "package" not in run or "error" in run or (order is not None and order.count(engine) != 1):
                     problem = problem or "missing-product"
                 if engine in errors and not run.get("worker_failures"):
                     problem = problem or "collection-incomplete"
                 failures.update(f["id"] for f in run.get("worker_failures", []))
-            if f"merman-vs-{peer}.json" in errors:
+            filename = comparison_files[peer]
+            if filename in errors:
                 problem = problem or "collection-incomplete"
             summary = summaries.get(peer, {}) if not problem else {}
             compared = {}
             if summary:
                 warm_batches = warm_batches or summary["samples"]
-                compared, problem = _comparison(folder, peer, summary, digest, frozen, records, rounds, runs)
+                compared, problem = _comparison(folder / filename, left, peer, summary, digest, frozen, records, rounds, runs)
+                if named and (left not in verified or peer not in verified):
+                    problem = problem or "evidence-mismatch"
             else:
                 problem = problem or "missing-evidence"
             rows = {r["id"]: r for r in summary.get("scenarios", [])} if problem != "evidence-mismatch" else {}
@@ -527,7 +590,7 @@ def _load(directory, *, independent):
                 if independent:
                     checks = {"left": "passed", "right": "passed"}
                     case["visual_passed"] = (
-                        (name, "merman") in passed_drawings and (name, peer) in passed_drawings
+                        (name, left) in passed_drawings and (name, peer) in passed_drawings
                         and case["observation"].get("drawing_checks") == checks == comparison.get("drawing_checks")
                         and comparison.get("planned_requests") == s["requests"]
                         and not comparison.get("worker_failures") and not case["observation"].get("worker_failures")
@@ -536,18 +599,21 @@ def _load(directory, *, independent):
         observations.append(cases)
 
     products = {}
-    for engine in ("merman", *peers):
-        runs = [c.get("collection", {}).get("runs", {}).get(engine, {}) for _, c, _, _ in frames]
-        if engine not in records:
+    for label in (left, *peers):
+        runs = [c.get("collection", {}).get("runs", {}).get(label, {}) for _, c, _, _ in frames]
+        if label not in records:
             for (folder, _, _, _), run in zip(frames, runs):
                 if "package" in run and "error" not in run:
-                    raw, _ = _sidecar(folder / f"{engine}.json", digest)
-                    if raw.get("engine") != engine:
+                    raw, _ = _sidecar(folder / f"{label}.json", digest)
+                    if not raw or product_label(raw) != label:
                         raw = {}
-                    records[engine] = dict(product=raw or run, host=raw.get("host", {}), collector_sha256=raw.get("collector_sha256"))
+                    records[label] = dict(product=raw or run, host=raw.get("host", {}), collector_sha256=raw.get("collector_sha256"))
                     warm_batches = warm_batches or raw.get("samples")
                     break
-        products[engine] = _product(engine, records.get(engine, {}), runs, scenarios)
+        engine = variants.get(label, label)
+        products[label] = _product(engine, records.get(label, {}), runs, scenarios)
+        if named:
+            products[label]["engine"] = engine
     latency = []
     startup = []
     if independent:
@@ -556,9 +622,10 @@ def _load(directory, *, independent):
                 name = scenario["id"]
                 row = rounds.get("comparisons", {}).get(peer, {}).get(name, {})
                 latency.append(_latency(peer, _text(name) or f"scenario #{position}", scenario, row,
-                                        [cases[peer, name] for cases in observations]))
-        startup = [_startup(_text(s["id"]) or f"scenario #{i}", engine, measurements[s["id"], engine], count)
-                   for i, s in enumerate(scenarios, 1) for engine in ("merman", *peers)]
+                                        [cases[peer, name] for cases in observations], named=named))
+        startup = [_startup(_text(s["id"]) or f"scenario #{i}", variants.get(label, label),
+                            measurements[s["id"], label], count, variant=label if named else None)
+                   for i, s in enumerate(scenarios, 1) for label in (left, *peers)]
     incomplete |= any(case["reason"] in INCOMPLETE for cases in observations for case in cases.values())
     host = next((records[e]["host"] for e in products if records.get(e, {}).get("host")), {})
     planned = inventory["planned"]
@@ -569,9 +636,10 @@ def _load(directory, *, independent):
                 host=dict(os=_text(host.get("platform")), arch=_text(host.get("arch")),
                           cpu=_text(host.get("cpu"), r"[A-Za-z0-9 ().,@_+-]{1,160}"), runtime=_text(host.get("node"))),
                 hashes=dict(plan_sha256=digest, lock_sha256=frozen["package-lock.json"]),
-                products=products, coverage={p: _coverage(p, scenarios, observations) for p in peers},
+                products=products, coverage={p: _coverage(p, scenarios, observations, named=named) for p in peers},
                 process_rounds=count, warm_batches_per_worker=warm_batches if type(warm_batches) is int else None, latency=latency,
-                **({"startup": startup} if independent else {}))
+                **({"startup": startup} if independent else {}),
+                **({"baseline": left} if named else {}))
 
 
 def load_matrix(path: Path) -> dict:

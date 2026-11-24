@@ -18,6 +18,8 @@ if str(BENCH_DIR) not in sys.path:
     sys.path.insert(0, str(BENCH_DIR))
 
 from merman_bench import corpus as corpus_utils
+from merman_bench import memory as memory_driver
+from merman_bench import pipeline_fixtures
 
 try:
     from merman_bench import allocation as native_memory
@@ -766,6 +768,101 @@ class LaneRegistryContractsTest(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             resolve(corpus, "unknown/{fixture}")
+
+
+class PipelineFixtureContractsTest(unittest.TestCase):
+    def test_legacy_inventory_marker_checks_mirrored_embed_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            source = root / "fixtures" / "alpha.mmd"
+            embedded = (
+                root
+                / "crates"
+                / "merman"
+                / "benches"
+                / "support"
+                / "corpus"
+                / "alpha.mmd"
+            )
+            pipeline = root / "crates" / "merman" / "benches" / "pipeline.rs"
+            corpus = root / "tools" / "bench" / "corpus.json"
+            source.parent.mkdir(parents=True)
+            embedded.parent.mkdir(parents=True)
+            pipeline.parent.mkdir(parents=True, exist_ok=True)
+            corpus.parent.mkdir(parents=True)
+            source.write_text("flowchart LR\n  A --> B\n", encoding="utf-8")
+            embedded.write_bytes(source.read_bytes())
+            corpus.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "fixtures": [
+                            {
+                                "name": "alpha",
+                                "family": "flowchart",
+                                "size": "small",
+                                "source": "fixtures/alpha.mmd",
+                            }
+                        ],
+                        "lanes": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            pipeline.write_text(
+                "// Generated from tools/bench/corpus.json by tools/bench/pipeline_fixtures.py --write.\n"
+                "// End of generated pipeline fixtures.\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                set(pipeline_fixtures.sync_pipeline_fixtures(root, pipeline, write=True)),
+                {pipeline, embedded},
+            )
+
+            embedded.write_text("flowchart LR\n  A --> C\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, r"stale .*support[\\/]corpus"):
+                pipeline_fixtures.sync_pipeline_fixtures(root, pipeline)
+
+
+class NativeMemoryInputProvenanceContractsTest(unittest.TestCase):
+    def test_batch_input_provenance_rejects_changed_lane_input(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            path = root / "probe.rs"
+            path.write_bytes(b"first")
+            record = {
+                "path": "probe.rs",
+                "bytes": path.stat().st_size,
+                "sha256": memory_driver._sha256_path(path),
+            }
+            inputs = {
+                "workspace_manifest": record,
+                "package_manifest": record,
+                "cargo_lock": record,
+                "corpus": record,
+                "owner_contract": record,
+            }
+            frozen: dict[Path, dict[str, object]] = {}
+            memory_driver._merge_input_records(frozen, inputs, root=root)
+            path.write_bytes(b"second")
+            changed_record = {
+                **record,
+                "bytes": path.stat().st_size,
+                "sha256": memory_driver._sha256_path(path),
+            }
+            changed_inputs = {
+                **inputs,
+                "owner_contract": changed_record,
+            }
+            with self.assertRaisesRegex(
+                memory_driver.DriverContractError, "changed during batch preflight"
+            ):
+                memory_driver._merge_input_records(frozen, changed_inputs, root=root)
+            with self.assertRaisesRegex(
+                memory_driver.DriverContractError, "changed during run"
+            ):
+                memory_driver._verify_input_files_unchanged(root, list(frozen.values()))
 
 
 def validate_zero_work_smoke_report(report: Mapping[str, object]) -> None:
