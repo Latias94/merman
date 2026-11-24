@@ -22,6 +22,7 @@ pub(super) fn write_css(
     out: &mut String,
     id: SvgDiagramId<'_>,
     binding: &UsecaseCssBinding,
+    mermaid_parity: bool,
 ) -> Result<()> {
     let UsecaseCssBinding {
         main,
@@ -122,7 +123,10 @@ pub(super) fn write_css(
 #{id} [data-look="{look}"].node.usecase-element .usecase-business-marker{{stroke:{border}}}"#
         );
     }
-    binding.neo.write(&mut css, id)?;
+    // Shared Neo paint can reference resources emitted only for Mermaid parity.
+    if mermaid_parity {
+        binding.neo.write(&mut css, id)?;
+    }
     if let Some(font) = &binding.native_title_font {
         let _ = write!(
             css,

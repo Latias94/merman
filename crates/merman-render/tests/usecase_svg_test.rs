@@ -1921,7 +1921,7 @@ mod theme {
     use super::*;
     use merman_render::environment::TextMeasurementProfile;
     use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
-    use merman_render::theme::{NativeTheme, ThemeCompiler};
+    use merman_render::theme::{BuiltinPreset, NativeTheme, ThemeCompiler};
     use std::sync::Mutex;
 
     #[derive(Default)]
@@ -2035,6 +2035,68 @@ mod theme {
                 ellipse.attribute("style"),
                 Some("stroke:#ccddee !important;stroke-WIDTH:3px !important;")
             );
+        }
+    }
+
+    #[test]
+    fn usecase_native_theme_keeps_boundary_strokes_with_site_neo() {
+        let source = r#"usecase-beta
+systemBoundary Plain(Plain)@{type:package}
+A(Alpha)
+end
+systemBoundary Branded(Branded)
+B(Beta)
+end
+style Branded stroke:#123456
+"#;
+        let theme = ThemeCompiler::new()
+            .compile_preset(BuiltinPreset::Studio, None)
+            .unwrap();
+        let border = theme.roles().stroke_border.first_color().to_string();
+        let session = RenderEnvironment::deterministic()
+            .begin_session_with_native_theme(NativeTheme::new(theme))
+            .unwrap();
+        let (_, svg) = render_config_with_session(
+            source,
+            json!({"layout":"dagre", "theme":"neo", "look":"neo", "htmlLabels":false}),
+            session,
+        );
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        assert_eq!(
+            stylesheet_property(
+                &document,
+                "#usecase-test .system-boundary rect.boundary-body",
+                "stroke"
+            )
+            .as_deref(),
+            Some(border.as_str())
+        );
+        assert_eq!(
+            stylesheet_property(
+                &document,
+                r#"#usecase-test [data-look="neo"].cluster rect"#,
+                "stroke"
+            ),
+            None
+        );
+        for (id, style) in [("Plain", ""), ("Branded", "stroke:#123456 !important;")] {
+            let boundary = document
+                .descendants()
+                .find(|node| node.attribute("data-usecase-id") == Some(id))
+                .unwrap();
+            assert_eq!(boundary.attribute("data-look"), Some("neo"));
+            let body = boundary
+                .children()
+                .find(|node| {
+                    node.has_tag_name("rect")
+                        && node.attribute("class").is_some_and(|classes| {
+                            classes
+                                .split_ascii_whitespace()
+                                .any(|class| class == "boundary-body")
+                        })
+                })
+                .unwrap();
+            assert_eq!(body.attribute("style"), Some(style));
         }
     }
 

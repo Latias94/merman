@@ -463,7 +463,8 @@ pub(crate) fn render_usecase_diagram_svg_model(
             escape_xml(description)
         );
     }
-    theme::write_css(&mut out, diagram_id, css_binding)?;
+    let mermaid_parity = native.is_none();
+    theme::write_css(&mut out, diagram_id, css_binding, mermaid_parity)?;
     // Mermaid emits marker wrappers that are observable in strict SVG DOM parity.
     out.push_str("<g>");
     if !uses_canonical {
@@ -980,7 +981,7 @@ pub(crate) fn render_usecase_diagram_svg_model(
         out.push_str("</g>");
     }
     out.push_str("</g></g></g>");
-    if native.is_none() {
+    if mermaid_parity {
         css_binding
             .look_defs
             .write_shadow_defs(&mut out, diagram_id)?;
