@@ -144,11 +144,12 @@ impl From<FontStyle> for fontdb::Style {
 pub struct Font {
     pub(crate) families: Vec<FontFamily>,
     pub(crate) language: Option<String>,
-    pub(crate) style: FontStyle,
-    pub(crate) stretch: FontStretch,
-    pub(crate) weight: u16,
+    pub(crate) style: Option<FontStyle>,
+    pub(crate) stretch: Option<FontStretch>,
+    pub(crate) weight: Option<u16>,
     pub(crate) variations: Vec<FontVariation>,
-    pub(crate) implicit_weight_axis: bool,
+    // Authored settings precede axes derived from CSS font properties.
+    pub(crate) explicit_axis_count: usize,
 }
 
 impl Font {
@@ -166,17 +167,22 @@ impl Font {
 
     /// A font style.
     pub fn style(&self) -> FontStyle {
-        self.style
+        self.style.unwrap_or_default()
     }
 
     /// A font stretch.
     pub fn stretch(&self) -> FontStretch {
-        self.stretch
+        self.stretch.unwrap_or_default()
     }
 
     /// A font width.
     pub fn weight(&self) -> u16 {
-        self.weight
+        self.weight.unwrap_or(400)
+    }
+
+    #[cfg(any(feature = "text", feature = "writer"))]
+    pub(crate) fn explicit_variations(&self) -> &[FontVariation] {
+        &self.variations[..self.explicit_axis_count]
     }
 
     /// Font variation settings for variable fonts.

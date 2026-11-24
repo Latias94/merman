@@ -249,7 +249,7 @@ impl FontResolver<'_> {
             // Use the default font as fallback.
             name_list.push(fontdb::Family::Serif);
 
-            let stretch = match font.stretch {
+            let stretch = match font.stretch() {
                 FontStretch::UltraCondensed => fontdb::Stretch::UltraCondensed,
                 FontStretch::ExtraCondensed => fontdb::Stretch::ExtraCondensed,
                 FontStretch::Condensed => fontdb::Stretch::Condensed,
@@ -261,7 +261,7 @@ impl FontResolver<'_> {
                 FontStretch::UltraExpanded => fontdb::Stretch::UltraExpanded,
             };
 
-            let style = match font.style {
+            let style = match font.style() {
                 FontStyle::Normal => fontdb::Style::Normal,
                 FontStyle::Italic => fontdb::Style::Italic,
                 FontStyle::Oblique => fontdb::Style::Oblique,
@@ -269,7 +269,7 @@ impl FontResolver<'_> {
 
             let query = fontdb::Query {
                 families: &name_list,
-                weight: fontdb::Weight(font.weight),
+                weight: fontdb::Weight(font.weight()),
                 stretch,
                 style,
             };

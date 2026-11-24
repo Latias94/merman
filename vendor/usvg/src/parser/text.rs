@@ -486,8 +486,9 @@ fn convert_font(node: SvgNode, state: &converter::State) -> Font {
     let style: Option<FontStyle> = node.find_attribute(AId::FontStyle);
     let stretch = conv_font_stretch(node);
     let authored_weight = resolve_font_weight(node);
-    let weight = authored_weight.unwrap_or(400);
     let mut variations = parse_font_variation_settings(node);
+
+    let explicit_axis_count = variations.len();
 
     // Explicit variation settings override the axes derived from font properties.
     let mut add_axis = |tag, value| {
@@ -495,9 +496,8 @@ fn convert_font(node: SvgNode, state: &converter::State) -> Font {
         if missing {
             variations.push(FontVariation::new(tag, value));
         }
-        missing
     };
-    let implicit_weight_axis = add_axis(*b"wght", weight as f32) && authored_weight.is_none();
+    add_axis(*b"wght", authored_weight.unwrap_or(400) as f32);
 
     if let Some(stretch) = stretch {
         let wdth = match stretch {
@@ -554,11 +554,11 @@ fn convert_font(node: SvgNode, state: &converter::State) -> Font {
             .or(state.opt.text_fallback.language.as_deref())
             .filter(|tag| crate::text::is_language_tag(tag))
             .map(str::to_ascii_lowercase),
-        style: style.unwrap_or_default(),
-        stretch: stretch.unwrap_or_default(),
-        weight,
+        style,
+        stretch,
+        weight: authored_weight,
         variations,
-        implicit_weight_axis,
+        explicit_axis_count,
     }
 }
 

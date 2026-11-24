@@ -20,9 +20,9 @@ use super::cache::{FontCache, LoadedInstance};
 use crate::tree::BBox;
 use crate::{
     AlignmentBaseline, ApproxZeroUlps, BaselineShift, DominantBaseline, Fill, FillRule, Font,
-    FontInstance, FontOpticalSizing, FontVariation, GlyphId, LengthAdjust, PaintOrder, Path,
-    ShapeRendering, Stroke, Text, TextAnchor, TextChunk, TextDecorationStyle, TextFlow, TextPath,
-    TextSpan, WritingMode,
+    FontInstance, FontOpticalSizing, FontStyle, FontVariation, GlyphId, LengthAdjust, PaintOrder,
+    Path, ShapeRendering, Stroke, Text, TextAnchor, TextChunk, TextDecoration, TextDecorationStyle,
+    TextFlow, TextPath, TextSpan, WritingMode,
 };
 
 /// A glyph that has already been positioned correctly.
@@ -194,16 +194,18 @@ impl GlyphCluster {
         self.ascent - self.descent
     }
 
-    fn glyph_transform(&self) -> Transform {
+    fn inline_transform(&self) -> Transform {
         // Scale along the layout axis around the placed origin, before the character's
         // rotation changes that axis in glyph space. The path tangent remains in effect.
         let mut scale = Transform::from_scale(self.glyph_scale_x, 1.0);
         if self.glyph_scale_x != 1.0 && self.rotation != 0.0 {
             scale = scale.pre_rotate(self.rotation).post_rotate(-self.rotation);
         }
-        self.transform
-            .pre_concat(scale)
-            .pre_concat(self.path_transform)
+        self.transform.pre_concat(scale)
+    }
+
+    fn glyph_transform(&self) -> Transform {
+        self.inline_transform().pre_concat(self.path_transform)
     }
 }
 
@@ -402,8 +404,6 @@ fn append_chunk_geometry(
             None => continue,
         };
 
-        let decoration_spans = collect_decoration_spans(span, &chunk.text, clusters);
-
         let mut span_ts = text_ts;
         span_ts = span_ts.pre_translate(x, y);
         if let TextFlow::Linear = chunk.text_flow {
@@ -415,55 +415,28 @@ fn append_chunk_geometry(
             span_ts = span_ts.pre_translate(0.0, shift);
         }
 
-        let mut underline = None;
-        let mut overline = None;
-        let mut line_through = None;
-
-        if let Some(decoration) = span.decoration.underline.clone() {
-            // TODO: No idea what offset should be used for top-to-bottom layout.
-            // There is
-            // https://www.w3.org/TR/css-text-decor-3/#text-underline-position-property
-            // but it doesn't go into details.
-            let offset = match text_node.writing_mode {
-                WritingMode::LeftToRight => -font.underline_position(),
-                WritingMode::TopToBottom => font.height() / 2.0,
-            };
-
-            if let Some(path) =
-                convert_decoration(offset, span, font, decoration, &decoration_spans, span_ts)
-            {
+        let mut decoration =
+            |offset, style: fn(&TextDecoration) -> Option<&TextDecorationStyle>| {
+                let paint = style(&span.decoration)?.clone();
+                let runs = collect_decoration_spans(span, chunk, clusters, style);
+                let path = convert_decoration(offset, span, font, paint, &runs, span_ts)?;
                 geometry.bbox = geometry.bbox.expand(path.data.bounds());
-                underline = Some(Box::new(path));
-            }
-        }
-
-        if let Some(decoration) = span.decoration.overline.clone() {
-            let offset = match text_node.writing_mode {
-                WritingMode::LeftToRight => -font.ascent(),
-                WritingMode::TopToBottom => -font.height() / 2.0,
+                Some(Box::new(path))
             };
-
-            if let Some(path) =
-                convert_decoration(offset, span, font, decoration, &decoration_spans, span_ts)
-            {
-                geometry.bbox = geometry.bbox.expand(path.data.bounds());
-                overline = Some(Box::new(path));
+        let (underline_offset, overline_offset, strike_offset) = match text_node.writing_mode {
+            WritingMode::LeftToRight => (
+                -font.underline_position(),
+                -font.ascent(),
+                -font.line_through_position(),
+            ),
+            WritingMode::TopToBottom => {
+                let half_height = font.height() / 2.0;
+                (half_height, -half_height, 0.0)
             }
-        }
-
-        if let Some(decoration) = span.decoration.line_through.clone() {
-            let offset = match text_node.writing_mode {
-                WritingMode::LeftToRight => -font.line_through_position(),
-                WritingMode::TopToBottom => 0.0,
-            };
-
-            if let Some(path) =
-                convert_decoration(offset, span, font, decoration, &decoration_spans, span_ts)
-            {
-                geometry.bbox = geometry.bbox.expand(path.data.bounds());
-                line_through = Some(Box::new(path));
-            }
-        }
+        };
+        let underline = decoration(underline_offset, TextDecoration::underline);
+        let overline = decoration(overline_offset, TextDecoration::overline);
+        let line_through = decoration(strike_offset, TextDecoration::line_through);
 
         let mut fill = span.fill.clone();
         if let Some(ref mut fill) = fill {
@@ -593,20 +566,16 @@ fn convert_span(
 
 fn collect_decoration_spans(
     span: &TextSpan,
-    text: &str,
+    chunk: &TextChunk,
     clusters: &[GlyphCluster],
+    style: fn(&TextDecoration) -> Option<&TextDecorationStyle>,
 ) -> Vec<DecorationSpan> {
+    let text = &chunk.text;
     let mut spans = Vec::new();
-    if span.decoration.underline.is_none()
-        && span.decoration.overline.is_none()
-        && span.decoration.line_through.is_none()
-    {
-        return spans;
-    }
-
     let mut current: Option<DecorationSpan> = None;
     let mut advance = 0.0;
-    for cluster in clusters {
+    let mut clusters = clusters.iter().peekable();
+    while let Some(cluster) = clusters.next() {
         let start = cluster.byte_idx.value();
         let end = cluster.byte_end;
         let covered_start = span.start.max(start);
@@ -617,17 +586,47 @@ fn collect_decoration_spans(
             spans.extend(current.take());
             advance = 0.0;
         }
+        // Widths and advances already include lengthAdjust. For rotated characters,
+        // put them back in local coordinates before applying the same inline scale as ink.
+        let rotated = cluster.rotation != 0.0;
+        let (transform, scale) = if rotated {
+            (cluster.inline_transform(), cluster.glyph_scale_x)
+        } else {
+            (cluster.transform, 1.0)
+        };
         if whole {
             let decoration = current.get_or_insert(DecorationSpan {
                 width: 0.0,
-                transform: cluster.transform,
+                transform,
             });
-            // An outgoing length adjustment moves the next origin outside this span.
-            let width = cluster
-                .text_length_extent
-                .map_or(cluster.advance, |_| cluster.width);
-            decoration.width = decoration.width.max(advance + width);
+            let mut width = cluster.advance;
+            if cluster.text_length_extent.is_some() {
+                // A paint boundary can split a continuous decoration. Include the
+                // adjusted gap only when this line continues into the next visual cluster.
+                let continues = clusters.peek().is_some_and(|next| {
+                    let edge = if next.rtl {
+                        next.byte_end.saturating_sub(1)
+                    } else {
+                        next.byte_idx.value()
+                    };
+                    next.visible
+                        && !next.has_relative_shift
+                        && !rotated
+                        && chunk_span_at(chunk, ByteIndex::new(edge))
+                            .is_some_and(|s| s.visible && style(&s.decoration).is_some())
+                });
+                width = if continues {
+                    width.max(cluster.width)
+                } else {
+                    cluster.width
+                };
+            }
+            decoration.width = decoration.width.max((advance + width) / scale);
             advance += cluster.advance;
+            if rotated {
+                spans.extend(current.take());
+                advance = 0.0;
+            }
         } else if covered {
             // A ligature may be shared by several paint spans. Divide its inline
             // advance among its source characters in visual order.
@@ -640,12 +639,10 @@ fn collect_decoration_spans(
             } else {
                 &text[start..covered_start]
             };
-            let unit = cluster.width / characters.chars().count() as f32;
+            let unit = cluster.width / scale / characters.chars().count() as f32;
             spans.push(DecorationSpan {
                 width: unit * covered.chars().count() as f32,
-                transform: cluster
-                    .transform
-                    .pre_translate(unit * before.chars().count() as f32, 0.0),
+                transform: transform.pre_translate(unit * before.chars().count() as f32, 0.0),
             });
         }
     }
@@ -1334,17 +1331,23 @@ fn apply_length_adjust(text: &Text, unpositioned: &mut [UnpositionedChunk]) {
         // The final cluster's outgoing gap is outside this element's typographic extent.
         let mut left = f32::INFINITY;
         let mut right = f32::NEG_INFINITY;
+        let inline_advance =
+            |range: &[LengthCluster<'_>]| range.iter().map(|c| c.cluster.advance).sum::<f32>();
         let mut advance = 0.0;
+        let mut previous = visual[0];
         for &i in &visual {
+            // An RTL run can place nonmembers between two members of this element.
+            advance += inline_advance(&clusters[previous..i]);
+            previous = i;
             let cluster = &clusters[i];
             let start = advance + cluster.shift;
             let end = start + cluster.extent();
             left = left.min(start).min(end);
             right = right.max(start).max(end);
-            advance += cluster.cluster.advance;
         }
         let width = right - left;
 
+        let outgoing_gap = clusters[last].cluster.advance - clusters[last].extent();
         if adjustment.mode == LengthAdjust::Spacing {
             // A descendant with its own textLength contributes one spacing unit.
             let count = visual
@@ -1372,8 +1375,8 @@ fn apply_length_adjust(text: &Text, unpositioned: &mut [UnpositionedChunk]) {
                 let (index, next) = (pair[0], pair[1]);
                 let end_unit = clusters[index].ends_unit_before(&clusters[next]);
                 let gap = clusters[next].shift - clusters[index].shift;
+                unit_advance += inline_advance(&clusters[index..next]) + gap;
                 let cluster = &mut clusters[index];
-                unit_advance += cluster.cluster.advance + gap;
                 if cluster.owner.is_none() {
                     cluster.scale_glyph(factor);
                 }
@@ -1389,7 +1392,7 @@ fn apply_length_adjust(text: &Text, unpositioned: &mut [UnpositionedChunk]) {
                 cluster.trailing_space += (unit_advance + cluster.extent()) * (factor - 1.0);
             }
         }
-        clusters[last].cluster.advance = clusters[last].extent();
+        clusters[last].cluster.advance = clusters[last].extent() + outgoing_gap;
         for &i in &visual {
             let cluster = &mut clusters[i];
             cluster.cluster.text_length_extent = Some(cluster.extent());
@@ -1648,11 +1651,26 @@ fn resolve_variations(
     let mut effective = Vec::new();
     for axis in face.axes().iter() {
         let tag = axis.tag().to_be_bytes();
-        let authored = if tag == *b"wght" && span.font.implicit_weight_axis {
-            None
-        } else {
-            axis_value(&span.font.variations, tag)
-        };
+        let explicit = axis_value(span.font.explicit_variations(), tag);
+        let authored = explicit.or_else(|| {
+            // An italic request may be fulfilled by a slant-only face (and vice versa).
+            // Keep its selected native angle when the preferred style axis is absent.
+            let use_native = match (&tag, span.font.style) {
+                (b"slnt", Some(FontStyle::Italic)) => {
+                    face.axes().get_by_tag(Tag::new(b"ital")).is_none()
+                }
+                (b"ital", Some(FontStyle::Oblique)) => {
+                    face.axes().get_by_tag(Tag::new(b"slnt")).is_none()
+                }
+                (b"wght", _) => span.font.weight.is_none(),
+                _ => false,
+            };
+            if use_native {
+                None
+            } else {
+                axis_value(&span.font.variations[span.font.explicit_axis_count..], tag)
+            }
+        });
         let value = authored.or_else(|| {
             if tag == *b"opsz" && span.font_optical_sizing == FontOpticalSizing::Auto {
                 Some(size)

@@ -1493,18 +1493,20 @@ fn write_span(
         xml.write_svg_attribute(AId::FontFamily, &families);
     }
 
-    match span.font.style {
-        FontStyle::Normal => {}
-        FontStyle::Italic => xml.write_svg_attribute(AId::FontStyle, "italic"),
-        FontStyle::Oblique => xml.write_svg_attribute(AId::FontStyle, "oblique"),
+    if let Some(style) = span.font.style {
+        let name = match style {
+            FontStyle::Normal => "normal",
+            FontStyle::Italic => "italic",
+            FontStyle::Oblique => "oblique",
+        };
+        xml.write_svg_attribute(AId::FontStyle, name);
+    }
+    if let Some(weight) = span.font.weight {
+        xml.write_svg_attribute(AId::FontWeight, &weight);
     }
 
-    if span.font.weight != 400 {
-        xml.write_svg_attribute(AId::FontWeight, &span.font.weight);
-    }
-
-    if span.font.stretch != FontStretch::Normal {
-        let name = match span.font.stretch {
+    if let Some(stretch) = span.font.stretch {
+        let name = match stretch {
             FontStretch::Condensed => "condensed",
             FontStretch::ExtraCondensed => "extra-condensed",
             FontStretch::UltraCondensed => "ultra-condensed",
@@ -1513,11 +1515,29 @@ fn write_span(
             FontStretch::SemiExpanded => "semi-expanded",
             FontStretch::ExtraExpanded => "extra-expanded",
             FontStretch::UltraExpanded => "ultra-expanded",
-            FontStretch::Normal => unreachable!(),
+            FontStretch::Normal => "normal",
         };
         xml.write_svg_attribute(AId::FontStretch, name);
     }
 
+    if span.font_optical_sizing == FontOpticalSizing::None {
+        xml.write_svg_attribute(AId::FontOpticalSizing, "none");
+    }
+    if !span.font.explicit_variations().is_empty() {
+        let settings = span
+            .font
+            .explicit_variations()
+            .iter()
+            .map(|axis| {
+                let tag = String::from_utf8_lossy(&axis.tag);
+                let quote = if tag.contains('\'') { '"' } else { '\'' };
+                let tag = tag.replace('&', "&amp;").replace('<', "&lt;");
+                format!("{quote}{tag}{quote} {}", axis.value)
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        xml.write_svg_attribute(AId::FontVariationSettings, &settings);
+    }
     xml.write_svg_attribute(AId::FontSize, &span.font_size);
 
     xml.write_visibility(span.visible);

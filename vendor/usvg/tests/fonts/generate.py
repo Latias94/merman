@@ -9,6 +9,7 @@ from fontTools.fontBuilder import FontBuilder
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTCollection, TTFont
 from fontTools.varLib import build
+from fontTools.varLib.instancer import instantiateVariableFont
 from fontTools.varLib.featureVars import addFeatureVariations
 
 
@@ -149,6 +150,13 @@ def main():
         collection = TTCollection()
         collection.fonts = [TTFont(Path(temp) / "master-0.ttf", recalcTimestamp=False), variable]
         collection.save(Path(__file__).with_name("instance-transport.ttc"))
+
+        # A physical face whose only style axis is slnt.
+        pins = {tag: default for _, tag, _, default, _ in AXES if tag != "slnt"}
+        pins["wght"] = 400
+        slanted = instantiateVariableFont(variable, pins)
+        slanted.recalcTimestamp = False
+        slanted.save(Path(__file__).with_name("slant-only.ttf"))
 
 
 if __name__ == "__main__":

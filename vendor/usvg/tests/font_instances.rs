@@ -185,6 +185,99 @@ fn effective_axes_size_and_metrics_match_explicit_coordinates() {
 }
 
 #[test]
+fn preserve_text_keeps_authored_axes_with_the_same_native_selector() {
+    let mut options = Options::default();
+    let id = variable_face(options.fontdb_mut());
+    options.set_font_instances(
+        Some(Box::new(move |_, _| {
+            Some((
+                id,
+                1.0,
+                vec![
+                    axis(b"wght", 850.0),
+                    axis(b"wdth", 75.0),
+                    axis(b"ital", 1.0),
+                    axis(b"slnt", -12.0),
+                    axis(b"opsz", 9.0),
+                ],
+            ))
+        })),
+        None,
+    );
+    let tree = render(
+        &options,
+        r#"font-size='40' font-optical-sizing='none' font-variation-settings="'wght' 900, 'CSTM' 1""#,
+        r#"AB<tspan style="font-weight:normal;font-style:normal;font-stretch:normal;font-variation-settings:normal">AX</tspan>X"#,
+    );
+    for use_single_quote in [false, true] {
+        let svg = tree.to_string(&usvg::WriteOptions {
+            preserve_text: true,
+            use_single_quote,
+            ..Default::default()
+        });
+        let restored = Tree::from_str(&svg, &options).unwrap();
+        let axes = |t: &Tree| {
+            text(t)
+                .layouted()
+                .iter()
+                .map(|s| s.variations.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(axes(&tree), axes(&restored), "{svg}");
+        assert_eq!(
+            tree.to_string(&Default::default()),
+            restored.to_string(&Default::default()),
+            "{svg}"
+        );
+    }
+}
+
+#[test]
+fn italic_keeps_the_native_angle_of_a_slant_only_face() {
+    let mut options = Options::default();
+    let source = include_bytes!("fonts/slant-only.ttf").as_slice();
+    let id = options
+        .fontdb_mut()
+        .load_font_source(Source::Binary(Arc::new(source)))[0];
+    options.set_font_instances(
+        Some(Box::new(move |_, _| {
+            Some((id, 1.0, vec![axis(b"slnt", -12.0)]))
+        })),
+        None,
+    );
+    for (attrs, angle) in [
+        ("font-style='italic'", -12.0),
+        (
+            r#"font-style='italic' font-variation-settings="'slnt' -6""#,
+            -6.0,
+        ),
+        (
+            r#"font-style='italic' font-variation-settings="'slnt' 0""#,
+            0.0,
+        ),
+        ("font-style='normal'", 0.0),
+    ] {
+        let tree = render(&options, attrs, "AB");
+        let control = render(
+            &options,
+            &format!(r#"font-variation-settings="'slnt' {angle}""#),
+            "AB",
+        );
+        let axes = &text(&tree).layouted()[0].variations;
+        assert_eq!(
+            axes.iter()
+                .find(|a| a.tag == *b"slnt")
+                .map_or(0.0, |a| a.value),
+            angle
+        );
+        assert_eq!(
+            tree.to_string(&Default::default()),
+            control.to_string(&Default::default())
+        );
+    }
+}
+
+#[test]
 fn fallback_retries_the_same_face_and_keeps_distinct_instances_apart() {
     let mut options = Options::default();
     let id = variable_face(options.fontdb_mut());
@@ -790,6 +883,113 @@ fn assert_preserved_text_geometry(tree: &Tree, options: &Options) -> String {
     };
     assert_eq!(geometry(&reparsed), geometry(tree), "{svg}");
     svg
+}
+
+#[test]
+fn adjusted_decoration_bridges_only_continuing_lines() {
+    let mut options = Options::default();
+    let id = static_face(options.fontdb_mut());
+    options.font_resolver.select_font = Box::new(move |_, _| Some(id));
+    let tree = render(
+        &options,
+        "font-size='50' textLength='120' text-decoration='underline'",
+        "A<tspan text-decoration='overline'>B</tspan>CD",
+    );
+    let spans = text(&tree).layouted();
+    for (span, (left, right)) in spans
+        .iter()
+        .zip([(20.0, 53.0), (53.0, 86.0), (86.0, 140.0)])
+    {
+        let bbox = span.underline.as_ref().unwrap().bounding_box().unwrap();
+        assert_near(bbox.left(), left);
+        assert_near(bbox.right(), right);
+    }
+    let overline = spans[1].overline.as_ref().unwrap().bounding_box().unwrap();
+    assert_near(overline.left(), 53.0);
+    assert_near(overline.right(), 74.0);
+}
+
+#[test]
+fn vertical_overline_is_half_a_font_height_from_the_strike() {
+    let mut options = Options::default();
+    let id = static_face(options.fontdb_mut());
+    options.font_resolver.select_font = Box::new(move |_, _| Some(id));
+    let tree = render(
+        &options,
+        "font-size='50' writing-mode='vertical-rl' text-decoration='overline line-through underline'",
+        "W",
+    );
+    let span = &text(&tree).layouted()[0];
+    let left =
+        |line: &Option<Box<usvg::Path>>| line.as_ref().unwrap().bounding_box().unwrap().left();
+    // This face has an ascender of 800 and a descender of -200 at 1000 units/em.
+    assert_near(left(&span.overline) - left(&span.line_through), 25.0);
+    assert_near(left(&span.line_through) - left(&span.underline), 25.0);
+}
+
+#[test]
+fn rotated_decoration_scales_inline_and_ends_before_an_upright_glyph() {
+    let mut options = Options::default();
+    let id = static_face(options.fontdb_mut());
+    options.font_resolver.select_font = Box::new(move |_, _| Some(id));
+    let bounds = |tree: &Tree| {
+        text(tree).layouted()[0]
+            .underline
+            .as_ref()
+            .unwrap()
+            .bounding_box()
+            .unwrap()
+    };
+    let attrs = "font-size='50' rotate='90' text-decoration='underline'";
+    let plain = bounds(&render(&options, attrs, "W"));
+    let scaled = bounds(&render(
+        &options,
+        &format!("{attrs} textLength='100' lengthAdjust='spacingAndGlyphs'"),
+        "W",
+    ));
+    assert_near(scaled.width(), 4.0 * plain.width());
+    assert_near(scaled.height(), plain.height());
+    assert_near(scaled.left() - 20.0, 4.0 * (plain.left() - 20.0));
+    let mixed = bounds(&render(
+        &options,
+        "font-size='50' rotate='90 0' text-decoration='underline'",
+        "WX",
+    ));
+    assert_near(mixed.left(), plain.left());
+    assert_near(mixed.bottom(), plain.bottom());
+    assert_near(mixed.right(), 70.0);
+}
+
+#[test]
+fn text_length_preserves_external_tracking_and_measures_disjoint_visual_ranges() {
+    let mut options = Options::default();
+    let id = static_face(options.fontdb_mut());
+    options.font_resolver.select_font = Box::new(move |_, _| Some(id));
+    for mode in ["spacing", "spacingAndGlyphs"] {
+        let tracked = render(
+            &options,
+            "font-size='50' letter-spacing='8'",
+            &format!("<tspan textLength='21' lengthAdjust='{mode}'>A</tspan>BX"),
+        );
+        let x: Vec<_> = glyphs(&tracked).map(|g| g.transform().tx).collect();
+        assert_eq!(x, [20.0, 49.0, 78.0]);
+        let control = render(&options, "font-size='50'", "A<tspan>Bא</tspan>בגX");
+        let bidi = render(
+            &options,
+            "font-size='50'",
+            &format!("A<tspan textLength='96' lengthAdjust='{mode}'>Bא</tspan>בגX"),
+        );
+        assert_eq!(
+            control.to_string(&Default::default()),
+            bidi.to_string(&Default::default())
+        );
+    }
+    let bidi = render(
+        &options,
+        "font-size='50'",
+        "A<tspan textLength='100' lengthAdjust='spacingAndGlyphs'>Bא</tspan>בגX",
+    );
+    assert_near(glyphs(&bidi).last().unwrap().transform().tx, 141.0);
 }
 
 #[test]
