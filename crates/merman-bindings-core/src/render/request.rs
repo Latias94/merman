@@ -830,27 +830,19 @@ fn classify_render_error(
             )
         }
         #[cfg(feature = "native-fonts")]
-        merman::RenderError::NativeFont(
-            error @ merman::svg::export::NativeFontError::Limit {
-                resource,
-                actual,
-                limit,
-            },
-        ) => BindingError::resource_limit(
-            "native-font-measurement",
-            match resource {
-                "label-bytes" => "native_font_label_bytes",
-                "measurements" => "native_font_measurements",
-                _ => "native_font_resources",
-            },
-            u64::try_from(actual).unwrap_or(u64::MAX),
-            u64::try_from(limit).unwrap_or(u64::MAX),
-            profile.id(),
-            error.to_string(),
-        ),
-        #[cfg(feature = "native-fonts")]
         merman::RenderError::NativeFont(error) => {
-            BindingError::new(BindingStatus::RenderError, error.to_string())
+            if let Some((id, actual, limit)) = error.resource_limit() {
+                BindingError::resource_limit(
+                    "native-font-measurement",
+                    id,
+                    actual,
+                    limit,
+                    profile.id(),
+                    error.to_string(),
+                )
+            } else {
+                BindingError::new(BindingStatus::RenderError, error.to_string())
+            }
         }
         merman::RenderError::Cancelled(err) => BindingError::cancelled(err),
         merman::RenderError::Parse(err) => crate::common::parse_error(err),

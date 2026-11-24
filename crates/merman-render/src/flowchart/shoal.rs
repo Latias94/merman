@@ -81,6 +81,7 @@ fn paint_clearance(
 pub(crate) fn layout(
     model: &FlowchartModel,
     render_context: &FlowchartRenderContext,
+    class_defs: &super::FlowchartClassDefinitions<'_>,
     config: &PresentationConfig,
     execution: &LayoutExecution<'_>,
     labels: Option<&FlowchartSvgLabelSidecarBuilder>,
@@ -91,6 +92,7 @@ pub(crate) fn layout(
     let view = FlowchartRenderModelRef::new(model, render_context);
     let measurement = FlowchartMeasurement::new(
         view,
+        class_defs,
         config,
         execution.text_measurer(),
         execution.math_renderer(),
@@ -206,7 +208,6 @@ fn measure(
     let config_view = FlowchartConfigView::new(config);
     let curve = config_view.effective_edge_interpolation(&view, false);
     let look_is_neo = crate::config::mermaid_config_diagram_look(config).is_neo();
-    let wrapping_width = config_view.render_wrapping_width();
     let theme_radius = crate::config::config_f64(config, &["themeVariables", "radius"])
         .map(|r| (r.max(0.), r.max(0.)));
     let process_radius = (look_is_neo
@@ -268,6 +269,7 @@ fn measure(
             direction_name(dir),
             |units| work.charge_adapter(units),
         )?;
+        let geometry = size.geometry;
         let layout_node = layout_node(&node.id, size);
         let rectangle_radii = match shape {
             super::FlowchartShape::Process => process_radius,
@@ -279,7 +281,7 @@ fn measure(
             &layout_node,
             measurement.settings.node_padding,
             look_is_neo,
-            wrapping_width,
+            geometry,
             rectangle_radii,
         )?;
         if fit_width && shape == super::FlowchartShape::ForkJoin {
@@ -312,6 +314,7 @@ fn measure(
                     width: metrics.width,
                     height: metrics.height,
                 },
+                geometry: None,
             },
         );
         let radius = if view.keyword == "agentflow-beta" {

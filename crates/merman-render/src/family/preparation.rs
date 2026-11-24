@@ -26,16 +26,25 @@ fn prepare_flowchart_artifact<'parsed, L>(
     effective_config: &merman_model::presentation::PresentationConfig,
     typography_config_ownership: crate::flowchart::FlowchartTypographyConfigOwnership,
     work_meter: Arc<crate::resources::OperationWorkMeter>,
-    edge_style_plan: crate::svg::FlowchartEdgeStylePlan,
+    swimlane: bool,
     preparation: FamilyPreparation,
     layout_view: impl for<'a> Fn(&'a L) -> crate::svg::FlowchartNodeLayoutView<'a>,
     layout: impl FnOnce(
         &diagrams::flowchart::FlowchartModel,
         &diagrams::flowchart::FlowchartRenderContext,
+        &crate::flowchart::FlowchartClassDefinitions<'_>,
         Option<&crate::flowchart::FlowchartSvgLabelSidecarBuilder>,
         &crate::svg::FlowchartEdgeStylePlan,
     ) -> Result<L>,
 ) -> Result<Box<FlowchartFamilyArtifact<'parsed, L>>> {
+    let class_defs = crate::flowchart::FlowchartClassDefinitions::new(&semantic.class_defs);
+    let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_with_class_definitions(
+        &semantic,
+        effective_config,
+        swimlane,
+        &class_defs,
+        work_meter.as_ref(),
+    )?;
     let prepared_theme = crate::flowchart::FlowchartPreparedTheme::resolve(
         resolved_theme,
         effective_config,
@@ -73,6 +82,7 @@ fn prepare_flowchart_artifact<'parsed, L>(
     let layout = layout(
         &semantic,
         &render_context,
+        &class_defs,
         svg_label_sidecar.as_ref(),
         &edge_style_plan,
     )?;
@@ -109,6 +119,7 @@ fn prepare_flowchart_artifact<'parsed, L>(
     let prepared_nodes = crate::svg::FlowchartPreparedNodes::prepare(
         &semantic,
         &render_context,
+        &class_defs,
         layout_view(&layout),
         &svg_label_sidecar,
         resolved_theme,
@@ -472,12 +483,6 @@ fn prepare_flowchart_family<'parsed>(
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     match execution.family_id() {
         DiagramFamilyId::SWIMLANE => {
-            let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
-                model,
-                &meta.effective_config,
-                true,
-                execution.work_meter_ref(),
-            )?;
             Ok(BuiltinFamilyArtifact::Swimlane(prepare_flowchart_artifact(
                 std::borrow::Cow::Borrowed(model),
                 render_context,
@@ -486,10 +491,10 @@ fn prepare_flowchart_family<'parsed>(
                 &meta.effective_config,
                 crate::flowchart::flowchart_typography_config_ownership(&meta.effective_config),
                 execution.work_meter(),
-                edge_style_plan,
+                true,
                 preparation,
                 |layout| crate::svg::FlowchartNodeLayoutView::Swimlane(layout),
-                |model, render_context, svg_label_sidecar, edge_style_plan| {
+                |model, render_context, _, svg_label_sidecar, edge_style_plan| {
                     crate::swimlane::layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
                         model,
                         render_context,
@@ -503,38 +508,31 @@ fn prepare_flowchart_family<'parsed>(
                 },
             )?))
         }
-        DiagramFamilyId::FLOWCHART => {
-            let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
-                model,
+        DiagramFamilyId::FLOWCHART => Ok(BuiltinFamilyArtifact::Flowchart(
+            prepare_flowchart_artifact(
+                std::borrow::Cow::Borrowed(model),
+                render_context,
+                execution.resolved_theme(),
+                execution.math_backend(),
                 &meta.effective_config,
+                crate::flowchart::flowchart_typography_config_ownership(&meta.effective_config),
+                execution.work_meter(),
                 false,
-                execution.work_meter_ref(),
-            )?;
-            Ok(BuiltinFamilyArtifact::Flowchart(
-                prepare_flowchart_artifact(
-                    std::borrow::Cow::Borrowed(model),
-                    render_context,
-                    execution.resolved_theme(),
-                    execution.math_backend(),
-                    &meta.effective_config,
-                    crate::flowchart::flowchart_typography_config_ownership(&meta.effective_config),
-                    execution.work_meter(),
-                    edge_style_plan,
-                    preparation,
-                    |layout| crate::svg::FlowchartNodeLayoutView::Flowchart(layout),
-                    |model, render_context, svg_label_sidecar, edge_style_plan| {
-                        crate::layout_flowchart_typed_with_render_labels_by_engine(
-                            model,
-                            render_context,
-                            &meta.effective_config,
-                            execution,
-                            svg_label_sidecar,
-                            edge_style_plan,
-                        )
-                    },
-                )?,
-            ))
-        }
+                preparation,
+                |layout| crate::svg::FlowchartNodeLayoutView::Flowchart(layout),
+                |model, render_context, class_defs, svg_label_sidecar, edge_style_plan| {
+                    crate::layout_flowchart_typed_with_render_labels_by_engine(
+                        model,
+                        render_context,
+                        class_defs,
+                        &meta.effective_config,
+                        execution,
+                        svg_label_sidecar,
+                        edge_style_plan,
+                    )
+                },
+            )?,
+        )),
         planned_family => Err(Error::InvalidModel {
             message: format!(
                 "planned render family {planned_family} cannot consume a Flowchart model"
@@ -1581,12 +1579,6 @@ pub(super) fn prepare_non_class_render<'parsed>(
                 &meta.effective_config,
                 execution.work_meter_ref().control(),
             )?;
-            let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
-                &flowchart,
-                &config,
-                false,
-                execution.work_meter_ref(),
-            )?;
             let flow = prepare_flowchart_artifact(
                 std::borrow::Cow::Owned(flowchart),
                 std::borrow::Cow::Owned(render_context),
@@ -1595,13 +1587,14 @@ pub(super) fn prepare_non_class_render<'parsed>(
                 &config,
                 crate::flowchart::flowchart_typography_config_ownership(&config),
                 execution.work_meter(),
-                edge_style_plan,
+                false,
                 preparation,
                 |layout| crate::svg::FlowchartNodeLayoutView::Flowchart(layout),
-                |model, render_context, sidecar, edge_style_plan| {
+                |model, render_context, class_defs, sidecar, edge_style_plan| {
                     crate::layout_flowchart_typed_with_render_labels_by_engine(
                         model,
                         render_context,
+                        class_defs,
                         &config,
                         &execution,
                         sidecar,

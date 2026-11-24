@@ -757,11 +757,7 @@ impl AId {
 
     /// Checks if the current attribute is inheritable.
     fn is_inheritable(&self) -> bool {
-        if self.is_presentation() {
-            !is_non_inheritable(*self)
-        } else {
-            false
-        }
+        *self == AId::XmlLang || (self.is_presentation() && !is_non_inheritable(*self))
     }
 
     fn allows_inherit_value(&self) -> bool {

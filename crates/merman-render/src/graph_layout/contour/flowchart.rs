@@ -1,7 +1,9 @@
 //! Flowchart's measured paint geometry, including local transforms and caption bands.
 
 use super::{Edge, Outline, ShapePortProfile};
-use crate::flowchart::{self, FlowNode, FlowchartShape as S, LeanKind, bpmn::BpmnShape};
+use crate::flowchart::{
+    self, FlowNode, FlowchartShape as S, LeanKind, PreparedFlowchartNodeGeometry, bpmn::BpmnShape,
+};
 use crate::model::LayoutNode;
 use kurbo::{Arc, Point, SvgArc, Vec2};
 use std::f64::consts::{FRAC_PI_2, PI, TAU};
@@ -29,35 +31,69 @@ impl ShapePortProfile {
         padding: f64,
         look_is_neo: bool,
     ) -> crate::Result<Self> {
-        // If the image itself sets the outer width, that width already includes wrapping.
-        // A wider caption hides the image width; use Flowchart's standard wrap in this entry.
-        let wrapping_width = if measured.width > measured.label_width.unwrap_or(0.0) + 4.0 {
-            measured.width
-        } else {
-            200.0_f64.min(measured.width)
-        };
-        Self::flowchart_with_paint_metrics(
-            node,
-            measured,
-            padding,
-            look_is_neo,
-            wrapping_width,
-            None,
-        )
+        Self::flowchart_with_paint_metrics(node, measured, padding, look_is_neo, None, None)
     }
 
-    /// Receives the same image wrap and resolved native rectangle radii as the SVG writer.
-    /// A caption can own the measured box width independently of the painted asset width.
     pub(crate) fn flowchart_with_paint_metrics(
         node: &FlowNode,
         measured: &LayoutNode,
         padding: f64,
         look_is_neo: bool,
-        wrapping_width: f64,
+        geometry: Option<PreparedFlowchartNodeGeometry>,
         rectangle_radii: Option<(f64, f64)>,
     ) -> crate::Result<Self> {
         let name = node.layout_shape.as_deref().unwrap_or("squareRect");
         let shape = S::resolve(name)?;
+        if let Some(geometry) = geometry {
+            return Ok(match geometry {
+                PreparedFlowchartNodeGeometry::Rectangle(rectangle) => {
+                    let (rx, ry) = rectangle_radii.unwrap_or(match shape {
+                        S::RoundedRectangle => (5.0, 5.0),
+                        _ => (0.0, 0.0),
+                    });
+                    let bounds = rectangle.shape;
+                    let center = bounds.center();
+                    Self::new(
+                        Outline::rect_at(
+                            (center.x, center.y),
+                            bounds.width(),
+                            bounds.height(),
+                            rx,
+                            ry,
+                        ),
+                        bounds.width() - 2.0 * (rx.max(8.0) + center.x.abs()),
+                        bounds.height() - 2.0 * (ry.max(8.0) + center.y.abs()),
+                    )
+                }
+                PreparedFlowchartNodeGeometry::ImageSquare(image) => {
+                    let image_center_y = image.image_top() + image.image.height / 2.0;
+                    let body = Outline::rect_at(
+                        (0.0, image_center_y),
+                        image.image.width,
+                        image.image.height,
+                        0.0,
+                        0.0,
+                    );
+                    let outline = if image.label_padding > 0.0 {
+                        let label_y = (image.outer.height - image.label.height) / 2.0;
+                        let caption = Outline::rect_at(
+                            (0.0, if image.top_label { -label_y } else { label_y }),
+                            image.label.width,
+                            image.label.height,
+                            0.0,
+                            0.0,
+                        );
+                        Outline::Parts(vec![body, caption])
+                    } else {
+                        body
+                    };
+                    let mut profile =
+                        Self::new(outline, image.image.width - 16.0, image.image.height - 16.0);
+                    profile.anchor_y = Some(image_center_y + image.outer.height / 2.0);
+                    profile
+                }
+            });
+        }
         let (w, h) = (measured.width.max(0.0), measured.height.max(0.0));
         let (lw, lh) = (
             measured.label_width.unwrap_or(0.0),
@@ -284,9 +320,10 @@ impl ShapePortProfile {
             S::Cloud => fixed(organic(flowchart::cloud_geometry(lw, lh, p))),
             S::BraceLeft | S::BraceRight | S::Braces => fixed(brace(shape, name, lw, lh, p, neo)),
             S::Bpmn(bpmn) => bpmn_profile(bpmn, w, h, lw, lh),
-            S::Icon | S::IconCircle | S::IconRounded | S::IconSquare | S::ImageSquare => {
-                asset(shape, node, measured, p, wrapping_width)
+            S::Icon | S::IconCircle | S::IconRounded | S::IconSquare => {
+                asset(shape, node, measured, p)
             }
+            S::ImageSquare => Self::rectangle(w, h),
         };
         Ok(profile)
     }
@@ -490,13 +527,7 @@ fn bpmn_profile(shape: BpmnShape, w: f64, h: f64, lw: f64, lh: f64) -> ShapePort
     }
 }
 
-fn asset(
-    shape: S,
-    node: &FlowNode,
-    measured: &LayoutNode,
-    p: f64,
-    wrapping_width: f64,
-) -> ShapePortProfile {
+fn asset(shape: S, node: &FlowNode, measured: &LayoutNode, p: f64) -> ShapePortProfile {
     let size = node
         .asset_width
         .unwrap_or(48.0)
@@ -513,21 +544,6 @@ fn asset(
             };
             let d = ink * std::f64::consts::SQRT_2 + 40.0;
             (d, d, d / 2.0, d / 2.0)
-        }
-        S::ImageSquare => {
-            let g = flowchart::ImageSquareGeometry::from_label(
-                crate::text::TextMetrics {
-                    width: lw,
-                    height: lh,
-                    line_count: 1,
-                },
-                has_label,
-                node.asset_width,
-                node.asset_height,
-                node.constraint.as_deref() == Some("on"),
-                wrapping_width,
-            );
-            (g.image_width, g.image_height, 0.0, 0.0)
         }
         S::Icon => (size, size, 0.0, 0.0),
         S::IconSquare => (size + p, size + p, 0.1, 0.1),

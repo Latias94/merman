@@ -127,6 +127,13 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
     };
 
     for n in nodes {
+        if n.is_cluster
+            && ctx.layout_clusters_by_id.contains_key(n.id.as_str())
+            && super::cluster_geometry::cluster_css_size(ctx, &n.id).is_some()
+        {
+            // The cluster pass already included the painted frame and title.
+            continue;
+        }
         let is_empty_subgraph_node = ctx.subgraphs_by_id.contains_key(n.id.as_str())
             && !ctx.subgraph_has_children(n.id.as_str());
         let root = if n.is_cluster && ctx.recursive_clusters.contains(n.id.as_str()) {
@@ -135,6 +142,18 @@ pub(in crate::svg::parity::flowchart) fn include_flowchart_node_rendered_bounds<
             effective_parent_for_id(&n.id)
         };
         let y_off = y_offset_for_root(root);
+        if !n.is_cluster
+            && let Some(rectangle) = ctx.node_rectangle(&n.id)
+        {
+            let bounds = rectangle.group;
+            include_rect(
+                n.x + bounds.x0,
+                n.y + y_off + bounds.y0,
+                n.x + bounds.x1,
+                n.y + y_off + bounds.y1,
+            );
+            continue;
+        }
         if n.is_cluster
             || ctx.node_dom_index.contains_key(n.id.as_str())
             || is_empty_subgraph_node
@@ -638,6 +657,7 @@ mod tests {
         let prepared_nodes = super::node_inventory::FlowchartPreparedNodes::prepare(
             &model,
             &render_context,
+            &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
             super::node_inventory::FlowchartNodeLayoutView::Flowchart(&layout),
             &sidecar,
             None,

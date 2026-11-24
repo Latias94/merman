@@ -1,6 +1,10 @@
 //! Mermaid CSS/style helpers shared by layout and SVG parity code.
 
+mod html_text;
 mod typography;
+pub(crate) use html_text::{
+    HtmlTextGeometry, HtmlTextGeometryDeclarations, HtmlTextProperty, HtmlTextSpacing,
+};
 pub(crate) use typography::{TextStyleCascade, root_dependent_font_size};
 
 use cssparser::{
@@ -61,6 +65,14 @@ impl<'a> ParsedStyleDeclaration<'a> {
         self.analysis.svg_number_or_px()
     }
 
+    pub(crate) fn html_box_length_px(&self) -> Result<Option<f64>, ()> {
+        self.analysis.html_box_length_px(self.value)
+    }
+
+    pub(crate) fn svg_rect_length_px(&self) -> Result<Option<f64>, ()> {
+        self.analysis.svg_rect_length_px(self.value)
+    }
+
     pub(crate) fn resolve_font_size_px(&self, context: CssFontSizeContext) -> Option<f64> {
         self.analysis.resolve_font_size_px(context)
     }
@@ -84,6 +96,17 @@ impl<'a> ParsedStyleDeclaration<'a> {
 }
 
 pub(crate) fn parse_style_declaration(raw: &str) -> Option<ParsedStyleDeclaration<'_>> {
+    parse_style_declaration_with_policy(raw, CssValuePolicy::MermaidSourceStyle)
+}
+
+pub(crate) fn parse_html_label_style_declaration(raw: &str) -> Option<ParsedStyleDeclaration<'_>> {
+    parse_style_declaration_with_policy(raw, CssValuePolicy::HtmlLabelMeasurement)
+}
+
+fn parse_style_declaration_with_policy(
+    raw: &str,
+    policy: CssValuePolicy,
+) -> Option<ParsedStyleDeclaration<'_>> {
     let raw = raw.trim();
     let raw = raw.strip_suffix(';').unwrap_or(raw).trim();
     if raw.is_empty() {
@@ -100,8 +123,7 @@ pub(crate) fn parse_style_declaration(raw: &str) -> Option<ParsedStyleDeclaratio
     parser.expect_colon().ok()?;
     let value_start = parser.position();
     let (value_end, analysis, important) =
-        parse_css_value_from_parser(&mut parser, value_start, CssValuePolicy::MermaidSourceStyle)
-            .ok()?;
+        parse_css_value_from_parser(&mut parser, value_start, policy).ok()?;
     let source_value = parser.slice(value_start..parser.position()).trim();
     let value = parser.slice(value_start..value_end).trim();
     if value.is_empty() {
@@ -856,7 +878,7 @@ pub(crate) fn resolve_mermaid_font_size_px(raw: &str, context: CssFontSizeContex
 pub(crate) fn resolve_mermaid_absolute_font_size_px(raw: &str) -> Option<f64> {
     parse_css_value(raw, CssValuePolicy::MermaidSourceStyle)?
         .analysis
-        .absolute_font_size_px()
+        .absolute_length_or_number_px()
 }
 
 /// Resolves CSS absolute dimension tokens, excluding legacy unitless configuration numbers.
@@ -868,7 +890,7 @@ pub(crate) fn resolve_explicit_css_absolute_font_size_px(raw: &str) -> Option<f6
     ) {
         return None;
     }
-    parsed.analysis.absolute_font_size_px()
+    parsed.analysis.absolute_length_or_number_px()
 }
 
 pub(crate) fn parse_svg_number_or_px(raw: &str) -> Option<f64> {
@@ -1085,6 +1107,66 @@ pub(crate) struct CssValueAnalysis {
 }
 
 impl CssValueAnalysis {
+    fn html_box_length_px(&self, source: &str) -> Result<Option<f64>, ()> {
+        use CssScalar::*;
+
+        if !self.is_single_component() {
+            return Err(());
+        }
+        match self.scalar.as_ref() {
+            Some(Number(value)) if *value == 0.0 => Ok(Some(0.0)),
+            Some(Px(value)) if value.is_finite() && *value >= 0.0 => Ok(Some(*value)),
+            Some(Percentage(value) | AbsoluteLengthPx(value) | Em(value) | Rem(value))
+                if value.is_finite() && *value >= 0.0 =>
+            {
+                Ok(None)
+            }
+            Some(Ident(value))
+                if matches!(
+                    value.as_str(),
+                    "auto"
+                        | "min-content"
+                        | "max-content"
+                        | "fit-content"
+                        | "stretch"
+                        | "inherit"
+                        | "initial"
+                        | "unset"
+                        | "revert"
+                        | "revert-layer"
+                ) =>
+            {
+                Ok(None)
+            }
+            None => match Parser::new(source).next() {
+                Ok(Token::Dimension { unit, value, .. })
+                    if is_css_length_unit(unit) && *value >= 0.0 =>
+                {
+                    Ok(None)
+                }
+                Ok(Token::Function(name))
+                    if ["calc", "min", "max", "clamp", "fit-content", "var", "env"]
+                        .iter()
+                        .any(|function| name.eq_ignore_ascii_case(function)) =>
+                {
+                    Ok(None)
+                }
+                _ => Err(()),
+            },
+            _ => Err(()),
+        }
+    }
+
+    pub(crate) fn svg_rect_length_px(&self, source: &str) -> Result<Option<f64>, ()> {
+        if let Some(value) = self.absolute_length_or_number_px() {
+            Ok(Some(value))
+        } else if matches!(self.single_ident(), Some("auto" | "initial" | "unset")) {
+            Ok(Some(0.0))
+        } else {
+            self.html_box_length_px(source)
+        }
+    }
+
     /// A positive rem size needs a document-root size that diagram configuration cannot supply.
     pub(crate) fn depends_on_root_font_size(&self) -> bool {
         self.is_single_component()
@@ -1111,7 +1193,7 @@ impl CssValueAnalysis {
         self.component_count == 1
     }
 
-    fn single_ident(&self) -> Option<&str> {
+    pub(crate) fn single_ident(&self) -> Option<&str> {
         if !self.is_single_component() {
             return None;
         }
@@ -1179,7 +1261,9 @@ impl CssValueAnalysis {
     /// Nonzero unitless numbers remain invalid CSS even though SVG attributes accept them.
     pub(crate) fn context_free_font_size_px(&self) -> Option<f64> {
         match self.scalar.as_ref()? {
-            CssScalar::Px(_) | CssScalar::AbsoluteLengthPx(_) => self.absolute_font_size_px(),
+            CssScalar::Px(_) | CssScalar::AbsoluteLengthPx(_) => {
+                self.absolute_length_or_number_px()
+            }
             CssScalar::Ident(keyword)
                 if matches!(
                     keyword.as_str(),
@@ -1199,7 +1283,7 @@ impl CssValueAnalysis {
         }
     }
 
-    fn absolute_font_size_px(&self) -> Option<f64> {
+    pub(crate) fn absolute_length_or_number_px(&self) -> Option<f64> {
         if !self.is_single_component() {
             return None;
         }
@@ -1244,7 +1328,7 @@ fn parse_css_value_from_parser<'i>(
     loop {
         let token_start = parser.position();
         let state = parser.state();
-        let token = match parser.next_including_whitespace() {
+        let token = match parser.next_including_whitespace_and_comments() {
             Ok(token) => token.clone(),
             Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
                 return finish_css_value(
@@ -1257,12 +1341,16 @@ fn parse_css_value_from_parser<'i>(
                         has_dynamic_reference_function,
                     },
                     false,
+                    policy,
                 );
             }
             Err(error) => return Err(error.into()),
         };
 
-        if matches!(token, Token::WhiteSpace(_)) {
+        if matches!(token, Token::WhiteSpace(_))
+            || (policy == CssValuePolicy::HtmlLabelMeasurement
+                && matches!(token, Token::Comment(_)))
+        {
             continue;
         }
 
@@ -1281,6 +1369,7 @@ fn parse_css_value_from_parser<'i>(
                             has_dynamic_reference_function,
                         },
                         true,
+                        policy,
                     );
                 }
                 return Err(ParseError::custom(()));
@@ -1315,9 +1404,10 @@ fn finish_css_value<'i>(
     value_end: SourcePosition,
     analysis: CssValueAnalysis,
     important: bool,
+    policy: CssValuePolicy,
 ) -> Result<(SourcePosition, CssValueAnalysis, bool), ParseError<()>> {
     let source = parser.slice(value_start..parser.position());
-    if !css_value_source_is_safe(source) {
+    if policy != CssValuePolicy::HtmlLabelMeasurement && !css_value_source_is_safe(source) {
         return Err(ParseError::custom(()));
     }
     Ok((value_end, analysis, important))
@@ -1426,6 +1516,7 @@ fn parse_css_number_prefix(raw: &str) -> Option<f64> {
 enum CssValuePolicy {
     MermaidSourceStyle,
     PortableTheme,
+    HtmlLabelMeasurement,
 }
 
 fn css_value_is_safe(value: &str, policy: CssValuePolicy) -> bool {

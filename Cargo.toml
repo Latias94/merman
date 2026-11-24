@@ -58,6 +58,7 @@ independent-packages = ["roughr-merman", "tree-sitter-mermaid"]
 atomic-write-file = { version = "0.3.1", default-features = false }
 base64 = "0.23.1"
 data-url = "0.3.2"
+imagesize = { version = "0.14.0", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
 brotli = "9.1.1"
 clap_mangen = "0.3.3"
 ctrlc = "3.5.2"

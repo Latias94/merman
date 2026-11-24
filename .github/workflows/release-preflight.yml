@@ -424,6 +424,10 @@ jobs:
             runner: ubuntu-22.04
           - target: aarch64-unknown-linux-gnu
             runner: ubuntu-22.04-arm
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+          - target: aarch64-apple-darwin
+            runner: macos-15
     env:
       RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
       VERSION: ${{ needs.validate-inputs.outputs.version }}
@@ -440,7 +444,7 @@ jobs:
           persist-credentials: false
           submodules: recursive
 
-      - name: Install Python for GNU baseline checks
+      - name: Install Python for archive checks
         uses: actions/setup-python@v7.1.0
         with:
           python-version: '3.15.2'
@@ -468,7 +472,7 @@ jobs:
           curl --proto '=https' --tlsv1.2 -LsSf \
             -o "$installer" \
             https://github.com/axodotdev/cargo-dist/releases/download/v0.34.0/cargo-dist-installer.sh
-          printf '%s  %s\n' "$DIST_INSTALLER_SHA256" "$installer" | sha256sum --check
+          printf '%s  %s\n' "$DIST_INSTALLER_SHA256" "$installer" | shasum -a 256 -c
           sh "$installer"
 
       - name: Verify non-publishing cargo-dist plan
@@ -519,6 +523,10 @@ jobs:
             --artifacts=local \
             --target="$TARGET" \
             --output-format=json > target/native-dist-manifest.json
+
+      - name: Verify GNU glibc compatibility
+        if: runner.os == 'Linux'
+        run: |
           python3 scripts/linux_binary_compatibility.py \
             "target/$TARGET/dist/merman-cli" "target/$TARGET/dist/merman-lsp"
 

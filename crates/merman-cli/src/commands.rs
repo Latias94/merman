@@ -81,7 +81,8 @@ pub(crate) fn run(
         }
         #[cfg(feature = "svg")]
         ResolvedInvocation::Layout(args) => {
-            run_layout(args, operation_control, context)?;
+            run_layout(args, operation_control, context)
+                .map_err(CliError::with_graphical_limit_help)?;
             0
         }
         #[cfg(feature = "svg")]
@@ -312,14 +313,14 @@ fn run_lint(args: ResolvedLint, context: &mut ExecutionContext) -> Result<i32, C
         &context.stderr,
     ) {
         Ok(text) => text,
-        Err(InputReadError::LimitExceeded { actual, limit, .. }) => {
-            let source_len = observed_size_as_usize(actual);
-            let payload = AnalysisPayload::new(
-                source,
-                vec![merman_analysis::source_limit_diagnostic_for_len(
-                    source_len, limit,
-                )],
-            );
+        Err(error @ InputReadError::LimitExceeded { actual, limit, .. }) => {
+            let source_len = usize::try_from(actual.bytes()).unwrap_or(usize::MAX);
+            let mut diagnostic =
+                merman_analysis::source_limit_diagnostic_for_len(source_len, limit);
+            if matches!(actual, ObservedSize::AtLeast(_)) || actual.bytes() != source_len as u64 {
+                diagnostic.message = error.to_string();
+            }
+            let payload = AnalysisPayload::new(source, vec![diagnostic]);
             match args.format {
                 LintOutputFormat::Json => print_json(&payload, args.pretty, &context.stdout)?,
                 LintOutputFormat::Text => print_lint_text(&payload, &context.stdout)?,
@@ -637,14 +638,6 @@ fn source_input_limit(max_source_bytes: Option<usize>) -> InputLimit {
         merman::model::resources::InputResourceLimitId::MaxSourceBytes.as_str(),
         max_source_bytes,
     )
-}
-
-#[cfg(feature = "analysis")]
-fn observed_size_as_usize(actual: ObservedSize) -> usize {
-    let bytes = match actual {
-        ObservedSize::Exact(bytes) | ObservedSize::AtLeast(bytes) => bytes,
-    };
-    usize::try_from(bytes).unwrap_or(usize::MAX)
 }
 
 #[cfg(feature = "analysis")]

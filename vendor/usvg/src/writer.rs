@@ -1461,6 +1461,9 @@ fn write_span(
         }
     };
 
+    if let Some(language) = &span.language {
+        xml.write_svg_attribute(AId::XmlLang, language);
+    }
     if !span.font.families.is_empty() {
         let families = span
             .font

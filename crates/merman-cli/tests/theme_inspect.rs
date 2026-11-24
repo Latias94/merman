@@ -153,12 +153,9 @@ fn inspect_obeys_the_theme_encoded_input_budget() {
     let maximum = policy
         .value(merman::svg::ThemeResourceLimitId::MaxThemeEncodedBytes)
         .unwrap();
-    fs::write(
-        directory.path().join("oversized.json"),
-        vec![b' '; maximum + 1],
-    )
-    .unwrap();
-    let output = run(
+    let oversized = " ".repeat(maximum + 1);
+    fs::write(directory.path().join("oversized.json"), &oversized).unwrap();
+    let file = run(
         directory.path(),
         &[
             "theme",
@@ -168,12 +165,17 @@ fn inspect_obeys_the_theme_encoded_input_budget() {
             "constrained",
         ],
     );
-    assert!(!output.status.success());
-    assert!(output.stdout.is_empty());
-    assert!(
-        String::from_utf8_lossy(&output.stderr).contains("max_theme_encoded_bytes"),
-        "{output:?}"
+    let stdin = run_with_stdin(
+        &["theme", "inspect", "-", "--resource-profile", "constrained"],
+        &oversized,
     );
+    for (output, code) in [(file, 2), (stdin, 1)] {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert_eq!(output.status.code(), Some(code), "{stderr}");
+        assert!(output.stdout.is_empty());
+        assert!(stderr.contains("max_theme_encoded_bytes"), "{stderr}");
+        assert!(!stderr.contains("--resource-limit"), "{stderr}");
+    }
 }
 
 #[test]

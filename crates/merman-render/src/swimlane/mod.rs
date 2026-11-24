@@ -104,10 +104,10 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         &render_model,
         (&visible_edges, &transport_plan),
         effective_config,
-        measurer,
-        math_renderer,
+        (measurer, math_renderer),
         svg_label_sidecar,
         edge_style_plan,
+        &work_meter,
     )?;
     run_layout_core(&mut working, config, work_meter)?;
     prepare::measure_zero_width_lane_titles(

@@ -1373,53 +1373,6 @@ pub(crate) fn flowchart_node_render_dimensions(
     node_render_dimensions(layout_shape, metrics, padding, look_is_neo)
 }
 
-/// Shared image geometry for layout and SVG painting. Asset dimensions retain the headless
-/// fallback used by the renderer; width constraints follow Mermaid's `imageSquare.ts`.
-pub(crate) struct ImageSquareGeometry {
-    pub(crate) image_width: f64,
-    pub(crate) image_height: f64,
-    pub(crate) width: f64,
-    pub(crate) height: f64,
-}
-
-impl ImageSquareGeometry {
-    pub(crate) fn from_label(
-        metrics: crate::text::TextMetrics,
-        has_label: bool,
-        asset_width: Option<f64>,
-        asset_height: Option<f64>,
-        constraint_on: bool,
-        wrapping_width: f64,
-    ) -> Self {
-        let asset_h = asset_height.unwrap_or(60.0).max(1.0);
-        let asset_w = asset_width.unwrap_or(asset_h).max(1.0);
-        let aspect_ratio = asset_w / asset_h;
-        let image_raw_width = asset_w.max(if has_label {
-            wrapping_width.max(0.0)
-        } else {
-            0.0
-        });
-        let image_width = if constraint_on && asset_height.is_some() {
-            asset_h * aspect_ratio
-        } else {
-            image_raw_width
-        };
-        let image_height = if constraint_on {
-            image_width / aspect_ratio
-        } else {
-            asset_h
-        };
-        let background_padding = if has_label { 4.0 } else { 0.0 };
-        let label_padding = if has_label { 8.0 } else { 0.0 };
-        Self {
-            image_width,
-            image_height,
-            width: image_width.max(metrics.width + background_padding),
-            height: image_height + metrics.height + background_padding + label_padding,
-        }
-    }
-}
-
 pub(crate) struct NodeLayoutDimensionsRequest<'a> {
     pub(crate) layout_shape: Option<&'a str>,
     pub(crate) layout_direction: &'a str,
@@ -1437,27 +1390,128 @@ pub(crate) struct NodeLayoutDimensionsRequest<'a> {
     pub(crate) node_asset_height: Option<f64>,
 }
 
-pub(crate) fn node_layout_dimensions(req: NodeLayoutDimensionsRequest<'_>) -> (f64, f64) {
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum PreparedFlowchartNodeGeometry {
+    Rectangle(FlowchartRectangleGeometry),
+    ImageSquare(super::ImageSquareGeometry),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct FlowchartRectangleGeometry {
+    pub(crate) shape: kurbo::Rect,
+    pub(crate) group: kurbo::Rect,
+    pub(crate) resolved_dimensions: [bool; 2],
+}
+
+impl FlowchartRectangleGeometry {
+    fn from_style(
+        (width, height): (f64, f64),
+        label: crate::text::TextMetrics,
+        [css_width, css_height]: [Option<f64>; 2],
+    ) -> Self {
+        // Mermaid positions the rect using its label-derived size and measures the whole
+        // node group after CSS has resized the shape at that original position.
+        let shape = kurbo::Rect::from_origin_size(
+            (-width / 2.0, -height / 2.0),
+            (css_width.unwrap_or(width), css_height.unwrap_or(height)),
+        );
+        let label = kurbo::Rect::from_center_size(
+            kurbo::Point::ORIGIN,
+            (label.width.max(0.0), label.height.max(0.0)),
+        );
+        let group = if shape.width() == 0.0 || shape.height() == 0.0 {
+            label
+        } else if label.width() == 0.0 || label.height() == 0.0 {
+            shape
+        } else {
+            shape.union(label)
+        };
+        Self {
+            shape,
+            group,
+            resolved_dimensions: [css_width.is_some(), css_height.is_some()],
+        }
+    }
+}
+
+impl NodeLayoutDimensionsRequest<'_> {
+    pub(crate) fn measure(
+        self,
+        rectangle_size: [Option<f64>; 2],
+        hand_drawn: bool,
+        prepared: Option<(
+            &super::FlowchartSvgLabelSidecarBuilder,
+            super::FlowchartSvgLabelOwner,
+        )>,
+        charge_work: impl FnMut(usize) -> crate::Result<()>,
+    ) -> crate::Result<((f64, f64), Option<PreparedFlowchartNodeGeometry>)> {
+        use super::FlowchartShape;
+
+        let shape = FlowchartShape::resolve(self.layout_shape.unwrap_or("squareRect"))?;
+        let (geometry, size) = if shape == FlowchartShape::ImageSquare
+            && let Some(href) = self.node_img.filter(|href| !href.trim().is_empty())
+        {
+            let image = super::ImageSquareGeometry::resolve(
+                super::ImageSquareSizing {
+                    href,
+                    width: self.node_asset_width,
+                    height: self.node_asset_height,
+                    constraint_on: self.node_constraint == Some("on"),
+                },
+                self.metrics,
+                self.has_label,
+                self.wrapping_width,
+                self.node_pos == Some("t"),
+                charge_work,
+            )?;
+            (
+                PreparedFlowchartNodeGeometry::ImageSquare(image),
+                image.outer,
+            )
+        } else {
+            let label = self.metrics;
+            let natural = node_layout_dimensions(self, shape);
+            if rectangle_size == [None; 2]
+                || hand_drawn
+                || !matches!(
+                    shape,
+                    FlowchartShape::Process | FlowchartShape::RoundedRectangle
+                )
+            {
+                return Ok((natural, None));
+            }
+            let rectangle = FlowchartRectangleGeometry::from_style(natural, label, rectangle_size);
+            (
+                PreparedFlowchartNodeGeometry::Rectangle(rectangle),
+                rectangle.group.size(),
+            )
+        };
+        if let Some((builder, owner)) = prepared {
+            builder.record_node_geometry(owner, geometry)?;
+        }
+        Ok(((size.width, size.height), Some(geometry)))
+    }
+}
+
+fn node_layout_dimensions(
+    req: NodeLayoutDimensionsRequest<'_>,
+    resolved_shape: super::FlowchartShape,
+) -> (f64, f64) {
     let NodeLayoutDimensionsRequest {
         layout_shape,
         layout_direction,
         metrics,
         has_label,
-        wrapping_width,
-        node_constraint,
         padding,
         look_is_neo,
         state_padding,
         node_icon,
-        node_img,
-        node_pos,
         node_asset_width,
         node_asset_height,
+        ..
     } = req;
 
     let shape = layout_shape.unwrap_or("squareRect");
-    let resolved_shape = crate::flowchart::FlowchartShape::resolve(shape)
-        .unwrap_or_else(|error| panic!("unvalidated Flowchart shape reached layout: {error}"));
 
     if let crate::flowchart::FlowchartShape::Bpmn(shape) = resolved_shape {
         let geometry = shape.geometry(
@@ -1465,20 +1519,6 @@ pub(crate) fn node_layout_dimensions(req: NodeLayoutDimensionsRequest<'_>) -> (f
             has_label,
             node_icon.is_some_and(|icon| !icon.is_empty()),
             false,
-        );
-        return (geometry.width, geometry.height);
-    }
-
-    if resolved_shape == crate::flowchart::FlowchartShape::ImageSquare
-        && node_img.is_some_and(|s| !s.trim().is_empty())
-    {
-        let geometry = ImageSquareGeometry::from_label(
-            metrics,
-            has_label,
-            node_asset_width,
-            node_asset_height,
-            node_constraint == Some("on"),
-            wrapping_width,
         );
         return (geometry.width, geometry.height);
     }
@@ -1512,9 +1552,6 @@ pub(crate) fn node_layout_dimensions(req: NodeLayoutDimensionsRequest<'_>) -> (f
         let outer_w = icon_outer_size.max(label_bbox_w);
         let outer_h = icon_outer_size + label_padding + label_bbox_h;
 
-        // Mermaid icon helpers support `pos=t` for top-aligned labels, but that does not
-        // change the node's outer bbox.
-        let _ = node_pos;
         return (outer_w, outer_h);
     }
 

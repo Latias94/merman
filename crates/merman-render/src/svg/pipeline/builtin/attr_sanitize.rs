@@ -424,39 +424,10 @@ fn normalize_url_attr_for_scheme_check(value: &str) -> String {
 
 pub(in crate::svg::pipeline) fn is_safe_data_image_url(value: &str) -> bool {
     let decoded = merman_model::text::decode_html_entities_to_unicode(value);
-    let Ok(url) = data_url::DataUrl::process(decoded.as_ref()) else {
-        return false;
-    };
-    let mime = url.mime_type();
-    let approved_mime = mime.matches("image", "png")
-        || mime.matches("image", "jpeg")
-        || mime.matches("image", "jpg")
-        || mime.matches("image", "gif")
-        || mime.matches("image", "webp");
-    approved_mime
-        && has_valid_percent_encoding(decoded.as_ref())
-        && url
-            .decode(|_| Ok::<(), std::convert::Infallible>(()))
+    crate::raster_data_url::inline_raster_url(decoded.as_ref()).is_some_and(|url| {
+        url.decode(|_| Ok::<(), std::convert::Infallible>(()))
             .is_ok()
-}
-
-fn has_valid_percent_encoding(data_url: &str) -> bool {
-    let Some((_, encoded_body)) = data_url.split_once(',') else {
-        return false;
-    };
-    let encoded_body = encoded_body
-        .split_once('#')
-        .map_or(encoded_body, |(body, _)| body);
-    let mut bytes = encoded_body.bytes();
-    while let Some(byte) = bytes.next() {
-        if byte == b'%'
-            && (!bytes.next().is_some_and(|byte| byte.is_ascii_hexdigit())
-                || !bytes.next().is_some_and(|byte| byte.is_ascii_hexdigit()))
-        {
-            return false;
-        }
-    }
-    true
+    })
 }
 
 fn normalize_px_attribute(name: &str, value: &str) -> Option<String> {

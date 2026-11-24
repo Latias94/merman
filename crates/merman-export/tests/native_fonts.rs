@@ -1576,14 +1576,13 @@ fn glyph_fallback_rejects_symbolic_and_pictorial_faces() {
             }
             let context = fonts.load(&OperationControl::new()).unwrap();
             for family in ["Noto Sans", "sans-serif"] {
-                let expected = if include_text_fallback {
-                    "Cousine-Regular"
-                } else {
-                    "NotoSans-Regular"
-                };
+                let mut expected = BTreeSet::from(["NotoSans-Regular"]);
+                if include_text_fallback {
+                    expected.insert("Cousine-Regular");
+                }
                 assert_eq!(
                     painted_families(&context, family, "Aam"),
-                    BTreeSet::from([expected.to_owned()]),
+                    expected.into_iter().map(str::to_owned).collect(),
                     "{fixture}, include_text_fallback={include_text_fallback}, family={family}"
                 );
                 let mut text_style = style("400", "normal");

@@ -244,6 +244,7 @@ pub mod quadrantchart;
 pub mod radar;
 #[cfg(feature = "diagram-railroad")]
 pub mod railroad;
+mod raster_data_url;
 #[cfg(feature = "diagram-requirement")]
 pub mod requirement;
 pub mod resources;
@@ -1329,6 +1330,7 @@ pub(crate) fn layout_flowchart_typed_by_engine(
     layout_flowchart_typed_with_render_labels_by_engine(
         model,
         &merman_model::families::flowchart::FlowchartRenderContext::default(),
+        &flowchart::FlowchartClassDefinitions::new(&model.class_defs),
         effective_config,
         options,
         None,
@@ -1344,6 +1346,7 @@ pub(crate) fn layout_flowchart_typed_by_engine(
 pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
     model: &FlowchartModel,
     render_label_sources: &merman_model::families::flowchart::FlowchartRenderContext,
+    class_defs: &flowchart::FlowchartClassDefinitions<'_>,
     effective_config: &merman_model::presentation::PresentationConfig,
     options: &LayoutExecution<'_>,
     svg_label_sidecar: Option<&flowchart::FlowchartSvgLabelSidecarBuilder>,
@@ -1360,6 +1363,7 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
         return flowchart::shoal::layout(
             model,
             render_label_sources,
+            class_defs,
             effective_config,
             options,
             svg_label_sidecar,
@@ -1376,6 +1380,7 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
         return flowchart::elk::layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
             model,
             render_label_sources,
+            class_defs,
             effective_config,
             flowchart::elk::FlowchartElkLayoutExecution::new(
                 options.text_measurer(),
@@ -1391,6 +1396,7 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
     flowchart::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
         model,
         render_label_sources,
+        class_defs,
         effective_config,
         options.text_measurer(),
         options.math_renderer(),

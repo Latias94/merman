@@ -250,6 +250,7 @@ pub(super) fn with_flowchart_paint_context<T>(
         measurer,
         config: effective_config,
         compatibility: &prepared_theme.compatibility,
+        palette: super::agentflow::ContainerPalette::new(effective_config),
         effect_eligibility: &prepared_theme.effects,
         hand_drawn_seed,
         work_meter: options.work_meter(),
@@ -783,7 +784,7 @@ mod tests {
         };
         let context = parsed.render_context().flowchart_render_context().unwrap();
         let layout = layout.unwrap_or_else(|| {
-            let session = environment.clone().begin_session().unwrap();
+            let session = environment.begin_session().unwrap();
             let style = FlowchartEdgeStylePlan::prepare_for_model(
                 model,
                 &parsed.metadata().effective_config,
@@ -794,6 +795,7 @@ mod tests {
             crate::flowchart::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
                 model,
                 context,
+                &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
                 &parsed.metadata().effective_config,
                 &session.text_measurer(crate::environment::TextMeasurementPhase::Layout),
                 None,
@@ -865,6 +867,7 @@ mod tests {
         let nodes = super::super::node_inventory::FlowchartPreparedNodes::prepare(
             model,
             context,
+            &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
             super::super::node_inventory::FlowchartNodeLayoutView::Flowchart(&layout),
             &sidecar,
             None,

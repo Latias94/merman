@@ -137,6 +137,7 @@ mod tests {
         let prepared_nodes = FlowchartPreparedNodes::prepare(
             &model,
             &render_context,
+            &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
             FlowchartNodeLayoutView::Flowchart(&layout),
             &sidecar,
             None,

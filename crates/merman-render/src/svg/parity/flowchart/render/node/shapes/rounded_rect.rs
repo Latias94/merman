@@ -1,7 +1,7 @@
 //! Flowchart v2 rounded rectangle shape.
 
 use crate::svg::parity::flowchart::escape_attr;
-use crate::svg::parity::{fmt, fmt_display};
+use crate::svg::parity::fmt_display;
 
 use super::super::roughjs::roughjs_hachure_paths_for_svg_path;
 
@@ -15,8 +15,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
 ) -> super::super::emission::FlowchartNodeShapeEmissionReceipt {
-    let w = common.layout_node.width.max(1.0);
-    let h = common.layout_node.height.max(1.0);
+    let geometry = ctx.rectangle_geometry(common.layout_node);
+    let rect = geometry.shape;
+    let w = rect.width();
+    let h = rect.height();
     // roundedRect.ts resolves radius from the effective theme. drawRect only applies
     // truthy overrides: numeric zero keeps Flowchart's absent rx/ry, while "0" applies.
     let radius = ctx
@@ -25,7 +27,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
         .then_some(&ctx.compatibility.rounded_rect_radius);
     if common.look_is_hand_drawn() && radius.is_none() {
         // drawRect uses rc.rectangle when neither resolved radius is truthy.
-        return super::render_process_rectangle(out, common, details);
+        return super::render_process_rectangle(out, ctx, common, details);
     }
 
     let rough_paths = if common.look_is_hand_drawn() {
@@ -74,22 +76,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
         let numeric_radius = common
             .typed_corner_radius
             .or(ctx.compatibility.rounded_rect_radius_numeric);
-        let _ = write!(
-            out,
-            r#"<rect class="basic label-container"{} style="{}"#,
-            common.effect_filter_attr,
-            escape_attr(common.style),
-        );
-        common.write_effect_style(out);
-        common.write_rectangle_corner_style(out);
-        let _ = write!(
-            out,
-            r#"" x="{}" y="{}" width="{}" height="{}""#,
-            fmt(-w / 2.0),
-            fmt(-h / 2.0),
-            fmt(w),
-            fmt(h),
-        );
+        common.write_rectangle_start(out, rect);
         if common.typed_corner_radius.is_some()
             || common.source_corner_radii.iter().any(Option::is_some)
         {
@@ -105,6 +92,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_rounded_rect(
         }
         out.push_str("/>");
         super::super::emission::FlowchartNodeShapeEmissionReceipt::classic_process(true)
+            .with_rectangle_dimensions(geometry.resolved_dimensions)
             .with_effect_reach(common.effect_selected)
     }
 }

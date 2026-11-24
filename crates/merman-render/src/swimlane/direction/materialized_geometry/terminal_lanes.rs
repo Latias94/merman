@@ -31,35 +31,21 @@ fn orthogonally_aligned(first: &LayoutPoint, second: &LayoutPoint) -> bool {
 }
 
 fn rect_intersection(node: &WorkingNode, point: &LayoutPoint) -> LayoutPoint {
-    let delta_x = point.x - node.x;
-    let delta_y = point.y - node.y;
-    let mut half_width = node.width / 2.0;
-    let mut half_height = node.height / 2.0;
-    if delta_y.abs() * half_width > delta_x.abs() * half_height {
-        if delta_y < 0.0 {
-            half_height = -half_height;
-        }
-        return LayoutPoint {
-            x: node.x
-                + if delta_y == 0.0 {
-                    0.0
-                } else {
-                    half_height * delta_x / delta_y
-                },
-            y: node.y + half_height,
-        };
-    }
-    if delta_x < 0.0 {
-        half_width = -half_width;
-    }
+    let point = dugong::util::intersect_rect(
+        dugong::util::Rect {
+            x: node.x,
+            y: node.y,
+            width: node.width,
+            height: node.height,
+        },
+        dugong::Point {
+            x: point.x,
+            y: point.y,
+        },
+    );
     LayoutPoint {
-        x: node.x + half_width,
-        y: node.y
-            + if delta_x == 0.0 {
-                0.0
-            } else {
-                half_width * delta_y / delta_x
-            },
+        x: point.x,
+        y: point.y,
     }
 }
 

@@ -809,9 +809,12 @@ fn normalize_render(
     let resources = resolve_resource_policy(args.resources.clone())?;
     let input = resolve_native_input(args.input, facts.stdin_is_terminal, "render")?;
     if input.file().is_some_and(is_native_markdown_path) {
-        return Err(CliError::InvalidInput(
-            "render accepts one Mermaid diagram, not Markdown; use `merman-cli batch`".to_string(),
-        ));
+        let message = if cfg!(feature = "markdown") {
+            "render accepts one Mermaid diagram. Use `merman-cli batch` for Markdown input."
+        } else {
+            "render accepts one Mermaid diagram. For Markdown input, pipe the contents of one Mermaid code block to `merman-cli render -`."
+        };
+        return Err(CliError::InvalidInput(message.to_owned()));
     }
     let format = infer_native_format(args.output.as_deref(), args.options.format)?;
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -1161,17 +1164,29 @@ fn infer_native_format(
     output: Option<&Path>,
     requested: Option<RenderFormat>,
 ) -> Result<RenderFormat, CliError> {
-    let inferred = output
-        .filter(|path| *path != Path::new("-"))
-        .map(format_from_path)
-        .transpose()?
-        .flatten();
-    match (requested, inferred) {
+    use clap::ValueEnum;
+
+    let Some(path) = output else {
+        return Ok(requested.unwrap_or_default());
+    };
+    // ASCII and Unicode share the default filename extension .txt.
+    if let Some(format) = requested
+        && path
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case(format.extension()))
+    {
+        return Ok(format);
+    }
+    match (requested, format_from_path(path)?) {
         (Some(requested), Some(inferred)) if requested != inferred => {
+            let value = requested
+                .to_possible_value()
+                .expect("render format has a CLI value");
             Err(CliError::InvalidInput(format!(
-                "--format {} conflicts with output extension .{}",
-                requested.extension(),
-                inferred.extension()
+                "--format {} conflicts with output path {}. Use a .{} file for this format.",
+                value.get_name(),
+                crate::error::safe_path(path),
+                requested.extension()
             )))
         }
         (Some(requested), _) => Ok(requested),
@@ -2105,6 +2120,23 @@ mod tests {
             #[cfg(feature = "ascii")]
             color: ColorEnvironment::default(),
         }
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn native_text_formats_share_txt_and_identify_conflicting_extensions() {
+        let txt = Some(Path::new("out.txt"));
+        assert_eq!(infer_native_format(txt, None).unwrap(), RenderFormat::Ascii);
+        assert_eq!(
+            infer_native_format(txt, Some(RenderFormat::Unicode)).unwrap(),
+            RenderFormat::Unicode
+        );
+
+        let error = infer_native_format(Some(Path::new("out.ASCII")), Some(RenderFormat::Unicode))
+            .unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains("--format unicode"), "{message}");
+        assert!(message.contains("out.ASCII"), "{message}");
     }
 
     #[cfg(feature = "ascii")]

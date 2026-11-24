@@ -2096,8 +2096,9 @@ fn prospective_directory(
             };
             if !followed.is_dir() {
                 return Err(CliError::InvalidOutput(format!(
-                    "Output directory {} is not a directory",
-                    safe_path(requested)
+                    "cannot write output {} because {} is not a directory",
+                    safe_path(requested),
+                    safe_path(absolute)
                 )));
             }
             let directory = open_canonical_directory(absolute, requested)?;
@@ -2690,6 +2691,25 @@ mod tests {
     fn lexical_normalization_collapses_dot_components() {
         let path = lexical_absolute(Path::new("./nested/../diagram.svg"), Path::new("/work"));
         assert_eq!(path, Path::new("/work/diagram.svg"));
+    }
+
+    #[test]
+    fn non_directory_output_parent_names_the_blocking_path_and_target() {
+        let directory = tempfile::tempdir().unwrap();
+        let parent = directory.path().join("file");
+        std::fs::write(&parent, b"existing file").unwrap();
+        let target = Path::new("file").join("out.svg");
+
+        let Err(CliError::InvalidOutput(message)) =
+            preflight_file_target(&target, directory.path(), &[], MissingParent::Reject)
+        else {
+            panic!("expected the regular file to be rejected as an output directory");
+        };
+        assert!(message.contains(&safe_path(target)), "{message}");
+        assert!(
+            message.contains(&format!("{} is not a directory", safe_path(parent))),
+            "{message}"
+        );
     }
 
     #[cfg(feature = "markdown")]

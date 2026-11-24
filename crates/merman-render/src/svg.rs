@@ -9,6 +9,7 @@
 
 mod css_identifier;
 mod fallback;
+pub(crate) use fallback::measure_styled_html_label;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(

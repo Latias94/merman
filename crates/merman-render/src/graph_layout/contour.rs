@@ -510,8 +510,31 @@ mod tests {
             label_height: Some(20.0),
         };
         let c = p(0.0, 0.0);
+        let image_geometry = crate::flowchart::ImageSquareGeometry::resolve(
+            crate::flowchart::ImageSquareSizing {
+                href: node.img.as_deref().unwrap(),
+                width: node.asset_width,
+                height: node.asset_height,
+                constraint_on: false,
+            },
+            crate::text::TextMetrics {
+                width: 240.0,
+                height: 20.0,
+                line_count: 1,
+            },
+            true,
+            160.0,
+            true,
+            |_| Ok(()),
+        )
+        .unwrap();
         let image = ShapePortProfile::flowchart_with_paint_metrics(
-            &node, &measured, 15.0, false, 160.0, None,
+            &node,
+            &measured,
+            15.0,
+            false,
+            Some(crate::flowchart::PreparedFlowchartNodeGeometry::ImageSquare(image_geometry)),
+            None,
         )
         .unwrap();
         close(image.contact(&c, Side::Right, h(122.0, 16.0)).x, 80.0);
@@ -523,7 +546,7 @@ mod tests {
                 &measured,
                 15.0,
                 false,
-                160.0,
+                None,
                 Some((30.0, 10.0)),
             )
             .unwrap();

@@ -249,6 +249,7 @@ pub(super) fn render_flowchart_svg_model(
                     document_ids.drop_shadow_small(),
                     document_ids.root_gradient(),
                     compatibility,
+                    &ctx.palette,
                     font_family,
                     font_size,
                     &model.class_defs,
@@ -259,7 +260,7 @@ pub(super) fn render_flowchart_svg_model(
                     super::agentflow::write_css(
                         &mut css_out,
                         diagram_id,
-                        compatibility,
+                        &ctx.palette,
                         defer_palette,
                     )?
                 } else {
@@ -365,7 +366,7 @@ pub(super) fn render_flowchart_svg_model(
                 let slots = super::agentflow::emitted_palette_slots(
                     out.as_str(),
                     body_start,
-                    compatibility.palette.len(),
+                    ctx.palette.color_count(),
                     ctx,
                 )?;
                 if slots.as_ref().is_none_or(|slots| !slots.is_empty()) {
@@ -375,7 +376,7 @@ pub(super) fn render_flowchart_svg_model(
                             super::agentflow::write_agentflow_container_css(
                                 &mut css_out,
                                 diagram_id,
-                                compatibility,
+                                &ctx.palette,
                                 slots.as_ref(),
                             )
                         } else {
@@ -384,14 +385,14 @@ pub(super) fn render_flowchart_svg_model(
                                 Some(slots) => super::agentflow::write_flowchart_container_css(
                                     &mut css_out,
                                     id,
-                                    compatibility,
+                                    &ctx.palette,
                                     slots,
                                 ),
                                 None => super::agentflow::write_flowchart_container_css(
                                     &mut css_out,
                                     id,
-                                    compatibility,
-                                    0..compatibility.palette.len(),
+                                    &ctx.palette,
+                                    0..ctx.palette.color_count(),
                                 ),
                             }
                         }
@@ -756,6 +757,7 @@ mod integration_tests {
         let prepared_nodes = super::node_inventory::FlowchartPreparedNodes::prepare(
             &model,
             &render_context,
+            &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
             super::node_inventory::FlowchartNodeLayoutView::Flowchart(&layout),
             &sidecar,
             None,
@@ -929,6 +931,7 @@ mod integration_tests {
             let prepared_nodes = super::node_inventory::FlowchartPreparedNodes::prepare(
                 &model,
                 &render_context,
+                &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
                 super::node_inventory::FlowchartNodeLayoutView::Flowchart(&layout),
                 &sidecar,
                 None,

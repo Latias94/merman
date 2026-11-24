@@ -22,7 +22,7 @@ use std::sync::Arc;
 
 use super::config::{FlowchartConfigView, FlowchartLayoutSettings};
 use super::label::compute_bounds_controlled;
-use super::node::{NodeLayoutDimensionsRequest, node_layout_dimensions};
+use super::node::NodeLayoutDimensionsRequest;
 use super::{
     FlowEdge, FlowSubgraph, FlowchartModel, FlowchartRenderContext, FlowchartRenderModelRef,
 };
@@ -30,10 +30,9 @@ use super::{
     FlowchartLabelMetricsRequest, FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder,
     FlowchartSvgWidthMode, flowchart_apply_html_node_class_box_metrics,
     flowchart_effective_text_style_for_classes,
-    flowchart_effective_text_style_for_classes_with_provenance,
-    flowchart_effective_text_style_for_node_classes_with_provenance, flowchart_node_svg_width_mode,
-    measure_flowchart_svg_label_for_layout_with_metrics_style_and_terminal_foreground,
-    measure_flowchart_svg_label_for_layout_with_terminal_foreground,
+    flowchart_effective_text_style_for_classes_with_provenance, flowchart_node_svg_width_mode,
+    measure_flowchart_svg_label_for_layout_with_metrics_and_source_style,
+    measure_flowchart_svg_label_for_layout_with_source_style,
 };
 
 type FlowSubgraphIndex<'a> = HashMap<&'a str, &'a FlowSubgraph>;
@@ -1494,6 +1493,7 @@ pub(crate) fn layout_flowchart_typed_with_work_meter(
     layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
         model,
         &FlowchartRenderContext::default(),
+        &super::FlowchartClassDefinitions::new(&model.class_defs),
         effective_config,
         measurer,
         math_renderer,
@@ -1510,6 +1510,7 @@ pub(crate) fn layout_flowchart_typed_with_work_meter(
 pub(crate) fn layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
+    class_defs: &super::FlowchartClassDefinitions<'_>,
     effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
@@ -1521,6 +1522,7 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_an
     layout_flowchart_with_model(
         model,
         render_label_sources,
+        class_defs,
         effective_config,
         measurer,
         math_renderer,
@@ -1537,6 +1539,7 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_an
 fn layout_flowchart_with_model(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
+    class_defs: &super::FlowchartClassDefinitions<'_>,
     effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
@@ -1677,7 +1680,8 @@ fn layout_flowchart_with_model(
         super::FlowchartEdgeLabelPadding::default,
         FlowchartSvgLabelSidecarBuilder::edge_label_padding,
     );
-    let look_is_neo = crate::config::config_diagram_look(effective_config).is_neo();
+    let look = crate::config::config_diagram_look(effective_config);
+    let look_is_neo = look.is_neo();
     let node_label_base_style = if node_wrap_mode == WrapMode::HtmlLike {
         &html_label_text_style
     } else {
@@ -1810,6 +1814,7 @@ fn layout_flowchart_with_model(
         let raw_label = model.node_label_for_render(n).unwrap_or(&n.id);
         let wrapping_width = super::bpmn::wrapping_width(n.layout_shape.as_deref(), wrapping_width);
         let label_type = n.label_type.as_deref().unwrap_or("text");
+        let owner = FlowchartSvgLabelOwner::Node(node_index);
         let label_dom = (
             edge_html_labels,
             super::FlowchartLabelDom::node(
@@ -1817,11 +1822,11 @@ fn layout_flowchart_with_model(
                 raw_label,
                 label_type,
                 node_wrap_mode == WrapMode::HtmlLike,
-                crate::config::config_diagram_look(effective_config).is_hand_drawn(),
+                look.is_hand_drawn(),
             ),
         );
         let structural = super::FlowchartStructuralLabelTypography::prepare(
-            &model.class_defs,
+            class_defs,
             label_dom.0,
             label_dom.1,
             |units| work_control.charge_adapter(units),
@@ -1832,7 +1837,7 @@ fn layout_flowchart_with_model(
             (&n.classes, &n.styles, true),
             &structural,
         );
-        let mut node_text_style = flowchart_effective_text_style_for_node_classes_with_provenance(
+        let (mut node_text_style, rectangle_size) = super::style::flowchart_node_layout_style(
             node_parent.as_ref(),
             &model.class_defs,
             &n.classes,
@@ -1845,9 +1850,9 @@ fn layout_flowchart_with_model(
             node_wrap_mode,
             n.layout_shape.as_deref().unwrap_or("squareRect"),
         );
-        let mut metrics = measure_flowchart_svg_label_for_layout_with_terminal_foreground(
+        let mut metrics = measure_flowchart_svg_label_for_layout_with_source_style(
             svg_label_sidecar,
-            Some(FlowchartSvgLabelOwner::Node(node_index)),
+            Some(owner),
             Some(n.id.as_str()),
             FlowchartLabelMetricsRequest {
                 measurer,
@@ -1859,7 +1864,7 @@ fn layout_flowchart_with_model(
                 config: effective_config,
                 math_renderer,
             },
-            node_text_style.terminal_foreground(),
+            Some(&node_text_style),
             svg_width_mode,
         );
         if node_wrap_mode == WrapMode::HtmlLike && edge_html_labels {
@@ -1882,7 +1887,7 @@ fn layout_flowchart_with_model(
             None,
         );
         leaf_label_metrics_by_id.insert(n.id.clone(), (metrics.width, metrics.height));
-        let (width, height) = node_layout_dimensions(NodeLayoutDimensionsRequest {
+        let ((width, height), _) = NodeLayoutDimensionsRequest {
             layout_shape: n.layout_shape.as_deref(),
             layout_direction: &diagram_direction,
             metrics,
@@ -1897,7 +1902,13 @@ fn layout_flowchart_with_model(
             node_pos: n.pos.as_deref(),
             node_asset_width: n.asset_width,
             node_asset_height: n.asset_height,
-        });
+        }
+        .measure(
+            rectangle_size,
+            look.is_hand_drawn(),
+            svg_label_sidecar.map(|builder| (builder, owner)),
+            |units| work_control.charge_adapter(units),
+        )?;
         leaf_node_labels.insert(
             n.id.clone(),
             NodeLabel {
@@ -1929,7 +1940,7 @@ fn layout_flowchart_with_model(
             ),
         );
         let structural = super::FlowchartStructuralLabelTypography::prepare(
-            &model.class_defs,
+            class_defs,
             label_dom.0,
             label_dom.1,
             |units| work_control.charge_adapter(units),
@@ -1951,7 +1962,7 @@ fn layout_flowchart_with_model(
         // probes use `flowchart.wrappingWidth` and `getComputedTextLength()`, while the final label
         // dimensions come from `getBBox()`. Selecting `ComputedLength` here would add a post-wrap
         // per-line measurement pass that is absent upstream.
-        let mut metrics = measure_flowchart_svg_label_for_layout_with_terminal_foreground(
+        let mut metrics = measure_flowchart_svg_label_for_layout_with_source_style(
             svg_label_sidecar,
             Some(FlowchartSvgLabelOwner::EmptySubgraphNode(subgraph_index)),
             Some(sg.id.as_str()),
@@ -1965,7 +1976,7 @@ fn layout_flowchart_with_model(
                 config: effective_config,
                 math_renderer,
             },
-            sg_text_style.terminal_foreground(),
+            Some(&sg_text_style),
             FlowchartSvgWidthMode::Bbox,
         );
         if node_wrap_mode == WrapMode::HtmlLike && edge_html_labels {
@@ -1979,7 +1990,7 @@ fn layout_flowchart_with_model(
             );
         }
         leaf_label_metrics_by_id.insert(sg.id.clone(), (metrics.width, metrics.height));
-        let (width, height) = node_layout_dimensions(NodeLayoutDimensionsRequest {
+        let ((width, height), _) = NodeLayoutDimensionsRequest {
             layout_shape: Some("squareRect"),
             layout_direction: &diagram_direction,
             metrics,
@@ -1994,7 +2005,8 @@ fn layout_flowchart_with_model(
             node_pos: None,
             node_asset_width: None,
             node_asset_height: None,
-        });
+        }
+        .measure([None; 2], false, None, |_| Ok(()))?;
         leaf_node_labels.insert(
             sg.id.clone(),
             NodeLabel {
@@ -2027,7 +2039,7 @@ fn layout_flowchart_with_model(
             ),
         );
         let structural = super::FlowchartStructuralLabelTypography::prepare(
-            &model.class_defs,
+            class_defs,
             label_dom.0,
             label_dom.1,
             |units| work_control.charge_adapter(units),
@@ -2050,7 +2062,7 @@ fn layout_flowchart_with_model(
             styles,
         );
         structural.apply_to_content(&mut text_style_for_label);
-        let mut metrics = measure_flowchart_svg_label_for_layout_with_terminal_foreground(
+        let mut metrics = measure_flowchart_svg_label_for_layout_with_source_style(
             svg_label_sidecar,
             Some(FlowchartSvgLabelOwner::SubgraphTitle(subgraph_index)),
             Some(sg.id.as_str()),
@@ -2331,7 +2343,7 @@ fn layout_flowchart_with_model(
                 let render_id = self_loop_meta
                     .as_ref()
                     .map_or(e.id.as_str(), |meta| meta.logical_edge_id.as_str());
-                measure_flowchart_svg_label_for_layout_with_metrics_style_and_terminal_foreground(
+                measure_flowchart_svg_label_for_layout_with_metrics_and_source_style(
                     svg_label_sidecar,
                     Some(FlowchartSvgLabelOwner::Edge(*edge_owner_index)),
                     Some(render_id),
@@ -2347,11 +2359,11 @@ fn layout_flowchart_with_model(
                         math_renderer,
                     },
                     edge_text_style.as_ref(),
-                    edge_text_style.terminal_foreground(),
+                    Some(&edge_text_style),
                     FlowchartSvgWidthMode::Bbox,
                 )
             } else {
-                measure_flowchart_svg_label_for_layout_with_terminal_foreground(
+                measure_flowchart_svg_label_for_layout_with_source_style(
                     svg_label_sidecar,
                     Some(FlowchartSvgLabelOwner::Edge(*edge_owner_index)),
                     Some(e.id.as_str()),
@@ -2365,7 +2377,7 @@ fn layout_flowchart_with_model(
                         config: effective_config,
                         math_renderer,
                     },
-                    edge_text_style.terminal_foreground(),
+                    Some(&edge_text_style),
                     FlowchartSvgWidthMode::Bbox,
                 )
             };
@@ -2503,6 +2515,39 @@ fn layout_flowchart_with_model(
     }
     type Rect = crate::geom::Box2;
 
+    // A recursive cluster becomes a leaf in the parent graph. Keep its inner frame and the
+    // bounds of the rendered group separate so a CSS resize does not scale or recenter children.
+    #[derive(Clone, Copy)]
+    struct StyledClusterGeometry {
+        frame: Rect,
+        group: Rect,
+    }
+
+    impl StyledClusterGeometry {
+        fn child_offset(self, parent_x: f64, parent_y: f64) -> (f64, f64) {
+            (
+                parent_x - self.group.width().max(1.0) / 2.0 - self.frame.min_x(),
+                parent_y - self.group.height().max(1.0) / 2.0 - self.frame.min_y(),
+            )
+        }
+    }
+
+    let mut subgraph_css_sizes = HashMap::new();
+    if !extracted_graphs.is_empty() && !look.is_hand_drawn() && model.keyword != "agentflow-beta" {
+        work_control.charge_adapter(canonical_subgraphs_in_order.len())?;
+        for &(index, subgraph) in &canonical_subgraphs_in_order {
+            if !cluster_subgraph_ids.contains(subgraph.id.as_str()) {
+                continue;
+            }
+            let (classes, styles) = model.effective_subgraph_css(index, subgraph);
+            let size =
+                super::style::flowchart_subgraph_css_size(&model.class_defs, classes, styles);
+            if size != [None; 2] {
+                subgraph_css_sizes.insert(subgraph.id.as_str(), size);
+            }
+        }
+    }
+
     struct ClusterTitleMetricsContext<'a> {
         model: &'a FlowchartRenderModelRef<'a>,
         subgraphs_by_id: &'a FlowSubgraphIndex<'a>,
@@ -2540,7 +2585,7 @@ fn layout_flowchart_with_model(
             styles,
         );
         let owner = Some(FlowchartSvgLabelOwner::SubgraphTitle(subgraph_index));
-        let metrics = measure_flowchart_svg_label_for_layout_with_terminal_foreground(
+        let metrics = measure_flowchart_svg_label_for_layout_with_source_style(
             ctx.svg_label_sidecar,
             owner,
             Some(id),
@@ -2554,101 +2599,110 @@ fn layout_flowchart_with_model(
                 config: ctx.config,
                 math_renderer: ctx.math_renderer,
             },
-            text_style.terminal_foreground(),
+            Some(&text_style),
             FlowchartSvgWidthMode::Bbox,
         );
         Some((metrics.width.max(1.0), metrics.height.max(1.0)))
     }
 
-    fn extracted_graph_bbox_rect(
-        g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-        title_total_margin: f64,
-        extracted: &std::collections::HashMap<String, Graph<NodeLabel, EdgeLabel, GraphLabel>>,
-        subgraph_id_set: &std::collections::HashSet<&str>,
-        title_metrics_ctx: &ClusterTitleMetricsContext<'_>,
-        cluster_padding: f64,
-        work_control: &mut DagreOperationWorkControl,
-    ) -> Result<Option<Rect>> {
-        fn graph_content_rect(
-            g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-            extracted: &std::collections::HashMap<String, Graph<NodeLabel, EdgeLabel, GraphLabel>>,
-            subgraph_id_set: &std::collections::HashSet<&str>,
-            title_total_margin: f64,
-            title_metrics_ctx: &ClusterTitleMetricsContext<'_>,
-            cluster_padding: f64,
-            work_control: &mut DagreOperationWorkControl,
-        ) -> Result<Option<Rect>> {
-            let node_snapshot_work = node_id_snapshot_work_upper_bound(g, work_control)?;
-            work_control.charge_adapter(node_snapshot_work)?;
-            let mut out: Option<Rect> = None;
-            for id in g.node_ids() {
-                let Some(n) = g.node(&id) else { continue };
-                let (Some(x), Some(y)) = (n.x, n.y) else {
-                    continue;
-                };
-                let mut width = n.width;
-                let mut height = n.height;
-                let is_cluster_node = extracted.contains_key(&id) && g.child_count(&id) == 0;
-                let is_non_recursive_cluster =
-                    subgraph_id_set.contains(id.as_str()) && g.child_count(&id) != 0;
-
-                // Mermaid increases cluster node height by `subGraphTitleTotalMargin` *after* Dagre
-                // layout (just before rendering), and `updateNodeBounds(...)` measures the DOM
-                // bbox after that expansion. Mirror that here for non-recursive clusters.
-                //
-                // For leaf clusterNodes (recursively rendered clusters), the node's width/height
-                // comes directly from `updateNodeBounds(...)`, so do not add margins again.
-                if !is_cluster_node && is_non_recursive_cluster {
-                    if title_total_margin > 0.0 {
-                        height = (height + title_total_margin).max(1.0);
-                    }
-                    if let Some((title_w, title_h)) =
-                        cluster_title_metrics_for_layout(&id, title_metrics_ctx)
-                    {
-                        width = width.max(title_w + cluster_padding);
-                        height = height.max(title_h + title_total_margin);
-                    }
-                }
-
-                let r = Rect::from_center(x, y, width, height);
-                if let Some(ref mut cur) = out {
-                    cur.union(r);
+    fn measure_extracted_graph(
+        cluster_id: &str,
+        ctx: &mut RecursiveLayoutContext<'_>,
+    ) -> Result<(Option<Rect>, Option<StyledClusterGeometry>)> {
+        let Some(g) = ctx.extracted.get(cluster_id) else {
+            return Ok((None, None));
+        };
+        let node_snapshot_work = node_id_snapshot_work_upper_bound(g, ctx.work_control)?;
+        ctx.work_control.charge_adapter(node_snapshot_work)?;
+        let mut group = None::<Rect>;
+        let mut include = |rect: Rect| {
+            if let Some(group) = &mut group {
+                group.union(rect);
+            } else {
+                group = Some(rect);
+            }
+        };
+        let mut frame = None;
+        let mut used_css_size = false;
+        for id in g.node_ids() {
+            let Some(n) = g.node(&id) else { continue };
+            let (Some(x), Some(y)) = (n.x, n.y) else {
+                continue;
+            };
+            if g.child_count(&id) == 0 {
+                if let Some(geometry) = ctx.styled_clusters.get(id.as_str()) {
+                    let (dx, dy) = geometry.child_offset(x, y);
+                    let mut child = geometry.group;
+                    child.translate(dx, dy);
+                    include(child);
+                    used_css_size = true;
                 } else {
-                    out = Some(r);
+                    include(Rect::from_center(x, y, n.width, n.height));
+                }
+                continue;
+            }
+
+            let mut width = n.width;
+            let mut height = n.height;
+            let mut title = None;
+            if ctx.subgraph_id_set.contains(id.as_str()) {
+                // The cluster frame grows for the title and margins after the inner Dagre layout.
+                if ctx.title_total_margin > 0.0 {
+                    height = (height + ctx.title_total_margin).max(1.0);
+                }
+                title = cluster_title_metrics_for_layout(&id, ctx.title_metrics_ctx);
+                if let Some((title_w, title_h)) = title {
+                    width = width.max(title_w + ctx.cluster_padding);
+                    height = height.max(title_h + ctx.title_total_margin);
                 }
             }
-            let edge_snapshot_work =
-                work_control.checked_add(g.edge_slot_count(), g.edge_count())?;
-            work_control.charge_adapter(edge_snapshot_work)?;
-            for ek in g.edge_keys() {
-                let Some(e) = g.edge_by_key(&ek) else {
-                    continue;
-                };
-                let (Some(x), Some(y)) = (e.x, e.y) else {
-                    continue;
-                };
-                if e.width <= 0.0 && e.height <= 0.0 {
-                    continue;
-                }
-                let r = Rect::from_center(x, y, e.width, e.height);
-                if let Some(ref mut cur) = out {
-                    cur.union(r);
-                } else {
-                    out = Some(r);
-                }
+            let rect = Rect::from_center(x, y, width, height);
+            if id == cluster_id {
+                frame = Some(rect);
             }
-            Ok(out)
+            let Some(&[css_width, css_height]) = ctx.subgraph_css_sizes.get(id.as_str()) else {
+                include(rect);
+                continue;
+            };
+            used_css_size = true;
+            let left = rect.min_x();
+            let top = rect.min_y();
+            let width = css_width.unwrap_or(width);
+            let height = css_height.unwrap_or(height);
+            if width > 0.0 && height > 0.0 {
+                include(Rect::from_min_max(left, top, left + width, top + height));
+            }
+            if let Some((title_w, title_h)) = title {
+                include(Rect::from_center(
+                    x,
+                    top + ctx.title_margin_top + title_h / 2.0,
+                    title_w,
+                    title_h,
+                ));
+            }
         }
-
-        graph_content_rect(
-            g,
-            extracted,
-            subgraph_id_set,
-            title_total_margin,
-            title_metrics_ctx,
-            cluster_padding,
-            work_control,
-        )
+        let edge_work = ctx
+            .work_control
+            .checked_add(g.edge_slot_count(), g.edge_count())?;
+        ctx.work_control.charge_adapter(edge_work)?;
+        for key in g.edge_keys() {
+            let Some(edge) = g.edge_by_key(&key) else {
+                continue;
+            };
+            if let (Some(x), Some(y)) = (edge.x, edge.y)
+                && (edge.width > 0.0 || edge.height > 0.0)
+            {
+                include(Rect::from_center(x, y, edge.width, edge.height));
+            }
+        }
+        let styled = if used_css_size {
+            frame
+                .zip(group)
+                .map(|(frame, group)| StyledClusterGeometry { frame, group })
+        } else {
+            None
+        };
+        Ok((group, styled))
     }
 
     fn apply_mermaid_subgraph_title_shifts(
@@ -2708,15 +2762,16 @@ fn layout_flowchart_with_model(
         y_shift: f64,
         cluster_node_labels: &'a std::collections::HashMap<String, NodeLabel>,
         title_total_margin: f64,
+        title_margin_top: f64,
         title_metrics_ctx: &'a ClusterTitleMetricsContext<'a>,
         cluster_padding: f64,
+        subgraph_css_sizes: &'a HashMap<&'a str, [Option<f64>; 2]>,
+        styled_clusters: &'a mut HashMap<String, StyledClusterGeometry>,
         work_control: &'a mut DagreOperationWorkControl,
     }
 
     fn layout_graph_with_recursive_clusters(
         graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
-        graph_cluster_id: Option<&str>,
-        _depth: usize,
         ctx: &mut RecursiveLayoutContext<'_>,
     ) -> Result<()> {
         struct LayoutFrame {
@@ -2803,27 +2858,20 @@ fn layout_flowchart_with_model(
             ctx: &mut RecursiveLayoutContext<'_>,
         ) -> Result<()> {
             for id in ids {
-                let Some(child) = ctx.extracted.get(id) else {
-                    continue;
-                };
                 // In Mermaid, `updateNodeBounds(...)` measures the recursively rendered `<g
                 // class="root">` group. In that render path, the child graph contains a node
                 // matching the cluster id (inserted via `graph.setNode(parentCluster.id, ...)`),
                 // whose computed compound bounds correspond to the cluster box measured in the DOM.
-                if let Some(r) = extracted_graph_bbox_rect(
-                    child,
-                    ctx.title_total_margin,
-                    ctx.extracted,
-                    ctx.subgraph_id_set,
-                    ctx.title_metrics_ctx,
-                    ctx.cluster_padding,
-                    ctx.work_control,
-                )? {
+                let (bounds, styled) = measure_extracted_graph(id, ctx)?;
+                if let Some(geometry) = styled {
+                    ctx.styled_clusters.insert(id.clone(), geometry);
+                }
+                if let Some(r) = bounds {
                     if let Some(n) = graph.node_mut(id) {
                         n.width = r.width().max(1.0);
                         n.height = r.height().max(1.0);
                     }
-                } else if let Some(n_child) = child.node(id)
+                } else if let Some(n_child) = ctx.extracted.get(id).and_then(|child| child.node(id))
                     && let Some(n) = graph.node_mut(id)
                 {
                     n.width = n_child.width.max(1.0);
@@ -2876,7 +2924,7 @@ fn layout_flowchart_with_model(
         }
 
         let mut stack = vec![LayoutFrame {
-            cluster_id: graph_cluster_id.map(str::to_string),
+            cluster_id: None,
             child_ids: None,
         }];
 
@@ -2946,6 +2994,7 @@ fn layout_flowchart_with_model(
         Ok(())
     }
 
+    let mut styled_clusters = HashMap::new();
     {
         let title_metrics_ctx = ClusterTitleMetricsContext {
             model,
@@ -2967,11 +3016,14 @@ fn layout_flowchart_with_model(
             y_shift,
             cluster_node_labels: &cluster_node_labels,
             title_total_margin,
+            title_margin_top,
             title_metrics_ctx: &title_metrics_ctx,
             cluster_padding,
+            subgraph_css_sizes: &subgraph_css_sizes,
+            styled_clusters: &mut styled_clusters,
             work_control,
         };
-        layout_graph_with_recursive_clusters(&mut g, None, 0, &mut recursive_layout_ctx)?;
+        layout_graph_with_recursive_clusters(&mut g, &mut recursive_layout_ctx)?;
     }
 
     let mut leaf_rects: std::collections::HashMap<String, Rect> = std::collections::HashMap::new();
@@ -3027,14 +3079,21 @@ fn layout_flowchart_with_model(
             &'a std::collections::HashMap<String, Graph<NodeLabel, EdgeLabel, GraphLabel>>,
         subgraph_ids: &'a std::collections::HashSet<&'a str>,
         leaf_node_ids: &'a std::collections::HashSet<String>,
+        styled_clusters: &'a HashMap<String, StyledClusterGeometry>,
+    }
+
+    #[derive(Clone, Copy)]
+    struct PlacedRecursiveCluster {
+        frame: Rect,
+        styled_footprint: Option<Rect>,
+        base_width: f64,
     }
 
     struct PlaceGraphOutputs<'a> {
         base_pos: &'a mut std::collections::HashMap<String, (f64, f64)>,
         leaf_rects: &'a mut std::collections::HashMap<String, Rect>,
         cluster_rects_from_graph: &'a mut std::collections::HashMap<String, Rect>,
-        extracted_cluster_rects: &'a mut std::collections::HashMap<String, Rect>,
-        extracted_cluster_base_widths: &'a mut std::collections::HashMap<String, f64>,
+        extracted_clusters: &'a mut HashMap<String, PlacedRecursiveCluster>,
         edge_override_points:
             &'a mut std::collections::HashMap<FlowchartLayoutSegmentKey, Vec<LayoutPoint>>,
         edge_override_label:
@@ -3259,15 +3318,31 @@ fn layout_flowchart_with_model(
                 let (Some(cx), Some(cy)) = (cnode.x, cnode.y) else {
                     continue;
                 };
-                let child_offset = (parent_x - cx, parent_y - cy);
-                // The extracted cluster's footprint in the parent graph is the clusterNode itself.
-                // Our recursive layout step updates the parent graph's node `width/height` to match
-                // Mermaid's `updateNodeBounds(...)` behavior (including any title margin). Avoid
-                // adding `title_total_margin` again here.
-                let r = Rect::from_center(parent_x, parent_y, n.width, n.height);
-                out.extracted_cluster_rects.insert(id.clone(), r);
-                out.extracted_cluster_base_widths
-                    .insert(id.clone(), cnode.width.max(1.0));
+                let footprint = Rect::from_center(parent_x, parent_y, n.width, n.height);
+                let (child_offset, placed) = if let Some(geometry) = inputs.styled_clusters.get(&id)
+                {
+                    let offset = geometry.child_offset(parent_x, parent_y);
+                    let mut frame = geometry.frame;
+                    frame.translate(offset.0, offset.1);
+                    (
+                        offset,
+                        PlacedRecursiveCluster {
+                            frame,
+                            styled_footprint: Some(footprint),
+                            base_width: cnode.width.max(1.0),
+                        },
+                    )
+                } else {
+                    (
+                        (parent_x - cx, parent_y - cy),
+                        PlacedRecursiveCluster {
+                            frame: footprint,
+                            styled_footprint: None,
+                            base_width: cnode.width.max(1.0),
+                        },
+                    )
+                };
+                out.extracted_clusters.insert(id.clone(), placed);
                 child_frames.push(PlaceFrame {
                     graph: child,
                     offset: child_offset,
@@ -3283,22 +3358,19 @@ fn layout_flowchart_with_model(
 
     let mut cluster_rects_from_graph: std::collections::HashMap<String, Rect> =
         std::collections::HashMap::new();
-    let mut extracted_cluster_rects: std::collections::HashMap<String, Rect> =
-        std::collections::HashMap::new();
-    let mut extracted_cluster_base_widths: std::collections::HashMap<String, f64> =
-        std::collections::HashMap::new();
+    let mut extracted_clusters = HashMap::new();
     {
         let place_graph_inputs = PlaceGraphInputs {
             extracted_graphs: &extracted_graphs,
             subgraph_ids: &cluster_subgraph_ids,
             leaf_node_ids: &leaf_node_ids,
+            styled_clusters: &styled_clusters,
         };
         let mut place_graph_outputs = PlaceGraphOutputs {
             base_pos: &mut base_pos,
             leaf_rects: &mut leaf_rects,
             cluster_rects_from_graph: &mut cluster_rects_from_graph,
-            extracted_cluster_rects: &mut extracted_cluster_rects,
-            extracted_cluster_base_widths: &mut extracted_cluster_base_widths,
+            extracted_clusters: &mut extracted_clusters,
             edge_override_points: &mut edge_override_points,
             edge_override_label: &mut edge_override_label,
             edge_override_from_cluster: &mut edge_override_from_cluster,
@@ -3687,7 +3759,7 @@ fn layout_flowchart_with_model(
                 styles,
             );
             let owner = Some(FlowchartSvgLabelOwner::SubgraphTitle(subgraph_index));
-            let title_metrics = measure_flowchart_svg_label_for_layout_with_terminal_foreground(
+            let title_metrics = measure_flowchart_svg_label_for_layout_with_source_style(
                 ctx.svg_label_sidecar,
                 owner,
                 owner.map(|_| sg.id.as_str()),
@@ -3701,7 +3773,7 @@ fn layout_flowchart_with_model(
                     config: ctx.config,
                     math_renderer: ctx.math_renderer,
                 },
-                text_style.terminal_foreground(),
+                Some(&text_style),
                 FlowchartSvgWidthMode::Bbox,
             );
             let mut rect = if let Some(r) = content {
@@ -3807,7 +3879,7 @@ fn layout_flowchart_with_model(
             .get(sg.id.as_str())
             .copied()
             .map(FlowchartSvgLabelOwner::SubgraphTitle);
-        let title_metrics = measure_flowchart_svg_label_for_layout_with_terminal_foreground(
+        let title_metrics = measure_flowchart_svg_label_for_layout_with_source_style(
             ctx.svg_label_sidecar,
             owner,
             Some(sg.id.as_str()),
@@ -3821,7 +3893,7 @@ fn layout_flowchart_with_model(
                 config: ctx.config,
                 math_renderer: ctx.math_renderer,
             },
-            text_style.terminal_foreground(),
+            Some(&text_style),
             FlowchartSvgWidthMode::Bbox,
         );
         let title_w = title_metrics.width.max(1.0);
@@ -3897,46 +3969,29 @@ fn layout_flowchart_with_model(
         }
         let title = model.subgraph_title_for_render(subgraph_index, sg);
 
-        let (rect, base_width) = if extracted_graphs.contains_key(&sg.id) {
-            // For extracted (recursive) clusters, match Mermaid's `updateNodeBounds(...)` intent by
-            // taking the rendered child-graph content bbox (including border nodes) as the cluster
-            // node's bounds.
-            let rect = extracted_cluster_rects
-                .get(&sg.id)
-                .copied()
-                .unwrap_or_else(|| {
-                    compute_cluster_rect(&sg.id, &cluster_rect_ctx, &mut cluster_rect_state)
-                        .map(|v| v.0)
-                        .unwrap_or_else(|_| Rect::from_center(0.0, 0.0, 1.0, 1.0))
-                });
-            let base_width = extracted_cluster_base_widths
-                .get(&sg.id)
-                .copied()
-                .unwrap_or_else(|| rect.width());
-            let rect = adjust_cluster_rect_for_title(
+        let extracted = extracted_clusters.get(&sg.id);
+        let (rect, base_width) = if let Some(placed) = extracted {
+            (placed.frame, placed.base_width)
+        } else if let Some(rect) = cluster_rects_from_graph.get(&sg.id).copied() {
+            (rect, rect.width())
+        } else {
+            compute_cluster_rect(&sg.id, &cluster_rect_ctx, &mut cluster_rect_state)?
+        };
+        let footprint = extracted.and_then(|placed| placed.styled_footprint);
+        let rect = if footprint.is_none()
+            && (extracted.is_some() || cluster_rects_from_graph.contains_key(&sg.id))
+        {
+            adjust_cluster_rect_for_title(
                 rect,
                 subgraph_index,
                 sg,
                 title,
                 sg.label_type.as_deref().unwrap_or("text"),
-                false,
+                extracted.is_none(),
                 &title_adjust_ctx,
-            );
-            (rect, base_width)
-        } else if let Some(r) = cluster_rects_from_graph.get(&sg.id).copied() {
-            let base_width = r.width();
-            let rect = adjust_cluster_rect_for_title(
-                r,
-                subgraph_index,
-                sg,
-                title,
-                sg.label_type.as_deref().unwrap_or("text"),
-                true,
-                &title_adjust_ctx,
-            );
-            (rect, base_width)
+            )
         } else {
-            compute_cluster_rect(&sg.id, &cluster_rect_ctx, &mut cluster_rect_state)?
+            rect
         };
         let (cx, cy) = rect.center();
 
@@ -3954,7 +4009,7 @@ fn layout_flowchart_with_model(
             classes,
             styles,
         );
-        let title_metrics = measure_flowchart_svg_label_for_layout_with_terminal_foreground(
+        let title_metrics = measure_flowchart_svg_label_for_layout_with_source_style(
             svg_label_sidecar,
             Some(FlowchartSvgLabelOwner::SubgraphTitle(subgraph_index)),
             Some(sg.id.as_str()),
@@ -3968,7 +4023,7 @@ fn layout_flowchart_with_model(
                 config: effective_config,
                 math_renderer,
             },
-            title_text_style.terminal_foreground(),
+            Some(&title_text_style),
             FlowchartSvgWidthMode::Bbox,
         );
         let title_label = LayoutLabel {
@@ -4012,13 +4067,14 @@ fn layout_flowchart_with_model(
             title_margin_bottom,
         });
 
+        let cluster_node = footprint.unwrap_or(rect);
+        let (x, y) = cluster_node.center();
         out_nodes.push(LayoutNode {
             id: sg.id.clone(),
-            x: cx,
-            // Mermaid does not shift pure cluster nodes by `subGraphTitleTotalMargin / 2`.
-            y: cy,
-            width: rect.width(),
-            height: rect.height(),
+            x,
+            y,
+            width: cluster_node.width(),
+            height: cluster_node.height(),
             is_cluster: true,
             label_width: None,
             label_height: None,
@@ -4476,6 +4532,7 @@ flowchart TD
         layout_flowchart_with_model(
             model,
             &labels,
+            &super::super::FlowchartClassDefinitions::new(&model.class_defs),
             &parsed.metadata().effective_config,
             &measurer,
             None,

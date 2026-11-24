@@ -27,9 +27,6 @@ pub(crate) struct FlowchartCompatibilityBinding {
     pub(crate) root_font_family: String,
     pub(crate) agentflow_container_stroke: String,
     pub(crate) neo: crate::svg::PreparedCommonNeoCss,
-    pub(crate) palette: Vec<Value>,
-    pub(crate) palette_backgrounds: Vec<Value>,
-    pub(crate) palette_look: String,
     pub(crate) html_labels: bool,
     pub(crate) node_stroke_width: f32,
     pub(crate) node_corner_radius: f64,
@@ -119,35 +116,6 @@ impl FlowchartCompatibilityBinding {
             drop_shadow: theme("dropShadow", "none"),
             root_font_family: crate::config::config_root_font_family_css(config),
             neo: crate::svg::PreparedCommonNeoCss::new(config),
-            palette: if matches!(
-                config.get("theme").and_then(Value::as_str),
-                Some("redux-color" | "redux-dark-color")
-            ) {
-                crate::config::value_at(config, &["themeVariables", "borderColorArray"])
-                    .and_then(Value::as_array)
-                    .cloned()
-                    .unwrap_or_default()
-            } else {
-                Vec::new()
-            },
-            palette_backgrounds: crate::config::value_at(
-                config,
-                &["themeVariables", "bkgColorArray"],
-            )
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default(),
-            palette_look: config
-                .get("look")
-                .and_then(Value::as_str)
-                .filter(|look| {
-                    !look.is_empty()
-                        && look
-                            .bytes()
-                            .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
-                })
-                .unwrap_or("classic")
-                .to_owned(),
             html_labels: super::FlowchartConfigView::new(config).effective_html_labels(),
             node_stroke_width: crate::config::config_f64(
                 config,
@@ -341,14 +309,12 @@ mod tests {
     }
 
     #[test]
-    fn compatibility_preserves_common_aliases_numeric_css_and_palette_slots() {
+    fn compatibility_preserves_common_aliases_and_numeric_css() {
         let binding = FlowchartCompatibilityBinding::resolve(&serde_json::json!({
-            "theme": "redux-color", "look": "neo",
             "themeVariables": {
                 "textColor": "var(--text)", "lineColor": "currentColor",
                 "strokeWidth": 3, "clusterBorder": "var(--border)",
-                "secondaryBorderColor": "", "flowContainerStroke": null,
-                "borderColorArray": [null, " blue "], "bkgColorArray": [12]
+                "secondaryBorderColor": "", "flowContainerStroke": null
             }
         }));
         assert_eq!(binding.node_text_color, "var(--text)");
@@ -358,11 +324,5 @@ mod tests {
         assert_eq!(binding.node_stroke_width, 3.0);
         assert_eq!(binding.border2, "var(--border)");
         assert_eq!(binding.agentflow_container_stroke, "");
-        assert_eq!(
-            binding.palette,
-            [Value::Null, Value::String(" blue ".into())]
-        );
-        assert_eq!(binding.palette_backgrounds, [serde_json::json!(12)]);
-        assert_eq!(binding.palette_look, "neo");
     }
 }

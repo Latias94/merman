@@ -1,7 +1,7 @@
-//! DirectWrite font identity and exact-character fallback. usvg shapes the selected faces.
+//! DirectWrite font identity and cluster fallback. usvg shapes the selected faces.
 
 use super::{
-    FaceAttributes, FontCandidate, FontStyle, FontWeight, FontWidth, PlatformFace,
+    FaceAttributes, FontCandidate, FontStyle, FontWeight, FontWidth, GlyphFallback, PlatformFace,
     family_names_match,
 };
 use std::{
@@ -22,10 +22,11 @@ use windows::Win32::Graphics::DirectWrite::{
     DWRITE_FONT_STRETCH_ULTRA_CONDENSED, DWRITE_FONT_STRETCH_ULTRA_EXPANDED,
     DWRITE_FONT_STYLE_ITALIC, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STYLE_OBLIQUE,
     DWRITE_FONT_WEIGHT, DWRITE_INFORMATIONAL_STRING_POSTSCRIPT_NAME, DWRITE_READING_DIRECTION,
-    DWRITE_READING_DIRECTION_LEFT_TO_RIGHT, DWriteCreateFactory, IDWriteFactory, IDWriteFactory2,
-    IDWriteFont, IDWriteFontCollection, IDWriteFontFace, IDWriteFontFace5, IDWriteFontFallback,
-    IDWriteLocalFontFileLoader, IDWriteLocalizedStrings, IDWriteNumberSubstitution,
-    IDWriteTextAnalysisSource, IDWriteTextAnalysisSource_Impl,
+    DWRITE_READING_DIRECTION_LEFT_TO_RIGHT, DWRITE_READING_DIRECTION_RIGHT_TO_LEFT,
+    DWriteCreateFactory, IDWriteFactory, IDWriteFactory2, IDWriteFont, IDWriteFontCollection,
+    IDWriteFontFace, IDWriteFontFace5, IDWriteFontFallback, IDWriteLocalFontFileLoader,
+    IDWriteLocalizedStrings, IDWriteNumberSubstitution, IDWriteTextAnalysisSource,
+    IDWriteTextAnalysisSource_Impl,
 };
 use windows_core::{Error, Interface, OutRef, PCWSTR, Result, implement, w};
 
@@ -89,10 +90,25 @@ impl CharacterFallback {
         }
     }
 
-    pub(super) fn lookup(&self, character: char, base: &FaceInfo) -> Option<FontCandidate> {
-        let mut text = [0; 2];
-        let len = character.encode_utf16(&mut text).len();
-        let source: IDWriteTextAnalysisSource = ScalarSource { text, len }.into();
+    pub(super) fn lookup(
+        &self,
+        request: GlyphFallback<'_>,
+        base: &FaceInfo,
+    ) -> Option<FontCandidate> {
+        let text: Vec<_> = request.text.encode_utf16().collect();
+        let len = u32::try_from(text.len()).ok()?;
+        let locale: Vec<_> = request
+            .language
+            .unwrap_or_default()
+            .encode_utf16()
+            .chain([0])
+            .collect();
+        let source: IDWriteTextAnalysisSource = TextSource {
+            text,
+            locale,
+            rtl: request.rtl,
+        }
+        .into();
         let family = crate::font_selection::face_family_name(base)?;
         let family: Vec<_> = family.encode_utf16().chain([0]).collect();
         let style = match base.style {
@@ -110,7 +126,7 @@ impl CharacterFallback {
                 .MapCharacters(
                     &source,
                     0,
-                    len as u32,
+                    len,
                     &self.collection,
                     PCWSTR::from_raw(family.as_ptr()),
                     DWRITE_FONT_WEIGHT(i32::from(base.weight.0)),
@@ -122,14 +138,14 @@ impl CharacterFallback {
                 )
                 .ok()?;
         }
-        (mapped_len as usize == len)
-            .then_some(mapped_font)
-            .flatten()
-            .and_then(file_candidate)
+        if mapped_len != len || !scale.is_finite() || scale <= 0.0 {
+            return None;
+        }
+        file_candidate(mapped_font?, scale)
     }
 }
 
-fn file_candidate(font: IDWriteFont) -> Option<FontCandidate> {
+fn file_candidate(font: IDWriteFont, fallback_scale: f32) -> Option<FontCandidate> {
     // SAFETY: COM objects stay live through the calls and own their output strings.
     unsafe {
         let face = font.CreateFontFace().ok()?;
@@ -137,7 +153,7 @@ fn file_candidate(font: IDWriteFont) -> Option<FontCandidate> {
         let family = localized_name(&font.GetFontFamily().ok()?.GetFamilyNames().ok()?)?;
         let variable = variable_face(&face);
         let post_script_name = if let Some(instance) = &variable {
-            if has_non_default_axes(&face, instance) {
+            if !uses_physical_axis_defaults(instance)? {
                 // The resolver admits a file and collection index. These cannot carry the
                 // selected instance's coordinates, even when it shares the physical family.
                 return None;
@@ -185,6 +201,7 @@ fn file_candidate(font: IDWriteFont) -> Option<FontCandidate> {
                 post_script_name,
                 attributes,
                 coverage_source: None,
+                fallback_scale,
             }
             .into_file(path),
         )
@@ -226,8 +243,8 @@ fn variable_face(face: &IDWriteFontFace) -> Option<IDWriteFontFace5> {
     }
 }
 
-fn has_non_default_axes(face: &IDWriteFontFace, instance: &IDWriteFontFace5) -> bool {
-    with_font_table(face, b"fvar", |bytes| {
+fn uses_physical_axis_defaults(instance: &IDWriteFontFace5) -> Option<bool> {
+    with_font_table(instance, b"fvar", |bytes| {
         let table = fvar::Table::parse(bytes)?;
         // SAFETY: The slice has the exact number of writable slots reported by this face.
         let mut values = unsafe {
@@ -238,19 +255,22 @@ fn has_non_default_axes(face: &IDWriteFontFace, instance: &IDWriteFontFace5) -> 
             instance.GetFontAxisValues(&mut values).ok()?;
             values
         };
-        values.sort_unstable_by_key(|value| value.axisTag.0);
-        // DirectWrite can include static CSS axes with no corresponding physical axis.
-        Some(table.axes.into_iter().any(|axis| {
-            let tag = u32::from_le_bytes(axis.tag.to_bytes());
-            values
-                .binary_search_by_key(&tag, |value| value.axisTag.0)
-                .ok()
-                .is_some_and(|i| {
-                    let value = values[i].value;
-                    (axis.min_value..=axis.max_value).contains(&value) && value != axis.def_value
-                })
-        }))
-    }) == Some(true)
+        Some(axis_values_match_defaults(table, &mut values))
+    })
+}
+
+fn axis_values_match_defaults(
+    table: fvar::Table<'_>,
+    values: &mut [DWRITE_FONT_AXIS_VALUE],
+) -> bool {
+    values.sort_unstable_by_key(|value| value.axisTag.0);
+    // DirectWrite also reports static CSS axes. Only axes declared by the file need a match.
+    table.axes.into_iter().all(|axis| {
+        let tag = u32::from_le_bytes(axis.tag.to_bytes());
+        values
+            .binary_search_by_key(&tag, |value| value.axisTag.0)
+            .is_ok_and(|index| values[index].value == axis.def_value)
+    })
 }
 
 struct FontTableLease<'a> {
@@ -349,17 +369,16 @@ fn physical_width(stretch: DWRITE_FONT_STRETCH) -> Option<FontWidth> {
 }
 
 #[implement(IDWriteTextAnalysisSource)]
-struct ScalarSource {
-    text: [u16; 2],
-    len: usize,
+struct TextSource {
+    text: Vec<u16>,
+    locale: Vec<u16>,
+    rtl: bool,
 }
 
-impl IDWriteTextAnalysisSource_Impl for ScalarSource_Impl {
+impl IDWriteTextAnalysisSource_Impl for TextSource_Impl {
     fn GetTextAtPosition(&self, position: u32, text: *mut *mut u16, len: *mut u32) -> Result<()> {
         report_text(
-            self.text[..self.len]
-                .get(position as usize..)
-                .unwrap_or_default(),
+            self.text.get(position as usize..).unwrap_or_default(),
             text,
             len,
         )
@@ -372,26 +391,28 @@ impl IDWriteTextAnalysisSource_Impl for ScalarSource_Impl {
         len: *mut u32,
     ) -> Result<()> {
         report_text(
-            self.text[..self.len]
-                .get(..position as usize)
-                .unwrap_or_default(),
+            self.text.get(..position as usize).unwrap_or_default(),
             text,
             len,
         )
     }
 
     fn GetParagraphReadingDirection(&self) -> DWRITE_READING_DIRECTION {
-        DWRITE_READING_DIRECTION_LEFT_TO_RIGHT
+        if self.rtl {
+            DWRITE_READING_DIRECTION_RIGHT_TO_LEFT
+        } else {
+            DWRITE_READING_DIRECTION_LEFT_TO_RIGHT
+        }
     }
 
     fn GetLocaleName(&self, position: u32, len: *mut u32, locale: *mut *mut u16) -> Result<()> {
         if len.is_null() || locale.is_null() {
             return Err(Error::from_hresult(E_POINTER));
         }
-        // SAFETY: COM supplies writable output pointers. The neutral locale is static.
+        // SAFETY: COM supplies writable output pointers. The source owns the NUL-terminated locale.
         unsafe {
-            len.write((self.len as u32).saturating_sub(position));
-            locale.write(w!("").as_ptr().cast_mut());
+            len.write((self.text.len() as u32).saturating_sub(position));
+            locale.write(self.locale.as_ptr().cast_mut());
         }
         Ok(())
     }
@@ -407,7 +428,7 @@ impl IDWriteTextAnalysisSource_Impl for ScalarSource_Impl {
         }
         substitution.write(None)?;
         // SAFETY: COM supplies a writable output pointer.
-        unsafe { len.write((self.len as u32).saturating_sub(position)) };
+        unsafe { len.write((self.text.len() as u32).saturating_sub(position)) };
         Ok(())
     }
 }
@@ -435,6 +456,115 @@ mod tests {
     use super::*;
     use usvg::fontdb::Database;
 
+    fn han() -> GlyphFallback<'static> {
+        GlyphFallback {
+            text: "中",
+            font: None,
+            language: None,
+            rtl: false,
+        }
+    }
+
+    #[test]
+    fn directwrite_requires_a_default_value_for_each_physical_axis() {
+        use windows::Win32::Graphics::DirectWrite::{
+            DWRITE_FONT_AXIS_TAG_WEIGHT, DWRITE_FONT_AXIS_TAG_WIDTH,
+        };
+
+        let bytes = include_bytes!("../../../tests/fonts/MermanVariableWeight.ttf");
+        let table = ttf_parser::Face::parse(bytes, 0)
+            .unwrap()
+            .tables()
+            .fvar
+            .unwrap();
+        let width = DWRITE_FONT_AXIS_VALUE {
+            axisTag: DWRITE_FONT_AXIS_TAG_WIDTH,
+            value: 100.0,
+        };
+        let weight = |value| DWRITE_FONT_AXIS_VALUE {
+            axisTag: DWRITE_FONT_AXIS_TAG_WEIGHT,
+            value,
+        };
+        assert!(axis_values_match_defaults(
+            table,
+            &mut [weight(100.0), width]
+        ));
+        assert!(!axis_values_match_defaults(table, &mut [width]));
+        for value in [400.0, 1000.0, f32::NAN] {
+            assert!(!axis_values_match_defaults(table, &mut [weight(value)]));
+        }
+    }
+
+    #[test]
+    fn directwrite_maps_fallback_to_the_selected_collection_member() {
+        use windows::Win32::Graphics::DirectWrite::{DWRITE_UNICODE_RANGE, IDWriteFactory5};
+
+        let fixture =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts/Cousine-test-collection.ttc");
+        // SAFETY: DirectWrite reads the fixture path and mapping arrays during each call.
+        // The resulting collection and fallback own their font references.
+        let fallback = unsafe {
+            let factory =
+                DWriteCreateFactory::<IDWriteFactory5>(DWRITE_FACTORY_TYPE_SHARED).unwrap();
+            let path = windows_core::HSTRING::from(fixture.as_path());
+            let file = factory.CreateFontFileReference(&path, None).unwrap();
+            let fonts = factory.CreateFontSetBuilder().unwrap();
+            fonts.AddFontFile(&file).unwrap();
+            let collection: IDWriteFontCollection = factory
+                .CreateFontCollectionFromFontSet(&fonts.CreateFontSet().unwrap())
+                .unwrap()
+                .into();
+            let mappings = factory.CreateFontFallbackBuilder().unwrap();
+            let range = DWRITE_UNICODE_RANGE {
+                first: 'A' as u32,
+                last: 'A' as u32,
+            };
+            mappings
+                .AddMapping(
+                    &[range],
+                    &[w!("Cousine").as_ptr()],
+                    &collection,
+                    None,
+                    None,
+                    1.5,
+                )
+                .unwrap();
+            CharacterFallback {
+                collection,
+                fallback: mappings.CreateFontFallback().unwrap(),
+            }
+        };
+
+        let mut database = Database::new();
+        database
+            .load_font_data(include_bytes!("../../../tests/fonts/MermanProbeBase.ttf").to_vec());
+        let mut base = database.faces().next().unwrap().clone();
+        base.style = Style::Italic;
+        let selection = fallback.lookup(GlyphFallback::from("AA"), &base).unwrap();
+        let FontCandidate::File {
+            path,
+            index,
+            expected: super::super::ExpectedFace::Platform(expected),
+        } = selection
+        else {
+            panic!("the private fallback mapping must select a file");
+        };
+        assert_eq!(expected.fallback_scale, 1.5);
+        assert_eq!(
+            path.canonicalize().unwrap(),
+            fixture.canonicalize().unwrap()
+        );
+        assert_eq!(index, 1);
+        let mut physical = Database::new();
+        physical.load_font_data(std::fs::read(&path).unwrap());
+        let italic = physical.faces().find(|face| face.index == index).unwrap();
+        assert_eq!(italic.post_script_name, "Cousine-Italic");
+        expected.validate(italic, &path).unwrap();
+        let mut wrong_index = italic.clone();
+        wrong_index.index = 0;
+        assert!(expected.validate(&wrong_index, &path).is_err());
+    }
+
     #[test]
     #[ignore = "requires Windows Noto Sans SC with a physical weight of 100"]
     fn directwrite_variable_fallback_requires_physical_axis_defaults() {
@@ -445,7 +575,7 @@ mod tests {
         let fallback = CharacterFallback::new().unwrap();
         for weight in [400, 700] {
             base.weight = usvg::fontdb::Weight(weight);
-            assert!(fallback.lookup('中', &base).is_none(), "weight {weight}");
+            assert!(fallback.lookup(han(), &base).is_none(), "weight {weight}");
         }
 
         base.weight = usvg::fontdb::Weight(100);
@@ -453,7 +583,7 @@ mod tests {
             path,
             index,
             expected,
-        }) = fallback.lookup('中', &base)
+        }) = fallback.lookup(han(), &base)
         else {
             panic!("the default instance remains representable");
         };
@@ -462,7 +592,7 @@ mod tests {
         let face = physical.faces().find(|face| face.index == index).unwrap();
         assert_eq!(face.post_script_name, "NotoSansSC-Thin");
         assert_eq!(face.weight, base.weight);
-        expected.validate(face, &path, index).unwrap();
+        expected.validate(face, &path).unwrap();
     }
 
     #[test]
@@ -481,7 +611,7 @@ mod tests {
             expected,
         } = CharacterFallback::new()
             .unwrap()
-            .lookup('中', base.faces().next().unwrap())
+            .lookup(han(), base.faces().next().unwrap())
             .unwrap()
         else {
             panic!("DirectWrite must provide a file-backed face");
@@ -489,21 +619,21 @@ mod tests {
         let regular = load(path.clone());
         let regular = regular.faces().find(|face| face.index == index).unwrap();
         assert_eq!(regular.post_script_name, "MicrosoftYaHeiUI");
-        expected.validate(regular, &path, index).unwrap();
+        expected.validate(regular, &path).unwrap();
 
         let bold = load(directory.join("msyhbd.ttc"));
         let bold = bold.faces().find(|face| face.index == index).unwrap();
         assert_eq!(bold.post_script_name, "MicrosoftYaHeiUI-Bold");
-        assert!(expected.validate(bold, &path, index).is_err());
+        assert!(expected.validate(bold, &path).is_err());
 
         let mut incorrect_weight = regular.clone();
         incorrect_weight.weight = bold.weight;
-        assert!(expected.validate(&incorrect_weight, &path, index).is_err());
+        assert!(expected.validate(&incorrect_weight, &path).is_err());
 
         let super::super::ExpectedFace::Platform(mut descriptor) = expected else {
             panic!("DirectWrite must provide a platform descriptor");
         };
         descriptor.post_script_name = Some(bold.post_script_name.clone());
-        assert!(descriptor.validate(regular, &path, index).is_err());
+        assert!(descriptor.validate(regular, &path).is_err());
     }
 }

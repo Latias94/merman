@@ -135,9 +135,9 @@ previews. Standalone Playground previews use frame hints with a custom WASM buil
 The current-source default CLI build and official release profile include
 `native-fonts` and `system-fonts`. Mermaid SVG defaults to deterministic text
 measurement without a native font context or system discovery. Mermaid PNG/JPEG/PDF
-share one native context between measurement and painting. The Windows release
-archive queries the platform catalog on demand, and the other release archives
-and Cargo source defaults use bounded discovery. These defaults apply to Mermaid
+share one native context between measurement and painting. The current release
+profile queries the platform on demand on Windows, macOS, and Linux. Ordinary
+Cargo source builds use bounded discovery. These defaults apply to Mermaid
 input in `render`, `batch`, and `mmdc`; raw SVG conversion only paints existing
 geometry and is never relaid out. Host fonts can change wrapping, node sizes and
 image/PDF snapshots.
@@ -196,14 +196,14 @@ estimates.
 
 The optional CLI feature `platform-system-font-query` adds an explicit system
 font policy. Use `--font-system platform` to query the operating system's font
-service (Fontique on Windows/Linux, direct Core Text descriptors on macOS).
+service. The backend uses Fontique and DirectWrite on Windows, Core Text on macOS,
+and Fontconfig on Linux and FreeBSD.
 `--font-system bounded` explicitly selects bounded
 discovery in builds with platform query support. `--font-system on` selects the
 build's default system provider. Automatic Mermaid encoded output uses the same
 provider when no explicit fonts or font policy are supplied. The official release
-recipe selects `platform-system-font-default`, which provides both policy options
-and makes platform discovery the default on Windows, macOS, and Linux. Cargo
-source defaults use bounded discovery.
+recipe selects `platform-system-font-default`, which enables both policy options
+and chooses the platform provider.
 
 On Linux/FreeBSD, platform discovery distinguishes an unavailable Fontconfig runtime
 from an available runtime with an empty configured font set. In a build whose default
@@ -212,40 +212,57 @@ discovery only when the runtime cannot load. Explicit `--font-system platform` r
 that error instead. An intentionally empty Fontconfig configuration does not trigger
 fallback, and neither do font-data, resource-limit, or cancellation errors.
 
+Fontconfig ranks the requested family names together, honoring strong and weak
+aliases. Merman verifies scan-time aliases against the physical face and keeps
+alternatives with overlapping coverage. A text face can therefore supply a glyph
+when a preferred face is pictorial or covers only a subset. If a font file
+disappears, measurement and painting can reuse a snapshot already admitted. For
+new selections, the resolver tries the remaining candidates and reports the first
+missing path if none succeeds.
+
 Platform queries and metadata mappings run outside Merman's scan budgets.
 Selected font bytes use bounded immutable snapshots shared by measurement and
-painting. Platform mode acquires those bytes on demand, including the default
-system face. On Windows, explicit faces are tried first. DirectWrite queries the
-actual missing character for script-specific fallback. Shared symbols and
-combining marks try the catalog fallback order before the single-character
-query. On macOS, family/style queries avoid constructing a full font catalog, and
-Core Text queries the actual missing Unicode scalar using the registered base face.
-The selected native object is retained as the origin of the admitted data; no
-physical collection index is inferred from its name. Generic family lookup stops after the
-first accepted candidate. Non-covering fallback candidates are filtered before
-new snapshot acquisition, while an already admitted snapshot remains authoritative.
-On macOS, the selected native face is stored as a standalone font instead of
-copying unrelated collection members. Its tables come from the retained native
-object, while the standalone data's face index is zero. Explicit input files retain their whole-file
-ingestion policy. The cumulative font-data budget remains 64 MiB, and a large
-selected color/bitmap table can still exceed it. A context identity includes the policy, initial
-font bytes, and the system default family name when applicable.
-Successful macOS selections are fixed for measurement and its derived exports;
-new operations query the current system again. Their metadata is bounded separately
-from the optional measurement cache. Explicit unregistered fonts can use a system
-cascade when system fallback is enabled. Native instances with non-default variation
-coordinates are currently declined because those coordinates cannot yet be passed
-through the complete shaping and painting bridge.
+painting, including the default system face acquired on demand. Generic family
+lookup stops at the first accepted face. The resolver can reject non-covering
+candidates before acquiring new snapshots and verifies coverage on admitted data.
+
+Workspace builds repair each missing shaping cluster with one physical face,
+preserving glyphs in the surrounding clusters. Platform fallback tries the
+authored font stack, then caller fonts in source order, then the platform's
+fallback candidates. SVG text inherits `xml:lang` and a `<tspan>` can override it.
+Rust hosts can set the default language for Mermaid and untagged SVG through
+`NativeFontContext::with_language`. Windows applies DirectWrite's fallback scale
+to both cluster metrics and painted glyphs.
+
+On macOS, Core Text looks up families on demand and receives the missing cluster
+and its language. An explicit base face can use its registered cascade after its
+OpenType tables match. An unregistered face can use the Helvetica cascade when
+system fallback is enabled. Most selected faces use a standalone snapshot at
+index zero. If the collection fits the remaining budget and its members share an
+outline table larger than half the collection, Merman can retain one TTC or OTC
+and verify the selected member by its native tables. Measurement and painting
+then share the same bytes and member index.
+
+The default font-data budget per native context increases from 64 MiB to 256 MiB.
+It covers explicit inputs, including whole files from `--font-dir`, and selected
+system font data. A large color or bitmap table can exceed it. The CLI reports
+the requested total so far and suggests a retry such as `--font-max-bytes 512MiB`.
+Bounded discovery has a separate budget for scanning character maps. Native
+measurement has its own per-diagram `--font-max-measurements` limit.
+
+A context identity includes its policy, initial font bytes, and the system default
+family name when applicable. Successful platform selections are fixed for measurement
+and its derived exports. New operations query the current system again. Selection
+metadata is bounded separately from the optional measurement cache. Native instances
+requiring non-default variation coordinates are declined during selection.
 Platform fallback can choose different faces and change diagram geometry. For
 fixed font selection, supply explicit font files with `--font-system off`.
 In builds with platform queries, `on`, `bounded`, and `platform` all allow system
 fallback for explicit font sources. `capabilities --json` lists those values in
 `native_fonts.platform_system_query`. `system_resources_bounded` describes the default.
 
-Build with `experimental-system-font-query` to retain the experimental CLI
-default that uses the platform catalog for automatic and `--font-system on`
-requests. Its capability document reports platform queries in
-`encoded_output_defaults`. Rust callers select platform queries through
+The CLI feature `experimental-system-font-query` is an alias for
+`platform-system-font-default`. Rust callers select platform queries through
 `NativeFontOptions::load_platform` with the library's
 `experimental-system-font-query` feature. Ordinary `load` uses bounded discovery.
 

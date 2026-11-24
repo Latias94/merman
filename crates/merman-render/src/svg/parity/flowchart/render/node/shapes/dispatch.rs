@@ -160,7 +160,7 @@ pub(in super::super) fn render_flowchart_shape(
             );
         }
         FlowchartShape::ImageSquare => {
-            if let Some(label) = super::try_render_image_square(out, ctx, common, label, details) {
+            if let Some(label) = super::try_render_image_square(out, ctx, common, label, details)? {
                 return Ok(
                     super::super::emission::FlowchartNodeShapeRenderOutcome::new(
                         true,
@@ -214,7 +214,7 @@ pub(in super::super) fn render_flowchart_shape(
             super::render_person(out, ctx, common, label, details);
         }
         FlowchartShape::Process => {
-            let paint = super::render_process_rectangle(out, common, details);
+            let paint = super::render_process_rectangle(out, ctx, common, details);
             return Ok(super::super::emission::FlowchartNodeShapeRenderOutcome::new(false, paint));
         }
         FlowchartShape::RoundedRectangle => {

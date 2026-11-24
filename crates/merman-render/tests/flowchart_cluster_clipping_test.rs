@@ -314,23 +314,32 @@ fn flowchart_elk_side_edges_attach_to_the_expanded_html_cluster_frame() {
 
 #[test]
 fn flowchart_explicit_cluster_size_preserves_provider_frame_and_expands_viewport() {
-    let source = format!("{}style G width:640px,height:720px\n", source("Ready"));
+    let unstyled = source("Ready");
+    let styled = format!("{unstyled}style G width:640px,height:720px\n");
     for backend in BACKENDS {
         for html_labels in [false, true] {
-            let (layout, svg) = render(&source, backend, html_labels);
+            let (natural_layout, _) = render(&unstyled, backend, html_labels);
+            let natural = natural_layout
+                .clusters
+                .iter()
+                .find(|cluster| cluster.id == "G")
+                .unwrap();
+            let (layout, svg) = render(&styled, backend, html_labels);
             let allocated = layout
                 .clusters
                 .iter()
                 .find(|cluster| cluster.id == "G")
                 .unwrap();
+            assert_eq!(allocated.width, natural.width, "{backend}");
+            assert_eq!(allocated.height, natural.height, "{backend}");
             let document = roxmltree::Document::parse(&svg).unwrap();
             let cluster = cluster(&document, "G");
             let frame = cluster
                 .children()
                 .find(|node| node.has_tag_name("rect"))
                 .unwrap();
-            assert_eq!(number(frame, "width"), allocated.width);
-            assert_eq!(number(frame, "height"), allocated.height);
+            assert_eq!(number(frame, "width"), 640.0, "{backend}");
+            assert_eq!(number(frame, "height"), 720.0, "{backend}");
             assert_eq!(property(frame, "width"), Some("640px !important"));
             assert_eq!(property(frame, "height"), Some("720px !important"));
             let viewbox = document

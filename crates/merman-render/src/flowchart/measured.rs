@@ -1,15 +1,14 @@
 //! Measured leaf shapes and edge labels shared by Flowchart graph adapters.
 
 use super::config::{FlowchartConfigView, FlowchartLayoutSettings};
-use super::node::{NodeLayoutDimensionsRequest, node_layout_dimensions};
+use super::node::NodeLayoutDimensionsRequest;
 use super::{
-    FlowEdge, FlowNode, FlowchartEdgeKey, FlowchartEdgeLabelPadding, FlowchartLabelMetricsRequest,
-    FlowchartLabelTypography, FlowchartRenderModelRef, FlowchartSvgLabelOwner,
-    FlowchartSvgLabelSidecarBuilder, FlowchartSvgWidthMode,
-    flowchart_apply_html_node_class_box_metrics,
-    flowchart_effective_text_style_for_node_classes_with_provenance, flowchart_node_svg_width_mode,
-    measure_flowchart_svg_label_for_layout_with_metrics_style_and_terminal_foreground,
-    measure_flowchart_svg_label_for_layout_with_terminal_foreground,
+    FlowEdge, FlowNode, FlowchartClassDefinitions, FlowchartEdgeKey, FlowchartEdgeLabelPadding,
+    FlowchartLabelMetricsRequest, FlowchartLabelTypography, FlowchartRenderModelRef,
+    FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder, FlowchartSvgWidthMode,
+    flowchart_apply_html_node_class_box_metrics, flowchart_node_svg_width_mode,
+    measure_flowchart_svg_label_for_layout_with_metrics_and_source_style,
+    measure_flowchart_svg_label_for_layout_with_source_style,
 };
 use crate::Result;
 use crate::math::MathRenderer;
@@ -25,10 +24,13 @@ pub(super) struct MeasuredNode {
     pub width: f64,
     pub height: f64,
     pub label: MeasuredLabel,
+    #[cfg(feature = "layout-shoal")]
+    pub geometry: Option<super::PreparedFlowchartNodeGeometry>,
 }
 
 pub(super) struct FlowchartMeasurement<'a> {
     model: FlowchartRenderModelRef<'a>,
+    class_defs: &'a FlowchartClassDefinitions<'a>,
     effective_config: &'a PresentationConfig,
     measurer: &'a dyn TextMeasurer,
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
@@ -42,6 +44,7 @@ pub(super) struct FlowchartMeasurement<'a> {
 impl<'a> FlowchartMeasurement<'a> {
     pub fn new(
         model: FlowchartRenderModelRef<'a>,
+        class_defs: &'a FlowchartClassDefinitions<'a>,
         effective_config: &'a PresentationConfig,
         measurer: &'a dyn TextMeasurer,
         math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
@@ -54,6 +57,7 @@ impl<'a> FlowchartMeasurement<'a> {
         );
         Self {
             model,
+            class_defs,
             effective_config,
             measurer,
             math_renderer,
@@ -98,7 +102,7 @@ impl<'a> FlowchartMeasurement<'a> {
         let structural = collapsed
             .then(|| {
                 super::FlowchartStructuralLabelTypography::prepare(
-                    &self.model.class_defs,
+                    self.class_defs,
                     self.settings.edge_html_labels,
                     super::FlowchartLabelDom::node(
                         "collapsedGroup",
@@ -136,7 +140,7 @@ impl<'a> FlowchartMeasurement<'a> {
         } else {
             (label_type == "markdown").then_some(self.settings.cluster_title_wrapping_width)
         };
-        let mut metrics = measure_flowchart_svg_label_for_layout_with_terminal_foreground(
+        let mut metrics = measure_flowchart_svg_label_for_layout_with_source_style(
             self.svg_label_sidecar,
             Some(FlowchartSvgLabelOwner::SubgraphTitle(index)),
             Some(&group.id),
@@ -150,7 +154,7 @@ impl<'a> FlowchartMeasurement<'a> {
                 config: self.effective_config,
                 math_renderer: self.math_renderer,
             },
-            style.terminal_foreground(),
+            Some(&style),
             FlowchartSvgWidthMode::Bbox,
         );
         if collapsed && mode == WrapMode::HtmlLike && self.settings.edge_html_labels {
@@ -171,24 +175,25 @@ impl<'a> FlowchartMeasurement<'a> {
         node: &FlowNode,
         owner: FlowchartSvgLabelOwner,
         direction: &str,
-        charge: impl FnMut(usize) -> Result<()>,
+        mut charge: impl FnMut(usize) -> Result<()>,
     ) -> Result<MeasuredNode> {
         let raw_label = self.model.node_label_for_render(node).unwrap_or(&node.id);
         let wrapping_width =
             super::bpmn::wrapping_width(node.layout_shape.as_deref(), self.settings.wrapping_width);
         let label_type = node.label_type.as_deref().unwrap_or("text");
+        let look = crate::config::mermaid_config_diagram_look(self.effective_config);
         let label_dom = super::FlowchartLabelDom::node(
             node.layout_shape.as_deref().unwrap_or("squareRect"),
             raw_label,
             label_type,
             self.settings.node_wrap_mode == WrapMode::HtmlLike,
-            crate::config::config_diagram_look(self.effective_config).is_hand_drawn(),
+            look.is_hand_drawn(),
         );
         let structural = super::FlowchartStructuralLabelTypography::prepare(
-            &self.model.class_defs,
+            self.class_defs,
             self.settings.edge_html_labels,
             label_dom,
-            charge,
+            &mut charge,
         )?;
         let node_parent = self.typography.node_source_parent_style(
             self.label_base_style(self.settings.node_wrap_mode),
@@ -196,7 +201,7 @@ impl<'a> FlowchartMeasurement<'a> {
             (&node.classes, &node.styles, true),
             &structural,
         );
-        let mut node_text_style = flowchart_effective_text_style_for_node_classes_with_provenance(
+        let (mut node_text_style, rectangle_size) = super::style::flowchart_node_layout_style(
             node_parent.as_ref(),
             &self.model.class_defs,
             &node.classes,
@@ -209,7 +214,7 @@ impl<'a> FlowchartMeasurement<'a> {
             self.settings.node_wrap_mode,
             node.layout_shape.as_deref().unwrap_or("squareRect"),
         );
-        let mut metrics = measure_flowchart_svg_label_for_layout_with_terminal_foreground(
+        let mut metrics = measure_flowchart_svg_label_for_layout_with_source_style(
             self.svg_label_sidecar,
             Some(owner),
             Some(node.id.as_str()),
@@ -223,7 +228,7 @@ impl<'a> FlowchartMeasurement<'a> {
                 config: self.effective_config,
                 math_renderer: self.math_renderer,
             },
-            node_text_style.terminal_foreground(),
+            Some(&node_text_style),
             svg_width_mode,
         );
         if self.settings.node_wrap_mode == WrapMode::HtmlLike && self.settings.edge_html_labels {
@@ -250,7 +255,7 @@ impl<'a> FlowchartMeasurement<'a> {
             width: metrics.width,
             height: metrics.height,
         };
-        let (width, height) = node_layout_dimensions(NodeLayoutDimensionsRequest {
+        let ((width, height), _geometry) = NodeLayoutDimensionsRequest {
             layout_shape: node.layout_shape.as_deref(),
             layout_direction: direction,
             metrics,
@@ -258,19 +263,27 @@ impl<'a> FlowchartMeasurement<'a> {
             wrapping_width,
             node_constraint: node.constraint.as_deref(),
             padding: self.settings.node_padding,
-            look_is_neo: crate::config::mermaid_config_diagram_look(self.effective_config).is_neo(),
+            look_is_neo: look.is_neo(),
             state_padding: self.settings.state_padding,
             node_icon: node.icon.as_deref(),
             node_img: node.img.as_deref(),
             node_pos: node.pos.as_deref(),
             node_asset_width: node.asset_width,
             node_asset_height: node.asset_height,
-        });
+        }
+        .measure(
+            rectangle_size,
+            look.is_hand_drawn(),
+            self.svg_label_sidecar.map(|builder| (builder, owner)),
+            charge,
+        )?;
 
         Ok(MeasuredNode {
             width,
             height,
             label,
+            #[cfg(feature = "layout-shoal")]
+            geometry: _geometry,
         })
     }
 
@@ -307,7 +320,7 @@ impl<'a> FlowchartMeasurement<'a> {
                     self.settings.edge_wrap_mode,
                 )
             } else if self.settings.edge_wrap_mode == WrapMode::SvgLike {
-                measure_flowchart_svg_label_for_layout_with_metrics_style_and_terminal_foreground(
+                measure_flowchart_svg_label_for_layout_with_metrics_and_source_style(
                     self.svg_label_sidecar,
                     Some(owner),
                     Some(edge.id.as_str()),
@@ -323,11 +336,11 @@ impl<'a> FlowchartMeasurement<'a> {
                         math_renderer: self.math_renderer,
                     },
                     edge_text_style.as_ref(),
-                    edge_text_style.terminal_foreground(),
+                    Some(&edge_text_style),
                     FlowchartSvgWidthMode::Bbox,
                 )
             } else {
-                measure_flowchart_svg_label_for_layout_with_terminal_foreground(
+                measure_flowchart_svg_label_for_layout_with_source_style(
                     self.svg_label_sidecar,
                     Some(owner),
                     Some(edge.id.as_str()),
@@ -341,7 +354,7 @@ impl<'a> FlowchartMeasurement<'a> {
                         config: self.effective_config,
                         math_renderer: self.math_renderer,
                     },
-                    edge_text_style.terminal_foreground(),
+                    Some(&edge_text_style),
                     FlowchartSvgWidthMode::Bbox,
                 )
             };

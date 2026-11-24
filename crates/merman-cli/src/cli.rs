@@ -966,6 +966,7 @@ pub(crate) struct FontCliArgs {
     pub(crate) sources: Vec<FontSource>,
     pub(crate) measurement: Option<FontMeasurementKind>,
     pub(crate) system: Option<FontSystemKind>,
+    pub(crate) max_bytes: Option<usize>,
     pub(crate) max_measurements: Option<usize>,
 }
 
@@ -991,6 +992,16 @@ struct FontArgumentDefinitions {
     )]
     #[arg(long = "font-system", value_enum, help_heading = "Native fonts")]
     font_system: Option<FontSystemKind>,
+    /// Byte budget for the entire native font context, including explicit and selected system fonts (default 256 MiB).
+    /// Use a positive integer in bytes or with a KiB, MiB, or GiB suffix, such as 256MiB.
+    #[arg(
+        long = "font-max-bytes",
+        value_name = "SIZE",
+        value_parser = parse_font_max_bytes,
+        value_hint = ValueHint::Other,
+        help_heading = "Native fonts"
+    )]
+    font_max_bytes: Option<usize>,
     /// Maximum uncached native font shaping probes per diagram (default: 16384); independent of --resource-profile.
     #[arg(
         long = "font-max-measurements",
@@ -1039,6 +1050,7 @@ impl clap::FromArgMatches for FontCliArgs {
                 .get_one::<FontMeasurementKind>("font_measurement")
                 .copied(),
             system: matches.get_one::<FontSystemKind>("font_system").copied(),
+            max_bytes: matches.get_one::<usize>("font_max_bytes").copied(),
             max_measurements: matches.get_one::<usize>("font_max_measurements").copied(),
         })
     }
@@ -2229,7 +2241,27 @@ impl RenderFormat {
     }
 }
 
-#[cfg(any(feature = "ascii", feature = "parallel-markdown"))]
+#[cfg(feature = "native-fonts")]
+fn parse_font_max_bytes(value: &str) -> Result<usize, String> {
+    let digits = value.bytes().take_while(u8::is_ascii_digit).count();
+    let (amount, unit) = value.split_at(digits);
+    let multiplier = match unit {
+        "" => 1,
+        "KiB" => 1 << 10,
+        "MiB" => 1 << 20,
+        "GiB" => 1 << 30,
+        _ => return Err("expected a positive byte count or a size such as 256MiB".to_owned()),
+    };
+    parse_positive_usize(amount)?
+        .checked_mul(multiplier)
+        .ok_or_else(|| "font byte budget is too large for this platform".to_owned())
+}
+
+#[cfg(any(
+    feature = "ascii",
+    feature = "parallel-markdown",
+    feature = "native-fonts"
+))]
 fn parse_positive_usize(value: &str) -> Result<usize, String> {
     let parsed = value
         .parse::<usize>()
@@ -2416,6 +2448,28 @@ fn parse_fixed_unix_millis(value: &str) -> Result<i64, String> {
 ))]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "native-fonts")]
+    #[test]
+    fn font_byte_sizes_accept_positive_integers_and_check_overflow() {
+        for (size, bytes) in [
+            ("42", 42),
+            ("2KiB", 2048),
+            ("256MiB", 256 << 20),
+            ("1GiB", 1 << 30),
+        ] {
+            assert_eq!(parse_font_max_bytes(size), Ok(bytes));
+        }
+        assert_eq!(
+            parse_font_max_bytes(&usize::MAX.to_string()),
+            Ok(usize::MAX)
+        );
+        for size in ["", "0", "0MiB", "-1", "+1", "1.5MiB", "1 MiB", "1MB", "MiB"] {
+            assert!(parse_font_max_bytes(size).is_err(), "{size:?}");
+        }
+        assert!(parse_font_max_bytes(&format!("{}0", usize::MAX)).is_err());
+        assert!(parse_font_max_bytes(&format!("{}MiB", (usize::MAX >> 20) + 1)).is_err());
+    }
 
     #[cfg(feature = "svg")]
     #[test]

@@ -520,6 +520,7 @@ fn flowchart_browser_measured_terminals_preserve_upstream_geometry() {
         let prepared_nodes = super::node_inventory::FlowchartPreparedNodes::prepare(
             &model,
             &render_context,
+            &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
             super::node_inventory::FlowchartNodeLayoutView::Flowchart(&layout),
             &sidecar,
             None,
