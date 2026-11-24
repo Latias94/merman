@@ -10,6 +10,9 @@ use std::cell::Cell;
 use std::fmt;
 use std::ops::Range;
 
+#[cfg(feature = "layout-shoal")]
+mod orthogonal;
+
 const BOUNDED_BLOCK_SOURCE: &str = r#"block
   A["Alpha"] --> B["Beta"]
   classDef branded fill:#696,stroke:#333
@@ -192,19 +195,20 @@ fn render_block_direct_with_edge_theme(
         &prepared
     };
 
+    let edge_paint = crate::block::BlockEdgePaintPlan::resolve(
+        resolved.as_ref(),
+        effective_config,
+        model,
+        &mut layout,
+        session.work_meter(),
+    )
+    .expect("edge paint theme");
     render_block_diagram_svg_model_with_theme(
         &layout,
         model,
         node_paint_theme,
         &labels,
-        &crate::block::BlockEdgePaintPlan::resolve(
-            resolved.as_ref(),
-            effective_config,
-            model,
-            &layout,
-            execution.work_meter(),
-        )
-        .expect("edge paint theme"),
+        &edge_paint,
         &crate::block::BlockMarkerPaintPlan::resolve(
             resolved.as_ref(),
             effective_config,
@@ -401,7 +405,7 @@ fn diagram_id_terminal_precedes_later_block_model_validation() {
     let options =
         SvgExecution::unthemed_for_test(&request, &debug, &session, crate::DiagramFamilyId::BLOCK)
             .expect("SVG execution");
-    let layout = BlockDiagramLayout {
+    let mut layout = BlockDiagramLayout {
         nodes: vec![LayoutNode {
             id: "node".to_string(),
             x: 0.0,
@@ -440,8 +444,8 @@ fn diagram_id_terminal_precedes_later_block_model_validation() {
         None,
         config,
         model,
-        &layout,
-        options.work_meter(),
+        &mut layout,
+        session.work_meter(),
     )
     .unwrap();
     let markers = crate::block::BlockMarkerPaintPlan::resolve(

@@ -172,6 +172,13 @@ pub(super) fn with_flowchart_paint_context<T>(
 
     let mut parent: FxHashMap<&str, &str> = model.visible_memberships().collect();
     apply_solved_group_parents(layout, &mut parent, &mut subgraph_ids_with_children);
+    if let Some(swimlane) = swimlane_layout.filter(|layout| layout.has_canonical_routes()) {
+        for node in &swimlane.nodes {
+            if let Some(owner) = &node.parent_id {
+                parent.insert(&node.id, owner);
+            }
+        }
+    }
     for n in &extra_nodes {
         let id = n.id.as_str();
         let Some((base, _)) = id.split_once("---") else {
@@ -411,7 +418,11 @@ pub(super) fn prepare_edge_routes(
             }
         }
     }
-    if ctx.swimlane_direction.is_some() || ctx.uses_elk_adapter_dom {
+    if matches!(
+        ctx.layout.route_contract,
+        crate::graph_layout::RouteContract::Swimlane
+    ) || ctx.uses_elk_adapter_dom
+    {
         super::swimlane::apply_line_hops_to_edge_geometries(
             &mut cache,
             render_edges,
@@ -452,7 +463,7 @@ pub(super) fn prepare_rough_edge_paths(
         #[cfg(any(feature = "layout-shoal", test))]
         if matches!(
             ctx.layout.route_contract,
-            crate::graph_layout::RouteContract::CanonicalAxis { .. }
+            crate::graph_layout::RouteContract::CanonicalAxis(_)
         ) {
             entry.geom.emitted_d_for_label = Some(constrained_rough_edge_path(
                 &entry.geom.d,
@@ -985,7 +996,7 @@ mod tests {
     #[test]
     fn canonical_route_failure_is_returned_by_the_svg_renderer() {
         use crate::graph_layout::{
-            RouteContract, RouteTopology,
+            AxisRoutes, RouteContract, RouteTopology,
             contour::ShapePortProfile,
             ir::{Axis, Endpoint, KnotKind, Side},
             route_paint::{Clearance, ObstacleOwner},
@@ -1004,20 +1015,23 @@ mod tests {
         }))
         .unwrap();
         layout.edge_owners = crate::flowchart::FlowchartEdgeOwners::from_semantic_indices([0]);
-        layout.route_contract = RouteContract::CanonicalAxis {
-            clearance: Clearance::new(vec![(
-                kurbo::Rect::new(18., -2., 22., 2.),
-                ObstacleOwner::GroupTitle(0),
-            )]),
-            group_parents: Vec::new(),
-            border_stitches: Vec::new(),
-            nodes: vec![ShapePortProfile::rectangle(40., 20.); 2],
-            routes: vec![Some(RouteTopology {
-                endpoints: (Endpoint::Node(0), Endpoint::Node(1)),
-                ports: (Side::Right, Side::Left),
-                knots: vec![(Axis::Horizontal, KnotKind::Free); 4],
-            })],
-        };
+        layout.route_contract = RouteContract::CanonicalAxis(
+            AxisRoutes {
+                clearance: Clearance::new(vec![(
+                    kurbo::Rect::new(18., -2., 22., 2.),
+                    ObstacleOwner::GroupTitle(0),
+                )]),
+                group_parents: Vec::new(),
+                border_stitches: Vec::new(),
+                nodes: vec![ShapePortProfile::rectangle(40., 20.); 2],
+                routes: vec![Some(RouteTopology {
+                    endpoints: (Endpoint::Node(0), Endpoint::Node(1)),
+                    ports: (Side::Right, Side::Left),
+                    knots: vec![(Axis::Horizontal, KnotKind::Free); 4],
+                })],
+            }
+            .into(),
+        );
         with_layout(
             "flowchart LR\nA audit@--> B",
             Some(layout),
@@ -1061,37 +1075,40 @@ mod tests {
 
         use crate::graph_layout::contour::ShapePortProfile;
         use crate::graph_layout::{
-            RouteContract, RouteTopology,
+            AxisRoutes, RouteContract, RouteTopology,
             ir::{Axis, Endpoint, KnotKind, Side},
         };
-        layout.route_contract = RouteContract::CanonicalAxis {
-            clearance: Default::default(),
-            group_parents: Vec::new(),
-            border_stitches: Vec::new(),
-            nodes: vec![
-                ShapePortProfile::diamond(48.0, 36.0),
-                ShapePortProfile::rectangle(40.0, 30.0),
-            ],
-            routes: vec![
-                Some(RouteTopology {
-                    endpoints: (Endpoint::Node(0), Endpoint::Node(1)),
-                    ports: (Side::Right, Side::Left),
-                    knots: vec![(Axis::Horizontal, KnotKind::Free); 4],
-                }),
-                Some(RouteTopology {
-                    endpoints: (Endpoint::Node(0), Endpoint::Node(1)),
-                    ports: (Side::Top, Side::Top),
-                    knots: [
-                        Axis::Vertical,
-                        Axis::Vertical,
-                        Axis::Horizontal,
-                        Axis::Vertical,
-                    ]
-                    .map(|axis| (axis, KnotKind::Free))
-                    .to_vec(),
-                }),
-            ],
-        };
+        layout.route_contract = RouteContract::CanonicalAxis(
+            AxisRoutes {
+                clearance: Default::default(),
+                group_parents: Vec::new(),
+                border_stitches: Vec::new(),
+                nodes: vec![
+                    ShapePortProfile::diamond(48.0, 36.0),
+                    ShapePortProfile::rectangle(40.0, 30.0),
+                ],
+                routes: vec![
+                    Some(RouteTopology {
+                        endpoints: (Endpoint::Node(0), Endpoint::Node(1)),
+                        ports: (Side::Right, Side::Left),
+                        knots: vec![(Axis::Horizontal, KnotKind::Free); 4],
+                    }),
+                    Some(RouteTopology {
+                        endpoints: (Endpoint::Node(0), Endpoint::Node(1)),
+                        ports: (Side::Top, Side::Top),
+                        knots: [
+                            Axis::Vertical,
+                            Axis::Vertical,
+                            Axis::Horizontal,
+                            Axis::Vertical,
+                        ]
+                        .map(|axis| (axis, KnotKind::Free))
+                        .to_vec(),
+                    }),
+                ],
+            }
+            .into(),
+        );
 
         for (html, look) in [(false, "classic"), (true, "handDrawn")] {
             let source = format!(

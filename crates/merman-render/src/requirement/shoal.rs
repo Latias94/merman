@@ -125,8 +125,7 @@ pub(super) fn layout(
         nodes.keys().copied(),
         std::iter::empty(),
         execution,
-        &[],
-        false,
+        Default::default(),
         &mut work,
     )?;
     let mut canonical_routes = CanonicalRoutes::from_solved(

@@ -19,13 +19,24 @@ pub(crate) struct NodeHint {
 }
 
 #[derive(Default)]
+pub(crate) struct Constraints<'a> {
+    pub(crate) flow_relative_nodes: &'a [(usize, Axis)],
+    pub(crate) edge_ports: &'a [(shoal::PortSideHint, shoal::PortSideHint)],
+    pub(crate) lane_order: &'a [u32],
+    pub(crate) capture_ranks: bool,
+    pub(crate) allow_turn: bool,
+    pub(crate) inline_labels: bool,
+    pub(crate) compact_ranks: bool,
+}
+
+#[derive(Default)]
 pub(crate) struct Placement<'a> {
     pub(crate) width: WidthPolicy,
     pub(crate) capture_ranks: bool,
     pub(crate) reuse_components: bool,
     pub(crate) hints: &'a [Option<NodeHint>],
     pub(crate) incident_signatures: &'a [u64],
-    pub(crate) flow_relative_nodes: &'a [(usize, Axis)],
+    pub(crate) constraints: Constraints<'a>,
 }
 
 #[cfg(all(test, feature = "diagram-flowchart", feature = "layout-elk"))]
@@ -100,8 +111,8 @@ fn project_input(
         }
         Ok(spec)
     })?;
-    work.charge_adapter(placement.flow_relative_nodes.len())?;
-    for &(index, axis) in placement.flow_relative_nodes {
+    work.charge_adapter(placement.constraints.flow_relative_nodes.len())?;
+    for &(index, axis) in placement.constraints.flow_relative_nodes {
         graph.nodes[index].flow_relative_axis = Some(axis);
     }
     graph.groups = project_rows(measured.groups.iter(), work, |group| {
@@ -119,7 +130,18 @@ fn project_input(
         spec.title_position = group.title_position;
         Ok(spec)
     })?;
-    graph.edges = project_rows(measured.edges.iter(), work, |edge| {
+    if !placement.constraints.lane_order.is_empty() {
+        graph.lane_order = project_rows(placement.constraints.lane_order.iter(), work, |&id| {
+            Ok(shoal::GroupId(id))
+        })?;
+    }
+    let ports = placement.constraints.edge_ports;
+    if !ports.is_empty() && ports.len() != measured.edges.len() {
+        return Err(Error::InvalidModel {
+            message: "Shoal port hints do not match measured edge occurrences".into(),
+        });
+    }
+    graph.edges = project_rows(measured.edges.iter().enumerate(), work, |(index, edge)| {
         let mut spec = shoal::EdgeSpec::new(endpoint(edge.source), endpoint(edge.target));
         spec.min_rank_span = edge.min_rank_span;
         spec.weight = edge.weight;
@@ -128,6 +150,10 @@ fn project_input(
         spec.end_label = edge.end_label;
         spec.start_marker = marker_metrics(edge.start_marker);
         spec.end_marker = marker_metrics(edge.end_marker);
+        if let Some(&(source, target)) = ports.get(index) {
+            spec.source_port = source;
+            spec.target_port = target;
+        }
         Ok(spec)
     })?;
     Ok(graph)
@@ -141,12 +167,14 @@ pub(crate) fn solve(
     let mut options = shoal::Options::default();
     options.routing = measured.routing;
     options.global_orthogonal = measured.routing == shoal::RoutingStyle::Orthogonal;
+    options.inline_labels = placement.constraints.inline_labels;
+    options.compact_ranks = placement.constraints.compact_ranks;
     options.spacing.node = measured.node_spacing;
     options.spacing.rank = measured.rank_spacing;
     options.spacing.component = measured.component_spacing;
     options.group_policy.inherit_crossed_direction = measured.inherit_crossed_group_direction;
     options.width_policy = placement.width;
-    options.capture_node_ranks = placement.capture_ranks;
+    options.capture_node_ranks = placement.capture_ranks || placement.constraints.capture_ranks;
     options.reuse_unchanged_components = placement.reuse_components;
     #[cfg(all(test, feature = "diagram-flowchart", feature = "layout-elk"))]
     kernel_bench::capture(measured, options);
@@ -237,6 +265,7 @@ pub(super) fn project_output(
                     "edge end label",
                     index,
                 )?,
+                reversed_for_ranking: route.reversed_for_ranking,
             })
         },
     )?;

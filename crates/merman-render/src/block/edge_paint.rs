@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
@@ -21,6 +22,8 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 pub(crate) struct BlockEdgePaintPlan {
     declarations: Box<[Cow<'static, str>]>,
     evidence: FamilyThemeOutcomes,
+    #[cfg(feature = "layout-shoal")]
+    orthogonal_routes: Vec<Option<super::orthogonal::BlockOrthogonalRoute>>,
 }
 
 #[derive(Default)]
@@ -36,27 +39,41 @@ impl BlockEdgePaintPlan {
         theme: Option<&ResolvedDiagramTheme>,
         config: &merman_model::presentation::PresentationConfig,
         model: &merman_model::families::block::BlockDiagramRenderModel,
-        layout: &BlockDiagramLayout,
-        work: &OperationWorkMeter,
-    ) -> Result<Self, OperationWorkError> {
-        Self::resolve_paint(theme, config, model, layout, work)
-    }
-
-    fn resolve_paint(
-        theme: Option<&ResolvedDiagramTheme>,
-        config: &merman_model::presentation::PresentationConfig,
-        model: &merman_model::families::block::BlockDiagramRenderModel,
-        layout: &BlockDiagramLayout,
-        work: &OperationWorkMeter,
-    ) -> Result<Self, OperationWorkError> {
+        layout: &mut BlockDiagramLayout,
+        work: &Arc<OperationWorkMeter>,
+    ) -> crate::Result<Self> {
         work.charge(model.edges.len())?;
         let mut plan = Self {
             declarations: (0..model.edges.len())
                 .map(|_| Cow::Borrowed("undefined;;;undefined"))
                 .collect(),
             evidence: FamilyThemeOutcomes::default(),
+            #[cfg(feature = "layout-shoal")]
+            orthogonal_routes: if crate::layout_backend::resolve_graph_layout(config).backend
+                == crate::layout_backend::GraphLayoutBackend::Shoal
+                && !layout.edges.is_empty()
+            {
+                let width =
+                    super::BlockCssThemeBinding::configured_stroke_width_px(config.as_value());
+                super::orthogonal::prepare(model, layout, width, work)?
+            } else {
+                Vec::new()
+            },
         };
-        let Some(theme) = theme else { return Ok(plan) };
+        if let Some(theme) = theme {
+            plan.resolve_paint(theme, config, model, layout, work)?;
+        }
+        Ok(plan)
+    }
+
+    fn resolve_paint(
+        &mut self,
+        theme: &ResolvedDiagramTheme,
+        config: &merman_model::presentation::PresentationConfig,
+        model: &merman_model::families::block::BlockDiagramRenderModel,
+        layout: &BlockDiagramLayout,
+        work: &OperationWorkMeter,
+    ) -> Result<(), OperationWorkError> {
         if !theme.family_mechanism_routes().iter().any(|route| {
             matches!(
                 route.mechanism(),
@@ -71,7 +88,7 @@ impl BlockEdgePaintPlan {
                 }
             )
         }) {
-            return Ok(plan);
+            return Ok(());
         }
         let config_owned = config.config_paint_overrides_typed_default("themeVariables.lineColor");
         // The source class rule `.block > *` matches paths through their actual parent group.
@@ -123,11 +140,15 @@ impl BlockEdgePaintPlan {
                 style.stroke_resolution().specified(),
                 Specified::Unspecified
             );
-            let visibility = layout_by_id.get(edge.id.as_str()).and_then(|layout_edge| {
-                crate::svg::block_edge_is_visible(edge, layout_edge, &geometries)
-            });
             // A valid degenerate path (for example A --> A) has no edge-paint terminal.
-            let invisible = visibility == Some(false);
+            #[cfg(feature = "layout-shoal")]
+            let routed = self.orthogonal_route(index).is_some();
+            #[cfg(not(feature = "layout-shoal"))]
+            let routed = false;
+            let invisible = !routed
+                && layout_by_id.get(edge.id.as_str()).and_then(|layout_edge| {
+                    crate::svg::block_edge_is_visible(edge, layout_edge, &geometries)
+                }) == Some(false);
             source_owned_stroke.push(source_owned || invisible);
             source_owned_fill.push(source_owned || !fill_fallback || invisible);
             winners.extend(
@@ -175,7 +196,7 @@ impl BlockEdgePaintPlan {
                 );
             }
             if let Some(paint) = paint {
-                plan.declarations[index] = Cow::Owned(format!("stroke:{};fill:none;", paint.css()));
+                self.declarations[index] = Cow::Owned(format!("stroke:{};fill:none;", paint.css()));
             }
         }
         let mut observations = BTreeMap::<usize, RuleObservation>::new();
@@ -220,17 +241,17 @@ impl BlockEdgePaintPlan {
                 target: ThemeTarget::Edge,
             };
             if !observation.applicable {
-                plan.evidence.mark_not_applicable(key);
+                self.evidence.mark_not_applicable(key);
             } else if let Some(reason) = observation.residual {
-                plan.evidence.mark_residual(key, reason);
+                self.evidence.mark_residual(key, reason);
             } else if !observation.incomplete && !observation.capabilities.is_empty() {
-                plan.evidence
+                self.evidence
                     .mark_applied_with_capabilities(key, observation.capabilities);
             }
         }
         reconcile_unsupported_terminal_domains(
             theme,
-            &mut plan.evidence,
+            &mut self.evidence,
             &[UnsupportedTerminalDomain::fallbacks_only(
                 ThemeTarget::Edge,
                 TerminalVariantDomain::uniform(model.edges.len(), ThemeVariant::Default),
@@ -239,11 +260,19 @@ impl BlockEdgePaintPlan {
             .with_source_owned_stroke(&source_owned_stroke)],
             work,
         )?;
-        Ok(plan)
+        Ok(())
     }
 
     pub(crate) fn declaration(&self, edge_index: usize) -> Option<&str> {
         self.declarations.get(edge_index).map(AsRef::as_ref)
+    }
+
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) fn orthogonal_route(
+        &self,
+        edge_index: usize,
+    ) -> Option<&super::orthogonal::BlockOrthogonalRoute> {
+        self.orthogonal_routes.get(edge_index)?.as_ref()
     }
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
@@ -268,18 +297,20 @@ mod tests {
         let merman_model::presentation::RenderSemanticModel::Block(model) = parsed.model() else {
             panic!("Block model")
         };
-        let layout = crate::block::layout_block_diagram_typed(
+        let mut layout = crate::block::layout_block_diagram_typed(
             model,
             parsed.metadata().effective_config.as_value(),
             &crate::text::DeterministicTextMeasurer::default(),
         )
         .unwrap();
-        let work = OperationWorkMeter::new(crate::resources::RenderResourcePolicy::interactive());
+        let work = Arc::new(OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::interactive(),
+        ));
         let plan = BlockEdgePaintPlan::resolve(
             None,
             &parsed.metadata().effective_config,
             model,
-            &layout,
+            &mut layout,
             &work,
         )
         .unwrap();

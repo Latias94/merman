@@ -12,10 +12,15 @@
 //! [`family::supports_diagram_type`] to inspect this renderer's local handler availability:
 //! another dependency may enable additional model families without enabling their renderers.
 
-#[cfg(feature = "layout-cytoscape")]
-#[cfg(feature = "diagram-architecture")]
+#[cfg(all(
+    feature = "diagram-architecture",
+    any(feature = "layout-cytoscape", feature = "layout-shoal")
+))]
 pub mod architecture;
-#[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
+#[cfg(all(
+    feature = "diagram-architecture",
+    any(feature = "layout-cytoscape", feature = "layout-shoal")
+))]
 pub(crate) mod architecture_metrics;
 #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
 mod architecture_text_receipt;
@@ -167,7 +172,15 @@ mod graph_label;
     feature = "diagram-er",
     feature = "diagram-requirement",
     feature = "diagram-state",
-    feature = "diagram-usecase"
+    feature = "diagram-usecase",
+    all(
+        any(
+            feature = "diagram-architecture",
+            feature = "diagram-block",
+            feature = "diagram-c4"
+        ),
+        feature = "layout-shoal"
+    )
 ))]
 mod graph_layout;
 #[cfg_attr(

@@ -35,7 +35,10 @@ use std::fmt::Write as _;
 pub(crate) const C4_PERSON_IMG: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAACD0lEQVR4Xu2YoU4EMRCGT+4j8Ai8AhaH4QHgAUjQuFMECUgMIUgwJAgMhgQsAYUiJCiQIBBY+EITsjfTdme6V24v4c8vyGbb+ZjOtN0bNcvjQXmkH83WvYBWto6PLm6v7p7uH1/w2fXD+PBycX1Pv2l3IdDm/vn7x+dXQiAubRzoURa7gRZWd0iGRIiJbOnhnfYBQZNJjNbuyY2eJG8fkDE3bbG4ep6MHUAsgYxmE3nVs6VsBWJSGccsOlFPmLIViMzLOB7pCVO2AtHJMohH7Fh6zqitQK7m0rJvAVYgGcEpe//PLdDz65sM4pF9N7ICcXDKIB5Nv6j7tD0NoSdM2QrU9Gg0ewE1LqBhHR3BBdvj2vapnidjHxD/q6vd7Pvhr31AwcY8eXMTXAKECZZJFXuEq27aLgQK5uLMohCenGGuGewOxSjBvYBqeG6B+Nqiblggdjnc+ZXDy+FNFpFzw76O3UBAROuXh6FoiAcf5g9eTvUgzy0nWg6I8cXHRUpg5bOVBCo+KDpFajOf23GgPme7RSQ+lacIENUgJ6gg1k6HjgOlqnLqip4tEuhv0hNEMXUD0clyXE3p6pZA0S2nnvTlXwLJEZWlb7cTQH1+USgTN4VhAenm/wea1OCAOmqo6fE1WCb9WSKBah+rbUWPWAmE2Rvk0ApiB45eOyNAzU8xcTvj8KvkKEoOaIYeHNA3ZuygAvFMUO0AAAAASUVORK5CYII=";
 pub(crate) const C4_EXTERNAL_PERSON_IMG: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAAB6ElEQVR4Xu2YLY+EMBCG9+dWr0aj0Wg0Go1Go0+j8Xdv2uTCvv1gpt0ebHKPuhDaeW4605Z9mJvx4AdXUyTUdd08z+u6flmWZRnHsWkafk9DptAwDPu+f0eAYtu2PEaGWuj5fCIZrBAC2eLBAnRCsEkkxmeaJp7iDJ2QMDdHsLg8SxKFEJaAo8lAXnmuOFIhTMpxxKATebo4UiFknuNo4OniSIXQyRxEA3YsnjGCVEjVXD7yLUAqxBGUyPv/Y4W2beMgGuS7kVQIBycH0fD+oi5pezQETxdHKmQKGk1eQEYldK+jw5GxPfZ9z7Mk0Qnhf1W1m3w//EUn5BDmSZsbR44QQLBEqrBHqOrmSKaQAxdnLArCrxZcM7A7ZKs4ioRq8LFC+NpC3WCBJsvpVw5edm9iEXFuyNfxXAgSwfrFQ1c0iNda8AdejvUgnktOtJQQxmcfFzGglc5WVCj7oDgFqU18boeFSs52CUh8LE8BIVQDT1ABrB0HtgSEYlX5doJnCwv9TXocKCaKbnwhdDKPq4lf3SwU3HLq4V/+WYhHVMa/3b4IlfyikAduCkcBc7mQ3/z/Qq/cTuikhkzB12Ae/mcJC9U+Vo8Ej1gWAtgbeGgFsAMHr50BIWOLCbezvhpBFUdY6EJuJ/QDW0XoMX60zZ0AAAAASUVORK5CYII=";
 
-#[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
+#[cfg(all(
+    feature = "diagram-architecture",
+    any(feature = "layout-cytoscape", feature = "layout-shoal")
+))]
 mod architecture;
 #[cfg(feature = "diagram-block")]
 mod block;
@@ -373,8 +376,6 @@ use roughjs_common::{ops_to_svg_path_d as roughjs_ops_to_svg_path_d, roughjs_pat
     )
 )]
 use style::is_text_style_key;
-#[cfg(all(feature = "diagram-architecture", feature = "layout-cytoscape"))]
-use util::decode_mermaid_entities_for_render_text;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -1238,7 +1239,10 @@ pub(crate) fn render_builtin_family_artifact(
     })
 }
 
-#[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
+#[cfg(all(
+    feature = "diagram-architecture",
+    any(feature = "layout-cytoscape", feature = "layout-shoal")
+))]
 #[inline(never)]
 pub(crate) fn render_architecture_family_artifact(
     artifact: &crate::family::ArchitectureFamilyArtifact,
@@ -1255,6 +1259,8 @@ pub(crate) fn render_architecture_family_artifact(
         artifact.pair().semantic(),
         effective_config,
         artifact.group_theme(),
+        #[cfg(feature = "layout-shoal")]
+        artifact.shoal(),
         &execution,
     );
     execution.finish_diagram_id_projection()?;
@@ -1310,13 +1316,18 @@ fn render_builtin_family_artifact_raw(
             artifact.typography_theme(),
             options,
         ),
-        #[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
+        #[cfg(all(
+            feature = "diagram-architecture",
+            any(feature = "layout-cytoscape", feature = "layout-shoal")
+        ))]
         BuiltinFamilyArtifact::Architecture(artifact) => {
             architecture::render_architecture_diagram_svg_typed_with_config(
                 artifact.pair().layout(),
                 artifact.pair().semantic(),
                 effective_config,
                 artifact.group_theme(),
+                #[cfg(feature = "layout-shoal")]
+                artifact.shoal(),
                 options,
             )
             .map(|(svg, outcome)| {
@@ -1627,6 +1638,8 @@ fn render_builtin_family_artifact_raw(
             artifact.typography_theme(),
             artifact.cluster_theme(),
             artifact.text_paint(),
+            #[cfg(feature = "layout-shoal")]
+            artifact.shoal(),
             options,
         ),
     }

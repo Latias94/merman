@@ -911,7 +911,23 @@ pub struct SwimlaneLayout {
     ))]
     #[serde(skip)]
     pub(crate) edge_owners: crate::flowchart::FlowchartEdgeOwners,
+    #[cfg(all(
+        feature = "layout-shoal",
+        any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+    ))]
+    #[serde(skip)]
+    pub(crate) shoal: Option<crate::swimlane::SwimlaneShoal>,
     pub bounds: Option<Bounds>,
+}
+
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+impl SwimlaneLayout {
+    pub(crate) const fn has_canonical_routes(&self) -> bool {
+        #[cfg(feature = "layout-shoal")]
+        return self.shoal.is_some();
+        #[cfg(not(feature = "layout-shoal"))]
+        false
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

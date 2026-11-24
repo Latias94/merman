@@ -13,7 +13,7 @@ use crate::graph_layout::ir::{
     SolvedGraph,
 };
 use crate::graph_layout::route_paint::{Clearance, ObstacleOwner};
-use crate::graph_layout::{RouteContract, RouteTopology, placement};
+use crate::graph_layout::{AxisRoutes, RouteContract, RouteTopology, placement};
 use crate::layout_frame::GraphPlacement;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{
@@ -105,8 +105,11 @@ pub(crate) fn layout(
             .iter()
             .map(|&i| view.semantic.subgraphs[i].id.as_str()),
         Some(execution),
-        &bindings.flow_relative_nodes,
-        true,
+        placement::Constraints {
+            flow_relative_nodes: &bindings.flow_relative_nodes,
+            allow_turn: true,
+            ..Default::default()
+        },
         &mut work,
     )?;
     drop(graph);
@@ -445,13 +448,16 @@ impl FlowchartBindings {
             dom_node_order_by_root,
             uses_elk_adapter_dom: false,
             placement,
-            route_contract: RouteContract::CanonicalAxis {
-                nodes: self.profiles,
-                group_parents,
-                border_stitches,
-                clearance,
-                routes,
-            },
+            route_contract: RouteContract::CanonicalAxis(
+                AxisRoutes {
+                    nodes: self.profiles,
+                    group_parents,
+                    border_stitches,
+                    clearance,
+                    routes,
+                }
+                .into(),
+            ),
         })
     }
 }

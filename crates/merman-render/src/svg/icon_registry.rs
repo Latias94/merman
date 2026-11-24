@@ -398,7 +398,10 @@ pub(in crate::svg) struct IconRenderRequest<'a> {
 }
 
 /// Strictly scopes IDs in a trusted built-in SVG fragment without a textual parse fallback.
-#[cfg(feature = "layout-cytoscape")]
+#[cfg(all(
+    feature = "diagram-architecture",
+    any(feature = "layout-cytoscape", feature = "layout-shoal")
+))]
 pub(in crate::svg) fn scope_svg_internal_ids(
     body: &str,
     scope: IconIdScope,

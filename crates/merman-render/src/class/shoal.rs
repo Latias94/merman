@@ -37,8 +37,7 @@ pub(crate) fn layout(
         measured.node_ids.iter().copied(),
         measured.group_ids.iter().copied(),
         Some(execution),
-        &[],
-        false,
+        Default::default(),
         work,
     )?;
     let mut routes = CanonicalRoutes::from_solved(

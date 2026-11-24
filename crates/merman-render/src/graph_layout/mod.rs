@@ -3,6 +3,8 @@
 #[cfg(all(
     feature = "layout-shoal",
     any(
+        feature = "diagram-architecture",
+        feature = "diagram-c4",
         feature = "diagram-class",
         feature = "diagram-er",
         feature = "diagram-requirement",
@@ -51,6 +53,23 @@ pub(crate) struct RouteTopology {
     pub(crate) knots: Vec<(Axis, KnotKind)>,
 }
 
+#[cfg(all(
+    any(feature = "layout-shoal", test),
+    any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    )
+))]
+#[derive(Debug)]
+pub(crate) struct AxisRoutes {
+    pub(crate) nodes: Vec<contour::ShapePortProfile>,
+    pub(crate) group_parents: Vec<Option<u32>>,
+    pub(crate) border_stitches: Vec<BorderStitch>,
+    pub(crate) clearance: route_paint::Clearance,
+    pub(crate) routes: Vec<Option<RouteTopology>>,
+}
+
 #[derive(Clone, Debug, Default)]
 pub(crate) enum RouteContract {
     #[default]
@@ -73,16 +92,12 @@ pub(crate) enum RouteContract {
             feature = "diagram-agentflow"
         )
     ))]
-    CanonicalAxis {
-        nodes: Vec<contour::ShapePortProfile>,
-        group_parents: Vec<Option<u32>>,
-        border_stitches: Vec<BorderStitch>,
-        clearance: route_paint::Clearance,
-        routes: Vec<Option<RouteTopology>>,
-    },
+    CanonicalAxis(std::sync::Arc<AxisRoutes>),
     #[cfg(all(
         feature = "layout-shoal",
         any(
+            feature = "diagram-architecture",
+            feature = "diagram-c4",
             feature = "diagram-class",
             feature = "diagram-er",
             feature = "diagram-requirement",
@@ -117,8 +132,8 @@ impl RouteContract {
     ))]
     pub(crate) fn group_parents(&self) -> Option<&[Option<u32>]> {
         #[cfg(any(feature = "layout-shoal", test))]
-        if let Self::CanonicalAxis { group_parents, .. } = self {
-            return Some(group_parents);
+        if let Self::CanonicalAxis(routes) = self {
+            return Some(&routes.group_parents);
         }
         None
     }
@@ -134,7 +149,7 @@ impl RouteContract {
         }
         match self {
             #[cfg(any(feature = "layout-shoal", test))]
-            Self::CanonicalAxis { .. } => true,
+            Self::CanonicalAxis(_) => true,
             _ => false,
         }
     }

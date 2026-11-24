@@ -1,31 +1,18 @@
 use super::super::*;
-use crate::c4::{C4_ELEMENT_TYPES, C4_FRAMED_FRAME_WIDTH, C4ConfigView};
+use crate::c4::{
+    C4_ELEMENT_TYPES, C4_FRAMED_FRAME_WIDTH, C4_ROUNDED_RADIUS, C4_TECHNOLOGY_GAP, C4ConfigView,
+    C4PersonOutline, c4_cap_radius, c4_relation_markers, c4_relation_offset, c4_text_row_offset,
+};
 use crate::svg::parity::roughjs_common::closed_path_d_from_points;
 use crate::svg::parity::roughjs_common::paths::{
     roughjs_hand_drawn_stroke_path_for_svg_path, roughjs_paths_for_circle,
     roughjs_paths_for_hand_drawn_svg_path,
 };
-use merman_model::families::c4::{
-    C4Boundary, C4DiagramModel, C4RelationOffset, C4Shape, parse_integer_prefix,
-};
+use merman_model::families::c4::{C4Boundary, C4DiagramModel, C4Shape};
 type C4SvgModelShape = C4Shape;
 type C4SvgModelBoundary = C4Boundary;
 
 // C4 diagram SVG renderer implementation (split from parity.rs).
-
-fn c4_relation_offset(offset: Option<&C4RelationOffset>) -> f64 {
-    // svgDraw.ts uses `rel.offsetX ? parseInt(String(rel.offsetX)) : 0`. In particular,
-    // Number(1e21) becomes "1e+21" and then 1, whereas a raw decimal string stays large.
-    match offset {
-        None => 0.0,
-        Some(C4RelationOffset::Number(value)) if *value == 0.0 || value.is_nan() => 0.0,
-        Some(C4RelationOffset::Number(value)) => {
-            parse_integer_prefix(ryu_js::Buffer::new().format(*value)).unwrap_or(f64::NAN)
-        }
-        Some(C4RelationOffset::String(value)) if value.is_empty() => 0.0,
-        Some(C4RelationOffset::String(value)) => parse_integer_prefix(value).unwrap_or(f64::NAN),
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum C4PaintItem {
@@ -220,6 +207,7 @@ struct C4TspanText<'a> {
     used_font_size: f64,
     font_weight: &'a str,
     attrs: &'a [(&'a str, &'a str)],
+    shoal: bool,
 }
 
 fn c4_write_text_by_tspan(out: &mut impl SvgOutput, text: C4TspanText<'_>) -> Result<bool> {
@@ -234,6 +222,7 @@ fn c4_write_text_by_tspan(out: &mut impl SvgOutput, text: C4TspanText<'_>) -> Re
         used_font_size,
         font_weight,
         attrs,
+        shoal,
     } = text;
     let x = x + width / 2.0;
     let mut style = String::new();
@@ -250,11 +239,15 @@ fn c4_write_text_by_tspan(out: &mut impl SvgOutput, text: C4TspanText<'_>) -> Re
             message: "C4 legacy text rows do not match their prepared layout".to_owned(),
         });
     }
-    let n = line_count as f64;
     let mut visible_text = false;
+    let alignment = if shoal {
+        ""
+    } else {
+        r#" alignment-baseline="mathematical""#
+    };
 
     for (i, line) in lines.iter().enumerate() {
-        let dy = (i as f64) * font_size - (font_size * (n - 1.0)) / 2.0;
+        let dy = c4_text_row_offset(i, line_count, font_size);
         let dy_s = fmt(dy);
 
         let _ = write!(
@@ -270,7 +263,7 @@ fn c4_write_text_by_tspan(out: &mut impl SvgOutput, text: C4TspanText<'_>) -> Re
         }
         let _ = write!(
             out,
-            r#" style="{}"><tspan dy="{}" alignment-baseline="mathematical">{}</tspan></text>"#,
+            r#" style="{}"><tspan dy="{}"{alignment}>{}</tspan></text>"#,
             escape_attr(&style),
             dy_s,
             escape_xml(line)
@@ -521,7 +514,7 @@ fn c4_write_unified_shape(
     if look.is_hand_drawn() {
         match node_shape {
             crate::c4::C4NodeShape::Rounded => {
-                let path = c4_rounded_rect_path_d(width, height, 12.0);
+                let path = c4_rounded_rect_path_d(width, height, C4_ROUNDED_RADIUS);
                 let pair = c4_hand_drawn_paths(&path, 2.0, work_meter, randomness)?;
                 out.push_str(r#"<g class="basic label-container">"#);
                 out.checkpoint()?;
@@ -530,7 +523,7 @@ fn c4_write_unified_shape(
                 return out.checkpoint();
             }
             crate::c4::C4NodeShape::Framed => {
-                let path = c4_rounded_rect_path_d(width, height, 12.0);
+                let path = c4_rounded_rect_path_d(width, height, C4_ROUNDED_RADIUS);
                 let pair = c4_hand_drawn_paths(&path, 2.0, work_meter, randomness)?;
                 let frame_x = width / 2.0 - C4_FRAMED_FRAME_WIDTH;
                 let frame_path = format!(
@@ -561,13 +554,13 @@ fn c4_write_unified_shape(
                 return out.checkpoint();
             }
             crate::c4::C4NodeShape::Person => {
-                let head_radius = (width * 0.23).clamp(16.0, 56.0);
-                let overlap = head_radius * 0.27;
-                let body_height = (height - (2.0 * head_radius - overlap)).max(1.0);
-                let body_radius = (width * 0.177).min(body_height * 0.45);
-                let total_height = body_height + 2.0 * head_radius - overlap;
-                let top = -total_height / 2.0;
-                let body_top = top + 2.0 * head_radius - overlap;
+                let C4PersonOutline {
+                    head_radius,
+                    head_y,
+                    body_height,
+                    body_radius,
+                    body_top,
+                } = C4PersonOutline::new(width, height);
                 // The path helper is centered, so translate the body into the person silhouette
                 // after generation instead of baking the offset into the shape's layout box.
                 let body_pair = c4_hand_drawn_paths(
@@ -598,11 +591,7 @@ fn c4_write_unified_shape(
                 out.checkpoint()?;
                 c4_write_hand_drawn_pair(out, &body_pair, fill, stroke, 2.0)?;
                 out.push_str("</g>");
-                let _ = write!(
-                    out,
-                    r#"<g transform="translate(0,{})">"#,
-                    fmt(top + head_radius)
-                );
+                let _ = write!(out, r#"<g transform="translate(0,{})">"#, fmt(head_y));
                 out.checkpoint()?;
                 c4_write_hand_drawn_pair(out, &head_pair, fill, stroke, 2.0)?;
                 out.push_str("</g></g>");
@@ -610,7 +599,7 @@ fn c4_write_unified_shape(
             }
             crate::c4::C4NodeShape::Cylinder => {
                 let rx = width / 2.0;
-                let ry = rx / (2.5 + width / 50.0);
+                let ry = c4_cap_radius(width);
                 let body_height = (height - 2.0 * ry).max(1.0);
                 let path = format!(
                     "M0,{}a{},{} 0,0,0 {},0a{},{} 0,0,0 {},0l0,{}a{},{} 0,0,0 {},0l0,{}",
@@ -643,7 +632,7 @@ fn c4_write_unified_shape(
             crate::c4::C4NodeShape::HorizontalCylinder => {
                 let h = height.max(1.0);
                 let ry = h / 2.0;
-                let rx = ry / (2.5 + h / 50.0);
+                let rx = c4_cap_radius(h);
                 let path = format!(
                     "M0,0 a{},{} 0,0,1 0,-{} l{},0 a{},{} 0,0,1 0,{} M{},-{} a{},{} 0,0,0 0,{} l-{},0",
                     fmt(rx),
@@ -674,7 +663,7 @@ fn c4_write_unified_shape(
     let shape_style = |with_radius: bool| {
         if with_radius {
             format!(
-                "fill:{} !important;stroke:{} !important;rx:12px !important;ry:12px !important",
+                "fill:{} !important;stroke:{} !important;rx:{C4_ROUNDED_RADIUS}px !important;ry:{C4_ROUNDED_RADIUS}px !important",
                 fill, stroke
             )
         } else {
@@ -719,13 +708,13 @@ fn c4_write_unified_shape(
             );
         }
         crate::c4::C4NodeShape::Person => {
-            let head_radius = (width * 0.23).clamp(16.0, 56.0);
-            let overlap = head_radius * 0.27;
-            let body_height = (height - (2.0 * head_radius - overlap)).max(1.0);
-            let body_radius = (width * 0.177).min(body_height * 0.45);
-            let total_height = body_height + 2.0 * head_radius - overlap;
-            let top = -total_height / 2.0;
-            let body_top = top + 2.0 * head_radius - overlap;
+            let C4PersonOutline {
+                head_radius,
+                head_y,
+                body_height,
+                body_radius,
+                body_top,
+            } = C4PersonOutline::new(width, height);
             let _ = write!(
                 out,
                 r#"<g class="basic label-container"><rect x="{}" y="{}" width="{}" height="{}" rx="{}" ry="{}" style="{}"/><circle cx="0" cy="{}" r="{}" style="{}"/></g>"#,
@@ -736,14 +725,14 @@ fn c4_write_unified_shape(
                 fmt(body_radius),
                 fmt(body_radius),
                 escape_attr(&shape_style(false)),
-                fmt(top + head_radius),
+                fmt(head_y),
                 fmt(head_radius),
                 escape_attr(&shape_style(false))
             );
         }
         crate::c4::C4NodeShape::Cylinder => {
             let rx = width / 2.0;
-            let ry = rx / (2.5 + width / 50.0);
+            let ry = c4_cap_radius(width);
             let body_height = (height - 2.0 * ry).max(1.0);
             let path = format!(
                 "M0,{}a{},{} 0,0,0 {},0a{},{} 0,0,0 {},0l0,{}a{},{} 0,0,0 {},0l0,{}",
@@ -772,7 +761,7 @@ fn c4_write_unified_shape(
         crate::c4::C4NodeShape::HorizontalCylinder => {
             let h = height.max(1.0);
             let ry = h / 2.0;
-            let rx = ry / (2.5 + h / 50.0);
+            let rx = c4_cap_radius(h);
             let path = format!(
                 "M0,0\n    a{},{} 0,0,1 0,-{}\n    l{},0\n    a{},{} 0,0,1 0,{}\n    M{},-{}\n    a{},{} 0,0,0 0,{}\n    l-{},0",
                 fmt(rx),
@@ -815,9 +804,14 @@ pub(crate) fn render_c4_diagram_svg_typed(
     typography_theme: &crate::c4::C4TypographyThemePlan,
     cluster_theme: &crate::c4::C4ClusterThemePlan,
     text_paint: &crate::c4::C4TextPaintPlan,
+    #[cfg(feature = "layout-shoal")] shoal: Option<&crate::c4::C4ShoalGeometry>,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("merman");
+    #[cfg(feature = "layout-shoal")]
+    let is_shoal = shoal.is_some();
+    #[cfg(not(feature = "layout-shoal"))]
+    let is_shoal = false;
 
     let c4_cfg = C4ConfigView::new(effective_config);
     let look = c4_cfg.look();
@@ -847,7 +841,11 @@ pub(crate) fn render_c4_diagram_svg_typed(
     let extra_vert_for_title = if title.is_some() { 60.0 } else { 0.0 };
 
     let viewbox_x = bounds.min_x - diagram_margin_x;
-    let viewbox_y = -(diagram_margin_y + extra_vert_for_title);
+    let viewbox_y = if is_shoal {
+        bounds.min_y - (diagram_margin_y + extra_vert_for_title)
+    } else {
+        -(diagram_margin_y + extra_vert_for_title)
+    };
     let hand_drawn_outset = if look.is_hand_drawn() { 8.0 } else { 0.0 };
     let root_width = width + 2.0 * hand_drawn_outset;
     let root_height = height + extra_vert_for_title + 2.0 * hand_drawn_outset;
@@ -1010,6 +1008,13 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 if look != crate::c4::C4Look::Classic {
                     let _ = write!(out, r#" data-look="{}""#, look.as_str());
                 }
+                if is_shoal {
+                    let _ = write!(
+                        out,
+                        r#" data-et="node" data-id="{}""#,
+                        escape_attr(&s.alias)
+                    );
+                }
                 out.push_str(">");
                 out.checkpoint()?;
 
@@ -1135,7 +1140,15 @@ pub(crate) fn render_c4_diagram_svg_typed(
                     fill_color
                 };
 
-                out.push_str("<g>");
+                if is_shoal {
+                    let _ = write!(
+                        out,
+                        r#"<g data-et="cluster" data-id="{}">"#,
+                        escape_attr(&b.alias)
+                    );
+                } else {
+                    out.push_str("<g>");
+                }
                 out.checkpoint()?;
                 if is_node_type {
                     let _ = write!(
@@ -1177,6 +1190,16 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 }
                 boundary_emission_ordinal = boundary_emission_ordinal.saturating_add(1);
 
+                if is_shoal {
+                    out.push_str(r#"<g class="cluster-label">"#);
+                    out.checkpoint()?;
+                }
+                #[cfg(feature = "layout-shoal")]
+                let title_left = shoal
+                    .and_then(|geometry| geometry.boundary_title_x[index])
+                    .map_or(b.x, |center| center - b.width / 2.0);
+                #[cfg(not(feature = "layout-shoal"))]
+                let title_left = b.x;
                 let boundary_fonts = typography_theme.boundary_fonts();
                 let name_font = &boundary_fonts.name;
                 let mut boundary_text_visible = c4_write_text_by_tspan(
@@ -1184,7 +1207,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                     C4TspanText {
                         content: &b.label.text,
                         line_count: b.label.line_count,
-                        x: b.x,
+                        x: title_left,
                         y: b.y + b.label.y,
                         width: b.width,
                         font_family: &name_font.css_font_family,
@@ -1196,6 +1219,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                             .as_deref()
                             .unwrap_or("bold"),
                         attrs: &[("fill", font_color)],
+                        shoal: is_shoal,
                     },
                 )?;
                 if boundary_text_visible && let Some(receipt) = typography_receipt.as_mut() {
@@ -1210,7 +1234,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                         C4TspanText {
                             content: &ty.text,
                             line_count: ty.line_count,
-                            x: b.x,
+                            x: title_left,
                             y: b.y + ty.y,
                             width: b.width,
                             font_family: &ty_font.css_font_family,
@@ -1222,6 +1246,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                                 .as_deref()
                                 .unwrap_or("normal"),
                             attrs: &[("fill", font_color)],
+                            shoal: is_shoal,
                         },
                     )?;
                     if type_visible && let Some(receipt) = typography_receipt.as_mut() {
@@ -1238,7 +1263,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                         C4TspanText {
                             content: &descr.text,
                             line_count: descr.line_count,
-                            x: b.x,
+                            x: title_left,
                             y: b.y + descr.y,
                             width: b.width,
                             font_family: &descr_font.css_font_family,
@@ -1252,6 +1277,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                                 .as_deref()
                                 .unwrap_or("normal"),
                             attrs: &[("fill", font_color)],
+                            shoal: is_shoal,
                         },
                     )?;
                     if descr_visible && let Some(receipt) = typography_receipt.as_mut() {
@@ -1260,6 +1286,9 @@ pub(crate) fn render_c4_diagram_svg_typed(
                     boundary_text_visible |= descr_visible;
                 }
 
+                if is_shoal {
+                    out.push_str("</g>");
+                }
                 out.push_str("</g>");
                 out.checkpoint()?;
                 if let Some(receipt) = text_paint_receipt.as_mut() {
@@ -1297,9 +1326,24 @@ pub(crate) fn render_c4_diagram_svg_typed(
             "arrowend".to_owned()
         };
         if paint.themed_markers {
+            let stroke = paint.marker_stroke.trim();
+            let visible_stroke = !stroke.is_empty()
+                && !stroke.eq_ignore_ascii_case("none")
+                && !stroke.eq_ignore_ascii_case("transparent");
+            let (end_ref, start_ref, marker_geometry, stroke_geometry) =
+                if is_shoal && visible_stroke {
+                    (
+                        "9.5",
+                        "0.5",
+                        r#" overflow="visible""#,
+                        r#" stroke-linejoin="round" stroke-width="1""#,
+                    )
+                } else {
+                    ("9", "1", "", "")
+                };
             let _ = write!(
                 out,
-                r#"<defs><marker id="{}" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="{}" stroke="{}"/></marker><marker id="{}" refX="1" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 10 0 L 0 5 L 10 10 z" fill="{}" stroke="{}"/></marker></defs>"#,
+                r#"<defs><marker id="{}" refX="{end_ref}" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"{marker_geometry}><path d="M 0 0 L 10 5 L 0 10 z" fill="{}" stroke="{}"{stroke_geometry}/></marker><marker id="{}" refX="{start_ref}" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"{marker_geometry}><path d="M 10 0 L 0 5 L 10 10 z" fill="{}" stroke="{}"{stroke_geometry}/></marker></defs>"#,
                 escape_attr_display(scoped_svg_id(diagram_id, &arrowhead)),
                 escape_attr(&paint.marker_fill),
                 escape_attr(&paint.marker_stroke),
@@ -1314,7 +1358,26 @@ pub(crate) fn render_c4_diagram_svg_typed(
         let offset_x = c4_relation_offset(rel.offset_x.as_ref());
         let offset_y = c4_relation_offset(rel.offset_y.as_ref());
 
-        if idx == 0 {
+        #[cfg(feature = "layout-shoal")]
+        let canonical = shoal
+            .map(|geometry| {
+                geometry
+                    .relations
+                    .get(idx)
+                    .ok_or_else(|| crate::Error::InvalidModel {
+                        message: format!("c4: missing canonical relation {idx}"),
+                    })
+            })
+            .transpose()?;
+        let legacy_line = idx == 0 && !is_shoal;
+        if is_shoal {
+            #[cfg(feature = "layout-shoal")]
+            super::shoal::open_shaft(
+                &mut out,
+                canonical.expect("canonical C4 relation"),
+                stroke_color,
+            )?;
+        } else if legacy_line {
             let _ = write!(
                 &mut out,
                 r#"<line x1="{}" y1="{}" x2="{}" y2="{}" stroke-width="1" stroke="{}""#,
@@ -1324,24 +1387,6 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 fmt(rel.end_point.y),
                 escape_attr(stroke_color)
             );
-            out.checkpoint()?;
-            if rel.rel_type != "rel_b" {
-                let _ = write!(
-                    &mut out,
-                    r#" marker-end="{}""#,
-                    escape_attr_display(arrowhead_url)
-                );
-                out.checkpoint()?;
-            }
-            if rel.rel_type == "birel" || rel.rel_type == "rel_b" {
-                let _ = write!(
-                    &mut out,
-                    r#" marker-start="{}""#,
-                    escape_attr_display(arrowend_url)
-                );
-                out.checkpoint()?;
-            }
-            out.push_str(r#" style="fill: none;"/>"#);
             out.checkpoint()?;
         } else {
             let cx = rel.start_point.x + (rel.end_point.x - rel.start_point.x) / 2.0
@@ -1363,33 +1408,67 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 escape_attr(&d)
             );
             out.checkpoint()?;
-            if rel.rel_type != "rel_b" {
-                let _ = write!(
-                    &mut out,
-                    r#" marker-end="{}""#,
-                    escape_attr_display(arrowhead_url)
-                );
-                out.checkpoint()?;
-            }
-            if rel.rel_type == "birel" || rel.rel_type == "rel_b" {
-                let _ = write!(
-                    &mut out,
-                    r#" marker-start="{}""#,
-                    escape_attr_display(arrowend_url)
-                );
-                out.checkpoint()?;
-            }
-            out.push_str("/>");
+        }
+        let (marker_start, marker_end) = c4_relation_markers(&rel.rel_type);
+        if marker_end {
+            let _ = write!(
+                out,
+                r#" marker-end="{}""#,
+                escape_attr_display(arrowhead_url)
+            );
             out.checkpoint()?;
         }
+        if marker_start {
+            let _ = write!(
+                out,
+                r#" marker-start="{}""#,
+                escape_attr_display(arrowend_url)
+            );
+            out.checkpoint()?;
+        }
+        if legacy_line {
+            out.push_str(r#" style="fill: none;"/>"#);
+        } else {
+            out.push_str("/>");
+        }
+        out.checkpoint()?;
         options.checkpoint_emit()?;
 
-        let midx = rel.start_point.x.min(rel.end_point.x)
-            + (rel.end_point.x - rel.start_point.x).abs() / 2.0
-            + offset_x;
-        let midy = rel.start_point.y.min(rel.end_point.y)
-            + (rel.end_point.y - rel.start_point.y).abs() / 2.0
-            + offset_y;
+        #[cfg(feature = "layout-shoal")]
+        let label_origin = canonical.and_then(|route| route.label_origin.as_ref());
+        if is_shoal {
+            #[cfg(feature = "layout-shoal")]
+            if let Some(origin) = label_origin {
+                let route = canonical.expect("canonical C4 relation");
+                let _ = write!(
+                    out,
+                    r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate({}, {})">"#,
+                    escape_attr(&route.id),
+                    fmt(origin.x),
+                    fmt(origin.y)
+                );
+                out.checkpoint()?;
+            } else {
+                if let Some(receipt) = text_paint_receipt.as_mut() {
+                    receipt.record_relation(idx, paint, false);
+                }
+                continue;
+            }
+        }
+        let midx = if is_shoal {
+            -rel.label.width / 2.0
+        } else {
+            rel.start_point.x.min(rel.end_point.x)
+                + (rel.end_point.x - rel.start_point.x).abs() / 2.0
+                + offset_x
+        };
+        let midy = if is_shoal {
+            0.0
+        } else {
+            rel.start_point.y.min(rel.end_point.y)
+                + (rel.end_point.y - rel.start_point.y).abs() / 2.0
+                + offset_y
+        };
 
         let message_style = typography_theme.message_font();
         let message_font = &message_style.measurement_style;
@@ -1409,6 +1488,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 used_font_size: message_font.font_size,
                 font_weight: message_weight,
                 attrs: &[("fill", text_color)],
+                shoal: is_shoal,
             },
         )?;
         if label_visible && let Some(receipt) = text_paint_receipt.as_mut() {
@@ -1420,25 +1500,31 @@ pub(crate) fn render_c4_diagram_svg_typed(
             && !techn.text.trim().is_empty()
         {
             let techn_text = format!("[{}]", techn.text);
+            let width = rel.label.width.max(techn.width);
             let techn_visible = c4_write_text_by_tspan(
                 &mut out,
                 C4TspanText {
                     content: &techn_text,
                     line_count: techn.line_count,
-                    x: midx,
-                    y: midy + message_size + 5.0,
-                    width: rel.label.width.max(techn.width),
+                    x: if is_shoal { -width / 2.0 } else { midx },
+                    y: midy + message_size + C4_TECHNOLOGY_GAP,
+                    width,
                     font_family: message_family,
                     font_size: message_size,
                     used_font_size: message_font.font_size,
                     font_weight: message_weight,
                     attrs: &[("fill", text_color), ("font-style", "italic")],
+                    shoal: is_shoal,
                 },
             )?;
             if techn_visible && let Some(receipt) = text_paint_receipt.as_mut() {
                 receipt.record_owned_color(text_color);
             }
             message_text_visible |= techn_visible;
+        }
+        if is_shoal {
+            out.push_str("</g></g>");
+            out.checkpoint()?;
         }
         if message_text_visible && let Some(receipt) = typography_receipt.as_mut() {
             receipt.record_visible_font(message_style);
@@ -1451,14 +1537,26 @@ pub(crate) fn render_c4_diagram_svg_typed(
     out.checkpoint()?;
 
     if let Some(title) = title {
-        let title_x = (width - 2.0 * diagram_margin_x) / 2.0 - 4.0 * diagram_margin_x;
-        let title_y = bounds.min_y + diagram_margin_y;
+        let (title_x, title_y) = if is_shoal {
+            (
+                bounds.min_x + box_w / 2.0,
+                bounds.min_y - diagram_margin_y - extra_vert_for_title / 2.0,
+            )
+        } else {
+            (
+                (width - 2.0 * diagram_margin_x) / 2.0 - 4.0 * diagram_margin_x,
+                bounds.min_y + diagram_margin_y,
+            )
+        };
         let _ = write!(
             &mut out,
             r#"<text x="{}" y="{}""#,
             fmt(title_x),
             fmt(title_y),
         );
+        if is_shoal {
+            out.push_str(r#" text-anchor="middle""#);
+        }
         if let Some(fill) = text_paint.title_fill_css() {
             let _ = write!(&mut out, r#" fill="{}""#, escape_attr(fill));
         }
@@ -1582,6 +1680,7 @@ mod tests {
                 used_font_size: 16.0,
                 font_weight: "normal",
                 attrs: &[("fill", "#444444")],
+                shoal: false,
             },
         )
         .expect_err("the rejecting sink must stop C4 text emission");

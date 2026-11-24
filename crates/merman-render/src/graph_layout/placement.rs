@@ -1,6 +1,7 @@
 mod anchors;
 
-use super::ir::{Axis, Direction, MeasuredGraph, Point, Size, SolvedGraph};
+use super::ir::{Direction, MeasuredGraph, Point, Size, SolvedGraph};
+pub(crate) use super::shoal_bridge::Constraints;
 use super::shoal_bridge::{self, NodeHint, OrderHint, Placement, WidthPolicy};
 use crate::layout_frame::{FrameDirection, GraphPlacement, ShoalFrameNode};
 use crate::layout_work::OperationLayoutWorkControl;
@@ -16,15 +17,14 @@ pub(crate) fn solve<'id>(
     node_ids: impl ExactSizeIterator<Item = &'id str> + Clone,
     group_ids: impl ExactSizeIterator<Item = &'id str> + Clone,
     execution: Option<&LayoutExecution<'_>>,
-    flow_relative_nodes: &[(usize, Axis)],
-    allow_turn: bool,
+    constraints: Constraints<'_>,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<(SolvedGraph, GraphPlacement)> {
     let Some(execution) = execution else {
         let solved = shoal_bridge::solve(
             graph,
             Placement {
-                flow_relative_nodes,
+                constraints,
                 ..Placement::default()
             },
             work,
@@ -35,7 +35,7 @@ pub(crate) fn solve<'id>(
     let width = if fit_width {
         WidthPolicy::FitWidth {
             max_width: execution.container_width,
-            allow_turn,
+            allow_turn: constraints.allow_turn,
             turn_breakpoint: 640.0,
             fold_wide_ranks: execution.fold_wide_ranks,
         }
@@ -85,7 +85,7 @@ pub(crate) fn solve<'id>(
             incident_signatures: anchors
                 .as_ref()
                 .map_or(&[], anchors::Components::signatures),
-            flow_relative_nodes,
+            constraints,
         },
         work,
     )?;

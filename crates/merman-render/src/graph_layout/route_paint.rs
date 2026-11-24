@@ -91,6 +91,8 @@ impl std::fmt::Display for RoutePaintError {
 
 #[cfg(any(
     feature = "diagram-agentflow",
+    feature = "diagram-architecture",
+    feature = "diagram-c4",
     feature = "diagram-class",
     feature = "diagram-er",
     feature = "diagram-flowchart",
@@ -573,6 +575,8 @@ impl Terminal {
 #[cfg(all(
     feature = "layout-shoal",
     any(
+        feature = "diagram-architecture",
+        feature = "diagram-c4",
         feature = "diagram-class",
         feature = "diagram-er",
         feature = "diagram-requirement",

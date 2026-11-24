@@ -1523,6 +1523,17 @@ impl FlowchartSvgLabelSidecarBuilder {
         Ok(())
     }
 
+    #[cfg(all(
+        feature = "layout-shoal",
+        any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+    ))]
+    pub(crate) fn measured_node_geometry(
+        &self,
+        owner: FlowchartSvgLabelOwner,
+    ) -> Option<super::PreparedFlowchartNodeGeometry> {
+        self.pending.borrow().node_geometry.get(owner).copied()
+    }
+
     pub(crate) fn finish(self) -> FlowchartSvgLabelSidecar {
         #[cfg(test)]
         let source_plans_by_owner = self.source_plans_by_owner.into_inner();

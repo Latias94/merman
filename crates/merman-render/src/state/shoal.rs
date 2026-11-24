@@ -67,8 +67,7 @@ pub(crate) fn layout_state_diagram_shoal(
         input.leaves.iter().map(|(_, node)| node.id.as_str()),
         input.groups.iter().map(|group| group.node.id.as_str()),
         Some(execution),
-        &[],
-        false,
+        Default::default(),
         &mut work,
     )?;
     regions::stretch(&input, &mut solved, &mut work)?;

@@ -44,8 +44,7 @@ pub(super) fn layout(
         input.entity_ids.iter().copied(),
         input.groups.iter().map(|group| group.id.as_str()),
         execution,
-        &[],
-        false,
+        Default::default(),
         work,
     )?;
     let mut canonical_routes = CanonicalRoutes::from_solved(

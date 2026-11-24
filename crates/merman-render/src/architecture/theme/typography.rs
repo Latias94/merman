@@ -143,6 +143,15 @@ impl ArchitectureTypographyThemePlan {
         self.font_size_px
     }
 
+    pub(crate) fn svg_text_style(&self) -> crate::text::TextStyle {
+        crate::text::TextStyle {
+            font_family: Some(self.font_family_css().to_owned()),
+            font_size: self.font_size_px(),
+            font_weight: None,
+            font_style: None,
+        }
+    }
+
     pub(crate) const fn font_size_is_known(&self) -> bool {
         self.font_size_known
     }

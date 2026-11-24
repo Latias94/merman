@@ -1864,6 +1864,8 @@ pub(crate) struct C4FamilyArtifact<'parsed> {
     cluster_theme: crate::c4::C4ClusterThemePlan,
     typography_theme: crate::c4::C4TypographyThemePlan,
     text_paint: crate::c4::C4TextPaintPlan,
+    #[cfg(feature = "layout-shoal")]
+    shoal: Option<crate::c4::C4ShoalGeometry>,
 }
 
 #[cfg(feature = "diagram-c4")]
@@ -1883,6 +1885,11 @@ impl<'parsed> C4FamilyArtifact<'parsed> {
 
     pub(crate) const fn typography_theme(&self) -> &crate::c4::C4TypographyThemePlan {
         &self.typography_theme
+    }
+
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) fn shoal(&self) -> Option<&crate::c4::C4ShoalGeometry> {
+        self.shoal.as_ref()
     }
 }
 
@@ -2650,7 +2657,7 @@ impl<'parsed> StateFamilyArtifact<'parsed> {
     }
 }
 
-#[cfg(feature = "layout-cytoscape")]
+#[cfg(any(feature = "layout-cytoscape", feature = "layout-shoal"))]
 #[derive(Debug)]
 #[cfg(feature = "diagram-architecture")]
 pub(crate) struct ArchitectureFamilyArtifact<'parsed> {
@@ -2659,9 +2666,11 @@ pub(crate) struct ArchitectureFamilyArtifact<'parsed> {
         ArchitectureDiagramLayout,
     >,
     group_theme: crate::architecture::ArchitectureGroupThemePlan,
+    #[cfg(feature = "layout-shoal")]
+    shoal: Option<crate::architecture::ArchitectureShoalGeometry>,
 }
 
-#[cfg(feature = "layout-cytoscape")]
+#[cfg(any(feature = "layout-cytoscape", feature = "layout-shoal"))]
 #[cfg(feature = "diagram-architecture")]
 impl<'parsed> ArchitectureFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
@@ -2675,6 +2684,11 @@ impl<'parsed> ArchitectureFamilyArtifact<'parsed> {
 
     pub(crate) const fn group_theme(&self) -> &crate::architecture::ArchitectureGroupThemePlan {
         &self.group_theme
+    }
+
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) fn shoal(&self) -> Option<&crate::architecture::ArchitectureShoalGeometry> {
+        self.shoal.as_ref()
     }
 }
 
@@ -2705,7 +2719,7 @@ pub(crate) enum BuiltinFamilyArtifact<'parsed> {
     Flowchart(Box<FlowchartFamilyArtifact<'parsed, FlowchartLayout>>),
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     Swimlane(Box<FlowchartFamilyArtifact<'parsed, SwimlaneLayout>>),
-    #[cfg(feature = "layout-cytoscape")]
+    #[cfg(any(feature = "layout-cytoscape", feature = "layout-shoal"))]
     #[cfg(feature = "diagram-architecture")]
     Architecture(Box<ArchitectureFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-class")]
@@ -2796,7 +2810,7 @@ enum LayoutProjection<'a> {
     BlockDiagram(&'a BlockDiagramLayout),
     #[cfg(feature = "diagram-requirement")]
     RequirementDiagram(&'a RequirementDiagramLayout),
-    #[cfg(feature = "layout-cytoscape")]
+    #[cfg(any(feature = "layout-cytoscape", feature = "layout-shoal"))]
     #[cfg(feature = "diagram-architecture")]
     ArchitectureDiagram(&'a ArchitectureDiagramLayout),
     #[cfg(feature = "diagram-mindmap")]
@@ -2881,7 +2895,7 @@ impl BuiltinFamilyArtifact<'_> {
             Self::Flowchart(_) => DiagramFamilyId::FLOWCHART,
             #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             Self::Swimlane(_) => DiagramFamilyId::SWIMLANE,
-            #[cfg(feature = "layout-cytoscape")]
+            #[cfg(any(feature = "layout-cytoscape", feature = "layout-shoal"))]
             #[cfg(feature = "diagram-architecture")]
             Self::Architecture(_) => DiagramFamilyId::ARCHITECTURE,
             #[cfg(feature = "diagram-class")]
@@ -3114,7 +3128,10 @@ impl BuiltinFamilyArtifact<'_> {
             Self::EventModeling(artifact) => artifact.text_theme().record_evidence(evidence),
             #[cfg(feature = "diagram-ishikawa")]
             Self::Ishikawa(artifact) => artifact.text_theme().record_evidence(evidence),
-            #[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
+            #[cfg(all(
+                feature = "diagram-architecture",
+                any(feature = "layout-cytoscape", feature = "layout-shoal")
+            ))]
             Self::Architecture(_) => {}
         }
         style_plan.payload = if FamilyThemeEvidence::not_applicable(theme) {
@@ -3175,7 +3192,7 @@ impl BuiltinFamilyArtifact<'_> {
                     .pair
                     .compatibility_json(metadata, output_context, &control)
             }
-            #[cfg(feature = "layout-cytoscape")]
+            #[cfg(any(feature = "layout-cytoscape", feature = "layout-shoal"))]
             #[cfg(feature = "diagram-architecture")]
             Self::Architecture(artifact) => {
                 artifact
@@ -3350,7 +3367,7 @@ impl BuiltinFamilyArtifact<'_> {
             Self::Flowchart(artifact) => LayoutProjection::Flowchart(artifact.pair.layout()),
             #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             Self::Swimlane(artifact) => LayoutProjection::SwimlaneDiagram(artifact.pair.layout()),
-            #[cfg(feature = "layout-cytoscape")]
+            #[cfg(any(feature = "layout-cytoscape", feature = "layout-shoal"))]
             #[cfg(feature = "diagram-architecture")]
             Self::Architecture(artifact) => {
                 LayoutProjection::ArchitectureDiagram(artifact.pair.layout())
@@ -3970,8 +3987,26 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
         match &self.family {
             #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             BuiltinFamilyArtifact::Flowchart(flow) => Some(&flow.pair.layout().placement),
+            #[cfg(all(
+                feature = "layout-shoal",
+                any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+            ))]
+            BuiltinFamilyArtifact::Swimlane(flow) => flow
+                .pair
+                .layout()
+                .shoal
+                .as_ref()
+                .map(|shoal| &shoal.placement),
             #[cfg(feature = "diagram-agentflow")]
             BuiltinFamilyArtifact::Agentflow { flow, .. } => Some(&flow.pair.layout().placement),
+            #[cfg(all(feature = "layout-shoal", feature = "diagram-architecture"))]
+            BuiltinFamilyArtifact::Architecture(artifact) => {
+                artifact.shoal().map(|geometry| geometry.placement())
+            }
+            #[cfg(all(feature = "layout-shoal", feature = "diagram-c4"))]
+            BuiltinFamilyArtifact::C4(artifact) => {
+                artifact.shoal().map(|geometry| geometry.placement())
+            }
             #[cfg(all(feature = "layout-shoal", feature = "diagram-class"))]
             BuiltinFamilyArtifact::Class(artifact) => artifact
                 .route_contract()
@@ -4400,7 +4435,10 @@ fn render_family_artifact_svg(
     #[cfg(not(feature = "diagram-agentflow"))]
     let metadata = &artifact.metadata;
 
-    #[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
+    #[cfg(all(
+        feature = "diagram-architecture",
+        any(feature = "layout-cytoscape", feature = "layout-shoal")
+    ))]
     if let BuiltinFamilyArtifact::Architecture(architecture) = &artifact.family {
         return crate::svg::render_architecture_family_artifact(
             architecture,
@@ -4622,7 +4660,10 @@ fn prepare_for<'parsed>(
     let mut artifact = match expected_family {
         #[cfg(feature = "diagram-class")]
         DiagramFamilyId::CLASS => preparation::prepare_class_render(parsed, options, context),
-        #[cfg(all(feature = "diagram-architecture", feature = "layout-cytoscape"))]
+        #[cfg(all(
+            feature = "diagram-architecture",
+            any(feature = "layout-cytoscape", feature = "layout-shoal")
+        ))]
         DiagramFamilyId::ARCHITECTURE => {
             preparation::prepare_architecture_render(parsed, options, context)
         }

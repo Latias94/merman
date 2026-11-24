@@ -290,8 +290,7 @@ pub(super) fn layout(
         node_ids.iter().copied(),
         boundary_plans.iter().map(|&index| plans[index].id.as_str()),
         execution,
-        &[],
-        false,
+        Default::default(),
         work,
     )?;
     let mut routes = CanonicalRoutes::from_solved(

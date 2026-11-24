@@ -242,7 +242,7 @@ fn prepare_block_family<'parsed>(
         &typography_theme.css_binding().edge_label_background,
         execution.work_meter_ref(),
     )?;
-    let (layout, prepared_labels) = crate::block::layout_block_diagram_typed_with_text_style(
+    let (mut layout, prepared_labels) = crate::block::layout_block_diagram_typed_with_text_style(
         model,
         typography_theme.padding(),
         crate::block::BlockShapeSettings::resolve(meta.effective_config.as_value()),
@@ -256,8 +256,8 @@ fn prepare_block_family<'parsed>(
         execution.resolved_theme(),
         &meta.effective_config,
         model,
-        &layout,
-        execution.work_meter_ref(),
+        &mut layout,
+        &execution.work_meter(),
     )?;
     let marker_paint_theme = crate::block::BlockMarkerPaintPlan::resolve(
         execution.resolved_theme(),
@@ -481,11 +481,9 @@ fn prepare_flowchart_family<'parsed>(
                         model,
                         render_context,
                         &meta.effective_config,
-                        execution.text_measurer(),
-                        execution.math_renderer(),
+                        execution,
                         svg_label_sidecar,
                         edge_style_plan,
-                        execution.work_meter(),
                     )
                 },
             )?))
@@ -523,7 +521,7 @@ fn prepare_flowchart_family<'parsed>(
     }
 }
 
-#[cfg(feature = "layout-cytoscape")]
+#[cfg(any(feature = "layout-cytoscape", feature = "layout-shoal"))]
 #[inline(never)]
 #[cfg(feature = "diagram-architecture")]
 fn prepare_architecture_family<'parsed>(
@@ -538,19 +536,47 @@ fn prepare_architecture_family<'parsed>(
         model.edges.len(),
         execution.work_meter().as_ref(),
     )?;
-    let layout = crate::architecture::layout_architecture_diagram_typed(
-        model,
-        meta.effective_config.as_value(),
-        execution.text_measurer(),
-        execution.operation_seed(),
-        execution.work_meter().as_ref(),
-    )?;
-    Ok(BuiltinFamilyArtifact::Architecture(Box::new(
-        ArchitectureFamilyArtifact {
-            pair: FamilyPair::new(model, layout),
-            group_theme,
-        },
-    )))
+    let config = meta.effective_config.as_value();
+    #[cfg(feature = "layout-shoal")]
+    if crate::layout_backend::resolve_architecture_layout(config).backend
+        == crate::layout_backend::GraphLayoutBackend::Shoal
+    {
+        let (layout, geometry) = crate::architecture::layout_architecture_shoal(
+            model,
+            &meta.effective_config,
+            execution,
+        )?;
+        return Ok(BuiltinFamilyArtifact::Architecture(Box::new(
+            ArchitectureFamilyArtifact {
+                pair: FamilyPair::new(model, layout),
+                group_theme,
+                shoal: Some(geometry),
+            },
+        )));
+    }
+    #[cfg(feature = "layout-cytoscape")]
+    {
+        let layout = crate::architecture::layout_architecture_diagram_typed(
+            model,
+            config,
+            execution.text_measurer(),
+            execution.operation_seed(),
+            execution.work_meter_ref(),
+        )?;
+        Ok(BuiltinFamilyArtifact::Architecture(Box::new(
+            ArchitectureFamilyArtifact {
+                pair: FamilyPair::new(model, layout),
+                group_theme,
+                #[cfg(feature = "layout-shoal")]
+                shoal: None,
+            },
+        )))
+    }
+    #[cfg(not(feature = "layout-cytoscape"))]
+    Err(Error::MissingCapability {
+        capability: crate::RenderCapability::LayoutCytoscape,
+        diagram_type: meta.diagram_type.clone(),
+    })
 }
 
 #[inline(never)]
@@ -578,15 +604,35 @@ fn prepare_c4_family<'parsed>(
         &meta.effective_config,
         execution.work_meter_ref(),
     )?;
-    let layout = crate::c4::layout_c4_diagram_typed(
-        model,
-        meta.effective_config.as_value(),
-        &typography_theme,
-        execution.text_measurer(),
-        crate::geom::Size::new(execution.container_width, execution.container_height),
-        execution.screen_available_width,
-        execution.work_meter_ref(),
-    )?;
+    let config = meta.effective_config.as_value();
+    let grid = || {
+        crate::c4::layout_c4_diagram_typed(
+            model,
+            config,
+            &typography_theme,
+            execution.text_measurer(),
+            crate::geom::Size::new(execution.container_width, execution.container_height),
+            execution.screen_available_width,
+            execution.work_meter_ref(),
+        )
+    };
+    #[cfg(feature = "layout-shoal")]
+    let (layout, shoal) = if crate::layout_backend::resolve_graph_layout(config).backend
+        == crate::layout_backend::GraphLayoutBackend::Shoal
+    {
+        let (layout, geometry) = crate::c4::layout_c4_shoal(
+            model,
+            config,
+            &typography_theme,
+            &cluster_theme,
+            execution,
+        )?;
+        (layout, Some(geometry))
+    } else {
+        (grid()?, None)
+    };
+    #[cfg(not(feature = "layout-shoal"))]
+    let layout = grid()?;
     text_paint.bind_source_terminal_paint(
         model,
         &layout,
@@ -599,6 +645,8 @@ fn prepare_c4_family<'parsed>(
         cluster_theme,
         typography_theme,
         text_paint,
+        #[cfg(feature = "layout-shoal")]
+        shoal,
     })))
 }
 
@@ -1377,7 +1425,10 @@ pub(super) fn prepare_class_render<'parsed>(
 }
 
 #[inline(never)]
-#[cfg(all(feature = "diagram-architecture", feature = "layout-cytoscape"))]
+#[cfg(all(
+    feature = "diagram-architecture",
+    any(feature = "layout-cytoscape", feature = "layout-shoal")
+))]
 pub(super) fn prepare_architecture_render<'parsed>(
     parsed: &'parsed PresentationDiagram,
     options: &LayoutOptions,
@@ -1456,12 +1507,12 @@ pub(super) fn prepare_non_class_render<'parsed>(
             &execution,
             preparation,
         )?,
-        #[cfg(feature = "layout-cytoscape")]
+        #[cfg(any(feature = "layout-cytoscape", feature = "layout-shoal"))]
         #[cfg(feature = "diagram-architecture")]
         RenderSemanticModel::Architecture(_) => {
             unreachable!("Architecture models use the stack-bounded family dispatch path")
         }
-        #[cfg(not(feature = "layout-cytoscape"))]
+        #[cfg(not(any(feature = "layout-cytoscape", feature = "layout-shoal")))]
         #[cfg(feature = "diagram-architecture")]
         RenderSemanticModel::Architecture(_) => {
             return Err(Error::MissingCapability {

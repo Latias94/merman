@@ -6,6 +6,9 @@ use crate::model::LayoutPoint;
 use kurbo::{Arc, Point};
 use std::f64::consts::TAU;
 
+#[cfg(all(feature = "diagram-c4", feature = "layout-shoal"))]
+#[path = "../c4/contour.rs"]
+mod c4;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",

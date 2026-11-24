@@ -8,7 +8,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Experimental Shoal layout
 
-Choose `layout: shoal` for Flowchart, Agentflow, Class, State, ER, Requirement, or Usecase diagrams in a build with the `layout-shoal` feature. Shoal uses the diagram's measured labels and shapes. Small cycles start at their entry node and can route long return edges along the outside. On crowded nodes, arrows can spread across adjacent faces. Edges between sibling groups can follow a shared lane through both borders. [Usage and supported graphs](docs/FEATURES.md#try-the-experimental-shoal-layout)
+Choose `layout: shoal` for Flowchart, Agentflow, Architecture, Block, C4, Class, State, ER, Requirement, Swimlane, or Usecase diagrams in a build with the `layout-shoal` feature. Small cycles start near their entry and can route long return edges outside the graph. Crowded arrows can spread across adjacent faces, and edges between sibling groups can align through both borders. Architecture honors the declared port faces. C4 routes relationships across nested boundaries. Swimlane aligns work across lanes on a shared rank grid. Block keeps its authored grid and routes edges around placed blocks where there is room. [Usage and supported graphs](docs/FEATURES.md#try-the-experimental-shoal-layout)
 
 ```text
 ---
@@ -27,7 +27,7 @@ Save the example as `diagram.mmd` and run this command from the Merman checkout.
 cargo run --locked -p merman-cli --features layout-shoal -- render diagram.mmd -f svg -o diagram.svg
 ```
 
-Add `--fit-width --width 640` to fit the diagram to a 640 CSS pixel container. All seven Shoal families support width fitting and placement hints across edits. Use **Tools → Fit preview width** in a Shoal-enabled Playground, or set `merman.preview.fitWidth` in VS Code with a Shoal-enabled CLI.
+Add `--fit-width --width 640` to fit the Flowchart to a 640 CSS pixel container. Shoal can reuse placement hints across edits. Flat diagrams also use the previous frame's positions to reduce movement. Use **Tools → Fit preview width** in a Shoal-enabled Playground, or set `merman.preview.fitWidth` in VS Code with a Shoal-enabled CLI.
 
 <img width="450" alt="Release workflow laid out with Shoal, with separate branches for review and for publishing after smoke testing and audit" src="docs/rendering/shoal-release.png">
 

@@ -65,7 +65,7 @@ pub(super) fn measure_zero_width_lane_titles(
     }
 }
 
-fn normalize_direction(direction: Option<&str>) -> SwimlaneDirection {
+pub(super) fn normalize_direction(direction: Option<&str>) -> SwimlaneDirection {
     match direction
         .unwrap_or("TB")
         .trim()
@@ -303,7 +303,12 @@ fn working_edge(edge: &ProjectedFlowchartEdge<'_>, transport_id: &str) -> Workin
     }
 }
 
-fn synthetic_node(id: &str, label: &str, label_type: Option<&str>, shape: &str) -> FlowNode {
+pub(super) fn synthetic_node(
+    id: &str,
+    label: &str,
+    label_type: Option<&str>,
+    shape: &str,
+) -> FlowNode {
     FlowNode {
         id: id.to_owned(),
         provenance: Default::default(),

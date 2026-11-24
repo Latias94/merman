@@ -165,7 +165,20 @@ fn required_layout_capability(
 ) -> Result<Option<RenderCapability>> {
     let meta = parsed.metadata();
     match family {
-        DiagramFamilyId::ARCHITECTURE => return Ok(Some(RenderCapability::LayoutCytoscape)),
+        #[cfg(feature = "diagram-architecture")]
+        DiagramFamilyId::ARCHITECTURE => {
+            return Ok(
+                crate::layout_backend::resolve_architecture_layout(&meta.effective_config)
+                    .required_capability(),
+            );
+        }
+        DiagramFamilyId::BLOCK | DiagramFamilyId::C4 => {
+            let selected = crate::layout_backend::resolve_graph_layout(&meta.effective_config);
+            return Ok(
+                (selected.backend == crate::layout_backend::GraphLayoutBackend::Shoal)
+                    .then_some(RenderCapability::LayoutShoal),
+            );
+        }
         DiagramFamilyId::AGENTFLOW
         | DiagramFamilyId::CLASS
         | DiagramFamilyId::ER
@@ -187,6 +200,7 @@ fn required_layout_capability(
                 | DiagramFamilyId::ER
                 | DiagramFamilyId::REQUIREMENT
                 | DiagramFamilyId::STATE
+                | DiagramFamilyId::SWIMLANE
                 | DiagramFamilyId::USECASE
         )
         && !(family == DiagramFamilyId::FLOWCHART
@@ -204,6 +218,47 @@ fn required_layout_capability(
         ));
     }
     Ok(selection.required_capability())
+}
+
+#[cfg(all(test, feature = "diagram-architecture"))]
+#[test]
+fn architecture_admits_the_selected_backend_independently() {
+    use crate::{RenderCapabilityPolicy, environment::RenderEnvironment};
+    use merman_core::{MermaidEngine, ParseOptions};
+
+    let diagram = "architecture-beta\nservice api(server)[API]";
+    for (source, capability, compiled) in [
+        (
+            diagram.to_owned(),
+            RenderCapability::LayoutCytoscape,
+            cfg!(feature = "layout-cytoscape"),
+        ),
+        (
+            format!("---\nconfig:\n  layout: shoal\n---\n{diagram}"),
+            RenderCapability::LayoutShoal,
+            cfg!(feature = "layout-shoal"),
+        ),
+    ] {
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let environment = RenderEnvironment::deterministic();
+        let session = environment.begin_session().unwrap();
+        let plan = plan_render(&parsed, &session).unwrap();
+        assert_eq!(plan.required_capabilities(), &[capability]);
+        assert_eq!(plan.is_ready(), compiled);
+
+        let denied = environment
+            .with_capability_policy(RenderCapabilityPolicy::deny_all())
+            .begin_session()
+            .unwrap();
+        assert!(matches!(
+            super::prepare(&parsed, &LayoutOptions::default(), denied),
+            Err(Error::MissingCapability { capability: actual, .. }) if actual == capability
+        ));
+    }
 }
 
 /// Reports whether this renderer contains the logical family handler for a known diagram type.
@@ -291,7 +346,9 @@ fn supported_layout_adaptations(
     family: DiagramFamilyId,
     shoal: bool,
 ) -> &'static [LayoutAdaptation] {
-    if family == DiagramFamilyId::KANBAN || shoal {
+    if family == DiagramFamilyId::KANBAN
+        || (shoal && !matches!(family, DiagramFamilyId::BLOCK | DiagramFamilyId::SWIMLANE))
+    {
         &[LayoutAdaptation::None, LayoutAdaptation::FitWidth]
     } else {
         &[LayoutAdaptation::None]

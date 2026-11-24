@@ -1,6 +1,8 @@
 #![cfg(all(
     feature = "layout-shoal",
     any(
+        feature = "diagram-architecture",
+        feature = "diagram-c4",
         feature = "diagram-class",
         feature = "diagram-er",
         feature = "diagram-requirement",
@@ -15,6 +17,16 @@ use merman_render::{LayoutAdaptation, LayoutOptions, environment::RenderEnvironm
 #[test]
 fn shoal_families_fit_width_and_capture_frames_through_the_normal_svg_pipeline() {
     let fixtures = [
+        #[cfg(feature = "diagram-architecture")]
+        (
+            "architecture",
+            "architecture-beta\nservice api(server)[API]\nservice db(database)[Database]\napi:R --> L:db",
+        ),
+        #[cfg(feature = "diagram-c4")]
+        (
+            "c4",
+            "C4Context\nPerson(user, \"Customer\")\nSystem(orders, \"Orders\")\nRel(user, orders, \"Submits\")",
+        ),
         #[cfg(feature = "diagram-class")]
         ("class", "classDiagram\nA --> B"),
         #[cfg(feature = "diagram-er")]

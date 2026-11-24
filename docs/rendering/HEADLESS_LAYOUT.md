@@ -150,7 +150,7 @@ bytes. Reuse a prepared source to switch widths without reparsing.
 
 ## Shoal Width Adaptation and Preview Frames
 
-Flowchart, Agentflow, Class, State, ER, Requirement, and Usecase support explicit `FitWidth`
+Flowchart, Agentflow, Architecture, C4, Class, State, ER, Requirement, and Usecase support `FitWidth`
 when their effective configuration selects Shoal. The solver wraps disconnected components
 and tries tighter spacing. Flowchart and Agentflow can also turn horizontal flows downward
 for containers narrower than 640 CSS pixels. Opt into folding eligible wide leaf fans with
@@ -164,7 +164,10 @@ The `layout_adaptation` observation reports normalized geometry width before SVG
 and scaling. An empty diagram has a geometry width of zero. If the diagram cannot fit, the
 observation reports overflow and describes the narrowest applicable result.
 
-For an interactive preview of any of these Shoal families, call `LayoutOptions::with_shoal_layout_frame`
+Swimlane uses a common rank grid with a natural width. Block uses the dimensions of its authored
+grid and selects Shoal for edge routing.
+
+For an interactive preview of Swimlane or a width-fitting Shoal family, call `LayoutOptions::with_shoal_layout_frame`
 with the previous successful `ShoalLayoutFrame`, or with `None` to start a session. Read the
 next frame from `SvgOutput::shoal_layout_frame()` after successful rendering. Full binding SVG
 results expose it as `shoal_layout_frame` metadata. Keep the frame with its document and pass

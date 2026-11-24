@@ -84,6 +84,8 @@ mod tests {
             lanes: Vec::new(),
             edges: Vec::new(),
             edge_owners: Default::default(),
+            #[cfg(feature = "layout-shoal")]
+            shoal: None,
             bounds: None,
         };
         let session = RenderEnvironment::deterministic().begin_session().unwrap();

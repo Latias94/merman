@@ -32,6 +32,32 @@ pub(crate) struct BlockCssThemeBinding {
 }
 
 impl BlockCssThemeBinding {
+    fn stroke_width(config: &Value) -> String {
+        crate::config::config_css_number_or_string(config, &["themeVariables", "strokeWidth"])
+            .unwrap_or_else(|| "1".to_owned())
+    }
+
+    fn parse_stroke_width_px(value: &str) -> Option<f64> {
+        let value = value
+            .trim()
+            .trim_end_matches(';')
+            .trim()
+            .trim_end_matches("!important")
+            .trim();
+        value
+            .strip_suffix("px")
+            .unwrap_or(value)
+            .trim()
+            .parse::<f64>()
+            .ok()
+            .filter(|value| value.is_finite())
+    }
+
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) fn configured_stroke_width_px(config: &Value) -> Option<f64> {
+        Self::parse_stroke_width_px(&Self::stroke_width(config))
+    }
+
     pub(super) fn palette_look(config: &Value) -> String {
         config
             .get("look")
@@ -132,22 +158,8 @@ impl BlockCssThemeBinding {
         };
         let cluster_bkg = fade(token("clusterBkg", "#ffffde"), 0.5)?;
         let cluster_border = fade(token("clusterBorder", "#aaaa33"), 0.2)?;
-        let stroke_width =
-            crate::config::config_css_number_or_string(config, &["themeVariables", "strokeWidth"])
-                .unwrap_or_else(|| "1".to_owned());
-        let edge_stroke_width_px = stroke_width
-            .trim()
-            .trim_end_matches(';')
-            .trim()
-            .trim_end_matches("!important")
-            .trim();
-        let edge_stroke_width_px = edge_stroke_width_px
-            .strip_suffix("px")
-            .unwrap_or(edge_stroke_width_px)
-            .trim()
-            .parse::<f64>()
-            .ok()
-            .filter(|value| value.is_finite());
+        let stroke_width = Self::stroke_width(config);
+        let edge_stroke_width_px = Self::parse_stroke_width_px(&stroke_width);
         let palette_look = Self::palette_look(config);
         let palette = Self::palette_arrays(config)
             .map(|(borders, backgrounds)| {
