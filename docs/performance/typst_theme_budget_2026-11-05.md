@@ -172,3 +172,21 @@ All four gates pass. The final gzip measurement also yields 5,148,000 under the 
 capability recipe (47 tests). The package validates its exports and shared theme vectors
 (`support=32`, `materialization=2`, `errors=3`); real Typst 0.15.1 smoke compiles 24 fixtures
 and verifies 13 expected failures with the same source-verified WASM.
+
+## Native Theme v2 reassessment, 2026-11-24
+
+The `publish` recipe on Windows x86-64 used Rust 1.100.0, Binaryen 133 and
+wasm-tools 1.252.0. Binaryen still runs `-Oz` and now limits the combined size of
+inlined functions to 32,768 bytes. This avoids a Wasmi 1.0.9 branch translation
+panic observed with the default inlining limit in Typst 0.15.0 and 0.15.1.
+
+| Metric | Measured bytes | Previous ceiling | New ceiling |
+| --- | ---: | ---: | ---: |
+| Raw | 21,148,329 | 27,133,000 | 21,783,000 |
+| Stripped | 11,119,105 | 13,635,000 | 11,453,000 |
+| Gzip | 4,211,862 | 5,148,000 | 4,339,000 |
+| Brotli | 3,149,734 | 3,810,000 | 3,245,000 |
+
+Each ceiling keeps the existing 3% margin and rounds upward to 1,000 bytes.
+Typst 0.15.0 and 0.15.1 each compiled 25 fixtures and matched nine expected
+diagnostics with the optimized artifact. [Theme v2 coverage](../rendering/diagram-theme-coverage.md)
