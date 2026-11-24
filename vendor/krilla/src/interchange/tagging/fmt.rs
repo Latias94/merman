@@ -585,8 +585,6 @@ impl Output for f32 {
 mod tests {
     use std::num::NonZeroU16;
 
-    use pretty_assertions::assert_eq;
-
     use crate::action::{Action, LinkAction};
     use crate::annotation::{LinkAnnotation, Target};
     use crate::geom::Rect;

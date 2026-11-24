@@ -535,9 +535,10 @@ fn replace_table(mut font: Vec<u8>, tag: &[u8; 4], table: &[u8]) -> Vec<u8> {
     font.extend_from_slice(table);
     font.resize(font.len().next_multiple_of(4), 0);
     let checksum = |bytes: &[u8]| {
-        assert_eq!(bytes.len() % 4, 0);
-        bytes.chunks_exact(4).fold(0u32, |sum, word| {
-            sum.wrapping_add(u32::from_be_bytes(word.try_into().unwrap()))
+        let (words, remainder) = bytes.as_chunks::<4>();
+        assert!(remainder.is_empty());
+        words.iter().fold(0u32, |sum, &word| {
+            sum.wrapping_add(u32::from_be_bytes(word))
         })
     };
     let table_sum = checksum(&font[end as usize..]);
