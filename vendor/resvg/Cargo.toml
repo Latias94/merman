@@ -8,7 +8,7 @@ documentation = "https://docs.rs/merman-resvg"
 readme = "README.md"
 keywords = ["svg", "render", "raster"]
 categories = ["multimedia::images"]
-license = "MIT OR Apache-2.0"
+license = "(MIT OR Apache-2.0) AND BSD-2-Clause"
 repository = "https://github.com/Latias94/merman"
 
 [lib]

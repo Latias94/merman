@@ -248,6 +248,30 @@ class SdkArchiveTests(unittest.TestCase):
         with self.assertRaisesRegex(sdk_archive.ArchiveVerificationError, "SHA-256 digests mismatch"):
             self.package()
 
+    def test_real_profile_legal_payloads_include_only_the_linked_exporters(self):
+        repo = sdk_archive.REPO_ROOT
+        descriptor = repo / "capabilities/artifact-profiles-v2.json"
+        recipes = {recipe.profile_id: recipe for recipe in sdk_archive.load_artifact_profiles(descriptor)}
+        blur_license = "THIRD_PARTY_LICENSES/resvg-iir-blur/LICENSE"
+        krilla_licenses = {f"THIRD_PARTY_LICENSES/krilla/{name}"
+                           for name in ("LICENSE-APACHE", "LICENSE-MIT", "LICENSE-ICC")}
+        for profile in sdk_archive.PROFILES:
+            with self.subTest(profile=profile):
+                native = profile.startswith("sdk-native-")
+                recipe = recipes[profile]
+                self.assertEqual("pdf" in recipe.outputs, native)
+                self.report.write_text(json.dumps({
+                    "artifact_profile": recipe.report_projection(),
+                    "licenses": [{"id": "BSD-2-Clause", "text": "dependency license text"}],
+                }), encoding="utf-8")
+                files = {}
+                sdk_archive._legal_payload(files, repo, profile, self.report, descriptor)
+                self.assertEqual(files[blur_license], (repo / "vendor/resvg/LICENSE-BSD-2-Clause").read_bytes())
+                self.assertEqual(krilla_licenses.intersection(files), krilla_licenses if native else set())
+                notice = files["THIRD_PARTY_NOTICES.md"]
+                self.assertIn(b"Pascal Getreuer", notice)
+                self.assertEqual(b"### krilla-svg\n" in notice, native)
+
     def test_native_staging_and_archives_share_integration_files_and_library_layout(self):
         for target in sdk_archive.NATIVE_TARGETS:
             with self.subTest(target=target):

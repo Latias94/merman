@@ -59,67 +59,39 @@
   "artifact_scopes": [
     {
       "id": "sdk-native-standard",
-      "description": "Native C standard SDK, including its ASCII source notices.",
-      "extends": ["sdk-standard", "ascii-render"],
+      "description": "Native C standard SDK, including its ASCII and PDF notices.",
+      "extends": ["sdk-standard", "ascii-render", "pdf-export"],
       "components": []
     },
     {
       "id": "sdk-native-math",
-      "description": "Native C math SDK, including its ASCII source notices.",
-      "extends": ["sdk-math", "ascii-render"],
+      "description": "Native C math SDK, including its ASCII and PDF notices.",
+      "extends": ["sdk-math", "ascii-render", "pdf-export"],
       "components": []
     },
     {
       "id": "sdk-native-full",
-      "description": "Native C full SDK, including its ASCII source notices.",
-      "extends": ["sdk-full", "ascii-render"],
+      "description": "Native C full SDK, including its ASCII and PDF notices.",
+      "extends": ["sdk-full", "ascii-render", "pdf-export"],
       "components": []
     },
     {
       "id": "sdk-standard",
-      "description": "Embedding SDK standard legal closure.",
-      "extends": [
-        "rust-render-base"
-      ],
-      "components": [
-        "krilla",
-        "krilla-icc-profiles",
-        "krilla-svg",
-        "resvg",
-        "sdk-cousine",
-        "usvg"
-      ]
+      "description": "WASI standard SDK legal closure, including the PNG renderer and bundled font.",
+      "extends": ["rust-render-base", "raster-export"],
+      "components": ["sdk-cousine"]
     },
     {
       "id": "sdk-math",
-      "description": "Embedding SDK math legal closure.",
-      "extends": [
-        "ratex-render"
-      ],
-      "components": [
-        "krilla",
-        "krilla-icc-profiles",
-        "krilla-svg",
-        "resvg",
-        "sdk-cousine",
-        "usvg"
-      ]
+      "description": "WASI math SDK legal closure, including RaTeX and its fonts.",
+      "extends": ["sdk-standard", "ratex-render"],
+      "components": []
     },
     {
       "id": "sdk-full",
-      "description": "Embedding SDK full legal closure.",
-      "extends": [
-        "elk-render",
-        "ratex-render"
-      ],
-      "components": [
-        "krilla",
-        "krilla-icc-profiles",
-        "krilla-svg",
-        "resvg",
-        "sdk-cousine",
-        "usvg"
-      ]
+      "description": "WASI full SDK legal closure, including RaTeX and ELK.",
+      "extends": ["sdk-math", "elk-render"],
+      "components": []
     },
     {
       "id": "rust-render-base",
@@ -163,6 +135,18 @@
       "components": ["katex-fonts", "ratex"]
     },
     {
+      "id": "raster-export",
+      "description": "Raster output using the Merman resvg and usvg forks.",
+      "extends": [],
+      "components": ["resvg", "resvg-iir-blur", "usvg"]
+    },
+    {
+      "id": "pdf-export",
+      "description": "PDF output using the Merman Krilla, krilla-svg, and usvg forks with embedded ICC profiles.",
+      "extends": [],
+      "components": ["krilla", "krilla-icc-profiles", "krilla-svg", "usvg"]
+    },
+    {
       "id": "ascii-render",
       "description": "ASCII rendering source, copied fixtures, and behavior references.",
       "extends": [],
@@ -201,14 +185,14 @@
     {
       "id": "cli-default",
       "description": "The source-default CLI feature closure including ELK without RaTeX math/font support.",
-      "extends": ["elk-render"],
-      "components": ["krilla", "krilla-icc-profiles", "krilla-svg", "resvg", "usvg"]
+      "extends": ["elk-render", "raster-export", "pdf-export"],
+      "components": []
     },
     {
       "id": "cli-release",
       "description": "The published complete CLI release closure, including explicit ELK and RaTeX math/font support.",
-      "extends": ["elk-render", "ratex-render"],
-      "components": ["krilla", "krilla-icc-profiles", "krilla-svg", "resvg", "usvg"]
+      "extends": ["elk-render", "ratex-render", "raster-export", "pdf-export"],
+      "components": []
     },
     {
       "id": "web-full",
@@ -1051,10 +1035,41 @@
         {
           "type": "pinned-file",
           "path": "vendor/resvg/UPSTREAM.md",
-          "sha256": "c62a9cc9660cd66df9ab77a3a06ee95105040d25efe51352d20d86f2b5d1aade"
+          "sha256": "475102e9ebf242337e20a19195cec7d3e4fdbc91db8fdc28e8f8a36b5b5216c0"
         }
       ],
       "notice": "The Merman SVG rasterizer links the Merman usvg fork to share SVG tree and font identities."
+    },
+    {
+      "id": "resvg-iir-blur",
+      "name": "Pascal Getreuer's Gaussian convolution in resvg",
+      "version": "gaussian_20131215, as adapted in resvg 0.50.0",
+      "source": {
+        "repository": "https://github.com/linebender/resvg",
+        "ref": "v0.50.0",
+        "commit": "5bdbae64eefadc4bf0caa56dcf91702037929086",
+        "path": "crates/resvg/src/filter/iir_blur.rs"
+      },
+      "relationships": ["copied", "modified", "linked"],
+      "local_paths": ["vendor/resvg/src/filter/iir_blur.rs"],
+      "license_expression": "BSD-2-Clause",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/resvg-iir-blur/LICENSE",
+          "sha256": "a9371cfa1c4d8146817a501ef944663b8a40ee684f767b21ccb1c7047ac7cf00",
+          "source_url": "https://www.ipol.im/pub/art/2013/87/gaussian_20131215.tgz",
+          "source_path": "gaussian_20131215/BSD_simplified.txt",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {
+          "type": "pinned-file",
+          "path": "vendor/resvg/LICENSE-BSD-2-Clause",
+          "sha256": "a9371cfa1c4d8146817a501ef944663b8a40ee684f767b21ccb1c7047ac7cf00"
+        }
+      ],
+      "notice": "The resvg IIR Gaussian blur credits Pascal Getreuer's Simplified BSD implementation. The copyright notice from `gaussian_conv_am.c` and the license from `BSD_simplified.txt` come from the [original Gaussian convolution source archive](https://www.ipol.im/pub/art/2013/87/gaussian_20131215.tgz)."
     },
     {
       "id": "rough-rs",
