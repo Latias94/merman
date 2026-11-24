@@ -191,6 +191,7 @@
       for (const [backend, output] of Object.entries(item.cards)) panels.append(makePanel(backend, item, output));
       document.querySelector('#source').textContent = item.source;
       let context = pele ? 'Native Rust · Untimed' : 'Visual example · Untimed';
+      if (item.nativeLayoutLocked) context += ' · Native layout selected by gallery';
       if (item.comparison) {
         const { samples, warmups, host, revision, resourceProfile } = measurement;
         context = `Exploratory timing · Native Rust · ${host} · ${resourceProfile} · ${samples} samples after ${warmups} warmups per process · Source to returned SVG`;

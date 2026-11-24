@@ -63,6 +63,8 @@ enum Job {
         #[serde(default)]
         verify_layout: bool,
         #[serde(default)]
+        lock_site_layout: bool,
+        #[serde(default)]
         return_measured_svg: bool,
     },
     Topology {
@@ -345,10 +347,11 @@ pub(super) fn run(
             operation,
             requests,
             warmups,
-            site,
+            mut site,
             resource_profile,
             verify_only,
             verify_layout,
+            lock_site_layout,
             return_measured_svg,
         } => {
             if requested != metric || requests.is_empty() {
@@ -356,6 +359,27 @@ pub(super) fn run(
             }
             if return_measured_svg && (metric != "clock" || verify_only) {
                 return Err("returned-SVG timing requires a clock measurement".into());
+            }
+            if lock_site_layout {
+                if metric != "clock"
+                    || !verify_only
+                    || !verify_layout
+                    || !matches!(operation, Operation::Svg)
+                {
+                    return Err("locking the site layout requires untimed SVG verification".into());
+                }
+                let site = site
+                    .as_mut()
+                    .and_then(Value::as_object_mut)
+                    .filter(|site| site.get("layout").and_then(Value::as_str).is_some())
+                    .ok_or("locking the site layout requires a site layout name")?;
+                let secure = site
+                    .entry("secure")
+                    .or_insert_with(|| merman::default_site_config().as_value()["secure"].clone());
+                let keys = secure
+                    .as_array_mut()
+                    .ok_or("site secure keys must be an array")?;
+                keys.push(json!("layout"));
             }
             let renderer = match site {
                 Some(site) => renderer.with_presentation_engine(
@@ -399,6 +423,9 @@ pub(super) fn run(
                         .map(|(input, output)| trial.layout_evidence(input, output))
                         .collect::<Result<Vec<_>, _>>()?;
                     verified["layout_evidence"] = Value::Array(evidence);
+                }
+                if lock_site_layout {
+                    verified["site_layout_locked"] = json!(true);
                 }
                 verified["outputs"] = Value::Array(outputs);
                 verified

@@ -499,24 +499,33 @@ def check_layout_evidence(response, job, signatures, requested, *, inventory):
         diagram_id = request["diagram_id"]
         if (not isinstance(receipt, dict) or receipt.get("diagram_id") != diagram_id
                 or receipt.get("source_sha256") != request["source_sha256"]
+                or not isinstance(receipt.get("family"), str)
                 or not isinstance(receipt.get("required_capabilities"), list)
                 or not all(isinstance(c, str) for c in receipt["required_capabilities"])):
             raise ValueError(f"missing or misidentified layout evidence for {diagram_id}")
-        required = [c for c in receipt["required_capabilities"] if c.startswith("layout-")]
-        # Flowchart and the Agentflow projection use the built-in Dagre backend by default.
+        family = receipt["family"]
+        required = [c.removeprefix("layout-") for c in receipt["required_capabilities"] if c.startswith("layout-")]
         actual = None
-        if receipt["family"] in ("flowchart", "agentflow") and len(required) <= 1:
-            actual = required[0].removeprefix("layout-") if required else "dagre"
+        if family in ("flowchart", "agentflow", "class", "state", "er", "requirement", "usecase"):
+            if len(required) == 1:
+                actual = required[0]
+            elif not required and family != "er":
+                actual = "dagre"
         receipt["backend"] = actual
-        if actual != requested:
+        if actual is None or actual != requested:
+            observed = actual or "unconfirmed"
+            if family == "er" and not required:
+                observed = "unconfirmed between Dagre and Swimlane"
             signature.update(status="layout-backend-mismatch",
-                             message=f"requested {requested}, observed {actual} ({receipt['family']})")
+                             message=f"requested {requested}, observed {observed} ({family})")
         if "status" in signature:
             continue
         if job["operation"] == "layout-json":
             product = output.get("layout_json")
             if not isinstance(product, dict):
                 raise ValueError("layout verification requires layout JSON from the runner")
+            if product.get("family_id") != family:
+                raise ValueError(f"returned layout JSON family differs from layout evidence for {diagram_id}")
             read_inventory = flowchart_layout_inventory
         else:
             if not isinstance(output, str):
@@ -525,11 +534,15 @@ def check_layout_evidence(response, job, signatures, requested, *, inventory):
             if product.get("id") != diagram_id:
                 raise ValueError(f"returned SVG ID differs from frozen ID {diagram_id!r}")
             read_inventory = flowchart_svg_inventory
-        if inventory:
-            try:
-                receipt["inventory"] = read_inventory(product)
-            except ValueError as error:
-                signature.update(status="invalid-inventory", message=str(error))
+        if not inventory:
+            continue
+        if family not in ("flowchart", "agentflow"):
+            signature.update(status="unsupported-inventory", message=f"no cross-backend inventory for {family}")
+            continue
+        try:
+            receipt["inventory"] = read_inventory(product)
+        except ValueError as error:
+            signature.update(status="invalid-inventory", message=str(error))
     return receipts
 
 
@@ -886,6 +899,8 @@ def main(argv=None):
     gallery.add_argument("--comparison", type=Path, help="rust-layouts report for this plan and executable")
     gallery.add_argument("--runner", type=Path, help="use a frozen public_workloads clock executable")
     gallery.add_argument("--pele", action="store_true", help="add the locked Pele renderer and its separate Node.js SVG timing")
+    gallery.add_argument("--override-frontmatter-layout", action="store_true",
+                         help="lock the native backend for drawings without a recorded comparison, even when the source sets layout")
     gallery.add_argument("--out", required=True, type=Path, help="standalone HTML output file")
     for command in (run, layouts):
         command.add_argument("--plan", required=True, type=Path)

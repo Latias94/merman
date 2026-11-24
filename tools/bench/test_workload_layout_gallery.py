@@ -45,6 +45,41 @@ class LayoutGalleryTests(unittest.TestCase):
             self.assertEqual(list(case["cards"]), ["dagre", "elk", "shoal"])
             self.assertNotIn("pele", data)
 
+    def test_layout_override_keeps_the_authored_source_and_checks_the_runner_receipt(self):
+        original = "---\nconfig:\n  layout: dagre\n  htmlLabels: false\n---\nagentflow-beta LR\nA --> B\n"
+        backend = {"dagre": [], "elk": ["layout-elk"], "shoal": ["layout-shoal"]}
+
+        def draw(_runner, job):
+            request, = job["requests"]
+            self.assertEqual(request["source"], original)
+            self.assertTrue(job["lock_site_layout"])
+            name = job["site"]["layout"]
+            return dict(
+                site_layout_locked=True,
+                outputs=[f'<svg id="{request["diagram_id"]}" viewBox="0 0 40 30">'
+                         '<rect width="40" height="30"/></svg>'],
+                layout_evidence=[dict(diagram_id=request["diagram_id"], family="agentflow",
+                                      source_sha256=bench.digest(original.encode()),
+                                      required_capabilities=backend[name])],
+            )
+
+        with TemporaryDirectory() as tmp, patch.object(gallery, "child", side_effect=draw) as render:
+            root = Path(tmp)
+            source = root / "agentflow.mmd"
+            source.write_text(original, encoding="utf-8")
+            out = root / "gallery.html"
+            self.assertEqual(bench.main(["layout-gallery", str(source), "--override-frontmatter-layout",
+                                         "--runner", "unused", "--out", str(out)]), 0)
+            case, = gallery_data(out)["cases"]
+            self.assertEqual(case["source"], original)
+            self.assertTrue(case["nativeLayoutLocked"])
+            self.assertEqual(render.call_count, 3)
+            self.assertTrue(all("svg" in card for card in case["cards"].values()))
+            render.side_effect = lambda runner, job: {**draw(runner, job), "site_layout_locked": False}
+            with self.assertRaisesRegex(ValueError, "confirms the site layout lock"):
+                gallery.render_card(root / "runner", dict(source=original, diagram_id="locked"),
+                                    "shoal", None, lock_layout=True)
+
     def test_missing_pele_install_names_the_locked_package_and_install_command(self):
         with TemporaryDirectory() as tmp, patch.object(gallery, "HERE", Path(tmp)):
             consumer = Path(tmp) / "node-reference"

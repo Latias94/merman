@@ -378,6 +378,11 @@ Use **Fit** for an overview or **1:1** for synchronized scrolling at the same sc
 also offers its original SVG for download. For a visual-only comparison, pass one or more
 `.mmd` files and the output path.
 
+Use `--override-frontmatter-layout` when an untimed example sets `config.layout` in its source. The gallery
+locks the native layout selection through the renderer's site policy, preserves the source and
+its other settings, and still checks which backend executed. Drawings backed by `--comparison`
+use the original measurement settings. Pele continues to receive the original source.
+
 Add `--pele` to draw every case with the independent Pele Node.js renderer in a fourth panel.
 Install the locked Node consumer once. This example includes a file and a frozen directed-cycle case.
 

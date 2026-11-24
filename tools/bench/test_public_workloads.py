@@ -718,9 +718,47 @@ class RustLayoutTests(unittest.TestCase):
         receipts = [proof[0], dict(proof[1], family="sequence", required_capabilities=[])]
         self.assertEqual(check(outputs, receipts)[1]["status"], "layout-backend-mismatch")
         self.assertIsNone(receipts[1]["backend"])
-        receipts = [proof[0], dict(proof[1], family="agentflow")]
-        self.assertNotIn("status", check(outputs, receipts)[1])
-        self.assertEqual(receipts[1]["backend"], "shoal")
+        for family in ("agentflow", "class", "state", "er", "requirement", "usecase"):
+            with self.subTest(family=family):
+                receipts = [proof[0], dict(proof[1], family=family)]
+                self.assertNotIn("status", check(outputs, receipts)[1])
+                self.assertEqual(receipts[1]["backend"], "shoal")
+
+    def test_graph_families_verify_layout_json_without_flowchart_inventories(self):
+        request = dict(diagram_id="preview", source_sha256=bench.digest(b"source"))
+        job = dict(operation="layout-json", requests=[request])
+
+        def verify(family, capabilities, requested, *, inventory=False, output_family=None):
+            output = dict(bytes=20, observed_size=20, sha256="a" * 64,
+                          layout_json=dict(schema_version=1, family_id=output_family or family))
+            receipt = dict(**request, family=family, required_capabilities=capabilities)
+            response = dict(outputs=[output], layout_evidence=[receipt])
+            signatures, _ = bench.rust_signatures(response["outputs"], [request], "layout-json")
+            bench.check_layout_evidence(response, job, signatures, requested, inventory=inventory)
+            return receipt, signatures[0]
+
+        for family in ("class", "state", "er", "requirement", "usecase"):
+            with self.subTest(family=family):
+                receipt, signature = verify(family, ["layout-elk"], "elk")
+                self.assertEqual(receipt["backend"], "elk")
+                self.assertNotIn("status", signature)
+
+                receipt, signature = verify(family, ["layout-shoal"], "shoal", inventory=True)
+                self.assertEqual(receipt["backend"], "shoal")
+                self.assertNotIn("inventory", receipt)
+                self.assertEqual(signature["status"], "unsupported-inventory")
+
+                receipt, signature = verify(family, [], "shoal")
+                expected = None if family == "er" else "dagre"
+                self.assertEqual(receipt["backend"], expected)
+                self.assertEqual(signature["status"], "layout-backend-mismatch")
+
+        receipt, signature = verify("er", [], "dagre")
+        self.assertIsNone(receipt["backend"])
+        self.assertEqual(signature["status"], "layout-backend-mismatch")
+        self.assertIn("Swimlane", signature["message"])
+        with self.assertRaisesRegex(ValueError, "layout JSON family"):
+            verify("class", ["layout-shoal"], "shoal", output_family="flowchart")
 
     def test_standalone_shoal_rejects_the_source_pinned_control_and_preserves_default_work(self):
         with tempfile.TemporaryDirectory() as tmp:

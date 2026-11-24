@@ -28,12 +28,16 @@ def svg_card(svg, backend):
     return dict(svg=svg, width=width, height=height, nodes=nodes, edges=edges)
 
 
-def render_card(runner, request, backend, recorded, resource_profile=None):
+def render_card(runner, request, backend, recorded, resource_profile=None, *, lock_layout=False):
     job = dict(task="measure", metric="clock", operation="svg", requests=[request], site={"layout": backend},
                warmups=0, verify_only=True, verify_layout=True)
+    if lock_layout:
+        job["lock_site_layout"] = True
     if resource_profile:
         job["resource_profile"] = resource_profile
     response = child(runner, job)
+    if lock_layout and response.get("site_layout_locked") is not True:
+        raise ValueError("--override-frontmatter-layout requires a runner that confirms the site layout lock")
     if resource_profile and response.get("resource_profile") != resource_profile:
         raise ValueError(f"workload runner did not confirm resource profile {resource_profile!r}")
     outputs = response["outputs"]
@@ -159,11 +163,16 @@ def write_gallery(args):
         case = dict(name=name, source=request["source"], cards={})
         if measured:
             case["comparison"] = report["rows"][name]["status"]
+        elif args.override_frontmatter_layout:
+            case["nativeLayoutLocked"] = True
         for backend in LAYOUTS:
             run = report["runs"][backend]["svg"] if measured else None
             recorded = run["rows"][name] if run else None
             profile = run["options"].get("resource_profile") if run else None
-            case["cards"][backend] = render_card(runner, request, backend, recorded, profile)
+            case["cards"][backend] = render_card(
+                runner, request, backend, recorded, profile,
+                lock_layout=case.get("nativeLayoutLocked", False),
+            )
         if pele_cards:
             case["cards"]["pele"] = pele_cards[index]
         gallery["cases"].append(case)
