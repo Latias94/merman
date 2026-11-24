@@ -17,7 +17,10 @@ use regex::Regex;
 fn native_theme_v2_block_preserves_authored_fill_and_marker_references() {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
-            "block\nA[\"Alpha\"] --> B[\"Beta\"]\nstyle A fill:#123456\n",
+            concat!(
+                "---\nconfig:\n  themeVariables:\n    radius: 20\n---\n",
+                "block\nA(\"Alpha\") --> B[\"Beta\"]\nstyle A fill:#123456\n",
+            ),
             ParseOptions::strict(),
         )
         .unwrap()

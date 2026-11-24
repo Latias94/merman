@@ -13,7 +13,6 @@ pub(crate) struct TimelineCssBinding {
     pub(crate) is_redux_theme: bool,
     pub(crate) is_dark_theme: bool,
     pub(crate) is_color_theme: bool,
-    pub(crate) is_neo: bool,
     pub(crate) use_neo_gradient: bool,
     pub(crate) stroke_width: String,
     pub(crate) font_weight: String,
@@ -34,10 +33,25 @@ impl TimelineCssBinding {
     }
 
     pub(crate) fn node_text_style(&self, base: &crate::text::TextStyle) -> crate::text::TextStyle {
-        let Some(weight) = self.section_font_weight() else {
+        Self::node_style_for_weight(base, self.section_font_weight())
+    }
+
+    pub(super) fn node_style_for_weight(
+        base: &crate::text::TextStyle,
+        weight: Option<&str>,
+    ) -> crate::text::TextStyle {
+        let Some(weight) = weight else {
             return base.clone();
         };
-        if self.section_font_weight_is_measurable() {
+        let measurable =
+            crate::mermaid_style::parse_style_declaration(&format!("font-weight:{weight}"))
+                .is_some_and(|declaration| {
+                    declaration.inherits_property_value()
+                        || crate::mermaid_style::is_supported_css_font_weight_value(
+                            declaration.value(),
+                        )
+                });
+        if measurable {
             let mut cascade = crate::mermaid_style::TextStyleCascade::new(
                 base,
                 crate::mermaid_style::CssFontSizeContext::uniform(base.font_size),
@@ -50,18 +64,6 @@ impl TimelineCssBinding {
                 ..base.clone()
             }
         }
-    }
-
-    fn section_font_weight_is_measurable(&self) -> bool {
-        self.section_font_weight().is_none_or(|weight| {
-            crate::mermaid_style::parse_style_declaration(&format!("font-weight:{weight}"))
-                .is_some_and(|declaration| {
-                    declaration.inherits_property_value()
-                        || crate::mermaid_style::is_supported_css_font_weight_value(
-                            declaration.value(),
-                        )
-                })
-        })
     }
 
     pub(crate) fn resolve(config: &serde_json::Value) -> Self {
@@ -102,7 +104,6 @@ impl TimelineCssBinding {
             // Mermaid's Redux section generator selects this branch from the theme name.
             // The independent darkMode input must not change the selected paint source.
             is_dark_theme: theme.contains("dark"),
-            is_neo: crate::config::config_diagram_look(config).is_neo(),
             use_neo_gradient: super::TimelineConfigView::new(config).uses_neo_gradient(),
             stroke_width: css("strokeWidth", "1"),
             font_weight: css("fontWeight", "normal"),

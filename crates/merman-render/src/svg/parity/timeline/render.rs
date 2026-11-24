@@ -1,16 +1,15 @@
 use super::super::*;
 use crate::model::{TimelineLineLayout, TimelineNodeLayout, TimelineTaskLayout};
-use crate::timeline::{TimelineNativeStyle, TimelineStyle};
+use crate::timeline::{TimelineCssBinding, TimelineNativeStyle, TimelineStyle};
 use merman_model::families::timeline::TimelineDirection;
 
 fn write_timeline_css(
     out: &mut impl SvgOutput,
     diagram_id: impl Copy + std::fmt::Display,
-    style: &TimelineStyle,
+    theme: &TimelineCssBinding,
+    common: &crate::svg::PreparedCommonCss,
 ) -> Result<()> {
     // Keep `:root` last (matches upstream Mermaid timeline SVG baselines).
-    let theme = style.css_binding();
-    let common = style.common_css();
     common.write_prefix(out, diagram_id)?;
     let _ = write!(out, r#"#{} .edge{{stroke-width:3;}}"#, diagram_id);
     for (i, section_theme) in theme.sections.iter().enumerate() {
@@ -199,11 +198,10 @@ pub(crate) fn render_timeline_diagram_svg_model(
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("merman");
-    let theme = style.css_binding();
+    let mermaid = style.css_binding();
     let native = style.native();
-    let is_redux_theme = theme.is_redux_theme;
-    let is_neo = theme.is_neo;
-    let use_neo_gradient = native.map_or(theme.use_neo_gradient, |style| style.source_gradient);
+    let is_redux_theme = mermaid.is_some_and(|theme| theme.is_redux_theme);
+    let is_neo = style.layout_settings().is_neo;
 
     let bounds = layout.bounds.clone().unwrap_or(Bounds {
         min_x: 0.0,
@@ -284,7 +282,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
             };
             let radius = radius.min(w / 2.0).min(h / 2.0);
             let gradient;
-            let stroke = if style.source_gradient {
+            let stroke = if style.gradient_stops.is_some() {
                 gradient = scoped_svg_url(diagram_id, "gradient").to_string();
                 gradient.as_str()
             } else {
@@ -569,8 +567,8 @@ pub(crate) fn render_timeline_diagram_svg_model(
                 "#{id} .timeline-node text{{font-weight:{};}}",
                 native.node_weight
             );
-        } else {
-            write_timeline_css(&mut css, diagram_id, style)?;
+        } else if let Some(mermaid) = mermaid {
+            write_timeline_css(&mut css, diagram_id, mermaid, style.common_css())?;
         }
         super::super::output::XmlTextOutput::new(&mut out).push_str(&css);
     }
@@ -591,7 +589,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
         escape_attr(&arrowhead_id)
     );
     out.checkpoint()?;
-    if is_redux_theme && native.is_none() {
+    if let Some(theme) = mermaid.filter(|theme| theme.is_redux_theme) {
         let flood_opacity = if is_neo && theme.is_dark_theme {
             "0.2"
         } else {
@@ -611,7 +609,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
         );
         out.checkpoint()?;
     }
-    if use_neo_gradient {
+    if let Some(gradient_stops) = style.gradient_stops() {
         let _ = write!(
             &mut out,
             r#"<defs><linearGradient id="{}-gradient" gradientUnits="objectBoundingBox" x1="0%" y1="0%" x2="100%" y2="0%">"#,
@@ -619,7 +617,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
         );
         // Mermaid sets each stop independently. A missing/null variable removes the
         // attribute; neither stop inherits nodeBorder or the other gradient stop.
-        for (offset, color) in ["0%", "100%"].into_iter().zip(&theme.gradient_stops) {
+        for (offset, color) in ["0%", "100%"].into_iter().zip(gradient_stops) {
             let _ = write!(&mut out, r#"<stop offset="{offset}""#);
             if let Some(color) = color {
                 let _ = write!(&mut out, r#" stop-color="{}""#, escape_attr(color));
@@ -835,7 +833,8 @@ mod tests {
         let error = write_timeline_css(
             &mut super::super::super::output::XmlTextOutput::new(&mut out),
             "timelineCssFailure",
-            &style,
+            style.css_binding().unwrap(),
+            style.common_css(),
         )
         .expect_err("the rejecting sink must stop Timeline stylesheet emission");
 

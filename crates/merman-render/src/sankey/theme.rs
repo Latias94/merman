@@ -12,6 +12,7 @@ use crate::svg::PreparedCommonCss;
 use crate::theme::{Color, FamilyTheme};
 
 use super::SankeyConfigView;
+use super::config::SankeyRenderSettings;
 
 const TABLEAU10: [&str; 10] = [
     "#4e79a7", "#f28e2c", "#e15759", "#76b7b2", "#59a14f", "#edc949", "#af7aa1", "#ff9da7",
@@ -83,35 +84,43 @@ impl SankeyStyle {
         canvas: Option<Color>,
         work: &Arc<OperationWorkMeter>,
     ) -> Result<Self> {
-        let mut palette =
-            SankeyNodePalette::prepare_labels_and_nodes(config.as_value(), layout, work)?;
         let config_view = SankeyConfigView::new(config.as_value());
         let render_settings = config_view.render_settings();
-        let mut link_color = config_view.link_color();
-        let font_family = crate::config::config_font_family_css(config);
-        let mut common_css = PreparedCommonCss::new(config.as_value(), Some(&font_family));
-        let mut label_background =
-            crate::config::config_string(config, &["themeVariables", "mainBkg"])
-                .or_else(|| crate::config::config_string(config, &["themeVariables", "background"]))
-                .unwrap_or_else(|| "#fff".to_owned());
-        let mut label_size = 14.0;
-        let mut label_weight = None;
-        if let Some(theme) = native {
+        let mut palette = SankeyNodePalette::prepare(&render_settings, layout, native, work)?;
+        let link_color = config_view.link_color();
+        let (common_css, label_background, label_size, label_weight) = if let Some(theme) = native {
             let typography = &theme.typography;
             let font = crate::theme::font_family_css(typography.stack(typography.body_family));
-            common_css = PreparedCommonCss::new(config.as_value(), Some(&font))
-                .with_text_color(&theme.roles.text_primary.to_string());
-            label_background = canvas
-                .unwrap_or_else(|| theme.roles.canvas.first_color())
-                .to_string();
-            label_size = typography.base_size_px;
-            label_weight = Some(typography.label_weight);
-            if matches!(link_color.as_str(), "source" | "target" | "gradient") {
-                link_color = "gradient".to_owned();
-            }
-            palette = palette.with_native(theme, work)?;
-        }
-        palette.prepare_links(layout, &link_color, work)?;
+            (
+                PreparedCommonCss::new(config.as_value(), Some(&font))
+                    .with_text_color(&theme.roles.text_primary.to_string()),
+                canvas
+                    .unwrap_or_else(|| theme.roles.canvas.first_color())
+                    .to_string(),
+                typography.base_size_px,
+                Some(typography.label_weight),
+            )
+        } else {
+            let font_family = crate::config::config_font_family_css(config);
+            let label_background =
+                crate::config::config_string(config, &["themeVariables", "mainBkg"])
+                    .or_else(|| {
+                        crate::config::config_string(config, &["themeVariables", "background"])
+                    })
+                    .unwrap_or_else(|| "#fff".to_owned());
+            (
+                PreparedCommonCss::new(config.as_value(), Some(&font_family)),
+                label_background,
+                14.0,
+                None,
+            )
+        };
+        let link_color = if native.is_some() && matches!(link_color.as_str(), "source" | "target") {
+            "gradient"
+        } else {
+            &link_color
+        };
+        palette.prepare_links(layout, link_color, work)?;
         Ok(Self {
             common_css,
             label_background,
@@ -129,7 +138,6 @@ impl SankeyStyle {
 struct SankeyNodePaint {
     id: String,
     fill_css: String,
-    source_owned: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -168,18 +176,9 @@ pub(crate) struct SankeyLinkView<'a> {
     pub(crate) paint: SankeyLinkPaint<'a>,
 }
 
-/// Native themes own their colors and keep flows beneath nodes and labels.
-/// Unthemed output retains Mermaid's multiply compositing and document order.
-#[derive(Debug, Clone, Copy)]
-enum SankeyCompositing {
-    MermaidParity,
-    ThemeOwned,
-}
-
 /// Prepares node paint and literal labels for SVG output.
 #[derive(Debug)]
 pub(crate) struct SankeyNodePalette {
-    compositing: SankeyCompositing,
     node_indices: HashMap<String, SankeyNodeLookup>,
     links: Option<Vec<SankeyPreparedLink>>,
     literal_link_paint: Box<str>,
@@ -192,12 +191,22 @@ pub(crate) struct SankeyNodePalette {
 }
 
 impl SankeyNodePalette {
+    #[cfg(test)]
     pub(crate) fn prepare_labels_and_nodes(
         effective_config: &serde_json::Value,
         layout: &SankeyDiagramLayout,
         work_meter: &Arc<OperationWorkMeter>,
     ) -> std::result::Result<Self, OperationWorkError> {
         let render_settings = SankeyConfigView::new(effective_config).render_settings();
+        Self::prepare(&render_settings, layout, None, work_meter)
+    }
+
+    fn prepare(
+        render_settings: &SankeyRenderSettings<'_>,
+        layout: &SankeyDiagramLayout,
+        native: Option<&FamilyTheme>,
+        work_meter: &Arc<OperationWorkMeter>,
+    ) -> std::result::Result<Self, OperationWorkError> {
         let node_colors = render_settings.node_colors;
         let slot_bytes = std::mem::size_of::<SankeyPreparedLabel>();
         work_meter.preflight_prepared_text_retained_bytes(
@@ -240,7 +249,14 @@ impl SankeyNodePalette {
             work_meter.reserve_prepared_text_retained_bytes(retained_upper_bound)?;
         let mut node_indices = HashMap::with_capacity(layout.nodes.len());
         let mut paints = Vec::with_capacity(layout.nodes.len());
-        let mut default_color_domain = HashMap::with_capacity(layout.nodes.len());
+        let mut default_color_domain = HashMap::new();
+        let mut native_paints = if let Some(theme) = native {
+            work_meter.charge(layout.nodes.len())?;
+            Some((theme, Vec::with_capacity(layout.nodes.len())))
+        } else {
+            default_color_domain.reserve(layout.nodes.len());
+            None
+        };
 
         for (node_index, node) in layout.nodes.iter().enumerate() {
             work_meter.checkpoint(OperationPhase::Layout)?;
@@ -268,17 +284,26 @@ impl SankeyNodePalette {
                     first_layout_index: node_index,
                     last_paint_index: node_index,
                 });
-            let fill = explicit_fill.unwrap_or_else(|| {
-                let next_index = default_color_domain.len();
-                let palette_index = *default_color_domain
-                    .entry(node.id.as_str())
-                    .or_insert(next_index);
-                TABLEAU10[palette_index % TABLEAU10.len()]
-            });
+            let fill_css = if let Some((theme, fills)) = &mut native_paints {
+                fills.push(
+                    explicit_fill
+                        .map_or_else(|| theme.data.fill(node_index).to_string(), str::to_owned),
+                );
+                explicit_fill.map_or_else(|| theme.data.ink(node_index).to_string(), str::to_owned)
+            } else {
+                explicit_fill
+                    .unwrap_or_else(|| {
+                        let next_index = default_color_domain.len();
+                        let palette_index = *default_color_domain
+                            .entry(node.id.as_str())
+                            .or_insert(next_index);
+                        TABLEAU10[palette_index % TABLEAU10.len()]
+                    })
+                    .to_owned()
+            };
             paints.push(SankeyNodePaint {
                 id: node.id.clone(),
-                fill_css: fill.to_string(),
-                source_owned: explicit_fill.is_some(),
+                fill_css,
             });
         }
 
@@ -288,38 +313,16 @@ impl SankeyNodePalette {
         retained_labels.reconcile_downward(retained_bytes);
 
         Ok(Self {
-            compositing: SankeyCompositing::MermaidParity,
             node_indices,
             links: None,
             literal_link_paint: "".into(),
             #[cfg(test)]
             endpoint_lookups: 0,
             paints,
-            native_link_fills: None,
+            native_link_fills: native_paints.map(|(_, fills)| fills),
             labels,
             _retained_labels: retained_labels,
         })
-    }
-
-    fn with_native(
-        mut self,
-        theme: &FamilyTheme,
-        work: &OperationWorkMeter,
-    ) -> std::result::Result<Self, OperationWorkError> {
-        self.compositing = SankeyCompositing::ThemeOwned;
-        let mut fills = Vec::with_capacity(self.paints.len());
-        work.charge(self.paints.len())?;
-        for (index, paint) in self.paints.iter_mut().enumerate() {
-            work.checkpoint(OperationPhase::Layout)?;
-            if paint.source_owned {
-                fills.push(paint.fill_css.clone());
-            } else {
-                paint.fill_css = theme.data.ink(index).to_string();
-                fills.push(theme.data.fill(index).to_string());
-            }
-        }
-        self.native_link_fills = Some(fills);
-        Ok(self)
     }
 
     pub(crate) const fn link_stroke_opacity(&self) -> &str {
@@ -335,14 +338,15 @@ impl SankeyNodePalette {
     }
 
     pub(crate) fn link_blend_mode_css(&self) -> &'static str {
-        match self.compositing {
-            SankeyCompositing::MermaidParity => "multiply",
-            SankeyCompositing::ThemeOwned => "normal",
+        if self.links_before_nodes() {
+            "normal"
+        } else {
+            "multiply"
         }
     }
 
     pub(crate) fn links_before_nodes(&self) -> bool {
-        matches!(self.compositing, SankeyCompositing::ThemeOwned)
+        self.native_link_fills.is_some()
     }
 
     pub(crate) fn fill_for(&self, node_index: usize, node_id: &str) -> Option<&str> {

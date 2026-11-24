@@ -2,7 +2,7 @@ use merman_theme_contract::v2::{DataPalette, Density, EdgeStyle, Elevation, Form
 
 use crate::theme::{Color, FamilyTheme};
 
-use super::{FlowchartCompatibilityBinding, FlowchartLayoutSettings, FlowchartShape};
+use super::{FlowchartLayoutSettings, FlowchartShape};
 
 #[derive(Debug)]
 pub(crate) struct FlowchartNativeStyle {
@@ -15,67 +15,26 @@ pub(crate) struct FlowchartNativeStyle {
     pub(crate) emphasis: Color,
     pub(crate) on_emphasis: Color,
     pub(crate) guide: Color,
-    callout: Color,
+    pub(super) callout: Color,
     on_callout: Color,
     data: DataPalette,
     node_ordinal_palette: bool,
 }
 
 impl FlowchartNativeStyle {
-    pub(crate) fn resolve(
-        theme: &FamilyTheme,
-        background: Option<Color>,
-        defaults: &mut FlowchartCompatibilityBinding,
-    ) -> Self {
+    pub(super) fn resolve(theme: &FamilyTheme, background: Option<Color>) -> Self {
         let roles = &theme.roles;
-        let canvas = background.unwrap_or_else(|| roles.canvas.first_color());
-        let container = roles.surface_container.first_color();
-        let emphasis = roles.surface_emphasis.first_color();
-        let callout = roles.surface_callout.first_color();
-        defaults.text_color = roles.text_primary.to_string();
-        defaults.node_text_color = defaults.text_color.clone();
-        defaults.title_color = roles.text_title.to_string();
-        defaults.line_color = roles.stroke_connector.first_color().to_string();
-        defaults.arrowhead_color = defaults.line_color.clone();
-        defaults.node_border = roles.stroke_border.first_color().to_string();
-        defaults.main_bkg = roles.surface_node.first_color().to_string();
-        defaults.cluster_bkg = container.to_string();
-        defaults.cluster_border = defaults.node_border.clone();
-        defaults.border2 = defaults.cluster_border.clone();
-        defaults.agentflow_container_stroke = defaults.cluster_border.clone();
-        defaults.collapsed_agentflow_stroke = defaults.cluster_border.clone();
-        defaults.tertiary = emphasis.to_string();
-        defaults.note_fill = callout.to_string();
-        defaults.note_stroke = defaults.node_border.clone();
-        defaults.state_inner_fill = defaults.arrowhead_color.clone();
-        defaults.error_bkg = roles.status_danger.to_string();
-        defaults.error_text = roles.text_callout.to_string();
-        defaults.node_stroke_width = theme.form.stroke_width as f32;
-        defaults.stroke_width = theme.form.stroke_width.to_string();
-        defaults
-            .neo
-            .bind_native_node_stroke(&defaults.node_border, &defaults.stroke_width);
-        defaults.connector_stroke_width = Some(theme.form.connector_width as f32);
-        defaults.edge_label_background = "#00000000".to_owned();
-        defaults.drop_shadow = "none".to_owned();
-        defaults.node_corner_radius = theme.form.radius;
-        defaults.rounded_rect_radius = serde_json::json!(theme.form.radius);
-        defaults.rounded_rect_radius_numeric = Some(theme.form.radius);
-        defaults.rounded_rect_radius_truthy = theme.form.radius > 0.0;
-        defaults.root_font_family =
-            crate::theme::font_family_css(theme.typography.stack(theme.typography.body_family));
-        defaults.root_font_weight = Some(theme.typography.label_weight);
         Self {
-            form: theme.form.clone(),
+            form: theme.form,
             elevation: theme.elevation.clone(),
-            canvas,
+            canvas: background.unwrap_or_else(|| roles.canvas.first_color()),
             node: roles.surface_node.first_color(),
             border: roles.stroke_border.first_color(),
-            container,
-            emphasis,
+            container: roles.surface_container.first_color(),
+            emphasis: roles.surface_emphasis.first_color(),
             on_emphasis: roles.text_on_emphasis,
             guide: roles.stroke_guide.first_color(),
-            callout,
+            callout: roles.surface_callout.first_color(),
             on_callout: roles.text_callout,
             data: theme.data.clone(),
             node_ordinal_palette: theme.node_ordinal_palette,

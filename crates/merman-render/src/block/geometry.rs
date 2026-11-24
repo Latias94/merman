@@ -1454,7 +1454,7 @@ mod tests {
                     label_width: 64.0,
                     label_height: 24.0,
                     padding: 8.0,
-                    shape_settings: BlockShapeSettings::resolve(&serde_json::json!({})),
+                    shape_settings: BlockShapeSettings::resolve(&serde_json::json!({}), None),
                 },
                 BlockShapeAllocation {
                     width: 120.0,
@@ -1482,7 +1482,7 @@ mod tests {
                     label_width: 0.0,
                     label_height: 0.0,
                     padding: 8.0,
-                    shape_settings: BlockShapeSettings::resolve(&serde_json::json!({})),
+                    shape_settings: BlockShapeSettings::resolve(&serde_json::json!({}), None),
                 },
                 BlockShapeAllocation::default(),
             )
@@ -1494,7 +1494,7 @@ mod tests {
     #[test]
     fn square_and_round_intrinsic_sizes_match_mermaid_padding_contracts() {
         let directions = Vec::new();
-        let classic = BlockShapeSettings::resolve(&serde_json::json!({}));
+        let classic = BlockShapeSettings::resolve(&serde_json::json!({}), None);
 
         assert_eq!(
             natural_shape_size("square", &directions, 64.0, 24.0, 8.0, true, classic),
@@ -1508,7 +1508,7 @@ mod tests {
             natural_shape_size("default", &directions, 64.0, 24.0, 8.0, true, classic),
             Some((96.0, 40.0))
         );
-        let neo = BlockShapeSettings::resolve(&serde_json::json!({"look": "neo"}));
+        let neo = BlockShapeSettings::resolve(&serde_json::json!({"look": "neo"}), None);
         for padding in [8.0, 20.0] {
             assert_eq!(
                 natural_shape_size("square", &directions, 64.0, 24.0, padding, true, neo),

@@ -4,41 +4,57 @@ use crate::config::{
     config_f64_css_absolute_px, config_font_family_css,
     config_theme_font_size_css_or_root_number_px_opt,
 };
+use crate::svg::PreparedCommonCss;
 use crate::text::TextStyle;
 use crate::theme::{FamilyTheme, font_family_css};
 
-use super::JourneyNativeStyle;
+use super::config::{JourneyConfigView, JourneyLayoutSettings, JourneyRenderSettings};
+use super::{JourneyCssBinding, JourneyNativeStyle};
+
+#[derive(Debug)]
+enum JourneyAppearance {
+    Mermaid(JourneyCssBinding),
+    Native(JourneyNativeStyle),
+}
 
 #[derive(Debug)]
 pub(crate) struct JourneyStyle {
-    native: Option<JourneyNativeStyle>,
-    css: super::JourneyCssBinding,
+    appearance: JourneyAppearance,
+    common_css: PreparedCommonCss,
+    layout_settings: JourneyLayoutSettings,
+    render_settings: JourneyRenderSettings,
     font_size_px: f64,
 }
 
 impl JourneyStyle {
     pub(crate) fn resolve(config: &PresentationConfig, native: Option<&FamilyTheme>) -> Self {
+        match native {
+            Some(theme) => Self::resolve_native(config, theme),
+            None => Self::resolve_mermaid(config),
+        }
+    }
+
+    fn resolve_mermaid(config: &PresentationConfig) -> Self {
+        let config_view = JourneyConfigView::new(config.as_value());
         let font_size_px = config_theme_font_size_css_or_root_number_px_opt(config.as_value())
             .filter(|size| *size >= 0.0)
             .unwrap_or(16.0)
             .max(0.0);
-        let css = super::JourneyCssBinding::new(
-            config.as_value(),
-            &config_font_family_css(config),
-            &format!("{font_size_px}px"),
-        );
-        let style = Self {
-            native: None,
-            css,
+        Self {
+            appearance: JourneyAppearance::Mermaid(JourneyCssBinding::new(config.as_value())),
+            common_css: PreparedCommonCss::with_resolved_typography(
+                config.as_value(),
+                config_font_family_css(config),
+                format!("{font_size_px}px"),
+            ),
+            layout_settings: config_view.layout_settings(None),
+            render_settings: config_view.render_settings(),
             font_size_px,
-        };
-        match native {
-            Some(theme) => style.with_native(theme, config),
-            None => style,
         }
     }
 
-    fn with_native(mut self, theme: &FamilyTheme, config: &PresentationConfig) -> Self {
+    fn resolve_native(config: &PresentationConfig, theme: &FamilyTheme) -> Self {
+        let config_view = JourneyConfigView::new(config.as_value());
         let typography = &theme.typography;
         let owns = |path| config.explicit_config_owns_path(path);
         let source_family = ["themeVariables.fontFamily", "fontFamily"]
@@ -52,7 +68,7 @@ impl JourneyStyle {
         let family = source_family
             .clone()
             .unwrap_or_else(|| font_family_css(typography.stack(typography.body_family)));
-        self.font_size_px = [
+        let font_size_px = [
             (
                 "themeVariables.fontSize",
                 &["themeVariables", "fontSize"][..],
@@ -64,45 +80,35 @@ impl JourneyStyle {
         .find_map(|(_, path)| config_f64_css_absolute_px(config.as_value(), path))
         .filter(|size| *size >= 0.0)
         .unwrap_or(typography.base_size_px);
-        let mut css = super::JourneyCssBinding::new(
-            config.as_value(),
-            &family,
-            &format!("{}px", self.font_size_px),
-        );
         let native = JourneyNativeStyle::new(theme, config);
-        css = css.with_text_color(&native.text);
-        let render = &mut css.render;
-        if !owns("journey.taskFontFamily") {
-            render.task_text_style.font_family = Some(family);
+        let layout_settings = config_view.layout_settings(Some(&native));
+        let render_settings =
+            config_view.native_render_settings(config, theme, &family, source_family, font_size_px);
+        let common_css = PreparedCommonCss::with_resolved_typography(
+            config.as_value(),
+            family,
+            format!("{font_size_px}px"),
+        )
+        .with_text_color(&native.text);
+        Self {
+            appearance: JourneyAppearance::Native(native),
+            common_css,
+            layout_settings,
+            render_settings,
+            font_size_px,
         }
-        if !owns("journey.taskFontSize") {
-            render.task_text_style.font_size = self.font_size_px;
-        }
-        if !owns("journey.titleFontFamily") {
-            render.title_font_family = source_family
-                .unwrap_or_else(|| font_family_css(typography.stack(typography.title_family)));
-        }
-        if !owns("journey.titleFontSize") {
-            render.title_font_size = format!("{}px", self.font_size_px * 1.9375);
-        }
-        if !owns("journey.titleColor") {
-            render.title_color = config
-                .get_str("themeVariables.titleColor")
-                .filter(|_| owns("themeVariables.titleColor"))
-                .map_or_else(|| theme.roles.text_title.to_string(), str::to_owned);
-        }
-        self.css = css;
-        self.native = Some(native);
-        self
     }
 
     pub(crate) fn native(&self) -> Option<&JourneyNativeStyle> {
-        self.native.as_ref()
+        match &self.appearance {
+            JourneyAppearance::Native(native) => Some(native),
+            JourneyAppearance::Mermaid(_) => None,
+        }
     }
 
     pub(super) fn native_title_style(&self) -> Option<TextStyle> {
         let native = self.native()?;
-        let render = &self.css.render;
+        let render = &self.render_settings;
         let size = crate::mermaid_style::resolve_mermaid_font_size_px(
             &render.title_font_size,
             crate::mermaid_style::CssFontSizeContext::uniform(self.font_size_px),
@@ -116,11 +122,38 @@ impl JourneyStyle {
         })
     }
 
-    pub(crate) fn css_binding(&self) -> &super::JourneyCssBinding {
-        &self.css
+    pub(crate) fn css_binding(&self) -> Option<&JourneyCssBinding> {
+        match &self.appearance {
+            JourneyAppearance::Mermaid(css) => Some(css),
+            JourneyAppearance::Native(_) => None,
+        }
     }
 
-    pub(crate) const fn font_size_px(&self) -> f64 {
-        self.font_size_px
+    pub(crate) const fn common_css(&self) -> &PreparedCommonCss {
+        &self.common_css
+    }
+
+    pub(super) const fn layout_settings(&self) -> &JourneyLayoutSettings {
+        &self.layout_settings
+    }
+
+    pub(crate) const fn render_settings(&self) -> &JourneyRenderSettings {
+        &self.render_settings
+    }
+
+    pub(crate) fn text_color(&self) -> &str {
+        match &self.appearance {
+            JourneyAppearance::Mermaid(css) => &css.text_color,
+            JourneyAppearance::Native(native) => &native.text,
+        }
+    }
+
+    pub(super) fn legend_text_style(&self) -> TextStyle {
+        TextStyle {
+            font_family: Some(self.common_css.font_family().to_owned()),
+            font_size: self.font_size_px,
+            font_weight: self.native().map(|style| style.label_weight.to_string()),
+            font_style: None,
+        }
     }
 }

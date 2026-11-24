@@ -323,10 +323,9 @@ impl StateStylePlan {
         native: Option<&FamilyTheme>,
         background: Option<Color>,
     ) -> Self {
-        let compatibility = StateCompatibilityPlan::from_config(config);
         let compatibility = match native {
-            Some(native) => compatibility.with_native(native, config, background),
-            None => compatibility,
+            Some(native) => StateCompatibilityPlan::from_native(native, config, background),
+            None => StateCompatibilityPlan::from_config(config),
         };
         Self::prepare(model, compatibility, backend, native)
     }

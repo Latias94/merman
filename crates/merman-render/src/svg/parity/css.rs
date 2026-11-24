@@ -191,10 +191,13 @@ impl PreparedCommonNeoCss {
         feature = "diagram-swimlane",
         feature = "diagram-agentflow"
     ))]
-    pub(crate) fn bind_native_node_stroke(&mut self, color: &str, width_px: &str) {
-        color.clone_into(&mut self.0.node_border);
-        self.0.stroke_width = format!("{width_px}px");
-        self.0.use_gradient = false;
+    pub(crate) fn native_node_stroke(color: &str, width_px: &str) -> Self {
+        Self(MermaidCommonNeoCss {
+            node_border: color.to_owned(),
+            use_gradient: false,
+            drop_shadow: "none".to_owned(),
+            stroke_width: format!("{width_px}px"),
+        })
     }
 
     #[cfg(feature = "diagram-usecase")]
@@ -394,7 +397,6 @@ pub(super) struct InfoCssParts {
     pub(super) css_prefix: String,
     pub(super) root_rule: String,
     pub(super) font_family: String,
-    pub(super) font_size_css: String,
     pub(super) text_color: String,
 }
 
@@ -651,16 +653,6 @@ impl InfoCssWriter {
         }
     }
 
-    pub(super) fn with_text_color(mut self, text_color: &str) -> Self {
-        self.values.text_color = text_color.to_owned();
-        self
-    }
-
-    pub(super) fn with_node_border(mut self, node_border: &str) -> Self {
-        self.values.neo.node_border = node_border.to_owned();
-        self
-    }
-
     pub(super) fn into_parts<I>(self, diagram_id: I) -> InfoCssParts
     where
         I: Copy + std::fmt::Display,
@@ -687,7 +679,6 @@ where
         css_prefix: out,
         root_rule,
         font_family: values.font_family,
-        font_size_css: values.font_size_css,
         text_color: values.text_color,
     }
 }

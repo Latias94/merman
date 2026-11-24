@@ -191,29 +191,41 @@ fn state_pill_transparent_and_authored_label_paints_preserve_the_label_modes() {
             assert_eq!(svg.contains(".edgeLabel rect{opacity:0.5;"), mode.is_none());
         }
 
-        let mut authored = config;
-        let variable = if html {
-            "edgeLabelBackground"
-        } else {
-            "labelBackgroundColor"
-        };
-        authored["themeVariables"] = json!({"transitionLabelColor": "#102938"});
-        authored["themeVariables"][variable] = json!("#A18263");
-        let svg = render(source, authored, Some("pill"));
-        let doc = Document::parse(&svg).unwrap();
-        assert!(backplate(label(&doc, "move")).is_none());
-        assert!(
-            svg.contains(if html {
-                ".edgeLabel p{background-color:#A18263;"
+        for (edge_fill, svg_label_fill) in [
+            (Some("#A18263"), None),
+            (Some("#A18263"), Some("#B29374")),
+            (None, Some("#B29374")),
+        ] {
+            let mut authored = config.clone();
+            authored["themeVariables"] = json!({"transitionLabelColor": "#102938"});
+            if let Some(fill) = edge_fill {
+                authored["themeVariables"]["edgeLabelBackground"] = json!(fill);
+            }
+            if let Some(fill) = svg_label_fill {
+                authored["themeVariables"]["labelBackgroundColor"] = json!(fill);
+            }
+            let svg = render(source, authored, Some("pill"));
+            let doc = Document::parse(&svg).unwrap();
+            let plate = backplate(label(&doc, "move"));
+            if html && edge_fill.is_none() {
+                assert_eq!(plate.unwrap().attribute("fill"), Some(NODE));
             } else {
-                ".edgeLabel .label rect{fill:#A18263;"
-            }),
-            "{svg}"
-        );
-        assert!(
-            svg.contains(".edgeLabel .label text{fill:#102938;"),
-            "{svg}"
-        );
+                assert!(plate.is_none());
+                let paint_rule = if html {
+                    format!(".edgeLabel p{{background-color:{};", edge_fill.unwrap())
+                } else {
+                    format!(
+                        ".edgeLabel .label rect{{fill:{};",
+                        svg_label_fill.or(edge_fill).unwrap()
+                    )
+                };
+                assert!(svg.contains(&paint_rule), "{svg}");
+            }
+            assert!(
+                svg.contains(".edgeLabel .label text{fill:#102938;"),
+                "{svg}"
+            );
+        }
     }
 }
 

@@ -27,8 +27,6 @@ pub(crate) use node_binding::BlockNodeBindings;
 pub(crate) use config::BlockShapeSettings;
 pub(crate) use source::resolve_block_node_sources;
 
-#[cfg(test)]
-use config::{BlockConfigView, BlockLayoutSettings};
 pub(crate) use theme::BlockTypographyThemePlan;
 
 mod geometry;
@@ -1117,32 +1115,6 @@ fn collect_nodes(root: usize, records: &[SizedBlock], out: &mut Vec<LayoutNode>)
         }
         stack.extend(block.children.iter().rev().copied());
     }
-}
-
-#[cfg(test)]
-pub(crate) fn layout_block_diagram_typed(
-    model: &merman_model::families::block::BlockDiagramRenderModel,
-    effective_config: &Value,
-    measurer: &dyn TextMeasurer,
-) -> Result<BlockDiagramLayout> {
-    let BlockLayoutSettings {
-        padding,
-        text_style,
-    } = BlockConfigView::new(effective_config).layout_settings();
-    let html_labels = crate::config::config_effective_html_labels(effective_config);
-    layout_block_diagram_typed_with_text_style(
-        model,
-        padding,
-        BlockShapeSettings::resolve(effective_config),
-        html_labels,
-        text_style,
-        measurer,
-        &crate::test_support::presentation_config(effective_config.clone()),
-        &Arc::new(OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-        )),
-    )
-    .map(|(layout, _prepared_labels)| layout)
 }
 
 #[allow(

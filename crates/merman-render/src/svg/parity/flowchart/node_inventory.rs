@@ -837,7 +837,11 @@ mod source_typography_tests {
             work.clone(),
         )
         .unwrap();
-        let theme = crate::flowchart::FlowchartPreparedTheme::resolve(&metadata.effective_config);
+        let theme = crate::flowchart::FlowchartPreparedTheme::resolve(
+            &metadata.effective_config,
+            None,
+            None,
+        );
         let sidecar = crate::flowchart::FlowchartSvgLabelSidecar::default();
         let render_config = super::render_config::prepare_flowchart_render_config(
             &model,
@@ -947,7 +951,11 @@ mod source_typography_tests {
                 .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, 1)
                 .unwrap(),
         ));
-        let theme = crate::flowchart::FlowchartPreparedTheme::resolve(&metadata.effective_config);
+        let theme = crate::flowchart::FlowchartPreparedTheme::resolve(
+            &metadata.effective_config,
+            None,
+            None,
+        );
         let sidecar = crate::flowchart::FlowchartSvgLabelSidecar::default();
         let render_config = super::render_config::prepare_flowchart_render_config(
             &model,

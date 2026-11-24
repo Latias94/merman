@@ -694,7 +694,7 @@ fn native_theme_v2_sankey_keeps_flows_beneath_nodes_and_uses_source_colors() {
 
     let source = concat!(
         "---\nconfig:\n  sankey:\n    nodeColors:\n      A: '#112233'\n",
-        "    labelStyle: outlined\n---\nsankey\nA,B,10\n",
+        "    labelStyle: outlined\n    linkColor: source\n---\nsankey\nA,B,10\n",
     );
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())

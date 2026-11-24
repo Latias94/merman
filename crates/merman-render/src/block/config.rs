@@ -38,7 +38,15 @@ impl<'a> BlockConfigView<'a> {
         self.block_f64("padding").unwrap_or(DEFAULT_BLOCK_PADDING)
     }
 
-    pub(crate) fn shape_settings(&self) -> BlockShapeSettings {
+    fn shape_settings(&self, native: Option<&super::BlockNativeStyle>) -> BlockShapeSettings {
+        let neo_square = self.effective_config.get("look").and_then(Value::as_str) == Some("neo");
+        if let Some(style) = native {
+            return BlockShapeSettings {
+                neo_square,
+                round_radius: style.form.radius,
+                native_radii: Some((style.form.radius, style.form.container_radius)),
+            };
+        }
         let radius = self.effective_config.pointer("/themeVariables/radius");
         let round_radius = radius
             .filter(|value| match value {
@@ -49,7 +57,7 @@ impl<'a> BlockConfigView<'a> {
             .and_then(crate::config::json_f64)
             .unwrap_or(5.0);
         BlockShapeSettings {
-            neo_square: self.effective_config.get("look").and_then(Value::as_str) == Some("neo"),
+            neo_square,
             round_radius,
             native_radii: None,
         }
@@ -73,13 +81,11 @@ pub(crate) struct BlockShapeSettings {
 }
 
 impl BlockShapeSettings {
-    pub(crate) fn resolve(effective_config: &Value) -> Self {
-        BlockConfigView::new(effective_config).shape_settings()
-    }
-
-    pub(crate) fn with_native(mut self, native: Option<&super::BlockNativeStyle>) -> Self {
-        self.native_radii = native.map(|style| (style.form.radius, style.form.container_radius));
-        self
+    pub(crate) fn resolve(
+        effective_config: &Value,
+        native: Option<&super::BlockNativeStyle>,
+    ) -> Self {
+        BlockConfigView::new(effective_config).shape_settings(native)
     }
 }
 

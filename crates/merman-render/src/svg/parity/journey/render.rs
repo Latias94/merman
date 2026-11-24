@@ -226,15 +226,18 @@ fn write_section_rect(
     );
 }
 
-fn journey_css(diagram_id: impl SvgDiagramIdValue, theme: &JourneyCssBinding) -> String {
+fn journey_css(
+    diagram_id: impl SvgDiagramIdValue,
+    theme: &JourneyCssBinding,
+    common: &crate::svg::PreparedCommonCss,
+) -> String {
     let mut out = String::new();
-    theme
-        .common
+    common
         .write_prefix(&mut out, diagram_id)
         .expect("String-backed Journey base CSS emission cannot fail");
-    let font = theme.common.font_family();
+    let font = common.font_family();
     let text_color = theme.text_color.as_str();
-    let line_color = theme.common.line_color();
+    let line_color = common.line_color();
 
     // Mermaid's journey diagram reuses the historical "user-journey" stylesheet, post-processed by
     // Mermaid's CSS pipeline (nesting expansion + id scoping + minification).
@@ -352,8 +355,7 @@ fn journey_css(diagram_id: impl SvgDiagramIdValue, theme: &JourneyCssBinding) ->
         diagram_id
     );
 
-    theme
-        .common
+    common
         .write_root(&mut out, diagram_id, diagram_id)
         .expect("String-backed Journey root CSS emission cannot fail");
     out
@@ -394,9 +396,8 @@ pub(crate) fn render_journey_diagram_svg_model(
         vb_h += JOURNEY_TITLE_EXTRA_HEIGHT_PX;
     }
 
-    let theme = style.css_binding();
     let native = style.native();
-    let render_settings = &theme.render;
+    let render_settings = style.render_settings();
     let task_font_size = render_settings.task_text_style.font_size;
     let task_font_family = render_settings
         .task_text_style
@@ -471,7 +472,7 @@ pub(crate) fn render_journey_diagram_svg_model(
     if let Some(native) = native {
         let id = super::super::util::css_selector_diagram_id(diagram_id);
         let mut css = String::new();
-        theme.common.write_prefix(&mut css, id)?;
+        style.common_css().write_prefix(&mut css, id)?;
         let _ = write!(
             css,
             "#{id}{{font-weight:{weight};}}\
@@ -483,8 +484,8 @@ pub(crate) fn render_journey_diagram_svg_model(
             stroke_width = fmt(native.border_width),
         );
         super::super::output::XmlTextOutput::new(&mut out).push_str(&css);
-    } else {
-        let css = journey_css(diagram_id, theme);
+    } else if let Some(mermaid) = style.css_binding() {
+        let css = journey_css(diagram_id, mermaid, style.common_css());
         super::super::output::XmlTextOutput::new(&mut out).push_str(&css);
     }
     out.push_str("</style>");
@@ -569,7 +570,7 @@ pub(crate) fn render_journey_diagram_svg_model(
                     section_colour,
                     native_fill: native_ink.as_deref(),
                 },
-                &theme.text_color,
+                style.text_color(),
             )?;
             out.push_str("</g>");
             out.checkpoint()?;
@@ -705,7 +706,7 @@ pub(crate) fn render_journey_diagram_svg_model(
                 section_colour,
                 native_fill: task_text_fill,
             },
-            &theme.text_color,
+            style.text_color(),
         )?;
 
         out.push_str("</g>");
@@ -922,7 +923,11 @@ mod tests {
 
         let typography =
             JourneyStyle::resolve(&crate::test_support::presentation_config(cfg), None);
-        let css = journey_css("journey", typography.css_binding());
+        let css = journey_css(
+            "journey",
+            typography.css_binding().unwrap(),
+            typography.common_css(),
+        );
 
         assert!(css.contains(
             r#"#journey .label{font-family:"ibm plex sans",arial,sans-serif;color:#101010;}"#
@@ -951,7 +956,11 @@ mod tests {
         let cfg = serde_json::json!({});
         let typography =
             JourneyStyle::resolve(&crate::test_support::presentation_config(cfg), None);
-        let css = journey_css("journey", typography.css_binding());
+        let css = journey_css(
+            "journey",
+            typography.css_binding().unwrap(),
+            typography.common_css(),
+        );
 
         assert!(css.contains(
             r#"#journey .label{font-family:"trebuchet ms",verdana,arial,sans-serif;color:#333;}"#
@@ -972,7 +981,7 @@ mod tests {
         assert!(css.contains(r#"#journey .task-type-1,#journey .section-type-1{fill:#ffffde;}"#));
         assert!(css.contains(r#"#journey .task-type-2,#journey .section-type-2{fill:hsl(304, 100%, 96.2745098039%);}"#));
         assert!(css.contains(r#"#journey .task-type-7,#journey .section-type-7{fill:hsl(188, 100%, 93.5294117647%);}"#));
-        assert_eq!(typography.css_binding().fill_types.len(), 8);
+        assert_eq!(typography.css_binding().unwrap().fill_types.len(), 8);
         assert!(!css.contains("#journey .actor-"));
     }
 

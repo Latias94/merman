@@ -4,12 +4,26 @@ use merman_core::presentation::SourcePresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::environment::RenderEnvironment;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
-use merman_render::theme::{NativeTheme, ThemeCompiler};
+use merman_render::theme::{BuiltinPreset, NativeTheme, ThemeCompiler};
 use merman_render::{LayoutOptions, family};
 use roxmltree::{Document, Node};
 use serde_json::{Value, json};
 
 fn render(source: &str, config: Value, elevation: Option<Value>) -> String {
+    let theme = elevation.map(|elevation| {
+        let document = json!({
+            "schema_version": 2, "extends": "paper", "form": {"elevation": elevation},
+        });
+        NativeTheme::new(
+            ThemeCompiler::new()
+                .compile_json(&serde_json::to_vec(&document).unwrap(), None)
+                .unwrap(),
+        )
+    });
+    render_with_theme(source, config, theme)
+}
+
+fn render_with_theme(source: &str, config: Value, theme: Option<NativeTheme>) -> String {
     let parsed = MermaidEngine::new()
         .with_site_config(SourcePresentationConfig::from_value(config))
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
@@ -17,16 +31,9 @@ fn render(source: &str, config: Value, elevation: Option<Value>) -> String {
         .unwrap()
         .into_presentation();
     let environment = RenderEnvironment::deterministic();
-    let session = if let Some(elevation) = elevation {
-        let document = json!({
-            "schema_version": 2, "extends": "paper", "form": {"elevation": elevation},
-        });
-        let theme = ThemeCompiler::new()
-            .compile_json(&serde_json::to_vec(&document).unwrap(), None)
-            .unwrap();
-        environment.begin_session_with_native_theme(NativeTheme::new(theme))
-    } else {
-        environment.begin_session()
+    let session = match theme {
+        Some(theme) => environment.begin_session_with_native_theme(theme),
+        None => environment.begin_session(),
     }
     .unwrap();
     family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
@@ -124,6 +131,34 @@ fn native_theme_v2_flowchart_elevation_keeps_foreground_styles_and_expands_the_v
             .unwrap()
             .contains("opacity:0.5 !important")
     );
+}
+
+#[test]
+fn native_theme_v2_uses_the_blueprint_border_for_neo_cylinders() {
+    let theme = NativeTheme::new(
+        ThemeCompiler::new()
+            .compile_preset(BuiltinPreset::Blueprint, None)
+            .unwrap(),
+    );
+    let svg = render_with_theme(
+        "flowchart LR\nA[(Default)] --> B[(Authored)]\nstyle B stroke:#123456,stroke-width:3px",
+        json!({"layout":"dagre", "look":"neo"}),
+        Some(theme),
+    );
+    let document = Document::parse(&svg).unwrap();
+    let css = document
+        .descendants()
+        .find(|element| element.has_tag_name("style"))
+        .and_then(|element| element.text())
+        .unwrap();
+    assert!(css.contains(r#"[data-look="neo"].node path{stroke:#C5E4FF;stroke-width:1.25px;}"#));
+    let authored = node(&document, "B")
+        .children()
+        .find(|element| element.has_tag_name("path"))
+        .unwrap();
+    let style = authored.attribute("style").unwrap();
+    assert!(style.contains("stroke:#123456") || style.contains("stroke:rgb(18, 52, 86)"));
+    assert!(style.contains("stroke-width:3px"));
 }
 
 #[test]

@@ -44,8 +44,11 @@ fn prepare_flowchart_artifact<'parsed, L>(
         &class_defs,
         work_meter.as_ref(),
     )?;
-    let prepared_theme = crate::flowchart::FlowchartPreparedTheme::resolve(effective_config)
-        .with_native(native, execution.family.session().canvas_background());
+    let prepared_theme = crate::flowchart::FlowchartPreparedTheme::resolve(
+        effective_config,
+        native,
+        execution.family.session().canvas_background(),
+    );
     let edge_style_plan = edge_style_plan
         .with_typography_work_meter(Arc::clone(&work_meter))
         .with_resolved_stroke_widths(
@@ -221,8 +224,10 @@ fn prepare_block_family<'parsed>(
     let (mut layout, prepared_labels) = crate::block::layout_block_diagram_typed_with_text_style(
         model,
         typography_theme.padding(),
-        crate::block::BlockShapeSettings::resolve(meta.effective_config.as_value())
-            .with_native(typography_theme.native()),
+        crate::block::BlockShapeSettings::resolve(
+            meta.effective_config.as_value(),
+            typography_theme.native(),
+        ),
         typography_theme.css_binding().html_labels,
         typography_theme.text_style().clone(),
         execution.text_measurer(),

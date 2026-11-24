@@ -136,7 +136,7 @@ fn render_block_direct_with_policy(
     let (mut layout, prepared_labels) = crate::block::layout_block_diagram_typed_with_text_style(
         model,
         typography_theme.padding(),
-        crate::block::BlockShapeSettings::resolve(effective_config.as_value()),
+        crate::block::BlockShapeSettings::resolve(effective_config.as_value(), None),
         typography_theme.css_binding().html_labels,
         typography_theme.text_style().clone(),
         &DeterministicTextMeasurer::default(),

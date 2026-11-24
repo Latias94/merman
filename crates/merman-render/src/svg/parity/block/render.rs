@@ -418,9 +418,8 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         let cluster_bkg = theme.cluster_bkg.as_str();
         let cluster_border = theme.cluster_border.as_str();
         let native = typography_theme.native();
-        let connector_width = native.map_or("2.0".to_owned(), |style| {
-            style.form.connector_width.to_string()
-        });
+        let connector_width = native.map(|style| style.form.connector_width.to_string());
+        let connector_width = connector_width.as_deref().unwrap_or("2.0");
         let (cluster_stroke_width, label_opacity) = if native.is_some() {
             (stroke_width, "1")
         } else {

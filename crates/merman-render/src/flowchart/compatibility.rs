@@ -1,5 +1,8 @@
 use crate::config::{config_css_number_or_string, config_string};
+use crate::theme::{Color, FamilyTheme};
 use serde_json::Value;
+
+use super::native_theme::FlowchartNativeStyle;
 
 /// Operation-local visual compatibility inputs. Raw CSS remains observable in SVG.
 #[derive(Debug)]
@@ -127,35 +130,94 @@ impl FlowchartCompatibilityBinding {
             node_corner_radius_configured: node_corner_radius.is_some(),
         }
     }
+
+    fn native(
+        config: &merman_model::presentation::PresentationConfig,
+        theme: &FamilyTheme,
+        style: &FlowchartNativeStyle,
+    ) -> Self {
+        let roles = &theme.roles;
+        let text_color = roles.text_primary.to_string();
+        let line_color = roles.stroke_connector.first_color().to_string();
+        let border = style.border.to_string();
+        let width = style.form.stroke_width.to_string();
+        let radius = style.form.radius;
+        Self {
+            look: crate::config::config_diagram_look(config).into_static(),
+            hand_drawn_seed: config.get("handDrawnSeed").and_then(Value::as_f64),
+            look_defs: crate::svg::PreparedLookDefs::new(config),
+            node_text_color: text_color.clone(),
+            text_color,
+            arrowhead_color: line_color.clone(),
+            state_inner_fill: line_color.clone(),
+            line_color,
+            node_border: border.clone(),
+            main_bkg: style.node.to_string(),
+            title_color: roles.text_title.to_string(),
+            neo: crate::svg::PreparedCommonNeoCss::native_node_stroke(&border, &width),
+            stroke_width: width,
+            connector_stroke_width: Some(style.form.connector_width as f32),
+            stroke_width_configured: config_css_number_or_string(
+                config,
+                &["themeVariables", "strokeWidth"],
+            )
+            .is_some(),
+            error_bkg: roles.status_danger.to_string(),
+            error_text: roles.text_callout.to_string(),
+            edge_label_background: "#00000000".to_owned(),
+            tertiary: style.emphasis.to_string(),
+            cluster_bkg: style.container.to_string(),
+            cluster_border: border.clone(),
+            border2: border.clone(),
+            drop_shadow: "none".to_owned(),
+            root_font_family: crate::theme::font_family_css(
+                theme.typography.stack(theme.typography.body_family),
+            ),
+            root_font_weight: Some(theme.typography.label_weight),
+            agentflow_container_stroke: border.clone(),
+            html_labels: super::FlowchartConfigView::new(config).effective_html_labels(),
+            node_stroke_width: style.form.stroke_width as f32,
+            node_corner_radius: radius,
+            node_corner_radius_configured: crate::config::config_f64(
+                config,
+                &["themeVariables", "radius"],
+            )
+            .is_some(),
+            rounded_rect_radius: serde_json::json!(radius),
+            rounded_rect_radius_truthy: radius > 0.0,
+            rounded_rect_radius_numeric: Some(radius),
+            note_fill: style.callout.to_string(),
+            note_stroke: border.clone(),
+            small_state_shadow: crate::config::value_at(config, &["themeVariables", "nodeShadow"])
+                .is_some_and(crate::config::json_value_is_truthy),
+            collapsed_agentflow_stroke: border,
+        }
+    }
 }
 
 #[derive(Debug)]
 pub(crate) struct FlowchartPreparedTheme {
     pub(crate) compatibility: FlowchartCompatibilityBinding,
-    pub(crate) native: Option<super::native_theme::FlowchartNativeStyle>,
+    pub(crate) native: Option<FlowchartNativeStyle>,
 }
 
 impl FlowchartPreparedTheme {
-    pub(crate) fn resolve(config: &merman_model::presentation::PresentationConfig) -> Self {
+    pub(crate) fn resolve(
+        config: &merman_model::presentation::PresentationConfig,
+        theme: Option<&FamilyTheme>,
+        background: Option<Color>,
+    ) -> Self {
+        if let Some(theme) = theme {
+            let native = FlowchartNativeStyle::resolve(theme, background);
+            return Self {
+                compatibility: FlowchartCompatibilityBinding::native(config, theme, &native),
+                native: Some(native),
+            };
+        }
         Self {
             native: None,
             compatibility: FlowchartCompatibilityBinding::resolve(config),
         }
-    }
-
-    pub(crate) fn with_native(
-        mut self,
-        theme: Option<&crate::theme::FamilyTheme>,
-        background: Option<crate::theme::Color>,
-    ) -> Self {
-        self.native = theme.map(|theme| {
-            super::native_theme::FlowchartNativeStyle::resolve(
-                theme,
-                background,
-                &mut self.compatibility,
-            )
-        });
-        self
     }
 }
 

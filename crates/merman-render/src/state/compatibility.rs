@@ -272,10 +272,57 @@ impl<'a> StateCompatibilityResolver<'a> {
         StateResolvedValue::constant(fallback)
     }
 
+    fn owned_font_family(&self) -> Option<String> {
+        // Generated theme defaults must not hide an explicitly configured root font value.
+        // Among explicit values, retain Mermaid's themeVariables-before-root precedence.
+        ["themeVariables.fontFamily", "fontFamily"]
+            .into_iter()
+            .filter(|path| self.path_is_owned(path))
+            .find_map(|path| {
+                let value = value_at_dotted_path(self.value, path)?.as_str()?;
+                let css = crate::config::normalize_css_font_family(value);
+                (!css.is_empty()).then_some(css)
+            })
+    }
+
+    fn owned_font_size(&self) -> Option<f64> {
+        self.path_is_owned("themeVariables.fontSize")
+            .then(|| {
+                crate::config::config_f64_css_absolute_px(
+                    self.value,
+                    &["themeVariables", "fontSize"],
+                )
+            })
+            .flatten()
+            .filter(|size| *size >= 0.0)
+            .or_else(|| {
+                self.path_is_owned("fontSize")
+                    .then(|| crate::config::config_f64_css_px(self.value, &["fontSize"]))
+                    .flatten()
+                    .filter(|size| *size >= 0.0)
+            })
+    }
+
     fn path_is_owned(&self, path: &str) -> bool {
         self.config
             .is_some_and(|config| config.explicit_config_owns_path(path))
     }
+}
+
+fn state_dark_mode(value: &Value) -> bool {
+    let theme = value
+        .get("theme")
+        .and_then(Value::as_str)
+        .unwrap_or("default");
+    merman_model::config::MermaidThemeId::parse(theme)
+        .is_ok_and(merman_model::config::MermaidThemeId::is_dark)
+}
+
+fn state_dependency_numeric_zero_width(value: &Value) -> bool {
+    value
+        .pointer("/themeVariables/strokeWidth")
+        .and_then(Value::as_f64)
+        == Some(0.0)
 }
 
 fn state_js_css_interpolation_value(value: &Value) -> Option<String> {
@@ -316,8 +363,6 @@ pub(crate) struct StateCompatibilityPlan {
     html_labels: bool,
     pub(crate) font_family_css: String,
     pub(crate) font_size_px: f64,
-    font_family_owned: bool,
-    font_size_owned: bool,
     pub(crate) text_color: String,
     pub(crate) line_color: String,
     pub(crate) error_bkg: String,
@@ -370,134 +415,181 @@ impl StateCompatibilityPlan {
         ))
     }
 
-    pub(crate) fn with_native(
-        mut self,
+    pub(super) fn from_native(
         theme: &crate::theme::FamilyTheme,
         config: &PresentationConfig,
-        background: Option<crate::theme::Color>,
+        background: Option<Color>,
     ) -> Self {
         use merman_theme_contract::v2::Density;
 
+        let value = config.as_value();
+        let resolver = StateCompatibilityResolver::new(value, Some(config));
+        let diagram_look = crate::config::config_diagram_look(value);
+        let html_labels = crate::config::config_effective_html_labels(value);
+        let owns = |path| config.explicit_config_owns_path(path);
         let roles = &theme.roles;
         let canvas = background.unwrap_or_else(|| roles.canvas.first_color());
         let surface = roles.surface_node.first_color();
-        let container = roles.surface_container.first_color();
-        let emphasis = roles.surface_emphasis.first_color();
         let border = roles.stroke_border.first_color();
-        let connector = roles.stroke_connector.first_color();
-        let callout = roles.surface_callout.first_color();
-        let primary = roles.text_primary;
-        let owns = |path| config.explicit_config_owns_path(path);
+        let container = roles.surface_container.first_color().to_string();
+        let surface_css = surface.to_string();
+        let border_css = border.to_string();
+        let canvas_css = canvas.to_string();
+        let connector = roles.stroke_connector.first_color().to_string();
+        let primary = roles.text_primary.to_string();
+        let callout_text = roles.text_callout.to_string();
         let source_edge_background = owns("themeVariables.edgeLabelBackground");
-        let source_svg_background =
-            !self.html_labels && owns("themeVariables.labelBackgroundColor");
-        if source_edge_background && !source_svg_background {
-            // The more specific SVG rect rule normally uses labelBackgroundColor.
-            self.label_background
-                .clone_from(&self.edge_label_background);
-        }
-        self.native_edge_label_paint = (!source_edge_background && !source_svg_background)
+        let source_svg_background = !html_labels && owns("themeVariables.labelBackgroundColor");
+        let native_edge_label_paint = (!source_edge_background && !source_svg_background)
             .then_some(StateEdgeLabelPaint {
                 mode: theme.form.edge_label_bg,
                 canvas,
                 node: surface,
                 border,
             });
-        if !owns("themeVariables.transitionLabelColor") && !owns("themeVariables.tertiaryTextColor")
-        {
-            self.transition_label_color = primary.to_string();
-        }
-        for (path, slot, color) in [
-            (
-                "themeVariables.altBackground",
-                &mut self.alt_background,
-                container,
-            ),
-            (
-                "themeVariables.compositeBackground",
-                &mut self.composite_background,
-                container,
-            ),
-            (
-                "themeVariables.compositeTitleBackground",
-                &mut self.composite_title_background,
-                emphasis,
-            ),
-        ] {
-            if !owns(path) {
-                *slot = color.to_string();
-            }
-        }
-        for (slot, color) in [
-            (&mut self.text_color, primary),
-            (&mut self.line_color, connector),
-            (&mut self.error_bkg, roles.status_danger),
-            (&mut self.error_text, roles.text_callout),
-            (&mut self.transition_color, connector),
-            (&mut self.node_border, border),
-            (&mut self.background, canvas),
-            (&mut self.main_bkg, surface),
-            (&mut self.note_border, border),
-            (&mut self.note_bkg, callout),
-            (&mut self.note_text, roles.text_callout),
-            (&mut self.special_state_color, connector),
-            (&mut self.inner_end_background, canvas),
-            (&mut self.state_bkg, surface),
-            (&mut self.state_border, border),
-            (&mut self.end_inner_fill, connector),
-            (&mut self.state_label_color, primary),
-        ] {
-            *slot = color.to_string();
-        }
-        self.redux_palette.clear();
-        self.use_gradient = false;
-        self.node_shadow = false;
-        self.drop_shadow = "none".to_owned();
-        let width = crate::number_format::canonical_number(theme.form.stroke_width).to_string();
-        self.stroke_width_px = format!("{width}px");
-        self.neo_stroke_width_px.clone_from(&self.stroke_width_px);
-        self.stroke_width.clone_from(&width);
-        self.neo_stroke_width.clone_from(&width);
-        self.neo_rough_stroke_width = width;
-        self.rect_radius = theme.form.radius;
-        self.neo_radius = theme.form.radius;
-        self.native_marker = theme.form.marker_style;
+        let (label_background, edge_label_background) = if native_edge_label_paint.is_some() {
+            (String::new(), String::new())
+        } else {
+            let edge = config
+                .get_str("themeVariables.edgeLabelBackground")
+                .unwrap_or("rgba(232,232,232, 0.8)");
+            // The more specific SVG rect rule normally uses labelBackgroundColor.
+            let label = if source_edge_background && !source_svg_background {
+                edge
+            } else {
+                config
+                    .get_str("themeVariables.labelBackgroundColor")
+                    .or_else(|| config.get_str("themeVariables.mainBkg"))
+                    .unwrap_or("#ECECFF")
+            };
+            (label.to_owned(), edge.to_owned())
+        };
+        let transition_paths = [
+            "themeVariables.transitionLabelColor",
+            "themeVariables.tertiaryTextColor",
+        ];
+        let transition_label_color = if transition_paths.into_iter().any(owns) {
+            transition_paths
+                .into_iter()
+                .find_map(|path| config.get_str(path).filter(|color| !color.is_empty()))
+                .or_else(|| config.get_str("themeVariables.textColor"))
+                .unwrap_or("#333")
+                .to_owned()
+        } else {
+            primary.clone()
+        };
+        let alt_background = if owns("themeVariables.altBackground") {
+            config
+                .get_str("themeVariables.altBackground")
+                .filter(|color| !color.is_empty())
+                .unwrap_or("#efefef")
+                .to_owned()
+        } else {
+            container.clone()
+        };
+        let composite_background = if owns("themeVariables.compositeBackground") {
+            config
+                .get_str("themeVariables.compositeBackground")
+                .filter(|color| !color.is_empty())
+                .or_else(|| config.get_str("themeVariables.background"))
+                .unwrap_or("white")
+                .to_owned()
+        } else {
+            container
+        };
+        let composite_title_background = if owns("themeVariables.compositeTitleBackground") {
+            config
+                .get_str("themeVariables.compositeTitleBackground")
+                .or_else(|| config.get_str("themeVariables.mainBkg"))
+                .unwrap_or("#ECECFF")
+                .to_owned()
+        } else {
+            roles.surface_emphasis.first_color().to_string()
+        };
         let (padding, spacing) = match theme.form.density {
             Density::Compact => (0.85, 0.85),
             Density::Balanced => (1.0, 1.0),
             Density::Airy => (1.25, 1.2),
         };
-        self.native_layout_scale = [
+        let native_layout_scale = [
             ("state.padding", padding),
             ("state.nodeSpacing", spacing),
             ("state.rankSpacing", spacing),
         ]
-        .map(|(path, scale)| {
-            if config.explicit_config_owns_path(path) {
-                1.0
-            } else {
-                scale
-            }
-        });
+        .map(|(path, scale)| if owns(path) { 1.0 } else { scale });
 
         let typography = &theme.typography;
-        let body = crate::theme::font_family_css(typography.stack(typography.body_family));
-        if !self.font_family_owned {
-            self.root_font_family_css.clone_from(&body);
-            self.font_family_css = body;
+        let (font_family_css, root_font_family_css) =
+            if let Some(font) = resolver.owned_font_family() {
+                (font, crate::config::config_root_font_family_css(value))
+            } else {
+                let font = crate::theme::font_family_css(typography.stack(typography.body_family));
+                (font.clone(), font)
+            };
+        let font_size_px = resolver
+            .owned_font_size()
+            .unwrap_or(typography.base_size_px);
+        let width = crate::number_format::canonical_number(theme.form.stroke_width).to_string();
+        let width_px = format!("{width}px");
+        Self {
+            redux_palette: Vec::new(),
+            palette_look: String::new(),
+            serialized_look: diagram_look.serialized().to_owned(),
+            root_font_family_css,
+            dependency_numeric_zero_width: state_dependency_numeric_zero_width(value),
+            dark_mode: state_dark_mode(value),
+            look: StateCompatibilityLook::from_value(diagram_look.as_str()),
+            html_labels,
+            font_family_css,
+            font_size_px,
+            text_color: primary.clone(),
+            line_color: connector.clone(),
+            error_bkg: roles.status_danger.to_string(),
+            error_text: callout_text.clone(),
+            transition_color: connector.clone(),
+            node_border: border_css.clone(),
+            background: canvas_css.clone(),
+            main_bkg: surface_css.clone(),
+            alt_background,
+            stroke_width: width.clone(),
+            stroke_width_px: width_px.clone(),
+            neo_stroke_width: width.clone(),
+            neo_stroke_width_px: width_px,
+            neo_rough_stroke_width: width,
+            note_border: border_css.clone(),
+            note_bkg: roles.surface_callout.first_color().to_string(),
+            note_text: callout_text,
+            label_background,
+            edge_label_background,
+            native_edge_label_paint,
+            transition_label_color,
+            special_state_color: connector.clone(),
+            inner_end_background: canvas_css,
+            composite_background,
+            state_bkg: surface_css,
+            state_border: border_css,
+            end_inner_fill: connector,
+            composite_title_background,
+            state_label_color: primary,
+            drop_shadow: "none".to_owned(),
+            use_gradient: false,
+            gradient_start: String::new(),
+            gradient_stop: String::new(),
+            neo_radius: theme.form.radius,
+            rect_radius: theme.form.radius,
+            node_shadow: false,
+            native_title: Some(crate::text::TextStyle {
+                font_family: Some(crate::theme::font_family_css(
+                    typography.stack(typography.title_family),
+                )),
+                font_size: typography.base_size_px * 1.2,
+                font_weight: Some(typography.title_weight.to_string()),
+                ..Default::default()
+            }),
+            native_label_weight: Some(typography.label_weight.to_string()),
+            native_layout_scale,
+            native_marker: theme.form.marker_style,
         }
-        if !self.font_size_owned {
-            self.font_size_px = typography.base_size_px;
-        }
-        self.native_label_weight = Some(typography.label_weight.to_string());
-        let title = crate::theme::font_family_css(typography.stack(typography.title_family));
-        self.native_title = Some(crate::text::TextStyle {
-            font_family: Some(title),
-            font_size: typography.base_size_px * 1.2,
-            font_weight: Some(typography.title_weight.to_string()),
-            ..Default::default()
-        });
-        self
     }
 
     #[cfg(any(feature = "layout-dagre", test))]
@@ -506,46 +598,13 @@ impl StateCompatibilityPlan {
     }
 
     fn resolve(resolver: StateCompatibilityResolver<'_>) -> Self {
-        let theme_name = resolver.direct_string(&["theme"], || {
-            StateResolvedValue::constant("default".to_string())
-        });
-        let dark_mode = merman_model::config::MermaidThemeId::parse(&theme_name.value)
-            .is_ok_and(merman_model::config::MermaidThemeId::is_dark);
-        let look = StateCompatibilityLook::from_value(
-            crate::config::config_diagram_look(resolver.value).as_str(),
-        );
+        let diagram_look = crate::config::config_diagram_look(resolver.value);
+        let look = StateCompatibilityLook::from_value(diagram_look.as_str());
         let html_labels = crate::config::config_effective_html_labels(resolver.value);
-        // Generated theme defaults must not hide an explicitly configured root font value.
-        // Among explicit values, retain Mermaid's themeVariables-before-root precedence.
-        let owned_font_family = ["themeVariables.fontFamily", "fontFamily"]
-            .into_iter()
-            .filter(|path| resolver.path_is_owned(path))
-            .find_map(|path| {
-                let value = value_at_dotted_path(resolver.value, path)?.as_str()?;
-                let css = crate::config::normalize_css_font_family(value);
-                (!css.is_empty()).then_some(css)
-            });
-        let owned_font_size = [
-            (
-                "themeVariables.fontSize",
-                crate::config::config_f64_css_absolute_px(
-                    resolver.value,
-                    &["themeVariables", "fontSize"],
-                ),
-            ),
-            (
-                "fontSize",
-                crate::config::config_f64_css_px(resolver.value, &["fontSize"]),
-            ),
-        ]
-        .into_iter()
-        .filter(|(path, _)| resolver.path_is_owned(path))
-        .find_map(|(_, size)| size.filter(|size| *size >= 0.0));
-        let font_family_owned = owned_font_family.is_some();
-        let font_size_owned = owned_font_size.is_some();
-        let font_family_css = owned_font_family
+        let font_family_css = resolver
+            .owned_font_family()
             .unwrap_or_else(|| crate::config::config_font_family_css(resolver.value));
-        let font_size_px = owned_font_size.unwrap_or_else(|| {
+        let font_size_px = resolver.owned_font_size().unwrap_or_else(|| {
             crate::config::config_theme_or_root_font_size_px(resolver.value, 16.0)
         });
 
@@ -736,22 +795,14 @@ impl StateCompatibilityPlan {
         Self {
             redux_palette,
             palette_look,
-            serialized_look: crate::config::config_diagram_look(resolver.value)
-                .serialized()
-                .to_owned(),
+            serialized_look: diagram_look.serialized().to_owned(),
             root_font_family_css: crate::config::config_root_font_family_css(resolver.value),
-            dependency_numeric_zero_width: resolver
-                .value
-                .pointer("/themeVariables/strokeWidth")
-                .and_then(serde_json::Value::as_f64)
-                == Some(0.0),
-            dark_mode,
+            dependency_numeric_zero_width: state_dependency_numeric_zero_width(resolver.value),
+            dark_mode: state_dark_mode(resolver.value),
             look,
             html_labels,
             font_family_css,
             font_size_px,
-            font_family_owned,
-            font_size_owned,
             text_color: text_color.value,
             line_color: line_color.value,
             error_bkg: error_bkg.value,

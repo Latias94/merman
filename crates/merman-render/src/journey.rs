@@ -163,7 +163,7 @@ pub(crate) fn layout_journey_diagram_typed_with_resolved_typography(
         model.sections.as_slice(),
     );
 
-    let cfg = &typography.css_binding().layout;
+    let cfg = typography.layout_settings();
 
     let actors = if model.actors.is_empty() {
         actors_from_tasks(&model.tasks)
@@ -184,12 +184,7 @@ pub(crate) fn layout_journey_diagram_typed_with_resolved_typography(
         actor_map.insert(actor.clone(), (pos, color));
     }
 
-    let mut legend_style = typography
-        .css_binding()
-        .legend_text_style(typography.font_size_px());
-    if let Some(native) = typography.native() {
-        legend_style.font_weight = Some(native.label_weight.to_string());
-    }
+    let legend_style = typography.legend_text_style();
     let mut max_actor_label_width: f64 = 0.0;
     let mut actor_legend: Vec<JourneyActorLegendItemLayout> = Vec::new();
 
@@ -251,7 +246,7 @@ pub(crate) fn layout_journey_diagram_typed_with_resolved_typography(
 
     let mut last_section = String::new();
     let mut section_number: i64 = 0;
-    let mut current_fill = "#CCC".to_string();
+    let mut current_fill = "#CCC";
     let mut current_num: i64 = 0;
 
     let mut stopx = left_margin;
@@ -260,13 +255,7 @@ pub(crate) fn layout_journey_diagram_typed_with_resolved_typography(
         let is_new_section = last_section != task.section;
 
         if is_new_section {
-            let fills_len = cfg.section_fills.len().max(1) as i64;
-            current_num = section_number % fills_len;
-            let source = cfg
-                .section_fills
-                .get(current_num as usize)
-                .map_or("#CCC", String::as_str);
-            current_fill = source.to_owned();
+            (current_num, current_fill) = cfg.section_paint(section_number);
 
             let mut count: i64 = 0;
             for t in model.tasks.iter().skip(i) {
@@ -287,9 +276,13 @@ pub(crate) fn layout_journey_diagram_typed_with_resolved_typography(
                 width: section_width,
                 height: cfg.cell_height,
                 fill: typography.native().map_or_else(
-                    || current_fill.clone(),
+                    || current_fill.to_owned(),
                     |native| {
-                        native.section_fill(section_number as usize, current_num as usize, source)
+                        native.section_fill(
+                            section_number as usize,
+                            current_num as usize,
+                            current_fill,
+                        )
                     },
                 ),
                 task_count: count,
@@ -345,8 +338,8 @@ pub(crate) fn layout_journey_diagram_typed_with_resolved_typography(
             width: cfg.cell_width,
             height: cfg.cell_height,
             fill: typography.native().map_or_else(
-                || current_fill.clone(),
-                |native| native.task_fill(current_num as usize, &current_fill, section_number != 0),
+                || current_fill.to_owned(),
+                |native| native.task_fill(current_num as usize, current_fill, section_number != 0),
             ),
             num: current_num,
             people: task.people.clone(),
@@ -707,9 +700,7 @@ mod tests {
             &merman_model::presentation::PresentationConfig::empty_object(),
             None,
         );
-        let style = typography
-            .css_binding()
-            .legend_text_style(typography.font_size_px());
+        let style = typography.legend_text_style();
 
         for line in [
             "Giancarlo Esposito and is a",
@@ -748,9 +739,7 @@ mod tests {
             &merman_model::presentation::PresentationConfig::empty_object(),
             None,
         );
-        let style = typography
-            .css_binding()
-            .legend_text_style(typography.font_size_px());
+        let style = typography.legend_text_style();
 
         assert_eq!(
             super::journey_actor_legend_line_width_px("actor", &BoundingClientRectMeasurer, &style,),
@@ -765,9 +754,7 @@ mod tests {
             &merman_model::presentation::PresentationConfig::empty_object(),
             None,
         );
-        let style = typography
-            .css_binding()
-            .legend_text_style(typography.font_size_px());
+        let style = typography.legend_text_style();
 
         let lines = super::wrap_actor_label_lines(
             "This is a long label that will be split into multiple lines to test the wrapping functionality",

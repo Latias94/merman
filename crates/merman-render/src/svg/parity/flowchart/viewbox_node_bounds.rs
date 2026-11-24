@@ -618,8 +618,11 @@ mod tests {
         )
         .unwrap();
         let sidecar = crate::flowchart::FlowchartSvgLabelSidecar::default();
-        let prepared_theme =
-            crate::flowchart::FlowchartPreparedTheme::resolve(&metadata.effective_config);
+        let prepared_theme = crate::flowchart::FlowchartPreparedTheme::resolve(
+            &metadata.effective_config,
+            None,
+            None,
+        );
         let render_config = super::render_config::prepare_flowchart_render_config(
             &model,
             &metadata.effective_config,

@@ -110,7 +110,8 @@ fn with_context<T>(
     )
     .unwrap();
     let sidecar = crate::flowchart::FlowchartSvgLabelSidecar::default();
-    let theme = crate::flowchart::FlowchartPreparedTheme::resolve(&metadata.effective_config);
+    let theme =
+        crate::flowchart::FlowchartPreparedTheme::resolve(&metadata.effective_config, None, None);
     let render_config = flow::render_config::prepare_flowchart_render_config(
         &model,
         &metadata.effective_config,

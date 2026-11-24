@@ -9,10 +9,10 @@ use crate::theme::{Color, FamilyTheme};
 #[derive(Debug)]
 pub(crate) struct JourneyNativeStyle {
     palette: DataPalette,
-    section_fills_owned: bool,
-    actor_colors_owned: bool,
-    fill_types: [Option<String>; 8],
-    actor_colors: [Option<String>; 6],
+    pub(super) section_fills_owned: bool,
+    pub(super) actor_colors_owned: bool,
+    fill_types: Vec<Option<String>>,
+    actor_colors: Vec<Option<String>>,
     face_override: Option<String>,
     scores: [Color; 3],
     pub(crate) section_colors_owned: bool,
@@ -31,36 +31,50 @@ pub(crate) struct JourneyNativeStyle {
 impl JourneyNativeStyle {
     pub(super) fn new(theme: &FamilyTheme, config: &PresentationConfig) -> Self {
         let roles = &theme.roles;
-        let source = |key: &str| {
-            let path = format!("themeVariables.{key}");
+        let source = |path: &str| {
             config
-                .get_str(&path)
-                .filter(|_| config.explicit_config_owns_path(&path))
+                .get_str(path)
+                .filter(|_| config.explicit_config_owns_path(path))
                 .map(str::to_owned)
         };
-        let connector = source("textColor")
-            .or_else(|| source("lineColor"))
+        let text = source("themeVariables.textColor");
+        let connector = text
+            .clone()
+            .or_else(|| source("themeVariables.lineColor"))
             .unwrap_or_else(|| roles.stroke_guide.first_color().to_string());
+        let has_theme_variables = config.explicit_config_owns_path("themeVariables");
+        let source_colors = |prefix: &str, count| {
+            let mut colors = Vec::new();
+            if has_theme_variables {
+                for index in 0..count {
+                    if let Some(color) = source(&format!("{prefix}{index}")) {
+                        colors.resize_with(index, || None);
+                        colors.push(Some(color));
+                    }
+                }
+            }
+            colors
+        };
         Self {
             palette: theme.data.clone(),
             section_fills_owned: config.explicit_config_owns_path("journey.sectionFills"),
             actor_colors_owned: config.explicit_config_owns_path("journey.actorColours"),
             section_colors_owned: config.explicit_config_owns_path("journey.sectionColours"),
-            fill_types: std::array::from_fn(|index| source(&format!("fillType{index}"))),
-            actor_colors: std::array::from_fn(|index| source(&format!("actor{index}"))),
-            face_override: source("faceColor"),
+            fill_types: source_colors("themeVariables.fillType", 8),
+            actor_colors: source_colors("themeVariables.actor", 6),
+            face_override: source("themeVariables.faceColor"),
             scores: [roles.status_danger, roles.status_warn, roles.status_success],
-            text: source("textColor").unwrap_or_else(|| roles.text_primary.to_string()),
-            arrow: source("arrowheadColor").unwrap_or_else(|| connector.clone()),
+            text: text.unwrap_or_else(|| roles.text_primary.to_string()),
+            arrow: source("themeVariables.arrowheadColor").unwrap_or_else(|| connector.clone()),
             connector,
-            border: source("nodeBorder")
+            border: source("themeVariables.nodeBorder")
                 .unwrap_or_else(|| roles.stroke_border.first_color().to_string()),
             border_width: theme.form.stroke_width,
             radius: theme.form.radius,
             container_radius: theme.form.container_radius,
             label_weight: theme.typography.label_weight,
             title_weight: theme.typography.title_weight,
-            task_fill: source("mainBkg")
+            task_fill: source("themeVariables.mainBkg")
                 .unwrap_or_else(|| roles.surface_node.first_color().to_string()),
         }
     }
