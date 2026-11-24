@@ -1,5 +1,6 @@
 use std::fmt;
 
+use serde::de::{IntoDeserializer, value::MapAccessDeserializer};
 use serde::{Deserialize, Deserializer, Serialize, de};
 
 use super::Color;
@@ -21,6 +22,38 @@ macro_rules! patch {
             )+
         }
     };
+}
+
+// Decode fields on the input stream while allowing `kind` to appear anywhere in the object.
+macro_rules! tagged_fields {
+    ($name:ident { kind: $tag:ty, $($field:ident : $ty:ty),+ $(,)? }) => {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct $name {
+            kind: $tag,
+            $(
+                #[serde(default, deserialize_with = "present")]
+                $field: Option<$ty>,
+            )+
+        }
+
+        impl $name {
+            fn reject_unused<E: de::Error>(&self) -> Result<(), E> {
+                $(
+                    if self.$field.is_some() {
+                        return Err(E::custom(concat!(
+                            "unknown field `", stringify!($field), "` for the selected kind"
+                        )));
+                    }
+                )+
+                Ok(())
+            }
+        }
+    };
+}
+
+fn take_required<T, E: de::Error>(field: &mut Option<T>, name: &'static str) -> Result<T, E> {
+    field.take().ok_or_else(|| E::missing_field(name))
 }
 
 macro_rules! overlay {
@@ -254,15 +287,36 @@ impl DataPatch {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
-#[serde(untagged)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum FillInk {
     Auto(Auto),
     Color(Color),
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
+impl<'de> Deserialize<'de> for FillInk {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct FillInkVisitor;
+
+        impl de::Visitor<'_> for FillInkVisitor {
+            type Value = FillInk;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("`auto` or a #RRGGBB or #RRGGBBAA color string")
+            }
+
+            fn visit_str<E: de::Error>(self, value: &str) -> Result<FillInk, E> {
+                if value == "auto" {
+                    return Ok(FillInk::Auto(Auto::Auto));
+                }
+                Color::parse(value).map(FillInk::Color).map_err(E::custom)
+            }
+        }
+
+        deserializer.deserialize_str(FillInkVisitor)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum Auto {
     Auto,
 }
@@ -298,18 +352,29 @@ impl Paint {
 
 impl<'de> Deserialize<'de> for Paint {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        #[derive(Deserialize)]
-        #[serde(untagged)]
-        enum Value {
-            Solid(String),
-            LinearGradient(LinearGradient),
+        struct PaintVisitor;
+
+        impl<'de> de::Visitor<'de> for PaintVisitor {
+            type Value = Paint;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a color string or a linear gradient object")
+            }
+
+            fn visit_str<E: de::Error>(self, value: &str) -> Result<Paint, E> {
+                if value == "transparent" {
+                    return Ok(Paint::Solid(Color::TRANSPARENT));
+                }
+                Color::parse(value).map(Paint::Solid).map_err(E::custom)
+            }
+
+            fn visit_map<A: de::MapAccess<'de>>(self, map: A) -> Result<Paint, A::Error> {
+                LinearGradient::deserialize(MapAccessDeserializer::new(map))
+                    .map(Paint::LinearGradient)
+            }
         }
 
-        Ok(match Value::deserialize(deserializer)? {
-            Value::Solid(value) if value == "transparent" => Self::Solid(Color::TRANSPARENT),
-            Value::Solid(value) => Self::Solid(Color::parse(&value).map_err(de::Error::custom)?),
-            Value::LinearGradient(gradient) => Self::LinearGradient(gradient),
-        })
+        deserializer.deserialize_any(PaintVisitor)
     }
 }
 
@@ -348,114 +413,155 @@ enum GradientKind {
 patch!(CanvasPatch { textures: Vec<Texture>, padding_px: f64 });
 
 /// A bounded canvas texture. An omitted texture color uses the theme's guide color.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 #[allow(missing_docs)] // Variant fields use the JSON Schema names and units.
 pub enum Texture {
     None,
     Grid {
         step_px: f64,
-        #[serde(default = "default_major_every")]
         major_every: u8,
-        #[serde(
-            default,
-            skip_serializing_if = "Option::is_none",
-            deserialize_with = "present"
-        )]
+        #[serde(skip_serializing_if = "Option::is_none")]
         color: Option<Color>,
-        #[serde(default = "default_texture_opacity")]
         opacity: f64,
-        #[serde(default = "default_major_opacity")]
         major_opacity: f64,
     },
     Dots {
         step_px: f64,
-        #[serde(default = "opaque")]
         radius_px: f64,
-        #[serde(
-            default,
-            skip_serializing_if = "Option::is_none",
-            deserialize_with = "present"
-        )]
+        #[serde(skip_serializing_if = "Option::is_none")]
         color: Option<Color>,
-        #[serde(default = "default_texture_opacity")]
         opacity: f64,
     },
     Ruled {
         line_height_px: f64,
-        #[serde(
-            default,
-            skip_serializing_if = "Option::is_none",
-            deserialize_with = "present"
-        )]
+        #[serde(skip_serializing_if = "Option::is_none")]
         color: Option<Color>,
-        #[serde(default = "default_texture_opacity")]
         opacity: f64,
-        #[serde(
-            default,
-            skip_serializing_if = "Option::is_none",
-            deserialize_with = "present"
-        )]
+        #[serde(skip_serializing_if = "Option::is_none")]
         margin_rule_color: Option<Color>,
-        #[serde(default = "default_margin_rule_x")]
         margin_rule_x_px: f64,
     },
     Fibers {
-        #[serde(
-            default,
-            skip_serializing_if = "Option::is_none",
-            deserialize_with = "present"
-        )]
+        #[serde(skip_serializing_if = "Option::is_none")]
         color: Option<Color>,
-        #[serde(default = "default_texture_opacity")]
         opacity: f64,
-        #[serde(default = "default_fiber_angle")]
         angle_deg: f64,
-        #[serde(default)]
         cross: bool,
     },
     Scanlines {
         step_px: f64,
-        #[serde(
-            default,
-            skip_serializing_if = "Option::is_none",
-            deserialize_with = "present"
-        )]
+        #[serde(skip_serializing_if = "Option::is_none")]
         color: Option<Color>,
-        #[serde(default = "default_texture_opacity")]
         opacity: f64,
     },
     RadialWash {
         color: Color,
-        #[serde(default = "default_texture_opacity")]
         opacity: f64,
-        #[serde(default = "half")]
         cx: f64,
-        #[serde(default = "half")]
         cy: f64,
-        #[serde(default = "opaque")]
         radius: f64,
     },
 }
 
-fn default_major_every() -> u8 {
-    5
+#[derive(Deserialize)]
+#[serde(variant_identifier, rename_all = "snake_case")]
+enum TextureKind {
+    None,
+    Grid,
+    Dots,
+    Ruled,
+    Fibers,
+    Scanlines,
+    RadialWash,
 }
-fn default_texture_opacity() -> f64 {
-    0.1
+
+tagged_fields!(TextureFields {
+    kind: TextureKind,
+    step_px: f64,
+    major_every: u8,
+    color: Color,
+    opacity: f64,
+    major_opacity: f64,
+    radius_px: f64,
+    line_height_px: f64,
+    margin_rule_color: Color,
+    margin_rule_x_px: f64,
+    angle_deg: f64,
+    cross: bool,
+    cx: f64,
+    cy: f64,
+    radius: f64,
+});
+
+impl<'de> Deserialize<'de> for Texture {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct TextureVisitor;
+
+        impl<'de> de::Visitor<'de> for TextureVisitor {
+            type Value = Texture;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a canvas texture object")
+            }
+
+            fn visit_map<A: de::MapAccess<'de>>(self, map: A) -> Result<Texture, A::Error> {
+                const DEFAULT_OPACITY: f64 = 0.1;
+
+                let mut fields = TextureFields::deserialize(MapAccessDeserializer::new(map))?;
+                let texture = match fields.kind {
+                    TextureKind::None => Texture::None,
+                    TextureKind::Grid => Texture::Grid {
+                        step_px: take_required::<_, A::Error>(&mut fields.step_px, "step_px")?,
+                        major_every: fields.major_every.take().unwrap_or(5),
+                        color: fields.color.take(),
+                        opacity: fields.opacity.take().unwrap_or(DEFAULT_OPACITY),
+                        major_opacity: fields.major_opacity.take().unwrap_or(0.2),
+                    },
+                    TextureKind::Dots => Texture::Dots {
+                        step_px: take_required::<_, A::Error>(&mut fields.step_px, "step_px")?,
+                        radius_px: fields.radius_px.take().unwrap_or(1.0),
+                        color: fields.color.take(),
+                        opacity: fields.opacity.take().unwrap_or(DEFAULT_OPACITY),
+                    },
+                    TextureKind::Ruled => Texture::Ruled {
+                        line_height_px: take_required::<_, A::Error>(
+                            &mut fields.line_height_px,
+                            "line_height_px",
+                        )?,
+                        color: fields.color.take(),
+                        opacity: fields.opacity.take().unwrap_or(DEFAULT_OPACITY),
+                        margin_rule_color: fields.margin_rule_color.take(),
+                        margin_rule_x_px: fields.margin_rule_x_px.take().unwrap_or(32.0),
+                    },
+                    TextureKind::Fibers => Texture::Fibers {
+                        color: fields.color.take(),
+                        opacity: fields.opacity.take().unwrap_or(DEFAULT_OPACITY),
+                        angle_deg: fields.angle_deg.take().unwrap_or(120.0),
+                        cross: fields.cross.take().unwrap_or_default(),
+                    },
+                    TextureKind::Scanlines => Texture::Scanlines {
+                        step_px: take_required::<_, A::Error>(&mut fields.step_px, "step_px")?,
+                        color: fields.color.take(),
+                        opacity: fields.opacity.take().unwrap_or(DEFAULT_OPACITY),
+                    },
+                    TextureKind::RadialWash => Texture::RadialWash {
+                        color: take_required::<_, A::Error>(&mut fields.color, "color")?,
+                        opacity: fields.opacity.take().unwrap_or(DEFAULT_OPACITY),
+                        cx: fields.cx.take().unwrap_or(0.5),
+                        cy: fields.cy.take().unwrap_or(0.5),
+                        radius: fields.radius.take().unwrap_or(1.0),
+                    },
+                };
+                fields.reject_unused::<A::Error>()?;
+                Ok(texture)
+            }
+        }
+
+        deserializer.deserialize_map(TextureVisitor)
+    }
 }
-fn default_major_opacity() -> f64 {
-    0.2
-}
-fn default_margin_rule_x() -> f64 {
-    32.0
-}
-fn default_fiber_angle() -> f64 {
-    120.0
-}
-fn half() -> f64 {
-    0.5
-}
+
 fn opaque() -> f64 {
     1.0
 }
@@ -492,8 +598,7 @@ impl ShadowLayer {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(untagged)]
+#[derive(Clone, Debug, PartialEq)]
 pub(super) enum ElevationSpec {
     Preset(ElevationPreset),
     Effect(ElevationEffect),
@@ -507,8 +612,7 @@ pub(super) enum ElevationPreset {
     Crisp,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq)]
 pub(super) enum ElevationEffect {
     LayeredStack {
         layers: Vec<ShadowLayer>,
@@ -516,13 +620,59 @@ pub(super) enum ElevationEffect {
     Glow {
         color: Color,
         blur: f64,
-        #[serde(default = "default_glow_opacity")]
         opacity: f64,
     },
 }
 
-fn default_glow_opacity() -> f64 {
-    0.35
+#[derive(Deserialize)]
+#[serde(variant_identifier, rename_all = "snake_case")]
+enum ElevationEffectKind {
+    LayeredStack,
+    Glow,
+}
+
+tagged_fields!(ElevationFields {
+    kind: ElevationEffectKind,
+    layers: Vec<ShadowLayer>,
+    color: Color,
+    blur: f64,
+    opacity: f64,
+});
+
+impl<'de> Deserialize<'de> for ElevationSpec {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct ElevationVisitor;
+
+        impl<'de> de::Visitor<'de> for ElevationVisitor {
+            type Value = ElevationSpec;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("an elevation preset string or an elevation effect object")
+            }
+
+            fn visit_str<E: de::Error>(self, value: &str) -> Result<ElevationSpec, E> {
+                ElevationPreset::deserialize(value.into_deserializer()).map(ElevationSpec::Preset)
+            }
+
+            fn visit_map<A: de::MapAccess<'de>>(self, map: A) -> Result<ElevationSpec, A::Error> {
+                let mut fields = ElevationFields::deserialize(MapAccessDeserializer::new(map))?;
+                let effect = match fields.kind {
+                    ElevationEffectKind::LayeredStack => ElevationEffect::LayeredStack {
+                        layers: take_required::<_, A::Error>(&mut fields.layers, "layers")?,
+                    },
+                    ElevationEffectKind::Glow => ElevationEffect::Glow {
+                        color: take_required::<_, A::Error>(&mut fields.color, "color")?,
+                        blur: take_required::<_, A::Error>(&mut fields.blur, "blur")?,
+                        opacity: fields.opacity.take().unwrap_or(0.35),
+                    },
+                };
+                fields.reject_unused::<A::Error>()?;
+                Ok(ElevationSpec::Effect(effect))
+            }
+        }
+
+        deserializer.deserialize_any(ElevationVisitor)
+    }
 }
 
 /// A typography slot for body, title, or code.
