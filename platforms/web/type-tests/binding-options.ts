@@ -293,7 +293,7 @@ void mixedCommonRoot;
 void mixedSvgRoot;
 void looserEditorProfile;
 void rendererOnlyEditorLimit;
-// Prepared redraws cannot mutate frozen parse configuration or the captured theme.
+// Prepared redraws retain parse configuration and can select a theme per output.
 import type { BrowserPreparedSource, PreparedSourceOutputOptions, HostTextMeasurerPreparedSourceOutputOptions } from "../src/public-types.js";
 declare const preparedSource: BrowserPreparedSource;
 preparedSource.renderSvg({ layout: { container_width: 480 }, background: "#F7F3E8", resources, timeout_ms: 100 });
@@ -303,8 +303,8 @@ const preparedOutput: PreparedSourceOutputOptions = { layout: { container_width:
 preparedSource.renderSvg({ parse: { suppress_errors: true } });
 // @ts-expect-error Configuration requires a new preparation.
 preparedSource.renderSvg({ site_config: {} });
-// @ts-expect-error Themes are frozen by preparation.
 preparedSource.renderSvg({ theme: null });
+preparedSource.renderSvg({ theme: { preset: "studio", appearance: "dark" } });
 // @ts-expect-error Host measurers own the output measurement selection.
 const preparedHostOutput: HostTextMeasurerPreparedSourceOutputOptions = { environment: { text_measurement: "deterministic" } };
 void preparedOutput;
