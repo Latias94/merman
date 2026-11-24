@@ -35,6 +35,9 @@ use std::{
 
 const RELEASE: &str = include_str!("../../../tests/fixtures/shoal-release.mmd");
 const CYCLE_LOOPS: &str = include_str!("../../../tests/fixtures/shoal-cycle-loops.mmd");
+const CYCLE: &str = include_str!(
+    "../../../../merman-ascii/tests/testdata/local-semantic/flowchart/scene_planning/labelled-cycle-capacity.mmd"
+);
 const PORTS_HEAVY: &str =
     include_str!("../../../../merman/benches/fixtures/flowchart_ports_heavy.mmd");
 
@@ -1182,14 +1185,7 @@ fn for_each_visual_fixture(mut check: impl FnMut(&str, &str, &str, &str, (usize,
         ("diamonds-td", diamonds, "TB", (5, 6, 0)),
         ("diamonds-lr", diamonds_lr.as_str(), "LR", (5, 6, 0)),
         ("self-loop", gallery_source!("self-loop"), "TB", (4, 10, 6)),
-        (
-            "cycle",
-            include_str!(
-                "../../../../merman-ascii/tests/testdata/local-semantic/flowchart/scene_planning/labelled-cycle-capacity.mmd"
-            ),
-            "TB",
-            (8, 12, 6),
-        ),
+        ("cycle", CYCLE, "TB", (8, 12, 6)),
         (
             "both-markers",
             include_str!(
@@ -1257,7 +1253,6 @@ fn replay_aesthetic_witnesses() {
             }
             if name == "cycle" {
                 assert_eq!(metrics.micro_kink_count, 0, "{name}: micro kinks");
-                check_cycle_feedback(&drawing, &scene, view_box(doc.root_element()));
             }
             if name.starts_with("release") {
                 assert!(
@@ -1292,52 +1287,130 @@ fn replay_aesthetic_witnesses() {
     compound::aesthetic_witnesses();
 }
 
-#[cfg(feature = "diagram-agentflow")]
-fn check_cycle_feedback(drawing: &Drawing, scene: &Scene<'_>, viewport: Rect) {
-    let entry = scene.bodies[drawing.node("n0")].bounds.center().y;
-    for (index, body) in scene.bodies.iter().enumerate() {
-        assert!(index == drawing.node("n0") || entry < body.bounds.center().y);
-    }
-    let mut length = 0.0;
-    let mut exterior_routes = 0;
-    for (index, edge) in scene.edges.iter().enumerate() {
-        let shaft = Shaft::read(edge).unwrap();
-        length += shaft.metrics.length;
-        let start = scene.bodies[edge.start.body].bounds.y1;
-        let end = scene.bodies[edge.end.body].bounds.y0;
-        let mut exterior = false;
-        for body in &scene.bodies {
-            let y = body.bounds.center().y;
-            if !((end..start).contains(&y)) || body.bounds.y0 <= end || body.bounds.y1 >= start {
-                continue;
-            }
-            let band = scene
-                .bodies
+#[test]
+fn cycle_keeps_its_backbone_and_paints_straight_exterior_lanes_in_four_directions() {
+    let ids = ["n0", "n1", "n2", "n3", "n4", "n5", "n6", "n7"];
+    for direction in ["TD", "BT", "LR", "RL"] {
+        let source = CYCLE.replacen("flowchart TD", &format!("flowchart {direction}"), 1);
+        let drawing = render(&source, &format!("cycle-{direction}")).unwrap();
+        let doc = Document::parse(&drawing.svg).unwrap();
+        let viewport = view_box(doc.root_element());
+        let scene = drawing.scene(&doc, viewport.size());
+        let report = validate(&scene);
+        assert!(report.hard.is_empty(), "{direction}: {:?}", report.hard);
+        assert!(
+            report.crossings.is_empty(),
+            "{direction}: {:?}",
+            report.crossings
+        );
+
+        let centers = ids.map(|id| scene.bodies[drawing.node(id)].bounds.center());
+        let across = |p: Point| drawing.axis().coordinate(p);
+        let along = |p: Point| match direction {
+            "TD" => p.y,
+            "BT" => -p.y,
+            "LR" => p.x,
+            _ => -p.x,
+        };
+        let edge = |source: usize, target: usize| {
+            let index = drawing
+                .layout
+                .edges
                 .iter()
-                .filter(|other| other.bounds.y0 < y && y < other.bounds.y1)
-                .fold(body.bounds, |bounds, other| bounds.union(other.bounds));
-            for line in &shaft.lines {
-                let (a, b) = (line.p0, line.p1);
-                if a.y.min(b.y) <= y && y < a.y.max(b.y) {
-                    let x = a.x + (b.x - a.x) * ((y - a.y) / (b.y - a.y));
-                    assert!(
-                        x <= band.x0 + FLATNESS || x >= band.x1 - FLATNESS,
-                        "feedback {} enters the interior of a crossed rank",
-                        drawing.layout.edges[index].id,
-                    );
-                    exterior = true;
+                .position(|e| e.from == ids[source] && e.to == ids[target])
+                .unwrap();
+            &scene.edges[index]
+        };
+        for i in 0..ids.len() - 1 {
+            assert!(
+                along(centers[i]) < along(centers[i + 1]),
+                "{direction}: {} out of order",
+                ids[i + 1]
+            );
+            let shaft = Shaft::read(edge(i, i + 1)).unwrap();
+            let drift = across(Point::new(shaft.bounds.x1, shaft.bounds.y1))
+                - across(Point::new(shaft.bounds.x0, shaft.bounds.y0));
+            assert!(
+                drift < FLATNESS,
+                "{direction}: {} main shaft drifts {drift}px",
+                ids[i]
+            );
+        }
+        for (source, target, side) in [(7usize, 0usize, 1.0), (5, 2, 1.0), (1, 7, -1.0)] {
+            let edge = edge(source, target);
+            for port in [edge.start, edge.end] {
+                let normal = port.outward_normal.unwrap().to_point();
+                assert_eq!(
+                    across(normal),
+                    side,
+                    "{direction}: {} → {} side",
+                    ids[source],
+                    ids[target]
+                );
+            }
+            let shaft = Shaft::read(edge).unwrap();
+            let mut rail = None::<f64>;
+            for &id in &ids[source.min(target) + 1..source.max(target)] {
+                let bounds = scene.bodies[drawing.node(id)].bounds;
+                let plane = along(bounds.center());
+                let rim = if side > 0.0 {
+                    Point::new(bounds.x1, bounds.y1)
+                } else {
+                    Point::new(bounds.x0, bounds.y0)
+                };
+                let mut covered = false;
+                for line in &shaft.lines {
+                    let (a, b) = (along(line.p0), along(line.p1));
+                    if a.min(b) <= plane && plane < a.max(b) {
+                        let x = across(line.eval((plane - a) / (b - a)));
+                        assert!(
+                            side * (x - across(rim)) > FLATNESS,
+                            "{direction}: {id} corridor clearance"
+                        );
+                        assert!(
+                            (x - *rail.get_or_insert(x)).abs() < FLATNESS,
+                            "{direction}: {id} corridor drift"
+                        );
+                        covered = true;
+                    }
                 }
+                assert!(covered, "{direction}: {id} corridor missing");
             }
         }
-        exterior_routes += usize::from(exterior);
+        eprintln!(
+            "cycle {direction}: {:.2} × {:.2} px, zero painted crossings and three straight exterior lanes",
+            viewport.width(),
+            viewport.height()
+        );
     }
-    assert!(exterior_routes > 0);
-    eprintln!(
-        "cycle: {:.2} × {:.2} px, {:.2} px of painted shafts, {exterior_routes} exterior feedback routes",
-        viewport.width(),
-        viewport.height(),
-        length,
-    );
+}
+
+#[test]
+fn a_dag_can_route_a_bypass_outside_while_keeping_an_independent_long_edge() {
+    let drawing = render(
+        "flowchart TD\nA --> B --> C --> D --> E\nB --> E\nA -----> F\n",
+        "dag-bypass",
+    )
+    .unwrap();
+    let doc = Document::parse(&drawing.svg).unwrap();
+    let scene = drawing.scene(&doc, view_box(doc.root_element()).size());
+    let report = validate(&scene);
+    assert!(report.hard.is_empty(), "{:?}", report.hard);
+    assert!(report.crossings.is_empty(), "{:?}", report.crossings);
+    let edge = |from: &str, to: &str| {
+        let index = drawing
+            .layout
+            .edges
+            .iter()
+            .position(|e| e.from == from && e.to == to)
+            .unwrap();
+        &scene.edges[index]
+    };
+    let bypass = edge("B", "E");
+    assert_eq!(bypass.start.outward_normal, Some(Vec2::new(-1.0, 0.0)));
+    let independent = edge("A", "F");
+    assert_eq!(independent.start.outward_normal, Some(Vec2::new(0.0, 1.0)));
+    assert_eq!(independent.end.outward_normal, Some(Vec2::new(0.0, -1.0)));
 }
 
 #[test]

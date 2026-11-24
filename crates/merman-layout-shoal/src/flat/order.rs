@@ -1,7 +1,7 @@
 //! Crossing reduction on adjacent expanded ranks. Each distinct offset on a vertex face is
 //! a port. Incidences on the same port cannot cross each other at that end.
 
-mod feedback;
+mod exterior;
 mod groups;
 
 use super::{Component, Csr, Expanded, Kind, validate};
@@ -12,7 +12,7 @@ use groups::Groups;
 use std::cmp::Ordering;
 use std::ops::Range;
 
-pub(super) use feedback::{FeedbackLane, favor_feedback};
+pub(super) use exterior::{ExteriorLane, reserve_exterior_lanes};
 
 fn numeric_cmp(a: f64, b: f64) -> Ordering {
     if a == b {

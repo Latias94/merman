@@ -155,7 +155,7 @@ pub(crate) struct Expanded {
     label_vertex: Vec<Option<u32>>,
     inline_labels: Vec<label_place::InlineLabel>,
     direct: Vec<bool>,
-    feedback_lanes: Vec<order::FeedbackLane>,
+    exterior_lanes: Vec<order::ExteriorLane>,
     separated_proxies: Vec<(u32, u32)>,
     pred: Csr,
     succ: Csr,
@@ -238,7 +238,7 @@ impl Expanded {
             + bytes(&self.label_vertex)
             + bytes(&self.inline_labels)
             + bytes(&self.direct)
-            + bytes(&self.feedback_lanes)
+            + bytes(&self.exterior_lanes)
             + bytes(&self.separated_proxies)
             + csr(&self.pred)
             + csr(&self.succ)
@@ -278,19 +278,18 @@ fn order_component(
     options: &Options,
     work: &mut Work<'_>,
 ) -> LayoutResult<u64> {
-    expanded.feedback_lanes.clear();
+    expanded.exterior_lanes.clear();
     let mut crossings = if c.boundaries || c.pinned {
         order::constrained(expanded, c, None, options, work)?
     } else {
         order::reduce(expanded, &c.nodes, options, work)?
     };
     if options.cycle_policy == crate::CyclePolicy::HybridAdaptive
-        && orientation.cyclic_sccs != 0
         && !c.boundaries
         && !c.pinned
         && !c.group_proxies
     {
-        crossings = order::favor_feedback(expanded, c, orientation, crossings, work)?;
+        crossings = order::reserve_exterior_lanes(expanded, c, orientation, crossings, work)?;
     }
     Ok(crossings)
 }
@@ -474,7 +473,7 @@ fn draw_with_label_gaps(
 ) -> LayoutResult<(Drawing, Vec<[f64; 2]>)> {
     let mut x = position::assign(g, c, Some(orientation), graph, options, work)?;
     refine::refine(g, c, orientation, graph, options, &mut x, work)?;
-    position::straighten_feedback(g, c, options, &mut x, work)?;
+    position::straighten_exterior_lanes(g, c, options, &mut x, work)?;
     let (mut drawing, label_gaps) =
         routing::route_with_label_gaps(g, c, orientation, graph, options, &x, work)?;
     extras::finish(&mut drawing, g, c, graph, options, work)?;

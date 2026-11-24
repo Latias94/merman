@@ -23,19 +23,19 @@ pub(super) fn extents(g: &Expanded, c: &Component, opts: &Options, v: u32) -> (f
 }
 
 /// Use one straight column for each exterior lane that the order pass reserved.
-pub(super) fn straighten_feedback(
+pub(super) fn straighten_exterior_lanes(
     g: &mut Expanded,
     c: &Component,
     options: &Options,
     x: &mut [f64],
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
-    if g.feedback_lanes.is_empty() {
+    if g.exterior_lanes.is_empty() {
         return Ok(());
     }
     work.charge(x.len())?;
     let mut reserved = filled(x.len(), false)?;
-    for lane in &g.feedback_lanes {
+    for lane in &g.exterior_lanes {
         let chain = &g.chains[lane.edge];
         work.visit(chain.len())?;
         for &v in &chain[1..chain.len() - 1] {
@@ -46,8 +46,9 @@ pub(super) fn straighten_feedback(
     // The order pass reserves outer lanes first. Place the innermost lane first so each
     // outer lane can read its neighbor's final position wherever their ranks overlap.
     let pitch = options.spacing.edge.max(12.0);
+    work.charge(g.layers.len())?;
     let mut outside = filled(g.layers.len(), [None; 2])?;
-    for lane in g.feedback_lanes.iter().rev() {
+    for lane in g.exterior_lanes.iter().rev() {
         let chain = &g.chains[lane.edge];
         let bends = &chain[1..chain.len() - 1];
         let side = usize::from(lane.right);
@@ -334,6 +335,89 @@ fn spread(
 struct Neighbours {
     pred: Csr,
     succ: Csr,
+}
+
+impl Neighbours {
+    fn prefer_spine(
+        &mut self,
+        g: &Expanded,
+        orientation: &Orientation,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<()> {
+        if g.exterior_lanes.is_empty() {
+            return Ok(());
+        }
+        // The full incidence lists have already spread the ports. For block alignment, a
+        // short forward link takes precedence over a shortcut at the same node face.
+        work.charge(g.layers.len() + g.from.len() * 2 + g.rank.len())?;
+        let occupied = g
+            .layers
+            .iter()
+            .map(|row| row.iter().any(|&v| g.kind[v as usize] == Kind::Node));
+        let mut node_ranks = 0usize;
+        let mut rank_count = crate::work::reserved(g.layers.len())?;
+        for occupied in occupied {
+            node_ranks += usize::from(occupied);
+            rank_count.push(node_ranks);
+        }
+        let mut keep = filled(g.from.len(), true)?;
+        let mut short = filled(g.from.len(), false)?;
+        for lane in &g.exterior_lanes {
+            let bends = &g.chains[lane.edge];
+            keep[g.pred.at(bends[1])[0] as usize] = false;
+            keep[g.succ.at(bends[bends.len() - 2])[0] as usize] = false;
+        }
+        let mut first = 0;
+        for (edge, chain) in g.chains.iter().enumerate() {
+            work.visit(1)?;
+            if g.direct[edge] {
+                continue;
+            }
+            let last = first + chain.len() - 2;
+            let (from, to) = (chain[0], *chain.last().unwrap());
+            if !orientation.reversed[edge]
+                && rank_count[g.rank[to as usize] as usize]
+                    == rank_count[g.rank[from as usize] as usize] + 1
+            {
+                short[first] = true;
+                short[last] = true;
+            }
+            first = last + 1;
+        }
+        for (vertex, kind) in g.kind.iter().enumerate() {
+            work.visit(1)?;
+            if *kind != Kind::Node {
+                continue;
+            }
+            for face in [self.pred.at(vertex as u32), self.succ.at(vertex as u32)] {
+                work.visit(face.len() * 2)?;
+                if face.iter().any(|&e| short[e as usize]) {
+                    for &e in face {
+                        keep[e as usize] &= short[e as usize];
+                    }
+                }
+            }
+        }
+        for list in [&mut self.pred, &mut self.succ] {
+            let mut write = 0;
+            for v in 0..g.rank.len() {
+                work.visit(1)?;
+                let (start, end) = (list.start[v] as usize, list.start[v + 1] as usize);
+                list.start[v] = write as u32;
+                work.visit(end - start)?;
+                for read in start..end {
+                    let edge = list.entries[read];
+                    if keep[edge as usize] {
+                        list.entries[write] = edge;
+                        write += 1;
+                    }
+                }
+            }
+            *list.start.last_mut().unwrap() = write as u32;
+            list.entries.truncate(write);
+        }
+        Ok(())
+    }
 }
 
 fn inner(g: &Expanded, v: u32) -> Option<u32> {
@@ -771,6 +855,7 @@ fn assign_with_scratch(
     by_peer(g, &g.succ, &g.pred, &g.from, &mut lists.succ, work)?;
     let (source, target) = if let Some(o) = spread_ends {
         spread(g, (c, o), graph, &options.spacing, lists, ports, work)?;
+        lists.prefer_spine(g, o, work)?;
         (&ports.source, &ports.target)
     } else {
         (&g.source_offset, &g.target_offset)

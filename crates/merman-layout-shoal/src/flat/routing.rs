@@ -1,8 +1,10 @@
 //! Route between occupied bands in canonical Down coordinates.
 
 mod compact;
+mod exterior;
 
 pub(super) use compact::compact_ranks;
+use exterior::SidePort;
 
 use super::{Component, Drawing, Expanded, Kind, acyclic::Orientation, canonical_size};
 use crate::work::{LayoutResult, Work, filled, push, reserved};
@@ -190,6 +192,7 @@ struct RankedComponent<'a> {
     component: &'a Component,
     expanded: &'a Expanded,
     orientation: &'a Orientation,
+    side_ports: &'a [[Option<SidePort>; 2]],
 }
 
 fn collect_pieces(
@@ -253,6 +256,7 @@ fn collect_pieces(
         let chain = &g.chains[edge];
         let first = chain[0] as usize;
         let last = chain[chain.len() - 1] as usize;
+        let [side_start, side_end] = ranked.side_ports.get(edge).copied().unwrap_or_default();
         bands[row(first)].leaves = true;
         bands[row(last)].arrives = true;
         let spec = &graph.edges[link.edge as usize];
@@ -264,14 +268,18 @@ fn collect_pieces(
         if reversed {
             terminals.swap(0, 1);
         }
-        for ((marker, label), (vertex, face)) in terminals.into_iter().zip([(first, 0), (last, 1)])
+        for ((marker, label), (vertex, face, side)) in terminals
+            .into_iter()
+            .zip([(first, 0, side_start), (last, 1, side_end)])
         {
-            ends[vertex][face].include(
-                marker,
-                label,
-                graph.direction,
-                options.spacing.end_label_along,
-            )?;
+            if side.is_none() {
+                ends[vertex][face].include(
+                    marker,
+                    label,
+                    graph.direction,
+                    options.spacing.end_label_along,
+                )?;
+            }
         }
         if let Some(label) = g.label_vertex[edge] {
             let band = &mut bands[row(label as usize)];
@@ -284,13 +292,20 @@ fn collect_pieces(
             continue;
         }
         let mut upper = row(first);
-        let mut from = finite(x[first] + g.source_offset[segment])?;
+        let mut from =
+            finite(side_start.map_or(x[first] + g.source_offset[segment], |port| port.rail))?;
         for &lower in &chain[1..] {
             work.visit(1)?;
             let lower = lower as usize;
             let next = row(lower);
             if next != usize::MAX {
-                let to = finite(x[lower] + g.target_offset[segment])?;
+                let to = if lower == last
+                    && let Some(port) = side_end
+                {
+                    port.rail
+                } else {
+                    finite(x[lower] + g.target_offset[segment])?
+                };
                 let span = Span { from, to };
                 finite(span.width())?;
                 gaps[upper].pieces.push(Piece {
@@ -1148,11 +1163,17 @@ pub(super) fn route(
     x: &[f64],
     work: &mut Work<'_>,
 ) -> LayoutResult<Drawing> {
-    route_with_label_gaps(g, c, orientation, graph, options, x, work).map(|(drawing, _)| drawing)
+    let ranked = RankedComponent {
+        component: c,
+        expanded: g,
+        orientation,
+        side_ports: &[],
+    };
+    route_ranked(ranked, graph, options, x, work).map(|(drawing, _)| drawing)
 }
 
 pub(super) fn route_with_label_gaps(
-    g: &Expanded,
+    g: &mut Expanded,
     c: &Component,
     orientation: &Orientation,
     graph: &Graph,
@@ -1160,16 +1181,30 @@ pub(super) fn route_with_label_gaps(
     x: &[f64],
     work: &mut Work<'_>,
 ) -> LayoutResult<(Drawing, Vec<[f64; 2]>)> {
-    work.check()?;
-    if g.keep.len() != g.rank.len() || x.len() != g.rank.len() {
-        return Err(LayoutError::InvalidInput("incomplete refined vertices"));
-    }
-    let (mut bands, index) = bands(g, work)?;
+    let side_ports = exterior::attach_exterior_ports(g, c, orientation, graph, options, x, work)?;
     let ranked = RankedComponent {
         component: c,
         expanded: g,
         orientation,
+        side_ports: &side_ports,
     };
+    route_ranked(ranked, graph, options, x, work)
+}
+
+fn route_ranked(
+    ranked: RankedComponent<'_>,
+    graph: &Graph,
+    options: &Options,
+    x: &[f64],
+    work: &mut Work<'_>,
+) -> LayoutResult<(Drawing, Vec<[f64; 2]>)> {
+    work.check()?;
+    let g = ranked.expanded;
+    if g.keep.len() != g.rank.len() || x.len() != g.rank.len() {
+        return Err(LayoutError::InvalidInput("incomplete refined vertices"));
+    }
+    let (mut bands, index) = bands(g, work)?;
+    let (c, orientation, side_ports) = (ranked.component, ranked.orientation, ranked.side_ports);
     let mut gaps = collect_pieces(ranked, graph, options, x, &mut bands, &index, work)?;
     place_bands(&mut bands, &mut gaps, options, work)?;
     let clearance = if options.routing == RoutingStyle::Curved && !g.direct.contains(&true) {
@@ -1227,7 +1262,9 @@ pub(super) fn route_with_label_gaps(
         }
         let spec = &graph.edges[link.edge as usize];
         let direct = g.direct[edge];
-        let mut capacity = 2usize;
+        let [side_start, side_end] = side_ports.get(edge).copied().unwrap_or_default();
+        let mut capacity =
+            2 + 2 * usize::from(side_start.is_some()) + 2 * usize::from(side_end.is_some());
         if !direct {
             for gap in &gaps[a..b] {
                 work.visit(1)?;
@@ -1269,11 +1306,25 @@ pub(super) fn route_with_label_gaps(
                 gaps[b - 1].pieces[gaps[b - 1].cursor].span.to,
             )
         };
-        points.push(RoutePoint::new(
-            source_x,
-            nodes[first].y + nodes[first].height,
-            Axis::Vertical,
-        ));
+        if let Some(port) = side_start {
+            let y = nodes[first].center().y;
+            points.push(RoutePoint::new(
+                port.contact(nodes[first]),
+                y,
+                Axis::Horizontal,
+            ));
+            points.push(RoutePoint::new(port.rail, y, Axis::Horizontal));
+            knot(
+                &mut points,
+                RoutePoint::gap_boundary(port.rail, bands[a].bottom, Axis::Vertical),
+            );
+        } else {
+            points.push(RoutePoint::new(
+                source_x,
+                nodes[first].y + nodes[first].height,
+                Axis::Vertical,
+            ));
+        }
         if !direct {
             let mut level = a;
             while level < b {
@@ -1343,11 +1394,25 @@ pub(super) fn route_with_label_gaps(
                 level = next;
             }
         }
-        let target = RoutePoint::new(target_x, nodes[last].y, Axis::Vertical);
-        if points.len() == 1 {
-            points.push(target);
+        if let Some(port) = side_end {
+            let y = nodes[last].center().y;
+            knot(
+                &mut points,
+                RoutePoint::gap_boundary(port.rail, bands[b].top, Axis::Vertical),
+            );
+            knot(&mut points, RoutePoint::new(port.rail, y, Axis::Vertical));
+            points.push(RoutePoint::new(
+                port.contact(nodes[last]),
+                y,
+                Axis::Horizontal,
+            ));
         } else {
-            knot(&mut points, target);
+            let target = RoutePoint::new(target_x, nodes[last].y, Axis::Vertical);
+            if points.len() == 1 {
+                points.push(target);
+            } else {
+                knot(&mut points, target);
+            }
         }
         let label_center = g.label_vertex[edge].map(|label| {
             let band = &bands[row(label as usize)];
@@ -1356,6 +1421,10 @@ pub(super) fn route_with_label_gaps(
                 y: band.top.midpoint(band.bottom),
             }
         });
+        let ports = (
+            side_start.map_or(Side::Bottom, |port| port.side),
+            side_end.map_or(Side::Top, |port| port.side),
+        );
         if reversed {
             reverse_route(&mut points);
         }
@@ -1363,11 +1432,7 @@ pub(super) fn route_with_label_gaps(
             link.edge,
             EdgeGeometry {
                 points,
-                ports: if reversed {
-                    (Side::Top, Side::Bottom)
-                } else {
-                    (Side::Bottom, Side::Top)
-                },
+                ports: if reversed { (ports.1, ports.0) } else { ports },
                 label_center,
                 start_label_center: None,
                 end_label_center: None,

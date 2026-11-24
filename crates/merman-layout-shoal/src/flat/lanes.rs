@@ -122,7 +122,7 @@ pub(crate) fn run(
     };
     let options = &options;
     let orientation = expand_component(&c, graph, options, work, g)?;
-    g.feedback_lanes.clear();
+    g.exterior_lanes.clear();
     let owners = expanded_owners(g, items, work)?;
     let topological_crossings = order::constrained_lanes(g, &c, &owners, options, work)?;
     let mut x = position::assign(g, &c, Some(&orientation), graph, options, work)?;
