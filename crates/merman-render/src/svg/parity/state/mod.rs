@@ -2,6 +2,7 @@ use super::*;
 #[cfg(feature = "layout-shoal")]
 use crate::graph_layout::canonical::CanonicalRoutes;
 use rustc_hash::FxHashMap;
+mod composite_paint;
 mod context;
 mod edge;
 mod effect;
@@ -60,6 +61,7 @@ struct StateRenderCtx<'a> {
     layout_nodes_by_id: FxHashMap<&'a str, &'a LayoutNode>,
     layout_edges_by_id: FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
     layout_clusters_by_id: FxHashMap<&'a str, &'a LayoutCluster>,
+    composite_paints: composite_paint::StateCompositePaints<'a>,
     #[cfg(feature = "layout-shoal")]
     canonical_routes: Option<&'a CanonicalRoutes>,
     parent: FxHashMap<&'a str, &'a str>,

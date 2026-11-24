@@ -2,7 +2,10 @@ use std::borrow::Cow;
 
 use merman_model::families::state::StateDiagramRenderNode;
 use merman_model::presentation::PresentationConfig;
+use merman_theme_contract::v2::EdgeLabelBackground;
 use serde_json::Value;
+
+use crate::theme::Color;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum StateNodeKind {
@@ -292,6 +295,14 @@ fn state_js_truthy(value: &Value) -> bool {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct StateEdgeLabelPaint {
+    pub(crate) mode: EdgeLabelBackground,
+    pub(crate) canvas: Color,
+    pub(crate) node: Color,
+    pub(crate) border: Color,
+}
+
 /// State look, paint and typography shared by layout and SVG emission.
 #[derive(Debug, Clone)]
 pub(crate) struct StateCompatibilityPlan {
@@ -326,6 +337,7 @@ pub(crate) struct StateCompatibilityPlan {
     pub(crate) note_text: String,
     pub(crate) label_background: String,
     pub(crate) edge_label_background: String,
+    pub(crate) native_edge_label_paint: Option<StateEdgeLabelPaint>,
     pub(crate) transition_label_color: String,
     pub(crate) special_state_color: String,
     pub(crate) inner_end_background: String,
@@ -364,7 +376,7 @@ impl StateCompatibilityPlan {
         config: &PresentationConfig,
         background: Option<crate::theme::Color>,
     ) -> Self {
-        use merman_theme_contract::v2::{Density, EdgeLabelBackground};
+        use merman_theme_contract::v2::Density;
 
         let roles = &theme.roles;
         let canvas = background.unwrap_or_else(|| roles.canvas.first_color());
@@ -375,11 +387,47 @@ impl StateCompatibilityPlan {
         let connector = roles.stroke_connector.first_color();
         let callout = roles.surface_callout.first_color();
         let primary = roles.text_primary;
-        let label_bg = match theme.form.edge_label_bg {
-            EdgeLabelBackground::Auto | EdgeLabelBackground::Canvas => canvas,
-            EdgeLabelBackground::Pill => surface,
-            EdgeLabelBackground::Transparent => crate::theme::Color::TRANSPARENT,
-        };
+        let owns = |path| config.explicit_config_owns_path(path);
+        let source_edge_background = owns("themeVariables.edgeLabelBackground");
+        let source_svg_background =
+            !self.html_labels && owns("themeVariables.labelBackgroundColor");
+        if source_edge_background && !source_svg_background {
+            // The more specific SVG rect rule normally uses labelBackgroundColor.
+            self.label_background
+                .clone_from(&self.edge_label_background);
+        }
+        self.native_edge_label_paint = (!source_edge_background && !source_svg_background)
+            .then_some(StateEdgeLabelPaint {
+                mode: theme.form.edge_label_bg,
+                canvas,
+                node: surface,
+                border,
+            });
+        if !owns("themeVariables.transitionLabelColor") && !owns("themeVariables.tertiaryTextColor")
+        {
+            self.transition_label_color = primary.to_string();
+        }
+        for (path, slot, color) in [
+            (
+                "themeVariables.altBackground",
+                &mut self.alt_background,
+                container,
+            ),
+            (
+                "themeVariables.compositeBackground",
+                &mut self.composite_background,
+                container,
+            ),
+            (
+                "themeVariables.compositeTitleBackground",
+                &mut self.composite_title_background,
+                emphasis,
+            ),
+        ] {
+            if !owns(path) {
+                *slot = color.to_string();
+            }
+        }
         for (slot, color) in [
             (&mut self.text_color, primary),
             (&mut self.line_color, connector),
@@ -389,20 +437,14 @@ impl StateCompatibilityPlan {
             (&mut self.node_border, border),
             (&mut self.background, canvas),
             (&mut self.main_bkg, surface),
-            (&mut self.alt_background, container),
             (&mut self.note_border, border),
             (&mut self.note_bkg, callout),
             (&mut self.note_text, roles.text_callout),
-            (&mut self.label_background, label_bg),
-            (&mut self.edge_label_background, label_bg),
-            (&mut self.transition_label_color, primary),
             (&mut self.special_state_color, connector),
             (&mut self.inner_end_background, canvas),
-            (&mut self.composite_background, container),
             (&mut self.state_bkg, surface),
             (&mut self.state_border, border),
             (&mut self.end_inner_fill, connector),
-            (&mut self.composite_title_background, emphasis),
             (&mut self.state_label_color, primary),
         ] {
             *slot = color.to_string();
@@ -729,6 +771,7 @@ impl StateCompatibilityPlan {
             note_text: note_text.value,
             label_background: label_background.value,
             edge_label_background: edge_label_background.value,
+            native_edge_label_paint: None,
             transition_label_color: transition_label_color.value,
             special_state_color: special_state_color.value,
             inner_end_background: inner_end_background.value,

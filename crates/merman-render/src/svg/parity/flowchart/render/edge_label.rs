@@ -124,34 +124,88 @@ fn render_native_label_background(
     let Some(native) = ctx.native else {
         return Ok(());
     };
-    let mut in_container = false;
-    if native.form.edge_label_bg == EdgeLabelBackground::Auto {
-        let point = kurbo::Point::new(
-            position.x + origin_x - ctx.tx,
-            position.y + origin_y - ctx.ty,
-        );
-        let contains = |x, y, width, height| {
-            kurbo::Rect::from_center_size((x, y), (width, height)).contains(point)
-        };
-        let lanes = ctx
-            .swimlane_layout
-            .map_or(&[][..], |layout| layout.lanes.as_slice());
-        ctx.work_meter
-            .charge(ctx.layout.clusters.len() + lanes.len())?;
-        in_container = ctx
-            .layout
-            .clusters
-            .iter()
-            .any(|cluster| contains(cluster.x, cluster.y, cluster.width, cluster.height))
-            || lanes
-                .iter()
-                .any(|lane| contains(lane.x, lane.y, lane.width, lane.height));
-    }
-    let fill = native.edge_label_color(in_container);
-    let stroke = (native.form.edge_label_bg == EdgeLabelBackground::Pill).then_some(native.guide);
+    let mode = native.form.edge_label_bg;
+    let fill = match mode {
+        EdgeLabelBackground::Transparent => return Ok(()),
+        EdgeLabelBackground::Pill => native.node,
+        EdgeLabelBackground::Canvas => native.canvas,
+        EdgeLabelBackground::Auto => container_label_fill(
+            ctx,
+            native,
+            kurbo::Point::new(
+                position.x + origin_x - ctx.tx,
+                position.y + origin_y - ctx.ty,
+            ),
+        )?,
+    };
     let bounds = kurbo::Rect::from_center_size((position.x, position.y), (width, height));
-    let _ = crate::theme::edge_label_bg::write_backplate(out, bounds, fill, stroke);
+    let _ = crate::theme::edge_label_bg::write_backplate(out, bounds, mode, fill, native.border);
     out.checkpoint()
+}
+
+fn container_label_fill(
+    ctx: &FlowchartRenderCtx<'_>,
+    native: &crate::flowchart::native_theme::FlowchartNativeStyle,
+    point: kurbo::Point,
+) -> crate::Result<crate::theme::Color> {
+    ctx.work_meter.charge(ctx.layout.clusters.len())?;
+    let mut layers = Vec::new();
+    for cluster in &ctx.layout.clusters {
+        let id = cluster.id.as_str();
+        if ctx.is_subgraph_collapsed(id) {
+            continue;
+        }
+        let (bounds, default_fill) = if let Some(lane) = ctx.swimlane_lanes_by_id.get(id)
+            && super::super::swimlane::is_lane_or_pool_cluster(ctx, id)
+            && let Some(direction) = ctx.swimlane_direction
+        {
+            let canonical = ctx.layout.route_contract.group_parents().is_some();
+            let geometry =
+                super::super::swimlane::swimlane_terminal_geometry(lane, direction, canonical);
+            let (body, title) = geometry.frame_parts((lane.x, lane.y), direction, canonical);
+            let fill = if title.contains(point) {
+                native.emphasis
+            } else {
+                native.container
+            };
+            (body.union(title), fill)
+        } else {
+            if !ctx.subgraph_has_children(id)
+                && !super::flowchart_elk_renders_empty_subgraph_as_cluster(ctx)
+            {
+                continue;
+            }
+            let bounds =
+                super::super::cluster_geometry::painted_cluster_frame(ctx, cluster).bounds();
+            (bounds, native.container)
+        };
+        if !bounds.contains(point) {
+            continue;
+        }
+        let terminal = ctx.prepared_nodes.cluster(id)?;
+        let fill = terminal
+            .compiled
+            .fill
+            .as_deref()
+            .and_then(crate::theme::edge_label_bg::literal_fill)
+            .unwrap_or(default_fill);
+        layers.push((
+            bounds.width() * bounds.height(),
+            fill,
+            terminal.compiled.fill_opacity,
+        ));
+    }
+    if let Some(log) = layers.len().checked_ilog2() {
+        ctx.work_meter
+            .charge(layers.len().saturating_mul(log as usize))?;
+    }
+    // Larger containing frames are painted underneath their nested frames.
+    layers.sort_by(|left, right| right.0.total_cmp(&left.0));
+    Ok(layers
+        .into_iter()
+        .fold(native.canvas, |behind, (_, fill, opacity)| {
+            fill.composite(behind, opacity)
+        }))
 }
 
 pub(in crate::svg::parity) fn render_flowchart_edge_label(

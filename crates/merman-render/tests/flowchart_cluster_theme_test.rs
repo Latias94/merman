@@ -64,6 +64,73 @@ fn native_theme_v2_flowchart_applies_cluster_form_and_preserves_authored_paint()
     }
 }
 
+#[test]
+fn native_flowchart_edge_labels_use_nested_paint_and_pill_roles() {
+    const SOURCE: &str = concat!(
+        "flowchart LR\nsubgraph Outer\nsubgraph Inner\nA -->|Inside| B\nend\nend\n",
+        "C -->|Outside| D\nstyle Outer fill:#FF0000\nstyle Inner fill:#0000FF80\n"
+    );
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    for background in ["auto", "pill", "transparent"] {
+        let document = serde_json::json!({
+            "schema_version": 2,
+            "extends": "paper",
+            "roles": {"canvas": "#FFFFFF", "surface.node": "#FFEEDD", "stroke.border": "#123456"},
+            "form": {"edge_label_bg": background},
+        });
+        let theme = ThemeCompiler::new()
+            .compile_json(document.to_string().as_bytes(), None)
+            .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .begin_session_with_native_theme(NativeTheme::new(theme))
+            .unwrap();
+        let svg = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+            .unwrap()
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let svg = Document::parse(svg.svg()).unwrap();
+        let plates: Vec<_> = svg
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("merman-edge-label-background"))
+            .collect();
+        match background {
+            "auto" => {
+                assert_eq!(plates.len(), 2);
+                assert!(
+                    plates
+                        .iter()
+                        .any(|plate| plate.attribute("fill") == Some("#7F0080"))
+                );
+                assert!(
+                    plates
+                        .iter()
+                        .any(|plate| plate.attribute("fill") == Some("#FFFFFF"))
+                );
+                assert!(
+                    plates
+                        .iter()
+                        .all(|plate| plate.attribute("rx") == Some("4"))
+                );
+            }
+            "pill" => {
+                assert_eq!(plates.len(), 2);
+                assert!(
+                    plates
+                        .iter()
+                        .all(|plate| plate.attribute("fill") == Some("#FFEEDD")
+                            && plate.attribute("stroke") == Some("#123456")
+                            && plate.attribute("stroke-width") == Some("0.75"))
+                );
+            }
+            _ => assert!(plates.is_empty()),
+        }
+    }
+}
+
 fn property<'a>(node: Node<'a, '_>, name: &str) -> Option<&'a str> {
     node.attribute("style")
         .and_then(|style| {

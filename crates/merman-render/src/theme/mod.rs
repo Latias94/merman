@@ -6,6 +6,7 @@ pub(crate) mod canvas_svg;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-agentflow",
+    feature = "diagram-state",
     feature = "diagram-swimlane"
 ))]
 pub(crate) mod edge_label_bg;

@@ -155,11 +155,8 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
         .svg_label_sidecar
         .and_then(|sidecar| sidecar.swimlane_group_title_owner(cluster.id.as_str()));
     let width = geometry.width;
-    let height = geometry.height;
-    let lane_top = lane.y - height / 2.0 + ctx.ty - origin_y;
-    let lane_bottom = lane.y + height / 2.0 + ctx.ty - origin_y;
-    let lane_left = lane.x - width / 2.0 + ctx.tx - origin_x;
-    use crate::model::SwimlaneDirection::{Bt, Lr, Rl};
+    let (body, title) = geometry.frame_parts((lane.x, lane.y), direction, canonical);
+    use crate::model::SwimlaneDirection::{Lr, Rl};
     let horizontal = direction == Lr || (canonical && direction == Rl);
 
     let lane_fill = terminal.fill.as_str();
@@ -226,40 +223,26 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     }
     out.push('>');
 
+    for (rect, class, fill) in [
+        (body, body_class, None),
+        (title, title_class, Some(lane_fill)),
+    ] {
+        write_swimlane_rect(
+            out,
+            ctx,
+            compiled,
+            class,
+            node_style,
+            rect.x0 + ctx.tx - origin_x,
+            rect.y0 + ctx.ty - origin_y,
+            rect.width().max(0.0),
+            rect.height().max(0.0),
+            fill,
+            lane_stroke,
+        );
+    }
+
     let (label_x, label_y, label_transform) = if horizontal {
-        let title_width = geometry.title_band_width;
-        let body_width = (width - title_width).max(0.0);
-        let (body_x, title_x) = if direction == Rl {
-            (lane_left, lane_left + body_width)
-        } else {
-            (lane_left + title_width, lane_left)
-        };
-        write_swimlane_rect(
-            out,
-            ctx,
-            compiled,
-            body_class,
-            node_style,
-            body_x,
-            lane_top,
-            body_width,
-            height,
-            None,
-            lane_stroke,
-        );
-        write_swimlane_rect(
-            out,
-            ctx,
-            compiled,
-            title_class,
-            node_style,
-            title_x,
-            lane_top,
-            title_width,
-            height,
-            Some(lane_fill),
-            lane_stroke,
-        );
         let center_x = geometry.title_label.x + ctx.tx - origin_x;
         let center_y = geometry.title_label.y + ctx.ty - origin_y;
         (
@@ -274,43 +257,6 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             ),
         )
     } else {
-        let title_height = geometry.title_band_height;
-        let (body_y, body_height, title_y) = if canonical && direction == Bt {
-            (
-                lane_top,
-                (height - title_height).max(0.0),
-                lane_bottom - title_height,
-            )
-        } else {
-            let body_y = lane_top + title_height;
-            (body_y, (lane_bottom - body_y).max(0.0), lane_top)
-        };
-        write_swimlane_rect(
-            out,
-            ctx,
-            compiled,
-            body_class,
-            node_style,
-            lane_left,
-            body_y,
-            width,
-            body_height,
-            None,
-            lane_stroke,
-        );
-        write_swimlane_rect(
-            out,
-            ctx,
-            compiled,
-            title_class,
-            node_style,
-            lane_left,
-            title_y,
-            width,
-            title_height,
-            Some(lane_fill),
-            lane_stroke,
-        );
         (
             geometry.title_label.x - label_width / 2.0 + ctx.tx - origin_x,
             geometry.title_label.y - label_height / 2.0 + ctx.ty - origin_y,

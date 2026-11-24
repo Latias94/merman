@@ -467,26 +467,33 @@ where
         r#"#{} .stateLabel .box{{stroke:none;stroke-width:0;fill:{};opacity:0.5;}}"#,
         id, main_bkg
     );
-    let _ = write!(
-        &mut css,
-        r#"#{} .edgeLabel .label rect{{fill:{};opacity:0.5;}}"#,
-        id, label_background
-    );
-    let _ = write!(
-        &mut css,
-        r#"#{} .edgeLabel{{background-color:{};text-align:center;}}"#,
-        id, edge_label_background
-    );
-    let _ = write!(
-        &mut css,
-        r#"#{} .edgeLabel p{{background-color:{};}}"#,
-        id, edge_label_background
-    );
-    let _ = write!(
-        &mut css,
-        r#"#{} .edgeLabel rect{{opacity:0.5;background-color:{};fill:{};}}"#,
-        id, edge_label_background, edge_label_background
-    );
+    if theme.native_edge_label_paint.is_some() {
+        let _ = write!(
+            &mut css,
+            r#"#{id} .edgeLabel{{text-align:center;}}#{id} .labelBkg{{background-color:transparent;}}"#,
+        );
+    } else {
+        let _ = write!(
+            &mut css,
+            r#"#{} .edgeLabel .label rect{{fill:{};opacity:0.5;}}"#,
+            id, label_background
+        );
+        let _ = write!(
+            &mut css,
+            r#"#{} .edgeLabel{{background-color:{};text-align:center;}}"#,
+            id, edge_label_background
+        );
+        let _ = write!(
+            &mut css,
+            r#"#{} .edgeLabel p{{background-color:{};}}"#,
+            id, edge_label_background
+        );
+        let _ = write!(
+            &mut css,
+            r#"#{} .edgeLabel rect{{opacity:0.5;background-color:{};fill:{};}}"#,
+            id, edge_label_background, edge_label_background
+        );
+    }
     let _ = write!(
         &mut css,
         r#"#{} .edgeLabel .label text{{fill:{};}}"#,

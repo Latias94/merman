@@ -61,6 +61,40 @@ pub(super) struct SwimlaneTerminalGeometry {
     pub title_label: LayoutLabel,
 }
 
+impl SwimlaneTerminalGeometry {
+    pub(super) fn frame_parts(
+        &self,
+        center: (f64, f64),
+        direction: crate::model::SwimlaneDirection,
+        canonical: bool,
+    ) -> (kurbo::Rect, kurbo::Rect) {
+        use crate::model::SwimlaneDirection::{Bt, Lr, Rl};
+
+        let frame = kurbo::Rect::from_center_size(center, (self.width, self.height));
+        let mut body = frame;
+        let mut title = frame;
+        match direction {
+            Lr => {
+                title.x1 = frame.x0 + self.title_band_width;
+                body.x0 = title.x1;
+            }
+            Rl if canonical => {
+                title.x0 = frame.x1 - self.title_band_width;
+                body.x1 = title.x0;
+            }
+            Bt if canonical => {
+                title.y0 = frame.y1 - self.title_band_height;
+                body.y1 = title.y0;
+            }
+            _ => {
+                title.y1 = frame.y0 + self.title_band_height;
+                body.y0 = title.y1;
+            }
+        }
+        (body, title)
+    }
+}
+
 pub(super) fn swimlane_terminal_geometry(
     lane: &crate::model::SwimlaneLaneLayout,
     direction: crate::model::SwimlaneDirection,

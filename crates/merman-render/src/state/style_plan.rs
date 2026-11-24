@@ -207,6 +207,7 @@ pub(crate) struct StateNodeStylePlan {
     label_style_attr: String,
     div_style_prefix: String,
     fill_override: Option<String>,
+    composite_fill_opacity: Option<f64>,
     stroke_override: Option<String>,
     stroke_width_override: Option<f64>,
     radius_override: Option<f64>,
@@ -247,6 +248,10 @@ impl StateNodeStylePlan {
 
     pub(crate) fn fill_override(&self) -> Option<&str> {
         self.fill_override.as_deref()
+    }
+
+    pub(crate) const fn composite_fill_opacity(&self) -> Option<f64> {
+        self.composite_fill_opacity
     }
 
     pub(crate) fn stroke_override(&self) -> Option<&str> {
@@ -602,6 +607,11 @@ fn prepare_node(
         label_style_attr,
         div_style_prefix,
         fill_override,
+        composite_fill_opacity: if composite && native.is_some() {
+            composite_fill_opacity(&shape)
+        } else {
+            None
+        },
         stroke_override,
         stroke_width_override,
         radius_override,
@@ -610,6 +620,16 @@ fn prepare_node(
         cluster_label_typography: group_typography,
         label_typography: typography,
     }
+}
+
+fn composite_fill_opacity(declarations: &IndexMap<String, EmittedDeclaration>) -> Option<f64> {
+    let opacity = |property| {
+        let Some(declaration) = declarations.get(property) else {
+            return Some(1.0);
+        };
+        crate::theme::edge_label_bg::literal_opacity(&declaration.value)
+    };
+    Some(opacity("opacity")? * opacity("fill-opacity")?)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

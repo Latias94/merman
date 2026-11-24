@@ -1,6 +1,4 @@
-use merman_theme_contract::v2::{
-    DataPalette, Density, EdgeLabelBackground, EdgeStyle, Elevation, Form,
-};
+use merman_theme_contract::v2::{DataPalette, Density, EdgeStyle, Elevation, Form};
 
 use crate::DiagramFamilyId;
 use crate::theme::{Color, FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags};
@@ -43,6 +41,8 @@ pub(crate) struct FlowchartNativeStyle {
     pub(crate) form: Form,
     pub(crate) elevation: Elevation,
     pub(crate) canvas: Color,
+    pub(crate) node: Color,
+    pub(crate) border: Color,
     pub(crate) container: Color,
     pub(crate) emphasis: Color,
     pub(crate) on_emphasis: Color,
@@ -101,6 +101,8 @@ impl FlowchartNativeStyle {
             form: theme.form.clone(),
             elevation: theme.elevation.clone(),
             canvas,
+            node: roles.surface_node.first_color(),
+            border: roles.stroke_border.first_color(),
             container,
             emphasis,
             on_emphasis: roles.text_on_emphasis,
@@ -152,15 +154,6 @@ impl FlowchartNativeStyle {
                     let index = ordinal.saturating_sub(1);
                     (self.data.fill(index), self.data.fill_ink(index))
                 }),
-        }
-    }
-
-    pub(crate) fn edge_label_color(&self, inside_container: bool) -> Color {
-        match self.form.edge_label_bg {
-            EdgeLabelBackground::Transparent => Color::TRANSPARENT,
-            EdgeLabelBackground::Pill => self.container,
-            EdgeLabelBackground::Auto if inside_container => self.container,
-            _ => self.canvas,
         }
     }
 

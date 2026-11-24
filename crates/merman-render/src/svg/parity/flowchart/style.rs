@@ -14,6 +14,7 @@ pub(in crate::svg::parity) struct FlowchartCompiledStyles {
     pub(super) label_style: String,
     pub(super) label_div_decls: Vec<(String, String)>,
     pub(super) fill: Option<String>,
+    pub(super) fill_opacity: f64,
     pub(super) stroke: Option<String>,
     stroke_source: Option<Arc<FlowchartStyleDeclaration>>,
     inline_stroke_source: Option<Arc<FlowchartStyleDeclaration>>,
@@ -676,6 +677,14 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
         .get("stroke")
         .map(|decl| Arc::clone(&decl.prepared));
     let fill = value("fill");
+    let opacity = |property| {
+        source(property)
+            .and_then(|declaration| {
+                crate::theme::edge_label_bg::literal_opacity(declaration.value())
+            })
+            .unwrap_or(1.0)
+    };
+    let fill_opacity = opacity("fill-opacity") * opacity("opacity");
     let stroke = value("stroke");
     let stroke_width = value("stroke-width");
     let stroke_dasharray = value("stroke-dasharray");
@@ -701,6 +710,7 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compile_prepared_styles(
         label_style,
         label_div_decls,
         fill,
+        fill_opacity,
         stroke,
         stroke_source,
         inline_stroke_source,
