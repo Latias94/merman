@@ -273,11 +273,15 @@ Put a text family that covers the labels first. The example reports missing cove
 that would require independent fallback. When a subset and a full face share the same family,
 style and weight, supply the full face once. A TTC can already contain a face supplied as a TTF.
 For path-based loading, `NativeFontOptions::with_font_file` also accepts font collections.
-In a host that uses Merman's parser, import `usvg` from `merman_export::usvg` or
-`merman::svg::export::usvg`. Call `fonts.apply_to_usvg_options(&mut options)` with that parser's
-`Options` before `usvg::Tree::from_str`. The re-export gives the host the same `merman-usvg`
-package identity as the context and the exporters. An independent resvg consumer parses the
-standalone SVG and registers the font bytes in its own database. SVG references fonts by name.
+An independent resvg consumer parses the standalone SVG and registers the font bytes in its own
+database. SVG references fonts by name.
+
+In development builds after `0.11.0`, hosts that use Merman's parser can import `usvg` from
+`merman_export::usvg` or `merman::svg::export::usvg`. Call
+`fonts.apply_to_usvg_options(&mut options)` with that parser's `Options` before
+`usvg::Tree::from_str`. The re-export shares the `merman-usvg` package identity with the context
+and exporters. With published `0.11.0`, the equivalent in-process API uses the upstream `usvg`
+`0.47` dependency.
 
 When `svg.evidence().native_font_diagnostics()` returns `Some(diagnostics)`, compare the PostScript
 names in `diagnostics.selected_faces()` with the faces of the positioned glyphs in the consumer's
@@ -285,11 +289,13 @@ names in `diagnostics.selected_faces()` with the faces of the positioned glyphs 
 used for measurement. For example, a standalone snapshot can report `PingFangSC-Regular#0` for a
 face at index 3 in the installed TTC. Compare indices only when both stages use identical font bytes.
 
-For variable fonts, both Merman and resvg 0.50 request `wght=400` for CSS normal and `wght=700`
-for the bold Class title. Separate consumers may use different system face selection, fallback,
-or OpenType coordinates. Supply the same explicit static Regular and Bold faces to keep those
-choices fixed across applications. With the weight-only Recursive file, FontTools can produce
-both instances from the same source. [Merman font instance handling](../../vendor/usvg/UPSTREAM.md)
+For the bold Class title, the `0.11.0` example and resvg 0.50 request `wght=700`. For CSS normal,
+the `0.11.0` example's upstream usvg 0.47 uses the font's default axis position, while resvg 0.50
+and Merman's development renderer request `wght=400` when no native instance supplies a weight.
+Separate consumers can select different fonts, fallbacks, or OpenType coordinates. Supply the same
+explicit static Regular and Bold faces to keep those choices fixed across applications. With the
+weight-only Recursive file, FontTools can produce both instances from the same source.
+[Merman font instance handling](../../vendor/usvg/UPSTREAM.md)
 
 ```sh
 fonttools varLib.instancer Recursive.ttf wght=400 -o Regular.ttf

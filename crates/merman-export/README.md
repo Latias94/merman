@@ -114,7 +114,8 @@ With system fallback authorized on macOS, the resolver looks up an explicit face
 by its PostScript name and verifies its admitted OpenType tables at the selected index
 against the registered Core Text face before using that face's native cascade.
 If no registered face matches, the resolver can use the Helvetica system cascade.
-The resolver declines non-default native variation coordinates before data admission.
+The resolver preserves standard OpenType instance coordinates for shaping and painting. Authored
+variation settings override the platform's selected coordinates.
 
 The default for `NativeFontLimits::max_bytes` increases from 64 MiB to 256 MiB.
 Each native context counts explicit inputs and selected system data toward this total. Explicit files

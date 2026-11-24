@@ -11,7 +11,8 @@ The change in `src/text/layout.rs` shapes missing text in its original direction
 surrounding context. Consecutive missing clusters with equivalent physical faces, effective
 coordinates, sizes and scripts are shaped together, preserving ligatures and joining. Glyphs
 already supplied by the primary face keep their original positions within their cluster.
-Adjacent spans with matching shaping properties and equivalent language tags share a run.
+Adjacent spans with equivalent resolved fonts, shaping options and language tags share a run.
+Fallback uses the original span's request and primary selection for each missing cluster.
 `Font::selection_language` supplies the effective language to primary family matching.
 `Options::set_text_fallback` lets the font host consider the authored family stack,
 inherited `xml:lang`, and complete cluster text. `Options::set_font_instances` also
@@ -37,6 +38,9 @@ SVG tree and font database across native measurement, raster, and vector PDF.
 
 The native metric probe reuses a single text shape to obtain start- and end-anchor bounds.
 It retains the normal positioning and outline-conversion checks for both bounds.
+Path sampling supports nonmonotonic distances from bidirectional glyph positioning. `textLength`
+spacing is applied between clusters so the last cluster's advance also gives the next text chunk
+its correct starting position.
 
 Text conversion records visible spans without a usable primary face and missing glyphs in
 text nodes that are dropped during conversion. The exporter combines these omissions with

@@ -271,8 +271,9 @@ measurement has its own per-diagram `--font-max-measurements` limit.
 A context identity includes its policy, initial font bytes, and the system default
 family name when applicable. Successful platform selections are fixed for measurement
 and its derived exports. New operations query the current system again. Selection
-metadata is bounded separately from the optional measurement cache. Native instances
-requiring non-default variation coordinates are declined during selection.
+metadata is bounded separately from the optional measurement cache. Platform discovery retains
+selected OpenType variation coordinates for measurement and painting. Authored variation settings
+take precedence over platform coordinates.
 Platform fallback can choose different faces and change diagram geometry. For
 fixed font selection, supply explicit font files with `--font-system off`.
 In builds with platform queries, `on`, `bounded`, and `platform` all allow system
