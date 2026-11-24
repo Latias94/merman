@@ -263,12 +263,10 @@ with an empty catalog and font budget failures are reported directly. Platform
 metadata queries run outside Merman's scan budgets.
 For a missing shaping cluster, platform fallback tries the authored font stack,
 then the supplied fonts, then the platform's candidates. Measurement and painting
-use the same physical face for the cluster. Workspace builds and official archives
-use SVG `xml:lang` for font selection, including inherited tags and `<tspan>`
-overrides. Cargo packages using public usvg 0.47 use scalar font selection without
-per-span language. On Windows, DirectWrite's fallback scale applies to both
-layout and painting in workspace builds. An unsupported named variable family can
-fall through to the next family in the stack.
+use the same physical face and effective variation coordinates for the cluster.
+Font selection honors SVG `xml:lang`, including inherited tags and `<tspan>`
+overrides. On Windows, DirectWrite's fallback scale applies to both layout and
+painting.
 See [Optional CLI fonts](../../docs/FEATURES.md#optional-cli-fonts).
 
 If bounded discovery reports `native font limit system-cmap-bytes exceeded`, the installed fonts'

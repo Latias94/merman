@@ -323,10 +323,9 @@ unchanged.
 
 SVG output does not embed fonts or convert text to outlines. Consumers must have
 the same fonts to reproduce measured geometry. Raw SVG conversion rejects
-`--font-measurement` and `--font-max-measurements`. Workspace builds and official
-archives use `xml:lang` when selecting a font, including inherited tags and
-`<tspan>` overrides. Cargo consumers on public usvg 0.47 use scalar font selection
-without per-span language. Respect font redistribution and embedding licenses.
+`--font-measurement` and `--font-max-measurements`. Native export font selection
+honors `xml:lang`, including inherited tags and `<tspan>` overrides.
+Respect font redistribution and embedding licenses.
 Cousine fixtures are test-only and are not production assets.
 
 Rust hosts load `merman::svg::export::NativeFontOptions` and install the resulting

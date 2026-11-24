@@ -61,10 +61,10 @@ use native measurements with the same font context as painting. Archives built f
 profile query the platform catalog by default. On Linux the default retries bounded discovery
 when the Fontconfig runtime cannot load. Cargo source defaults use bounded discovery.
 Raw SVG uses the same build-specific provider for painting when the finalized SVG contains
-text. Archive verification checks the declared provider and exercises native exports. Official archives use
-the [workspace usvg backport](../DEPENDENCY_POLICY.md#exact-and-compatible-requirements), while
-registry consumers use the public usvg dependency. Explicit font files or directories enable
-native measurement with a closed set. See the
+text. Archive verification checks the declared provider and exercises native exports.
+Archives and Cargo packages built from this source use the
+[same renderer forks](../DEPENDENCY_POLICY.md#exact-and-compatible-requirements).
+Explicit font files or directories enable native measurement with a closed set. See the
 [CLI font guide](../../crates/merman-cli/README.md#explicit-fonts).
 
 Contract 8 makes `layout` return schema-1 geometry. To read the complete `meta`, `semantic`,
