@@ -16,7 +16,7 @@ from xml.etree import ElementTree as ET
 from corpus_utils import load_corpus, select_corpus_fixtures
 from workload_drawing import drawing_case, observe_drawings
 from workload_svg import EXPECTED_OUTCOMES, valid_expected_labels, validate_rejection, validate_svg
-from workload_topology import SCC_SHAPES, flat_layout_inventory, flat_svg_inventory, topology_source
+from workload_topology import SCC_SHAPES, flowchart_layout_inventory, flowchart_svg_inventory, topology_source
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -517,14 +517,14 @@ def check_layout_evidence(response, job, signatures, requested, *, inventory):
             product = output.get("layout_json")
             if not isinstance(product, dict):
                 raise ValueError("layout verification requires layout JSON from the runner")
-            read_inventory = flat_layout_inventory
+            read_inventory = flowchart_layout_inventory
         else:
             if not isinstance(output, str):
                 raise ValueError("layout verification requires SVG bytes from the runner")
             product = ET.fromstring(output)
             if product.get("id") != diagram_id:
                 raise ValueError(f"returned SVG ID differs from frozen ID {diagram_id!r}")
-            read_inventory = flat_svg_inventory
+            read_inventory = flowchart_svg_inventory
         if inventory:
             try:
                 receipt["inventory"] = read_inventory(product)
@@ -724,6 +724,7 @@ def run_rust_layouts(args):
                 continue
             graph, painting = (row["layout_evidence"][0]["inventory"] for row in (layout, svg))
             if (graph["nodes"] != [node for node, _ in painting["nodes"]]
+                    or graph.get("groups", []) != [group for group, _ in painting.get("groups", [])]
                     or [edge[0] for edge in graph["edges"]] != [edge[0] for edge in painting["edges"]]):
                 continue
             inventories.append((graph, painting))
@@ -877,7 +878,7 @@ def main(argv=None):
         "--pele-fixtures", type=Path, help="pinned mermaid-v13 packages/bench/fixtures/pele directory"
     )
     run = sub.add_parser("rust", help="run each sample in a fresh child process")
-    layouts = sub.add_parser("rust-layouts", help="compare Dagre, ELK and Shoal on single-request flat Flowcharts")
+    layouts = sub.add_parser("rust-layouts", help="compare Dagre, ELK and Shoal on single-request Flowcharts")
     layouts.set_defaults(metric="clock", check_drawings=False, chrome=None, site_css_bytes=0)
     gallery = sub.add_parser("layout-gallery", help="write an offline HTML comparison of Flowchart and Agentflow SVGs")
     gallery.add_argument("sources", nargs="*", type=Path, help="additional Mermaid files to draw without native timing")

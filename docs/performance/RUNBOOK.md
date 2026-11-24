@@ -324,7 +324,7 @@ when publishing results.
 
 ### Compare native Flowchart layouts
 
-Freeze one-request flat Flowcharts with a reviewed `draw` outcome. `rust-layouts` builds one
+Freeze one-request Flowcharts with a reviewed `draw` outcome. `rust-layouts` builds one
 release clock executable with `layout-shoal` and uses it for Dagre, ELK and Shoal on the same host.
 Each backend receives the frozen source and diagram ID, the same resource profile and the same
 warmup and sample counts. Only the site `layout` setting varies. The default profile is
@@ -332,8 +332,8 @@ warmup and sample counts. Only the site `layout` setting varies. The default pro
 under the constrained policy.
 
 ```console
-python3 tools/bench/perf_runner.py workloads plan --scenario small-svg --scenario fan-in-50 --out target/bench/layouts/flat.json
-python3 tools/bench/perf_runner.py workloads rust-layouts --plan target/bench/layouts/flat.json --warmups 1 --samples 3 --out target/bench/layouts/comparison.json
+python3 tools/bench/perf_runner.py workloads plan --scenario small-svg --scenario flowchart-nested-layout --scenario fan-in-50 --out target/bench/layouts/comparison-plan.json
+python3 tools/bench/perf_runner.py workloads rust-layouts --plan target/bench/layouts/comparison-plan.json --warmups 1 --samples 3 --out target/bench/layouts/comparison.json
 ```
 
 Each scenario has six scheduled operations. Every backend writes public layout JSON and returns
@@ -344,8 +344,8 @@ and checks each timed SVG against that backend's own digest. A source override t
 another backend records `layout-backend-mismatch` and skips timing for that batch.
 
 Read `rows.<scenario>` for completion and median nanoseconds per operation. `matching-inventories`
-requires the same node IDs, directed endpoints, painted edge occurrences, marker ends and
-node/edge label text across backends. Coordinates, paths and byte counts may differ. The check
+requires the same node and group IDs, directed endpoints, painted edge occurrences, marker ends,
+and node, group and edge label text across backends. Coordinates, paths and byte counts may differ. The check
 covers structural agreement on the drawing. Visual quality can be inspected separately.
 `runs.<backend>.<operation>` holds the individual receipts, output digests, samples and failures.
 The command exits with a failure if any scenario misses the comparison criteria. Treat these
@@ -370,7 +370,7 @@ SVG medians after checking the plan, executable, backend receipts and SVG digest
 report. Each unsuccessful backend displays its diagnostic in its own panel.
 
 ```console
-python3 tools/bench/perf_runner.py workloads layout-gallery fixtures/flowchart/basic.mmd --plan target/bench/layouts/flat.json --comparison target/bench/layouts/comparison.json --out target/bench/layouts/gallery.html
+python3 tools/bench/perf_runner.py workloads layout-gallery fixtures/flowchart/basic.mmd --plan target/bench/layouts/comparison-plan.json --comparison target/bench/layouts/comparison.json --out target/bench/layouts/gallery.html
 ```
 
 Open `target/bench/layouts/gallery.html` in a browser. The file embeds the drawings and source.

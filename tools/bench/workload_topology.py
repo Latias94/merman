@@ -8,7 +8,7 @@ SCC_SHAPES = ("scc", "scc-dag")
 SCC_SIZES = (25, 50, 75, 100)
 
 
-def flat_layout_inventory(document):
+def flowchart_layout_inventory(document):
     """Read the public write_layout_json v1 envelope and retain directed occurrences."""
     if document.get("schema_version") != 1:
         raise ValueError("expected schema_version 1 from the public layout writer")
@@ -16,19 +16,25 @@ def flat_layout_inventory(document):
             or document.get("diagram_type") not in ("flowchart", "flowchart-v2", "flowchart-elk")):
         raise ValueError("expected a Flowchart family_id and diagram_type in layout JSON")
     graph = document.get("layout", {}).get("FlowchartV2")
-    if not graph or graph["clusters"] or any(n["is_cluster"] for n in graph["nodes"]):
-        raise ValueError("comparison requires a flat Flowchart layout")
-    nodes = sorted(n["id"] for n in graph["nodes"])
-    owners = set(nodes)
+    if not graph:
+        raise ValueError("comparison requires a Flowchart layout")
+    nodes = sorted(n["id"] for n in graph["nodes"] if not n["is_cluster"])
+    groups = sorted(cluster["id"] for cluster in graph["clusters"])
+    group_ids = set(groups)
+    owners = set(nodes) | group_ids
+    if any(n["id"] not in group_ids for n in graph["nodes"] if n["is_cluster"]):
+        raise ValueError("invalid cluster proxy in Flowchart layout")
     edges = sorted([e["id"], e["from"], e["to"]] for e in graph["edges"])
-    if not owners or len(nodes) != len(owners) or any(a not in owners or b not in owners for _, a, b in edges):
-        raise ValueError("invalid node or edge endpoint in flat Flowchart layout")
-    return dict(nodes=nodes, edges=edges)
+    if not owners or len(nodes) + len(groups) != len(owners) or any(
+        a not in owners or b not in owners for _, a, b in edges
+    ):
+        raise ValueError("invalid node, group, or edge endpoint in Flowchart layout")
+    return dict(nodes=nodes, edges=edges, **({"groups": groups} if groups else {}))
 
 
-def flat_svg_inventory(root):
+def flowchart_svg_inventory(root):
     """Keep painted occurrences and their text, including repeated public edge IDs."""
-    nodes, edges, edge_labels = [], [], []
+    nodes, groups, edges, edge_labels = [], [], [], []
     for element in root.iter():
         kind, owner = element.get("data-et"), element.get("data-id")
         if kind == "edge":
@@ -36,6 +42,12 @@ def flat_svg_inventory(root):
             if not owner or not dom_id or not element.get("d", "").strip():
                 raise ValueError("Flowchart edge lacks an ID or painted path")
             edges.append([owner, dom_id, bool(element.get("marker-start")), bool(element.get("marker-end"))])
+        elif kind == "cluster":
+            if not owner:
+                raise ValueError("Flowchart group lacks an ID")
+            titles = [" ".join("".join(title.itertext()).split()) for title in element
+                      if "cluster-label" in title.get("class", "").split()]
+            groups.append([owner, titles])
         elif kind == "node" or (owner and "label" in element.get("class", "").split()):
             if not owner:
                 raise ValueError("Flowchart node lacks an ID")
@@ -48,7 +60,8 @@ def flat_svg_inventory(root):
                 edge_labels.append([owner, labels])
     if len({edge[1] for edge in edges}) != len(edges):
         raise ValueError("Flowchart edge occurrences share an SVG ID")
-    return dict(nodes=sorted(nodes), edges=sorted(edges), edge_labels=sorted(edge_labels))
+    return dict(nodes=sorted(nodes), edges=sorted(edges), edge_labels=sorted(edge_labels),
+                **({"groups": sorted(groups)} if groups else {}))
 
 
 def topology_source(shape: str, nodes: int, order: str = "canonical") -> tuple[str, int]:

@@ -656,19 +656,25 @@ class RustSvgVerificationTests(unittest.TestCase):
 
 
 class RustLayoutTests(unittest.TestCase):
-    def test_public_layout_json_requires_the_flat_flowchart_envelope_and_real_endpoints(self):
+    def test_public_layout_inventory_checks_node_and_group_endpoints(self):
         # Identity fields from the public writer for the frozen small-svg request.
         graph = {"nodes": [{"id": "A", "is_cluster": False}, {"id": "B", "is_cluster": False}],
                  "edges": [{"id": "L_A_B_0", "from": "A", "to": "B"}], "clusters": []}
         document = {"schema_version": 1, "family_id": "flowchart", "diagram_type": "flowchart-v2",
                     "layout": {"FlowchartV2": graph}}
-        self.assertEqual(bench.flat_layout_inventory(document), dict(nodes=["A", "B"], edges=[["L_A_B_0", "A", "B"]]))
+        self.assertEqual(bench.flowchart_layout_inventory(document), dict(nodes=["A", "B"], edges=[["L_A_B_0", "A", "B"]]))
         for overrides, error in (({"diagram_type": None, "diagramType": "flowchart-v2"}, "diagram_type"),
                                  ({"family_id": "swimlane"}, "family_id"),
-                                 ({"layout": {"FlowchartV2": dict(graph, clusters=[{"id": "G"}])}}, "flat"),
+                                 ({"layout": {"FlowchartV2": dict(graph, nodes=[*graph["nodes"], {"id": "G", "is_cluster": True}])}}, "cluster proxy"),
                                  ({"layout": {"FlowchartV2": dict(graph, nodes=graph["nodes"][:1])}}, "endpoint")):
             with self.subTest(overrides=overrides), self.assertRaisesRegex(ValueError, error):
-                bench.flat_layout_inventory({**document, **overrides})
+                bench.flowchart_layout_inventory({**document, **overrides})
+        graph["clusters"] = [{"id": "G"}]
+        graph["edges"] = [{"id": "L_A_G_0", "from": "A", "to": "G"}]
+        expected = dict(nodes=["A", "B"], groups=["G"], edges=[["L_A_G_0", "A", "G"]])
+        self.assertEqual(bench.flowchart_layout_inventory(document), expected)
+        graph["nodes"].append({"id": "G", "is_cluster": True})
+        self.assertEqual(bench.flowchart_layout_inventory(document), expected)
 
     def test_automatic_build_opts_into_shoal_for_either_bench(self):
         for metric, target in (("clock", "public_workloads"), ("memory", "public_workload_memory")):
@@ -757,7 +763,7 @@ class RustLayoutTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp)
             frozen = path / "plan.json"
-            source = "flowchart LR\nA[Start] shared@-->|yes| B[End]\nA shared@-->|yes| B\n"
+            source = "flowchart LR\nsubgraph G[Group]\nA[Start]\nend\nA shared@-->|yes| B[End]\nA shared@-->|yes| B\n"
             case = bench.scenario("parallel", "test", [("two", source)], {"two": ["Start", "End", "yes"]}, diagram_id="preview")
             bench.write(frozen, dict(schema_version=1, scenarios=[case], topologies=[]))
             request, = case["requests"]
@@ -776,13 +782,18 @@ class RustLayoutTests(unittest.TestCase):
                 different = mutation if backend == "shoal" else None
                 x = bench.LAYOUTS.index(backend) + 1
                 nodes = [dict(id=key, x=x, is_cluster=False) for key in "AB"]
+                if backend != "shoal":
+                    nodes.append(dict(id="G", x=x, is_cluster=True))
                 edge = {"id": "shared", "from": "A", "to": "B"}
                 edges = [edge, dict(edge, to="A") if different == "endpoint" else edge]
                 geometry = dict(schema_version=1, family_id="flowchart", diagram_type="flowchart-v2",
-                                layout={"FlowchartV2": dict(nodes=nodes, edges=edges, clusters=[])})
+                                layout={"FlowchartV2": dict(nodes=nodes, edges=edges, clusters=[{"id": "G"}])})
                 label = "no" if different == "label" else "yes"
+                title = "Renamed" if different == "group-title" else "Group"
                 svg = ('<svg id="preview"><g data-et="node" data-id="A"><text>Start</text></g>'
                        '<g data-et="node" data-id="B"><text>End</text></g>'
+                       + (f'<g data-et="cluster" data-id="G"><g class="cluster-label"><text>{title}</text></g></g>'
+                          if different != "group" else '')
                        + ''.join(f'<path data-et="edge" id="edge-{i}" data-id="shared" d="M0,0 L{x},0"/>'
                                  for i in range(1 if different == "occurrence" else 2))
                        + f'<g data-id="shared" class="label"><text>{label}</text></g>'
@@ -808,6 +819,7 @@ class RustLayoutTests(unittest.TestCase):
             with patch.object(bench, "child", side_effect=child), patch.object(bench, "build_runner", return_value=binary) as build:
                 for mutation, status in ((None, "matching-inventories"), ("endpoint", "inventory-mismatch"),
                                          ("label", "inventory-mismatch"), ("occurrence", "inventory-mismatch"),
+                                         ("group", "inventory-mismatch"), ("group-title", "inventory-mismatch"),
                                          ("pinned", "incomplete"), ("unstable", "incomplete")):
                     with self.subTest(mutation=mutation):
                         code = bench.main(["rust-layouts", "--plan", str(frozen), "--out", str(out), "--samples", "2", "--revision", "test"])
