@@ -16,7 +16,7 @@ default = []
 model = ["dep:merman-model", "merman-model/diagram-flowchart", "merman-model/diagram-class", "merman-model/diagram-state"]
 model-ascii = ["model", "dep:merman-ascii", "merman-ascii/diagram-flowchart", "merman-ascii/diagram-class", "merman-ascii/diagram-state"]
 source-ascii = ["model-ascii", "dep:merman-core", "merman-core/diagram-flowchart", "merman-core/diagram-class", "merman-core/diagram-state"]
-presentation-svg = ["dep:merman-core", "merman-core/diagram-flowchart", "merman-core/presentation", "dep:merman-render", "merman-render/diagram-flowchart"]
+presentation-svg = ["dep:merman-core", "merman-core/diagram-flowchart", "merman-core/presentation", "dep:merman-render", "merman-render/diagram-flowchart", "merman-render/layout-dagre"]
 analysis-diagnostics = ["dep:merman-analysis", "merman-analysis/diagram-flowchart"]
 analysis-fixes = ["analysis-diagnostics", "merman-analysis/fixes"]
 

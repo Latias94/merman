@@ -484,7 +484,7 @@ require(runner);
             self.assertNotIn("mermaid_zenuml_bundle", files)
             self.assertEqual(
                 prepare.call_args.kwargs["features"],
-                "all-diagrams,svg,compat-json,editor-facts,layout-elk",
+                "all-diagrams,svg,compat-json,editor-facts,layout-dagre,layout-elk",
             )
 
     def test_mermaid_js_output_retains_valid_raw_samples_and_recomputes_summary(self) -> None:

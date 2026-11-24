@@ -102,7 +102,7 @@ def validate_pipeline_bench_list(
     output: str,
     *,
     enabled_features: Sequence[str] = (
-        "all-diagrams", "svg", "compat-json", "editor-facts"
+        "all-diagrams", "svg", "compat-json", "editor-facts", "layout-dagre"
     ),
 ) -> dict[str, object]:
     current, historical = _pipeline_lane_groups(

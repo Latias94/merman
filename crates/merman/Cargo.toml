@@ -409,11 +409,11 @@ usvg = { workspace = true, features = ["system-fonts", "text"] }
 
 [[test]]
 name = "prepared_render"
-required-features = ["svg"]
+required-features = ["svg", "layout-dagre"]
 
 [[test]]
 name = "prepared_source"
-required-features = ["svg", "compat-json"]
+required-features = ["svg", "compat-json", "layout-dagre"]
 
 [[test]]
 name = "deep_lifecycle"
@@ -429,11 +429,11 @@ required-features = ["compat-json"]
 
 [[test]]
 name = "render_operation"
-required-features = ["svg", "compat-json"]
+required-features = ["svg", "compat-json", "layout-dagre"]
 
 [[test]]
 name = "theme_composed_effects"
-required-features = ["svg", "png", "pdf", "layout-cytoscape"]
+required-features = ["svg", "png", "pdf", "layout-cytoscape", "layout-dagre"]
 
 [[test]]
 name = "theme_authoring"
@@ -460,7 +460,7 @@ required-features = ["layout-elk"]
 [[bench]]
 name = "pipeline"
 harness = false
-required-features = ["svg", "compat-json", "editor-facts"]
+required-features = ["svg", "compat-json", "editor-facts", "layout-dagre"]
 
 [[bench]]
 name = "public_workloads"
@@ -495,7 +495,7 @@ required-features = ["all-diagrams", "compat-json", "editor-facts"]
 [[bench]]
 name = "flowchart_svg_label_memory"
 harness = false
-required-features = ["svg", "compat-json"]
+required-features = ["svg", "compat-json", "layout-dagre"]
 
 [[bench]]
 name = "sequence_message_memory"
@@ -510,7 +510,7 @@ required-features = ["layout-elk"]
 [[bench]]
 name = "flowchart_stress"
 harness = false
-required-features = ["svg", "compat-json"]
+required-features = ["svg", "compat-json", "layout-dagre"]
 
 [[bench]]
 name = "architecture_stress"
@@ -535,11 +535,11 @@ required-features = ["svg"]
 [[bench]]
 name = "native_font_measurement"
 harness = false
-required-features = ["native-fonts", "diagram-flowchart"]
+required-features = ["native-fonts", "diagram-flowchart", "layout-dagre"]
 
 [[example]]
 name = "render_svg"
-required-features = ["svg"]
+required-features = ["svg", "diagram-flowchart", "layout-dagre"]
 
 [[example]]
 name = "redraw_prepared"
@@ -547,23 +547,23 @@ required-features = ["svg"]
 
 [[example]]
 name = "render_svg_monospace"
-required-features = ["svg"]
+required-features = ["svg", "diagram-flowchart", "layout-dagre"]
 
 [[example]]
 name = "embed_multiple_svgs"
-required-features = ["svg"]
+required-features = ["svg", "diagram-flowchart", "diagram-sequence", "layout-dagre"]
 
 [[example]]
 name = "render_many"
-required-features = ["svg"]
+required-features = ["svg", "diagram-flowchart", "diagram-sequence", "diagram-state", "layout-dagre"]
 
 [[example]]
 name = "render_cancellable"
-required-features = ["svg"]
+required-features = ["svg", "diagram-flowchart", "layout-dagre"]
 
 [[example]]
 name = "render_png"
-required-features = ["diagram-flowchart", "png", "system-fonts"]
+required-features = ["diagram-flowchart", "layout-dagre", "png", "system-fonts"]
 
 [[example]]
 name = "render_terminal"
@@ -583,11 +583,11 @@ required-features = ["diagram-flowchart"]
 
 [[example]]
 name = "inspect_layout"
-required-features = ["svg", "diagram-flowchart"]
+required-features = ["svg", "diagram-flowchart", "layout-dagre"]
 
 [[example]]
 name = "configure_mermaid"
-required-features = ["svg"]
+required-features = ["svg", "diagram-flowchart", "layout-dagre"]
 
 [[example]]
 name = "deterministic_gantt"
@@ -595,11 +595,11 @@ required-features = ["compat-json", "diagram-gantt"]
 
 [[example]]
 name = "theme_preset"
-required-features = ["svg"]
+required-features = ["svg", "diagram-flowchart", "layout-dagre"]
 
 [[example]]
 name = "theme_recipe"
-required-features = ["svg"]
+required-features = ["svg", "diagram-flowchart", "layout-dagre"]
 
 [[example]]
 name = "custom_diagram_theme"
@@ -607,7 +607,7 @@ required-features = ["svg"]
 
 [[example]]
 name = "custom_svg_pipeline"
-required-features = ["svg"]
+required-features = ["svg", "diagram-flowchart", "layout-dagre"]
 
 [[example]]
 name = "profile_render"
@@ -615,7 +615,7 @@ required-features = ["svg"]
 
 [[example]]
 name = "icon_registry_calibration"
-required-features = ["svg"]
+required-features = ["svg", "diagram-flowchart", "layout-dagre"]
 
 [[example]]
 name = "layout_work_calibration"
