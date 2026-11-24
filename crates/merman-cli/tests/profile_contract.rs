@@ -230,6 +230,8 @@ fn compiled_capabilities_for_auto_detection() -> Vec<&'static str> {
         "layout-dagre",
         #[cfg(feature = "layout-elk")]
         "layout-elk",
+        #[cfg(feature = "layout-shoal")]
+        "layout-shoal",
         #[cfg(feature = "markdown")]
         "markdown",
         #[cfg(feature = "math")]
