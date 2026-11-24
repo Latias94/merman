@@ -1,5 +1,6 @@
 use merman::svg::{LayoutOptions, SvgDebugOptions, SvgRenderOptions, sanitize_svg_id};
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgEnvironment, SvgRequest};
+use merman_core::presentation::SourcePresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::environment::RenderEnvironment;
 use merman_render::family::FamilyRenderArtifact;
@@ -42,6 +43,7 @@ impl Stage {
 struct Args {
     input: PathBuf,
     stage: Stage,
+    site_layout: Option<String>,
     seconds: u64,
     batch_size: Option<usize>,
     diagram_id: Option<String>,
@@ -60,6 +62,7 @@ impl Args {
     fn parse() -> Result<Self, String> {
         let mut input = None;
         let mut stage = Stage::Render;
+        let mut site_layout = None;
         let mut seconds = 20;
         let mut batch_size = None;
         let mut diagram_id = None;
@@ -72,6 +75,15 @@ impl Args {
                 }
                 "--stage" => {
                     stage = Stage::parse(&next_arg(&mut args, &arg)?)?;
+                }
+                "--layout" => {
+                    let layout = next_arg(&mut args, &arg)?;
+                    if !matches!(layout.as_str(), "dagre" | "elk" | "shoal") {
+                        return Err(format!(
+                            "unknown layout `{layout}`. Use dagre, elk, or shoal"
+                        ));
+                    }
+                    site_layout = Some(layout);
                 }
                 "--seconds" => {
                     seconds = parse_u64(&next_arg(&mut args, &arg)?, "--seconds")?;
@@ -104,6 +116,7 @@ impl Args {
         Ok(Self {
             input,
             stage,
+            site_layout,
             seconds,
             batch_size,
             diagram_id,
@@ -138,15 +151,17 @@ fn print_usage() {
         "\
 Usage:
   profile_render --input <path> [--stage render] [--seconds 20] [--batch-size N]
+                 [--layout dagre|elk|shoal]
 
 Stages:
   parse       repeatedly parse Mermaid source into the render model
   layout      parse once, then repeatedly prepare the typed layout artifact
-  render      parse once, then repeatedly prepare the typed artifact and render SVG
+  render      parse once and time SVG emission from freshly prepared artifacts
   end-to-end  repeatedly parse, layout, and render SVG
 
 Render profiling:
-  Whole-process samples and elapsed time include artifact preparation.
+  The --layout value sets the default site layout. An explicit source layout takes precedence.
+  Render elapsed time covers emission. Whole-process profiles also sample artifact preparation.
   Inspect profile_render::emit_prepared_svg for emission-only samples.
 "
     );
@@ -161,13 +176,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if args.stage == Stage::Render {
         eprintln!(
-            "profile_render: whole-process samples and elapsed time include artifact preparation; \
-             inspect profile_render::emit_prepared_svg for emission-only samples"
+            "profile_render: elapsed time covers SVG emission. Inspect \
+             profile_render::emit_prepared_svg in a whole-process profile for emission-only samples."
         );
     }
 
     let source = fs::read_to_string(&args.input)?;
-    let engine = MermaidEngine::new();
+    let mut engine = MermaidEngine::new();
+    if let Some(layout) = &args.site_layout {
+        engine = engine.with_site_config(SourcePresentationConfig::from_value(
+            serde_json::json!({"layout": layout}),
+        ));
+    }
     let parse_options = ParseOptions::strict();
     let layout_options = LayoutOptions::headless_svg_defaults();
     let environment = RenderEnvironment::deterministic();
@@ -194,9 +214,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     eprintln!(
-        "profile_render stage={:?} input={} iterations={} elapsed={:.3}s checksum={}",
+        "profile_render stage={:?} input={} site_layout={} iterations={} elapsed={:.3}s checksum={}",
         args.stage,
         args.input.display(),
+        args.site_layout.as_deref().unwrap_or("default"),
         iterations,
         elapsed.as_secs_f64(),
         checksum
@@ -276,14 +297,25 @@ fn run_render(
     )?;
     emit_prepared_svg(artifact, case.svg_options)?;
 
-    run_for_duration(duration, batch_size, || {
-        let artifact = merman_render::family::prepare(
-            black_box(parsed.presentation()),
-            case.layout_options,
-            case.environment.begin_session()?,
-        )?;
-        Ok(emit_prepared_svg(artifact, case.svg_options)?)
-    })
+    let deadline = Instant::now() + duration;
+    let mut elapsed = Duration::ZERO;
+    let mut iterations = 0;
+    let mut checksum = 0;
+    while Instant::now() < deadline {
+        for _ in 0..batch_size {
+            let artifact = merman_render::family::prepare(
+                parsed.presentation(),
+                case.layout_options,
+                case.environment.begin_session()?,
+            )?;
+            let started = Instant::now();
+            let bytes = emit_prepared_svg(artifact, case.svg_options)?;
+            elapsed += started.elapsed();
+            checksum ^= bytes;
+            iterations += 1;
+        }
+    }
+    Ok((iterations, checksum, elapsed))
 }
 
 #[inline(never)]

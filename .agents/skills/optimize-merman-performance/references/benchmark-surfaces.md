@@ -32,20 +32,12 @@ Fixtures live in `crates/merman/benches/fixtures/`. Current compatibility JSON t
 `compatibility_json_parse`; `parse_known_type` is only a registered history alias in
 `tools/bench/corpus.json`. The `editor_snapshot` group measures requested snapshot capture.
 
-When fixed costs need batching, select a stress bench from the
-[stage diagnostics guide](../../../../docs/performance/BENCHMARKING.md#stage-and-render-diagnostics)
-and check its own manifest requirements.
-
-`python3 tools/bench/perf_runner.py --profile canary` runs the documented local workflow.
-Use `--dry-run` to inspect it and `--profile full` only for broad validation.
-With `--write-docs`, measurement artifacts remain at the validated report root until the complete
-profile succeeds; in-repository roots are restricted to `target/bench`, while external absolute
-paths are also accepted. Markdown reports are published to `docs/performance` only after that clean
-measurement phase finishes.
+Select a Criterion stress lane for fixed-cost work. For public operation attribution, run `bench.py
+stages` with a frozen workload plan. See the [stage diagnostics guide](../../../../docs/performance/BENCHMARKING.md#stage-and-render-diagnostics).
 
 ## Same-Implementation Revision A/B
 
-Use `compare_self.py` for base/head regressions. Follow the
+Use `bench.py ab` for base/head regressions. Follow the
 [per-revision runner recipes](../../../../docs/performance/RUNBOOK.md#2-declare-both-runner-recipes)
 for an executable command; explicitly select each side's features from its own revision.
 
@@ -59,33 +51,11 @@ Use exactly one stage group per invocation. The helper expands `group/(fixture_a
 does not expand `(parse|layout|render)/(fixture_a|fixture_b)`. Criterion 0.8 can treat the latter as
 a literal substring and measure no rows. Run four commands when all four stages are required.
 
-## External Renderer Reference
-
-For a native peer comparison, reuse the existing `mermaid-rs-renderer` runner. For a Merman
-optimization decision, measure base and head with `compare_self.py`.
-
-```console
-python3 tools/bench/stage_spotcheck.py \
-  --preset long \
-  --fixtures mindmap_medium,kanban_medium
-
-python3 tools/bench/compare_mermaid_renderers.py \
-  --preset long \
-  --suite standard \
-  --skip-mermaid-js \
-  --out target/bench/renderer-comparison.md \
-  --json-out target/bench/renderer-comparison.json
-```
-
-The local reference checkout defaults to `repo-ref/mermaid-rs-renderer`. Pin its revision and
-toolchain. Keep warm native Merman, mmdr, and warm browser Mermaid.js as separate implementations;
-coverage or failed renders are not latency samples.
-
 ## Ordered Public Workloads and Corpus Coverage
 
-Use `perf_runner.py workloads plan` for a sequence of public Rust, Node or CLI calls. For fixture
-growth, inspect `workloads coverage` for distinct sources, repeated occurrences and label facts.
-For a headless Node product comparison, run `workloads node-matrix` from the
+Use `bench.py plan` for a sequence of public Rust, Node or CLI calls. For fixture
+growth, inspect `bench.py coverage` for distinct sources, repeated occurrences and label facts.
+For a headless Node product comparison, run `bench.py node` from the
 [ordered workload runbook](../../../../docs/performance/RUNBOOK.md#run-an-ordered-workload).
 It executes the installed Merman, Pele and Mermaid v13 public APIs in a locked consumer and writes
 raw results and coverage beside the summary. `--pele-fixtures` imports upstream input text only.
@@ -95,17 +65,17 @@ recorded product files before attributing a result to a local build or published
 
 When a renderer appears to miss a label, inspect its SVG before changing its expected facts.
 For a Flowchart arrow, sibling membership, horizontal label overflow or a repeated Sequence message, declare the source fact
-and run `node-matrix --check-drawings` or replay the retained CLI SVGs. Inspect the occurrence's
+and run `bench.py node --check-drawings` or replay the retained CLI SVGs. Inspect the occurrence's
 `drawing-audit.json` result before drawing timing conclusions. The [drawing contract](../../../../docs/performance/BENCHMARKING.md#svg-drawing-checks)
 identifies the supported geometry and the boundary of the evidence.
-For family breadth use `workloads plan --suite families` and inspect the per-product gaps in
+For family breadth use `bench.py plan --suite families` and inspect the per-product gaps in
 `coverage.json`. For input growth use the Sequence loop message counts or the topology series.
 For an unstable SVG, preserve the original hashes and compare the retained files in a fixed
 browser with a same-file control before attributing a visual difference.
 For startup, use a fresh CLI or the Node initialization and first-render observations. For a batch
 use the matching complete warm batch. For topology growth, use the `work` metric and record the
 first failing limit. Always identify the host, lifecycle, input population and operation in the finding.
-Use `workloads plan --suite topology-orders` to vary declaration or edge order with the same
+Use `bench.py plan --suite topology-orders` to vary declaration or edge order with the same
 labeled directed graph. Inspect both the geometry boundary and the actual default SVG outcome.
 
 ## CPU Attribution

@@ -222,7 +222,7 @@
       "history_aliases": [],
       "size_vector": [1, 2, 4, 10, 32, 100],
       "workload": "flowchart-non-markdown-svg-node-label-prepare-v1",
-      "evidence_contract": "docs/performance/contracts/flowchart-svg-label-artifact-memory-v1.json",
+      "evidence_contract": null,
       "measurement_metrics": [
         "allocation_count",
         "allocated_bytes",
@@ -257,7 +257,7 @@
       "history_aliases": [],
       "size_vector": [1, 2, 4, 10, 32, 100],
       "workload": "flowchart-elk-separate-children-depth-v2",
-      "evidence_contract": "docs/performance/contracts/flowchart-elk-separate-children-memory-v2.json",
+      "evidence_contract": null,
       "measurement_metrics": [
         "allocation_count",
         "allocated_bytes",
@@ -296,7 +296,7 @@
       "history_aliases": [],
       "size_vector": [1, 2, 4, 10, 32, 100],
       "workload": "sequence-outer-loop-repeated-message-prepare-v1",
-      "evidence_contract": "docs/performance/contracts/sequence-message-repeated-memory-v1.json",
+      "evidence_contract": null,
       "measurement_metrics": [
         "allocation_count",
         "allocated_bytes",
@@ -331,7 +331,7 @@
       "history_aliases": [],
       "size_vector": [1, 2, 4, 10, 32, 100],
       "workload": "sequence-outer-loop-unique-message-prepare-v1",
-      "evidence_contract": "docs/performance/contracts/sequence-message-unique-memory-v1.json",
+      "evidence_contract": null,
       "measurement_metrics": [
         "allocation_count",
         "allocated_bytes",
@@ -377,7 +377,7 @@
         100
       ],
       "workload": "parse-flowchart-typed-generated-chain-v1",
-      "evidence_contract": "docs/performance/contracts/parse-memory-flowchart-typed-v1.json",
+      "evidence_contract": null,
       "measurement_metrics": [
         "allocation_count",
         "allocated_bytes",
@@ -426,7 +426,7 @@
         100
       ],
       "workload": "parse-flowchart-json-generated-chain-v1",
-      "evidence_contract": "docs/performance/contracts/parse-memory-flowchart-json-v1.json",
+      "evidence_contract": null,
       "measurement_metrics": [
         "allocation_count",
         "allocated_bytes",
@@ -475,7 +475,7 @@
         100
       ],
       "workload": "parse-flowchart-snapshot-generated-chain-v1",
-      "evidence_contract": "docs/performance/contracts/parse-memory-flowchart-snapshot-v1.json",
+      "evidence_contract": null,
       "measurement_metrics": [
         "allocation_count",
         "allocated_bytes",
@@ -524,7 +524,7 @@
         100
       ],
       "workload": "parse-sequence-typed-generated-chain-v1",
-      "evidence_contract": "docs/performance/contracts/parse-memory-sequence-typed-v1.json",
+      "evidence_contract": null,
       "measurement_metrics": [
         "allocation_count",
         "allocated_bytes",
@@ -573,7 +573,7 @@
         100
       ],
       "workload": "parse-sequence-json-generated-chain-v1",
-      "evidence_contract": "docs/performance/contracts/parse-memory-sequence-json-v1.json",
+      "evidence_contract": null,
       "measurement_metrics": [
         "allocation_count",
         "allocated_bytes",
@@ -622,7 +622,7 @@
         100
       ],
       "workload": "parse-sequence-snapshot-generated-chain-v1",
-      "evidence_contract": "docs/performance/contracts/parse-memory-sequence-snapshot-v1.json",
+      "evidence_contract": null,
       "measurement_metrics": [
         "allocation_count",
         "allocated_bytes",
@@ -671,7 +671,7 @@
         100
       ],
       "workload": "parse-state-typed-generated-chain-v1",
-      "evidence_contract": "docs/performance/contracts/parse-memory-state-typed-v1.json",
+      "evidence_contract": null,
       "measurement_metrics": [
         "allocation_count",
         "allocated_bytes",
@@ -720,7 +720,7 @@
         100
       ],
       "workload": "parse-state-json-generated-chain-v1",
-      "evidence_contract": "docs/performance/contracts/parse-memory-state-json-v1.json",
+      "evidence_contract": null,
       "measurement_metrics": [
         "allocation_count",
         "allocated_bytes",
@@ -769,7 +769,7 @@
         100
       ],
       "workload": "parse-state-snapshot-generated-chain-v1",
-      "evidence_contract": "docs/performance/contracts/parse-memory-state-snapshot-v1.json",
+      "evidence_contract": null,
       "measurement_metrics": [
         "allocation_count",
         "allocated_bytes",
@@ -792,6 +792,1004 @@
       ]
     }
   ],
+  "memory_bounds": {
+    "flowchart-svg-label-artifact-memory": {
+      "schema_version": 2,
+      "lane_id": "flowchart-svg-label-artifact-memory",
+      "workload": "flowchart-non-markdown-svg-node-label-prepare-v1",
+      "evidence_class": "candidate-bound",
+      "candidate_admission": true,
+      "probe": {
+        "protocol_schema_version": 3,
+        "package": "merman",
+        "package_manifest": "crates/merman/Cargo.toml",
+        "bench": "memory",
+        "features": [
+          "all-diagrams",
+          "svg",
+          "compat-json",
+          "layout-dagre"
+        ],
+        "default_features": false,
+        "inputs": [
+          "crates/merman/benches/memory.rs",
+          "crates/merman/benches/memory/mod.rs",
+          "crates/merman/benches/memory/flowchart_labels.rs",
+          "crates/merman/benches/native_memory/allocator.rs"
+        ]
+      },
+      "scale": {
+        "dimension": "projected_node_label_count",
+        "units_per_scale": 1
+      },
+      "semantic_response": {
+        "scale_field": "projected_node_label_count",
+        "operation_output_sha256": "940be12b7e2e58603380f52bbfcec8e42baf12d985832f0c966a4eade71312ca",
+        "zero_output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "operation": {
+          "kind": "flowchart-prepared-render-v1",
+          "label_profile": "flowchart-non-markdown-svg-node-v1",
+          "metadata_diagram_type_matches": true,
+          "prepared_family_flowchart": true,
+          "html_labels_disabled": true,
+          "prepared_render_alive_at_checkpoint": true,
+          "projected_node_labels_match_workload": true,
+          "unique_projected_node_labels": true
+        },
+        "zero": {
+          "kind": "flowchart-prepared-render-v1",
+          "label_profile": "flowchart-non-markdown-svg-node-v1",
+          "metadata_diagram_type_matches": false,
+          "prepared_family_flowchart": false,
+          "html_labels_disabled": false,
+          "prepared_render_alive_at_checkpoint": false,
+          "projected_node_labels_match_workload": false,
+          "unique_projected_node_labels": false
+        }
+      },
+      "metrics": {
+        "allocation_count": {
+          "slope_cap": 1.25,
+          "max_scale_cap": 40000
+        },
+        "allocated_bytes": {
+          "slope_cap": 1.25,
+          "max_scale_cap": 5746688
+        },
+        "peak_growth_bytes": {
+          "slope_cap": 1.25,
+          "max_scale_cap": 1531904
+        },
+        "retained_growth_bytes": {
+          "slope_cap": 1.25,
+          "max_scale_cap": 524288
+        }
+      }
+    },
+    "flowchart-elk-separate-children-memory": {
+      "schema_version": 2,
+      "lane_id": "flowchart-elk-separate-children-memory",
+      "workload": "flowchart-elk-separate-children-depth-v2",
+      "evidence_class": "infrastructure-smoke",
+      "candidate_admission": false,
+      "probe": {
+        "protocol_schema_version": 2,
+        "package": "merman",
+        "package_manifest": "crates/merman/Cargo.toml",
+        "bench": "memory",
+        "features": [
+          "all-diagrams",
+          "layout-elk"
+        ],
+        "default_features": false,
+        "inputs": [
+          "crates/merman/benches/memory.rs",
+          "crates/merman/benches/memory/mod.rs",
+          "crates/merman/benches/memory/elk_hierarchy.rs",
+          "crates/merman/benches/native_memory/allocator.rs"
+        ]
+      },
+      "scale": {
+        "dimension": "scope_cluster_count",
+        "units_per_scale": 2
+      },
+      "semantic_response": {
+        "scale_field": "scope_cluster_count",
+        "operation_output_sha256": "30d91e9ca3384155ebe26a4b4315d740c9746cb899a77eb513b1f966d6adb901",
+        "zero_output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "operation": {
+          "kind": "flowchart-elk-hierarchy-render-v2",
+          "metadata_diagram_type_matches": true,
+          "metadata_layout_elk": true,
+          "semantic_kind_flowchart": true,
+          "prepared_family_flowchart": true,
+          "svg_role_matches": true,
+          "svg_contains_no_nan": true,
+          "terminal_node_count": 1,
+          "scope_cluster_ids_unique": true,
+          "scope_cluster_ids_complete": true,
+          "view_box_finite_positive": true,
+          "strict_nested_geometry": true,
+          "rendered_edge_count": 0
+        },
+        "zero": {
+          "kind": "flowchart-elk-hierarchy-render-v2",
+          "metadata_diagram_type_matches": false,
+          "metadata_layout_elk": false,
+          "semantic_kind_flowchart": false,
+          "prepared_family_flowchart": false,
+          "svg_role_matches": false,
+          "svg_contains_no_nan": false,
+          "terminal_node_count": 0,
+          "scope_cluster_ids_unique": false,
+          "scope_cluster_ids_complete": false,
+          "view_box_finite_positive": false,
+          "strict_nested_geometry": false,
+          "rendered_edge_count": 0
+        }
+      },
+      "metrics": {
+        "allocation_count": {
+          "slope_cap": 2.0,
+          "max_scale_cap": 10000000
+        },
+        "allocated_bytes": {
+          "slope_cap": 2.0,
+          "max_scale_cap": 8589934592
+        },
+        "peak_growth_bytes": {
+          "slope_cap": 2.0,
+          "max_scale_cap": 2147483648
+        }
+      }
+    },
+    "sequence-message-repeated-memory": {
+      "schema_version": 2,
+      "lane_id": "sequence-message-repeated-memory",
+      "workload": "sequence-outer-loop-repeated-message-prepare-v1",
+      "evidence_class": "candidate-bound",
+      "candidate_admission": true,
+      "probe": {
+        "protocol_schema_version": 3,
+        "package": "merman",
+        "package_manifest": "crates/merman/Cargo.toml",
+        "bench": "memory",
+        "features": [
+          "all-diagrams",
+          "svg",
+          "compat-json"
+        ],
+        "default_features": false,
+        "inputs": [
+          "crates/merman/benches/memory.rs",
+          "crates/merman/benches/memory/mod.rs",
+          "crates/merman/benches/memory/sequence.rs",
+          "crates/merman/benches/native_memory/allocator.rs"
+        ]
+      },
+      "scale": {
+        "dimension": "message_count",
+        "units_per_scale": 1
+      },
+      "semantic_response": {
+        "scale_field": "message_count",
+        "operation_output_sha256": "cd1f54d311417090b16c86653771e12812c7d5549ea81ab213318315c255ce34",
+        "zero_output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "operation": {
+          "kind": "sequence-message-prepare-render-v1",
+          "label_profile": "sequence-outer-loop-equal-length-v1",
+          "message_profile": "repeated",
+          "metadata_diagram_type_matches": true,
+          "prepared_family_sequence": true,
+          "prepared_render_alive_at_checkpoint": true,
+          "projected_message_count_matches": true,
+          "equal_length_message_labels": true
+        },
+        "zero": {
+          "kind": "sequence-message-prepare-render-v1",
+          "label_profile": "sequence-outer-loop-equal-length-v1",
+          "message_profile": "repeated",
+          "metadata_diagram_type_matches": false,
+          "prepared_family_sequence": false,
+          "prepared_render_alive_at_checkpoint": false,
+          "projected_message_count_matches": false,
+          "equal_length_message_labels": false
+        }
+      },
+      "metrics": {
+        "allocation_count": {
+          "slope_cap": 1.35,
+          "max_scale_cap": 20000
+        },
+        "allocated_bytes": {
+          "slope_cap": 1.35,
+          "max_scale_cap": 8000000
+        },
+        "peak_growth_bytes": {
+          "slope_cap": 1.35,
+          "max_scale_cap": 1048576
+        },
+        "retained_growth_bytes": {
+          "slope_cap": 1.35,
+          "max_scale_cap": 524288
+        }
+      }
+    },
+    "sequence-message-unique-memory": {
+      "schema_version": 2,
+      "lane_id": "sequence-message-unique-memory",
+      "workload": "sequence-outer-loop-unique-message-prepare-v1",
+      "evidence_class": "candidate-bound",
+      "candidate_admission": true,
+      "probe": {
+        "protocol_schema_version": 3,
+        "package": "merman",
+        "package_manifest": "crates/merman/Cargo.toml",
+        "bench": "memory",
+        "features": [
+          "all-diagrams",
+          "svg",
+          "compat-json"
+        ],
+        "default_features": false,
+        "inputs": [
+          "crates/merman/benches/memory.rs",
+          "crates/merman/benches/memory/mod.rs",
+          "crates/merman/benches/memory/sequence.rs",
+          "crates/merman/benches/native_memory/allocator.rs"
+        ]
+      },
+      "scale": {
+        "dimension": "message_count",
+        "units_per_scale": 1
+      },
+      "semantic_response": {
+        "scale_field": "message_count",
+        "operation_output_sha256": "0bb654c273f95100395f3b0418df1f7c26dfdfdf4abe3c708412732a47750667",
+        "zero_output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "operation": {
+          "kind": "sequence-message-prepare-render-v1",
+          "label_profile": "sequence-outer-loop-equal-length-v1",
+          "message_profile": "unique",
+          "metadata_diagram_type_matches": true,
+          "prepared_family_sequence": true,
+          "prepared_render_alive_at_checkpoint": true,
+          "projected_message_count_matches": true,
+          "equal_length_message_labels": true
+        },
+        "zero": {
+          "kind": "sequence-message-prepare-render-v1",
+          "label_profile": "sequence-outer-loop-equal-length-v1",
+          "message_profile": "unique",
+          "metadata_diagram_type_matches": false,
+          "prepared_family_sequence": false,
+          "prepared_render_alive_at_checkpoint": false,
+          "projected_message_count_matches": false,
+          "equal_length_message_labels": false
+        }
+      },
+      "metrics": {
+        "allocation_count": {
+          "slope_cap": 1.35,
+          "max_scale_cap": 20000
+        },
+        "allocated_bytes": {
+          "slope_cap": 1.35,
+          "max_scale_cap": 8000000
+        },
+        "peak_growth_bytes": {
+          "slope_cap": 1.35,
+          "max_scale_cap": 1048576
+        },
+        "retained_growth_bytes": {
+          "slope_cap": 1.35,
+          "max_scale_cap": 524288
+        }
+      }
+    },
+    "parser-flowchart-typed-memory": {
+      "schema_version": 2,
+      "lane_id": "parser-flowchart-typed-memory",
+      "workload": "parse-flowchart-typed-generated-chain-v1",
+      "evidence_class": "candidate-bound",
+      "candidate_admission": true,
+      "probe": {
+        "protocol_schema_version": 3,
+        "package": "merman",
+        "package_manifest": "crates/merman/Cargo.toml",
+        "bench": "memory",
+        "features": [
+          "all-diagrams",
+          "compat-json",
+          "editor-facts"
+        ],
+        "default_features": false,
+        "inputs": [
+          "crates/merman/benches/memory.rs",
+          "crates/merman/benches/memory/mod.rs",
+          "crates/merman/benches/memory/parse.rs",
+          "crates/merman/benches/native_memory/allocator.rs"
+        ]
+      },
+      "scale": {
+        "dimension": "generated_units",
+        "units_per_scale": 1
+      },
+      "semantic_response": {
+        "scale_field": "generated_units",
+        "operation_output_sha256": "0f39fb8c50ba8b6a9223aa5daf4c5171627c8e33400bf452a6ae6ae984010f7d",
+        "zero_output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "operation": {
+          "kind": "parse-allocation-observation-v1",
+          "family": "flowchart",
+          "route": "typed",
+          "metadata_matches": true,
+          "model_matches": true,
+          "editor_facts_requested": false,
+          "editor_facts_complete": false,
+          "editor_symbols_match": false,
+          "editor_spans_match_source": false,
+          "result_alive_at_checkpoint": true,
+          "recovery_characterized": false
+        },
+        "zero": {
+          "kind": "parse-allocation-observation-v1",
+          "family": "flowchart",
+          "route": "typed",
+          "metadata_matches": false,
+          "model_matches": false,
+          "editor_facts_requested": false,
+          "editor_facts_complete": false,
+          "editor_symbols_match": false,
+          "editor_spans_match_source": false,
+          "result_alive_at_checkpoint": false,
+          "recovery_characterized": false
+        }
+      },
+      "metrics": {
+        "allocated_bytes": {
+          "slope_cap": 1.0,
+          "max_scale_cap": 2076117
+        },
+        "allocation_count": {
+          "slope_cap": 1.0,
+          "max_scale_cap": 7749
+        },
+        "peak_growth_bytes": {
+          "slope_cap": 1.0,
+          "max_scale_cap": 912176
+        },
+        "retained_growth_bytes": {
+          "slope_cap": 1.0,
+          "max_scale_cap": 263262
+        }
+      }
+    },
+    "parser-flowchart-json-memory": {
+      "schema_version": 2,
+      "lane_id": "parser-flowchart-json-memory",
+      "workload": "parse-flowchart-json-generated-chain-v1",
+      "evidence_class": "infrastructure-smoke",
+      "candidate_admission": false,
+      "probe": {
+        "protocol_schema_version": 3,
+        "package": "merman",
+        "package_manifest": "crates/merman/Cargo.toml",
+        "bench": "memory",
+        "features": [
+          "all-diagrams",
+          "compat-json",
+          "editor-facts"
+        ],
+        "default_features": false,
+        "inputs": [
+          "crates/merman/benches/memory.rs",
+          "crates/merman/benches/memory/mod.rs",
+          "crates/merman/benches/memory/parse.rs",
+          "crates/merman/benches/native_memory/allocator.rs"
+        ]
+      },
+      "scale": {
+        "dimension": "generated_units",
+        "units_per_scale": 1
+      },
+      "semantic_response": {
+        "scale_field": "generated_units",
+        "operation_output_sha256": "9f37f4e68789e9ea3a726db8bb5047587b374451dbc06c8df2eb58cf00699725",
+        "zero_output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "operation": {
+          "kind": "parse-allocation-observation-v1",
+          "family": "flowchart",
+          "route": "json",
+          "metadata_matches": true,
+          "model_matches": true,
+          "editor_facts_requested": false,
+          "editor_facts_complete": false,
+          "editor_symbols_match": false,
+          "editor_spans_match_source": false,
+          "result_alive_at_checkpoint": true,
+          "recovery_characterized": false
+        },
+        "zero": {
+          "kind": "parse-allocation-observation-v1",
+          "family": "flowchart",
+          "route": "json",
+          "metadata_matches": false,
+          "model_matches": false,
+          "editor_facts_requested": false,
+          "editor_facts_complete": false,
+          "editor_symbols_match": false,
+          "editor_spans_match_source": false,
+          "result_alive_at_checkpoint": false,
+          "recovery_characterized": false
+        }
+      },
+      "metrics": {
+        "allocation_count": {
+          "slope_cap": 2.0,
+          "max_scale_cap": 10000000
+        },
+        "allocated_bytes": {
+          "slope_cap": 2.0,
+          "max_scale_cap": 8589934592
+        },
+        "peak_growth_bytes": {
+          "slope_cap": 2.0,
+          "max_scale_cap": 2147483648
+        },
+        "retained_growth_bytes": {
+          "slope_cap": 2.0,
+          "max_scale_cap": 2147483648
+        }
+      }
+    },
+    "parser-flowchart-snapshot-memory": {
+      "schema_version": 2,
+      "lane_id": "parser-flowchart-snapshot-memory",
+      "workload": "parse-flowchart-snapshot-generated-chain-v1",
+      "evidence_class": "infrastructure-smoke",
+      "candidate_admission": false,
+      "probe": {
+        "protocol_schema_version": 3,
+        "package": "merman",
+        "package_manifest": "crates/merman/Cargo.toml",
+        "bench": "memory",
+        "features": [
+          "all-diagrams",
+          "compat-json",
+          "editor-facts"
+        ],
+        "default_features": false,
+        "inputs": [
+          "crates/merman/benches/memory.rs",
+          "crates/merman/benches/memory/mod.rs",
+          "crates/merman/benches/memory/parse.rs",
+          "crates/merman/benches/native_memory/allocator.rs"
+        ]
+      },
+      "scale": {
+        "dimension": "generated_units",
+        "units_per_scale": 1
+      },
+      "semantic_response": {
+        "scale_field": "generated_units",
+        "operation_output_sha256": "4c669d08932117a93b167a1cafc9e33fc943a345422cf18e7bb0f6c71f142886",
+        "zero_output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "operation": {
+          "kind": "parse-allocation-observation-v1",
+          "family": "flowchart",
+          "route": "snapshot",
+          "metadata_matches": true,
+          "model_matches": true,
+          "editor_facts_requested": true,
+          "editor_facts_complete": true,
+          "editor_symbols_match": true,
+          "editor_spans_match_source": true,
+          "result_alive_at_checkpoint": true,
+          "recovery_characterized": true
+        },
+        "zero": {
+          "kind": "parse-allocation-observation-v1",
+          "family": "flowchart",
+          "route": "snapshot",
+          "metadata_matches": false,
+          "model_matches": false,
+          "editor_facts_requested": false,
+          "editor_facts_complete": false,
+          "editor_symbols_match": false,
+          "editor_spans_match_source": false,
+          "result_alive_at_checkpoint": false,
+          "recovery_characterized": false
+        }
+      },
+      "metrics": {
+        "allocation_count": {
+          "slope_cap": 2.0,
+          "max_scale_cap": 10000000
+        },
+        "allocated_bytes": {
+          "slope_cap": 2.0,
+          "max_scale_cap": 8589934592
+        },
+        "peak_growth_bytes": {
+          "slope_cap": 2.0,
+          "max_scale_cap": 2147483648
+        },
+        "retained_growth_bytes": {
+          "slope_cap": 2.0,
+          "max_scale_cap": 2147483648
+        }
+      }
+    },
+    "parser-sequence-typed-memory": {
+      "schema_version": 2,
+      "lane_id": "parser-sequence-typed-memory",
+      "workload": "parse-sequence-typed-generated-chain-v1",
+      "evidence_class": "candidate-bound",
+      "candidate_admission": true,
+      "probe": {
+        "protocol_schema_version": 3,
+        "package": "merman",
+        "package_manifest": "crates/merman/Cargo.toml",
+        "bench": "memory",
+        "features": [
+          "all-diagrams",
+          "compat-json",
+          "editor-facts"
+        ],
+        "default_features": false,
+        "inputs": [
+          "crates/merman/benches/memory.rs",
+          "crates/merman/benches/memory/mod.rs",
+          "crates/merman/benches/memory/parse.rs",
+          "crates/merman/benches/native_memory/allocator.rs"
+        ]
+      },
+      "scale": {
+        "dimension": "generated_units",
+        "units_per_scale": 1
+      },
+      "semantic_response": {
+        "scale_field": "generated_units",
+        "operation_output_sha256": "ea16a81e2ed69a78d44a15ec9b858a4ad176b1f7d3d230d5cbe65d1b8a8951ff",
+        "zero_output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "operation": {
+          "kind": "parse-allocation-observation-v1",
+          "family": "sequence",
+          "route": "typed",
+          "metadata_matches": true,
+          "model_matches": true,
+          "editor_facts_requested": false,
+          "editor_facts_complete": false,
+          "editor_symbols_match": false,
+          "editor_spans_match_source": false,
+          "result_alive_at_checkpoint": true,
+          "recovery_characterized": false
+        },
+        "zero": {
+          "kind": "parse-allocation-observation-v1",
+          "family": "sequence",
+          "route": "typed",
+          "metadata_matches": false,
+          "model_matches": false,
+          "editor_facts_requested": false,
+          "editor_facts_complete": false,
+          "editor_symbols_match": false,
+          "editor_spans_match_source": false,
+          "result_alive_at_checkpoint": false,
+          "recovery_characterized": false
+        }
+      },
+      "metrics": {
+        "allocated_bytes": {
+          "slope_cap": 1.0,
+          "max_scale_cap": 728740
+        },
+        "allocation_count": {
+          "slope_cap": 1.0,
+          "max_scale_cap": 3515
+        },
+        "peak_growth_bytes": {
+          "slope_cap": 1.0,
+          "max_scale_cap": 353713
+        },
+        "retained_growth_bytes": {
+          "slope_cap": 1.0,
+          "max_scale_cap": 192611
+        }
+      }
+    },
+    "parser-sequence-json-memory": {
+      "schema_version": 2,
+      "lane_id": "parser-sequence-json-memory",
+      "workload": "parse-sequence-json-generated-chain-v1",
+      "evidence_class": "candidate-bound",
+      "candidate_admission": true,
+      "probe": {
+        "protocol_schema_version": 3,
+        "package": "merman",
+        "package_manifest": "crates/merman/Cargo.toml",
+        "bench": "memory",
+        "features": [
+          "all-diagrams",
+          "compat-json",
+          "editor-facts"
+        ],
+        "default_features": false,
+        "inputs": [
+          "crates/merman/benches/memory.rs",
+          "crates/merman/benches/memory/mod.rs",
+          "crates/merman/benches/memory/parse.rs",
+          "crates/merman/benches/native_memory/allocator.rs"
+        ]
+      },
+      "scale": {
+        "dimension": "generated_units",
+        "units_per_scale": 1
+      },
+      "semantic_response": {
+        "scale_field": "generated_units",
+        "operation_output_sha256": "7cb6c4034081fe7309b9eea04fa450533226976b7b095d0db9769b22940615c4",
+        "zero_output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "operation": {
+          "kind": "parse-allocation-observation-v1",
+          "family": "sequence",
+          "route": "json",
+          "metadata_matches": true,
+          "model_matches": true,
+          "editor_facts_requested": false,
+          "editor_facts_complete": false,
+          "editor_symbols_match": false,
+          "editor_spans_match_source": false,
+          "result_alive_at_checkpoint": true,
+          "recovery_characterized": false
+        },
+        "zero": {
+          "kind": "parse-allocation-observation-v1",
+          "family": "sequence",
+          "route": "json",
+          "metadata_matches": false,
+          "model_matches": false,
+          "editor_facts_requested": false,
+          "editor_facts_complete": false,
+          "editor_symbols_match": false,
+          "editor_spans_match_source": false,
+          "result_alive_at_checkpoint": false,
+          "recovery_characterized": false
+        }
+      },
+      "metrics": {
+        "allocated_bytes": {
+          "slope_cap": 1.0,
+          "max_scale_cap": 827842
+        },
+        "allocation_count": {
+          "slope_cap": 1.0,
+          "max_scale_cap": 4860
+        },
+        "peak_growth_bytes": {
+          "slope_cap": 1.0,
+          "max_scale_cap": 355851
+        },
+        "retained_growth_bytes": {
+          "slope_cap": 1.0,
+          "max_scale_cap": 268161
+        }
+      }
+    },
+    "parser-sequence-snapshot-memory": {
+      "schema_version": 2,
+      "lane_id": "parser-sequence-snapshot-memory",
+      "workload": "parse-sequence-snapshot-generated-chain-v1",
+      "evidence_class": "candidate-bound",
+      "candidate_admission": true,
+      "probe": {
+        "protocol_schema_version": 3,
+        "package": "merman",
+        "package_manifest": "crates/merman/Cargo.toml",
+        "bench": "memory",
+        "features": [
+          "all-diagrams",
+          "compat-json",
+          "editor-facts"
+        ],
+        "default_features": false,
+        "inputs": [
+          "crates/merman/benches/memory.rs",
+          "crates/merman/benches/memory/mod.rs",
+          "crates/merman/benches/memory/parse.rs",
+          "crates/merman/benches/native_memory/allocator.rs"
+        ]
+      },
+      "scale": {
+        "dimension": "generated_units",
+        "units_per_scale": 1
+      },
+      "semantic_response": {
+        "scale_field": "generated_units",
+        "operation_output_sha256": "24092a20fc6575637df6180c963ef721a917086cd99f1442548cb552f68f2f94",
+        "zero_output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "operation": {
+          "kind": "parse-allocation-observation-v1",
+          "family": "sequence",
+          "route": "snapshot",
+          "metadata_matches": true,
+          "model_matches": true,
+          "editor_facts_requested": true,
+          "editor_facts_complete": true,
+          "editor_symbols_match": true,
+          "editor_spans_match_source": true,
+          "result_alive_at_checkpoint": true,
+          "recovery_characterized": true
+        },
+        "zero": {
+          "kind": "parse-allocation-observation-v1",
+          "family": "sequence",
+          "route": "snapshot",
+          "metadata_matches": false,
+          "model_matches": false,
+          "editor_facts_requested": false,
+          "editor_facts_complete": false,
+          "editor_symbols_match": false,
+          "editor_spans_match_source": false,
+          "result_alive_at_checkpoint": false,
+          "recovery_characterized": false
+        }
+      },
+      "metrics": {
+        "allocated_bytes": {
+          "slope_cap": 1.0,
+          "max_scale_cap": 864555
+        },
+        "allocation_count": {
+          "slope_cap": 1.0,
+          "max_scale_cap": 4887
+        },
+        "peak_growth_bytes": {
+          "slope_cap": 1.0,
+          "max_scale_cap": 358587
+        },
+        "retained_growth_bytes": {
+          "slope_cap": 1.0,
+          "max_scale_cap": 308279
+        }
+      }
+    },
+    "parser-state-typed-memory": {
+      "schema_version": 2,
+      "lane_id": "parser-state-typed-memory",
+      "workload": "parse-state-typed-generated-chain-v1",
+      "evidence_class": "candidate-bound",
+      "candidate_admission": true,
+      "probe": {
+        "protocol_schema_version": 3,
+        "package": "merman",
+        "package_manifest": "crates/merman/Cargo.toml",
+        "bench": "memory",
+        "features": [
+          "all-diagrams",
+          "compat-json",
+          "editor-facts"
+        ],
+        "default_features": false,
+        "inputs": [
+          "crates/merman/benches/memory.rs",
+          "crates/merman/benches/memory/mod.rs",
+          "crates/merman/benches/memory/parse.rs",
+          "crates/merman/benches/native_memory/allocator.rs"
+        ]
+      },
+      "scale": {
+        "dimension": "generated_units",
+        "units_per_scale": 1
+      },
+      "semantic_response": {
+        "scale_field": "generated_units",
+        "operation_output_sha256": "a0aa0dcd5c8679f1d92805f4de363fc439fb2137c839146ee62b7dfbd2606689",
+        "zero_output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "operation": {
+          "kind": "parse-allocation-observation-v1",
+          "family": "state",
+          "route": "typed",
+          "metadata_matches": true,
+          "model_matches": true,
+          "editor_facts_requested": false,
+          "editor_facts_complete": false,
+          "editor_symbols_match": false,
+          "editor_spans_match_source": false,
+          "result_alive_at_checkpoint": true,
+          "recovery_characterized": false
+        },
+        "zero": {
+          "kind": "parse-allocation-observation-v1",
+          "family": "state",
+          "route": "typed",
+          "metadata_matches": false,
+          "model_matches": false,
+          "editor_facts_requested": false,
+          "editor_facts_complete": false,
+          "editor_symbols_match": false,
+          "editor_spans_match_source": false,
+          "result_alive_at_checkpoint": false,
+          "recovery_characterized": false
+        }
+      },
+      "metrics": {
+        "allocated_bytes": {
+          "slope_cap": 1.0,
+          "max_scale_cap": 1626028
+        },
+        "allocation_count": {
+          "slope_cap": 1.0,
+          "max_scale_cap": 12489
+        },
+        "peak_growth_bytes": {
+          "slope_cap": 1.0,
+          "max_scale_cap": 687654
+        },
+        "retained_growth_bytes": {
+          "slope_cap": 1.0,
+          "max_scale_cap": 510328
+        }
+      }
+    },
+    "parser-state-json-memory": {
+      "schema_version": 2,
+      "lane_id": "parser-state-json-memory",
+      "workload": "parse-state-json-generated-chain-v1",
+      "evidence_class": "candidate-bound",
+      "candidate_admission": true,
+      "probe": {
+        "protocol_schema_version": 3,
+        "package": "merman",
+        "package_manifest": "crates/merman/Cargo.toml",
+        "bench": "memory",
+        "features": [
+          "all-diagrams",
+          "compat-json",
+          "editor-facts"
+        ],
+        "default_features": false,
+        "inputs": [
+          "crates/merman/benches/memory.rs",
+          "crates/merman/benches/memory/mod.rs",
+          "crates/merman/benches/memory/parse.rs",
+          "crates/merman/benches/native_memory/allocator.rs"
+        ]
+      },
+      "scale": {
+        "dimension": "generated_units",
+        "units_per_scale": 1
+      },
+      "semantic_response": {
+        "scale_field": "generated_units",
+        "operation_output_sha256": "b4aace4d0611a9f3cfe2059d42e1ce3e8a976f7bd8684bd7367490f285d810d7",
+        "zero_output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "operation": {
+          "kind": "parse-allocation-observation-v1",
+          "family": "state",
+          "route": "json",
+          "metadata_matches": true,
+          "model_matches": true,
+          "editor_facts_requested": false,
+          "editor_facts_complete": false,
+          "editor_symbols_match": false,
+          "editor_spans_match_source": false,
+          "result_alive_at_checkpoint": true,
+          "recovery_characterized": false
+        },
+        "zero": {
+          "kind": "parse-allocation-observation-v1",
+          "family": "state",
+          "route": "json",
+          "metadata_matches": false,
+          "model_matches": false,
+          "editor_facts_requested": false,
+          "editor_facts_complete": false,
+          "editor_symbols_match": false,
+          "editor_spans_match_source": false,
+          "result_alive_at_checkpoint": false,
+          "recovery_characterized": false
+        }
+      },
+      "metrics": {
+        "allocated_bytes": {
+          "slope_cap": 1.0,
+          "max_scale_cap": 3108666
+        },
+        "allocation_count": {
+          "slope_cap": 1.0,
+          "max_scale_cap": 22756
+        },
+        "peak_growth_bytes": {
+          "slope_cap": 1.0,
+          "max_scale_cap": 1500595
+        },
+        "retained_growth_bytes": {
+          "slope_cap": 1.0,
+          "max_scale_cap": 1071875
+        }
+      }
+    },
+    "parser-state-snapshot-memory": {
+      "schema_version": 2,
+      "lane_id": "parser-state-snapshot-memory",
+      "workload": "parse-state-snapshot-generated-chain-v1",
+      "evidence_class": "candidate-bound",
+      "candidate_admission": true,
+      "probe": {
+        "protocol_schema_version": 3,
+        "package": "merman",
+        "package_manifest": "crates/merman/Cargo.toml",
+        "bench": "memory",
+        "features": [
+          "all-diagrams",
+          "compat-json",
+          "editor-facts"
+        ],
+        "default_features": false,
+        "inputs": [
+          "crates/merman/benches/memory.rs",
+          "crates/merman/benches/memory/mod.rs",
+          "crates/merman/benches/memory/parse.rs",
+          "crates/merman/benches/native_memory/allocator.rs"
+        ]
+      },
+      "scale": {
+        "dimension": "generated_units",
+        "units_per_scale": 1
+      },
+      "semantic_response": {
+        "scale_field": "generated_units",
+        "operation_output_sha256": "09705bab6b58d059f9ed1013254ecc3d95c81317542357dc30395ea3a95bc2d3",
+        "zero_output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "operation": {
+          "kind": "parse-allocation-observation-v1",
+          "family": "state",
+          "route": "snapshot",
+          "metadata_matches": true,
+          "model_matches": true,
+          "editor_facts_requested": true,
+          "editor_facts_complete": true,
+          "editor_symbols_match": true,
+          "editor_spans_match_source": true,
+          "result_alive_at_checkpoint": true,
+          "recovery_characterized": true
+        },
+        "zero": {
+          "kind": "parse-allocation-observation-v1",
+          "family": "state",
+          "route": "snapshot",
+          "metadata_matches": false,
+          "model_matches": false,
+          "editor_facts_requested": false,
+          "editor_facts_complete": false,
+          "editor_symbols_match": false,
+          "editor_spans_match_source": false,
+          "result_alive_at_checkpoint": false,
+          "recovery_characterized": false
+        }
+      },
+      "metrics": {
+        "allocated_bytes": {
+          "slope_cap": 1.0,
+          "max_scale_cap": 3200859
+        },
+        "allocation_count": {
+          "slope_cap": 1.0,
+          "max_scale_cap": 22844
+        },
+        "peak_growth_bytes": {
+          "slope_cap": 1.0,
+          "max_scale_cap": 1500595
+        },
+        "retained_growth_bytes": {
+          "slope_cap": 1.0,
+          "max_scale_cap": 1143130
+        }
+      }
+    }
+  },
   "fixtures": [
     {
       "name": "flowchart_nested_clusters_dagre_classic",
@@ -1612,5 +2610,311 @@
       "features": ["explicit_dagre_classic", "configuration_control"],
       "quality": ["svg_sanity", "dom_compare", "raster_compare"]
     }
-  ]
+  ],
+  "views": {
+    "ascii": {
+      "default_group": "ascii_end_to_end",
+      "suites": {
+        "closeout": "One stable medium fixture for each common ASCII family measured by U25.",
+        "comparable": "Fixtures whose baseline and head plain-ASCII output identities match.",
+        "large-closeout": "One tracked representative-large fixture for each of U25's five benchmark families."
+      },
+      "lanes": [
+        {
+          "id": "render-ascii",
+          "kind": "public",
+          "owner": "merman",
+          "public_operation": "render-ascii",
+          "diagnostic_stage": null,
+          "parent_public_lane": null,
+          "process_lifecycle": "reused-process",
+          "engine_lifecycle": "reused-engine",
+          "logical_operations_per_estimate": 1,
+          "transport": "native-criterion",
+          "required_features": ["all-diagrams", "ascii"],
+          "selector": "ascii_end_to_end/{fixture}",
+          "history_aliases": [],
+          "size_vector": [],
+          "workload": "strict-plain-ascii-unbounded-trusted-input-profile",
+          "evidence_contract": "docs/performance/contracts/native-ascii-criterion-preflight-v1.json",
+          "measurement_metrics": ["latency_ns"],
+          "semantic_output_dimensions": ["plain_ascii_sha256", "plain_ascii_bytes"]
+        }
+      ],
+      "fixtures": [
+        {
+          "fixture": "flowchart_medium",
+          "category": "ascii-closeout",
+          "suites": ["closeout"],
+          "features": ["ascii"],
+          "quality": ["deterministic", "common-family"]
+        },
+        {
+          "fixture": "sequence_medium",
+          "category": "ascii-closeout",
+          "suites": ["closeout", "comparable"],
+          "features": ["ascii"],
+          "quality": ["deterministic", "common-family"]
+        },
+        {
+          "fixture": "class_medium",
+          "category": "ascii-closeout",
+          "suites": ["closeout", "comparable"],
+          "features": ["ascii"],
+          "quality": ["deterministic", "common-family"]
+        },
+        {
+          "fixture": "er_medium",
+          "category": "ascii-closeout",
+          "suites": ["closeout"],
+          "features": ["ascii"],
+          "quality": ["deterministic", "common-family"]
+        },
+        {
+          "fixture": "xychart_medium",
+          "category": "ascii-closeout",
+          "suites": ["closeout"],
+          "features": ["ascii"],
+          "quality": ["deterministic", "common-family"]
+        },
+        {
+          "fixture": "flowchart_large",
+          "category": "ascii-large-closeout",
+          "suites": ["large-closeout"],
+          "features": ["ascii", "subgraphs", "large-graph"],
+          "quality": ["deterministic", "common-family", "stress"]
+        },
+        {
+          "name": "sequence_mermaid_api_large",
+          "family": "sequence",
+          "size": "large",
+          "category": "ascii-large-closeout",
+          "source": "fixtures/sequence/upstream_docs_diagrams_mermaid_api_sequence.mmd",
+          "suites": ["large-closeout"],
+          "features": ["ascii", "participants", "messages", "control-frames", "lifecycle"],
+          "quality": ["deterministic", "common-family", "upstream-docs"]
+        },
+        {
+          "name": "class_large",
+          "family": "class",
+          "size": "large",
+          "category": "ascii-large-closeout",
+          "source": "crates/merman/benches/fixtures/class_large.mmd",
+          "suites": ["large-closeout"],
+          "features": ["ascii", "namespaces", "members", "cross-namespace", "parallel", "self-loop"],
+          "quality": ["deterministic", "common-family", "large"]
+        },
+        {
+          "name": "er_large",
+          "family": "er",
+          "size": "large",
+          "category": "ascii-large-closeout",
+          "source": "crates/merman/benches/fixtures/er_large.mmd",
+          "suites": ["large-closeout"],
+          "features": ["ascii", "entities-25", "relationships-34", "attributes-105", "keys", "self-loop"],
+          "quality": ["deterministic", "common-family", "large"]
+        },
+        {
+          "name": "xychart_large",
+          "family": "xychart",
+          "size": "large",
+          "category": "ascii-large-closeout",
+          "source": "crates/merman/benches/fixtures/xychart_large.mmd",
+          "suites": ["large-closeout"],
+          "features": ["ascii", "horizontal", "categories-24", "series-6", "samples-144", "grouped-bars", "multiple-lines"],
+          "quality": ["deterministic", "common-family", "large"]
+        }
+      ]
+    },
+    "bindings": {
+      "default_group": "binding_request_version_only_analysis_ascii_svg",
+      "suites": {
+        "u6": "Bindings-core analysis/ASCII/SVG request-overlay attribution lanes.",
+        "full": "All fixtures in corpus order."
+      },
+      "lanes": [
+        {
+          "id": "binding-analysis-ascii-svg-request-empty",
+          "kind": "public",
+          "owner": "merman-bindings-core",
+          "public_operation": "binding-execute-operation-semantic-json",
+          "diagnostic_stage": null,
+          "parent_public_lane": null,
+          "process_lifecycle": "reused-process",
+          "engine_lifecycle": "reused-engine",
+          "logical_operations_per_estimate": 1,
+          "transport": "native-criterion",
+          "required_features": ["all-diagrams", "analysis", "ascii", "svg"],
+          "selector": "binding_request_empty_analysis_ascii_svg/{fixture}",
+          "history_aliases": [],
+          "size_vector": [],
+          "workload": "binding-semantic-info-analysis-ascii-svg-empty-trusted-native-v1",
+          "evidence_contract": null,
+          "measurement_metrics": ["latency_ns"],
+          "semantic_output_dimensions": [
+            "semantic_json_bytes",
+            "operation_metadata_bytes"
+          ]
+        },
+        {
+          "id": "binding-analysis-ascii-svg-request-version-only",
+          "kind": "public",
+          "owner": "merman-bindings-core",
+          "public_operation": "binding-execute-operation-semantic-json",
+          "diagnostic_stage": null,
+          "parent_public_lane": null,
+          "process_lifecycle": "reused-process",
+          "engine_lifecycle": "reused-engine",
+          "logical_operations_per_estimate": 1,
+          "transport": "native-criterion",
+          "required_features": ["all-diagrams", "analysis", "ascii", "svg"],
+          "selector": "binding_request_version_only_analysis_ascii_svg/{fixture}",
+          "history_aliases": [],
+          "size_vector": [],
+          "workload": "binding-semantic-info-analysis-ascii-svg-version-only-trusted-native-v1",
+          "evidence_contract": null,
+          "measurement_metrics": ["latency_ns"],
+          "semantic_output_dimensions": [
+            "semantic_json_bytes",
+            "operation_metadata_bytes"
+          ]
+        },
+        {
+          "id": "binding-request-version-only-memory",
+          "kind": "public",
+          "owner": "merman-bindings-core",
+          "public_operation": "binding-execute-operation-semantic-json",
+          "diagnostic_stage": null,
+          "parent_public_lane": null,
+          "process_lifecycle": "fresh-process",
+          "engine_lifecycle": "reused-engine",
+          "logical_operations_per_estimate": 1,
+          "transport": "native-system-allocator-subprocess",
+          "required_features": ["all-diagrams", "analysis", "ascii", "svg"],
+          "selector": "memory/request_version_only/{fixture}",
+          "history_aliases": [],
+          "size_vector": [1, 2, 4, 10, 32, 100],
+          "workload": "binding-semantic-info-analysis-ascii-svg-version-only-operation-calls-v1",
+          "evidence_contract": "docs/performance/contracts/binding-request-version-only-memory-v2.json",
+          "measurement_metrics": [
+            "allocation_count",
+            "allocated_bytes",
+            "peak_growth_bytes"
+          ],
+          "semantic_output_dimensions": [
+            "kind",
+            "operation_id",
+            "media_type",
+            "result_data_bytes",
+            "result_metadata_bytes",
+            "result_data_sha256",
+            "result_metadata_sha256",
+            "operation_calls"
+          ]
+        },
+        {
+          "id": "binding-analysis-ascii-svg-request-resource-override",
+          "kind": "public",
+          "owner": "merman-bindings-core",
+          "public_operation": "binding-execute-operation-semantic-json",
+          "diagnostic_stage": null,
+          "parent_public_lane": null,
+          "process_lifecycle": "reused-process",
+          "engine_lifecycle": "reused-engine",
+          "logical_operations_per_estimate": 1,
+          "transport": "native-criterion",
+          "required_features": ["all-diagrams", "analysis", "ascii", "svg"],
+          "selector": "binding_request_resource_override_analysis_ascii_svg/{fixture}",
+          "history_aliases": [],
+          "size_vector": [],
+          "workload": "binding-semantic-info-analysis-ascii-svg-resource-max-source-4096-trusted-native-v1",
+          "evidence_contract": null,
+          "measurement_metrics": ["latency_ns"],
+          "semantic_output_dimensions": [
+            "semantic_json_bytes",
+            "operation_metadata_bytes"
+          ]
+        }
+      ],
+      "fixtures": [
+        {
+          "name": "info_fixed_cost",
+          "family": "info",
+          "size": "tiny",
+          "category": "fixed-cost-attribution",
+          "source": "crates/merman-bindings-core/benches/fixtures/info_fixed_cost.mmd",
+          "suites": ["u6"],
+          "features": ["info"],
+          "quality": ["semantic_json_equality"]
+        }
+      ]
+    }
+  },
+  "performance_workflow": {
+    "schema_version": 1,
+    "scheduled_lanes": [
+      "regression",
+      "frontmatter"
+    ],
+    "dispatch_runs": {
+      "contracts": [],
+      "ascii": [
+        "ascii"
+      ],
+      "frontmatter": [
+        "frontmatter"
+      ],
+      "regression": [
+        "regression"
+      ],
+      "reference": [],
+      "full": [
+        "regression",
+        "ascii",
+        "frontmatter"
+      ]
+    },
+    "lanes": [
+      {
+        "id": "regression",
+        "pull_request_label": "perf",
+        "suite": "canary",
+        "group": "",
+        "package": "merman",
+        "bench": "pipeline",
+        "features": "all-diagrams,svg,compat-json,editor-facts,layout-dagre",
+        "default_features": true,
+        "artifact": "perf-regression",
+        "title": "Merman Performance Regression",
+        "marker": "<!-- merman-perf -->"
+      },
+      {
+        "id": "ascii",
+        "pull_request_label": null,
+        "suite": "comparable",
+        "group": "ascii_end_to_end",
+        "package": "merman",
+        "bench": "pipeline",
+        "corpus_view": "ascii",
+        "features": "all-diagrams,ascii",
+        "default_features": false,
+        "artifact": "perf-ascii",
+        "title": "Merman ASCII Performance Regression",
+        "marker": "<!-- merman-perf-ascii -->"
+      },
+      {
+        "id": "frontmatter",
+        "pull_request_label": "perf-frontmatter",
+        "suite": "frontmatter",
+        "group": "frontmatter_preprocess",
+        "package": "merman",
+        "bench": "pipeline",
+        "features": "all-diagrams,svg,compat-json,editor-facts,layout-dagre",
+        "default_features": true,
+        "artifact": "perf-frontmatter",
+        "title": "Merman Frontmatter Performance Regression",
+        "marker": "<!-- merman-perf-frontmatter -->"
+      }
+    ]
+  }
 }

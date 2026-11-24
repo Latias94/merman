@@ -24,7 +24,7 @@ were recorded before accepting the policy.
 ## Durable evidence
 
 The committed evidence manifest is
-[`evidence/interactive_layout_work_calibration_2026-08-07.json`](evidence/interactive_layout_work_calibration_2026-08-07.json).
+[`evidence/interactive_layout_work_calibration_2026-08-07.json`](https://github.com/Latias94/merman/blob/0de424a568cde744f6ce7ae493edaca31f789288/docs/performance/evidence/interactive_layout_work_calibration_2026-08-07.json).
 It binds the ignored raw evidence by byte length and SHA-256.
 
 | Field | Value |

@@ -198,6 +198,10 @@ impl OperationConfigBuilder {
         source_config: &MermaidConfig,
         selected: crate::MermaidThemeId,
     ) -> std::result::Result<SourcePresentationConfig, theme::ThemeResolutionError> {
+        #[cfg(feature = "benchmark-stages")]
+        let _stage = merman_model::benchmark_stages::enter(
+            merman_model::benchmark_stages::Stage::ThemePrepare,
+        );
         let mut raw_config = engine.initialization.site_config.clone();
         if !source_config.is_empty_object() {
             raw_config = raw_config.with_shared_sections();
@@ -770,8 +774,16 @@ impl<'a> ParsePipeline<'a> {
             } else {
                 DirectiveRecoveryMode::Strict
             };
-            let preprocessed = self
-                .preprocess_for_with_directive_recovery_controlled(directive_recovery, &control)?;
+            let preprocessed = {
+                #[cfg(feature = "benchmark-stages")]
+                let _stage = merman_model::benchmark_stages::enter(
+                    merman_model::benchmark_stages::Stage::Preprocess,
+                );
+                self.preprocess_for_with_directive_recovery_controlled(
+                    directive_recovery,
+                    &control,
+                )?
+            };
             let Some((code, meta)) = (match preprocessed {
                 Ok(preprocessed) => preprocessed,
                 Err(error) => return Ok(Err(error)),
@@ -783,7 +795,13 @@ impl<'a> ParsePipeline<'a> {
             let source_map = ParserSourceMap::new(&code);
 
             let parse_start = operation_timing.map(merman_model::runtime::OperationTiming::start);
-            let parse_res = parse(self, source_map.parser_input(), &meta, &control);
+            let parse_res = {
+                #[cfg(feature = "benchmark-stages")]
+                let _stage = merman_model::benchmark_stages::enter(
+                    merman_model::benchmark_stages::Stage::Parse,
+                );
+                parse(self, source_map.parser_input(), &meta, &control)
+            };
             let parse = parse_start.map(merman_model::runtime::OperationTimer::elapsed);
             control.checkpoint()?;
             operation.checkpoint_at(OperationPhase::Semantic)?;

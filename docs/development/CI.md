@@ -379,8 +379,8 @@ Measurement jobs retain the actual base and head revisions, with lane descriptor
 head checkout. Manual contract runs honor the explicit head repository and revision inputs.
 
 The performance workflow selects regression and frontmatter descriptors into one measurement
-matrix. `tools/bench/performance_lanes.json` owns the lane recipes, labels, scheduled set, and manual
-selection groups; `tools/bench/performance_workflow.py` validates that registry and writes the
+matrix. The `performance_workflow` section in `tools/bench/corpus.json` owns the lane recipes, labels,
+scheduled set, and manual selection groups; `tools/bench/performance_workflow.py` validates that registry and writes the
 matrix consumed by GitHub Actions. Contract tests exercise the same structured interface instead
 of parsing workflow YAML or shell text. Corpus, runner/recipe, statistics, report-consumer, and
 workflow contracts live in focused test modules behind the legacy aggregate command. Workflow

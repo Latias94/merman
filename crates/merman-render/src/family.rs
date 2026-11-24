@@ -1953,6 +1953,10 @@ impl RenderedFamilySvg {
         self,
         pipeline: Option<&SvgPipeline>,
     ) -> Result<RenderedStandaloneSvg> {
+        #[cfg(feature = "benchmark-stages")]
+        let _stage = merman_model::benchmark_stages::enter(
+            merman_model::benchmark_stages::Stage::Postprocess,
+        );
         match pipeline {
             Some(pipeline) if pipeline.preset() == SvgPipelinePreset::ResvgSafe => self
                 .finalize_resvg(pipeline)
@@ -2344,6 +2348,9 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
         pipeline: Option<&SvgPipeline>,
         default_generation: crate::svg::SvgGeneration,
     ) -> Result<RenderedFamilySvg> {
+        #[cfg(feature = "benchmark-stages")]
+        let _stage =
+            merman_model::benchmark_stages::enter(merman_model::benchmark_stages::Stage::SvgEmit);
         self.context.session().checkpoint(OperationPhase::Emit)?;
         let generation = pipeline.map_or(default_generation, |pipeline| {
             pipeline.generation_for(self.family_id(), default_generation)
@@ -2599,6 +2606,9 @@ fn prepare_for<'parsed>(
     session: RenderSession,
     preparation: FamilyPreparation,
 ) -> Result<FamilyRenderArtifact<'parsed>> {
+    #[cfg(feature = "benchmark-stages")]
+    let _stage =
+        merman_model::benchmark_stages::enter(merman_model::benchmark_stages::Stage::LayoutSolve);
     let (plan, adaptation) = capability::plan_render_request(parsed, Some(options), &session)?;
     plan.ensure_available()?;
     let resolved;

@@ -335,10 +335,6 @@ pub(super) fn run(
     metric: &str,
     measure: impl FnOnce(&mut Trial<'_>) -> Result<Value, String>,
 ) -> Result<(), String> {
-    // `cargo test --all-targets` runs harness-free benches without a job.
-    if !std::env::args().any(|arg| arg == "--workload-stdin") {
-        return Ok(());
-    }
     let job = serde_json::from_reader(io::stdin().lock()).map_err(|e| e.to_string())?;
     let renderer = Renderer::new().with_parse_options(ParseOptions::strict());
     let mut row = match job {
@@ -457,8 +453,11 @@ pub(super) fn run(
     for file in [
         include_bytes!("mod.rs").as_slice(),
         include_bytes!("topology.rs"),
-        include_bytes!("../public_workloads.rs"),
-        include_bytes!("../public_workload_memory.rs"),
+        include_bytes!("../workloads.rs"),
+        include_bytes!("../memory.rs"),
+        include_bytes!("../memory/mod.rs"),
+        include_bytes!("../memory/workload.rs"),
+        include_bytes!("../memory/stages.rs"),
         include_bytes!("../native_memory/allocator.rs"),
     ] {
         harness.update((file.len() as u64).to_le_bytes());

@@ -44,11 +44,17 @@ fn prepare_flowchart_artifact<'parsed, L>(
         &class_defs,
         work_meter.as_ref(),
     )?;
-    let prepared_theme = crate::flowchart::FlowchartPreparedTheme::resolve(
-        effective_config,
-        native,
-        execution.family.session().canvas_background(),
-    );
+    let prepared_theme = {
+        #[cfg(feature = "benchmark-stages")]
+        let _stage = merman_model::benchmark_stages::enter(
+            merman_model::benchmark_stages::Stage::ThemePrepare,
+        );
+        crate::flowchart::FlowchartPreparedTheme::resolve(
+            effective_config,
+            native,
+            execution.family.session().canvas_background(),
+        )
+    };
     let edge_style_plan = edge_style_plan
         .with_typography_work_meter(Arc::clone(&work_meter))
         .with_resolved_stroke_widths(

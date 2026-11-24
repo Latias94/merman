@@ -13,11 +13,11 @@ error contract is not an accepted optimization.
 Keep these lanes separate because they answer different questions:
 
 - Native Criterion `pipeline` benchmarks measure Merman stages and public end-to-end operations.
-- `compare_self.py` compares two Merman revisions on one host. Its confirmation mode is the
+- `bench.py ab` compares two Merman revisions on one host. Its confirmation mode is the
   decision-grade regression and candidate-admission lane.
-- The stress benches and stage spot-checks attribute work after a public-operation change has been
+- Native stress and stage observations attribute work after a public-operation change has been
   observed. They do not independently admit production code.
-- `compare_mermaid_renderers.py` and the browser harness provide cross-renderer context. Different
+- `bench.py node` and the browser harness provide cross-renderer context. Different
   transports, algorithms, capabilities, fixture bytes, or output-quality contracts must not be
   combined into one aggregate admission number.
 - Native allocation, peak-live-heap, Node RSS, and artifact-size evidence use their own harnesses.
@@ -25,7 +25,7 @@ Keep these lanes separate because they answer different questions:
 
 ## Ordered public workloads
 
-Use `tools/bench/perf_runner.py workloads` to freeze one ordered plan for Rust, Node and CLI runs.
+Use `tools/bench/bench.py` to freeze one ordered plan for Rust, Node and CLI runs.
 `tools/bench/workloads.json` refers to existing `corpus.json` fixture IDs, adds small config
 controls, and preserves each occurrence and SVG ID. The full suite includes the five diagrams
 from Merman's issues #183–#187 guide in document order. Standalone public calls, repeated identical
@@ -96,8 +96,7 @@ includes reproduction commands and external corpus imports.
 | Comparison | Reference | Purpose |
 | --- | --- | --- |
 | Node package to SVG | Pele and the locked Mermaid v13 Node export | Headless public API latency and coverage on the same ordered requests. The consumer lock pins each release, including prereleases. |
-| Native library to SVG | `mermaid-rs-renderer` via `compare_mermaid_renderers.py` | Independently implemented Rust rendering on the supported fixture intersection. |
-| Fresh process to file | `mmdc` via `workload_cli.py` | What a CLI consumer pays for SVG or PNG, including startup. |
+| Fresh process to file | `mmdc` via `bench.py cli` | What a CLI consumer pays for SVG or PNG, including startup. |
 | Browser to SVG | The pinned Mermaid.js build and Merman WASM in the playground | Browser initialization, drawing and family-specific visual evidence. |
 
 Add a case for a concrete workload or failure mechanism. Reuse its source from `corpus.json` or
@@ -138,14 +137,15 @@ name and value in different text elements. Keep alternatives tied to the authore
 retain a negative check that removes or changes that value.
 
 The native Criterion `pipeline` takes fixture registration from `tools/bench/corpus.json`.
-After editing that catalog, run `python tools/bench/pipeline_fixtures.py --write` to refresh the
+After editing that catalog, run `python tools/bench/bench.py sync-fixtures --write` to refresh the
 package-local Rust inventory and any mirrored external fixture bytes. The benchmark embeds the
 sources at compile time so a copied executable retains its inputs. Running the same command
 without `--write` checks the generated files. The `corpus-<suite>` workload selector reads this
 same catalog for public API runs. Stage timers, stress curves and native memory contracts retain
 their own observation boundaries.
 
-To register another Node renderer, add its package and public API to `workload_node_products.json`,
+To register another Node renderer, add its package and public API to `node_products` in
+`tools/bench/workloads.json`,
 pin the consumer dependency in `tools/bench/node-reference`, then implement its call in the
 existing adapter. Exercise a successful drawing, a failed call and repeated IDs across batches.
 Use its real asynchronous completion boundary when applicable. Run the installed product on the
@@ -172,7 +172,7 @@ Each consecutive pair of rounds reverses product order. Each independent observa
 median of one worker's warm batches. The summary reports the distribution of the within-round
 peer/Merman ratios, the counts on each side of one and the number of eligible rounds. A missing
 pair or a changed product or output withholds the aggregate for that scenario.
-Use the calibrated `compare_self.py` protocol for release claims about a Merman revision.
+Use the calibrated `bench.py ab` protocol for release claims about a Merman revision.
 
 ### SVG drawing checks
 
@@ -204,6 +204,31 @@ and device scale. Compare decoded RGBA pixels, include a same-file repeat and a 
 control, and record the browser and scale with the result. A matching raster at the sampled sizes
 can explain a byte difference. The raw SVG repeatability result remains part of the benchmark.
 
+## Native stage attribution
+
+Use the instrumented workload executable when a public-operation observation needs attribution.
+
+```console
+python tools/bench/bench.py rust --plan target/bench/plan.json --metric stages --site-layout shoal --out target/bench/stages.json --chrome-trace target/bench/stages-trace.json
+```
+
+`stages` takes the same ordered input, capability and SVG verification path as `clock`. It builds
+with `benchmark-stages` and times stage scopes exclusively. Each report includes `end_to_end` and
+`unattributed_ns`, the difference between the batch duration and the sum of instrumented scopes.
+`layout_solve` includes family preparation and the layout backend. Theme preparation includes
+Mermaid theme materialization and the Flowchart family theme binding. `measure` covers routed
+measurement and built-in streaming label widths. `css_emit` currently covers Flowchart, Agentflow
+and Swimlane. A stage with no captured work reports zero calls. The Chrome trace is optional and
+adds collection overhead. Keep both kinds of stage observations separate from clock comparisons.
+
+For allocation call stacks, collect a DHAT heap profile from one post-warmup batch. The runner
+builds the `memory` target with `dhat-heap` and records the output path in the workload receipt.
+
+```bash
+python3 tools/bench/bench.py rust --plan target/bench/plan.json --scenario small-svg \
+  --metric memory --samples 1 --heap-profile target/bench/dhat-heap.json --out target/bench/heap-run.json
+```
+
 ## Native Criterion benchmarks
 
 The `pipeline` bench can be run directly for local attribution:
@@ -224,19 +249,16 @@ It measures:
 - `render/*`: SVG emission from an already laid-out diagram.
 - `end_to_end/*`: parse, layout, and SVG emission through the public pipeline.
 
-The full `pipeline` executable requires `svg,compat-json,editor-facts,layout-dagre` for every group.
+The native `pipeline` groups require `svg,compat-json,editor-facts,layout-dagre`.
 The recipe above includes all diagram families. Cargo defaults supply Cytoscape and ELK.
 With defaults disabled, bench-list verification uses
 `all-diagrams,svg,compat-json,editor-facts,layout-cytoscape,layout-dagre,layout-elk,math`.
 
-The October 22, 2026 U8/U9 API/recipe migration uses `MermaidEngine` and
-`PresentationArtifact` for SVG preparation. It refreshes current lane/probe features and
-`probe.inputs` source hashes only. Metric thresholds, `candidate_admission`, and semantic output
-digests retain their registered values. This refresh is not a new measurement or a performance
-pass. Historical reports and frozen baselines retain their original recipes and hashes.
-The label-artifact and both sequence-message memory contracts also hash
-`crates/merman/Cargo.toml` and `Cargo.lock`; refresh those input hashes after the final manifest or
-lockfile edit, including a manifest-only test-gate change.
+The native corpus registers prepared-render, Sequence message, and parser memory contracts under
+`tools/bench/corpus.json` in `memory_bounds`, keyed by lane ID. The entries fix metric bounds,
+workload scales, and semantic response expectations. `probe.inputs` lists repository-relative
+source paths. The driver hashes those files, Cargo manifests, and `Cargo.lock` for each report and
+checks that the recorded files stay stable during the run.
 
 JSON identity projection is outside timing. It sorts object keys on a managed copy while
 preserving every array order and value; the measured output is unchanged. This stabilizes
@@ -248,12 +270,20 @@ harness sources: the driver's primary benchmark-source digest does not include s
 
 Bench fixtures live under `crates/merman/benches/fixtures/`. A direct Criterion invocation is useful
 for exploration, but its internal samples are not independent base/head observations and cannot by
-themselves establish an optimization claim. Use `compare_self.py --evidence-mode confirmation` for
+themselves establish an optimization claim. Use `bench.py ab --evidence-mode confirmation` for
 that claim.
+
+For one allocation observation per native font case, run the same workloads in `memory`.
+It records allocator traffic, peak growth, and bytes live when the operation returns.
+The `pipeline` executable uses the ordinary allocator for all timed font groups.
+
+```console
+cargo bench --locked -p merman --features native-fonts --bench memory -- --mode fonts
+```
 
 ### Parser allocation and embedding observations
 
-`parse_memory` reuses the native system-allocator probe protocol and driver. The shared
+The parser lanes of `memory` use the shared system-allocator probe protocol and driver. The shared
 `tools/bench/corpus.json` registers typed, known-type JSON and requested snapshot
 routes for generated Flowchart, Sequence and State chains at scales 1, 2, 4, 10, 32 and 100.
 Input/engine setup and warmup precede measurement; each measured result stays alive through the
@@ -265,34 +295,34 @@ are infrastructure observations. Candidate admission also requires exact removed
 semantic parity and the registered latency controls; a memory report alone is insufficient.
 
 ```console
-cargo bench --locked -p merman --no-default-features --features all-diagrams,compat-json,editor-facts --bench parse_memory --no-run -j 1
-python tools/bench/run_native_memory.py --corpus tools/bench/corpus.json --lane parser-sequence-typed-memory --smoke --json-out target/bench/semantic-boundary/sequence-typed-smoke.json
+cargo bench --locked -p merman --no-default-features --features all-diagrams,compat-json,editor-facts --bench memory --no-run -j 1
+python tools/bench/bench.py memory --corpus tools/bench/corpus.json --lane parser-sequence-typed-memory --smoke --json-out target/bench/semantic-boundary/sequence-typed-smoke.json
 ```
 
 Use the same committed probe and generated input policy on adjacent revisions for removed-work
 evidence, retaining raw samples and preregistering bounds before candidate confirmation. These
 lanes do not establish latency. Full parser output identities remain separate from their fixed
 verified semantic projection. The [three-family embedding recipe](../../tools/bench/fixtures/semantic-parser/README.md)
-uses the existing isolated artifact driver to retain raw/stripped executables and consumed
-meaning without a renderer or compatibility projection in its call path.
+records how the historical run retained raw and stripped executables and verified the
+consumed outputs from the typed parser.
 
-The `profile_render` example's `--stage render` loop includes artifact preparation in whole-process
-samples and elapsed time. Only its `profile_render::emit_prepared_svg` subtree matches the emission
-and output-consumption boundary timed by Criterion's `render/*` group; preparation runs outside
-that frame. Keep this boundary explicit when attributing a stage benchmark to a sampled CPU owner.
+The `profile_render` example reports SVG emission time for `--stage render`. Each sample starts
+after layout and artifact preparation. Whole-process profiles still include that setup, so compare
+the `profile_render::emit_prepared_svg` subtree with Criterion's `render/*` group. Use `--layout`
+to select the default site backend from `dagre`, `elk`, and `shoal`.
 
 ### Theme compilation and discovery
 
-`merman-bindings-core`'s `theme_operations` Criterion bench measures Theme v2 preset compilation,
-editable document export, JSON resolution, and catalog construction. It uses Studio Dark and
+The `bindings` Criterion target measures Theme v2 preset compilation, editable document export,
+JSON resolution, and catalog lookup. It uses Studio Dark and
 Cyberpunk with one engine and compiler for the timed iterations. The resolve cases check the
 response before measurement.
 
 ```bash
 CARGO_BUILD_JOBS=1 cargo bench --locked -p merman-bindings-core \
-  --no-default-features --features svg --bench theme_operations -- --test
+  --no-default-features --features svg --bench bindings -- --test
 CARGO_BUILD_JOBS=1 cargo bench --locked -p merman-bindings-core \
-  --no-default-features --features svg --bench theme_operations -- \
+  --no-default-features --features svg --bench bindings -- \
   --noplot --sample-size 30 --warm-up-time 2 --measurement-time 3
 ```
 
@@ -303,27 +333,28 @@ capabilities compiled into that build.
 
 ### Native SVG/PNG/PDF throughput
 
-`merman`'s `native_export` bench measures the public `Renderer` source-to-output path for the
+The `pipeline` export lane measures the public `Renderer` source-to-output path for the
 unchanged public Cyberpunk Flowchart, Sequence and XY Chart fixtures in Mermaid default and native
 Cyberpunk modes. It reuses the renderer and compiled theme, uses strict parsing, native SVG text
 (`htmlLabels: false`), a resvg-safe pipeline, fixed diagram IDs, and default render/export resource
-limits. PNG uses the default 1x scale without a fit box.
+limits. All three targets use the checked-in Noto Sans and Cousine test fonts for measurement and
+painting. PNG uses the default 1x scale without a fit box.
 
 ```bash
-CARGO_BUILD_JOBS=1 cargo bench --locked -p merman --no-default-features \
-  --features svg,png,pdf,diagram-flowchart,diagram-sequence,diagram-xychart,layout-dagre \
-  --bench native_export -- --test
-CARGO_BUILD_JOBS=1 cargo bench --locked -p merman --no-default-features \
-  --features svg,png,pdf,diagram-flowchart,diagram-sequence,diagram-xychart,layout-dagre \
-  --bench native_export -- \
+MERMAN_BENCH_PIPELINE_LANE=export CARGO_BUILD_JOBS=1 cargo bench --locked -p merman --no-default-features \
+  --features svg,png,pdf,native-fonts,diagram-flowchart,diagram-sequence,diagram-xychart,layout-dagre \
+  --bench pipeline -- --test
+MERMAN_BENCH_PIPELINE_LANE=export CARGO_BUILD_JOBS=1 cargo bench --locked -p merman --no-default-features \
+  --features svg,png,pdf,native-fonts,diagram-flowchart,diagram-sequence,diagram-xychart,layout-dagre \
+  --bench pipeline -- \
   --noplot --sample-size 30 --warm-up-time 2 --measurement-time 3
 ```
 
 Each of the 18 rows includes parse, layout, SVG emission, terminal encoding, request cloning and
-output destruction. Preflight warms first-use font discovery; this is neither process cold start
-nor export from a previously rendered document. Flat sampling avoids linear iteration growth for
-expensive PDF cases; slow cases may exceed the requested measurement duration to collect all
-samples. Criterion reports throughput as complete outputs per second.
+output destruction. The font context is loaded before registration and preflight renders each
+scene before timing. Flat sampling avoids linear iteration growth for expensive PDF cases. Slow
+cases may exceed the requested measurement duration to collect all samples. Criterion reports
+throughput as complete outputs per second.
 
 Pre/postflight requires identical output bytes. SVG must parse, PNG must decode with positive
 dimensions, and PDF must have valid framing; these checks do not establish visual qualification.
@@ -334,18 +365,18 @@ diagnostic baselines until a separate matched, calibrated comparison establishes
 
 ### ASCII semantic-depth benchmark
 
-The `ascii_pipeline` bench measures the public synchronous ASCII renderer with strict parsing,
+The `pipeline` ASCII lane measures the public synchronous ASCII renderer with strict parsing,
 the explicit `UnboundedForTrustedInput` resource profile, Plain 7-bit output, a reused engine, and
 one logical render operation per estimate. This is a controlled local batch/stress lane whose
 inputs come only from the tracked corpus; the public `Interactive` and `TrustedNative` rejection
 boundaries remain covered by exact resource tests rather than benchmark admission:
 
 ```bash
-CARGO_BUILD_JOBS=1 cargo bench --locked -p merman \
-  --no-default-features --features all-diagrams,ascii --bench ascii_pipeline
+MERMAN_BENCH_PIPELINE_LANE=ascii CARGO_BUILD_JOBS=1 cargo bench --locked -p merman \
+  --no-default-features --features all-diagrams,ascii --bench pipeline
 ```
 
-Its schema-v2 metadata is `tools/bench/ascii_corpus.json`. The `closeout` and `large-closeout`
+Its schema-v2 metadata is the `ascii` view in `tools/bench/corpus.json`. The `closeout` and `large-closeout`
 suites cover the five common families selected by U25, while `comparable` contains only fixtures
 whose base and head output identities may support a latency comparison. Every registered benchmark
 must emit a `plain_ascii` preflight receipt with exact output bytes and SHA-256 before Criterion
@@ -353,10 +384,10 @@ timing begins, and an exact invocation must repeat the same identity after timin
 compiled list and those receipts with:
 
 ```bash
-CARGO_BUILD_JOBS=1 python3 tools/bench/verify_pipeline_bench_list.py \
-  --bench ascii_pipeline \
-  --corpus tools/bench/ascii_corpus.json \
-  --features ascii
+CARGO_BUILD_JOBS=1 python3 tools/bench/bench.py criterion-list \
+  --bench pipeline \
+  --corpus-view ascii \
+  --features all-diagrams,ascii
 ```
 
 The dedicated Performance workflow exposes the same bounded recipe without adding timing to pull
@@ -384,8 +415,8 @@ renderer changes do not run the standalone performance contracts unless `perf` o
 `perf-frontmatter` is applied.
 
 For a decision-grade adjacent-revision comparison, first ensure both checkouts contain the same
-benchmark-only harness: `ascii_pipeline.rs`, its `Cargo.toml` bench entry, the selected corpus,
-the referenced preflight contract, and every selected fixture must be byte-identical. If the
+benchmark-only harness: `pipeline.rs` and its ASCII and identity modules, the `Cargo.toml` bench
+entry, the selected corpus, the preflight contract, and every selected fixture must be byte-identical. If the
 historical product revision predates that harness, create a clean benchmark-only backport commit
 whose parent is the product revision; do not copy only the corpus into an otherwise different
 checkout. The recipe below assumes both revisions support `all-diagrams`. For a historical
@@ -395,21 +426,21 @@ to each revision's manifest, while keeping the exercised diagram families identi
 Keep the ASCII feature closure and each checkout's corpus path explicit:
 
 ```bash
-python3 tools/bench/compare_self.py \
+python3 tools/bench/bench.py ab \
   --base-dir ../merman-base \
   --head-dir . \
   --base-label BASE \
   --head-label HEAD \
   --base-package merman \
   --head-package merman \
-  --base-bench ascii_pipeline \
-  --head-bench ascii_pipeline \
+  --base-bench pipeline \
+  --head-bench pipeline \
   --base-features all-diagrams,ascii \
   --head-features all-diagrams,ascii \
   --no-base-default-features \
   --no-head-default-features \
-  --base-corpus tools/bench/ascii_corpus.json \
-  --head-corpus tools/bench/ascii_corpus.json \
+  --base-corpus-view ascii \
+  --head-corpus-view ascii \
   --suite comparable \
   --group ascii_end_to_end \
   --preset long \
@@ -422,7 +453,9 @@ python3 tools/bench/compare_self.py \
   --json-out target/performance/ascii_comparison.json
 ```
 
-Both corpus paths are resolved relative to their respective checkout. The benchmark workload,
+Both corpus paths are resolved relative to their respective checkout. For a base checkout that
+retains the standalone catalog, use `--base-corpus tools/bench/ascii_corpus.json` in place of
+`--base-corpus-view ascii`. The benchmark workload,
 `UnboundedForTrustedInput` resource profile, bench source, lane contract, and selected fixture
 bytes must be identical on both sides. Confirmation mode rejects a different Cargo `[[bench]]`
 entry, benchmark source, corpus manifest, or preflight contract before sampling; selected fixture
@@ -453,7 +486,7 @@ Base and head are separate `RunnerRecipe` values. Each recipe records its own:
 Do not project the head recipe onto an older revision. Capability names can change across releases.
 For example, `v0.8.0-alpha.3` exposes SVG rendering through `render`, while the current candidate
 uses `all-diagrams,svg,compat-json,editor-facts,layout-dagre` for the full pipeline bench.
-`compare_self.py` keeps the historical base default at `svg` and uses that full recipe for head.
+`bench.py ab` keeps the historical base default at `svg` and uses that full recipe for head.
 Override `--base-features` and `--head-features` independently according to each checkout's bench
 requirements. A base that predates `compat-json` or `editor-facts` must keep its own feature
 vocabulary; copying the head recipe onto it can fail before measurement.
@@ -461,7 +494,7 @@ vocabulary; copying the head recipe onto it can fail before measurement.
 This historical comparison makes that difference explicit:
 
 ```bash
-python3 tools/bench/compare_self.py \
+python3 tools/bench/bench.py ab \
   --base-dir ../merman-alpha3 \
   --head-dir . \
   --base-label v0.8.0-alpha.3 \
@@ -500,7 +533,7 @@ against its adjacent clean pre-change commit using the same two-sided recipe con
 
 ### Build and executable freeze
 
-`compare_self.py` performs build work before any timed pair:
+`bench.py ab` performs build work before any timed pair:
 
 1. It invokes locked Cargo bench compilation independently for each recipe with `--no-run`, Cargo
    JSON diagnostics, and a forced `CARGO_BUILD_JOBS=1` environment recorded under each runner's
@@ -591,8 +624,7 @@ This separate protocol confirms the complement of a joint regression; it never a
 improvement or admission. This version fixes the confidence level at 0.95 and the thresholds
 at 10% and 1000 ns; every selected row
 must be a comparable registered public operation. It cannot run in diagnostic, discovery-only, dirty or
-low-latency mode. A frozen generic discovery may supply verified executable identities; all A/A
-and A/B observations must still be fresh.
+low-latency mode. Run fresh discovery, A/A calibration and A/B observations for each confirmation.
 
 For each row and metric, both runners must complete eight A/A pairs with identity and order-effect intervals
 inside that metric's margin. The maximum untruncated required pair count across the two runners
@@ -604,8 +636,8 @@ every row as inconclusive. Runner, identity and coverage failures remain evidenc
 Before the first A/B observation, create an exclusive `*.calibration-plan.json` beside the JSON
 report. It records the complete fixture scope, frozen runners, A/A results, each metric's
 qualification/reasons/required count, selected certificates, thresholds, confidence recipe and
-fixed schedule. An existing or unwritable plan blocks A/B. Output paths cannot overwrite the plan
-or discovery input, and final verification checks its SHA. Place evidence under ignored
+fixed schedule. An existing or unwritable plan blocks A/B. The final verification checks that the plan
+and its SHA match the frozen schedule. Place evidence under ignored
 `target/bench`; a plan written into tracked source is not exempt from checkout-identity checks.
 
 Every row must complete the fixed balanced cohort schedule before any timing label is admitted.
@@ -688,7 +720,7 @@ estimate selected from A/A or fresh A/B. For example, if the preregistered compl
 baseline for `kanban_medium` is 40,000 ns:
 
 ```bash
-python3 tools/bench/compare_self.py \
+python3 tools/bench/bench.py ab \
   --base-dir ../merman-base --head-dir . \
   --base-features all-diagrams,svg,compat-json,editor-facts,layout-dagre \
   --head-features all-diagrams,svg,compat-json,editor-facts,layout-dagre \
@@ -841,7 +873,7 @@ writes an available failure projection, including for nonstandard signal/OOM exi
 Run the isolated native `System` allocator lane explicitly:
 
 ```bash
-python3 tools/bench/run_native_memory.py \
+python3 tools/bench/bench.py memory \
   --json-out target/bench/native_memory.json
 ```
 
@@ -854,7 +886,7 @@ For lanes with identical Cargo recipes, preflight them together and build once; 
 its own full report and fresh subprocess schedule, and must be frozen separately:
 
 ```console
-python tools/bench/run_native_memory.py --lanes parser-sequence-typed-memory parser-state-typed-memory --json-out-dir target/bench/parser-memory
+python tools/bench/bench.py memory --lanes parser-sequence-typed-memory parser-state-typed-memory --json-out-dir target/bench/parser-memory
 ```
 
 Batch execution retains the actual shared Cargo build receipt and rejects source, build-environment,
@@ -878,10 +910,10 @@ checked-in `infrastructure-smoke` owner contract contains broad harness-safety b
 `candidate_admission: false`. Every optimization owner must preregister tighter adjacent-candidate
 memory bounds and combine them with its semantic and latency gates.
 
-The aggregate runner keeps this lane opt-in:
+Run the memory lane explicitly.
 
 ```bash
-python3 tools/bench/perf_runner.py --profile triage --include-native-memory
+python3 tools/bench/bench.py memory
 ```
 
 A full native-memory report records the Git commit/tree and dirty disposition, workspace/package
@@ -890,72 +922,17 @@ and the complete raw schedule. Full evidence rejects a dirty worktree by default
 exists only for investigation, forces `candidate_admission` false, and cannot create a durable
 receipt. Protocol smoke is likewise never admission evidence.
 
-After a clean full run, freeze the report, source inputs, every corpus fixture, recipe, host, and
-executable into the authoritative receipt envelope:
-
-```bash
-python3 tools/bench/freeze_perf_baseline.py freeze \
-  --native-memory-report target/bench/native_memory.json \
-  --out docs/performance/baselines/runtime-<source-commit>.json
-```
-
-The freezer revalidates every persisted protocol response and recomputes paired adjustments,
-bootstrap bounds, metric classifications, and aggregate exit precedence before accepting the
-report. A report by itself is not a frozen baseline. The manifest describes the measured source
-commit, so verify it from a clean checkout of that recorded commit while passing the manifest path
-from the receipt commit:
-
-```bash
-python3 tools/bench/freeze_perf_baseline.py verify \
-  --repo-root ../merman-source-commit \
-  --manifest docs/performance/baselines/runtime-<source-commit>.json
-```
+Keep the complete native-memory report under `target/bench/` or attach it to the CI run.
+A dated decision receipt links the report and records its source revision, feature recipe,
+executable digest and outcome. Preserve the raw samples with the report for replay.
 
 ## Cross-renderer comparison
 
-If `repo-ref/mermaid-rs-renderer` is available, this command produces fixture-level diagnostic
-context:
-
-```bash
-python3 tools/bench/compare_mermaid_renderers.py \
-  --preset long \
-  --suite standard \
-  --expected-merman-rev <merman-commit> \
-  --expected-mmdr-rev <mmdr-commit> \
-  --mmdr-toolchain 1.92.0 \
-  --out target/bench/renderer_comparison.md \
-  --json-out target/bench/renderer_comparison.json
-```
-
-The runner rejects dirty Merman or mmdr checkouts before starting Cargo. `--allow-dirty` is available
-for explicitly diagnostic work: it fingerprints the tracked diff and every untracked file, then
-rechecks both repositories and all benchmark-owned inputs after sampling. A revision, worktree,
-fixture, runner, lockfile, config, or browser-bundle change fails the contract with exit `2`.
-
-Use `--skip-mermaid-js` when the optional Puppeteer lane is not required. Available suites can be
-listed with `--list-suites`; `standard`, `cross_family`, `flowchart`, `stress`, and `full` broaden the
-registered native corpus. They are not the complete supported-family inventory: `full` means every
-registered fixture, not every Merman family.
-
-Before a fixture-level ratio is shown, the harness compares the exact bytes used by both native
-benches. Missing, skipped, errored, or non-identical fixtures remain coverage facts rather than being
-treated as fast or slow. Do not use a family aggregate or a ratio spanning unlike transports as an
-optimization gate.
-
-Schema `3` retains repository and input provenance, family-level coverage, contract status, the
-Criterion console mid-point estimate kind, and all Mermaid.js per-call samples with p50/p95/p99.
-Native Criterion raw samples are not retained, so the report remains diagnostic and explicitly sets
-`baseline_eligible` to false. The runner also performs a Mermaid.js SVG preflight, but DOM and raster
-parity remain separate gates.
-
-The steady-state modes are also distinct:
-
-- Merman: native Criterion `end_to_end/*`.
-- `mermaid-rs-renderer`: its native Criterion `end_to_end/*`.
-- Mermaid.js: repeated warm `mermaid.render()` calls in one Puppeteer/Chromium process.
-
-Cold CLI startup, Node N-API, browser WASM, DOM comparison, and raster comparison stay in separate
-lanes with explicit lifecycle and output contracts.
+Use the same frozen workload plan to compare the pinned Pele and Mermaid v13 products. `bench.py
+node` retains coverage, output checks, and warm samples per product. A variant can select a local
+Merman entry and an explicit site layout. Cold CLI, native Rust, Node N-API, Node WASM, and browser
+results have distinct execution and output boundaries. Use the runner for each boundary and report
+only qualified matching requests. [Node reference workflow](RUNBOOK.md#run-an-ordered-workload)
 
 ## Browser comparison with Mermaid.js
 
@@ -1012,38 +989,31 @@ warmups provide better diagnostic ranking, but they are not a universal admissio
 targeted rerun, inspect raw samples, variance, and absolute milliseconds, then confirm any production
 change against the same Merman base/head public operation before accepting it.
 
-`tools/bench/mermaid_js_bench.cjs` supplies the Mermaid.js side through the pinned
-`tools/mermaid-cli` dependencies for the cross-transport native diagnostic lane above; it is not the
-web-to-web admission lane.
-
 ## Stage and render diagnostics
 
-Use the stage spot-check only after a public-operation signal needs attribution:
+Run `bench.py stages` after observing a public-operation signal. `--with-memory` runs the independent
+allocation probe with the same inputs. `--chrome-trace` captures timing scopes for Perfetto.
 
 ```bash
-python3 tools/bench/stage_spotcheck.py \
-  --preset long \
-  --fixtures flowchart_medium,class_medium \
-  --out target/bench/stage_spotcheck.md
+python3 tools/bench/bench.py stages --plan target/bench/plan.json --layouts dagre,elk,shoal \
+  --with-memory --chrome-trace target/bench/stages.trace.json --out target/bench/stages.json
 ```
 
-When `render/*` is slow, direct `merman-render` callers can enable
-`SvgDebugOptions::include_timing_diagnostics` through an explicit `*_with_debug` entry point. Keep
-timing diagnostics disabled in the measured production path. The API is documented in
-`crates/merman-render/README.md`.
+Direct `merman-render` callers can enable `SvgDebugOptions::include_timing_diagnostics` through a
+`*_with_debug` entry point. Keep those diagnostics outside the timed production path.
 
-Stress benches batch small operations to amplify fixed costs:
+Criterion's native stress groups batch small operations. Select a group before registration so
+it runs only its own probes.
 
 ```bash
-cargo bench -p merman --features all-diagrams,svg,compat-json --bench flowchart_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
-cargo bench -p merman --features layout-cytoscape --bench architecture_layout_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
-cargo bench -p merman --features layout-cytoscape --bench architecture_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
-cargo bench -p merman --features svg --bench mindmap_layout_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
-cargo bench -p merman --features svg --bench text_measure_stress -- --noplot --sample-size 50 --warm-up-time 2 --measurement-time 3
+MERMAN_BENCH_PIPELINE_LANE=flowchart-stress cargo bench --locked -p merman \
+  --features svg,compat-json,layout-dagre --bench pipeline -- --noplot
 ```
 
-These results are owner-local diagnostics. Record and normalize their fixed-repeat divisor before
-comparing them, and confirm the corresponding public end-to-end operation before accepting code.
+The additional lane values are `architecture-stress`, `architecture-layout-stress`,
+`mindmap-layout-stress`, `text-stress`, `fonts`, and `export`. The enabled Cargo features select
+which lanes are present. Record the fixed-repeat divisor and confirm the corresponding public
+operation before accepting a code change.
 
 ## Host discipline
 

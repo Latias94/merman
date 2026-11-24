@@ -26,7 +26,7 @@ The benchmark projection, scorecard, and resource audit in this tree are indexes
 
 The measured entry point is the public Renderer::render(RenderRequest::ascii(...)) path in crates/merman/benches/ascii_pipeline.rs. The runner is tools/bench/compare_self.py schema v2 with the ascii feature, plain ASCII output, one logical operation, a 10% relative threshold, and Bonferroni-adjusted 95% simultaneous confidence. The 50 microsecond absolute value is the preregistered materiality boundary for this low-latency lane, not a repository-wide hard limit; other lanes may register a profile-specific formula or structural objective as described in RUNBOOK.md.
 
-The tracked evidence attachments are the Markdown projections in docs/performance/evidence/ascii-u25/861fc0ba3/. The schema-v2 JSON files are build artifacts under target/performance/u25/, not durable repository files, in accordance with the performance runbook; their names, sizes, and SHA-256 values below identify the retained local/CI artifacts.
+The [archived evidence attachments](https://github.com/Latias94/merman/tree/0de424a568cde744f6ce7ae493edaca31f789288/docs/performance/evidence/ascii-u25/861fc0ba3) contain the Markdown projections. The schema-v2 JSON files are build artifacts under target/performance/u25/, not durable repository files, in accordance with the performance runbook; their names, sizes, and SHA-256 values below identify the retained local/CI artifacts.
 
 ### Medium comparison against the benchmark backport
 

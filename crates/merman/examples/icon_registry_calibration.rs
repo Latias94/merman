@@ -22,7 +22,7 @@ use std::process::Command;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 #[global_allocator]
-static ALLOCATOR: CountingSystemAllocator = CountingSystemAllocator::new();
+static ALLOCATOR: CountingSystemAllocator = CountingSystemAllocator::new(std::alloc::System);
 
 #[derive(Debug)]
 struct Arguments {

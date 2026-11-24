@@ -91,7 +91,7 @@ are unchanged. With the workspace fixed, the existing protocol-only `--smoke --e
 path passes on the same freshly built binary, frozen read-only. Both invocations and the
 explicit executable reuse remain recorded; this is not comparative memory admission.
 
-The [compact evidence archive](evidence/theme-font-stack-sharing-2026-10-21/manifest.json) records
+The [compact evidence archive](https://github.com/Latias94/merman/blob/0de424a568cde744f6ce7ae493edaca31f789288/docs/performance/evidence/theme-font-stack-sharing-2026-10-21/manifest.json) records
 the exact source/tool/library identities, original registration and amendments, original samples,
 comparisons, independent reviews, and final owner checks. Physical SVGs, executables and complete
 local experiment files remain under the ignored experiment directory; archive coverage is stated

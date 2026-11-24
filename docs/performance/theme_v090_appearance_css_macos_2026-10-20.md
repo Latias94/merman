@@ -146,7 +146,7 @@ independent ownership candidate. Neither has a measured benefit in this checkpoi
 
 ## Frozen evidence
 
-The [evidence archive](evidence/theme-v090-appearance-css-2026-10-20/manifest.json) preserves the
+The [evidence archive](https://github.com/Latias94/merman/blob/0de424a568cde744f6ce7ae493edaca31f789288/docs/performance/evidence/theme-v090-appearance-css-2026-10-20/manifest.json) preserves the
 complete accepted report, immutable plan, registration, identity repair, raw gates, common bench
 source and independent receipts, together with the clearly rejected first attempt. Read-only
 sampled executables stay in the ignored repair directory.

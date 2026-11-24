@@ -84,7 +84,7 @@ Full process times span 27.94–34.65 s and 25.52–42.64 s respectively. These 
 checks and launcher overhead and are supporting observations only. They exclude descendant
 memory and are not interchangeable with Linux/macOS RSS or a process-tree memory ceiling.
 
-The [evidence manifest](evidence/native_layout_work_calibration_2026-10-01.json) binds source, lockfile, executable, corpus members, reports, and timing
+The [evidence manifest](https://github.com/Latias94/merman/blob/0de424a568cde744f6ce7ae493edaca31f789288/docs/performance/evidence/native_layout_work_calibration_2026-10-01.json) binds source, lockfile, executable, corpus members, reports, and timing
 observations by SHA-256. Raw artifacts remain ignored under
 `target/bench/experiments/issue158-native-default/{default,dark}`. Historical interactive
 calibration from 2026-08-07 remains a receipt for its old backend/corpus, not proof that the

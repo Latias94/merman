@@ -8,7 +8,7 @@
     "protocol_schema_version": 2,
     "package": "merman-bindings-core",
     "package_manifest": "crates/merman-bindings-core/Cargo.toml",
-    "bench": "request_overlay_memory",
+    "bench": "bindings_memory",
     "features": ["all-diagrams", "analysis", "ascii", "svg"],
     "default_features": false
   },

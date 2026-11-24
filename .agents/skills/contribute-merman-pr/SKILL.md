@@ -180,13 +180,11 @@ at the versions pinned by the workflow-analysis job. When shared analyzer config
 run the full analyzer scope as CI does. CI remains the exact-identity owner when the tools are
 unavailable locally. Keep behavior contracts in the same commit as changed gate conditions.
 
-For `tools/bench/**` changes, run the Python performance contracts:
+For `tools/bench/**` changes, run the performance contracts:
 
 ```text
-python3 tools/bench/test_perf_baseline_manifest.py
-python3 tools/bench/test_native_memory_contracts.py
-python3 tools/bench/test_native_memory_driver_contracts.py
-python3 tools/bench/test_perf_contracts.py
+python3 -m unittest discover -s tools/bench
+node --test tools/bench/collectors/node_runner.test.mjs
 ```
 
 When the performance lane is in scope and a change touches a native-memory probe, its registered
@@ -194,10 +192,11 @@ workload/contract, or resource/work accounting reachable from that workload, run
 owner as well:
 
 ```text
-CARGO_BUILD_JOBS=1 python3 tools/bench/run_native_memory.py --smoke \
+CARGO_BUILD_JOBS=1 python3 tools/bench/bench.py memory --smoke \
+  --target-dir target/bench/native-memory-build \
   --build-timeout-seconds 900 \
   --json-out target/bench/native_memory_smoke.json
-python3 tools/bench/test_native_memory_driver_contracts.py \
+python3 tools/bench/test_contracts.py \
   --verify-smoke-report target/bench/native_memory_smoke.json
 ```
 
@@ -209,7 +208,7 @@ scheduled, or manual lanes. When that lane is explicitly in scope, use the verif
 default pipeline recipe:
 
 ```text
-python3 tools/bench/verify_pipeline_bench_list.py
+python3 tools/bench/bench.py criterion-list
 ```
 
 The verifier owns its defaults-off feature list; the

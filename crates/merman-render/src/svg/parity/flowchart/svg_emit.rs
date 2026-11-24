@@ -189,6 +189,10 @@ pub(super) fn render_flowchart_svg_model(
                 && ctx.icon_registry.is_none()
                 && super::agentflow::can_defer_palette(ctx)?;
             let palette_offset = {
+                #[cfg(feature = "benchmark-stages")]
+                let _stage = merman_model::benchmark_stages::enter(
+                    merman_model::benchmark_stages::Stage::CssEmit,
+                );
                 let mut css_out = super::super::output::XmlTextOutput::new(&mut out);
                 let flowchart_palette_offset = write_flowchart_css(
                     &mut css_out,
@@ -298,6 +302,10 @@ pub(super) fn render_flowchart_svg_model(
             out.checkpoint()?;
 
             if let Some(offset) = palette_offset {
+                #[cfg(feature = "benchmark-stages")]
+                let _stage = merman_model::benchmark_stages::enter(
+                    merman_model::benchmark_stages::Stage::CssEmit,
+                );
                 let slots = super::agentflow::emitted_palette_slots(
                     out.as_str(),
                     body_start,

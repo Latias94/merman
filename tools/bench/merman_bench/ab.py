@@ -1,0 +1,3283 @@
+#!/usr/bin/env python3
+"""
+Compare `merman` Criterion benchmarks between two checkouts.
+
+The diagnostic mode is a CI-friendly advisory. Confirmation mode is the fixed-budget regression
+contract: it freezes independent runner recipes, calibrates same-binary noise, and measures fresh
+balanced pairs on one host.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import hashlib
+import json
+import math
+import os
+import platform
+import re
+import shutil
+import stat
+import statistics
+import subprocess
+import sys
+import uuid
+from dataclasses import asdict, dataclass, replace
+from pathlib import Path
+from typing import Any, Iterable, Sequence
+
+from . import stats as stats
+from .host import (
+    best_effort_cpu_model,
+    expand_filter_to_exact_benches,
+    git_head,
+    parse_criterion_times,
+    parse_skip_lines,
+    pretty_time,
+    rustc_verbose,
+    split_exact_bench,
+    strip_ansi,
+    write_json_report,
+)
+from .corpus import (
+    LaneMetadata,
+    lane_selector_group,
+    load_corpus,
+    resolve_lane_group,
+    resolve_merman_fixture_path,
+    select_corpus_fixtures,
+)
+from .pipeline_fixtures import PIPELINE_STAGE_MODULE, sync_pipeline_fixtures
+
+
+DEFAULT_CORPUS = "tools/bench/corpus.json"
+DEFAULT_MARKDOWN_OUT = "target/bench/self_comparison.md"
+DEFAULT_JSON_OUT = "target/bench/self_comparison.json"
+JOINT_PROTOCOL = "joint_non_regression_v1"
+
+
+@dataclass(frozen=True)
+class RunnerRecipe:
+    label: str
+    checkout: Path
+    package: str
+    bench: str
+    features: tuple[str, ...]
+    default_features: bool
+    toolchain: str | None
+    target_dir: Path
+    locked: bool
+    corpus: Path
+    target: str | None = None
+    logical_operations: int = 1
+    corpus_view: str | None = None
+
+
+@dataclass(frozen=True)
+class SharedTargetFreezePlan:
+    target_dir: Path
+    context: str
+
+
+def cargo_prebuild_command(recipe: RunnerRecipe) -> list[str]:
+    if not recipe.locked:
+        raise ValueError("decision-grade recipes must be locked")
+    lockfile = recipe.checkout / "Cargo.lock"
+    if not lockfile.is_file():
+        raise FileNotFoundError(f"locked recipe is missing Cargo.lock: {lockfile}")
+    if recipe.logical_operations <= 0:
+        raise ValueError("logical_operations must be positive")
+
+    command = ["cargo"]
+    if recipe.toolchain:
+        command.append(f"+{recipe.toolchain}")
+    command.extend(["bench", "--locked", "-p", recipe.package])
+    if not recipe.default_features:
+        command.append("--no-default-features")
+    if recipe.features:
+        command.extend(["--features", ",".join(recipe.features)])
+    command.extend(["--bench", recipe.bench])
+    if recipe.target:
+        command.extend(["--target", recipe.target])
+    command.extend(
+        [
+            "--target-dir",
+            str(recipe.target_dir),
+            "--no-run",
+            "--message-format=json-render-diagnostics",
+        ]
+    )
+    return command
+
+
+def cargo_clean_bench_profile_command(recipe: RunnerRecipe) -> list[str]:
+    """Reset one shared target's bench profile before compiling a frozen side."""
+    if not recipe.locked:
+        raise ValueError("decision-grade recipes must be locked")
+    lockfile = recipe.checkout / "Cargo.lock"
+    if not lockfile.is_file():
+        raise FileNotFoundError(f"locked recipe is missing Cargo.lock: {lockfile}")
+
+    command = ["cargo"]
+    if recipe.toolchain:
+        command.append(f"+{recipe.toolchain}")
+    command.extend(
+        [
+            "clean",
+            "--locked",
+            "--profile",
+            "bench",
+            "--target-dir",
+            str(recipe.target_dir),
+        ]
+    )
+    if recipe.target:
+        command.extend(["--target", recipe.target])
+    return command
+
+
+def parse_bench_executable(cargo_stdout: str, *, recipe: RunnerRecipe) -> Path:
+    executables: set[Path] = set()
+    for raw in cargo_stdout.splitlines():
+        try:
+            message = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(message, dict) or message.get("reason") != "compiler-artifact":
+            continue
+        target = message.get("target")
+        if not isinstance(target, dict):
+            continue
+        kinds = target.get("kind")
+        if target.get("name") != recipe.bench or not isinstance(kinds, list) or "bench" not in kinds:
+            continue
+        executable = message.get("executable")
+        if isinstance(executable, str) and executable:
+            executables.add(Path(executable))
+    if not executables:
+        raise ValueError(f"missing unique executable for bench {recipe.bench!r}")
+    if len(executables) != 1:
+        rendered = ", ".join(sorted(str(path) for path in executables))
+        raise ValueError(f"multiple executables for bench {recipe.bench!r}: {rendered}")
+    return next(iter(executables))
+
+
+def criterion_command(
+    *,
+    executable: Path,
+    exact_bench: str,
+    sample_size: int,
+    warm_up_seconds: int,
+    measurement_seconds: int,
+) -> list[str]:
+    return [
+        str(executable),
+        "--bench",
+        "--color",
+        "never",
+        "--noplot",
+        "--sample-size",
+        str(sample_size),
+        "--warm-up-time",
+        str(warm_up_seconds),
+        "--measurement-time",
+        str(measurement_seconds),
+        "--discard-baseline",
+        "--exact",
+        exact_bench,
+    ]
+
+
+def _file_description(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        return {"path": str(path), "bytes": None, "sha256": None}
+    data = path.read_bytes()
+    return {
+        "path": str(path),
+        "bytes": len(data),
+        "sha256": hashlib.sha256(data).hexdigest(),
+    }
+
+
+def fixture_byte_comparison(base_path: Path, head_path: Path) -> dict[str, Any]:
+    base = _file_description(base_path)
+    head = _file_description(head_path)
+    if base["sha256"] is None or head["sha256"] is None:
+        status = "missing"
+    elif base["sha256"] == head["sha256"]:
+        status = "identical"
+    else:
+        status = "different"
+    return {"status": status, "base": base, "head": head}
+
+
+def suite_exit_code(outcomes: Iterable[str]) -> int:
+    values = set(outcomes)
+    if "contract_failure" in values:
+        return 2
+    if "confirmed_regression" in values:
+        return 1
+    if "inconclusive" in values:
+        return 3
+    return 0
+
+
+def benchmark_params(preset: str, sample_size: int | None, warm_up: int | None, measurement: int | None) -> tuple[int, int, int]:
+    if preset == "long":
+        return (
+            sample_size if sample_size is not None else 30,
+            warm_up if warm_up is not None else 2,
+            measurement if measurement is not None else 3,
+        )
+    return (
+        sample_size if sample_size is not None else 10,
+        warm_up if warm_up is not None else 1,
+        measurement if measurement is not None else 1,
+    )
+
+
+def fmt_time(value: float | None) -> str:
+    if value is None:
+        return "-"
+    return pretty_time(value)
+
+
+_BENCH_LIST_LINE = re.compile(r"^(?P<bench>[A-Za-z0-9_.:/-]+):\s*benchmark\s*$")
+_PREFLIGHT_PREFIX = "[bench][preflight]"
+_POSTFLIGHT_PREFIX = "[bench][postflight]"
+PIPELINE_LANE_ENV = "MERMAN_BENCH_PIPELINE_LANE"
+_NATIVE_CRITERION_PREFLIGHT_CONTRACT = (
+    "docs/performance/contracts/native-criterion-preflight-v1.json"
+)
+_NATIVE_ASCII_CRITERION_PREFLIGHT_CONTRACT = (
+    "docs/performance/contracts/native-ascii-criterion-preflight-v1.json"
+)
+_PREFLIGHT_FIELD_ORDER = (
+    "schema_version",
+    "benchmark",
+    "output_kind",
+    "output_bytes",
+    "output_sha256",
+    "svg_elements",
+)
+_PREFLIGHT_FIELDS = frozenset(_PREFLIGHT_FIELD_ORDER)
+_PIPELINE_PREFLIGHT_OUTPUT_KIND_BY_GROUP = {
+    "parse": "typed_render_model",
+    "compatibility_json_parse": "compatibility_json",
+    "parse_cold_engine": "typed_render_model",
+    "editor_snapshot": "editor_snapshot",
+    "frontmatter_preprocess": "preprocessed_diagram",
+    "layout": "prepared_layout",
+    "render": "svg",
+    "end_to_end": "svg",
+}
+_PREFLIGHT_OUTPUT_KIND_BY_GROUP = {
+    **_PIPELINE_PREFLIGHT_OUTPUT_KIND_BY_GROUP,
+    "ascii_end_to_end": "plain_ascii",
+}
+_PREFLIGHT_CONTRACT_BY_RECIPE = {
+    ("merman", "pipeline"): _NATIVE_CRITERION_PREFLIGHT_CONTRACT,
+    ("merman", "ascii_pipeline"): _NATIVE_ASCII_CRITERION_PREFLIGHT_CONTRACT,
+}
+_PREFLIGHT_OUTPUT_KINDS_BY_CONTRACT = {
+    _NATIVE_CRITERION_PREFLIGHT_CONTRACT: _PIPELINE_PREFLIGHT_OUTPUT_KIND_BY_GROUP,
+    _NATIVE_ASCII_CRITERION_PREFLIGHT_CONTRACT: {
+        "ascii_end_to_end": "plain_ascii"
+    },
+}
+
+
+class ContractViolation(RuntimeError):
+    pass
+
+
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ContractViolation(f"duplicate JSON object key: {key!r}")
+        result[key] = value
+    return result
+
+
+def _reject_nonfinite_json_constant(value: str) -> None:
+    raise ContractViolation(f"non-finite JSON number: {value}")
+
+
+def parse_preflight_receipts(text: str) -> dict[str, dict[str, Any]]:
+    receipts: dict[str, dict[str, Any]] = {}
+    for raw in text.splitlines():
+        line = strip_ansi(raw.rstrip("\r\n"))
+        if not line.startswith(_PREFLIGHT_PREFIX):
+            continue
+        payload = line[len(_PREFLIGHT_PREFIX) :].strip()
+        if not payload:
+            raise ContractViolation("benchmark preflight receipt payload is missing")
+        try:
+            value = json.loads(
+                payload,
+                object_pairs_hook=_reject_duplicate_json_keys,
+                parse_constant=_reject_nonfinite_json_constant,
+            )
+        except (json.JSONDecodeError, ContractViolation) as error:
+            raise ContractViolation(f"invalid benchmark preflight JSON: {error}") from error
+        if not isinstance(value, dict):
+            raise ContractViolation("benchmark preflight receipt must be an object")
+        fields = frozenset(value)
+        if fields != _PREFLIGHT_FIELDS:
+            missing = sorted(_PREFLIGHT_FIELDS - fields)
+            unknown = sorted(fields - _PREFLIGHT_FIELDS)
+            raise ContractViolation(
+                f"benchmark preflight receipt fields differ: missing={missing}, unknown={unknown}"
+            )
+        if type(value["schema_version"]) is not int or value["schema_version"] != 1:
+            raise ContractViolation("benchmark preflight schema_version must be 1")
+        benchmark = value["benchmark"]
+        if not isinstance(benchmark, str) or re.fullmatch(
+            r"[A-Za-z0-9_.:/-]+", benchmark
+        ) is None:
+            raise ContractViolation("benchmark preflight benchmark is invalid")
+        if "/" not in benchmark:
+            raise ContractViolation("benchmark preflight benchmark has no group boundary")
+        group = benchmark.rsplit("/", 1)[0]
+        expected_kind = _PREFLIGHT_OUTPUT_KIND_BY_GROUP.get(group)
+        output_kind = value["output_kind"]
+        if not isinstance(output_kind, str) or output_kind != expected_kind:
+            raise ContractViolation(
+                f"benchmark preflight output_kind for {benchmark} must be {expected_kind!r}"
+            )
+        output_bytes = value["output_bytes"]
+        if type(output_bytes) is not int or output_bytes <= 0:
+            raise ContractViolation("benchmark preflight output_bytes must be positive")
+        output_sha256 = value["output_sha256"]
+        if not isinstance(output_sha256, str) or re.fullmatch(
+            r"[0-9a-f]{64}", output_sha256
+        ) is None:
+            raise ContractViolation("benchmark preflight output_sha256 is invalid")
+        svg_elements = value["svg_elements"]
+        if output_kind == "svg":
+            if type(svg_elements) is not int or svg_elements <= 0:
+                raise ContractViolation(
+                    "benchmark preflight svg_elements must be positive for SVG output"
+                )
+        elif svg_elements is not None:
+            raise ContractViolation(
+                "benchmark preflight svg_elements must be null for non-SVG output"
+            )
+        if benchmark in receipts:
+            raise ContractViolation(
+                f"duplicate benchmark preflight receipt for {benchmark}"
+            )
+        receipts[benchmark] = value
+    return receipts
+
+
+def parse_postflight_receipts(text: str) -> set[str]:
+    receipts: set[str] = set()
+    for raw in text.splitlines():
+        line = strip_ansi(raw.rstrip("\r\n"))
+        if not line.startswith(_POSTFLIGHT_PREFIX):
+            continue
+        benchmark = line[len(_POSTFLIGHT_PREFIX) :].strip()
+        if re.fullmatch(r"[A-Za-z0-9_.:/-]+", benchmark) is None or "/" not in benchmark:
+            raise ContractViolation("benchmark postflight receipt is invalid")
+        if benchmark in receipts:
+            raise ContractViolation(
+                f"duplicate benchmark postflight receipt for {benchmark}"
+            )
+        receipts.add(benchmark)
+    return receipts
+
+
+def _criterion_preflight_contract(
+    corpus: Any, *, recipe: RunnerRecipe
+) -> dict[str, Any] | None:
+    expected_contract = _PREFLIGHT_CONTRACT_BY_RECIPE.get(
+        (recipe.package, recipe.bench)
+    )
+    if expected_contract is None:
+        return None
+    native_lanes = {
+        lane_selector_group(lane.selector): lane
+        for lane in corpus.lanes
+        if lane.transport == "native-criterion"
+    }
+    if not native_lanes:
+        return None
+    declared = {lane.evidence_contract for lane in native_lanes.values()}
+    if (recipe.package, recipe.bench) == ("merman", "pipeline") and declared == {
+        _NATIVE_ASCII_CRITERION_PREFLIGHT_CONTRACT
+    }:
+        expected_contract = _NATIVE_ASCII_CRITERION_PREFLIGHT_CONTRACT
+    description = None
+    output_kinds = _PREFLIGHT_OUTPUT_KINDS_BY_CONTRACT[expected_contract]
+    if declared != {None}:
+        if declared != {expected_contract}:
+            raise ContractViolation(
+                f"{recipe.package}/{recipe.bench} native Criterion lanes must uniformly declare "
+                f"{expected_contract!r}"
+            )
+        description = _describe_preflight_contract(recipe.checkout / expected_contract)
+        output_kinds = description["output_kinds"]
+    expected_groups = frozenset(output_kinds)
+    if frozenset(native_lanes) != expected_groups:
+        raise ContractViolation(
+            f"{recipe.package}/{recipe.bench} native Criterion lane groups differ "
+            "from the preflight contract: "
+            f"expected={sorted(expected_groups)}, actual={sorted(native_lanes)}"
+        )
+    return description
+
+
+def criterion_pipeline_environment(
+    recipe: RunnerRecipe, *, preflight_contract: dict[str, Any] | None
+) -> dict[str, str]:
+    if (recipe.package, recipe.bench) != ("merman", "pipeline"):
+        return {}
+    contract_id = (preflight_contract or {}).get("id")
+    lane = (
+        "ascii"
+        if contract_id == Path(_NATIVE_ASCII_CRITERION_PREFLIGHT_CONTRACT).stem
+        else "native"
+    )
+    return {PIPELINE_LANE_ENV: lane}
+
+
+def _registered_preflight_contract(path: Path) -> tuple[str, dict[str, str]]:
+    matches = [
+        (contract, output_kinds)
+        for contract, output_kinds in _PREFLIGHT_OUTPUT_KINDS_BY_CONTRACT.items()
+        if path.as_posix().endswith(contract)
+    ]
+    if len(matches) != 1:
+        raise ContractViolation(
+            f"native Criterion preflight contract path is not registered: {path}"
+        )
+    return matches[0]
+
+
+def _describe_preflight_contract(path: Path) -> dict[str, Any]:
+    raw = path.read_bytes()
+    try:
+        value = json.loads(
+            raw,
+            object_pairs_hook=_reject_duplicate_json_keys,
+            parse_constant=_reject_nonfinite_json_constant,
+        )
+    except (json.JSONDecodeError, ContractViolation) as error:
+        raise ContractViolation(f"invalid native Criterion preflight contract: {error}") from error
+    contract, output_kinds = _registered_preflight_contract(path)
+    # Before editor snapshots, the same v1 receipt format covered seven pipeline groups.
+    historical_output_kinds = {
+        group: kind for group, kind in output_kinds.items() if group != "editor_snapshot"
+    }
+    if (
+        contract == _NATIVE_CRITERION_PREFLIGHT_CONTRACT
+        and isinstance(value, dict)
+        and value.get("output_kinds") == historical_output_kinds
+    ):
+        output_kinds = historical_output_kinds
+    contract_id = Path(contract).stem
+    expected = {
+        "schema_version": 1,
+        "id": contract_id,
+        "line_prefix": f"{_PREFLIGHT_PREFIX} ",
+        "postflight_line_prefix": f"{_POSTFLIGHT_PREFIX} ",
+        "required_fields": list(_PREFLIGHT_FIELD_ORDER),
+        "output_kinds": output_kinds,
+        "comparison": {
+            "ignore_fields": ["benchmark"],
+            "required_equal_fields": [
+                field for field in _PREFLIGHT_FIELD_ORDER if field != "benchmark"
+            ],
+        },
+    }
+    if value != expected:
+        raise ContractViolation(
+            "native Criterion preflight contract content differs from the harness"
+        )
+    return {
+        "path": str(path),
+        "bytes": len(raw),
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "id": expected["id"],
+        "schema_version": expected["schema_version"],
+        "output_kinds": output_kinds,
+    }
+
+
+def _describe_corpus(path: Path, *, recipe: RunnerRecipe) -> dict[str, Any]:
+    corpus = load_corpus(path, view=recipe.corpus_view)
+    contract_description = _criterion_preflight_contract(corpus, recipe=recipe)
+    return {
+        **_describe_required_file(path),
+        "schema_version": corpus.schema_version,
+        "preflight_receipts_required": contract_description is not None,
+        "preflight_contract": contract_description,
+    }
+
+
+@dataclass
+class PreparedRunner:
+    recipe: RunnerRecipe
+    executable: Path
+    executable_sha256: str
+    benches: set[str]
+    skipped: dict[str, list[str]]
+    provenance: dict[str, Any]
+    env: dict[str, str]
+    frozen: bool = False
+
+
+def _binary_independence_error(
+    base: PreparedRunner,
+    head: PreparedRunner,
+) -> str | None:
+    base_tree = base.provenance.get("git", {}).get("tree")
+    head_tree = head.provenance.get("git", {}).get("tree")
+    if base_tree != head_tree and base.executable_sha256 == head.executable_sha256:
+        return (
+            "different Git trees produced byte-identical benchmark executables; "
+            "the requested comparison has no independently built binary delta"
+        )
+    return None
+
+
+def _confirmation_harness_identity_errors(
+    base: PreparedRunner,
+    head: PreparedRunner,
+) -> list[str]:
+    fields = (
+        ("Cargo bench target metadata", "bench_target"),
+        ("benchmark source", "bench_source"),
+        ("corpus manifest", "corpus"),
+    )
+    errors: list[str] = []
+    for label, key in fields:
+        base_digest = base.provenance.get(key, {}).get("sha256")
+        head_digest = head.provenance.get(key, {}).get("sha256")
+        if not isinstance(base_digest, str) or not isinstance(head_digest, str):
+            errors.append(f"confirmation {label} identity is missing")
+        elif base_digest != head_digest:
+            errors.append(f"confirmation requires byte-identical {label}")
+
+    if base.provenance.get("bench_source", {}).get("modules") != head.provenance.get(
+        "bench_source", {}
+    ).get("modules"):
+        errors.append("confirmation requires byte-identical benchmark source modules")
+
+    base_contract = base.provenance.get("corpus", {}).get("preflight_contract")
+    head_contract = head.provenance.get("corpus", {}).get("preflight_contract")
+    base_digest = base_contract.get("sha256") if isinstance(base_contract, dict) else None
+    head_digest = head_contract.get("sha256") if isinstance(head_contract, dict) else None
+    if not isinstance(base_digest, str) or not isinstance(head_digest, str):
+        errors.append("confirmation preflight contract identity is missing")
+    elif base_digest != head_digest:
+        errors.append("confirmation requires a byte-identical preflight contract")
+    return errors
+
+
+def criterion_list_command(
+    executable: Path,
+    *,
+    exact_benchmark: str | None = None,
+) -> list[str]:
+    command = [
+        str(executable),
+        "--bench",
+        "--color",
+        "never",
+        "--list",
+        "--format",
+        "terse",
+    ]
+    if exact_benchmark is not None:
+        command.extend(("--exact", exact_benchmark))
+    return command
+
+
+def _command_text(command: Sequence[str]) -> str:
+    return " ".join(command)
+
+
+def _output_tail(text: str, *, limit: int = 8_000) -> str:
+    value = strip_ansi(text).strip()
+    return value if len(value) <= limit else value[-limit:] + "\n... <tail truncated>"
+
+
+def _run_process(
+    command: list[str],
+    *,
+    cwd: Path,
+    env: dict[str, str] | None = None,
+    timeout_seconds: int,
+) -> subprocess.CompletedProcess[str]:
+    process_env = os.environ.copy()
+    if env:
+        process_env.update(env)
+    return subprocess.run(
+        command,
+        cwd=str(cwd),
+        env=process_env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        timeout=timeout_seconds,
+    )
+
+
+def _require_success(
+    result: subprocess.CompletedProcess[str],
+    *,
+    command: Sequence[str],
+    cwd: Path,
+) -> None:
+    if result.returncode == 0:
+        return
+    output = _output_tail("\n".join((result.stdout, result.stderr)))
+    raise ContractViolation(
+        f"command failed (exit {result.returncode}) in {cwd}: "
+        f"{_command_text(command)}\n{output}"
+    )
+
+
+def _path_sha256(path: Path) -> str:
+    if not path.is_file():
+        raise ContractViolation(f"required file is missing: {path}")
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _describe_required_file(
+    path: Path,
+    *,
+    sha256: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "path": str(path),
+        "bytes": path.stat().st_size,
+        "sha256": sha256 if sha256 is not None else _path_sha256(path),
+    }
+
+
+_FREEZE_COMPONENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_GIT_OBJECT_ID = re.compile(r"^[0-9a-fA-F]{40,64}$")
+
+
+def _validate_freeze_component(value: str, *, field: str) -> str:
+    if not _FREEZE_COMPONENT.fullmatch(value):
+        raise ContractViolation(f"invalid shared-target freeze {field}: {value!r}")
+    return value
+
+
+def _path_is_within(path: Path, parent: Path) -> bool:
+    try:
+        path.relative_to(parent)
+    except ValueError:
+        return False
+    return True
+
+
+def _freeze_bench_executable(
+    source: Path,
+    *,
+    recipe: RunnerRecipe,
+    git: dict[str, Any],
+    plan: SharedTargetFreezePlan,
+    build_sequence: int,
+) -> tuple[Path, dict[str, Any]]:
+    if build_sequence not in (1, 2):
+        raise ContractViolation("shared-target freeze build sequence must be 1 or 2")
+
+    target_dir = recipe.target_dir.resolve()
+    if target_dir != plan.target_dir.resolve():
+        raise ContractViolation("shared-target freeze recipe escaped its declared target root")
+    source = source.resolve()
+    if not _path_is_within(source, target_dir):
+        raise ContractViolation(
+            f"Cargo bench executable is outside the shared target root: {source}"
+        )
+
+    context = _validate_freeze_component(plan.context, field="context")
+    label = _validate_freeze_component(recipe.label, field="side")
+    revision = _validate_freeze_component(str(git.get("revision", "")), field="commit")
+    tree = _validate_freeze_component(str(git.get("tree", "")), field="tree")
+    if not _GIT_OBJECT_ID.fullmatch(revision) or not _GIT_OBJECT_ID.fullmatch(tree):
+        raise ContractViolation("shared-target freeze requires full Git commit and tree IDs")
+    source_sha256 = _path_sha256(source)
+    source_bytes = source.stat().st_size
+    freeze_root = target_dir / "perf-frozen" / context
+    if _path_is_within(source, target_dir / "perf-frozen"):
+        raise ContractViolation("Cargo reported an already-frozen executable as compiler output")
+
+    if build_sequence == 1:
+        try:
+            freeze_root.mkdir(parents=True, exist_ok=False)
+        except FileExistsError as error:
+            raise ContractViolation(
+                f"shared-target freeze context already exists: {freeze_root}"
+            ) from error
+    elif not freeze_root.is_dir() or freeze_root.is_symlink():
+        raise ContractViolation(
+            f"shared-target freeze context is missing or invalid: {freeze_root}"
+        )
+
+    destination_dir = freeze_root / f"{label}-{revision}-{source_sha256}"
+    try:
+        destination_dir.mkdir(exist_ok=False)
+    except FileExistsError as error:
+        raise ContractViolation(
+            f"shared-target frozen executable destination already exists: {destination_dir}"
+        ) from error
+
+    destination = destination_dir / source.name
+    temporary = destination_dir / f".{source.name}.{uuid.uuid4().hex}.tmp"
+    published = False
+    try:
+        with source.open("rb") as source_handle, temporary.open("xb") as target_handle:
+            shutil.copyfileobj(source_handle, target_handle, length=1024 * 1024)
+            target_handle.flush()
+            os.fsync(target_handle.fileno())
+
+        source_after_sha256 = _path_sha256(source)
+        if source_after_sha256 != source_sha256 or source.stat().st_size != source_bytes:
+            raise ContractViolation(
+                f"Cargo bench executable changed while freezing {recipe.label}"
+            )
+        temporary_sha256 = _path_sha256(temporary)
+        if temporary_sha256 != source_sha256:
+            raise ContractViolation(
+                f"frozen executable copy digest differs for {recipe.label}"
+            )
+
+        read_only_executable = (
+            stat.S_IRUSR
+            | stat.S_IXUSR
+            | stat.S_IRGRP
+            | stat.S_IXGRP
+            | stat.S_IROTH
+            | stat.S_IXOTH
+        )
+        try:
+            os.link(temporary, destination)
+        except FileExistsError as error:
+            raise ContractViolation(
+                f"shared-target frozen executable path already exists: {destination}"
+            ) from error
+        published = True
+        temporary.unlink()
+        destination.chmod(read_only_executable)
+
+        frozen_sha256 = _path_sha256(destination)
+        if frozen_sha256 != source_sha256:
+            raise ContractViolation(
+                f"published frozen executable digest differs for {recipe.label}"
+            )
+        frozen_mode = stat.S_IMODE(destination.stat().st_mode)
+        if frozen_mode != read_only_executable:
+            raise ContractViolation(
+                f"frozen executable mode differs for {recipe.label}: "
+                f"expected 0555, observed {frozen_mode:04o}"
+            )
+        if not os.access(destination, os.X_OK):
+            raise ContractViolation(f"frozen executable is not executable: {destination}")
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        if published:
+            try:
+                destination.unlink(missing_ok=True)
+            except PermissionError:
+                destination.chmod(stat.S_IRUSR | stat.S_IWUSR)
+                destination.unlink(missing_ok=True)
+        try:
+            destination_dir.rmdir()
+        except OSError:
+            pass
+        raise
+
+    freeze = {
+        "enabled": True,
+        "context": context,
+        "target_dir": str(target_dir),
+        "build_sequence": build_sequence,
+        "commit": revision,
+        "tree": tree,
+        "source_executable": {
+            "path": str(source),
+            "bytes": source_bytes,
+            "sha256": source_sha256,
+            "executable": True,
+        },
+        "frozen_executable": {
+            **_describe_required_file(destination, sha256=source_sha256),
+            "executable": True,
+            "mode": f"{frozen_mode:04o}",
+        },
+    }
+    return destination, freeze
+
+
+def _describe_cargo_bench_target(
+    checkout: Path,
+    package: str,
+    bench: str,
+    *,
+    toolchain: str | None,
+    timeout_seconds: int,
+) -> tuple[Path, dict[str, Any], Path]:
+    command = ["cargo"]
+    if toolchain:
+        command.append(f"+{toolchain}")
+    command.extend(
+        ["metadata", "--locked", "--no-deps", "--format-version", "1"]
+    )
+    result = _run_process(command, cwd=checkout, timeout_seconds=timeout_seconds)
+    _require_success(result, command=command, cwd=checkout)
+    try:
+        metadata = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise ContractViolation(f"cargo metadata returned invalid JSON: {error}") from error
+
+    workspace_members = set(metadata.get("workspace_members", []))
+    matches = [
+        item
+        for item in metadata.get("packages", [])
+        if isinstance(item, dict)
+        and item.get("name") == package
+        and item.get("id") in workspace_members
+        and isinstance(item.get("manifest_path"), str)
+    ]
+    if len(matches) != 1:
+        raise ContractViolation(
+            f"expected one workspace package named {package!r}, found {len(matches)}"
+        )
+    package_metadata = matches[0]
+    manifest = Path(package_metadata["manifest_path"])
+    if not manifest.is_file():
+        raise ContractViolation(
+            f"Cargo metadata returned a missing manifest for {package!r}: {manifest}"
+        )
+
+    target_description, source = _describe_metadata_bench_target(
+        package_metadata,
+        manifest=manifest,
+        bench=bench,
+        package=package,
+    )
+    return manifest, target_description, source
+
+
+def _describe_metadata_bench_target(
+    package_metadata: dict[str, Any],
+    *,
+    manifest: Path,
+    bench: str,
+    package: str,
+) -> tuple[dict[str, Any], Path]:
+    targets = package_metadata.get("targets", [])
+    target_matches = [
+        target
+        for target in targets
+        if isinstance(target, dict)
+        and target.get("name") == bench
+        and isinstance(target.get("kind"), list)
+        and "bench" in target["kind"]
+    ]
+    if len(target_matches) != 1:
+        raise ContractViolation(
+            f"expected one Cargo metadata bench target named {bench!r} "
+            f"in package {package!r}, found {len(target_matches)}"
+        )
+    target = target_matches[0]
+    source_value = target.get("src_path")
+    if not isinstance(source_value, str) or not source_value:
+        raise ContractViolation(
+            f"Cargo metadata bench target {bench!r} has an invalid src_path"
+        )
+    source = Path(source_value)
+    if not source.is_absolute():
+        raise ContractViolation(
+            f"Cargo metadata bench target {bench!r} returned a relative src_path: {source}"
+        )
+
+    normalized_target = dict(target)
+    normalized_target["src_path"] = Path(
+        os.path.relpath(source, start=manifest.parent)
+    ).as_posix()
+    encoded = json.dumps(
+        normalized_target,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    target_description = {
+        "name": bench,
+        "metadata": normalized_target,
+        "bytes": len(encoded),
+        "sha256": hashlib.sha256(encoded).hexdigest(),
+    }
+    return target_description, source
+
+
+def _git_provenance(
+    checkout: Path,
+    *,
+    allow_dirty: bool,
+    timeout_seconds: int,
+) -> dict[str, Any]:
+    revision = git_head(checkout)
+    if not revision:
+        raise ContractViolation(f"could not resolve git revision in {checkout}")
+    if not _GIT_OBJECT_ID.fullmatch(revision):
+        raise ContractViolation(f"could not resolve full git commit in {checkout}")
+    tree_command = ["git", "rev-parse", "HEAD^{tree}"]
+    tree_result = _run_process(tree_command, cwd=checkout, timeout_seconds=timeout_seconds)
+    _require_success(tree_result, command=tree_command, cwd=checkout)
+    tree = tree_result.stdout.strip()
+    if not _GIT_OBJECT_ID.fullmatch(tree):
+        raise ContractViolation(f"could not resolve git tree in {checkout}")
+    command = ["git", "status", "--porcelain=v1", "--untracked-files=normal"]
+    result = _run_process(command, cwd=checkout, timeout_seconds=timeout_seconds)
+    _require_success(result, command=command, cwd=checkout)
+    dirty_entries = [line for line in result.stdout.splitlines() if line.strip()]
+    if dirty_entries and not allow_dirty:
+        raise ContractViolation(
+            f"checkout is dirty ({len(dirty_entries)} entries); "
+            "use --allow-dirty only for explicitly diagnostic evidence"
+        )
+    return {
+        "revision": revision,
+        "tree": tree,
+        "dirty": bool(dirty_entries),
+        "dirty_disposition": "explicitly_allowed" if dirty_entries else "clean",
+        "dirty_entries": dirty_entries[:100],
+        "dirty_entries_truncated": len(dirty_entries) > 100,
+    }
+
+
+def _toolchain_version(recipe: RunnerRecipe, *, timeout_seconds: int) -> str:
+    command = ["rustc"]
+    if recipe.toolchain:
+        command.append(f"+{recipe.toolchain}")
+    command.append("-Vv")
+    result = _run_process(command, cwd=recipe.checkout, timeout_seconds=timeout_seconds)
+    _require_success(result, command=command, cwd=recipe.checkout)
+    return result.stdout.strip()
+
+
+def _describe_bench_source(
+    path: Path, *, recipe: RunnerRecipe, criterion_env: dict[str, str]
+) -> dict[str, Any]:
+    source = _describe_required_file(path)
+    lane = criterion_env.get(PIPELINE_LANE_ENV)
+    if lane == "native" and path.is_file():
+        try:
+            sync_pipeline_fixtures(recipe.checkout, path)
+        except (OSError, ValueError) as error:
+            raise ContractViolation(
+                f"{recipe.checkout}: pipeline fixture registry: {error}"
+            ) from error
+    if lane and (path.parent / PIPELINE_STAGE_MODULE.parent).is_dir():
+        lane_modules = (
+            (Path("pipeline/ascii.rs"),)
+            if lane == "ascii"
+            else (PIPELINE_STAGE_MODULE, Path("support/json_identity.rs"))
+        )
+        source["modules"] = {
+            module.as_posix(): _path_sha256(path.parent / module)
+            for module in (Path("pipeline/identity.rs"), *lane_modules)
+        }
+    return source
+
+
+def _cargo_version(recipe: RunnerRecipe, *, timeout_seconds: int) -> str:
+    command = ["cargo"]
+    if recipe.toolchain:
+        command.append(f"+{recipe.toolchain}")
+    command.append("-Vv")
+    result = _run_process(command, cwd=recipe.checkout, timeout_seconds=timeout_seconds)
+    _require_success(result, command=command, cwd=recipe.checkout)
+    return result.stdout.strip()
+
+
+def _recipe_report(recipe: RunnerRecipe) -> dict[str, Any]:
+    return {
+        "label": recipe.label,
+        "checkout": str(recipe.checkout),
+        "package": recipe.package,
+        "bench": recipe.bench,
+        "features": list(recipe.features),
+        "default_features": recipe.default_features,
+        "toolchain": recipe.toolchain,
+        "target": recipe.target,
+        "target_dir": str(recipe.target_dir),
+        "cargo_profile": "bench",
+        "locked": recipe.locked,
+        "corpus": str(recipe.corpus),
+        **({"corpus_view": recipe.corpus_view} if recipe.corpus_view else {}),
+        "logical_operations": recipe.logical_operations,
+        "logical_operations_scope": "selected_group_uniform_override",
+    }
+
+
+def _prepare_runner(
+    recipe: RunnerRecipe,
+    *,
+    allow_dirty: bool,
+    timeout_seconds: int,
+    discovery_benchmark: str | None = None,
+    freeze_plan: SharedTargetFreezePlan | None = None,
+    build_sequence: int | None = None,
+) -> tuple[PreparedRunner | None, dict[str, Any], list[str]]:
+    provenance: dict[str, Any] = {"recipe": _recipe_report(recipe)}
+    errors: list[str] = []
+    try:
+        if not recipe.checkout.is_dir():
+            raise ContractViolation(f"checkout is not a directory: {recipe.checkout}")
+        provenance["git"] = _git_provenance(
+            recipe.checkout,
+            allow_dirty=allow_dirty,
+            timeout_seconds=timeout_seconds,
+        )
+        recipe.target_dir.mkdir(parents=True, exist_ok=True)
+        manifest, bench_target, bench_source = _describe_cargo_bench_target(
+            recipe.checkout,
+            recipe.package,
+            recipe.bench,
+            toolchain=recipe.toolchain,
+            timeout_seconds=timeout_seconds,
+        )
+        workspace_manifest = recipe.checkout / "Cargo.toml"
+        lockfile = recipe.checkout / "Cargo.lock"
+        corpus_path = recipe.corpus if recipe.corpus.is_absolute() else recipe.checkout / recipe.corpus
+        provenance["manifest"] = _describe_required_file(manifest)
+        provenance["workspace_manifest"] = _describe_required_file(workspace_manifest)
+        provenance["lockfile"] = _describe_required_file(lockfile)
+        provenance["corpus"] = _describe_corpus(corpus_path, recipe=recipe)
+        criterion_env = criterion_pipeline_environment(
+            recipe, preflight_contract=provenance["corpus"].get("preflight_contract")
+        )
+        provenance["bench_target"] = bench_target
+        provenance["bench_source"] = _describe_bench_source(
+            bench_source, recipe=recipe, criterion_env=criterion_env
+        )
+        provenance["toolchain"] = {
+            "requested": recipe.toolchain,
+            "rustc_verbose": _toolchain_version(recipe, timeout_seconds=timeout_seconds),
+            "cargo_verbose": _cargo_version(recipe, timeout_seconds=timeout_seconds),
+        }
+        if (freeze_plan is None) != (build_sequence is None):
+            raise ContractViolation(
+                "shared-target freeze plan and build sequence must be provided together"
+            )
+        env = {
+            "CARGO_INCREMENTAL": "0",
+            "CARGO_PROFILE_BENCH_DEBUG": "0",
+            "CARGO_BUILD_JOBS": "1",
+            **criterion_env,
+        }
+        provenance["build_environment"] = {
+            key: env.get(key, os.environ.get(key))
+            for key in (
+                "RUSTFLAGS",
+                "CARGO_ENCODED_RUSTFLAGS",
+                "CARGO_BUILD_JOBS",
+                "CARGO_PROFILE_BENCH_LTO",
+                "CARGO_PROFILE_BENCH_CODEGEN_UNITS",
+                "CARGO_PROFILE_BENCH_OPT_LEVEL",
+            )
+        }
+        if freeze_plan is not None:
+            clean_command = cargo_clean_bench_profile_command(recipe)
+            provenance["shared_target_profile_reset"] = {
+                "strategy": "cargo-clean-bench-profile-before-each-side",
+                "command": clean_command,
+            }
+            print(
+                f"[reset] {recipe.label}: {_command_text(clean_command)}",
+                flush=True,
+            )
+            clean_result = _run_process(
+                clean_command,
+                cwd=recipe.checkout,
+                env=env,
+                timeout_seconds=timeout_seconds,
+            )
+            provenance["shared_target_profile_reset"].update(
+                {
+                    "stdout_tail": _output_tail(clean_result.stdout),
+                    "stderr_tail": _output_tail(clean_result.stderr),
+                }
+            )
+            _require_success(
+                clean_result,
+                command=clean_command,
+                cwd=recipe.checkout,
+            )
+        command = cargo_prebuild_command(recipe)
+        provenance["prebuild_command"] = command
+        print(f"[prepare] {recipe.label}: {_command_text(command)}", flush=True)
+        result = _run_process(
+            command,
+            cwd=recipe.checkout,
+            env=env,
+            timeout_seconds=timeout_seconds,
+        )
+        provenance["prebuild_stderr_tail"] = _output_tail(result.stderr)
+        _require_success(result, command=command, cwd=recipe.checkout)
+        executable = parse_bench_executable(result.stdout, recipe=recipe)
+        if not executable.is_absolute():
+            executable = (recipe.checkout / executable).resolve()
+        if not executable.is_file():
+            raise ContractViolation(f"Cargo reported a missing bench executable: {executable}")
+        if not os.access(executable, os.X_OK):
+            raise ContractViolation(f"bench executable is not executable: {executable}")
+        source_executable_sha256 = _path_sha256(executable)
+        provenance["source_executable"] = {
+            **_describe_required_file(executable, sha256=source_executable_sha256),
+            "executable": True,
+        }
+        if freeze_plan is not None:
+            assert build_sequence is not None
+            executable, freeze = _freeze_bench_executable(
+                executable,
+                recipe=recipe,
+                git=provenance["git"],
+                plan=freeze_plan,
+                build_sequence=build_sequence,
+            )
+            provenance["shared_target_freeze"] = freeze
+            provenance["frozen_executable"] = freeze["frozen_executable"]
+        executable_sha256 = _path_sha256(executable)
+        provenance["executable"] = {
+            **_describe_required_file(executable, sha256=executable_sha256),
+            "executable": True,
+            "role": "frozen" if freeze_plan is not None else "cargo-artifact",
+        }
+
+        list_command = criterion_list_command(
+            executable,
+            exact_benchmark=discovery_benchmark,
+        )
+        provenance["discovery_command"] = list_command
+        print(f"[discover] {recipe.label}: {_command_text(list_command)}", flush=True)
+        listed = _run_process(
+            list_command,
+            cwd=recipe.checkout,
+            env=env,
+            timeout_seconds=timeout_seconds,
+        )
+        _require_success(listed, command=list_command, cwd=recipe.checkout)
+        combined = "\n".join((listed.stdout, listed.stderr))
+        benches: set[str] = set()
+        for raw in combined.splitlines():
+            match = _BENCH_LIST_LINE.match(strip_ansi(raw).strip())
+            if match:
+                benches.add(match.group("bench"))
+        if not benches:
+            raise ContractViolation(
+                f"Criterion discovery returned no benchmarks for {recipe.label}"
+            )
+        skipped = parse_skip_lines(combined)
+        preflight_receipts = parse_preflight_receipts(combined)
+        if provenance["corpus"]["preflight_receipts_required"]:
+            missing_receipts = sorted(benches - set(preflight_receipts))
+            unexpected_receipts = sorted(set(preflight_receipts) - benches)
+            if missing_receipts or unexpected_receipts:
+                raise ContractViolation(
+                    "Criterion discovery preflight receipts differ from registered benchmarks: "
+                    f"missing={missing_receipts}, unexpected={unexpected_receipts}"
+                )
+        provenance["discovery"] = {
+            "bench_count": len(benches),
+            "benches": sorted(benches),
+            "skipped": skipped,
+            "preflight_receipts": preflight_receipts,
+            "output_sha256": hashlib.sha256(combined.encode("utf-8")).hexdigest(),
+        }
+        if _path_sha256(lockfile) != provenance["lockfile"]["sha256"]:
+            raise ContractViolation(f"Cargo.lock changed while preparing {recipe.label}")
+        if _path_sha256(executable) != executable_sha256:
+            raise ContractViolation(
+                f"bench executable changed while discovering {recipe.label}"
+            )
+        return (
+            PreparedRunner(
+                recipe=recipe,
+                executable=executable,
+                executable_sha256=executable_sha256,
+                benches=benches,
+                skipped=skipped,
+                provenance=provenance,
+                env=env,
+                frozen=freeze_plan is not None,
+            ),
+            provenance,
+            errors,
+        )
+    except Exception as error:
+        errors.append(str(error))
+        provenance["preparation_error"] = str(error)
+        return None, provenance, errors
+
+
+def _availability(runner: PreparedRunner, exact: str | None) -> str:
+    if exact is None:
+        return "not_selected"
+    if exact in runner.benches:
+        return "available"
+    group, name = split_exact_bench(exact)
+    if name in runner.skipped.get(group, []):
+        return "skipped"
+    return "missing"
+
+
+def _fixture_metadata(fixture: Any | None) -> dict[str, Any] | None:
+    if fixture is None:
+        return None
+    return {
+        "name": fixture.name,
+        "family": fixture.family,
+        "size": fixture.size,
+        "category": fixture.category,
+        "source": fixture.source,
+        "suites": list(fixture.suites),
+        "features": list(fixture.features),
+        "quality": list(fixture.quality),
+    }
+
+
+def _lane_metadata(lane: LaneMetadata | None) -> dict[str, Any] | None:
+    return asdict(lane) if lane is not None else None
+
+
+def _optional_lane_for_group(corpus: Any, group: str | None) -> LaneMetadata | None:
+    if group is None or not corpus.lanes:
+        return None
+    try:
+        return resolve_lane_group(corpus, group)
+    except ValueError as error:
+        if corpus.schema_version >= 2:
+            raise ContractViolation(
+                f"schema-v2 corpus has no registered lane for benchmark group {group!r}"
+            ) from error
+        return None
+
+
+def _lane_matches_group(lane: LaneMetadata, group: str) -> bool:
+    return any(
+        lane_selector_group(selector) == group
+        for selector in (lane.selector, *lane.history_aliases)
+    )
+
+
+def _effective_operation_lanes(
+    *,
+    base_lane: LaneMetadata | None,
+    head_lane: LaneMetadata | None,
+    base_group: str | None,
+    head_group: str | None,
+) -> tuple[LaneMetadata | None, LaneMetadata | None]:
+    effective_base = base_lane
+    effective_head = head_lane
+    if (
+        effective_base is None
+        and head_lane is not None
+        and base_group is not None
+        and _lane_matches_group(head_lane, base_group)
+    ):
+        effective_base = head_lane
+    if (
+        effective_head is None
+        and base_lane is not None
+        and head_group is not None
+        and _lane_matches_group(base_lane, head_group)
+    ):
+        effective_head = base_lane
+    return effective_base, effective_head
+
+
+def _recipe_with_lane_divisor(
+    recipe: RunnerRecipe,
+    *,
+    lane: LaneMetadata | None,
+    explicit_divisor: int | None,
+) -> RunnerRecipe:
+    if lane is None:
+        divisor = explicit_divisor if explicit_divisor is not None else 1
+    else:
+        divisor = lane.logical_operations_per_estimate
+        if explicit_divisor is not None and explicit_divisor != divisor:
+            raise ContractViolation(
+                f"{recipe.label} logical-operation divisor {explicit_divisor} conflicts "
+                f"with lane {lane.id!r} divisor {divisor}"
+            )
+    return replace(recipe, logical_operations=divisor)
+
+
+def _load_fixture_contracts(
+    *,
+    base_recipe: RunnerRecipe,
+    head_recipe: RunnerRecipe,
+    suite: str,
+    common_group: str | None,
+    base_group_override: str | None,
+    head_group_override: str | None,
+    filter_expr: str | None,
+) -> tuple[
+    list[dict[str, Any]],
+    dict[str, Any],
+    tuple[LaneMetadata | None, LaneMetadata | None],
+]:
+    base_corpus_path = (
+        base_recipe.corpus
+        if base_recipe.corpus.is_absolute()
+        else base_recipe.checkout / base_recipe.corpus
+    )
+    head_corpus_path = (
+        head_recipe.corpus
+        if head_recipe.corpus.is_absolute()
+        else head_recipe.checkout / head_recipe.corpus
+    )
+    base_corpus = load_corpus(base_corpus_path, view=base_recipe.corpus_view)
+    head_corpus = load_corpus(head_corpus_path, view=head_recipe.corpus_view)
+    base_metadata = {fixture.name: fixture for fixture in base_corpus.fixtures}
+    head_metadata = {fixture.name: fixture for fixture in head_corpus.fixtures}
+
+    if filter_expr:
+        exact_filters = expand_filter_to_exact_benches(filter_expr)
+        requested: list[tuple[str, str, str]] = []
+        for exact in exact_filters:
+            _, name = split_exact_bench(exact)
+            requested.append((name, exact, exact))
+        base_selected = {name for name, _, _ in requested}
+        head_selected = set(base_selected)
+        filter_groups = {split_exact_bench(exact)[0] for exact in exact_filters}
+        base_group = next(iter(filter_groups)) if len(filter_groups) == 1 else None
+        head_group = base_group
+        selection = {
+            "kind": "filter",
+            "filter": filter_expr,
+            "suite": None,
+            "group": None,
+            "groups": {"base": base_group, "head": head_group},
+        }
+    else:
+        base_fixtures = select_corpus_fixtures(base_corpus, suite)
+        head_fixtures = select_corpus_fixtures(head_corpus, suite)
+        base_selected = {fixture.name for fixture in base_fixtures}
+        head_selected = {fixture.name for fixture in head_fixtures}
+        names = list(dict.fromkeys([fixture.name for fixture in base_fixtures + head_fixtures]))
+        base_group = base_group_override or common_group or base_corpus.default_group
+        head_group = head_group_override or common_group or head_corpus.default_group
+        requested = [
+            (
+                name,
+                f"{base_group}/{name}" if name in base_selected else "",
+                f"{head_group}/{name}" if name in head_selected else "",
+            )
+            for name in names
+        ]
+        selection = {
+            "kind": "suite",
+            "filter": None,
+            "suite": suite,
+            "group": base_group if base_group == head_group else None,
+            "groups": {"base": base_group, "head": head_group},
+        }
+
+    contracts: list[dict[str, Any]] = []
+    for name, base_exact_raw, head_exact_raw in requested:
+        base_fixture = base_metadata.get(name)
+        head_fixture = head_metadata.get(name)
+        base_path = resolve_merman_fixture_path(base_recipe.checkout, name, base_fixture)
+        head_path = resolve_merman_fixture_path(head_recipe.checkout, name, head_fixture)
+        byte_contract = fixture_byte_comparison(base_path, head_path)
+        contracts.append(
+            {
+                "name": name,
+                "family": (
+                    head_fixture.family
+                    if head_fixture is not None
+                    else base_fixture.family if base_fixture is not None else "unknown"
+                ),
+                "base_benchmark": base_exact_raw or None,
+                "head_benchmark": head_exact_raw or None,
+                "selected": {
+                    "base": name in base_selected,
+                    "head": name in head_selected,
+                },
+                "metadata": {
+                    "base": _fixture_metadata(base_fixture),
+                    "head": _fixture_metadata(head_fixture),
+                },
+                "bytes": byte_contract,
+            }
+        )
+    selection["corpora"] = {
+        "base": _describe_required_file(base_corpus_path),
+        "head": _describe_required_file(head_corpus_path),
+    }
+    base_lane = _optional_lane_for_group(base_corpus, base_group)
+    head_lane = _optional_lane_for_group(head_corpus, head_group)
+    effective_lanes = _effective_operation_lanes(
+        base_lane=base_lane,
+        head_lane=head_lane,
+        base_group=base_group,
+        head_group=head_group,
+    )
+    selection["lane_contracts"] = {
+        "declared": {
+            "base": _lane_metadata(base_lane),
+            "head": _lane_metadata(head_lane),
+        },
+        "effective": {
+            "base": _lane_metadata(effective_lanes[0]),
+            "head": _lane_metadata(effective_lanes[1]),
+        },
+    }
+    return contracts, selection, effective_lanes
+
+
+def _complete_fixture_contracts(
+    contracts: list[dict[str, Any]],
+    *,
+    base: PreparedRunner,
+    head: PreparedRunner,
+) -> list[dict[str, Any]]:
+    def receipt_for(runner: PreparedRunner, benchmark: str | None) -> dict[str, Any] | None:
+        if benchmark is None:
+            return None
+        discovery = runner.provenance.get("discovery", {})
+        receipts = discovery.get("preflight_receipts", {})
+        receipt = receipts.get(benchmark) if isinstance(receipts, dict) else None
+        return receipt if isinstance(receipt, dict) else None
+
+    def identity(receipt: dict[str, Any]) -> dict[str, Any]:
+        return {key: value for key, value in receipt.items() if key != "benchmark"}
+
+    for contract in contracts:
+        base_status = _availability(base, contract["base_benchmark"])
+        head_status = _availability(head, contract["head_benchmark"])
+        contract["capability"] = {"base": base_status, "head": head_status}
+        base_receipt = receipt_for(base, contract["base_benchmark"])
+        head_receipt = receipt_for(head, contract["head_benchmark"])
+        base_requires_receipt = bool(
+            base.provenance.get("corpus", {}).get("preflight_receipts_required")
+        )
+        head_requires_receipt = bool(
+            head.provenance.get("corpus", {}).get("preflight_receipts_required")
+        )
+        if base_receipt is not None and head_receipt is not None:
+            output_identity_status = (
+                "matched"
+                if identity(base_receipt) == identity(head_receipt)
+                else "differs"
+            )
+        elif not base_requires_receipt or not head_requires_receipt:
+            output_identity_status = "legacy_unavailable"
+        else:
+            output_identity_status = "missing"
+        contract["output_identity"] = {
+            "status": output_identity_status,
+            "base": base_receipt,
+            "head": head_receipt,
+        }
+        reasons: list[str] = []
+        if not contract["selected"]["base"] or not contract["selected"]["head"]:
+            reasons.append("fixture is not selected by both corpus recipes")
+        if contract["bytes"]["status"] != "identical":
+            reasons.append(f"fixture bytes are {contract['bytes']['status']}")
+        if base_status != "available" or head_status != "available":
+            reasons.append(f"benchmark capability base={base_status}, head={head_status}")
+        if output_identity_status == "differs":
+            reasons.append("benchmark output identity differs")
+        elif output_identity_status != "matched":
+            missing_sides = [
+                side
+                for side, receipt in (("base", base_receipt), ("head", head_receipt))
+                if receipt is None
+            ]
+            reasons.append(
+                "benchmark output identity is unavailable on " + "/".join(missing_sides)
+            )
+        selected_base = contract["selected"]["base"]
+        selected_head = contract["selected"]["head"]
+        selected_capability_failed = (
+            selected_base and base_status != "available"
+        ) or (selected_head and head_status != "available")
+        if selected_capability_failed:
+            coverage_class = "execution_failure"
+        elif not selected_base and selected_head:
+            coverage_class = "current_only"
+        elif selected_base and not selected_head:
+            coverage_class = "historical_only"
+        elif contract["bytes"]["status"] != "identical":
+            coverage_class = "input_mismatch"
+        elif output_identity_status == "differs":
+            coverage_class = "output_mismatch"
+        elif output_identity_status != "matched":
+            coverage_class = "unverified_output"
+        else:
+            coverage_class = "common"
+        contract["coverage_class"] = coverage_class
+        contract["coverage_status"] = "comparable" if not reasons else "coverage_only"
+        contract["coverage_reasons"] = reasons
+    return contracts
+
+
+def _measure_once(
+    runner: PreparedRunner,
+    *,
+    exact_bench: str,
+    sample_size: int,
+    warm_up_seconds: int,
+    measurement_seconds: int,
+    timeout_seconds: int,
+    sequence_index: int,
+) -> dict[str, Any]:
+    command = criterion_command(
+        executable=runner.executable,
+        exact_bench=exact_bench,
+        sample_size=sample_size,
+        warm_up_seconds=warm_up_seconds,
+        measurement_seconds=measurement_seconds,
+    )
+    print(
+        f"[measure {sequence_index}] {runner.recipe.label}: {exact_bench}",
+        flush=True,
+    )
+    result = _run_process(
+        command,
+        cwd=runner.recipe.checkout,
+        env=runner.env,
+        timeout_seconds=timeout_seconds,
+    )
+    _require_success(result, command=command, cwd=runner.recipe.checkout)
+    output = "\n".join((result.stdout, result.stderr))
+    receipts = parse_preflight_receipts(output)
+    postflight_receipts = parse_postflight_receipts(output)
+    discovery = runner.provenance.get("discovery", {})
+    discovery_receipts = discovery.get("preflight_receipts", {})
+    expected_receipt = (
+        discovery_receipts.get(exact_bench)
+        if isinstance(discovery_receipts, dict)
+        else None
+    )
+    actual_receipt = receipts.get(exact_bench)
+    requires_receipt = bool(
+        runner.provenance.get("corpus", {}).get("preflight_receipts_required")
+    )
+    if expected_receipt is not None:
+        if actual_receipt is None:
+            raise ContractViolation(
+                f"Criterion output did not repeat the preflight receipt for {exact_bench}"
+            )
+        if set(receipts) != {exact_bench}:
+            raise ContractViolation(
+                "Criterion preflight receipts differ from the exact benchmark: "
+                f"expected={[exact_bench]}, actual={sorted(receipts)}"
+            )
+        if actual_receipt != expected_receipt:
+            raise ContractViolation(
+                f"Criterion output identity changed after discovery for {exact_bench}"
+            )
+        if postflight_receipts != {exact_bench}:
+            raise ContractViolation(
+                "Criterion postflight receipts differ from the exact benchmark: "
+                f"expected={[exact_bench]}, actual={sorted(postflight_receipts)}"
+            )
+    elif requires_receipt:
+        raise ContractViolation(
+            f"Criterion discovery has no preflight receipt for {exact_bench}"
+        )
+    prefix, name = split_exact_bench(exact_bench)
+    estimate = parse_criterion_times(output, prefix=prefix).get(name)
+    if estimate is None:
+        skip_map = parse_skip_lines(output)
+        reason = skip_map.get(prefix, [])
+        detail = f"; skip={reason}" if reason else ""
+        raise ContractViolation(
+            f"Criterion output did not contain a point estimate for {exact_bench}{detail}: "
+            f"{_output_tail(output)}"
+        )
+    raw_ns = estimate.to_nanos()
+    normalized_ns = raw_ns / runner.recipe.logical_operations
+    if not math.isfinite(normalized_ns) or normalized_ns <= 0.0:
+        raise ContractViolation(
+            f"invalid normalized estimate for {exact_bench}: {normalized_ns} ns"
+        )
+    return {
+        "runner": runner.recipe.label,
+        "sequence_index": sequence_index,
+        "benchmark": exact_bench,
+        "raw_estimate_ns": raw_ns,
+        "logical_operations": runner.recipe.logical_operations,
+        "normalized_ns": normalized_ns,
+        "output_identity": actual_receipt,
+        "postflight_verified": postflight_receipts == {exact_bench},
+        "command": command,
+        "output_sha256": hashlib.sha256(output.encode("utf-8")).hexdigest(),
+    }
+
+
+def _verify_runner_executable(runner: PreparedRunner, *, phase: str) -> dict[str, Any]:
+    current = _path_sha256(runner.executable)
+    if current != runner.executable_sha256:
+        raise ContractViolation(
+            f"{runner.recipe.label} executable digest changed during {phase}"
+        )
+    verification = {
+        "path": str(runner.executable),
+        "sha256": current,
+        "status": "verified",
+    }
+    if runner.frozen is True:
+        mode = stat.S_IMODE(runner.executable.stat().st_mode)
+        verification["mode"] = f"{mode:04o}"
+        if mode != 0o555:
+            raise ContractViolation(
+                f"{runner.recipe.label} frozen executable mode changed during {phase}: "
+                f"expected 0555, observed {mode:04o}"
+            )
+        if not os.access(runner.executable, os.X_OK):
+            raise ContractViolation(
+                f"{runner.recipe.label} frozen executable is not executable during {phase}"
+            )
+    return verification
+
+
+def _round_executable_verification(
+    runners: Sequence[PreparedRunner], *, phase: str
+) -> dict[str, Any] | None:
+    frozen = [runner for runner in runners if getattr(runner, "frozen", False) is True]
+    if not frozen:
+        return None
+    return {
+        runner.recipe.label: _verify_runner_executable(runner, phase=phase)
+        for runner in frozen
+    }
+
+
+def _run_paired_schedule(
+    base: PreparedRunner,
+    *,
+    head: PreparedRunner | None = None,
+    contracts: list[dict[str, Any]],
+    pair_count: int,
+    start_with_a: bool = True,
+    sample_size: int,
+    warm_up_seconds: int,
+    measurement_seconds: int,
+    timeout_seconds: int,
+) -> dict[str, Any]:
+    if head is None:
+        benchmark_key = f"{base.recipe.label}_benchmark"
+        arms = (("a", base, benchmark_key), ("b", base, benchmark_key))
+        runners = (base,)
+        phase = "A/A"
+    else:
+        arms = (("base", base, "base_benchmark"), ("head", head, "head_benchmark"))
+        runners = (base, head)
+        phase = "A/B"
+
+    rows: dict[str, list[dict[str, Any]]] = {item["name"]: [] for item in contracts}
+    rounds: list[dict[str, Any]] = []
+    errors: dict[str, str] = {}
+    sequence_index = 0
+    for pair_index in range(pair_count):
+        order = stats.pair_order(pair_index, start_with_a=start_with_a)
+        first, second = arms if order == "AB" else arms[::-1]
+        round_record: dict[str, Any] = {"pair_index": pair_index, "order": order, "benchmarks": {}}
+        rounds.append(round_record)
+        try:
+            before = _round_executable_verification(
+                runners, phase=f"{phase} pair {pair_index} before sampling"
+            )
+            if before is not None:
+                round_record["executable_verification"] = {"before": before}
+            for contract in contracts:
+                name = contract["name"]
+                if name in errors:
+                    continue
+                record: dict[str, Any] = {"pair_index": pair_index, "order": order}
+                try:
+                    for role, runner, benchmark_key in (first, second):
+                        sequence_index += 1
+                        record[role] = _measure_once(
+                            runner,
+                            exact_bench=contract[benchmark_key],
+                            sample_size=sample_size,
+                            warm_up_seconds=warm_up_seconds,
+                            measurement_seconds=measurement_seconds,
+                            timeout_seconds=timeout_seconds,
+                            sequence_index=sequence_index,
+                        )
+                    if head is None:
+                        record["first"] = record[first[0]]
+                        record["second"] = record[second[0]]
+                    rows[name].append(record)
+                except Exception as error:
+                    record["error"] = errors[name] = str(error)
+                round_record["benchmarks"][name] = record
+            after = _round_executable_verification(
+                runners, phase=f"{phase} pair {pair_index} after sampling"
+            )
+            if after is not None:
+                round_record.setdefault("executable_verification", {})["after"] = after
+        except Exception as error:
+            message = str(error)
+            round_record.setdefault("executable_verification", {})["error"] = message
+            errors.update(dict.fromkeys(rows, message))
+            break
+    return {"pair_count": pair_count, "rounds": rounds, "rows": rows, "errors": errors}
+
+
+def _low_latency_baselines(args: argparse.Namespace) -> dict[str, float]:
+    baselines: dict[str, float] = {}
+    for value in getattr(args, "low_latency_baseline_ns", []):
+        name, separator, raw_ns = value.partition("=")
+        try:
+            baseline = float(raw_ns)
+        except ValueError as error:
+            raise ContractViolation("--low-latency-baseline-ns requires FIXTURE=NS") from error
+        if not separator or not name or name in baselines:
+            raise ContractViolation("low-latency frozen baselines need unique fixture names")
+        if not math.isfinite(baseline) or not 0.0 < baseline < 500_000.0:
+            raise ContractViolation("low-latency frozen baseline must be positive and below 500 us")
+        baselines[name] = baseline
+    return baselines
+
+
+def _verification_errors(
+    runner: PreparedRunner, *, timeout_seconds: int
+) -> list[str]:
+    errors: list[str] = []
+    verification: dict[str, Any] = {"files": {}}
+    try:
+        executable = _verify_runner_executable(runner, phase="final verification")
+        verification["executable"] = executable
+        verification["executable_sha256"] = executable["sha256"]
+        if runner.frozen is True:
+            frozen_path = Path(
+                runner.provenance["shared_target_freeze"]["frozen_executable"]["path"]
+            ).resolve()
+            if frozen_path != runner.executable.resolve():
+                errors.append(
+                    f"{runner.recipe.label} runner no longer references its frozen executable"
+                )
+    except Exception as error:
+        errors.append(str(error))
+    for key in ("manifest", "workspace_manifest", "lockfile", "corpus"):
+        try:
+            frozen = runner.provenance[key]
+            current = _path_sha256(Path(frozen["path"]))
+            verification["files"][key] = current
+            if current != frozen["sha256"]:
+                errors.append(
+                    f"{runner.recipe.label} {key} digest changed during sampling"
+                )
+        except Exception as error:
+            errors.append(str(error))
+    try:
+        frozen = runner.provenance["bench_source"]
+        source = _describe_bench_source(
+            Path(frozen["path"]), recipe=runner.recipe, criterion_env=runner.env
+        )
+        verification["files"]["bench_source"] = source["sha256"]
+        if source["sha256"] != frozen["sha256"]:
+            errors.append(f"{runner.recipe.label} bench_source digest changed during sampling")
+        if source.get("modules") != frozen.get("modules"):
+            errors.append(f"{runner.recipe.label} benchmark source modules changed during sampling")
+    except Exception as error:
+        errors.append(str(error))
+    try:
+        _manifest, current_target, _source = _describe_cargo_bench_target(
+            runner.recipe.checkout,
+            runner.recipe.package,
+            runner.recipe.bench,
+            toolchain=runner.recipe.toolchain,
+            timeout_seconds=timeout_seconds,
+        )
+        verification["files"]["bench_target"] = current_target["sha256"]
+        if current_target["sha256"] != runner.provenance["bench_target"]["sha256"]:
+            errors.append(
+                f"{runner.recipe.label} Cargo bench target metadata changed during sampling"
+            )
+    except Exception as error:
+        errors.append(str(error))
+    preflight_contract = runner.provenance.get("corpus", {}).get(
+        "preflight_contract"
+    )
+    if isinstance(preflight_contract, dict):
+        try:
+            current = _path_sha256(Path(preflight_contract["path"]))
+            verification["files"]["preflight_contract"] = current
+            if current != preflight_contract["sha256"]:
+                errors.append(
+                    f"{runner.recipe.label} preflight contract digest changed during sampling"
+                )
+        except Exception as error:
+            errors.append(str(error))
+    try:
+        current_git = _git_provenance(
+            runner.recipe.checkout,
+            allow_dirty=True,
+            timeout_seconds=timeout_seconds,
+        )
+        frozen_git = runner.provenance["git"]
+        verification["git"] = current_git
+        if current_git["revision"] != frozen_git["revision"]:
+            errors.append(f"{runner.recipe.label} git revision changed during sampling")
+        if current_git.get("tree") != frozen_git.get("tree"):
+            errors.append(f"{runner.recipe.label} git tree changed during sampling")
+        if current_git["dirty_entries"] != frozen_git["dirty_entries"]:
+            errors.append(f"{runner.recipe.label} dirty tree changed during sampling")
+    except Exception as error:
+        errors.append(str(error))
+    verification["status"] = "verified" if not errors else "failed"
+    runner.provenance["post_sampling_verification"] = verification
+    return errors
+
+
+def _fixture_verification_errors(contracts: Sequence[dict[str, Any]]) -> list[str]:
+    errors: list[str] = []
+    for contract in contracts:
+        verification: dict[str, Any] = {}
+        for side in ("base", "head"):
+            frozen = contract["bytes"][side]
+            path = Path(frozen["path"])
+            current = _file_description(path)
+            verification[side] = current
+            if current["sha256"] != frozen["sha256"] or current["bytes"] != frozen["bytes"]:
+                errors.append(
+                    f"{side} fixture {contract['name']} changed during sampling: {path}"
+                )
+        verification["status"] = (
+            "verified"
+            if all(
+                verification[side]["sha256"] == contract["bytes"][side]["sha256"]
+                and verification[side]["bytes"] == contract["bytes"][side]["bytes"]
+                for side in ("base", "head")
+            )
+            else "failed"
+        )
+        contract["post_sampling_verification"] = verification
+    return errors
+
+
+def _comparison_row(
+    contract: dict[str, Any],
+    *,
+    pairs: list[dict[str, Any]],
+    evidence_mode: str,
+    required_pairs: int,
+    relative_threshold: float,
+    absolute_threshold_ns: float,
+    confidence_level: float,
+    bootstrap_seed: int,
+    bootstrap_resamples: int,
+    confidence_family_size: int = 2,
+    forced_outcome: str | None = None,
+    reason: str | None = None,
+    joint_policy: dict[str, Any] | None = None,
+    fixed_confirmation_pairs: int | None = None,
+) -> dict[str, Any]:
+    row: dict[str, Any] = {
+        "benchmark": contract["head_benchmark"] or contract["base_benchmark"] or contract["name"],
+        "fixture": contract["name"],
+        "family": contract["family"],
+        "base_benchmark": contract["base_benchmark"],
+        "head_benchmark": contract["head_benchmark"],
+        "coverage_status": contract.get("coverage_status"),
+        "output_identity": contract.get("output_identity"),
+        "pair_count": len(pairs),
+        "required_pairs": required_pairs,
+        "thresholds": {"log_ratio": relative_threshold, "absolute_ns": absolute_threshold_ns},
+        "evidence_mode": evidence_mode,
+        "bootstrap": {
+            "seed": bootstrap_seed,
+            "resamples": bootstrap_resamples,
+            "confidence_level": confidence_level,
+            "interval": "one_sided",
+            "confidence_family_size": confidence_family_size,
+            "multiplicity_adjustment": "bonferroni",
+        },
+        "raw_pairs": pairs,
+        "reason": reason,
+        "base_ns": None,
+        "head_ns": None,
+        "bounds": None,
+        "improvement_outcome": None,
+    }
+    if forced_outcome is not None:
+        row["outcome"] = forced_outcome
+        return row
+    base_values = [pair["base"]["normalized_ns"] for pair in pairs]
+    head_values = [pair["head"]["normalized_ns"] for pair in pairs]
+    if not base_values or len(base_values) != len(head_values):
+        row["outcome"] = "contract_failure"
+        row["reason"] = "comparison schedule did not produce complete pairs"
+        return row
+    bounds = stats.paired_bounds(
+        base_ns=base_values,
+        head_ns=head_values,
+        confidence_level=confidence_level,
+        bootstrap_seed=bootstrap_seed,
+        bootstrap_resamples=bootstrap_resamples,
+        family_size=confidence_family_size,
+    )
+    row["base_ns"] = statistics.fmean(base_values)
+    row["head_ns"] = statistics.fmean(head_values)
+    row["bounds"] = stats.bounds_with_relative_percent(bounds)
+    if joint_policy is not None:
+        row["bounds"]["confidence_contract"] = {
+            "component_tail_error_rate": (1.0 - confidence_level) / confidence_family_size,
+            "family_size": confidence_family_size,
+            "multiplicity_adjustment": "bonferroni",
+            "coverage": "conditional_bootstrap_one_sided; not simultaneous two-tail coverage",
+        }
+        row["outcome"] = stats.classify_joint_confirmation(
+            bounds, policy=joint_policy, pair_count=len(pairs),
+            fixed_pairs=fixed_confirmation_pairs or 0,
+            relative_threshold=relative_threshold, absolute_threshold_ns=absolute_threshold_ns,
+        )
+        return row
+    row["outcome"] = stats.classify_confirmation(
+        bounds,
+        relative_threshold=relative_threshold,
+        absolute_threshold_ns=absolute_threshold_ns,
+        direction="regression",
+        evidence_mode=evidence_mode,
+        pair_count=len(pairs),
+        required_pairs=required_pairs,
+    )
+    row["improvement_outcome"] = stats.classify_confirmation(
+        bounds,
+        relative_threshold=relative_threshold,
+        absolute_threshold_ns=absolute_threshold_ns,
+        direction="improvement",
+        evidence_mode=evidence_mode,
+        pair_count=len(pairs),
+        required_pairs=required_pairs,
+    )
+    return row
+
+
+def _append_contract_error(report: dict[str, Any], stage: str, message: str) -> None:
+    report.setdefault("contract_errors", []).append({"stage": stage, "message": message})
+
+
+def _revoke_timing_claims(report: dict[str, Any], *, reason: str) -> None:
+    for row in report.get("rows", []):
+        row["outcome"] = "contract_failure"
+        row["improvement_outcome"] = None
+        row["base_ns"] = None
+        row["head_ns"] = None
+        row["bounds"] = None
+        existing_reason = row.get("reason")
+        row["reason"] = f"{existing_reason}; {reason}" if existing_reason else reason
+
+
+def _finalize_summary(report: dict[str, Any]) -> int:
+    if report.get("contract_errors"):
+        _revoke_timing_claims(
+            report,
+            reason="the evidence contract failed; timing claims were revoked",
+        )
+    rows = report.get("rows", [])
+    outcomes = [row.get("outcome", "contract_failure") for row in rows]
+    if report.get("contract_errors"):
+        outcomes.append("contract_failure")
+    exit_code = suite_exit_code(outcomes)
+    if "contract_failure" in outcomes:
+        outcome = "contract_failure"
+    elif "confirmed_regression" in outcomes:
+        outcome = "confirmed_regression"
+    elif "inconclusive" in outcomes:
+        outcome = "inconclusive"
+    elif report["method"]["discovery_only"] or report["method"]["evidence_mode"] == "diagnostic":
+        outcome = "diagnostic_advisory"
+    else:
+        outcome = "confirmed_non_regression"
+    comparable = sum(
+        1 for fixture in report.get("fixtures", []) if fixture.get("coverage_status") == "comparable"
+    )
+    report["summary"] = {
+        "outcome": outcome,
+        "exit_code": exit_code,
+        "comparable": comparable,
+        "contract_failures": len(report.get("contract_errors", []))
+        + sum(1 for row in rows if row.get("outcome") == "contract_failure"),
+        "confirmed_regressions": sum(
+            1 for row in rows if row.get("outcome") == "confirmed_regression"
+        ),
+        "inconclusive": sum(1 for row in rows if row.get("outcome") == "inconclusive"),
+        "confirmed_improvements": sum(
+            1 for row in rows if row.get("improvement_outcome") == "confirmed_improvement"
+        ),
+    }
+    if exit_code == 2:
+        quality = "invalid_contract"
+    elif report["method"]["discovery_only"]:
+        quality = "discovery_only"
+    elif report["method"]["evidence_mode"] == "diagnostic":
+        quality = "diagnostic_advisory"
+    elif exit_code == 3:
+        quality = "statistically_inconclusive"
+    else:
+        quality = "decision_grade"
+    report["method"]["evidence_quality"] = quality
+    return exit_code
+
+
+def write_decision_markdown(path: Path, report: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    summary = report["summary"]
+    method = report["method"]
+    joint = method.get("confirmation_protocol") == JOINT_PROTOCOL
+    relative_threshold = method.get("relative_threshold_percent")
+    relative_threshold_text = (
+        f"+{relative_threshold:.2f}%"
+        if isinstance(relative_threshold, (int, float))
+        else "unavailable"
+    )
+    confidence_contract = method.get("confidence_contract", {})
+    simultaneous_confidence = confidence_contract.get(
+        "simultaneous_confidence_level",
+        method.get("confidence_level"),
+    )
+    component_confidence = confidence_contract.get("component_confidence_level")
+    simultaneous_confidence_text = (
+        f"{float(simultaneous_confidence) * 100.0:g}%"
+        if isinstance(simultaneous_confidence, (int, float))
+        and not isinstance(simultaneous_confidence, bool)
+        else "unavailable"
+    )
+    component_confidence_text = (
+        f"{float(component_confidence) * 100.0:g}%"
+        if isinstance(component_confidence, (int, float))
+        and not isinstance(component_confidence, bool)
+        else "unavailable"
+    )
+    lines = [
+        "# Merman Self Performance Comparison",
+        "",
+        "> Generated by `tools/bench/bench.py ab` from schema v2 evidence.",
+        "",
+        "## Summary",
+        "",
+        f"- Outcome: `{summary['outcome']}`",
+        f"- Exit code: `{summary['exit_code']}`",
+        f"- Evidence quality: `{method['evidence_quality']}`",
+        f"- Comparable benchmarks: `{summary['comparable']}`",
+        f"- Evidence mode: `{method['evidence_mode']}`",
+        f"- Confirmation protocol: `{method.get('confirmation_protocol', 'generic_v2')}`",
+        f"- Preset: `{method['preset']}`",
+        f"- Base label: `{report['comparison']['base_label']}`",
+        f"- Head label: `{report['comparison']['head_label']}`",
+        f"- Relative threshold: `{relative_threshold_text}`",
+        f"- Absolute threshold: `{fmt_time(method.get('absolute_threshold_ns'))}`",
+        *( [f"- Joint decision family-wise error rate: `{method.get('decision_error_contract', {}).get('family_wise_error_rate', 'unavailable')}` (conditional bootstrap approximation; not simultaneous two-tail coverage)"]
+           if joint else [f"- Simultaneous confidence: `{simultaneous_confidence_text}`"] ),
+        f"- Multiplicity adjustment: `{confidence_contract.get('multiplicity_adjustment', 'unavailable')}`",
+        f"- Confidence family: `{confidence_contract.get('family_size', 'unavailable')}` components "
+        f"at `{component_confidence_text}` each",
+        "",
+        "## Recipes",
+        "",
+    ]
+    for side in ("base", "head"):
+        recipe = report.get("recipes", {}).get(side, {})
+        runner = report.get("runners", {}).get(side, {})
+        git = runner.get("git", {})
+        executable = runner.get("executable", {})
+        lines.extend(
+            [
+                f"- {side}: `{recipe.get('package', 'unavailable')}` / "
+                f"`{recipe.get('bench', 'unavailable')}`, "
+                f"features `{','.join(recipe.get('features', [])) or '<none>'}`, "
+                f"logical operations `{recipe.get('logical_operations', 'unavailable')}`, "
+                f"revision `{git.get('revision', 'unknown')}`",
+                f"- {side} executable SHA-256: `{executable.get('sha256', 'unavailable')}`",
+            ]
+        )
+    lines.extend(
+        [
+            "",
+            "## Results",
+            "",
+            "| base benchmark | head benchmark | base | head | relative bounds | absolute bounds | outcome | improvement |",
+            "|---|---|---:|---:|---:|---:|---|---|",
+        ]
+    )
+    for row in report.get("rows", []):
+        bounds = row.get("bounds") or {}
+        relative = bounds.get("relative_percent")
+        absolute = bounds.get("absolute_ns")
+        relative_text = (
+            f"{relative['lower']:+.2f}% .. {relative['upper']:+.2f}%"
+            if relative
+            else "-"
+        )
+        absolute_text = (
+            f"{pretty_time(absolute['lower'])} .. {pretty_time(absolute['upper'])}"
+            if absolute
+            else "-"
+        )
+        lines.append(
+            f"| `{row.get('base_benchmark') or row['benchmark']}` | "
+            f"`{row.get('head_benchmark') or row['benchmark']}` | "
+            f"{fmt_time(row.get('base_ns'))} | "
+            f"{fmt_time(row.get('head_ns'))} | {relative_text} | {absolute_text} | "
+            f"`{row['outcome']}` | `{row.get('improvement_outcome') or '-'}` |"
+        )
+    materiality = method.get("materiality_contract", {})
+    if joint:
+        contract = method.get("joint_non_regression_contract", {})
+        plan = contract.get("calibration_plan") or {}
+        lines.extend([
+            "", "## Joint Non-regression Certificates", "",
+            f"Fixed full-cohort confirmation pairs: `{contract.get('fixed_confirmation_pairs')}`.",
+            f"Pre-A/B plan: `{plan.get('path', 'unavailable')}`; SHA-256 `{plan.get('sha256', 'unavailable')}`.",
+            "", "| fixture | selected metric | relative qualified / required pairs | absolute qualified / required pairs |",
+            "|---|---|---|---|",
+        ])
+        for name, policy in contract.get("rows", {}).items():
+            relative = policy["metrics"]["log_ratio"]
+            absolute = policy["metrics"]["absolute_ns"]
+            lines.append(f"| `{name}` | `{policy['selected_metric']}` | `{relative['qualified']}` / {relative['required_pairs']} | `{absolute['qualified']}` / {absolute['required_pairs']} |")
+    if materiality.get("mode") == "low_latency_public_operation":
+        lines.extend([
+            "", "## Low-latency Materiality", "",
+            "Thresholds and the fixed confirmation count were derived after independent A/A "
+            "and before fresh A/B. Every selected row must pass calibration.", "",
+            "| fixture | frozen baseline | relative noise (log) | absolute noise | relative threshold (log) | absolute threshold | required pairs | stable |",
+            "|---|---:|---:|---:|---:|---:|---:|---|",
+        ])
+        for name, policy in materiality.get("rows", {}).items():
+            lines.append(
+                f"| `{name}` | {fmt_time(policy['baseline_ns'])} | "
+                f"{policy['noise']['log_ratio']:.6g} | {fmt_time(policy['noise']['absolute_ns'])} | "
+                f"{policy['thresholds']['log_ratio']:.6g} | "
+                f"{fmt_time(policy['thresholds']['absolute_ns'])} | "
+                f"{policy['required_pairs']} | `{policy['stable']}` |"
+            )
+    if report.get("contract_errors"):
+        lines.extend(["", "## Contract Errors", ""])
+        for error in report["contract_errors"]:
+            lines.append(f"- `{error['stage']}`: {error['message']}")
+    lines.extend(
+        [
+            "",
+            "## Interpretation",
+            "",
+            ("This protocol assesses joint non-regression only. The A/A-selected certificate is frozen "
+             "before a complete fresh balanced A/B schedule. Joint regression additionally needs both "
+             "qualified metrics and both sampling requirements. Improvement is not assessed; zero "
+             "confirmed improvements does not mean no improvement. A/A sample sizing is a heuristic, "
+             "not guaranteed power. Historical receipts are not reclassified."
+             if joint else "Diagnostic results are advisory. Confirmation results use fresh balanced pairs, "
+            "paired one-sided confidence bounds, and both registered thresholds. Candidate "
+            "admission additionally requires the mirrored improvement result and non-performance gates."),
+            "",
+        ]
+    )
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _validate_args(args: argparse.Namespace) -> None:
+    if getattr(args, "confirmation_protocol", "generic_v2") == JOINT_PROTOCOL:
+        if args.confidence_level != 0.95:
+            raise ContractViolation("joint_non_regression_v1 fixes --confidence-level at exactly 0.95")
+        if (args.evidence_mode != "confirmation" or args.discovery_only or args.allow_dirty
+                or args.low_latency_baseline_ns):
+            raise ContractViolation(
+                "joint_non_regression_v1 requires clean confirmation, without discovery-only or low-latency mode"
+            )
+        if args.relative_threshold_percent != 10.0 or _absolute_threshold_ns(args) != 1_000.0:
+            raise ContractViolation("joint_non_regression_v1 fixes thresholds at 10% and 1000 ns")
+        if args.calibration_pairs != 8:
+            raise ContractViolation("joint_non_regression_v1 requires exactly eight A/A pairs per runner")
+    low_latency = _low_latency_baselines(args)
+    if low_latency:
+        if args.evidence_mode != "confirmation" or args.discovery_only:
+            raise ContractViolation("low-latency baselines require fresh confirmation sampling")
+        if args.max_pairs > 64:
+            raise ContractViolation("low-latency --max-pairs must not exceed 64")
+        if args.allow_dirty:
+            raise ContractViolation("low-latency confirmation requires frozen clean revisions")
+        if (args.relative_threshold_percent != 10.0
+                or args.absolute_threshold_ns is not None
+                or args.absolute_threshold_us is not None):
+            raise ContractViolation("low-latency derived thresholds cannot be overridden")
+    if args.evidence_mode == "diagnostic" and not 1 <= args.pairs <= 4:
+        raise ContractViolation("diagnostic --pairs must be between one and four")
+    if args.calibration_pairs < 8 or args.calibration_pairs % 2 != 0:
+        raise ContractViolation("--calibration-pairs must be even and at least eight")
+    if args.max_pairs < 8 or args.max_pairs % 2 != 0:
+        raise ContractViolation("--max-pairs must be even and at least eight")
+    if not math.isfinite(args.relative_threshold_percent) or args.relative_threshold_percent <= 0.0:
+        raise ContractViolation("--relative-threshold-percent must be positive")
+    if args.absolute_threshold_ns is not None and (
+        not math.isfinite(args.absolute_threshold_ns) or args.absolute_threshold_ns <= 0.0
+    ):
+        raise ContractViolation("--absolute-threshold-ns must be positive")
+    if args.absolute_threshold_us is not None and (
+        not math.isfinite(args.absolute_threshold_us) or args.absolute_threshold_us <= 0.0
+    ):
+        raise ContractViolation("--absolute-threshold-us must be positive")
+    if not math.isclose(args.confidence_level, 0.95, rel_tol=0.0, abs_tol=1e-12):
+        raise ContractViolation("the decision contract fixes --confidence-level at 0.95")
+    if args.bootstrap_resamples <= 0:
+        raise ContractViolation("--bootstrap-resamples must be positive")
+    if args.bootstrap_resamples > stats.MAX_BOOTSTRAP_RESAMPLES:
+        raise ContractViolation(
+            "--bootstrap-resamples must be at most "
+            f"{stats.MAX_BOOTSTRAP_RESAMPLES}"
+        )
+    if (
+        args.evidence_mode == "confirmation"
+        and args.bootstrap_resamples < stats.DECISION_GRADE_BOOTSTRAP_RESAMPLES
+    ):
+        raise ContractViolation(
+            "confirmation --bootstrap-resamples must be at least "
+            f"{stats.DECISION_GRADE_BOOTSTRAP_RESAMPLES}"
+        )
+    for side in ("base", "head"):
+        divisor = getattr(args, f"{side}_logical_operations")
+        if divisor is not None and divisor <= 0:
+            raise ContractViolation("logical operation counts must be positive")
+    if args.timeout_seconds <= 0:
+        raise ContractViolation("--timeout-seconds must be positive")
+    sample_size, warm_up, measurement = benchmark_params(
+        args.preset, args.sample_size, args.warm_up, args.measurement
+    )
+    if sample_size < 10:
+        raise ContractViolation("Criterion --sample-size must be at least ten")
+    if warm_up <= 0 or measurement <= 0:
+        raise ContractViolation("warm-up and measurement durations must be positive")
+    for name in ("base_package", "head_package", "base_bench", "head_bench"):
+        if not getattr(args, name).strip():
+            raise ContractViolation(f"--{name.replace('_', '-')} must not be empty")
+
+
+def _validate_confirmation_operation_contract(
+    contracts: Sequence[dict[str, Any]],
+    *,
+    base_logical_operations: int,
+    head_logical_operations: int,
+    base_lane: LaneMetadata | None = None,
+    head_lane: LaneMetadata | None = None,
+) -> None:
+    if base_lane is None or head_lane is None:
+        mismatches = [
+            (contract.get("base_benchmark"), contract.get("head_benchmark"))
+            for contract in contracts
+            if contract.get("base_benchmark") != contract.get("head_benchmark")
+        ]
+        if mismatches:
+            rendered = ", ".join(
+                f"{base!r} != {head!r}" for base, head in mismatches[:4]
+            )
+            raise ContractViolation(
+                "confirmation requires the same public operation on both sides; "
+                f"mismatched benchmark identities: {rendered}"
+            )
+        if base_logical_operations != 1 or head_logical_operations != 1:
+            raise ContractViolation(
+                "confirmation logical-operation divisors must both be one unless corpus "
+                "lane metadata owns both normalizations"
+            )
+        return
+
+    semantic_fields = (
+        "kind",
+        "owner",
+        "public_operation",
+        "process_lifecycle",
+        "engine_lifecycle",
+        "transport",
+        "workload",
+        "measurement_metrics",
+        "semantic_output_dimensions",
+    )
+    differences = [
+        field
+        for field in semantic_fields
+        if getattr(base_lane, field) != getattr(head_lane, field)
+    ]
+    if base_lane.kind != "public" or head_lane.kind != "public" or differences:
+        raise ContractViolation(
+            "confirmation lane metadata does not describe the same public operation: "
+            f"differences={differences}"
+        )
+    divisor_mismatches = []
+    if base_logical_operations != base_lane.logical_operations_per_estimate:
+        divisor_mismatches.append("base")
+    if head_logical_operations != head_lane.logical_operations_per_estimate:
+        divisor_mismatches.append("head")
+    if divisor_mismatches:
+        raise ContractViolation(
+            "logical-operation normalization differs from corpus lane metadata: "
+            + ", ".join(divisor_mismatches)
+        )
+
+    unmatched_groups: list[str] = []
+    for contract in contracts:
+        for side, lane in (("base", base_lane), ("head", head_lane)):
+            exact = contract.get(f"{side}_benchmark")
+            if not exact:
+                continue
+            group, _fixture = split_exact_bench(exact)
+            if not _lane_matches_group(lane, group):
+                unmatched_groups.append(f"{side}:{group}")
+    if unmatched_groups:
+        raise ContractViolation(
+            "confirmation benchmark groups are outside their lane selector/history contract: "
+            + ", ".join(sorted(set(unmatched_groups)))
+        )
+
+
+def _resolve_output_paths(
+    *,
+    head_dir: Path,
+    markdown_value: str,
+    json_value: str,
+) -> tuple[Path, Path]:
+    markdown_path = Path(markdown_value)
+    json_path = Path(json_value)
+    if not markdown_path.is_absolute():
+        markdown_path = head_dir / markdown_path
+    if not json_path.is_absolute():
+        json_path = head_dir / json_path
+    markdown_path = markdown_path.resolve()
+    json_path = json_path.resolve()
+    if markdown_path == json_path or _same_existing_file(markdown_path, json_path):
+        raise ContractViolation(
+            "--out and --json-out must resolve to distinct files so Markdown cannot overwrite "
+            "the JSON audit evidence"
+        )
+    return markdown_path, json_path
+
+
+def _same_existing_file(first: Path, second: Path) -> bool:
+    if not first.exists() or not second.exists():
+        return False
+    try:
+        return os.path.samefile(first, second)
+    except OSError as error:
+        raise ContractViolation(
+            f"failed to verify performance evidence output identity: {error}"
+        ) from error
+
+
+def _joint_plan_path(json_path: Path) -> Path:
+    return json_path.with_name(json_path.stem + ".calibration-plan.json")
+
+
+def _guard_joint_plan_outputs(plan: Path, markdown: Path, report: Path) -> None:
+    for other in (markdown, report):
+        if plan.resolve() == other.resolve() or _same_existing_file(plan, other):
+            raise ContractViolation("calibration plan must be distinct from report outputs")
+
+
+def _write_joint_plan(path: Path, report: dict[str, Any]) -> dict[str, Any]:
+    snapshot = {
+        key: report[key] for key in (
+            "comparison", "selection", "method", "environment", "harness", "recipes",
+            "runners", "fixtures", "calibration",
+        )
+    }
+    raw = (json.dumps(snapshot, indent=2, sort_keys=True, allow_nan=False) + "\n").encode("utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("xb") as output:
+        output.write(raw)
+    receipt = {"path": str(path), "bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
+    if path.read_bytes() != raw:
+        raise ContractViolation("calibration plan changed before A/B")
+    return receipt
+
+
+def _joint_plan_verification_errors(method: dict[str, Any]) -> list[str]:
+    contract = method.get("joint_non_regression_contract")
+    if not isinstance(contract, dict) or contract.get("calibration_plan") is None:
+        return []
+    receipt = contract["calibration_plan"]
+    try:
+        path = Path(receipt["path"])
+        raw = path.read_bytes()
+        if path.is_symlink() or len(raw) != receipt["bytes"] or hashlib.sha256(raw).hexdigest() != receipt["sha256"]:
+            raise ContractViolation("calibration plan identity changed after freezing")
+    except Exception as error:
+        return [str(error)]
+    return []
+
+
+def _parse_features(value: str) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(item.strip() for item in value.split(",") if item.strip()))
+
+
+def _absolute_threshold_ns(args: argparse.Namespace) -> float:
+    if args.absolute_threshold_ns is not None:
+        return float(args.absolute_threshold_ns)
+    if args.absolute_threshold_us is not None:
+        return float(args.absolute_threshold_us) * 1_000.0
+    if getattr(args, "confirmation_protocol", "generic_v2") == JOINT_PROTOCOL:
+        return 1_000.0
+    return 50_000.0
+
+
+def _build_recipe(args: argparse.Namespace, side: str) -> RunnerRecipe:
+    checkout = Path(getattr(args, f"{side}_dir")).resolve()
+    target_value = getattr(args, f"{side}_target_dir")
+    target_dir = Path(target_value).resolve() if target_value else checkout / "target"
+    corpus_value = getattr(args, f"{side}_corpus")
+    return RunnerRecipe(
+        label=side,
+        checkout=checkout,
+        package=getattr(args, f"{side}_package"),
+        bench=getattr(args, f"{side}_bench"),
+        features=_parse_features(getattr(args, f"{side}_features")),
+        default_features=getattr(args, f"{side}_default_features"),
+        toolchain=getattr(args, f"{side}_toolchain") or None,
+        target_dir=target_dir,
+        locked=True,
+        corpus=Path(corpus_value),
+        corpus_view=getattr(args, f"{side}_corpus_view", None),
+        target=getattr(args, f"{side}_target") or None,
+        logical_operations=getattr(args, f"{side}_logical_operations") or 1,
+    )
+
+
+def _empty_report(args: argparse.Namespace, absolute_threshold_ns: float) -> dict[str, Any]:
+    sample_size, warm_up, measurement = benchmark_params(
+        args.preset, args.sample_size, args.warm_up, args.measurement
+    )
+    relative_threshold_log = (
+        math.log1p(args.relative_threshold_percent / 100.0)
+        if math.isfinite(args.relative_threshold_percent)
+        and args.relative_threshold_percent > 0.0
+        else None
+    )
+    relative_threshold_percent = (
+        args.relative_threshold_percent
+        if math.isfinite(args.relative_threshold_percent)
+        else None
+    )
+    report_absolute_threshold_ns = (
+        absolute_threshold_ns
+        if math.isfinite(absolute_threshold_ns) and absolute_threshold_ns > 0.0
+        else None
+    )
+    return {
+        "schema_version": 2,
+        "generated_at": dt.datetime.now(dt.timezone.utc).astimezone().isoformat(),
+        "comparison": {"base_label": args.base_label, "head_label": args.head_label},
+        "selection": {"suite": args.suite},
+        "method": {
+            "confirmation_protocol": getattr(args, "confirmation_protocol", "generic_v2"),
+            "preset": args.preset,
+            "evidence_mode": args.evidence_mode,
+            "evidence_quality": "pending",
+            "discovery_only": args.discovery_only,
+            "sample_size": sample_size,
+            "warm_up_seconds": warm_up,
+            "measurement_seconds": measurement,
+            "diagnostic_pairs": args.pairs,
+            "calibration_pairs": args.calibration_pairs,
+            "max_pairs": args.max_pairs,
+            "pair_count": 0,
+            "scheduled_pairs": 0,
+            "required_pairs": 8,
+            "start_side": args.start_side,
+            "relative_threshold_percent": relative_threshold_percent,
+            "relative_threshold_log": relative_threshold_log,
+            "absolute_threshold_ns": report_absolute_threshold_ns,
+            "absolute_threshold_us": (
+                report_absolute_threshold_ns / 1_000.0
+                if report_absolute_threshold_ns is not None
+                else None
+            ),
+            "confidence_level": (
+                args.confidence_level if math.isfinite(args.confidence_level) else None
+            ),
+            "confidence_contract": {
+                "simultaneous_confidence_level": (
+                    args.confidence_level if math.isfinite(args.confidence_level) else None
+                ),
+                "component_confidence_level": None,
+                "family_size": None,
+                "multiplicity_adjustment": "bonferroni",
+                "components": "two metrics per comparable benchmark",
+            },
+            "bootstrap_seed": args.bootstrap_seed,
+            "bootstrap_resamples": args.bootstrap_resamples,
+            "interval_contract": {
+                "confirmation": (
+                    "deterministic paired bootstrap Bonferroni simultaneous one-sided bounds"
+                ),
+                "calibration": (
+                    "deterministic paired bootstrap two-sided equivalence intervals"
+                ),
+            },
+            "shared_target_freeze": {
+                "enabled": bool(getattr(args, "freeze_shared_target", False)),
+                "target_dir": None,
+                "context": None,
+                "build_order": ["base", "head"]
+                if getattr(args, "freeze_shared_target", False)
+                else None,
+                "cargo_build_jobs": "1"
+                if getattr(args, "freeze_shared_target", False)
+                else None,
+                "profile_reset": "cargo-clean-bench-profile-before-each-side"
+                if getattr(args, "freeze_shared_target", False)
+                else None,
+            },
+            # Keep the schema-v2 receipt shape for fresh-discovery reports.
+            "discovery_reuse": {
+                "enabled": False,
+                "status": "disabled",
+                "source_report": None,
+                "source_generated_at": None,
+                "source_harness": None,
+            },
+        },
+        "environment": {
+            "os": platform.platform(),
+            "machine": platform.machine(),
+            "cpu": best_effort_cpu_model(),
+            "python": platform.python_version(),
+            "rust": rustc_verbose(),
+        },
+        "harness": {
+            "schema": "compare-self-v2",
+            **_describe_required_file(Path(__file__).resolve()),
+            "stats": _describe_required_file(Path(stats.__file__).resolve()),
+        },
+        "recipes": {},
+        "runners": {},
+        "fixtures": [],
+        "calibration": None,
+        "raw_rounds": [],
+        "rows": [],
+        "contract_errors": [],
+    }
+
+
+def _shared_target_freeze_plan(
+    base: RunnerRecipe,
+    head: RunnerRecipe,
+    *,
+    enabled: bool,
+    context: str | None = None,
+) -> SharedTargetFreezePlan | None:
+    base_target = base.target_dir.resolve()
+    head_target = head.target_dir.resolve()
+    if not enabled:
+        if base_target == head_target:
+            raise ContractViolation("base and head must use distinct Cargo target directories")
+        return None
+    if base_target != head_target:
+        raise ContractViolation(
+            "--freeze-shared-target requires base and head to use the same Cargo target directory"
+        )
+    if context is None:
+        timestamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        context = f"{timestamp}-{os.getpid()}-{uuid.uuid4().hex[:12]}"
+    _validate_freeze_component(context, field="context")
+    return SharedTargetFreezePlan(target_dir=base_target, context=context)
+
+
+def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> None:
+    joint = getattr(args, "confirmation_protocol", "generic_v2") == JOINT_PROTOCOL
+    low_latency = _low_latency_baselines(args)
+    if low_latency:
+        report["method"]["materiality_contract"] = {
+            "mode": "low_latency_public_operation",
+            "frozen_baselines_ns": low_latency,
+            "max_pairs": args.max_pairs,
+        }
+    schedule_options = dict(
+        sample_size=report["method"]["sample_size"],
+        warm_up_seconds=report["method"]["warm_up_seconds"],
+        measurement_seconds=report["method"]["measurement_seconds"],
+        timeout_seconds=args.timeout_seconds,
+    )
+    relative_threshold = report["method"]["relative_threshold_log"]
+    absolute_threshold_ns = report["method"]["absolute_threshold_ns"]
+    base_recipe = _build_recipe(args, "base")
+    head_recipe = _build_recipe(args, "head")
+    report["recipes"] = {
+        "base": _recipe_report(base_recipe),
+        "head": _recipe_report(head_recipe),
+    }
+    freeze_plan = _shared_target_freeze_plan(
+        base_recipe,
+        head_recipe,
+        enabled=args.freeze_shared_target,
+    )
+    report["method"]["shared_target_freeze"] = {
+        "enabled": freeze_plan is not None,
+        "target_dir": str(freeze_plan.target_dir) if freeze_plan is not None else None,
+        "context": freeze_plan.context if freeze_plan is not None else None,
+        "build_order": ["base", "head"] if freeze_plan is not None else None,
+        "cargo_build_jobs": "1" if freeze_plan is not None else None,
+        "profile_reset": "cargo-clean-bench-profile-before-each-side"
+        if freeze_plan is not None
+        else None,
+    }
+
+    contracts, selection, operation_lanes = _load_fixture_contracts(
+        base_recipe=base_recipe,
+        head_recipe=head_recipe,
+        suite=args.suite,
+        common_group=args.group,
+        base_group_override=args.base_group,
+        head_group_override=args.head_group,
+        filter_expr=args.filter,
+    )
+    base_recipe = _recipe_with_lane_divisor(
+        base_recipe,
+        lane=operation_lanes[0],
+        explicit_divisor=args.base_logical_operations,
+    )
+    head_recipe = _recipe_with_lane_divisor(
+        head_recipe,
+        lane=operation_lanes[1],
+        explicit_divisor=args.head_logical_operations,
+    )
+    report["recipes"] = {
+        "base": _recipe_report(base_recipe),
+        "head": _recipe_report(head_recipe),
+    }
+    report["selection"] = selection
+    report["fixtures"] = contracts
+    if not contracts:
+        raise ContractViolation("no benchmark fixtures were selected")
+    if joint and any(lane is None or lane.kind != "public" for lane in operation_lanes):
+        raise ContractViolation("joint_non_regression_v1 requires registered public operation lanes")
+    if low_latency:
+        for field in ("relative_threshold_percent", "relative_threshold_log",
+                      "absolute_threshold_ns", "absolute_threshold_us"):
+            report["method"][field] = None
+        if set(low_latency) != {item["name"] for item in contracts}:
+            raise ContractViolation("low-latency frozen baselines must cover exactly the selected rows")
+        if any(lane is None or lane.kind != "public" for lane in operation_lanes):
+            raise ContractViolation("low-latency mode requires registered public operation lanes")
+    if args.evidence_mode == "confirmation":
+        _validate_confirmation_operation_contract(
+            contracts,
+            base_logical_operations=base_recipe.logical_operations,
+            head_logical_operations=head_recipe.logical_operations,
+            base_lane=operation_lanes[0],
+            head_lane=operation_lanes[1],
+        )
+    for side in ("base", "head"):
+        groups = {
+            split_exact_bench(item[f"{side}_benchmark"])[0]
+            for item in contracts
+            if item[f"{side}_benchmark"]
+        }
+        if len(groups) > 1:
+            raise ContractViolation(
+                f"{side} selection spans multiple groups {sorted(groups)}; the runner-level "
+                "logical-operations value is only a single-group uniform override"
+            )
+
+    prepared: dict[str, PreparedRunner] = {}
+    for build_sequence, recipe in enumerate((base_recipe, head_recipe), start=1):
+        runner, provenance, errors = _prepare_runner(
+            recipe,
+            allow_dirty=args.allow_dirty,
+            timeout_seconds=args.timeout_seconds,
+            discovery_benchmark=(
+                next(
+                    contract[f"{recipe.label}_benchmark"]
+                    for contract in contracts
+                    if contract[f"{recipe.label}_benchmark"]
+                )
+                if len(contracts) == 1
+                else None
+            ),
+            freeze_plan=freeze_plan,
+            build_sequence=build_sequence if freeze_plan is not None else None,
+        )
+        report["runners"][recipe.label] = provenance
+        for error in errors:
+            _append_contract_error(report, f"prepare_{recipe.label}", error)
+        if runner is not None:
+            prepared[recipe.label] = runner
+        elif freeze_plan is not None:
+            break
+    if len(prepared) != 2:
+        return
+    base = prepared["base"]
+    head = prepared["head"]
+    if base.executable.resolve() == head.executable.resolve():
+        _append_contract_error(
+            report,
+            "recipe",
+            "base and head resolved to the same executable path; frozen candidates are not independent",
+        )
+        return
+    if identity_error := _binary_independence_error(base, head):
+        _append_contract_error(report, "recipe", identity_error)
+        return
+    if args.evidence_mode == "confirmation":
+        for error in _confirmation_harness_identity_errors(base, head):
+            _append_contract_error(report, "harness_identity", error)
+        for side, runner in prepared.items():
+            if runner.provenance["git"]["dirty"]:
+                _append_contract_error(
+                    report,
+                    f"prepare_{side}",
+                    "confirmation evidence requires a clean checkout",
+                )
+    contracts = _complete_fixture_contracts(contracts, base=base, head=head)
+    report["fixtures"] = contracts
+    comparable = [item for item in contracts if item["coverage_status"] == "comparable"]
+    confidence_family_size = max(2, 2 * len(contracts if joint else comparable))
+    component_confidence_level = (
+        1.0 - (1.0 - args.confidence_level) / confidence_family_size
+    )
+    report["method"]["confidence_contract"] = {
+        "simultaneous_confidence_level": args.confidence_level,
+        "component_confidence_level": component_confidence_level,
+        "family_size": confidence_family_size,
+        "multiplicity_adjustment": "bonferroni",
+        "components": "two metrics per comparable benchmark",
+    }
+    if joint:
+        report["method"]["confidence_contract"].pop("simultaneous_confidence_level")
+        report["method"]["confidence_contract"]["components"] = "two metrics per selected fixture"
+        report["method"]["confidence_contract"]["coverage"] = "conditional one-sided decision errors, not simultaneous two-tail coverage"
+        report["method"]["decision_error_contract"] = {
+            "protocol": JOINT_PROTOCOL, "family_wise_error_rate": 0.05,
+            "component_tail_error_rate": 0.05 / confidence_family_size,
+            "family_size": confidence_family_size, "coverage": "conditional_bootstrap",
+            "claim": "joint decision labels; not simultaneous two-tail interval coverage",
+        }
+        report["method"]["interval_contract"]["confirmation"] = "conditional paired-bootstrap one-sided joint decision bounds"
+        if len(comparable) != len(contracts) or any(
+            item.get("output_identity", {}).get("status") != "matched"
+            or any((item.get("output_identity", {}).get(side) or {}).get("output_kind") != "svg"
+                   for side in ("base", "head"))
+            for item in contracts
+        ):
+            _append_contract_error(report, "coverage", "joint protocol requires every selected fixture to have identical input and matched output")
+    if low_latency:
+        report["method"]["materiality_contract"]["calibration_confidence_family_size"] = (
+            4 * confidence_family_size
+        )
+    if not comparable:
+        _append_contract_error(report, "coverage", "no comparable benchmark rows")
+    if args.discovery_only:
+        report["rows"] = [
+            _comparison_row(
+                item,
+                pairs=[],
+                evidence_mode="diagnostic",
+                required_pairs=8,
+                relative_threshold=relative_threshold,
+                absolute_threshold_ns=absolute_threshold_ns,
+                confidence_level=args.confidence_level,
+                bootstrap_seed=stats.stable_seed(args.bootstrap_seed, "discovery", item["name"]),
+                bootstrap_resamples=args.bootstrap_resamples,
+                confidence_family_size=confidence_family_size,
+                forced_outcome=(
+                    "diagnostic_advisory"
+                    if item["coverage_status"] == "comparable"
+                    else "contract_failure"
+                ),
+                reason="discovery only" if item["coverage_status"] == "comparable" else "; ".join(item["coverage_reasons"]),
+            )
+            for item in contracts
+        ]
+        for runner in prepared.values():
+            for error in _verification_errors(runner, timeout_seconds=args.timeout_seconds):
+                _append_contract_error(report, "freeze_verification", error)
+        for error in _fixture_verification_errors(contracts):
+            _append_contract_error(report, "freeze_verification", error)
+        return
+
+    if report["contract_errors"]:
+        report["rows"] = [
+            _comparison_row(
+                item,
+                pairs=[],
+                evidence_mode=args.evidence_mode,
+                required_pairs=8,
+                relative_threshold=relative_threshold,
+                absolute_threshold_ns=absolute_threshold_ns,
+                confidence_level=args.confidence_level,
+                bootstrap_seed=0,
+                bootstrap_resamples=args.bootstrap_resamples,
+                confidence_family_size=confidence_family_size,
+                forced_outcome="contract_failure",
+                reason="sampling did not start because the evidence contract was already invalid",
+            )
+            for item in contracts
+        ]
+        return
+
+    if args.evidence_mode == "diagnostic":
+        report["method"]["scheduled_pairs"] = args.pairs
+        schedule = _run_paired_schedule(
+            base=base,
+            head=head,
+            contracts=comparable,
+            pair_count=args.pairs,
+            start_with_a=args.start_side == "base",
+            **schedule_options,
+        )
+        report["method"]["pair_count"] = min(
+            (len(schedule["rows"][item["name"]]) for item in comparable),
+            default=0,
+        )
+        report["raw_rounds"] = schedule["rounds"]
+        report["rows"] = []
+        for item in contracts:
+            name = item["name"]
+            pairs = schedule["rows"].get(name, [])
+            reason = (
+                schedule["errors"].get(name)
+                if item["coverage_status"] == "comparable"
+                else "; ".join(item["coverage_reasons"])
+            )
+            report["rows"].append(
+                _comparison_row(
+                    item,
+                    pairs=pairs,
+                    evidence_mode="diagnostic",
+                    required_pairs=8,
+                    relative_threshold=relative_threshold,
+                    absolute_threshold_ns=absolute_threshold_ns,
+                    confidence_level=args.confidence_level,
+                    bootstrap_seed=(
+                        stats.stable_seed(args.bootstrap_seed, "diagnostic", name)
+                        if reason is None else 0
+                    ),
+                    bootstrap_resamples=args.bootstrap_resamples,
+                    confidence_family_size=confidence_family_size,
+                    forced_outcome="contract_failure" if reason is not None else None,
+                    reason=reason,
+                )
+            )
+    else:
+        base_aa, head_aa = (
+            _run_paired_schedule(
+                runner,
+                contracts=comparable,
+                pair_count=args.calibration_pairs,
+                **schedule_options,
+            )
+            for runner in (base, head)
+        )
+        calibration: dict[str, Any] = {
+            "base": {"rounds": base_aa["rounds"], "rows": {}, "errors": base_aa["errors"]},
+            "head": {"rounds": head_aa["rounds"], "rows": {}, "errors": head_aa["errors"]},
+        }
+        required_by_row: dict[str, int] = {}
+        low_latency_rows: dict[str, dict[str, Any]] = {}
+        joint_rows: dict[str, dict[str, Any]] = {}
+        stable_rows: list[dict[str, Any]] = []
+        for item in comparable:
+            name = item["name"]
+            for side, aa in (("base", base_aa), ("head", head_aa)):
+                calibration[side]["rows"][name] = stats.summarize_calibration(
+                    aa["rows"][name],
+                    expected_pairs=args.calibration_pairs,
+                    relative_mde=-math.log(0.95) if low_latency else relative_threshold,
+                    absolute_mde_ns=(
+                        min(1_000.0, 0.05 * low_latency[name])
+                        if low_latency else absolute_threshold_ns
+                    ),
+                    max_pairs=args.max_pairs,
+                    confidence_level=args.confidence_level,
+                    bootstrap_seed=stats.stable_seed(args.bootstrap_seed, "calibration", side, name),
+                    bootstrap_resamples=args.bootstrap_resamples,
+                    confidence_family_size=(
+                        4 * confidence_family_size if low_latency else confidence_family_size
+                    ),
+                )
+                if joint and calibration[side]["rows"][name].get("status") == "contract_failure":
+                    _append_contract_error(report, f"calibration_{side}:{name}", "incomplete joint A/A observations")
+            side_summaries = {
+                side: calibration[side]["rows"][name] for side in ("base", "head")
+            }
+            if joint:
+                policy = stats.joint_calibration_policy(
+                    side_summaries,
+                    max_pairs=args.max_pairs,
+                )
+                joint_rows[name] = policy
+                if policy["eligible"]:
+                    required_by_row[name] = policy["required_pairs"]
+                    stable_rows.append(item)
+                continue
+            if low_latency:
+                policy = stats.low_latency_calibration(
+                    baseline_ns=low_latency[name],
+                    side_summaries=side_summaries,
+                    max_pairs=args.max_pairs,
+                )
+                low_latency_rows[name] = policy
+                required_by_row[name] = policy["required_pairs"]
+                if policy["stable"]:
+                    stable_rows.append(item)
+                continue
+            available_required = [
+                summary.get("required_pairs", {}).get("maximum", 8)
+                for summary in side_summaries.values()
+            ]
+            required_by_row[name] = max(available_required)
+            if all(summary.get("stable", False) for summary in side_summaries.values()):
+                stable_rows.append(item)
+        for side, aa in (("base", base_aa), ("head", head_aa)):
+            for name, error in aa["errors"].items():
+                _append_contract_error(report, f"calibration_{side}:{name}", error)
+        suite_required = max(required_by_row.values(), default=8)
+        scheduled_pairs = min(suite_required, args.max_pairs)
+        report["method"]["required_pairs"] = suite_required
+        report["method"]["scheduled_pairs"] = scheduled_pairs
+        calibration["suite"] = {
+            "required_pairs": suite_required,
+            "scheduled_pairs": scheduled_pairs,
+            "max_pairs": args.max_pairs,
+            "exceeds_cap": suite_required > args.max_pairs,
+        }
+        if low_latency:
+            calibration["side_summary_contract"] = "preliminary equivalence; low_latency_rows owns admission"
+            calibration["low_latency_rows"] = low_latency_rows
+            calibration["suite"]["all_rows_stable"] = len(stable_rows) == len(contracts)
+            report["method"]["materiality_contract"]["rows"] = low_latency_rows
+            report["method"]["materiality_contract"]["fixed_confirmation_pairs"] = scheduled_pairs
+        report["calibration"] = calibration
+        joint_ready = not joint or len(stable_rows) == len(contracts)
+        if joint:
+            report["method"]["joint_non_regression_contract"] = {
+                "version": 1, "rows": joint_rows,
+                "fixed_confirmation_pairs": scheduled_pairs if joint_ready else None,
+                "all_rows_eligible": joint_ready, "calibration_plan": None,
+                "sampling_count_contract": "A/A dispersion heuristic; not a guaranteed 80% power claim",
+            }
+            plan_path = _joint_plan_path(Path(args.json_out))
+            _guard_joint_plan_outputs(plan_path, Path(args.out), Path(args.json_out))
+            report["method"]["joint_non_regression_contract"]["calibration_plan"] = _write_joint_plan(plan_path, report)
+        if (stable_rows and not report["contract_errors"]
+                and joint_ready and (not low_latency or len(stable_rows) == len(contracts))):
+            schedule = _run_paired_schedule(
+                base=base,
+                head=head,
+                contracts=stable_rows,
+                pair_count=scheduled_pairs,
+                start_with_a=args.start_side == "base",
+                **schedule_options,
+            )
+        else:
+            schedule = {
+                "pair_count": scheduled_pairs,
+                "rounds": [],
+                "rows": {item["name"]: [] for item in stable_rows},
+                "errors": {},
+            }
+        report["method"]["pair_count"] = min(
+            (len(schedule["rows"].get(item["name"], [])) for item in comparable),
+            default=0,
+        )
+        report["raw_rounds"] = schedule["rounds"]
+        if joint and joint_ready and not report["contract_errors"]:
+            expected_orders = [
+                stats.pair_order(index, start_with_a=args.start_side == "base")
+                for index in range(scheduled_pairs)
+            ]
+            if schedule["errors"] or any(
+                len(schedule["rows"].get(item["name"], [])) != scheduled_pairs
+                or [pair.get("pair_index") for pair in schedule["rows"].get(item["name"], [])] != list(range(scheduled_pairs))
+                or [pair.get("order") for pair in schedule["rows"].get(item["name"], [])] != expected_orders
+                for item in contracts
+            ):
+                _append_contract_error(report, "confirmation_schedule", "joint protocol requires the complete fixed balanced cohort; prefixes cannot confirm")
+        report["rows"] = []
+        for item in contracts:
+            name = item["name"]
+            required = required_by_row.get(name, 8)
+            forced: str | None = None
+            reason: str | None = None
+            pairs = schedule["rows"].get(name, [])
+            if item["coverage_status"] != "comparable":
+                forced = "contract_failure"
+                reason = "; ".join(item["coverage_reasons"])
+            elif name in base_aa["errors"] or name in head_aa["errors"]:
+                forced = "contract_failure"
+                reason = base_aa["errors"].get(name) or head_aa["errors"].get(name)
+            elif report["contract_errors"]:
+                forced = "contract_failure"
+                reason = "the global evidence contract failed"
+            elif name in schedule["errors"]:
+                forced = "contract_failure"
+                reason = schedule["errors"][name]
+            elif item not in stable_rows or not joint_ready or (low_latency and len(stable_rows) != len(contracts)):
+                forced = "inconclusive"
+                reasons: list[str] = []
+                if low_latency:
+                    reasons = [f"{row}: {failure}" for row, policy in low_latency_rows.items()
+                               for failure in policy["reasons"]]
+                elif joint:
+                    reasons = [f"{row}: no qualified certificate" for row, policy in joint_rows.items()
+                               if not policy["eligible"]]
+                else:
+                    for side in ("base", "head"):
+                        reasons.extend(calibration[side]["rows"][name].get("reasons", []))
+                reason = "A/A calibration was not stable: " + ", ".join(dict.fromkeys(reasons))
+            report["rows"].append(
+                _comparison_row(
+                    item,
+                    pairs=pairs,
+                    evidence_mode="confirmation",
+                    required_pairs=required,
+                    relative_threshold=(low_latency_rows[name]["thresholds"]["log_ratio"]
+                                        if name in low_latency_rows else relative_threshold),
+                    absolute_threshold_ns=(low_latency_rows[name]["thresholds"]["absolute_ns"]
+                                           if name in low_latency_rows else absolute_threshold_ns),
+                    confidence_level=args.confidence_level,
+                    bootstrap_seed=stats.stable_seed(args.bootstrap_seed, "confirmation", name),
+                    bootstrap_resamples=args.bootstrap_resamples,
+                    confidence_family_size=confidence_family_size,
+                    forced_outcome=forced,
+                    reason=reason,
+                    joint_policy=joint_rows.get(name) if joint else None,
+                    fixed_confirmation_pairs=scheduled_pairs if joint else None,
+                )
+            )
+
+    post_sampling_errors: list[str] = []
+    for runner in prepared.values():
+        post_sampling_errors.extend(
+            _verification_errors(runner, timeout_seconds=args.timeout_seconds)
+        )
+    post_sampling_errors.extend(_fixture_verification_errors(contracts))
+    post_sampling_errors.extend(_joint_plan_verification_errors(report["method"]))
+    for error in post_sampling_errors:
+        _append_contract_error(report, "freeze_verification", error)
+    if post_sampling_errors:
+        _revoke_timing_claims(
+            report,
+            reason="post-sampling evidence verification failed; timing claims were revoked",
+        )
+
+
+def decision_grade_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        description="Produce paired decision-grade Merman Criterion evidence between two checkouts."
+    )
+    parser.add_argument("--base-dir", required=True)
+    parser.add_argument("--head-dir", required=True)
+    parser.add_argument("--base-label", default="base")
+    parser.add_argument("--head-label", default="head")
+    parser.add_argument("--base-target-dir", default="")
+    parser.add_argument("--head-target-dir", default="")
+    parser.add_argument(
+        "--freeze-shared-target",
+        action="store_true",
+        help=(
+            "Allow one shared Cargo target by clearing only its bench profile before each side, "
+            "then serially copying each rebuilt compiler artifact into an immutable "
+            "target/perf-frozen context before discovery and sampling."
+        ),
+    )
+    parser.add_argument("--base-package", default="merman")
+    parser.add_argument("--head-package", default="merman")
+    parser.add_argument("--base-bench", default="pipeline")
+    parser.add_argument("--head-bench", default="pipeline")
+    parser.add_argument(
+        "--base-features",
+        default="svg",
+        help="Base checkout's features; override independently for its benchmark recipe.",
+    )
+    parser.add_argument(
+        "--head-features", default="all-diagrams,svg,compat-json,editor-facts,layout-dagre"
+    )
+    parser.add_argument(
+        "--base-default-features", action=argparse.BooleanOptionalAction, default=True
+    )
+    parser.add_argument(
+        "--head-default-features", action=argparse.BooleanOptionalAction, default=True
+    )
+    parser.add_argument("--base-toolchain", default="")
+    parser.add_argument("--head-toolchain", default="")
+    parser.add_argument("--base-target", default="")
+    parser.add_argument("--head-target", default="")
+    parser.add_argument("--base-corpus", default=DEFAULT_CORPUS)
+    parser.add_argument("--head-corpus", default=DEFAULT_CORPUS)
+    parser.add_argument("--base-corpus-view", help="Named view in the base corpus registry.")
+    parser.add_argument("--head-corpus-view", help="Named view in the head corpus registry.")
+    parser.add_argument("--suite", default="canary")
+    parser.add_argument("--group", default=None)
+    parser.add_argument("--base-group", default=None)
+    parser.add_argument("--head-group", default=None)
+    parser.add_argument("--filter", default=None)
+    parser.add_argument("--preset", choices=["quick", "long"], default="quick")
+    parser.add_argument("--sample-size", type=int, default=None)
+    parser.add_argument("--warm-up", type=int, default=None)
+    parser.add_argument("--measurement", type=int, default=None)
+    parser.add_argument(
+        "--evidence-mode", choices=["diagnostic", "confirmation"], default="diagnostic"
+    )
+    parser.add_argument(
+        "--confirmation-protocol", choices=["generic_v2", JOINT_PROTOCOL], default="generic_v2",
+        help="Joint v1 fixes 10 percent / 1000 ns thresholds and eight A/A pairs per runner; generic v2 remains the default.",
+    )
+    parser.add_argument("--pairs", type=int, default=2, help="Diagnostic AB/BA pair count (1-4).")
+    parser.add_argument("--calibration-pairs", type=int, default=8)
+    parser.add_argument("--max-pairs", type=int, default=32)
+    parser.add_argument(
+        "--low-latency-baseline-ns", action="append", default=[], metavar="FIXTURE=NS",
+        help="Preregister a frozen complete-public-operation baseline below 500 us for every selected row.",
+    )
+    parser.add_argument("--start-side", choices=["base", "head"], default="base")
+    parser.add_argument("--relative-threshold-percent", type=float, default=10.0)
+    absolute = parser.add_mutually_exclusive_group()
+    absolute.add_argument("--absolute-threshold-ns", type=float, default=None)
+    absolute.add_argument("--absolute-threshold-us", type=float, default=None)
+    parser.add_argument("--confidence-level", type=float, default=0.95)
+    parser.add_argument("--bootstrap-seed", type=int, default=0)
+    parser.add_argument(
+        "--bootstrap-resamples",
+        type=int,
+        default=stats.DECISION_GRADE_BOOTSTRAP_RESAMPLES,
+    )
+    parser.add_argument(
+        "--base-logical-operations",
+        type=int,
+        default=None,
+        help=(
+            "Legacy divisor override for a group without lane metadata; registered lanes "
+            "must match their corpus-owned divisor."
+        ),
+    )
+    parser.add_argument(
+        "--head-logical-operations",
+        type=int,
+        default=None,
+        help=(
+            "Legacy divisor override for a group without lane metadata; registered lanes "
+            "must match their corpus-owned divisor."
+        ),
+    )
+    parser.add_argument("--timeout-seconds", type=int, default=1_800)
+    parser.add_argument("--allow-dirty", action="store_true")
+    parser.add_argument("--discovery-only", action="store_true")
+    parser.add_argument("--out", default=DEFAULT_MARKDOWN_OUT)
+    parser.add_argument("--json-out", default=DEFAULT_JSON_OUT)
+    args = parser.parse_args(argv)
+
+    head_dir = Path(args.head_dir).resolve()
+    try:
+        markdown_path, json_path = _resolve_output_paths(
+            head_dir=head_dir,
+            markdown_value=args.out,
+            json_value=args.json_out,
+        )
+    except ContractViolation as error:
+        print(f"invalid performance evidence outputs: {error}", file=sys.stderr)
+        return 2
+
+    joint = args.confirmation_protocol == JOINT_PROTOCOL
+    if joint:
+        args.out, args.json_out = str(markdown_path), str(json_path)
+        try:
+            plan_path = _joint_plan_path(json_path)
+            _guard_joint_plan_outputs(plan_path, markdown_path, json_path)
+            if plan_path.exists() or plan_path.is_symlink():
+                raise ContractViolation("calibration plan already exists; use fresh experiment output paths")
+        except ContractViolation as error:
+            print(f"invalid performance evidence outputs: {error}", file=sys.stderr)
+            return 2
+
+    absolute_threshold_ns = _absolute_threshold_ns(args)
+    report = _empty_report(args, absolute_threshold_ns)
+    try:
+        _validate_args(args)
+        _execute_comparison(args, report)
+    except KeyboardInterrupt:
+        raise
+    except Exception as error:
+        _append_contract_error(report, "orchestration", str(error))
+
+    exit_code = _finalize_summary(report)
+    if joint:
+        try:
+            _guard_joint_plan_outputs(_joint_plan_path(json_path), markdown_path, json_path)
+        except ContractViolation as error:
+            print(f"refused to overwrite calibration plan: {error}", file=sys.stderr)
+            return 2
+        for error in _joint_plan_verification_errors(report["method"]):
+            _append_contract_error(report, "calibration_plan", error)
+        exit_code = _finalize_summary(report)
+    try:
+        write_json_report(json_path, report)
+    except Exception as error:
+        print(f"failed to write JSON performance evidence: {error}", file=sys.stderr)
+        return 2
+    print(f"Wrote: {json_path}")
+    if joint:
+        try:
+            _guard_joint_plan_outputs(_joint_plan_path(json_path), markdown_path, json_path)
+        except ContractViolation as error:
+            _append_contract_error(report, "report_projection", str(error))
+            _finalize_summary(report)
+            plan_path = _joint_plan_path(json_path)
+            if plan_path.resolve() != json_path.resolve() and not _same_existing_file(plan_path, json_path):
+                write_json_report(json_path, report)
+            print(f"refused to overwrite calibration plan: {error}", file=sys.stderr)
+            return 2
+    try:
+        outputs_collide = _same_existing_file(markdown_path, json_path)
+    except ContractViolation as error:
+        outputs_collide = True
+        collision_message = str(error)
+    else:
+        collision_message = (
+            "Markdown output resolves to the JSON audit file after JSON creation"
+            if outputs_collide
+            else ""
+        )
+    if outputs_collide:
+        _append_contract_error(report, "report_projection", collision_message)
+        _finalize_summary(report)
+        try:
+            write_json_report(json_path, report)
+        except Exception as error:
+            print(f"failed to preserve JSON performance evidence: {error}", file=sys.stderr)
+        print(f"refused to overwrite JSON performance evidence: {collision_message}", file=sys.stderr)
+        return 2
+    try:
+        write_decision_markdown(markdown_path, report)
+    except Exception as error:
+        _append_contract_error(report, "report_projection", str(error))
+        _finalize_summary(report)
+        write_json_report(json_path, report)
+        print(f"failed to write Markdown performance evidence: {error}", file=sys.stderr)
+        return 2
+    print(f"Wrote: {markdown_path}")
+    print(f"Outcome: {report['summary']['outcome']} (exit {exit_code})")
+    return exit_code
+
+
+def main(argv: list[str]) -> int:
+    return decision_grade_main(argv)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

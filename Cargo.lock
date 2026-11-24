@@ -19,6 +19,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "366ffbaa4442f4684d91e2cd7c5ea7c4ed8add41959a31447066e279e432b618"
 
 [[package]]
+name = "addr2line"
+version = "0.27.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e567177890eb1617b1f774005b66b26b2377afd138a2ca37aae7d8f0c81429d4"
+dependencies = [
+ "gimli",
+]
+
+[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -211,7 +220,7 @@ dependencies = [
  "memchr",
  "proc-macro2",
  "quote",
- "rustc-hash",
+ "rustc-hash 2.1.3",
  "serde",
  "serde_derive",
  "syn 3.0.9",
@@ -232,7 +241,7 @@ version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2c5ae75772275d268b03ab8bdccdd12117b6169ee23256942b34e46c9f476583"
 dependencies = [
- "rustc-hash",
+ "rustc-hash 2.1.3",
  "serde",
  "serde_derive",
  "unicode-ident",
@@ -308,6 +317,21 @@ dependencies = [
  "dunce",
  "fs_extra",
  "pkg-config",
+]
+
+[[package]]
+name = "backtrace"
+version = "0.3.77"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42f4220217f3288537b83684130f42fad43320b1c3b805f1910d683d52ded24f"
+dependencies = [
+ "addr2line",
+ "cfg-if",
+ "libc",
+ "miniz_oxide 0.9.1",
+ "object",
+ "rustc-demangle",
+ "windows-link",
 ]
 
 [[package]]
@@ -890,6 +914,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 
 [[package]]
+name = "dhat"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "98cd11d84628e233de0ce467de10b8633f4ddaecafadefc86e13b84b8739b827"
+dependencies = [
+ "backtrace",
+ "lazy_static",
+ "mintex",
+ "parking_lot",
+ "rustc-hash 1.1.0",
+ "serde",
+ "serde_json",
+ "thousands",
+]
+
+[[package]]
 name = "difflib"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -959,7 +999,7 @@ version = "0.11.0"
 dependencies = [
  "criterion",
  "dugong-graphlib",
- "rustc-hash",
+ "rustc-hash 2.1.3",
  "serde",
  "serde_json",
 ]
@@ -969,7 +1009,7 @@ name = "dugong-graphlib"
 version = "0.11.0"
 dependencies = [
  "hashbrown 0.17.1",
- "rustc-hash",
+ "rustc-hash 2.1.3",
  "serde",
  "serde_json",
 ]
@@ -1389,6 +1429,12 @@ dependencies = [
  "color_quant",
  "weezl",
 ]
+
+[[package]]
+name = "gimli"
+version = "0.34.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1033caf0b349c518623b5396bfb2cf0bddf44f0306d543a250e5743297aafd10"
 
 [[package]]
 name = "glob"
@@ -2070,7 +2116,7 @@ dependencies = [
  "indexmap",
  "pdf-writer",
  "png",
- "rustc-hash",
+ "rustc-hash 2.1.3",
  "rustybuzz",
  "siphasher 1.0.4",
  "skrifa",
@@ -2246,7 +2292,7 @@ version = "0.11.0"
 dependencies = [
  "indexmap",
  "libm",
- "rustc-hash",
+ "rustc-hash 2.1.3",
  "thiserror 2.0.21",
 ]
 
@@ -2283,6 +2329,7 @@ dependencies = [
  "base64 0.23.1",
  "criterion",
  "data-encoding",
+ "dhat",
  "merman-analysis",
  "merman-ascii",
  "merman-ascii-test-contracts",
@@ -2337,7 +2384,7 @@ dependencies = [
  "merman-model",
  "merman-theme-contract",
  "pulldown-cmark",
- "rustc-hash",
+ "rustc-hash 2.1.3",
  "ryu-js",
  "serde",
  "serde_json",
@@ -2426,7 +2473,7 @@ dependencies = [
  "merman-markup",
  "merman-model",
  "regex",
- "rustc-hash",
+ "rustc-hash 2.1.3",
  "ryu-js",
  "serde",
  "serde_json",
@@ -2575,7 +2622,7 @@ dependencies = [
  "htmlize",
  "indexmap",
  "jiff",
- "rustc-hash",
+ "rustc-hash 2.1.3",
  "serde",
  "serde_json",
  "sha2",
@@ -2620,7 +2667,7 @@ dependencies = [
  "regex",
  "roughr-merman",
  "roxmltree 0.21.2",
- "rustc-hash",
+ "rustc-hash 2.1.3",
  "ryu-js",
  "serde",
  "serde_json",
@@ -2757,6 +2804,12 @@ dependencies = [
  "adler2",
  "simd-adler32",
 ]
+
+[[package]]
+name = "mintex"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c505b3e17ed6b70a7ed2e67fbb2c560ee327353556120d6e72f5232b6880d536"
 
 [[package]]
 name = "mio"
@@ -2962,6 +3015,15 @@ checksum = "e3e0adef53c21f888deb4fa59fc59f7eb17404926ee8a6f59f5df0fd7f9f3272"
 dependencies = [
  "bitflags",
  "objc2",
+]
+
+[[package]]
+name = "object"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd229a0361b9d0d4396176e02d65897f487eebeab7caa6d443855ee152ca0b9c"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]
@@ -3453,7 +3515,7 @@ dependencies = [
  "pin-project-lite",
  "quinn-proto",
  "quinn-udp",
- "rustc-hash",
+ "rustc-hash 2.1.3",
  "rustls",
  "socket2",
  "thiserror 2.0.21",
@@ -3475,7 +3537,7 @@ dependencies = [
  "rand 0.10.3",
  "rand_pcg",
  "ring",
- "rustc-hash",
+ "rustc-hash 2.1.3",
  "rustls",
  "rustls-pki-types",
  "slab",
@@ -3953,6 +4015,18 @@ dependencies = [
  "sha2",
  "walkdir",
 ]
+
+[[package]]
+name = "rustc-demangle"
+version = "0.1.28"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b74b56ffa8bb2830709a538c2cbcae9aa062db0d2a42563bfb09bdaae44020eb"
+
+[[package]]
+name = "rustc-hash"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
 name = "rustc-hash"
@@ -4502,7 +4576,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "38803281d1c23166c5ebcb455439a5d2afe711cc909cf88af72448c297756ad6"
 dependencies = [
  "kurbo 0.13.1",
- "rustc-hash",
+ "rustc-hash 2.1.3",
  "skrifa",
  "write-fonts",
 ]
@@ -4708,6 +4782,12 @@ dependencies = [
  "quote",
  "syn 3.0.9",
 ]
+
+[[package]]
+name = "thousands"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3bf63baf9f5039dadc247375c29eb13706706cfde997d0330d05aa63a77d8820"
 
 [[package]]
 name = "thread_local"

@@ -1,0 +1,37 @@
+use criterion::Criterion;
+use merman_core::{MermaidEngine, ParseOptions};
+use merman_render::{LayoutOptions, environment::RenderEnvironment, family};
+use std::hint::black_box;
+
+const MINDMAP_BALANCED_TREE: &str = include_str!("../fixtures/stress_balanced_tree_009.mmd");
+
+pub(super) fn register(c: &mut Criterion) {
+    let engine = MermaidEngine::new();
+    let parse_opts = ParseOptions::strict();
+    let environment = RenderEnvironment::deterministic();
+
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(MINDMAP_BALANCED_TREE, parse_opts)
+        .expect("parse")
+        .expect("supported diagram");
+    let layout_options = LayoutOptions::headless_svg_defaults();
+
+    let mut group = c.benchmark_group("layout_stress");
+    group.sample_size(50);
+
+    // Benchmark operation-owned preparation from the borrowed presentation data. Source parsing
+    // remains outside the layout measurement.
+    group.bench_function("mindmap_balanced_tree_prepare_x50", move |b| {
+        b.iter(|| {
+            for _ in 0..50usize {
+                let session = environment.begin_session().expect("render session");
+                let artifact =
+                    family::prepare(black_box(parsed.presentation()), &layout_options, session)
+                        .expect("prepare");
+                black_box(artifact.family_id());
+            }
+        });
+    });
+
+    group.finish();
+}

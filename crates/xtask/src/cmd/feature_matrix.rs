@@ -45,6 +45,8 @@ const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
     (
         "merman",
         &[
+            "benchmark-stages",
+            "dhat-heap",
             "complete-svg",
             "complete-svg-elk",
             "system-fonts",
@@ -71,6 +73,7 @@ const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
     (
         "merman-core",
         &[
+            "benchmark-stages",
             "compat-json",
             "editor-facts",
             "operation-deadlines",
@@ -96,6 +99,7 @@ const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
     (
         "merman-model",
         &[
+            "benchmark-stages",
             "compat-json",
             "presentation-data",
             "html-entities",
@@ -105,7 +109,7 @@ const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
         ],
     ),
     ("merman-markup", &["html", "url", "color"]),
-    ("merman-render", &[]),
+    ("merman-render", &["benchmark-stages"]),
     ("merman-rustdoc", &["complete-svg", "complete-svg-elk"]),
     ("merman-typst-plugin", &[]),
     (

@@ -100,18 +100,6 @@ on:
         description: "Absolute regression threshold in nanoseconds (50000 = 50 us)"
         required: false
         default: "50000"
-      include_mermaid_js:
-        description: "Also run Mermaid JS comparison"
-        type: boolean
-        default: false
-      mmdr_ref:
-        description: "Pinned mermaid-rs-renderer ref"
-        required: false
-        default: "7ff1196ed297c32a65a6b3cdc28f3ca3787fb65e"
-      mmdr_toolchain:
-        description: "Rust toolchain for mermaid-rs-renderer"
-        required: false
-        default: "1.92.0"
 
 permissions:
   contents: read
@@ -179,55 +167,24 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.100.0
 
-      - name: Check Python performance scripts
-        if: github.event_name != 'pull_request'
-        working-directory: head
-        run: |
-          python3 -m py_compile \
-            tools/bench/compare_mermaid_renderers.py \
-            tools/bench/compare_self.py \
-            tools/bench/corpus_utils.py \
-            tools/bench/freeze_perf_baseline.py \
-            tools/bench/native_memory.py \
-            tools/bench/perf_runner.py \
-            tools/bench/performance_workflow.py \
-            tools/bench/render_perf_comment.py \
-            tools/bench/run_layout_work_calibration.py \
-            tools/bench/run_native_memory.py \
-            tools/bench/stage_spotcheck.py \
-            tools/bench/test_layout_work_calibration.py \
-            tools/bench/test_perf_baseline_manifest.py \
-            tools/bench/test_native_memory_contracts.py \
-            tools/bench/test_native_memory_driver_contracts.py \
-            tools/bench/test_perf_contracts.py \
-            tools/bench/verify_pipeline_bench_list.py
-
       - name: Check performance helper contracts
         if: github.event_name != 'pull_request'
         working-directory: head
         run: |
-          python3 tools/bench/test_perf_baseline_manifest.py
-          python3 -m unittest tools.bench.test_layout_work_calibration
-          python3 tools/bench/test_native_memory_contracts.py
-          python3 tools/bench/test_native_memory_driver_contracts.py
-          if [[ -f tools/bench/requirements-png.txt ]]; then
-            python3 -m venv "$RUNNER_TEMP/merman-benchmark-python"
-            source "$RUNNER_TEMP/merman-benchmark-python/bin/activate"
-            python3 -m pip install -r tools/bench/requirements-png.txt
-          fi
-          python3 tools/bench/test_perf_contracts.py
+          python3 -m compileall -q tools/bench/bench.py tools/bench/merman_bench
+          python3 -m unittest discover -s tools/bench
+          node --test tools/bench/collectors/node_runner.test.mjs
 
       - name: Verify compiled pipeline benchmark list
         if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'perf')
         working-directory: head
-        run: python3 tools/bench/verify_pipeline_bench_list.py --features all-diagrams,svg,compat-json,editor-facts,layout-cytoscape,layout-dagre,layout-elk,math
+        run: python3 tools/bench/bench.py criterion-list --features all-diagrams,svg,compat-json,editor-facts,layout-cytoscape,layout-dagre,layout-elk,math
 
       - name: Verify compiled ASCII benchmark list
         working-directory: head
         run: |
-          python3 tools/bench/verify_pipeline_bench_list.py \
-            --bench ascii_pipeline \
-            --corpus tools/bench/ascii_corpus.json \
+          python3 tools/bench/bench.py criterion-list \
+            --corpus-view ascii \
             --features all-diagrams,ascii
 
       - name: Build native memory probe contract
@@ -235,10 +192,10 @@ jobs:
         working-directory: head
         run: |
           cargo test --locked -p merman --test native_memory_allocator
-          python3 tools/bench/run_native_memory.py --smoke \
+          python3 tools/bench/bench.py memory --smoke \
             --build-timeout-seconds 900 \
             --json-out target/bench/native_memory_smoke.json
-          python3 tools/bench/test_native_memory_driver_contracts.py \
+          python3 tools/bench/test_contracts.py \
             --verify-smoke-report target/bench/native_memory_smoke.json
 
   measurement-plan:
@@ -264,7 +221,7 @@ jobs:
           DISPATCH_RUN: ${{ inputs.run }}
           PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: |
-          python3 tools/bench/performance_workflow.py select \
+          python3 tools/bench/bench.py ci select \
             --event "$EVENT_NAME" \
             --dispatch-run "$DISPATCH_RUN" \
             --labels-json "$PR_LABELS" \
@@ -326,15 +283,22 @@ jobs:
         env:
           LANE_ID: ${{ matrix.id }}
         run: |
-          python3 - <<'PY'
-          import json
+          PYTHONPATH=head/tools/bench python3 - <<'PY'
           import os
           from pathlib import Path
-          descriptor = json.loads(Path("base/tools/bench/performance_lanes.json").read_text())
-          lane = next(row for row in descriptor["lanes"] if row["id"] == os.environ["LANE_ID"])
+
+          from merman_bench.ci import CORPUS, load_registry
+
+          base = Path("base")
+          legacy = base / "tools/bench/performance_lanes.json"
+          registry = load_registry(legacy if legacy.is_file() else base / CORPUS)
+          lane = registry.by_id[os.environ["LANE_ID"]]
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"bench={lane['bench']}\n")
               output.write(f"features={lane['features']}\n")
               output.write(f"default_features={str(lane['default_features']).lower()}\n")
+              output.write(f"corpus={lane['corpus']}\n")
+              output.write(f"corpus_view={lane.get('corpus_view', '')}\n")
           PY
 
       - name: Measure descriptor and write receipt
@@ -346,7 +310,11 @@ jobs:
           GROUP: ${{ matrix.group }}
           PACKAGE: ${{ matrix.package }}
           BENCH: ${{ matrix.bench }}
+          BASE_BENCH: ${{ steps.base-recipe.outputs.bench }}
           CORPUS: ${{ matrix.corpus }}
+          CORPUS_VIEW: ${{ matrix.corpus_view }}
+          BASE_CORPUS: ${{ steps.base-recipe.outputs.corpus }}
+          BASE_CORPUS_VIEW: ${{ steps.base-recipe.outputs.corpus_view }}
           FEATURES: ${{ matrix.features }}
           BASE_FEATURES: ${{ steps.base-recipe.outputs.features }}
           BASE_DEFAULT_FEATURES: ${{ steps.base-recipe.outputs.default_features }}
@@ -365,9 +333,9 @@ jobs:
             --head-target-dir target/performance/head
             --base-package "$PACKAGE"
             --head-package "$PACKAGE"
-            --base-bench "$BENCH"
+            --base-bench "$BASE_BENCH"
             --head-bench "$BENCH"
-            --base-corpus "$CORPUS"
+            --base-corpus "$BASE_CORPUS"
             --head-corpus "$CORPUS"
             --base-features "$BASE_FEATURES"
             --head-features "$FEATURES"
@@ -381,6 +349,12 @@ jobs:
             --out target/performance/comparison.md
             --json-out target/performance/comparison.json
           )
+          if [[ -n "$BASE_CORPUS_VIEW" ]]; then
+            args+=(--base-corpus-view "$BASE_CORPUS_VIEW")
+          fi
+          if [[ -n "$CORPUS_VIEW" ]]; then
+            args+=(--head-corpus-view "$CORPUS_VIEW")
+          fi
           case "$DEFAULT_FEATURES" in
             true) ;;
             false) args+=(--no-head-default-features) ;;
@@ -401,7 +375,7 @@ jobs:
             args+=(--group "$GROUP")
           fi
           set +e
-          python3 tools/bench/compare_self.py "${args[@]}"
+          python3 tools/bench/bench.py ab "${args[@]}"
           comparison_exit=$?
           set -e
           echo "comparison_exit=$comparison_exit" >> "$GITHUB_OUTPUT"
@@ -413,7 +387,7 @@ jobs:
         run: |
           set -euo pipefail
           set +e
-          python3 tools/bench/render_perf_comment.py \
+          python3 tools/bench/bench.py summary \
             --json target/performance/comparison.json \
             --out target/performance/summary.md \
             --run-url "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
@@ -437,27 +411,31 @@ jobs:
 
       - name: Observe ordered workloads on the measured revisions
         id: workloads
-        if: ${{ matrix.id == 'regression' && hashFiles('head/tools/bench/run_workloads.py') != '' }}
+        if: ${{ matrix.id == 'regression' && hashFiles('head/tools/bench/bench.py') != '' }}
         env:
           WORKLOAD_SUITE: ${{ (github.event_name == 'schedule' || inputs.run == 'full') && 'full' || 'quick' }}
         run: &workload_recipe |
           set -euo pipefail
           out="$GITHUB_WORKSPACE/head/target/performance/workloads"
-          driver=tools/bench/run_workloads.py
-          python3 "head/$driver" plan --suite "$WORKLOAD_SUITE" --out "$out/plan.json"
+          bench=tools/bench/bench.py
+          python3 "head/$bench" plan --suite "$WORKLOAD_SUITE" --out "$out/plan.json"
           incomplete=0
           for side in head base; do
-            if [[ ! -f "$side/$driver" ]]; then
+            driver="$side/$bench"
+            if [[ ! -f "$driver" ]]; then
+              driver="$side/tools/bench/run_workloads.py"
+            fi
+            if [[ ! -f "$driver" ]]; then
               echo 'This revision predates the ordered workload runner.' > "$out/$side-unavailable.txt"
               continue
             fi
-            python3 "$side/$driver" rust --plan "$out/plan.json" --metric memory --out "$out/$side-memory.json" || incomplete=1
-            python3 "$side/$driver" rust --plan "$out/plan.json" --metric work --out "$out/$side-work.json" || incomplete=1
-            python3 "$side/$driver" rust --plan "$out/plan.json" --metric memory --operation prepare-retained --scenario retained-configs --warmups 0 --site-css-bytes 65536 --out "$out/$side-retained.json" || incomplete=1
+            python3 "$driver" rust --plan "$out/plan.json" --metric memory --out "$out/$side-memory.json" || incomplete=1
+            python3 "$driver" rust --plan "$out/plan.json" --metric work --out "$out/$side-work.json" || incomplete=1
+            python3 "$driver" rust --plan "$out/plan.json" --metric memory --operation prepare-retained --scenario retained-configs --warmups 0 --site-css-bytes 65536 --out "$out/$side-retained.json" || incomplete=1
           done
           for metric in memory work retained; do
             if [[ -f "$out/base-$metric.json" && -f "$out/head-$metric.json" ]]; then
-              python3 "head/$driver" compare "$out/base-$metric.json" "$out/head-$metric.json" --out "$out/compare-$metric.json" || incomplete=1
+              python3 "head/$bench" compare "$out/base-$metric.json" "$out/head-$metric.json" --out "$out/compare-$metric.json" || incomplete=1
             fi
           done
           exit "$incomplete"
@@ -469,7 +447,7 @@ jobs:
         env:
           WEEKLY_INTERVAL: ${{ needs.weekly-baseline.outputs.interval }}
           WORKLOAD_RESULT: ${{ steps.workloads.outcome }}
-        run: python3 -B tools/bench/weekly_workload_baseline.py record target/performance/workloads
+        run: python3 -B tools/bench/bench.py weekly record target/performance/workloads
 
       - name: Upload ordered workload observations
         if: ${{ always() && matrix.id == 'regression' && hashFiles('head/target/performance/workloads/plan.json', 'head/target/performance/workloads/weekly-interval.json') != '' }}
@@ -500,7 +478,7 @@ jobs:
           COMPARISON_EXIT: ${{ steps.comparison.outputs.comparison_exit || '2' }}
           RENDER_EXIT: ${{ steps.render.outputs.render_exit || '2' }}
         run: |
-          python3 tools/bench/performance_workflow.py enforce \
+          python3 tools/bench/bench.py ci enforce \
             --comparison-exit "$COMPARISON_EXIT" \
             --render-exit "$RENDER_EXIT"
 
@@ -522,17 +500,17 @@ jobs:
           persist-credentials: false
 
       - name: Materialize the weekly sentinel
-        run: python3 -B tools/bench/run_workloads.py plan --scenario mixed-families --out "$RUNNER_TEMP/weekly-sentinel.json"
+        run: python3 -B tools/bench/bench.py plan --scenario mixed-families --out "$RUNNER_TEMP/weekly-sentinel.json"
 
       - name: Select the previous measured ancestor
         id: select
         env:
           GH_TOKEN: ${{ github.token }}
-          WORKLOAD_SOURCES: ${{ hashFiles('tools/bench/run_workloads.py', 'tools/bench/workload_svg.py', 'tools/bench/workload_drawing.py', 'crates/merman/benches/workloads/**/*.rs', 'crates/merman/benches/public_workload*.rs', 'crates/merman/benches/native_memory/allocator.rs', 'rust-toolchain.toml') }}
+          WORKLOAD_SOURCES: ${{ hashFiles('tools/bench/bench.py', 'tools/bench/merman_bench/*.py', 'crates/merman/benches/workloads/**/*.rs', 'crates/merman/benches/workloads.rs', 'crates/merman/benches/memory.rs', 'crates/merman/benches/memory/**/*.rs', 'crates/merman/benches/native_memory/allocator.rs', 'rust-toolchain.toml') }}
           WORKLOAD_RECIPE: *workload_recipe
           WORKLOAD_RUNNER: *measurement_runner
           WORKLOAD_TOOLCHAIN: *measurement_toolchain
-        run: python3 -B tools/bench/weekly_workload_baseline.py select "$RUNNER_TEMP/weekly-sentinel.json"
+        run: python3 -B tools/bench/bench.py weekly select "$RUNNER_TEMP/weekly-sentinel.json"
 
   node-reference:
     name: perf-node-reference
@@ -579,26 +557,26 @@ jobs:
         run: |
           npm ci --prefix tools/bench/node-reference --ignore-scripts --no-audit --no-fund
           node --test tools/bench/workload_node.test.mjs
-          python3 tools/bench/perf_runner.py workloads plan --suite full --out target/bench/reference-plan.json
+          python3 tools/bench/bench.py plan --suite full --out target/bench/reference-plan.json
           checks=()
           if [[ -f tools/bench/workload_drawing_browser.mjs ]]; then checks+=(--check-drawings); fi
-          python3 tools/bench/perf_runner.py workloads node-matrix --plan target/bench/reference-plan.json --out-dir target/bench/node-reference "${checks[@]}"
+          python3 tools/bench/bench.py node --plan target/bench/reference-plan.json --out-dir target/bench/node-reference "${checks[@]}"
 
       - name: Replay the native cross-family suite
         if: steps.project.outputs.available == 'true' && inputs.run == 'full'
         run: |
-          python3 tools/bench/perf_runner.py workloads plan --scenario corpus-cross_family --out target/bench/families-plan.json
-          python3 tools/bench/perf_runner.py workloads node-matrix --plan target/bench/families-plan.json --out-dir target/bench/node-cross-family
+          python3 tools/bench/bench.py plan --scenario corpus-cross_family --out target/bench/families-plan.json
+          python3 tools/bench/bench.py node --plan target/bench/families-plan.json --out-dir target/bench/node-cross-family
 
       - name: Generate a reader report from the Node coverage bundle
         if: ${{ !cancelled() && hashFiles('tools/bench/workload_report.py') != '' && hashFiles('target/bench/node-reference/coverage.json') != '' }}
         env:
           RAW_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
         run: |
-          python3 -B tools/bench/perf_runner.py workloads report --date "$(date -u +%F)" \
+          python3 -B tools/bench/bench.py report --date "$(date -u +%F)" \
             --node-matrix target/bench/node-reference --raw-url "$RAW_RUN_URL" \
             --out target/bench/node-reference/reader/report.md
-          python3 -B tools/bench/perf_runner.py workloads report --from target/bench/node-reference/reader/report.json --check
+          python3 -B tools/bench/bench.py report --from target/bench/node-reference/reader/report.json --check
 
       - name: Upload Node observations
         if: ${{ always() && hashFiles('target/bench/node-reference/plan.json') != '' }}
@@ -608,120 +586,3 @@ jobs:
           path: |
             target/bench/node-reference
             target/bench/node-cross-family
-
-  reference:
-    name: perf-reference
-    runs-on: ubuntu-24.04
-    if: github.event_name == 'schedule' || inputs.run == 'reference' || inputs.run == 'full'
-    env:
-      CARGO_INCREMENTAL: "0"
-      CARGO_PROFILE_DEV_DEBUG: "0"
-      CARGO_PROFILE_TEST_DEBUG: "0"
-    steps:
-      - name: Checkout head
-        uses: actions/checkout@v7.0.1
-        with:
-          path: head
-          fetch-depth: 1
-          persist-credentials: false
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.head_ref || github.sha }}
-          repository: ${{ github.event_name == 'workflow_dispatch' && inputs.head_repository || github.repository }}
-
-      - name: Checkout mermaid-rs-renderer
-        uses: actions/checkout@v7.0.1
-        with:
-          repository: 1jehuang/mermaid-rs-renderer
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.mmdr_ref || '7ff1196ed297c32a65a6b3cdc28f3ca3787fb65e' }}
-          path: head/repo-ref/mermaid-rs-renderer
-          fetch-depth: 1
-          persist-credentials: false
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.100.0
-
-      - name: Install mermaid-rs-renderer toolchain
-        shell: bash
-        env:
-          MMDR_TOOLCHAIN: ${{ github.event_name == 'workflow_dispatch' && inputs.mmdr_toolchain || '1.92.0' }}
-        run: |
-          set -euo pipefail
-
-          if [[ ! "$MMDR_TOOLCHAIN" =~ ^([0-9]+(\.[0-9]+){0,2}|stable|beta|nightly)(-[0-9]{4}-[0-9]{2}-[0-9]{2})?$ ]]; then
-            echo "::error::mmdr_toolchain must be a Rust release number, stable, beta, nightly, or a dated channel."
-            exit 1
-          fi
-
-          rustup toolchain install "$MMDR_TOOLCHAIN" --profile minimal
-
-      - name: Setup Node for Mermaid JS
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.include_mermaid_js }}
-        uses: actions/setup-node@v7.1.0
-        with:
-          node-version: "26.13.0"
-          cache: npm
-          cache-dependency-path: head/tools/mermaid-cli/package-lock.json
-
-      - name: Install pinned npm
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.include_mermaid_js }}
-        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.2
-
-      - name: Install Mermaid JS toolchain
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.include_mermaid_js }}
-        working-directory: head/tools/mermaid-cli
-        run: npm ci
-
-      - name: Run cross-repo comparison
-        working-directory: head
-        env:
-          INCLUDE_MERMAID_JS: ${{ github.event_name == 'workflow_dispatch' && inputs.include_mermaid_js || false }}
-          MMDR_TOOLCHAIN: ${{ github.event_name == 'workflow_dispatch' && inputs.mmdr_toolchain || '1.92.0' }}
-          PRESET: ${{ github.event_name == 'workflow_dispatch' && inputs.preset || 'long' }}
-          SUITE: ${{ github.event_name == 'workflow_dispatch' && inputs.suite || 'canary' }}
-        run: |
-          set -euo pipefail
-
-          case "$PRESET" in
-            quick|long) ;;
-            *)
-              echo "::error::preset must be quick or long."
-              exit 1
-              ;;
-          esac
-
-          case "$SUITE" in
-            canary|standard|cross_family|full) ;;
-            *)
-              echo "::error::suite must be canary, standard, cross_family, or full."
-              exit 1
-              ;;
-          esac
-
-          if [[ ! "$MMDR_TOOLCHAIN" =~ ^([0-9]+(\.[0-9]+){0,2}|stable|beta|nightly)(-[0-9]{4}-[0-9]{2}-[0-9]{2})?$ ]]; then
-            echo "::error::mmdr_toolchain must be a Rust release number, stable, beta, nightly, or a dated channel."
-            exit 1
-          fi
-
-          args=(
-            --preset "$PRESET"
-            --suite "$SUITE"
-            --mmdr-dir repo-ref/mermaid-rs-renderer
-            --mmdr-toolchain "$MMDR_TOOLCHAIN"
-            --expected-merman-rev "$(git rev-parse HEAD)"
-            --expected-mmdr-rev "$(git -C repo-ref/mermaid-rs-renderer rev-parse HEAD)"
-            --out target/performance/reference_comparison.md
-            --json-out target/performance/reference_comparison.json
-          )
-          if [ "$INCLUDE_MERMAID_JS" = "true" ]; then
-            echo "Mermaid JS comparison enabled."
-          else
-            args+=(--skip-mermaid-js)
-          fi
-          python3 tools/bench/compare_mermaid_renderers.py "${args[@]}"
-
-      - name: Upload reference artifacts
-        uses: actions/upload-artifact@v7.0.2
-        with:
-          name: perf-reference
-          path: |
-            head/target/performance/reference_comparison.md
-            head/target/performance/reference_comparison.json
