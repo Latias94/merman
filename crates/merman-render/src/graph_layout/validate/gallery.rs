@@ -1260,6 +1260,13 @@ fn replay_aesthetic_witnesses() {
                 check_cycle_feedback(&drawing, &scene, view_box(doc.root_element()));
             }
             if name.starts_with("release") {
+                assert!(
+                    metrics
+                        .marker_faces
+                        .iter()
+                        .all(|face| face.pitch_over_width >= 1.0),
+                    "{name}: incoming arrows overlap on one face"
+                );
                 let across = |point| drawing.axis().coordinate(point);
                 for (edge, layout) in scene.edges.iter().zip(&drawing.layout.edges) {
                     if !matches!(layout.from.as_str(), "checks" | "stage") {
