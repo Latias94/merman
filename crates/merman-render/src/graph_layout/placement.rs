@@ -1,4 +1,6 @@
-use super::ir::{Axis, Direction, MeasuredGraph, SolvedGraph};
+mod anchors;
+
+use super::ir::{Axis, Direction, MeasuredGraph, Point, Size, SolvedGraph};
 use super::shoal_bridge::{self, NodeHint, OrderHint, Placement, WidthPolicy};
 use crate::layout_frame::{FrameDirection, GraphPlacement, ShoalFrameNode};
 use crate::layout_work::OperationLayoutWorkControl;
@@ -53,8 +55,23 @@ pub(crate) fn solve<'id>(
             message: "Shoal frame identities do not match the measured graph".into(),
         });
     }
+    let anchors = if graph.groups.is_empty()
+        && (capture
+            || previous.is_some_and(|frame| frame.nodes.values().any(|n| n.position.is_some())))
+    {
+        Some(anchors::Components::new(graph, node_ids.clone(), work)?)
+    } else {
+        None
+    };
     let hints = if let Some(previous) = previous {
-        hints(graph, node_ids.clone(), group_ids.clone(), previous, work)?
+        hints(
+            graph,
+            node_ids.clone(),
+            group_ids.clone(),
+            previous,
+            anchors.as_ref(),
+            work,
+        )?
     } else {
         Vec::new()
     };
@@ -63,7 +80,11 @@ pub(crate) fn solve<'id>(
         Placement {
             width,
             capture_ranks: capture,
+            reuse_components: !fit_width && anchors.is_some(),
             hints: &hints,
+            incident_signatures: anchors
+                .as_ref()
+                .map_or(&[], anchors::Components::signatures),
             flow_relative_nodes,
         },
         work,
@@ -74,7 +95,7 @@ pub(crate) fn solve<'id>(
         }),
         frame: if capture {
             Some(Arc::new(frame(
-                graph, &solved, node_ids, group_ids, family, work,
+                graph, &solved, node_ids, group_ids, family, anchors, work,
             )?))
         } else {
             None
@@ -85,9 +106,10 @@ pub(crate) fn solve<'id>(
 
 fn hints<'id>(
     graph: &MeasuredGraph,
-    nodes: impl ExactSizeIterator<Item = &'id str>,
+    nodes: impl ExactSizeIterator<Item = &'id str> + Clone,
     groups: impl ExactSizeIterator<Item = &'id str>,
     previous: &ShoalLayoutFrame,
+    anchors: Option<&anchors::Components>,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<Vec<Option<NodeHint>>> {
     let comparisons = previous.nodes.len().ilog2() as usize + 1;
@@ -103,8 +125,11 @@ fn hints<'id>(
         work.charge_adapter(id.len())?;
         parents.push(previous_groups.get(id).copied());
     }
+    let matching = anchors
+        .map(|anchors| anchors.matches(nodes.clone(), previous, work))
+        .transpose()?;
     let mut hints = Vec::with_capacity(nodes.len());
-    for (id, measured) in nodes.zip(&graph.nodes) {
+    for (index, (id, measured)) in nodes.zip(&graph.nodes).enumerate() {
         work.charge_adapter(id.len())?;
         let hint = previous.nodes.get(id).and_then(|node| {
             let same_parent = match (measured.parent, node.parent) {
@@ -114,13 +139,32 @@ fn hints<'id>(
                 }
                 _ => false,
             };
-            same_parent.then_some((
-                OrderHint {
+            same_parent.then(|| NodeHint {
+                order: OrderHint {
                     rank: i32::try_from(node.rank).unwrap_or(i32::MAX),
                     cross_key: node.cross_key,
                 },
-                Direction::from(node.direction),
-            ))
+                direction: Direction::from(node.direction),
+                position: anchors
+                    .zip(node.position)
+                    .filter(|_| matching.as_ref().is_some_and(|matching| matching[index]))
+                    .map(|(anchors, position)| {
+                        (
+                            merman_layout_shoal::PositionHint {
+                                center: Point {
+                                    x: position.x,
+                                    y: position.y,
+                                },
+                                size: Size {
+                                    width: position.width,
+                                    height: position.height,
+                                },
+                                incident_signature: Some(position.incident_signature.bits()),
+                            },
+                            anchors.signature(index),
+                        )
+                    }),
+            })
         });
         hints.push(hint);
     }
@@ -133,6 +177,7 @@ fn frame<'id>(
     node_ids: impl ExactSizeIterator<Item = &'id str>,
     group_ids: impl ExactSizeIterator<Item = &'id str>,
     family: &str,
+    anchors: Option<anchors::Components>,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<ShoalLayoutFrame> {
     if solved.node_ranks.len() != node_ids.len() {
@@ -148,9 +193,13 @@ fn frame<'id>(
         groups.push(id.to_owned());
     }
     let mut nodes = BTreeMap::new();
-    for ((id, measured), (&rank, rect)) in node_ids
+    let positions = anchors
+        .map(|anchors| anchors.positions(&solved.nodes, work))
+        .transpose()?;
+    for (index, ((id, measured), (&rank, rect))) in node_ids
         .zip(&graph.nodes)
         .zip(solved.node_ranks.iter().zip(&solved.nodes))
+        .enumerate()
     {
         work.charge_adapter(id.len())?;
         let direction = measured.parent.map_or(solved.direction, |index| {
@@ -168,6 +217,7 @@ fn frame<'id>(
                 rank,
                 cross_key,
                 direction: direction.into(),
+                position: positions.as_ref().map(|positions| positions[index]),
             },
         );
     }

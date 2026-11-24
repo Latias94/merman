@@ -41,13 +41,19 @@ Long edges normally travel along intermediate channels inside the diagram. On sm
 
 Set `Options::bus_routing` with `RoutingStyle::Orthogonal` to allow unlabelled, consistently styled fans to share a trunk where there is room. Each edge keeps its own semantic occurrence and terminal marker.
 
-`PackingPolicy::AspectTargeted` uses two-dimensional shelves with a target proportion across and along the flow. `Strip` packs in a single row across the flow. `PackingPolicy::FitWidth` wraps complete components within a physical width when they fit individually.
+Set `Options::global_orthogonal` with `RoutingStyle::Orthogonal` to search for shorter, lower-conflict routes around measured boxes. Shoal can give coincident legs separate tracks where their approach order and available clearance allow it. Port contacts, marker leads, and compound border stitches are kept. `BudgetCaps::max_ortho_grid_nodes` limits the search, which falls back to the layered drawing when a refinement does not fit. Bus routing takes precedence when requested.
+
+`Options::inline_labels` tries to place short middle labels in an existing rank gap in flat graphs. A crowded gap restores its label sublayer. `Options::compact_ranks` can move a short node up to use space under its immediate parent when their edge is straight and the proposed geometry clears nearby boxes and routes.
+
+`PackingPolicy::AspectTargeted` uses two-dimensional shelves with a target proportion across and along the flow. `BalancedAspect` packs disconnected components against a skyline and uses a target physical width-to-height ratio. `Strip` packs in a single row across the flow. `PackingPolicy::FitWidth` wraps complete components within a physical width when they fit individually.
 
 `WidthPolicy::FitWidth` tries component wrapping and tighter spacing. It can also turn a horizontal flow below a configured breakpoint and fold eligible leaf fans across rows. Set `allow_turn` and `fold_wide_ranks` explicitly. Read the selected direction and width from `LayoutOutput`, including when the result still exceeds the requested width. Grid quantization is reserved for a future policy.
 
 Set `Options::capture_node_ranks` for interactive layouts. Each `LayoutOutput::node_ranks` entry uses its component's or compound container's local rank origin. Match surviving nodes by the caller's semantic IDs and populate `NodeSpec::order_hint` with the previous rank and physical cross-axis center. Set `order_hint_direction` to associate the hints with the prior local direction.
 
-When the hinted drawing has crossings, Shoal compares it with a stateless solve within the same work budget. It keeps the stateless drawing if hints increased either crossing count.
+`NodeSpec::set_position_hint` adds a component-relative center. Supply the node's previous measured size and caller-defined incident-edge signature to give unchanged nodes more weight. When the hinted drawing has crossings, Shoal can compare it with a stateless solve within the same work budget. It selects the stateless drawing when a crossing count improves and both counts are at most those of the hinted drawing.
+
+For flat, natural-width editor layouts, `Options::reuse_unchanged_components` can reuse component geometry within the same `LayoutScratch`. Set `capture_node_ranks` and give each node its current incident-edge signature on the first solve. On the next solve, match surviving nodes by their stable IDs and supply the prior frame's ranks and positions alongside current signatures. Shoal checks the component's measurements, topology, options and frame geometry before reusing it.
 
 ## Nested groups
 

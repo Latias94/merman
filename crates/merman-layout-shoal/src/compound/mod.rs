@@ -7,6 +7,8 @@ mod refine;
 mod seam_relax;
 mod sides;
 mod solve;
+
+pub(super) use refine::crossings;
 #[cfg(test)]
 mod tests;
 
@@ -77,6 +79,8 @@ impl Frames {
             if !reusable {
                 let mut options = *ctx.options;
                 options.caps.max_dummies = remaining;
+                // The local frame is measured before sibling titles and cross-group legs exist.
+                options.inline_labels = false;
                 let local = Pass {
                     options: &options,
                     ..*ctx

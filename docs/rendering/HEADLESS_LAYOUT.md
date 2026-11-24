@@ -169,8 +169,10 @@ with the previous successful `ShoalLayoutFrame`, or with `None` to start a sessi
 next frame from `SvgOutput::shoal_layout_frame()` after successful rendering. Full binding SVG
 results expose it as `shoal_layout_frame` metadata. Keep the frame with its document and pass
 it back on the next edit. Shoal matches surviving node IDs within their parent and local flow
-direction, then uses the previous rank and cross-axis order as placement hints. The frame is
-separate from layout JSON and SVG.
+direction, then uses the previous rank and cross-axis order as placement hints. Flat diagrams
+also use component-relative coordinates to reduce movement. A render worker can reuse a flat
+component when the prior frame, measurements and topology still agree. The frame is separate from
+layout JSON and SVG.
 
 ## Low-Level Use
 

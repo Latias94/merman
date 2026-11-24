@@ -540,7 +540,7 @@ fn shared_fan(at: Point, first: [Endpoint; 2], second: [Endpoint; 2], out: &Layo
     })
 }
 
-pub(super) fn crossings(
+pub(crate) fn crossings(
     graph: &Graph,
     out: &LayoutOutput,
     style: RoutingStyle,

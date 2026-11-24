@@ -76,9 +76,17 @@ impl Default for GroupPolicy {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PackingPolicy {
-    AspectTargeted { target_ratio: f64 },
+    AspectTargeted {
+        target_ratio: f64,
+    },
+    /// Pack complete components against a two-dimensional skyline in drawing coordinates.
+    BalancedAspect {
+        target_ratio: f64,
+    },
     Strip,
-    FitWidth { max_width: f64 },
+    FitWidth {
+        max_width: f64,
+    },
 }
 
 impl Default for PackingPolicy {
@@ -110,6 +118,8 @@ pub struct BudgetCaps {
     pub max_border_ports: usize,
     pub max_ordered_compound_ports: usize,
     pub max_ordered_compound_edges: usize,
+    /// Maximum vertices in the optional orthogonal visibility graph.
+    pub max_ortho_grid_nodes: usize,
 }
 
 impl Default for BudgetCaps {
@@ -122,6 +132,7 @@ impl Default for BudgetCaps {
             max_border_ports: 40_000,
             max_ordered_compound_ports: 400,
             max_ordered_compound_edges: 500,
+            max_ortho_grid_nodes: crate::ortho::DEFAULT_MAX_ORTHO_GRID_NODES,
         }
     }
 }
@@ -133,6 +144,14 @@ pub struct Options {
     pub routing: RoutingStyle,
     /// Allow unlabelled orthogonal fans of consistently styled edges to share a trunk.
     pub bus_routing: bool,
+    /// Use obstacle-aware global routing for orthogonal paths when a route can be improved.
+    pub global_orthogonal: bool,
+    /// Try placing short middle labels alongside their routed edge.
+    pub inline_labels: bool,
+    /// Allow adjacent ranks to use free space below or above their shorter members.
+    pub compact_ranks: bool,
+    /// Reuse proven unchanged flat components from the last accepted editor solve in the scratch.
+    pub reuse_unchanged_components: bool,
     pub cycle_policy: CyclePolicy,
     pub rank_policy: RankPolicy,
     pub group_policy: GroupPolicy,

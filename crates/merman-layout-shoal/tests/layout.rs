@@ -519,7 +519,9 @@ fn aspect_and_fit_width_wrap_components_while_strip_follows_the_cross_axis() {
                     assert_eq!(drawing.nodes[0].y, drawing.nodes[1].y);
                     assert!(drawing.nodes[2].y >= drawing.nodes[0].y + side + gap);
                 }
-                PackingPolicy::Strip => panic!("expected two-dimensional default packing"),
+                PackingPolicy::Strip | PackingPolicy::BalancedAspect { .. } => {
+                    panic!("packing policy outside this fixture")
+                }
             }
             assert_eq!(layout(&g, &options).unwrap(), drawing);
         }

@@ -11,13 +11,20 @@ use crate::{Error, LayoutExecution, Result};
 use merman_layout_shoal as shoal;
 pub(crate) use shoal::{OrderHint, WidthPolicy};
 
-pub(crate) type NodeHint = (OrderHint, shoal::Direction);
+#[derive(Clone, Copy)]
+pub(crate) struct NodeHint {
+    pub(crate) order: OrderHint,
+    pub(crate) direction: shoal::Direction,
+    pub(crate) position: Option<(shoal::PositionHint, u64)>,
+}
 
 #[derive(Default)]
 pub(crate) struct Placement<'a> {
     pub(crate) width: WidthPolicy,
     pub(crate) capture_ranks: bool,
+    pub(crate) reuse_components: bool,
     pub(crate) hints: &'a [Option<NodeHint>],
+    pub(crate) incident_signatures: &'a [u64],
     pub(crate) flow_relative_nodes: &'a [(usize, Axis)],
 }
 
@@ -81,9 +88,15 @@ fn project_input(
         spec.port_span = node.port_span;
         spec.perpendicular_port_span = node.perpendicular_port_span;
         spec.anchor_y = node.anchor_y;
-        if let Some((hint, direction)) = placement.hints.get(index).copied().flatten() {
-            spec.order_hint = Some(hint);
-            spec.order_hint_direction = Some(direction);
+        if let Some(&signature) = placement.incident_signatures.get(index) {
+            spec.set_current_incident_signature(Some(signature));
+        }
+        if let Some(hint) = placement.hints.get(index).copied().flatten() {
+            spec.order_hint = Some(hint.order);
+            spec.order_hint_direction = Some(hint.direction);
+            if let Some((position, current_signature)) = hint.position {
+                spec.set_position_hint(position, Some(current_signature));
+            }
         }
         Ok(spec)
     })?;
@@ -127,12 +140,14 @@ pub(crate) fn solve(
 ) -> Result<SolvedGraph> {
     let mut options = shoal::Options::default();
     options.routing = measured.routing;
+    options.global_orthogonal = measured.routing == shoal::RoutingStyle::Orthogonal;
     options.spacing.node = measured.node_spacing;
     options.spacing.rank = measured.rank_spacing;
     options.spacing.component = measured.component_spacing;
     options.group_policy.inherit_crossed_direction = measured.inherit_crossed_group_direction;
     options.width_policy = placement.width;
     options.capture_node_ranks = placement.capture_ranks;
+    options.reuse_unchanged_components = placement.reuse_components;
     #[cfg(all(test, feature = "diagram-flowchart", feature = "layout-elk"))]
     kernel_bench::capture(measured, options);
     let graph = project_input(measured, &placement, work)?;

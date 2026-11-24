@@ -7,6 +7,8 @@ use super::{
 use crate::work::{LayoutResult, Work, filled, reserved};
 use crate::{Direction, Graph, LayoutError, Options, PortSideHint, RoutingStyle, Side, WorkError};
 
+mod mental_map;
+
 const INLINE: f64 = 0.5;
 const COLLINEAR: f64 = 0.01;
 const NODE_SNAP: f64 = 12.;
@@ -91,6 +93,7 @@ struct Geometry<'a> {
     twin: Vec<usize>,
     protected: Vec<bool>,
     keep: Vec<bool>,
+    has_position_hints: bool,
 }
 
 impl<'a> Geometry<'a> {
@@ -128,6 +131,7 @@ impl<'a> Geometry<'a> {
             twin: filled(n, END)?,
             protected: filled(n, false)?,
             keep: filled(n, true)?,
+            has_position_hints: false,
         };
         for (v, &center) in x.iter().enumerate() {
             let (left, right) = extents(g, c, options, v as u32);
@@ -135,6 +139,9 @@ impl<'a> Geometry<'a> {
             s.envelope.lo = s.envelope.lo.min(center - left);
             s.envelope.hi = s.envelope.hi.max(center + right);
             if let Some(node) = c.nodes.get(v) {
+                s.has_position_hints |= c.nodes.len() > 1
+                    && !s.has_position_hints
+                    && node.position_hint_in(graph.direction, g.rank[v]).is_some();
                 s.span[v] = node
                     .port_span
                     .unwrap_or((g.width[v] - 2. * options.spacing.corner_clearance).max(0.))
@@ -612,6 +619,7 @@ fn align_labels(s: &mut Geometry<'_>, work: &mut Work<'_>) -> LayoutResult<()> {
 struct Pool {
     mean: f64,
     count: usize,
+    weight: f64,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -620,14 +628,25 @@ enum ZeroGap {
     Ordered,
 }
 
-/// Equal-weight bounded isotonic projection. Subtracting cumulative pitches turns the shaft
-/// separation constraints into monotonicity. Both bounds are common to all pooled levels.
 fn pava(
     values: &mut [f64],
     gap: &[f64],
     bounds: Interval,
     zero_gap: ZeroGap,
     pools: &mut Vec<Pool>,
+) -> bool {
+    weighted_pava(values, gap, bounds, zero_gap, pools, |_| 1.)
+}
+
+/// Subtract cumulative separations to turn ordered coordinates into an isotonic sequence.
+/// The transformed bounds are common to all pools.
+fn weighted_pava(
+    values: &mut [f64],
+    gap: &[f64],
+    bounds: Interval,
+    zero_gap: ZeroGap,
+    pools: &mut Vec<Pool>,
+    weight: impl Fn(usize) -> f64,
 ) -> bool {
     let total = gap.iter().skip(1).sum::<f64>();
     let hi = bounds.hi - total;
@@ -643,6 +662,7 @@ fn pava(
         pools.push(Pool {
             mean: target - before,
             count: 1,
+            weight: weight(i),
         });
         let mut together = zero_gap == ZeroGap::Equal && i > 0 && gap[i] == 0.;
         while pools.len() > 1 {
@@ -653,7 +673,8 @@ fn pava(
             let right = pools.pop().unwrap();
             let left = pools.last_mut().unwrap();
             left.count += right.count;
-            left.mean += (right.mean - left.mean) * (right.count as f64 / left.count as f64);
+            left.weight += right.weight;
+            left.mean += (right.mean - left.mean) * (right.weight / left.weight);
             together = false;
         }
     }
@@ -1213,6 +1234,9 @@ pub(super) fn refine(
     align_labels(&mut s, work)?;
     settle(&mut s, c.nodes.len(), options, work)?;
     snap(&mut s, work)?;
+    if s.has_position_hints {
+        mental_map::stabilize(&mut s, c, graph.direction, options, work)?;
+    }
     if c.boundaries {
         align_ports(&mut s, work)?;
     }

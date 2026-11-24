@@ -160,6 +160,17 @@ pub struct OrderHint {
     pub cross_key: f64,
 }
 
+/// Measured geometry of a surviving node in the previous editor frame.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PositionHint {
+    /// Center in physical drawing axes, relative to the minimum of the previous component's real
+    /// node boxes. Supply it only when the component coordinate frame is still applicable.
+    pub center: Point,
+    pub size: Size,
+    /// Stable signature of its incident edge occurrences, using the caller's persistent identities.
+    pub incident_signature: Option<u64>,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct MarkerMetrics {
     pub length: f64,
@@ -208,6 +219,9 @@ pub struct NodeSpec {
     pub order_hint: Option<OrderHint>,
     /// Local flow direction of the previous frame, if known.
     pub order_hint_direction: Option<Direction>,
+    /// Used alongside a matching `order_hint` and explicit `order_hint_direction`.
+    pub position_hint: Option<PositionHint>,
+    pub(crate) current_incident_signature: Option<u64>,
     pub(crate) internal_order_hint: Option<OrderHint>,
     pub(crate) boundary: Option<crate::flat::BoundaryRank>,
     pub(crate) pin: i8,
@@ -226,11 +240,29 @@ impl NodeSpec {
             seq,
             order_hint: None,
             order_hint_direction: None,
+            position_hint: None,
+            current_incident_signature: None,
             internal_order_hint: None,
             boundary: None,
             pin: 0,
             group_proxy: false,
         }
+    }
+
+    /// Supplies an editor anchor and the current incident signature in the same identity domain.
+    /// A node receives full anchor weight when its size and both known signatures match.
+    pub fn set_position_hint(
+        &mut self,
+        hint: PositionHint,
+        current_incident_signature: Option<u64>,
+    ) {
+        self.position_hint = Some(hint);
+        self.current_incident_signature = current_incident_signature;
+    }
+
+    /// Supplies the current incident signature when capturing a frame for component reuse.
+    pub fn set_current_incident_signature(&mut self, signature: Option<u64>) {
+        self.current_incident_signature = signature;
     }
 
     pub(crate) fn effective_order_hint(&self) -> Option<OrderHint> {
@@ -247,6 +279,27 @@ impl NodeSpec {
             self.order_hint_direction
                 .is_none_or(|hint| hint == direction)
         })
+    }
+
+    pub(crate) fn position_hint_in(&self, direction: Direction, rank: u32) -> Option<(f64, bool)> {
+        let hint = self.position_hint?;
+        if self.pin != 0
+            || self.order_hint_direction != Some(direction)
+            || u32::try_from(self.editor_order_hint()?.rank).ok()? != rank
+            || !hint.center.x.is_finite()
+            || !hint.center.y.is_finite()
+            || !crate::flat::measured(hint.size)
+        {
+            return None;
+        }
+        let cross = match direction.axis() {
+            Axis::Vertical => hint.center.x,
+            Axis::Horizontal => hint.center.y,
+        };
+        let unchanged = hint.size == self.size
+            && hint.incident_signature.is_some()
+            && hint.incident_signature == self.current_incident_signature;
+        Some((cross, unchanged))
     }
 
     pub(crate) fn align_flow(&mut self, direction: Direction) {

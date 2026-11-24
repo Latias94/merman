@@ -1,5 +1,9 @@
 //! Route between occupied bands in canonical Down coordinates.
 
+mod compact;
+
+pub(super) use compact::compact_ranks;
+
 use super::{Component, Drawing, Expanded, Kind, acyclic::Orientation, canonical_size};
 use crate::work::{LayoutResult, Work, filled, push, reserved};
 use crate::{
@@ -1134,6 +1138,7 @@ fn direct_port(rect: Rect, hint: PortSideHint, dir: Direction, side: Side) -> f6
     (rect.center().x + offset).clamp(rect.x, rect.x + rect.width)
 }
 
+#[cfg(test)]
 pub(super) fn route(
     g: &Expanded,
     c: &Component,
@@ -1143,6 +1148,18 @@ pub(super) fn route(
     x: &[f64],
     work: &mut Work<'_>,
 ) -> LayoutResult<Drawing> {
+    route_with_label_gaps(g, c, orientation, graph, options, x, work).map(|(drawing, _)| drawing)
+}
+
+pub(super) fn route_with_label_gaps(
+    g: &Expanded,
+    c: &Component,
+    orientation: &Orientation,
+    graph: &Graph,
+    options: &Options,
+    x: &[f64],
+    work: &mut Work<'_>,
+) -> LayoutResult<(Drawing, Vec<[f64; 2]>)> {
     work.check()?;
     if g.keep.len() != g.rank.len() || x.len() != g.rank.len() {
         return Err(LayoutError::InvalidInput("incomplete refined vertices"));
@@ -1189,6 +1206,11 @@ pub(super) fn route(
     }
     work.charge(c.links.len())?;
     let mut edges = reserved(c.links.len())?;
+    if !g.inline_labels.is_empty() {
+        work.charge(g.inline_labels.len())?;
+    }
+    let mut label_gaps = reserved(g.inline_labels.len())?;
+    let mut inline = g.inline_labels.iter().map(|label| label.edge).peekable();
     for (edge, link) in c.links.iter().enumerate() {
         work.visit(1)?;
         let reversed = orientation.reversed[edge];
@@ -1199,6 +1221,10 @@ pub(super) fn route(
         };
         let (first, last) = (first as usize, last as usize);
         let (a, b) = (row(first), row(last));
+        if inline.next_if_eq(&edge).is_some() {
+            debug_assert_eq!(b, a + 1);
+            label_gaps.push([bands[a].bottom, bands[b].top]);
+        }
         let spec = &graph.edges[link.edge as usize];
         let direct = g.direct[edge];
         let mut capacity = 2usize;
@@ -1349,7 +1375,7 @@ pub(super) fn route(
             },
         ));
     }
-    Ok(Drawing { nodes, edges })
+    Ok((Drawing { nodes, edges }, label_gaps))
 }
 
 #[cfg(test)]

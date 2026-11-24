@@ -3,11 +3,13 @@
 mod acyclic;
 mod boundary;
 mod bus;
+mod component_cache;
 mod crossings;
 mod expand;
 mod extras;
 mod fan;
 mod hub;
+mod label_place;
 mod order;
 mod pack;
 mod position;
@@ -149,6 +151,7 @@ pub(crate) struct Expanded {
     target_offset: Vec<f64>,
     chains: Vec<Vec<u32>>,
     label_vertex: Vec<Option<u32>>,
+    inline_labels: Vec<label_place::InlineLabel>,
     direct: Vec<bool>,
     feedback_lanes: Vec<order::FeedbackLane>,
     separated_proxies: Vec<(u32, u32)>,
@@ -156,6 +159,7 @@ pub(crate) struct Expanded {
     succ: Csr,
     order_scratch: order::OrderScratch,
     position_scratch: position::PositionScratch,
+    pub(crate) component_cache: component_cache::ComponentCache,
 }
 
 struct Loop {
@@ -230,6 +234,7 @@ impl Expanded {
             + bytes(&self.target_offset)
             + nested(&self.chains)
             + bytes(&self.label_vertex)
+            + bytes(&self.inline_labels)
             + bytes(&self.direct)
             + bytes(&self.feedback_lanes)
             + bytes(&self.separated_proxies)
@@ -248,7 +253,7 @@ fn expand_component(
     expanded: &mut Expanded,
 ) -> LayoutResult<acyclic::Orientation> {
     let orientation = boundary::orient(&c.nodes, &c.links, c.boundaries, options, work)?;
-    expand::build(c, &orientation, graph, options, work, expanded)?;
+    expand::build(c, &orientation, graph, options, &[], work, expanded)?;
     Ok(orientation)
 }
 
@@ -260,6 +265,17 @@ fn prepare_component(
     expanded: &mut Expanded,
 ) -> LayoutResult<(acyclic::Orientation, u64)> {
     let orientation = expand_component(c, graph, options, work, expanded)?;
+    let crossings = order_component(expanded, c, &orientation, options, work)?;
+    Ok((orientation, crossings))
+}
+
+fn order_component(
+    expanded: &mut Expanded,
+    c: &Component,
+    orientation: &acyclic::Orientation,
+    options: &Options,
+    work: &mut Work<'_>,
+) -> LayoutResult<u64> {
     expanded.feedback_lanes.clear();
     let mut crossings = if c.boundaries || c.pinned {
         order::constrained(expanded, c, None, options, work)?
@@ -272,9 +288,9 @@ fn prepare_component(
         && !c.pinned
         && !c.group_proxies
     {
-        crossings = order::favor_feedback(expanded, c, &orientation, crossings, work)?;
+        crossings = order::favor_feedback(expanded, c, orientation, crossings, work)?;
     }
-    Ok((orientation, crossings))
+    Ok(crossings)
 }
 
 pub(crate) fn compound_order(
@@ -298,7 +314,9 @@ pub(crate) fn compound_order(
             "order proxy requires loop-free edges",
         ));
     }
-    expand_component(&c, graph, options, work, expanded)?;
+    let mut topology_options = *options;
+    topology_options.inline_labels = false;
+    expand_component(&c, graph, &topology_options, work, expanded)?;
     let crossings = order::constrained(expanded, &c, Some((groups, parents)), options, work)?;
     let x = position::assign(expanded, &c, None, graph, options, work)?;
     Ok((x, crossings))
@@ -441,12 +459,24 @@ fn draw_component(
     options: &Options,
     work: &mut Work<'_>,
 ) -> LayoutResult<Drawing> {
+    draw_with_label_gaps(g, c, orientation, graph, options, work).map(|(drawing, _)| drawing)
+}
+
+fn draw_with_label_gaps(
+    g: &mut Expanded,
+    c: &Component,
+    orientation: &acyclic::Orientation,
+    graph: &Graph,
+    options: &Options,
+    work: &mut Work<'_>,
+) -> LayoutResult<(Drawing, Vec<[f64; 2]>)> {
     let mut x = position::assign(g, c, Some(orientation), graph, options, work)?;
     refine::refine(g, c, orientation, graph, options, &mut x, work)?;
     position::straighten_feedback(g, c, options, &mut x, work)?;
-    let mut drawing = routing::route(g, c, orientation, graph, options, &x, work)?;
+    let (mut drawing, label_gaps) =
+        routing::route_with_label_gaps(g, c, orientation, graph, options, &x, work)?;
     extras::finish(&mut drawing, g, c, graph, options, work)?;
-    Ok(drawing)
+    Ok((drawing, label_gaps))
 }
 
 fn run_packed(
@@ -466,60 +496,42 @@ fn run_packed(
     for c in components {
         let mut local = *options;
         local.caps.max_dummies -= stats.dummy_nodes;
-        let (orientation, crossings) = prepare_component(&c, graph, &local, work, g)?;
-        stats.scc_cyclic_count += orientation.cyclic_sccs;
-        let reversed = orientation
-            .reversed
-            .iter()
-            .filter(|&&flipped| flipped)
-            .count();
-        let dummies = g.rank.len() - c.nodes.len();
-        let fallbacks = g.direct.iter().filter(|&&direct| direct).count();
+        local.inline_labels &= fold_limit.is_none();
+        let cache = fold_limit.is_none() && g.component_cache.active_for(&c);
+        let previous_choice = work.editor_choice;
+        let cached = if cache {
+            work.editor_choice = false;
+            g.component_cache.reuse(&c, graph, local, work)?
+        } else {
+            None
+        };
+        let (solution, folded_component) = match cached {
+            Some(solution) => (solution, false),
+            None => solve_component(g, &c, graph, options, local, fold_limit, work)?,
+        };
+        if cache {
+            g.component_cache
+                .remember(&c, graph, local, &solution, work)?;
+        }
+        work.editor_choice = previous_choice || solution.editor_choice;
+        folded |= folded_component;
+        let component_cache::LocalLayout {
+            drawing,
+            ranks,
+            stats: component,
+            ..
+        } = solution;
+        stats.scc_cyclic_count += component.scc_cyclic_count;
+        stats.dummy_nodes += component.dummy_nodes;
+        stats.direct_fallback_edges += component.direct_fallback_edges;
+        stats.reversed_edges += component.reversed_edges;
         stats.topological_crossings = stats
             .topological_crossings
-            .checked_add(crossings)
+            .checked_add(component.topological_crossings)
             .ok_or(WorkError::ArithmeticOverflow)?;
-        let ranks = if options.capture_node_ranks {
-            work.charge(c.nodes.len())?;
-            let mut ranks = crate::work::reserved(c.nodes.len())?;
-            ranks.extend_from_slice(&g.rank[..c.nodes.len()]);
-            ranks
-        } else {
-            Vec::new()
-        };
-        let candidate = match fold_limit {
-            Some(max_width) => fan::fold(g, &c, graph, &local, max_width, work)?,
-            None => None,
-        };
-        let compress_shared = candidate.is_some();
-        let (mut drawing, dummies, fallbacks, reversed) = match candidate {
-            Some(candidate) => {
-                folded = true;
-                (
-                    candidate.drawing,
-                    candidate.dummies,
-                    candidate.fallbacks,
-                    candidate.reversed,
-                )
-            }
-            None => (
-                draw_component(g, &c, &orientation, graph, options, work)?,
-                dummies,
-                fallbacks,
-                reversed,
-            ),
-        };
-        stats.dummy_nodes += dummies;
-        stats.direct_fallback_edges += fallbacks;
-        stats.reversed_edges += reversed;
-        if !compress_shared {
-            hub::spread(&mut drawing, &c, graph, options, work)?;
-        }
-        let compress_shared =
-            compress_shared || bus::bundle(&mut drawing, &c, graph, options, work)?;
         stats.routed_crossings = stats
             .routed_crossings
-            .checked_add(crossings::pairs(&drawing.edges, compress_shared, work)?)
+            .checked_add(component.routed_crossings)
             .ok_or(WorkError::ArithmeticOverflow)?;
         tiles.push(pack::Tile::new(
             c.ids,
@@ -531,4 +543,106 @@ fn run_packed(
         )?);
     }
     Ok((pack::assemble(tiles, graph, options, stats, work)?, folded))
+}
+
+fn solve_component(
+    g: &mut Expanded,
+    c: &Component,
+    graph: &Graph,
+    options: &Options,
+    mut local: Options,
+    fold_limit: Option<f64>,
+    work: &mut Work<'_>,
+) -> LayoutResult<(component_cache::LocalLayout, bool)> {
+    let editor_choice = work.editor_choice;
+    let mut restored_labels = Vec::new();
+    let orientation = boundary::orient(&c.nodes, &c.links, c.boundaries, &local, work)?;
+    let reversed = orientation
+        .reversed
+        .iter()
+        .filter(|&&flipped| flipped)
+        .count();
+    loop {
+        expand::build(c, &orientation, graph, &local, &restored_labels, work, g)?;
+        let crossings = order_component(g, c, &orientation, &local, work)?;
+        let dummies = g.rank.len() - c.nodes.len();
+        let fallbacks = g.direct.iter().filter(|&&direct| direct).count();
+        let ranks = if options.capture_node_ranks {
+            work.charge(c.nodes.len())?;
+            let mut ranks = crate::work::reserved(c.nodes.len())?;
+            ranks.extend_from_slice(&g.rank[..c.nodes.len()]);
+            ranks
+        } else {
+            Vec::new()
+        };
+        let candidate = match fold_limit {
+            Some(max_width) => fan::fold(g, c, graph, &local, max_width, work)?,
+            None => None,
+        };
+        let folded_component = candidate.is_some();
+        let (mut drawing, label_gaps, dummies, fallbacks, reversed) = match candidate {
+            Some(candidate) => (
+                candidate.drawing,
+                Vec::new(),
+                candidate.dummies,
+                candidate.fallbacks,
+                candidate.reversed,
+            ),
+            None => {
+                let (drawing, label_gaps) =
+                    draw_with_label_gaps(g, c, &orientation, graph, options, work)?;
+                (drawing, label_gaps, dummies, fallbacks, reversed)
+            }
+        };
+        if !folded_component {
+            hub::spread(&mut drawing, c, graph, options, work)?;
+        }
+        let compress_shared =
+            folded_component || bus::bundle(&mut drawing, c, graph, options, work)?;
+        if !label_gaps.is_empty() {
+            let placement = label_place::place(
+                &mut drawing,
+                &g.inline_labels,
+                &label_gaps,
+                graph,
+                options,
+                work,
+            )?;
+            match placement {
+                label_place::Placement::Placed => {}
+                label_place::Placement::Restore(gaps) if restored_labels.is_empty() => {
+                    restored_labels = gaps;
+                    work.editor_choice = editor_choice;
+                    continue;
+                }
+                // A second failed placement restores every label obstacle and its routes.
+                label_place::Placement::Restore(_) | label_place::Placement::Legacy => {
+                    local.inline_labels = false;
+                    work.editor_choice = editor_choice;
+                    continue;
+                }
+            }
+        }
+        if options.compact_ranks && !folded_component {
+            routing::compact_ranks(&mut drawing, c, g, graph, options, work)?;
+        }
+        let stats = LayoutStats {
+            scc_cyclic_count: orientation.cyclic_sccs,
+            dummy_nodes: dummies,
+            direct_fallback_edges: fallbacks,
+            reversed_edges: reversed,
+            topological_crossings: crossings,
+            routed_crossings: crossings::pairs(&drawing.edges, compress_shared, work)?,
+            ..LayoutStats::default()
+        };
+        return Ok((
+            component_cache::LocalLayout {
+                drawing,
+                ranks,
+                stats,
+                editor_choice: work.editor_choice,
+            },
+            folded_component,
+        ));
+    }
 }
