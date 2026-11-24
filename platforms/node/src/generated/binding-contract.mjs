@@ -49,6 +49,12 @@ export const CAPABILITY_SPECS = [
     ]
   },
   {
+    "id": "layout-shoal",
+    "implication_ids": [
+      "svg"
+    ]
+  },
+  {
     "id": "markdown",
     "implication_ids": []
   },
@@ -173,6 +179,14 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
     },
     {
       "name": "theme_execution_evidence",
+      "json_type": "object",
+      "required": false,
+      "nullable": false,
+      "integer_width_bits": null,
+      "open_value": true
+    },
+    {
+      "name": "shoal_layout_frame",
       "json_type": "object",
       "required": false,
       "nullable": false,

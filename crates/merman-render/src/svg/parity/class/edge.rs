@@ -12,6 +12,8 @@ use super::label::{
 };
 use super::rough::class_rough_hand_drawn_stroke_path_for_svg_path;
 use crate::entities::decode_entities_minimal_cow;
+#[cfg(feature = "layout-shoal")]
+use crate::graph_layout::{canonical::CanonicalRoutes, route_paint::RouteStyle};
 use crate::model::{Bounds, LayoutEdge, LayoutLabel, LayoutPoint};
 use crate::svg::parity::SvgDiagramId;
 use crate::svg::parity::edge_label_geometry::position_edge_label;
@@ -35,6 +37,8 @@ pub(super) struct ClassEdgeGroupsRenderContext<'a> {
     pub relations_by_id: &'a FxHashMap<&'a str, ClassSvgRelation<'a>>,
     pub relation_index_by_id: &'a FxHashMap<&'a str, usize>,
     pub prepared_svg_edge_labels: &'a FxHashMap<String, crate::class::ClassPreparedSvgEdgeLabel>,
+    #[cfg(feature = "layout-shoal")]
+    pub canonical_routes: Option<&'a CanonicalRoutes>,
     pub diagram_marker_class: &'a str,
     pub diagram_id: SvgDiagramId<'a>,
     pub content_tx: f64,
@@ -55,6 +59,19 @@ pub(super) struct ClassEdgeGroupsRenderContext<'a> {
     pub text_paint: Option<&'a crate::class::ClassTextPaint>,
     pub relation_theme: &'a crate::class::ClassRelationThemePlan,
     pub emit: ClassEmitCheckpoint<'a>,
+}
+
+impl ClassEdgeGroupsRenderContext<'_> {
+    fn uses_canonical_routes(&self) -> bool {
+        #[cfg(feature = "layout-shoal")]
+        {
+            self.canonical_routes.is_some()
+        }
+        #[cfg(not(feature = "layout-shoal"))]
+        {
+            false
+        }
+    }
 }
 
 pub(super) use crate::class::class_arrow_type_for_relation_end;
@@ -81,6 +98,7 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
     let mut edge_class_buf = String::with_capacity(64);
     let mut edge_dom_id_buf = String::with_capacity(64);
     let mut edge_style_buf = String::new();
+    let uses_canonical_routes = ctx.uses_canonical_routes();
 
     let edge_paths_start = ctx.timing.start();
     let ordered_edges = class_edge_render_order(ctx.edges, ctx.relation_index_by_id);
@@ -104,13 +122,15 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
 
         class_edge_dom_id_into(&mut edge_dom_id_buf, e, ctx.relation_index_by_id);
 
-        edge_raw_points.clear();
-        edge_raw_points.reserve(source_points.len());
-        for p in source_points {
-            edge_raw_points.push(LayoutPoint {
-                x: p.x + ctx.content_tx,
-                y: p.y + ctx.content_ty,
-            });
+        if !uses_canonical_routes {
+            edge_raw_points.clear();
+            edge_raw_points.reserve(source_points.len());
+            for p in source_points {
+                edge_raw_points.push(LayoutPoint {
+                    x: p.x + ctx.content_tx,
+                    y: p.y + ctx.content_ty,
+                });
+            }
         }
 
         let curve_start = ctx.timing.start();
@@ -121,7 +141,9 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
             ctx.relations_by_id.get(e.id.as_str()).copied()
         };
         let width_binding = ctx.relation_theme.relation_width();
-        let relation_stroke_width = relation.and(width_binding.paint_width());
+        let relation_stroke_width = relation
+            .and(width_binding.paint_width())
+            .or(uses_canonical_routes.then_some(1.0));
         let typed_stroke = if relation.is_some() || is_note_edge {
             ctx.relation_theme.typed_stroke()
         } else {
@@ -137,62 +159,114 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
             .and_then(|rel| class_marker_paint_spec(rel.relation.type1, true, ctx.look == "neo"));
         let end_marker_paint = relation
             .and_then(|rel| class_marker_paint_spec(rel.relation.type2, false, ctx.look == "neo"));
-        if ctx.uses_elk_adapter_dom && missing_section.is_none() {
-            // ELK selects rounded routing after clipping and offsets only the endpoints.
-            edge_marker_points = super::super::edge_path::rounded_line_with_marker_offsets_points(
-                &edge_raw_points,
-                relation.and_then(|rel| class_arrow_type_for_relation_end(rel.relation.type1)),
-                relation.and_then(|rel| class_arrow_type_for_relation_end(rel.relation.type2)),
-            );
-        } else {
-            super::super::edge_path::line_with_offset_points_into(
-                &edge_raw_points,
-                relation.and_then(|rel| class_arrow_type_for_relation_end(rel.relation.type1)),
-                relation.and_then(|rel| class_arrow_type_for_relation_end(rel.relation.type2)),
-                &mut edge_marker_points,
-            );
-        }
-        let edge_curve_source = edge_marker_points.as_slice();
-        let (d, d_pb) = if missing_section.is_some() {
-            super::super::curve::curve_linear_path_d_and_bounds(edge_curve_source)
-        } else if ctx.uses_elk_adapter_dom {
-            super::super::curve::curve_rounded_path_d_and_bounds(
+        #[cfg(feature = "layout-shoal")]
+        let canonical = ctx
+            .canonical_routes
+            .map(|routes| {
+                routes.paint(
+                    e,
+                    kurbo::Vec2::new(ctx.content_tx, ctx.content_ty),
+                    stroke_outset,
+                    RouteStyle::Curved,
+                )
+            })
+            .transpose()?;
+
+        let parity_d;
+        let (d, d_pb, marker_points, data_points) = 'geometry: {
+            #[cfg(feature = "layout-shoal")]
+            if let Some(geometry) = &canonical {
+                let bounds = &geometry.path.bounds;
+                break 'geometry (
+                    geometry.path.d.as_str(),
+                    Some(super::super::path_bounds::SvgPathBounds {
+                        min_x: bounds.min_x,
+                        min_y: bounds.min_y,
+                        max_x: bounds.max_x,
+                        max_y: bounds.max_y,
+                    }),
+                    geometry.marker_points.as_slice(),
+                    geometry.data_points.as_slice(),
+                );
+            }
+            if ctx.uses_elk_adapter_dom && missing_section.is_none() {
+                // ELK selects rounded routing after clipping and offsets only the endpoints.
+                edge_marker_points =
+                    super::super::edge_path::rounded_line_with_marker_offsets_points(
+                        &edge_raw_points,
+                        relation
+                            .and_then(|rel| class_arrow_type_for_relation_end(rel.relation.type1)),
+                        relation
+                            .and_then(|rel| class_arrow_type_for_relation_end(rel.relation.type2)),
+                    );
+            } else {
+                super::super::edge_path::line_with_offset_points_into(
+                    &edge_raw_points,
+                    relation.and_then(|rel| class_arrow_type_for_relation_end(rel.relation.type1)),
+                    relation.and_then(|rel| class_arrow_type_for_relation_end(rel.relation.type2)),
+                    &mut edge_marker_points,
+                );
+            }
+            let edge_curve_source = edge_marker_points.as_slice();
+            let (path_d, bounds) = if missing_section.is_some() {
+                super::super::curve::curve_linear_path_d_and_bounds(edge_curve_source)
+            } else if ctx.uses_elk_adapter_dom {
+                super::super::curve::curve_rounded_path_d_and_bounds(
+                    edge_curve_source,
+                    5.0,
+                    false,
+                    None,
+                )
+            } else if edge_curve_source.len() == 2 {
+                edge_curve_points.clear();
+                let a = &edge_curve_source[0];
+                let b = &edge_curve_source[1];
+                edge_curve_points.push(a.clone());
+                edge_curve_points.push(LayoutPoint {
+                    x: (a.x + b.x) / 2.0,
+                    y: (a.y + b.y) / 2.0,
+                });
+                edge_curve_points.push(b.clone());
+                super::super::curve::curve_basis_path_d_and_bounds(&edge_curve_points)
+            } else {
+                super::super::curve::curve_basis_path_d_and_bounds(edge_curve_source)
+            };
+            parity_d = path_d;
+            break 'geometry (
+                parity_d.as_str(),
+                bounds,
                 edge_curve_source,
-                5.0,
-                false,
-                None,
-            )
-        } else if edge_curve_source.len() == 2 {
-            edge_curve_points.clear();
-            let a = &edge_curve_source[0];
-            let b = &edge_curve_source[1];
-            edge_curve_points.push(a.clone());
-            edge_curve_points.push(LayoutPoint {
-                x: (a.x + b.x) / 2.0,
-                y: (a.y + b.y) / 2.0,
-            });
-            edge_curve_points.push(b.clone());
-            super::super::curve::curve_basis_path_d_and_bounds(&edge_curve_points)
-        } else {
-            super::super::curve::curve_basis_path_d_and_bounds(edge_curve_source)
+                edge_raw_points.as_slice(),
+            );
         };
         if let Some(s) = curve_start {
             detail.edge_curve += s.elapsed();
         }
-        let rough_d = if ctx.look == "handDrawn" {
+        let rough_d = 'rough: {
+            if ctx.look != "handDrawn" {
+                break 'rough None;
+            }
+            #[cfg(feature = "layout-shoal")]
+            if let Some(geometry) = &canonical {
+                ctx.work_meter.charge(d.len().max(1))?;
+                break 'rough Some(super::super::canonical_rough::constrained_rough_edge_path(
+                    d,
+                    geometry.markers,
+                    ctx.work_meter,
+                    &ctx.hand_drawn_seed,
+                )?);
+            }
             class_rough_hand_drawn_stroke_path_for_svg_path(
-                &d,
+                d,
                 0.3,
                 ctx.work_meter,
                 &ctx.hand_drawn_seed,
             )
-        } else {
-            None
         };
-        let paint_d = rough_d.as_deref().unwrap_or(&d);
+        let paint_d = rough_d.as_deref().unwrap_or(d);
         let hopped_d = ctx.line_hop_paths.get(e.id.as_str());
         let render_d = hopped_d.map(String::as_str).unwrap_or(paint_d);
-        if let Some(lbl) = e.label.as_ref() {
+        if !uses_canonical_routes && let Some(lbl) = e.label.as_ref() {
             edge_label_centers.insert(
                 e.id.as_str(),
                 if missing_section.is_some() {
@@ -220,7 +294,10 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
         // path bbox plus a rotation-independent marker radius to cover its actual first/final
         // marker anchors without maintaining a second SVG path interpreter. Classic and ELK paths
         // retain one stable endpoint pair and can use the tighter rotated marker boxes below.
-        let rough_marker_outset = if rough_d.is_some() {
+        let stable_marker_points = rough_d.is_none() || uses_canonical_routes;
+        let rough_marker_outset = if stable_marker_points {
+            0.0
+        } else {
             relation_stroke_width.map_or(0.0, |width| {
                 [start_marker_paint, end_marker_paint]
                     .into_iter()
@@ -228,8 +305,6 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
                     .map(|marker| marker.conservative_radius(f64::from(width)))
                     .fold(0.0, f64::max)
             })
-        } else {
-            0.0
         };
         let path_paint_outset = stroke_outset.max(rough_marker_outset);
         if rough_d.is_none()
@@ -252,13 +327,11 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
                 path_paint_outset,
             );
         }
-        if rough_d.is_none()
-            && let Some(width) = relation_stroke_width.map(f64::from)
-        {
+        if stable_marker_points && let Some(width) = relation_stroke_width.map(f64::from) {
             if let Some(marker) = start_marker_paint {
                 include_class_marker_paint_bounds(
                     content_bounds,
-                    edge_curve_source,
+                    marker_points,
                     true,
                     marker,
                     width,
@@ -269,7 +342,7 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
             if let Some(marker) = end_marker_paint {
                 include_class_marker_paint_bounds(
                     content_bounds,
-                    edge_curve_source,
+                    marker_points,
                     false,
                     marker,
                     width,
@@ -287,7 +360,7 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
         edge_points_json_buf.clear();
         json_stringify_points_into(
             &mut edge_points_json_buf,
-            &edge_raw_points,
+            data_points,
             &mut edge_points_json_ryu,
         );
         if let Some(s) = json_start {
@@ -837,7 +910,7 @@ fn render_class_edge_terminals(
         {
             // setTerminalWidth retains the legacy CSS width floor, but never clips the
             // measured text width or replaces its measured height with a fixed 12px box.
-            let visible_width = if ctx.edge_use_html_labels {
+            let visible_width = if ctx.edge_use_html_labels && !ctx.uses_canonical_routes() {
                 label.width.max(text.encode_utf16().count() as f64 * 9.0)
             } else {
                 label.width

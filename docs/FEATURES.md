@@ -45,6 +45,7 @@ The public capability leaves are:
 | `ascii` | Terminal text output | None |
 | `png`, `jpeg`, `pdf` | Independent binary exports | None |
 | `layout-cytoscape`, `layout-elk` | Mermaid-compatible layout engines | Each implies `svg` |
+| `layout-shoal` | Experimental Merman layered layout for Flowchart, Agentflow, Class, State, ER, Requirement, and Usecase | Implies `svg` |
 | `math` | Math-label rendering | Implies `svg` |
 | `native-fonts` | Explicit font contexts for shared text measurement and native painting | Facade and CLI forward SVG; no codec requirement |
 | `system-clock`, `system-timezone`, `system-random`, `system-timing` | Optional native adapters | None; compiled separately and selected explicitly at runtime |
@@ -103,6 +104,34 @@ runtime policy, transport packages, and release recipes. Product packages and ar
 select their own direct leaf set instead.
 
 ## Pick a workflow
+
+### Try the experimental Shoal layout
+
+Enable `layout-shoal` on the Rust `merman` facade or build the CLI with `cargo build --locked -p merman-cli --features layout-shoal`. Check `merman-cli capabilities` for `layout-shoal`, then select the engine in the diagram's Mermaid frontmatter.
+
+```text
+---
+config:
+  layout: shoal
+---
+flowchart LR
+    A[Review] -->|approved| B[Publish]
+```
+
+Run `target/debug/merman-cli render diagram.mmd --theme-preset editor --theme-appearance dark -o diagram.svg` from the checkout. Select `dagre` or `elk` in the same field to compare drawings in a build containing those engines. Shoal uses the family's measured shapes and labels, including effective theme fonts and edge-label padding.
+
+Shoal draws Flowcharts in all four directions, including cycles, self-loops, parallel labeled edges, nested subgraphs and group endpoints. Agentflow uses the same engine after projecting visible nodes, collapsed flows and connectors. Class retains measured class boxes, namespaces and multiplicity labels. State supports explicit composite directions, concurrent regions and self-transitions. ER routes identifying and non-identifying relations with cardinality markers at both ends. Requirement supports relation labels and containment markers. Usecase routes relationships across system boundaries and clips them to actor and use-case contours.
+
+A build without Shoal reports the missing capability when one of these diagrams requests it. Rust callers can also pass measured graphs directly to the standalone crate. [Shoal crate](../crates/merman-layout-shoal/README.md)
+
+Shoal Flowchart and Agentflow support explicit container fitting and previous-frame hints for
+previews. Standalone Playground previews use frame hints with a custom WASM build that enables
+`layout-shoal`. To try Shoal in VS Code, set `merman.cli.path` to the absolute path of the built
+CLI and open the SVG preview. The extension reuses placement hints when the CLI advertises the
+preview frame protocol.
+[Host integration](rendering/HEADLESS_LAYOUT.md#shoal-width-adaptation-and-preview-frames) ·
+[Playground experiment](../platforms/web/README.md#try-shoal-in-playground) ·
+[Layout benchmark](performance/2026-11-24-shoal.md)
 
 ### Optional CLI Fonts
 

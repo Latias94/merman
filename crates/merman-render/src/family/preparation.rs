@@ -430,20 +430,43 @@ fn prepare_state_family<'parsed>(
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
     let label_sidecar = crate::state::StateLabelSidecarBuilder::default();
-    let layout = crate::state::layout_state_diagram_typed_with_work_meter(
-        model,
-        meta.effective_config.as_value(),
-        execution
-            .state_style_plan()
-            .expect("State family layout requires an adapted style plan"),
-        Some(&label_sidecar),
-        execution,
-    )?;
+    let config = meta.effective_config.as_value();
+    let style = execution
+        .state_style_plan()
+        .expect("State family layout requires an adapted style plan");
+    let compatibility = || {
+        crate::state::layout_state_diagram_typed_with_work_meter(
+            model,
+            config,
+            style,
+            Some(&label_sidecar),
+            execution,
+        )
+    };
+    #[cfg(feature = "layout-shoal")]
+    let (layout, canonical_routes) = if crate::layout_backend::resolve_graph_layout(config).backend
+        == crate::layout_backend::GraphLayoutBackend::Shoal
+    {
+        let (layout, routes) = crate::state::layout_state_diagram_shoal(
+            model,
+            config,
+            style,
+            Some(&label_sidecar),
+            execution,
+        )?;
+        (layout, Some(routes))
+    } else {
+        (compatibility()?, None)
+    };
+    #[cfg(not(feature = "layout-shoal"))]
+    let layout = compatibility()?;
     let label_sidecar = label_sidecar.finish();
     Ok(BuiltinFamilyArtifact::State(Box::new(
         StateFamilyArtifact {
             pair: FamilyPair::new(model, layout),
             label_sidecar,
+            #[cfg(feature = "layout-shoal")]
+            canonical_routes,
             effect_evidence: crate::diagram_theme::SvgShadowEvidenceRecorder::default(),
         },
     )))
@@ -843,7 +866,11 @@ fn prepare_er_family<'parsed>(
     let base_font_size =
         crate::er::ErBaseFontSizePlan::resolve(execution.resolved_theme(), &meta.effective_config);
     let font_size_override = base_font_size.layout_override_px();
-    let layout = crate::er::layout_er_diagram_typed_with_resolved_typography(
+    let crate::er::ErPreparedLayout {
+        layout,
+        #[cfg(feature = "layout-shoal")]
+        canonical_routes,
+    } = crate::er::layout_er_diagram_typed_with_resolved_typography(
         model,
         meta.effective_config.as_value(),
         execution.text_measurer(),
@@ -867,6 +894,8 @@ fn prepare_er_family<'parsed>(
     Ok(BuiltinFamilyArtifact::Er(Box::new(ErFamilyArtifact {
         pair: FamilyPair::new(model, layout),
         entity_theme,
+        #[cfg(feature = "layout-shoal")]
+        canonical_routes,
     })))
 }
 

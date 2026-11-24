@@ -188,8 +188,26 @@ impl<'a, C: ConfigLookup + ?Sized> FlowchartConfigView<'a, C> {
         (top + bottom) / 2.0
     }
 
-    pub(crate) fn render_curve(&self) -> Option<String> {
-        self.flowchart_string("curve")
+    pub(crate) fn render_curve(&self) -> Option<&'a str> {
+        self.flowchart_config.get("curve").and_then(Value::as_str)
+    }
+
+    pub(crate) fn effective_edge_interpolation<'curve>(
+        &'curve self,
+        model: &'curve super::FlowchartModel,
+        is_elk_layout: bool,
+    ) -> &'curve str {
+        let configured_curve = if is_elk_layout {
+            Some("rounded")
+        } else {
+            self.render_curve()
+        };
+        model
+            .edge_defaults
+            .as_ref()
+            .and_then(|defaults| defaults.interpolate.as_deref())
+            .or(configured_curve)
+            .unwrap_or("basis")
     }
 
     pub(crate) fn render_text_style(&self, font_family: &str, font_size: f64) -> TextStyle {
@@ -306,10 +324,6 @@ impl<'a, C: ConfigLookup + ?Sized> FlowchartConfigView<'a, C> {
 
     fn theme_string(&self, key: &str) -> Option<String> {
         config_string(self.theme_variables, &[key])
-    }
-
-    fn flowchart_string(&self, key: &str) -> Option<String> {
-        config_string(self.flowchart_config, &[key])
     }
 
     fn flowchart_compat_f64(&self, key: &str) -> Option<f64> {
@@ -568,7 +582,7 @@ mod tests {
         assert!(!config.render_use_max_width());
         assert_eq!(config.render_title_top_margin(), 0.0);
         assert_eq!(config.render_node_padding(), 0.0);
-        assert_eq!(config.render_curve().as_deref(), Some("linear"));
+        assert_eq!(config.render_curve(), Some("linear"));
         assert_eq!(config.render_subgraph_title_y_shift(), 4.0);
     }
 

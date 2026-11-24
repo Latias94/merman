@@ -1,0 +1,17 @@
+---
+description: >-
+  two and four self-loops on one node (#768, D618): the second is mirrored to
+  the far side, beside a neighbour in the same rank, and later ones nest
+  outward, alternating sides
+---
+flowchart TB
+  X --> N
+  X --> A
+  N --> Y
+  A --> Y
+  A -- one --> A
+  A -- two --> A
+  Y -- one --> Y
+  Y -- two --> Y
+  Y -- three --> Y
+  Y -- four --> Y

@@ -97,6 +97,7 @@ impl SvgEnvironment {
             text_measurement_routes: text_measurement.routes(),
             input_resources: *resources.input_policy(),
         }
+        .with_capability_policy(RenderCapabilityPolicy::unrestricted())
     }
 
     pub fn with_text_measurement_policy(mut self, policy: TextMeasurementPolicy) -> Self {
@@ -176,6 +177,12 @@ impl SvgEnvironment {
     }
 
     pub fn with_capability_policy(mut self, policy: RenderCapabilityPolicy) -> Self {
+        // Another consumer can compile Shoal into the shared renderer independently of this facade.
+        let policy = if crate::svg::layout_shoal_available() {
+            policy
+        } else {
+            policy.with_denied(merman_render::RenderCapability::LayoutShoal)
+        };
         self.backend = self.backend.with_capability_policy(policy);
         self
     }

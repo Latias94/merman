@@ -11,6 +11,7 @@ pub(crate) enum GraphLayoutBackend {
     Dagre,
     Elk,
     CoseBilkent,
+    Shoal,
     #[cfg(feature = "diagram-er")]
     Swimlane,
 }
@@ -69,6 +70,7 @@ impl GraphLayoutSelection {
             GraphLayoutBackend::Swimlane => None,
             GraphLayoutBackend::Elk => Some(crate::RenderCapability::LayoutElk),
             GraphLayoutBackend::CoseBilkent => Some(crate::RenderCapability::LayoutCytoscape),
+            GraphLayoutBackend::Shoal => Some(crate::RenderCapability::LayoutShoal),
         }
     }
 
@@ -89,14 +91,15 @@ pub(crate) fn resolve_graph_layout(
     config: &(impl crate::config::ConfigLookup + ?Sized),
 ) -> GraphLayoutSelection {
     let requested = config.get("layout").and_then(Value::as_str).unwrap_or("");
-    let backend =
-        if cfg!(feature = "layout-elk") && ElkRootAlgorithm::from_name(requested).is_some() {
+    let backend = match requested {
+        // Explicit Shoal requests retain their capability requirement even in a lean build.
+        "shoal" => GraphLayoutBackend::Shoal,
+        "cose-bilkent" if cfg!(feature = "layout-cytoscape") => GraphLayoutBackend::CoseBilkent,
+        name if cfg!(feature = "layout-elk") && ElkRootAlgorithm::from_name(name).is_some() => {
             GraphLayoutBackend::Elk
-        } else if cfg!(feature = "layout-cytoscape") && requested == "cose-bilkent" {
-            GraphLayoutBackend::CoseBilkent
-        } else {
-            GraphLayoutBackend::Dagre
-        };
+        }
+        _ => GraphLayoutBackend::Dagre,
+    };
     GraphLayoutSelection { backend }
 }
 

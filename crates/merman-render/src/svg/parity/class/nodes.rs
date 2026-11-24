@@ -64,6 +64,7 @@ pub(super) struct ClassNodesRenderContext<'a> {
     pub(super) relation_theme: &'a crate::class::ClassRelationThemePlan,
     pub(super) content_tx: f64,
     pub(super) content_ty: f64,
+    pub(super) use_layout_title_anchor: bool,
     pub(super) timing: RenderTiming,
     pub(super) emit: ClassEmitCheckpoint<'a>,
 }
@@ -167,6 +168,7 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
                             content_ty: ctx.content_ty,
                             bounds_dx: 0.0,
                             bounds_dy: 0.0,
+                            use_layout_title_anchor: ctx.use_layout_title_anchor,
                             use_html_labels: ctx.settings.edge_use_html_labels,
                             look: ctx.settings.look.as_str(),
                             mermaid_config: Some(ctx.mermaid_config),
@@ -203,6 +205,7 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
                             content_ty: ctx.content_ty,
                             bounds_dx: 0.0,
                             bounds_dy: 0.0,
+                            use_layout_title_anchor: ctx.use_layout_title_anchor,
                             use_html_labels: ctx.settings.edge_use_html_labels,
                             look: ctx.settings.look.as_str(),
                             mermaid_config: Some(ctx.mermaid_config),
@@ -361,6 +364,7 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
             content_ty: ctx.content_ty,
             bounds_dx: 0.0,
             bounds_dy: 0.0,
+            use_layout_title_anchor: ctx.use_layout_title_anchor,
             use_html_labels: ctx.settings.edge_use_html_labels,
             look: ctx.settings.look.as_str(),
             mermaid_config: Some(ctx.mermaid_config),
@@ -635,6 +639,8 @@ fn render_class_split_edges_for_namespace<O: SvgOutput>(
         relations_by_id: edge_ctx.relations_by_id,
         relation_index_by_id: edge_ctx.relation_index_by_id,
         prepared_svg_edge_labels: edge_ctx.prepared_svg_edge_labels,
+        #[cfg(feature = "layout-shoal")]
+        canonical_routes: edge_ctx.canonical_routes,
         diagram_marker_class: edge_ctx.diagram_marker_class,
         diagram_id: edge_ctx.diagram_id,
         content_tx: if in_namespace_root {

@@ -44,9 +44,10 @@ artifacts exercise different behavior. Keep per-scenario results alongside cover
 Each Rust clock or memory sample starts a fresh process, constructs the renderer, then runs the
 specified number of warmup passes before observing one complete batch. `--warmups 0` captures
 first use on a constructed renderer. CLI timings include process startup. The memory executable
-uses the existing counting allocator and reports allocation traffic, peak growth, signed live
-growth at the batch boundary and growth after releasing results. Renderer construction, plan
-decoding, hashes, semantic checks and report formatting are outside the observed interval.
+uses the existing counting allocator and reports allocation traffic, live bytes at the
+measurement start and peak, signed growth at the batch boundary and growth after releasing
+results. Renderer construction, plan decoding, hashes, semantic checks and report formatting
+are outside the observed interval.
 The clock executable uses the ordinary allocator. Its raw samples and median deltas are diagnostic.
 
 For cross-renderer comparisons, report completion first. The common plan freezes the UTF-8

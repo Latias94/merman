@@ -158,6 +158,35 @@ mod tests {
         );
     }
 
+    #[cfg(all(feature = "svg", feature = "diagram-flowchart"))]
+    #[test]
+    fn shoal_plan_and_execution_follow_the_binding_owner_feature() {
+        let source = "---\nconfig:\n  layout: shoal\n---\nflowchart LR\nA --> B";
+        let payload = plan(source, b"");
+        assert_eq!(
+            payload["required_capability_ids"],
+            serde_json::json!(["layout-shoal"])
+        );
+        let result = crate::render_svg(source.as_bytes(), b"");
+        if cfg!(feature = "layout-shoal") {
+            assert_eq!(payload["ready"], true);
+            assert_eq!(payload["missing_capability_ids"], serde_json::json!([]));
+            result.unwrap();
+            let cycle = format!("{source}\nB --> A");
+            let error = crate::render_svg(cycle.as_bytes(), b"").unwrap_err();
+            assert_eq!(error.status(), crate::BindingStatus::UnsupportedOperation);
+        } else {
+            assert_eq!(payload["ready"], false);
+            assert_eq!(
+                payload["missing_capability_ids"],
+                serde_json::json!(["layout-shoal"])
+            );
+            let error = result.unwrap_err();
+            assert_eq!(error.kind(), crate::BindingErrorKind::MissingCapability);
+            assert_eq!(error.capability_id(), Some("layout-shoal"));
+        }
+    }
+
     #[cfg(feature = "svg")]
     #[test]
     fn elk_flowchart_plan_follows_the_artifact_owner_feature() {

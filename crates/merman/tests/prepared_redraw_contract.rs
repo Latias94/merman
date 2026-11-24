@@ -101,12 +101,18 @@ impl merman::svg::HostTextMeasurer for FontMetrics {
 
 #[test]
 fn the_same_snapshot_uses_each_outputs_actual_host_font_metrics() {
+    assert_prepared_flowchart_uses_host_metrics("dagre");
+    #[cfg(feature = "layout-shoal")]
+    assert_prepared_flowchart_uses_host_metrics("shoal");
+}
+
+fn assert_prepared_flowchart_uses_host_metrics(backend: &str) {
     let renderer = Renderer::new();
+    let source = format!(
+        "---\nconfig:\n  layout: {backend}\n  htmlLabels: false\n---\nflowchart TD\nA[Retained]"
+    );
     let prepared = renderer
-        .prepare_source(PrepareSourceRequest::new(
-            "---\nconfig:\n  layout: dagre\n  htmlLabels: false\n---\nflowchart TD\nA[Retained]",
-            OperationControl::new(),
-        ))
+        .prepare_source(PrepareSourceRequest::new(&source, OperationControl::new()))
         .unwrap()
         .unwrap();
     let identity = merman::svg::TextMeasurementProfileIdentity::new(

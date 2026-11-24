@@ -29,6 +29,31 @@ fn layout_er(text: &str) -> ErDiagramLayout {
     serde_json::from_value(projection["layout"]["ErDiagram"].clone()).expect("ER layout projection")
 }
 
+#[cfg(not(feature = "layout-shoal"))]
+#[test]
+fn er_shoal_reports_the_missing_build_capability() {
+    let source = "---\nconfig:\n  layout: shoal\n---\nerDiagram\nA ||--o{ B : relates\n";
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let plan = family::plan_render(&parsed, &session).unwrap();
+    assert_eq!(
+        plan.required_capabilities(),
+        &[merman_render::RenderCapability::LayoutShoal]
+    );
+    assert!(!plan.is_ready());
+    assert!(matches!(
+        family::prepare(&parsed, &LayoutOptions::default(), session),
+        Err(merman_render::Error::MissingCapability {
+            capability: merman_render::RenderCapability::LayoutShoal,
+            ..
+        })
+    ));
+}
+
 fn er_presentation_from_model(model: ErDiagramModel) -> PresentationDiagram {
     let config = MermaidConfig::from_value(serde_json::json!({"layout": "dagre"}));
     PresentationDiagram::try_new(

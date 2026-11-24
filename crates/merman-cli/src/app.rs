@@ -1088,6 +1088,10 @@ mod tests {
         };
         assert_eq!(app.execute(), ExitCode::SUCCESS);
         assert!(bytes(&stdout_bytes).contains("\"schema_version\": 2"));
+        assert_eq!(
+            bytes(&stdout_bytes).contains("\"preview_layout_frame\""),
+            cfg!(feature = "layout-shoal")
+        );
         assert!(bytes(&stderr_bytes).is_empty());
 
         let (stdout, _) = capture();
@@ -1106,6 +1110,104 @@ mod tests {
         };
         assert_eq!(app.execute(), ExitCode::from(3));
         assert!(bytes(&stderr_bytes).contains("cwd unavailable"));
+    }
+
+    #[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+    fn preview_frame_render(
+        cwd: &std::path::Path,
+        input: &str,
+        extra: &[&str],
+    ) -> (ExitCode, String, String) {
+        let (stdout, stdout_bytes) = capture();
+        let (stderr, stderr_bytes) = capture();
+        let mut args = vec!["render", "--quiet", "-"];
+        args.extend_from_slice(extra);
+        let code = CliApp {
+            process: snapshot(&args, Ok(cwd.to_path_buf()), false),
+            execution: execution(Cursor::new(input.as_bytes().to_vec()), stdout, stderr),
+        }
+        .execute();
+        (code, bytes(&stdout_bytes), bytes(&stderr_bytes))
+    }
+
+    #[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+    #[test]
+    fn preview_layout_frame_round_trips_in_separate_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = "---\nconfig:\n  layout: shoal\n---\nflowchart LR\nA --> B\nA --> C\n";
+        let expected = preview_frame_render(dir.path(), source, &[]);
+        assert_eq!(expected.0, ExitCode::SUCCESS, "{}", expected.2);
+        let capture =
+            preview_frame_render(dir.path(), source, &["--preview-frame-out", "first.json"]);
+        assert_eq!(capture.0, ExitCode::SUCCESS, "{}", capture.2);
+        assert_eq!(capture.1, expected.1);
+        let first = std::fs::read(dir.path().join("first.json")).unwrap();
+        serde_json::from_slice::<merman::svg::ShoalLayoutFrame>(&first).unwrap();
+
+        let replay = preview_frame_render(
+            dir.path(),
+            &source.replace("A --> C", "A --> D"),
+            &[
+                "--preview-frame-in",
+                "first.json",
+                "--preview-frame-out",
+                "next.json",
+            ],
+        );
+        assert_eq!(replay.0, ExitCode::SUCCESS, "{}", replay.2);
+        assert!(replay.1.contains("<svg"));
+        let next = std::fs::read(dir.path().join("next.json")).unwrap();
+        serde_json::from_slice::<merman::svg::ShoalLayoutFrame>(&next).unwrap();
+        assert_ne!(first, next);
+        assert_eq!(std::fs::read(dir.path().join("first.json")).unwrap(), first);
+    }
+
+    #[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+    #[test]
+    fn preview_layout_frame_keeps_cold_rendering_and_publication_isolated() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = "flowchart LR\nA --> B\n";
+        std::fs::write(dir.path().join("stale.json"), b"{old frame").unwrap();
+        let cold = preview_frame_render(
+            dir.path(),
+            source,
+            &[
+                "--preview-frame-in",
+                "stale.json",
+                "--preview-frame-out",
+                "next.json",
+            ],
+        );
+        assert_eq!(cold.0, ExitCode::SUCCESS, "{}", cold.2);
+        assert!(cold.1.contains("<svg"));
+        assert!(!dir.path().join("next.json").exists());
+        let conflict = preview_frame_render(
+            dir.path(),
+            source,
+            &["--output", "same.svg", "--preview-frame-out", "same.svg"],
+        );
+        assert_ne!(conflict.0, ExitCode::SUCCESS);
+        assert!(
+            conflict.2.contains("choose a separate file"),
+            "{}",
+            conflict.2
+        );
+        assert!(!dir.path().join("same.svg").exists());
+        let invalid = preview_frame_render(
+            dir.path(),
+            "not a diagram",
+            &["--preview-frame-out", "failed.json"],
+        );
+        assert_ne!(invalid.0, ExitCode::SUCCESS);
+        assert!(!dir.path().join("failed.json").exists());
+        std::fs::File::create(dir.path().join("large.json"))
+            .unwrap()
+            .set_len(crate::render::preview_frame::MAX_BYTES as u64 + 1)
+            .unwrap();
+        let oversized =
+            preview_frame_render(dir.path(), source, &["--preview-frame-in", "large.json"]);
+        assert_ne!(oversized.0, ExitCode::SUCCESS);
+        assert!(oversized.2.contains("max_preview_layout_frame_bytes"));
     }
 
     #[test]

@@ -2,7 +2,7 @@
 
 mod topology;
 
-use merman::svg::{SvgGeneration, SvgPipeline};
+use merman::svg::{RenderResourcePolicy, RenderResourceProfile, SvgGeneration, SvgPipeline};
 use merman::{
     MermaidEngine, OperationControl, ParseOptions, PresentationArtifact, RenderOutput,
     RenderRequest, Renderer, SourcePresentationConfig, SvgRequest,
@@ -18,14 +18,6 @@ struct Request {
     diagram_id: String,
 }
 
-impl Request {
-    fn svg(&self) -> SvgRequest {
-        let mut request = SvgRequest::default();
-        request.options.diagram_id = Some(self.diagram_id.clone());
-        request
-    }
-}
-
 #[derive(Clone, Copy, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 enum Operation {
@@ -39,8 +31,12 @@ enum Operation {
 }
 
 impl Operation {
-    fn svg_request(self, input: &Request) -> SvgRequest {
-        let mut request = input.svg();
+    fn svg_request(self, input: &Request, resources: Option<RenderResourcePolicy>) -> SvgRequest {
+        let mut request = SvgRequest::default();
+        request.options.diagram_id = Some(input.diagram_id.clone());
+        if let Some(resources) = resources {
+            request.environment = request.environment.with_resource_policy(resources);
+        }
         request.pipeline = match self {
             Self::StaticSvg => Some(SvgPipeline::parity().with_generation(SvgGeneration::Static)),
             Self::ResvgSvg => {
@@ -61,8 +57,13 @@ enum Job {
         requests: Vec<Request>,
         warmups: usize,
         site: Option<Value>,
+        resource_profile: Option<String>,
         #[serde(default)]
         verify_only: bool,
+        #[serde(default)]
+        verify_layout: bool,
+        #[serde(default)]
+        lock_site_layout: bool,
         #[serde(default)]
         return_measured_svg: bool,
     },
@@ -79,7 +80,12 @@ enum Product {
     Prepared(PresentationArtifact),
 }
 
-fn execute(renderer: &Renderer, input: &Request, operation: Operation) -> Result<Product, String> {
+fn execute(
+    renderer: &Renderer,
+    input: &Request,
+    operation: Operation,
+    resources: Option<RenderResourcePolicy>,
+) -> Result<Product, String> {
     let control = OperationControl::new();
     let source = &input.source;
     let empty = || format!("{} returned no diagram", input.diagram_id);
@@ -88,13 +94,17 @@ fn execute(renderer: &Renderer, input: &Request, operation: Operation) -> Result
             .render_svg_data(RenderRequest::svg(
                 source,
                 control,
-                operation.svg_request(input),
+                operation.svg_request(input, resources),
             ))
             .map_err(|e| e.to_string())?
             .map(Product::Data)
             .ok_or_else(empty),
         Operation::Svg => match renderer
-            .render(RenderRequest::svg(source, control, input.svg()))
+            .render(RenderRequest::svg(
+                source,
+                control,
+                operation.svg_request(input, resources),
+            ))
             .map_err(|e| e.to_string())?
         {
             RenderOutput::Svg(Some(output)) => {
@@ -108,7 +118,11 @@ fn execute(renderer: &Renderer, input: &Request, operation: Operation) -> Result
             let mut bytes = Vec::new();
             let present = renderer
                 .write_layout_json(
-                    RenderRequest::layout_json(source, control, input.svg()),
+                    RenderRequest::layout_json(
+                        source,
+                        control,
+                        operation.svg_request(input, resources),
+                    ),
                     &mut bytes,
                     false,
                 )
@@ -136,7 +150,7 @@ impl Product {
         }
     }
 
-    fn verification_output(self) -> Result<Value, String> {
+    fn verification_output(self, verify_layout: bool) -> Result<Value, String> {
         let size = self.result_size();
         let mut verified = match self {
             // The driver validates complete SVG text outside the measurement interval.
@@ -146,7 +160,11 @@ impl Product {
                 if parsed.get("layout").is_none() {
                     return Err("missing layout in JSON".into());
                 }
-                identity(&bytes)
+                let mut signature = identity(&bytes);
+                if verify_layout {
+                    signature["layout_json"] = parsed;
+                }
+                signature
             }
             Self::Prepared(artifact) => {
                 // Hash the public preparation result without applying a second target's export policy.
@@ -173,6 +191,7 @@ impl Product {
 pub(super) struct Trial<'a> {
     renderer: Renderer,
     operation: Operation,
+    resources: Option<RenderResourcePolicy>,
     inputs: &'a [Request],
     retained: Vec<PresentationArtifact>,
     sizes: Vec<usize>,
@@ -182,7 +201,12 @@ impl Trial<'_> {
     pub(super) fn batch(&mut self) -> Result<(), String> {
         self.sizes.clear();
         for input in self.inputs {
-            let product = black_box(execute(&self.renderer, input, self.operation)?);
+            let product = black_box(execute(
+                &self.renderer,
+                input,
+                self.operation,
+                self.resources,
+            )?);
             self.sizes.push(product.result_size());
             if matches!(self.operation, Operation::PrepareRetained)
                 && let Product::Prepared(artifact) = product
@@ -197,13 +221,13 @@ impl Trial<'_> {
         self.retained.clear();
     }
 
-    fn verify(&self) -> Result<Vec<Value>, String> {
+    fn verify(&self, verify_layout: bool) -> Result<Vec<Value>, String> {
         let products = self
             .inputs
             .iter()
-            .map(|input| execute(&self.renderer, input, self.operation));
+            .map(|input| execute(&self.renderer, input, self.operation, self.resources));
         let verify = |result: Result<Product, String>| match result {
-            Ok(product) => product.verification_output(),
+            Ok(product) => product.verification_output(verify_layout),
             Err(message) => Ok(json!({"render_error": message})),
         };
         if matches!(self.operation, Operation::PrepareRetained) {
@@ -214,6 +238,63 @@ impl Trial<'_> {
         products.map(verify).collect()
     }
 
+    fn layout_evidence(&self, input: &Request, output: &Value) -> Result<Value, String> {
+        if output.get("render_error").is_some() {
+            return Ok(Value::Null);
+        }
+        let request = self.operation.svg_request(input, self.resources);
+        let control = OperationControl::new();
+        let (family, required, work_units) = if matches!(self.operation, Operation::LayoutJson) {
+            // The layout writer returns bytes. Query the public planner with the same input.
+            let RenderOutput::SvgPlan(Some(plan)) = self
+                .renderer
+                .render(RenderRequest::svg_plan(&input.source, control, request))
+                .map_err(|e| e.to_string())?
+            else {
+                return Err("missing layout capability plan".into());
+            };
+            if !plan.is_ready() {
+                return Err(
+                    "layout writer succeeded with an unavailable planned capability".into(),
+                );
+            }
+            (
+                plan.family_id(),
+                plan.required_capabilities().to_vec(),
+                None,
+            )
+        } else {
+            let RenderOutput::Svg(Some(svg)) = self
+                .renderer
+                .render(RenderRequest::svg(&input.source, control, request))
+                .map_err(|e| e.to_string())?
+            else {
+                return Err("missing completed SVG layout evidence".into());
+            };
+            if output.as_str() != Some(svg.svg()) {
+                return Err(format!(
+                    "{}: SVG differs from its layout witness",
+                    input.diagram_id
+                ));
+            }
+            let evidence = svg.evidence();
+            (
+                evidence.family_id(),
+                evidence.required_capabilities().to_vec(),
+                Some(evidence.layout_work_units()),
+            )
+        };
+        let mut receipt = json!({
+            "diagram_id": input.diagram_id, "family": family.as_str(),
+            "source_sha256": data_encoding::HEXLOWER.encode(&Sha256::digest(input.source.as_bytes())),
+            "required_capabilities": required.iter().map(|c| c.id()).collect::<Vec<_>>(),
+        });
+        if let Some(work_units) = work_units {
+            receipt["layout_work_units"] = json!(work_units);
+        }
+        Ok(receipt)
+    }
+
     fn measure_returned_svg(&self) -> Result<Value, String> {
         let [input] = self.inputs else {
             return Err("returned-SVG timing requires exactly one request".into());
@@ -221,7 +302,7 @@ impl Trial<'_> {
         let request = RenderRequest::svg(
             &input.source,
             OperationControl::new(),
-            self.operation.svg_request(input),
+            self.operation.svg_request(input, self.resources),
         );
         let (elapsed, svg) = match self.operation {
             Operation::Svg => {
@@ -266,8 +347,11 @@ pub(super) fn run(
             operation,
             requests,
             warmups,
-            site,
+            mut site,
+            resource_profile,
             verify_only,
+            verify_layout,
+            lock_site_layout,
             return_measured_svg,
         } => {
             if requested != metric || requests.is_empty() {
@@ -276,11 +360,41 @@ pub(super) fn run(
             if return_measured_svg && (metric != "clock" || verify_only) {
                 return Err("returned-SVG timing requires a clock measurement".into());
             }
+            if lock_site_layout {
+                if metric != "clock"
+                    || !verify_only
+                    || !verify_layout
+                    || !matches!(operation, Operation::Svg)
+                {
+                    return Err("locking the site layout requires untimed SVG verification".into());
+                }
+                let site = site
+                    .as_mut()
+                    .and_then(Value::as_object_mut)
+                    .filter(|site| site.get("layout").and_then(Value::as_str).is_some())
+                    .ok_or("locking the site layout requires a site layout name")?;
+                let secure = site
+                    .entry("secure")
+                    .or_insert_with(|| merman::default_site_config().as_value()["secure"].clone());
+                let keys = secure
+                    .as_array_mut()
+                    .ok_or("site secure keys must be an array")?;
+                keys.push(json!("layout"));
+            }
             let renderer = match site {
                 Some(site) => renderer.with_presentation_engine(
                     MermaidEngine::new()
                         .with_exact_site_config(Some(SourcePresentationConfig::from_value(site))),
                 ),
+                None => renderer,
+            };
+            let resources = resource_profile
+                .as_deref()
+                .map(str::parse::<RenderResourceProfile>)
+                .transpose()?
+                .map(RenderResourcePolicy::for_profile);
+            let renderer = match resources {
+                Some(policy) => renderer.with_resource_policy(*policy.input_policy()),
                 None => renderer,
             };
             let retained = if matches!(operation, Operation::PrepareRetained) {
@@ -291,15 +405,30 @@ pub(super) fn run(
             let mut trial = Trial {
                 renderer,
                 operation,
+                resources,
                 inputs: &requests,
                 retained,
                 sizes: Vec::with_capacity(requests.len()),
             };
-            if verify_only {
+            let mut response = if verify_only {
                 for _ in 0..warmups {
-                    trial.verify()?;
+                    trial.verify(false)?;
                 }
-                json!({"outputs": trial.verify()?})
+                let outputs = trial.verify(verify_layout)?;
+                let mut verified = json!({});
+                if verify_layout {
+                    let evidence = requests
+                        .iter()
+                        .zip(&outputs)
+                        .map(|(input, output)| trial.layout_evidence(input, output))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    verified["layout_evidence"] = Value::Array(evidence);
+                }
+                if lock_site_layout {
+                    verified["site_layout_locked"] = json!(true);
+                }
+                verified["outputs"] = Value::Array(outputs);
+                verified
             } else {
                 for _ in 0..warmups {
                     trial.batch()?;
@@ -311,7 +440,11 @@ pub(super) fn run(
                     let metrics = measure(&mut trial)?;
                     json!({"metrics": metrics, "sizes": trial.sizes})
                 }
+            };
+            if let Some(policy) = resources {
+                response["resource_profile"] = json!(policy.profile().id());
             }
+            response
         }
         Job::Topology {
             source,

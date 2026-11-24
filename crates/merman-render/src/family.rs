@@ -2534,10 +2534,19 @@ impl<'parsed> MindmapFamilyArtifact<'parsed> {
 pub(crate) struct ErFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::er::ErDiagramModel, ErDiagramLayout>,
     entity_theme: crate::er::ErEntityThemePlan,
+    #[cfg(feature = "layout-shoal")]
+    canonical_routes: Option<crate::graph_layout::canonical::CanonicalRoutes>,
 }
 
 #[cfg(feature = "diagram-er")]
 impl<'parsed> ErFamilyArtifact<'parsed> {
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) const fn canonical_routes(
+        &self,
+    ) -> Option<&crate::graph_layout::canonical::CanonicalRoutes> {
+        self.canonical_routes.as_ref()
+    }
+
     pub(crate) const fn pair(
         &self,
     ) -> &FamilyPair<&'parsed diagrams::er::ErDiagramModel, ErDiagramLayout> {
@@ -2615,6 +2624,8 @@ impl<'parsed> GanttFamilyArtifact<'parsed> {
 pub(crate) struct StateFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::state::StateDiagramRenderModel, StateDiagramLayout>,
     label_sidecar: crate::state::StateLabelSidecar,
+    #[cfg(feature = "layout-shoal")]
+    canonical_routes: Option<crate::graph_layout::canonical::CanonicalRoutes>,
     effect_evidence: crate::diagram_theme::SvgShadowEvidenceRecorder,
 }
 
@@ -2628,6 +2639,13 @@ impl<'parsed> StateFamilyArtifact<'parsed> {
 
     pub(crate) const fn label_sidecar(&self) -> &crate::state::StateLabelSidecar {
         &self.label_sidecar
+    }
+
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) const fn canonical_routes(
+        &self,
+    ) -> Option<&crate::graph_layout::canonical::CanonicalRoutes> {
+        self.canonical_routes.as_ref()
     }
 
     pub(crate) const fn effect_evidence(&self) -> &crate::diagram_theme::SvgShadowEvidenceRecorder {
@@ -3529,6 +3547,7 @@ impl GanttTimeAxisDiagnostics {
 /// ```
 pub struct RenderedFamilySvg {
     layout_adaptation: Option<crate::LayoutAdaptationObservation>,
+    shoal_layout_frame: Option<Arc<crate::ShoalLayoutFrame>>,
     svg: String,
     prepared_math_evidence: PreparedMathEvidenceLease,
     prepared_math_evidence_valid: bool,
@@ -3592,6 +3611,11 @@ impl<T> FamilyRenderCompletion<T> {
 impl RenderedFamilySvg {
     pub fn svg(&self) -> &str {
         &self.svg
+    }
+
+    /// Returns the requested placement hints from this successful Shoal render.
+    pub fn shoal_layout_frame(&self) -> Option<Arc<crate::ShoalLayoutFrame>> {
+        self.shoal_layout_frame.clone()
     }
 
     pub fn metadata(&self) -> &PresentationMetadata {
@@ -3820,6 +3844,7 @@ impl RenderedFamilySvg {
             metadata,
             required_capabilities: _,
             layout_adaptation,
+            shoal_layout_frame: _,
         } = self;
         FamilyRenderCompletion {
             layout_adaptation,
@@ -3944,11 +3969,39 @@ impl RenderedStandaloneSvg {
 }
 
 impl<'parsed> FamilyRenderArtifact<'parsed> {
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    ))]
+    fn flowchart_placement(&self) -> Option<&crate::model::FlowchartPlacement> {
+        match &self.family {
+            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+            BuiltinFamilyArtifact::Flowchart(flow) => Some(&flow.pair.layout().placement),
+            #[cfg(feature = "diagram-agentflow")]
+            BuiltinFamilyArtifact::Agentflow { flow, .. } => Some(&flow.pair.layout().placement),
+            _ => None,
+        }
+    }
+
     /// Width observations from the family placement that produced this artifact.
     pub fn layout_adaptation(&self) -> Option<crate::LayoutAdaptationObservation> {
         match &self.family {
             #[cfg(feature = "diagram-kanban")]
             BuiltinFamilyArtifact::Kanban(pair) => pair.layout().layout_adaptation(),
+            #[cfg(any(
+                feature = "diagram-flowchart",
+                feature = "diagram-swimlane",
+                feature = "diagram-agentflow"
+            ))]
+            _ => self
+                .flowchart_placement()
+                .and_then(|layout| layout.adaptation),
+            #[cfg(not(any(
+                feature = "diagram-flowchart",
+                feature = "diagram-swimlane",
+                feature = "diagram-agentflow"
+            )))]
             _ => None,
         }
     }
@@ -4223,6 +4276,20 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
             _ => None,
         };
         let layout_adaptation = self.layout_adaptation();
+        #[cfg(any(
+            feature = "diagram-flowchart",
+            feature = "diagram-swimlane",
+            feature = "diagram-agentflow"
+        ))]
+        let shoal_layout_frame = self
+            .flowchart_placement()
+            .and_then(|layout| layout.frame.clone());
+        #[cfg(not(any(
+            feature = "diagram-flowchart",
+            feature = "diagram-swimlane",
+            feature = "diagram-agentflow"
+        )))]
+        let shoal_layout_frame = None;
         let prepared_math_evidence = self.family.prepared_math_evidence();
         let Self {
             metadata,
@@ -4287,6 +4354,7 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
 
         Ok(RenderedFamilySvg {
             layout_adaptation,
+            shoal_layout_frame,
             svg,
             prepared_math_evidence,
             prepared_math_evidence_valid: true,
@@ -4386,10 +4454,13 @@ fn project_agentflow_flowchart_config(
     // Mermaid's ELK adapter ignores all three configuration namespaces for spacing.
     // Our shared adapter reads Flowchart settings, so keep its default spacing for ELK.
     // Resolve registration first: an unavailable ELK loader executes Dagre instead.
-    let uses_dagre = crate::layout_backend::resolve_graph_layout(root).backend
-        == crate::layout_backend::GraphLayoutBackend::Dagre;
+    let uses_family_spacing = matches!(
+        crate::layout_backend::resolve_graph_layout(root).backend,
+        crate::layout_backend::GraphLayoutBackend::Dagre
+            | crate::layout_backend::GraphLayoutBackend::Shoal
+    );
     for key in ["nodeSpacing", "rankSpacing"] {
-        let value = uses_dagre
+        let value = uses_family_spacing
             .then(|| {
                 root.get(key)
                     .filter(|value| crate::config::json_value_is_truthy(value))

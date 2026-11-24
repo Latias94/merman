@@ -123,6 +123,39 @@ mod tests {
     use super::*;
 
     #[test]
+    fn marker_measurements_cover_the_painted_viewport_and_setback() {
+        let points = [
+            crate::model::LayoutPoint { x: 0.0, y: 0.0 },
+            crate::model::LayoutPoint { x: 100.0, y: 0.0 },
+        ];
+        for edge_type in [
+            None,
+            Some("arrow_open"),
+            Some("double_arrow_point"),
+            Some("double_arrow_circle"),
+            Some("double_arrow_cross"),
+            Some("arrow_open_head"),
+            Some("arrow_hollow_circle"),
+        ] {
+            let edge = serde_json::from_value(serde_json::json!({
+                "id": "ab", "from": "a", "to": "b", "length": 1, "type": edge_type
+            }))
+            .unwrap();
+            let (start, end) = super::super::super::flowchart_marker_metrics(&edge);
+            let (start, end) = (start.trim + start.depth, end.trim + end.depth);
+            let (start_marker, end_marker) = arrow_types_for_edge(edge_type);
+            for path in [
+                line_with_offset_for_edge_type(&points, edge_type),
+                rounded_line_with_marker_offsets_for_edge_type(&points, edge_type),
+            ] {
+                assert!(start >= path[0].x && end >= 100.0 - path[1].x);
+                assert_eq!(start > path[0].x, start_marker.is_some());
+                assert_eq!(end > 100.0 - path[1].x, end_marker.is_some());
+            }
+        }
+    }
+
+    #[test]
     fn compact_marker_geometry_collapses_only_short_forward_terminal_stubs() {
         let mut short = vec![
             crate::model::LayoutPoint { x: 0.0, y: 0.0 },

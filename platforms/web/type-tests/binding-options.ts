@@ -188,6 +188,22 @@ const svgOptions: SvgBindingOptions = {
   svg: { diagram_id: "example" },
   layout: { adaptation: "fit-width", container_width: 421 },
 };
+const shoalSource = "---\nconfig:\n  layout: shoal\n---\nflowchart LR\nA --> B";
+const capturedFrame = renderSvgResult(shoalSource, {
+  layout: { capture_shoal_frame: true },
+}).metadata.shoal_layout_frame;
+renderSvgResult(shoalSource, {
+  layout: {
+    adaptation: "fit-width",
+    container_width: 640,
+    fold_wide_ranks: true,
+    ...(capturedFrame && { previous_shoal_frame: capturedFrame }),
+  },
+});
+renderSvgResult(shoalSource, {
+  // @ts-expect-error Replay accepts an opaque frame object.
+  layout: { previous_shoal_frame: [] },
+});
 const explicitNullTextMeasurementOptions: SvgBindingOptions = {
   environment: { text_measurement: null },
 };

@@ -35,8 +35,8 @@ impl ClassMarkerPaintSpec {
         (self.ref_x, self.ref_y)
     }
 
-    pub(super) fn local_paint_bounds(self) -> SvgPathBounds {
-        let mut bounds = match self.shape {
+    fn shape_bounds(self) -> SvgPathBounds {
+        match self.shape {
             ClassMarkerPaintShape::Path(d) => svg_path_bounds_from_d(d)
                 .expect("static Class marker paths must have bounded SVG geometry"),
             ClassMarkerPaintShape::Circle { cx, cy, radius } => SvgPathBounds {
@@ -45,12 +45,19 @@ impl ClassMarkerPaintSpec {
                 max_x: cx + radius,
                 max_y: cy + radius,
             },
-        };
+        }
+    }
+
+    fn with_stroke(self, mut bounds: SvgPathBounds) -> SvgPathBounds {
         bounds.min_x -= self.stroke_outset;
         bounds.min_y -= self.stroke_outset;
         bounds.max_x += self.stroke_outset;
         bounds.max_y += self.stroke_outset;
         bounds
+    }
+
+    pub(super) fn local_paint_bounds(self) -> SvgPathBounds {
+        self.with_stroke(self.shape_bounds())
     }
 
     pub(super) fn conservative_radius(self, relation_stroke_width: f64) -> f64 {
@@ -171,6 +178,31 @@ pub(super) fn class_marker_paint_spec(
         shape,
         stroke_outset,
     })
+}
+
+#[cfg(feature = "layout-shoal")]
+pub(crate) fn class_canonical_marker(
+    ty: i32,
+    is_start: bool,
+    neo: bool,
+) -> crate::graph_layout::Marker {
+    let Some(spec) = class_marker_paint_spec(ty, is_start, neo) else {
+        return Default::default();
+    };
+    let shape = spec.shape_bounds();
+    let paint = spec.with_stroke(shape);
+    let (ref_x, ref_y) = spec.reference_point();
+    let scale = spec.coordinate_scale(1.0);
+    let (trim, depth) = if is_start {
+        (ref_x - shape.min_x, paint.max_x - ref_x)
+    } else {
+        (shape.max_x - ref_x, ref_x - paint.min_x)
+    };
+    crate::graph_layout::Marker {
+        trim: trim * scale,
+        depth: depth * scale,
+        width: 2.0 * (ref_y - paint.min_y).max(paint.max_y - ref_y) * scale,
+    }
 }
 
 pub(super) fn class_marker_name(ty: i32, is_start: bool) -> Option<&'static str> {

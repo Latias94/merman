@@ -1,6 +1,11 @@
 use super::super::css::er_css_with_resolved_typography;
 use super::super::*;
+use super::markers::{ErMarkerDefs, er_unified_marker_id, write_er_marker_definitions};
+#[cfg(feature = "layout-shoal")]
+use crate::graph_layout::canonical::CanonicalRoutes;
 
+#[cfg(feature = "layout-shoal")]
+mod canonical;
 mod swimlane;
 
 // ER diagram SVG renderer implementation (split from parity.rs).
@@ -262,6 +267,7 @@ fn write_er_svg_label_background(out: &mut impl SvgOutput) {
 struct ErSubgraphRenderContext<'a> {
     diagram_id: SvgDiagramId<'a>,
     data_look: &'a str,
+    uses_canonical_routes: bool,
     use_html_labels: bool,
     measurer: &'a dyn crate::text::TextMeasurer,
     label_style: &'a crate::text::TextStyle,
@@ -309,11 +315,22 @@ fn render_er_subgraph_cluster(
     let title_y = cluster.title_label.y + context.translate_y;
     let _ = write!(
         out,
-        r#"<g id="{}-{}" class="{}" data-look="{}"><rect class="basic label-container" {} x="{}" y="{}" width="{}" height="{}"/>"#,
+        r#"<g id="{}-{}" class="{}" data-look="{}""#,
         escape_xml(&format!("{}", context.diagram_id)),
         escape_xml(&subgraph.id),
         escape_xml(&class_attr),
         escape_xml(context.data_look),
+    );
+    if context.uses_canonical_routes {
+        let _ = write!(
+            out,
+            r#" data-et="cluster" data-id="{}""#,
+            escape_attr(&cluster.id)
+        );
+    }
+    let _ = write!(
+        out,
+        r#"><rect class="basic label-container" {} x="{}" y="{}" width="{}" height="{}"/>"#,
         rect_style_attr,
         fmt(left),
         fmt(top),
@@ -455,41 +472,13 @@ fn er_edge_dom_id(edge_id: &str, relationships: &[crate::er::ErRelationship]) ->
     format!("id_{}_{}_{}", rel.entity_a, rel.entity_b, idx)
 }
 
-#[allow(clippy::too_many_arguments)]
-fn write_er_marker_definition(
-    out: &mut impl SvgOutput,
-    marker_id: &str,
-    marker_class: &str,
-    ref_x: &str,
-    ref_y: &str,
-    marker_width: &str,
-    marker_height: &str,
-    marker_units: Option<&str>,
-    content: &str,
-    typed_stroke: Option<(usize, &str)>,
-) -> Result<()> {
-    let _ = write!(
-        out,
-        r#"<defs><marker id="{}" class="{}" refX="{}" refY="{}" markerWidth="{}" markerHeight="{}" orient="auto""#,
-        escape_attr(marker_id),
-        escape_attr(marker_class),
-        ref_x,
-        ref_y,
-        marker_width,
-        marker_height,
-    );
-    if let Some(marker_units) = marker_units {
-        let _ = write!(out, r#" markerUnits="{}""#, escape_attr(marker_units));
-    }
-    if let Some((_, css)) = typed_stroke {
-        let _ = write!(out, r#" style="stroke:{} !important""#, escape_attr(css));
-    }
-    let _ = writeln!(out, ">{content}</marker></defs>");
-    out.checkpoint()
-}
-
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Layout, route metadata, and the resolved terminal theme have distinct owners."
+)]
 pub(crate) fn render_er_diagram_svg_model(
     layout: &ErDiagramLayout,
+    #[cfg(feature = "layout-shoal")] canonical_routes: Option<&CanonicalRoutes>,
     model: &merman_model::families::er::ErDiagramModel,
     entity_theme: &crate::er::ErEntityThemePlan,
     effective_config: &merman_model::presentation::PresentationConfig,
@@ -504,7 +493,11 @@ pub(crate) fn render_er_diagram_svg_model(
     let diagram_type = "er";
     let binding = entity_theme.css_binding();
     let er_render_settings = &binding.render_settings;
-    let is_elk_layout = er_render_settings.is_elk_layout;
+    #[cfg(feature = "layout-shoal")]
+    let uses_canonical_routes = canonical_routes.is_some();
+    #[cfg(not(feature = "layout-shoal"))]
+    let uses_canonical_routes = false;
+    let is_elk_layout = !uses_canonical_routes && er_render_settings.is_elk_layout;
     let is_swimlane_layout = layout.swimlane.is_some();
     let rounded_layout = is_elk_layout || is_swimlane_layout;
     let data_look = er_render_settings.diagram_look.as_str();
@@ -542,7 +535,7 @@ pub(crate) fn render_er_diagram_svg_model(
     // preparation path also carries Mermaid's SVG-facing projection, where self-loops are
     // already merged into one visible edge. Fall back to the canonical edges for hand-built
     // layouts used by unit tests and older callers.
-    let mut edges = if layout.render_edges.is_empty() {
+    let mut edges = if uses_canonical_routes || layout.render_edges.is_empty() {
         layout.edges.clone()
     } else {
         layout.render_edges.clone()
@@ -748,36 +741,29 @@ pub(crate) fn render_er_diagram_svg_model(
 
     let pad = options.viewbox_padding.max(0.0);
     let mut out = BoundedSvgOutput::new(options.work_meter());
-    let (translate_x, translate_y, root_bounds, root_width_for_title) = if is_empty_diagram {
-        let empty_span = (pad * 2.0).max(1.0);
-        (
-            0.0,
-            0.0,
-            root_svg::DiagramBounds::from_view_box(-pad, -pad, empty_span, empty_span),
-            empty_span,
-        )
-    } else {
-        let content_w = (content_bounds.max_x - content_bounds.min_x).max(1.0);
-        let content_h = (content_bounds.max_y - content_bounds.min_y).max(1.0);
-        let vb_w = content_w + pad * 2.0;
-        let vb_h = content_h + pad * 2.0;
-        (
-            0.0,
-            0.0,
+    let root_bounds = |content_bounds: &Bounds| {
+        if is_empty_diagram {
+            let empty_span = (pad * 2.0).max(1.0);
+            root_svg::DiagramBounds::from_view_box(-pad, -pad, empty_span, empty_span)
+        } else {
+            let content_w = (content_bounds.max_x - content_bounds.min_x).max(1.0);
+            let content_h = (content_bounds.max_y - content_bounds.min_y).max(1.0);
             root_svg::DiagramBounds::from_view_box(
                 content_bounds.min_x - pad,
                 content_bounds.min_y - pad,
-                vb_w,
-                vb_h,
-            ),
-            vb_w,
-        )
+                content_w + pad * 2.0,
+                content_h + pad * 2.0,
+            )
+        }
     };
-    let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, use_max_width).with_max_width(
-        root_svg::RootMaxWidth::CssSixSignificant(root_width_for_title),
-    );
+    let root_spec = |bounds: root_svg::DiagramBounds| {
+        root_svg::RootViewportSpec::mermaid(bounds, use_max_width)
+            .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(bounds.width))
+    };
+    let (translate_x, translate_y) = (0.0, 0.0);
+    let initial_bounds = root_bounds(&content_bounds);
     let root_viewport = root_svg::RootViewportContext::new(crate::DiagramFamilyId::ER, diagram_id);
-    let root_plan = root_viewport.plan(root_spec)?;
+    let root_plan = root_viewport.plan(root_spec(initial_bounds))?;
 
     let has_acc_title = model.acc_title.as_ref().is_some_and(|s| !s.is_empty());
     let has_acc_descr = model.acc_descr.as_ref().is_some_and(|s| !s.is_empty());
@@ -787,7 +773,15 @@ pub(crate) fn render_er_diagram_svg_model(
     root_chrome.class = Some("erDiagram");
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
-    let root_document = root_viewport.write_plan(&mut out, &root_plan, root_chrome)?;
+    let root_document = if uses_canonical_routes {
+        root_viewport.begin_document(
+            &mut out,
+            root_svg::DeferredRootSpec::mermaid(use_max_width),
+            root_chrome,
+        )?
+    } else {
+        root_viewport.write_plan(&mut out, &root_plan, root_chrome)?
+    };
     options.checkpoint_emit()?;
 
     if has_acc_title {
@@ -822,178 +816,19 @@ pub(crate) fn render_er_diagram_svg_model(
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
     out.push_str("<g>");
 
-    // Cardinality markers follow Mermaid 11.17.2's unified ER renderer: the
-    // classic and Neo marker families intentionally have different geometry.
-    // Note: ids follow Mermaid marker rules: `${diagramId}_${diagramType}-${markerType}{Start|End}`.
-    // Mermaid's ER unified renderer enables four marker types by default; include MD_PARENT only if used.
-    // Mermaid emits one `<defs>` wrapper per marker. Only marker definitions referenced by a
-    // visible relationship receive the direct Relation.stroke terminal override.
-    if include_md_parent {
-        for (suffix, ref_x, marker_width) in
-            [("mdParentStart", "0", "190"), ("mdParentEnd", "19", "20")]
-        {
-            let marker_id = format!("{diagram_id}_{diagram_type}-{suffix}");
-            let emitted_stroke = relation_marker_paints.get(&marker_id).copied();
-            write_er_marker_definition(
-                &mut out,
-                &marker_id,
-                "marker mdParent er",
-                ref_x,
-                "7",
-                marker_width,
-                if suffix.ends_with("Start") {
-                    "240"
-                } else {
-                    "28"
-                },
-                None,
-                r#"<path d="M 18,7 L9,13 L1,7 L9,1 Z"/>"#,
-                emitted_stroke,
-            )?;
-        }
-    }
-
-    let neo_marker = data_look == "neo";
-    let neo_stroke_width = binding.neo_marker_stroke_width;
-    let neo_stroke_width = fmt(neo_stroke_width).to_string();
-    let neo_main_bkg = escape_attr(main_bkg);
-
-    for (suffix, class, ref_x, ref_y, width, height, classic_content) in [
-        (
-            "onlyOneStart",
-            "marker onlyOne er",
-            "0",
-            "9",
-            "18",
-            "18",
-            r#"<path d="M9,0 L9,18 M15,0 L15,18"/>"#,
-        ),
-        (
-            "onlyOneEnd",
-            "marker onlyOne er",
-            "18",
-            "9",
-            "18",
-            "18",
-            r#"<path d="M3,0 L3,18 M9,0 L9,18"/>"#,
-        ),
-        (
-            "zeroOrOneStart",
-            "marker zeroOrOne er",
-            "0",
-            "9",
-            "30",
-            "18",
-            r#"<circle fill="white" cx="21" cy="9" r="6"/><path d="M9,0 L9,18"/>"#,
-        ),
-        (
-            "zeroOrOneEnd",
-            "marker zeroOrOne er",
-            "30",
-            "9",
-            "30",
-            "18",
-            r#"<circle fill="white" cx="9" cy="9" r="6"/><path d="M21,0 L21,18"/>"#,
-        ),
-        (
-            "oneOrMoreStart",
-            "marker oneOrMore er",
-            "18",
-            "18",
-            "45",
-            "36",
-            r#"<path d="M0,18 Q 18,0 36,18 Q 18,36 0,18 M42,9 L42,27"/>"#,
-        ),
-        (
-            "oneOrMoreEnd",
-            "marker oneOrMore er",
-            "27",
-            "18",
-            "45",
-            "36",
-            r#"<path d="M3,9 L3,27 M9,18 Q27,0 45,18 Q27,36 9,18"/>"#,
-        ),
-        (
-            "zeroOrMoreStart",
-            "marker zeroOrMore er",
-            "18",
-            "18",
-            "57",
-            "36",
-            r#"<circle fill="white" cx="48" cy="18" r="6"/><path d="M0,18 Q18,0 36,18 Q18,36 0,18"/>"#,
-        ),
-        (
-            "zeroOrMoreEnd",
-            "marker zeroOrMore er",
-            "39",
-            "18",
-            "57",
-            "36",
-            r#"<circle fill="white" cx="9" cy="18" r="6"/><path d="M21,18 Q39,0 57,18 Q39,36 21,18"/>"#,
-        ),
-    ] {
-        let marker_id = format!("{diagram_id}_{diagram_type}-{suffix}");
-        let emitted_stroke = relation_marker_paints.get(&marker_id).copied();
-        let content = if neo_marker {
-            match suffix {
-                "onlyOneStart" => format!(
-                    r#"<path d="M9,0 L9,18 M15,0 L15,18" stroke-width="{}"/>"#,
-                    neo_stroke_width.as_str()
-                ),
-                "onlyOneEnd" => format!(
-                    r#"<path d="M3,0 L3,18 M9,0 L9,18" stroke-width="{}"/>"#,
-                    neo_stroke_width.as_str()
-                ),
-                "zeroOrOneStart" => format!(
-                    r#"<circle fill="{}" cx="21" cy="9" stroke-width="{}" r="6"/><path d="M9,0 L9,18" stroke-width="{}"/>"#,
-                    neo_main_bkg.as_str(),
-                    neo_stroke_width.as_str(),
-                    neo_stroke_width.as_str(),
-                ),
-                "zeroOrOneEnd" => format!(
-                    r#"<circle fill="{}" cx="9" cy="9" stroke-width="{}" r="6"/><path d="M21,0 L21,18" stroke-width="{}"/>"#,
-                    neo_main_bkg.as_str(),
-                    neo_stroke_width.as_str(),
-                    neo_stroke_width.as_str(),
-                ),
-                "oneOrMoreStart" => format!(
-                    r#"<path d="M0,18 Q 18,0 36,18 Q 18,36 0,18 M42,9 L42,27" stroke-width="{}"/>"#,
-                    neo_stroke_width.as_str()
-                ),
-                "oneOrMoreEnd" => format!(
-                    r#"<path d="M3,9 L3,27 M9,18 Q27,0 45,18 Q27,36 9,18" stroke-width="{}"/>"#,
-                    neo_stroke_width.as_str()
-                ),
-                "zeroOrMoreStart" => format!(
-                    r#"<circle fill="{}" cx="45.5" cy="18" stroke-width="{}" r="6"/><path d="M0,18 Q18,0 36,18 Q18,36 0,18" stroke-width="{}"/>"#,
-                    neo_main_bkg.as_str(),
-                    neo_stroke_width.as_str(),
-                    neo_stroke_width.as_str(),
-                ),
-                "zeroOrMoreEnd" => format!(
-                    r#"<circle fill="{}" cx="11" cy="18" stroke-width="{}" r="6"/><path d="M21,18 Q39,0 57,18 Q39,36 21,18" stroke-width="{}"/>"#,
-                    neo_main_bkg.as_str(),
-                    neo_stroke_width.as_str(),
-                    neo_stroke_width.as_str(),
-                ),
-                _ => classic_content.to_string(),
-            }
-        } else {
-            classic_content.to_string()
-        };
-        write_er_marker_definition(
-            &mut out,
-            &marker_id,
-            class,
-            ref_x,
-            ref_y,
-            width,
-            height,
-            neo_marker.then_some("userSpaceOnUse"),
-            &content,
-            emitted_stroke,
-        )?;
-    }
+    write_er_marker_definitions(
+        &mut out,
+        ErMarkerDefs {
+            diagram_id,
+            diagram_type,
+            include_md_parent,
+            canonical: uses_canonical_routes,
+            neo: data_look == "neo",
+            neo_stroke_width: binding.neo_marker_stroke_width,
+            main_bkg,
+        },
+        &relation_marker_paints,
+    )?;
 
     let mut entity_by_id: std::collections::HashMap<&str, &crate::er::ErEntity> =
         std::collections::HashMap::new();
@@ -1003,6 +838,7 @@ pub(crate) fn render_er_diagram_svg_model(
     let subgraph_context = ErSubgraphRenderContext {
         diagram_id,
         data_look,
+        uses_canonical_routes,
         use_html_labels: edge_html_labels,
         measurer,
         label_style: &label_style,
@@ -1103,7 +939,9 @@ pub(crate) fn render_er_diagram_svg_model(
     if options.debug.include_edges {
         for e in &edges {
             let missing_section = missing_sections.contains(&e.id);
-            if e.points.is_empty() || (!missing_section && e.points.len() < 2) {
+            if !uses_canonical_routes
+                && (e.points.is_empty() || (!missing_section && e.points.len() < 2))
+            {
                 continue;
             }
             let edge_dom_id = er_edge_dom_id(&e.id, &model.relationships);
@@ -1116,17 +954,37 @@ pub(crate) fn render_er_diagram_svg_model(
                 "edge-pattern-solid"
             };
             let line_classes = format!("edge-thickness-normal {pattern_class} relationshipLine");
-            let shifted: Vec<crate::model::LayoutPoint> = e
-                .points
-                .iter()
-                .map(|p| crate::model::LayoutPoint {
-                    x: p.x + translate_x,
-                    y: p.y + translate_y,
-                })
-                .collect();
+            let (original_d, shifted) = 'path: {
+                #[cfg(feature = "layout-shoal")]
+                if let Some(routes) = canonical_routes {
+                    let painted = canonical::paint_edge(
+                        routes,
+                        e,
+                        kurbo::Vec2::new(translate_x, translate_y),
+                        data_look,
+                        binding.neo_marker_stroke_width,
+                        options.work_meter(),
+                        &hand_drawn_seed,
+                    )?;
+                    content_bounds.min_x = content_bounds.min_x.min(painted.bounds.x0);
+                    content_bounds.min_y = content_bounds.min_y.min(painted.bounds.y0);
+                    content_bounds.max_x = content_bounds.max_x.max(painted.bounds.x1);
+                    content_bounds.max_y = content_bounds.max_y.max(painted.bounds.y1);
+                    break 'path (painted.d, painted.points);
+                }
+                let shifted: Vec<_> = e
+                    .points
+                    .iter()
+                    .map(|p| crate::model::LayoutPoint {
+                        x: p.x + translate_x,
+                        y: p.y + translate_y,
+                    })
+                    .collect();
+                let d = er_edge_path_d(&shifted, rounded_layout, missing_section);
+                break 'path (d, shifted);
+            };
             let data_points = base64::engine::general_purpose::STANDARD
                 .encode(serde_json::to_vec(&shifted).unwrap_or_default());
-            let original_d = er_edge_path_d(&shifted, rounded_layout, missing_section);
             let hopped_d = hop_paths.get(e.id.as_str()).map(String::as_str);
             let d = hopped_d.unwrap_or(&original_d);
 
@@ -1281,7 +1139,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 (0.0, 0.0, x, y)
             };
 
-            if w > 0.0 && h > 0.0 && !missing_sections.contains(&e.id) {
+            if !uses_canonical_routes && w > 0.0 && h > 0.0 && !missing_sections.contains(&e.id) {
                 // Mermaid 12.1 preserves the layout anchor and adds only the midpoint delta
                 // from paint-time clipping. ER has no additional clipping here: curve and marker
                 // projection change `d`, while both label polylines remain the layout route.
@@ -1587,12 +1445,23 @@ pub(crate) fn render_er_diagram_svg_model(
             .unwrap_or_default();
         let _ = write!(
             &mut out,
-            r#"<g id="{}-{}" class="{}" data-look="{}"{} transform="translate({}, {})">"#,
+            r#"<g id="{}-{}" class="{}" data-look="{}"{}"#,
             diagram_id,
             escape_xml(&entity.id),
             escape_xml(&group_class),
             escape_xml(data_look),
             color_id_attr,
+        );
+        if uses_canonical_routes {
+            let _ = write!(
+                &mut out,
+                r#" data-et="node" data-id="{}""#,
+                escape_attr(&n.id)
+            );
+        }
+        let _ = write!(
+            &mut out,
+            r#" transform="translate({}, {})">"#,
             fmt(cx),
             fmt(cy)
         );
@@ -2210,7 +2079,7 @@ pub(crate) fn render_er_diagram_svg_model(
         let fallback_title_x = root_plan
             .view_box()
             .map(|view_box| view_box.min_x + view_box.width / 2.0)
-            .unwrap_or(root_width_for_title / 2.0);
+            .unwrap_or(initial_bounds.width / 2.0);
         let title_visual = entity_theme.title_visual();
         let title_style_attr = title_visual
             .map(|visual| visual.inline_attr.as_str())
@@ -2230,6 +2099,15 @@ pub(crate) fn render_er_diagram_svg_model(
 
     push_er_shadow_defs(&mut out, diagram_id.semantic_str(), binding)?;
 
+    let root_document = if uses_canonical_routes {
+        root_viewport.finish_document(
+            &mut out,
+            root_document,
+            root_spec(root_bounds(&content_bounds)),
+        )?
+    } else {
+        root_document
+    };
     out.push_str("</svg>\n");
     let rooted_svg = root_document.complete(out.finish()?)?;
     if !relationship_background.record_terminal(background_receipt) {
@@ -2278,32 +2156,6 @@ fn push_er_gradient(
         gradient_stop.as_str()
     );
     out.checkpoint()
-}
-
-fn er_unified_marker_id(
-    diagram_id: SvgDiagramId<'_>,
-    diagram_type: &str,
-    upstream_marker: &str,
-) -> String {
-    let upstream_marker = upstream_marker.trim();
-    let (base, suffix) = if let Some(v) = upstream_marker.strip_suffix("_START") {
-        (v, "Start")
-    } else if let Some(v) = upstream_marker.strip_suffix("_END") {
-        (v, "End")
-    } else {
-        return upstream_marker.to_string();
-    };
-
-    let marker_type = match base {
-        "ONLY_ONE" => "onlyOne",
-        "ZERO_OR_ONE" => "zeroOrOne",
-        "ONE_OR_MORE" => "oneOrMore",
-        "ZERO_OR_MORE" => "zeroOrMore",
-        "MD_PARENT" => "mdParent",
-        _ => return upstream_marker.to_string(),
-    };
-
-    format!("{diagram_id}_{diagram_type}-{marker_type}{suffix}")
 }
 
 #[cfg(test)]
@@ -2610,6 +2462,8 @@ mod tests {
             .expect("resolve baseline ER entity theme");
             super::render_er_diagram_svg_model(
                 &layout,
+                #[cfg(feature = "layout-shoal")]
+                None,
                 &model,
                 &entity_theme,
                 &effective_config,

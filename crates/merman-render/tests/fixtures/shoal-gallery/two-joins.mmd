@@ -1,0 +1,13 @@
+flowchart TD
+S[Release request] --> A[Validate]
+S --> B[Notify]
+A --> C[Compatibility checks for installed extensions]
+A --> D[Package]
+B --> E[Email]
+B --> F[Audit]
+C --> J[Candidate]
+D --> J
+E --> K[Archive]
+F --> K
+J --> Z[Finished]
+K --> Z

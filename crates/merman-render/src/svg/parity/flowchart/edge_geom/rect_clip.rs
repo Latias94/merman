@@ -131,23 +131,7 @@ pub(in crate::svg::parity::flowchart) fn cut_path_at_intersect_into(
     }
 }
 
-pub(in crate::svg::parity::flowchart) fn dedup_consecutive_points_into(
-    input: &[crate::model::LayoutPoint],
-    out: &mut Vec<crate::model::LayoutPoint>,
-) {
-    out.clear();
-    if input.is_empty() {
-        return;
-    }
+pub(super) fn dedup_consecutive_points(points: &mut Vec<crate::model::LayoutPoint>) {
     const EPS: f64 = 1e-9;
-    out.reserve(input.len());
-    for p in input {
-        if out
-            .last()
-            .is_some_and(|prev| (prev.x - p.x).abs() <= EPS && (prev.y - p.y).abs() <= EPS)
-        {
-            continue;
-        }
-        out.push(crate::model::LayoutPoint { x: p.x, y: p.y });
-    }
+    points.dedup_by(|a, b| (a.x - b.x).abs() <= EPS && (a.y - b.y).abs() <= EPS);
 }

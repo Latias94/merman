@@ -18,6 +18,7 @@ pub(super) struct ClassNamespaceClusterGroupContext<'a> {
     pub content_ty: f64,
     pub bounds_dx: f64,
     pub bounds_dy: f64,
+    pub use_layout_title_anchor: bool,
     pub use_html_labels: bool,
     pub look: &'a str,
     pub mermaid_config: Option<&'a merman_model::presentation::PresentationConfig>,
@@ -91,8 +92,14 @@ fn render_class_namespace_cluster_at(
 
     let label_w = cluster.title_label.width.max(0.0);
     let label_h = cluster.title_label.height.max(0.0);
-    let label_x = left + (w - label_w) / 2.0;
-    let label_y = top + cluster.title_margin_top;
+    let (label_x, label_y) = if ctx.use_layout_title_anchor {
+        (
+            left + (w - label_w) / 2.0 + (cluster.title_label.x - cluster.x),
+            top + (h - label_h) / 2.0 + (cluster.title_label.y - cluster.y),
+        )
+    } else {
+        (left + (w - label_w) / 2.0, top + cluster.title_margin_top)
+    };
     include_xywh(
         content_bounds,
         label_x + ctx.bounds_dx,
@@ -214,7 +221,7 @@ pub(super) fn render_class_namespace_clusters_in_root(
 
         let w = c.width.max(1.0);
         let h = c.height.max(1.0);
-        let (left, top) = if *ns_id == root_ns_id {
+        let (left, top) = if *ns_id == root_ns_id && !ctx.use_layout_title_anchor {
             (8.0, 8.0)
         } else {
             (

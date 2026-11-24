@@ -1444,7 +1444,7 @@ impl NodeLayoutDimensionsRequest<'_> {
             super::FlowchartSvgLabelOwner,
         )>,
         charge_work: impl FnMut(usize) -> crate::Result<()>,
-    ) -> crate::Result<(f64, f64)> {
+    ) -> crate::Result<((f64, f64), Option<PreparedFlowchartNodeGeometry>)> {
         use super::FlowchartShape;
 
         let shape = FlowchartShape::resolve(self.layout_shape.unwrap_or("squareRect"))?;
@@ -1478,7 +1478,7 @@ impl NodeLayoutDimensionsRequest<'_> {
                     FlowchartShape::Process | FlowchartShape::RoundedRectangle
                 )
             {
-                return Ok(natural);
+                return Ok((natural, None));
             }
             let rectangle = FlowchartRectangleGeometry::from_style(natural, label, rectangle_size);
             (
@@ -1489,7 +1489,7 @@ impl NodeLayoutDimensionsRequest<'_> {
         if let Some((builder, owner)) = prepared {
             builder.record_node_geometry(owner, geometry)?;
         }
-        Ok((size.width, size.height))
+        Ok(((size.width, size.height), Some(geometry)))
     }
 }
 

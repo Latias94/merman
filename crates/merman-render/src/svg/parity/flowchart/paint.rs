@@ -4,6 +4,9 @@ use super::render_input::{
 use super::svg_emit::FlowchartSvgModelRequest;
 use super::*;
 
+#[cfg(any(feature = "layout-shoal", test))]
+use super::super::canonical_rough::constrained_rough_edge_path;
+
 pub(super) fn with_flowchart_paint_context<T>(
     request: FlowchartSvgModelRequest<'_>,
     options: &SvgExecution<'_>,
@@ -63,7 +66,7 @@ pub(super) fn with_flowchart_paint_context<T>(
         model,
         render_context,
         &layout.edge_owners,
-        layout.uses_elk_adapter_dom,
+        layout.uses_elk_adapter_dom || layout.route_contract.uses_projected_edges(),
     );
     if let Some(swimlane_layout) = swimlane_layout {
         super::swimlane::apply_swimlane_edge_curves(&mut render_edges, swimlane_layout);
@@ -168,6 +171,7 @@ pub(super) fn with_flowchart_paint_context<T>(
     }
 
     let mut parent: FxHashMap<&str, &str> = model.visible_memberships().collect();
+    apply_solved_group_parents(layout, &mut parent, &mut subgraph_ids_with_children);
     for n in &extra_nodes {
         let id = n.id.as_str();
         let Some((base, _)) = id.split_once("---") else {
@@ -347,7 +351,7 @@ pub(super) fn prepare_edge_routes(
                 routes.push(route);
                 routed_edges.push((edge, offsets));
             }
-        } else if let Some(geom) = flowchart_compute_edge_path_geom(request, &mut scratch) {
+        } else if let Some(geom) = flowchart_compute_edge_path_geom(request, &mut scratch)? {
             cache.insert(
                 edge.key,
                 FlowchartEdgePathCacheEntry {
@@ -445,6 +449,19 @@ pub(super) fn prepare_rough_edge_paths(
             continue;
         }
         ctx.work_meter.charge(entry.geom.d.len().max(1))?;
+        #[cfg(any(feature = "layout-shoal", test))]
+        if matches!(
+            ctx.layout.route_contract,
+            crate::graph_layout::RouteContract::CanonicalAxis { .. }
+        ) {
+            entry.geom.emitted_d_for_label = Some(constrained_rough_edge_path(
+                &entry.geom.d,
+                flowchart_marker_metrics(edge.edge),
+                ctx.work_meter,
+                &ctx.hand_drawn_seed,
+            )?);
+            continue;
+        }
         entry.geom.emitted_d_for_label =
             render::node::roughjs::roughjs_hand_drawn_stroke_path_for_svg_path(
                 &entry.geom.d,
@@ -746,6 +763,15 @@ mod tests {
         tiny_svg_budget: bool,
         consume: impl FnOnce(FlowchartSvgModelRequest<'_>, &SvgExecution<'_>) -> Result<T>,
     ) -> T {
+        with_layout(source, None, tiny_svg_budget, consume)
+    }
+
+    fn with_layout<T>(
+        source: &str,
+        layout: Option<FlowchartLayout>,
+        tiny_svg_budget: bool,
+        consume: impl FnOnce(FlowchartSvgModelRequest<'_>, &SvgExecution<'_>) -> Result<T>,
+    ) -> T {
         let parsed = merman_core::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
             .unwrap()
@@ -757,15 +783,28 @@ mod tests {
             panic!("Flowchart model")
         };
         let context = parsed.render_context().flowchart_render_context().unwrap();
-        let layout_session = environment.clone().begin_session().unwrap();
-        let layout_style = FlowchartEdgeStylePlan::prepare_for_model(
-            model,
-            &parsed.metadata().effective_config,
-            false,
-            layout_session.work_meter(),
-        )
-        .unwrap();
-        let layout = crate::flowchart::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(model, context, &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs), &parsed.metadata().effective_config, &layout_session.text_measurer(crate::environment::TextMeasurementPhase::Layout), None, None, &layout_style, std::sync::Arc::clone(layout_session.work_meter())).unwrap();
+        let layout = layout.unwrap_or_else(|| {
+            let session = environment.begin_session().unwrap();
+            let style = FlowchartEdgeStylePlan::prepare_for_model(
+                model,
+                &parsed.metadata().effective_config,
+                false,
+                session.work_meter(),
+            )
+            .unwrap();
+            crate::flowchart::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
+                model,
+                context,
+                &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
+                &parsed.metadata().effective_config,
+                &session.text_measurer(crate::environment::TextMeasurementPhase::Layout),
+                None,
+                None,
+                &style,
+                std::sync::Arc::clone(session.work_meter()),
+            )
+            .unwrap()
+        });
         let mut resources = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input();
         if tiny_svg_budget {
             resources = resources
@@ -944,6 +983,233 @@ mod tests {
     }
 
     #[test]
+    fn canonical_route_failure_is_returned_by_the_svg_renderer() {
+        use crate::graph_layout::{
+            RouteContract, RouteTopology,
+            contour::ShapePortProfile,
+            ir::{Axis, Endpoint, KnotKind, Side},
+            route_paint::{Clearance, ObstacleOwner},
+        };
+        let mut layout: FlowchartLayout = serde_json::from_value(serde_json::json!({
+            "nodes": [
+                {"id":"A", "x":-20, "y":0, "width":40, "height":20, "is_cluster":false},
+                {"id":"B", "x":160, "y":60, "width":40, "height":20, "is_cluster":false}
+            ],
+            "edges": [
+                {"id":"audit", "from":"A", "to":"B", "points":[
+                    {"x":0,"y":0}, {"x":20,"y":0}, {"x":120,"y":60}, {"x":140,"y":60}
+                ]}
+            ],
+            "clusters": []
+        }))
+        .unwrap();
+        layout.edge_owners = crate::flowchart::FlowchartEdgeOwners::from_semantic_indices([0]);
+        layout.route_contract = RouteContract::CanonicalAxis {
+            clearance: Clearance::new(vec![(
+                kurbo::Rect::new(18., -2., 22., 2.),
+                ObstacleOwner::GroupTitle(0),
+            )]),
+            group_parents: Vec::new(),
+            border_stitches: Vec::new(),
+            nodes: vec![ShapePortProfile::rectangle(40., 20.); 2],
+            routes: vec![Some(RouteTopology {
+                endpoints: (Endpoint::Node(0), Endpoint::Node(1)),
+                ports: (Side::Right, Side::Left),
+                knots: vec![(Axis::Horizontal, KnotKind::Free); 4],
+            })],
+        };
+        with_layout(
+            "flowchart LR\nA audit@--> B",
+            Some(layout),
+            false,
+            |request, execution| {
+                let error = super::super::svg_emit::render_flowchart_svg_model(request, execution)
+                    .err()
+                    .unwrap();
+                assert!(matches!(
+                    error,
+                    Error::InvalidModel { message } if message.contains("`audit`") &&
+                        message.contains("no clear path between fixed route points")
+                ));
+                Ok(())
+            },
+        );
+    }
+
+    #[test]
+    fn canonical_route_contract_owns_ports_and_labels_even_with_a_different_config() {
+        // The solver rows are deliberately reversed. Both semantic edges have the same id and
+        // endpoints, but only the first is bidirectional. Neither label is at a path midpoint.
+        let mut layout: FlowchartLayout = serde_json::from_value(serde_json::json!({
+            "nodes": [
+                {"id":"A", "x":10, "y":20, "width":48, "height":36, "is_cluster":false},
+                {"id":"B", "x":130, "y":110, "width":40, "height":30, "is_cluster":false}
+            ],
+            "edges": [
+                {"id":"L_A_B_2", "from":"A", "to":"B", "points":[
+                    {"x":10,"y":2}, {"x":10,"y":-40},
+                    {"x":130,"y":-40}, {"x":130,"y":95}
+                ], "label":{"x":94.5,"y":36.25,"width":32,"height":16}},
+                {"id":"L_A_B_2", "from":"A", "to":"B", "points":[
+                    {"x":34,"y":20}, {"x":64,"y":20}, {"x":80,"y":110}, {"x":110,"y":110}
+                ], "label":{"x":41.25,"y":-7.5,"width":48,"height":16}}
+            ],
+            "clusters": []
+        }))
+        .unwrap();
+        layout.edge_owners = crate::flowchart::FlowchartEdgeOwners::from_semantic_indices([1, 0]);
+
+        use crate::graph_layout::contour::ShapePortProfile;
+        use crate::graph_layout::{
+            RouteContract, RouteTopology,
+            ir::{Axis, Endpoint, KnotKind, Side},
+        };
+        layout.route_contract = RouteContract::CanonicalAxis {
+            clearance: Default::default(),
+            group_parents: Vec::new(),
+            border_stitches: Vec::new(),
+            nodes: vec![
+                ShapePortProfile::diamond(48.0, 36.0),
+                ShapePortProfile::rectangle(40.0, 30.0),
+            ],
+            routes: vec![
+                Some(RouteTopology {
+                    endpoints: (Endpoint::Node(0), Endpoint::Node(1)),
+                    ports: (Side::Right, Side::Left),
+                    knots: vec![(Axis::Horizontal, KnotKind::Free); 4],
+                }),
+                Some(RouteTopology {
+                    endpoints: (Endpoint::Node(0), Endpoint::Node(1)),
+                    ports: (Side::Top, Side::Top),
+                    knots: [
+                        Axis::Vertical,
+                        Axis::Vertical,
+                        Axis::Horizontal,
+                        Axis::Vertical,
+                    ]
+                    .map(|axis| (axis, KnotKind::Free))
+                    .to_vec(),
+                }),
+            ],
+        };
+
+        for (html, look) in [(false, "classic"), (true, "handDrawn")] {
+            let source = format!(
+                "---
+config:
+  layout: dagre
+  htmlLabels: {html}
+  look: {look}
+  handDrawnSeed: 7
+  flowchart:
+    curve: linear
+---
+flowchart LR
+A{{A}} L_A_B_2@<-->|direct| B[B]
+A -->|bent| B"
+            );
+            with_layout(
+                &source,
+                Some(layout.clone()),
+                false,
+                |request, execution| {
+                    let geometry = edge_geometry(request, execution)?;
+                    let svg =
+                        super::super::svg_emit::render_flowchart_svg_model(request, execution)?;
+                    let document = crate::xml_dom::Document::parse(svg.as_str()).unwrap();
+                    let paths: Vec<_> = document
+                        .descendants()
+                        .filter(|node| {
+                            node.has_tag_name("path") && node.attribute("data-points").is_some()
+                        })
+                        .collect();
+                    let labels: Vec<_> = document
+                        .descendants()
+                        .filter(|node| {
+                            node.has_tag_name("g") && node.attribute("class") == Some("edgeLabel")
+                        })
+                        .collect();
+                    assert_eq!(geometry.len(), 2);
+                    assert_eq!(paths.len(), 2);
+                    assert_eq!(labels.len(), 2);
+                    assert_ne!(paths[0].attribute("id"), paths[1].attribute("id"));
+
+                    let direct = [(34.0, 20.0), (64.0, 20.0), (80.0, 110.0), (110.0, 110.0)];
+                    let bent = [(10.0, 2.0), (10.0, -40.0), (130.0, -40.0), (130.0, 95.0)];
+                    for (i, (points, (x, y), text)) in [
+                        (direct.as_slice(), (41.25, -7.5), "direct"),
+                        (bent.as_slice(), (94.5, 36.25), "bent"),
+                    ]
+                    .into_iter()
+                    .enumerate()
+                    {
+                        let path = paths[i];
+                        let query = &geometry[i];
+                        assert_eq!(query.id, "L_A_B_2");
+                        assert_eq!(path.attribute("data-id"), Some(query.id.as_str()));
+                        let svg_points = decode_path_points(path);
+                        for projected in [svg_points.as_slice(), query.points.as_deref().unwrap()] {
+                            assert_eq!(
+                                projected.iter().map(|p| (p.x, p.y)).collect::<Vec<_>>(),
+                                points
+                            );
+                        }
+                        let label = query.label_position.as_ref().unwrap();
+                        assert_eq!((label.x, label.y), (x, y));
+                        assert_eq!(
+                            labels[i].attribute("transform").unwrap(),
+                            format!("translate({x},{y})")
+                        );
+                        assert!(
+                            labels[i]
+                                .descendants()
+                                .any(|node| node.is_text() && node.text() == Some(text))
+                        );
+                    }
+                    assert!(
+                        paths[0]
+                            .attribute("marker-start")
+                            .unwrap()
+                            .contains("pointStart")
+                    );
+                    assert!(
+                        paths[0]
+                            .attribute("marker-end")
+                            .unwrap()
+                            .contains("pointEnd")
+                    );
+                    assert!(paths[1].attribute("marker-start").is_none());
+                    if look == "classic" {
+                        // Four units along each terminal tangent, after the diamond and rect contacts.
+                        let path =
+                            kurbo::BezPath::from_svg(paths[0].attribute("d").unwrap()).unwrap();
+                        use kurbo::ParamCurve;
+                        assert_eq!(
+                            path.segments().next().unwrap().start(),
+                            kurbo::Point::new(38.0, 20.0)
+                        );
+                        assert_eq!(
+                            path.segments().last().unwrap().end(),
+                            kurbo::Point::new(106.0, 110.0)
+                        );
+                    }
+                    Ok(())
+                },
+            );
+        }
+    }
+
+    fn decode_path_points(path: crate::xml_dom::Node<'_, '_>) -> Vec<crate::model::LayoutPoint> {
+        use base64::Engine as _;
+        serde_json::from_slice(
+            &base64::engine::general_purpose::STANDARD
+                .decode(path.attribute("data-points").unwrap())
+                .unwrap(),
+        )
+        .unwrap()
+    }
+
+    #[test]
     fn geometry_preserves_the_elk_missing_section_path_and_label() {
         with_source(
             "flowchart LR\nA((Circle)) -->|label| B{Diamond}",
@@ -963,13 +1229,7 @@ mod tests {
                     .descendants()
                     .find(|node| node.attribute("data-points").is_some())
                     .unwrap();
-                use base64::Engine as _;
-                let points: Vec<crate::model::LayoutPoint> = serde_json::from_slice(
-                    &base64::engine::general_purpose::STANDARD
-                        .decode(path.attribute("data-points").unwrap())
-                        .unwrap(),
-                )
-                .unwrap();
+                let points = decode_path_points(path);
                 let query = geometry[0]
                     .points
                     .as_ref()

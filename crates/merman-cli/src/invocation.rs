@@ -445,6 +445,10 @@ pub(crate) struct ResolvedRenderOptions {
     pub(crate) theme_appearance: Option<merman::svg::ThemeAppearance>,
     pub(crate) theme_portability: crate::cli::ThemePortabilityKind,
     pub(crate) theme_report: Option<PathBuf>,
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) preview_frame_in: Option<PathBuf>,
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) preview_frame_out: Option<PathBuf>,
     #[cfg(feature = "native-fonts")]
     pub(crate) fonts: crate::cli::FontCliArgs,
     pub(crate) math_renderer: Option<crate::cli::MathRendererKind>,
@@ -826,6 +830,24 @@ fn normalize_render(
         validate_raw_svg_options(&args.options.graphical)?;
     }
     validate_native_output_options(format, &args.options)?;
+    #[cfg(feature = "layout-shoal")]
+    if args.preview_frame_in.is_some() || args.preview_frame_out.is_some() {
+        if format != RenderFormat::Svg {
+            return Err(CliError::InvalidInput(
+                "preview layout frames require Mermaid input and SVG output".to_owned(),
+            ));
+        }
+        if [
+            args.preview_frame_in.as_deref(),
+            args.preview_frame_out.as_deref(),
+        ]
+        .contains(&Some(Path::new("-")))
+        {
+            return Err(CliError::InvalidInput(
+                "preview layout frames require separate files".to_owned(),
+            ));
+        }
+    }
     let destination = resolve_single_destination(args.output, &input, format);
     let output = resolved_native_output(format, destination, &args.options, facts)?;
     let common = resolve_native_common(
@@ -835,6 +857,13 @@ fn normalize_render(
         resources,
         working_directory(facts)?,
     );
+    #[cfg(feature = "layout-shoal")]
+    let common = {
+        let mut common = common;
+        common.render.preview_frame_in = args.preview_frame_in;
+        common.render.preview_frame_out = args.preview_frame_out;
+        common
+    };
 
     Ok(ResolvedSingleRender {
         input,
@@ -1618,6 +1647,10 @@ fn resolve_render_options(args: RenderCliArgs) -> ResolvedRenderOptions {
         theme_appearance: args.theme_appearance,
         theme_portability: args.theme_portability,
         theme_report: args.theme_report,
+        #[cfg(feature = "layout-shoal")]
+        preview_frame_in: None,
+        #[cfg(feature = "layout-shoal")]
+        preview_frame_out: None,
         #[cfg(feature = "native-fonts")]
         fonts: args.fonts,
         math_renderer: args.math_renderer,

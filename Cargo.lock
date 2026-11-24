@@ -2532,6 +2532,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "merman-layout-shoal"
+version = "0.11.0"
+
+[[package]]
 name = "merman-lsp"
 version = "0.11.0"
 dependencies = [
@@ -2603,6 +2607,7 @@ dependencies = [
  "merman-core",
  "merman-fixture-render-context",
  "merman-layout-elk",
+ "merman-layout-shoal",
  "merman-markup",
  "merman-model",
  "merman-theme-contract",

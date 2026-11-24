@@ -44,30 +44,20 @@ pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
         return None;
     }
 
-    scratch.local_points.clear();
-    scratch.local_points.reserve(le.points.len());
-    for p in &le.points {
-        scratch.local_points.push(crate::model::LayoutPoint {
-            x: p.x + ctx.tx - origin_x,
-            y: p.y + ctx.ty - origin_y,
-        });
-    }
-    let local_points = scratch.local_points.as_slice();
-
+    let base_points = &mut scratch.tmp_points_a;
+    base_points.clear();
+    base_points.extend(le.points.iter().map(|p| crate::model::LayoutPoint {
+        x: p.x + ctx.tx - origin_x,
+        y: p.y + ctx.ty - origin_y,
+    }));
     let is_elk_layout = ctx.uses_elk_adapter_dom;
     let is_swimlane_layout = ctx.swimlane_direction.is_some();
-    if is_elk_layout || is_swimlane_layout {
-        // Swimlane endpoint duplicates pin ports and must survive until clipping.
-        scratch.tmp_points_a.clear();
-        scratch.tmp_points_a.extend_from_slice(local_points);
-    } else {
-        dedup_consecutive_points_into(local_points, &mut scratch.tmp_points_a);
+    // Swimlane endpoint duplicates pin ports and must survive until clipping.
+    if !is_elk_layout && !is_swimlane_layout {
+        dedup_consecutive_points(base_points);
     }
-    let base_points: &mut Vec<crate::model::LayoutPoint> = &mut scratch.tmp_points_a;
-
-    scratch.tmp_points_b.clear();
-    scratch.tmp_points_b.extend_from_slice(base_points);
-    let points_after_intersect: &mut Vec<crate::model::LayoutPoint> = &mut scratch.tmp_points_b;
+    let points_after_intersect = &mut scratch.tmp_points_b;
+    points_after_intersect.clone_from(base_points);
 
     let mut elk_endpoint_adapters = super::ElkEndpointAdapterCorners::default();
     if is_swimlane_layout {
@@ -214,6 +204,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
     } = request;
     let le = ctx.layout_edges_by_key.get(&key)?;
     let is_elk_layout = ctx.uses_elk_adapter_dom;
+    let clip_clusters = !is_elk_layout;
     let ClippedEdgeRoute {
         base_points,
         points,
@@ -230,7 +221,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
     scratch.tmp_points_c.clear();
     // ELK groups were clipped by sanitizeElkEdgePoints. The local cluster metadata is
     // not Dagre's toCluster/fromCluster rewrite; clipping again would discard that route.
-    if !is_elk_layout && let Some(tc) = le.to_cluster.as_deref() {
+    if clip_clusters && let Some(tc) = le.to_cluster.as_deref() {
         if let Some(boundary) = boundary_for_cluster(ctx, tc, origin_x, origin_y) {
             cut_path_at_intersect_into(base_points, &boundary, &mut scratch.tmp_points_c);
         } else {
@@ -243,7 +234,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
             .tmp_points_c
             .extend_from_slice(points_after_intersect);
     }
-    if !is_elk_layout
+    if clip_clusters
         && let Some(fc) = le.from_cluster.as_deref()
         && let Some(boundary) = boundary_for_cluster(ctx, fc, origin_x, origin_y)
     {
@@ -260,11 +251,6 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
         );
         scratch.tmp_points_c.reverse();
     }
-    let original_label_path_points = if is_elk_layout {
-        points_after_intersect.clone()
-    } else {
-        base_points.clone()
-    };
     let points_for_render: &mut Vec<crate::model::LayoutPoint> = &mut scratch.tmp_points_c;
 
     // Mermaid sets `data-points` as `btoa(JSON.stringify(points))` *before* any cluster clipping
@@ -298,24 +284,29 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
             | "rounded"
     );
 
-    let is_cluster_edge = !is_elk_layout && (le.to_cluster.is_some() || le.from_cluster.is_some());
+    let is_cluster_edge = clip_clusters && (le.to_cluster.is_some() || le.from_cluster.is_some());
     // `positionEdgeLabel` consumes the polyline held by `points`; `fixCorners`, marker offsets,
     // and the D3 curve generator operate on the separate `lineData` copy below.
-    let label_path_points = if ctx
+    let (original_label_path_points, label_path_points) = if ctx
         .model
         .edge_label_for_occurrence(key, edge)
         .is_some_and(|label| !label.is_empty())
     {
-        points_for_render.clone()
+        let original = if is_elk_layout {
+            points_after_intersect
+        } else {
+            base_points
+        };
+        (original.clone(), points_for_render.clone())
     } else {
-        Vec::new()
+        (Vec::new(), Vec::new())
     };
 
     if is_basis && is_cluster_edge {
         maybe_remove_redundant_cluster_run_point(points_for_render);
     }
 
-    if !is_elk_layout && points_for_render.len() == 1 {
+    if clip_clusters && points_for_render.len() == 1 {
         // Avoid emitting a degenerate `M x,y` path for clipped cluster-adjacent edges.
         points_for_render.clear();
         points_for_render.extend(le.points.iter().map(|point| crate::model::LayoutPoint {
@@ -324,63 +315,65 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
         }));
     }
 
-    let mut line_data: Vec<crate::model::LayoutPoint> = points_for_render
-        .iter()
-        .filter(|p| !p.y.is_nan())
-        .cloned()
-        .collect();
+    let (d, pb, skipped_bounds_for_viewbox) = {
+        let mut line_data: Vec<crate::model::LayoutPoint> = points_for_render
+            .iter()
+            .filter(|p| !p.y.is_nan())
+            .cloned()
+            .collect();
 
-    // Match Mermaid `fixCorners` in `rendering-elements/edges.js`: insert small offset points to
-    // round orthogonal corners before feeding into D3's line generator. The `rounded` curve uses
-    // its own rounded-corner generator and skips this pre-processing upstream.
-    if !is_rounded {
-        maybe_fix_corners(&mut line_data);
-    }
+        // Match Mermaid `fixCorners` in `rendering-elements/edges.js`: insert small offset points to
+        // round orthogonal corners before feeding into D3's line generator. The `rounded` curve uses
+        // its own rounded-corner generator and skips this pre-processing upstream.
+        if !is_rounded {
+            maybe_fix_corners(&mut line_data);
+        }
 
-    // Mermaid shortens edge paths so markers don't render on top of the line (see
-    // `packages/mermaid/src/utils/lineWithOffset.ts`).
+        // Mermaid shortens edge paths so markers don't render on top of the line (see
+        // `packages/mermaid/src/utils/lineWithOffset.ts`).
 
-    let target_boundary = if is_elk_layout {
-        boundary_for_node(ctx, le.to.as_str(), origin_x, origin_y)
-    } else {
-        None
-    };
-    let collapsed_terminal_stub = if is_rounded && ctx.compact_edge_corners {
-        collapse_short_terminal_marker_stub(
-            &mut line_data,
-            edge.edge_type.as_deref(),
-            target_boundary,
+        let target_boundary = if is_elk_layout {
+            boundary_for_node(ctx, le.to.as_str(), origin_x, origin_y)
+        } else {
+            None
+        };
+        let collapsed_terminal_stub = if is_rounded && ctx.compact_edge_corners {
+            collapse_short_terminal_marker_stub(
+                &mut line_data,
+                edge.edge_type.as_deref(),
+                target_boundary,
+            )
+        } else {
+            false
+        };
+
+        let mut rounded_corner_mask = vec![true; line_data.len()];
+        if is_rounded && ctx.compact_edge_corners && is_elk_layout && line_data.len() > 2 {
+            if elk_endpoint_adapters.source && le.from_cluster.is_none() {
+                rounded_corner_mask[1] = false;
+            }
+            if elk_endpoint_adapters.target && le.to_cluster.is_none() && !collapsed_terminal_stub {
+                let target_anchor = line_data.len() - 2;
+                rounded_corner_mask[target_anchor] = false;
+            }
+        }
+        let rounded_corner_mask =
+            (is_rounded && ctx.compact_edge_corners).then_some(rounded_corner_mask);
+
+        let line_data = if is_rounded {
+            rounded_line_with_marker_offsets_for_edge_type(&line_data, edge.edge_type.as_deref())
+        } else {
+            line_with_offset_for_edge_type(&line_data, edge.edge_type.as_deref())
+        };
+
+        curve_path_d_and_bounds(
+            &line_data,
+            interpolate,
+            ctx.edge_corner_radius,
+            ctx.compact_edge_corners,
+            rounded_corner_mask.as_deref(),
         )
-    } else {
-        false
     };
-
-    let mut rounded_corner_mask = vec![true; line_data.len()];
-    if is_rounded && ctx.compact_edge_corners && is_elk_layout && line_data.len() > 2 {
-        if elk_endpoint_adapters.source && le.from_cluster.is_none() {
-            rounded_corner_mask[1] = false;
-        }
-        if elk_endpoint_adapters.target && le.to_cluster.is_none() && !collapsed_terminal_stub {
-            let target_anchor = line_data.len() - 2;
-            rounded_corner_mask[target_anchor] = false;
-        }
-    }
-    let rounded_corner_mask =
-        (is_rounded && ctx.compact_edge_corners).then_some(rounded_corner_mask);
-
-    let line_data = if is_rounded {
-        rounded_line_with_marker_offsets_for_edge_type(&line_data, edge.edge_type.as_deref())
-    } else {
-        line_with_offset_for_edge_type(&line_data, edge.edge_type.as_deref())
-    };
-
-    let (d, pb, skipped_bounds_for_viewbox) = curve_path_d_and_bounds(
-        &line_data,
-        interpolate,
-        ctx.edge_corner_radius,
-        ctx.compact_edge_corners,
-        rounded_corner_mask.as_deref(),
-    );
     if trace_enabled {
         record_flowchart_edge_trace(FlowchartEdgeTraceInput {
             ctx,

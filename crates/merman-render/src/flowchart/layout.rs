@@ -1887,7 +1887,7 @@ fn layout_flowchart_with_model(
             None,
         );
         leaf_label_metrics_by_id.insert(n.id.clone(), (metrics.width, metrics.height));
-        let (width, height) = NodeLayoutDimensionsRequest {
+        let ((width, height), _) = NodeLayoutDimensionsRequest {
             layout_shape: n.layout_shape.as_deref(),
             layout_direction: &diagram_direction,
             metrics,
@@ -1990,7 +1990,7 @@ fn layout_flowchart_with_model(
             );
         }
         leaf_label_metrics_by_id.insert(sg.id.clone(), (metrics.width, metrics.height));
-        let (width, height) = NodeLayoutDimensionsRequest {
+        let ((width, height), _) = NodeLayoutDimensionsRequest {
             layout_shape: Some("squareRect"),
             layout_direction: &diagram_direction,
             metrics,
@@ -4368,6 +4368,8 @@ fn layout_flowchart_with_model(
         clusters,
         bounds,
         dom_node_order_by_root,
+        route_contract: crate::graph_layout::RouteContract::DagreParity,
+        placement: Default::default(),
         uses_elk_adapter_dom: false,
     })
 }

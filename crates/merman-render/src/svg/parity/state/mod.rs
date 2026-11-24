@@ -1,5 +1,7 @@
 use super::shadow::write_theme_shadow_depth_application;
 use super::*;
+#[cfg(feature = "layout-shoal")]
+use crate::graph_layout::canonical::CanonicalRoutes;
 use rustc_hash::FxHashMap;
 mod context;
 mod edge;
@@ -18,6 +20,9 @@ pub(super) use super::roughjs_common::{
 use roughjs::{
     mermaid_choice_diamond_path_data, mermaid_rounded_rect_path_data, roughjs_paths_for_svg_path,
 };
+
+#[cfg(feature = "layout-shoal")]
+pub(crate) use style::state_canonical_marker;
 
 // State diagram SVG renderer implementation (split from parity.rs).
 
@@ -60,6 +65,8 @@ struct StateRenderCtx<'a> {
     layout_nodes_by_id: FxHashMap<&'a str, &'a LayoutNode>,
     layout_edges_by_id: FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
     layout_clusters_by_id: FxHashMap<&'a str, &'a LayoutCluster>,
+    #[cfg(feature = "layout-shoal")]
+    canonical_routes: Option<&'a CanonicalRoutes>,
     parent: FxHashMap<&'a str, &'a str>,
     nested_roots: std::collections::BTreeSet<String>,
     hidden_prefixes: Vec<String>,
@@ -75,6 +82,19 @@ struct StateRenderCtx<'a> {
     effect_evidence: &'a crate::diagram_theme::SvgShadowEvidenceRecorder,
     style_plan: &'a crate::state::StateStylePlan,
     rough_cache: StateRoughCache,
+}
+
+impl StateRenderCtx<'_> {
+    fn uses_canonical_routes(&self) -> bool {
+        #[cfg(feature = "layout-shoal")]
+        {
+            self.canonical_routes.is_some()
+        }
+        #[cfg(not(feature = "layout-shoal"))]
+        {
+            false
+        }
+    }
 }
 
 mod render;

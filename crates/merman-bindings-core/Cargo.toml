@@ -113,6 +113,7 @@ jpeg = ["svg", "merman/jpeg"]
 pdf = ["svg", "merman/pdf"]
 layout-cytoscape = ["svg", "merman/layout-cytoscape"]
 layout-elk = ["svg", "merman/layout-elk"]
+layout-shoal = ["svg", "merman/layout-shoal"]
 math = ["svg", "merman/math"]
 
 [dependencies]

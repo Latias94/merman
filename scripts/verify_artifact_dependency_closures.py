@@ -1058,6 +1058,11 @@ def check_case(
     failures: list[str] = []
     required = set(claim.required_packages)
     forbidden = set(claim.forbidden_packages)
+    if not normal_build:
+        if "layout-shoal" in case.recipe.features:
+            required.add("merman-layout-shoal")
+        else:
+            forbidden.add("merman-layout-shoal")
     if not normal_build and case.recipe.profile_id in MATH_FREE_SVG_PROFILE_IDS:
         forbidden.update(MATH_BACKEND_PACKAGES)
     tree_sitter_allowed = (

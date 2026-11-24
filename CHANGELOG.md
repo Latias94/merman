@@ -6,6 +6,33 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+### Experimental Shoal layout
+
+Choose `layout: shoal` for Flowchart, Agentflow, Class, State, ER, Requirement, or Usecase diagrams in a build with the `layout-shoal` feature. Shoal handles cycles and nested groups using the diagram's measured labels and shapes. Flowchart branches use smooth curves, and edges between sibling groups can follow a shared lane through both borders. Flowchart and Agentflow hosts can also fit graphs to a requested width and reuse placement hints while editing. [Usage and supported graphs](docs/FEATURES.md#try-the-experimental-shoal-layout)
+
+```text
+---
+config:
+  layout: shoal
+---
+flowchart TD
+    Check{Checks pass?}
+    Check -->|Yes| Publish([Publish])
+    Check -->|No| Review[Review failures]
+```
+
+Save the example as `diagram.mmd` and run this command from the Merman checkout.
+
+```sh
+cargo run --locked -p merman-cli --features layout-shoal -- render diagram.mmd -f svg -o diagram.svg
+```
+
+<img width="450" alt="Release workflow laid out with Shoal, with separate branches for review and for publishing after smoke testing and audit" src="docs/rendering/shoal-release.png">
+
+The hosted Playground opens the full example with Dagre. Use the local Shoal-enabled Playground build to edit and render it with Shoal. [Open the example in Playground](https://frankorz.com/merman/#s2:eJxdkM1OwzAQhF_FSi6plEokhf7kAELtgRNCwAW5Obj2OrFq4ip2KKjpu2Nv2yB6Wds783nWPkTcCIiKSGqz5zVrHXlfrRtC_L6pIKFLXEkLTPyUIzIe33sJ-NYelriQHbP24XhCsOEt_QfYnljHKqBvoXpeA7NQXvmeTU-k-qav8KVgTyRTumvBog1xDLSfZusvCpU4sO5KZp1Qjj6GelLQiGCtdgl96TZa2bocBRHNgxg6Ph_PtdEioU--BicOqv3bViBJxRx4n9ZFLKW84ZBa1_qQIp4vplmep9xo0xbxZJGzLPuHStX47DMshMxBDHAOs_l0c4Gz2e3dhA_w5ZtC9l8zDJ2GSc8Xr5vo-As-0Zis) · [Build Playground with Shoal](platforms/web/README.md#try-shoal-in-playground)
+
+In the recorded native benchmark on an Apple M4 Pro, a nested Flowchart took 0.501 ms with Shoal, 1.155 ms with Dagre, and 0.820 ms with ELK to return SVG. A 75-node cyclic graph took 1.341 ms, 4.444 ms, and 12.574 ms, respectively. The small control took about 0.13 ms on all three. These are medians from the same executable and inputs at the revision pinned in the report. [Benchmark results and samples](docs/performance/2026-11-24-shoal.md)
+
 ### Changed
 
 - **CLI fonts on macOS and Linux.** Official archives use Core Text or Fontconfig by default for native Mermaid PNG, JPEG, and PDF exports. Platform lookup opens the selected fonts on demand and avoids the bounded scan's aggregate character-map limit. On Linux the automatic policy retries bounded discovery if the Fontconfig runtime cannot load. Use `--font-system bounded` to select the previous provider, or `--font-file` to pin the fonts used for both measurement and painting. [CLI font guide](crates/merman-cli/README.md#explicit-fonts)

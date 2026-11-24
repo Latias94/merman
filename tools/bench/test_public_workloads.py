@@ -655,5 +655,237 @@ class RustSvgVerificationTests(unittest.TestCase):
             bench.compare(wrong, wrong)
 
 
+class RustLayoutTests(unittest.TestCase):
+    def test_public_layout_inventory_checks_node_and_group_endpoints(self):
+        # Identity fields from the public writer for the frozen small-svg request.
+        graph = {"nodes": [{"id": "A", "is_cluster": False}, {"id": "B", "is_cluster": False}],
+                 "edges": [{"id": "L_A_B_0", "from": "A", "to": "B"}], "clusters": []}
+        document = {"schema_version": 1, "family_id": "flowchart", "diagram_type": "flowchart-v2",
+                    "layout": {"FlowchartV2": graph}}
+        self.assertEqual(bench.flowchart_layout_inventory(document), dict(nodes=["A", "B"], edges=[["L_A_B_0", "A", "B"]]))
+        for overrides, error in (({"diagram_type": None, "diagramType": "flowchart-v2"}, "diagram_type"),
+                                 ({"family_id": "swimlane"}, "family_id"),
+                                 ({"layout": {"FlowchartV2": dict(graph, nodes=[*graph["nodes"], {"id": "G", "is_cluster": True}])}}, "cluster proxy"),
+                                 ({"layout": {"FlowchartV2": dict(graph, nodes=graph["nodes"][:1])}}, "endpoint")):
+            with self.subTest(overrides=overrides), self.assertRaisesRegex(ValueError, error):
+                bench.flowchart_layout_inventory({**document, **overrides})
+        graph["clusters"] = [{"id": "G"}]
+        graph["edges"] = [{"id": "L_A_G_0", "from": "A", "to": "G"}]
+        expected = dict(nodes=["A", "B"], groups=["G"], edges=[["L_A_G_0", "A", "G"]])
+        self.assertEqual(bench.flowchart_layout_inventory(document), expected)
+        graph["nodes"].append({"id": "G", "is_cluster": True})
+        self.assertEqual(bench.flowchart_layout_inventory(document), expected)
+
+    def test_automatic_build_opts_into_shoal_for_either_bench(self):
+        for metric, target in (("clock", "public_workloads"), ("memory", "public_workload_memory")):
+            artifact = dict(reason="compiler-artifact", target={"name": target}, executable="runner")
+            with patch.object(bench.subprocess, "run") as build:
+                build.return_value.stdout = json.dumps(artifact).encode()
+                bench.build_runner(metric)
+                self.assertNotIn("--features", build.call_args.args[0])
+                bench.build_runner(metric, shoal=True)
+                command = build.call_args.args[0]
+                self.assertEqual(command[command.index("--features") + 1], "layout-shoal")
+                self.assertEqual(command[command.index("--bench") + 1], target)
+
+    def test_shoal_needs_per_occurrence_evidence_even_with_legacy_svg_identities(self):
+        inputs = [dict(diagram_id="preview", source_sha256=bench.digest(text)) for text in (b"first", b"second")]
+        job = dict(operation="svg-data", requests=inputs)
+        outputs = ['<svg id="preview"><text>A</text></svg>'] * 2
+        proof = [dict(**r, family="flowchart", required_capabilities=["layout-shoal"]) for r in inputs]
+
+        def check(outputs, receipts):
+            signatures, _ = bench.rust_signatures(outputs, inputs, "svg-data")
+            bench.check_layout_evidence(dict(outputs=outputs, layout_evidence=receipts), job, signatures, "shoal", inventory=False)
+            return signatures
+
+        old, _ = bench.rust_signatures(outputs, inputs, "svg-data")
+        for unsupported in (None, []):
+            with self.assertRaisesRegex(ValueError, "per-request layout evidence"):
+                check(old, unsupported)
+        with self.assertRaisesRegex(ValueError, "SVG bytes"):
+            check(old, proof)
+        with self.assertRaisesRegex(ValueError, "misidentified"):
+            check(outputs, proof[::-1])
+        with self.assertRaisesRegex(ValueError, "frozen ID"):
+            check([outputs[0], outputs[1].replace("preview", "different")], proof)
+        for capabilities, actual in (([], "dagre"), (["layout-elk"], "elk")):
+            receipts = [proof[0], dict(proof[1], required_capabilities=capabilities)]
+            first, pinned = check(outputs, receipts)
+            self.assertNotIn("status", first)
+            self.assertEqual(pinned["status"], "layout-backend-mismatch")
+            self.assertEqual(receipts[1]["backend"], actual)
+        receipts = [proof[0], dict(proof[1], family="sequence", required_capabilities=[])]
+        self.assertEqual(check(outputs, receipts)[1]["status"], "layout-backend-mismatch")
+        self.assertIsNone(receipts[1]["backend"])
+        for family in ("agentflow", "class", "state", "er", "requirement", "usecase"):
+            with self.subTest(family=family):
+                receipts = [proof[0], dict(proof[1], family=family)]
+                self.assertNotIn("status", check(outputs, receipts)[1])
+                self.assertEqual(receipts[1]["backend"], "shoal")
+
+    def test_graph_families_verify_layout_json_without_flowchart_inventories(self):
+        request = dict(diagram_id="preview", source_sha256=bench.digest(b"source"))
+        job = dict(operation="layout-json", requests=[request])
+
+        def verify(family, capabilities, requested, *, inventory=False, output_family=None):
+            output = dict(bytes=20, observed_size=20, sha256="a" * 64,
+                          layout_json=dict(schema_version=1, family_id=output_family or family))
+            receipt = dict(**request, family=family, required_capabilities=capabilities)
+            response = dict(outputs=[output], layout_evidence=[receipt])
+            signatures, _ = bench.rust_signatures(response["outputs"], [request], "layout-json")
+            bench.check_layout_evidence(response, job, signatures, requested, inventory=inventory)
+            return receipt, signatures[0]
+
+        for family in ("class", "state", "er", "requirement", "usecase"):
+            with self.subTest(family=family):
+                receipt, signature = verify(family, ["layout-elk"], "elk")
+                self.assertEqual(receipt["backend"], "elk")
+                self.assertNotIn("status", signature)
+
+                receipt, signature = verify(family, ["layout-shoal"], "shoal", inventory=True)
+                self.assertEqual(receipt["backend"], "shoal")
+                self.assertNotIn("inventory", receipt)
+                self.assertEqual(signature["status"], "unsupported-inventory")
+
+                receipt, signature = verify(family, [], "shoal")
+                expected = None if family == "er" else "dagre"
+                self.assertEqual(receipt["backend"], expected)
+                self.assertEqual(signature["status"], "layout-backend-mismatch")
+
+        receipt, signature = verify("er", [], "dagre")
+        self.assertIsNone(receipt["backend"])
+        self.assertEqual(signature["status"], "layout-backend-mismatch")
+        self.assertIn("Swimlane", signature["message"])
+        with self.assertRaisesRegex(ValueError, "layout JSON family"):
+            verify("class", ["layout-shoal"], "shoal", output_family="flowchart")
+
+    def test_standalone_shoal_rejects_the_source_pinned_control_and_preserves_default_work(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp)
+            frozen, runner, out = (path / name for name in ("plan.json", "runner", "report.json"))
+            runner.write_bytes(b"bench")
+            bench.write(frozen, plan(names=["flowchart-layout-dagre-classic", "chain-50"]))
+            args = ["rust", "--plan", str(frozen), "--out", str(out)]
+
+            def pinned(_, job):
+                self.assertTrue(job["verify_only"] and job["verify_layout"])
+                self.assertEqual(job["site"], {"layout": "shoal"})
+                receipts, outputs = [], []
+                for request in job["requests"]:
+                    self.assertIn("  layout: dagre\n", request["source"])
+                    receipts.append(dict(family="flowchart", required_capabilities=[], diagram_id=request["diagram_id"],
+                                         source_sha256=request["source_sha256"]))
+                    outputs.append(dict(bytes=20, observed_size=20, sha256="a" * 64))
+                return dict(harness_sha256="bench", layout_evidence=receipts, outputs=outputs)
+
+            with patch.object(bench, "child", side_effect=pinned), patch.object(bench, "build_runner", return_value=runner) as build:
+                name = "flowchart-layout-dagre-classic"
+                self.assertEqual(bench.main(args + ["--scenario", name, "--site-layout", "shoal", "--operation", "layout-json"]), 1)
+                build.assert_called_once_with("memory", shoal=True)
+                row = bench.load(out)["rows"][name]
+                self.assertEqual((row["completed"], row["samples"]), (0, []))
+                self.assertTrue(all(r["backend"] == "dagre" for r in row["layout_evidence"]))
+
+            work = args + ["--metric", "work", "--runner", str(runner)]
+            legacy = dict(harness_sha256="old", boundary={"backend": "elk"})
+            with patch.object(bench, "child", return_value=legacy) as child:
+                with self.assertRaises(SystemExit):
+                    bench.main(work + ["--site-layout", "shoal"])
+                child.assert_not_called()
+                self.assertEqual(bench.main(work), 0)
+                self.assertNotIn("site", child.call_args.args[1])
+                self.assertEqual(bench.load(out)["rows"]["chain-50"]["boundary"]["backend"], "elk")
+
+    def test_one_binary_compares_frozen_layout_and_svg_occurrences(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp)
+            frozen = path / "plan.json"
+            source = "flowchart LR\nsubgraph G[Group]\nA[Start]\nend\nA shared@-->|yes| B[End]\nA shared@-->|yes| B\n"
+            case = bench.scenario("parallel", "test", [("two", source)], {"two": ["Start", "End", "yes"]}, diagram_id="preview")
+            bench.write(frozen, dict(schema_version=1, scenarios=[case], topologies=[]))
+            request, = case["requests"]
+            binary = path / "clock"
+            binary.write_bytes(b"one Shoal-capable executable")
+            out = path / "comparison.json"
+            mutation = None
+            profile = None
+            runner_confirms_profile = True
+
+            def child(runner, job):
+                self.assertEqual(runner.resolve(), binary.resolve())
+                self.assertEqual(job["requests"], [request])
+                self.assertEqual(job.get("resource_profile"), profile)
+                backend = job["site"]["layout"]
+                different = mutation if backend == "shoal" else None
+                x = bench.LAYOUTS.index(backend) + 1
+                nodes = [dict(id=key, x=x, is_cluster=False) for key in "AB"]
+                if backend != "shoal":
+                    nodes.append(dict(id="G", x=x, is_cluster=True))
+                edge = {"id": "shared", "from": "A", "to": "B"}
+                edges = [edge, dict(edge, to="A") if different == "endpoint" else edge]
+                geometry = dict(schema_version=1, family_id="flowchart", diagram_type="flowchart-v2",
+                                layout={"FlowchartV2": dict(nodes=nodes, edges=edges, clusters=[{"id": "G"}])})
+                label = "no" if different == "label" else "yes"
+                title = "Renamed" if different == "group-title" else "Group"
+                svg = ('<svg id="preview"><g data-et="node" data-id="A"><text>Start</text></g>'
+                       '<g data-et="node" data-id="B"><text>End</text></g>'
+                       + (f'<g data-et="cluster" data-id="G"><g class="cluster-label"><text>{title}</text></g></g>'
+                          if different != "group" else '')
+                       + ''.join(f'<path data-et="edge" id="edge-{i}" data-id="shared" d="M0,0 L{x},0"/>'
+                                 for i in range(1 if different == "occurrence" else 2))
+                       + f'<g data-id="shared" class="label"><text>{label}</text></g>'
+                       + '<g data-id="shared" class="label"><text>yes</text></g></svg>')
+                data = svg if job["operation"] == "svg" else json.dumps(geometry)
+                size = len(data.encode())
+                if job.get("verify_only"):
+                    self.assertTrue(job["verify_layout"])
+                    caps = [] if backend == "dagre" or different == "pinned" else [f"layout-{backend}"]
+                    proof = dict(family="flowchart", required_capabilities=caps, diagram_id="preview", source_sha256=request["source_sha256"])
+                    result = dict(outputs=[svg if job["operation"] == "svg" else dict(
+                        bytes=size, observed_size=size, sha256=bench.digest(data.encode()), layout_json=geometry)], layout_evidence=[proof])
+                else:
+                    self.assertNotIn("verify_layout", job)
+                    self.assertNotEqual(different, "pinned", "a mismatched backend must never be timed")
+                    result = dict(metrics={"elapsed_ns": 10 * x}, sizes=[size])
+                    if job.get("return_measured_svg"):
+                        result["outputs"] = [svg.replace(f"L{x},0", f"L{x},1") if different == "unstable" else svg]
+                if profile and runner_confirms_profile:
+                    result["resource_profile"] = profile
+                return dict(**result, harness_sha256="one-harness")
+
+            with patch.object(bench, "child", side_effect=child), patch.object(bench, "build_runner", return_value=binary) as build:
+                for mutation, status in ((None, "matching-inventories"), ("endpoint", "inventory-mismatch"),
+                                         ("label", "inventory-mismatch"), ("occurrence", "inventory-mismatch"),
+                                         ("group", "inventory-mismatch"), ("group-title", "inventory-mismatch"),
+                                         ("pinned", "incomplete"), ("unstable", "incomplete")):
+                    with self.subTest(mutation=mutation):
+                        code = bench.main(["rust-layouts", "--plan", str(frozen), "--out", str(out), "--samples", "2", "--revision", "test"])
+                        build.assert_called_once_with("clock", shoal=True)
+                        build.reset_mock()
+                        report = bench.load(out)
+                        self.assertEqual(report["plan_sha256"], bench.digest(frozen.read_bytes()))
+                        row = report["rows"]["parallel"]
+                        self.assertEqual((code, row["status"], row["planned"]), (int(bool(mutation)), status, 6))
+                        self.assertEqual("median_ns" in row, mutation is None)
+                        if mutation is None:
+                            self.assertEqual(row["completed"], 6)
+                            svgs = [r["svg"] for r in report["runs"].values()]
+                            self.assertEqual(len({r["rows"]["parallel"]["outputs"][0]["sha256"] for r in svgs}), 3)
+                            with self.assertRaisesRegex(ValueError, "options"):
+                                bench.compare(svgs[0], svgs[1])
+
+                mutation = None
+                profile = "constrained"
+                args = ["rust-layouts", "--plan", str(frozen), "--runner", str(binary), "--out", str(out),
+                        "--resource-profile", profile]
+                self.assertEqual(bench.main(args), 0)
+                for run in bench.load(out)["runs"].values():
+                    self.assertEqual([r["options"]["resource_profile"] for r in run.values()], [profile, profile])
+                runner_confirms_profile = False
+                with self.assertRaises(SystemExit):
+                    bench.main(args)
+
+
 if __name__ == "__main__":
     unittest.main()

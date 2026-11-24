@@ -151,12 +151,22 @@ width and font refreshes do not reparse it. `update(source)` keeps the current o
 mutation of the supplied objects does not alter a queued redraw. The mount owns `svg.diagram_id`
 and assigns each mount a unique namespace, including across package instances.
 
-Fit-width is explicit and currently supports Kanban. Resize notifications use the target's content
-width and preserve whole columns; inspect `result.metadata.layout_adaptation` for actual width
-and overflow. A disconnected, zero-width or CSS-hidden target defers preparation and rendering while retaining
+Fit-width is explicit. Resize notifications use the target's content width. Kanban preserves whole
+columns, and Flowchart or Agentflow can fit when the diagram explicitly selects Shoal in an artifact
+built with the `layout-shoal` Cargo feature. Set `layout.fold_wide_ranks` to `true` to let Shoal fold
+eligible wide leaf ranks. Inspect `result.metadata.layout_adaptation` for actual width and overflow.
+A disconnected, zero-width or CSS-hidden target defers preparation and rendering while retaining
 the newest request. Reconnecting requires a size notification or explicit `refresh()`.
 A CSS visibility change with unchanged dimensions requires `refresh()`; `display: none` becoming
 measurable is observed through its actual size change.
+
+For a standalone Flowchart or Agentflow preview using Shoal, call `renderSvgResult()` with
+`layout.capture_shoal_frame` set to `true`. The optional `metadata.shoal_layout_frame` is an opaque
+object. Pass it back as `layout.previous_shoal_frame` for the same document to reuse placement hints
+and capture a new frame. Keep the last successful result for that document while editing, and
+discard it when its layout backend or document changes.
+
+See [Try Shoal in Playground](#try-shoal-in-playground) for the local browser build.
 
 Measurement remains deterministic unless `textMeasurement: "browser"` or a host callback is
 selected. Browser measurement uses the target Document's probes and refreshes after font loading.
@@ -513,6 +523,45 @@ npm run smoke --prefix platforms/web
 features, generated entries, and package assembly from those authorities rather than maintaining a
 second feature matrix. Use `npm run verify:wasm-inputs --prefix platforms/web` and
 `npm run verify:packages --prefix platforms/web` for the package-specific contracts.
+
+### Try Shoal in Playground
+
+Run these commands from the repository root after installing the Web and Playground dependencies.
+
+```sh
+npm --prefix platforms/web run build:wasm:full -- --local-shoal
+npm --prefix playground run assemble:shoal
+npm --prefix playground run dev:shoal
+```
+
+The local recipe adds `layout-shoal` to `web-full` and writes the raw build to
+`platforms/web/pkg/full-local-shoal`. Assembly sets the existing `@mermanjs/web` package to use
+that build for the Playground's file dependency after checking its wasm-bindgen declarations.
+`dev:shoal` and `build:shoal` verify the exact
+feature preset, current inputs, assembly provenance, and runtime file hashes before starting Vite.
+Run the same check on its own with `npm --prefix playground run verify:wasm-inputs -- --local-shoal`.
+
+With Vite running on port 5173, open the [release workflow with Shoal](http://localhost:5173/#s2:eJxdkM1uwyAQhF8FORdHsqXaafPDoVWVHHqqqraXyvaBwGKjUIgMbhrFefcCSRw1lwV25mMWDhHVDCIcpWlaKqoVFzUuFUKS7HVnMTKNJrJUQeZS72hDWos-V97j9qqGuFiGFbVA2L4aozR9dBLQjTksw4K2xJin4wkJDWfpv8D0yFhSQ_Hhq-MlEAPVje9V94iL3-IdfgTsECdCdi2YYAt4CDTfeuMu8hVZMPZGJh0Ttnj29aQEYwAbsY2Lt24thWmqsReDeRB9x-WHc6Mli4sXV70zDCrd21bAUU0sOJ-UeMQ5v6OQGNu6EDyaL6ZZnidUS93i0WSRkyz7h3KhXPYZZoznwAY4h9l8ur7A2ez-YUIH-PJNPvva9EMnftLzxaWKjn-hEqTh).
+
+Open the standalone SVG preview and paste:
+
+```mermaid
+---
+config:
+  layout: shoal
+---
+flowchart TB
+A --> C
+A --> B
+```
+
+Edit the edges to `A --> B[Relabeled]`, `A --> C`, and `A --> D[New]` in that order. The preview
+keeps `C` to the left of `B` as it adds `D`.
+
+Stop the local preview and run `npm --prefix platforms/web run build:packages -- --package full`
+to switch the assembled package back to the standard preset. If `pkg/full` needs a build, run
+`npm --prefix platforms/web run build:wasm:full` first. Release verification requires the
+standard preset.
 
 The private workspace itself is never published. Release automation packs and verifies every
 admitted package as a version-locked group before reconciling dist-tags. See the [package surface

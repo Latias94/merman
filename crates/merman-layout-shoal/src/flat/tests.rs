@@ -1,0 +1,371 @@
+use super::*;
+use crate::{EdgeSpec, Endpoint, LayoutScratch, NodeId, NoopWorkControl, WorkControl, WorkError};
+
+fn graph(n: u32) -> Graph {
+    Graph {
+        nodes: (0..n)
+            .map(|seq| {
+                NodeSpec::new(
+                    Size {
+                        width: 45.0,
+                        height: 25.0,
+                    },
+                    seq,
+                )
+            })
+            .collect(),
+        ..Default::default()
+    }
+}
+fn edge(from: u32, to: u32) -> EdgeSpec {
+    EdgeSpec::new(Endpoint::Node(NodeId(from)), Endpoint::Node(NodeId(to)))
+}
+
+#[test]
+fn loop_margins_alternate_and_components_follow_their_earliest_declaration() {
+    let mut g = graph(5);
+    g.nodes[3].seq = 0;
+    g.nodes[0].seq = 30;
+    g.edges = vec![
+        edge(0, 0),
+        edge(0, 0),
+        edge(0, 0),
+        edge(1, 0),
+        edge(3, 2),
+        edge(2, 2),
+    ];
+    let c = validate::components(
+        &g,
+        &Options::default(),
+        &mut Work::new(&mut NoopWorkControl),
+    )
+    .unwrap();
+    assert_eq!(
+        c.iter().map(|c| c.ids.clone()).collect::<Vec<_>>(),
+        [vec![3, 2], vec![1, 0], vec![4]]
+    );
+    assert_eq!(c[0].margin_left, [0.0, 0.0]);
+    assert!(c[0].margin_right[1] > 0.0);
+    assert_eq!(c[1].margin_right[1], 2.0 * c[1].margin_left[1]);
+    assert_eq!(c[1].nodes[1].size, g.nodes[0].size);
+    assert_eq!(
+        c[1].loops
+            .iter()
+            .map(|l| (l.edge, l.node, l.right))
+            .collect::<Vec<_>>(),
+        [(0, 1, true), (1, 1, false), (2, 1, true)]
+    );
+    assert_eq!(c[1].loops[2].reach, c[1].margin_right[1]);
+}
+
+#[derive(Default)]
+struct Meter {
+    used: usize,
+    left: Option<usize>,
+}
+impl WorkControl for Meter {
+    fn check(&mut self) -> Result<(), WorkError> {
+        Ok(())
+    }
+    fn charge(&mut self, n: usize) -> Result<(), WorkError> {
+        if let Some(left) = self.left.as_mut() {
+            *left = left.checked_sub(n).ok_or(WorkError::Interrupted)?;
+        }
+        self.used += n;
+        Ok(())
+    }
+}
+
+#[test]
+fn sparse_selective_ranks_avoid_global_doubling_and_preserve_reused_scratch() {
+    let mut g = graph(100);
+    g.edges = (0..99).map(|i| edge(i, i + 1)).collect();
+    g.edges[50].label = Some(Size {
+        width: 35.0,
+        height: 17.0,
+    });
+    let o = Options::default();
+    let mut unlimited = NoopWorkControl;
+    let mut work = Work::new(&mut unlimited);
+    let mut scratch = LayoutScratch::default();
+    let mut expanded = Expanded::default();
+    let c = validate::components(&g, &o, &mut work).unwrap();
+    let (orientation, cross) = prepare_component(&c[0], &g, &o, &mut work, &mut expanded).unwrap();
+    assert_eq!(
+        (orientation.cyclic_sccs, cross, expanded.layers.len()),
+        (0, 0, 101)
+    );
+    let label = expanded.label_vertex[50].unwrap() as usize;
+    assert_eq!(
+        (expanded.width[label], expanded.height[label]),
+        (35.0, 17.0)
+    );
+    assert_eq!(expanded.kind[label], Kind::Label);
+    // A second, smaller solve must not retain semantic rows or chains of the previous call.
+    let g = graph(1);
+    let c = validate::components(&g, &o, &mut work).unwrap();
+    prepare_component(&c[0], &g, &o, &mut work, &mut expanded).unwrap();
+    assert_eq!(expanded.layers, [vec![0]]);
+    assert!(expanded.chains.is_empty());
+    *scratch.frame().expanded = expanded;
+    assert!(scratch.retained_bytes() > 0);
+}
+
+#[test]
+fn stress_scc_order_controls_preserve_bridge_directions_and_work() {
+    for n in [25, 50, 75, 100] {
+        let mut g = graph(n);
+        for i in 0..n {
+            g.edges
+                .push(edge(i, if i % 5 == 4 { i - 4 } else { i + 1 }));
+            if i + 5 < n {
+                g.edges.push(edge(i, i + 5));
+            }
+        }
+        let mut runs = Vec::new();
+        for _ in 0..2 {
+            let mut meter = Meter::default();
+            let mut work = Work::new(&mut meter);
+            let options = Options::default();
+            let c = validate::components(&g, &options, &mut work).unwrap();
+            let mut expanded = Expanded::default();
+            let (orientation, _) =
+                prepare_component(&c[0], &g, &options, &mut work, &mut expanded).unwrap();
+            assert_eq!(orientation.cyclic_sccs, n as usize / 5);
+            let mut reversed = Vec::new();
+            for (edge, reverse) in c[0].links.iter().zip(orientation.reversed) {
+                if reverse {
+                    assert_eq!(edge.from / 5, edge.to / 5);
+                    reversed.push((edge.from, edge.to));
+                }
+            }
+            reversed.sort_unstable();
+            work.finish().unwrap();
+            runs.push((expanded.rank.len() - n as usize, reversed, meter.used));
+            g.edges.reverse();
+        }
+        assert_eq!(runs[0].0, runs[1].0);
+        assert_eq!(runs[0].1, runs[1].1);
+        let (a, b) = (runs[0].2, runs[1].2);
+        eprintln!("SCC {n}, dummies {}, layout-stage work {a}/{b}", runs[0].0);
+        assert!((a.max(b) as f64) / (a.min(b) as f64) < 1.25);
+    }
+}
+
+#[test]
+fn cancellation_during_topology_delivers_no_partial_result() {
+    let mut graph = graph(100);
+    graph.edges = (0..100).map(|v| edge(v, (v + 1) % 100)).collect();
+    let options = Options::default();
+    let components =
+        validate::components(&graph, &options, &mut Work::new(&mut NoopWorkControl)).unwrap();
+    for budget in [0, 10, 300] {
+        let mut meter = Meter {
+            left: Some(budget),
+            ..Default::default()
+        };
+        let result = prepare_component(
+            &components[0],
+            &graph,
+            &options,
+            &mut Work::new(&mut meter),
+            &mut Expanded::default(),
+        );
+        assert!(matches!(
+            result,
+            Err(LayoutError::Work(WorkError::Interrupted))
+        ));
+    }
+}
+
+#[test]
+fn compressed_adjacency_preserves_occurrences_on_empty_and_reused_ranges() {
+    let mut unlimited = NoopWorkControl;
+    let mut work = Work::new(&mut unlimited);
+    let mut adjacency = Csr::new(5, [4, 1, 2, 1, 4, 2].into_iter(), &mut work).unwrap();
+    assert_eq!(adjacency.at(0), []);
+    assert_eq!(adjacency.at(1), [1, 3]);
+    assert_eq!(adjacency.at(2), [2, 5]);
+    assert_eq!(adjacency.at(3), []);
+    assert_eq!(adjacency.at(4), [0, 4]);
+    adjacency
+        .rebuild(2, [0, 0, 0].into_iter(), &mut work)
+        .unwrap();
+    assert_eq!(adjacency.at(0), [0, 1, 2]);
+    assert!(adjacency.at(1).is_empty());
+    assert!(matches!(
+        adjacency.rebuild(2, [2].into_iter(), &mut work),
+        Err(LayoutError::InvalidInput(_))
+    ));
+}
+
+#[test]
+fn invalid_port_span_marker_and_end_label_fail_before_cycle_removal() {
+    let mut g = graph(2);
+    let options = Options::default();
+    let mut unlimited = NoopWorkControl;
+    let mut work = Work::new(&mut unlimited);
+    g.edges = vec![edge(0, 1), edge(1, 0)];
+    g.edges[1].source_port = crate::PortSideHint::FixedOffset {
+        side: crate::Side::Top,
+        offset: 24.0,
+    };
+    assert!(matches!(
+        validate::components(&g, &options, &mut work),
+        Err(LayoutError::InvalidInput(_))
+    ));
+    g.edges[1].source_port = crate::PortSideHint::Auto;
+    g.edges[1].start_marker.width = f64::NAN;
+    assert!(matches!(
+        validate::components(&g, &options, &mut work),
+        Err(LayoutError::InvalidInput(_))
+    ));
+    g.edges[1].start_marker.width = 10.0;
+    g.edges[0].end_label = Some(Size {
+        width: -1.0,
+        height: 3.0,
+    });
+    assert!(matches!(
+        validate::components(&g, &options, &mut work),
+        Err(LayoutError::InvalidInput(_))
+    ));
+}
+
+#[test]
+fn perpendicular_span_is_validated_without_changing_flat_geometry_or_work() {
+    let mut g = graph(3);
+    g.edges = vec![edge(0, 1), edge(0, 2)];
+    let solve = |g: &Graph| {
+        let mut control = Meter::default();
+        let out = crate::layout_with_control(
+            g,
+            &Options::default(),
+            &mut LayoutScratch::default(),
+            &mut control,
+        )?;
+        Ok::<_, LayoutError>((out, control.used))
+    };
+    let baseline = solve(&g).unwrap();
+    assert_eq!(baseline.0.truncated_routes.capacity(), 0);
+    assert_eq!(baseline.0.border_stitches.capacity(), 0);
+    for span in [0., 150.] {
+        g.nodes[0].perpendicular_port_span = Some(span);
+        assert_eq!(solve(&g).unwrap(), baseline);
+    }
+    for invalid in [f64::NAN, f64::INFINITY, -1.] {
+        g.nodes[0].perpendicular_port_span = Some(invalid);
+        assert!(matches!(solve(&g), Err(LayoutError::InvalidInput(_))));
+    }
+}
+
+#[test]
+fn unsized_orientation_preserves_loop_occurrences_and_matches_both_full_fas_policies() {
+    use crate::{CyclePolicy, RankPolicy};
+    let mut graph = graph(5);
+    let pairs = [(0, 0), (1, 2), (2, 0), (0, 1), (2, 2), (3, 4), (1, 2)];
+    graph
+        .edges
+        .extend(pairs.map(|(from, to)| edge(from as u32, to as u32)));
+    graph.nodes[2].seq = 0;
+    for cycle_policy in [CyclePolicy::SccGreedyFas, CyclePolicy::SccDfs] {
+        let options = Options {
+            cycle_policy,
+            rank_policy: RankPolicy::BoundedNetworkSimplex { max_pivots: 20 },
+            ..Options::default()
+        };
+        let drawing = crate::layout(&graph, &options).unwrap();
+        let mut meter = Meter::default();
+        let mut work = Work::new(&mut meter);
+        let result = orientations(&graph.nodes, &pairs, &options, &mut work).unwrap();
+        work.finish().unwrap();
+        assert!(
+            drawing
+                .edges
+                .iter()
+                .map(|e| e.reversed_for_ranking)
+                .eq(result.iter().copied())
+        );
+        assert!(!result[0] && !result[4] && !result[5]);
+        let mut limit = Meter {
+            used: 0,
+            left: Some(meter.used - 1),
+        };
+        let mut work = Work::new(&mut limit);
+        let clipped =
+            orientations(&graph.nodes, &pairs, &options, &mut work).and_then(|_| work.finish());
+        assert_eq!(clipped, Err(LayoutError::Work(WorkError::Interrupted)));
+    }
+    assert!(matches!(
+        orientations(
+            &graph.nodes,
+            &[(99, 99)],
+            &Options::default(),
+            &mut Work::new(&mut NoopWorkControl)
+        ),
+        Err(LayoutError::InvalidInput(_))
+    ));
+}
+
+#[test]
+fn fixed_port_offsets_round_trip_on_all_four_faces_in_each_direction() {
+    let sides = [Side::Top, Side::Right, Side::Bottom, Side::Left];
+    for dir in [
+        Direction::Down,
+        Direction::Up,
+        Direction::Right,
+        Direction::Left,
+    ] {
+        for side in sides {
+            let PortSideHint::FixedOffset {
+                side: canonical,
+                offset,
+            } = to_canonical_port(dir, PortSideHint::FixedOffset { side, offset: 4.25 })
+            else {
+                panic!("fixed port")
+            };
+            assert_eq!(physical_side(dir, canonical), side);
+            let (x, y) = if canonical.axis() == crate::Axis::Vertical {
+                (offset, 0.0)
+            } else {
+                (0.0, offset)
+            };
+            let (x, y) = match dir {
+                Direction::Down => (x, y),
+                Direction::Up => (x, -y),
+                Direction::Right => (y, x),
+                Direction::Left => (-y, x),
+            };
+            assert_eq!(
+                if side.axis() == crate::Axis::Vertical {
+                    x
+                } else {
+                    y
+                },
+                4.25
+            );
+        }
+    }
+}
+
+#[test]
+fn scratch_reuses_vertex_and_adjacency_buffers_across_identical_public_solves() {
+    let mut graph = graph(12);
+    graph.edges = (1..12).map(|node| edge(node - 1, node)).collect();
+    let options = Options::default();
+    let mut scratch = LayoutScratch::default();
+    let output =
+        crate::layout_with_control(&graph, &options, &mut scratch, &mut NoopWorkControl).unwrap();
+    let pointers = |buffer: &mut LayoutScratch| {
+        let frame = buffer.frame();
+        (
+            frame.expanded.width.as_ptr(),
+            frame.expanded.from.as_ptr(),
+            frame.expanded.succ.entries.as_ptr(),
+        )
+    };
+    let first = pointers(&mut scratch);
+    let next =
+        crate::layout_with_control(&graph, &options, &mut scratch, &mut NoopWorkControl).unwrap();
+    assert_eq!(output, next);
+    assert_eq!(pointers(&mut scratch), first);
+}

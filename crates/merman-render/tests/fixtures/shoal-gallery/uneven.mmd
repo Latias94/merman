@@ -1,0 +1,8 @@
+flowchart TD
+S[Request] --> A[Cache lookup]
+S --> B[Fetch]
+B --> C[Decode]
+B --> D[Check]
+A --> T[Respond]
+C --> T
+D --> T

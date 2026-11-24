@@ -162,7 +162,7 @@ fn measure_content_node(
     );
 
     let look = crate::config::mermaid_config_diagram_look(ctx.config);
-    let (width, height) = NodeLayoutDimensionsRequest {
+    let ((width, height), _) = NodeLayoutDimensionsRequest {
         layout_shape: node.layout_shape.as_deref(),
         layout_direction: ctx.direction.as_str(),
         metrics,

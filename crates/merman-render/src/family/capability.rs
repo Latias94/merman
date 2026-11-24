@@ -29,9 +29,12 @@ impl RenderCapabilityPlan {
         self.family_id
     }
 
-    /// Placement modes supported by this actual typed render family.
+    /// Placement modes supported by the selected family and backend.
     pub fn supported_layout_adaptations(&self) -> &'static [LayoutAdaptation] {
-        supported_layout_adaptations(self.family_id)
+        supported_layout_adaptations(
+            self.family_id,
+            self.required.contains(&RenderCapability::LayoutShoal),
+        )
     }
 
     /// Returns every optional capability this operation requires.
@@ -156,79 +159,51 @@ fn parsed_render_requires_math(parsed: &PresentationDiagram) -> bool {
     }
 }
 
-fn capability_is_available(capability: RenderCapability, session: &RenderSession) -> bool {
-    session.supports_capability(capability)
-}
-
-#[allow(
-    unused_variables,
-    reason = "Dispatch inputs depend on the selected diagram families."
-)]
-fn required_capabilities(parsed: &PresentationDiagram) -> Vec<RenderCapability> {
-    let mut required = Vec::with_capacity(2);
+fn required_layout_capability(
+    parsed: &PresentationDiagram,
+    family: DiagramFamilyId,
+) -> Result<Option<RenderCapability>> {
     let meta = parsed.metadata();
-    let model = parsed.model();
-    let effective_config = &meta.effective_config;
-    match model {
-        #[cfg(feature = "diagram-architecture")]
-        RenderSemanticModel::Architecture(_) => {
-            required.push(RenderCapability::LayoutCytoscape);
-        }
-        #[cfg(feature = "diagram-mindmap")]
-        RenderSemanticModel::Mindmap(_) => {
-            if let Some(capability) = crate::mindmap::required_layout_capability(effective_config) {
-                required.push(capability);
-            }
-        }
-        #[cfg(feature = "diagram-agentflow")]
-        RenderSemanticModel::Agentflow(_) => {
-            required.extend(
-                crate::layout_backend::resolve_graph_layout(effective_config).required_capability(),
-            );
-        }
-        #[cfg(feature = "diagram-usecase")]
-        RenderSemanticModel::Usecase(_) => {
-            required.extend(
-                crate::layout_backend::resolve_graph_layout(effective_config).required_capability(),
-            );
-        }
-        #[cfg(feature = "diagram-state")]
-        RenderSemanticModel::State(_) => {
-            required.extend(
-                crate::layout_backend::resolve_graph_layout(effective_config).required_capability(),
-            );
-        }
-        #[cfg(feature = "diagram-requirement")]
-        RenderSemanticModel::Requirement(_) => {
-            required.extend(
-                crate::layout_backend::resolve_graph_layout(effective_config).required_capability(),
-            );
-        }
-        #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-        RenderSemanticModel::Flowchart(_) => {
-            required.extend(
-                crate::layout_backend::resolve_graph_layout(effective_config).required_capability(),
-            );
-        }
-        #[cfg(feature = "diagram-class")]
-        RenderSemanticModel::Class(_) => {
-            required.extend(
-                crate::layout_backend::resolve_graph_layout(effective_config).required_capability(),
-            );
-        }
-        #[cfg(feature = "diagram-er")]
-        RenderSemanticModel::Er(_) => {
-            required.extend(
-                crate::layout_backend::resolve_graph_layout(effective_config).required_capability(),
-            );
-        }
-        _ => {}
+    match family {
+        DiagramFamilyId::ARCHITECTURE => return Ok(Some(RenderCapability::LayoutCytoscape)),
+        DiagramFamilyId::AGENTFLOW
+        | DiagramFamilyId::CLASS
+        | DiagramFamilyId::ER
+        | DiagramFamilyId::FLOWCHART
+        | DiagramFamilyId::MINDMAP
+        | DiagramFamilyId::REQUIREMENT
+        | DiagramFamilyId::STATE
+        | DiagramFamilyId::SWIMLANE
+        | DiagramFamilyId::USECASE => {}
+        _ => return Ok(None),
     }
 
-    if parsed_render_requires_math(parsed) {
-        required.push(RenderCapability::Math);
+    let selection = crate::layout_backend::resolve_graph_layout(&meta.effective_config);
+    if selection.backend == crate::layout_backend::GraphLayoutBackend::Shoal
+        && !matches!(
+            family,
+            DiagramFamilyId::AGENTFLOW
+                | DiagramFamilyId::CLASS
+                | DiagramFamilyId::ER
+                | DiagramFamilyId::REQUIREMENT
+                | DiagramFamilyId::STATE
+                | DiagramFamilyId::USECASE
+        )
+        && !(family == DiagramFamilyId::FLOWCHART
+            && matches!(meta.diagram_type.as_str(), "flowchart" | "flowchart-v2"))
+    {
+        return Err(Error::UnsupportedLayoutBackend {
+            backend: "shoal",
+            diagram_type: meta.diagram_type.clone(),
+        });
     }
-    required
+    #[cfg(feature = "diagram-mindmap")]
+    if family == DiagramFamilyId::MINDMAP {
+        return Ok(crate::mindmap::required_layout_capability(
+            &meta.effective_config,
+        ));
+    }
+    Ok(selection.required_capability())
 }
 
 /// Reports whether this renderer contains the logical family handler for a known diagram type.
@@ -312,8 +287,17 @@ fn validate_paired_render_model(parsed: &PresentationDiagram) -> Result<DiagramF
     })
 }
 
-fn supported_layout_adaptations(family: DiagramFamilyId) -> &'static [LayoutAdaptation] {
-    if family == DiagramFamilyId::KANBAN {
+fn supported_layout_adaptations(
+    family: DiagramFamilyId,
+    shoal: bool,
+) -> &'static [LayoutAdaptation] {
+    if family == DiagramFamilyId::KANBAN
+        || (shoal
+            && matches!(
+                family,
+                DiagramFamilyId::FLOWCHART | DiagramFamilyId::AGENTFLOW
+            ))
+    {
         &[LayoutAdaptation::None, LayoutAdaptation::FitWidth]
     } else {
         &[LayoutAdaptation::None]
@@ -330,7 +314,12 @@ pub fn validate_layout_options(
         return Ok(());
     }
     let family = validate_paired_render_model(parsed)?;
-    if !supported_layout_adaptations(family).contains(&options.adaptation) {
+    let shoal = matches!(
+        family,
+        DiagramFamilyId::FLOWCHART | DiagramFamilyId::AGENTFLOW
+    ) && required_layout_capability(parsed, family)?
+        == Some(RenderCapability::LayoutShoal);
+    if !supported_layout_adaptations(family, shoal).contains(&options.adaptation) {
         return Err(Error::UnsupportedLayoutAdaptation {
             adaptation: options.adaptation.id(),
             diagram_type: parsed.metadata().diagram_type.clone(),
@@ -350,6 +339,63 @@ pub fn has_edge_geometry(parsed: &PresentationDiagram) -> Result<bool> {
         family,
         DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE | DiagramFamilyId::AGENTFLOW
     ))
+}
+
+#[cfg(all(
+    test,
+    any(feature = "diagram-requirement", feature = "diagram-usecase")
+))]
+#[test]
+fn shoal_admission_for_requirement_and_usecase_is_typed() {
+    use crate::RenderCapabilityPolicy;
+    use crate::environment::RenderEnvironment;
+    use merman_core::{MermaidEngine, ParseOptions};
+
+    let sources = [
+        #[cfg(feature = "diagram-requirement")]
+        "requirementDiagram\nrequirement r {\nid: 1\ntext: Demo\nrisk: low\nverifymethod: test\n}",
+        #[cfg(feature = "diagram-usecase")]
+        "usecase-beta\nactor User\nA[Sign in]\nUser --> A",
+    ];
+    let engine = MermaidEngine::new();
+    for source in sources {
+        let source = format!("---\nconfig:\n  layout: shoal\n---\n{source}");
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        for (policy, ready) in [
+            (
+                RenderCapabilityPolicy::unrestricted(),
+                cfg!(feature = "layout-shoal"),
+            ),
+            (RenderCapabilityPolicy::deny_all(), false),
+        ] {
+            let session = RenderEnvironment::deterministic()
+                .with_capability_policy(policy)
+                .begin_session()
+                .unwrap();
+            let plan = super::plan_render(&parsed, &session).unwrap();
+            assert_eq!(
+                plan.required_capabilities(),
+                [RenderCapability::LayoutShoal]
+            );
+            assert_eq!(plan.is_ready(), ready);
+            let result = super::prepare(&parsed, &LayoutOptions::default(), session);
+            if ready {
+                result.unwrap();
+            } else {
+                assert!(matches!(
+                    result,
+                    Err(Error::MissingCapability {
+                        capability: RenderCapability::LayoutShoal,
+                        ..
+                    })
+                ));
+            }
+        }
+    }
 }
 
 fn validate_render_input(
@@ -379,11 +425,15 @@ pub fn plan_render(
     session.checkpoint(OperationPhase::Layout)?;
     let meta = parsed.metadata();
     let family_id = validate_render_input(parsed, session)?;
-    let required = required_capabilities(parsed);
+    let mut required = Vec::with_capacity(2);
+    required.extend(required_layout_capability(parsed, family_id)?);
+    if parsed_render_requires_math(parsed) {
+        required.push(RenderCapability::Math);
+    }
     let missing = required
         .iter()
         .copied()
-        .filter(|capability| !capability_is_available(*capability, session))
+        .filter(|capability| !session.supports_capability(*capability))
         .collect();
     let plan = RenderCapabilityPlan {
         diagram_type: meta.diagram_type.clone(),

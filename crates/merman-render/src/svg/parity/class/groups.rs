@@ -6,6 +6,8 @@ use super::edge::{
     ClassEdgeGroupsRenderContext, ClassEdgePathEmission, render_class_edge_labels,
     render_class_edge_paths,
 };
+#[cfg(feature = "layout-shoal")]
+use crate::graph_layout::canonical::CanonicalRoutes;
 use crate::model::{Bounds, LayoutEdge, LayoutPoint};
 use crate::svg::parity::SvgDiagramId;
 use crate::text::{TextMeasurer, TextStyle};
@@ -27,6 +29,8 @@ pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
     pub(super) relation_index_by_id: &'a FxHashMap<&'a str, usize>,
     pub(super) prepared_svg_edge_labels:
         &'a FxHashMap<String, crate::class::ClassPreparedSvgEdgeLabel>,
+    #[cfg(feature = "layout-shoal")]
+    pub(super) canonical_routes: Option<&'a CanonicalRoutes>,
     pub(super) diagram_marker_class: &'a str,
     pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) content_tx: f64,
@@ -135,6 +139,8 @@ fn local_edge_context<'a>(
         relations_by_id: ctx.relations_by_id,
         relation_index_by_id: ctx.relation_index_by_id,
         prepared_svg_edge_labels: ctx.prepared_svg_edge_labels,
+        #[cfg(feature = "layout-shoal")]
+        canonical_routes: ctx.canonical_routes,
         diagram_marker_class: ctx.diagram_marker_class,
         diagram_id: ctx.diagram_id,
         content_tx: ctx.content_tx,

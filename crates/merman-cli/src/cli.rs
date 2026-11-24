@@ -519,6 +519,16 @@ pub(crate) struct RenderArgs {
     )]
     pub(crate) output: Option<PathBuf>,
 
+    /// Replay an optional Shoal preview layout frame from a JSON file.
+    #[cfg(feature = "layout-shoal")]
+    #[arg(long, value_name = "PATH", value_hint = ValueHint::FilePath, help_heading = "Render input and output")]
+    pub(crate) preview_frame_in: Option<PathBuf>,
+
+    /// Write a captured Shoal preview layout frame to a new JSON file when available.
+    #[cfg(feature = "layout-shoal")]
+    #[arg(long, value_name = "PATH", value_hint = ValueHint::FilePath, help_heading = "Render input and output")]
+    pub(crate) preview_frame_out: Option<PathBuf>,
+
     /// Interpret the input as Mermaid source or an existing SVG document.
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     #[arg(

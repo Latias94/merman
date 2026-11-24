@@ -405,6 +405,8 @@ pub(crate) struct StateCompatibilityPlan {
 }
 
 impl StateCompatibilityPlan {
+    pub(crate) const CLASSIC_COMPOSITE_OUTER_RADIUS: f64 = 5.0;
+
     pub(crate) fn from_config(config: &PresentationConfig) -> Self {
         Self::resolve(StateCompatibilityResolver::new(
             config.as_value(),

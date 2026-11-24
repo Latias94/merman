@@ -594,7 +594,16 @@ fn source_fill_keeps_glow_and_source_filter_suppresses_only_its_node() {
 
 #[test]
 fn glow_expands_viewport_without_moving_layout_nodes_and_survives_nested_roots() {
-    let source = "flowchart LR\nsubgraph Group\nA --> B\nend\nB --> C";
+    assert_glow_expands_viewport("flowchart LR\nsubgraph Group\nA --> B\nend\nB --> C");
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_node_glow_expands_the_painted_viewport() {
+    assert_glow_expands_viewport("---\nconfig:\n  layout: shoal\n---\nflowchart LR\nA --> B --> C");
+}
+
+fn assert_glow_expands_viewport(source: &str) {
     let plain = DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new())
         .unwrap();

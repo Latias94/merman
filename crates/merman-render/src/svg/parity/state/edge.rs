@@ -1,4 +1,6 @@
 use super::*;
+#[cfg(feature = "layout-shoal")]
+use crate::graph_layout::{canonical::CanonicalPaintedEdge, route_paint::RouteStyle};
 
 #[derive(Debug, Clone, Copy)]
 struct StateEdgeBoundaryNode {
@@ -540,6 +542,58 @@ pub(super) fn state_edge_prepare_geometry(
     )
 }
 
+#[cfg(feature = "layout-shoal")]
+fn state_edge_stroke_outset(ctx: &StateRenderCtx<'_>, path_style: &str) -> f64 {
+    let inline_width = path_style.split(';').rev().find_map(|declaration| {
+        let (property, value) = declaration.split_once(':')?;
+        if property.trim() != "stroke-width" {
+            return None;
+        }
+        let value = value.trim();
+        value
+            .strip_suffix("px")
+            .unwrap_or(value)
+            .parse::<f64>()
+            .ok()
+            .filter(|width| width.is_finite() && *width >= 0.0)
+    });
+    inline_width.unwrap_or_else(|| {
+        ctx.style_plan
+            .compatibility()
+            .terminal_stroke_width_value(crate::state::StateTerminalSurface::Transition)
+    }) / 2.0
+}
+
+#[cfg(feature = "layout-shoal")]
+fn state_canonical_edge_bounds(
+    geometry: &CanonicalPaintedEdge,
+    rough_d: Option<&str>,
+    stroke_outset: f64,
+) -> kurbo::Rect {
+    let bounds = &geometry.path.bounds;
+    let path_bounds = rough_d
+        .and_then(super::super::svg_path_bounds_from_d)
+        .map_or_else(
+            || kurbo::Rect::new(bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y),
+            |bounds| kurbo::Rect::new(bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y),
+        );
+    let mut bounds = path_bounds.inflate(stroke_outset, stroke_outset);
+    if geometry.markers.1.depth > 0.0 {
+        let [_, _, shoulder, reference] = &geometry.marker_points;
+        let reference = kurbo::Point::new(reference.x, reference.y);
+        let forward = (reference - kurbo::Point::new(shoulder.x, shoulder.y)).normalize();
+        let across = kurbo::Vec2::new(-forward.y, forward.x);
+        let ref_x = f64::from(STATE_BARB_TIP_X) - geometry.markers.1.trim;
+        let ref_y = f64::from(STATE_BARB_CENTER_Y);
+        for dx in [-ref_x, f64::from(STATE_BARB_VIEWPORT_WIDTH) - ref_x] {
+            for dy in [-ref_y, ref_y] {
+                bounds = bounds.union_pt(reference + forward * dx + across * dy);
+            }
+        }
+    }
+    bounds
+}
+
 #[allow(clippy::too_many_arguments)]
 fn write_state_edge_path(
     out: &mut impl SvgOutput,
@@ -552,19 +606,64 @@ fn write_state_edge_path(
     origin_x: f64,
     origin_y: f64,
     work_meter: &crate::resources::OperationWorkMeter,
+    #[cfg(feature = "layout-shoal")] canonical_bounds: &mut Option<kurbo::Rect>,
 ) -> Result<()> {
-    if !ctx.uses_elk_adapter_dom && le.points.len() < 2 {
+    if !ctx.uses_elk_adapter_dom && !ctx.uses_canonical_routes() && le.points.len() < 2 {
         return Ok(());
     }
 
-    let geometry = state_edge_prepare_geometry(ctx, le, arrow_type_end, origin_x, origin_y);
+    let path_style = ctx
+        .style_plan
+        .edge(edge_id)
+        .map(crate::state::StateEdgeStylePlan::path_style_attr)
+        .filter(|style| !style.is_empty());
+    #[cfg(feature = "layout-shoal")]
+    let canonical = ctx
+        .canonical_routes
+        .map(|routes| {
+            let origin = kurbo::Vec2::new(origin_x, origin_y);
+            let outset = state_edge_stroke_outset(ctx, path_style.unwrap_or_default());
+            let geometry = routes.paint(le, -origin, outset, RouteStyle::Curved)?;
+            let rough_d = if state_effective_look(ctx) == "handDrawn" {
+                work_meter.charge(geometry.path.d.len().max(1))?;
+                Some(super::super::canonical_rough::constrained_rough_edge_path(
+                    &geometry.path.d,
+                    geometry.markers,
+                    work_meter,
+                    &ctx.hand_drawn_seed,
+                )?)
+            } else {
+                None
+            };
+            let bounds =
+                state_canonical_edge_bounds(&geometry, rough_d.as_deref(), outset) + origin;
+            *canonical_bounds = Some(canonical_bounds.map_or(bounds, |cur| cur.union(bounds)));
+            Ok::<_, Error>((geometry, rough_d))
+        })
+        .transpose()?;
+
+    let legacy;
+    let (base_d, paint_d, points) = 'geometry: {
+        #[cfg(feature = "layout-shoal")]
+        if let Some((geometry, rough_d)) = &canonical {
+            let path_d = geometry.path.d.as_str();
+            break 'geometry (
+                path_d,
+                rough_d.as_deref().unwrap_or(path_d),
+                &geometry.data_points,
+            );
+        }
+        legacy = state_edge_prepare_geometry(ctx, le, arrow_type_end, origin_x, origin_y);
+        let path_d = legacy.rendered_d.as_str();
+        break 'geometry (path_d, path_d, &legacy.data_points);
+    };
     let hopped_d = ctx.elk_line_hop_paths.get(edge_id).map(String::as_str);
-    let rendered_d = hopped_d.unwrap_or(geometry.rendered_d.as_str());
+    let rendered_d = hopped_d.unwrap_or(paint_d);
     let data_points = base64::engine::general_purpose::STANDARD
-        .encode(serde_json::to_vec(&geometry.data_points).unwrap_or_default());
+        .encode(serde_json::to_vec(points).unwrap_or_default());
     let mut original_style = String::new();
     if state_data_look(ctx) == "neo"
-        && let Some(length) = super::super::svg_path_length_from_d(&geometry.rendered_d)
+        && let Some(length) = super::super::svg_path_length_from_d(base_d)
     {
         super::super::edge_path::write_neo_edge_mask(
             &mut original_style,
@@ -578,12 +677,7 @@ fn write_state_edge_path(
         );
     }
     original_style.push_str("fill:none;;;fill:none");
-    if let Some(style) = ctx
-        .style_plan
-        .edge(edge_id)
-        .map(crate::state::StateEdgeStylePlan::path_style_attr)
-        .filter(|style| !style.is_empty())
-    {
+    if let Some(style) = path_style {
         original_style.push(';');
         original_style.push_str(style);
     }
@@ -618,6 +712,7 @@ pub(super) fn render_state_edge_path(
     origin_x: f64,
     origin_y: f64,
     work_meter: &crate::resources::OperationWorkMeter,
+    #[cfg(feature = "layout-shoal")] canonical_bounds: &mut Option<kurbo::Rect>,
 ) -> Result<()> {
     let mut classes = if ctx.uses_elk_adapter_dom
         && edge
@@ -639,11 +734,12 @@ pub(super) fn render_state_edge_path(
 
     let marker_end = match edge.arrow_type_end.trim() {
         "arrow_barb" | "arrow_barb_neo" => {
-            let suffix = if state_data_look(ctx) == "neo" {
-                "-margin"
+            let neo = if ctx.uses_canonical_routes() {
+                ctx.style_plan.compatibility().is_neo()
             } else {
-                ""
+                state_data_look(ctx) == "neo"
             };
+            let suffix = if neo { "-margin" } else { "" };
             ctx.style_plan
                 .edge(edge.id.as_str())
                 .filter(|style| !style.marker_style_attr().is_empty())
@@ -678,6 +774,8 @@ pub(super) fn render_state_edge_path(
         origin_x,
         origin_y,
         work_meter,
+        #[cfg(feature = "layout-shoal")]
+        canonical_bounds,
     )
 }
 
@@ -885,23 +983,28 @@ pub(super) fn render_state_edge_label(
         return;
     };
 
-    let geometry = state_edge_prepare_geometry(
-        ctx,
-        le,
-        Some(edge.arrow_type_end.as_str()),
-        origin_x,
-        origin_y,
-    );
-    let label_position = super::super::edge_label_geometry::position_edge_label(
-        crate::model::LayoutPoint {
-            x: lbl.x - origin_x,
-            y: lbl.y - origin_y,
-        },
-        Some(&geometry.original_label_path_points),
-        &geometry.label_path_points,
-        &geometry.rendered_d,
-        geometry.points_were_explicitly_updated,
-    );
+    let label_position = crate::model::LayoutPoint {
+        x: lbl.x - origin_x,
+        y: lbl.y - origin_y,
+    };
+    let label_position = if ctx.uses_canonical_routes() {
+        label_position
+    } else {
+        let geometry = state_edge_prepare_geometry(
+            ctx,
+            le,
+            Some(edge.arrow_type_end.as_str()),
+            origin_x,
+            origin_y,
+        );
+        super::super::edge_label_geometry::position_edge_label(
+            label_position,
+            Some(&geometry.original_label_path_points),
+            &geometry.label_path_points,
+            &geometry.rendered_d,
+            geometry.points_were_explicitly_updated,
+        )
+    };
     let w = lbl.width.max(0.0);
     let h = lbl.height.max(0.0);
 

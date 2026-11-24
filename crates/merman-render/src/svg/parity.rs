@@ -45,6 +45,8 @@ pub(crate) use block::block_edge_is_visible;
 mod c4;
 #[cfg(feature = "diagram-class")]
 mod class;
+#[cfg(all(feature = "diagram-class", feature = "layout-shoal"))]
+pub(crate) use class::class_canonical_marker;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -113,6 +115,8 @@ mod edge_path;
 mod emitted_bounds;
 #[cfg(feature = "diagram-er")]
 mod er;
+#[cfg(all(feature = "diagram-er", feature = "layout-shoal"))]
+pub(crate) use er::er_canonical_marker;
 mod error;
 #[cfg(feature = "diagram-event-modeling")]
 mod eventmodeling;
@@ -122,6 +126,15 @@ mod eventmodeling;
     feature = "diagram-agentflow"
 ))]
 mod flowchart;
+#[cfg(all(
+    feature = "layout-shoal",
+    any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    )
+))]
+pub(crate) use flowchart::flowchart_marker_metrics;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
@@ -188,6 +201,26 @@ mod look_defs;
 )]
 mod markers;
 pub(crate) use markers::BaseEdgeMarkerKind;
+#[cfg(any(
+    all(
+        feature = "layout-shoal",
+        any(
+            feature = "diagram-class",
+            feature = "diagram-er",
+            feature = "diagram-state",
+            feature = "diagram-usecase"
+        )
+    ),
+    all(
+        any(feature = "layout-shoal", test),
+        any(
+            feature = "diagram-flowchart",
+            feature = "diagram-swimlane",
+            feature = "diagram-agentflow"
+        )
+    )
+))]
+mod canonical_rough;
 #[cfg(feature = "diagram-mindmap")]
 mod mindmap;
 mod output;
@@ -237,6 +270,8 @@ mod sequence;
 mod shadow;
 #[cfg(feature = "diagram-state")]
 mod state;
+#[cfg(all(feature = "diagram-state", feature = "layout-shoal"))]
+pub(crate) use state::state_canonical_marker;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -1341,6 +1376,8 @@ fn render_builtin_family_artifact_raw(
             artifact.pair().layout(),
             artifact.pair().semantic(),
             artifact.label_sidecar(),
+            #[cfg(feature = "layout-shoal")]
+            artifact.canonical_routes(),
             artifact.effect_evidence(),
             effective_config.as_value(),
             title,
@@ -1519,6 +1556,8 @@ fn render_builtin_family_artifact_raw(
         #[cfg(feature = "diagram-er")]
         BuiltinFamilyArtifact::Er(artifact) => er::render_er_diagram_svg_model(
             artifact.pair().layout(),
+            #[cfg(feature = "layout-shoal")]
+            artifact.canonical_routes(),
             artifact.pair().semantic(),
             artifact.entity_theme(),
             effective_config,

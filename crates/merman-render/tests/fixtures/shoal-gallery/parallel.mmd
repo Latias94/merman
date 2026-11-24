@@ -1,0 +1,8 @@
+flowchart LR
+A[Receive] -->|valid| B[Validate]
+A -->|retry| B
+B --> C[Write]
+B --> D[Audit]
+C --> Z[Done]
+D --> Z
+A -.->|override| Z

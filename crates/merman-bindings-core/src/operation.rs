@@ -312,9 +312,15 @@ impl BindingOperationResult {
 #[derive(Debug)]
 pub(crate) struct BindingOperationOutput {
     data: Vec<u8>,
+    details: BindingOperationDetails,
+}
+
+#[derive(Debug, Default)]
+struct BindingOperationDetails {
     output_plan: Option<BindingOutputPlan>,
     layout_adaptation: Option<BindingLayoutAdaptationObservation>,
     theme_execution_evidence: Option<BindingThemeExecutionEvidence>,
+    shoal_layout_frame: Option<Value>,
 }
 
 #[derive(Debug)]
@@ -850,6 +856,7 @@ pub struct BindingOperationMetadata {
     output_plan: Option<BindingOutputPlan>,
     layout_adaptation: Option<BindingLayoutAdaptationObservation>,
     theme_execution_evidence: Option<BindingThemeExecutionEvidence>,
+    shoal_layout_frame: Option<Value>,
     #[cfg(feature = "svg")]
     svg_viewport: Option<crate::BindingSvgViewport>,
     json: Arc<[u8]>,
@@ -887,9 +894,13 @@ impl BindingOperationMetadata {
                 })?;
                 let requested_width = required_f64(object, "requested_width")?;
                 let actual_width = required_f64(object, "actual_width")?;
-                if requested_width <= 0.0 || actual_width <= 0.0 {
+                if !requested_width.is_finite()
+                    || requested_width <= 0.0
+                    || !actual_width.is_finite()
+                    || actual_width < 0.0
+                {
                     return Err(BindingError::invalid_argument(
-                        "layout_adaptation widths must be positive",
+                        "layout_adaptation requested_width must be positive and actual_width must be nonnegative",
                     ));
                 }
                 Some(BindingLayoutAdaptationObservation {
@@ -903,6 +914,15 @@ impl BindingOperationMetadata {
         let theme_execution_evidence = match object.get("theme_execution_evidence") {
             None | Some(Value::Null) => None,
             Some(value) => Some(parse_theme_execution_evidence(value)?),
+        };
+        let shoal_layout_frame = match object.get("shoal_layout_frame") {
+            None | Some(Value::Null) => None,
+            Some(value @ Value::Object(_)) => Some(value.clone()),
+            Some(_) => {
+                return Err(BindingError::invalid_argument(
+                    "shoal_layout_frame must be an object",
+                ));
+            }
         };
 
         #[cfg(feature = "svg")]
@@ -925,6 +945,7 @@ impl BindingOperationMetadata {
             output_plan,
             layout_adaptation,
             theme_execution_evidence,
+            shoal_layout_frame,
             #[cfg(feature = "svg")]
             svg_viewport,
             json: Arc::from(json),
@@ -935,13 +956,17 @@ impl BindingOperationMetadata {
         operation: BindingOperationKind,
         runtime_policy: &str,
         byte_length: u64,
-        output_plan: Option<BindingOutputPlan>,
-        layout_adaptation: Option<BindingLayoutAdaptationObservation>,
-        theme_execution_evidence: Option<BindingThemeExecutionEvidence>,
+        details: BindingOperationDetails,
         #[cfg(feature = "svg")] svg_viewport: Option<crate::BindingSvgViewport>,
     ) -> Result<Self, BindingError> {
         #[cfg(test)]
         METADATA_SERIALIZATION_COUNT.with(|count| count.set(count.get() + 1));
+        let BindingOperationDetails {
+            output_plan,
+            layout_adaptation,
+            theme_execution_evidence,
+            shoal_layout_frame,
+        } = details;
 
         let json = serde_json::to_vec(&BindingOperationMetadataWire {
             version: BINDING_OPERATION_SCHEMA_VERSION,
@@ -954,6 +979,7 @@ impl BindingOperationMetadata {
             theme_execution_evidence: theme_execution_evidence.as_ref(),
             #[cfg(feature = "svg")]
             svg_viewport,
+            shoal_layout_frame: shoal_layout_frame.as_ref(),
         })
         .map_err(|error| {
             BindingError::internal(format!("failed to serialize operation metadata: {error}"))
@@ -968,6 +994,7 @@ impl BindingOperationMetadata {
             output_plan,
             layout_adaptation,
             theme_execution_evidence,
+            shoal_layout_frame,
             #[cfg(feature = "svg")]
             svg_viewport,
             json: Arc::from(json),
@@ -1005,6 +1032,11 @@ impl BindingOperationMetadata {
     }
 
     #[must_use]
+    pub const fn shoal_layout_frame(&self) -> Option<&Value> {
+        self.shoal_layout_frame.as_ref()
+    }
+
+    #[must_use]
     pub const fn output_plan(&self) -> Option<&BindingOutputPlan> {
         self.output_plan.as_ref()
     }
@@ -1037,7 +1069,13 @@ impl BindingOperationOutput {
         mut self,
         value: Option<merman::svg::LayoutAdaptationObservation>,
     ) -> Self {
-        self.layout_adaptation = value.map(BindingLayoutAdaptationObservation::from_render);
+        self.details.layout_adaptation = value.map(BindingLayoutAdaptationObservation::from_render);
+        self
+    }
+
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) fn with_shoal_layout_frame(mut self, frame: Option<Value>) -> Self {
+        self.details.shoal_layout_frame = frame;
         self
     }
 
@@ -1048,9 +1086,7 @@ impl BindingOperationOutput {
     pub(crate) fn plain(data: Vec<u8>) -> Self {
         Self {
             data,
-            output_plan: None,
-            layout_adaptation: None,
-            theme_execution_evidence: None,
+            details: BindingOperationDetails::default(),
         }
     }
 
@@ -1058,9 +1094,10 @@ impl BindingOperationOutput {
     pub(crate) fn svg(data: Vec<u8>, evidence: BindingThemeExecutionEvidence) -> Self {
         Self {
             data,
-            output_plan: None,
-            layout_adaptation: None,
-            theme_execution_evidence: Some(evidence),
+            details: BindingOperationDetails {
+                theme_execution_evidence: Some(evidence),
+                ..Default::default()
+            },
         }
     }
 
@@ -1072,9 +1109,10 @@ impl BindingOperationOutput {
         let plan = BindingOutputPlan::Ascii(Box::new(BindingAsciiOutputPlan::from_output(&output)));
         Self {
             data: output.into_bytes(),
-            output_plan: Some(plan),
-            layout_adaptation: None,
-            theme_execution_evidence: None,
+            details: BindingOperationDetails {
+                output_plan: Some(plan),
+                ..Default::default()
+            },
         }
     }
 
@@ -1086,17 +1124,19 @@ impl BindingOperationOutput {
     ) -> Self {
         Self {
             data,
-            output_plan: Some(BindingOutputPlan::Raster(BindingRasterOutputPlan {
-                requested_width_px: plan.requested_width_px,
-                requested_height_px: plan.requested_height_px,
-                width_px: plan.width_px,
-                height_px: plan.height_px,
-                requested_scale: plan.requested_scale,
-                effective_scale: plan.effective_scale,
-                limited: plan.limited,
-            })),
-            layout_adaptation: None,
-            theme_execution_evidence: Some(evidence),
+            details: BindingOperationDetails {
+                output_plan: Some(BindingOutputPlan::Raster(BindingRasterOutputPlan {
+                    requested_width_px: plan.requested_width_px,
+                    requested_height_px: plan.requested_height_px,
+                    width_px: plan.width_px,
+                    height_px: plan.height_px,
+                    requested_scale: plan.requested_scale,
+                    effective_scale: plan.effective_scale,
+                    limited: plan.limited,
+                })),
+                theme_execution_evidence: Some(evidence),
+                ..Default::default()
+            },
         }
     }
 
@@ -1108,18 +1148,20 @@ impl BindingOperationOutput {
     ) -> Self {
         Self {
             data,
-            output_plan: Some(BindingOutputPlan::PdfFilterImages(
-                BindingPdfFilterImageOutputPlan {
-                    filtered_groups: plan.filtered_groups as u64,
-                    requested_scale: plan.requested_scale,
-                    effective_scale: plan.effective_scale,
-                    requested_image_pixels: plan.requested_image_pixels,
-                    effective_image_pixels: plan.effective_image_pixels,
-                    limited: plan.limited,
-                },
-            )),
-            layout_adaptation: None,
-            theme_execution_evidence: Some(evidence),
+            details: BindingOperationDetails {
+                output_plan: Some(BindingOutputPlan::PdfFilterImages(
+                    BindingPdfFilterImageOutputPlan {
+                        filtered_groups: plan.filtered_groups as u64,
+                        requested_scale: plan.requested_scale,
+                        effective_scale: plan.effective_scale,
+                        requested_image_pixels: plan.requested_image_pixels,
+                        effective_image_pixels: plan.effective_image_pixels,
+                        limited: plan.limited,
+                    },
+                )),
+                theme_execution_evidence: Some(evidence),
+                ..Default::default()
+            },
         }
     }
 }
@@ -1140,6 +1182,8 @@ struct BindingOperationMetadataWire<'a> {
     #[cfg(feature = "svg")]
     #[serde(skip_serializing_if = "Option::is_none")]
     svg_viewport: Option<crate::BindingSvgViewport>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    shoal_layout_frame: Option<&'a Value>,
 }
 
 fn parse_output_plan(value: &Value) -> Result<BindingOutputPlan, BindingError> {
@@ -1688,12 +1732,7 @@ pub(crate) fn operation_result(
     runtime_policy_id: &'static str,
     output: BindingOperationOutput,
 ) -> Result<BindingOperationResult, BindingError> {
-    let BindingOperationOutput {
-        data,
-        output_plan,
-        layout_adaptation,
-        theme_execution_evidence,
-    } = output;
+    let BindingOperationOutput { data, details } = output;
     let byte_length = u64::try_from(data.len()).map_err(|_| {
         BindingError::internal("operation result byte length exceeds unsigned 64-bit range")
     })?;
@@ -1707,9 +1746,7 @@ pub(crate) fn operation_result(
         operation,
         runtime_policy_id,
         byte_length,
-        output_plan,
-        layout_adaptation,
-        theme_execution_evidence,
+        details,
         #[cfg(feature = "svg")]
         svg_viewport,
     )?;

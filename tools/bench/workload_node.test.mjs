@@ -240,6 +240,17 @@ test("drawing capture is opt-in and a failed exclusive write fails its scenario"
     fixture: "shared-fixture", diagram_id: "b", source_sha256: sha256("new"), expected_outcome: "draw", drawing_required: true,
   });
 
+  const all = run(dir, "pele", ["--samples", "1", "--drawing-dir", "all", "--all-drawings"]);
+  assert.equal(all.status, 0, all.stderr);
+  for (const [index, row] of all.report.scenarios.entries()) {
+    const [request] = row.requests;
+    assert.equal(request.drawing_artifact, `${index}-0.svg`);
+    assert.equal(Object.hasOwn(request, "drawing_required"), index === 1);
+    const svg = readFileSync(path.join(dir, "all", request.drawing_artifact));
+    assert.equal(sha256(svg), row.warm_samples.at(-1).results[0].output_sha256);
+  }
+  assert.match(run(dir, "pele", ["--all-drawings"]).report.error, /requires --drawing-dir/);
+
   const drawings = path.join(dir, "drawings");
   mkdirSync(drawings);
   const existing = path.join(drawings, "1-0.svg");

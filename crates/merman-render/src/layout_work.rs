@@ -5,10 +5,10 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::sync::Arc;
 
-/// One renderer-owned adapter shared by the Dagre and ELK lower layout kernels.
+/// One renderer-owned adapter shared by the lower layout kernels.
 ///
-/// The kernels expose different neutral control traits, but both are owned by the same render
-/// operation and must consume one cumulative resource budget. Keeping the concrete adapter here
+/// The kernels expose different neutral control traits and consume the same render operation's
+/// cumulative resource budget. Keeping the concrete adapter here
 /// prevents each family from inventing a subtly different sticky-error or overflow mapping.
 pub(crate) struct OperationLayoutWorkControl {
     meter: Arc<OperationWorkMeter>,
@@ -102,6 +102,44 @@ impl OperationLayoutWorkControl {
         }
     }
 
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) fn map_shoal_error(&self, error: merman_layout_shoal::LayoutError) -> Error {
+        use merman_layout_shoal::{LayoutError, WorkError};
+
+        match error {
+            LayoutError::Work(WorkError::Interrupted) => self
+                .take_shoal_rejection()
+                .unwrap_or_else(|| Error::InvalidModel {
+                    message: "Shoal interrupted without an operation failure".into(),
+                }),
+            LayoutError::Work(WorkError::ArithmeticOverflow) => {
+                self.record_arithmetic_overflow().into()
+            }
+            LayoutError::Unsupported(construct) => Error::UnsupportedLayoutConstruct {
+                backend: "shoal",
+                construct,
+            },
+            LayoutError::InvalidInput(detail) => Error::InvalidModel {
+                message: format!("Invalid Shoal graph: {detail}"),
+            },
+            LayoutError::AllocationLimit => self
+                .take_shoal_rejection()
+                .unwrap_or(Error::LayoutAllocationFailed { backend: "shoal" }),
+        }
+    }
+
+    #[cfg(feature = "layout-shoal")]
+    fn take_shoal_rejection(&self) -> Option<Error> {
+        let rejection = self.rejection.borrow_mut().take();
+        rejection
+            .or_else(|| {
+                self.meter
+                    .checkpoint(merman_model::OperationPhase::Layout)
+                    .err()
+            })
+            .map(Error::from)
+    }
+
     #[cfg(feature = "layout-elk")]
     pub(crate) fn map_elk_error(&mut self, error: merman_layout_elk::Error) -> Error {
         self.map_elk_error_with_context(error, "ELK")
@@ -173,6 +211,39 @@ impl dugong::WorkControl for OperationLayoutWorkControl {
     }
 }
 
+#[cfg(feature = "layout-shoal")]
+impl merman_layout_shoal::WorkControl for OperationLayoutWorkControl {
+    fn check(&mut self) -> std::result::Result<(), merman_layout_shoal::WorkError> {
+        self.charge(0)
+    }
+
+    fn charge(&mut self, units: usize) -> std::result::Result<(), merman_layout_shoal::WorkError> {
+        if self.rejection.borrow().is_some() {
+            return Err(merman_layout_shoal::WorkError::Interrupted);
+        }
+        self.meter.charge(units).map_err(|error| {
+            *self.rejection.borrow_mut() = Some(error);
+            merman_layout_shoal::WorkError::Interrupted
+        })
+    }
+
+    fn try_charge_optional(
+        &mut self,
+        units: usize,
+        headroom: usize,
+    ) -> std::result::Result<bool, merman_layout_shoal::WorkError> {
+        if self.rejection.borrow().is_some() {
+            return Err(merman_layout_shoal::WorkError::Interrupted);
+        }
+        self.meter
+            .try_charge_optional_layout_work(units, headroom)
+            .map_err(|error| {
+                *self.rejection.borrow_mut() = Some(error);
+                merman_layout_shoal::WorkError::Interrupted
+            })
+    }
+}
+
 #[cfg(feature = "layout-cytoscape")]
 impl manatee::WorkControl for OperationLayoutWorkControl {
     fn check(&mut self, units: usize) -> std::result::Result<(), manatee::WorkFailure> {
@@ -216,6 +287,102 @@ impl merman_layout_elk::WorkControl for OperationLayoutWorkControl {
             *self.rejection.borrow_mut() = Some(error);
             merman_layout_elk::WorkError::Interrupted
         })
+    }
+}
+
+#[cfg(all(test, feature = "layout-shoal"))]
+mod shoal_tests {
+    use super::OperationLayoutWorkControl;
+    use crate::Error;
+    use crate::resources::{
+        OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
+    };
+    use merman_layout_shoal::{LayoutError, WorkControl, WorkError};
+    use merman_model::{CancelReason, OperationCancelled, OperationControl, OperationPhase};
+    use std::sync::Arc;
+
+    #[test]
+    fn optional_shoal_work_declines_without_latching_a_ceiling() {
+        let policy = RenderResourcePolicy::constrained()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 5)
+            .unwrap();
+        let control = OperationControl::new();
+        let meter = Arc::new(OperationWorkMeter::new_with_control(
+            policy,
+            control.clone(),
+        ));
+        let mut work = OperationLayoutWorkControl::new(Arc::clone(&meter));
+
+        WorkControl::charge(&mut work, 3).unwrap();
+        assert!(!work.try_charge_optional(0, 3).unwrap());
+        assert!(!work.try_charge_optional(usize::MAX, 1).unwrap());
+        assert!(work.try_charge_optional(1, 1).unwrap());
+        assert!(!work.try_charge_optional(1, 1).unwrap());
+        assert_eq!(meter.used(), 4);
+        assert_eq!(
+            control.terminal_checkpoint_at(OperationPhase::Layout),
+            Ok(())
+        );
+
+        let error = WorkControl::charge(&mut work, 2).unwrap_err();
+        assert_eq!(error, WorkError::Interrupted);
+        control.cancel();
+        let Error::ResourceLimitExceeded(first) = work.map_shoal_error(error.into()) else {
+            panic!("expected structured layout ceiling");
+        };
+        assert_eq!(first.cause, ResourceLimitCause::Ceiling);
+        assert_eq!((first.actual, first.max), (6, 5));
+        assert!(work.rejection.borrow().is_none());
+        assert!(matches!(work.map_shoal_error(LayoutError::AllocationLimit),
+            Error::ResourceLimitExceeded(error) if error == first));
+        assert_eq!(meter.used(), 4);
+    }
+
+    #[test]
+    fn shoal_cancellation_is_preserved_across_optional_work_and_error_mapping() {
+        let control = OperationControl::new();
+        let meter = Arc::new(OperationWorkMeter::new_with_control(
+            RenderResourcePolicy::constrained(),
+            control.clone(),
+        ));
+        let mut work = OperationLayoutWorkControl::new(Arc::clone(&meter));
+        WorkControl::charge(&mut work, 3).unwrap();
+        control.cancel();
+
+        let error = work.try_charge_optional(1, 1).unwrap_err();
+        assert_eq!(error, WorkError::Interrupted);
+        let cancelled = OperationCancelled {
+            phase: OperationPhase::Layout,
+            reason: CancelReason::Requested,
+        };
+        assert!(matches!(work.map_shoal_error(error.into()),
+            Error::Cancelled(error) if error == cancelled));
+        assert!(work.rejection.borrow().is_none());
+        assert!(matches!(
+            work.map_shoal_error(WorkError::ArithmeticOverflow.into()),
+            Error::Cancelled(error) if error == cancelled
+        ));
+        assert_eq!(meter.used(), 3);
+    }
+
+    #[test]
+    fn shoal_allocation_failure_and_work_overflow_are_distinct() {
+        let meter = Arc::new(OperationWorkMeter::new(RenderResourcePolicy::constrained()));
+        let work = OperationLayoutWorkControl::new(Arc::clone(&meter));
+        assert!(matches!(
+            work.map_shoal_error(LayoutError::AllocationLimit),
+            Error::LayoutAllocationFailed { backend: "shoal" }
+        ));
+        assert!(meter.checkpoint(OperationPhase::Layout).is_ok());
+
+        let Error::ResourceLimitExceeded(first) =
+            work.map_shoal_error(WorkError::ArithmeticOverflow.into())
+        else {
+            panic!("expected structured layout overflow");
+        };
+        assert_eq!(first.cause, ResourceLimitCause::ArithmeticOverflow);
+        assert!(matches!(work.map_shoal_error(LayoutError::AllocationLimit),
+            Error::ResourceLimitExceeded(error) if error == first));
     }
 }
 

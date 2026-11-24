@@ -60,6 +60,7 @@ version requirements and intentional upgrade exceptions.
 | Parsing and typed models without rendering | `merman-core` | crates.io |
 | Diagnostics, linting, Markdown/MDX scanning, and editor facts | `merman-analysis` | crates.io |
 | Complete Rust rendering facade | `merman` | crates.io |
+| Experimental layout of measured directed graphs with cycles and groups | `merman-layout-shoal` | Publishable workspace source crate. Integrated Rust and CLI builds opt in with `layout-shoal`. |
 | A command-line renderer, linter, and exporter | `merman-cli` | GitHub Release archive or crates.io |
 | A ready-to-run language server | `merman-lsp` | GitHub Release archive or crates.io |
 | Raw Mermaid CST, incremental parsing, and syntax queries | `tree-sitter-mermaid` on crates.io or `@mermanjs/tree-sitter-mermaid` on npm | Independent grammar release |

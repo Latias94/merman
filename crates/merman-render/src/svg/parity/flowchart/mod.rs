@@ -44,6 +44,24 @@ pub(crate) use render_config::{
 };
 pub(super) use style::*;
 
+/// Measure the same marker descriptors used by SVG emission in drawing units.
+#[cfg(any(feature = "layout-shoal", test))]
+pub(crate) fn flowchart_marker_metrics(
+    edge: &crate::flowchart::FlowEdge,
+) -> (crate::graph_layout::Marker, crate::graph_layout::Marker) {
+    let (start, end) = edge_geom::arrow_types_for_edge(edge.edge_type.as_deref());
+    (
+        defs::measure_marker(
+            flowchart_edge_marker_start_base(edge),
+            super::edge_path::marker_offset_for(start),
+        ),
+        defs::measure_marker(
+            flowchart_edge_marker_end_base(edge),
+            super::edge_path::marker_offset_for(end),
+        ),
+    )
+}
+
 use render::{
     FlowchartRootRenderSession, render_flowchart_edge_path, render_flowchart_elk_root_groups,
     render_flowchart_node, render_flowchart_root,

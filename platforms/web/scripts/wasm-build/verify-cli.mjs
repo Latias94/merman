@@ -1,12 +1,12 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 
 import {
-  assertKnownArgs,
-  hasHelpFlag,
-  parseArgValue,
-  resolvePackageSubdir,
-} from "./arg-parse.mjs";
+  assertWasmRuntimeMatchesInput,
+  wasmRuntimeFileRecords,
+} from "../wasm-runtime-files.mjs";
+import { hasHelpFlag } from "./arg-parse.mjs";
 import {
   WASM_INPUT_MANIFEST_NAME,
   cargoMetadataForPreset,
@@ -14,13 +14,7 @@ import {
   verifyWasmInputManifest,
 } from "./input-manifest.mjs";
 import { repositoryRoot, webPackageRoot } from "./paths.mjs";
-import {
-  defaultWebPackage,
-  webPackageDescriptors,
-} from "./web-surface-descriptor.mjs";
-import { wasmArtifactProfile } from "./build.mjs";
-
-const packagesById = new Map(webPackageDescriptors.map((item) => [item.id, item]));
+import { assertWasmTargetEvidence, parseWasmTargets } from "./targets.mjs";
 
 export function runVerifyWasmInputsCli(args = process.argv.slice(2)) {
   if (hasHelpFlag(args)) {
@@ -39,10 +33,12 @@ export function runVerifyWasmInputsCli(args = process.argv.slice(2)) {
   }
 
   const metadataByProfile = new Map();
+  const assembled = args.includes("--assembled");
   let toolVersions;
   const failures = [];
   for (const target of targets) {
     const checked = verifyTarget(target, {
+      assembled,
       getMetadata(profile) {
         if (!metadataByProfile.has(profile.name)) {
           metadataByProfile.set(
@@ -59,7 +55,7 @@ export function runVerifyWasmInputsCli(args = process.argv.slice(2)) {
     });
     if (checked.ok) {
       console.log(
-        `[merman-web] WASM inputs verified (${target.descriptor.id}, ${checked.digest.slice(0, 12)}).`,
+        `[merman-web] WASM ${assembled ? "inputs and assembly" : "inputs"} verified (${target.outputDir.relative}, ${checked.digest.slice(0, 12)}).`,
       );
     } else {
       failures.push({ target, reasons: checked.reasons });
@@ -72,38 +68,24 @@ export function runVerifyWasmInputsCli(args = process.argv.slice(2)) {
     console.error(`  ${failure.target.descriptor.id}:`);
     for (const reason of failure.reasons) console.error(`    - ${reason}`);
   }
-  console.error("  Run `npm --prefix platforms/web run build:wasm` from the repository root.");
+  const localShoal = args.includes("--local-shoal");
+  const singlePackage = targets.length === 1 ? targets[0].descriptor.id : null;
+  const buildScript = localShoal
+    ? "build:wasm:full -- --local-shoal"
+    : singlePackage ? `build:wasm:${singlePackage}` : "build:wasm";
+  console.error(`  Run \`npm --prefix platforms/web run ${buildScript}\` from the repository root if the inputs are stale.`);
+  if (assembled) {
+    const selectors = singlePackage ? ` -- --package ${singlePackage}${localShoal ? " --local-shoal" : ""}` : "";
+    console.error(`  Run \`npm --prefix platforms/web run build:packages${selectors}\` to refresh the package.`);
+  }
   process.exitCode = 1;
 }
 
 export function parseVerificationTargets(args) {
-  assertKnownArgs(args, {
-    valueArgs: ["--package"],
-    booleanArgs: ["--all-packages", "--help", "-h"],
-  });
-  const allPackages = args.includes("--all-packages");
-  const id = parseArgValue(args, "--package");
-  if (allPackages && id !== null) {
-    throw new Error("--all-packages and --package are mutually exclusive.");
-  }
-  const descriptors = allPackages
-    ? webPackageDescriptors
-    : [packagesById.get(id ?? defaultWebPackage.id)].filter(Boolean);
-  if (descriptors.length === 0) {
-    throw new Error(`Unknown browser package ${id}.`);
-  }
-  return descriptors.map((descriptor) => ({
-    descriptor,
-    profile: wasmArtifactProfile(descriptor),
-    outputDir: resolvePackageSubdir(
-      webPackageRoot,
-      `pkg/${descriptor.id}`,
-      `package ${descriptor.id} output`,
-    ),
-  }));
+  return parseWasmTargets(args, ["--assembled"]);
 }
 
-function verifyTarget(target, { getMetadata, getToolVersions }) {
+function verifyTarget(target, { assembled, getMetadata, getToolVersions }) {
   const manifestPath = path.join(target.outputDir.absolute, WASM_INPUT_MANIFEST_NAME);
   let manifest = null;
   if (existsSync(manifestPath)) {
@@ -126,7 +108,13 @@ function verifyTarget(target, { getMetadata, getToolVersions }) {
       repoRoot: repositoryRoot,
       toolVersions: getToolVersions(),
     });
-    return { ...result, digest: result.ok ? manifest.input_digest : null };
+    if (!result.ok) return result;
+    assertWasmTargetEvidence(target, manifest);
+    if (assembled) {
+      const artifactRoot = path.join(webPackageRoot, target.descriptor.package_dir, "artifacts");
+      assertAssembledWasm(target.profile, manifest, artifactRoot);
+    }
+    return { ...result, digest: manifest.input_digest };
   } catch (error) {
     return {
       ok: false,
@@ -135,6 +123,20 @@ function verifyTarget(target, { getMetadata, getToolVersions }) {
   }
 }
 
+export function assertAssembledWasm(profile, input, artifactRoot) {
+  const provenance = JSON.parse(readFileSync(path.join(artifactRoot, "provenance.json"), "utf8"));
+  if (
+    provenance.artifact_profile !== profile.name ||
+    !isDeepStrictEqual(provenance.runtime_capability_ids, profile.runtime_capability_ids) ||
+    !isDeepStrictEqual(provenance.outputs, profile.runtime_output_ids) ||
+    provenance.wasm?.input_digest !== input.input_digest
+  ) {
+    throw new Error("Assembled WASM provenance does not match the selected build.");
+  }
+  const records = wasmRuntimeFileRecords(path.join(artifactRoot, "wasm"), { strictTopLevel: true });
+  assertWasmRuntimeMatchesInput(records, input.artifacts);
+}
+
 function printUsage() {
-  console.log("usage: node scripts/verify-wasm-inputs.mjs [--package <id> | --all-packages]");
+  console.log("usage: node scripts/verify-wasm-inputs.mjs [--package <id> | --all-packages] [--local-shoal] [--assembled]");
 }

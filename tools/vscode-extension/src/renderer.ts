@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { resolveMermanBinary, type BinaryInvocation } from "./binaries.js";
+import { previewLayoutFrameLimit, readCliCapabilities } from "./cli-capabilities.js";
 import { getCliSettings } from "./config.js";
 import { runRenderProcess } from "./render-process.js";
 import { renderMermanArgs, type DiagramRenderSettings, type RenderFormat } from "./render-options.js";
@@ -20,12 +21,14 @@ export interface RenderRequest extends DiagramRenderSettings {
   outputChannel: vscode.LogOutputChannel;
   signalLabel?: string;
   signal?: AbortSignal;
+  previewLayoutFrame?: { previous?: Buffer };
 }
 
 export interface RenderResult {
   stdout: Buffer;
   stderr: string;
   invocation: BinaryInvocation;
+  previewLayoutFrame?: Buffer;
 }
 
 export function resolveCliInvocation(
@@ -47,28 +50,87 @@ export function resolveCliInvocation(
 }
 
 export async function renderMermanSource(request: RenderRequest): Promise<RenderResult> {
-  const directory = request.themeFileContent !== undefined &&
-    request.format !== "ascii" && request.format !== "unicode"
-    ? await fs.mkdtemp(path.join(os.tmpdir(), "merman-theme-"))
+  const base = resolveCliInvocation(request.context, []);
+  const withArgs = (args: readonly string[]): BinaryInvocation =>
+    ({ ...base, args: [...base.args, ...args] });
+  const writeTheme = request.themeFileContent !== undefined &&
+    request.format !== "ascii" && request.format !== "unicode";
+  const frameLimit = request.previewLayoutFrame && request.format === "svg" &&
+    request.outputPath === undefined && request.inputKind === undefined
+    ? await readCliCapabilities(withArgs(["capabilities", "--json"]))
+      .then(previewLayoutFrameLimit, () => undefined)
+    : undefined;
+  request.signal?.throwIfAborted();
+  const directory = writeTheme || frameLimit
+    ? await fs.mkdtemp(path.join(os.tmpdir(), "merman-render-"))
     : undefined;
   try {
-    const themeFilePath = directory ? path.join(directory, "theme.json") : undefined;
+    const themeFilePath = writeTheme && directory ? path.join(directory, "theme.json") : undefined;
     if (themeFilePath) {
       await fs.writeFile(themeFilePath, request.themeFileContent!, { encoding: "utf8", mode: 0o600 });
     }
     const args = renderMermanArgs({ ...request, themeFilePath });
-    const invocation = resolveCliInvocation(request.context, args);
+    let frameOutput: string | undefined;
+    if (directory && frameLimit !== undefined) {
+      frameOutput = path.join(directory, "frame-out.json");
+      const previous = request.previewLayoutFrame?.previous;
+      if (previous && previous.byteLength <= frameLimit) {
+        const frameInput = path.join(directory, "frame-in.json");
+        await fs.writeFile(frameInput, previous, { mode: 0o600 });
+        args.push("--preview-frame-in", frameInput);
+      }
+      args.push("--preview-frame-out", frameOutput);
+    }
+    const invocation = withArgs(args);
     request.outputChannel.info(
       `${request.signalLabel ?? "render"}=${invocation.source} command="${invocation.command}" args="${invocation.args.join(" ")}"`,
     );
-    return await runRenderProcess({
+    const result = await runRenderProcess({
       invocation,
       source: request.source,
       signal: request.signal,
     });
+    if (!frameOutput || !frameLimit || request.signal?.aborted) {
+      return result;
+    }
+    const previewLayoutFrame = await readPreviewLayoutFrame(frameOutput, frameLimit);
+    return previewLayoutFrame ? { ...result, previewLayoutFrame } : result;
   } finally {
     if (directory) {
       await fs.rm(directory, { recursive: true, force: true });
     }
   }
+}
+
+async function readPreviewLayoutFrame(filePath: string, limit: number): Promise<Buffer | undefined> {
+  try {
+    const stat = await fs.lstat(filePath);
+    if (!stat.isFile() || stat.size === 0 || stat.size > limit) {
+      return undefined;
+    }
+    const handle = await fs.open(filePath, "r");
+    try {
+      const bytes = Buffer.allocUnsafe(stat.size + 1);
+      let offset = 0;
+      while (offset < bytes.length) {
+        const { bytesRead } = await handle.read(bytes, offset, bytes.length - offset, null);
+        if (bytesRead === 0) {
+          break;
+        }
+        offset += bytesRead;
+      }
+      if (offset === stat.size) {
+        const frame = bytes.subarray(0, offset);
+        const document: unknown = JSON.parse(frame.toString("utf8"));
+        if (document && typeof document === "object" && !Array.isArray(document)) {
+          return frame;
+        }
+      }
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
 }

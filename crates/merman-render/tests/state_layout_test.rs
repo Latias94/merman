@@ -7,12 +7,12 @@ use merman_model::presentation::{
 };
 use merman_model::resources::InputResourcePolicy;
 use merman_model::{MermaidConfig, OperationControl, OperationPhase};
-use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::model::StateDiagramLayout;
 use merman_render::resources::RenderResourcePolicy;
 use merman_render::text::{DeterministicTextMeasurer, TextMeasurer, TextStyle, WrapMode};
+use merman_render::{Error, LayoutOptions, RenderCapability, RenderCapabilityPolicy};
 use std::path::PathBuf;
 
 fn workspace_root() -> PathBuf {
@@ -40,6 +40,140 @@ fn rect_contains(outer: (f64, f64, f64, f64), inner: (f64, f64, f64, f64), eps: 
         && imax_x <= omax_x + eps
         && imin_y + eps >= omin_y
         && imax_y <= omax_y + eps
+}
+
+#[test]
+fn state_shoal_requires_the_build_and_host_capability() {
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(
+            "---\nconfig:\n  layout: shoal\n---\nstateDiagram-v2\nReady --> Done",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    for (policy, available) in [
+        (
+            RenderCapabilityPolicy::unrestricted(),
+            cfg!(feature = "layout-shoal"),
+        ),
+        (RenderCapabilityPolicy::deny_all(), false),
+    ] {
+        let session = RenderEnvironment::deterministic()
+            .with_capability_policy(policy)
+            .begin_session()
+            .unwrap();
+        let plan = family::plan_render(&parsed, &session).unwrap();
+        assert_eq!(
+            plan.required_capabilities(),
+            [RenderCapability::LayoutShoal]
+        );
+        assert_eq!(plan.is_ready(), available);
+        let result = family::prepare(&parsed, &LayoutOptions::default(), session);
+        if available {
+            result.unwrap();
+        } else {
+            assert!(matches!(
+                result,
+                Err(Error::MissingCapability {
+                    capability: RenderCapability::LayoutShoal,
+                    ..
+                })
+            ));
+        }
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_keeps_region_direction_and_draws_a_native_self_transition() {
+    let source = "\
+---
+config:
+  layout: shoal
+  htmlLabels: false
+---
+stateDiagram-v2
+  [*] --> Protocol
+  state Protocol {
+    direction LR
+    [*] --> Idle
+    Idle --> Working : start
+    Working --> Working : retry
+    Working --> [*]
+    --
+    [*] --> Audit
+    Audit --> [*]
+  }
+  Protocol --> [*]
+";
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let plan = family::plan_render(&parsed, &session).unwrap();
+    assert_eq!(
+        plan.required_capabilities(),
+        [RenderCapability::LayoutShoal]
+    );
+    let prepared = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .expect("Shoal State layout");
+    let layout: StateDiagramLayout =
+        serde_json::from_value(prepared.layout_json().unwrap()["layout"]["StateDiagramV2"].clone())
+            .unwrap();
+    let protocol = layout
+        .clusters
+        .iter()
+        .find(|cluster| cluster.id == "Protocol")
+        .unwrap();
+    assert_eq!(protocol.requested_dir.as_deref(), Some("LR"));
+    assert_eq!(protocol.effective_dir, "LR");
+    let regions: Vec<_> = layout
+        .clusters
+        .iter()
+        .filter(|cluster| cluster.id != "Protocol")
+        .collect();
+    assert_eq!(regions.len(), 2);
+    assert!(regions.iter().all(|region| region.effective_dir == "LR"));
+    assert!(regions.iter().all(|region| region.requested_dir.is_none()));
+    assert!(regions.iter().all(|region| rect_contains(
+        rect_from_cluster(protocol),
+        rect_from_cluster(region),
+        1e-6,
+    )));
+    let self_transition = layout
+        .edges
+        .iter()
+        .find(|edge| edge.from == "Working" && edge.to == "Working")
+        .unwrap();
+    assert!(self_transition.points.len() >= 4);
+    assert!(self_transition.label.is_some());
+    let svg = prepared
+        .render_svg(&Default::default(), &Default::default())
+        .expect("Shoal State SVG");
+    let document = roxmltree::Document::parse(svg.svg()).unwrap();
+    for region in regions {
+        let frame = document
+            .descendants()
+            .find(|node| {
+                node.attribute("data-et") == Some("divider")
+                    && node.attribute("data-id") == Some(region.id.as_str())
+            })
+            .unwrap()
+            .descendants()
+            .find(|node| node.has_tag_name("rect"))
+            .unwrap();
+        let number = |attribute| frame.attribute(attribute).unwrap().parse::<f64>().unwrap();
+        assert!((number("width") - region.width).abs() <= 0.001);
+        assert!((number("height") - region.height).abs() <= 0.001);
+    }
+    let arrows = document
+        .descendants()
+        .filter(|node| node.has_tag_name("path") && node.attribute("marker-end").is_some())
+        .count();
+    assert_eq!(arrows, layout.edges.len());
 }
 
 fn deep_state_composite_chain(depth: usize) -> String {

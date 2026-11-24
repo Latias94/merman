@@ -108,6 +108,8 @@ macro_rules! native_sdk_artifact_contract {
             $crate::CapabilityKey::LayoutCytoscape,
             #[cfg(feature = "layout-elk")]
             $crate::CapabilityKey::LayoutElk,
+            #[cfg(feature = "layout-shoal")]
+            $crate::CapabilityKey::LayoutShoal,
             #[cfg(feature = "math")]
             $crate::CapabilityKey::Math,
         ];
@@ -848,6 +850,10 @@ impl ValidatedArtifactContract {
             (
                 CapabilityKey::LayoutElk,
                 merman::svg::RenderCapability::LayoutElk,
+            ),
+            (
+                CapabilityKey::LayoutShoal,
+                merman::svg::RenderCapability::LayoutShoal,
             ),
             (CapabilityKey::Math, merman::svg::RenderCapability::Math),
         ] {

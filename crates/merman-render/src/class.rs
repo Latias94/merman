@@ -28,6 +28,8 @@ pub(crate) mod config;
 mod elk_terminals;
 mod measured;
 pub(crate) mod node_binding;
+#[cfg(feature = "layout-shoal")]
+pub(crate) mod shoal;
 use self::config::ClassLayoutSettings;
 pub(crate) use self::config::ClassRenderConfig;
 pub(crate) use node_binding::{ClassInterfaceVisualBinding, ClassNodeVisualPlan};
@@ -2201,6 +2203,8 @@ pub(crate) struct ClassPreparedSvgTitle {
 pub(crate) struct ClassPreparedLabels {
     pub(crate) titles_by_id: FxHashMap<String, ClassPreparedSvgTitle>,
     pub(crate) edges_by_id: FxHashMap<String, ClassPreparedSvgEdgeLabel>,
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) canonical_routes: Option<crate::graph_layout::canonical::CanonicalRoutes>,
 }
 
 #[derive(Debug)]

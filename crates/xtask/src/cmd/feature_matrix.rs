@@ -116,7 +116,7 @@ const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
     ("merman-wasm", &[]),
     ("roughr-merman", &["host-random", "legacy-compat"]),
 ];
-const SVG_ENGINE_FEATURES: &[&str] = &["layout-cytoscape", "layout-elk", "math"];
+const SVG_ENGINE_FEATURES: &[&str] = &["layout-cytoscape", "layout-elk", "layout-shoal", "math"];
 const RETIRED_BINDING_RUNTIME_FEATURES: &[&str] =
     &["system-clock", "system-random", "system-timezone"];
 const BINDINGS_CORE_NATIVE_RUNTIME_EDGES: &[&str] = &[
@@ -223,6 +223,7 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
             "jpeg",
             "layout-cytoscape",
             "layout-elk",
+            "layout-shoal",
             "math",
             "native-fonts",
             "pdf",
@@ -239,6 +240,7 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
             "jpeg",
             "layout-cytoscape",
             "layout-elk",
+            "layout-shoal",
             "math",
             "native-fonts",
             "pdf",

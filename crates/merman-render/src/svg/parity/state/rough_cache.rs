@@ -6,6 +6,8 @@ use std::rc::Rc;
 pub(super) struct StateRenderDetails {
     pub(super) root_calls: u32,
     pub(super) clusters: std::time::Duration,
+    #[cfg(feature = "layout-shoal")]
+    pub(super) canonical_edge_bounds: Option<kurbo::Rect>,
     pub(super) edge_paths: std::time::Duration,
     pub(super) edge_labels: std::time::Duration,
     pub(super) leaf_nodes: std::time::Duration,

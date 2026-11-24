@@ -4,7 +4,10 @@ use std::path::PathBuf;
 use merman::{
     OperationControl, RenderError, RenderOutput, RenderRequest, Renderer, ResourceLimitCause,
     SourcePresentationConfig, SvgEnvironment, SvgRequest,
-    svg::{RenderCapability, ResourceLimitId, SvgOutputPolicy, SvgPipelinePreset},
+    svg::{
+        RenderCapability, RenderCapabilityPolicy, ResourceLimitId, SvgOutputPolicy,
+        SvgPipelinePreset,
+    },
 };
 use serde_json::Value;
 
@@ -104,7 +107,12 @@ fn render_mermaid_svg(
         SanitizeMode::Off => policy.pipeline().with_rebased_ids(diagram_id),
     };
     let request = SvgRequest {
-        environment: SvgEnvironment::deterministic().with_resource_policy(resources),
+        // The macro has its own feature surface even if a sibling enables Shoal on the facade.
+        environment: SvgEnvironment::deterministic()
+            .with_capability_policy(
+                RenderCapabilityPolicy::unrestricted().with_denied(RenderCapability::LayoutShoal),
+            )
+            .with_resource_policy(resources),
         pipeline: Some(pipeline),
         options: merman::svg::SvgRenderOptions {
             diagram_id: Some(diagram_id.to_string()),
@@ -174,6 +182,18 @@ mod tests {
 
     fn render(source: &str, index: usize, options: Options) -> Result<RenderedDiagram> {
         render_mermaid_diagram(source, index, &options, "merman-rustdoc-test")
+    }
+
+    #[test]
+    #[cfg(feature = "diagram-flowchart")]
+    fn rustdoc_does_not_inherit_a_sibling_shoal_feature() {
+        let source = "---\nconfig:\n  layout: shoal\n---\nflowchart LR\nA --> B";
+        assert!(
+            render(source, 0, Options::default())
+                .unwrap_err()
+                .to_string()
+                .contains("layout-shoal")
+        );
     }
 
     #[test]

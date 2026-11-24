@@ -201,7 +201,7 @@ pub(super) fn render_state_node_svg(
 
     let mut link_open = String::new();
     let mut link_close = String::new();
-    let mut node_title_attr = String::new();
+    let mut node_attrs = String::new();
     if let Some(links) = ctx.links.get(node_id) {
         let mut push_link = |link: &StateSvgLink| {
             let title_attr = if link.tooltip.is_empty() {
@@ -215,7 +215,7 @@ pub(super) fn render_state_node_svg(
                 format!(r#" title="{}""#, escape_attr(tooltip))
             };
             if !title_attr.is_empty() {
-                node_title_attr = title_attr.clone();
+                node_attrs = title_attr.clone();
             }
 
             if let Some(href) = prepare_mermaid_navigation_href(
@@ -249,6 +249,13 @@ pub(super) fn render_state_node_svg(
         }
     }
     out.push_str(&link_open);
+    if ctx.uses_canonical_routes() {
+        let _ = write!(
+            node_attrs,
+            r#" data-et="node" data-id="{}""#,
+            escape_attr_display(node_id),
+        );
+    }
 
     match node.shape.as_str() {
         "stateStart" => {
@@ -300,7 +307,7 @@ pub(super) fn render_state_node_svg(
                     escape_xml_display(data_look),
                     fmt_display(cx),
                     fmt_display(cy),
-                    node_title_attr,
+                    node_attrs,
                     path_d.as_str(),
                     escape_xml_display(fill),
                     fill_style,
@@ -329,7 +336,7 @@ pub(super) fn render_state_node_svg(
                 escape_xml_display(data_look),
                 fmt_display(cx),
                 fmt_display(cy),
-                node_title_attr,
+                node_attrs,
                 escape_xml_display(&semantic_style)
             );
             drop(_g_emit);
@@ -432,7 +439,7 @@ pub(super) fn render_state_node_svg(
                 escape_attr(data_look),
                 fmt(cx),
                 fmt(cy),
-                node_title_attr,
+                node_attrs,
                 small_shadow_attr,
                 outer_d.as_str(),
                 escape_attr(outer_fill),
@@ -510,7 +517,7 @@ pub(super) fn render_state_node_svg(
                 escape_xml_display(data_look),
                 fmt_display(cx),
                 fmt_display(cy),
-                node_title_attr,
+                node_attrs,
                 fill_d.as_str(),
                 escape_xml_display(fill_attr),
                 fill_path_style_escaped,
@@ -574,7 +581,7 @@ pub(super) fn render_state_node_svg(
                 escape_xml_display(data_look),
                 fmt_display(cx),
                 fmt_display(cy),
-                node_title_attr,
+                node_attrs,
                 fill_d.as_str(),
                 escape_xml_display(fill_attr),
                 fill_path_style_escaped,
@@ -716,7 +723,7 @@ pub(super) fn render_state_node_svg(
                     escape_xml_display(data_look),
                     fmt_display(cx),
                     fmt_display(cy),
-                    node_title_attr,
+                    node_attrs,
                     fill_d.as_str(),
                     escape_xml_display(fill_attr),
                     fill_path_style_escaped,
@@ -741,7 +748,7 @@ pub(super) fn render_state_node_svg(
                     escape_xml_display(data_look),
                     fmt_display(cx),
                     fmt_display(cy),
-                    node_title_attr,
+                    node_attrs,
                     fill_d.as_str(),
                     escape_xml_display(fill_attr),
                     fill_path_style_escaped,
@@ -874,7 +881,7 @@ pub(super) fn render_state_node_svg(
                     escape_xml_display(data_look),
                     fmt_display(cx),
                     fmt_display(cy),
-                    node_title_attr,
+                    node_attrs,
                     shape_style_escaped,
                     radius_attrs,
                     fmt_display(-w / 2.0),
@@ -910,7 +917,7 @@ pub(super) fn render_state_node_svg(
                     escape_xml_display(data_look),
                     fmt_display(cx),
                     fmt_display(cy),
-                    node_title_attr,
+                    node_attrs,
                     shape_style_escaped,
                     radius_attrs,
                     fmt_display(-w / 2.0),
@@ -1039,7 +1046,7 @@ pub(super) fn render_state_node_svg(
                     escape_xml_display(data_look),
                     fmt_display(cx),
                     fmt_display(cy),
-                    node_title_attr,
+                    node_attrs,
                 );
                 body.write(out, None);
                 if ctx.html_labels {
@@ -1103,7 +1110,7 @@ pub(super) fn render_state_node_svg(
                     escape_xml_display(data_look),
                     fmt_display(cx),
                     fmt_display(cy),
-                    node_title_attr,
+                    node_attrs,
                     fill_d.as_str(),
                     escape_xml_display(fill_attr),
                     escape_xml_display(fill_path_style_attr),
@@ -1128,7 +1135,7 @@ pub(super) fn render_state_node_svg(
                     escape_xml_display(data_look),
                     fmt_display(cx),
                     fmt_display(cy),
-                    node_title_attr,
+                    node_attrs,
                     fill_d.as_str(),
                     escape_xml_display(fill_attr),
                     escape_xml_display(fill_path_style_attr),

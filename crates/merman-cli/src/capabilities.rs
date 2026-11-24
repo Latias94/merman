@@ -35,6 +35,15 @@ struct CapabilityDocument<'a> {
     ascii: AsciiCapabilityDocument,
     #[cfg(feature = "svg")]
     theme_presets: Option<ThemePresetCatalogDocument>,
+    #[cfg(feature = "layout-shoal")]
+    preview_layout_frame: PreviewLayoutFrameDocument,
+}
+
+#[cfg(feature = "layout-shoal")]
+#[derive(Serialize)]
+struct PreviewLayoutFrameDocument {
+    protocol_version: u16,
+    max_bytes: usize,
 }
 
 #[cfg(feature = "svg")]
@@ -299,6 +308,11 @@ pub(crate) fn write_compiled_capabilities(
         ascii: ascii_capability_document(),
         #[cfg(feature = "svg")]
         theme_presets: Some(theme_preset_catalog_document()),
+        #[cfg(feature = "layout-shoal")]
+        preview_layout_frame: PreviewLayoutFrameDocument {
+            protocol_version: 1,
+            max_bytes: crate::render::preview_frame::MAX_BYTES,
+        },
     };
 
     if json {
@@ -536,6 +550,7 @@ fn compiled_capability_ids() -> Vec<&'static str> {
     include_capability!("jpeg", "jpeg");
     include_capability!("layout-cytoscape", "layout-cytoscape");
     include_capability!("layout-elk", "layout-elk");
+    include_capability!("layout-shoal", "layout-shoal");
     include_capability!("markdown", "markdown");
     include_capability!("math", "math");
     include_capability!("native-fonts", "native-fonts");
@@ -602,6 +617,10 @@ mod tests {
         let ids = compiled_capability_ids();
 
         assert_eq!(ids.contains(&"fixes"), cfg!(feature = "fixes"));
+        assert_eq!(
+            ids.contains(&"layout-shoal"),
+            cfg!(feature = "layout-shoal")
+        );
         assert_eq!(
             compiled_command_ids().contains(&"fix".to_string()),
             cfg!(feature = "fixes")

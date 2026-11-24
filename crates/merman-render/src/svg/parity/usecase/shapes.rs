@@ -1,4 +1,5 @@
 use super::*;
+use crate::usecase::actor::{self, ActorPlacement};
 use merman_model::families::usecase::UsecaseNode;
 
 pub(super) fn write_dagre_helper(
@@ -77,6 +78,8 @@ pub(super) struct UsecaseNodeRenderContext<'a> {
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) options: &'a SvgExecution<'a>,
+    #[cfg(feature = "layout-shoal")]
+    pub(super) canonical: bool,
 }
 
 /// The same body silhouette supplies the depth pass and the single foreground surface.
@@ -152,9 +155,15 @@ pub(super) fn write_node(
             fmt(node.width),
             fmt(node.height)
         );
-        let content_height = node.height - 20.0;
-        let glyph_y = -content_height / 2.0 + 36.0;
-        let mut y = -content_height / 2.0 + 80.0;
+        let placement = ActorPlacement::legacy(node.height);
+        #[cfg(feature = "layout-shoal")]
+        let placement = if context.canonical {
+            ActorPlacement::canonical(plan.height, actor.actor_type).0
+        } else {
+            placement
+        };
+        let glyph_y = placement.glyph_y;
+        let mut y = placement.caption_top;
         if let Some(stereotype) = &plan.stereotype {
             write_label(
                 out,
@@ -205,25 +214,36 @@ pub(super) fn write_node(
             UsecaseActorType::Normal => {
                 let _ = write!(
                     out,
-                    r#"<path class="usecase-actor-stick" d="M 0 -12 C 6.627 -12 12 -17.373 12 -24 C 12 -30.627 6.627 -36 0 -36 C -6.627 -36 -12 -30.627 -12 -24 C -12 -17.373 -6.627 -12 0 -12 Z M 0 -12 V 8 M -17 -5 H 17 M 0 8 L -15 28 M 0 8 L 15 28"{paint_attr}/>"#
+                    r#"<path class="usecase-actor-stick" d="{}"{paint_attr}/>"#,
+                    actor::NORMAL
                 );
             }
             UsecaseActorType::Hollow => {
                 let _ = write!(
                     out,
-                    r#"<circle class="usecase-actor-hollow-head" cx="0" cy="-23" r="9" fill="none"{paint_attr}/><path class="usecase-actor-hollow-body" d="M -22 -10 H 22 V 0 H 6 L 22 17 L 13 28 L 0 13 L -13 28 L -22 17 L -6 0 H -22 Z" fill="none"{paint_attr}/>"#
+                    r#"<circle class="usecase-actor-hollow-head" cx="0" cy="{}" r="{}" fill="none"{paint_attr}/><path class="usecase-actor-hollow-body" d="{}" fill="none"{paint_attr}/>"#,
+                    actor::HOLLOW_HEAD_Y,
+                    actor::HOLLOW_HEAD_RADIUS,
+                    actor::HOLLOW_BODY
                 );
             }
             UsecaseActorType::Awesome => {
                 let _ = write!(
                     out,
-                    r#"<path class="usecase-actor-awesome-silhouette" d="M 0 -34 C 7.18 -34 13 -28.18 13 -21 C 13 -13.82 7.18 -8 0 -8 C -7.18 -8 -13 -13.82 -13 -21 C -13 -28.18 -7.18 -34 0 -34 Z M -24 25 C -24 7 -14 -3 0 -3 C 14 -3 24 7 24 25 C 24 28 21 30 18 30 H -18 C -21 30 -24 28 -24 25 Z"{paint_attr}/>"#
+                    r#"<path class="usecase-actor-awesome-silhouette" d="{}"{paint_attr}/>"#,
+                    actor::AWESOME
                 );
             }
             UsecaseActorType::Icon => {
                 let _ = write!(
                     out,
-                    r#"<rect class="usecase-actor-icon-frame" x="-26" y="-28" width="52" height="52" rx="4" ry="4"{paint_attr}/>"#
+                    r#"<rect class="usecase-actor-icon-frame" x="{}" y="{}" width="{}" height="{}" rx="{}" ry="{}"{paint_attr}/>"#,
+                    -actor::ICON_WIDTH / 2.0,
+                    actor::ICON_Y,
+                    actor::ICON_WIDTH,
+                    actor::ICON_HEIGHT,
+                    actor::ICON_CORNER,
+                    actor::ICON_CORNER
                 );
                 let icon = if let Some(registry) = context.options.icon_registry() {
                     let work = context.options.work_meter();

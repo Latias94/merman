@@ -971,6 +971,9 @@ pub(crate) struct LayoutOptionsJson {
     pub(crate) container_width: Option<f64>,
     pub(crate) container_height: Option<f64>,
     pub(crate) screen_available_width: Option<f64>,
+    pub(crate) fold_wide_ranks: Option<bool>,
+    pub(crate) capture_shoal_frame: Option<bool>,
+    pub(crate) previous_shoal_frame: Option<Box<RawValue>>,
 }
 
 #[cfg(feature = "svg")]

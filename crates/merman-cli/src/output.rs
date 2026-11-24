@@ -507,6 +507,16 @@ pub(crate) fn preflight(
             if let Some(path) = &args.common.render.theme_report {
                 preflight_theme_report(path, cwd, &inputs, &mut publications, None)?;
             }
+            #[cfg(feature = "layout-shoal")]
+            if let Some(path) = &args.common.render.preview_frame_out {
+                let target = preflight_file_target(path, cwd, &inputs, MissingParent::Reject)?;
+                if target.identity.is_some() {
+                    return Err(CliError::InvalidOutput(
+                        "--preview-frame-out requires a new file".to_owned(),
+                    ));
+                }
+                approve_render_sidecar(target, "preview layout frame", &mut publications)?;
+            }
             publications.protect(&inputs);
         }
         #[cfg(feature = "markdown")]
@@ -856,6 +866,11 @@ fn anchor_render_inputs(common: &mut crate::invocation::ResolvedRenderCommon, cw
         anchor_optional_path(&mut common.render.theme_report, cwd);
         anchor_optional_path(&mut common.css_file, cwd);
     }
+    #[cfg(feature = "layout-shoal")]
+    {
+        anchor_optional_path(&mut common.render.preview_frame_in, cwd);
+        anchor_optional_path(&mut common.render.preview_frame_out, cwd);
+    }
 }
 
 #[cfg(feature = "fixes")]
@@ -950,6 +965,15 @@ fn render_inputs(
     if let Some(path) = common.render.theme_design_file.as_deref() {
         inputs.push(ProtectedInput::inspect(
             "theme design input",
+            InputRole::Auxiliary,
+            path,
+            &common.cwd,
+        )?);
+    }
+    #[cfg(feature = "layout-shoal")]
+    if let Some(path) = common.render.preview_frame_in.as_deref() {
+        inputs.push(ProtectedInput::inspect(
+            "preview layout frame input",
             InputRole::Auxiliary,
             path,
             &common.cwd,
@@ -1665,6 +1689,16 @@ fn preflight_theme_report(
             "--theme-report must be outside the managed batch output directory".to_owned(),
         ));
     }
+    approve_render_sidecar(target, "theme report", publications)
+}
+
+#[cfg(feature = "svg")]
+fn approve_render_sidecar(
+    target: FileTarget,
+    label: &str,
+    publications: &mut PublicationGuards,
+) -> Result<(), CliError> {
+    let path = &target.requested;
     if let Some(identity) = &target.identity {
         for (name, stream) in [
             ("stdin", same_file::Handle::stdin()),
@@ -1673,7 +1707,7 @@ fn preflight_theme_report(
         ] {
             if stream.is_ok_and(|stream| stream == **identity) {
                 return Err(CliError::InvalidOutput(format!(
-                    "theme report {} aliases {name}; choose a separate file",
+                    "{label} {} aliases {name}; choose a separate file",
                     safe_path(path),
                 )));
             }
@@ -1707,7 +1741,7 @@ fn preflight_theme_report(
         };
         if aliases {
             return Err(CliError::InvalidOutput(format!(
-                "theme report {} aliases an image or document output; choose a separate file",
+                "{label} {} aliases an image or document output; choose a separate file",
                 safe_path(path),
             )));
         }

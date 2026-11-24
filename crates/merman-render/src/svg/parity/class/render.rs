@@ -70,9 +70,16 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     };
     let mut relation_theme_receipt = relation_theme.begin_outcomes(marker_expectations);
 
+    #[cfg(feature = "layout-shoal")]
+    let canonical_routes = prepared_labels.canonical_routes.as_ref();
+    #[cfg(feature = "layout-shoal")]
+    let uses_canonical_routes = canonical_routes.is_some();
+    #[cfg(not(feature = "layout-shoal"))]
+    let uses_canonical_routes = false;
+
     // Mermaid's Dagre renderer applies fixed 8px graph margins. Its registered ELK renderer emits
     // the layout coordinates directly and keeps the viewport padding as the only outer margin.
-    let content_tx = if layout.uses_elk_adapter_dom {
+    let content_tx = if layout.uses_elk_adapter_dom || uses_canonical_routes {
         0.0
     } else {
         CLASS_GRAPH_MARGIN_PX
@@ -200,6 +207,8 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         relations_by_id: &relations_by_id,
         relation_index_by_id: &relation_index_by_id,
         prepared_svg_edge_labels: &prepared_labels.edges_by_id,
+        #[cfg(feature = "layout-shoal")]
+        canonical_routes,
         diagram_marker_class: aria_roledescription,
         diagram_id,
         content_tx,
@@ -247,6 +256,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         relation_theme,
         content_tx,
         content_ty,
+        use_layout_title_anchor: uses_canonical_routes,
         timing,
         emit,
     };

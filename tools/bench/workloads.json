@@ -107,6 +107,7 @@
       "fixtures": ["flowchart_nested_clusters", "flowchart_long_edge_labels"],
       "repeat": 2
     },
+    {"id":"flowchart-nested-layout", "fixtures":["flowchart_nested_clusters"]},
     {
       "id": "flowchart-layout-dagre-classic",
       "fixtures": ["flowchart_nested_clusters_dagre_classic", "flowchart_long_edge_labels_dagre_classic"],

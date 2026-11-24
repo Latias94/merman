@@ -16,6 +16,7 @@ export const WASM_RUNTIME_TOP_LEVEL_FILES = Object.freeze([
   "merman_wasm_bg.wasm",
   "merman_wasm_bg.wasm.d.ts",
 ]);
+const WASM_RUNTIME_PREFIX = "artifacts/wasm";
 
 /**
  * Returns the exact copied wasm-bindgen runtime file set with content evidence.
@@ -26,7 +27,7 @@ export const WASM_RUNTIME_TOP_LEVEL_FILES = Object.freeze([
  */
 export function wasmRuntimeFileRecords(
   runtimeRoot,
-  { strictTopLevel = false, relativePrefix = "artifacts/wasm" } = {},
+  { strictTopLevel = false, relativePrefix = WASM_RUNTIME_PREFIX } = {},
 ) {
   if (!existsSync(runtimeRoot) || !lstatSync(runtimeRoot).isDirectory()) {
     throw new Error(`Missing WASM runtime directory: ${runtimeRoot}.`);
@@ -49,6 +50,17 @@ export function wasmRuntimeFileRecords(
     records.push(...walkSnippetFiles(snippetsRoot, `${relativePrefix}/snippets`));
   }
   return records.sort(compareRecords);
+}
+
+export function assertWasmRuntimeMatchesInput(records, inputFiles) {
+  const expected = inputFiles
+    .filter(({ path }) => WASM_RUNTIME_TOP_LEVEL_FILES.includes(path) || path.startsWith("snippets/"))
+    .map(({ path, sha256 }) => ({ path: `${WASM_RUNTIME_PREFIX}/${path}`, sha256: `sha256:${sha256}` }))
+    .sort(compareRecords);
+  const actual = records.map(({ path, sha256 }) => ({ path, sha256 }));
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error("Assembled WASM files do not match the selected build's input manifest.");
+  }
 }
 
 export function packageDistFileRecords(

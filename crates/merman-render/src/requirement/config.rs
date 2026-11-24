@@ -105,6 +105,20 @@ impl<'a> RequirementConfigView<'a> {
         }
     }
 
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) fn canonical_stroke_width(&self) -> f64 {
+        if config_diagram_look(self.effective_config).is_neo() {
+            crate::config::config_f64_css_absolute_px(
+                self.effective_config,
+                &["themeVariables", "strokeWidth"],
+            )
+            .filter(|width| *width >= 0.0)
+            .unwrap_or(1.0)
+        } else {
+            1.0
+        }
+    }
+
     fn config_f64(&self, path: &[&str]) -> Option<f64> {
         config_f64(self.effective_config, path)
     }

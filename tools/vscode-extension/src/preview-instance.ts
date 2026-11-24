@@ -42,7 +42,7 @@ import {
   type PreviewAction,
   type PreviewUpdateReason,
 } from "./preview-policy.js";
-import { PreviewRenderQueue } from "./preview-render.js";
+import { PreviewRenderQueue, type PreviewRenderContent } from "./preview-render.js";
 import { PreviewSession } from "./preview-session.js";
 import {
   getPreviewSourceSnapshot,
@@ -383,7 +383,7 @@ export class PreviewInstance implements vscode.Disposable {
 
   private disposePanelState(): void {
     this.clearPendingRender();
-    this.renderQueue.cancelPending();
+    this.renderQueue.reset();
     this.renderedOutputStale = false;
     this.panel = undefined;
     this.session.reset();
@@ -499,7 +499,7 @@ export class PreviewInstance implements vscode.Disposable {
     if (!snapshot) {
       panel.title = PREVIEW_TITLE;
       this.session.clearSource();
-      this.renderQueue.cancelPending();
+      this.renderQueue.reset();
       await this.applyActions(actions);
       return;
     }
@@ -566,7 +566,8 @@ export class PreviewInstance implements vscode.Disposable {
     }
     await this.renderQueue.render(snapshot, reason, {
       beforeRender,
-      renderContent: (renderedSnapshot, signal) => this.renderContent(renderedSnapshot, signal),
+      renderContent: (renderedSnapshot, signal, previousLayoutFrame) =>
+        this.renderContent(renderedSnapshot, signal, previousLayoutFrame),
       postMessage: (message) => {
         const currentSnapshot = this.session.snapshot;
         return this.postMessage(
@@ -599,7 +600,11 @@ export class PreviewInstance implements vscode.Disposable {
     );
   }
 
-  private async renderContent(snapshot: PreviewSnapshot, signal: AbortSignal): Promise<string> {
+  private async renderContent(
+    snapshot: PreviewSnapshot,
+    signal: AbortSignal,
+    previousLayoutFrame: Buffer | undefined,
+  ): Promise<PreviewRenderContent> {
     const result = await renderMermanSource({
       context: this.context,
       source: snapshot.input.source,
@@ -608,12 +613,15 @@ export class PreviewInstance implements vscode.Disposable {
       outputChannel: this.outputChannel,
       signalLabel: "preview",
       signal,
+      previewLayoutFrame: snapshot.displayMode === "svg"
+        ? { previous: previousLayoutFrame }
+        : undefined,
     });
     const content = result.stdout.toString("utf8");
     if (snapshot.displayMode === "svg") {
       assertSelfContainedPreviewSvg(content);
     }
-    return content;
+    return { content, previewLayoutFrame: result.previewLayoutFrame };
   }
 
   private ensureWebviewHtml(panel: vscode.WebviewPanel): void {

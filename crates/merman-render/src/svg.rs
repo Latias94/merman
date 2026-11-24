@@ -30,7 +30,13 @@ pub(crate) use parity::PreparedCommonCss;
 ))]
 pub(crate) use parity::PreparedCommonNeoCss;
 pub(crate) use parity::PreparedLookDefs;
+#[cfg(all(feature = "diagram-class", feature = "layout-shoal"))]
+pub(crate) use parity::class_canonical_marker;
 pub(crate) use parity::cssom_color_value;
+#[cfg(all(feature = "diagram-er", feature = "layout-shoal"))]
+pub(crate) use parity::er_canonical_marker;
+#[cfg(all(feature = "diagram-state", feature = "layout-shoal"))]
+pub(crate) use parity::state_canonical_marker;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",

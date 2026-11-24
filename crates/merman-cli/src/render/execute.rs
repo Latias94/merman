@@ -104,7 +104,17 @@ pub(crate) fn execute_render(
                 &single.publications,
                 &context.stdout,
                 context.publication.as_mut(),
-            )
+            )?;
+            #[cfg(feature = "layout-shoal")]
+            if let Some((path, bytes)) = &artifact.preview_frame {
+                context.publication.publish_file_controlled(
+                    path,
+                    bytes,
+                    &single.publications,
+                    &single.control,
+                )?;
+            }
+            Ok(())
         }
         #[cfg(feature = "markdown")]
         PreparedWorkflow::Markdown(batch) => crate::batch::execute(*batch, context),
@@ -244,12 +254,21 @@ fn execute_graphical_with_pipeline(
                             .contains(&merman::TargetAdmissionReason::FallbackCssResidual),
                         stderr,
                     );
+                    #[cfg(feature = "layout-shoal")]
+                    let preview_frame =
+                        match (&prepared.preview_frame_out, svg.shoal_layout_frame()) {
+                            (Some(path), Some(frame)) => super::preview_frame::encode(frame)?
+                                .map(|bytes| (path.clone(), bytes)),
+                            _ => None,
+                        };
                     let (svg, _) = svg.into_parts();
                     #[cfg(feature = "markdown")]
                     let metadata = svg_metadata_for_document(&svg, writes_document);
                     Ok(ExecutedArtifact {
                         bytes: svg.into_bytes(),
                         theme_result,
+                        #[cfg(feature = "layout-shoal")]
+                        preview_frame,
                         _permit: Some(permit),
                         #[cfg(feature = "markdown")]
                         title: metadata.0,
@@ -295,6 +314,8 @@ fn execute_graphical_with_pipeline(
                     Ok(ExecutedArtifact {
                         bytes: output.into_bytes(),
                         theme_result,
+                        #[cfg(feature = "layout-shoal")]
+                        preview_frame: None,
                         _permit: Some(permit),
                         #[cfg(feature = "markdown")]
                         title: metadata.0,
@@ -341,6 +362,8 @@ fn execute_graphical_with_pipeline(
                     Ok(ExecutedArtifact {
                         bytes: output.into_bytes(),
                         theme_result,
+                        #[cfg(feature = "layout-shoal")]
+                        preview_frame: None,
                         _permit: Some(permit),
                         #[cfg(feature = "markdown")]
                         title: metadata.0,
@@ -386,6 +409,8 @@ fn execute_graphical_with_pipeline(
                     Ok(ExecutedArtifact {
                         bytes: output.into_bytes(),
                         theme_result,
+                        #[cfg(feature = "layout-shoal")]
+                        preview_frame: None,
                         _permit: Some(permit),
                         #[cfg(feature = "markdown")]
                         title: metadata.0,
@@ -499,6 +524,8 @@ fn execute_raw_svg(
             );
             Ok(ExecutedArtifact {
                 theme_result: None,
+                #[cfg(feature = "layout-shoal")]
+                preview_frame: None,
                 bytes: prepared_raster
                     .encode_png()
                     .map_err(merman::RenderError::from)?,
@@ -533,6 +560,8 @@ fn execute_raw_svg(
             );
             Ok(ExecutedArtifact {
                 theme_result: None,
+                #[cfg(feature = "layout-shoal")]
+                preview_frame: None,
                 bytes: prepared_raster
                     .encode_jpeg()
                     .map_err(merman::RenderError::from)?,
@@ -563,6 +592,8 @@ fn execute_raw_svg(
             );
             Ok(ExecutedArtifact {
                 theme_result: None,
+                #[cfg(feature = "layout-shoal")]
+                preview_frame: None,
                 bytes: prepared_pdf.encode().map_err(merman::RenderError::from)?,
                 _permit: Some(permit),
                 #[cfg(feature = "markdown")]
@@ -652,6 +683,8 @@ pub(crate) struct ExecutedArtifact {
     bytes: Vec<u8>,
     #[cfg(feature = "svg")]
     pub(super) theme_result: Option<super::theme_feedback::ThemeResult>,
+    #[cfg(feature = "layout-shoal")]
+    preview_frame: Option<(std::path::PathBuf, Vec<u8>)>,
     _permit: Option<super::admission::BackendPermit>,
     #[cfg(feature = "markdown")]
     title: Option<String>,
@@ -671,6 +704,8 @@ impl ExecutedArtifact {
             bytes,
             #[cfg(feature = "svg")]
             theme_result: None,
+            #[cfg(feature = "layout-shoal")]
+            preview_frame: None,
             _permit: Some(permit),
             #[cfg(feature = "markdown")]
             title: None,

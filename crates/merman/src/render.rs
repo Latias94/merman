@@ -1477,6 +1477,7 @@ fn render_svg_target(
     let (rendered, operation) =
         prepare_rendered_family_svg(semantic, &request, crate::svg::SvgGeneration::Full)?;
     let required_capabilities = rendered.required_capabilities().to_vec();
+    let shoal_layout_frame = rendered.shoal_layout_frame();
     let finalized = merman_render::__private::finalize_standalone_for_target_admission(
         rendered,
         request.pipeline.as_ref(),
@@ -1491,6 +1492,7 @@ fn render_svg_target(
         required_capabilities,
         &operation.control,
         layout_adaptation,
+        shoal_layout_frame,
     );
     #[cfg(feature = "native-fonts")]
     request.environment.check_native_fonts()?;

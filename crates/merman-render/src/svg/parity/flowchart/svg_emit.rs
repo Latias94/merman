@@ -694,6 +694,8 @@ mod integration_tests {
                 String::new(),
                 vec![node.id.clone()],
             )]),
+            route_contract: crate::graph_layout::RouteContract::DagreParity,
+            placement: Default::default(),
             uses_elk_adapter_dom: false,
         };
         let policy = RenderResourcePolicy::unbounded_for_trusted_input()
@@ -796,6 +798,7 @@ mod integration_tests {
         assert_eq!(details.limit, ResourceLimitId::MaxSvgBytes.as_str());
     }
 
+    #[cfg(feature = "layout-elk")]
     #[test]
     fn elk_terminal_straightening_reaches_svg_and_preserves_ports() {
         use crate::model::{LayoutEdge, LayoutPoint};
@@ -865,6 +868,8 @@ mod integration_tests {
                     String::new(),
                     vec!["A".into(), "B".into()],
                 )]),
+                route_contract: crate::graph_layout::RouteContract::ElkParity,
+                placement: Default::default(),
                 uses_elk_adapter_dom: true,
             };
             let session = RenderEnvironment::deterministic().begin_session().unwrap();

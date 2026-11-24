@@ -1,0 +1,74 @@
+//! Shared boundary between measured diagram families, graph solvers, and path painting.
+
+#[cfg(all(
+    feature = "layout-shoal",
+    any(
+        feature = "diagram-class",
+        feature = "diagram-er",
+        feature = "diagram-requirement",
+        feature = "diagram-state",
+        feature = "diagram-usecase"
+    )
+))]
+pub(crate) mod canonical;
+#[cfg(any(feature = "layout-shoal", test))]
+pub(crate) mod contour;
+pub(crate) mod ir;
+#[cfg(any(feature = "layout-shoal", test))]
+pub(crate) mod route_paint;
+#[cfg(feature = "layout-shoal")]
+pub(crate) mod shoal_bridge;
+#[cfg(test)]
+pub(crate) mod validate;
+
+#[cfg(any(feature = "layout-shoal", test))]
+pub(crate) use ir::Marker;
+#[cfg(any(feature = "layout-shoal", test))]
+use ir::{Axis, BorderStitch, Endpoint, KnotKind, Side};
+
+/// Render-only metadata. Compatibility JSON already carries the coordinates in occurrence order.
+#[cfg(any(feature = "layout-shoal", test))]
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct RouteTopology {
+    pub(crate) endpoints: (Endpoint, Endpoint),
+    pub(crate) ports: (Side, Side),
+    pub(crate) knots: Vec<(Axis, KnotKind)>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) enum RouteContract {
+    #[default]
+    DagreParity,
+    #[cfg(feature = "layout-elk")]
+    ElkParity,
+    Swimlane,
+    /// Axes indexed by semantic occurrence, including holes for hidden edges.
+    #[cfg(any(feature = "layout-shoal", test))]
+    CanonicalAxis {
+        nodes: Vec<contour::ShapePortProfile>,
+        group_parents: Vec<Option<u32>>,
+        border_stitches: Vec<BorderStitch>,
+        clearance: route_paint::Clearance,
+        routes: Vec<Option<RouteTopology>>,
+    },
+}
+
+impl RouteContract {
+    pub(crate) fn group_parents(&self) -> Option<&[Option<u32>]> {
+        #[cfg(any(feature = "layout-shoal", test))]
+        if let Self::CanonicalAxis { group_parents, .. } = self {
+            return Some(group_parents);
+        }
+        None
+    }
+
+    pub(crate) fn uses_projected_edges(&self) -> bool {
+        match self {
+            #[cfg(feature = "layout-elk")]
+            Self::ElkParity => true,
+            #[cfg(any(feature = "layout-shoal", test))]
+            Self::CanonicalAxis { .. } => true,
+            Self::DagreParity | Self::Swimlane => false,
+        }
+    }
+}

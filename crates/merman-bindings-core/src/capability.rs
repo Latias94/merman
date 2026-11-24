@@ -21,6 +21,11 @@ const COMPILED_SVG_CAPABILITY_BITS: u64 = CapabilityKey::Svg.compact_bit()
     } else {
         0
     }
+    | if merman::svg::layout_shoal_available() {
+        CapabilityKey::LayoutShoal.compact_bit()
+    } else {
+        0
+    }
     | if merman::svg::math_available() {
         CapabilityKey::Math.compact_bit()
     } else {

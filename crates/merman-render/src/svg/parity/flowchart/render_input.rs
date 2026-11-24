@@ -67,9 +67,9 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
     model: &'a crate::flowchart::FlowchartModel,
     render_context: &'a crate::flowchart::FlowchartRenderContext,
     layout_edge_owners: &crate::flowchart::FlowchartEdgeOwners,
-    uses_elk_adapter_dom: bool,
+    use_semantic_edges: bool,
 ) -> FlowchartRenderInputs<'a> {
-    let merge_self_loops = uses_elk_adapter_dom
+    let merge_self_loops = use_semantic_edges
         || crate::flowchart::flowchart_dagre_merges_self_loop_segments(&model.keyword);
     let renderable_edges: FxHashSet<usize> = layout_edge_owners
         .iter()
@@ -102,7 +102,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
                 edge: projected.into_render_edge(),
             })
         });
-    if uses_elk_adapter_dom {
+    if use_semantic_edges {
         return FlowchartRenderInputs {
             render_edges: semantic_edges.collect(),
             extra_nodes: Vec::new(),
@@ -111,12 +111,8 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
 
     // Dagre always inserts helper nodes. Only the source's selected diagram types merge their
     // three segments back into a logical self-loop; Agentflow paints the helper edges directly.
-    let self_loop_label_node_ids = flowchart_helper_node_ids(
-        model,
-        render_context,
-        layout_edge_owners,
-        uses_elk_adapter_dom,
-    );
+    let self_loop_label_node_ids =
+        flowchart_helper_node_ids(model, render_context, layout_edge_owners, false);
     let mut render_edges: Vec<FlowchartRenderEdge<'a>> = Vec::new();
     let mut helper_indexes: FxHashMap<String, usize> = FxHashMap::default();
     for edge in semantic_edges {

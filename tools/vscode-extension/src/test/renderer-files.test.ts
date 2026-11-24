@@ -1,6 +1,8 @@
 import * as assert from "node:assert/strict";
 import * as fs from "node:fs/promises";
 import Module from "node:module";
+import * as os from "node:os";
+import * as path from "node:path";
 import type * as vscode from "vscode";
 import { describe, it } from "node:test";
 
@@ -41,7 +43,153 @@ describe("frozen theme recipe rendering", () => {
   }
 });
 
-function loadRenderer(run: (request: RenderProcessRequest) => Promise<unknown>): typeof import("../renderer.js") {
+describe("Shoal preview layout frames", () => {
+  const frameCapability = { preview_layout_frame: { protocol_version: 1, max_bytes: 128 } };
+  const context = { extensionUri: { fsPath: "/extension" } } as vscode.ExtensionContext;
+  const outputChannel = { info: () => {} } as unknown as vscode.LogOutputChannel;
+
+  it("negotiates once, replays opaque bytes, and cleans up both private files", async () => {
+    let probes = 0;
+    let previous: Buffer | undefined;
+    const frame = Buffer.from('{"family":"flowchart","nodes":{}}\n');
+    const directories: string[] = [];
+    const renderer = loadRenderer(async (request) => {
+      const { args } = request.invocation;
+      if (args[0] === "capabilities") {
+        probes += 1;
+        assert.equal(request.source, "");
+        return { stdout: Buffer.from(JSON.stringify(frameCapability)) };
+      }
+      const inputIndex = args.indexOf("--preview-frame-in");
+      const output = args[args.indexOf("--preview-frame-out") + 1]!;
+      assert.ok(args.includes("--preview-frame-out"));
+      if (previous) {
+        const input = args[inputIndex + 1]!;
+        assert.notEqual(input, output);
+        assert.deepEqual(await fs.readFile(input), previous);
+        if (process.platform !== "win32") {
+          assert.equal((await fs.stat(input)).mode & 0o777, 0o600);
+        }
+        directories.push(input);
+      } else {
+        assert.equal(inputIndex, -1);
+      }
+      await assert.rejects(fs.stat(output), { code: "ENOENT" });
+      await fs.writeFile(output, frame);
+      directories.push(output);
+      return { stdout: Buffer.from("<svg/>"), stderr: "", invocation: request.invocation };
+    });
+    for (const source of ["flowchart LR\nA-->B", "flowchart LR\nA-->C"]) {
+      const rendered = await renderer.renderMermanSource({
+        context, outputChannel, source, format: "svg", previewLayoutFrame: { previous },
+      });
+      assert.equal(rendered.stdout.toString(), "<svg/>");
+      assert.deepEqual(rendered.previewLayoutFrame, frame);
+      previous = rendered.previewLayoutFrame;
+    }
+    assert.equal(probes, 1);
+    for (const filePath of directories) {
+      await assert.rejects(fs.stat(filePath), { code: "ENOENT" });
+    }
+  });
+
+  it("renders normally with an older CLI and never probes or uses frame flags for text and export", async () => {
+    const invocations: string[][] = [];
+    const renderer = loadRenderer(async (request) => {
+      invocations.push(request.invocation.args);
+      return {
+        stdout: Buffer.from(request.invocation.args[0] === "capabilities" ? "{}" : "<svg/>"),
+        stderr: "",
+        invocation: request.invocation,
+      };
+    });
+    const request = {
+      context, outputChannel, source: "flowchart LR\nA-->B",
+      previewLayoutFrame: { previous: Buffer.from("{}") },
+    };
+    await renderer.renderMermanSource({ ...request, format: "svg" });
+    await renderer.renderMermanSource({ ...request, format: "ascii" });
+    await renderer.renderMermanSource({ ...request, format: "svg", outputPath: "export.svg" });
+    assert.equal(invocations.filter((args) => args[0] === "capabilities").length, 1);
+    assert.equal(invocations.some((args) => args.some((arg) => arg.startsWith("--preview-frame-"))), false);
+  });
+
+  it("renegotiates preview frames after CLI upgrades and downgrades at the same path", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "merman-cli-identity-"));
+    try {
+      const command = path.join(directory, "merman-cli");
+      const replacement = path.join(directory, "replacement");
+      const probes: string[] = [];
+      const frameFlags: boolean[] = [];
+      const renderer = loadRenderer(async ({ invocation }) => {
+        const version = await fs.readFile(invocation.command, "utf8");
+        const supportsFrames = version === "new";
+        if (invocation.args[0] === "capabilities") {
+          probes.push(version);
+          return { stdout: Buffer.from(JSON.stringify(supportsFrames ? frameCapability : {})) };
+        }
+        const outputIndex = invocation.args.indexOf("--preview-frame-out");
+        frameFlags.push(outputIndex >= 0);
+        if (outputIndex >= 0) {
+          if (!supportsFrames) {
+            throw new Error("unexpected argument '--preview-frame-out'");
+          }
+          await fs.writeFile(invocation.args[outputIndex + 1]!, "{}");
+        }
+        return { stdout: Buffer.from("<svg/>"), stderr: "", invocation };
+      }, command);
+      const render = () => renderer.renderMermanSource({
+        context, outputChannel, source: "flowchart LR\nA-->B", format: "svg", previewLayoutFrame: {},
+      });
+
+      await fs.writeFile(command, "old");
+      await render();
+      await fs.writeFile(replacement, "new");
+      await fs.rename(replacement, command);
+      await render();
+      await fs.writeFile(command, "older");
+      await render();
+
+      assert.deepEqual(frameFlags, [false, true, false]);
+      assert.deepEqual(probes, ["old", "new", "older"]);
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("cleans up after render failures and ignores missing, invalid, and oversized output frames", async () => {
+    for (const failure of ["render", "missing", "invalid", "oversized"]) {
+      let output = "";
+      const renderer = loadRenderer(async (request) => {
+        const { args } = request.invocation;
+        if (args[0] === "capabilities") {
+          return { stdout: Buffer.from(JSON.stringify(frameCapability)) };
+        }
+        output = args[args.indexOf("--preview-frame-out") + 1]!;
+        if (failure !== "missing") {
+          await fs.writeFile(output, failure === "oversized" ? Buffer.alloc(129, 1) : "bad");
+        }
+        if (failure === "render") throw new Error("render failed");
+        return { stdout: Buffer.from("<svg/>"), stderr: "", invocation: request.invocation };
+      });
+      const render = renderer.renderMermanSource({
+        context, outputChannel, source: "flowchart LR\nA-->B", format: "svg", previewLayoutFrame: {},
+      });
+      if (failure === "render") {
+        await assert.rejects(render, /render failed/);
+      } else {
+        assert.equal((await render).previewLayoutFrame, undefined);
+      }
+      assert.ok(output);
+      await assert.rejects(fs.stat(output), { code: "ENOENT" });
+    }
+  });
+});
+
+function loadRenderer(
+  run: (request: RenderProcessRequest) => Promise<unknown>,
+  command = process.execPath,
+): typeof import("../renderer.js") {
   type Loader = (this: unknown, request: string, parent: unknown, isMain: boolean) => unknown;
   const loader = Module as typeof Module & { _load: Loader };
   const original = loader._load;
@@ -52,7 +200,7 @@ function loadRenderer(run: (request: RenderProcessRequest) => Promise<unknown>):
     if (request === "./binaries.js") {
       return {
         resolveMermanBinary: (request: { directArgs: string[] }) => ({
-          command: "merman-cli", source: "test", args: request.directArgs,
+          command, source: "explicit", args: request.directArgs,
         }),
       };
     }
@@ -60,6 +208,7 @@ function loadRenderer(run: (request: RenderProcessRequest) => Promise<unknown>):
     return original.call(this, request, parent, isMain);
   };
   try {
+    delete require.cache[require.resolve("../cli-capabilities.js")];
     delete require.cache[require.resolve("../renderer.js")];
     return require("../renderer.js") as typeof import("../renderer.js");
   } finally {

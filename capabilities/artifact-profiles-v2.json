@@ -4,7 +4,7 @@
   "capability_authority": {
     "path": "capabilities/feature-surface-v1.json",
     "schema_version": 1,
-    "digest": "sha256:a979bad1c2c244a56d592eb0e6a261425edf031bb8f30235d739e62670b5cafb"
+    "digest": "sha256:8957a869ae1112ea4a82880dd70d9e4aac90b86000872fd00566890b3a624aa8"
   },
   "profiles": [
     {
@@ -381,7 +381,7 @@
         "manifest": "crates/merman/Cargo.toml",
         "profile": "release",
         "default_features": false,
-        "features": ["all-diagrams", "analysis", "ascii", "editor", "fixes", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf", "png", "svg", "system-clock", "system-fonts", "system-random", "system-timezone", "system-timing"],
+        "features": ["all-diagrams", "analysis", "ascii", "editor", "fixes", "jpeg", "layout-cytoscape", "layout-elk", "layout-shoal", "math", "pdf", "png", "svg", "system-clock", "system-fonts", "system-random", "system-timezone", "system-timing"],
         "target": {
           "name": "merman",
           "kinds": ["lib"],
@@ -392,8 +392,8 @@
       },
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
-        "capabilities": ["analysis", "ascii", "editor", "fixes", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-fonts", "pdf", "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"],
-        "runtime_ids": ["analysis", "ascii", "editor", "fixes", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-fonts", "pdf", "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"],
+        "capabilities": ["analysis", "ascii", "editor", "fixes", "jpeg", "layout-cytoscape", "layout-elk", "layout-shoal", "math", "native-fonts", "pdf", "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"],
+        "runtime_ids": ["analysis", "ascii", "editor", "fixes", "jpeg", "layout-cytoscape", "layout-elk", "layout-shoal", "math", "native-fonts", "pdf", "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"],
         "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
       }
     },

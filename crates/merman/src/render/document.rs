@@ -20,6 +20,7 @@ use super::target_admission::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SvgOutput {
     layout_adaptation: Option<merman_render::LayoutAdaptationObservation>,
+    shoal_layout_frame: Option<Arc<merman_render::ShoalLayoutFrame>>,
     svg: String,
     evidence: RenderEvidence,
     admission: TargetAdmissionReceipt,
@@ -398,6 +399,11 @@ impl SvgOutput {
         self.layout_adaptation
     }
 
+    /// Returns the requested placement hints after successful standalone SVG completion.
+    pub fn shoal_layout_frame(&self) -> Option<&merman_render::ShoalLayoutFrame> {
+        self.shoal_layout_frame.as_deref()
+    }
+
     pub fn svg(&self) -> &str {
         &self.svg
     }
@@ -516,6 +522,7 @@ pub(super) fn finish_standalone_svg_target(
     required_capabilities: Vec<merman_render::RenderCapability>,
     control: &merman_model::OperationControl,
     layout_adaptation: Option<merman_render::LayoutAdaptationObservation>,
+    shoal_layout_frame: Option<Arc<merman_render::ShoalLayoutFrame>>,
 ) -> Result<SvgOutput, RenderError> {
     crate::operation_runner::checkpoint(control, merman_model::OperationPhase::Postprocess)?;
     let evidence = RenderEvidence::from_family(family, required_capabilities);
@@ -524,6 +531,7 @@ pub(super) fn finish_standalone_svg_target(
     enforce_portability_requirement(&evidence, &admission)?;
     Ok(SvgOutput {
         layout_adaptation,
+        shoal_layout_frame,
         svg: svg.into_string(),
         evidence,
         admission,

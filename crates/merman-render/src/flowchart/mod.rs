@@ -11,9 +11,13 @@ use crate::graph_label as label;
 mod image;
 mod lane_title;
 mod layout;
+#[cfg(any(feature = "layout-elk", feature = "layout-shoal"))]
+mod measured;
 mod node;
 mod self_loop;
 mod shapes;
+#[cfg(feature = "layout-shoal")]
+pub(crate) mod shoal;
 mod style;
 mod svg_label_artifact;
 mod theme_evidence;

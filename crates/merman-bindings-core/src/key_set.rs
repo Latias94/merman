@@ -260,6 +260,7 @@ mod tests {
             "system-timezone",
             "system-timing",
             "fixes",
+            "layout-shoal",
         ]
         .into_iter()
         .enumerate()

@@ -42,6 +42,7 @@ test("dev, build, and test fail closed on the selected full browser artifact", (
   assert.match(packageJson.scripts["build:prepared"], /npm run verify:dist$/u);
   assert.match(packageJson.scripts["verify:wasm-inputs"], /verify-wasm-inputs\.mjs/);
   assert.match(packageJson.scripts["verify:wasm-inputs"], /--package full/);
+  assert.match(packageJson.scripts["verify:wasm-inputs"], /--assembled/);
   assert.deepEqual(
     Object.fromEntries(
       Object.entries(packageJson.dependencies).filter(([name]) =>
@@ -60,6 +61,16 @@ test("dev, build, and test fail closed on the selected full browser artifact", (
   ]);
   assert.match(packageJson.scripts["prepare:browser-runtime"], /build:opaque-realm/);
   assert.match(packageJson.scripts["prepare:browser-runtime"], /verify:opaque-realm/);
+});
+
+test("Shoal preview opts into the experimental artifact through its own entrypoints", () => {
+  const scripts = packageJson.scripts;
+  assert.match(scripts["assemble:shoal"], /run check:contracts -- --local-shoal/u);
+  assert.match(scripts["assemble:shoal"], /run build:packages -- --package full --local-shoal$/u);
+  assert.match(scripts["prepare:browser-runtime:shoal"], /^npm run verify:wasm-inputs -- --local-shoal && /u);
+  assert.match(scripts["dev:shoal"], /^npm run prepare:browser-runtime:shoal && vite$/u);
+  assert.match(scripts["build:shoal"], /^npm run prepare:browser-runtime:shoal && npm run build:prepared$/u);
+  assert.doesNotMatch(scripts["verify:wasm-inputs"], /--local-shoal/);
 });
 
 test("browser test tooling is isolated from the companion runtime tree", async () => {
