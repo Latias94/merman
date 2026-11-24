@@ -33,7 +33,7 @@ Add `--fit-width --width 640` to fit the Flowchart to a 640 CSS pixel container.
 
 The hosted Playground opens the full example with Dagre. Use the local Shoal-enabled Playground build to edit and render it with Shoal. [Open the example in Playground](https://frankorz.com/merman/#s2:eJxdkM1OwzAQhF_FSi6plEokhf7kAELtgRNCwAW5Obj2OrFq4ip2KKjpu2Nv2yB6Wds783nWPkTcCIiKSGqz5zVrHXlfrRtC_L6pIKFLXEkLTPyUIzIe33sJ-NYelriQHbP24XhCsOEt_QfYnljHKqBvoXpeA7NQXvmeTU-k-qav8KVgTyRTumvBog1xDLSfZusvCpU4sO5KZp1Qjj6GelLQiGCtdgl96TZa2bocBRHNgxg6Ph_PtdEioU--BicOqv3bViBJxRx4n9ZFLKW84ZBa1_qQIp4vplmep9xo0xbxZJGzLPuHStX47DMshMxBDHAOs_l0c4Gz2e3dhA_w5ZtC9l8zDJ2GSc8Xr5vo-As-0Zis) · [Build Playground with Shoal](platforms/web/README.md#try-shoal-in-playground)
 
-In the recorded native benchmark on an Apple M4 Pro, a nested Flowchart took 0.501 ms with Shoal, 1.155 ms with Dagre, and 0.820 ms with ELK to return SVG. A 75-node cyclic graph took 1.341 ms, 4.444 ms, and 12.574 ms, respectively. The small control took about 0.13 ms on all three. These are medians from the same executable and inputs at the revision pinned in the report. [Benchmark results and samples](docs/performance/2026-11-24-shoal.md)
+On an Apple M4 Pro, a nested Flowchart returned SVG in 0.426 ms with Shoal, 1.038 ms with Dagre, and 0.706 ms with ELK. A 75-node cyclic Flowchart took 1.303 ms, 4.260 ms, and 12.140 ms, respectively. These are native medians from one executable and matched inputs. The report also includes the four added diagram families and separate Node timings for Pele and Mermaid v13. [Benchmark results and samples](docs/performance/2026-11-24-shoal.md#shoal-v3-follow-up)
 
 ### Changed
 
