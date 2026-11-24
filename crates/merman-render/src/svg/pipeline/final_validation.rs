@@ -466,16 +466,10 @@ fn validate_well_formed_element<const REFERENCES: bool>(
                 &namespace,
                 ResolveResult::Bound(namespace) if namespace.as_ref() == XLINK_NAMESPACE
             );
-            references.observe_raw_attribute(local_name.as_ref(), is_xlink, &value);
+            references.observe_raw_attribute(local_name.as_ref(), is_unbound, is_xlink, &value);
             if usvg_consumes_attribute_namespace(namespace)? {
                 // This is the same normalized value whose XML validity was just checked.
-                references.observe(
-                    local_name.as_ref(),
-                    is_unbound,
-                    is_xlink,
-                    &value,
-                    checkpoint,
-                )?;
+                references.observe(local_name.as_ref(), &value, checkpoint)?;
             }
         }
     }
@@ -1275,7 +1269,12 @@ fn validate_element_after_xml(
         );
         let consumes_namespace = usvg_consumes_attribute_namespace(attribute_namespace);
         checkpoint()?;
-        reference_attributes.observe_raw_attribute(local_name.as_ref(), is_xlink_attribute, &value);
+        reference_attributes.observe_raw_attribute(
+            local_name.as_ref(),
+            is_unbound_attribute,
+            is_xlink_attribute,
+            &value,
+        );
         if !consumes_namespace? {
             continue;
         }
@@ -1344,13 +1343,7 @@ fn validate_element_after_xml(
                 .observe_inline_css_urls(&value)
                 .map_err(validation_error)?;
         }
-        reference_attributes.observe(
-            semantic_name,
-            is_unbound_attribute,
-            is_xlink_attribute,
-            &value,
-            checkpoint,
-        )?;
+        reference_attributes.observe(semantic_name, &value, checkpoint)?;
         if (semantic_name == "href"
             && !is_tref
             && !element_name.eq_ignore_ascii_case("a")
@@ -1391,8 +1384,8 @@ struct ReferenceAttributes<'a> {
     element_name: &'a str,
     is_svg_element: bool,
     ids: ElementIds,
-    use_href: Option<String>,
-    use_xlink_href: Option<String>,
+    raw_href: Option<String>,
+    xlink_href: Option<String>,
     fe_image_href: Option<String>,
     geometry_source_len: Option<usize>,
     marker_start: Option<String>,
@@ -1410,8 +1403,8 @@ impl<'a> ReferenceAttributes<'a> {
             element_name,
             is_svg_element,
             ids: ElementIds::default(),
-            use_href: None,
-            use_xlink_href: None,
+            raw_href: None,
+            xlink_href: None,
             fe_image_href: None,
             geometry_source_len: None,
             marker_start: None,
@@ -1425,9 +1418,9 @@ impl<'a> ReferenceAttributes<'a> {
     }
 
     #[inline]
-    fn observe_raw_attribute(&mut self, name: &str, is_xlink: bool, value: &str) {
-        // usvg resolves use and tref links in the raw XML. The
-        // fallback selects the first local name in any namespace, just like roxmltree::attribute.
+    fn observe_raw_attribute(&mut self, name: &str, is_unbound: bool, is_xlink: bool, value: &str) {
+        // usvg's legacy tref parser falls back to the first raw local name. Its use parser
+        // only accepts the unprefixed and XLink forms.
         match name {
             "id" => self.ids.observe_raw(value),
             "href"
@@ -1435,9 +1428,11 @@ impl<'a> ReferenceAttributes<'a> {
                     && (self.element_name.eq_ignore_ascii_case("use")
                         || self.element_name == "tref") =>
             {
-                self.use_href.get_or_insert_with(|| value.to_owned());
+                if is_unbound || self.element_name == "tref" {
+                    self.raw_href.get_or_insert_with(|| value.to_owned());
+                }
                 if is_xlink {
-                    self.use_xlink_href.get_or_insert_with(|| value.to_owned());
+                    self.xlink_href.get_or_insert_with(|| value.to_owned());
                 }
             }
             _ => {}
@@ -1448,12 +1443,9 @@ impl<'a> ReferenceAttributes<'a> {
     fn observe(
         &mut self,
         semantic_name: &str,
-        _is_unbound_attribute: bool,
-        is_xlink_attribute: bool,
         value: &str,
         checkpoint: &mut dyn FnMut() -> Result<()>,
     ) -> Result<()> {
-        self.observe_raw_attribute(semantic_name, is_xlink_attribute, value);
         match semantic_name {
             "id" if self.is_svg_element => self.ids.observe(value),
             "d" if self.is_svg_element && self.element_name == "path" => {
@@ -1526,10 +1518,14 @@ impl<'a> ReferenceAttributes<'a> {
     }
 
     fn raw_link_target(&self) -> Option<&str> {
-        self.use_xlink_href
-            .as_deref()
-            .or(self.use_href.as_deref())
-            .and_then(same_document_use_target)
+        let raw = self.raw_href.as_deref();
+        let xlink = self.xlink_href.as_deref();
+        let value = if self.element_name == "tref" {
+            xlink.or(raw)
+        } else {
+            raw.or(xlink)
+        };
+        value.and_then(same_document_use_target)
     }
 
     fn finish(self) -> ValidatedElement {
@@ -2284,7 +2280,7 @@ mod tests {
             }
         }
 
-        fn observe_raw_attribute(&mut self, name: &str, xlink: bool, value: &str) {
+        fn observe_raw_attribute(&mut self, name: &str, unbound: bool, xlink: bool, value: &str) {
             if name == "id" {
                 self.use_id.get_or_insert_with(|| value.to_owned());
             }
@@ -2292,7 +2288,9 @@ mod tests {
                 && self.element_name.eq_ignore_ascii_case("use")
                 && name == "href"
             {
-                self.use_href.get_or_insert_with(|| value.to_owned());
+                if unbound {
+                    self.use_href.get_or_insert_with(|| value.to_owned());
+                }
                 if xlink {
                     self.use_xlink_href.get_or_insert_with(|| value.to_owned());
                 }
@@ -2303,12 +2301,17 @@ mod tests {
         fn observe(
             &mut self,
             semantic_name: &str,
-            _is_unbound_attribute: bool,
+            is_unbound_attribute: bool,
             is_xlink_attribute: bool,
             value: &str,
             checkpoint: &mut dyn FnMut() -> Result<()>,
         ) -> Result<()> {
-            self.observe_raw_attribute(semantic_name, is_xlink_attribute, value);
+            self.observe_raw_attribute(
+                semantic_name,
+                is_unbound_attribute,
+                is_xlink_attribute,
+                value,
+            );
             if self.is_svg_element
                 && ((self.element_name == "path" && semantic_name == "d")
                     || (matches!(self.element_name, "polyline" | "polygon")
@@ -2364,9 +2367,9 @@ mod tests {
         fn finish(self) -> LegacyValidatedElement {
             let mut references = Vec::new();
             if let Some(target) = self
-                .use_xlink_href
+                .use_href
                 .as_deref()
-                .or(self.use_href.as_deref())
+                .or(self.use_xlink_href.as_deref())
                 .and_then(same_document_use_target)
             {
                 references.push(ElementReference {
@@ -2475,9 +2478,9 @@ mod tests {
                             }
                         };
                         for (name, unbound, xlink, value) in attributes {
-                            let result = actual.observe(name, unbound, xlink, value, &mut || {
-                                checkpoint(&mut actual_count)
-                            });
+                            actual.observe_raw_attribute(name, unbound, xlink, value);
+                            let result =
+                                actual.observe(name, value, &mut || checkpoint(&mut actual_count));
                             let oracle = expected.observe(name, unbound, xlink, value, &mut || {
                                 checkpoint(&mut expected_count)
                             });
@@ -2487,8 +2490,8 @@ mod tests {
                                 (
                                     &actual.ids.parsed,
                                     actual.ids.raw_value(),
-                                    &actual.use_href,
-                                    &actual.use_xlink_href,
+                                    &actual.raw_href,
+                                    &actual.xlink_href,
                                     &actual.fe_image_href,
                                     actual.geometry_source_len
                                 ),
@@ -2597,7 +2600,7 @@ mod tests {
             let value = value.map_err(|error| {
                 xml_validation_error(format!("invalid XML attribute value: {error}"))
             })?;
-            references.observe_raw_attribute(local_name.as_ref(), is_xlink, &value);
+            references.observe_raw_attribute(local_name.as_ref(), is_unbound, is_xlink, &value);
             if !consumes_namespace {
                 continue;
             }
@@ -4034,15 +4037,17 @@ mod tests {
     }
 
     #[test]
-    fn use_local_name_fallback_charges_the_selected_native_target() {
-        for href in [
-            r##"href="#source""##,
-            r##"xml:href="#source""##,
-            r##"s:href="#source""##,
-            r##"q:href="#source""##,
-            r##"xml:href="#source" href="#other""##,
-            r##"href="#other" x:href="#source""##,
-            r##"x:href="#source" xml:href="#other""##,
+    fn use_expansion_charges_the_href_selected_by_usvg() {
+        for (href, expanded, source_occurrences) in [
+            (r##"href="#source""##, 14, 2),
+            (r##"x:href="#source""##, 14, 2),
+            (r##"x:href="#source" xml:href="#other""##, 14, 2),
+            (r##"href="#other" x:href="#source""##, 10, 1),
+            (r##"x:href="#source" href="#other""##, 10, 1),
+            (r##"xml:href="#source" href="#other""##, 10, 1),
+            (r##"xml:href="#source""##, 9, 1),
+            (r##"s:href="#source""##, 9, 1),
+            (r##"q:href="#source""##, 9, 1),
         ] {
             let svg = format!(
                 r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:s="http://www.w3.org/2000/svg" xmlns:x="http://www.w3.org/1999/xlink" xmlns:q="urn:other"><defs><g id="source"><rect/><rect/><rect/><rect/></g><g id="other"/></defs><use {href}/></svg>"##,
@@ -4052,10 +4057,14 @@ mod tests {
                 RenderResourcePolicy::unbounded_for_trusted_input(),
             )
             .unwrap();
-            assert_eq!(plan.expanded_elements(), 14, "{href}");
-            assert_eq!(plan.raw_element_occurrences()[3], 2, "{href}");
-            check_budget(&svg, 14).unwrap();
-            assert!(check_budget(&svg, 13).is_err(), "{href}");
+            assert_eq!(plan.expanded_elements(), expanded, "{href}");
+            assert_eq!(
+                plan.raw_element_occurrences()[3],
+                source_occurrences,
+                "{href}"
+            );
+            check_budget(&svg, expanded).unwrap();
+            assert!(check_budget(&svg, expanded - 1).is_err(), "{href}");
         }
     }
 
@@ -4083,13 +4092,9 @@ mod tests {
 
     #[test]
     fn resource_closure_accepts_raw_only_use_targets() {
-        for href in [
-            r##"href="#source""##,
-            r##"xml:href="#source""##,
-            r##"q:href="#source""##,
-        ] {
+        for href in [r##"href="#source""##, r##"x:href="#source""##] {
             let svg = format!(
-                r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:q="urn:other"><defs><g q:id="source" id="parsed-source"><rect width="1" height="1"/></g></defs><use {href}/></svg>"##,
+                r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:q="urn:other" xmlns:x="http://www.w3.org/1999/xlink"><defs><g q:id="source" id="parsed-source"><rect width="1" height="1"/></g></defs><use {href}/></svg>"##,
             );
             let terminal = validate_resvg_compatible_svg(
                 &svg,
@@ -4159,12 +4164,12 @@ mod tests {
     #[test]
     fn resource_closure_observes_only_selected_use_targets() {
         for href in [
-            r##"href="#missing" x:href="#source""##,
-            r##"x:href="#source" href="#missing""##,
+            r##"href="#source" x:href="#missing""##,
+            r##"x:href="#missing" href="#source""##,
             r##"xml:href="#missing" x:href="#source""##,
-            r##"q:href="#missing" href="#also-missing" x:href="#source""##,
-            r##"xml:href="#source" href="#missing""##,
-            r##"q:href="#source" href="#missing""##,
+            r##"q:href="#missing" href="#source" x:href="#also-missing""##,
+            r##"xml:href="#missing" href="#source""##,
+            r##"q:href="#missing" href="#source""##,
         ] {
             let svg = format!(
                 r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:q="urn:other" xmlns:x="http://www.w3.org/1999/xlink"><defs><g q:id="source"><rect width="1" height="1"/></g></defs><use {href}/></svg>"##,
@@ -4181,10 +4186,10 @@ mod tests {
             );
         }
         for href in [
-            r##"href="#source" x:href="#missing""##,
-            r##"x:href="#missing" href="#source""##,
-            r##"xml:href="#missing" href="#source""##,
-            r##"q:href="#missing" href="#source""##,
+            r##"href="#missing" x:href="#source""##,
+            r##"x:href="#source" href="#missing""##,
+            r##"xml:href="#source" href="#missing""##,
+            r##"q:href="#source" href="#missing""##,
         ] {
             let svg = format!(
                 r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:q="urn:other" xmlns:x="http://www.w3.org/1999/xlink"><defs><g q:id="source"><rect width="1" height="1"/></g></defs><use {href}/></svg>"##,
