@@ -42,13 +42,10 @@ impl FlowchartRenderConfig {
         self.node_padding *= crate::flowchart::native_theme::density_scales(native.form.density).0;
         self.cluster_fill_color = native.container.to_string();
         if !uses_elk
-            && !config.explicit_config_owns_path("flowchart.curve")
-            && model
-                .edge_defaults
-                .as_ref()
-                .is_none_or(|defaults| defaults.interpolate.is_none())
+            && let Some(curve) =
+                crate::flowchart::native_theme::default_curve(native.form.edge_style, model, config)
         {
-            self.default_edge_interpolate = native.curve().to_owned();
+            self.default_edge_interpolate = curve.to_owned();
         }
     }
 }

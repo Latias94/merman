@@ -96,7 +96,13 @@ pub(crate) fn layout(
         edge_styles,
     );
     let fit_width = execution.adaptation == LayoutAdaptation::FitWidth;
-    let (graph, bindings) = measure(view, &measurement, config, fit_width, &mut work)?;
+    let native = match execution.family_id() {
+        crate::DiagramFamilyId::AGENTFLOW => {
+            execution.native_family_theme::<super::native_theme::AgentflowThemeAdapter>()
+        }
+        _ => execution.native_family_theme::<super::native_theme::FlowchartThemeAdapter>(),
+    };
+    let (graph, bindings) = measure(view, &measurement, config, native, fit_width, &mut work)?;
     let (solved, placement) = placement::solve(
         &graph,
         bindings.nodes.iter().map(|node| node.id.as_str()),
@@ -167,6 +173,7 @@ fn measure(
     view: FlowchartRenderModelRef<'_>,
     measurement: &FlowchartMeasurement<'_>,
     config: &PresentationConfig,
+    native: Option<&crate::theme::FamilyTheme>,
     fit_width: bool,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<(MeasuredGraph, FlowchartBindings)> {
@@ -174,7 +181,9 @@ fn measure(
     work.charge_adapter(view.nodes.len())?;
     work.charge_adapter(view.edges.len())?;
     let config_view = FlowchartConfigView::new(config);
-    let curve = config_view.effective_edge_interpolation(&view, false);
+    let curve = native
+        .and_then(|theme| super::native_theme::default_curve(theme.form.edge_style, &view, config))
+        .unwrap_or_else(|| config_view.effective_edge_interpolation(&view, false));
     let look_is_neo = crate::config::mermaid_config_diagram_look(config).is_neo();
     let theme_radius = crate::config::config_f64(config, &["themeVariables", "radius"])
         .map(|r| (r.max(0.), r.max(0.)));

@@ -8,6 +8,6 @@ For charts, inspect the plotted series, labels, and legend together. XY Chart co
 
 The native capability mask describes the implemented settings for the family. Elements such as a note, title, or legend still depend on the source. Test each output format with the intended fonts, background, and export options. The ASCII palette projects shared roles into a terminal's color encoding.
 
-Shoal route clearance, endpoint stubs, and outline clipping remain on Shoal's current geometry. Native SVG marker shapes and compatible connector styles use existing positions and viewport constraints.
+With Shoal, Flowchart and Agentflow use native density and share the default connector style between placement and SVG. An explicit Mermaid curve or source edge default takes precedence. Swimlane uses native density with orthogonal lanes. Architecture passes native marker dimensions and shape contours to canonical routing. Across other adapters, marker clearance, endpoint stubs, and outline clipping still follow each family's existing geometry.
 
 [Theme authoring and selection](custom-diagram-themes.md)

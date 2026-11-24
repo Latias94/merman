@@ -164,17 +164,29 @@ impl FlowchartNativeStyle {
         }
     }
 
-    pub(crate) fn curve(&self) -> &'static str {
-        match self.form.edge_style {
-            EdgeStyle::Curved => "basis",
-            EdgeStyle::Orthogonal => "step",
-            EdgeStyle::Straight | EdgeStyle::Sketch => "linear",
-        }
-    }
-
     pub(crate) fn has_depth(&self) -> bool {
         !matches!(self.elevation, Elevation::Flat)
     }
+}
+
+pub(crate) fn default_curve(
+    edge_style: EdgeStyle,
+    model: &super::FlowchartModel,
+    config: &merman_model::presentation::PresentationConfig,
+) -> Option<&'static str> {
+    if config.explicit_config_owns_path("flowchart.curve")
+        || model
+            .edge_defaults
+            .as_ref()
+            .is_some_and(|defaults| defaults.interpolate.is_some())
+    {
+        return None;
+    }
+    Some(match edge_style {
+        EdgeStyle::Curved => "basis",
+        EdgeStyle::Orthogonal => "step",
+        EdgeStyle::Straight | EdgeStyle::Sketch => "linear",
+    })
 }
 
 pub(crate) fn density_scales(density: Density) -> (f64, f64) {
