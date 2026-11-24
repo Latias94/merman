@@ -8,6 +8,9 @@ use std::sync::Arc;
 use crate::FontResolver;
 use crate::{ImageHrefResolver, ImageRendering, ShapeRendering, Size, TextRendering};
 
+/// The default nesting limit when parsing.
+pub const DEFAULT_MAX_DEPTH: u32 = 1024;
+
 /// Processing options.
 #[derive(Debug)]
 pub struct Options<'a> {
@@ -102,6 +105,10 @@ pub struct Options<'a> {
     /// A CSS stylesheet that should be injected into the SVG. Can be used to overwrite
     /// certain attributes.
     pub style_sheet: Option<String>,
+
+    /// The maximum nesting allowed while parsing. If this limit is exceeded,
+    /// the parser will return an error.
+    pub max_depth: u32,
 }
 
 #[cfg(feature = "text")]
@@ -128,11 +135,6 @@ impl<'a> Options<'a> {
         self.text_fallback.select_instance = select;
         self.text_fallback.fallback_instance = fallback;
     }
-
-    /// Reports support for instance-aware font selectors, including when unset.
-    pub fn supports_font_instances(&self) -> bool {
-        true
-    }
 }
 
 impl Default for Options<'_> {
@@ -156,6 +158,7 @@ impl Default for Options<'_> {
             #[cfg(feature = "text")]
             fontdb: Arc::new(fontdb::Database::new()),
             style_sheet: None,
+            max_depth: DEFAULT_MAX_DEPTH,
         }
     }
 }

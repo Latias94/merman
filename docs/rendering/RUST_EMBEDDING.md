@@ -273,10 +273,11 @@ Put a text family that covers the labels first. The example reports missing cove
 that would require independent fallback. When a subset and a full face share the same family,
 style and weight, supply the full face once. A TTC can already contain a face supplied as a TTF.
 For path-based loading, `NativeFontOptions::with_font_file` also accepts font collections.
-With a closed set of explicit fonts and the same `usvg` version, a host can install that font
-database and resolver with `fonts.apply_to_usvg_options(&mut options)` before `usvg::Tree::from_str`.
-A separate process or a different `resvg` version must register the font bytes in its own database.
-The standalone SVG references fonts by name.
+In a host that uses Merman's parser, import `usvg` from `merman_export::usvg` or
+`merman::svg::export::usvg`. Call `fonts.apply_to_usvg_options(&mut options)` with that parser's
+`Options` before `usvg::Tree::from_str`. The re-export gives the host the same `merman-usvg`
+package identity as the context and the exporters. An independent resvg consumer parses the
+standalone SVG and registers the font bytes in its own database. SVG references fonts by name.
 
 When `svg.evidence().native_font_diagnostics()` returns `Some(diagnostics)`, compare the PostScript
 names in `diagnostics.selected_faces()` with the faces of the positioned glyphs in the consumer's
@@ -284,16 +285,11 @@ names in `diagnostics.selected_faces()` with the faces of the positioned glyphs 
 used for measurement. For example, a standalone snapshot can report `PingFangSC-Regular#0` for a
 face at index 3 in the installed TTC. Compare indices only when both stages use identical font bytes.
 
-For variable fonts, the v0.11.0 workspace build and resvg 0.50 both request `wght=400` for CSS
-normal. The standalone example has an independent Cargo workspace. It resolves crates.io usvg
-0.47.0 for Merman, which uses the font's default axis position for normal text. Both stages of the
-example request 700 for the bold Class title. [Workspace backport](../../vendor/usvg/UPSTREAM.md)
-
-In that example, the tested Recursive file defaults to 300. The title fits and the member label
-advances match, although their outlines differ. With the tested Noto Sans SC file (default 100), `+String nom`
-measures 75.19 px at layout and 79.83 px at paint, enough to clip. For matching weight instances,
-supply static Regular (400) and Bold (700) faces to both stages. With the weight-only Recursive
-file, FontTools can produce both instances from the same source.
+For variable fonts, both Merman and resvg 0.50 request `wght=400` for CSS normal and `wght=700`
+for the bold Class title. Separate consumers may use different system face selection, fallback,
+or OpenType coordinates. Supply the same explicit static Regular and Bold faces to keep those
+choices fixed across applications. With the weight-only Recursive file, FontTools can produce
+both instances from the same source. [Merman font instance handling](../../vendor/usvg/UPSTREAM.md)
 
 ```sh
 fonttools varLib.instancer Recursive.ttf wght=400 -o Regular.ttf

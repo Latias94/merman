@@ -227,7 +227,7 @@ fn variable_weight_uses_css_normal_for_advance_and_ink() {
             .map(|variation| variation.value);
         (
             svg_advance(&tree),
-            text.flattened().bounding_box().width(),
+            text.flattened().bounding_box().unwrap().width(),
             weight,
         )
     };

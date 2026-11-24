@@ -65,7 +65,6 @@ fn effective_axes_size_and_metrics_match_explicit_coordinates() {
         axis(b"CSTM", 4.0),
         axis(b"fake", 300.0),
     ];
-    assert!(options.supports_font_instances());
     options.set_font_instances(
         Some(Box::new(move |_, _| Some((id, 1.5, native.clone())))),
         None,
@@ -87,12 +86,14 @@ fn effective_axes_size_and_metrics_match_explicit_coordinates() {
         ]
     );
 
-    let mut face = ttf_parser::Face::parse(COLLECTION, 1).unwrap();
-    let base_ascender = face.ascender();
-    face.set_variation(ttf_parser::Tag::from_bytes(b"wght"), 850.0);
-    assert!(face.ascender() > base_ascender);
-    let expected_height = f32::from(face.ascender() - face.descender()) * 30.0 / 1000.0;
-    assert!((text(&native_tree).bounding_box().height() - expected_height).abs() < 0.001);
+    // The fixture's MVAR ascender varies linearly from 800 to 900 as weight runs
+    // from 100 to 900. The ascender is rounded to font units before layout.
+    let expected_height = (894.0 + 200.0) * 30.0 / 1000.0;
+    let actual_height = text(&native_tree).bounding_box().height();
+    assert!(
+        (actual_height - expected_height).abs() < 0.001,
+        "{actual_height} vs {expected_height}"
+    );
 
     let decoration =
         "alignment-baseline='text-before-edge' text-decoration='underline overline line-through'";

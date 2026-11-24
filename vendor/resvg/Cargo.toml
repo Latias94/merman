@@ -1,0 +1,34 @@
+[package]
+name = "merman-resvg"
+version = "0.50.0"
+edition = "2024"
+rust-version = "1.87.0"
+description = "Merman's SVG rasterizer, based on resvg."
+documentation = "https://docs.rs/merman-resvg"
+readme = "README.md"
+keywords = ["svg", "render", "raster"]
+categories = ["multimedia::images"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Latias94/merman"
+
+[lib]
+name = "resvg"
+
+[dependencies]
+bytemuck = "1.16"
+gif = { version = "0.14.1", optional = true }
+image-webp = { version = "0.2.4", optional = true }
+log = "0.4"
+rgb = "0.8"
+svgtypes = "0.16.2"
+tiny-skia = "0.12.0"
+usvg = { workspace = true }
+zune-jpeg = { version = "0.5.9", optional = true }
+
+[features]
+default = ["svgz", "text", "system-fonts", "memmap-fonts", "raster-images"]
+svgz = ["usvg/svgz"]
+text = ["usvg/text"]
+system-fonts = ["usvg/system-fonts"]
+memmap-fonts = ["usvg/memmap-fonts"]
+raster-images = ["gif", "image-webp", "dep:zune-jpeg"]

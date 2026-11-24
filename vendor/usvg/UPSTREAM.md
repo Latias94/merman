@@ -1,10 +1,11 @@
-# usvg 0.47.0 backport
+# merman-usvg 0.50.0
 
-Source: the crates.io `usvg` 0.47.0 archive, SHA-256
-`d46cf96c5f498d36b7a9693bc6a7075c0bb9303189d61b2249b0dc3d309c07de`,
-built from [resvg `3a0fdba53ccf2d346b54cc53ba7adf0ee60d0707`](https://github.com/linebender/resvg/tree/3a0fdba53ccf2d346b54cc53ba7adf0ee60d0707/crates/usvg).
-The Cargo manifest disables publication. The runtime source and both upstream license files
-are copied from the archive.
+The crates.io `usvg` 0.50.0 archive has SHA-256
+`bdb896f04730b97805bbc3191fc57e4bf03face0f14577dd42e783c4d8c98802` and was built from
+[resvg `5bdbae64eefadc4bf0caa56dcf91702037929086`](https://github.com/linebender/resvg/tree/5bdbae64eefadc4bf0caa56dcf91702037929086/crates/usvg).
+The library and both upstream license files come from the archive. The Cargo package uses
+Merman's name and keeps `usvg` as its Rust library name. It includes the Merman font instance
+regression tests and their generated fixture.
 
 The change in `src/text/layout.rs` shapes missing text in its original direction and
 surrounding context. Consecutive missing clusters with equivalent physical faces, effective
@@ -26,17 +27,16 @@ override authored font properties, followed by native coordinates and face defau
 An omitted weight uses CSS normal (400) when the native selection supplies no weight.
 Automatic optical sizing uses the scaled font size, and `none` retains the native optical
 coordinate. Explicit `opsz` takes precedence in either mode. The same coordinates are used
-for shaping, active face metrics and outlines. Glyph bounds use the glyph's effective instance.
-Baselines and decorations use the effective primary instance for the styled span. SVG layout
-passes the resulting glyph coordinates and size to PDF-facing spans, with default coordinates
-omitted. Outline caching still applies to the default instance.
+for HarfRust shaping, Skrifa face metrics and outlines. Baselines and decorations use the
+effective primary instance for the styled span. SVG layout passes the resulting glyph
+coordinates and size to PDF-facing spans, with default coordinates omitted. The upstream
+font cache stores shape plans and outlines per instance.
 
-The Merman workspace patches one usvg source for native measurement, raster, and vector PDF.
-Remove the corresponding patches when a common supported release provides these fixes.
+`merman-export`, `merman-resvg` and `merman-krilla-svg` depend on this package. They share one
+SVG tree and font database across native measurement, raster, and vector PDF.
 
 The native metric probe reuses a single text shape to obtain start- and end-anchor bounds.
-It retains the normal positioning and outline-conversion checks for both bounds. Merman's
-registry builds use the two-element probe with the published usvg API.
+It retains the normal positioning and outline-conversion checks for both bounds.
 
 Text conversion records visible spans without a usable primary face and missing glyphs in
 text nodes that are dropped during conversion. The exporter combines these omissions with

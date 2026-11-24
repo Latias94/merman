@@ -267,8 +267,6 @@ pub(crate) struct NativeExportFontObserver {
     admitted_faces: Arc<Mutex<BTreeMap<usvg::fontdb::ID, NativeExportFontSource>>>,
     family_fallback: Arc<AtomicBool>,
     glyph_fallback: Arc<AtomicBool>,
-    unresolved_font: Arc<AtomicBool>,
-    unresolved_glyph: Arc<AtomicBool>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -288,8 +286,6 @@ impl NativeExportFontObserver {
             )),
             family_fallback: Arc::new(AtomicBool::new(false)),
             glyph_fallback: Arc::new(AtomicBool::new(false)),
-            unresolved_font: Arc::new(AtomicBool::new(false)),
-            unresolved_glyph: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -320,23 +316,6 @@ impl NativeExportFontObserver {
 
     pub(crate) fn glyph_fallback_used(&self) -> bool {
         self.glyph_fallback.load(Ordering::Relaxed)
-    }
-
-    pub(crate) fn mark_unresolved_font(&self) {
-        self.unresolved_font.store(true, Ordering::Relaxed);
-    }
-
-    pub(crate) fn unresolved_font_request(&self) -> bool {
-        self.unresolved_font.load(Ordering::Relaxed)
-    }
-
-    pub(crate) fn mark_unresolved_glyph(&self) {
-        self.unresolved_glyph.store(true, Ordering::Relaxed);
-    }
-
-    // Lookup misses are only coverage evidence on parsers without final omission reporting.
-    pub(crate) fn unresolved_glyph_fallback(&self) -> bool {
-        self.unresolved_glyph.load(Ordering::Relaxed)
     }
 }
 
@@ -508,6 +487,8 @@ impl NativeFontContext {
         self.0.database.faces().count()
     }
 
+    /// Installs this context into the Merman SVG parser.
+    /// Use [`crate::usvg::Options`] to share the parser type with this crate.
     pub fn apply_to_usvg_options(&self, options: &mut usvg::Options<'_>) {
         self.apply_to_usvg_options_controlled(options, &self.0.control);
     }
@@ -526,6 +507,7 @@ impl NativeFontContext {
         }
         options.font_resolver = super::browser_like_font_resolver(Arc::clone(&self.0.selection));
         options.set_text_fallback(self.0.language.clone(), None);
+        options.set_font_instances(None, None);
         #[cfg(not(all(feature = "system-fonts", not(target_family = "wasm"))))]
         let _ = control;
     }
@@ -552,6 +534,7 @@ impl NativeFontContext {
         options.font_resolver =
             native_export_font_resolver(observer.clone(), Arc::clone(&self.0.selection));
         options.set_text_fallback(self.0.language.clone(), None);
+        options.set_font_instances(None, None);
         #[cfg(not(all(feature = "system-fonts", not(target_family = "wasm"))))]
         let _ = control;
         observer
@@ -682,105 +665,6 @@ impl FontContextInner {
     }
 }
 
-type ClusterFallbackFn<'a> = Box<
-    dyn Fn(
-            &usvg::Font,
-            &str,
-            Option<&str>,
-            bool,
-            &[usvg::fontdb::ID],
-            &mut Arc<usvg::fontdb::Database>,
-        ) -> Option<(usvg::fontdb::ID, f32)>
-        + Send
-        + Sync
-        + 'a,
->;
-
-// Registry consumers use the public scalar resolver. In workspace builds the
-// inherent usvg method takes precedence and installs the contextual callback.
-#[allow(dead_code)]
-trait TextFallbackOptions<'a> {
-    fn set_text_fallback(
-        &mut self,
-        _language: Option<String>,
-        _select: Option<ClusterFallbackFn<'a>>,
-    ) {
-    }
-}
-
-impl<'a> TextFallbackOptions<'a> for usvg::Options<'a> {}
-
-#[cfg(all(
-    feature = "experimental-system-font-query",
-    not(target_family = "wasm")
-))]
-type FontInstance = (usvg::fontdb::ID, f32, Vec<usvg::FontVariation>);
-
-#[cfg(all(
-    feature = "experimental-system-font-query",
-    not(target_family = "wasm")
-))]
-type InstanceSelection<'a> = Box<
-    dyn Fn(&usvg::Font, &mut Arc<usvg::fontdb::Database>) -> Option<FontInstance>
-        + Send
-        + Sync
-        + 'a,
->;
-
-#[cfg(all(
-    feature = "experimental-system-font-query",
-    not(target_family = "wasm")
-))]
-type InstanceFallbackSelection<'a> = Box<
-    dyn Fn(
-            &usvg::Font,
-            &str,
-            Option<&str>,
-            bool,
-            &[FontInstance],
-            &mut Arc<usvg::fontdb::Database>,
-        ) -> Option<FontInstance>
-        + Send
-        + Sync
-        + 'a,
->;
-
-#[cfg(all(
-    feature = "experimental-system-font-query",
-    not(target_family = "wasm")
-))]
-#[allow(dead_code)]
-trait FontInstanceOptions<'a> {
-    fn supports_font_instances(&self) -> bool {
-        false
-    }
-
-    fn set_font_instances(
-        &mut self,
-        _select: Option<InstanceSelection<'a>>,
-        _fallback: Option<InstanceFallbackSelection<'a>>,
-    ) {
-    }
-}
-
-#[cfg(all(
-    feature = "experimental-system-font-query",
-    not(target_family = "wasm")
-))]
-impl<'a> FontInstanceOptions<'a> for usvg::Options<'a> {}
-
-// Published usvg lacks the workspace hook for language-aware primary selection.
-#[cfg(feature = "experimental-system-font-query")]
-#[allow(dead_code)]
-trait FontSelectionLanguage {
-    fn selection_language(&self) -> Option<&str> {
-        None
-    }
-}
-
-#[cfg(feature = "experimental-system-font-query")]
-impl FontSelectionLanguage for usvg::Font {}
-
 fn native_export_font_resolver(
     observer: NativeExportFontObserver,
     selection: Arc<FontSelectionPolicy>,
@@ -796,8 +680,6 @@ fn native_export_font_resolver(
             let selected = selection.fallback(font, fontdb.as_ref());
             if selected.is_some() {
                 select_observer.mark_family_fallback();
-            } else {
-                select_observer.mark_unresolved_font();
             }
             selected
         }),
@@ -805,8 +687,6 @@ fn native_export_font_resolver(
             let selected = fallback_selection.glyph_fallback(character, excluded, fontdb);
             if selected.is_some() {
                 fallback_observer.mark_glyph_fallback();
-            } else {
-                fallback_observer.mark_unresolved_glyph();
             }
             selected
         }),
@@ -1666,7 +1546,14 @@ impl NativeFontContext {
             }
         }
         let metric = start.bounding_box();
-        let ink = start.flattened().bounding_box();
+        let ink = if whitespace_only {
+            metric
+        } else {
+            start
+                .flattened()
+                .bounding_box()
+                .ok_or(NativeFontError::MissingGlyphCoverage)?
+        };
         let advance = if baseline.is_none() {
             let end_x = end_x.ok_or_else(|| {
                 NativeFontError::Measurement("missing end-anchor probe".to_owned())
@@ -1681,16 +1568,8 @@ impl NativeFontContext {
             width: f64::from(metric.width()),
             height: f64::from(metric.height()),
             x: f64::from(metric.x()),
-            ink_x: if whitespace_only {
-                f64::from(metric.x())
-            } else {
-                f64::from(ink.x())
-            },
-            ink_right: if whitespace_only {
-                f64::from(metric.right())
-            } else {
-                f64::from(ink.right())
-            },
+            ink_x: f64::from(ink.x()),
+            ink_right: f64::from(ink.right()),
             raw_y: f64::from(metric.y()),
         };
         if ![
@@ -1715,21 +1594,6 @@ impl NativeFontContext {
 }
 
 type AnchorProbe = (usvg::Tree, Option<f32>);
-
-// The workspace usvg provides an inherent method. A published Merman consumer can use the
-// same code with the public usvg 0.47 API and its two original SVG anchors.
-#[allow(dead_code, reason = "used when the consumer resolves unpatched usvg")]
-trait RegistryUsvg {
-    fn try_from_str_with_text_anchor_probe(
-        _source: impl FnOnce() -> String,
-        _options: &usvg::Options<'_>,
-        _id: &str,
-    ) -> Result<Option<AnchorProbe>, usvg::Error> {
-        Ok(None)
-    }
-}
-
-impl RegistryUsvg for usvg::Tree {}
 
 fn parse_text_probe(
     svg: impl Fn(&str) -> String,
@@ -1830,7 +1694,7 @@ mod tests {
             let ink = if whitespace {
                 metric
             } else {
-                start.flattened().bounding_box()
+                start.flattened().bounding_box().unwrap()
             };
             assert_eq!(
                 [
@@ -1922,7 +1786,7 @@ mod tests {
                 })
                 .collect();
             assert_eq!(faces, expected);
-            assert!(!observer.unresolved_glyph_fallback());
+            assert!(observer.glyph_fallback_used());
             context.check().unwrap();
         }
     }
@@ -1970,7 +1834,6 @@ mod tests {
                     .collect();
                 assert_eq!(selected, expected);
                 assert_eq!(observer.glyph_fallback_used(), include_text_fallback);
-                assert_eq!(observer.unresolved_glyph_fallback(), !include_text_fallback);
                 context.check().unwrap();
             }
         }

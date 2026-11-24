@@ -93,7 +93,7 @@ unicase = { workspace = true, optional = true }
 unicode-bidi-mirroring = { version = "0.4.0", optional = true }
 unicode-general-category = { workspace = true, optional = true }
 unicode-normalization = { workspace = true, optional = true }
-usvg = { workspace = true, optional = true, features = ["text"] }
+usvg = { workspace = true, optional = true, features = ["text", "svgz"] }
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies]
 # System font queries can load Fontconfig when selected. Keep it out of the CLI's load-time ABI.

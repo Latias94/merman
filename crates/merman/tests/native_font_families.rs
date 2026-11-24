@@ -917,7 +917,7 @@ fn standalone_svg_label_ink_fits_the_clipped_viewport_with_matching_faces() {
                 "{label}: source viewport dimensions"
             );
             // Flattened outlines are in the label's local viewBox, before resvg clips its ink.
-            let ink = text.flattened().bounding_box();
+            let ink = text.flattened().bounding_box().unwrap();
             assert!(
                 ink.width() > 0.0 && ink.height() > 0.0,
                 "{label}: empty ink"

@@ -1,7 +1,8 @@
-# krilla
+# merman-krilla
 
-[![Crates.io](https://img.shields.io/crates/v/krilla.svg)](https://crates.io/crates/krilla)
-[![Documentation](https://docs.rs/krilla/badge.svg)](https://docs.rs/krilla)
+Merman's PDF writer is based on Krilla 0.8.2. It assigns unique CID subset tags when a
+document embeds multiple instances of one variable font. `merman-krilla-svg` uses this
+package to write PDF objects. See [UPSTREAM.md](UPSTREAM.md) for provenance and patch scope.
 
 <!-- cargo-rdme start -->
 

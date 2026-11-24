@@ -36,6 +36,7 @@ In the recorded native benchmark on an Apple M4 Pro, a nested Flowchart took 0.5
 ### Changed
 
 - **CLI fonts on macOS and Linux.** Official archives use Core Text or Fontconfig by default for native Mermaid PNG, JPEG, and PDF exports. Platform lookup opens the selected fonts on demand and avoids the bounded scan's aggregate character-map limit. On Linux the automatic policy retries bounded discovery if the Fontconfig runtime cannot load. Use `--font-system bounded` to select the previous provider, or `--font-file` to pin the fonts used for both measurement and painting. [CLI font guide](crates/merman-cli/README.md#explicit-fonts)
+- **Native SVG rendering.** Native text measurement, PNG, JPEG, and PDF share Merman's SVG renderer based on usvg/resvg 0.50. It carries the platform-selected font instance through shaping and export. Rust hosts that pass parser options to `NativeFontContext::apply_to_usvg_options` should import `merman::svg::export::usvg` or `merman_export::usvg`. [Rust embedding guide](docs/rendering/RUST_EMBEDDING.md)
 
 ## [0.11.0] - 2026-11-21
 

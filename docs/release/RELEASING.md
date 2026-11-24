@@ -242,11 +242,14 @@ settings; verify the event before using manual `publish=true` rather than assumi
 For crates.io, register owner `Latias94`, repository `merman`, environment `crates.io`, and the
 workflow filename belonging to each crate:
 
-| Crates | Trusted workflow filename |
+| Crates | Publish owner |
 | --- | --- |
 | Workspace-coupled crates, including `merman-unicode-linebreak` | `release-crates.yml` |
 | `roughr-merman` | `release-independent-crate.yml` |
 | `tree-sitter-mermaid` | `release-tree-sitter-mermaid.yml` |
+
+A maintainer publishes the SVG and PDF implementation crates using the
+[implementation crate procedure](#svg-and-pdf-implementation-crates).
 
 The single-crate owners use `rust-lang/crates-io-auth-action` immediately before uploading. The
 workspace operator exchanges a fresh GitHub OIDC token before each actual upload and revokes the
@@ -671,6 +674,34 @@ the latest published compatible baseline. Version `0.12.3` is the forward-lookin
 floor; the historical `0.12.1` to `0.12.3` recovery is not re-litigated by future release gates.
 
 For the current release lane, also review `docs/release/PUBLISH_ORDER.md`.
+
+### SVG and PDF implementation crates
+
+The native export graph uses four independently versioned library packages. Each `UPSTREAM.md`
+records the upstream revision, archive checksum, and local changes. Keep `merman-usvg` and
+`merman-resvg` on the same upstream stable release. Advance the fork's version when its owned
+source changes, and advance its minor version when the change breaks a public Rust type or API.
+Update the root dependency versions and `Cargo.lock` and `fuzz/Cargo.lock` together.
+
+Package the group from the selected clean checkout so Cargo verifies the normalized registry
+dependencies in dependency order.
+
+```sh
+cargo package --locked -p merman-usvg -p merman-resvg -p merman-krilla -p merman-krilla-svg
+python3 scripts/verify_crate_package_legal_materials.py
+```
+
+Verify the font instance regressions and the native PNG, JPEG, and PDF contracts. Include the
+PDF case where two instances of one variable face have distinct CID subset tags. Also run the
+standalone upstream resvg embedding example, which exchanges SVG bytes with Merman.
+
+For a selected initial publication, upload `merman-usvg` and `merman-krilla` first, then
+`merman-resvg`, then `merman-krilla-svg`. Run `scripts/crates_io_release.py preflight-independent`
+for each package once its required versions are visible in the registry. Publish that package
+with `cargo publish --locked -p <package> --registry crates-io` and verify the exact version
+and checksum before proceeding. After the group is visible, build a fresh registry consumer
+with all three output features before releasing `merman-export` and its workspace dependents.
+Keep accepted versions and checksums in [Publish Order](PUBLISH_ORDER.md).
 
 ## Release Preflight
 

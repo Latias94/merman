@@ -153,7 +153,6 @@ pub(super) struct TriedFont {
 pub(super) struct CandidateRequest<'a> {
     pub(super) fallback: Option<GlyphFallback<'a>>,
     pub(super) implicit: bool,
-    pub(super) instances: bool,
     pub(super) tried: &'a [TriedFont],
 }
 
@@ -281,72 +280,22 @@ pub(super) fn install_resolver(
     control: OperationControl,
     observer: Option<NativeExportFontObserver>,
 ) {
-    #[cfg(feature = "experimental-system-font-query")]
-    let (select_context_for_instances, select_control_for_instances, select_observer_for_instances) =
-        (context.clone(), control.clone(), observer.clone());
+    options.set_text_fallback(context.0.language.clone(), None);
     let select_context = context.clone();
     let select_control = control.clone();
     let select_observer = observer.clone();
-    let fallback_context = context.clone();
-    let fallback_control = control.clone();
-    let fallback_observer = observer.clone();
-    options.font_resolver = usvg::FontResolver {
-        select_font: Box::new(move |font, database| {
-            select(
-                &select_context,
-                &select_control,
-                select_observer.as_ref(),
-                false,
-                font,
-                database,
-            )
-            .map(|choice| choice.id)
-        }),
-        select_fallback: Box::new(move |character, excluded, database| {
-            let mut text = [0; 4];
-            let request = GlyphFallback {
-                text: character.encode_utf8(&mut text),
-                language: fallback_context.0.language.as_deref(),
-                font: None,
-                rtl: false,
-            };
-            let tried = excluded
-                .iter()
-                .filter_map(|id| {
-                    Some(TriedFont {
-                        face: database.face(*id)?.clone(),
-                        scale: 1.0,
-                        variations: Vec::new(),
-                    })
-                })
-                .collect::<Vec<_>>();
-            fallback(
-                &fallback_context,
-                &fallback_control,
-                fallback_observer.as_ref(),
-                false,
-                request,
-                &tried,
-                database,
-            )
-            .map(|choice| choice.id)
-        }),
-    };
-    options.set_text_fallback(context.0.language.clone(), None);
+
     #[cfg(feature = "experimental-system-font-query")]
-    if options.supports_font_instances()
-        && matches!(
-            context.0.discovery,
-            Some(DiscoveryProvider::Platform { .. })
-        )
-    {
+    if matches!(
+        context.0.discovery,
+        Some(DiscoveryProvider::Platform { .. })
+    ) {
         options.set_font_instances(
             Some(Box::new(move |font, database| {
                 select(
-                    &select_context_for_instances,
-                    &select_control_for_instances,
-                    select_observer_for_instances.as_ref(),
-                    true,
+                    &select_context,
+                    &select_control,
+                    select_observer.as_ref(),
                     font,
                     database,
                 )
@@ -374,7 +323,6 @@ pub(super) fn install_resolver(
                         &context,
                         &control,
                         observer.as_ref(),
-                        true,
                         request,
                         &tried,
                         database,
@@ -383,18 +331,60 @@ pub(super) fn install_resolver(
                 },
             )),
         );
+        return;
     }
+
+    options.set_font_instances(None, None);
+    options.font_resolver = usvg::FontResolver {
+        select_font: Box::new(move |font, database| {
+            select(
+                &select_context,
+                &select_control,
+                select_observer.as_ref(),
+                font,
+                database,
+            )
+            .map(|choice| choice.id)
+        }),
+        select_fallback: Box::new(move |character, excluded, database| {
+            let mut text = [0; 4];
+            let request = GlyphFallback {
+                text: character.encode_utf8(&mut text),
+                language: context.0.language.as_deref(),
+                font: None,
+                rtl: false,
+            };
+            let tried = excluded
+                .iter()
+                .filter_map(|id| {
+                    Some(TriedFont {
+                        face: database.face(*id)?.clone(),
+                        scale: 1.0,
+                        variations: Vec::new(),
+                    })
+                })
+                .collect::<Vec<_>>();
+            fallback(
+                &context,
+                &control,
+                observer.as_ref(),
+                request,
+                &tried,
+                database,
+            )
+            .map(|choice| choice.id)
+        }),
+    };
 }
 
 fn select(
     context: &NativeFontContext,
     control: &OperationControl,
     observer: Option<&NativeExportFontObserver>,
-    instances: bool,
     font: &usvg::Font,
     database: &mut Arc<usvg::fontdb::Database>,
 ) -> Option<AdmittedFont> {
-    let result = resolve(context, control, observer.is_some(), |provider| {
+    resolve(context, control, observer.is_some(), |provider| {
         #[cfg(feature = "experimental-system-font-query")]
         let mut request = matches!(provider, DiscoveryProvider::Platform { .. })
             .then(|| SelectionRequest::primary(font));
@@ -428,7 +418,6 @@ fn select(
             let requirements = CandidateRequest {
                 fallback: None,
                 implicit,
-                instances,
                 tried: &[],
             };
             let Some(admitted) = context.0.sources.admit_choice(
@@ -465,13 +454,7 @@ fn select(
                 .remember_miss(request, &context.0.limits)?;
         }
         Ok(choice)
-    });
-    if let Some(observer) = observer
-        && result.is_none()
-    {
-        observer.mark_unresolved_font();
-    }
-    result
+    })
 }
 
 fn observe_primary(
@@ -492,7 +475,6 @@ fn fallback(
     context: &NativeFontContext,
     control: &OperationControl,
     observer: Option<&NativeExportFontObserver>,
-    instances: bool,
     cluster: GlyphFallback<'_>,
     tried: &[TriedFont],
     database: &mut Arc<usvg::fontdb::Database>,
@@ -529,7 +511,6 @@ fn fallback(
                 let requirements = CandidateRequest {
                     fallback: Some(cluster),
                     implicit,
-                    instances,
                     tried,
                 };
                 let Some(admitted) = context.0.sources.admit_choice(
@@ -570,12 +551,10 @@ fn fallback(
         }
         Ok(choice)
     });
-    if let Some(observer) = observer {
-        if result.is_some() {
-            observer.mark_glyph_fallback();
-        } else {
-            observer.mark_unresolved_glyph();
-        }
+    if let Some(observer) = observer
+        && result.is_some()
+    {
+        observer.mark_glyph_fallback();
     }
     result
 }

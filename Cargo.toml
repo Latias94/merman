@@ -36,12 +36,14 @@ members = [
     "crates/roughr",
     "crates/xtask",
     "distribution/tree-sitter-mermaid",
+    "vendor/krilla",
+    "vendor/krilla-svg",
+    "vendor/resvg",
+    "vendor/usvg",
 ]
 exclude = [
     "repo-ref/dear-imgui-rs",
     "repo-ref/mermaid-rs-renderer",
-    "vendor/krilla",
-    "vendor/usvg",
 ]
 
 [workspace.package]
@@ -53,7 +55,14 @@ repository = "https://github.com/Latias94/merman"
 rust-version = "1.95"
 
 [workspace.metadata.merman-release]
-independent-packages = ["roughr-merman", "tree-sitter-mermaid"]
+independent-packages = [
+    "merman-krilla",
+    "merman-krilla-svg",
+    "merman-resvg",
+    "merman-usvg",
+    "roughr-merman",
+    "tree-sitter-mermaid",
+]
 
 [workspace.dependencies]
 atomic-write-file = { version = "0.3.1", default-features = false }
@@ -126,14 +135,14 @@ proc-macro-crate = "3.5.0"
 proc-macro2 = "1.0.107"
 quote = "1.0.47"
 getrandom = { version = "0.4.3", default-features = false }
-resvg = { version = "0.47.0", default-features = false }
+resvg = { package = "merman-resvg", path = "vendor/resvg", version = "0.50.0", default-features = false }
 serde-wasm-bindgen = "0.6.5"
 syn = { version = "3.0.9", features = ["full", "parsing"] }
-usvg = { version = "0.47.0", default-features = false }
+usvg = { package = "merman-usvg", path = "vendor/usvg", version = "0.50.0", default-features = false }
 svgtypes = "0.16.2"
 tiny-skia = "0.12.0"
-krilla = { version = "0.8.2", default-features = false }
-krilla-svg = { version = "0.8.1", default-features = false }
+krilla = { package = "merman-krilla", path = "vendor/krilla", version = "0.8.2", default-features = false }
+krilla-svg = { package = "merman-krilla-svg", path = "vendor/krilla-svg", version = "0.8.1", default-features = false }
 unicode-width = { version = "0.2.3", default-features = false }
 unicode-linebreak = { package = "merman-unicode-linebreak", path = "crates/merman-unicode-linebreak", version = "0.11.0" }
 unicode-segmentation = { version = "1.13.3", default-features = false }
@@ -169,11 +178,6 @@ dugong = { path = "crates/dugong", version = "0.11.0" }
 dugong-graphlib = { path = "crates/dugong-graphlib", version = "0.11.0" }
 manatee = { path = "crates/manatee", version = "0.11.0" }
 merman-theme-contract = { path = "crates/merman-theme-contract", version = "0.11.0" }
-
-[patch.crates-io]
-# Keep resvg, krilla-svg, and the native font host on the same usvg types.
-usvg = { path = "vendor/usvg" }
-krilla = { path = "vendor/krilla" }
 
 # The profile that 'dist' will build with
 [profile.dist]

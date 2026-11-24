@@ -342,6 +342,7 @@ pub struct TextSpan {
     pub(crate) stroke: Option<Stroke>,
     pub(crate) paint_order: PaintOrder,
     pub(crate) font: Font,
+    #[cfg(any(feature = "text", feature = "writer"))]
     pub(crate) language: Option<String>,
     pub(crate) font_size: NonZeroPositiveF32,
     pub(crate) small_caps: bool,
@@ -514,7 +515,8 @@ pub struct TextPath {
 impl TextPath {
     /// Element's ID.
     ///
-    /// Taken from the SVG itself.
+    /// Taken from the SVG itself or generated internally in case the path
+    /// has no ID.
     pub fn id(&self) -> &str {
         self.id.get()
     }

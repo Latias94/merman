@@ -355,7 +355,8 @@ mod variable_pdf {
         )
         .expect("shape both variable instances");
         let fixture = ttf_parser::Face::parse(FIXTURE, 0).expect("fixture face");
-        let expected_glyphs = ['A', 'V'].map(|ch| (font_id, fixture.glyph_index(ch).unwrap().0));
+        let expected_glyphs =
+            ['A', 'V'].map(|ch| (font_id, u32::from(fixture.glyph_index(ch).unwrap().0)));
         for (id, weight) in INSTANCES {
             let [span] = painted_text(&tree, id).layouted() else {
                 panic!("expected one span for {id}");
@@ -875,7 +876,7 @@ fn macos_variations_share_one_primary_selection_per_css_weight() {
         let tree = usvg::Tree::from_str(&svg, &options).unwrap();
         context.check()?;
         let sample = painted_text(&tree, "sample");
-        Ok(sample.flattened().bounding_box().width())
+        Ok(sample.flattened().bounding_box().unwrap().width())
     };
 
     let thin = ink_width(400, 100).unwrap();

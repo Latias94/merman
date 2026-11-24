@@ -275,8 +275,8 @@ fn table_attributes(
     // Some families mark every face as normal width in OS/2, including the
     // condensed Sukhumvit Set Thin. Preserve an explicit non-normal table width.
     let stretch = match table.width() {
-        Stretch::Normal => native_stretch,
-        stretch => stretch,
+        ttf_parser::Width::Normal => native_stretch,
+        width => stretch_from_width_class(width.to_number()),
     };
     let style = match table.style() {
         // Some legacy fonts report italic only through native/post traits.
@@ -336,7 +336,16 @@ fn trait_attributes(
     // SAFETY: These are immutable Core Text trait keys.
     let (weight, width) = unsafe { (number(kCTFontWeightTrait), number(kCTFontWidthTrait)) };
     // Invert SkTypeface_mac_ct.cpp::SkCTFontCTWidthForCSSWidth's OS/2 class scale.
-    let stretch = match (width.unwrap_or(0.0) * 10.0 + 5.0).round().clamp(1.0, 9.0) as u8 {
+    let width = (width.unwrap_or(0.0) * 10.0 + 5.0).round().clamp(1.0, 9.0) as u16;
+    (
+        weight.map(css_weight),
+        stretch_from_width_class(width),
+        style,
+    )
+}
+
+fn stretch_from_width_class(width: u16) -> Stretch {
+    match width {
         1 => Stretch::UltraCondensed,
         2 => Stretch::ExtraCondensed,
         3 => Stretch::Condensed,
@@ -346,8 +355,7 @@ fn trait_attributes(
         8 => Stretch::ExtraExpanded,
         9 => Stretch::UltraExpanded,
         _ => Stretch::Normal,
-    };
-    (weight.map(css_weight), stretch, style)
+    }
 }
 
 fn css_weight(weight: f64) -> Weight {

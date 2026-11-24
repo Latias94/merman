@@ -632,7 +632,6 @@ impl FontSourceRegistry {
             CandidateRequest {
                 fallback,
                 implicit: false,
-                instances: true,
                 tried: &[],
             },
             database,
@@ -652,7 +651,7 @@ impl FontSourceRegistry {
     ) -> Result<Option<AdmittedFont>, NativeFontError> {
         control.terminal_checkpoint_at(OperationPhase::Layout)?;
         #[cfg(not(feature = "experimental-system-font-query"))]
-        let _ = (request.fallback, request.implicit, request.instances);
+        let _ = (request.fallback, request.implicit);
         let (path, index, expected) = match candidate {
             FontCandidate::Loaded(face) => {
                 if tried_face(&request, &face.source, face.index, 1.0, &[]) {
@@ -734,8 +733,8 @@ impl FontSourceRegistry {
                         OperationPhase::Layout,
                         &mut bytes,
                     )?;
-                    let actual_axes = file_axes(face, &bytes, index, request.instances, &path)?;
-                    if actual_axes.as_deref() != Some(preflight_axes.as_slice()) {
+                    let actual_axes = file_axes(face, &bytes, index, &path)?;
+                    if actual_axes != preflight_axes {
                         return Err(source_error(
                             &path,
                             "font instance changed during snapshot acquisition",
@@ -751,21 +750,11 @@ impl FontSourceRegistry {
             ExpectedFace::Bounded { .. } => (1.0, Vec::new()),
             #[cfg(feature = "experimental-system-font-query")]
             ExpectedFace::Platform(face) => {
-                let Some(variations) = file_axes(face, &data, index, request.instances, &path)?
-                else {
-                    return Ok(None);
-                };
+                let variations = file_axes(face, &data, index, &path)?;
                 if !eligible_face(&data, index, &request) {
                     return Ok(None);
                 }
-                (
-                    if request.instances {
-                        face.fallback_scale
-                    } else {
-                        1.0
-                    },
-                    variations,
-                )
+                (face.fallback_scale, variations)
             }
         };
         if tried_face(&request, &source, index, scale, &variations) {
@@ -869,9 +858,6 @@ impl FontSourceRegistry {
         limits: &NativeFontLimits,
         control: &OperationControl,
     ) -> Result<Option<AdmittedFont>, NativeFontError> {
-        if !request.instances && !candidate.variations.is_empty() {
-            return Ok(None);
-        }
         let mut state = self.snapshots.lock().map_err(|_| snapshot_poisoned())?;
         let variations = candidate.variations.clone();
         let known_choice = |face: &FaceInfo, database: &mut Arc<Database>| {
@@ -1062,9 +1048,8 @@ fn file_axes(
     expected: &platform::PlatformFace,
     data: &[u8],
     index: u32,
-    instances: bool,
     path: &Path,
-) -> Result<Option<Vec<usvg::FontVariation>>, NativeFontError> {
+) -> Result<Vec<usvg::FontVariation>, NativeFontError> {
     let table = if expected.has_variations() {
         ttf_parser::RawFace::parse(data, index)
             .ok()
@@ -1072,7 +1057,7 @@ fn file_axes(
     } else {
         None
     };
-    platform_file::axes(expected, table, instances).map_err(|reason| source_error(path, reason))
+    platform_file::axes(expected, table).map_err(|reason| source_error(path, reason))
 }
 
 #[cfg(feature = "experimental-system-font-query")]

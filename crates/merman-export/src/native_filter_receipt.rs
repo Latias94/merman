@@ -96,11 +96,12 @@ impl RawReferenceProof {
         has_typed_reference: bool,
     ) -> Result<(), ()> {
         let local_name = element.local_name();
+        let is_svg_element = is_svg_namespace(reader, element);
         // Admit literal geometry/text sources, including HTML fallback's nested SVG.
         // References inside a source need a separate expansion proof and fail closed.
         let mut source = RawSource {
             ids: Vec::new(),
-            plain: is_svg_namespace(reader, element)
+            plain: is_svg_element
                 && matches!(
                     local_name.as_ref(),
                     "g" | "svg"
@@ -122,24 +123,38 @@ impl RawReferenceProof {
             ),
             has_typed_reference,
         };
-        let instantiates_source = matches!(local_name.as_ref(), "use" | "feImage");
+        let instantiates_source =
+            is_svg_element && matches!(local_name.as_ref(), "use" | "feImage");
         let mut href = None;
+        let mut xlink_href = None;
         for attribute in element.attributes() {
             let attribute = attribute.map_err(|_| ())?;
             if attribute.key.as_namespace_binding().is_some() {
                 continue;
             }
             let (namespace, name) = reader.resolver().resolve_attribute(attribute.key);
-            // XML use expansion reads local-name identity before presentation filtering.
-            // Keep a finite literal identity surface rather than guessing a different target.
             match name.as_ref() {
+                // Raw use lookup and converted resource lookup project IDs differently.
                 "id" if !matches!(namespace, ResolveResult::Unbound) => return Err(()),
-                "href"
-                    if !matches!(namespace, ResolveResult::Unbound)
-                        && !matches!(&namespace, ResolveResult::Bound(uri)
-                            if uri.as_ref() == XLINK_NAMESPACE) =>
-                {
-                    return Err(());
+                "href" => {
+                    let slot = match &namespace {
+                        ResolveResult::Unbound => &mut href,
+                        ResolveResult::Bound(uri) if uri.as_ref() == XLINK_NAMESPACE => {
+                            &mut xlink_href
+                        }
+                        ResolveResult::Bound(_) => continue,
+                        ResolveResult::Unknown(_) => return Err(()),
+                    };
+                    source.plain = false;
+                    if instantiates_source {
+                        let value = attribute
+                            .normalized_value(XmlVersion::Implicit1_0)
+                            .map_err(|_| ())?;
+                        if slot.replace(value.into_owned()).is_some() {
+                            return Err(());
+                        }
+                    }
+                    continue;
                 }
                 _ => {}
             }
@@ -150,24 +165,7 @@ impl RawReferenceProof {
                 .normalized_value(XmlVersion::Implicit1_0)
                 .map_err(|_| ())?;
             match name.as_ref() {
-                "id" => {
-                    // usvg's XML use lookup and converted resource lookup project IDs
-                    // differently. Namespaced or duplicate source IDs are not certified.
-                    source.plain &= matches!(namespace, ResolveResult::Unbound);
-                    source.ids.push(value.into_owned());
-                }
-                "href" => {
-                    source.plain = false;
-                    if instantiates_source {
-                        if href
-                            .as_deref()
-                            .is_some_and(|previous| previous != value.as_ref())
-                        {
-                            return Err(());
-                        }
-                        href = Some(value.into_owned());
-                    }
-                }
+                "id" => source.ids.push(value.into_owned()),
                 "filter" | "clip-path" | "mask" | "marker" | "marker-start" | "marker-mid"
                 | "marker-end" => source.plain &= value.trim() == "none",
                 "fill" | "stroke" => {
@@ -179,8 +177,10 @@ impl RawReferenceProof {
         }
         source.plain &= !has_typed_reference && source.ids.len() <= 1;
         if instantiates_source {
+            // usvg 0.50 uses the SVG 2 precedence for both raw uses and parsed filter images.
             let target = href
                 .as_deref()
+                .or(xlink_href.as_deref())
                 .and_then(|href| href.strip_prefix('#'))
                 .ok_or(())?;
             if target.is_empty()
@@ -1588,9 +1588,8 @@ fn visit_group(
         if group.filters().len() != 1 || clipped || text_paint.filter_restricted {
             return None;
         }
-        // usvg can retain a filter group after discarding empty text or a missing font.
-        // Such a definition is not an observed paint terminal.
-        if group.children().is_empty() {
+        // A filter region can exist even when an empty subtree supplies no source geometry.
+        if group.bounding_box().is_none() {
             return None;
         }
         let shadow = expected.get(filter.id())?;
@@ -1681,7 +1680,10 @@ fn resolved_filter_region_matches(
         return false;
     };
     if shadow.units() == NativeSvgFilterUnits::ObjectBoundingBox {
-        let Some(object_bbox) = group.bounding_box().to_non_zero_rect() else {
+        let Some(object_bbox) = group
+            .bounding_box()
+            .and_then(|bbox| bbox.to_non_zero_rect())
+        else {
             return false;
         };
         // usvg normalizes the fractional rectangle before scaling it to object coordinates.
@@ -1781,6 +1783,17 @@ mod tests {
 
     fn parse_tree(svg: &str) -> usvg::Tree {
         usvg::Tree::from_str(svg, &usvg::Options::default()).expect("valid SVG test tree")
+    }
+
+    #[test]
+    fn empty_subtree_cannot_certify_a_shadow_with_a_filter_region() {
+        let svg = format!(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><defs><filter id="{FIRST_ID}" filterUnits="userSpaceOnUse" x="0" y="0" width="200" height="100" color-interpolation-filters="linearRGB"><feDropShadow in="SourceGraphic" dx="4" dy="5" stdDeviation="0" flood-color="#112233"/></filter></defs><g filter="url(#{FIRST_ID})"><g/></g></svg>"##
+        );
+        let tree = parse_tree(&svg);
+        assert_eq!(tree.filters().len(), 1);
+        assert!(parse_raw_drop_shadows(&svg).is_some());
+        assert!(preflight_native_filter_receipt(&svg, &tree).is_none());
     }
 
     #[test]
@@ -2089,8 +2102,35 @@ mod tests {
 
     #[test]
     fn raw_href_namespace_cannot_select_a_different_source_than_the_proof() {
-        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"
-     xmlns:q="urn:receipt-review" width="200" height="100">
+        let session = merman_render::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
+        for (href, selects_filtered_source) in [
+            (r##"href="#plain""##, false),
+            (r##"x:href="#plain""##, false),
+            (r##"q:href="#source" href="#plain""##, false),
+            (r##"s:href="#source" x:href="#plain""##, false),
+            (r##"xml:href="#source" href="#plain""##, false),
+            (r##"x:href="#source" href="#plain""##, false),
+            (r##"href="#plain" x:href="#source""##, false),
+            (r##"x:href="#plain" href="#source""##, true),
+            (r##"href="#source" x:href="#plain""##, true),
+            (r##"q:href="#plain" x:href="#source""##, true),
+        ] {
+            for via_filter_image in [false, true] {
+                let (definition, consumer) = if via_filter_image {
+                    (
+                        format!(
+                            r#"<filter id="ordinary" filterUnits="userSpaceOnUse" x="0" y="0" width="200" height="100"><feImage {href}/></filter>"#
+                        ),
+                        r##"<rect width="200" height="100" filter="url(#ordinary)"/>"##.to_owned(),
+                    )
+                } else {
+                    (String::new(), format!(r#"<use {href} x="80"/>"#))
+                };
+                let svg = format!(
+                    r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:s="http://www.w3.org/2000/svg"
+     xmlns:x="http://www.w3.org/1999/xlink" xmlns:q="urn:receipt-review" width="200" height="100">
   <defs>
     <filter id="node-theme-effect-shadow" filterUnits="objectBoundingBox"
             x="-0.5" y="-0.5" width="2" height="2"
@@ -2099,13 +2139,52 @@ mod tests {
                     stdDeviation="0" flood-color="#112233"/>
     </filter>
     <g id="plain"><rect width="20" height="20"/></g>
+    {definition}
   </defs>
   <g id="source" filter="url(#node-theme-effect-shadow)">
     <rect x="10" y="10" width="20" height="20"/>
   </g>
-  <use q:href="#source" href="#plain" x="80"/>
-</svg>"##;
-        assert_reinstantiated_typed_source_is_rejected(svg, 2);
+  {consumer}
+</svg>"##
+                );
+                let sealed = merman_render::svg::finalize_resvg_svg(&svg, &session)
+                    .expect("valid SVG with same-document references");
+                let expected_filters =
+                    1 + usize::from(via_filter_image) + usize::from(selects_filtered_source);
+                let expected_receipt = !selects_filtered_source;
+                assert_eq!(
+                    parse_raw_drop_shadows(sealed.as_str()).is_some(),
+                    expected_receipt,
+                    "{href}, via filter image: {via_filter_image}"
+                );
+                #[cfg(any(feature = "png", feature = "jpeg"))]
+                {
+                    let prepared = crate::prepare_raster(&sealed, &crate::fixture_raster_options())
+                        .expect("valid raster test input");
+                    assert_eq!(
+                        (
+                            prepared.tree.filters().len(),
+                            prepared.report.native_filter_receipt.is_some()
+                        ),
+                        (expected_filters, expected_receipt),
+                        "{href}, via filter image: {via_filter_image}"
+                    );
+                }
+                #[cfg(feature = "pdf")]
+                {
+                    let prepared = crate::prepare_pdf(&sealed, &crate::fixture_pdf_options())
+                        .expect("valid PDF test input");
+                    assert_eq!(
+                        (
+                            prepared.tree.filters().len(),
+                            prepared.report().native_filter_receipt().is_some()
+                        ),
+                        (expected_filters, expected_receipt),
+                        "{href}, via filter image: {via_filter_image}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]
@@ -2853,7 +2932,7 @@ mod tests {
             super::preflight_native_filter_receipt(
                 &source,
                 &tree,
-                tree.root().abs_stroke_bounding_box(),
+                tree.root().abs_stroke_bounding_box().unwrap(),
                 &OperationControl::new(),
             )
             .expect("active filter certification")

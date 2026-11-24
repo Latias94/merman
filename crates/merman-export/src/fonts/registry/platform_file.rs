@@ -151,7 +151,8 @@ impl<'a> OpenPlatformFont<'a> {
         } else {
             None
         };
-        axes(expected, fvar.as_deref(), request.instances)
+        axes(expected, fvar.as_deref())
+            .map(Some)
             .map_err(|reason| source_error(probe.source.path, reason))
     }
 }
@@ -280,20 +281,19 @@ impl Probe<'_, '_> {
 pub(super) fn axes(
     expected: &platform::PlatformFace,
     table: Option<&[u8]>,
-    instances: bool,
-) -> Result<Option<Vec<FontVariation>>, &'static str> {
+) -> Result<Vec<FontVariation>, &'static str> {
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     let named = expected.named_instance;
     #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
     let named = None;
     if named.is_none() && expected.variations.is_empty() {
-        return Ok(Some(Vec::new()));
+        return Ok(Vec::new());
     }
     let Some((data, table)) = table.and_then(|data| Some((data, fvar::Table::parse(data)?))) else {
         return if named.is_some() {
             Err("font has no valid named instance")
         } else {
-            Ok(Some(Vec::new()))
+            Ok(Vec::new())
         };
     };
     let coordinates = match named {
@@ -315,19 +315,11 @@ pub(super) fn axes(
             .or_else(|| coordinates.map(|data| fixed(&data[index * 4..][..4])));
         if let Some(value) = value {
             let value = value.clamp(axis.min_value, axis.max_value);
-            if !instances && value != axis.def_value {
-                return Ok(None);
-            }
-            if instances {
-                axes.push(FontVariation::new(
-                    tag,
-                    if value == 0.0 { 0.0 } else { value },
-                ));
-            }
+            axes.push(FontVariation::new(tag, value + 0.0));
         }
     }
     axes.sort_by_key(|axis| axis.tag);
-    Ok(Some(axes))
+    Ok(axes)
 }
 
 // fvar instance indices in Fontconfig are one-based. Coordinates start after

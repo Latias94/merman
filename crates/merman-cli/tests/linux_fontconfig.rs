@@ -446,7 +446,7 @@ fn variable_geometry(context: &NativeFontContext, language: &str, settings: &str
     }
     (
         last.transform().tx - first.transform().tx,
-        label.flattened().bounding_box().width(),
+        label.flattened().bounding_box().unwrap().width(),
     )
 }
 

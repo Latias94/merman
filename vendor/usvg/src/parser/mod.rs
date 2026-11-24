@@ -21,7 +21,8 @@ mod text;
 #[cfg(feature = "text")]
 pub(crate) use converter::Cache;
 pub use image::{ImageHrefDataResolverFn, ImageHrefResolver, ImageHrefStringResolverFn};
-pub use options::Options;
+pub use options::{DEFAULT_MAX_DEPTH, Options};
+#[cfg(feature = "writer")]
 pub(crate) use svgtree::{AId, EId};
 
 /// List of all errors.
@@ -29,6 +30,9 @@ pub(crate) use svgtree::{AId, EId};
 pub enum Error {
     /// Only UTF-8 content are supported.
     NotAnUtf8Str,
+
+    /// `svgz` feature is required to parse SVGZ data.
+    SvgzFeatureNotEnabled,
 
     /// Compressed SVG must use the GZip algorithm.
     MalformedGZip,
@@ -58,6 +62,9 @@ impl std::fmt::Display for Error {
         match *self {
             Error::NotAnUtf8Str => {
                 write!(f, "provided data has not an UTF-8 encoding")
+            }
+            Self::SvgzFeatureNotEnabled => {
+                write!(f, "enable svgz cargo feature to decode SVGZ data")
             }
             Error::MalformedGZip => {
                 write!(f, "provided data has a malformed GZip content")
@@ -97,9 +104,15 @@ impl crate::Tree {
     /// Can contain an SVG string or a gzip compressed data.
     pub fn from_data(data: &[u8], opt: &Options) -> Result<Self, Error> {
         if data.starts_with(&[0x1f, 0x8b]) {
-            let data = decompress_svgz(data)?;
-            let text = std::str::from_utf8(&data).map_err(|_| Error::NotAnUtf8Str)?;
-            Self::from_str(text, opt)
+            #[cfg(feature = "svgz")]
+            {
+                let data = decompress_svgz(data)?;
+                let text = std::str::from_utf8(&data).map_err(|_| Error::NotAnUtf8Str)?;
+                Self::from_str(text, opt)
+            }
+
+            #[cfg(not(feature = "svgz"))]
+            Err(Error::SvgzFeatureNotEnabled)
         } else {
             let text = std::str::from_utf8(data).map_err(|_| Error::NotAnUtf8Str)?;
             Self::from_str(text, opt)
@@ -156,6 +169,7 @@ impl crate::Tree {
                     .as_ref()
                     .map(|select| Box::new(select) as crate::FontInstanceFallbackFn<'_>),
             },
+            max_depth: opt.max_depth,
             ..Options::default()
         };
 
@@ -164,8 +178,8 @@ impl crate::Tree {
 
     /// Parses `Tree` from an SVG string.
     pub fn from_str(text: &str, opt: &Options) -> Result<Self, Error> {
-        let doc = parse_document(text)?;
-        Self::from_xmltree(&doc, opt)
+        let doc = parse_document(text, opt)?;
+        self::converter::convert_doc(&doc, opt)
     }
 
     /// Parses a metric probe and also resolves the metric bbox x of its end-anchored twin.
@@ -180,14 +194,14 @@ impl crate::Tree {
         id: &str,
     ) -> Result<Option<(Self, Option<f32>)>, Error> {
         let source = source();
-        let doc = parse_document(&source)?;
-        let mut cache = converter::Cache::new(opt.fontdb.clone());
+        let doc = parse_document(&source, opt)?;
+        let mut cache = converter::Cache::new(&doc, opt.fontdb.clone());
         cache.text_anchor_probe = Some(converter::TextAnchorProbe {
             id: id.into(),
             supported: true,
             end_x: None,
         });
-        let tree = Self::from_xmltree_with_cache(&doc, opt, &mut cache)?;
+        let tree = converter::convert_doc_with_cache(&mut cache, opt)?;
         Ok(cache
             .text_anchor_probe
             .and_then(|probe| probe.supported.then_some((tree, probe.end_x))))
@@ -195,32 +209,30 @@ impl crate::Tree {
 
     /// Parses `Tree` from `roxmltree::Document`.
     pub fn from_xmltree(doc: &roxmltree::Document, opt: &Options) -> Result<Self, Error> {
-        let mut cache = converter::Cache::new(
-            #[cfg(feature = "text")]
-            opt.fontdb.clone(),
-        );
-        Self::from_xmltree_with_cache(doc, opt, &mut cache)
-    }
-
-    fn from_xmltree_with_cache(
-        doc: &roxmltree::Document,
-        opt: &Options,
-        cache: &mut converter::Cache,
-    ) -> Result<Self, Error> {
-        let doc = svgtree::Document::parse_tree(doc, opt.style_sheet.as_deref())?;
-        self::converter::convert_doc(&doc, opt, cache)
+        let doc = svgtree::Document::parse_tree(doc, opt.style_sheet.as_deref(), opt.max_depth)?;
+        self::converter::convert_doc(&doc, opt)
     }
 }
 
-fn parse_document(text: &str) -> Result<roxmltree::Document<'_>, Error> {
+fn parse_document<'input>(
+    text: &'input str,
+    opt: &'input Options,
+) -> Result<svgtree::Document<'input>, Error> {
     let xml_opt = roxmltree::ParsingOptions {
         allow_dtd: true,
         ..Default::default()
     };
-    roxmltree::Document::parse_with_options(text, xml_opt).map_err(Error::ParsingFailed)
+    // Drop the XML document before converting the simplified SVG tree.
+    let xml = roxmltree::Document::parse_with_options(text, xml_opt)?;
+    Ok(svgtree::Document::parse_tree(
+        &xml,
+        opt.style_sheet.as_deref(),
+        opt.max_depth,
+    )?)
 }
 
 /// Decompresses an SVGZ file.
+#[cfg(feature = "svgz")]
 pub fn decompress_svgz(data: &[u8]) -> Result<Vec<u8>, Error> {
     use std::io::Read;
 
@@ -235,14 +247,14 @@ pub fn decompress_svgz(data: &[u8]) -> Result<Vec<u8>, Error> {
 #[inline]
 pub(crate) fn f32_bound(min: f32, val: f32, max: f32) -> f32 {
     debug_assert!(min.is_finite());
-    debug_assert!(val.is_finite());
     debug_assert!(max.is_finite());
 
     if val > max {
         max
-    } else if val < min {
-        min
-    } else {
+    } else if val >= min {
         val
+    } else {
+        // Catches `val < min` as well as a NaN `val`.
+        min
     }
 }

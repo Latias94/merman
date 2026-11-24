@@ -6,7 +6,7 @@
 
 /// An element ID.
 #[allow(missing_docs)]
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EId {
     A,
     Circle,
@@ -60,7 +60,7 @@ pub enum EId {
     TextPath,
     Tref,
     Tspan,
-    Use
+    Use,
 }
 
 static ELEMENTS: Map<EId> = Map {
@@ -161,7 +161,7 @@ impl std::fmt::Display for EId {
 
 /// An attribute ID.
 #[allow(missing_docs)]
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AId {
     AlignmentBaseline,
     Amplitude,
@@ -374,7 +374,7 @@ pub enum AId {
     Y1,
     Y2,
     YChannelSelector,
-    Z
+    Z,
 }
 
 static ATTRIBUTES: Map<AId> = Map {
@@ -619,7 +619,10 @@ static ATTRIBUTES: Map<AId> = Map {
         ("x2", AId::X2),
         ("pathLength", AId::PathLength),
         ("marker-start", AId::MarkerStart),
-        ("glyph-orientation-horizontal", AId::GlyphOrientationHorizontal),
+        (
+            "glyph-orientation-horizontal",
+            AId::GlyphOrientationHorizontal,
+        ),
         ("maskUnits", AId::MaskUnits),
         ("textLength", AId::TextLength),
         ("viewBox", AId::ViewBox),
@@ -631,7 +634,10 @@ static ATTRIBUTES: Map<AId> = Map {
         ("x", AId::X),
         ("font-variant", AId::FontVariant),
         ("elevation", AId::Elevation),
-        ("color-interpolation-filters", AId::ColorInterpolationFilters),
+        (
+            "color-interpolation-filters",
+            AId::ColorInterpolationFilters,
+        ),
         ("text-indent", AId::TextIndent),
         ("marker-end", AId::MarkerEnd),
         ("transform-box", AId::TransformBox),
@@ -682,11 +688,7 @@ impl<V: PartialEq> Map<V> {
         let index = get_index(hash, self.disps, self.entries.len());
         let entry = &self.entries[index as usize];
         let b = entry.0;
-        if b == key {
-            Some(&entry.1)
-        } else {
-            None
-        }
+        if b == key { Some(&entry.1) } else { None }
     }
 
     fn key(&self, value: &V) -> &'static str {
@@ -715,9 +717,11 @@ fn split(hash: u64) -> (u32, u32, u32) {
     const BITS: u32 = 21;
     const MASK: u64 = (1 << BITS) - 1;
 
-    ((hash & MASK) as u32,
-     ((hash >> BITS) & MASK) as u32,
-     ((hash >> (2 * BITS)) & MASK) as u32)
+    (
+        (hash & MASK) as u32,
+        ((hash >> BITS) & MASK) as u32,
+        ((hash >> (2 * BITS)) & MASK) as u32,
+    )
 }
 
 #[inline]

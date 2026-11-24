@@ -10,7 +10,7 @@ use tiny_skia_path::Point;
 use super::converter;
 use super::svgtree::{AId, EId, SvgNode};
 use crate::{
-    ApproxEqUlps, ApproxZeroUlps, ClipPath, Fill, Group, Node, NonZeroRect, Path, Size, Transform,
+    ApproxEqUlps, ApproxZeroUlps, ClipPath, Fill, Group, Node, NonZeroRect, Path, Transform,
     ViewBox,
 };
 
@@ -60,13 +60,6 @@ pub(crate) fn convert(
         }
 
         if let Some(marker) = marker {
-            // TODO: move to svgtree
-            // Check for recursive marker.
-            if state.parent_markers.contains(&marker) {
-                log::warn!("Recursive marker detected: {}", marker.element_id());
-                continue;
-            }
-
             resolve(node, path, marker, *kind, state, cache, parent);
         }
     }
@@ -98,12 +91,18 @@ fn resolve(
 
     let r = convert_rect(marker_node, state)?;
 
-    let view_box = marker_node.parse_viewbox().map(|vb| ViewBox {
-        rect: vb,
-        aspect: marker_node
-            .attribute(AId::PreserveAspectRatio)
-            .unwrap_or_default(),
-    });
+    let view_box_ts = marker_node
+        .parse_viewbox()
+        .map(|vb| {
+            ViewBox {
+                rect: vb,
+                aspect: marker_node
+                    .attribute(AId::PreserveAspectRatio)
+                    .unwrap_or_default(),
+            }
+            .to_transform(r.size())
+        })
+        .unwrap_or_default();
 
     let has_overflow = {
         let overflow = marker_node.attribute(AId::Overflow);
@@ -112,17 +111,16 @@ fn resolve(
     };
 
     let clip_path = if has_overflow {
-        let clip_rect = if let Some(vbox) = view_box {
-            vbox.rect
-        } else {
-            r.size().to_non_zero_rect(0.0, 0.0)
-        };
+        let clip_rect = r
+            .size()
+            .to_non_zero_rect(0.0, 0.0)
+            .transform(view_box_ts.invert()?)?;
 
         let mut clip_path = ClipPath::empty(cache.gen_clip_path_id());
 
         let mut path = Path::new_simple(Arc::new(tiny_skia_path::PathBuilder::from_rect(
             clip_rect.to_rect(),
-        )))?;
+        )));
         path.fill = Some(Fill::default());
 
         clip_path.root.children.push(Node::Path(Box::new(path)));
@@ -180,15 +178,8 @@ fn resolve(
             ts = ts.pre_rotate(angle);
         }
 
-        if let Some(vbox) = view_box {
-            let size = Size::from_wh(r.width() * stroke_scale, r.height() * stroke_scale).unwrap();
-            let vbox_ts = vbox.to_transform(size);
-            let (sx, sy) = vbox_ts.get_scale();
-            ts = ts.pre_scale(sx, sy);
-        } else {
-            ts = ts.pre_scale(stroke_scale, stroke_scale);
-        }
-
+        let (sx, sy) = view_box_ts.get_scale();
+        ts = ts.pre_scale(sx * stroke_scale, sy * stroke_scale);
         ts = ts.pre_translate(-r.x(), -r.y());
 
         // TODO: do not create a group when no clipPath
@@ -200,9 +191,8 @@ fn resolve(
         };
 
         let mut marker_state = state.clone();
-        marker_state.parent_markers.push(marker_node);
+        marker_state.inside_marker = true;
         converter::convert_children(marker_node, &marker_state, cache, &mut g);
-        g.calculate_bounding_boxes();
 
         if g.has_children() {
             parent.children.push(Node::Group(Box::new(g)));

@@ -420,6 +420,7 @@ fn title_overflow(svg: &str, text: &str) -> f64 {
     let ink = text
         .flattened()
         .bounding_box()
+        .expect("rendered title ink bounds")
         .transform(text.abs_transform())
         .unwrap();
     f64::from(

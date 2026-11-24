@@ -131,22 +131,21 @@ Fontconfig runtime cannot load, before acquiring explicit sources. A valid empty
 Fontconfig configuration remains empty; library callers decide whether an unavailable
 service permits another provider. The CLI retries bounded discovery only for automatic
 provider selection, never for an explicit `--font-system platform` request.
-Fontconfig named instances that require variation coordinates are skipped. CSS
-weight can still vary the admitted physical face along its supported weight axis.
+Fontconfig named instances keep their selected coordinates and use the physical face
+index to acquire the font. Authored variation settings can override those coordinates.
 
 ### Selection and fallback order
 
-Workspace builds shape each missing cluster with one physical face that covers it
-and preserve the other clusters in the run. Platform discovery tries the authored
+Merman shapes each missing cluster with one physical face that covers it and
+preserves the other clusters in the run. Platform discovery tries the authored
 stack, then caller fonts in source order, then the platform's candidates for the
 missing cluster. Windows applies the relative font size returned by DirectWrite
 to both the cluster metrics and the painted glyphs.
 
 SVG text inherits `xml:lang`, and each `<tspan>` can override it. Library users can set
 the default for Mermaid measurement and untagged SVG with
-`NativeFontContext::with_language`. Registry builds using the published usvg 0.47
-retain its scalar fallback interface. That interface can use the context language for
-platform lookup and has the original whole-run shaping and replacement behavior.
+`NativeFontContext::with_language`. Hosts that configure the parser directly can use
+`merman_export::usvg::Options` with `NativeFontContext::apply_to_usvg_options`.
 
 For explicit font files or memory buffers without system discovery, fallback visits
 admitted faces in source order, skipping previously tried, unsuitable, and incompatible
