@@ -3,11 +3,11 @@
 Native Mermaid-compatible SVG rendering for Node.js 22+ and static-site build pipelines, without
 Chromium, a browser-WASM fallback, or a postinstall binary download.
 
-The package remains experimental. Version `0.11.0` targets Mermaid `12.3.0` and uses Node transport API `2` and Options JSON schema `3`. Keep the loader and native platform package at the same exact version and source revision. [Verified versions and installation](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) · [0.11.0 migration](https://github.com/Latias94/merman/blob/main/docs/migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts)
+The package remains experimental. The current source targets Mermaid `12.3.0` and uses Node transport API `3` and Options JSON schema `4`. Keep the loader and native platform package at the same exact version and source revision. [Verified versions and installation](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) · [0.11.0 migration](https://github.com/Latias94/merman/blob/main/docs/migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts)
 
 ## Quick start
 
-Install the loader package, not a platform package:
+Install the published `0.11.0` loader, which selects a matching native package using transport API `2`.
 
 ```sh
 npm install --save-exact @mermanjs/node@0.11.0
@@ -34,7 +34,7 @@ Theme v2 is available in builds from the current source tree. Discover preset ID
 with `engine.themeCatalog()`. The schema 2 catalog includes each preset's default appearance and six
 swatches, along with Mermaid classic theme IDs and native capabilities by diagram family.
 
-The `theme` field in Options JSON schema `3` accepts these selections.
+The `theme` field in Options JSON schema `4` accepts these selections.
 
 | Selection | Options JSON value |
 | --- | --- |

@@ -797,7 +797,7 @@ flutter analyze
 dart format --set-exit-if-changed \
   lib/merman.dart lib/src/merman_ffi.dart lib/src/operation_metadata.dart \
   example tool hook
-dart run tool/abi3_contract_test.dart
+dart run tool/native_abi_contract_test.dart
 dart run tool/native_assets_contract_test.dart
 dart run example/main.dart
 dart run example/smoke.dart
@@ -956,7 +956,7 @@ release artifacts. The exact dependency gate admits `json5`, `html5ever`, and `u
 pure-Rust dependencies of invariant Mermaid language, configuration, and sanitization semantics.
 They remain covered by the exact artifact size budget and final WASM import gate; browser bindings,
 randomness, clocks, and other system adapters remain forbidden. Release validation requires Typst
-plugin ABI 3, independently from native ABI 3, the closed export surface including `analyze_json`
+plugin ABI 4, the closed export surface including `analyze_json`
 and `theme_operation_json`, and the descriptor-owned `publish` artifact. One producer owns Cargo
 build, optimization, stripping, and the private schema-4 manifest with raw/optimized/final digests.
 The package builder's `--budget-file` gate consumes those verified bytes before staging; it does
@@ -974,7 +974,7 @@ replacing the prior version if live source or any staged byte changes.
 
 The crates.io workflow checks the exact workspace plugin's dependency closure, WASM size, version, ABI, capability catalog, and successful/error protocol calls through the package builder, then compiles the real Typst examples with `typst-package-smoke --examples-only`. The independent wrapper's complete suite retains its pinned bundled-engine assertion and runs in its package owner; publishing a workspace plugin patch does not change that wrapper's version mapping.
 
-These commands are Typst owner preflight only. The Cargo crate `merman-typst-plugin` and the independently versioned Typst Universe wrapper are separate publication surfaces; publishing the crate does not publish the wrapper. Wrapper `0.5.0` bundles Merman `0.9.0`, and `0.4.0` bundles `0.8.0`; their published bytes remain unchanged. The selected next wrapper is `0.6.0`, bundling Merman `0.10.0`; follow the [Typst package guide](../../distribution/typst/merman/README.md) and [current publication record](PUBLISH_ORDER.md#0100-preparation). Prepare its final registry import and usage examples before packaging; keep `--package-path` in development guidance. Retain the generated package and private artifact receipt, then verify the registry's exact version after acceptance and record that evidence in `PUBLISH_ORDER.md`.
+These commands are Typst owner preflight only. The Cargo crate `merman-typst-plugin` and the independently versioned Typst Universe wrapper are separate publication surfaces; publishing the crate does not publish the wrapper. Wrapper `0.5.0` bundles Merman `0.9.0`, and `0.4.0` bundles `0.8.0`; their published bytes remain unchanged. Published wrapper `0.6.0` bundles Merman `0.10.0`. The next wrapper is `0.7.0`, bundling Merman `0.11.0`. See the [Typst package guide](../../distribution/typst/merman/README.md). Prepare its final registry import and usage examples before packaging; keep `--package-path` in development guidance. Retain the generated package and private artifact receipt, then verify the registry's exact version after acceptance and record that evidence in `PUBLISH_ORDER.md`.
 
 ## Tag And Push
 

@@ -4,9 +4,11 @@ Explicit Node-targeted WebAssembly rendering for Node.js 22+ and static-site bui
 This is a separate opt-in package; `@mermanjs/node` remains the native N-API package and never
 silently falls back to browser or Node WASM.
 
-The package remains experimental. Version `0.11.0` targets Mermaid `12.3.0` and uses Node transport API `2` and Options JSON schema `3`. Keep the facade, generated glue, and WASM at the same exact version and source revision. [Verified versions and installation](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) · [0.11.0 migration](https://github.com/Latias94/merman/blob/main/docs/migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts)
+The package remains experimental. The current source targets Mermaid `12.3.0` and uses Node transport API `3` and Options JSON schema `4`. Keep the facade, generated glue, and WASM at the same exact version and source revision. [Verified versions and installation](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) · [0.11.0 migration](https://github.com/Latias94/merman/blob/main/docs/migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts)
 
 ## Quick start
+
+The published `0.11.0` package bundles the Node-targeted WASM artifact for transport API `2`.
 
 ```sh
 npm install --save-exact @mermanjs/node-wasm@0.11.0

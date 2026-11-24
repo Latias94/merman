@@ -67,7 +67,7 @@ primary geometry with emitted dimensions. Emitted dimensions and overflow descri
 output. `requested_layout_profile` and `compact_attempted` retain the native selection evidence.
 Discover supported policies through `MermanAsciiCapability.graph_presentations` and request one
 with `ascii.graph_presentation` (`strict` by default, or `adaptive` for admitted families).
-The native renderer owns layout and fallback selection. Options JSON schema `3`, operation
+The native renderer owns layout and fallback selection. Options JSON schema `4`, operation
 metadata schema `1`, and C ABI `3` are unchanged.
 
 API 6 added `layout_profiles`, `width_profiles`, `encodings`, and `fallback_encodings` to
@@ -109,7 +109,7 @@ With `svg` enabled, pass the following JSON through `render_svg()`'s `options_js
 `MermanOperationRequestV4.options_json` for generic execution.
 
 ```json
-{"version":3,"theme":{"preset":"paper-cut"}}
+{"version":4,"theme":{"preset":"paper-cut"}}
 ```
 
 Use `theme_catalog_json()` to read the schema-2 catalog. Paired designs accept an explicit appearance, for example `{"theme":{"preset":"studio","appearance":"dark"}}`.

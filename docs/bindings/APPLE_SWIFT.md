@@ -147,7 +147,7 @@ as optional values: all are `nil` when no valid primary layout was produced. Pre
 replaces `overflowed` with `primaryOverflowed` and `emittedOverflowed`, and adds
 `requestedGraphPresentation`. Discover supported policies through capability `graphPresentations`
 and pass `ascii.graph_presentation` in request options. The native renderer owns selection; see
-[ASCII options](OPTIONS_JSON.md#ascii-options) for policy combinations. Options JSON schema `3`
+[ASCII options](OPTIONS_JSON.md#ascii-options) for policy combinations. Options JSON schema `4`
 and outer operation metadata schema `1` are unchanged.
 
 Generated `MermanError.Binding` values carry `kind: MermanErrorKind`, an optional `capabilityId`,
@@ -171,7 +171,7 @@ shape and its local relations, such as every output also being an operation and 
 system adapter also being a capability. They must tolerate newly introduced stable IDs rather than
 embedding a second copy of Merman's global vocabulary.
 
-Use `resourceOptionsJson(profile:overrides:)` to build Options JSON schema `3`. `.constrained` is the recommended profile for untrusted or multi-tenant diagrams; pass `nil` for a reusable request overlay that must inherit its constructor ceiling. Override records accept only `MermanResourceOverrideId`, while the runtime catalog remains the complete source of truth for all limits. The complete resource decision table and error behavior are documented in [binding options](OPTIONS_JSON.md).
+Use `resourceOptionsJson(profile:overrides:)` to build Options JSON schema `4`. `.constrained` is the recommended profile for untrusted or multi-tenant diagrams; pass `nil` for a reusable request overlay that must inherit its constructor ceiling. Override records accept only `MermanResourceOverrideId`, while the runtime catalog remains the complete source of truth for all limits. The complete resource decision table and error behavior are documented in [binding options](OPTIONS_JSON.md).
 
 ## Text Measurement
 

@@ -424,9 +424,9 @@ mod tests {
 
     #[test]
     fn abi_version_is_stable() {
-        assert_eq!(TYPST_PLUGIN_ABI_VERSION, 3);
-        assert_eq!(TYPST_PLUGIN_ABI_VERSION_BYTES, b"3");
-        assert_eq!(abi_version(), b"3");
+        assert_eq!(TYPST_PLUGIN_ABI_VERSION, 4);
+        assert_eq!(TYPST_PLUGIN_ABI_VERSION_BYTES, b"4");
+        assert_eq!(abi_version(), b"4");
     }
 
     #[test]

@@ -1,12 +1,14 @@
-# Merman Native ABI 3 Protocol
+# Merman Native ABI 4 Protocol
 
 Status: current contract
 
 This document owns host integration rules for the C-compatible transport implemented by
-[`merman-ffi`](../../crates/merman-ffi/src/lib.rs). The [native ABI descriptor](../../contracts/abi/merman-v3.json)
+[`merman-ffi`](../../crates/merman-ffi/src/lib.rs). The [native ABI descriptor](../../contracts/abi/merman-v4.json)
 owns the machine-readable contract, and its generated header
 [`crates/merman-ffi/include/merman.h`](../../crates/merman-ffi/include/merman.h) is the
-authoritative wire definition. ABI 2 is removed and is not accepted by ABI 3 discovery.
+authoritative wire definition. ABI 4 keeps the ABI 3 record layouts and function slots and
+replaces the theme operations. A valid discovery request for ABI 3 returns
+`MERMAN_NATIVE_STATUS_ABI_MISMATCH` before a function table is published.
 
 ## Build
 
@@ -51,7 +53,7 @@ MermanNativeApi api = {
 };
 
 if (merman_get_native_api(&request, &api) != MERMAN_NATIVE_STATUS_OK) {
-    /* The header and library do not share ABI 3. */
+    /* Handle a discovery failure before using the table. */
 }
 ```
 
@@ -61,31 +63,26 @@ not a promise that historical partial tables remain supported. Release consumers
 generated table, require every function pointer they call, and never reconstruct function names or
 dynamically look up per-operation exports.
 
-The descriptor-selected minimum prefix includes `metadata_collect` at function-slot code `5` and
-`engine_new_with_services` at code `6`. The current table then appends
-`operation_control_new`, `operation_control_cancel`, and `operation_control_release` at codes `7`,
-`8`, and `9`, followed by `execute_collect_controlled` at code `10`. The generated prefix-size
-macros identify each complete table boundary. Release consumers require the complete current
-prefix through `MERMAN_NATIVE_API_EXECUTE_COLLECT_CONTROLLED_PREFIX_SIZE`; they must not treat the
-smaller minimum prefix as the complete release surface, fall back to the older constructor, or
-discard constructor services. The controlled entry point is append-only so the original ABI 3
-operation-request record remains byte-for-byte stable. The independent memory-only font
-constructor, `engine_new_with_fonts`, is appended at slot `11`; hosts using it also require
-`MERMAN_NATIVE_API_ENGINE_NEW_WITH_FONTS_PREFIX_SIZE`. Its configuration, input lifetimes,
-strict glyph coverage, and callback conflicts are documented in the
-[C font-service guide](../../crates/merman-ffi/README.md#memory-only-fonts).
+The minimum prefix includes `metadata_collect` at slot `5` and ends at
+`engine_new_with_services` at slot `6`. `operation_control_new`, `operation_control_cancel`, and
+`operation_control_release` occupy slots `7`, `8`, and `9`. `execute_collect_controlled` occupies
+slot `10` and accepts the same operation-request record as `execute_collect`. The memory-only
+font constructor `engine_new_with_fonts` occupies slot `11`. Consumers using these functions
+check the generated prefix size for the last slot they need and verify the corresponding function
+pointers before calling them. The constructor documentation covers configuration, input lifetimes,
+glyph coverage, and callbacks. [C font-service guide](../../crates/merman-ffi/README.md#memory-only-fonts)
 
 The returned digests have separate roles:
 
-- `minimum_prefix_layout_digest` is the compatibility key checked by discovery. Its structure is
-  derived from the descriptor's ABI 3 minimum records, codes, callback, and function slots.
+- `minimum_prefix_layout_digest` is the compatibility key checked by discovery. It includes the
+  ABI version and covers the descriptor's minimum records, codes, callback, and function slots.
 - `full_descriptor_digest` identifies the producer's complete descriptor. It can change after
   additions without changing the descriptor-selected minimum prefix.
 - `capability_catalog_digest` identifies the loaded artifact's runtime capability catalog. Two
   ABI-compatible artifacts can intentionally have different capability digests.
 
 All public records begin with `struct_size`. Except for `MermanNativeApi`, which uses `struct_size`
-as table capacity, ABI 3 records require the exact generated size. Initialize caller-owned input
+as table capacity, ABI 4 records require the exact generated size. Initialize caller-owned input
 records with `MERMAN_NATIVE_STRUCT_SIZE(Type)`. Fully zero-initialize every
 `MermanNativeResult` before a producing call, preferably with `MERMAN_NATIVE_RESULT_INIT`; setting
 only the first word in otherwise uninitialized storage is invalid because Merman must safely
@@ -114,9 +111,9 @@ flat schema-1 JSON catalog. This abridged example shows every top-level field:
 ```json
 {
   "schema_version": 1,
-  "transport_api_version": 3,
+  "transport_api_version": 4,
   "package_version": "...",
-  "options_schema_versions": [3],
+  "options_schema_versions": [4],
   "payload_schemas": [
     { "id": "binding-result", "version": 1 },
     { "id": "operation-metadata", "version": 1 }
@@ -266,17 +263,18 @@ result = (MermanNativeResult)MERMAN_NATIVE_RESULT_INIT;
 status = api.execute_collect(engine, &request, &result);
 ```
 
-Operation enums are generated from [`contracts/abi/merman-v3.json`](../../contracts/abi/merman-v3.json): SVG, PNG, JPEG,
-PDF, ASCII, semantic JSON, layout JSON, analysis JSON, analysis facts, validation JSON, and the two
-URI-requiring document analysis operations. `MERMAN_NATIVE_OPERATION_*_REQUIRES_URI_*` identifies
-the two document operations; pass an empty URI for all other operations. When a requested
-operation is not compiled, the result has `MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION`.
+The [ABI descriptor](../../contracts/abi/merman-v4.json) defines the generated operation enums.
+`MERMAN_NATIVE_OPERATION_RESOLVE_THEME` (`18`) and `MERMAN_NATIVE_OPERATION_EXPORT_THEME_PRESET`
+(`19`) are the Theme v2 operations. `MERMAN_NATIVE_OPERATION_*_REQUIRES_URI_*` identifies the two
+document analysis operations that require a URI. Pass an empty URI for all other operations. When
+a requested operation is unavailable in the artifact, the result has
+`MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION` with `missing-capability`.
 
 `MERMAN_NATIVE_OPERATION_NONE` is a defined non-executable sentinel used by catalog, metadata, and
 constructor results. Passing it to `execute_collect` returns
 `MERMAN_NATIVE_STATUS_INVALID_ARGUMENT` with the generic error kind. A numeric code outside the
 known operation vocabulary instead returns `MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION` with
-`unknown-operation`.
+`unknown-operation`. This includes reserved codes `15` through `17` from ABI 3.
 
 `options_json` is a generic binding options document, not a format-specific envelope. Merman
 recursively merges it over the engine configuration for this operation: request values replace
@@ -297,7 +295,7 @@ The current table exposes three appended operation-control functions:
   token. It may be called from another execution context while `execute_collect` is running.
 - `operation_control_release` (slot `9`) retires the registry identity. It does not cancel by
   itself and does not invalidate a control already cloned by an in-flight operation.
-- `execute_collect_controlled` (slot `10`) executes the unchanged ABI 3 request record with an
+- `execute_collect_controlled` (slot `10`) executes the same request record with an
   explicit borrowed control token. Passing zero selects ordinary active-control behavior.
 
 ```c
@@ -404,7 +402,7 @@ ASCII width diagnostics may also carry `requested_max_width`, `actual_width`, `w
 are additive fields under the frozen five-kind error envelope; consumers should use them instead
 of parsing `message`, and complete source text is not retained by default.
 
-The ABI 3 error-kind vocabulary is frozen and closed: `generic`, `unknown-operation`,
+The ABI 4 error-kind vocabulary is frozen and closed: `generic`, `unknown-operation`,
 `missing-capability`, `reentrant-call`, and `busy`. Consumers should still treat an unknown kind as
 `generic` and every unknown nonzero status as failure when diagnosing a malformed producer.
 Unknown operation IDs or numeric codes use `unknown-operation` with a null `capability_id`. A valid operation whose backend is
@@ -477,23 +475,22 @@ renderer checkpoint.
 
 ## Contract Evolution Rules
 
-- Native ABI 3 is the current contract. Rebuild ABI 2, prerelease ABI 3, and partial-table consumers
-  against the generated header and native library from the same Merman release. Replace
-  per-operation symbol lookup with [table discovery](#discovery), raw engine destruction with
-  `engine_try_close`, and host-side buffer freeing with [token-based result cleanup](#results-errors-and-ownership).
-  Use the [versioned upgrade index](../release/README.md#workspace-upgrades) for changes between
-  published releases; ABI `3` is a protocol version, not a workspace release number.
+- Rebuild older consumers against the generated ABI 4 header and native library from the same
+  Merman release. Use [table discovery](#discovery), `engine_try_close`, and
+  [token-based result cleanup](#results-errors-and-ownership). The
+  [versioned upgrade index](../release/README.md#workspace-upgrades) covers changes between
+  published releases.
 - Treat the ABI version and descriptor-derived minimum-prefix layout digest as the runtime
   compatibility check. Treat
   the full descriptor digest, capability catalog digest, package version, and generated
   C-consumer layout fingerprint as provenance evidence, not interchangeable compatibility keys.
-- Function slots and codes may only be appended. Slots `7`-`9` are the current operation-control
-  append, while the descriptor-selected minimum prefix remains through slot `6`. Changing an
-  existing wire layout requires a new ABI version.
+- Within an ABI version, append function slots and codes. A breaking wire or operation change
+  requires a new ABI version. Reserve retired operation codes so they stay unassigned in the new
+  version.
 - The descriptor and generated Rust/C/Dart projections are the single current ABI authority.
   Descriptor validation, the derived minimum-prefix layout digest, generated-file freshness, and
   current-header lifecycle tests cover layout, ownership, token, status, and operation semantics.
-- A breaking semantic change is reviewed directly in `contracts/abi/merman-v3.json` and its generated
+- A breaking semantic change is reviewed directly in `contracts/abi/merman-v4.json` and its generated
   artifacts; no second semantic snapshot or hand-maintained approval digest is required.
 - A future generated header may add slots. Current consumers require the complete table they were
   generated against instead of maintaining hand-written historical fallbacks.

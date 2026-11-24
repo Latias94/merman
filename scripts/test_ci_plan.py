@@ -704,7 +704,7 @@ class PlannerTests(unittest.TestCase):
         for path in (
             ".github/workflows/ci.yml",
             "capabilities/feature-surface-v1.json",
-            "contracts/abi/merman-v3.json",
+            "contracts/abi/merman-v4.json",
             "distribution/typst/merman/lib.typ",
             "scripts/ci_plan.py",
             "scripts/new_unclassified_owner.py",

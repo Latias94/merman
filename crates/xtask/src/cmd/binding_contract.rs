@@ -7,7 +7,7 @@ use merman_bindings_core::{
     ArtifactContractSpec, BINDING_OPERATION_METADATA_CONTRACT_SCHEMA_VERSION,
     BINDING_OPTIONS_SCHEMA_VERSION, BindingOperationMetadataContract, BindingOptionGroupKey,
     BindingPayloadSchemaKey, BindingTransportKey, BindingUnavailableOperationExpectation,
-    CapabilityKey, ConstructorServiceKey, MetadataKey, OperationKey,
+    CapabilityKey, ConstructorServiceKey, MetadataKey, NODE_TRANSPORT_API_VERSION, OperationKey,
     RUNTIME_CATALOG_FIELD_IDENTIFIER_PATTERN, RUNTIME_CATALOG_IDENTIFIER_PATTERN,
     RUNTIME_CATALOG_MAX_SAFE_INTEGER, RUNTIME_CATALOG_SCHEMA_VERSION,
     RuntimeConstructorResourceLimit, RuntimeOutputContract, RuntimePolicyExposure,
@@ -332,7 +332,7 @@ fn render_node_wire_contract_json() -> String {
         schema_version: 1,
         package_id: "@mermanjs/node",
         artifact_id: "merman-node-static-svg",
-        transport_api_version: 2,
+        transport_api_version: NODE_TRANSPORT_API_VERSION,
         binding_result_payload_version: BindingPayloadSchemaKey::BindingResult.version(),
         artifact: native,
         documents: NodeDocumentLimitSetProjection {

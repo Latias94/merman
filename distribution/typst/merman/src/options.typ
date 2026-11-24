@@ -450,7 +450,7 @@
       native: native,
     )
     let binding-options = (
-      version: 3,
+      version: 4,
       fixed_today: fixed-today,
       fixed_local_offset_minutes: fixed-local-offset-minutes,
       site_config: apply-mermaid-style(site-config, classic-theme, if native { none } else { text-style }),

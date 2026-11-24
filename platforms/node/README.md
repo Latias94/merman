@@ -4,13 +4,13 @@
 Node.js 22+ and static-site builds. A small loader selects one exact-version native package for the
 current host; it has no browser-WASM fallback or postinstall downloader.
 
-The quick start uses the published `0.11.0` package. For verified versions, changes, and upgrade actions, see the [host installation guide](../../docs/release/PREBUILT_PRODUCTS.md#published-versions), [Node changelog](CHANGELOG.md), and [0.11.0 migration guide](../../docs/migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts).
+The quick start uses the published `0.11.0` package with Node transport API `2`. [Host installation guide](../../docs/release/PREBUILT_PRODUCTS.md#published-versions) · [Node changelog](CHANGELOG.md) · [0.11.0 migration guide](../../docs/migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts)
 
 Application developers should start with the [`@mermanjs/node` package guide](packages/node/README.md).
 
 ## Quick start
 
-The nine-package group contains the loader, seven native platform packages, and explicit `@mermanjs/node-wasm` transport. Keep wrappers and native/WASM artifacts at the same exact version and source revision. Version `0.11.0` targets Mermaid `12.3.0` and uses Node transport API `2` and Options JSON schema `3`. [Options JSON](../../docs/bindings/OPTIONS_JSON.md) · [Mermaid 12.3 migration](../../docs/migrations/mermaid-12-3.md)
+The nine-package group contains the loader, seven native platform packages, and explicit `@mermanjs/node-wasm` transport. Keep wrappers and native/WASM artifacts at the same exact version and source revision. The current source targets Mermaid `12.3.0` and uses Node transport API `3` and Options JSON schema `4`. [Options JSON](../../docs/bindings/OPTIONS_JSON.md) · [Mermaid 12.3 migration](../../docs/migrations/mermaid-12-3.md)
 
 ```sh
 npm install --save-exact @mermanjs/node@0.11.0
@@ -134,10 +134,11 @@ through a small local registry, inspect the resulting lockfile, and execute ordi
 outlined formula rendering on the matching CPU. Both transports also execute on Node 22.0.0.
 The GNU lanes build and execute at glibc 2.31; ARM64 uses native ARM64 runners.
 
-For Node transport API `2`, rebuild the loader, native addon and explicit Node-WASM artifact from
-the same revision. The installed native `renderSvg()` and `renderSvgSync()` helpers send source text
-and optional Options JSON separately. The source, options, and equivalent escaped request ceilings
-are 8, 1, and 10 MiB, respectively. The engine's selected resource profile may impose tighter limits.
+For Node transport API `3`, rebuild the loader, native addon and explicit Node-WASM artifact from
+the same revision. The loader rejects API `2` artifacts during discovery. The installed native
+`renderSvg()` and `renderSvgSync()` helpers send source text and optional Options JSON separately.
+The source, options, and equivalent escaped request ceilings are 8, 1, and 10 MiB, respectively.
+The engine's selected resource profile may impose tighter limits.
 
 The installed-product comparison times the strings returned by `renderSvg()` by default. Pass
 `--svg-api sync` to the existing benchmark command to time `renderSvgSync()` in the cold and warm

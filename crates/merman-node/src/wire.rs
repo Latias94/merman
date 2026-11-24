@@ -8,9 +8,9 @@ use merman_bindings_core::{
     ArtifactContractSpec, BINDING_OPERATION_SCHEMA_VERSION, BindingEngine, BindingEngineServices,
     BindingError, BindingErrorKind, BindingOperationKind, BindingOperationRequest,
     BindingPayloadSchemaKey, BindingStatus, BindingTransportKey, CAPABILITY_DESCRIPTOR_DIGEST,
-    CapabilityKey, ConstructorServiceKey, OperationControl, OperationKey, OperationPhase,
-    RUNTIME_CATALOG_MAX_SAFE_INTEGER, RUNTIME_CATALOG_SCHEMA_VERSION, RuntimePolicyExposure,
-    TargetKey, ValidatedArtifactContract, build_icon_registry_from_json,
+    CapabilityKey, ConstructorServiceKey, NODE_TRANSPORT_API_VERSION, OperationControl,
+    OperationKey, OperationPhase, RUNTIME_CATALOG_MAX_SAFE_INTEGER, RUNTIME_CATALOG_SCHEMA_VERSION,
+    RuntimePolicyExposure, TargetKey, ValidatedArtifactContract, build_icon_registry_from_json,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -18,7 +18,6 @@ use serde_json::Value;
 
 const NODE_WIRE_CONTRACT_JSON: &str =
     include_str!("../../../platforms/node/src/generated/node-wire-contract.json");
-const NODE_TRANSPORT_API_VERSION: u32 = 2;
 const NODE_BINDING_RESULT_PAYLOAD_VERSION: u32 = BindingPayloadSchemaKey::BindingResult.version();
 const NODE_TARGET: TargetKey = if cfg!(target_arch = "wasm32") {
     TargetKey::Web
@@ -1546,6 +1545,10 @@ mod tests {
     fn runtime_catalog_reports_exact_static_svg_artifact() {
         let catalog: serde_json::Value =
             serde_json::from_str(&runtime_catalog_wire().unwrap()).unwrap();
+        assert_eq!(
+            catalog["transport_api_version"],
+            node_wire_contract().transport_api_version
+        );
         let capabilities = &catalog["capabilities"];
         let expected = &node_wire_contract().artifact;
         assert_eq!(
@@ -1708,6 +1711,10 @@ mod tests {
             assert_eq!(identity["artifact_id"], "merman-node-static-svg");
             assert_eq!(identity["package_version"], env!("CARGO_PKG_VERSION"));
             assert_eq!(identity["transport_kind"], expected_kind);
+            assert_eq!(
+                identity["transport_api_version"],
+                node_wire_contract().transport_api_version
+            );
             assert_eq!(
                 identity["capability_descriptor_digest"],
                 merman_bindings_core::CAPABILITY_DESCRIPTOR_DIGEST

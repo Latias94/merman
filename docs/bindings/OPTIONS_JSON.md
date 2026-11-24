@@ -21,11 +21,11 @@ Resource options are deliberately
 stricter: a request may only tighten the constructor's artifact-wide resource ceiling, and an
 explicit limit must belong to the selected operation.
 
-Schema `3` rejects unknown top-level fields and unknown fields in compiled option objects so a typo
+Schema `4` rejects unknown top-level fields and unknown fields in compiled option objects so a typo
 or removed path cannot be silently ignored. Invalid JSON, invalid UTF-8,
 unsupported enum values, or non-finite numeric values return binding errors instead of panicking.
-Omitting `version` selects the current schema `3`; explicit legacy versions are rejected rather
-than translated implicitly.
+Omitting `version` selects schema `4`. Update explicit version `3` requests to version `4` and
+replace any `theme.recipe` or `theme.spec` selection with a Theme v2 preset or document.
 
 ## Full Shape
 
@@ -35,7 +35,7 @@ Query the loaded resource catalog instead of copying numerical profile defaults 
 
 ```json
 {
-  "version": 3,
+  "version": 4,
   "runtime_policy": "deterministic",
   "fixed_today": "2026-02-15",
   "fixed_local_offset_minutes": 0,
@@ -155,7 +155,7 @@ Every field is optional.
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `version` | integer | `3` | Current options-schema version. Earlier versions are rejected. Omitting the field selects the current grammar; durable integrations should send `3` explicitly and use a matching runtime artifact. |
+| `version` | integer | `4` | Current options-schema version. Earlier versions are rejected. Omitting the field selects the current grammar; durable integrations should send `4` explicitly and use a matching runtime artifact. |
 | `runtime_policy` | string | `deterministic` | `deterministic` or `native`. The native policy is an explicit opt-in and fails with a typed missing-capability error unless the artifact contains the required system clock, time-zone, and random adapters. |
 | `fixed_today` | string | selected policy date | Overrides the selected policy's local "today" date with a canonical signed-32-bit civil date. Years `0000` through `9999` use `YYYY-MM-DD`; later years use `+YEAR-MM-DD`, and negative years use `-YEAR-MM-DD`. The deterministic policy otherwise uses `1970-01-01`; the native policy reads the system date. |
 | `fixed_unix_millis` | integer or null | selected policy instant | Exact Unix milliseconds in JavaScript Date's inclusive range `[-8640000000000000, 8640000000000000]`. Derives the local date through the selected time zone and preserves time of day. Cannot be combined with a non-null `fixed_today`. |
@@ -240,7 +240,7 @@ A browser host can capture its instant and current UTC offset once for a render 
 ```ts
 const instant = new Date();
 const options = {
-  version: 3,
+  version: 4,
   fixed_unix_millis: instant.getTime(),
   fixed_local_offset_minutes: -instant.getTimezoneOffset(),
 };
@@ -349,7 +349,7 @@ The `theme` option selects a Merman preset or an editable [Theme v2 document](..
 
 ```json
 {
-  "version": 3,
+  "version": 4,
   "theme": {"preset": "studio", "appearance": "dark", "precedence": "source"},
   "background": "transparent"
 }
@@ -491,7 +491,7 @@ For an adaptive 80-column Flowchart or Swimlane request in an ASCII-capable arti
 
 ```json
 {
-  "version": 3,
+  "version": 4,
   "ascii": {
     "graph_presentation": "adaptive",
     "layout_profile": "auto",
@@ -737,7 +737,7 @@ Do not infer a safe limit from a single warm render: compare cold parse, layout,
 failure paths separately. The benchmark methodology documents the phase boundaries and evidence
 format used by the Playground and comparison tools.
 
-Limit ids are closed under Options JSON schema `3`: an unknown id, a value below the
+Limit ids are closed under Options JSON schema `4`: an unknown id, a value below the
 descriptor's minimum, a non-overridable hard cap, or a removed flat or family-specific field is
 rejected.
 The runtime contract publishes every accepted id, its phase, whether it is overridable, and the
@@ -946,7 +946,7 @@ Strict resource profile override:
 
 Invalid options produce binding errors:
 
-| Error | Native ABI 3 status |
+| Error | Native ABI 4 status |
 | --- | --- |
 | Invalid UTF-8 | `MERMAN_NATIVE_STATUS_UTF8_ERROR` |
 | Invalid JSON | `MERMAN_NATIVE_STATUS_OPTIONS_JSON_ERROR` |

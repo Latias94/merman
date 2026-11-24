@@ -51,7 +51,7 @@
 #assert.eq(classic.site_config, (theme: "base", themeVariables: (primaryColor: "#111827",)))
 #assert.eq(classic.background, "transparent")
 
-#let opaque = (version: 3, theme: (preset: "studio", appearance: "dark"))
+#let opaque = (version: 4, theme: (preset: "studio", appearance: "dark"))
 #for config in (
   render-config(options: opaque, theme: "ignored", appearance: "ignored", background: "ignored"),
   render-config(profile: mermaid-profile(options: opaque), theme: "ignored", appearance: "ignored"),

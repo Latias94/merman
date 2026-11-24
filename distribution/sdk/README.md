@@ -37,11 +37,11 @@ adaptation, not newly published language packages. The C++ example uses RAII to
 release results and the engine, writing SVG, 2x PNG, their metadata and the
 runtime catalog into the selected output directory.
 
-WASI ABI 1 is independent of native C ABI 3 and the binding options schema.
-Discover the loaded catalog: maintenance uses options schema 2, while main uses
-schema 3. Do not forward CLI flags as binding JSON, equate raster pixel dimensions
-with SVG CSS pixels, or share a WASI instance concurrently. PNG uses
-`raster.background` in schema 2 and `raster.matte` in schema 3. An owned parse/option
+WASI ABI 1 is independent of native C ABI 4. Discover the Options JSON schema in the
+loaded catalog. Current source uses schema 4, and the published `v0.11.0` uses schema 3.
+Do not forward CLI flags as binding JSON, equate raster pixel dimensions with SVG CSS pixels,
+or share a WASI instance concurrently. PNG uses `raster.matte` in schemas 3 and 4 and
+`raster.background` in schema 2. An owned parse/option
 error permits reuse; a trapped or interrupted instance must be discarded. A
 production service owns pool sizing, deadlines and replacement. Python's example
 limits instructions with fuel, not a wall-clock timeout.
@@ -65,7 +65,7 @@ extracted archive, locate those guides in the exact source commit recorded in
 Native C and WASI SVG requests share Options JSON theme selection.
 
 ```json
-{"version":3,"theme":{"preset":"studio","appearance":"dark"}}
+{"version":4,"theme":{"preset":"studio","appearance":"dark"}}
 ```
 
 Query the loaded artifact's `theme-catalog` metadata for preset IDs, supported appearances, and
@@ -78,7 +78,7 @@ In C, use the native table's operation code and release the result with `result_
 use the string operation ID through the request envelope and release the result with
 `merman_wasi_result_free`.
 
-See the packaged C headers and `contracts/abi/merman-v3.json`, or `docs/WASI_ABI.md`, for the
+See the packaged C headers and `contracts/abi/merman-v4.json`, or `docs/WASI_ABI.md`, for the
 matching request protocol. The source-tree
 [native C guide](https://github.com/Latias94/merman/blob/main/crates/merman-ffi/README.md#theme-presets-and-editable-json)
 also explains theme requests and result ownership.
@@ -123,7 +123,7 @@ Static consumers still need their platform toolchain and the system libraries
 listed by `Merman::Static` / pkg-config. WASI is the platform-neutral option when
 those native runtime assumptions do not fit the host.
 
-The example discovers C ABI 3, queries the runtime catalog and renders SVG using
+The example discovers C ABI 4, queries the runtime catalog and renders SVG using
 the appended memory-font constructor with bundled fonts. It can
 write the **raw** artifact catalog with `merman-render --catalog-out catalog.json`.
 Font bytes and their OFL license are in `fonts/`. The `merman-probe` target exercises

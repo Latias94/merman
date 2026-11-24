@@ -26,7 +26,7 @@ JNI_OnLoad + RegisterNatives (libmerman_android_jni.so)
 merman-bindings-core BindingEngine::execute
 ```
 
-The Android transport API version is `2`. It is independent of native ABI 3, UniFFI, or browser
+The Android transport API version is `2`. It is independent of the native C ABI, UniFFI, or browser
 WASM transport versions.
 
 ## Kotlin Surface
@@ -79,7 +79,7 @@ validates:
 - flat runtime-catalog schema `1`;
 - Android transport API version `2`;
 - non-empty native package metadata;
-- Options JSON schema `3` and both binding payload schemas;
+- Options JSON schema `4` and both binding payload schemas;
 - the generated default-native Android capability/output/operation/metadata identity and capability
   implication closure;
 - output media/resource policies, constructor-service ownership, and resource profile relations;
@@ -106,7 +106,7 @@ Read the validated catalog with `Merman.runtimeCatalogJson()`:
   "schema_version": 1,
   "transport_api_version": 2,
   "package_version": "<loaded artifact version>",
-  "options_schema_versions": [3],
+  "options_schema_versions": [4],
   "payload_schemas": [
     { "id": "binding-result", "version": 1 },
     { "id": "operation-metadata", "version": 1 }

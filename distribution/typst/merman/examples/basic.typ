@@ -1,4 +1,4 @@
-#import "@preview/merman:0.6.0": mermaid
+#import "@preview/merman:0.7.0": mermaid
 
 = merman Typst Basic Example
 

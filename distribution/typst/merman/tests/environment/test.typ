@@ -1,11 +1,11 @@
-#import "@preview/merman:0.6.0": (
+#import "@preview/merman:0.7.0": (
   mermaid-profile,
   mermaid-result,
   merman-capabilities,
 )
 
 #let source = "flowchart LR
-  Input[Environment options] --> Output[Options schema 3]
+  Input[Environment options] --> Output[Options schema 4]
 "
 
 #let default-result = mermaid-result(source)
@@ -58,7 +58,7 @@
   text-measurement: "invalid-direct-text",
   math-renderer: "invalid-direct-math",
   options: (
-    version: 3,
+    version: 4,
     environment: (
       text_measurement: "deterministic",
       math_renderer: "none",
@@ -72,7 +72,7 @@
   profile: mermaid-profile(typography: (unsupported: true)),
   typography: (also-unsupported: true),
   options: (
-    version: 3,
+    version: 4,
     svg: (pipeline: "readable"),
   ),
 )
@@ -99,7 +99,7 @@
 
 #let legacy-layout-result = mermaid-result(
   source,
-  options: (version: 3, layout: (text_measurer: "deterministic")),
+  options: (version: 4, layout: (text_measurer: "deterministic")),
 )
 #assert(not legacy-layout-result.ok, message: "removed layout environment fields must fail closed")
 #assert.eq(legacy-layout-result.code_name, "MERMAN_OPTIONS_JSON_ERROR")

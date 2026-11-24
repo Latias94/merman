@@ -12,7 +12,7 @@ import 'package:merman/src/merman_ffi.dart' as ffi_transport;
 import 'theme_catalog_contract_test.dart' as theme_catalog;
 
 void main() {
-  projectsCurrentAbi3TableBoundaries();
+  projectsCurrentNativeTableBoundaries();
   rejectsArchitectureSpecificApiPrefixMacros();
   decodesTypedMetadataCatalogs();
   acceptsAdditiveTypedMetadataFields();
@@ -20,7 +20,7 @@ void main() {
   matchesThePubPackageVersionProjection();
   acceptsSvgCatalogWithOptionalNativeFonts();
   rejectsInconsistentNativeFontServices();
-  acceptsAFlatAbi3Catalog();
+  acceptsAFlatNativeCatalog();
   acceptsAdditiveConstructorResourceLimits();
   rejectsMalformedAdditiveTransportSections();
   acceptsSchemaOneCatalogWithoutAdditiveTransportSections();
@@ -30,6 +30,7 @@ void main() {
   rejectsCatalogsMissingCurrentBindingSchemas();
   decodesTypedOperationMetadata();
   projectsSvgPlanOperationFromGeneratedAbi();
+  projectsThemeOperationCodesAndRejectsRetiredCodes();
   requiresSdkUpgradeForUnknownCatalogOperation();
   preservesTypedRuntimeOutputContracts();
   preservesCompleteRuntimeResourceContract();
@@ -45,7 +46,7 @@ void main() {
   rejectsDuplicateCapabilityIds();
   rejectsUncallableOutputIds();
   rejectsInconsistentAdapters();
-  rejectsCoercedRuntimeCatalogVersionFields();
+  rejectsMismatchedOrCoercedRuntimeCatalogVersionFields();
   rejectsInconsistentTextMeasurement();
   acceptsInternalSvgPipelineWithoutPublicSvgCapability();
   rejectsMalformedTextMeasurementWithoutSvgPipeline();
@@ -63,7 +64,7 @@ void main() {
   poisonsUnpublishedEnginesWithoutReleasingCallbacks();
   retainsEveryUnpublishedEngineEntry();
   fuzzesNativeErrorPayloadDecoding();
-  print('ABI 3 Dart contract tests passed');
+  print('ABI ${native.MERMAN_NATIVE_ABI_VERSION} Dart contract tests passed');
 }
 
 void rejectsArchitectureSpecificApiPrefixMacros() {
@@ -255,7 +256,8 @@ void normalizesEmptyIconRegistryToNoService() {
   );
 }
 
-void projectsCurrentAbi3TableBoundaries() {
+void projectsCurrentNativeTableBoundaries() {
+  _expect(native.MERMAN_NATIVE_ABI_VERSION == 4, 'must project native ABI 4');
   _expect(
     native.MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST.startsWith('sha256:'),
     'ABI discovery must use the generated minimum-prefix digest',
@@ -266,7 +268,7 @@ void projectsCurrentAbi3TableBoundaries() {
         native.MERMAN_NATIVE_FUNCTION_ENGINE_TRY_CLOSE == 2 &&
         native.MERMAN_NATIVE_FUNCTION_EXECUTE_COLLECT == 3 &&
         native.MERMAN_NATIVE_FUNCTION_RESULT_FREE == 4,
-    'ABI 3 base slots must retain their descriptor-owned order',
+    'base slots must retain their descriptor-owned order',
   );
   _expect(
     native.MERMAN_NATIVE_FUNCTION_METADATA_COLLECT == 5,
@@ -280,13 +282,14 @@ void projectsCurrentAbi3TableBoundaries() {
     native.MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_NEW == 7 &&
         native.MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_CANCEL == 8 &&
         native.MERMAN_NATIVE_FUNCTION_OPERATION_CONTROL_RELEASE == 9 &&
-        native.MERMAN_NATIVE_FUNCTION_EXECUTE_COLLECT_CONTROLLED == 10,
-    'operation-control functions and controlled execution must retain their appended ABI 3 slots',
+        native.MERMAN_NATIVE_FUNCTION_EXECUTE_COLLECT_CONTROLLED == 10 &&
+        native.MERMAN_NATIVE_FUNCTION_ENGINE_NEW_WITH_FONTS == 11,
+    'operation control, controlled execution and the font constructor must retain their slots',
   );
   _expect(
     native.MERMAN_NATIVE_STATUS_BUSY == 16 &&
         native.MERMAN_NATIVE_STATUS_CANCELLED == 17,
-    'cancelled must append after every pre-existing ABI 3 status',
+    'busy and cancelled must retain their status codes',
   );
   final currentTableSize = ffi.sizeOf<native.MermanNativeApi>();
   _expect(
@@ -517,6 +520,17 @@ void projectsSvgPlanOperationFromGeneratedAbi() {
   );
 }
 
+void projectsThemeOperationCodesAndRejectsRetiredCodes() {
+  _expect(
+    MermanOperation.resolveTheme.nativeCode == 18 &&
+        MermanOperation.exportThemePreset.nativeCode == 19,
+    'Theme v2 operations must use the ABI 4 codes',
+  );
+  for (final code in [15, 16, 17]) {
+    _expectThrows<ArgumentError>(() => MermanOperation.fromNativeCode(code));
+  }
+}
+
 void requiresSdkUpgradeForUnknownCatalogOperation() {
   final catalog = _catalog(
     operationIds: const ['future-operation', 'semantic-json', 'svg'],
@@ -607,7 +621,7 @@ void rejectsInconsistentNativeFontServices() {
   _expectContractFailure(() => MermanRuntimeCatalog.fromJson(orphanProvider));
 }
 
-void acceptsAFlatAbi3Catalog() {
+void acceptsAFlatNativeCatalog() {
   final catalog = MermanRuntimeCatalog.fromJson(_catalog());
   _expect(
     catalog.packageVersion == 'test',
@@ -1467,7 +1481,7 @@ void acceptsAdditiveRuntimeResourceIds() {
               profile.limits.containsKey(futureLimitId) &&
               profile.limits[futureLimitId] == 4096,
         ),
-    'ABI 3 consumers must retain additive resource IDs and metadata',
+    'native ABI consumers must retain additive resource IDs and metadata',
   );
   _expectThrows<UnsupportedError>(
     () => futureLimit.additionalFields['mutated'] = true,
@@ -1668,12 +1682,16 @@ void rejectsInconsistentAdapters() {
   _expectContractFailure(() => MermanRuntimeCatalog.fromJson(catalog));
 }
 
-void rejectsCoercedRuntimeCatalogVersionFields() {
+void rejectsMismatchedOrCoercedRuntimeCatalogVersionFields() {
   for (final mutation in <void Function(Map<String, Object?>)>[
     (catalog) => catalog['schema_version'] = '1',
     (catalog) => catalog['schema_version'] = 1.0,
-    (catalog) => catalog['transport_api_version'] = '3',
-    (catalog) => catalog['transport_api_version'] = 3.0,
+    (catalog) => catalog['transport_api_version'] = 3,
+    (catalog) => catalog['transport_api_version'] =
+        '${native.MERMAN_NATIVE_ABI_VERSION}',
+    (catalog) => catalog['transport_api_version'] = native
+        .MERMAN_NATIVE_ABI_VERSION
+        .toDouble(),
     (catalog) => catalog['package_version'] = 1,
     (catalog) =>
         (_runtimeCapabilities(catalog)['text_measurement']
@@ -2523,7 +2541,7 @@ Map<String, Object?> _catalog({
         ..sort());
   return {
     'schema_version': 1,
-    'transport_api_version': 3,
+    'transport_api_version': native.MERMAN_NATIVE_ABI_VERSION,
     'package_version': 'test',
     'options_schema_versions': const [
       binding.mermanBindingOptionsContractSchemaVersion,

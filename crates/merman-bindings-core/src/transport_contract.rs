@@ -1,5 +1,10 @@
 use crate::{BindingPayloadSchemaKey, ConstructorServiceKey, TargetKey};
 
+/// Compatibility epoch shared by the Node N-API and Node-targeted WASM transports.
+///
+/// Both artifact producers and the generated Node wire contract use this value for discovery.
+pub const NODE_TRANSPORT_API_VERSION: u32 = 3;
+
 /// Compatibility epoch for the generated JavaScript/WASM transport surface.
 ///
 /// The Web package generator and the WASM producer share this value so a wrapper built for one

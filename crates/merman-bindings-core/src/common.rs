@@ -18,9 +18,9 @@ use crate::resource_contract::{
 
 /// Current schema for constructor and request options JSON.
 ///
-/// Version 3 includes native theme selection, graphical background, and export paint options.
+/// Version 4 uses Theme v2 selections, with separate graphical background and export paint options.
 /// An omitted version selects the current grammar. SDK integrations can send the version explicitly.
-pub const BINDING_OPTIONS_SCHEMA_VERSION: u32 = 3;
+pub const BINDING_OPTIONS_SCHEMA_VERSION: u32 = 4;
 pub const BINDING_RESULT_PAYLOAD_VERSION: u32 = 1;
 const BINDING_JSON_SAFE_INTEGER_MAX: u64 = crate::RUNTIME_CATALOG_MAX_SAFE_INTEGER;
 const BINDING_ANALYSIS_OPTION_KEYS: [&str; 6] = [
@@ -3278,7 +3278,7 @@ mod tests {
     fn request_options_deeply_override_engine_options() {
         let options = resolve_request_options(
             br#"{
-                "version": 3,
+                "version": 4,
                 "parse": { "suppress_errors": false },
                 "resources": {
                     "profile": "interactive",
@@ -3638,7 +3638,7 @@ mod tests {
                 "analysis": {
                     "resources": { "limits": { "max_source_bytes": 4 } }
                 },
-                "version": 3,
+                "version": 4,
                 "svg": { "pipeline": "resvg-safe" }
             }"#;
         #[cfg(all(not(feature = "svg"), feature = "ascii"))]
@@ -3647,7 +3647,7 @@ mod tests {
                 "analysis": {
                     "resources": { "limits": { "max_source_bytes": 4 } }
                 },
-                "version": 3,
+                "version": 4,
                 "ascii": { "color_mode": "none" }
             }"#;
         let options = parse_options(input).unwrap();
@@ -3691,30 +3691,23 @@ mod tests {
     }
 
     #[test]
-    fn options_schema_v3_rejects_version_2() {
-        let version = parse_options(br#"{ "version": 2 }"#).unwrap_err();
-        assert_eq!(version.status(), BindingStatus::OptionsJsonError);
-        assert!(version.message().contains("expected 3"));
-
-        #[cfg(feature = "svg")]
-        {
-            let legacy = parse_options(br#"{ "version": 2, "layout": { "viewport_width": 640 } }"#)
-                .unwrap_err();
-            assert!(legacy.message().contains("expected 3"));
-        }
-        #[cfg(feature = "ascii")]
-        {
-            let legacy =
-                parse_options(br#"{ "version": 2, "ascii": { "maxGridCells": 42 } }"#).unwrap_err();
-            assert!(legacy.message().contains("expected 3"));
+    fn options_schema_v4_rejects_published_legacy_versions() {
+        for options in [
+            br#"{ "version": 2 }"#.as_slice(),
+            br#"{ "version": 3 }"#,
+            br#"{ "version": 3, "theme": { "recipe": {} } }"#,
+        ] {
+            let error = parse_options(options).unwrap_err();
+            assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+            assert!(error.message().contains("expected 4"));
         }
     }
 
     #[test]
-    fn options_schema_v3_rejects_unknown_and_malformed_fields() {
+    fn options_schema_v4_rejects_unknown_and_malformed_fields() {
         for input in [
-            br#"{ "version": 3, "tyop": true }"#.as_slice(),
-            br#"{ "version": 3, "parse": { "tyop": true } }"#.as_slice(),
+            br#"{ "version": 4, "tyop": true }"#.as_slice(),
+            br#"{ "version": 4, "parse": { "tyop": true } }"#.as_slice(),
         ] {
             let error = parse_options(input).unwrap_err();
             assert_eq!(error.status(), BindingStatus::OptionsJsonError);
@@ -3724,9 +3717,9 @@ mod tests {
         #[cfg(feature = "analysis")]
         {
             for input in [
-                br#"{ "version": 3, "analysis": { "tyop": true } }"#.as_slice(),
-                br#"{ "version": 3, "lint": { "profiel": "strict" } }"#.as_slice(),
-                br#"{ "version": 3, "lint": { "rule_severities": [{ "rule_id": "merman.authoring.flowchart.explicit_direction", "severity": "warning", "tyop": true }] } }"#.as_slice(),
+                br#"{ "version": 4, "analysis": { "tyop": true } }"#.as_slice(),
+                br#"{ "version": 4, "lint": { "profiel": "strict" } }"#.as_slice(),
+                br#"{ "version": 4, "lint": { "rule_severities": [{ "rule_id": "merman.authoring.flowchart.explicit_direction", "severity": "warning", "tyop": true }] } }"#.as_slice(),
             ] {
                 parse_options(input)
                     .expect("analysis-owned forward-compatible fields must be ignored");
@@ -3734,8 +3727,8 @@ mod tests {
         }
 
         for input in [
-            br#"{ "version": "3" }"#.as_slice(),
-            br#"{ "version": 3.0 }"#.as_slice(),
+            br#"{ "version": "4" }"#.as_slice(),
+            br#"{ "version": 4.0 }"#.as_slice(),
             br#"{ "version": -1 }"#.as_slice(),
             br#"{ "version": 4294967296 }"#.as_slice(),
         ] {
@@ -3750,8 +3743,8 @@ mod tests {
     }
 
     #[test]
-    fn options_schema_v3_materializes_the_current_version_when_omitted() {
-        let explicit = parse_options(br#"{ "version": 3 }"#).unwrap();
+    fn options_schema_v4_materializes_the_current_version_when_omitted() {
+        let explicit = parse_options(br#"{ "version": 4 }"#).unwrap();
         assert_eq!(explicit.version, Some(BINDING_OPTIONS_SCHEMA_VERSION));
 
         let implicit = parse_options(br#"{}"#).unwrap();
@@ -3760,10 +3753,10 @@ mod tests {
 
     #[cfg(all(feature = "png", feature = "pdf"))]
     #[test]
-    fn options_schema_v3_accepts_current_theme_and_export_paint_fields() {
+    fn options_schema_v4_accepts_current_theme_and_export_paint_fields() {
         let options = parse_options(
             br#"{
-                "version": 3,
+                "version": 4,
                 "theme": { "preset": "studio" },
                 "raster": { "matte": "white" },
                 "pdf": { "page_paint": "transparent" }
@@ -3799,18 +3792,18 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
-    fn options_schema_v3_rejects_removed_presentation_and_raw_css_fields() {
+    fn options_schema_v4_rejects_removed_presentation_and_raw_css_fields() {
         for (input, rejected) in [
             (
-                br#"{"version":3,"presentation":{}}"#.as_slice(),
+                br#"{"version":4,"presentation":{}}"#.as_slice(),
                 "presentation",
             ),
             (
-                br#"{"version":3,"site_config":{"themeCSS":".node {}"}}"#.as_slice(),
+                br#"{"version":4,"site_config":{"themeCSS":".node {}"}}"#.as_slice(),
                 "site_config.themeCSS",
             ),
             (
-                br#"{"version":3,"svg":{"scoped_css":".node {}"}}"#.as_slice(),
+                br#"{"version":4,"svg":{"scoped_css":".node {}"}}"#.as_slice(),
                 "svg.scoped_css",
             ),
         ] {
@@ -3821,57 +3814,57 @@ mod tests {
     }
 
     #[test]
-    fn options_schema_v3_rejects_groups_not_compiled_into_the_artifact() {
+    fn options_schema_v4_rejects_groups_not_compiled_into_the_artifact() {
         for (group, compiled, input) in [
             (
                 "lint",
                 cfg!(feature = "analysis"),
-                br#"{"version":3,"lint":{"profile":"strict"}}"#.as_slice(),
+                br#"{"version":4,"lint":{"profile":"strict"}}"#.as_slice(),
             ),
             (
                 "lint",
                 cfg!(feature = "analysis"),
-                br#"{"version":3,"analysis":{"lint":{"profile":"strict"}}}"#.as_slice(),
+                br#"{"version":4,"analysis":{"lint":{"profile":"strict"}}}"#.as_slice(),
             ),
             (
                 "ascii",
                 cfg!(feature = "ascii"),
-                br#"{"version":3,"ascii":{}}"#.as_slice(),
+                br#"{"version":4,"ascii":{}}"#.as_slice(),
             ),
             (
                 "theme",
                 cfg!(feature = "svg"),
-                br#"{"version":3,"theme":{"preset":"studio"}}"#.as_slice(),
+                br#"{"version":4,"theme":{"preset":"studio"}}"#.as_slice(),
             ),
             (
                 "layout",
                 cfg!(feature = "svg"),
-                br#"{"version":3,"layout":{}}"#.as_slice(),
+                br#"{"version":4,"layout":{}}"#.as_slice(),
             ),
             (
                 "environment",
                 cfg!(feature = "svg"),
-                br#"{"version":3,"environment":{}}"#.as_slice(),
+                br#"{"version":4,"environment":{}}"#.as_slice(),
             ),
             (
                 "svg",
                 cfg!(feature = "svg"),
-                br#"{"version":3,"svg":{}}"#.as_slice(),
+                br#"{"version":4,"svg":{}}"#.as_slice(),
             ),
             (
                 "raster",
                 cfg!(any(feature = "png", feature = "jpeg")),
-                br#"{"version":3,"raster":{}}"#.as_slice(),
+                br#"{"version":4,"raster":{}}"#.as_slice(),
             ),
             (
                 "jpeg",
                 cfg!(feature = "jpeg"),
-                br#"{"version":3,"jpeg":{}}"#.as_slice(),
+                br#"{"version":4,"jpeg":{}}"#.as_slice(),
             ),
             (
                 "pdf",
                 cfg!(feature = "pdf"),
-                br#"{"version":3,"pdf":{}}"#.as_slice(),
+                br#"{"version":4,"pdf":{}}"#.as_slice(),
             ),
         ] {
             if compiled {
@@ -3902,7 +3895,7 @@ mod tests {
             let mut input = wrapper
                 .map(|wrapper| serde_json::json!({ wrapper: analysis.clone() }))
                 .unwrap_or(analysis);
-            input["version"] = Value::from(3);
+            input["version"] = Value::from(BINDING_OPTIONS_SCHEMA_VERSION);
             input["parse"] = serde_json::json!({ "suppress_errors": true });
             let input = serde_json::to_vec(&input).unwrap();
             let constrained = apply_resource_ceiling_json(&input, "constrained", &[]).unwrap();
@@ -3915,7 +3908,7 @@ mod tests {
             assert_eq!(resources["limits"]["max_source_bytes"], 4096);
             assert_eq!(resources["limits"]["max_document_diagrams"], 64);
             assert_eq!(resources["limits"]["max_model_items"], 1);
-            assert_eq!(value["version"], 3);
+            assert_eq!(value["version"], BINDING_OPTIONS_SCHEMA_VERSION);
             assert_eq!(value["parse"]["suppress_errors"], true);
             assert!(value.get("resources").is_some() == wrapper.is_none());
             parse_options(&constrained).unwrap();

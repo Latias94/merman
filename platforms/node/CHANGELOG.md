@@ -2,6 +2,12 @@
 
 All notable changes to the `@mermanjs/node` package group will be documented in this file.
 
+## [Unreleased]
+
+### Breaking changes
+
+- Upgrade the loader and its native addon or Node-WASM artifact together for Node transport API `3`. Theme v2 uses `export-theme-preset` and `resolve-theme` for authoring and reports `theme_outcome` in SVG operation metadata. [Theme guide](../../docs/rendering/custom-diagram-themes.md)
+
 ## [0.11.0] - 2026-11-21
 
 ### Upgrading

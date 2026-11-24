@@ -1,4 +1,4 @@
-#import "@preview/merman:0.6.0": (
+#import "@preview/merman:0.7.0": (
   analyze-mermaid,
   export-theme-preset,
   mermaid,
@@ -43,7 +43,7 @@
 #assert.eq(svg(source, theme: "forest"), svg(source, site-config: (theme: "forest")))
 #assert.eq(svg(source, profile: dark-profile, theme: "forest"), svg(source, theme: "forest"))
 
-#let opaque = (version: 3, theme: (preset: "studio", appearance: "dark"), svg: (diagram_id: "opaque", pipeline: "readable"))
+#let opaque = (version: 4, theme: (preset: "studio", appearance: "dark"), svg: (diagram_id: "opaque", pipeline: "readable"))
 #assert.eq(svg(source, options: opaque), svg(source, options: opaque, theme: "ignored", appearance: "ignored"))
 
 #let custom = (schema_version: 2, extends: "studio", seed: (accent: "#0052CC"))

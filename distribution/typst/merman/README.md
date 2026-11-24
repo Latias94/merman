@@ -2,14 +2,14 @@
 
 Render Mermaid diagrams directly in your Typst documents. Write a diagram, choose a theme, and use it as an image, a numbered figure, or a Mermaid code block.
 
-This source tree builds package **0.6.0** with the Merman **0.11.0** Rust renderer as a WebAssembly plugin, targeting Mermaid **12.3.0** behavior. Requires **Typst 0.15.0 or newer**.
+This source tree builds the unreleased package **0.7.0** with the Merman **0.11.0** Rust renderer as a WebAssembly plugin, targeting Mermaid **12.3.0** behavior. It requires **Typst 0.15.0 or newer**. Install the source build to run the examples on this page. [Development](#development)
 
 ## Quick Start
 
 Save this as `document.typ`:
 
 ```typst
-#import "@preview/merman:0.6.0": mermaid
+#import "@preview/merman:0.7.0": mermaid
 
 #mermaid("
 flowchart LR
@@ -18,7 +18,7 @@ flowchart LR
 ")
 ```
 
-Compile it with `typst compile document.typ document.pdf`, or paste it into the Typst web app.
+Compile it with `typst compile --package-path <package-root> document.typ document.pdf` after installing the local package.
 
 Next: [choose a theme](#choose-a-theme), [use diagrams in documents](#use-diagrams-in-documents), or [edit a theme document](#edit-a-theme-document). For an existing document, see [Upgrading](#upgrading).
 
@@ -31,7 +31,7 @@ The same Mermaid source can use a Merman preset, a Theme v2 document, or a class
 [Open the Playground](https://frankorz.com/merman/) · [Run the Typst gallery](examples/theme-gallery.typ)
 
 ```typst
-#import "@preview/merman:0.6.0": mermaid
+#import "@preview/merman:0.7.0": mermaid
 
 #let source = "flowchart TD
   A[Write] --> B{Review}
@@ -58,7 +58,7 @@ A direct `theme` replaces the profile's theme and its `appearance`. Supply only 
 Turn Mermaid fences into diagrams with one show rule:
 
 ````typst
-#import "@preview/merman:0.6.0": show-mermaid-blocks
+#import "@preview/merman:0.7.0": show-mermaid-blocks
 
 #show raw.where(lang: "mermaid"): show-mermaid-blocks(
   theme: "studio",
@@ -82,7 +82,7 @@ Raw-block handlers default to `error-mode: "placeholder"`: an invalid fence stay
 As an ordinary Typst function, `mermaid` takes reusable defaults through `.with(...)`. Bind a profile to your own `diagram` function and use that same profile in the raw-block rule:
 
 ````typst
-#import "@preview/merman:0.6.0": mermaid, mermaid-profile, show-mermaid-blocks
+#import "@preview/merman:0.7.0": mermaid, mermaid-profile, show-mermaid-blocks
 
 #let diagram-style = mermaid-profile(
   theme: "studio",
@@ -114,7 +114,7 @@ Single calls can still override arguments, for example `diagram("flowchart LR\nA
 Keep common diagram settings in a profile, then reuse them for images, figures, and raw blocks:
 
 ```typst
-#import "@preview/merman:0.6.0": (
+#import "@preview/merman:0.7.0": (
   mermaid, mermaid-figure, mermaid-profile, show-mermaid-blocks,
 )
 
@@ -150,7 +150,7 @@ Profiles also work with `mermaid-svg`, `mermaid-result`, and `analyze-mermaid`. 
 Rendering is explicit by default. Set `document-context: true` to forward the current Typst font, text size, and finite available width, or supply font intent yourself:
 
 ```typst
-#import "@preview/merman:0.6.0": mermaid
+#import "@preview/merman:0.7.0": mermaid
 
 #set text(font: "Arial", size: 12pt)
 #let source = "flowchart LR\n  Document --> Diagram"
@@ -174,7 +174,7 @@ The renderer uses its built-in `deterministic` measurer. Check wrapping in the f
 Use the [Playground](https://frankorz.com/merman/) to preview themes and export Theme v2 JSON. Keep the export beside your document and pass the loaded dictionary to `theme`.
 
 ```typst
-#import "@preview/merman:0.6.0": mermaid
+#import "@preview/merman:0.7.0": mermaid
 
 #let source = "flowchart LR\n  SavedTheme --> Diagram"
 #mermaid(source, theme: json("custom.theme.json"), width: 100%)
@@ -183,7 +183,7 @@ Use the [Playground](https://frankorz.com/merman/) to preview themes and export 
 A short document can inherit a preset and override specific values.
 
 ```typst
-#import "@preview/merman:0.6.0": mermaid, resolve-theme
+#import "@preview/merman:0.7.0": mermaid, resolve-theme
 
 #let source = "flowchart LR\n  Theme --> YourDocument"
 #let custom = (
@@ -275,7 +275,7 @@ Returns the SVG as a string. This value-returning API does not enter Typst `cont
 Returns a structured render payload, including `ok`, `svg`, `message`, `operation`, `kind`, and `capability_id`. The latter fields distinguish missing capabilities, invalid input, and general errors without parsing the message. Resource failures expose `details.resource` with the stable limit ID, profile, and actual/max values.
 
 ```typst
-#import "@preview/merman:0.6.0": mermaid-result
+#import "@preview/merman:0.7.0": mermaid-result
 
 #let source = "flowchart LR\n  Input --> Output"
 #let result = mermaid-result(source)
@@ -291,7 +291,7 @@ Returns a structured render payload, including `ok`, `svg`, `message`, `operatio
 Returns canonical diagnostic analysis schema 1. Invalid Mermaid stays in this payload with `valid: false`; transport, options, and missing-capability errors instead use the structured operation envelope.
 
 ```typst
-#import "@preview/merman:0.6.0": analyze-mermaid
+#import "@preview/merman:0.7.0": analyze-mermaid
 
 #let source = "flowchart LR\n  Input --> Output"
 #let analysis = analyze-mermaid(source)
@@ -318,7 +318,7 @@ Validates a Theme v2 dictionary and returns `ok: true`, `resolved`, and `notices
 Returns the compiled capability payload, including capability, output, operation, registry, and resource sets:
 
 ```typst
-#import "@preview/merman:0.6.0": merman-capabilities
+#import "@preview/merman:0.7.0": merman-capabilities
 
 #let capabilities = merman-capabilities()
 #capabilities.capabilities.text_measurement.provider_ids
@@ -364,11 +364,11 @@ SVG rendering defaults to **14,100,000 layout work units**, using the shared `in
 An omitted or null `resources.profile` inherits the Typst SVG default. Explicit `resources.profile: "constrained"` keeps **125,000** layout work units unless overridden. In either case, a finite positive integer `resources.limits.max_layout_work_units` can lower **or raise** the allowance:
 
 ```typst
-#import "@preview/merman:0.6.0": mermaid, mermaid-profile
+#import "@preview/merman:0.7.0": mermaid, mermaid-profile
 
 #let source = "flowchart LR\n  Source --> Diagram"
 #let layout-options = (
-  version: 3,
+  version: 4,
   resources: (limits: (max_layout_work_units: 20000000)),
   svg: (pipeline: "resvg-safe"),
 )
@@ -389,7 +389,7 @@ Both Dagre and ELK are bundled. Since Mermaid 12.0, Flowchart, State, Class, ER,
 Select Dagre with Mermaid site configuration, or explicitly select ELK through frontmatter:
 
 ```typst
-#import "@preview/merman:0.6.0": mermaid, mermaid-profile
+#import "@preview/merman:0.7.0": mermaid, mermaid-profile
 
 #let source = "flowchart LR\n  Source --> Layout\n  Layout --> SVG"
 #mermaid(source, site-config: (layout: "dagre"))
@@ -406,7 +406,11 @@ The wrapper's top-level `layout` controls container geometry; use `site-config.l
 
 ## Upgrading
 
-### Theme v2 migration
+### Upgrading from 0.6.0
+
+Use `@preview/merman:0.7.0` with its bundled WebAssembly plugin (ABI 4). Set `version: 4` in explicitly versioned binding options. Theme documents and the theme catalog use schema 2. The minimum Typst version is `0.15.0`.
+
+#### Theme v2 migration
 
 | Old input | Theme v2 input |
 | --- | --- |
@@ -420,7 +424,7 @@ The wrapper's top-level `layout` controls container geometry; use `site-config.l
 
 ### Upgrading from 0.5.0
 
-Use the wrapper and WASM from the same package. Update the import to `@preview/merman:0.6.0` and use `version: 3` in explicitly versioned options. The minimum Typst version is `0.15.0`.
+Apply the following replacements when upgrading directly from `0.5.0`, along with the [0.6.0 migration](#upgrading-from-060).
 
 | Old input | Current input |
 | --- | --- |
@@ -435,7 +439,7 @@ Review geometry, wrapping, typography, and document snapshots after the Mermaid 
 
 ### Upgrading from 0.4.0
 
-Package `0.5.0` bundled Merman `0.9.0`, keeping ABI 2, options schema 2, and Typst `0.15.0`. It improved Unicode line breaking, Markdown code/escaped markup, hollow relationship markers, and Block metadata. SVG backgrounds are transparent; pass `background: "white"` for opaque artwork. See the [0.5.0 changelog](CHANGELOG.md#050---2026-10-13). A direct jump to `0.6.0` also requires the migration above.
+Package `0.5.0` bundled Merman `0.9.0`, keeping ABI 2, options schema 2, and Typst `0.15.0`. It improved Unicode line breaking, Markdown code and escaped markup, hollow relationship markers, and Block metadata. Pass `background: "white"` for opaque artwork. A direct jump to `0.7.0` also requires the migrations above. [0.5.0 changelog](CHANGELOG.md#050---2026-10-13)
 
 ### Earlier 0.3.0 to 0.4.0 Migration
 
@@ -448,7 +452,8 @@ Package `0.5.0` bundled Merman `0.9.0`, keeping ABI 2, options schema 2, and Typ
 
 | Typst package | Merman source | Typst plugin ABI | Notes |
 | --- | --- | --- | --- |
-| `0.6.0` | `0.11.0` in this checkout | `3` | Options 3 and Theme v2. |
+| `0.7.0` (unreleased) | `0.11.0` | `4` | Options 4 and Theme v2. |
+| `0.6.0` | `0.10.0` | `3` | Options 3 and the original theme API. |
 | `0.5.0` | `0.9.0` | `2` | Options 2 and Mermaid 12.1 rendering. |
 | `0.4.0` | `0.8.0` | `2` | Mermaid 12.1; requires Typst `0.15.0` or newer. |
 | `0.3.0` | `0.8.0-alpha.6` | `2` | Previous size-optimized WASM package. |
@@ -457,7 +462,7 @@ Package `0.5.0` bundled Merman `0.9.0`, keeping ABI 2, options schema 2, and Typ
 
 The package version tracks the `@preview/merman` wrapper API; the source version identifies the Rust workspace build. Plugin ABI tracks WASM exports and byte payloads. Wrapper-only breaks do not require an ABI bump when that plugin surface stays stable.
 
-Binding options schema 3 includes top-level `theme`, `background`, `site_config`, `layout`, and `environment`. Theme documents and the theme catalog use schema 2. Operation envelopes use schema 1. These schemas have separate version numbers from the package and plugin ABI.
+Binding options schema 4 includes top-level `theme`, `background`, `site_config`, `layout`, and `environment`. Theme documents and the theme catalog use schema 2. Operation envelopes use schema 1. These schemas have separate version numbers from the package and plugin ABI.
 
 ## Current Limits
 
@@ -475,14 +480,14 @@ Build the publish package locally:
 cargo run --locked -p xtask -- build-typst-package --profile publish
 ```
 
-Output: `dist/typst/merman/0.6.0`. The build requires `wasm-tools` and Binaryen `wasm-opt version 133`; the builder applies pinned `wasm-opt -Oz` before stripping custom sections and records both tool versions in the artifact manifest.
+Output: `dist/typst/merman/0.7.0`. The build requires `wasm-tools` and Binaryen `wasm-opt version 133`; the builder applies pinned `wasm-opt -Oz` before stripping custom sections and records both tool versions in the artifact manifest.
 
 For a manual local install, copy that directory to a preview package path:
 
 ```text
-<package-root>/preview/merman/0.6.0/typst.toml
-<package-root>/preview/merman/0.6.0/lib.typ
-<package-root>/preview/merman/0.6.0/merman_typst_plugin.wasm
+<package-root>/preview/merman/0.7.0/typst.toml
+<package-root>/preview/merman/0.7.0/lib.typ
+<package-root>/preview/merman/0.7.0/merman_typst_plugin.wasm
 ```
 
 Compile with `typst compile --package-path <package-root> document.typ`. The package smoke command creates this layout automatically:

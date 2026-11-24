@@ -4,11 +4,11 @@
 
 > **Implementation transport:** Typst authors should import the [`@preview/merman`](https://typst.app/universe/package/merman) package. Do not load this raw WebAssembly artifact or depend on the Rust crate directly; the Typst wrapper owns package versioning, options, error presentation, and artifact loading.
 
-The current source tree builds wrapper `0.6.0` with Merman `0.11.0`. Wrapper `0.5.0` bundled Merman `0.9.0`, and wrapper `0.4.0` bundled Merman `0.8.0`. See the [Typst package guide](../../distribution/typst/merman/README.md) for imports, rendering options, and upgrade instructions.
+The current source tree builds the unreleased wrapper `0.7.0` with Merman `0.11.0`. The published wrapper `0.6.0` bundled Merman `0.10.0` and plugin ABI 3. See the [Typst package guide](../../distribution/typst/merman/README.md) for imports, rendering options, and upgrade instructions.
 
-## Typst Plugin ABI 3
+## Typst Plugin ABI 4
 
-The Typst plugin ABI is versioned independently of the native ABI and shared binding schemas. Use the wrapper and plugin from the same package. The WebAssembly module distinguishes callable ABI operations from linker metadata.
+The Typst plugin ABI is versioned independently of the native ABI and shared binding schemas. ABI 4 retains ABI 3's import and export signatures and adopts Binding Options JSON 4 and Theme v2 payloads. Use the wrapper and plugin from the same package.
 
 It imports exactly these two protocol functions:
 
@@ -65,9 +65,8 @@ Changing an imported or exported function, its WebAssembly signature, or one of 
 
 There are no bridge-only or render-only package profiles. Maintainers can build direct Cargo feature leaves for local closure experiments, but those combinations are not named product identities, publication choices, or release evidence. The distributed recipe explicitly selects `all-diagrams`; source builds can select `diagram-*` families separately. Selected families preserve Mermaid configuration, sanitization, and semantic parsing; a missing layout backend produces a typed capability error only when a diagram requires it.
 
-ASCII, PNG, JPEG, and PDF are not compiled into the publish artifact because Typst ABI 3 has no
-callable operation for those outputs. Adding an unreachable capability would only enlarge the
-plugin and its dependency closure.
+The publish artifact compiles SVG rendering. The closed Typst operation set omits ASCII, PNG,
+JPEG, and PDF.
 
 RaTeX math is not supported by the Typst plugin. Its current dependency closure uses browser system-font discovery, which violates the zero-browser-import Typst boundary. A future math admission must pass separate import and behavior gates before it updates the one canonical artifact recipe.
 

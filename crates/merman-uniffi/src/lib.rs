@@ -3949,7 +3949,7 @@ mod tests {
         );
 
         let inherited = resource_options_json(None, Vec::new()).unwrap();
-        assert_eq!(inherited, r#"{"version":3}"#);
+        assert_eq!(inherited, r#"{"version":4}"#);
     }
 
     #[test]
@@ -4091,7 +4091,7 @@ mod tests {
     #[test]
     fn reusable_engine_returns_document_analysis_json() {
         let reusable = reusable_engine(Some(
-            r#"{ "version": 3, "analysis": { "lint": { "profile": "strict" } } }"#.to_string(),
+            r#"{ "version": 4, "analysis": { "lint": { "profile": "strict" } } }"#.to_string(),
         ));
         let source = "# Example\n\n```mermaid\nflowchart TD\nA[Hello]\n```\n";
         let json: Value = serde_json::from_str(

@@ -1,4 +1,4 @@
-#import "@preview/merman:0.6.0": export-theme-preset, mermaid, resolve-theme
+#import "@preview/merman:0.7.0": export-theme-preset, mermaid, resolve-theme
 
 #let studio = export-theme-preset("studio")
 #let dark = resolve-theme(studio, appearance: "dark")

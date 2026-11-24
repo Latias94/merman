@@ -121,7 +121,7 @@ When a custom artifact enables binary exports, `renderPng`, `renderJpeg`, and `r
 
 ## Options And Capabilities
 
-`optionsJson` follows [Options JSON schema `3`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md):
+`optionsJson` follows [Options JSON schema `4`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md):
 
 ```kotlin
 val svg = Merman.renderSvg(
@@ -130,7 +130,7 @@ val svg = Merman.renderSvg(
 )
 ```
 
-`MermanResourceOptionsBuilder` emits Options JSON schema `3`. Its profile is unset by default so reusable request overlays inherit their constructor ceiling; limits accept only `MermanResourceOverrideId`, while `MermanResourceLimitId` describes the full runtime catalog.
+`MermanResourceOptionsBuilder` emits Options JSON schema `4`. Its profile is unset by default so reusable request overlays inherit their constructor ceiling; limits accept only `MermanResourceOverrideId`, while `MermanResourceLimitId` describes the full runtime catalog.
 
 The default AAR is deterministic and does not bundle native clock, time-zone, or random adapters. A source build may enable the atomic `native-runtime` feature and then select `"runtime_policy":"native"`; requesting native policy from the default AAR fails with a typed unsupported-operation error. Runtime discovery reports concrete adapter IDs only when the loaded artifact contains them.
 
@@ -158,7 +158,7 @@ println(catalog.getJSONArray("presets"))
 val source = "flowchart LR\nA[Review] --> B[Publish]"
 val themedSvg = Merman.renderSvg(
     source,
-    optionsJson = """{"version":3,"theme":{"preset":"studio","appearance":"dark"}}""",
+    optionsJson = """{"version":4,"theme":{"preset":"studio","appearance":"dark"}}""",
 )
 ```
 

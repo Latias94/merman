@@ -14,7 +14,7 @@ yield with a no-op. These deterministic shims are smoke policies, **not** secure
 randomness and not a production cryptographic host. Actual shim calls are
 recorded. Path functions see no guest preopens; host-only inputs use raw ABI bytes.
 
-Theme selection uses Options JSON schema `3`. For example, set
+Theme selection uses Options JSON schema `4`. For example, set
 `{"theme":{"preset":"studio","appearance":"dark"}}` or supply a Theme v2 document. The host can
 request an appearance or use the document's declared default.
 

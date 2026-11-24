@@ -19,7 +19,7 @@ static-site builds, use [`@mermanjs/node`](../node/packages/node/README.md).
 | Editor intelligence in a Worker | [`@mermanjs/web-editor`](packages/editor/README.md) | Analysis and parser-backed editor sessions |
 | ASCII or Unicode output | [`@mermanjs/web-ascii`](packages/ascii/README.md) | Supported terminal-oriented diagram output |
 
-Current-source browser packages target Mermaid `12.3.0` and use Web transport API `12` with Options JSON schema `3`. Analysis-capable packages use facts schema `3`, SVG results report `metadata.theme_outcome`, and ASCII-capable packages use schema-4 ASCII output. Published `0.10.0` uses Web API `10` and ASCII schema `3`. Keep the package facade, generated glue, and WASM binary at the same exact version and source revision. [Options JSON](../../docs/bindings/OPTIONS_JSON.md) · [Current-source migration](../../docs/migrations/render-reuse-host-integration.md)
+Current-source browser packages target Mermaid `12.3.0` and use Web transport API `12` with Options JSON schema `4`. Analysis-capable packages use facts schema `3`, SVG results report `metadata.theme_outcome`, and ASCII-capable packages use schema-4 ASCII output. Published `0.10.0` uses Web API `10` and ASCII schema `3`. Keep the package facade, generated glue, and WASM binary at the same exact version and source revision. [Options JSON](../../docs/bindings/OPTIONS_JSON.md) · [Current-source migration](../../docs/migrations/render-reuse-host-integration.md)
 
 The [Mermaid 12.3 migration](../../docs/migrations/mermaid-12-3.md) describes Step animations,
 their closed browser admission, and the static SVG projection used for native export.

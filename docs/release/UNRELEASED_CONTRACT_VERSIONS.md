@@ -18,10 +18,12 @@ The package release number does not change those independent protocol identities
 ## Theme v2 follow-up
 
 Theme documents and the catalog use schema 2. The CLI advertises contract 9 and `theme list --json`
-returns that catalog. Web transport 12 identifies the new theme exports and native render outcomes.
-Node transport 2 admits the new operation IDs through its generated wire contract. The C ABI 3
-function table, UniFFI API 8, and Typst plugin entry points use generic operation dispatch for the
-new theme operations. Deploy generated wrappers with artifacts from the same revision.
+returns that catalog. Binding Options schema 4 carries the new theme grammar. Web transport 12
+identifies the new theme exports and native render outcomes. Node transport 3 identifies the
+replacement theme operation IDs and catalog shape. Native C ABI 4 reserves the retired operation
+codes and assigns new codes to the Theme v2 operations. Typst wrapper 0.7.0 uses plugin ABI 4 with
+the same export signatures as 0.6.0. UniFFI API 8 continues to use generic operation dispatch.
+Deploy generated wrappers with artifacts from the same revision.
 
 [Theme guide](../rendering/custom-diagram-themes.md) · [Binding options](../bindings/OPTIONS_JSON.md#diagram-theme)
 

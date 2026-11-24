@@ -1,6 +1,6 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
-//! Native ABI 3 exports for embedding Merman in C-compatible hosts.
+//! Native ABI 4 exports for embedding Merman in C-compatible hosts.
 //!
 //! The only exported C symbol is [`merman_get_native_api`]. Hosts discover a size-tagged
 //! function table and execute every operation through the shared binding operation path. No raw Rust
@@ -27,7 +27,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 include!("generated/text_measurement_abi.rs");
-include!("generated/abi3.rs");
+include!("generated/native_abi.rs");
 
 const PACKAGE_VERSION: &[u8] = env!("CARGO_PKG_VERSION").as_bytes();
 #[cfg(feature = "svg")]
@@ -1112,7 +1112,7 @@ fn execute_with_engine<T>(
 
     consume(NativeExecution {
         operation: merman_native_operation_code(operation.key())
-            .expect("every C ABI 3 operation must retain its frozen numeric code"),
+            .expect("every native ABI operation must retain its frozen numeric code"),
         media_type,
         data,
         metadata_json: metadata.into_json_bytes(),
@@ -1298,7 +1298,7 @@ unsafe fn result_status_boundary(
     }
 }
 
-/// Discovers the generated native ABI 3 function table.
+/// Discovers the generated native ABI 4 function table.
 ///
 /// # Safety
 ///
@@ -1342,7 +1342,7 @@ unsafe fn get_native_api_impl(
             return Err(NativeFailure::new(
                 MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
                 format!(
-                    "out_api.struct_size capacity is {output_capacity}; expected at least the ABI 3 minimum prefix size {MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE}"
+                    "out_api.struct_size capacity is {output_capacity}; expected at least the native ABI minimum prefix size {MERMAN_NATIVE_API_MINIMUM_PREFIX_SIZE}"
                 ),
             ));
         }
@@ -3260,17 +3260,20 @@ mod tests {
     #[test]
     fn api_discovery_requires_exact_version_and_digest() {
         let mut api = empty_api();
-        let wrong_version = MermanNativeApiRequest {
+        // The released v0.11.0 header requests ABI 3 with this minimum-prefix digest.
+        let published_abi3 = MermanNativeApiRequest {
             struct_size: native_struct_size::<MermanNativeApiRequest>(),
-            expected_abi_version: 2,
+            expected_abi_version: 3,
             expected_minimum_prefix_layout_digest: borrowed_slice(
-                MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST.as_bytes(),
+                b"sha256:623c099f91282a88bf4d4e9cc7cdf728fc39c3b71a3ae7392007dd74f2b6ab41",
             ),
         };
         assert_eq!(
-            unsafe { merman_get_native_api(&wrong_version, &mut api) },
+            unsafe { merman_get_native_api(&published_abi3, &mut api) },
             MERMAN_NATIVE_STATUS_ABI_MISMATCH
         );
+        assert_eq!(api.abi_version, 0);
+        assert!(api.runtime_catalog.is_none());
 
         let wrong_digest = MermanNativeApiRequest {
             struct_size: native_struct_size::<MermanNativeApiRequest>(),

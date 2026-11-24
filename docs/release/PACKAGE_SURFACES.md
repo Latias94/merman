@@ -45,8 +45,8 @@ See the [tagged theme guide](https://github.com/Latias94/merman/blob/v0.10.0/doc
 for that release's document format and appearance selection.
 
 The current source uses Theme v2 documents and catalog schema `2`, Web transport API `12`,
-CLI contract `9`, and Options JSON schema `3`. Build wrappers and runtime artifacts from the
-same revision. [Theme v2 guide](../rendering/custom-diagram-themes.md)
+Node transport API `3`, CLI contract `9`, Native C ABI `4`, and Options JSON schema `4`. Build
+wrappers and runtime artifacts from the same revision. [Theme v2 guide](../rendering/custom-diagram-themes.md)
 
 The alpha.2 release requires the independent `roughr-merman 0.12.6` and Tree-sitter Mermaid
 `0.3.3` releases. Both prerequisites were published and independently verified before their
@@ -205,7 +205,7 @@ The repository-owned delivery routes are:
    before it is enabled.
 11. Independent Cargo, scoped npm, and GitHub publication for `tree-sitter-mermaid` through
     `release-tree-sitter-mermaid.yml` after both registry identities are bootstrapped.
-12. Typst Universe submission for `@preview/merman:0.6.0`. Its current source builds with Merman
+12. Typst Universe preparation for `@preview/merman:0.7.0`. Its current source builds with Merman
     `0.11.0` and Theme v2. Typst wrapper releases are independent of crates.io and workspace tags.
     [Typst package guide](../../distribution/typst/merman/README.md)
 
@@ -328,7 +328,7 @@ Current source semantics are intentionally explicit:
   defaults must select `all-diagrams` or the required `diagram-*` selectors alongside output leaves
   and layout leaves. Products and release profiles select explicit families
   and capabilities when they need an artifact-specific closure.
-- Native bindings use ABI 3. Hosts must query the generated capability/runtime catalog before
+- Native C bindings use ABI 4. Hosts must query the generated capability/runtime catalog before
   requesting optional output or a host text-measurement operation, and must reject an ABI mismatch at
   initialization rather than relying on struct layout compatibility.
 - Browser package identity is part of the public API. Migrate old
@@ -393,7 +393,7 @@ library-size evidence.
 | VS Code extension | Descriptor-owned LSP and CLI artifacts pass extension tests, binary preparation, target-specific VSIX packaging, and package-content verification. |
 | Browser artifact evidence | The selected Web artifact profiles have current raw, stripped, gzip, and Brotli measurements; do not substitute a legacy feature-profile name. |
 | Browser/Typst size evidence | Web reports each admitted artifact's size without ceilings; Typst publication checks its own artifact budget. |
-| Typst transport | The sole `publish` package profile consumes the canonical `typst-wasm` artifact recipe and proves plugin ABI 3, dependency closure, size, provenance, package contents, and examples. Its admitted `json5`, `html5ever`, and `url` dependencies remain measured pure-Rust parts of invariant Mermaid semantics. |
+| Typst transport | The sole `publish` package profile consumes the canonical `typst-wasm` artifact recipe and proves plugin ABI 4, dependency closure, size, provenance, package contents, and examples. Its admitted `json5`, `html5ever`, and `url` dependencies remain measured pure-Rust parts of invariant Mermaid semantics. |
 | Node npm alpha package group | The selected N-API recipe, explicit Node-targeted WASM recipe, generated wire contract, runtime catalog, package contracts, exact-version optional dependencies, glibc-baseline build receipts, nine packed tarballs, seven native root-package install/render smokes, and one WASM install/render smoke agree. |
 
 ## WASM Size Matrix

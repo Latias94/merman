@@ -46,7 +46,7 @@ int main(void) {
     memset(&api, 0, sizeof(api));
     api.struct_size = MERMAN_NATIVE_STRUCT_SIZE(MermanNativeApi);
     if (merman_get_native_api(&discovery, &api) != MERMAN_NATIVE_STATUS_OK) {
-        fputs("Merman ABI 3 discovery failed\n", stderr);
+        fputs("Merman native ABI discovery failed\n", stderr);
         return 1;
     }
 

@@ -2013,7 +2013,7 @@ mod tests {
         let result = execute_wasm_operation_result(
             "ascii",
             source.as_bytes(),
-            br#"{"version":3,"ascii":{"graph_presentation":"adaptive","charset":"ascii"}}"#,
+            br#"{"version":4,"ascii":{"graph_presentation":"adaptive","charset":"ascii"}}"#,
             None,
         )
         .unwrap();

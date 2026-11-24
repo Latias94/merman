@@ -458,7 +458,7 @@ export interface MermanRuntimeConstructorServiceContract {
 
 export interface MermanRuntimeCatalog {
   schema_version: 1;
-  transport_api_version: 2;
+  transport_api_version: 3;
   package_version: string;
   options_schema_versions: number[];
   payload_schemas: MermanRuntimePayloadSchema[];

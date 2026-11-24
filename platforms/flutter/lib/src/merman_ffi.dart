@@ -21,7 +21,7 @@ export 'generated/native_operations.dart' show MermanOperation;
 ffi.DynamicLibrary openMermanLibraryFromPath(String path) =>
     ffi.DynamicLibrary.open(path);
 
-/// A binary-safe generic-operation result returned by the ABI 3 table.
+/// A binary-safe generic-operation result returned by the native ABI table.
 class MermanOperationResult {
   const MermanOperationResult({
     required this.operation,
@@ -1531,7 +1531,7 @@ final class MermanEngineServices {
   bool get isEmpty => !hasIconPacks && textMeasurer == null;
 }
 
-/// A validated runtime catalog returned by the native ABI 3 table.
+/// A validated runtime catalog returned by the native ABI table.
 final class MermanResourceLimitDescriptor {
   MermanResourceLimitDescriptor({
     required this.id,
@@ -1761,7 +1761,8 @@ class MermanRuntimeCatalog {
     if (_requiredInt(catalog, 'transport_api_version') !=
         native.MERMAN_NATIVE_ABI_VERSION) {
       throw MermanException.contract(
-        'runtime contract transport API version does not match native ABI 3',
+        'runtime contract transport API version does not match native ABI '
+        '${native.MERMAN_NATIVE_ABI_VERSION}',
       );
     }
     final packageVersion = catalog['package_version'];
@@ -2766,19 +2767,22 @@ class _NativeApi {
         throw MermanException(
           code: status,
           codeName: 'DART_ABI_DISCOVERY_FAILED',
-          message: 'merman_get_native_api rejected the ABI 3 request',
+          message:
+              'merman_get_native_api rejected the ABI '
+              '${native.MERMAN_NATIVE_ABI_VERSION} request',
         );
       }
 
       final table = api.ref;
       if (!_nativeApiHasCurrentTable(table.struct_size)) {
         throw MermanException.contract(
-          'native API table is smaller than the current ABI 3 table',
+          'native API table is smaller than the generated ABI table',
         );
       }
       if (table.abi_version != native.MERMAN_NATIVE_ABI_VERSION) {
         throw MermanException.contract(
-          'native API version `${table.abi_version}` is not ABI 3',
+          'native API version `${table.abi_version}` does not match ABI '
+          '`${native.MERMAN_NATIVE_ABI_VERSION}`',
         );
       }
       final minimumPrefixLayoutDigest = _utf8FromSlice(
@@ -3234,7 +3238,7 @@ class _NativeResult {
 /// Validates a native result write without requiring a live native library.
 ///
 /// This package-internal test seam exercises the allocation-token exhaustion
-/// exception in the frozen ABI 3 ownership contract.
+/// exception in the native ABI ownership contract.
 void validateNativeResultForTesting(
   ffi.Pointer<native.MermanNativeResult> pointer,
   int callStatus,

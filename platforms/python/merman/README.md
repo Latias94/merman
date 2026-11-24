@@ -75,7 +75,7 @@ facts = engine.analyze_document_facts_json(
 engine.close()
 ````
 
-`options_json` is optional and follows [Options JSON schema `3`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md). Invalid options and engine failures raise typed `MermanError` variants. Reusable request options deeply merge over the construction baseline for one operation without mutating it. They cannot change the constructor-owned `runtime_policy`. `MermanError.Binding.kind` distinguishes `UNKNOWN_OPERATION` from `MISSING_CAPABILITY`; only the latter carries a non-null, descriptor-owned `capability_id`.
+`options_json` is optional and follows [Options JSON schema `4`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md). Invalid options and engine failures raise typed `MermanError` variants. Reusable request options deeply merge over the construction baseline for one operation without mutating it. They cannot change the constructor-owned `runtime_policy`. `MermanError.Binding.kind` distinguishes `UNKNOWN_OPERATION` from `MISSING_CAPABILITY`; only the latter carries a non-null, descriptor-owned `capability_id`.
 
 Release wheels use deterministic runtime state and do not bundle native clock, time-zone, or random adapters. A custom source build may enable the atomic `native-runtime` feature and then select `{"runtime_policy":"native"}`. The default wheel raises the generated unsupported-operation error when native policy is requested, and runtime discovery reports concrete adapter IDs only when they are present.
 
@@ -107,7 +107,7 @@ Use emitted dimensions and `emitted_overflowed` for the actual output without in
 values. Discover admitted policies through `graph_presentations` on records returned by
 `client.ascii_capabilities()`, and request `ascii.graph_presentation` (`strict` by default, or
 `adaptive` for admitted families). Preserve `requested_layout_profile` and `compact_attempted` as native selection
-evidence; the native renderer selects layout and fallback. Options JSON schema `3`, outer
+evidence; the native renderer selects layout and fallback. Options JSON schema `4`, outer
 operation metadata schema `1`, and C ABI `3` are unchanged.
 
 Diagnostics use schema `1` and parser facts use schema `3`, independently of UniFFI binding API `8`. Other facts versions are rejected at the boundary; consumers of the removed TextScan shape and Flowchart-only rich graph must migrate to generic parser-backed items and explicit unavailable bodies. Every diagram now requires `appearance` with `known` or `unknown` state; known declarations carry source provenance and byte spans. See the [source appearance migration](https://github.com/Latias94/merman/blob/main/docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).

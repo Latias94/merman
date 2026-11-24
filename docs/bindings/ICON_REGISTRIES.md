@@ -39,7 +39,7 @@ state.
 
 ## Native C Constructor
 
-Native ABI 3 exposes `engine_new_with_services` in the current complete table. Its
+Native ABI 4 exposes `engine_new_with_services` in the current complete table. Its
 `MermanNativeEngineServicesConfig` embeds the existing `MermanNativeEngineConfig` by value and
 optionally points to a contiguous array of `MermanNativeIconPack` records. Each record carries
 borrowed IconifyJSON plus an optional UTF-8 registration-name override; a zero-length name keeps

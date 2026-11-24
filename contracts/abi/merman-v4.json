@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "protocol_id": "merman-native",
-  "abi_version": 3,
+  "abi_version": 4,
   "result_schema_version": 1,
   "minimum_prefix": {
     "status_code_count": 17,
@@ -34,7 +34,7 @@
     },
     {
       "id": "error-kind-vocabulary-is-closed",
-      "description": "The ABI 3 error-kind vocabulary is exactly generic, unknown-operation, missing-capability, reentrant-call, and busy; adding, removing, or renaming an error kind requires a new ABI version."
+      "description": "The native ABI error-kind vocabulary is exactly generic, unknown-operation, missing-capability, reentrant-call, and busy; adding, removing, or renaming an error kind requires a new ABI version."
     },
     {
       "id": "api-table-capacity-returns-complete-prefix",
@@ -156,6 +156,7 @@
     { "id": "busy", "c_name": "MERMAN_NATIVE_STATUS_BUSY", "code": 16, "error_kinds": ["busy"], "description": "The reusable engine has an active operation and cannot be closed or concurrently entered under its callback policy." },
     { "id": "cancelled", "c_name": "MERMAN_NATIVE_STATUS_CANCELLED", "code": 17, "error_kinds": ["generic"], "description": "The operation cooperatively stopped before producing a complete payload; failure JSON carries structured cancellation reason and phase details." }
   ],
+  "reserved_operation_codes": [15, 16, 17],
   "operation_codes": [
     {
       "id": "none",

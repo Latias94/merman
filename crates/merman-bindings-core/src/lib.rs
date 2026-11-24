@@ -152,7 +152,8 @@ pub use text_measurement::{
     HostTextWhiteSpaceCode, decode_host_text_measurement, host_text_measurement_transport_fields,
 };
 pub use transport_contract::{
-    BindingTransportExposureSpec, BindingTransportKey, WEB_TRANSPORT_API_VERSION,
+    BindingTransportExposureSpec, BindingTransportKey, NODE_TRANSPORT_API_VERSION,
+    WEB_TRANSPORT_API_VERSION,
 };
 
 #[cfg(not(feature = "ascii"))]

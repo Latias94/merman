@@ -168,13 +168,13 @@ fn invalid_constructor_allocations_return_owned_errors_and_leave_no_engine() {
 #[test]
 fn envelope_version_raw_options_and_empty_option_detection_are_transport_only() {
     let config: Config<'_> = wire::parse(
-        br#"{"version":1,"options": {"version":3,"version":3}}"#,
+        br#"{"version":1,"options": {"version":4,"version":4}}"#,
         512,
     )
     .unwrap();
     assert_eq!(
         config.options.unwrap().get(),
-        r#"{"version":3,"version":3}"#
+        r#"{"version":4,"version":4}"#
     );
     for raw in ["{}", "{  }", " {\n } "] {
         let raw = serde_json::value::RawValue::from_string(raw.to_owned()).unwrap();

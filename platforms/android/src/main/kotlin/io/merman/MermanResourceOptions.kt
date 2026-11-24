@@ -3,7 +3,7 @@
 
 package io.merman
 
-internal const val MERMAN_BINDING_OPTIONS_SCHEMA_VERSION: Int = 3
+internal const val MERMAN_BINDING_OPTIONS_SCHEMA_VERSION: Int = 4
 
 public enum class MermanResourceProfile(public val id: String) {
     INTERACTIVE("interactive"),
@@ -177,9 +177,9 @@ public class MermanResourceOptions(
             parts += "\"limits\":{${limitJson}}"
         }
         return if (parts.isEmpty()) {
-            "{\"version\":3}"
+            "{\"version\":4}"
         } else {
-            "{\"version\":3,\"resources\":{${parts.joinToString(",")}}}"
+            "{\"version\":4,\"resources\":{${parts.joinToString(",")}}}"
         }
     }
 }

@@ -1,4 +1,4 @@
-#import "@preview/merman:0.6.0": mermaid
+#import "@preview/merman:0.7.0": mermaid
 
 #set page(width: 600pt, height: auto, margin: 16pt, fill: white)
 #set text(font: "Arial", size: 13pt, fill: rgb("#172033"))

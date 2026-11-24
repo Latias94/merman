@@ -13,7 +13,7 @@ import 'dart:ffi' as ffi;
 /// receives the largest complete producer prefix it can safely read. MermanNativeResult must be
 /// fully zero-initialized with MERMAN_NATIVE_RESULT_INIT before every producing call.
 ///
-/// ABI 3 semantics from the descriptor:
+/// ABI semantics from the descriptor:
 /// - written-results-own-nonzero-allocation-tokens: Any producing call that writes Merman-owned
 /// result bytes writes a process-lifetime monotonic nonzero allocation_token; token exhaustion
 /// returns internal-error and leaves a caller-valid zero-initialized result unchanged.
@@ -31,7 +31,7 @@ import 'dart:ffi' as ffi;
 /// - engine-new-inputs-and-outputs-do-not-overlap: For engine_new, the config record, its
 /// options_json storage, out_engine storage, and out_result storage MUST be pairwise
 /// non-overlapping, and out_engine must be initialized to zero.
-/// - error-kind-vocabulary-is-closed: The ABI 3 error-kind vocabulary is exactly generic,
+/// - error-kind-vocabulary-is-closed: The native ABI error-kind vocabulary is exactly generic,
 /// unknown-operation, missing-capability, reentrant-call, and busy; adding, removing, or renaming
 /// an error kind requires a new ABI version.
 /// - api-table-capacity-returns-complete-prefix: Discovery treats MermanNativeApi.struct_size as
@@ -144,12 +144,12 @@ external int merman_get_native_api(
 );
 
 const String MERMAN_NATIVE_ABI_FULL_DESCRIPTOR_DIGEST =
-    'sha256:5cf5b56a1e0d4fd869bb48f6830cc875823b78b639e30cd55a5c4988fc6df8b0';
+    'sha256:49bfa88bd4d88cb541e239ef5ffd06b7b41b03409f7702e048d8968cac0e9711';
 
 const String MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST =
-    'sha256:623c099f91282a88bf4d4e9cc7cdf728fc39c3b71a3ae7392007dd74f2b6ab41';
+    'sha256:625a760f4d5514b346e13e514c3095e202eb718497c410634d7c5bfd3e1fdce2';
 
-const int MERMAN_NATIVE_ABI_VERSION = 3;
+const int MERMAN_NATIVE_ABI_VERSION = 4;
 
 const String MERMAN_NATIVE_ERROR_KIND_BUSY = 'busy';
 

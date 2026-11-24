@@ -1,4 +1,4 @@
-#import "@preview/merman:0.6.0": (
+#import "@preview/merman:0.7.0": (
   mermaid,
   mermaid-figure,
   mermaid-profile,

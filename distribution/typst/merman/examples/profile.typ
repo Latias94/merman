@@ -1,4 +1,4 @@
-#import "@preview/merman:0.6.0": mermaid, mermaid-profile, show-mermaid-blocks
+#import "@preview/merman:0.7.0": mermaid, mermaid-profile, show-mermaid-blocks
 
 = Reusable diagram profile
 

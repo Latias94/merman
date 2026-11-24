@@ -62,7 +62,7 @@ export async function createAstroRenderer(
   return {
     render(target, source, diagramId, dark = false) {
       const options = {
-        version: 3,
+        version: 4,
         site_config: {
           theme: dark ? "dark" : "default",
           fontFamily,
@@ -162,7 +162,7 @@ export async function renderBuildDiagrams(diagrams) {
   const engine = await createNodeEngine({
     iconPacks: [{ json, registrationName: "site" }],
     bindingOptions: {
-      version: 3,
+      version: 4,
       runtime_policy: "deterministic",
       site_config: {
         theme: "default",
@@ -177,7 +177,7 @@ export async function renderBuildDiagrams(diagrams) {
     for (const { source, diagramId } of diagrams) {
       output.push(await engine.renderSvg(source, {
         optionsJson: JSON.stringify({
-          version: 3,
+          version: 4,
           svg: { diagram_id: diagramId, pipeline: "parity" },
         }),
       }));

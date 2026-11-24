@@ -5,10 +5,10 @@
 
 ADR-0076 supersedes any implication that an FFI descriptor or binding-specific boolean catalog
 owns capability or output semantic IDs. The separate unsafe FFI crate, safe facade, ownership,
-panic-containment, and C-plus-UniFFI layering decisions remain accepted. Native ABI 3 is now the
-implemented contract: it is generated from `contracts/abi/merman-v3.json`, discovered through one
-size-tagged API table, and routes every output through the shared binding operation model. ABI 2
-has been retired rather than retained as a compatibility layer.
+panic-containment, and C-plus-UniFFI layering decisions remain accepted. The current native ABI 4
+contract is generated from `contracts/abi/merman-v4.json`. Its size-tagged API table routes every
+output through the shared binding operation model. ABI 4 keeps the table and record layout from
+ABI 3 and assigns new operation codes to the Theme v2 payloads.
 
 ## Context
 
@@ -44,7 +44,7 @@ Create FFI support as a separate boundary, not inside the existing safe crates.
    - Build as `cdylib` and `staticlib`.
    - Keep unsafe code local to this crate.
    - Wrap all exported functions in panic-safe result handling.
-   - Discover one size-tagged ABI 3 function table through `merman_get_native_api`.
+   - Discover one size-tagged native ABI function table through `merman_get_native_api`.
    - Return each operation through one address-owned `MermanNativeResult`, released through the
      table's `result_free` function.
    - Expose errors through explicit result codes and retrievable error payloads.
@@ -70,7 +70,7 @@ Create FFI support as a separate boundary, not inside the existing safe crates.
      absent.
    - RaTeX math support remains feature-gated.
 
-## Implemented Native ABI 3
+## Implemented Native ABI
 
 The current implementation keeps one exported discovery symbol, `merman_get_native_api`.
 The host proves the generated ABI version and descriptor digest, receives a function table, checks

@@ -1,5 +1,5 @@
 name: MermanNativeBindings
-description: Generated ABI 3 declarations for the Merman native function table.
+description: Generated declarations for the Merman native function table.
 output: lib/src/generated/native_abi.dart
 headers:
   entry-points:

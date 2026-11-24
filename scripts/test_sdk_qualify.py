@@ -118,8 +118,8 @@ class SdkQualificationTests(unittest.TestCase):
             }],
         }))
         self.catalog = {
-            "schema_version": 1, "transport_api_version": 1 if wasi else 3,
-            "package_version": self.version, "options_schema_versions": [3],
+            "schema_version": 1, "transport_api_version": 1 if wasi else 4,
+            "package_version": self.version, "options_schema_versions": [4],
             "capabilities": {"capability_ids": features, "output_ids": ["png", "svg"],
                              "text_measurement": {"provider_ids": ["native-fonts"]}},
             "constructor_service_ids": ["native-font-context"],

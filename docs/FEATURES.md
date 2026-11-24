@@ -722,7 +722,7 @@ flowchart TD
 ```)
 ````
 
-The source build of wrapper `0.6.0` bundles Merman `0.11.0` with Mermaid `12.3.0` compatibility,
+The source build of wrapper `0.7.0` bundles Merman `0.11.0` with Mermaid `12.3.0` compatibility,
 SVG, analysis, Cytoscape, ELK, and Theme v2 preset selection and authoring. It uses deterministic
 text measurement; Typst's actual glyph metrics are not measured automatically, and math
 rendering is unavailable. The package ships ELK's EPL-2.0 notices and defaults to

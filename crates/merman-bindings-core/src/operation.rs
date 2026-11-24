@@ -2184,7 +2184,7 @@ mod tests {
     #[test]
     fn reusable_semantic_output_is_stable_across_empty_version_and_real_overlays() {
         let engine =
-            BindingEngine::from_options(br#"{"parse":{"suppress_errors":false},"version":3}"#)
+            BindingEngine::from_options(br#"{"parse":{"suppress_errors":false},"version":4}"#)
                 .unwrap();
         let execute = |options_json| {
             engine
@@ -2201,8 +2201,8 @@ mod tests {
         let empty = execute(b"");
         for unchanged in [
             br#"{}"#.as_slice(),
-            br#"{"version":3}"#.as_slice(),
-            b"{\n  \"version\": 3\n}".as_slice(),
+            br#"{"version":4}"#.as_slice(),
+            b"{\n  \"version\": 4\n}".as_slice(),
         ] {
             let result = execute(unchanged);
             assert_eq!(result.data, empty.data);
@@ -3380,7 +3380,7 @@ mod tests {
             baseline.metadata().theme_outcome().unwrap()["appearance"],
             "dark"
         );
-        assert_eq!(execute(br#"{"version":3}"#), baseline);
+        assert_eq!(execute(br#"{"version":4}"#), baseline);
 
         let inherited = execute(br#"{"svg":{"diagram_id":"request-inherit"}}"#);
         assert_eq!(
@@ -3625,7 +3625,7 @@ mod tests {
             source: b"flowchart TD\nA --> B",
             uri: None,
             options_json: br#"{
-                "version": 3,
+                "version": 4,
                 "raster": {"scale": 20},
                 "resources": {"limits": {"max_raster_pixels": 4096}}
             }"#,
@@ -3648,7 +3648,7 @@ mod tests {
     #[test]
     fn reusable_png_request_overlay_reports_its_effective_plan_without_mutating_the_engine() {
         let engine = BindingEngine::from_options(
-            br#"{"version":3,"resources":{"profile":"trusted-native"}}"#,
+            br#"{"version":4,"resources":{"profile":"trusted-native"}}"#,
         )
         .unwrap();
         let limited = engine
@@ -3657,7 +3657,7 @@ mod tests {
                 source: b"flowchart TD\nA --> B",
                 uri: None,
                 options_json: br#"{
-                    "version": 3,
+                    "version": 4,
                     "raster": {"scale": 20},
                     "resources": {"limits": {"max_raster_pixels": 4096}}
                 }"#,
@@ -3699,7 +3699,7 @@ mod tests {
             operation_id: "pdf",
             source: b"flowchart TD\nA --> B",
             uri: None,
-            options_json: br#"{"version":3,"pdf":{"filterScale":0.1}}"#,
+            options_json: br#"{"version":4,"pdf":{"filterScale":0.1}}"#,
             operation_control: None,
         })
         .unwrap();

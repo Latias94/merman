@@ -4,8 +4,11 @@ The Typst package has its own version axis; its bundled Merman version is record
 
 ## [Unreleased]
 
+The `0.7.0` source package bundles Merman `0.11.0` with Mermaid `12.3.0` behavior. The minimum compiler is Typst `0.15.0`.
+
 ### Breaking changes
 
+- Update imports to `@preview/merman:0.7.0` and use the wrapper with its bundled plugin. The plugin advances from ABI `3` to `4` for the Theme v2 payloads and Binding Options JSON schema `4`. Set `version: 4` in explicitly versioned raw options. [Upgrading from 0.6.0](README.md#upgrading-from-060)
 - Use `theme` for a Merman preset, a Theme v2 document, or a classic Mermaid theme. Use `appearance` for the light or dark mode of a Merman theme. Move Mermaid variables to `site-config.themeVariables`. See [Theme v2 migration](README.md#theme-v2-migration).
 - Use `theme-catalog()` for schema 2 metadata, `export-theme-preset` for an editable Theme v2 document, and `resolve-theme` for validation and contrast notices.
 

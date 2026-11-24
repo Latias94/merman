@@ -1,4 +1,4 @@
-#import "@preview/merman:0.6.0": (
+#import "@preview/merman:0.7.0": (
   analyze-mermaid,
   mermaid,
   mermaid-figure,
@@ -133,7 +133,7 @@
 #let resource-limited-result = mermaid-result(
   source,
   options: (
-    version: 3,
+    version: 4,
     resources: (limits: (max_source_bytes: 1)),
   ),
 )
@@ -205,7 +205,7 @@
   profile: svg-profile,
   id: "api-direct",
   options: (
-    version: 3,
+    version: 4,
     theme: (
       schema_version: 2,
       extends: "studio",
@@ -220,7 +220,7 @@
 
 #let raw-scoped-css-result = mermaid-result(
   source,
-  options: (version: 3, svg: (scoped_css: ".node rect { fill: red; }")),
+  options: (version: 4, svg: (scoped_css: ".node rect { fill: red; }")),
 )
 #assert(
   not raw-scoped-css-result.ok,
@@ -234,7 +234,7 @@
 
 #let raw-css-override-policy-result = mermaid-result(
   source,
-  options: (version: 3, svg: (css_override_policy: "preserve")),
+  options: (version: 4, svg: (css_override_policy: "preserve")),
 )
 #assert(
   not raw-css-override-policy-result.ok,
@@ -287,7 +287,7 @@
   message: "Typst package must bundle the expected Merman runtime",
 )
 #assert.eq(capabilities.schema_version, 1)
-#assert.eq(capabilities.transport_api_version, 3)
+#assert.eq(capabilities.transport_api_version, 4)
 #assert(
   capabilities.capabilities.capability_ids.contains("svg"),
   message: "capabilities should stay exported",

@@ -241,7 +241,7 @@ int merman_c_consumer_smoke(
         !bytes_contain(
             result.metadata_or_error_json.data,
             result.metadata_or_error_json.len,
-            "\"transport_api_version\":3"
+            "\"transport_api_version\":4"
         ) ||
         !bytes_contain(
             result.metadata_or_error_json.data,

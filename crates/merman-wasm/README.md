@@ -20,7 +20,7 @@ Current source builds report the contracts below. Published `0.11.0` uses transp
 
 - transport API version `12`
 - ASCII output schema `4` for ASCII-capable artifacts
-- Options JSON schema `3`;
+- Options JSON schema `4`;
 - runtime catalog schema `1`;
 - text-measurement protocol version `1`;
 - diagnostics payload schema `1`;

@@ -2,7 +2,7 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams from Swift on iOS and macOS without a WebView or JavaScript runtime. The `Merman` SwiftPM product is a direct UniFFI binding packaged as a binary XCFramework plus generated Swift source.
 
-The current source examples use Options JSON schema `3`, facts schema `3`, and Theme v2. For migration from `0.10.0` to the published `0.11.0` release, see the [upgrade index](../../docs/release/README.md#merman-0110).
+The current source examples use Options JSON schema `4`, facts schema `3`, and Theme v2. For migration from `0.10.0` to the published `0.11.0` release, see the [upgrade index](../../docs/release/README.md#merman-0110).
 
 > **Binding contract:** Current source uses direct UniFFI binding API `8` and ASCII output schema `4`; published Merman `0.10.0` wrappers retain API `7`. Options JSON remains schema `3`. Use the Swift source and XCFramework produced by the same Merman build. UniFFI rejects incompatible contract or API checksum pairs, but it does not compare Merman release versions when the generated interface is unchanged.
 
@@ -221,7 +221,7 @@ let svg = try client.renderSvg(source: source, optionsJson: options)
 precondition(svg.hasPrefix("<svg"))
 ```
 
-`resourceOptionsJson` emits Options JSON schema `3`. Pass `nil` as the profile for a reusable request overlay that must inherit its constructor ceiling; generated override records accept only `MermanResourceOverrideId` values.
+`resourceOptionsJson` emits Options JSON schema `4`. Pass `nil` as the profile for a reusable request overlay that must inherit its constructor ceiling; generated override records accept only `MermanResourceOverrideId` values.
 
 Use `MermanOperationRequestV4` and `client.execute(request:)` when the selected output is dynamic; put its options in the request's `optionsJson` field and pass `control: nil` when cancellation is not needed. The generated `MermanOperationResult` carries binary-safe bytes, media type, and typed operation metadata. For repeated work, construct `try MermanEngine(optionsJson:services:)` directly with baseline options and an optional immutable `MermanEngineServices` bundle. Per-operation options deep-merge over that baseline but cannot change the constructor-owned runtime policy. Call `close()` deterministically when an engine may retain foreign services; close is idempotent and retryable after busy or reentrant failures.
 

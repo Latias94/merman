@@ -2,11 +2,11 @@
 
 [![pub package](https://img.shields.io/pub/v/merman.svg)](https://pub.dev/packages/merman) [![License: MIT](https://img.shields.io/badge/license-MIT-yellow)](https://github.com/Latias94/merman/blob/main/LICENSE-MIT) [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/Latias94/merman/blob/main/LICENSE-APACHE)
 
-Parse, analyze, lay out, and render Mermaid diagrams in Flutter or standalone Dart without a browser or JavaScript runtime. The package is a Dart-friendly facade over Merman's native ABI 3 table and uses Native Assets to bundle size-oriented native libraries for supported targets.
+Parse, analyze, lay out, and render Mermaid diagrams in Flutter or standalone Dart without a browser or JavaScript runtime. The package uses Merman's size-tagged native function table and Native Assets to bundle libraries for supported targets.
 
 The installation commands below pin `0.11.0`. The Theme v2 examples target the current source checkout. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability. Use the [stable upgrade guide](https://github.com/Latias94/merman/blob/main/docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) when migrating from `0.9.3` or a `0.10.0` alpha.
 
-> `Merman.open()` accepts only the exact native package version `0.11.0` paired with this Dart package. `Merman.openPath(...)` may load another package version, but both entry points require the current complete ABI 3 table, runtime catalog fields, Options JSON schema `3`, metadata and payload schemas, and service constructor. Historical partial ABI 3 producers and ABI 2 are not fallback paths.
+> The current source requires the complete native ABI 4 table and Options JSON schema `4`. Use a native library built from the same source to run the Theme v2 examples. `Merman.open()` requires the exact native package version recorded by the Dart package. `Merman.openPath(...)` accepts a different package version when it provides the complete matching ABI and runtime schemas.
 
 Version `0.11.0` uses native ABI `3`, Options JSON schema `3`, facts schema `3`, and ASCII output schema `4`. In `MermanAsciiOutputPlan`, read nullable `primaryOverflowed` for the primary layout and `emittedOverflowed` for the output text. Upgrade the Dart facade, manifest, and native assets together, and update saved options and JSON consumers as described in the [stable upgrade guide](https://github.com/Latias94/merman/blob/main/docs/release/V093_TO_V0100_UPGRADE_GUIDE.md).
 
@@ -122,7 +122,7 @@ print(output.metadata.runtimePolicy);
 print(output.metadata.rawJson); // Includes additive fields from newer producers.
 ```
 
-Convenience methods are projections over `execute` and cover all 13 generated ABI operations, including `analysisFactsJson` and `svgPlanJson`. `renderPng`, `renderJpeg`, and `renderPdf` retain their simple byte-returning forms; the matching `renderPngResult`, `renderJpegResult`, and `renderPdfResult` methods expose metadata and effective resource-limited output plans. Known raster and PDF plans have typed classes, while a future plan kind becomes `MermanUnknownOutputPlan` with preserved JSON.
+Convenience methods use `execute` to expose operations such as `analysisFactsJson`, `svgPlanJson`, and Theme v2 authoring. `renderPng`, `renderJpeg`, and `renderPdf` retain their simple byte-returning forms; the matching `renderPngResult`, `renderJpegResult`, and `renderPdfResult` methods expose metadata and effective resource-limited output plans. Known raster and PDF plans have typed classes, while a future plan kind becomes `MermanUnknownOutputPlan` with preserved JSON.
 
 The target assets provide SVG including math, semantic and layout JSON, Cytoscape and ELK layout,
 ASCII, analysis, validation, and document analysis. PNG, JPEG, PDF and native runtime adapters
@@ -192,7 +192,7 @@ final themeCatalog = merman.themeCatalog();
 final rawCatalog = merman.metadataJson('theme-catalog');
 ```
 
-These methods use the ABI 3 `metadata_collect` table slot. Both `Merman.open()` and `Merman.openPath(...)` validate the native table before exposing metadata or engine operations.
+These methods use the `metadata_collect` table slot. Both `Merman.open()` and `Merman.openPath(...)` validate the native table before exposing metadata or engine operations.
 
 ## Diagram Themes
 
@@ -235,7 +235,7 @@ One-shot `Merman` methods accept the complete schema-3 options document for that
 final engine = MermanEngine(
   optionsJson: '''
     {
-      "version": 3,
+      "version": 4,
       "resources": {"profile": "constrained"},
       "svg": {"pipeline": "resvg-safe"}
     }
@@ -256,7 +256,7 @@ The default interactive profile admits SVG math. Explicit `constrained` policy r
 native math backend with `MermanMissingCapabilityException` and capability `math`; compiled
 math does not remove the need for host execution and memory limits.
 
-`MermanResourceLimitId` describes every catalog limit; `MermanResourceOverrideId` is the narrower option-construction ID set. Inspect `runtimeCatalog.resourceLimits` and `runtimeCatalog.resourceProfiles` for the loaded ABI 3 library's complete phase, description, minimum, hard-cap, applicable operation IDs, purpose, trust, recommendation, and nullable budget metadata. Those typed collections preserve additive IDs reported by a host-owned library; a `null` profile limit means unbounded, while hard caps are always finite.
+`MermanResourceLimitId` describes every catalog limit; `MermanResourceOverrideId` is the narrower option-construction ID set. Inspect `runtimeCatalog.resourceLimits` and `runtimeCatalog.resourceProfiles` for the loaded library's complete phase, description, minimum, hard-cap, applicable operation IDs, purpose, trust, recommendation, and nullable budget metadata. Those typed collections preserve additive IDs reported by a host-owned library; a `null` profile limit means unbounded, while hard caps are always finite.
 
 Every current resource descriptor reports `minimum_value`; omitting it is a runtime-catalog contract error.
 
@@ -356,7 +356,7 @@ The build hook owns platform selection and Flutter owns final app bundling, fram
 ## Local Development
 
 The checked-in low-level binding is generated with `ffigen` from the public C header. It validates
-the size-tagged ABI 3 table and minimum-prefix digest, while release builds require the current
+the size-tagged ABI 4 table and minimum-prefix digest, while release builds require the current
 matching header/table contract. Application code uses `merman.dart` and never needs ABI pointers
 or record definitions.
 
@@ -366,7 +366,7 @@ cd platforms/flutter
 flutter pub get
 dart run ffigen --config ffigen.yaml
 flutter analyze
-dart run tool/abi3_contract_test.dart
+dart run tool/native_abi_contract_test.dart
 dart run tool/native_assets_contract_test.dart
 dart run example/main.dart
 dart run example/smoke.dart
