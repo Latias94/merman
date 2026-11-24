@@ -33,7 +33,6 @@ def rectangle(width, height):
 
 
 def master(path, location):
-    names = [".notdef", "A", "V", "A_V", "X", "Z"]
     weight = (location["Weight"] - 100) / 8
     optical = location["Optical Size"] - 12
     custom = location["Custom"] * 60
@@ -43,11 +42,35 @@ def master(path, location):
     delta = round(weight + optical + custom + width + italic + slant)
     ascender = 800 + round(weight)
     underline = -90 - round(weight / 2)
-    advances = dict(zip(names, [500, 420 + delta, 430 + delta, 720 + delta, 500, 600]))
+    advances = {
+        ".notdef": 500,
+        "A": 420 + delta,
+        "V": 430 + delta,
+        "A_V": 720 + delta,
+        "X": 500,
+        "Z": 600,
+        "B": 420,
+        "C": 420,
+        "alef_hebrew": 500,
+        "bet": 500,
+        "gimel": 500,
+        "lam": 440,
+        "alef": 300,
+        "lam.init": 440,
+        "alef.fina": 300,
+        "lam_alef": 620,
+    }
 
     font = FontBuilder(1000, isTTF=True)
-    font.setupGlyphOrder(names)
-    font.setupCharacterMap({ord(name): name for name in ("A", "V", "X", "Z")})
+    font.setupGlyphOrder(list(advances))
+    font.setupCharacterMap({
+        **{ord(name): name for name in "ABCVXZ"},
+        0x05D0: "alef_hebrew",
+        0x05D1: "bet",
+        0x05D2: "gimel",
+        0x0644: "lam",
+        0x0627: "alef",
+    })
     font.setupGlyf({name: rectangle(advance - 40, 680) for name, advance in advances.items()})
     font.setupHorizontalMetrics({name: (advance, 0) for name, advance in advances.items()})
     font.setupHorizontalHeader(ascent=ascender, descent=-200)
@@ -69,7 +92,17 @@ def master(path, location):
     font.setupPost(underlinePosition=underline, underlineThickness=50 + round(weight / 2))
     font.setupCOLR({"Z": [("A", 0)]}, version=0)
     font.setupCPAL([[(0.2, 0.4, 0.8, 1.0)]])
-    addOpenTypeFeaturesFromString(font.font, "feature liga { sub A V by A_V; } liga;")
+    addOpenTypeFeaturesFromString(
+        font.font,
+        """
+        languagesystem DFLT dflt;
+        languagesystem arab dflt;
+        feature liga { sub A V by A_V; } liga;
+        feature init { script arab; sub lam by lam.init; } init;
+        feature fina { script arab; sub alef by alef.fina; } fina;
+        feature rlig { script arab; sub lam.init alef.fina by lam_alef; } rlig;
+        """,
+    )
     font.font["head"].created = font.font["head"].modified = 3660681600
     font.font.recalcTimestamp = False
     font.save(path)
@@ -92,8 +125,9 @@ def main():
             designspace.addSource(SourceDescriptor(path=str(path), location=location))
 
         variable, _, _ = build(designspace)
-        # The default weight shapes A and V as .notdef. Higher weights cover both.
-        addFeatureVariations(variable, [([{"wght": (0, 0.1)}], {"A": ".notdef", "V": ".notdef"})])
+        # Make these characters require fallback at the default weight.
+        missing = dict.fromkeys(("A", "V", "lam", "alef"), ".notdef")
+        addFeatureVariations(variable, [([{"wght": (0, 0.1)}], missing)])
         variable.recalcTimestamp = False
         collection = TTCollection()
         collection.fonts = [TTFont(Path(temp) / "master-0.ttf", recalcTimestamp=False), variable]

@@ -3,9 +3,17 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use base64::Engine;
 use usvg::fontdb::{Database, ID, Source};
-use usvg::{FontInstance, FontOpticalSizing, FontVariation, ImageKind, Node, Options, Text, Tree};
+use usvg::layout::PositionedGlyph;
+use usvg::{
+    FontFamily, FontInstance, FontOpticalSizing, FontStretch, FontStyle, FontVariation, ImageKind,
+    Node, Options, Text, Tree,
+};
 
 const COLLECTION: &[u8] = include_bytes!("fonts/instance-transport.ttc");
+
+fn static_face(db: &mut Database) -> ID {
+    db.load_font_source(Source::Binary(Arc::new(COLLECTION)))[0]
+}
 
 fn variable_face(db: &mut Database) -> ID {
     let ids = db.load_font_source(Source::Binary(Arc::new(COLLECTION)));
@@ -31,6 +39,13 @@ fn text(tree: &Tree) -> &Text {
         panic!("expected the rendered text node");
     };
     text
+}
+
+fn glyphs(tree: &Tree) -> impl Iterator<Item = &PositionedGlyph> {
+    text(tree)
+        .layouted()
+        .iter()
+        .flat_map(|span| &span.positioned_glyphs)
 }
 
 fn axis(tag: &[u8; 4], value: f32) -> FontVariation {
@@ -239,6 +254,224 @@ fn equivalent_fallback_instances_join_across_physical_face_aliases() {
         spans[0].variations,
         [axis(b"opsz", 20.0), axis(b"wght", 900.0)]
     );
+}
+
+#[test]
+fn normal_weight_preserves_lam_alef_when_the_primary_instances_match() {
+    let mut options = Options::default();
+    let id = variable_face(options.fontdb_mut());
+    let face = options.fontdb.face(id).unwrap().clone();
+    let alias = options.fontdb_mut().push_face_info(face);
+    options.set_font_instances(
+        Some(Box::new(move |font, _| {
+            let face = if font.families() == [FontFamily::Named("Alias".into())] {
+                alias
+            } else {
+                id
+            };
+            Some(weight(face, 1.0, 400.0))
+        })),
+        None,
+    );
+
+    let reference = render(&options, "font-size='20'", "لا");
+    let expected: Vec<_> = glyphs(&reference).collect();
+    assert_eq!(expected.len(), 1);
+    assert_eq!(expected[0].text, "لا");
+    assert_ne!(expected[0].id.0, 0);
+    for content in [
+        "ل<tspan font-weight='normal'>ا</tspan>",
+        "ل<tspan font-family='Alias' font-weight='normal'>ا</tspan>",
+    ] {
+        let tree = render(&options, "font-size='20'", content);
+        let actual: Vec<_> = glyphs(&tree).collect();
+        assert_eq!(actual.len(), 1, "{content}");
+        assert_eq!(actual[0].text, "لا");
+        assert_eq!(actual[0].id, expected[0].id);
+        assert_eq!(actual[0].transform(), expected[0].transform());
+        assert_eq!(
+            text(&tree).stroke_bounding_box(),
+            text(&reference).stroke_bounding_box()
+        );
+    }
+
+    options.set_font_instances(
+        Some(Box::new(move |_, _| Some(weight(id, 1.0, 850.0)))),
+        None,
+    );
+    let tree = render(
+        &options,
+        "font-size='20'",
+        "ل<tspan font-weight='normal'>ا</tspan>",
+    );
+    let spans = text(&tree).layouted();
+    assert_eq!(spans.len(), 2);
+    for (span, (letter, coordinate)) in spans.iter().zip([("ل", 850.0), ("ا", 400.0)]) {
+        assert!(span.variations.contains(&axis(b"wght", coordinate)));
+        assert_eq!(span.positioned_glyphs[0].text, letter);
+    }
+}
+
+#[test]
+fn fallback_keeps_each_clusters_authored_request_and_joining_context() {
+    let mut options = Options::default();
+    let ids = options
+        .fontdb_mut()
+        .load_font_source(Source::Binary(Arc::new(COLLECTION)));
+    let (fallback, primary) = (ids[0], ids[1]);
+    let face = options.fontdb.face(primary).unwrap().clone();
+    let alias = options.fontdb_mut().push_face_info(face);
+
+    let attrs = r#"font-family='Primary' font-size='20' xml:lang='ar'
+        font-variation-settings="'wght' 100, 'wdth' 100, 'ital' 0, 'slnt' 0""#;
+    let content = "ل<tspan font-family='Alternate' font-weight='700' font-style='italic' \
+        font-stretch='condensed' xml:lang='AR'>ا</tspan>";
+
+    for alternate_scale in [1.0, 1.5] {
+        options.set_font_instances(
+            Some(Box::new(move |font, _| {
+                Some(if font.weight() == 700 {
+                    weight(alias, 1.0, 200.0)
+                } else {
+                    weight(primary, 1.0, 100.0)
+                })
+            })),
+            Some(Box::new(move |font, cluster, language, rtl, tried, _| {
+                assert!(rtl);
+                let (family, weight_value, style, stretch, language_tag, selection, scale) =
+                    match cluster {
+                        "ل" => (
+                            "Primary",
+                            400,
+                            FontStyle::Normal,
+                            FontStretch::Normal,
+                            "ar",
+                            weight(primary, 1.0, 100.0),
+                            1.0,
+                        ),
+                        "ا" => (
+                            "Alternate",
+                            700,
+                            FontStyle::Italic,
+                            FontStretch::Condensed,
+                            "AR",
+                            weight(alias, 1.0, 200.0),
+                            alternate_scale,
+                        ),
+                        _ => panic!("unexpected missing cluster {cluster:?}"),
+                    };
+                assert_eq!(font.families(), [FontFamily::Named(family.into())]);
+                assert_eq!(font.weight(), weight_value);
+                assert_eq!(font.style(), style);
+                assert_eq!(font.stretch(), stretch);
+                assert_eq!(language, Some(language_tag));
+                assert_eq!(tried, [selection]);
+                Some((fallback, scale, Vec::new()))
+            })),
+        );
+
+        let tree = render(&options, attrs, content);
+        let glyphs: Vec<_> = glyphs(&tree)
+            .map(|g| {
+                assert_eq!(g.font, fallback);
+                assert_ne!(g.id.0, 0);
+                (g.text.as_str(), g.font_size())
+            })
+            .collect();
+        if alternate_scale == 1.0 {
+            assert_eq!(glyphs, [("لا", 20.0)]);
+        } else {
+            assert_eq!(glyphs, [("ل", 20.0), ("ا", 30.0)]);
+        }
+    }
+}
+
+#[test]
+fn rtl_text_path_places_each_cluster_at_its_own_distance() {
+    let mut options = Options::default();
+    let id = static_face(options.fontdb_mut());
+    options.font_resolver.select_font = Box::new(move |_, _| Some(id));
+    let positions = |path, dx, start_offset| {
+        let tree = Tree::from_str(
+            &format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg" width="420" height="180">
+                    <defs><path id="line" d="{path}"/></defs>
+                    <text id="label" font-size="42" dx="{dx}"><textPath href="#line" startOffset="{start_offset}">אבג</textPath></text>
+                </svg>"##,
+            ),
+            &options,
+        )
+        .unwrap();
+        glyphs(&tree)
+            .map(|g| {
+                assert_ne!(g.id.0, 0);
+                assert_eq!(g.transform().ty, 96.0);
+                (g.text.chars().next().unwrap(), g.transform().tx)
+            })
+            .collect::<Vec<_>>()
+    };
+    let segmented = "M10 96 H88 H250";
+    for path in ["M10 96 H250", segmented, "M10 96 H88 H88 H250"] {
+        assert_eq!(
+            positions(path, "0 100 0", 0.0),
+            [('ג', 110.0), ('ב', 131.0), ('א', 52.0)]
+        );
+    }
+    for dx in ["0 250 -250", "0 -100 100"] {
+        assert_eq!(positions(segmented, dx, 0.0), [('ג', 10.0), ('א', 52.0)]);
+    }
+    assert_eq!(
+        positions(segmented, "0 21 21", 25.5),
+        [('ג', 77.5), ('ב', 77.5), ('א', 77.5)]
+    );
+    assert_eq!(
+        positions("M300 10 H300 M10 96 H88 H250", "0 0 0", -10.5),
+        [('ג', -0.5), ('ב', 20.5), ('א', 41.5)]
+    );
+}
+
+#[test]
+fn adjusted_text_length_carries_the_end_position_into_the_next_chunk() {
+    let mut options = Options::default();
+    let id = static_face(options.fontdb_mut());
+    options.font_resolver.select_font = Box::new(move |_, _| Some(id));
+    let near = |actual: f32, expected: f32| {
+        assert!((actual - expected).abs() < 0.001, "{actual} vs {expected}");
+    };
+
+    for (letters, visual, natural_width) in [("ABC", "ABC", 21.0), ("אבג", "גבא", 25.0)] {
+        for mode in ["spacing", "spacingAndGlyphs"] {
+            let tree = render(
+                &options,
+                "font-size='50'",
+                &format!(
+                    "<tspan x='200' text-anchor='end' textLength='120' lengthAdjust='{mode}'>\
+                    {letters}</tspan><tspan text-anchor='start' y='110'>X</tspan>"
+                ),
+            );
+            let glyphs: Vec<_> = glyphs(&tree).collect();
+            assert_eq!(glyphs.len(), 4);
+            let (step, right_side_bearing) = if mode == "spacing" {
+                ((120.0 - natural_width) / 2.0, 2.0)
+            } else {
+                (40.0, 2.0 * 40.0 / natural_width)
+            };
+            for (index, (glyph, letter)) in glyphs.iter().zip(visual.chars()).enumerate() {
+                assert_eq!(glyph.text, letter.to_string());
+                near(glyph.transform().tx, 80.0 + index as f32 * step);
+            }
+            let [Node::Path(adjusted), Node::Path(_)] = text(&tree).flattened().children() else {
+                panic!("expected the outlines of two text chunks");
+            };
+            near(
+                adjusted.bounding_box().unwrap().right(),
+                200.0 - right_side_bearing,
+            );
+            assert_eq!(glyphs[3].text, "X");
+            near(glyphs[3].transform().tx, 200.0);
+            near(glyphs[3].transform().ty, 110.0);
+        }
+    }
 }
 
 #[test]
