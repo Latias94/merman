@@ -2207,6 +2207,22 @@ jobs:
         self.assertGreaterEqual(publish.count("preflight-independent"), 3)
         self.assertIn("Verify published dependent lanes", independent)
 
+    def test_independent_renderer_fork_consumer_runs_in_read_only_preflight(self) -> None:
+        independent = read(WORKFLOW_ROOT / "release-independent-crate.yml")
+        preflight = workflow_job(independent, "preflight")
+        publish = workflow_job(independent, "publish")
+        self.assertIn(
+            'args=(preflight-independent --package "$PACKAGE" --version "$VERSION")', preflight
+        )
+        self.assertIn(
+            'if [[ "$PACKAGE" != "roughr-merman" ]]; then\n'
+            '            args+=(--verify-fork-consumer)\n'
+            '          fi', preflight
+        )
+        self.assertIn('python3 scripts/crates_io_release.py "${args[@]}"', preflight)
+        self.assertNotIn("--verify-fork-consumer", publish)
+        self.assertIn("needs: [validate-inputs, preflight]", publish)
+
     def test_tag_bound_publishers_recheck_remote_tag_at_mutation_boundary(self) -> None:
         jobs = (
             ("release-android.yml", "upload-release"),

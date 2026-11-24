@@ -697,7 +697,8 @@ standalone upstream resvg embedding example, which exchanges SVG bytes with Merm
 
 For a selected initial publication, upload `merman-usvg` and `merman-krilla` first, then
 `merman-resvg`, then `merman-krilla-svg`. Run `scripts/crates_io_release.py preflight-independent`
-for each package once its required versions are visible in the registry. Publish that package
+for each package once its required dependencies are visible in the registry. This manual bootstrap
+uses the ordinary preflight without `--verify-fork-consumer`. Publish that package
 with `cargo publish --locked -p <package> --registry crates-io` and verify the exact version
 and checksum before proceeding. After the group is visible, build a fresh registry consumer
 with all three output features before releasing `merman-export` and its workspace dependents.
@@ -705,9 +706,13 @@ Keep accepted versions and checksums in [Publish Order](PUBLISH_ORDER.md).
 
 After the first upload, configure each implementation crate's Trusted Publisher for
 `release-independent-crate.yml`. Dispatch that workflow for later versions with the exact
-package and version on the reviewed source ref. Publish dependency packages before dispatching
-their dependents. The workflow checks Rust API compatibility, builds the workspace export
-features against the candidate, and verifies the registry archive for the selected package.
+package and version on the reviewed source ref. The single-fork workflow checks Rust API
+compatibility, builds workspace export features, and verifies the registry archive or dry-run.
+It also compiles a fresh SVG raster and PDF consumer with the normalized `.crate` as its sole
+local patch. The other three fork versions come from crates.io at the versions selected in the
+reviewed workspace. Publish required compatible siblings before dispatching the workflow. Changes
+that require a coordinated incompatible fork upgrade need group qualification and a publication
+order before using the single-fork workflow again.
 
 ## Release Preflight
 

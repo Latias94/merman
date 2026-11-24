@@ -14,6 +14,7 @@ import unittest
 from unittest import mock
 
 from scripts import crates_io_release as release
+from scripts import renderer_fork_consumer
 from tools import publish
 
 
@@ -318,6 +319,37 @@ class CratesIoReceiptTests(unittest.TestCase):
                 )
             )
         self.assertEqual(commands[0][0:4], ["cargo", "publish", "-p", "roughr-merman"])
+
+    def test_renderer_fork_bootstrap_and_supplemental_preflight_share_the_prepared_archive(self) -> None:
+        metadata = package_metadata("alpha", *renderer_fork_consumer.FORKS)
+        metadata["metadata"] = {
+            "merman-release": {"independent-packages": list(renderer_fork_consumer.FORKS)}
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            for name in renderer_fork_consumer.FORKS:
+                prepared = self.prepared(Path(temporary), name)
+                with (
+                    self.subTest(package=name),
+                    mock.patch.object(release, "_prepare_crate", return_value=prepared),
+                    mock.patch.object(release, "_assert_artifact_unchanged") as assert_unchanged,
+                    mock.patch.object(release, "fetch_crates_io_checksum", return_value=None),
+                    mock.patch.object(release, "run_command", return_value=publish.subprocess.CompletedProcess([], 0)),
+                    mock.patch.object(renderer_fork_consumer, "verify") as verify,
+                ):
+                    self.assertFalse(release.preflight_independent_crate(
+                        ROOT, metadata, package_name=name, expected_version="1.0.0"
+                    ))
+                    verify.assert_not_called()
+                    self.assertFalse(release.preflight_independent_crate(
+                        ROOT, metadata, package_name=name, expected_version="1.0.0", verify_fork_consumer=True
+                    ))
+                    assert_unchanged.assert_called_once_with(prepared)
+                    verify.assert_called_once_with(
+                        prepared.artifact_path, candidate=name,
+                        versions=dict.fromkeys(renderer_fork_consumer.FORKS, "1.0.0"),
+                        repo_root=ROOT,
+                        target_directory=ROOT / "target",
+                    )
 
     def test_receipt_validation_rejects_bad_artifact_identity(self) -> None:
         receipt = {

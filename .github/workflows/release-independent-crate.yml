@@ -157,7 +157,14 @@ jobs:
         env:
           PACKAGE: ${{ needs.validate-inputs.outputs.package }}
           VERSION: ${{ needs.validate-inputs.outputs.version }}
-        run: python3 scripts/crates_io_release.py preflight-independent --package "$PACKAGE" --version "$VERSION"
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(preflight-independent --package "$PACKAGE" --version "$VERSION")
+          if [[ "$PACKAGE" != "roughr-merman" ]]; then
+            args+=(--verify-fork-consumer)
+          fi
+          python3 scripts/crates_io_release.py "${args[@]}"
 
   publish:
     needs: [validate-inputs, preflight]

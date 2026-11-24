@@ -20,7 +20,9 @@ import urllib.request
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from scripts import renderer_fork_consumer
 from scripts.crates_io_auth import trusted_publishing_token
+from scripts.release_registry_dependents import RegistryDependentError
 from tools.publish import (
     PackageInfo,
     PublishPlan,
@@ -953,14 +955,18 @@ def preflight_independent_crate(
     package_name: str,
     expected_version: str,
     registry_api: str = CRATES_IO_API,
+    verify_fork_consumer: bool = False,
 ) -> bool:
     """Verify one independently owned crate and return whether it already exists.
 
     Existing registry versions are accepted only when the locally packaged
     archive has the exact registry checksum.  Missing versions must pass a
     credential-free publish dry-run.  The package is intentionally resolved
-    outside the coupled publish graph.
+    outside the coupled publish graph. Later renderer fork releases can also
+    compile the prepared archive with published siblings.
     """
+    if verify_fork_consumer and package_name not in renderer_fork_consumer.FORKS:
+        raise CratesIoPublishError("the renderer fork consumer requires a renderer fork package")
     package = _workspace_package(metadata, package_name)
     if package.version != expected_version:
         raise CratesIoPublishError(
@@ -970,18 +976,30 @@ def preflight_independent_crate(
     target_directory_raw = metadata.get("target_directory")
     if not isinstance(target_directory_raw, str) or not target_directory_raw:
         raise CratesIoPublishError("cargo metadata is missing target_directory")
-    prepared = _prepare_crate(repo_root, Path(target_directory_raw).resolve(), package)
+    target_directory = Path(target_directory_raw).resolve()
+    prepared = _prepare_crate(repo_root, target_directory, package)
     registry_checksum = fetch_crates_io_checksum(
         package.name,
         package.version,
         api_url=registry_api,
     )
+    if registry_checksum is not None and registry_checksum != prepared.artifact_sha256:
+        raise CratesIoPublishError(
+            f"registry checksum mismatch for {package.name} {package.version}: "
+            f"local {prepared.artifact_sha256}, registry {registry_checksum}"
+        )
+    if verify_fork_consumer:
+        _assert_artifact_unchanged(prepared)
+        workspace = _workspace_packages_by_name(metadata)
+        missing_siblings = set(renderer_fork_consumer.FORKS) - workspace.keys()
+        if missing_siblings:
+            raise CratesIoPublishError("workspace is missing renderer forks: " + ", ".join(sorted(missing_siblings)))
+        versions = {name: workspace[name]["version"] for name in renderer_fork_consumer.FORKS}
+        renderer_fork_consumer.verify(
+            prepared.artifact_path, candidate=package.name, versions=versions,
+            repo_root=repo_root, target_directory=target_directory,
+        )
     if registry_checksum is not None:
-        if registry_checksum != prepared.artifact_sha256:
-            raise CratesIoPublishError(
-                f"registry checksum mismatch for {package.name} {package.version}: "
-                f"local {prepared.artifact_sha256}, registry {registry_checksum}"
-            )
         print(
             f"Skipping {package.name} {package.version}; the exact version already exists"
         )
@@ -1020,6 +1038,10 @@ def main() -> int:
     )
     parser.add_argument("--package")
     parser.add_argument("--version")
+    parser.add_argument(
+        "--verify-fork-consumer", action="store_true",
+        help="compile a preflight-independent renderer fork with its published siblings",
+    )
     parser.add_argument("--source-sha")
     parser.add_argument("--source-tree")
     parser.add_argument("--receipts-dir", type=Path)
@@ -1040,6 +1062,8 @@ def main() -> int:
     parser.add_argument("--visibility-attempts", type=int, default=12)
     parser.add_argument("--visibility-delay", type=int, default=15)
     args = parser.parse_args()
+    if args.verify_fork_consumer and args.command != "preflight-independent":
+        parser.error("--verify-fork-consumer requires preflight-independent")
 
     repo_root = args.repo_root.resolve()
     registry_token = os.environ.pop("CARGO_REGISTRY_TOKEN", None)
@@ -1077,8 +1101,9 @@ def main() -> int:
                 package_name=args.package,
                 expected_version=args.version,
                 registry_api=args.registry_api,
+                verify_fork_consumer=args.verify_fork_consumer,
             )
-        except (CratesIoPublishError, OSError, ValueError) as error:
+        except (CratesIoPublishError, RegistryDependentError, OSError, ValueError) as error:
             print_error(str(error))
             return 1
         return 0
