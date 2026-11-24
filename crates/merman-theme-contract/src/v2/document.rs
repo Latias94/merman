@@ -1,15 +1,20 @@
 use std::fmt;
 
-use serde::de::{IntoDeserializer, value::MapAccessDeserializer};
-use serde::{Deserialize, Deserializer, Serialize, de};
+#[cfg(feature = "compile")]
+use serde::Deserializer;
+#[cfg(feature = "compile")]
+use serde::de::{self, IntoDeserializer, value::MapAccessDeserializer};
+use serde::{Deserialize, Serialize};
 
 use super::Color;
 
 // Optional fields in the document are omitted, so JSON null cannot be mistaken for an override.
+#[cfg(feature = "compile")]
 fn present<'de, D: Deserializer<'de>, T: Deserialize<'de>>(d: D) -> Result<Option<T>, D::Error> {
     T::deserialize(d).map(Some)
 }
 
+#[cfg(feature = "compile")]
 macro_rules! patch {
     ($name:ident { $($(#[$attr:meta])* $field:ident : $kind:ty),+ $(,)? }) => {
         #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
@@ -25,6 +30,7 @@ macro_rules! patch {
 }
 
 // Decode fields on the input stream while allowing `kind` to appear anywhere in the object.
+#[cfg(feature = "compile")]
 macro_rules! tagged_fields {
     ($name:ident { kind: $tag:ty, $($field:ident : $ty:ty),+ $(,)? }) => {
         #[derive(Deserialize)]
@@ -52,10 +58,12 @@ macro_rules! tagged_fields {
     };
 }
 
+#[cfg(feature = "compile")]
 fn take_required<T, E: de::Error>(field: &mut Option<T>, name: &'static str) -> Result<T, E> {
     field.take().ok_or_else(|| E::missing_field(name))
 }
 
+#[cfg(feature = "compile")]
 macro_rules! overlay {
     ($target:expr, $patch:expr, $($field:ident),+ $(,)?) => {
         $(if let Some(value) = &$patch.$field {
@@ -64,6 +72,7 @@ macro_rules! overlay {
     };
 }
 
+#[cfg(feature = "compile")]
 macro_rules! merge {
     ($target:expr, $patch:expr, $($field:ident),+ $(,)?) => {
         $(if $patch.$field.is_some() {
@@ -113,6 +122,7 @@ pub enum Category {
 }
 
 /// A version 2 theme document. Use [`super::ThemeCompiler`] to admit and resolve it.
+#[cfg(feature = "compile")]
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct ThemeDocumentV2 {
@@ -145,6 +155,7 @@ pub struct ThemeDocumentV2 {
     pub(super) overrides: Vec<FamilyOverride>,
 }
 
+#[cfg(feature = "compile")]
 impl ThemeDocumentV2 {
     /// The document's own identifier, when supplied.
     pub fn id(&self) -> Option<&str> {
@@ -187,10 +198,12 @@ impl ThemeDocumentV2 {
     }
 }
 
+#[cfg(feature = "compile")]
 patch!(Appearances {
     light: AppearanceLayer,
     dark: AppearanceLayer
 });
+#[cfg(feature = "compile")]
 patch!(AppearanceLayer {
     seed: SeedPatch,
     roles: RoleOverrides,
@@ -198,6 +211,7 @@ patch!(AppearanceLayer {
     canvas: CanvasPatch,
     elevation: ElevationSpec,
 });
+#[cfg(feature = "compile")]
 patch!(SeedPatch {
     canvas: Color,
     ink: Color,
@@ -210,6 +224,7 @@ patch!(SeedPatch {
     danger: Color,
 });
 
+#[cfg(feature = "compile")]
 impl SeedPatch {
     pub(super) fn merge(&mut self, patch: &Self) {
         merge!(
@@ -227,8 +242,10 @@ macro_rules! role_fields {
             $($(#[$doc])* #[serde(rename = $key)] pub $field: $kind,)+
         }
 
+        #[cfg(feature = "compile")]
         patch!(RoleOverrides { $(#[serde(rename = $key)] $field: $kind,)+ });
 
+        #[cfg(feature = "compile")]
         impl Roles {
             pub(super) fn apply(&mut self, patch: &RoleOverrides) {
                 overlay!(self, patch, $($field),+);
@@ -274,6 +291,7 @@ role_fields! {
     status_danger: Color = "status.danger",
 }
 
+#[cfg(feature = "compile")]
 patch!(DataPatch {
     ink: Vec<Color>,
     fill: Vec<Color>,
@@ -281,18 +299,21 @@ patch!(DataPatch {
     pattern_encoding: bool,
 });
 
+#[cfg(feature = "compile")]
 impl DataPatch {
     pub(super) fn merge(&mut self, patch: &Self) {
         merge!(self, patch, ink, fill, fill_ink, pattern_encoding);
     }
 }
 
+#[cfg(feature = "compile")]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum FillInk {
     Auto(Auto),
     Color(Color),
 }
 
+#[cfg(feature = "compile")]
 impl<'de> Deserialize<'de> for FillInk {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         struct FillInkVisitor;
@@ -316,6 +337,7 @@ impl<'de> Deserialize<'de> for FillInk {
     }
 }
 
+#[cfg(feature = "compile")]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum Auto {
     Auto,
@@ -350,6 +372,7 @@ impl Paint {
     }
 }
 
+#[cfg(feature = "compile")]
 impl<'de> Deserialize<'de> for Paint {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         struct PaintVisitor;
@@ -379,8 +402,9 @@ impl<'de> Deserialize<'de> for Paint {
 }
 
 /// A stop in a linear gradient.
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "compile", derive(Deserialize))]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+#[cfg_attr(feature = "compile", serde(deny_unknown_fields))]
 #[non_exhaustive]
 pub struct GradientStop {
     /// Gradient position between zero and one.
@@ -388,28 +412,35 @@ pub struct GradientStop {
     /// Stop color.
     pub color: Color,
     /// Opacity applied in addition to the color's alpha.
-    #[serde(default = "opaque")]
+    #[cfg_attr(feature = "compile", serde(default = "opaque"))]
     pub opacity: f64,
 }
 
 /// A linear gradient along an axis specified in degrees.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "compile", derive(Deserialize))]
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[cfg_attr(feature = "compile", serde(deny_unknown_fields))]
 pub struct LinearGradient {
     kind: GradientKind,
     /// Angle in degrees.
-    #[serde(default)]
+    #[cfg_attr(feature = "compile", serde(default))]
     pub angle_deg: f64,
     /// Stops in nondecreasing offset order.
     pub stops: Vec<GradientStop>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[cfg_attr(feature = "compile", derive(Deserialize))]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(
+    not(feature = "compile"),
+    allow(dead_code, reason = "Runtime-only consumers cannot construct authoring gradients.")
+)]
 enum GradientKind {
     LinearGradient,
 }
 
+#[cfg(feature = "compile")]
 patch!(CanvasPatch { textures: Vec<Texture>, padding_px: f64 });
 
 /// A bounded canvas texture. An omitted texture color uses the theme's guide color.
@@ -464,6 +495,7 @@ pub enum Texture {
     },
 }
 
+#[cfg(feature = "compile")]
 #[derive(Deserialize)]
 #[serde(variant_identifier, rename_all = "snake_case")]
 enum TextureKind {
@@ -476,6 +508,7 @@ enum TextureKind {
     RadialWash,
 }
 
+#[cfg(feature = "compile")]
 tagged_fields!(TextureFields {
     kind: TextureKind,
     step_px: f64,
@@ -494,6 +527,7 @@ tagged_fields!(TextureFields {
     radius: f64,
 });
 
+#[cfg(feature = "compile")]
 impl<'de> Deserialize<'de> for Texture {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         struct TextureVisitor;
@@ -562,13 +596,15 @@ impl<'de> Deserialize<'de> for Texture {
     }
 }
 
+#[cfg(feature = "compile")]
 fn opaque() -> f64 {
     1.0
 }
 
 /// A colored shadow at a bounded pixel offset and blur radius.
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "compile", derive(Deserialize))]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+#[cfg_attr(feature = "compile", serde(deny_unknown_fields))]
 #[non_exhaustive]
 pub struct ShadowLayer {
     /// Horizontal pixel offset.
@@ -576,12 +612,12 @@ pub struct ShadowLayer {
     /// Vertical pixel offset.
     pub dy: f64,
     /// Gaussian blur radius in pixels. Zero is a hard offset.
-    #[serde(default)]
+    #[cfg_attr(feature = "compile", serde(default))]
     pub blur: f64,
     /// Shadow color.
     pub color: Color,
     /// Shadow opacity.
-    #[serde(default = "opaque")]
+    #[cfg_attr(feature = "compile", serde(default = "opaque"))]
     pub opacity: f64,
 }
 
@@ -598,12 +634,14 @@ impl ShadowLayer {
     }
 }
 
+#[cfg(feature = "compile")]
 #[derive(Clone, Debug, PartialEq)]
 pub(super) enum ElevationSpec {
     Preset(ElevationPreset),
     Effect(ElevationEffect),
 }
 
+#[cfg(feature = "compile")]
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub(super) enum ElevationPreset {
@@ -612,6 +650,7 @@ pub(super) enum ElevationPreset {
     Crisp,
 }
 
+#[cfg(feature = "compile")]
 #[derive(Clone, Debug, PartialEq)]
 pub(super) enum ElevationEffect {
     LayeredStack {
@@ -624,6 +663,7 @@ pub(super) enum ElevationEffect {
     },
 }
 
+#[cfg(feature = "compile")]
 #[derive(Deserialize)]
 #[serde(variant_identifier, rename_all = "snake_case")]
 enum ElevationEffectKind {
@@ -631,6 +671,7 @@ enum ElevationEffectKind {
     Glow,
 }
 
+#[cfg(feature = "compile")]
 tagged_fields!(ElevationFields {
     kind: ElevationEffectKind,
     layers: Vec<ShadowLayer>,
@@ -639,6 +680,7 @@ tagged_fields!(ElevationFields {
     opacity: f64,
 });
 
+#[cfg(feature = "compile")]
 impl<'de> Deserialize<'de> for ElevationSpec {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         struct ElevationVisitor;
@@ -737,6 +779,7 @@ impl Typography {
         }
     }
 
+    #[cfg(feature = "compile")]
     pub(super) fn apply(&mut self, patch: &TypographyPatch) {
         overlay!(
             self,
@@ -754,6 +797,7 @@ impl Typography {
     }
 }
 
+#[cfg(feature = "compile")]
 patch!(TypographyPatch {
     sans: Vec<String>, mono: Vec<String>, serif: Vec<String>,
     body_family: FontRole, title_family: FontRole, code_family: FontRole,
@@ -845,6 +889,7 @@ impl Default for ChartPolish {
     }
 }
 
+#[cfg(feature = "compile")]
 patch!(ChartPatch {
     gridlines: bool,
     bar_radius: f64,
@@ -894,6 +939,7 @@ impl Default for Form {
     }
 }
 
+#[cfg(feature = "compile")]
 impl Form {
     pub(super) fn apply(&mut self, patch: &FormPatch) {
         overlay!(
@@ -923,6 +969,7 @@ impl Form {
     }
 }
 
+#[cfg(feature = "compile")]
 patch!(FormPatch {
     density: Density,
     radius: f64,
@@ -936,6 +983,7 @@ patch!(FormPatch {
     chart: ChartPatch,
 });
 
+#[cfg(feature = "compile")]
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub(super) struct FamilyOverride {

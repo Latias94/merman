@@ -14,12 +14,22 @@ categories = ["encoding", "visualization"]
 
 [features]
 default = []
+compile = ["dep:serde_json", "dep:serde_path_to_error"]
+presets = ["compile"]
 
 [package.metadata.merman]
 wasm-inputs = ["assets/presets"]
 
 [dependencies]
 serde = { workspace = true, features = ["rc"] }
-serde_json.workspace = true
-serde_path_to_error.workspace = true
+serde_json = { workspace = true, optional = true }
+serde_path_to_error = { workspace = true, optional = true }
 thiserror.workspace = true
+
+[[test]]
+name = "theme_v2"
+required-features = ["presets"]
+
+[[test]]
+name = "theme_v2_decoding"
+required-features = ["compile"]

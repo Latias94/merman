@@ -1,25 +1,22 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use super::contrast::backdrop;
+#[cfg(feature = "presets")]
+use super::BuiltinPreset;
+use super::contrast::{BLACK, DARK_INK, TEXT_CONTRAST, automatic_fill_ink, backdrop, best_ink};
 use super::document::{
     CanvasPatch, DataPatch, ElevationEffect, ElevationPreset, ElevationSpec, FamilyOverride,
     FillInk, SeedPatch,
 };
 use super::{
-    Appearance, BuiltinPreset, Canvas, Color, DataPalette, Elevation, FamilyTheme, Form, Paint,
-    ResolvedThemeV2, Roles, ShadowLayer, ThemeDocumentV2, ThemeNotice, Typography, json, validate,
+    Appearance, Canvas, Color, DataPalette, Elevation, FamilyTheme, Form, Paint, ResolvedThemeV2,
+    Roles, ShadowLayer, ThemeDocumentV2, ThemeNotice, Typography, json, validate,
 };
 
 const DEFAULT_MAX_BYTES: usize = 256 * 1024;
 const MAX_BYTES: usize = 4 * 1024 * 1024;
-const TEXT_CONTRAST: f64 = 4.5;
 const SERIES_CONTRAST: f64 = 3.0;
 const DERIVED_SERIES_CONTRAST: f64 = 3.5;
-const DARK_INK: Color = Color::rgb(15, 23, 42);
-const LIGHT_INK: Color = Color::rgb(248, 250, 252);
-const BLACK: Color = Color::rgb(0, 0, 0);
-const WHITE: Color = Color::rgb(255, 255, 255);
 
 /// An invalid theme document, unavailable appearance, or failed contrast check.
 #[derive(Clone, Debug, thiserror::Error)]
@@ -148,6 +145,7 @@ impl ThemeCompiler {
     }
 
     /// Compiles an embedded preset using its original colors and strict contrast checks.
+    #[cfg(feature = "presets")]
     pub fn compile_preset(
         &self,
         preset: BuiltinPreset,
@@ -311,6 +309,7 @@ impl ThemeCompiler {
     }
 }
 
+#[cfg(feature = "presets")]
 fn load_base(id: &str) -> Result<&'static ThemeDocumentV2, ThemeError> {
     let preset = BuiltinPreset::from_id(id)
         .ok_or_else(|| ThemeError::invalid("extends", format!("unknown built-in preset `{id}`")))?;
@@ -323,6 +322,14 @@ fn load_base(id: &str) -> Result<&'static ThemeDocumentV2, ThemeError> {
     }
     validate::document(document)?;
     Ok(document)
+}
+
+#[cfg(not(feature = "presets"))]
+fn load_base(id: &str) -> Result<&'static ThemeDocumentV2, ThemeError> {
+    Err(ThemeError::invalid(
+        "extends",
+        format!("built-in preset `{id}` requires the `presets` feature"),
+    ))
 }
 
 fn select_appearance(
@@ -473,23 +480,6 @@ fn derive_palette(
         fill_ink,
         pattern_encoding: data.pattern_encoding.unwrap_or(false),
         automatic_fill_ink: authored_fill_ink.is_none(),
-    }
-}
-
-pub(super) fn automatic_fill_ink(background: Color) -> Color {
-    let ink = best_ink(background, DARK_INK, LIGHT_INK);
-    if ink.contrast(background) >= TEXT_CONTRAST {
-        ink
-    } else {
-        best_ink(background, BLACK, WHITE)
-    }
-}
-
-fn best_ink(background: Color, first: Color, second: Color) -> Color {
-    if first.contrast(background) >= second.contrast(background) {
-        first
-    } else {
-        second
     }
 }
 

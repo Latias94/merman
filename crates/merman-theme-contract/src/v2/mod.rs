@@ -1,21 +1,28 @@
 //! Portable authoring and compiled values for Merman native themes.
 
 mod color;
+#[cfg(feature = "compile")]
 mod compile;
 mod contrast;
 mod document;
+#[cfg(feature = "compile")]
 mod json;
+#[cfg(feature = "presets")]
 mod presets;
 mod resolved;
+#[cfg(feature = "compile")]
 mod validate;
 
 pub use color::{Color, InvalidColor};
+#[cfg(feature = "compile")]
 pub use compile::{ThemeCompiler, ThemeError};
+#[cfg(feature = "compile")]
+pub use document::ThemeDocumentV2;
 pub use document::{
     Appearance, Category, ChartPolish, Density, EdgeLabelBackground, EdgeStyle, FontRole, Form,
-    GradientStop, LinearGradient, MarkerStyle, Paint, Roles, ShadowLayer, Texture, ThemeDocumentV2,
-    Typography,
+    GradientStop, LinearGradient, MarkerStyle, Paint, Roles, ShadowLayer, Texture, Typography,
 };
+#[cfg(feature = "presets")]
 pub use presets::BuiltinPreset;
 pub use resolved::{Canvas, DataPalette, Elevation, FamilyTheme, ResolvedThemeV2, ThemeNotice};
 

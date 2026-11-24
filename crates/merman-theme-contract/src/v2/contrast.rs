@@ -3,6 +3,12 @@ use super::color::{
 };
 use super::{Appearance, Color, GradientStop, Paint};
 
+pub(super) const TEXT_CONTRAST: f64 = 4.5;
+pub(super) const DARK_INK: Color = Color::rgb(15, 23, 42);
+pub(super) const BLACK: Color = Color::rgb(0, 0, 0);
+const LIGHT_INK: Color = Color::rgb(248, 250, 252);
+const WHITE: Color = Color::rgb(255, 255, 255);
+
 const CONTRAST_ACCURACY: f64 = 0.001;
 const MAX_SUBDIVISIONS_PER_CELL: usize = 64;
 // Covers the rounding of the sRGB transfer function's splice point and floating-point arithmetic.
@@ -70,8 +76,25 @@ impl Paint {
 
 pub(super) const fn backdrop(appearance: Appearance) -> Color {
     match appearance {
-        Appearance::Light => Color::rgb(255, 255, 255),
-        Appearance::Dark => Color::rgb(0, 0, 0),
+        Appearance::Light => WHITE,
+        Appearance::Dark => BLACK,
+    }
+}
+
+pub(super) fn automatic_fill_ink(background: Color) -> Color {
+    let ink = best_ink(background, DARK_INK, LIGHT_INK);
+    if ink.contrast(background) >= TEXT_CONTRAST {
+        ink
+    } else {
+        best_ink(background, BLACK, WHITE)
+    }
+}
+
+pub(super) fn best_ink(background: Color, first: Color, second: Color) -> Color {
+    if first.contrast(background) >= second.contrast(background) {
+        first
+    } else {
+        second
     }
 }
 

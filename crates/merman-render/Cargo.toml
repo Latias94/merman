@@ -129,7 +129,7 @@ manatee = { workspace = true, optional = true }
 memchr = "2"
 merman-layout-elk = { workspace = true, optional = true }
 merman-layout-shoal = { workspace = true, optional = true }
-merman-theme-contract.workspace = true
+merman-theme-contract = { workspace = true, features = ["presets"] }
 pulldown-cmark.workspace = true
 ratex-font = { workspace = true, optional = true }
 ratex-layout = { workspace = true, optional = true }

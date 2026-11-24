@@ -494,7 +494,7 @@ same reference values.
 
 ```text
 python3 scripts/verify_v2_presets.py --check-colors crates/merman-theme-contract/tests/fixtures/preset-colors-v2.json
-cargo nextest run --locked -p merman-theme-contract --test theme_v2
+cargo nextest run --locked -p merman-theme-contract --features presets --test theme_v2 --test theme_v2_decoding
 ```
 
 The SVG parity job compares Mermaid-compatible output against the pinned upstream fixtures.

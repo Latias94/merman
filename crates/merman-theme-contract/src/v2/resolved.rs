@@ -3,8 +3,7 @@ use std::sync::Arc;
 
 use serde::Serialize;
 
-use super::compile::automatic_fill_ink;
-use super::contrast::backdrop;
+use super::contrast::{automatic_fill_ink, backdrop};
 use super::{Appearance, Color, Form, Roles, ShadowLayer, Texture, Typography};
 
 /// Concrete canvas decorations and extra padding. The base paint is in [`Roles::canvas`].

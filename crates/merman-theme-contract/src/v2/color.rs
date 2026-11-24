@@ -1,10 +1,13 @@
 use std::fmt;
+#[cfg(any(feature = "compile", test))]
 use std::ops::RangeInclusive;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 
 const CHANNEL_MAX: f64 = u8::MAX as f64;
+#[cfg(any(feature = "compile", test))]
 const GAMUT_SEARCH_STEPS: usize = 18;
+#[cfg(any(feature = "compile", test))]
 const LINEAR_RGB_GAMUT: RangeInclusive<f64> = -1e-4..=1.0001;
 const LUMINANCE_WEIGHTS: [f64; 3] = [0.2126, 0.7152, 0.0722];
 const SRGB_LINEAR_CUTOFF: f64 = 0.04045;
@@ -98,6 +101,7 @@ impl Color {
     }
 
     /// Returns OKLCH lightness, chroma, and hue in degrees from the RGB channels.
+    #[cfg(any(feature = "compile", test))]
     pub(super) fn oklch(self) -> [f64; 3] {
         let [lightness, a, b] = self.oklab();
         [
@@ -108,6 +112,7 @@ impl Color {
     }
 
     /// Converts OKLCH to opaque sRGB by reducing chroma into gamut.
+    #[cfg(any(feature = "compile", test))]
     pub(super) fn from_oklch(lightness: f64, chroma: f64, hue: f64) -> Self {
         let lightness = lightness.clamp(0.0, 1.0);
         let (sin_hue, cos_hue) = hue.to_radians().sin_cos();
@@ -130,6 +135,7 @@ impl Color {
     }
 
     /// Interpolates the RGB channels in OKLab and returns an opaque sRGB color.
+    #[cfg(any(feature = "compile", test))]
     pub(super) fn mix_oklab(self, other: Self, amount: f64) -> Self {
         let [lightness, a, b] = self.oklab();
         let [other_lightness, other_a, other_b] = other.oklab();
@@ -146,11 +152,13 @@ impl Color {
         [r, g, b].map(|channel| srgb_to_linear(normalize_channel(channel)))
     }
 
+    #[cfg(any(feature = "compile", test))]
     fn from_linear_rgb(rgb: [f64; 3]) -> Self {
         let [r, g, b] = rgb.map(|channel| quantize_channel(linear_to_srgb(channel)));
         Self::rgb(r, g, b)
     }
 
+    #[cfg(any(feature = "compile", test))]
     fn oklab(self) -> [f64; 3] {
         let [r, g, b] = self.linear_rgb();
         // Björn Ottosson's linear sRGB to OKLab transform.
@@ -243,6 +251,7 @@ pub(super) fn luminance_ratio(first: f64, second: f64) -> f64 {
     (first + 0.05) / (second + 0.05)
 }
 
+#[cfg(any(feature = "compile", test))]
 fn linear_to_srgb(channel: f64) -> f64 {
     let channel = channel.clamp(0.0, 1.0);
     if channel <= 0.0031308 {
@@ -252,6 +261,7 @@ fn linear_to_srgb(channel: f64) -> f64 {
     }
 }
 
+#[cfg(any(feature = "compile", test))]
 fn oklab_to_linear_rgb([lightness, a, b]: [f64; 3]) -> [f64; 3] {
     let l = (lightness + 0.3963377774 * a + 0.2158037573 * b).powi(3);
     let m = (lightness - 0.1055613458 * a - 0.0638541728 * b).powi(3);

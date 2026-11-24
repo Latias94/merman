@@ -387,7 +387,7 @@ merman-ascii = { workspace = true, optional = true }
 merman-editor-core = { workspace = true, optional = true }
 merman-export = { workspace = true, optional = true }
 merman-render = { workspace = true, optional = true }
-merman-theme-contract = { workspace = true, optional = true }
+merman-theme-contract = { workspace = true, optional = true, features = ["presets"] }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
