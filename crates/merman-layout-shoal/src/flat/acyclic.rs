@@ -462,7 +462,12 @@ impl<'a> Buckets<'a> {
         Ok(())
     }
 
-    fn take(&mut self, probe: Priority, work: &mut Work<'_>) -> LayoutResult<(u32, Option<u32>)> {
+    fn take(
+        &mut self,
+        probe: Priority,
+        track_editor_tie: bool,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<(u32, Option<u32>)> {
         let mut cursor = self.root.expect("only a populated queue is searched");
         let mut parent = None;
         let mut grandparent = None;
@@ -472,6 +477,9 @@ impl<'a> Buckets<'a> {
                 Entry::Leaf(vertex) => break vertex,
                 Entry::Branch(index) => {
                     let branch = &self.branches[index as usize];
+                    if track_editor_tie && branch.bit / 64 == 1 {
+                        work.editor_choice = true;
+                    }
                     let side = probe.side(branch.bit);
                     grandparent = parent;
                     parent = Some((index, side));
@@ -505,7 +513,7 @@ impl<'a> Buckets<'a> {
         }
         if previous != degree.bucket() {
             let old_key = Priority::new(&self.nodes[vertex as usize], vertex, previous);
-            let (found, vacant) = self.take(old_key, work)?;
+            let (found, vacant) = self.take(old_key, false, work)?;
             debug_assert_eq!(found, vertex);
             self.insert(vertex, degrees, vacant, work)?;
         }
@@ -522,8 +530,10 @@ impl Scc<'_> {
         topo: &mut Vec<u32>,
         work: &mut Work<'_>,
     ) -> LayoutResult<()> {
+        let mut has_editor_hint = false;
         for &v in members {
             work.visit(1)?;
+            has_editor_hint |= self.nodes[v as usize].editor_order_hint().is_some();
             for &e in self.outgoing.at(v) {
                 work.visit(1)?;
                 let to = self.links[e as usize].to;
@@ -540,7 +550,7 @@ impl Scc<'_> {
         topo.resize(right, 0);
         while left < right {
             work.visit(1)?;
-            let (v, _) = buckets.take(Priority::MIN, work)?;
+            let (v, _) = buckets.take(Priority::MIN, has_editor_hint, work)?;
             degrees[v as usize].removed = true;
             if degrees[v as usize].outgoing == 0 {
                 right -= 1;
@@ -906,8 +916,10 @@ mod tests {
         }
         assert_eq!(buckets.branches.len(), members.len() - 1);
         for expected in [5, 4, 3, 7, 1, 2, 0, 6] {
-            let ((next, _), _) =
-                with_budget(members.len(), |work| buckets.take(Priority::MIN, work)).unwrap();
+            let ((next, _), _) = with_budget(members.len(), |work| {
+                buckets.take(Priority::MIN, false, work)
+            })
+            .unwrap();
             assert_eq!(next, expected);
         }
         assert!(buckets.root.is_none());
@@ -978,7 +990,7 @@ mod tests {
         })
         .unwrap();
         let ((minimum, _), used) =
-            with_budget(WALK_LIMIT, |work| buckets.take(Priority::MIN, work)).unwrap();
+            with_budget(WALK_LIMIT, |work| buckets.take(Priority::MIN, false, work)).unwrap();
         assert_eq!(minimum, 0);
         assert_eq!(used, 33 + 33 + 32 + ID_BITS + 1);
     }

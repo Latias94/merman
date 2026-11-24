@@ -35,24 +35,36 @@ pub fn layout_with_control(
     let frame = scratch.frame();
     let mut work = work::Work::new(control);
     work.charge(1)?;
-    let output = solve_with_width(graph, options, frame.expanded, &mut work)?;
-    let output = if (output.stats.topological_crossings != 0 || output.stats.routed_crossings != 0)
-        && graph
-            .nodes
-            .iter()
-            .any(|node| node.editor_order_hint().is_some())
+    let (output, width_trial) = match options.width_policy {
+        WidthPolicy::Natural => (solve(graph, options, frame.expanded, &mut work)?, None),
+        WidthPolicy::FitWidth { .. } => {
+            let (drawing, trial) = adaptive::run(graph, options, frame.expanded, &mut work)?;
+            (drawing, Some(trial))
+        }
+    };
+    let output = if work.editor_choice
+        && (output.stats.topological_crossings != 0 || output.stats.routed_crossings != 0)
     {
-        let mut reference = adaptive::copy_graph(graph, &mut work)?;
-        for node in &mut reference.nodes {
-            work.visit(1)?;
-            if node.editor_order_hint().is_some() {
+        let comparison = work.compare(|work| {
+            let mut reference = adaptive::copy_graph(graph, work)?;
+            for node in &mut reference.nodes {
+                work.visit(1)?;
                 node.order_hint = None;
             }
-        }
-        match solve_with_width(&reference, options, frame.expanded, &mut work) {
-            Ok(reference)
-                if reference.stats.topological_crossings < output.stats.topological_crossings
-                    || reference.stats.routed_crossings < output.stats.routed_crossings =>
+            match width_trial {
+                Some(trial) => trial.replay(&mut reference, frame.expanded, work),
+                None => solve(&reference, options, frame.expanded, work).map(Some),
+            }
+        });
+        match comparison {
+            Ok(Some(Some(reference)))
+                if improves_crossings(&reference.stats, &output.stats)
+                    && match options.width_policy {
+                        WidthPolicy::Natural => true,
+                        WidthPolicy::FitWidth { max_width, .. } => {
+                            reference.bounds.width <= max_width.max(output.bounds.width)
+                        }
+                    } =>
             {
                 reference
             }
@@ -66,16 +78,10 @@ pub fn layout_with_control(
     Ok(output)
 }
 
-fn solve_with_width(
-    graph: &Graph,
-    options: &Options,
-    expanded: &mut flat::Expanded,
-    work: &mut work::Work<'_>,
-) -> Result<LayoutOutput, LayoutError> {
-    match options.width_policy {
-        WidthPolicy::Natural => solve(graph, options, expanded, work),
-        WidthPolicy::FitWidth { .. } => adaptive::run(graph, options, expanded, work),
-    }
+fn improves_crossings(candidate: &LayoutStats, current: &LayoutStats) -> bool {
+    let candidate = (candidate.topological_crossings, candidate.routed_crossings);
+    let current = (current.topological_crossings, current.routed_crossings);
+    candidate.0 <= current.0 && candidate.1 <= current.1 && candidate != current
 }
 
 fn solve(

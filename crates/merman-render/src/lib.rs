@@ -782,6 +782,8 @@ pub enum Error {
         backend: &'static str,
         construct: &'static str,
     },
+    #[error("layout backend `{backend}` could not allocate layout storage")]
+    LayoutAllocationFailed { backend: &'static str },
     #[error("layout adaptation `{adaptation}` is unsupported for diagram `{diagram_type}`")]
     UnsupportedLayoutAdaptation {
         adaptation: &'static str,

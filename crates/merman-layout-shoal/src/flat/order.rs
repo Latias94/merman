@@ -949,6 +949,7 @@ fn minimize<const LIMITED: bool>(
                 inversions::<true>(&order.ids, &order.start, &seed.preference, &mut tree, work)?,
             ) < stateless_score
         {
+            work.editor_choice = true;
             return Ok((order.ids, candidate_count));
         }
         return Ok((stateless, count));
@@ -978,9 +979,11 @@ fn minimize<const LIMITED: bool>(
             work,
         )?
     {
+        work.editor_choice = true;
         return Ok((std::mem::take(&mut order.ids), mirror.0));
     }
     if hint_score < stateless_score {
+        work.editor_choice = true;
         Ok((hinted, hint_score.0))
     } else {
         Ok((stateless, stateless_score.0))

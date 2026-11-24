@@ -21,6 +21,14 @@ impl Error for WorkError {}
 pub trait WorkControl {
     fn check(&mut self) -> Result<(), WorkError>;
     fn charge(&mut self, units: usize) -> Result<(), WorkError>;
+
+    /// Attempts to charge optional work while leaving `headroom` units for required work.
+    /// Declining with `Ok(false)` leaves the operation active and consumes no units.
+    /// The default checks for cancellation and declines.
+    fn try_charge_optional(&mut self, _units: usize, _headroom: usize) -> Result<bool, WorkError> {
+        self.check()?;
+        Ok(false)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -32,6 +40,9 @@ impl WorkControl for NoopWorkControl {
     }
     fn charge(&mut self, _units: usize) -> Result<(), WorkError> {
         Ok(())
+    }
+    fn try_charge_optional(&mut self, _units: usize, _headroom: usize) -> Result<bool, WorkError> {
+        Ok(true)
     }
 }
 
@@ -95,6 +106,9 @@ pub(crate) struct Work<'a> {
     control: &'a mut dyn WorkControl,
     pending: usize,
     total: usize,
+    optional_limit: Option<usize>,
+    optional_declined: bool,
+    pub(crate) editor_choice: bool,
 }
 
 impl<'a> Work<'a> {
@@ -103,6 +117,9 @@ impl<'a> Work<'a> {
             control,
             pending: 0,
             total: 0,
+            optional_limit: None,
+            optional_declined: false,
+            editor_choice: false,
         }
     }
 
@@ -117,12 +134,20 @@ impl<'a> Work<'a> {
             .checked_add(units)
             .ok_or(WorkError::ArithmeticOverflow)?;
         if units != 0 {
-            self.total = self
+            let total = self
                 .total
                 .checked_add(units)
                 .ok_or(WorkError::ArithmeticOverflow)?;
             self.check()?;
-            self.control.charge(units)?;
+            if let Some(limit) = self.optional_limit {
+                if total > limit || !self.control.try_charge_optional(units, limit)? {
+                    self.optional_declined = true;
+                    return Err(WorkError::Interrupted.into());
+                }
+            } else {
+                self.control.charge(units)?;
+            }
+            self.total = total;
             self.pending = 0;
         }
         Ok(())
@@ -142,6 +167,32 @@ impl<'a> Work<'a> {
     pub(crate) fn finish(&mut self) -> LayoutResult<()> {
         self.charge(0)?;
         self.check()
+    }
+
+    /// Bounds a comparison by the work already spent and leaves the same headroom for the caller.
+    pub(crate) fn compare<T>(
+        &mut self,
+        draw: impl FnOnce(&mut Work<'_>) -> LayoutResult<T>,
+    ) -> LayoutResult<Option<T>> {
+        self.finish()?;
+        let limit = self.total;
+        let Some(headroom) = limit.checked_mul(2) else {
+            return Ok(None);
+        };
+        if !self.control.try_charge_optional(0, headroom)? {
+            return Ok(None);
+        }
+        let mut comparison = Work::new(self.control);
+        comparison.optional_limit = Some(limit);
+        let result = draw(&mut comparison).and_then(|drawing| {
+            comparison.finish()?;
+            Ok(drawing)
+        });
+        if comparison.optional_declined {
+            self.check()?;
+            return Ok(None);
+        }
+        result.map(Some)
     }
 
     /// Admit the full comparison budget before entering the standard library sort.
@@ -167,6 +218,25 @@ impl<'a> Work<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn optional_comparison_distinguishes_its_bound_from_interruption() {
+        let mut control = NoopWorkControl;
+        let mut work = Work::new(&mut control);
+        work.charge(4).unwrap();
+
+        let declined = work.compare(|trial| {
+            trial.charge(3)?;
+            trial.charge(2)?;
+            Ok(1)
+        });
+        assert_eq!(declined, Ok(None));
+        assert_eq!(work.total, 4);
+
+        let interrupted = work.compare(|_| Err::<(), _>(WorkError::Interrupted.into()));
+        assert_eq!(interrupted, Err(LayoutError::Work(WorkError::Interrupted)));
+        assert_eq!(work.finish(), Ok(()));
+    }
 
     #[test]
     fn a_failed_reservation_is_an_allocation_error() {

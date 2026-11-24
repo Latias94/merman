@@ -1,6 +1,7 @@
 use merman_layout_shoal::{
-    Direction, EdgeSpec, Graph, GroupId, GroupSpec, LayoutOutput, NodeId, NodeSpec, Options,
-    OrderHint, Rect, RoutingStyle, Size, layout,
+    Direction, EdgeSpec, Graph, GroupId, GroupSpec, LayoutOutput, LayoutScratch, NodeId, NodeSpec,
+    Options, OrderHint, Rect, RoutingStyle, Size, WidthPolicy, WorkControl, WorkError, layout,
+    layout_with_control,
 };
 
 struct Sequence {
@@ -126,14 +127,58 @@ fn with_previous_hints(graph: &Graph, previous: &LayoutOutput) -> Graph {
     hinted
 }
 
+struct Meter {
+    limit: usize,
+    used: usize,
+    comparisons: usize,
+}
+
+impl Meter {
+    fn new(limit: usize) -> Self {
+        Self {
+            limit,
+            used: 0,
+            comparisons: 0,
+        }
+    }
+}
+
+impl WorkControl for Meter {
+    fn check(&mut self) -> Result<(), WorkError> {
+        Ok(())
+    }
+
+    fn charge(&mut self, units: usize) -> Result<(), WorkError> {
+        let next = self
+            .used
+            .checked_add(units)
+            .ok_or(WorkError::ArithmeticOverflow)?;
+        if next > self.limit {
+            return Err(WorkError::Interrupted);
+        }
+        self.used = next;
+        Ok(())
+    }
+
+    fn try_charge_optional(&mut self, units: usize, headroom: usize) -> Result<bool, WorkError> {
+        self.comparisons += usize::from(units == 0);
+        if units.saturating_add(headroom) > self.limit - self.used {
+            return Ok(false);
+        }
+        self.charge(units)?;
+        Ok(true)
+    }
+}
+
 #[test]
-fn previous_frames_preserve_crossing_quality_after_adding_an_edge() {
+fn previous_frames_only_switch_to_a_reference_that_improves_crossing_quality() {
     struct CrossingEdit {
         name: &'static str,
         sizes: &'static [(u32, u32)],
         edges: &'static [(u32, u32)],
         added: (u32, u32),
         group_members: &'static [u32],
+        tradeoff: bool,
     }
 
     let cases = [
@@ -161,6 +206,7 @@ fn previous_frames_preserve_crossing_quality_after_adding_an_edge() {
             ],
             added: (4, 5),
             group_members: &[],
+            tradeoff: false,
         },
         CrossingEdit {
             name: "SCC",
@@ -191,6 +237,7 @@ fn previous_frames_preserve_crossing_quality_after_adding_an_edge() {
             ],
             added: (6, 7),
             group_members: &[],
+            tradeoff: false,
         },
         CrossingEdit {
             name: "compound",
@@ -224,6 +271,7 @@ fn previous_frames_preserve_crossing_quality_after_adding_an_edge() {
             ],
             added: (5, 6),
             group_members: &[0, 1, 2, 3],
+            tradeoff: false,
         },
         CrossingEdit {
             name: "SCC with unchanged routed crossings",
@@ -231,6 +279,7 @@ fn previous_frames_preserve_crossing_quality_after_adding_an_edge() {
             edges: &[(0, 1), (0, 2), (2, 0), (2, 3), (3, 0), (3, 2)],
             added: (0, 3),
             group_members: &[],
+            tradeoff: false,
         },
         CrossingEdit {
             name: "compound DAG with a topology and routing tradeoff",
@@ -238,6 +287,7 @@ fn previous_frames_preserve_crossing_quality_after_adding_an_edge() {
             edges: &[(0, 2), (0, 4), (1, 3), (1, 4), (2, 3), (2, 4)],
             added: (3, 4),
             group_members: &[3, 4],
+            tradeoff: true,
         },
     ];
     for case in cases {
@@ -265,15 +315,118 @@ fn previous_frames_preserve_crossing_quality_after_adding_an_edge() {
         let previous = layout(&graph, &options).unwrap();
         graph.edges.push(edge(case.added.0, case.added.1));
         let stateless = layout(&graph, &options).unwrap();
-        let hinted = layout(&with_previous_hints(&graph, &previous), &options).unwrap();
-        assert!(
-            hinted.stats.topological_crossings <= stateless.stats.topological_crossings
-                && hinted.stats.routed_crossings <= stateless.stats.routed_crossings,
-            "{}: hinted {:?}, stateless {:?}",
-            case.name,
-            hinted.stats,
-            stateless.stats,
-        );
+        let graph = with_previous_hints(&graph, &previous);
+        let mut scratch = LayoutScratch::default();
+        let mut full = Meter::new(usize::MAX);
+        let hinted = layout_with_control(&graph, &options, &mut scratch, &mut full).unwrap();
+        if case.tradeoff {
+            assert!(hinted.stats.topological_crossings < stateless.stats.topological_crossings);
+            assert!(hinted.stats.routed_crossings > stateless.stats.routed_crossings);
+        } else {
+            assert!(
+                hinted.stats.topological_crossings <= stateless.stats.topological_crossings
+                    && hinted.stats.routed_crossings <= stateless.stats.routed_crossings,
+                "{}: hinted {:?}, stateless {:?}",
+                case.name,
+                hinted.stats,
+                stateless.stats,
+            );
+        }
+
+        let mut primary = Meter::new(usize::MAX);
+        let first = layout_with_control(
+            &graph,
+            &options,
+            &mut scratch,
+            &mut PrimaryOnly(&mut primary),
+        )
+        .unwrap();
+        let mut exact = Meter::new(primary.used);
+        let constrained = layout_with_control(&graph, &options, &mut scratch, &mut exact).unwrap();
+        assert_eq!(constrained, first);
+        assert_eq!(exact.comparisons, full.comparisons, "{}", case.name);
+        assert_eq!(exact.used, primary.used);
+        if case.tradeoff {
+            assert_eq!(hinted, first);
+            assert_eq!(exact.comparisons, 1);
+            check_fit_width_replays_only_the_selected_trial(&graph, options, &mut scratch);
+        }
+    }
+}
+
+fn check_fit_width_replays_only_the_selected_trial(
+    graph: &Graph,
+    mut options: Options,
+    scratch: &mut LayoutScratch,
+) {
+    let max_width = 20.0;
+    options.width_policy = WidthPolicy::FitWidth {
+        max_width,
+        allow_turn: false,
+        turn_breakpoint: 640.0,
+        fold_wide_ranks: false,
+    };
+    let mut primary = Meter::new(usize::MAX);
+    let first =
+        layout_with_control(graph, &options, scratch, &mut PrimaryOnly(&mut primary)).unwrap();
+    assert!(first.bounds.width > max_width);
+
+    let mut full = Meter::new(usize::MAX);
+    let compared = layout_with_control(graph, &options, scratch, &mut full).unwrap();
+    assert_eq!(full.comparisons, 1);
+    assert!(compared.bounds.width <= first.bounds.width);
+
+    let mut reference = graph.clone();
+    for node in &mut reference.nodes {
+        node.order_hint = None;
+    }
+    let mut stateless = Meter::new(usize::MAX);
+    layout_with_control(&reference, &options, scratch, &mut stateless).unwrap();
+    let compared_work = full.used - primary.used;
+    assert!(compared_work > 0 && compared_work < stateless.used);
+}
+
+struct PrimaryOnly<'a>(&'a mut Meter);
+
+impl WorkControl for PrimaryOnly<'_> {
+    fn check(&mut self) -> Result<(), WorkError> {
+        self.0.check()
+    }
+
+    fn charge(&mut self, units: usize) -> Result<(), WorkError> {
+        self.0.charge(units)
+    }
+}
+
+#[test]
+fn unchanged_hints_skip_a_second_solve_for_an_unavoidable_crossing() {
+    for cyclic in [false, true] {
+        let mut graph = Graph::default();
+        graph.nodes = (0..6).map(|index| node(index, graph.direction)).collect();
+        graph.edges = (0..3)
+            .flat_map(|from| (3..6).map(move |to| edge(from, to)))
+            .collect();
+        if cyclic {
+            graph
+                .edges
+                .extend((3..6).flat_map(|from| (0..3).map(move |to| edge(from, to))));
+        }
+        let mut options = Options::default();
+        options.capture_node_ranks = true;
+        let previous = layout(&graph, &options).unwrap();
+        assert_eq!(previous.stats.scc_cyclic_count, usize::from(cyclic));
+        assert!(previous.stats.topological_crossings > 0);
+
+        let mut graph = with_previous_hints(&graph, &previous);
+        for node in &mut graph.nodes {
+            node.order_hint.as_mut().unwrap().rank = 0;
+        }
+        let mut meter = Meter::new(usize::MAX);
+        let output =
+            layout_with_control(&graph, &options, &mut LayoutScratch::default(), &mut meter)
+                .unwrap();
+        assert_eq!(output, previous);
+        assert_eq!(meter.comparisons, 0);
     }
 }
 

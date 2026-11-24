@@ -1032,13 +1032,34 @@ impl OperationWorkMeter {
         additional: usize,
         phase: OperationPhase,
     ) -> Result<(), OperationWorkError> {
+        self.charge_work_inner(additional, phase, None).map(|_| ())
+    }
+
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) fn try_charge_optional_layout_work(
+        &self,
+        additional: usize,
+        headroom: usize,
+    ) -> Result<bool, OperationWorkError> {
+        self.charge_work_inner(additional, OperationPhase::Layout, Some(headroom))
+    }
+
+    fn charge_work_inner(
+        &self,
+        additional: usize,
+        phase: OperationPhase,
+        headroom: Option<usize>,
+    ) -> Result<bool, OperationWorkError> {
         self.resource_checkpoint(phase)?;
-        if additional == 0 {
-            return Ok(());
+        if additional == 0 && headroom.is_none() {
+            return Ok(true);
         }
         let mut used = self.used.load(std::sync::atomic::Ordering::Relaxed);
         loop {
             let Some(next) = used.checked_add(additional) else {
+                if headroom.is_some() {
+                    return Ok(false);
+                }
                 return Err(self.terminate_resource_error(
                     self.layout_work_overflow_details(),
                     phase,
@@ -1046,7 +1067,21 @@ impl OperationWorkMeter {
                     additional,
                 ));
             };
-            if let Err(error) = self.policy.check_layout_work_units(next) {
+            if let Some(headroom) = headroom {
+                let maximum = self
+                    .policy
+                    .value(ResourceLimitId::MaxLayoutWorkUnits)
+                    .unwrap_or(usize::MAX);
+                if next
+                    .checked_add(headroom)
+                    .is_none_or(|projected| projected > maximum)
+                {
+                    return Ok(false);
+                }
+                if additional == 0 {
+                    return Ok(true);
+                }
+            } else if let Err(error) = self.policy.check_layout_work_units(next) {
                 return Err(self.terminate_resource_error(error, phase, used, additional));
             }
             match self.used.compare_exchange_weak(
@@ -1055,7 +1090,7 @@ impl OperationWorkMeter {
                 std::sync::atomic::Ordering::Relaxed,
                 std::sync::atomic::Ordering::Relaxed,
             ) {
-                Ok(_) => return Ok(()),
+                Ok(_) => return Ok(true),
                 Err(actual) => {
                     self.resource_checkpoint(phase)?;
                     used = actual;
