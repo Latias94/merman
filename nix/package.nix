@@ -55,12 +55,15 @@ let
   };
   buildRustPackage = rustPlatform.buildRustPackage.override {
     cargo-auditable = buildPackages.cargo-auditable.overrideAttrs (old: {
-      # cargo-auditable reconstructs the active features from rustc's bare cfg values.
-      # Qualify them for cargo metadata so they resolve on the binary's workspace member.
+      # Qualify CLI features for cargo metadata in our resolver-2 workspace.
+      # Other packages, including cargo-auditable's resolver-1 fixtures, use bare features.
       postPatch = (old.postPatch or "") + ''
         substituteInPlace cargo-auditable/src/collect_audit_data.rs \
           --replace-fail 'let owned_features: Vec<String> = features.iter().map(|s| s.to_string()).collect();' \
-            'let package = std::env::var("CARGO_PKG_NAME").expect("Cargo provides the package name"); let owned_features: Vec<String> = features.iter().map(|s| format!("{package}/{s}")).collect();'
+            'let cli = matches!(std::env::var("CARGO_PKG_NAME").as_deref(), Ok("merman-cli"));
+            let owned_features: Vec<String> = features.iter().map(|s| {
+                if cli { format!("merman-cli/{s}") } else { s.to_string() }
+            }).collect();'
       '';
     });
   };
