@@ -54,6 +54,7 @@ pub(crate) fn layout(
         &graph,
         &solved,
         &profiles,
+        |_| 0.0,
         source.edges.keys().map(|(_, _, id)| id.as_str()),
         work,
     )?);

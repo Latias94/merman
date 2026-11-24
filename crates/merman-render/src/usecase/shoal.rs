@@ -305,6 +305,7 @@ pub(super) fn layout(
         &graph,
         &solved,
         &profiles,
+        |_| 0.0,
         edge_plans.iter().map(|plan| plan.id.as_str()),
         work,
     )?;

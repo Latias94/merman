@@ -60,7 +60,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartEdgePathGeomRequest<'a> {
 pub(in crate::svg::parity::flowchart) fn flowchart_compute_edge_path_geom(
     request: FlowchartEdgePathGeomRequest<'_>,
     scratch: &mut FlowchartEdgeDataPointsScratch,
-) -> Option<FlowchartEdgePathGeom> {
+) -> Result<Option<FlowchartEdgePathGeom>> {
     #[cfg(any(feature = "layout-shoal", test))]
     if let crate::graph_layout::RouteContract::CanonicalAxis {
         nodes,
@@ -74,14 +74,11 @@ pub(in crate::svg::parity::flowchart) fn flowchart_compute_edge_path_geom(
         let first = border_stitches.partition_point(|stitch| stitch.edge < occurrence);
         let tail = &border_stitches[first..];
         let count = tail.partition_point(|stitch| stitch.edge == occurrence);
-        return canonical::paint(
-            request,
-            nodes,
-            routes.get(occurrence)?.as_ref()?,
-            &tail[..count],
-            clearance,
-        );
+        let Some(axes) = routes.get(occurrence).and_then(Option::as_ref) else {
+            return Ok(None);
+        };
+        return canonical::paint(request, nodes, axes, &tail[..count], clearance).map(Some);
     }
-    let route = prepare_edge_route(request, scratch)?;
-    finish_edge_route(request, route, scratch)
+    Ok(prepare_edge_route(request, scratch)
+        .and_then(|route| finish_edge_route(request, route, scratch)))
 }

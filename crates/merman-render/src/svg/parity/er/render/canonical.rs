@@ -25,11 +25,7 @@ pub(super) fn paint_edge(
     let neo = look == "neo";
     let stroke_outset = if neo { neo_stroke_width } else { 1.0 } / 2.0;
     work_meter.charge(edge.points.len())?;
-    let geometry = routes
-        .paint(edge, translation, stroke_outset, RouteStyle::Curved)
-        .ok_or_else(|| Error::InvalidModel {
-            message: format!("ER edge `{}` has no canonical paint geometry", edge.id),
-        })?;
+    let geometry = routes.paint(edge, translation, stroke_outset, RouteStyle::Curved)?;
     let path = geometry.path;
     let (d, path_bounds) = if look == "handDrawn" {
         work_meter.charge(path.d.len().max(1))?;

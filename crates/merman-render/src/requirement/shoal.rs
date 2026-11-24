@@ -129,6 +129,7 @@ pub(super) fn layout(
         &graph,
         &solved,
         &profiles,
+        |_| 0.0,
         plans.iter().map(|plan| plan.rendered_id.as_str()),
         &mut work,
     )?;

@@ -168,6 +168,43 @@ fn edge_label_box_overlaps_are_hard_even_when_every_shaft_is_clear() {
 }
 
 #[test]
+fn visible_group_titles_clear_their_owners_but_must_miss_other_labels_and_bodies() {
+    let mut scene = Scene {
+        bodies: vec![
+            Body::group(Rect::new(0., 0., 100., 80.)),
+            Body::group(Rect::new(10., 20., 90., 70.)),
+            node(20., 40., 30., 50.),
+            Body::group(Rect::new(50., 40., 80., 60.)),
+        ],
+        labels: vec![
+            label(LabelOwner::Body(0), 25., 5., 55., 15.),
+            label(LabelOwner::Body(1), 20., 22., 40., 30.),
+            label(LabelOwner::Body(2), 21., 41., 29., 48.),
+            label(LabelOwner::Body(3), 55., 42., 75., 49.),
+        ],
+        ..Scene::default()
+    };
+    scene.bodies[1].parent = Some(0);
+    scene.bodies[2].parent = Some(1);
+    scene.bodies[3].parent = Some(1);
+    assert!(validate(&scene).hard.is_empty());
+
+    scene.labels[1].bounds = Rect::new(20., 30., 40., 40.);
+    scene
+        .labels
+        .push(label(LabelOwner::Body(1), 21., 31., 24., 34.));
+    assert!(validate(&scene).hard.is_empty());
+
+    scene.labels[1].bounds = Rect::new(20., 35., 60., 46.);
+    let hard = validate(&scene).hard;
+    assert!(hard.contains(&Violation::LabelNodeOverlap { label: 1, node: 2 }));
+    assert!(hard.contains(&Violation::LabelGroupOverlap { label: 1, group: 3 }));
+    for (first, second) in [(1, 2), (1, 3)] {
+        assert!(hard.contains(&Violation::LabelOverlap { first, second }));
+    }
+}
+
+#[test]
 fn cubic_extrema_measure_return_between_vertices_and_ignore_the_other_axis() {
     let mut scene = Scene {
         bodies: vec![point(10., 0.), point(10., 30.)],

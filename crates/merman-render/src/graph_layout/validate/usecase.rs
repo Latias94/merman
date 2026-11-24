@@ -1,14 +1,14 @@
 use super::{
     Body, CrossAxis, Edge, End, FLATNESS, Label, LabelOwner, PointMarker, Scene, Shaft,
-    assert_same_bounds, contour_gap, rect_face_normal, svg_box, svg_group_transform,
-    svg_marker_scale, svg_number, validate,
+    assert_same_bounds, contour_gap, rect_face_normal, svg_box, svg_group_transform, svg_has_class,
+    svg_label_text, svg_marker_scale, svg_number, validate,
 };
 use crate::environment::RenderEnvironment;
 use crate::model::LayoutPoint;
 use crate::usecase::UsecaseDiagramLayout;
 use crate::{LayoutOptions, family};
 use base64::Engine as _;
-use kurbo::{BezPath, Ellipse, ParamCurveNearest, Point, Rect, Shape, Vec2};
+use kurbo::{BezPath, Ellipse, ParamCurve, ParamCurveNearest, Point, Rect, Shape, Vec2};
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_model::families::usecase::UsecaseNodeKind;
 use merman_model::presentation::RenderSemanticModel;
@@ -28,17 +28,102 @@ config:
 ---
 usecase-beta
 direction LR
-actor Buyer(\"Customer\")
-systemBoundary Auth(Authentication)
-  SignIn(\"Sign in\")
-  Verify(\"Verify code\")
+actor Customer(\"Customer\")
+actor Reviewer(\"Reviewer\")
+systemBoundary Portal(Order portal)@{{type:package}}
+  Checkout(\"Submit order\")
+  Verify(\"Verify identity\")
+  Escalate(\"Escalate order\")
 end
-Buyer --> SignIn
-SignIn ..> : include Verify
+systemBoundary Admin(Administration)
+  Review(\"Review order\")
+  Archive(\"Archive order\")
+end
+Customer --> Checkout
+Checkout ..> : include Verify
+Escalate ..> : extend Checkout
+Verify --> Review
+Review --|> Archive
+Reviewer --> Archive
 "
         );
         check_usecase_geometry(&source, look);
     }
+}
+
+#[test]
+fn usecase_shoal_hand_drawn_edges_advance_a_repeatable_random_stream() {
+    let render = |seed| {
+        let source = format!(
+            "\
+---
+config:
+  layout: shoal
+  look: handDrawn
+  handDrawnSeed: {seed}
+---
+usecase-beta
+direction LR
+A(\"Case\")
+B(\"Case\")
+C(\"Case\")
+D(\"Case\")
+A --> B
+C --> D
+"
+        );
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let artifact = family::prepare(
+            &parsed,
+            &LayoutOptions::headless_svg_defaults(),
+            RenderEnvironment::deterministic().begin_session().unwrap(),
+        )
+        .unwrap();
+        artifact
+            .render_svg(&Default::default(), &Default::default())
+            .unwrap()
+    };
+    let paths = |svg: &str| {
+        Document::parse(svg)
+            .unwrap()
+            .descendants()
+            .filter(|item| item.attribute("data-et") == Some("edge"))
+            .map(|edge| {
+                svg_group_transform(edge) * BezPath::from_svg(edge.attribute("d").unwrap()).unwrap()
+            })
+            .collect::<Vec<_>>()
+    };
+    for seed in [0, 17] {
+        let svg = render(seed);
+        assert_eq!(svg.svg(), render(seed).svg());
+        let paths = paths(svg.svg());
+        let [first, second] = paths.as_slice() else {
+            panic!("expected two painted Usecase paths");
+        };
+        let first_start = first.segments().next().unwrap().start();
+        let second_start = second.segments().next().unwrap().start();
+        let offset = second_start - first_start;
+        assert_eq!(first.elements().len(), second.elements().len());
+        assert!(
+            first
+                .segments()
+                .zip(second.segments())
+                .all(|(a, b)| (a.end() + offset).distance(b.end()) <= FLATNESS),
+            "the canonical vertices should be translations of each other"
+        );
+        assert!(
+            first
+                .segments()
+                .zip(second.segments())
+                .any(|(a, b)| (a.eval(0.5) + offset).distance(b.eval(0.5)) > 0.001),
+            "the second shaft replayed the first shaft's random offsets for seed {seed}"
+        );
+    }
+    assert_ne!(paths(render(17).svg()), paths(render(23).svg()));
 }
 
 fn check_usecase_geometry(source: &str, look: &str) {
@@ -78,18 +163,38 @@ fn check_usecase_geometry(source: &str, look: &str) {
         let owner = scene.bodies.len();
         let painted = painted_item(&node.id, if node.is_cluster { "cluster" } else { "node" });
         let body = if node.is_cluster {
-            let painted_frame = painted
-                .descendants()
-                .find(|item| {
-                    item.attribute("class").is_some_and(|classes| {
-                        classes
-                            .split_ascii_whitespace()
-                            .any(|name| name == "boundary-body")
-                    })
-                })
+            let boundary = model
+                .boundaries
+                .iter()
+                .find(|boundary| boundary.id == node.id)
                 .unwrap();
-            assert_same_bounds(svg_box(painted_frame), measured);
-            Body::group(measured)
+            let painted_frame = painted
+                .children()
+                .find(|item| item.has_tag_name("rect") && svg_has_class(*item, "boundary-body"))
+                .unwrap();
+            let bounds = svg_box(painted_frame);
+            assert_same_bounds(bounds, measured);
+            let title = painted
+                .children()
+                .find(|item| svg_has_class(*item, "cluster-label"))
+                .unwrap()
+                .children()
+                .find(|item| item.has_tag_name("foreignObject"))
+                .unwrap();
+            assert_eq!(svg_label_text(title), boundary.label);
+            let title_bounds = svg_box(title);
+            let tab = painted
+                .children()
+                .find(|item| svg_has_class(*item, "boundary-tab"));
+            assert_eq!(tab.is_some(), boundary.package);
+            if let Some(tab) = tab {
+                assert!(svg_box(tab).contains_rect(title_bounds));
+            }
+            scene.labels.push(Label {
+                owner: LabelOwner::Body(owner),
+                bounds: title_bounds,
+            });
+            Body::group(bounds)
         } else {
             let semantic = model.nodes.iter().find(|item| item.id == node.id).unwrap();
             let mut body = Body::node(measured);
@@ -120,19 +225,19 @@ fn check_usecase_geometry(source: &str, look: &str) {
                 }
                 _ => panic!("unexpected Usecase contour {}", node.id),
             }
+            for label in painted
+                .descendants()
+                .filter(|item| item.has_tag_name("foreignObject"))
+            {
+                scene.labels.push(Label {
+                    owner: LabelOwner::Body(owner),
+                    bounds: svg_box(label),
+                });
+            }
             body
         };
         scene.bodies.push(body);
         bodies.insert(node.id.as_str(), owner);
-        for label in painted
-            .descendants()
-            .filter(|item| item.has_tag_name("foreignObject"))
-        {
-            scene.labels.push(Label {
-                owner: LabelOwner::Body(owner),
-                bounds: svg_box(label),
-            });
-        }
     }
     for boundary in &model.boundaries {
         let parent = bodies[boundary.id.as_str()];
@@ -140,9 +245,10 @@ fn check_usecase_geometry(source: &str, look: &str) {
             scene.bodies[bodies[member.as_str()]].parent = Some(parent);
         }
     }
-    assert_eq!(scene.bodies.len(), 4);
+    assert_eq!(scene.bodies.len(), 9);
     let mut stitches = 0;
     let mut markers = 0;
+    let mut generalizations = 0;
     for (occurrence, route) in layout.edges.iter().enumerate() {
         let path = painted_item(&route.id, "edge");
         let from = bodies[route.from.as_str()];
@@ -173,22 +279,33 @@ fn check_usecase_geometry(source: &str, look: &str) {
                 endpoint.setback = trim;
                 endpoint.marker = Some(opening);
                 markers += 1;
+                generalizations += usize::from(svg_has_class(marker, "extension"));
             }
         }
-        if scene.bodies[from].parent != scene.bodies[to].parent {
-            let group = scene.bodies[to]
-                .parent
-                .expect("the oval is within its system");
-            let stitch = vertices[1..vertices.len() - 1]
-                .iter()
-                .map(|point| edge.transform * Point::new(point.x, point.y))
-                .find(|&point| contour_gap(&scene.bodies[group], point) <= FLATNESS)
-                .expect("a route knot is shared at the painted system border");
+        let from_group = scene.bodies[from].parent;
+        let to_group = scene.bodies[to].parent;
+        if from_group != to_group {
             let shaft = Shaft::read(&edge).unwrap();
-            assert!(shaft.segments.iter().any(|(segment, _)| {
-                segment.nearest(stitch, FLATNESS).distance_sq <= FLATNESS * FLATNESS
-            }));
-            stitches += 1;
+            for group in [from_group, to_group].into_iter().flatten() {
+                let stitch = vertices[1..vertices.len() - 1]
+                    .iter()
+                    .map(|point| edge.transform * Point::new(point.x, point.y))
+                    .find(|&point| contour_gap(&scene.bodies[group], point) <= FLATNESS)
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "Usecase edge {} has no route knot at group {group}",
+                            route.id
+                        )
+                    });
+                assert!(
+                    shaft.segments.iter().any(|(segment, _)| {
+                        segment.nearest(stitch, FLATNESS).distance_sq <= FLATNESS * FLATNESS
+                    }),
+                    "Usecase edge {} misses its route knot at group {group}",
+                    route.id
+                );
+                stitches += 1;
+            }
         }
         scene.edges.push(edge);
         if let Some(measured) = &route.label {
@@ -215,12 +332,13 @@ fn check_usecase_geometry(source: &str, look: &str) {
             });
         }
     }
-    assert_eq!(scene.edges.len(), 2);
-    assert_eq!(markers, 2);
-    assert_eq!(stitches, 1);
+    assert_eq!(scene.edges.len(), 6);
+    assert_eq!(markers, 6);
+    assert_eq!(generalizations, 1);
+    assert_eq!(stitches, 4);
     let report = validate(&scene);
-    assert_eq!(report.contacts_checked, 4);
-    assert_eq!(report.normals_checked, 4);
+    assert_eq!(report.contacts_checked, 12);
+    assert_eq!(report.normals_checked, 12);
     assert_eq!(report.markers_checked, markers);
     assert!(report.hard.is_empty(), "{look}: {:#?}", report.hard);
 }

@@ -1,6 +1,7 @@
 use super::{
     Body, CrossAxis, Edge, End, FLATNESS, Label, LabelOwner, PointMarker, Scene,
-    assert_same_bounds, rect_face_normal, svg_box, svg_group_transform, svg_number, validate,
+    assert_same_bounds, rect_face_normal, svg_box, svg_group_transform, svg_has_class,
+    svg_label_text, svg_number, validate,
 };
 use crate::environment::RenderEnvironment;
 use crate::model::{ErDiagramLayout, LayoutLabel};
@@ -125,6 +126,17 @@ fn check_er_geometry(source: &str, look: &str) -> [bool; 4] {
         let body = if node.is_cluster {
             Body::group(bounds)
         } else {
+            for label in painted
+                .descendants()
+                .filter(|child| child.has_tag_name("foreignObject"))
+            {
+                if !svg_label_text(label).trim().is_empty() {
+                    scene.labels.push(Label {
+                        owner: LabelOwner::Body(scene.bodies.len()),
+                        bounds: svg_box(label),
+                    });
+                }
+            }
             Body::node(bounds)
         };
         bodies.insert(node.id.as_str(), scene.bodies.len());
@@ -148,12 +160,15 @@ fn check_er_geometry(source: &str, look: &str) -> [bool; 4] {
                 .map_or(member, |entity| &entity.id);
             scene.bodies[bodies[id.as_str()]].parent = Some(parent);
         }
-        let bounds = svg_box(
-            element(&group.id)
-                .descendants()
-                .find(|child| child.has_tag_name("foreignObject"))
-                .unwrap(),
-        );
+        let title = element(&group.id)
+            .children()
+            .find(|child| svg_has_class(*child, "cluster-label"))
+            .unwrap()
+            .children()
+            .find(|child| child.has_tag_name("foreignObject"))
+            .unwrap();
+        assert_eq!(svg_label_text(title), group.title);
+        let bounds = svg_box(title);
         let cluster = layout
             .clusters
             .iter()

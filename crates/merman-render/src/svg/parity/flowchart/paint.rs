@@ -350,7 +350,7 @@ pub(super) fn prepare_edge_routes(
                 routes.push(route);
                 routed_edges.push((edge, offsets));
             }
-        } else if let Some(geom) = flowchart_compute_edge_path_geom(request, &mut scratch) {
+        } else if let Some(geom) = flowchart_compute_edge_path_geom(request, &mut scratch)? {
             cache.insert(
                 edge.key,
                 FlowchartEdgePathCacheEntry {
@@ -977,6 +977,60 @@ mod tests {
                 Ok(())
             })
         });
+    }
+
+    #[test]
+    fn canonical_route_failure_is_returned_by_the_svg_renderer() {
+        use crate::graph_layout::{
+            RouteAxes, RouteContract,
+            contour::ShapePortProfile,
+            ir::{Axis, Endpoint, Side},
+            route_paint::{Clearance, ObstacleOwner},
+        };
+        let mut layout: FlowchartLayout = serde_json::from_value(serde_json::json!({
+            "nodes": [
+                {"id":"A", "x":-20, "y":0, "width":40, "height":20, "is_cluster":false},
+                {"id":"B", "x":160, "y":60, "width":40, "height":20, "is_cluster":false}
+            ],
+            "edges": [
+                {"id":"audit", "from":"A", "to":"B", "points":[
+                    {"x":0,"y":0}, {"x":20,"y":0}, {"x":120,"y":60}, {"x":140,"y":60}
+                ]}
+            ],
+            "clusters": []
+        }))
+        .unwrap();
+        layout.edge_owners = crate::flowchart::FlowchartEdgeOwners::from_semantic_indices([0]);
+        layout.route_contract = RouteContract::CanonicalAxis {
+            clearance: Clearance::new(vec![(
+                kurbo::Rect::new(18., -2., 22., 2.),
+                ObstacleOwner::GroupTitle(0),
+            )]),
+            group_parents: Vec::new(),
+            border_stitches: Vec::new(),
+            nodes: vec![ShapePortProfile::rectangle(40., 20.); 2],
+            routes: vec![Some(RouteAxes {
+                endpoints: (Endpoint::Node(0), Endpoint::Node(1)),
+                ports: (Side::Right, Side::Left),
+                axes: vec![Axis::Horizontal; 4],
+            })],
+        };
+        with_layout(
+            "flowchart LR\nA audit@--> B",
+            Some(layout),
+            false,
+            |request, execution| {
+                let error = super::super::svg_emit::render_flowchart_svg_model(request, execution)
+                    .err()
+                    .unwrap();
+                assert!(matches!(
+                    error,
+                    Error::InvalidModel { message } if message.contains("`audit`") &&
+                        message.contains("no clear path between fixed route points")
+                ));
+                Ok(())
+            },
+        );
     }
 
     #[test]

@@ -1,6 +1,7 @@
 use super::{
     Body, CrossAxis, Edge, Label, LabelOwner, PointMarker, Scene, assert_same_bounds,
-    rect_face_normal, svg_box, svg_group_transform, svg_marker_scale, svg_number, validate,
+    rect_face_normal, svg_box, svg_group_transform, svg_label_text, svg_marker_scale, svg_number,
+    validate,
 };
 use crate::environment::RenderEnvironment;
 use crate::model::RequirementDiagramLayout;
@@ -88,6 +89,8 @@ fn check_requirement_geometry(source: &str, look: &str) {
             .descendants()
             .find(|item| item.attribute("id") == Some(id.as_str()))
             .unwrap();
+        assert_eq!(painted.attribute("data-et"), Some("node"));
+        assert_eq!(painted.attribute("data-id"), Some(node.id.as_str()));
         let outline = painted
             .children()
             .find(|item| {
@@ -108,15 +111,22 @@ fn check_requirement_geometry(source: &str, look: &str) {
         let owner = scene.bodies.len();
         bodies.insert(node.id.as_str(), owner);
         scene.bodies.push(Body::node(bounds));
+        let mut title_found = false;
         for label in painted
             .descendants()
             .filter(|item| item.has_tag_name("foreignObject"))
         {
+            let text = svg_label_text(label);
+            if text.trim().is_empty() {
+                continue;
+            }
+            title_found |= text.trim() == node.id;
             scene.labels.push(Label {
                 owner: LabelOwner::Body(owner),
                 bounds: svg_box(label),
             });
         }
+        assert!(title_found, "missing visible Requirement title {}", node.id);
     }
     assert_eq!(scene.bodies.len(), 3);
     assert_eq!(layout.edges.len(), model.relationships.len());

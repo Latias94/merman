@@ -623,11 +623,7 @@ fn write_state_edge_path(
         .map(|routes| {
             let origin = kurbo::Vec2::new(origin_x, origin_y);
             let outset = state_edge_stroke_outset(ctx, path_style.unwrap_or_default());
-            let geometry = routes
-                .paint(le, -origin, outset, RouteStyle::Curved)
-                .ok_or_else(|| Error::InvalidModel {
-                    message: format!("State edge `{edge_id}` has no canonical paint geometry"),
-                })?;
+            let geometry = routes.paint(le, -origin, outset, RouteStyle::Curved)?;
             let rough_d = if state_effective_look(ctx) == "handDrawn" {
                 work_meter.charge(geometry.path.d.len().max(1))?;
                 Some(super::super::canonical_rough::constrained_rough_edge_path(

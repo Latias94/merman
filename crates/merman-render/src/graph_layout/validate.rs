@@ -1,4 +1,4 @@
-//! Geometric acceptance checks on the visible shafts of a rendered graph.
+//! Geometric acceptance checks on the visible bodies, labels and shafts of a rendered graph.
 //!
 //! Populate one body, edge and label per visible occurrence, keeping the indices for diagnostics.
 //! Supply measured boxes and outer shape contours in the renderer's drawing frame, where the
@@ -70,6 +70,17 @@ pub(crate) struct Label {
     pub owner: LabelOwner,
     /// Measured bounds at the painted label position.
     pub bounds: Rect,
+}
+
+impl Label {
+    fn group_owner(self, bodies: &[Body]) -> Option<usize> {
+        match self.owner {
+            LabelOwner::Body(owner) if bodies.get(owner).is_some_and(|body| body.is_group) => {
+                Some(owner)
+            }
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -210,6 +221,10 @@ pub(crate) enum Violation {
         label: usize,
         node: usize,
     },
+    LabelGroupOverlap {
+        label: usize,
+        group: usize,
+    },
     OutsideGroup {
         item: Item,
         group: usize,
@@ -267,8 +282,7 @@ pub(crate) struct Report {
     pub crossings: Vec<(usize, usize)>,
     /// Indexed by edge occurrence. An unreadable or empty shaft has no metrics.
     pub edges: Vec<Option<EdgeMetrics>>,
-    /// All historical box pairs, including overlaps involving only body labels. Every overlap
-    /// involving an edge label also has a corresponding violation in `hard`.
+    /// Box pairs, including overlaps between ordinary node labels reported as metrics.
     pub label_overlaps: Vec<(usize, usize)>,
     pub label_node_overlaps: Vec<(usize, usize)>,
 }
@@ -423,10 +437,15 @@ fn check_labels(scene: &Scene<'_>, ancestry: &[Vec<usize>], report: &mut Report)
             Some(None) => {}
         }
         let edge_label = matches!(label.owner, LabelOwner::Edge(_));
+        let group_owner = label.group_owner(&scene.bodies);
         for (other, previous) in scene.labels[..id].iter().enumerate() {
             if interiors_overlap(label.bounds, previous.bounds) {
                 report.label_overlaps.push((other, id));
-                if edge_label || matches!(previous.owner, LabelOwner::Edge(_)) {
+                if edge_label
+                    || matches!(previous.owner, LabelOwner::Edge(_))
+                    || (label.owner != previous.owner
+                        && (group_owner.is_some() || previous.group_owner(&scene.bodies).is_some()))
+                {
                     report.hard.push(Violation::LabelOverlap {
                         first: other,
                         second: id,
@@ -434,16 +453,26 @@ fn check_labels(scene: &Scene<'_>, ancestry: &[Vec<usize>], report: &mut Report)
                 }
             }
         }
-        for (node, body) in scene.bodies.iter().enumerate() {
-            if !body.is_group
-                && label.owner != LabelOwner::Body(node)
-                && interiors_overlap(label.bounds, body.bounds)
+        for (body_id, body) in scene.bodies.iter().enumerate() {
+            if label.owner == LabelOwner::Body(body_id)
+                || !interiors_overlap(label.bounds, body.bounds)
             {
-                report.label_node_overlaps.push((id, node));
-                if edge_label {
-                    report
-                        .hard
-                        .push(Violation::LabelNodeOverlap { label: id, node });
+                continue;
+            }
+            if body.is_group {
+                if group_owner.is_some_and(|owner| !ancestry[owner].contains(&body_id)) {
+                    report.hard.push(Violation::LabelGroupOverlap {
+                        label: id,
+                        group: body_id,
+                    });
+                }
+            } else {
+                report.label_node_overlaps.push((id, body_id));
+                if edge_label || group_owner.is_some() {
+                    report.hard.push(Violation::LabelNodeOverlap {
+                        label: id,
+                        node: body_id,
+                    });
                 }
             }
         }
@@ -941,6 +970,7 @@ fn rect_face_normal(bounds: Rect, port: Point) -> Vec2 {
     any(
         feature = "diagram-er",
         feature = "diagram-requirement",
+        feature = "diagram-state",
         feature = "diagram-usecase"
     )
 ))]
@@ -956,11 +986,41 @@ fn svg_box(node: roxmltree::Node<'_, '_>) -> Rect {
     any(
         feature = "diagram-er",
         feature = "diagram-requirement",
+        feature = "diagram-state",
         feature = "diagram-usecase"
     )
 ))]
 fn svg_number(node: roxmltree::Node<'_, '_>, attribute: &str) -> f64 {
     node.attribute(attribute).unwrap_or("0").parse().unwrap()
+}
+
+#[cfg(all(
+    feature = "layout-shoal",
+    any(
+        feature = "diagram-er",
+        feature = "diagram-requirement",
+        feature = "diagram-state",
+        feature = "diagram-usecase"
+    )
+))]
+fn svg_label_text(node: roxmltree::Node<'_, '_>) -> String {
+    node.descendants()
+        .filter(roxmltree::Node::is_text)
+        .filter_map(|text| text.text())
+        .collect()
+}
+
+#[cfg(all(
+    feature = "layout-shoal",
+    any(
+        feature = "diagram-er",
+        feature = "diagram-state",
+        feature = "diagram-usecase"
+    )
+))]
+fn svg_has_class(node: roxmltree::Node<'_, '_>, name: &str) -> bool {
+    node.attribute("class")
+        .is_some_and(|classes| classes.split_ascii_whitespace().any(|class| class == name))
 }
 
 #[cfg(all(
@@ -983,6 +1043,7 @@ fn svg_marker_scale(marker: roxmltree::Node<'_, '_>) -> f64 {
     any(
         feature = "diagram-er",
         feature = "diagram-requirement",
+        feature = "diagram-state",
         feature = "diagram-usecase"
     )
 ))]

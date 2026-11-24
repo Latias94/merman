@@ -2,6 +2,7 @@ use super::*;
 use crate::model::LayoutPoint;
 use crate::usecase::{UsecaseEdgePlan, UsecaseMarker, canonical_route_style};
 use kurbo::{Rect, Vec2};
+use roughr::core::{RoughJsSeed, RoughMathRandom, RoughRandomness};
 use serde_json::Value;
 
 pub(super) struct PaintedEdge {
@@ -39,26 +40,30 @@ pub(super) fn prepare_edges(
     };
     let neo = config.get("look").and_then(Value::as_str) == Some("neo");
     let style = canonical_route_style(config);
+    let randomness = (prepared.css_binding.look == "handDrawn").then(|| {
+        let randomness =
+            options.rough_randomness(prepared.css_binding.hand_drawn_seed, "usecase-edge");
+        let seed = randomness.seed().number();
+        if seed == 0.0 {
+            randomness
+        } else {
+            RoughRandomness::new(RoughJsSeed::new(0.0), RoughMathRandom::new(seed.to_bits()))
+        }
+    });
     options.work_meter().charge(prepared.edges.len())?;
     let mut painted = Vec::with_capacity(prepared.edges.len());
     for (edge, plan) in prepared.layout.edges.iter().zip(&prepared.edges) {
         let width = stroke_width(prepared, plan);
         options.checkpoint_emit()?;
         options.work_meter().charge(edge.points.len())?;
-        let geometry = routes
-            .paint(edge, Vec2::ZERO, width / 2.0, style)
-            .ok_or_else(|| Error::InvalidModel {
-                message: format!("Usecase edge {} has no canonical paint geometry", edge.id),
-            })?;
-        let (path, path_bounds) = if prepared.css_binding.look == "handDrawn" {
-            let randomness =
-                options.rough_randomness(prepared.css_binding.hand_drawn_seed, "usecase-edge");
+        let geometry = routes.paint(edge, Vec2::ZERO, width / 2.0, style)?;
+        let (path, path_bounds) = if let Some(randomness) = &randomness {
             options.work_meter().charge(geometry.path.d.len())?;
             let path = super::super::canonical_rough::constrained_rough_edge_path(
                 &geometry.path.d,
                 geometry.markers,
                 options.work_meter(),
-                &randomness,
+                randomness,
             )?;
             let bounds = svg_path_bounds_from_d(&path).ok_or_else(|| Error::InvalidModel {
                 message: format!("Usecase edge {} has no hand-drawn path bounds", edge.id),

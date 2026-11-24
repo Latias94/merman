@@ -1,6 +1,28 @@
 use super::super::ir::Endpoint;
+use super::RoutePaintError;
 use kurbo::{CubicBez, Line, ParamCurve, PathSeg, Point, Rect, Vec2};
+use std::collections::VecDeque;
 use std::sync::Arc;
+
+const DETOUR_WORK_LIMIT: usize = 4096;
+
+pub(super) struct DetourBudget(usize);
+
+impl Default for DetourBudget {
+    fn default() -> Self {
+        Self(DETOUR_WORK_LIMIT)
+    }
+}
+
+impl DetourBudget {
+    fn visit(&mut self) -> Result<(), RoutePaintError> {
+        self.0 = self
+            .0
+            .checked_sub(1)
+            .ok_or(RoutePaintError::DetourBudgetExceeded)?;
+        Ok(())
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ObstacleOwner {
@@ -100,16 +122,32 @@ pub(crate) struct EdgeClearance<'a> {
 }
 
 impl EdgeClearance<'_> {
-    fn blocked(self, bounds: Rect, mut enters: impl FnMut(Rect) -> bool) -> bool {
+    fn blocked(self, bounds: Rect, enters: impl FnMut(Rect) -> bool) -> bool {
+        self.query(bounds, None, enters)
+            .expect("no detour budget is used for a clearance check")
+    }
+
+    fn query(
+        self,
+        bounds: Rect,
+        mut budget: Option<&mut DetourBudget>,
+        mut enters: impl FnMut(Rect) -> bool,
+    ) -> Result<bool, RoutePaintError> {
         let outset = self.stroke_outset;
         let query = (bounds + self.paint_to_layout).inflate(outset, outset);
         let mut at = 0;
         while let Some(branch) = self.tree.branches.get(at) {
+            if let Some(budget) = budget.as_deref_mut() {
+                budget.visit()?;
+            }
             if !overlaps(query, branch.bounds) {
                 at = branch.end;
                 continue;
             }
             for &(rect, owner) in &self.tree.boxes[branch.boxes.clone()] {
+                if let Some(budget) = budget.as_deref_mut() {
+                    budget.visit()?;
+                }
                 let own = match owner {
                     ObstacleOwner::Node(id) => {
                         self.endpoints.0 == Endpoint::Node(id)
@@ -122,12 +160,12 @@ impl EdgeClearance<'_> {
                     && overlaps(rect, query)
                     && enters((rect - self.paint_to_layout).inflate(outset, outset))
                 {
-                    return true;
+                    return Ok(true);
                 }
             }
             at += 1;
         }
-        false
+        Ok(false)
     }
 
     pub(super) fn blocks_cubic(self, curve: CubicBez) -> bool {
@@ -135,6 +173,101 @@ impl EdgeClearance<'_> {
             .union_pt(curve.p1)
             .union_pt(curve.p2);
         self.blocked(bounds, |rect| cubic_enters(curve, rect))
+    }
+
+    pub(super) fn blocks_line(self, from: Point, to: Point) -> bool {
+        self.blocked(Rect::from_points(from, to), |rect| {
+            line_enters(from, to, rect)
+        })
+    }
+
+    fn blocks_detour_leg(
+        self,
+        from: Point,
+        to: Point,
+        budget: &mut DetourBudget,
+    ) -> Result<bool, RoutePaintError> {
+        budget.visit()?;
+        self.query(Rect::from_points(from, to), Some(budget), |rect| {
+            line_enters(from, to, rect)
+        })
+    }
+
+    pub(super) fn detour(
+        self,
+        from: Point,
+        to: Point,
+        budget: &mut DetourBudget,
+    ) -> Result<Vec<Point>, RoutePaintError> {
+        for elbow in [Point::new(from.x, to.y), Point::new(to.x, from.y)] {
+            if !self.blocks_detour_leg(from, elbow, budget)?
+                && !self.blocks_detour_leg(elbow, to, budget)?
+            {
+                return Ok(vec![elbow, to]);
+            }
+        }
+        let mut bounds = Rect::from_points(from, to);
+        let mut points = Vec::new();
+        loop {
+            points.clear();
+            points.push(from);
+            let mut expanded = bounds;
+            let occupied = self.query(bounds, Some(budget), |rect| {
+                if line_enters(from, from, rect) || line_enters(to, to, rect) {
+                    return true;
+                }
+                expanded = expanded.union(rect);
+                points.extend([
+                    Point::new(rect.x0, rect.y0),
+                    Point::new(rect.x0, rect.y1),
+                    Point::new(rect.x1, rect.y0),
+                    Point::new(rect.x1, rect.y1),
+                ]);
+                false
+            })?;
+            if occupied {
+                return Err(RoutePaintError::NoClearDetour);
+            }
+            if let Some(path) = self.visible_path(&points, to, budget)? {
+                return Ok(path);
+            }
+            if expanded == bounds {
+                return Err(RoutePaintError::NoClearDetour);
+            }
+            bounds = expanded;
+        }
+    }
+
+    fn visible_path(
+        self,
+        points: &[Point],
+        to: Point,
+        budget: &mut DetourBudget,
+    ) -> Result<Option<Vec<Point>>, RoutePaintError> {
+        let mut pending = VecDeque::from([0]);
+        let mut parents = vec![None; points.len()];
+        parents[0] = Some(0);
+        while let Some(index) = pending.pop_front() {
+            let from = points[index];
+            if !self.blocks_detour_leg(from, to, budget)? {
+                let mut path = vec![to];
+                let mut current = index;
+                while current != 0 {
+                    path.push(points[current]);
+                    current = parents[current].expect("queued detour points have a parent");
+                }
+                path.reverse();
+                return Ok(Some(path));
+            }
+            for (next, parent) in parents.iter_mut().enumerate().skip(1) {
+                budget.visit()?;
+                if parent.is_none() && !self.blocks_detour_leg(from, points[next], budget)? {
+                    *parent = Some(index);
+                    pending.push_back(next);
+                }
+            }
+        }
+        Ok(None)
     }
 
     pub(super) fn blocks_quarter(self, start: Point, corner: Point, end: Point) -> bool {
@@ -165,6 +298,27 @@ impl EdgeClearance<'_> {
 
 fn overlaps(a: Rect, b: Rect) -> bool {
     a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0
+}
+
+fn line_enters(from: Point, to: Point, rect: Rect) -> bool {
+    let mut near: f64 = 0.0;
+    let mut far: f64 = 1.0;
+    for (start, delta, min, max) in [
+        (from.x, to.x - from.x, rect.x0, rect.x1),
+        (from.y, to.y - from.y, rect.y0, rect.y1),
+    ] {
+        if delta == 0.0 {
+            if start <= min || start >= max {
+                return false;
+            }
+        } else {
+            let a = (min - start) / delta;
+            let b = (max - start) / delta;
+            near = near.max(a.min(b));
+            far = far.min(a.max(b));
+        }
+    }
+    near < far
 }
 
 fn cubic_enters(curve: CubicBez, rect: Rect) -> bool {
@@ -199,6 +353,34 @@ fn cubic_enters(curve: CubicBez, rect: Rect) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn detour_search_stops_at_the_shared_visit_limit() {
+        let middle = Rect::new(45., 10., 95., 50.);
+        let walls = [
+            Rect::new(116., -2., 124., 6.),
+            Rect::new(16., 54., 24., 66.),
+        ];
+        let tree = Clearance::new(
+            std::iter::repeat_n(middle, DETOUR_WORK_LIMIT)
+                .chain(walls)
+                .map(|rect| (rect, ObstacleOwner::EdgeLabel(1)))
+                .collect(),
+        );
+        let guard = tree.for_edge(0, (Endpoint::Node(0), Endpoint::Node(1)), Vec2::ZERO, 1.);
+        let mut budget = DetourBudget::default();
+        let from = Point::new(20., 0.);
+        let to = Point::new(120., 60.);
+        assert_eq!(
+            guard.detour(from, to, &mut budget),
+            Err(RoutePaintError::DetourBudgetExceeded),
+        );
+        assert_eq!(budget.0, 0);
+        assert_eq!(
+            guard.detour(from, to, &mut budget),
+            Err(RoutePaintError::DetourBudgetExceeded),
+        );
+    }
 
     #[test]
     fn nested_spatial_branches_match_brute_force_and_prune_distant_leaves() {

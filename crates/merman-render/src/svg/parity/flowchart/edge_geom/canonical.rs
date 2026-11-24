@@ -14,7 +14,7 @@ pub(super) fn paint(
     axes: &RouteAxes,
     stitches: &[BorderStitch],
     clearance: &route_paint::Clearance,
-) -> Option<FlowchartEdgePathGeom> {
+) -> Result<FlowchartEdgePathGeom> {
     let FlowchartEdgePathGeomRequest {
         ctx,
         key,
@@ -23,9 +23,10 @@ pub(super) fn paint(
         origin_y,
         trace_enabled,
     } = request;
-    let solved = ctx.layout_edges_by_key.get(&key)?;
+    let invalid = || route_paint::RoutePaintError::InvalidGeometry.for_edge(&edge.id);
+    let solved = ctx.layout_edges_by_key.get(&key).ok_or_else(invalid)?;
     if axes.axes.len() != solved.points.len() || solved.points.len() < 2 {
-        return None;
+        return Err(invalid());
     }
     let mut points: Vec<_> = solved
         .points
@@ -75,21 +76,22 @@ pub(super) fn paint(
     };
     let last = points.len() - 1;
     let (source_profile, source_center, source_lead) =
-        terminal(axes.endpoints.0, axes.ports.0, points[0], points[1])?;
+        terminal(axes.endpoints.0, axes.ports.0, points[0], points[1]).ok_or_else(invalid)?;
     let (target_profile, target_center, target_lead) = terminal(
         axes.endpoints.1,
         axes.ports.1,
         points[last],
         points[last - 1],
-    )?;
+    )
+    .ok_or_else(invalid)?;
     contour::inset_endpoints(
         &mut points,
         (&source_profile, &source_center, axes.ports.0),
         (&target_profile, &target_center, axes.ports.1),
     );
     for stitch in stitches {
-        let (profile, center) = group_contour(stitch.group)?;
-        let port = points.get_mut(stitch.point)?;
+        let (profile, center) = group_contour(stitch.group).ok_or_else(invalid)?;
+        let port = points.get_mut(stitch.point).ok_or_else(invalid)?;
         *port = profile.contact(&center, stitch.side, *port);
     }
     let style = route_paint::RouteStyle::from_interpolate(
@@ -116,7 +118,8 @@ pub(super) fn paint(
                     .unwrap_or_default(),
             ),
         ),
-    )?;
+    )
+    .map_err(|error| error.for_edge(&edge.id))?;
     let data_points: Vec<_> = points
         .iter()
         .map(|p| crate::model::LayoutPoint { x: p.x, y: p.y })
@@ -142,7 +145,7 @@ pub(super) fn paint(
             points_for_data_points: &data_points,
         });
     }
-    Some(FlowchartEdgePathGeom {
+    Ok(FlowchartEdgePathGeom {
         d: painted.d,
         pb: Some(path_bounds::SvgPathBounds {
             min_x: painted.bounds.min_x,

@@ -48,6 +48,7 @@ pub(super) fn layout(
         &input.graph,
         &solved,
         &input.profiles,
+        |_| 0.0,
         input.edge_ids.iter().map(String::as_str),
         work,
     )?;

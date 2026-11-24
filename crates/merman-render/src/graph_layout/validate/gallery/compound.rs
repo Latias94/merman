@@ -159,8 +159,9 @@ impl Capture<'_> {
             Violation::LabelOverlap { first, second } => {
                 format!("{} / {}", self.label_name(first), self.label_name(second))
             }
-            Violation::LabelNodeOverlap { label, node } => {
-                format!("{} / {}", self.label_name(label), body(node))
+            Violation::LabelNodeOverlap { label, node }
+            | Violation::LabelGroupOverlap { label, group: node } => {
+                format!("{} overlaps {}", self.label_name(label), body(node))
             }
             Violation::ForeignNodeHit { edge: i, node } => {
                 format!("{} enters {}", edge(i), body(node))
@@ -198,7 +199,11 @@ impl Capture<'_> {
             if matches!(
                 (self.scene.labels[a].owner, self.scene.labels[b].owner),
                 (LabelOwner::Body(_), LabelOwner::Body(_))
-            ) {
+            ) && [a, b].into_iter().all(|label| {
+                self.scene.labels[label]
+                    .group_owner(&self.scene.bodies)
+                    .is_none()
+            }) {
                 self.failures.push(format!(
                     "label overlap: {} / {}",
                     self.label_name(a),
@@ -207,43 +212,15 @@ impl Capture<'_> {
             }
         }
         for (label, node) in report.label_node_overlaps {
-            if matches!(self.scene.labels[label].owner, LabelOwner::Body(_)) {
+            let node_label = self.scene.labels[label];
+            if matches!(node_label.owner, LabelOwner::Body(_))
+                && node_label.group_owner(&self.scene.bodies).is_none()
+            {
                 self.failures.push(format!(
                     "{} overlaps {}",
                     self.label_name(label),
                     self.body_names[node]
                 ));
-            }
-        }
-        for (index, _) in self
-            .scene
-            .bodies
-            .iter()
-            .enumerate()
-            .filter(|(_, b)| b.is_group)
-        {
-            for (label, title) in self
-                .scene
-                .labels
-                .iter()
-                .enumerate()
-                .filter(|(_, l)| l.owner == LabelOwner::Body(index))
-            {
-                for (child, body) in self
-                    .scene
-                    .bodies
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, b)| b.is_group && b.parent == Some(index))
-                {
-                    if super::super::interiors_overlap(title.bounds, body.bounds) {
-                        self.failures.push(format!(
-                            "{} overlaps nested group {}",
-                            self.label_name(label),
-                            self.body_names[child]
-                        ));
-                    }
-                }
             }
         }
         for index in 0..self.scene.edges.len() {
@@ -626,7 +603,7 @@ fn moving_only_painted_geometry_exposes_title_collision_and_disconnected_border(
         moved
             .failures
             .iter()
-            .any(|e| e.contains("one label overlaps c"))
+            .any(|e| e.contains("one label overlaps c: LabelNodeOverlap"))
     );
     assert!(
         moved

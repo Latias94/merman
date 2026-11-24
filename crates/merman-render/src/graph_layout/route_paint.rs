@@ -50,6 +50,41 @@ pub(crate) struct PaintedRoute {
     pub(crate) bounds: Bounds,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RoutePaintError {
+    InvalidGeometry,
+    NoClearDetour,
+    DetourBudgetExceeded,
+}
+
+impl std::fmt::Display for RoutePaintError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::InvalidGeometry => "invalid canonical route geometry",
+            Self::NoClearDetour => "no clear path between fixed route points",
+            Self::DetourBudgetExceeded => "canonical route detour budget exceeded",
+        })
+    }
+}
+
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-flowchart",
+    feature = "diagram-requirement",
+    feature = "diagram-state",
+    feature = "diagram-swimlane",
+    feature = "diagram-usecase"
+))]
+impl RoutePaintError {
+    pub(crate) fn for_edge(self, edge_id: &str) -> crate::Error {
+        crate::Error::InvalidModel {
+            message: format!("Could not paint canonical edge `{edge_id}`: {self}"),
+        }
+    }
+}
+
 fn outward(side: Side) -> Vec2 {
     match side {
         Side::Top => Vec2::new(0.0, -1.0),
@@ -210,6 +245,7 @@ struct Pen {
     bounds: Bounds,
     at: Point,
     finite: bool,
+    detour_budget: clearance::DetourBudget,
 }
 
 impl Pen {
@@ -224,6 +260,7 @@ impl Pen {
             },
             at: p,
             finite: p.is_finite(),
+            detour_budget: clearance::DetourBudget::default(),
         }
     }
 
@@ -259,7 +296,11 @@ impl Pen {
         self.at = end;
     }
 
-    fn sweep(&mut self, end: RoutePoint, clearance: Option<EdgeClearance<'_>>) {
+    fn sweep(
+        &mut self,
+        end: RoutePoint,
+        clearance: Option<EdgeClearance<'_>>,
+    ) -> Result<(), RoutePaintError> {
         let delta = position(end) - self.at;
         let (run, across) = match end.axis {
             Axis::Vertical => (delta.y, delta.x),
@@ -279,15 +320,30 @@ impl Pen {
                 target,
             )
         };
-        let scale = clearance.map_or(1., |guard| {
-            smoothing_scale(|scale| guard.blocks_cubic(curve(scale)))
-        });
-        if scale == 0. {
+        let scale = if let Some(guard) = clearance {
+            let Some(scale) = smoothing_scale(|scale| {
+                if scale == 0. {
+                    guard.blocks_line(self.at, target)
+                } else {
+                    guard.blocks_cubic(curve(scale))
+                }
+            }) else {
+                for point in guard.detour(self.at, target, &mut self.detour_budget)? {
+                    self.line(point);
+                }
+                return Ok(());
+            };
+            scale
+        } else {
+            1.0
+        };
+        if scale == 0.0 {
             self.line(target);
         } else {
-            let safe = curve(scale);
-            self.cubic(safe.p1, safe.p2, safe.p3);
+            let sweep = curve(scale);
+            self.cubic(sweep.p1, sweep.p2, sweep.p3);
         }
+        Ok(())
     }
 
     fn quarter_arc(&mut self, radius: f64, clockwise: bool, end: Point) {
@@ -321,9 +377,9 @@ fn right_angle(route: &[RoutePoint], i: usize) -> bool {
     (a.x == b.x && b.y == c.y) || (a.y == b.y && b.x == c.x)
 }
 
-fn smoothing_scale(blocked: impl Fn(f64) -> bool) -> f64 {
+fn smoothing_scale(blocked: impl Fn(f64) -> bool) -> Option<f64> {
     if !blocked(1.0) {
-        return 1.0;
+        return Some(1.0);
     }
     let mut safe: f64 = 0.0;
     let mut limit: f64 = 1.0;
@@ -335,7 +391,7 @@ fn smoothing_scale(blocked: impl Fn(f64) -> bool) -> f64 {
             safe = scale;
         }
     }
-    safe
+    (safe > 0.0 || !blocked(0.0)).then_some(safe)
 }
 
 fn draw_body(
@@ -343,7 +399,7 @@ fn draw_body(
     body: &[RoutePoint],
     style: RouteStyle,
     clearance: Option<EdgeClearance<'_>>,
-) {
+) -> Result<(), RoutePaintError> {
     for i in 1..body.len() {
         let p = position(body[i]);
         if matches!(style, RouteStyle::Curved | RouteStyle::Rounded(_)) && right_angle(body, i) {
@@ -365,6 +421,7 @@ fn draw_body(
                     smoothing_scale(|scale| {
                         guard.blocks_quarter(p - u * (r * scale), p, p + v * (r * scale))
                     })
+                    .unwrap_or(0.)
                 });
                 if r > 0.0 {
                     pen.line(p - u * r);
@@ -386,7 +443,7 @@ fn draw_body(
                     )
                 };
                 let scale = clearance.map_or(1., |guard| {
-                    smoothing_scale(|scale| guard.blocks_cubic(curve(scale)))
+                    smoothing_scale(|scale| guard.blocks_cubic(curve(scale))).unwrap_or(0.)
                 });
                 if scale == 0. {
                     pen.line(p);
@@ -397,11 +454,12 @@ fn draw_body(
                 pen.cubic(safe.p1, safe.p2, safe.p3);
             }
         } else if style == RouteStyle::Curved && !aligned(position(body[i - 1]), p) {
-            pen.sweep(body[i], clearance);
+            pen.sweep(body[i], clearance)?;
         } else {
             pen.line(p);
         }
     }
+    Ok(())
 }
 
 struct Terminal {
@@ -461,14 +519,14 @@ pub(crate) fn build_svg_path(
     markers: (Marker, Marker),
     stitches: &[BorderStitch],
     clearance: Option<EdgeClearance<'_>>,
-) -> Option<PaintedRoute> {
+) -> Result<PaintedRoute, RoutePaintError> {
     if points.len() < 2
         || [markers.0, markers.1]
             .iter()
             .any(|m| !m.trim.is_finite() || m.trim < 0.0 || !m.depth.is_finite() || m.depth < 0.0)
         || matches!(style, RouteStyle::Rounded(radius) if !radius.is_finite())
     {
-        return None;
+        return Err(RoutePaintError::InvalidGeometry);
     }
     let last = points.len() - 1;
     let start = Terminal {
@@ -495,7 +553,9 @@ pub(crate) fn build_svg_path(
         }
         draw_section(
             &mut pen,
-            points.get(begin..=finish)?,
+            points
+                .get(begin..=finish)
+                .ok_or(RoutePaintError::InvalidGeometry)?,
             (
                 (begin == 0).then_some(&start),
                 (finish == last).then_some(&end),
@@ -507,7 +567,7 @@ pub(crate) fn build_svg_path(
         )?;
         begin = finish;
     }
-    pen.finish()
+    pen.finish().ok_or(RoutePaintError::InvalidGeometry)
 }
 
 fn draw_section(
@@ -518,16 +578,18 @@ fn draw_section(
     route: &mut Vec<RoutePoint>,
     body: &mut Vec<RoutePoint>,
     clearance: Option<EdgeClearance<'_>>,
-) -> Option<()> {
+) -> Result<(), RoutePaintError> {
     route.clear();
     for &point in points {
         if !point.x.is_finite() || !point.y.is_finite() {
-            return None;
+            return Err(RoutePaintError::InvalidGeometry);
         }
         push_knot(route, point);
     }
     if route.len() < 2 {
-        return (terminals.0.is_none() && terminals.1.is_none()).then_some(());
+        return (terminals.0.is_none() && terminals.1.is_none())
+            .then_some(())
+            .ok_or(RoutePaintError::InvalidGeometry);
     }
     if style.stepped() {
         let markers = (
@@ -553,15 +615,15 @@ fn draw_section(
         // The two marker footprints consume the same runway. A reversed shaft would put both
         // SVG markers on the wrong side of their reference points.
         if gap < 0.0 {
-            return None;
+            return Err(RoutePaintError::InvalidGeometry);
         }
         if aligned(start.tip, end.tip) && (end.tip - start.tip).dot(start.normal) > 0.0 {
             // Opposed markers can share this one straight segment up to its full length.
             if gap < start.marker.depth.max(end.marker.depth).max(LEAD) {
-                return None;
+                return Err(RoutePaintError::InvalidGeometry);
             }
             pen.line(end.shaft_end());
-            return Some(());
+            return Ok(());
         }
     }
 
@@ -592,11 +654,11 @@ fn draw_section(
     if style.stepped() && has_offset_leg(body) {
         *body = steps(style, body, (None, None));
     }
-    draw_body(pen, body, style, clearance);
+    draw_body(pen, body, style, clearance)?;
     if let Some(end) = terminals.1 {
         pen.line(end.shaft_end());
     }
-    Some(())
+    Ok(())
 }
 
 #[cfg(test)]
@@ -774,6 +836,79 @@ mod tests {
             assert_eq!(segments(&result).first(), segments(&original).first());
             assert_eq!(segments(&result).last(), segments(&original).last());
         }
+    }
+
+    #[test]
+    fn a_blocked_sweep_and_chord_detour_without_moving_stitches_or_markers() {
+        use super::super::ir::Endpoint;
+        let points = [h(0., 0.), h(20., 0.), h(120., 60.), h(140., 60.)];
+        let stitches = [1, 2].map(|point| BorderStitch {
+            edge: 0,
+            group: point as u32,
+            point,
+            side: Side::Left,
+        });
+        let obstacles = [
+            kurbo::Rect::new(45., 10., 95., 50.),
+            kurbo::Rect::new(116., -2., 124., 6.),
+            kurbo::Rect::new(16., 54., 24., 66.),
+        ];
+        let tree = Clearance::new(
+            obstacles
+                .into_iter()
+                .map(|rect| (rect, ObstacleOwner::EdgeLabel(1)))
+                .collect(),
+        );
+        let markers = (marker(3., 8.), marker(2., 9.));
+        let path = build_svg_path(
+            &points,
+            (Side::Right, Side::Left),
+            RouteStyle::Curved,
+            markers,
+            &stitches,
+            Some(tree.for_edge(0, (Endpoint::Node(0), Endpoint::Node(1)), Vec2::ZERO, 1.)),
+        )
+        .unwrap();
+        assert_eq!(path.d.matches('M').count(), 1);
+        for obstacle in obstacles {
+            assert!(
+                !samples_inside(&path, obstacle.inflate(1., 1.)),
+                "{}",
+                path.d
+            );
+        }
+        let segments = segments(&path);
+        assert_eq!(segments[0].start(), Point::new(3., 0.));
+        assert_eq!(segments[0].end(), Point::new(11., 0.));
+        for stitch in stitches {
+            let port = position(points[stitch.point]);
+            assert!(
+                segments
+                    .windows(2)
+                    .any(|pair| pair[0].end() == port && pair[1].start() == port)
+            );
+        }
+        assert_eq!(segments.last().unwrap().start(), Point::new(129., 60.));
+        assert_eq!(segments.last().unwrap().end(), Point::new(138., 60.));
+    }
+
+    #[test]
+    fn a_fixed_sweep_point_inside_a_foreign_box_returns_an_error() {
+        use super::super::ir::Endpoint;
+        let points = [h(0., 0.), h(20., 0.), h(120., 60.), h(140., 60.)];
+        let tree = Clearance::new(vec![(
+            kurbo::Rect::new(18., -2., 22., 2.),
+            ObstacleOwner::GroupTitle(0),
+        )]);
+        let result = build_svg_path(
+            &points,
+            (Side::Right, Side::Left),
+            RouteStyle::Curved,
+            (marker(3., 8.), marker(2., 9.)),
+            &[],
+            Some(tree.for_edge(0, (Endpoint::Node(0), Endpoint::Node(1)), Vec2::ZERO, 1.)),
+        );
+        assert!(matches!(result, Err(RoutePaintError::NoClearDetour)));
     }
 
     #[test]
@@ -959,12 +1094,12 @@ mod tests {
         };
         let path = paint(&[h(0.0, 0.0), h(18.0, 0.0), h(26.0, 0.0)]).unwrap();
         assert_eq!(path.d, "M3,0L23,0");
-        assert!(paint(&[]).is_none());
-        assert!(paint(&[h(0.0, 0.0); 2]).is_none());
-        assert!(paint(&[h(0.0, 0.0), h(f64::NAN, 1.0)]).is_none());
-        assert!(paint(&[h(0.0, 0.0), h(5.0, 0.0)]).is_none());
-        assert!(paint(&[h(0.0, 0.0), h(19.0, 0.0)]).is_none());
-        assert!(paint(&[h(-f64::MAX, 2.0), h(f64::MAX, 1.0)]).is_none());
+        assert!(paint(&[]).is_err());
+        assert!(paint(&[h(0.0, 0.0); 2]).is_err());
+        assert!(paint(&[h(0.0, 0.0), h(f64::NAN, 1.0)]).is_err());
+        assert!(paint(&[h(0.0, 0.0), h(5.0, 0.0)]).is_err());
+        assert!(paint(&[h(0.0, 0.0), h(19.0, 0.0)]).is_err());
+        assert!(paint(&[h(-f64::MAX, 2.0), h(f64::MAX, 1.0)]).is_err());
     }
 
     #[test]

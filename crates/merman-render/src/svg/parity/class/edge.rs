@@ -163,16 +163,12 @@ pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
         let canonical = ctx
             .canonical_routes
             .map(|routes| {
-                routes
-                    .paint(
-                        e,
-                        kurbo::Vec2::new(ctx.content_tx, ctx.content_ty),
-                        stroke_outset,
-                        RouteStyle::Curved,
-                    )
-                    .ok_or_else(|| crate::Error::InvalidModel {
-                        message: format!("Class edge `{}` has no canonical paint geometry", e.id),
-                    })
+                routes.paint(
+                    e,
+                    kurbo::Vec2::new(ctx.content_tx, ctx.content_ty),
+                    stroke_outset,
+                    RouteStyle::Curved,
+                )
             })
             .transpose()?;
 

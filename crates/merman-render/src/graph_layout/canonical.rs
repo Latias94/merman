@@ -24,6 +24,7 @@ struct AxisPath {
 pub(crate) struct CanonicalRoutes {
     paths: FxHashMap<String, AxisPath>,
     stitches: Vec<BorderStitch>,
+    stitch_contacts: Vec<RoutePoint>,
     clearance: Clearance,
 }
 
@@ -39,6 +40,7 @@ impl CanonicalRoutes {
         graph: &MeasuredGraph,
         solved: &SolvedGraph,
         profiles: &[ShapePortProfile],
+        group_corner_radius: impl Fn(u32) -> f64,
         edge_ids: impl ExactSizeIterator<Item = &'id str>,
         work: &mut OperationLayoutWorkControl,
     ) -> Result<Self> {
@@ -55,6 +57,44 @@ impl CanonicalRoutes {
         }
         work.charge_adapter(work.checked_add(edge_ids.len(), solved.border_stitches.len())?)?;
         let mut paths = FxHashMap::with_capacity_and_hasher(edge_ids.len(), Default::default());
+        let mut stitch_contacts = Vec::with_capacity(solved.border_stitches.len());
+        let group_contact = |id, side, port| {
+            let radius = group_corner_radius(id);
+            if radius == 0.0 {
+                return port;
+            }
+            let rect = solved.groups[id as usize].rect;
+            let center = rect.center();
+            ShapePortProfile::rounded_rectangle(rect.width, rect.height, radius, radius).contact(
+                &LayoutPoint {
+                    x: center.x,
+                    y: center.y,
+                },
+                side,
+                port,
+            )
+        };
+        let contact = |endpoint, side, point, neighbor| match endpoint {
+            Endpoint::Node(id) => {
+                let index = id as usize;
+                let center = solved.nodes[index].center();
+                (
+                    profiles[index].contact(
+                        &LayoutPoint {
+                            x: center.x,
+                            y: center.y,
+                        },
+                        side,
+                        point,
+                    ),
+                    side,
+                )
+            }
+            Endpoint::Group(id) => (
+                group_contact(id, side, point),
+                route_paint::group_lead_side(side, point, neighbor),
+            ),
+        };
         let mut next_stitch = 0;
         for (occurrence, ((id, edge), measured)) in
             edge_ids.zip(&solved.edges).zip(&graph.edges).enumerate()
@@ -63,27 +103,25 @@ impl CanonicalRoutes {
             let [first, .., last] = edge.points.as_slice() else {
                 return Err(invalid("Missing canonical path terminals"));
             };
-            let (from, start_side) = contact(
-                solved,
-                profiles,
-                edge.source,
-                edge.ports.0,
-                *first,
-                edge.points[1],
-            );
+            let (from, start_side) = contact(edge.source, edge.ports.0, *first, edge.points[1]);
             let (to, end_side) = contact(
-                solved,
-                profiles,
                 edge.target,
                 edge.ports.1,
                 *last,
                 edge.points[edge.points.len() - 2],
             );
             let start_stitch = next_stitch;
-            next_stitch += solved.border_stitches[start_stitch..]
-                .iter()
-                .take_while(|stitch| stitch.edge == occurrence)
-                .count();
+            for stitch in &solved.border_stitches[start_stitch..] {
+                if stitch.edge != occurrence {
+                    break;
+                }
+                let &port = edge
+                    .points
+                    .get(stitch.point)
+                    .ok_or_else(|| invalid("Missing canonical group stitch"))?;
+                stitch_contacts.push(group_contact(stitch.group, stitch.side, port));
+                next_stitch += 1;
+            }
             let path = AxisPath {
                 occurrence,
                 endpoints: (edge.source, edge.target),
@@ -100,6 +138,7 @@ impl CanonicalRoutes {
         Ok(Self {
             paths,
             stitches: solved.border_stitches.clone(),
+            stitch_contacts,
             clearance: obstacles(solved, work)?,
         })
     }
@@ -110,11 +149,15 @@ impl CanonicalRoutes {
         translation: Vec2,
         stroke_outset: f64,
         style: RouteStyle,
-    ) -> Option<CanonicalPaintedEdge> {
-        let route = self.paths.get(&edge.id)?;
-        if route.axes.len() != edge.points.len() {
-            return None;
-        }
+    ) -> Result<CanonicalPaintedEdge> {
+        let missing = || Error::InvalidModel {
+            message: format!("Edge `{}` has no canonical paint geometry", edge.id),
+        };
+        let route = self
+            .paths
+            .get(&edge.id)
+            .filter(|route| route.axes.len() == edge.points.len())
+            .ok_or_else(missing)?;
         let translated = |p: RoutePoint| RoutePoint {
             x: p.x + translation.x,
             y: p.y + translation.y,
@@ -133,26 +176,36 @@ impl CanonicalRoutes {
             })
             .collect();
         let [start, .., end] = points.as_mut_slice() else {
-            return None;
+            return Err(missing());
         };
-        (*start, *end) = (translated(route.contacts.0), translated(route.contacts.1));
+        let contacts = (translated(route.contacts.0), translated(route.contacts.1));
+        (*start, *end) = contacts;
+        let stitches = &self.stitches[route.stitches.clone()];
+        for (stitch, &contact) in stitches
+            .iter()
+            .zip(&self.stitch_contacts[route.stitches.clone()])
+        {
+            points[stitch.point] = translated(contact);
+        }
         let (start_ref, start_lead) =
-            route_paint::marker_lead(*start, route.sides.0, route.markers.0);
-        let (end_ref, end_lead) = route_paint::marker_lead(*end, route.sides.1, route.markers.1);
+            route_paint::marker_lead(contacts.0, route.sides.0, route.markers.0);
+        let (end_ref, end_lead) =
+            route_paint::marker_lead(contacts.1, route.sides.1, route.markers.1);
         let path = route_paint::build_svg_path(
             &points,
             route.sides,
             style,
             route.markers,
-            &self.stitches[route.stitches.clone()],
+            stitches,
             Some(self.clearance.for_edge(
                 route.occurrence,
                 route.endpoints,
                 -translation,
                 stroke_outset,
             )),
-        )?;
-        Some(CanonicalPaintedEdge {
+        )
+        .map_err(|error| error.for_edge(&edge.id))?;
+        Ok(CanonicalPaintedEdge {
             path,
             marker_points: [start_ref, start_lead, end_lead, end_ref],
             data_points: points
@@ -161,34 +214,6 @@ impl CanonicalRoutes {
                 .collect(),
             markers: route.markers,
         })
-    }
-}
-
-fn contact(
-    solved: &SolvedGraph,
-    profiles: &[ShapePortProfile],
-    endpoint: Endpoint,
-    side: Side,
-    point: RoutePoint,
-    neighbor: RoutePoint,
-) -> (RoutePoint, Side) {
-    match endpoint {
-        Endpoint::Node(id) => {
-            let index = id as usize;
-            let center = solved.nodes[index].center();
-            (
-                profiles[index].contact(
-                    &LayoutPoint {
-                        x: center.x,
-                        y: center.y,
-                    },
-                    side,
-                    point,
-                ),
-                side,
-            )
-        }
-        Endpoint::Group(_) => (point, route_paint::group_lead_side(side, point, neighbor)),
     }
 }
 

@@ -7,8 +7,9 @@ use super::layout::{
     validate_state_parent_cycles,
 };
 use super::{
-    StateDiagramModel, StateEdgeStylePlan, StateLabelOwner, StateLabelSidecarBuilder, StateNode,
-    StateNodeStylePlan, StateStylePlan, state_value_to_label_text,
+    StateCompatibilityPlan, StateDiagramModel, StateEdgeStylePlan, StateLabelOwner,
+    StateLabelSidecarBuilder, StateNode, StateNodeStylePlan, StateStylePlan,
+    state_value_to_label_text,
 };
 use crate::graph_layout::canonical::CanonicalRoutes;
 use crate::graph_layout::contour::ShapePortProfile;
@@ -72,6 +73,7 @@ pub(crate) fn layout_state_diagram_shoal(
         &input.graph,
         &solved,
         &input.profiles,
+        |id| group_corner_radius(input.groups[id as usize].node, style_plan),
         input.edges.iter().map(|edge| edge.id.as_str()),
         &mut work,
     )?;
@@ -408,6 +410,30 @@ fn port_profile(node: &StateNode, size: Size, style_plan: &StateStylePlan) -> Sh
     }
 }
 
+fn group_corner_radius(node: &StateNode, style_plan: &StateStylePlan) -> f64 {
+    let compatibility = style_plan.compatibility();
+    if node.shape == "noteGroup" || compatibility.diagram_look().trim() == "handDrawn" {
+        return 0.0;
+    }
+    let style = style_plan.node(&node.id);
+    if node.shape == "divider" {
+        return style
+            .and_then(StateNodeStylePlan::radius_override)
+            .unwrap_or_default()
+            .max(0.0);
+    }
+    style
+        .and_then(StateNodeStylePlan::composite_outer_radius_override)
+        .unwrap_or_else(|| {
+            if compatibility.serialized_look.trim() == "neo" {
+                compatibility.neo_radius
+            } else {
+                StateCompatibilityPlan::CLASSIC_COMPOSITE_OUTER_RADIUS
+            }
+        })
+        .max(0.0)
+}
+
 impl MeasuredState<'_> {
     fn id(&self, endpoint: Endpoint) -> &str {
         match endpoint {
@@ -533,4 +559,110 @@ fn project(
         uses_elk_adapter_dom: false,
         elk_edge_paths: HashMap::new(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::environment::RenderEnvironment;
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use kurbo::{BezPath, ParamCurve};
+    use merman_core::{MermaidEngine, ParseOptions};
+
+    #[test]
+    fn neo_group_endpoint_and_stitch_reach_the_painted_corner() {
+        let source = "\
+---
+config:
+  layout: shoal
+  look: neo
+  themeVariables:
+    radius: 80
+---
+stateDiagram-v2
+state G {
+  direction TB
+  a --> b
+}
+G --> b
+b --> outside
+";
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let artifact = crate::family::prepare(
+            &parsed,
+            &crate::LayoutOptions::headless_svg_defaults(),
+            RenderEnvironment::deterministic().begin_session().unwrap(),
+        )
+        .unwrap();
+        let layout: StateDiagramLayout = serde_json::from_value(
+            artifact.layout_json().unwrap()["layout"]["StateDiagramV2"].clone(),
+        )
+        .unwrap();
+        let svg = artifact
+            .render_svg(&Default::default(), &Default::default())
+            .unwrap();
+        assert!(svg.svg().contains("rect.outer{rx:80px;ry:80px;"));
+        let document = crate::xml_dom::Document::parse(svg.svg()).unwrap();
+        let outer = document
+            .descendants()
+            .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some("outer"))
+            .unwrap();
+        let attr = |name| outer.attribute(name).unwrap().parse::<f64>().unwrap();
+        let radius = 80.0_f64.min(attr("width") / 2.0).min(attr("height") / 2.0);
+        let (left, top, bottom) = (attr("x"), attr("y"), attr("y") + attr("height"));
+        for (from, to, face) in [("G", "b", top), ("b", "outside", bottom)] {
+            let edge = layout
+                .edges
+                .iter()
+                .find(|e| e.from == from && e.to == to)
+                .unwrap();
+            let knot = edge.points.iter().position(|p| p.y == face).unwrap();
+            let path = document
+                .descendants()
+                .find(|node| {
+                    node.attribute("data-et") == Some("edge")
+                        && node.attribute("data-id") == Some(edge.id.as_str())
+                })
+                .unwrap();
+            let points: Vec<LayoutPoint> = serde_json::from_slice(
+                &STANDARD
+                    .decode(path.attribute("data-points").unwrap())
+                    .unwrap(),
+            )
+            .unwrap();
+            let point = &points[knot];
+            assert_eq!(point.x, edge.points[knot].x);
+            let across = left + radius - point.x;
+            assert!(0.0 < across && across < radius);
+            let inset = radius - (radius * radius - across * across).sqrt();
+            let expected = if face == top {
+                top + inset
+            } else {
+                bottom - inset
+            };
+            assert!(
+                (point.y - expected).abs() < 1e-9,
+                "{} failed to reach {expected}",
+                edge.id
+            );
+            let curves: Vec<_> = BezPath::from_svg(path.attribute("d").unwrap())
+                .unwrap()
+                .segments()
+                .collect();
+            let contact = kurbo::Point::new(point.x, point.y);
+            if knot == 0 {
+                assert_eq!(curves[0].start(), contact);
+            } else {
+                assert!(
+                    curves
+                        .windows(2)
+                        .any(|pair| pair[0].end() == contact && pair[1].start() == contact)
+                );
+            }
+        }
+    }
 }

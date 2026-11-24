@@ -573,8 +573,9 @@ where
     );
     let _ = write!(
         &mut css,
-        r#"#{} .statediagram-cluster rect.outer{{rx:5px;ry:5px;}}"#,
-        id
+        r#"#{} .statediagram-cluster rect.outer{{rx:{radius}px;ry:{radius}px;}}"#,
+        id,
+        radius = crate::state::StateCompatibilityPlan::CLASSIC_COMPOSITE_OUTER_RADIUS,
     );
     let _ = write!(
         &mut css,

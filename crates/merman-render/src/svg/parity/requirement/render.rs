@@ -30,14 +30,7 @@ fn paint_canonical_edge(
     use kurbo::{Point, Rect, Vec2};
 
     options.work_meter().charge(edge.points.len())?;
-    let geometry = routes
-        .paint(edge, Vec2::ZERO, stroke_outset, RouteStyle::Curved)
-        .ok_or_else(|| Error::InvalidModel {
-            message: format!(
-                "Requirement edge `{}` has no canonical paint geometry",
-                edge.id
-            ),
-        })?;
+    let geometry = routes.paint(edge, Vec2::ZERO, stroke_outset, RouteStyle::Curved)?;
     let shaft = geometry.path.bounds;
     let outset = stroke_outset * std::f64::consts::SQRT_2;
     let mut bounds =

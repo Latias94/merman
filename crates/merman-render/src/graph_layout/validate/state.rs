@@ -1,14 +1,15 @@
 use super::{
-    Body, CrossAxis, Edge, FLATNESS, Label, LabelOwner, PointMarker, Scene, rect_face_normal,
-    svg_group_transform, validate,
+    Body, CrossAxis, Edge, FLATNESS, Label, LabelOwner, PointMarker, Scene, assert_same_bounds,
+    rect_face_normal, svg_box, svg_group_transform, svg_has_class, svg_label_text, svg_number,
+    validate,
 };
 use crate::environment::RenderEnvironment;
-use crate::model::StateDiagramLayout;
+use crate::model::{LayoutLabel, StateDiagramLayout};
 use crate::{LayoutOptions, family};
 use kurbo::{BezPath, Circle, Point, Rect, Shape};
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_model::presentation::RenderSemanticModel;
-use roxmltree::Document;
+use roxmltree::{Document, Node};
 use std::collections::HashMap;
 
 #[test]
@@ -33,11 +34,40 @@ stateDiagram-v2
   Processing --> Completed : done
 "
         );
-        check_state_geometry(&source, look);
+        check_state_geometry(&source, look, 3, 0);
     }
 }
 
-fn check_state_geometry(source: &str, look: &str) {
+#[test]
+fn state_concurrent_regions_keep_the_composite_title_clear() {
+    for look in ["classic", "neo"] {
+        let source = format!(
+            "\
+---
+config:
+  layout: shoal
+  look: {look}
+  htmlLabels: true
+---
+stateDiagram-v2
+  [*] --> Processing
+  state Processing {{
+    direction LR
+    [*] --> Ready
+    Ready --> Running : begin
+    --
+    [*] --> Checking
+    Checking --> Audited : record
+    Audited --> [*]
+  }}
+  Processing --> Completed : done
+"
+        );
+        check_state_geometry(&source, look, 4, 2);
+    }
+}
+
+fn check_state_geometry(source: &str, look: &str, circles: usize, dividers: usize) {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
@@ -59,72 +89,104 @@ fn check_state_geometry(source: &str, look: &str) {
         .render_svg(&Default::default(), &Default::default())
         .unwrap();
     let doc = Document::parse(svg.svg()).unwrap();
+    let element = |id: &str, role: &str| {
+        doc.descendants()
+            .find(|node| {
+                node.attribute("data-et") == Some(role) && node.attribute("data-id") == Some(id)
+            })
+            .unwrap_or_else(|| panic!("missing painted State {role} {id}"))
+    };
     let mut scene = Scene::default();
     let mut bodies = HashMap::new();
+    let mut divider_count = 0;
+    let mut title_count = 0;
     for cluster in &layout.clusters {
+        let semantic = model
+            .nodes
+            .iter()
+            .find(|node| node.id == cluster.id)
+            .unwrap();
+        let divider = semantic.shape == "divider";
+        let role = if divider { "divider" } else { "cluster" };
+        let painted = element(&cluster.id, role);
+        let frame_class = if divider { "divider" } else { "outer" };
+        let frame = painted
+            .children()
+            .flat_map(|child| child.children())
+            .find(|child| child.has_tag_name("rect") && svg_has_class(*child, frame_class))
+            .unwrap();
+        let bounds = svg_box(frame);
+        assert_same_bounds(
+            bounds,
+            Rect::from_center_size((cluster.x, cluster.y), (cluster.width, cluster.height)),
+        );
         let owner = scene.bodies.len();
-        scene.bodies.push(Body::group(Rect::from_center_size(
-            (cluster.x, cluster.y),
-            (cluster.width, cluster.height),
-        )));
+        scene.bodies.push(Body::group(bounds));
         bodies.insert(cluster.id.as_str(), owner);
-        if cluster.title_label.width > 0.0 && cluster.title_label.height > 0.0 {
-            let label = &cluster.title_label;
-            let label_group = doc
-                .descendants()
-                .find(|node| {
-                    node.attribute("data-et") == Some("cluster")
-                        && node.attribute("data-id") == Some(cluster.id.as_str())
-                })
-                .unwrap()
-                .descendants()
-                .find(|node| node.attribute("class") == Some("cluster-label"))
-                .unwrap();
-            let center = svg_group_transform(label_group)
-                * Point::new(label.width * 0.5, label.height * 0.5);
-            assert!(center.distance(Point::new(label.x, label.y)) <= FLATNESS);
+        let title = painted
+            .children()
+            .find(|child| svg_has_class(*child, "cluster-label"));
+        if divider {
+            assert!(title.is_none(), "a concurrent region has no visible title");
+            divider_count += 1;
+        } else {
+            let title = title.unwrap();
+            assert_eq!(svg_label_text(title), cluster.id);
             scene.labels.push(Label {
                 owner: LabelOwner::Body(owner),
-                bounds: Rect::from_center_size(center, (label.width, label.height)),
+                bounds: state_title_box(title, &cluster.title_label),
             });
+            title_count += 1;
         }
     }
+    assert_eq!(divider_count, dividers);
+    assert_eq!(title_count, 1);
     let mut circle_count = 0;
     for node in layout.nodes.iter().filter(|node| !node.is_cluster) {
         let owner = scene.bodies.len();
-        let mut body = Body::node(Rect::from_center_size(
-            (node.x, node.y),
-            (node.width, node.height),
-        ));
+        let measured = Rect::from_center_size((node.x, node.y), (node.width, node.height));
         let semantic = model
             .nodes
             .iter()
             .find(|source| source.id == node.id)
             .unwrap();
-        if matches!(semantic.shape.as_str(), "stateStart" | "stateEnd") {
-            let painted = doc
-                .descendants()
-                .find(|element| {
-                    element.attribute("data-et") == Some("node")
-                        && element.attribute("data-id") == Some(node.id.as_str())
-                })
-                .unwrap();
-            body.contour = Some(terminal_contour(painted));
-            let center = body.contour.as_ref().unwrap().bounding_box().center();
+        let painted = element(&node.id, "node");
+        let body = if matches!(semantic.shape.as_str(), "stateStart" | "stateEnd") {
+            let contour = terminal_contour(painted);
+            let center = contour.bounding_box().center();
             assert!(center.distance(Point::new(node.x, node.y)) <= FLATNESS);
             circle_count += 1;
-        }
+            Body {
+                contour: Some(contour),
+                ..Body::node(measured)
+            }
+        } else {
+            let rect = painted
+                .children()
+                .find(|child| {
+                    child.has_tag_name("rect") && svg_has_class(*child, "label-container")
+                })
+                .unwrap();
+            let bounds = svg_box(rect);
+            assert_same_bounds(bounds, measured);
+            for label in painted
+                .descendants()
+                .filter(|child| child.has_tag_name("foreignObject"))
+            {
+                scene.labels.push(Label {
+                    owner: LabelOwner::Body(owner),
+                    bounds: svg_box(label),
+                });
+            }
+            Body::node(bounds)
+        };
         scene.bodies.push(body);
         bodies.insert(node.id.as_str(), owner);
     }
-    assert_eq!(circle_count, 3);
+    assert_eq!(circle_count, circles);
     for node in &model.nodes {
         if let Some(&owner) = bodies.get(node.id.as_str()) {
-            scene.bodies[owner].parent = node
-                .parent_id
-                .as_deref()
-                .and_then(|id| bodies.get(id))
-                .copied();
+            scene.bodies[owner].parent = node.parent_id.as_deref().map(|id| bodies[id]);
         }
     }
 
@@ -192,15 +254,9 @@ fn check_state_geometry(source: &str, look: &str) {
                         || node.attribute("class") == Some("background")
                 })
                 .unwrap();
-            let width: f64 = background.attribute("width").unwrap().parse().unwrap();
-            let height: f64 = background.attribute("height").unwrap().parse().unwrap();
-            let center = svg_group_transform(background) * Point::new(width / 2.0, height / 2.0);
-            assert!(center.distance(Point::new(label.x, label.y)) <= FLATNESS);
-            assert!((width - label.width).abs() <= FLATNESS);
-            assert!((height - label.height).abs() <= FLATNESS);
             scene.labels.push(Label {
                 owner: LabelOwner::Edge(occurrence),
-                bounds: Rect::from_center_size(center, (width, height)),
+                bounds: checked_label_box(svg_box(background), label),
             });
         }
     }
@@ -209,6 +265,37 @@ fn check_state_geometry(source: &str, look: &str) {
     assert_eq!(report.normals_checked, 2 * layout.edges.len());
     assert_eq!(report.markers_checked, layout.edges.len());
     assert!(report.hard.is_empty(), "{look}: {:#?}", report.hard);
+}
+
+fn state_title_box(title: Node<'_, '_>, label: &LayoutLabel) -> Rect {
+    let terminal = title.children().find(Node::is_element).unwrap();
+    let bounds = if terminal.has_tag_name("foreignObject") {
+        svg_box(terminal)
+    } else {
+        const NATIVE_FIXTURE_BASELINE: f64 = 14.0;
+        assert!(terminal.has_tag_name("text"));
+        let rows: Vec<_> = terminal.children().filter(Node::is_element).collect();
+        let [row] = rows.as_slice() else {
+            panic!("expected one native State title row");
+        };
+        assert!(row.has_tag_name("tspan"));
+        svg_group_transform(*row).transform_rect_bbox(Rect::from_origin_size(
+            (
+                svg_number(*row, "x"),
+                svg_number(*row, "y") - NATIVE_FIXTURE_BASELINE,
+            ),
+            (label.width, label.height),
+        ))
+    };
+    checked_label_box(bounds, label)
+}
+
+fn checked_label_box(bounds: Rect, label: &LayoutLabel) -> Rect {
+    assert_same_bounds(
+        bounds,
+        Rect::from_center_size((label.x, label.y), (label.width, label.height)),
+    );
+    bounds
 }
 
 fn terminal_contour(node: roxmltree::Node<'_, '_>) -> BezPath {
