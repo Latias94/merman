@@ -8,7 +8,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Experimental Shoal layout
 
-Choose `layout: shoal` for Flowchart, Agentflow, Class, State, ER, Requirement, or Usecase diagrams in a build with the `layout-shoal` feature. Shoal handles cycles and nested groups using the diagram's measured labels and shapes. Flowchart branches use smooth curves, and edges between sibling groups can follow a shared lane through both borders. Flowchart and Agentflow hosts can also fit graphs to a requested width and reuse placement hints while editing. [Usage and supported graphs](docs/FEATURES.md#try-the-experimental-shoal-layout)
+The hosted Playground includes experimental Shoal for the Merman SVG preview. Set `{"layout":"shoal"}` in **Config** to use it for the workspace. To carry the layout choice with a single diagram, set it in the frontmatter and leave `layout` out of **Config**. [Open the release workflow with Shoal](https://frankorz.com/merman/#s2:eJxdkM1uwyAQhF8FORdHsqXaafPDoVWVHHqqqraXyvaBwGKjUIgMbhrFefcCSRw1lwV25mMWDhHVDCIcpWlaKqoVFzUuFUKS7HVnMTKNJrJUQeZS72hDWos-V97j9qqGuFiGFbVA2L4aozR9dBLQjTksw4K2xJin4wkJDWfpv8D0yFhSQ_Hhq-MlEAPVje9V94iL3-IdfgTsECdCdi2YYAt4CDTfeuMu8hVZMPZGJh0Ttnj29aQEYwAbsY2Lt24thWmqsReDeRB9x-WHc6Mli4sXV70zDCrd21bAUU0sOJ-UeMQ5v6OQGNu6EDyaL6ZZnidUS93i0WSRkyz7h3KhXPYZZoznwAY4h9l8ur7A2ez-YUIH-PJNPvva9EMnftLzxaWKjn-hEqTh)
+
+Shoal supports Flowchart, Agentflow, Architecture, Block, C4, Class, State, ER, Requirement, Swimlane, and Usecase. Small cycles can center their main path and use rounded outside lanes for long return edges. Labels between adjacent ranks share one rank gap with room for arrows and bends. Crowded arrows can spread across adjacent faces, and edges between sibling groups can align through both borders. Architecture honors declared port faces, C4 routes across nested boundaries, Swimlane aligns work on a shared rank grid, and Block routes around obstacles on its authored grid. [Usage and supported graphs](docs/FEATURES.md#try-the-experimental-shoal-layout)
 
 ```text
 ---
@@ -21,17 +23,21 @@ flowchart TD
     Check -->|No| Review[Review failures]
 ```
 
-Save the example as `diagram.mmd` and run this command from the Merman checkout.
+Save the example as `diagram.mmd`, then build and run the CLI with `layout-shoal` from the Merman checkout.
 
 ```sh
 cargo run --locked -p merman-cli --features layout-shoal -- render diagram.mmd -f svg -o diagram.svg
 ```
 
+For a shared CLI default, save `{"layout":"shoal"}` in `mermaid.json` and pass `--config-file mermaid.json` to `render` or `batch` for supported diagrams. Run `merman-cli capabilities` to check for `layout-shoal`. Rust projects enable `features = ["layout-shoal"]` on the `merman` dependency and can set the same default with `MermaidEngine::with_site_config`. [Rust embedding guide](docs/rendering/RUST_EMBEDDING.md#replace-the-previous-renderer) · [Build Playground locally with Shoal](platforms/web/README.md#try-shoal-in-playground)
+
+Add `--fit-width --width 640` to fit the Flowchart to a 640 CSS pixel container. Shoal can reuse placement hints across edits. Flat diagrams also use the previous frame's positions to reduce movement. Use **Tools → Fit preview width** in the Merman SVG preview, or set `merman.preview.fitWidth` in VS Code with a Shoal-enabled CLI.
+
 <img width="450" alt="Release workflow laid out with Shoal, with separate branches for review and for publishing after smoke testing and audit" src="docs/rendering/shoal-release.png">
 
-The hosted Playground opens the full example with Dagre. Use the local Shoal-enabled Playground build to edit and render it with Shoal. [Open the example in Playground](https://frankorz.com/merman/#s2:eJxdkM1OwzAQhF_FSi6plEokhf7kAELtgRNCwAW5Obj2OrFq4ip2KKjpu2Nv2yB6Wds783nWPkTcCIiKSGqz5zVrHXlfrRtC_L6pIKFLXEkLTPyUIzIe33sJ-NYelriQHbP24XhCsOEt_QfYnljHKqBvoXpeA7NQXvmeTU-k-qav8KVgTyRTumvBog1xDLSfZusvCpU4sO5KZp1Qjj6GelLQiGCtdgl96TZa2bocBRHNgxg6Ph_PtdEioU--BicOqv3bViBJxRx4n9ZFLKW84ZBa1_qQIp4vplmep9xo0xbxZJGzLPuHStX47DMshMxBDHAOs_l0c4Gz2e3dhA_w5ZtC9l8zDJ2GSc8Xr5vo-As-0Zis) · [Build Playground with Shoal](platforms/web/README.md#try-shoal-in-playground)
+On an Apple M4 Pro, a nested Flowchart returned SVG in 0.426 ms with Shoal, 1.038 ms with Dagre, and 0.706 ms with ELK. A 75-node cyclic Flowchart took 1.303 ms, 4.260 ms, and 12.140 ms, respectively. These are native medians from one executable and matched inputs. The report also includes the four added diagram families and separate Node timings for Pele and Mermaid v13. [Benchmark results and samples](docs/performance/2026-11-24-shoal.md#shoal-v3-follow-up)
 
-In the recorded native benchmark on an Apple M4 Pro, a nested Flowchart took 0.501 ms with Shoal, 1.155 ms with Dagre, and 0.820 ms with ELK to return SVG. A 75-node cyclic graph took 1.341 ms, 4.444 ms, and 12.574 ms, respectively. The small control took about 0.13 ms on all three. These are medians from the same executable and inputs at the revision pinned in the report. [Benchmark results and samples](docs/performance/2026-11-24-shoal.md)
+Merman plans to make Shoal the default layout for supported diagrams when it adopts Mermaid v13 as its compatibility baseline.
 
 ### Changed
 

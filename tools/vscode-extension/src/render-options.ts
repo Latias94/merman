@@ -2,6 +2,10 @@ import type { ResolvedTheme, ThemeAppearance } from "./theme-selection.js";
 
 export type RenderFormat = "svg" | "ascii" | "unicode" | "png" | "pdf";
 
+export function isFitWidth(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
 export interface DiagramRenderSettings {
   theme?: string;
   themePreset?: string;

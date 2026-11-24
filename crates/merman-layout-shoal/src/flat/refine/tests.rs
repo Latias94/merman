@@ -1,6 +1,9 @@
-use super::super::{Csr, Link};
+use super::super::{BoundaryRank, Csr, Link};
 use super::*;
-use crate::{EdgeSpec, LayoutError, NodeId, NodeSpec, NoopWorkControl, Size, WorkControl};
+use crate::{
+    EdgeSpec, LayoutError, NodeId, NodeSpec, NoopWorkControl, OrderHint, Point, PositionHint, Size,
+    WorkControl,
+};
 
 struct Case {
     g: Expanded,
@@ -119,6 +122,98 @@ impl Case {
             work,
         )
     }
+}
+
+#[test]
+fn weighted_projection_pools_separated_centers_by_their_anchor_weights() {
+    let mut values = [72., 54.];
+    assert!(weighted_pava(
+        &mut values,
+        &[0., 20.],
+        Interval { lo: 0., hi: 120. },
+        ZeroGap::Ordered,
+        &mut Vec::new(),
+        |i| [9., 1.][i],
+    ));
+    assert!((values[0] - 68.2).abs() < 1e-10);
+    assert!((values[1] - 88.2).abs() < 1e-10);
+}
+
+#[test]
+fn full_anchor_weight_requires_unchanged_size_and_known_incident_signature() {
+    let size = Size {
+        width: 20.,
+        height: 30.,
+    };
+    let prior = PositionHint {
+        center: Point { x: 15., y: 35. },
+        size,
+        incident_signature: Some(42),
+    };
+    let mut node = NodeSpec::new(size, 0);
+    node.order_hint = Some(OrderHint {
+        rank: 1,
+        cross_key: 35.,
+    });
+    node.order_hint_direction = Some(Direction::Left);
+    node.set_position_hint(prior, Some(42));
+    assert_eq!(node.position_hint_in(Direction::Left, 1), Some((35., true)));
+
+    node.size.width += 5.;
+    assert_eq!(
+        node.position_hint_in(Direction::Left, 1),
+        Some((35., false))
+    );
+    node.size = size;
+    for signature in [Some(7), None] {
+        node.set_position_hint(prior, signature);
+        assert_eq!(
+            node.position_hint_in(Direction::Left, 1),
+            Some((35., false))
+        );
+    }
+}
+
+#[test]
+fn projection_respects_boundary_pins_group_proxies_and_protected_forks() {
+    let mut case = Case::new(6, &[&[0], &[1, 2, 3, 4], &[5]], &[&[0, 2], &[2, 5]]);
+    case.g.kind[0] = Kind::StartPort;
+    case.c.nodes[0].boundary = Some(BoundaryRank::Start);
+    case.c.nodes[3].pin = 1;
+    case.c.nodes[4].group_proxy = true;
+    for ((node, &rank), wanted) in case
+        .c
+        .nodes
+        .iter_mut()
+        .zip(&case.g.rank)
+        .zip([300., 130., 70., 70., 20., 140.])
+    {
+        node.order_hint = Some(OrderHint {
+            rank: rank as i32,
+            cross_key: wanted,
+        });
+        node.order_hint_direction = Some(Direction::Down);
+        node.set_position_hint(
+            PositionHint {
+                center: Point { x: wanted, y: 0. },
+                size: node.size,
+                incident_signature: Some(1),
+            },
+            Some(1),
+        );
+    }
+    let initial = [80., 10., 100., 200., 290., 140.];
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    work.charge(100).unwrap(); // Account for the required passes this fixture skips.
+    let mut s = case.geom(&initial, &mut work);
+    s.protected[1] = true;
+    mental_map::stabilize(&mut s, &case.c, Direction::Down, &case.options, &mut work).unwrap();
+    for v in [0, 1, 3, 4] {
+        assert_eq!(s.x[v], initial[v]);
+    }
+    assert!(s.x[2] < 80. && s.x[2] >= 40.);
+    assert!(work.editor_choice);
 }
 
 #[test]

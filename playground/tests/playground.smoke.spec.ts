@@ -11,6 +11,7 @@ import {
   replaceMermaidConfig,
   waitForPreviewSvg,
 } from "./helpers/playground";
+import { fullWebPackageProvenance } from "./helpers/web-package.ts";
 import { MERMAID_JS_VERSION } from "../src/generated/mermaid-reference";
 import { CANONICAL_RENDER_VIEWPORT } from "../src/runtime/render-viewport";
 
@@ -103,6 +104,36 @@ test("editing the source publishes the matching SVG without page overflow", asyn
   await expectNoDocumentOverflow(page);
   await expect(page.locator("header")).toBeVisible();
   await expect(page.locator("footer")).toBeVisible();
+  errors.assertNone();
+});
+
+test("the Playground selects Shoal from frontmatter or the workspace configuration", async ({ page }) => {
+  const provenance = await fullWebPackageProvenance();
+  test.skip(!provenance.runtime_capability_ids.includes("layout-shoal"), "Requires the Shoal WASM build.");
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await waitForPreviewSvg(page);
+
+  const tools = page.getByRole("button", { name: "Tools", exact: true });
+  const fitWidth = page.getByRole("menuitem", { name: "Fit preview width", exact: true });
+  for (const example of [
+    { sourceLayout: "shoal", config: null, label: "Frontmatter Shoal", fit: true },
+    { sourceLayout: null, config: '{ "layout": "shoal" }', label: "Workspace Shoal", fit: true },
+    { sourceLayout: "dagre", config: null, label: "Workspace override", fit: true },
+    { sourceLayout: "dagre", config: "{}", label: "Diagram Dagre", fit: false },
+  ]) {
+    if (example.config !== null) {
+      await replaceMermaidConfig(page, example.config);
+    }
+    const frontmatter = example.sourceLayout
+      ? `---\nconfig:\n  layout: ${example.sourceLayout}\n---\n`
+      : "";
+    await replaceEditorSource(page, `${frontmatter}flowchart TD\n  A[${example.label}] --> B`);
+    await expect.poll(() => previewSvgText(page)).toContain(example.label);
+    await tools.click();
+    await expect(fitWidth).toHaveCount(example.fit ? 1 : 0);
+    await page.keyboard.press("Escape");
+  }
   errors.assertNone();
 });
 

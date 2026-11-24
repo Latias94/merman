@@ -7,7 +7,10 @@ use crate::{
     WidthPolicy,
 };
 
+mod skyline;
+
 const PRECISION: LayoutError = LayoutError::InvalidInput("layout exceeds coordinate precision");
+type Placement = (Vec<Point>, Size);
 
 impl Drawing {
     fn transform(&mut self, direction: Direction, delta: Point) {
@@ -177,6 +180,21 @@ impl Tile {
             bounds,
         })
     }
+
+    /// Include empty swimlanes in the single tile and return its cross-axis translation.
+    pub(super) fn cover_columns(&mut self, span: f64, direction: Direction) -> LayoutResult<f64> {
+        let (start, length) = match direction.axis() {
+            crate::Axis::Vertical => (&mut self.bounds.x, &mut self.bounds.width),
+            crate::Axis::Horizontal => (&mut self.bounds.y, &mut self.bounds.height),
+        };
+        let end = (*start + *length).max(span);
+        *start = start.min(0.0);
+        *length = end - *start;
+        if !length.is_finite() {
+            return Err(PRECISION);
+        }
+        Ok(-*start)
+    }
 }
 
 fn shelves(
@@ -185,7 +203,7 @@ fn shelves(
     limit: f64,
     vertical: bool,
     work: &mut Work<'_>,
-) -> LayoutResult<(Vec<Point>, Size)> {
+) -> LayoutResult<Placement> {
     work.charge(tiles.len())?;
     let mut offsets = reserved(tiles.len())?;
     let (mut row, mut col, mut height, mut width) = (0.0_f64, 0.0_f64, 0.0_f64, 0.0_f64);
@@ -230,6 +248,52 @@ fn shelves(
     ))
 }
 
+fn aspect_measure(
+    tiles: &[Tile],
+    gap: f64,
+    vertical: bool,
+    work: &mut Work<'_>,
+) -> LayoutResult<(f64, f64)> {
+    let mut area = 0.0;
+    let mut widest = 0.0_f64;
+    for tile in tiles {
+        work.visit(1)?;
+        let b = tile.bounds;
+        area += (b.width + gap) * (b.height + gap);
+        widest = widest.max(if vertical { b.height } else { b.width });
+    }
+    Ok((area, widest))
+}
+
+fn aspect_shelves(
+    tiles: &[Tile],
+    gap: f64,
+    limit: f64,
+    vertical: bool,
+    log_cross_ratio: f64,
+    work: &mut Work<'_>,
+) -> LayoutResult<Placement> {
+    let wrap = shelves(tiles, gap, limit, vertical, work)?;
+    let strip = shelves(tiles, gap, f64::INFINITY, vertical, work)?;
+    let error = |s: Size| {
+        let (w, h) = if vertical {
+            (s.height, s.width)
+        } else {
+            (s.width, s.height)
+        };
+        if w > 0.0 && h > 0.0 {
+            ((w / h).ln() - log_cross_ratio).abs()
+        } else {
+            f64::INFINITY
+        }
+    };
+    Ok(if error(strip.1) < error(wrap.1) {
+        strip
+    } else {
+        wrap
+    })
+}
+
 pub(super) fn assemble(
     tiles: Vec<Tile>,
     graph: &Graph,
@@ -243,37 +307,12 @@ pub(super) fn assemble(
         PackingPolicy::Strip => shelves(&tiles, gap, f64::INFINITY, horizontal, work)?,
         PackingPolicy::FitWidth { max_width } => shelves(&tiles, gap, max_width, false, work)?,
         PackingPolicy::AspectTargeted { target_ratio } => {
-            let mut area = 0.0;
-            let mut widest = 0.0_f64;
-            for tile in &tiles {
-                work.visit(1)?;
-                area += (tile.bounds.width + gap) * (tile.bounds.height + gap);
-                widest = widest.max(if horizontal {
-                    tile.bounds.height
-                } else {
-                    tile.bounds.width
-                });
-            }
+            let (area, widest) = aspect_measure(&tiles, gap, horizontal, work)?;
             let limit = (area * target_ratio).sqrt().max(widest);
-            let wrap = shelves(&tiles, gap, limit, horizontal, work)?;
-            let strip = shelves(&tiles, gap, f64::INFINITY, horizontal, work)?;
-            let error = |s: Size| {
-                let (w, h) = if horizontal {
-                    (s.height, s.width)
-                } else {
-                    (s.width, s.height)
-                };
-                if w > 0.0 && h > 0.0 {
-                    ((w / h).ln() - target_ratio.ln()).abs()
-                } else {
-                    f64::INFINITY
-                }
-            };
-            if error(strip.1) < error(wrap.1) {
-                strip
-            } else {
-                wrap
-            }
+            aspect_shelves(&tiles, gap, limit, horizontal, target_ratio.ln(), work)?
+        }
+        PackingPolicy::BalancedAspect { target_ratio } => {
+            skyline::balanced(&tiles, gap, target_ratio, horizontal, work)?
         }
     };
     let mut nodes = filled(graph.nodes.len(), Rect::default())?;

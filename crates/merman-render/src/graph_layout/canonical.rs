@@ -24,6 +24,7 @@ struct AxisPath {
 
 #[derive(Debug)]
 pub(crate) struct CanonicalRoutes {
+    pub(crate) placement: crate::layout_frame::GraphPlacement,
     paths: FxHashMap<String, AxisPath>,
     stitches: Vec<BorderStitch>,
     stitch_contacts: Vec<RoutePoint>,
@@ -35,6 +36,26 @@ pub(crate) struct CanonicalPaintedEdge {
     pub(crate) marker_points: [LayoutPoint; 4],
     pub(crate) data_points: Vec<LayoutPoint>,
     pub(crate) markers: (Marker, Marker),
+}
+
+#[cfg(any(
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-requirement",
+    feature = "diagram-state",
+    feature = "diagram-usecase"
+))]
+impl super::RouteContract {
+    pub(crate) fn canonical_graph(routes: CanonicalRoutes) -> Self {
+        Self::CanonicalGraph(std::sync::Arc::new(routes))
+    }
+
+    pub(crate) fn canonical_routes(&self) -> Option<&CanonicalRoutes> {
+        match self {
+            Self::CanonicalGraph(routes) => Some(routes),
+            _ => None,
+        }
+    }
 }
 
 impl CanonicalRoutes {
@@ -138,6 +159,7 @@ impl CanonicalRoutes {
             }
         }
         Ok(Self {
+            placement: Default::default(),
             paths,
             stitches: solved.border_stitches.clone(),
             stitch_contacts,

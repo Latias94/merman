@@ -44,12 +44,7 @@ impl ArchitectureRenderSettings {
             padding_px: binding.padding_px,
             arch_font_size_px: binding.arch_font_size_px,
             use_max_width: binding.use_max_width,
-            text_style: TextStyle {
-                font_family: Some(typography.font_family_css().to_owned()),
-                font_size: typography.font_size_px(),
-                font_weight: None,
-                font_style: None,
-            },
+            text_style: typography.svg_text_style(),
             compound_text_style: crate::architecture::architecture_cytoscape_text_style(
                 binding.arch_font_size_px,
             ),

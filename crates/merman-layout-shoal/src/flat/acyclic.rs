@@ -4,6 +4,8 @@ use super::{Csr, Link};
 use crate::work::{LayoutResult, Work, filled, reserved};
 use crate::{CyclePolicy, LayoutError, NodeSpec, WorkError};
 
+mod anchored;
+
 #[derive(Debug)]
 pub(super) struct Orientation {
     /// `reversed[i]` describes `links[i]`, independently of its semantic edge handle.
@@ -79,7 +81,7 @@ pub(super) fn orient(
     let components = tarjan(n, links, &outgoing, work)?;
     work.charge(n)?;
     let mut strategy = match policy {
-        CyclePolicy::SccGreedyFas => {
+        CyclePolicy::HybridAdaptive | CyclePolicy::SccGreedyFas => {
             let incoming = Csr::new(n, links.iter().map(|e| e.to), work)?;
             Strategy::Greedy {
                 incoming,
@@ -106,7 +108,11 @@ pub(super) fn orient(
         };
         match &mut strategy {
             Strategy::Greedy { incoming, degrees } => {
-                graph.greedy(scc, incoming, degrees, &mut topo, work)?
+                if policy != CyclePolicy::HybridAdaptive
+                    || !anchored::append_order(&graph, scc, incoming, &mut topo, work)?
+                {
+                    graph.greedy(scc, incoming, degrees, &mut topo, work)?;
+                }
             }
             Strategy::Dfs { seen, frames } => graph.dfs(scc, seen, frames, &mut topo, work)?,
         }
@@ -657,7 +663,11 @@ mod tests {
         Ok((result, meter.used))
     }
 
-    const POLICIES: [CyclePolicy; 2] = [CyclePolicy::SccGreedyFas, CyclePolicy::SccDfs];
+    const POLICIES: [CyclePolicy; 3] = [
+        CyclePolicy::HybridAdaptive,
+        CyclePolicy::SccGreedyFas,
+        CyclePolicy::SccDfs,
+    ];
 
     #[test]
     fn dag_and_empty_fast_paths_return_an_unflipped_permutation() {
@@ -671,6 +681,18 @@ mod tests {
             );
             assert_eq!(dag.cyclic_sccs, 0);
             assert!(dag.reversed.iter().all(|&r| !r));
+        }
+    }
+
+    #[test]
+    fn a_shortcut_does_not_reverse_the_tail_of_an_entry_anchored_cycle() {
+        let nodes = nodes(5);
+        let mut links = links(&[(0, 1), (1, 2), (2, 3), (3, 4), (4, 0), (1, 4)]);
+        for _ in 0..2 {
+            let oriented = run(&nodes, &links, CyclePolicy::HybridAdaptive);
+            assert_eq!(oriented.topo, [0, 1, 2, 3, 4]);
+            assert_eq!(feedback(&links, &oriented), [1004]);
+            links.reverse();
         }
     }
 
@@ -708,6 +730,50 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn default_starts_small_cycles_at_the_declared_entry_or_first_external_entry() {
+        let nodes = nodes(10);
+        let mut links = links(&[
+            (0, 1),
+            (1, 2),
+            (2, 3),
+            (3, 4),
+            (4, 5),
+            (5, 6),
+            (6, 7),
+            (7, 0),
+            (5, 2),
+            (0, 2),
+            (1, 7),
+            (3, 5),
+        ]);
+        let pure = run(&nodes[..8], &links, CyclePolicy::default());
+        assert_eq!(pure.topo, [0, 1, 2, 3, 4, 5, 6, 7]);
+        assert_eq!(feedback(&links, &pure), [1007, 1008]);
+
+        links.extend(
+            [(8, 7), (9, 4)]
+                .into_iter()
+                .enumerate()
+                .map(|(i, (from, to))| Link {
+                    from,
+                    to,
+                    edge: 1012 + i as u32,
+                    span: 1,
+                    weight: 1.0,
+                }),
+        );
+        let entered = run(&nodes, &links, CyclePolicy::default());
+        assert_eq!(entered.topo.iter().find(|&&v| v < 8), Some(&4));
+        assert!(feedback(&links, &entered).iter().all(|&e| e < 1012));
+
+        let expected = feedback(&links, &entered);
+        links.reverse();
+        let reversed = run(&nodes, &links, CyclePolicy::default());
+        assert_eq!(feedback(&links, &reversed), expected);
+        assert_eq!(reversed.topo, entered.topo);
     }
 
     #[test]
@@ -1082,11 +1148,14 @@ mod tests {
                 for (e, &flip) in links.iter().zip(&oriented.reversed) {
                     assert!(!flip || same(e.from as usize, e.to as usize), "mask {mask}");
                 }
-                if policy == CyclePolicy::SccGreedyFas {
+                if policy != CyclePolicy::SccDfs {
                     let expected = feedback(&links, &oriented);
                     links.reverse();
                     let permuted = run(&nodes, &links, policy);
                     assert_eq!(feedback(&links, &permuted), expected, "mask {mask}");
+                    if (1..4).all(|v| same(0, v)) {
+                        assert_eq!(permuted.topo, oriented.topo, "mask {mask}");
+                    }
                 }
             }
         }
@@ -1104,6 +1173,27 @@ mod tests {
                 feedback(&links, &result),
                 vec![links[(N - 1) as usize].edge]
             );
+        }
+    }
+
+    #[test]
+    fn large_cycles_keep_the_same_greedy_feedback_and_work() {
+        let nodes = nodes(100);
+        let mut links = links(
+            &(0..100)
+                .flat_map(|v| [(v, (v + 1) % 100), (v, (v + 7) % 100)])
+                .collect::<Vec<_>>(),
+        );
+        for _ in 0..2 {
+            let measured = |policy| {
+                with_budget(usize::MAX, |work| orient(&nodes, &links, policy, work)).unwrap()
+            };
+            let (hybrid, hybrid_work) = measured(CyclePolicy::HybridAdaptive);
+            let (greedy, greedy_work) = measured(CyclePolicy::SccGreedyFas);
+            assert_eq!(hybrid.topo, greedy.topo);
+            assert_eq!(hybrid.reversed, greedy.reversed);
+            assert_eq!(hybrid_work, greedy_work);
+            links.reverse();
         }
     }
 

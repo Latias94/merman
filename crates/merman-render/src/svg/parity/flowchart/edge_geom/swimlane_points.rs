@@ -84,6 +84,8 @@ mod tests {
             lanes: Vec::new(),
             edges: Vec::new(),
             edge_owners: Default::default(),
+            #[cfg(feature = "layout-shoal")]
+            shoal: None,
             bounds: None,
         };
         let session = RenderEnvironment::deterministic().begin_session().unwrap();
@@ -111,7 +113,7 @@ mod tests {
             &model,
             &metadata.effective_config,
             &prepared_theme.compatibility,
-            layout.uses_elk_adapter_dom,
+            layout.route_contract.is_elk_parity(),
             sidecar.base_typography(),
             sidecar.edge_label_padding(),
         );

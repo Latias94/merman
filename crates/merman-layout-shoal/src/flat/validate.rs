@@ -35,7 +35,10 @@ pub(crate) fn validate_options(options: &Options) -> LayoutResult<()> {
     }
     let positive = |v: f64| v.is_finite() && v > 0.0;
     match options.packing {
-        PackingPolicy::AspectTargeted { target_ratio } if !positive(target_ratio) => {
+        PackingPolicy::AspectTargeted { target_ratio }
+        | PackingPolicy::BalancedAspect { target_ratio }
+            if !positive(target_ratio) =>
+        {
             return Err(LayoutError::InvalidInput("invalid aspect target"));
         }
         PackingPolicy::FitWidth { max_width } if !positive(max_width) => {

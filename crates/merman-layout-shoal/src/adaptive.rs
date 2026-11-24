@@ -205,6 +205,7 @@ pub(super) fn copy_graph(graph: &Graph, work: &mut Work<'_>) -> LayoutResult<Gra
         nodes: copy(&graph.nodes, work)?,
         groups: copy(&graph.groups, work)?,
         edges: copy(&graph.edges, work)?,
+        lane_order: copy(&graph.lane_order, work)?,
     })
 }
 

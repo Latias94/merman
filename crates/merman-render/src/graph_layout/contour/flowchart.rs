@@ -177,7 +177,11 @@ impl ShapePortProfile {
                     width: w,
                     height: h,
                 };
-                Self::new(Outline::Polygon(shape.outline()), w - h, 0.0)
+                Self::new(
+                    Outline::Polygon(shape.outline()),
+                    w - h,
+                    h * super::ROUNDED_PORT_FRACTION,
+                )
             }
             S::Anchor => circle(1.0),
             S::FilledCircle | S::SmallCircle | S::FramedCircle => circle(7.0),

@@ -59,7 +59,10 @@ pub use icon_registry::{
     IconRegistryBuilder, IconRegistryResourceLimitDescriptor, IconRegistryResourceLimitId,
     icon_registry_resource_limit_descriptors,
 };
-#[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
+#[cfg(all(
+    feature = "diagram-architecture",
+    any(feature = "layout-cytoscape", feature = "layout-shoal")
+))]
 pub(crate) use parity::render_architecture_family_artifact;
 pub(crate) use parity::theme as render_theme;
 pub use parity::*;

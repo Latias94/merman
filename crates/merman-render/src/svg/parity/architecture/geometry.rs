@@ -18,13 +18,7 @@ pub(super) fn arrow_shift(dir: char, orig: f64, arrow_size: f64) -> f64 {
     }
 }
 
-pub(super) fn extend_bounds(bounds: &mut Option<Bounds>, other: Bounds) {
-    let b = bounds.get_or_insert(other.clone());
-    b.min_x = b.min_x.min(other.min_x);
-    b.min_y = b.min_y.min(other.min_y);
-    b.max_x = b.max_x.max(other.max_x);
-    b.max_y = b.max_y.max(other.max_y);
-}
+pub(super) use crate::architecture_metrics::extend_bounds;
 
 pub(super) fn bounds_from_rect(x: f64, y: f64, w: f64, h: f64) -> Bounds {
     Bounds {

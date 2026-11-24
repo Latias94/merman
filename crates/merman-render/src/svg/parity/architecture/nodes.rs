@@ -11,16 +11,21 @@ use super::geometry::{GroupRect, extend_bounds};
 use super::icons::{
     arch_icon_needs_id_scope, write_arch_icon_svg, write_arch_icon_svg_with_registry,
 };
-use super::labels::{
-    ArchitectureTextAnchor, ArchitectureTextBaseline, architecture_svg_text_terminal_bounds,
-    wrap_svg_words_to_lines, write_architecture_service_title, write_svg_text_lines,
-};
+#[cfg(feature = "layout-shoal")]
+use super::labels::{ArchitectureTextWriterEmission, write_architecture_centered_text};
+use super::labels::{write_architecture_service_title, write_svg_text_lines};
 use super::settings::ArchitectureRenderSettings;
+use crate::architecture::labels::{
+    ArchitectureTextAnchor, ArchitectureTextBaseline, architecture_svg_text_terminal_bounds,
+    wrap_svg_words_to_lines,
+};
 
 pub(super) struct ArchitectureNodeRenderContext<'a, O: SvgOutput> {
     pub(super) out: &'a mut O,
     pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) model: &'a ArchitectureDiagramModel,
+    #[cfg(feature = "layout-shoal")]
+    pub(super) shoal: Option<&'a crate::architecture::ArchitectureShoalGeometry>,
     pub(super) node_xy: &'a rustc_hash::FxHashMap<&'a str, (f64, f64)>,
     pub(super) settings: &'a ArchitectureRenderSettings,
     pub(super) text_measurer: &'a dyn TextMeasurer,
@@ -112,10 +117,11 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
         out.push_str(r#"<g class="architecture-services"/>"#);
     } else {
         out.push_str(r#"<g class="architecture-services">"#);
-        for (service_index, svc) in model
+        for (service_index, (_node_index, svc)) in model
             .nodes
             .iter()
-            .filter(|node| node.node_type == ArchitectureNodeKind::Service)
+            .enumerate()
+            .filter(|(_, node)| node.node_type == ArchitectureNodeKind::Service)
             .enumerate()
         {
             checkpoints.checkpoint()?;
@@ -126,10 +132,15 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
             checkpoints.checkpoint()?;
             let _ = write!(
                 out,
-                r#"" class="architecture-service" transform="translate({x},{y})">"#,
+                r#"" class="architecture-service" transform="translate({x},{y})""#,
                 x = fmt(x),
                 y = fmt(y)
             );
+            #[cfg(feature = "layout-shoal")]
+            if ctx.shoal.is_some() {
+                super::write_geometry_attrs(out, "node", &svc.id);
+            }
+            out.push('>');
 
             let has_icon_text = architecture_service_has_icon_text(svc);
             let has_background = svc.icon.is_none() && !has_icon_text;
@@ -139,29 +150,53 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
             let service_background_style = surface_styles
                 .as_deref()
                 .and_then(|styles| styles.service_background_style(service_index));
-            let service_title_emission = svc
-                .title
-                .as_deref()
-                .map(str::trim)
-                .filter(|t| !t.is_empty())
-                .map(|title| {
-                    // Mermaid uses `width = iconSize * 1.5` for service titles.
-                    write_architecture_service_title(
+            let mut legacy_title = || {
+                svc.title
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|t| !t.is_empty())
+                    .map(|title| {
+                        // Mermaid uses `width = iconSize * 1.5` for service titles.
+                        write_architecture_service_title(
+                            out,
+                            title,
+                            #[cfg(merman_internal_theme_acceptance)]
+                            x,
+                            #[cfg(merman_internal_theme_acceptance)]
+                            y,
+                            settings.icon_size_px,
+                            settings.icon_size_px * 1.5,
+                            text_measurer,
+                            &settings.text_style,
+                            service_title_style,
+                            #[cfg(merman_internal_theme_acceptance)]
+                            surface_styles.is_some(),
+                        )
+                    })
+            };
+            #[cfg(feature = "layout-shoal")]
+            let service_title_emission = if let Some(geometry) = ctx.shoal {
+                geometry.service_titles[_node_index].as_ref().map(|title| {
+                    let facts = write_architecture_centered_text(
                         out,
-                        title,
-                        #[cfg(merman_internal_theme_acceptance)]
-                        x,
-                        #[cfg(merman_internal_theme_acceptance)]
-                        y,
-                        settings.icon_size_px,
-                        settings.icon_size_px * 1.5,
-                        text_measurer,
-                        &settings.text_style,
+                        &title.text.lines,
+                        title.anchor.x - x,
+                        title.anchor.y - y,
                         service_title_style,
+                    );
+                    ArchitectureTextWriterEmission {
                         #[cfg(merman_internal_theme_acceptance)]
-                        surface_styles.is_some(),
-                    )
-                });
+                        bounds: surface_styles
+                            .is_some()
+                            .then(|| title.text.bounds_at(title.anchor)),
+                        facts,
+                    }
+                })
+            } else {
+                legacy_title()
+            };
+            #[cfg(not(feature = "layout-shoal"))]
+            let service_title_emission = legacy_title();
             let has_visible_title = settings.text_style.font_size > 0.0
                 && service_title_emission
                     .as_ref()
@@ -330,10 +365,15 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
 
             let _ = write!(
                 out,
-                r#"<g class="architecture-junction" transform="translate({x},{y})"><g><rect id=""#,
+                r#"<g class="architecture-junction" transform="translate({x},{y})""#,
                 x = fmt(x),
                 y = fmt(y),
             );
+            #[cfg(feature = "layout-shoal")]
+            if ctx.shoal.is_some() {
+                super::write_geometry_attrs(out, "node", &junction.id);
+            }
+            out.push_str(r#"><g><rect id=""#);
             write_diagram_node_id(out, diagram_id, &junction.id);
             checkpoints.checkpoint()?;
             let _ = write!(
@@ -356,6 +396,7 @@ fn push_architecture_group_surface(
     diagram_id: SvgDiagramId<'_>,
     group: &GroupRect<'_>,
     group_inline_style: Option<&str>,
+    #[cfg(feature = "layout-shoal")] shoal: bool,
 ) -> crate::Result<()> {
     let _ = write!(out, r#"<rect id="{diagram_id}-group-"#);
     escape_xml_into(out, group.id);
@@ -372,6 +413,10 @@ fn push_architecture_group_surface(
         escape_attr_into(out, style);
         out.push('"');
     }
+    #[cfg(feature = "layout-shoal")]
+    if shoal {
+        super::write_geometry_attrs(out, "cluster", group.id);
+    }
     out.push_str("/>");
     out.checkpoint()
 }
@@ -381,6 +426,7 @@ pub(super) fn push_architecture_group_surfaces(
     diagram_id: SvgDiagramId<'_>,
     group_rects: &[GroupRect<'_>],
     group_inline_style: Option<&str>,
+    #[cfg(feature = "layout-shoal")] shoal: bool,
     checkpoints: ArchitectureEmitCheckpoints<'_>,
 ) -> crate::Result<bool> {
     checkpoints.checkpoint()?;
@@ -400,7 +446,14 @@ pub(super) fn push_architecture_group_surfaces(
             ancestors.push(group);
         }
         for group in ancestors.drain(..).rev() {
-            push_architecture_group_surface(out, diagram_id, &group, group_inline_style)?;
+            push_architecture_group_surface(
+                out,
+                diagram_id,
+                &group,
+                group_inline_style,
+                #[cfg(feature = "layout-shoal")]
+                shoal,
+            )?;
         }
     }
     out.push_str("</g>");
@@ -441,20 +494,37 @@ pub(super) fn push_architecture_groups<'a, O: SvgOutput>(
             let group_icon_size_px = settings.padding_px * 0.75;
             let x1 = x - settings.half_icon;
             let y1 = y - settings.half_icon;
+            #[cfg(feature = "layout-shoal")]
+            let canonical = ctx.shoal.map(|geometry| &geometry.groups[group_index]);
 
             if emit_surfaces {
-                push_architecture_group_surface(out, ctx.diagram_id, grp, None)?;
+                push_architecture_group_surface(
+                    out,
+                    ctx.diagram_id,
+                    grp,
+                    None,
+                    #[cfg(feature = "layout-shoal")]
+                    false,
+                )?;
             }
             out.push_str("<g>");
 
             let mut shifted_x1 = x1;
             let mut shifted_y1 = y1;
-            if let Some(icon) = grp.icon.map(str::trim).filter(|t| !t.is_empty()) {
+            let icon = grp.icon.map(str::trim).filter(|t| !t.is_empty());
+            let legacy_icon_at = (x1 + settings.half_icon + 1.0, y1 + settings.half_icon + 1.0);
+            #[cfg(feature = "layout-shoal")]
+            let icon_at = canonical.map_or(Some(legacy_icon_at), |group| {
+                group.icon_origin.map(|p| (p.x, p.y))
+            });
+            #[cfg(not(feature = "layout-shoal"))]
+            let icon_at = Some(legacy_icon_at);
+            if let Some((icon, (icon_x, icon_y))) = icon.zip(icon_at) {
                 let _ = write!(
                     out,
                     r#"<g transform="translate({x}, {y})"><g>"#,
-                    x = fmt(shifted_x1 + settings.half_icon + 1.0),
-                    y = fmt(shifted_y1 + settings.half_icon + 1.0)
+                    x = fmt(icon_x),
+                    y = fmt(icon_y)
                 );
                 if arch_icon_needs_id_scope(icon, icon_registry.is_some()) {
                     let id_scope = architecture_icon_scope(
@@ -487,14 +557,29 @@ pub(super) fn push_architecture_groups<'a, O: SvgOutput>(
             let group_title_style = surface_styles
                 .as_deref()
                 .and_then(|styles| styles.group_title_style(group_index));
-            let (group_title_bounds, group_writer_facts) = if let Some(title) =
-                grp.title.map(str::trim).filter(|t| !t.is_empty())
-            {
-                let lines = wrap_svg_words_to_lines(title, w, text_measurer, &settings.text_style);
+            let legacy_lines;
+            #[cfg(feature = "layout-shoal")]
+            let placed_title = canonical.map(|group| {
+                group.title.as_ref().map(|title| {
+                    (
+                        title.text.lines.as_slice(),
+                        title.anchor.x,
+                        title.anchor.y,
+                        title.text.bounds_at(title.anchor),
+                    )
+                })
+            });
+            #[cfg(not(feature = "layout-shoal"))]
+            let placed_title = None;
+            let title_plan = if let Some(title) = placed_title {
+                title
+            } else if let Some(title) = grp.title.map(str::trim).filter(|t| !t.is_empty()) {
+                legacy_lines =
+                    wrap_svg_words_to_lines(title, w, text_measurer, &settings.text_style);
                 let title_x = shifted_x1 + settings.half_icon + 4.0;
                 let title_y = shifted_y1 + settings.half_icon + 2.0;
                 let terminal_bounds = architecture_svg_text_terminal_bounds(
-                    &lines,
+                    &legacy_lines,
                     title_x,
                     title_y,
                     ArchitectureTextAnchor::Start,
@@ -502,7 +587,17 @@ pub(super) fn push_architecture_groups<'a, O: SvgOutput>(
                     text_measurer,
                     &settings.text_style,
                 );
-
+                Some((legacy_lines.as_slice(), title_x, title_y, terminal_bounds))
+            } else {
+                None
+            };
+            let (group_title_bounds, group_writer_facts) = if let Some((
+                lines,
+                title_x,
+                title_y,
+                terminal_bounds,
+            )) = title_plan
+            {
                 // Group titles are SVG `<text>` (no explicit bbox geometry), so our SVG bbox pass
                 // cannot "see" their extents. Measure the emitted outer tspan DOM primitive so
                 // `setupGraphViewbox(svg.getBBox() + padding)` matches upstream in parity-root.
@@ -518,11 +613,16 @@ pub(super) fn push_architecture_groups<'a, O: SvgOutput>(
                 }
                 let _ = write!(
                     out,
-                    r#"<g dy="1em" alignment-baseline="middle" dominant-baseline="start" text-anchor="start" transform="translate({x}, {y})"><g><rect class="background" style="stroke: none"/>"#,
+                    r#"<g dy="1em" alignment-baseline="middle" dominant-baseline="start" text-anchor="start" transform="translate({x}, {y})""#,
                     x = fmt(title_x),
                     y = fmt(title_y)
                 );
-                let writer_facts = write_svg_text_lines(out, &lines, group_title_style);
+                #[cfg(feature = "layout-shoal")]
+                if canonical.is_some() {
+                    super::write_geometry_attrs(out, "cluster-label", grp.id);
+                }
+                out.push_str(r#"><g><rect class="background" style="stroke: none"/>"#);
+                let writer_facts = write_svg_text_lines(out, lines, group_title_style);
                 out.push_str("</g></g>");
                 (Some(terminal_bounds), Some(writer_facts))
             } else {
@@ -608,6 +708,8 @@ mod tests {
                 execution.diagram_id_or("architecture"),
                 &groups,
                 Some("fill:#123456;"),
+                #[cfg(feature = "layout-shoal")]
+                false,
                 ArchitectureEmitCheckpoints::new(execution.work_meter()),
             )
             .unwrap()

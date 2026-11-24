@@ -15,6 +15,8 @@ use std::fmt::Write as _;
 pub(crate) const LEAD: f64 = 6.0;
 const STEP_INSET: f64 = 12.0;
 const TURN_HANDLE: f64 = 0.62;
+const TERMINAL_TURN_RADIUS: f64 = 24.0;
+const QUARTER_CIRCLE_HANDLE: f64 = 0.552_284_749_830_793_6;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum RouteStyle {
@@ -91,6 +93,8 @@ impl std::fmt::Display for RoutePaintError {
 
 #[cfg(any(
     feature = "diagram-agentflow",
+    feature = "diagram-architecture",
+    feature = "diagram-c4",
     feature = "diagram-class",
     feature = "diagram-er",
     feature = "diagram-flowchart",
@@ -455,6 +459,7 @@ fn draw_body(
     pen: &mut Pen,
     body: &[RoutePoint],
     style: RouteStyle,
+    terminals: (Option<&Terminal>, Option<&Terminal>),
     departure_across: Option<f64>,
     clearance: Option<EdgeClearance<'_>>,
 ) -> Result<(), RoutePaintError> {
@@ -467,10 +472,12 @@ fn draw_body(
             let mut after = outgoing.hypot();
             let u = incoming / before;
             let v = outgoing / after;
-            if right_angle(body, i - 1) {
+            let previous_turn = right_angle(body, i - 1);
+            let next_turn = right_angle(body, i + 1);
+            if previous_turn {
                 before *= 0.5;
             }
-            if right_angle(body, i + 1) {
+            if next_turn {
                 after *= 0.5;
             }
             if let RouteStyle::Rounded(radius) = style {
@@ -488,6 +495,26 @@ fn draw_body(
                     pen.line(p);
                 }
             } else {
+                // A side terminal can turn onto a rail before it leaves the rank. Use
+                // equal arms so a long horizontal lead doesn't stretch the corner.
+                let on_normal = |terminal: &Terminal| {
+                    let delta = p - terminal.tip;
+                    delta.cross(terminal.normal) == 0.0 && delta.dot(terminal.normal) > 0.0
+                };
+                let terminal_turn = !previous_turn
+                    && !next_turn
+                    && ((i == 1
+                        && body[i + 1].kind == KnotKind::GapBoundary
+                        && terminals.0.is_some_and(on_normal))
+                        || (i + 2 == body.len()
+                            && body[i - 1].kind == KnotKind::GapBoundary
+                            && terminals.1.is_some_and(on_normal)));
+                let (before, after, handle) = if terminal_turn {
+                    let arm = before.min(after).min(TERMINAL_TURN_RADIUS);
+                    (arm, arm, QUARTER_CIRCLE_HANDLE)
+                } else {
+                    (before, after, TURN_HANDLE)
+                };
                 let curve = |scale| {
                     let incoming = before * scale;
                     let outgoing = after * scale;
@@ -495,8 +522,8 @@ fn draw_body(
                     let end = p + v * outgoing;
                     CubicBez::new(
                         start,
-                        start + u * (TURN_HANDLE * incoming),
-                        end - v * (TURN_HANDLE * outgoing),
+                        start + u * (handle * incoming),
+                        end - v * (handle * outgoing),
                         end,
                     )
                 };
@@ -573,6 +600,8 @@ impl Terminal {
 #[cfg(all(
     feature = "layout-shoal",
     any(
+        feature = "diagram-architecture",
+        feature = "diagram-c4",
         feature = "diagram-class",
         feature = "diagram-er",
         feature = "diagram-requirement",
@@ -764,7 +793,7 @@ fn draw_section(
     } else {
         None
     };
-    draw_body(pen, body, style, departure, clearance)?;
+    draw_body(pen, body, style, terminals, departure, clearance)?;
     if let Some(end) = terminals.1 {
         pen.line(end.shaft_end());
     }

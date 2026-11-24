@@ -425,6 +425,7 @@ fn suggested(
         .iter()
         .map(|level| {
             Some(Frame {
+                lane_shells: Vec::new(),
                 bounds: Size {
                     width: 100.,
                     height: 100.,

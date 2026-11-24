@@ -61,14 +61,24 @@ function cliExecutableIdentity(invocation: BinaryInvocation): string | undefined
   }
 }
 
-export function previewLayoutFrameLimit(capabilities: unknown): number | undefined {
+export function previewLayoutFrameCapability(capabilities: unknown): {
+  maxBytes: number;
+  privateOutput: boolean;
+} | undefined {
   const frame = (capabilities as {
-    preview_layout_frame?: { protocol_version?: unknown; max_bytes?: unknown };
+    preview_layout_frame?: { protocol_version?: unknown; max_bytes?: unknown; private_output?: unknown };
   } | null)?.preview_layout_frame;
   if (frame?.protocol_version !== 1 ||
     typeof frame.max_bytes !== "number" || !Number.isSafeInteger(frame.max_bytes) ||
     frame.max_bytes <= 0) {
     return undefined;
   }
-  return Math.min(frame.max_bytes, MAX_PREVIEW_FRAME_BYTES);
+  return {
+    maxBytes: Math.min(frame.max_bytes, MAX_PREVIEW_FRAME_BYTES),
+    privateOutput: frame.private_output === true,
+  };
+}
+
+export function supportsLayoutFitWidth(capabilities: unknown): boolean {
+  return (capabilities as { layout_fit_width?: unknown } | null)?.layout_fit_width === true;
 }

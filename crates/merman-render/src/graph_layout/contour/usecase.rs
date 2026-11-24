@@ -1,24 +1,25 @@
 use super::{Outline, ShapePortProfile};
-use crate::graph_layout::ir::{Axis, RoutePoint, Side};
-use crate::model::LayoutPoint;
 use crate::usecase::actor::{self, ActorPlacement};
 use kurbo::{BezPath, PathEl, flatten};
 use merman_model::families::usecase::UsecaseActorType;
 
-fn glyph(parts: &mut Vec<Outline>, path: &str, dy: f64) {
-    let path = BezPath::from_svg(path).expect("static Usecase actor path");
+fn glyph(parts: &mut Vec<Outline>, path: &BezPath, dy: f64) {
     let mut points = Vec::new();
-    flatten(path, 0.02, |element| match element {
-        PathEl::MoveTo(point) => {
-            if !points.is_empty() {
-                parts.push(Outline::Polygon(std::mem::take(&mut points)));
+    flatten(
+        path.elements().iter().copied(),
+        0.02,
+        |element| match element {
+            PathEl::MoveTo(point) => {
+                if !points.is_empty() {
+                    parts.push(Outline::Polygon(std::mem::take(&mut points)));
+                }
+                points.push((point.x, point.y + dy));
             }
-            points.push((point.x, point.y + dy));
-        }
-        PathEl::LineTo(point) => points.push((point.x, point.y + dy)),
-        PathEl::ClosePath => parts.push(Outline::Polygon(std::mem::take(&mut points))),
-        _ => unreachable!("flatten emits only line segments"),
-    });
+            PathEl::LineTo(point) => points.push((point.x, point.y + dy)),
+            PathEl::ClosePath => parts.push(Outline::Polygon(std::mem::take(&mut points))),
+            _ => unreachable!("flatten emits only line segments"),
+        },
+    );
     if !points.is_empty() {
         parts.push(Outline::Polygon(points));
     }
@@ -43,11 +44,11 @@ impl ShapePortProfile {
         stereotype: Option<(f64, f64)>,
     ) -> Self {
         let mut parts = Vec::new();
+        if let Some(path) = actor::body_path(variant) {
+            glyph(&mut parts, path, placement.glyph_y);
+        }
         let (span_x, span_y) = match variant {
-            UsecaseActorType::Normal => {
-                glyph(&mut parts, actor::NORMAL, placement.glyph_y);
-                (20.0, 26.0)
-            }
+            UsecaseActorType::Normal => (20.0, 26.0),
             UsecaseActorType::Hollow => {
                 let diameter = 2.0 * actor::HOLLOW_HEAD_RADIUS;
                 parts.push(rounded_box(
@@ -57,13 +58,9 @@ impl ShapePortProfile {
                     diameter,
                     actor::HOLLOW_HEAD_RADIUS,
                 ));
-                glyph(&mut parts, actor::HOLLOW_BODY, placement.glyph_y);
                 (15.0, 26.0)
             }
-            UsecaseActorType::Awesome => {
-                glyph(&mut parts, actor::AWESOME, placement.glyph_y);
-                (22.0, 30.0)
-            }
+            UsecaseActorType::Awesome => (22.0, 30.0),
             UsecaseActorType::Icon => {
                 parts.push(rounded_box(
                     0.0,
@@ -89,68 +86,5 @@ impl ShapePortProfile {
             parts.push(rounded_box(0.0, top + label.1 / 2.0, label.0, label.1, 0.0));
         }
         Self::new(Outline::Parts(parts), span_x, span_y)
-    }
-
-    pub(crate) fn fit_usecase_actor_loop(
-        &self,
-        points: &mut [RoutePoint],
-        center: LayoutPoint,
-        sides: (Side, Side),
-    ) {
-        if let [start, departure, .., arrival, end] = points {
-            self.fit_actor_terminal(&center, sides.0, start, departure);
-            self.fit_actor_terminal(&center, sides.1, end, arrival);
-        }
-    }
-
-    fn fit_actor_terminal(
-        &self,
-        center: &LayoutPoint,
-        side: Side,
-        port: &mut RoutePoint,
-        neighbor: &mut RoutePoint,
-    ) {
-        if self.try_contact(center, side, *port).is_some() {
-            return;
-        }
-        let Outline::Parts(parts) = &self.outline else {
-            return;
-        };
-        let vertical = side.axis() == Axis::Vertical;
-        let (origin, across) = if vertical {
-            (center.x, port.x - center.x)
-        } else {
-            (center.y, port.y - center.y)
-        };
-        let nearest = parts
-            .iter()
-            .filter_map(|part| match part {
-                Outline::Box { cx, cy, hw, hh, .. } => {
-                    let (center, radius) = if vertical { (cx, hw) } else { (cy, hh) };
-                    Some((center - radius, center + radius))
-                }
-                Outline::Polygon(points) => {
-                    let mut coords = points.iter().map(|&(x, y)| if vertical { x } else { y });
-                    let first = coords.next()?;
-                    Some(coords.fold((first, first), |(min, max), coord| {
-                        (min.min(coord), max.max(coord))
-                    }))
-                }
-                _ => None,
-            })
-            .map(|(min, max)| {
-                let inset = ((max - min) / 2.0).min(0.125);
-                across.clamp(min + inset, max - inset)
-            })
-            .min_by(|left, right| (left - across).abs().total_cmp(&(right - across).abs()));
-        if let Some(nearest) = nearest {
-            if vertical {
-                port.x = origin + nearest;
-                neighbor.x = port.x;
-            } else {
-                port.y = origin + nearest;
-                neighbor.y = port.y;
-            }
-        }
     }
 }

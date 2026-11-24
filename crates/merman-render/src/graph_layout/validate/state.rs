@@ -1,11 +1,12 @@
 use super::{
-    Body, CrossAxis, Edge, FLATNESS, Label, LabelOwner, PointMarker, Scene, assert_same_bounds,
-    rect_face_normal, svg_box, svg_group_transform, svg_has_class, svg_label_text, svg_number,
-    validate,
+    BOX_EPSILON, Body, CONTACT_TOLERANCE, CrossAxis, Edge, FLATNESS, Label, LabelOwner,
+    PointMarker, Scene, assert_same_bounds, contour_gap, rect_face_normal, svg_box,
+    svg_group_transform, svg_has_class, svg_label_text, svg_number, validate,
 };
 use crate::environment::RenderEnvironment;
-use crate::model::{LayoutLabel, StateDiagramLayout};
+use crate::model::{LayoutLabel, LayoutPoint, StateDiagramLayout};
 use crate::{LayoutOptions, family};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use kurbo::{BezPath, Circle, Point, Rect, Shape};
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_model::presentation::RenderSemanticModel;
@@ -28,19 +29,29 @@ stateDiagram-v2
   state Processing {{
     direction LR
     [*] --> Ready
+    [*] --> Paused
     Ready --> Running : begin
     Running --> [*]
+    Paused --> [*]
   }}
   Processing --> Completed : done
 "
         );
-        check_state_geometry(&source, look, 3, 0);
+        assert!(
+            check_state_geometry(&source, look, 3, 0),
+            "{look}: expected an off-center pseudo-state contact"
+        );
     }
 }
 
 #[test]
 fn state_concurrent_regions_keep_the_composite_title_clear() {
-    for look in ["classic", "neo"] {
+    for (look, direction) in [
+        ("classic", "LR"),
+        ("classic", "TB"),
+        ("neo", "LR"),
+        ("neo", "TB"),
+    ] {
         let source = format!(
             "\
 ---
@@ -52,7 +63,7 @@ config:
 stateDiagram-v2
   [*] --> Processing
   state Processing {{
-    direction LR
+    direction {direction}
     [*] --> Ready
     Ready --> Running : begin
     --
@@ -67,7 +78,7 @@ stateDiagram-v2
     }
 }
 
-fn check_state_geometry(source: &str, look: &str, circles: usize, dividers: usize) {
+fn check_state_geometry(source: &str, look: &str, circles: usize, dividers: usize) -> bool {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
@@ -190,6 +201,7 @@ fn check_state_geometry(source: &str, look: &str, circles: usize, dividers: usiz
         }
     }
 
+    let mut has_inset_contact = false;
     for (occurrence, route) in layout.edges.iter().enumerate() {
         let paths: Vec<_> = doc
             .descendants()
@@ -207,14 +219,43 @@ fn check_state_geometry(source: &str, look: &str, circles: usize, dividers: usiz
         let [start, .., end] = route.points.as_slice() else {
             panic!("missing State route endpoints for {}", route.id);
         };
-        edge.start.outward_normal = Some(rect_face_normal(
-            scene.bodies[from].bounds,
-            Point::new(start.x, start.y),
-        ));
-        edge.end.outward_normal = Some(rect_face_normal(
-            scene.bodies[to].bounds,
-            Point::new(end.x, end.y),
-        ));
+        let painted_points: Vec<LayoutPoint> = serde_json::from_slice(
+            &STANDARD
+                .decode(path.attribute("data-points").unwrap())
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(painted_points.len(), route.points.len(), "{}", route.id);
+        for (terminal, waypoint, contact) in [
+            (&mut edge.start, start, painted_points.first().unwrap()),
+            (&mut edge.end, end, painted_points.last().unwrap()),
+        ] {
+            let body = &scene.bodies[terminal.body];
+            let waypoint = Point::new(waypoint.x, waypoint.y);
+            assert!(
+                contour_gap(&Body::node(body.bounds), waypoint) <= BOX_EPSILON,
+                "State edge {}: layout waypoint {waypoint:?} is off its box {:?}",
+                route.id,
+                body.bounds
+            );
+            let normal = rect_face_normal(body.bounds, waypoint);
+            terminal.outward_normal = Some(normal);
+            if body.contour.is_some() {
+                let contact = edge.transform * Point::new(contact.x, contact.y);
+                assert!(
+                    contour_gap(body, contact) <= CONTACT_TOLERANCE,
+                    "State edge {}: data-points contact {contact:?} is off the painted contour",
+                    route.id
+                );
+                let offset = waypoint - contact;
+                assert!(
+                    offset.cross(normal).abs() <= BOX_EPSILON && offset.dot(normal) >= -BOX_EPSILON,
+                    "State edge {}: contact {contact:?} must stay on the waypoint's port axis",
+                    route.id
+                );
+                has_inset_contact |= offset.dot(normal) > CONTACT_TOLERANCE;
+            }
+        }
         let marker_id = path
             .attribute("marker-end")
             .and_then(|value| value.strip_prefix("url(#"))
@@ -265,6 +306,7 @@ fn check_state_geometry(source: &str, look: &str, circles: usize, dividers: usiz
     assert_eq!(report.normals_checked, 2 * layout.edges.len());
     assert_eq!(report.markers_checked, layout.edges.len());
     assert!(report.hard.is_empty(), "{look}: {:#?}", report.hard);
+    has_inset_contact
 }
 
 fn state_title_box(title: Node<'_, '_>, label: &LayoutLabel) -> Rect {

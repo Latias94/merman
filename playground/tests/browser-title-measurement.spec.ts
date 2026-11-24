@@ -1,11 +1,9 @@
-import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
-import { promisify } from "node:util";
 
 import { expect, test } from "@playwright/test";
 import type { HostTextMeasureRequest } from "../../platforms/web/packages/full/dist/public-types.js";
+import { verifyAssembledFullWebPackage } from "./helpers/web-package.ts";
 import {
   auditMountedSvg,
   classifyRootViewportContainment,
@@ -16,28 +14,7 @@ const packageRoot = path.join(repositoryRoot, "platforms/web/packages/full");
 const fixture = "flowchart/stress_flowchart_title_padding_subgraph_029";
 
 test.beforeAll(async () => {
-  await promisify(execFile)(
-    process.execPath,
-    ["platforms/web/scripts/verify-wasm-inputs.mjs", "--package", "full"],
-    { cwd: repositoryRoot },
-  );
-  // Bind the served package to the verified WASM output and current compiled JS closure.
-  const checkerUrl = pathToFileURL(
-    path.join(repositoryRoot, "platforms/web/scripts/prepack-check.mjs"),
-  ).href;
-  const { assertArtifactFileEvidence } = await import(checkerUrl);
-  const provenance = JSON.parse(
-    await readFile(path.join(packageRoot, "artifacts/provenance.json"), "utf8"),
-  );
-  assertArtifactFileEvidence({
-    packageWasmRoot: path.join(packageRoot, "artifacts/wasm"),
-    sourceWasmRoot: path.join(repositoryRoot, "platforms/web/pkg/full"),
-    packageDistRoot: path.join(packageRoot, "dist"),
-    sourceDistRoot: path.join(repositoryRoot, "platforms/web/dist"),
-    packageId: "full",
-    artifactFiles: provenance.artifact_files,
-    label: "browser title/UTF-16 regression package",
-  });
+  await verifyAssembledFullWebPackage("browser title/UTF-16 regression package");
 });
 
 test.beforeEach(async ({ page }) => {

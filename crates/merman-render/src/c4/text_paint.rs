@@ -436,21 +436,31 @@ impl C4TextPaintPlan {
                 visibility_verified,
             });
         }
-        let source_relations: BTreeMap<_, _> = model
-            .rels
-            .iter()
-            .map(|relation| {
-                (
-                    (relation.from_alias.as_str(), relation.to_alias.as_str()),
-                    relation,
-                )
-            })
-            .collect();
+        let uses_shoal =
+            cfg!(feature = "layout-shoal") && config.get_str("layout") == Some("shoal");
+        let source_relations = (!uses_shoal).then(|| {
+            model
+                .rels
+                .iter()
+                .map(|relation| {
+                    (
+                        (relation.from_alias.as_str(), relation.to_alias.as_str()),
+                        relation,
+                    )
+                })
+                .collect::<BTreeMap<_, _>>()
+        });
         let mut relations = Vec::with_capacity(layout.rels.len());
         let mut relation_text_owned = Vec::new();
         let mut relation_line_owned = Vec::new();
         for (index, relation) in layout.rels.iter().enumerate() {
-            let source = source_relations.get(&(relation.from.as_str(), relation.to.as_str()));
+            let source = if let Some(source_relations) = &source_relations {
+                source_relations
+                    .get(&(relation.from.as_str(), relation.to.as_str()))
+                    .copied()
+            } else {
+                model.rels.get(index)
+            };
             let explicit_text = source
                 .and_then(|source| source.text_color.as_deref())
                 .or_else(|| config.get_str("c4.relationship_text_color"));

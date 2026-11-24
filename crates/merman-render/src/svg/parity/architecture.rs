@@ -8,6 +8,8 @@ mod nodes;
 mod render;
 mod root;
 mod settings;
+#[cfg(all(test, feature = "layout-shoal"))]
+mod shoal_tests;
 mod viewport;
 
 /// Non-billing terminal replay shared by Architecture SVG emission passes.
@@ -29,3 +31,10 @@ impl<'a> ArchitectureEmitCheckpoints<'a> {
 }
 
 pub(super) use render::render_architecture_diagram_svg_typed_with_config;
+
+#[cfg(feature = "layout-shoal")]
+fn write_geometry_attrs(out: &mut impl super::SvgOutput, kind: &str, id: &str) {
+    let _ = write!(out, r#" data-et="{kind}" data-id=""#);
+    super::escape_attr_into(out, id);
+    out.push('"');
+}

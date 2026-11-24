@@ -4,7 +4,7 @@ use crate::text::{
     TextMeasurer, TextMetrics, TextStyle, measure_mermaid_text_dimensions_with_checkpoint,
     split_mermaid_common_br_lines, wrap_label_like_mermaid_lines_with_checkpoint,
 };
-use merman_model::families::c4::{C4DiagramModel, C4Shape};
+use merman_model::families::c4::{C4DiagramModel, C4RelationOffset, C4Shape, parse_integer_prefix};
 use serde_json::Value;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -25,6 +25,64 @@ type C4Conf = C4LayoutSettings;
 pub(crate) const C4_FRAMED_FRAME_WIDTH: f64 = 8.0;
 pub(crate) const C4_NEO_FRAMED_LABEL_PADDING_X: f64 = 28.0;
 pub(crate) const C4_NEO_FRAMED_LABEL_PADDING_Y: f64 = 12.0;
+pub(crate) const C4_ROUNDED_RADIUS: f64 = 12.0;
+pub(crate) const C4_TECHNOLOGY_GAP: f64 = 5.0;
+
+pub(crate) fn c4_cap_radius(diameter: f64) -> f64 {
+    (diameter / 2.0) / (2.5 + diameter / 50.0)
+}
+
+pub(crate) fn c4_person_head_radius(width: f64) -> f64 {
+    (width * 0.23).clamp(16.0, 56.0)
+}
+
+pub(crate) struct C4PersonOutline {
+    pub(crate) head_radius: f64,
+    pub(crate) head_y: f64,
+    pub(crate) body_height: f64,
+    pub(crate) body_radius: f64,
+    pub(crate) body_top: f64,
+}
+
+impl C4PersonOutline {
+    pub(crate) fn new(width: f64, height: f64) -> Self {
+        let head_radius = c4_person_head_radius(width);
+        let overlap = head_radius * 0.27;
+        let body_height = (height - (2.0 * head_radius - overlap)).max(1.0);
+        let body_radius = (width * 0.177).min(body_height * 0.45);
+        let total_height = body_height + 2.0 * head_radius - overlap;
+        let top = -total_height / 2.0;
+        Self {
+            head_radius,
+            head_y: top + head_radius,
+            body_height,
+            body_radius,
+            body_top: top + 2.0 * head_radius - overlap,
+        }
+    }
+}
+
+pub(crate) fn c4_relation_offset(offset: Option<&C4RelationOffset>) -> f64 {
+    // Mermaid applies parseInt to the JavaScript string form of the value. A numeric 1e21
+    // therefore becomes 1, while an authored decimal string keeps its full integer prefix.
+    match offset {
+        None => 0.0,
+        Some(C4RelationOffset::Number(value)) if *value == 0.0 || value.is_nan() => 0.0,
+        Some(C4RelationOffset::Number(value)) => {
+            parse_integer_prefix(ryu_js::Buffer::new().format(*value)).unwrap_or(f64::NAN)
+        }
+        Some(C4RelationOffset::String(value)) if value.is_empty() => 0.0,
+        Some(C4RelationOffset::String(value)) => parse_integer_prefix(value).unwrap_or(f64::NAN),
+    }
+}
+
+pub(crate) fn c4_relation_markers(kind: &str) -> (bool, bool) {
+    (matches!(kind, "birel" | "rel_b"), kind != "rel_b")
+}
+
+pub(crate) fn c4_text_row_offset(row: usize, line_count: usize, font_size: f64) -> f64 {
+    row as f64 * font_size - (font_size * (line_count as f64 - 1.0)) / 2.0
+}
 
 /// The unified Mermaid shape used to draw a C4 element.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -448,9 +506,13 @@ fn c4_wrap_source_word_lines(
 }
 
 mod layout;
+#[cfg(feature = "layout-shoal")]
+mod shoal;
 mod text_paint;
 mod typography;
 pub(crate) use layout::layout_c4_diagram_typed;
+#[cfg(feature = "layout-shoal")]
+pub(crate) use shoal::{C4ShoalGeometry, C4ShoalRelation, layout_c4_shoal};
 pub(crate) use text_paint::C4TextPaintPlan;
 pub(crate) use typography::C4TypographyThemePlan;
 

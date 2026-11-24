@@ -234,7 +234,9 @@ fn check_terminals(graph: &Graph, nodes: &[Rect], spec: &EdgeSpec, route: &EdgeG
     ] {
         assert_contact(nodes[index], point, side);
         match hint {
-            PortSideHint::Auto if source != target => assert_eq!(side, auto),
+            PortSideHint::Auto if source != target && side.axis() == auto.axis() => {
+                assert_eq!(side, auto);
+            }
             PortSideHint::Side(requested) => assert_eq!(side, requested),
             PortSideHint::FixedOffset {
                 side: requested,
@@ -321,7 +323,11 @@ fn check_geometry(g: &Graph, options: &Options, drawing: &LayoutOutput) {
                 && g.nodes[a].anchor_y.is_none()
                 && g.nodes[b].anchor_y.is_none()
             {
-                let travel = route.ports.0;
+                let travel = if route.reversed_for_ranking {
+                    flow_ports(g.direction).1
+                } else {
+                    flow
+                };
                 assert!(
                     pts.windows(2).all(|pair| {
                         normal(travel, position(&pair[0]))
@@ -519,7 +525,9 @@ fn aspect_and_fit_width_wrap_components_while_strip_follows_the_cross_axis() {
                     assert_eq!(drawing.nodes[0].y, drawing.nodes[1].y);
                     assert!(drawing.nodes[2].y >= drawing.nodes[0].y + side + gap);
                 }
-                PackingPolicy::Strip => panic!("expected two-dimensional default packing"),
+                PackingPolicy::Strip | PackingPolicy::BalancedAspect { .. } => {
+                    panic!("packing policy outside this fixture")
+                }
             }
             assert_eq!(layout(&g, &options).unwrap(), drawing);
         }

@@ -35,6 +35,11 @@ struct CapabilityDocument<'a> {
     ascii: AsciiCapabilityDocument,
     #[cfg(feature = "svg")]
     theme_presets: Option<ThemePresetCatalogDocument>,
+    #[cfg(all(
+        feature = "svg",
+        any(feature = "layout-shoal", feature = "diagram-kanban")
+    ))]
+    layout_fit_width: bool,
     #[cfg(feature = "layout-shoal")]
     preview_layout_frame: PreviewLayoutFrameDocument,
 }
@@ -44,6 +49,7 @@ struct CapabilityDocument<'a> {
 struct PreviewLayoutFrameDocument {
     protocol_version: u16,
     max_bytes: usize,
+    private_output: bool,
 }
 
 #[cfg(feature = "svg")]
@@ -308,10 +314,16 @@ pub(crate) fn write_compiled_capabilities(
         ascii: ascii_capability_document(),
         #[cfg(feature = "svg")]
         theme_presets: Some(theme_preset_catalog_document()),
+        #[cfg(all(
+            feature = "svg",
+            any(feature = "layout-shoal", feature = "diagram-kanban")
+        ))]
+        layout_fit_width: true,
         #[cfg(feature = "layout-shoal")]
         preview_layout_frame: PreviewLayoutFrameDocument {
             protocol_version: 1,
             max_bytes: crate::render::preview_frame::MAX_BYTES,
+            private_output: cfg!(unix),
         },
     };
 

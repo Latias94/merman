@@ -5,7 +5,7 @@ use crate::graph_layout::ir::{
     Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, Rect,
     RoutingStyle, Side, Size, SolvedGraph, TitlePosition,
 };
-use crate::graph_layout::shoal_bridge;
+use crate::graph_layout::placement;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{
     Bounds, ErDiagramLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
@@ -34,12 +34,20 @@ pub(super) fn layout(
     settings: &ErLayoutSettings,
     prepared_labels: Arc<ErPreparedLabels>,
     neo: bool,
+    execution: Option<&crate::LayoutExecution<'_>>,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<ErPreparedLayout> {
     let input = measure(model, measurer, settings, &prepared_labels, neo, work)?;
     let group_order = parent_first_groups(&input, work)?;
-    let solved = shoal_bridge::solve(&input.graph, Default::default(), work)?;
-    let canonical_routes = CanonicalRoutes::from_solved(
+    let (solved, placement) = placement::solve(
+        &input.graph,
+        input.entity_ids.iter().copied(),
+        input.groups.iter().map(|group| group.id.as_str()),
+        execution,
+        Default::default(),
+        work,
+    )?;
+    let mut canonical_routes = CanonicalRoutes::from_solved(
         &input.graph,
         &solved,
         &input.profiles,
@@ -47,9 +55,10 @@ pub(super) fn layout(
         input.edge_ids.iter().map(String::as_str),
         work,
     )?;
+    canonical_routes.placement = placement;
     Ok(ErPreparedLayout {
         layout: project(model, input, solved, group_order, prepared_labels, work)?,
-        canonical_routes: Some(canonical_routes),
+        route_contract: crate::graph_layout::RouteContract::canonical_graph(canonical_routes),
     })
 }
 

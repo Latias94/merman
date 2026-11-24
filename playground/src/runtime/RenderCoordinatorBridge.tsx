@@ -1,7 +1,7 @@
 import { useEffect } from "react";
-import { useShallow } from "zustand/react/shallow";
+import { shallow } from "zustand/shallow";
 
-import { selectWorkspaceSnapshot, useAppStore } from "../store";
+import { selectWorkspaceSnapshot, useAppStore, type AppState } from "../store";
 import { setRenderCoordinatorInput } from "./render-coordinator-browser.ts";
 import {
   selectMermanFacade,
@@ -12,20 +12,27 @@ import { captureRenderViewport } from "./render-viewport.ts";
 const PLAYGROUND_RENDER_VIEWPORT = captureRenderViewport();
 
 export function RenderCoordinatorBridge() {
-  const workspace = useAppStore(useShallow(selectWorkspaceSnapshot));
-  const documentRevision = useAppStore((state) => state.documentRevision);
   const facade = useMermanRuntime(selectMermanFacade);
-  const hostAppearance = useAppStore((state) => state.resolvedTheme);
 
   useEffect(() => {
-    setRenderCoordinatorInput({
-      documentRevision,
+    const sync = (state: AppState, workspace = selectWorkspaceSnapshot(state)) => setRenderCoordinatorInput({
+      documentRevision: state.documentRevision,
       facade,
       renderViewport: PLAYGROUND_RENDER_VIEWPORT,
       workspace,
-      hostAppearance,
+      shoalPreviewWidth: state.shoalPreviewWidth,
+      hostAppearance: state.resolvedTheme,
     });
-  }, [documentRevision, facade, workspace, hostAppearance]);
+    sync(useAppStore.getState());
+    return useAppStore.subscribe((state, previous) => {
+      const workspace = selectWorkspaceSnapshot(state);
+      if (state.documentRevision === previous.documentRevision &&
+        state.shoalPreviewWidth === previous.shoalPreviewWidth &&
+        state.resolvedTheme === previous.resolvedTheme &&
+        shallow(workspace, selectWorkspaceSnapshot(previous))) return;
+      sync(state, workspace);
+    });
+  }, [facade]);
 
   return null;
 }

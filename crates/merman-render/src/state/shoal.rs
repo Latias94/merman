@@ -17,7 +17,7 @@ use crate::graph_layout::ir::{
     Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, Rect,
     RoutePoint, RoutingStyle, Side, Size, SolvedGraph, TitlePosition,
 };
-use crate::graph_layout::shoal_bridge;
+use crate::graph_layout::placement;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{
     Bounds, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, StateDiagramLayout,
@@ -62,9 +62,16 @@ pub(crate) fn layout_state_diagram_shoal(
         execution.text_measurer(),
         &mut work,
     )?;
-    let mut solved = shoal_bridge::solve(&input.graph, Default::default(), &mut work)?;
+    let (mut solved, placement) = placement::solve(
+        &input.graph,
+        input.leaves.iter().map(|(_, node)| node.id.as_str()),
+        input.groups.iter().map(|group| group.node.id.as_str()),
+        Some(execution),
+        Default::default(),
+        &mut work,
+    )?;
     regions::stretch(&input, &mut solved, &mut work)?;
-    let routes = CanonicalRoutes::from_solved(
+    let mut routes = CanonicalRoutes::from_solved(
         &input.graph,
         &solved,
         &input.profiles,
@@ -72,6 +79,7 @@ pub(crate) fn layout_state_diagram_shoal(
         input.edges.iter().map(|edge| edge.id.as_str()),
         &mut work,
     )?;
+    routes.placement = placement;
     Ok((project(input, solved, &mut work)?, routes))
 }
 
@@ -496,38 +504,20 @@ fn project(
         nodes.push(node);
     }
 
-    let contact = |endpoint, side, point| match endpoint {
-        Endpoint::Node(node) => {
-            let index = node as usize;
-            let center = solved.nodes[index].center();
-            input.profiles[index].contact(
-                &LayoutPoint {
-                    x: center.x,
-                    y: center.y,
-                },
-                side,
-                point,
-            )
-        }
-        Endpoint::Group(_) => point,
-    };
     let mut edges = Vec::with_capacity(input.edges.len());
     for ((edge, spec), placed) in input.edges.iter().zip(&input.graph.edges).zip(solved.edges) {
         work.charge_adapter(placed.points.len())?;
         let from = input.id(spec.source).to_owned();
         let to = input.id(spec.target).to_owned();
-        let mut points = placed.points;
-        if let [start, .., end] = points.as_mut_slice() {
-            *start = contact(placed.source, placed.ports.0, *start);
-            *end = contact(placed.target, placed.ports.1, *end);
-        }
         edges.push(LayoutEdge {
             id: edge.id.clone(),
             from_cluster: matches!(spec.source, Endpoint::Group(_)).then(|| from.clone()),
             to_cluster: matches!(spec.target, Endpoint::Group(_)).then(|| to.clone()),
             from,
             to,
-            points: points
+            // Keep the solver's box waypoints. Canonical painting applies contour contacts.
+            points: placed
+                .points
                 .into_iter()
                 .map(|RoutePoint { x, y, .. }| LayoutPoint { x, y })
                 .collect(),
