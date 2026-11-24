@@ -245,10 +245,10 @@ workflow filename belonging to each crate:
 | Crates | Publish owner |
 | --- | --- |
 | Workspace-coupled crates, including `merman-unicode-linebreak` | `release-crates.yml` |
-| `roughr-merman` | `release-independent-crate.yml` |
+| `roughr-merman`, `merman-usvg`, `merman-resvg`, `merman-krilla`, `merman-krilla-svg` | `release-independent-crate.yml` |
 | `tree-sitter-mermaid` | `release-tree-sitter-mermaid.yml` |
 
-A maintainer publishes the SVG and PDF implementation crates using the
+A maintainer bootstraps the SVG and PDF implementation crates using the
 [implementation crate procedure](#svg-and-pdf-implementation-crates).
 
 The single-crate owners use `rust-lang/crates-io-auth-action` immediately before uploading. The
@@ -702,6 +702,12 @@ with `cargo publish --locked -p <package> --registry crates-io` and verify the e
 and checksum before proceeding. After the group is visible, build a fresh registry consumer
 with all three output features before releasing `merman-export` and its workspace dependents.
 Keep accepted versions and checksums in [Publish Order](PUBLISH_ORDER.md).
+
+After the first upload, configure each implementation crate's Trusted Publisher for
+`release-independent-crate.yml`. Dispatch that workflow for later versions with the exact
+package and version on the reviewed source ref. Publish dependency packages before dispatching
+their dependents. The workflow checks Rust API compatibility, builds the workspace export
+features against the candidate, and verifies the registry archive for the selected package.
 
 ## Release Preflight
 

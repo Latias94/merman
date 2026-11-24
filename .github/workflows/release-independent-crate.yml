@@ -8,6 +8,10 @@ on:
         required: true
         type: choice
         options:
+          - merman-krilla
+          - merman-krilla-svg
+          - merman-resvg
+          - merman-usvg
           - roughr-merman
       version:
         description: "Exact crate version to publish, for example 0.12.3"
@@ -46,7 +50,7 @@ jobs:
           }
 
           case "$DISPATCH_PACKAGE" in
-            roughr-merman) ;;
+            merman-krilla|merman-krilla-svg|merman-resvg|merman-usvg|roughr-merman) ;;
             *)
               fail "package is not an admitted independently versioned crate."
               ;;
@@ -120,6 +124,7 @@ jobs:
         run: cargo semver-checks check-release -p "$PACKAGE" --color always
 
       - name: Select published dependent release tags
+        if: ${{ needs.validate-inputs.outputs.package == 'roughr-merman' }}
         id: dependent-versions
         shell: bash
         run: |
@@ -130,6 +135,7 @@ jobs:
           printf 'prerelease_version=%s\n' "${prerelease_tag#v}" >> "$GITHUB_OUTPUT"
 
       - name: Compile published dependents against the candidate
+        if: ${{ needs.validate-inputs.outputs.package == 'roughr-merman' }}
         env:
           PACKAGE: ${{ needs.validate-inputs.outputs.package }}
           VERSION: ${{ needs.validate-inputs.outputs.version }}
@@ -142,6 +148,10 @@ jobs:
             --candidate-path crates/roughr \
             --dependent "merman-render=$STABLE_DEPENDENT_VERSION" \
             --dependent "merman-render=$PRERELEASE_DEPENDENT_VERSION"
+
+      - name: Compile workspace native export against the implementation crates
+        if: ${{ needs.validate-inputs.outputs.package != 'roughr-merman' }}
+        run: cargo check --locked -p merman-export --no-default-features --features native-fonts,png,jpeg,pdf
 
       - name: Verify registry bytes or dry-run independent crate publication
         env:
@@ -250,6 +260,7 @@ jobs:
           done
 
       - name: Verify published dependent lanes
+        if: ${{ needs.validate-inputs.outputs.package == 'roughr-merman' }}
         env:
           PACKAGE: ${{ needs.validate-inputs.outputs.package }}
           VERSION: ${{ needs.validate-inputs.outputs.version }}

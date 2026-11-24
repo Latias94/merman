@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import xml.etree.ElementTree as ElementTree
+import zlib
 
 
 if __package__:
@@ -114,10 +115,12 @@ __all__ = (
 PACKAGE_NAME = "merman-cli"
 CAPABILITIES_SCHEMA_VERSION = 2
 SVG_SMOKE_SOURCE = b"flowchart LR\nA --> B\n"
+RAW_SVG_SMOKE_SIZE = (160, 32)
 RAW_SVG_SMOKE_SOURCE = (
-    b'<svg xmlns="http://www.w3.org/2000/svg" width="160" height="32" xml:lang="en">'
-    b'<text x="4" y="22" font-family="sans-serif">Merman native SVG</text></svg>'
-)
+    f'<svg xmlns="http://www.w3.org/2000/svg" width="{RAW_SVG_SMOKE_SIZE[0]}" '
+    f'height="{RAW_SVG_SMOKE_SIZE[1]}" xml:lang="en">'
+    '<text x="4" y="22" font-family="sans-serif">Merman native SVG</text></svg>'
+).encode()
 MACOS_FONT_SMOKE_SOURCE = (
     '---\nconfig:\n  fontFamily: Arial\n  htmlLabels: false\n---\n'
     'flowchart LR\nA["Latin 中文 日本語 한글"] --> B["AVA"]\n'
@@ -687,7 +690,7 @@ def _verify_rustdoc_runtime(
         _require_silent_success(check_result, label="Rustdoc check")
 
 
-def _validate_png(payload: bytes) -> None:
+def _validate_png(payload: bytes) -> tuple[int, int]:
     if (
         len(payload) < 45
         or not payload.startswith(PNG_SIGNATURE + b"\x00\x00\x00\rIHDR")
@@ -698,6 +701,50 @@ def _validate_png(payload: bytes) -> None:
     height = int.from_bytes(payload[20:24], "big")
     if width == 0 or height == 0:
         raise ArchiveVerificationError("minimal PNG render has zero dimensions")
+    return width, height
+
+
+def _validate_raw_svg_png(payload: bytes) -> None:
+    width, height = RAW_SVG_SMOKE_SIZE
+    if (
+        _validate_png(payload) != RAW_SVG_SMOKE_SIZE
+        or payload[24:29] != b"\x08\x06\x00\x00\x00"
+    ):
+        raise ArchiveVerificationError(
+            f"raw SVG text smoke expected a {width}x{height} non-interlaced RGBA8 PNG"
+        )
+
+    compressed = bytearray()
+    offset = 33  # Immediately after IHDR.
+    end = len(payload) - 12  # IEND was checked by _validate_png.
+    while offset < end:
+        size = int.from_bytes(payload[offset:offset + 4], "big")
+        chunk_end = offset + 12 + size
+        if chunk_end > end:
+            raise ArchiveVerificationError("raw SVG text PNG has a truncated chunk")
+        if payload[offset + 4:offset + 8] == b"IDAT":
+            compressed.extend(payload[offset + 8:chunk_end - 4])
+        offset = chunk_end
+
+    stride = 1 + width * 4
+    expected = height * stride
+    decoder = zlib.decompressobj()
+    try:
+        rows = decoder.decompress(compressed, expected + 1)
+    except zlib.error as error:
+        raise ArchiveVerificationError("raw SVG text PNG has invalid image data") from error
+    if not decoder.eof or decoder.unused_data or len(rows) != expected or any(
+        filter_type > 4 for filter_type in rows[::stride]
+    ):
+        raise ArchiveVerificationError("raw SVG text PNG has invalid image data")
+
+    # PNG filters preserve an all-zero alpha channel, and the first pixel has no predictor.
+    # A transparent corner and nonzero alpha elsewhere prove ink in this text-only fixture.
+    has_ink = any(
+        any(rows[start + 4:start + stride:4]) for start in range(0, expected, stride)
+    )
+    if rows[4] or not has_ink:
+        raise ArchiveVerificationError("raw SVG text PNG has no visible ink on a transparent canvas")
 
 
 def _validate_jpeg(payload: bytes) -> None:
@@ -822,16 +869,15 @@ def verify_runtime_contract(
     if root.tag.rsplit("}", maxsplit=1)[-1] != "svg":
         raise ArchiveVerificationError("minimal render root element is not SVG")
 
-    output_validators = (
-        ("png", _validate_png),
-        ("jpg", _validate_jpeg),
-        ("pdf", _validate_pdf),
-    )
-    for source, input_options, label in (
-        (SVG_SMOKE_SOURCE, [], "Mermaid"),
-        (RAW_SVG_SMOKE_SOURCE, ["--input-kind", "svg"], "raw SVG"),
+    for source, input_options, label, png_validator in (
+        (SVG_SMOKE_SOURCE, [], "Mermaid", _validate_png),
+        (RAW_SVG_SMOKE_SOURCE, ["--input-kind", "svg"], "raw SVG", _validate_raw_svg_png),
     ):
-        for output_format, validator in output_validators:
+        for output_format, validator in (
+            ("png", png_validator),
+            ("jpg", _validate_jpeg),
+            ("pdf", _validate_pdf),
+        ):
             result = run_checked(
                 [command, "render", *input_options, "--format", output_format, "-"],
                 stdin=source,
