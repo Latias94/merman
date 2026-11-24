@@ -685,6 +685,18 @@ mod tests {
     }
 
     #[test]
+    fn a_shortcut_does_not_reverse_the_tail_of_an_entry_anchored_cycle() {
+        let nodes = nodes(5);
+        let mut links = links(&[(0, 1), (1, 2), (2, 3), (3, 4), (4, 0), (1, 4)]);
+        for _ in 0..2 {
+            let oriented = run(&nodes, &links, CyclePolicy::HybridAdaptive);
+            assert_eq!(oriented.topo, [0, 1, 2, 3, 4]);
+            assert_eq!(feedback(&links, &oriented), [1004]);
+            links.reverse();
+        }
+    }
+
+    #[test]
     fn chains_of_sccs_keep_all_bridges_and_greedy_feedback_across_edge_permutations() {
         for n in [25, 50, 75, 100] {
             let nodes = nodes(n);
@@ -738,8 +750,8 @@ mod tests {
             (3, 5),
         ]);
         let pure = run(&nodes[..8], &links, CyclePolicy::default());
-        assert_eq!(pure.topo, vec![0, 1, 2, 7, 3, 4, 5, 6]);
-        assert_eq!(feedback(&links, &pure), vec![1006, 1007, 1008]);
+        assert_eq!(pure.topo, [0, 1, 2, 3, 4, 5, 6, 7]);
+        assert_eq!(feedback(&links, &pure), [1007, 1008]);
 
         links.extend(
             [(8, 7), (9, 4)]

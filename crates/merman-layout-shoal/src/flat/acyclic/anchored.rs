@@ -11,6 +11,15 @@ struct Arc {
     span: u32,
 }
 
+#[derive(Default, PartialEq, Eq, PartialOrd, Ord)]
+struct Score {
+    // Shorter shortcuts cannot compensate for turning more authored edges around.
+    reversed: usize,
+    interleaved: usize,
+    reversed_span: u64,
+    total_span: u64,
+}
+
 /// Try two entry-anchored orders for an SCC small enough to score directly.
 pub(super) fn append_order(
     scc: &Scc<'_>,
@@ -207,7 +216,7 @@ fn greedy(
     Ok(order)
 }
 
-fn score(order: &[usize], arcs: &[Arc], work: &mut Work<'_>) -> LayoutResult<Option<u64>> {
+fn score(order: &[usize], arcs: &[Arc], work: &mut Work<'_>) -> LayoutResult<Option<Score>> {
     let mut position = [0; MAX_VERTICES];
     for (i, &v) in order.iter().enumerate() {
         position[v] = i;
@@ -235,17 +244,16 @@ fn score(order: &[usize], arcs: &[Arc], work: &mut Work<'_>) -> LayoutResult<Opt
         return Ok(None);
     }
 
-    let mut cost = 0;
+    let mut score = Score::default();
     for (i, &id) in ids.iter().enumerate() {
         work.visit(1)?;
         let arc = arcs[id];
         let (a, b) = ends(arc);
         let span = ranks[b] - ranks[a];
-        // Every spanned rank carries a shaft. Count that cost even on forward arcs,
-        // where admitting a single shortcut can otherwise stretch the entire drawing.
-        cost += 3 * span;
+        score.total_span += span;
         if position[arc.from] > position[arc.to] {
-            cost += 10 + 2 * span;
+            score.reversed += 1;
+            score.reversed_span += span;
         }
         // Interleaved intervals estimate crossings before any coordinates are assigned.
         for &later in &ids[i + 1..] {
@@ -254,8 +262,8 @@ fn score(order: &[usize], arcs: &[Arc], work: &mut Work<'_>) -> LayoutResult<Opt
             if c >= b {
                 break;
             }
-            cost += u64::from(a < c && b < d);
+            score.interleaved += usize::from(a < c && b < d);
         }
     }
-    Ok(Some(cost))
+    Ok(Some(score))
 }
