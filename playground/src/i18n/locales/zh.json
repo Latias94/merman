@@ -627,6 +627,8 @@
     "contrastPass": "主题颜色 · WCAG {{grade}}",
     "autoFix": "自动修复对比度",
     "noContrastFix": "主题解析器无法自动调整其余颜色。",
+    "contrastOverrideLimit": "自动修复会超出图族覆盖规则的数量上限。请在 JSON 标签页合并重叠规则或调整颜色。",
+    "contrastFixInvalid": "{{message}} 请在 JSON 标签页调整相关颜色。",
     "lowContrast": "{{foreground}} 与 {{background}} 的对比度为 {{ratio}}:1，需要达到 {{minimum}}:1。",
     "adjusted": "{{foreground}} 已调整为 {{color}}。",
     "notices_other": "{{count}} 条主题提示"

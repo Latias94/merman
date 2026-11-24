@@ -1,4 +1,4 @@
-import type { ResolvedThemeV2, ThemeAppearance, ThemeAppearanceLayer, ThemeDocumentV2, ThemePaint, ThemeResolution, ThemeRoles } from "@mermanjs/web";
+import type { ResolvedThemeV2, ThemeAppearance, ThemeAppearanceLayer, ThemeDocumentV2, ThemeFamilyOverride, ThemePaint, ThemeResolution, ThemeRoles } from "@mermanjs/web";
 import { THEME_APPEARANCES } from "./v2.ts";
 
 export function withAppearance(
@@ -49,18 +49,23 @@ function merge<T extends object>(...patches: (T | undefined)[]): T | undefined {
   return patches.some((patch) => patch !== undefined) ? Object.assign({}, ...patches) as T : undefined;
 }
 
-/** Commit compiler-proposed text and series adjustments to the editable layer. */
+/** Commit compiler-proposed adjustments, or return null if they exceed the override limit. */
 export function applyContrastFix(
   document: ThemeDocumentV2,
   before: ResolvedThemeV2,
   after: ResolvedThemeV2,
   appearances: readonly ThemeAppearance[],
-): ThemeDocumentV2 {
+  base?: ThemeDocumentV2,
+): ThemeDocumentV2 | null {
   const appearance = after.appearance;
+  const overrides = fixFamilyOverrides(document.overrides ?? [], base?.overrides ?? [], before, after,
+    appearances.length === 1 && appearances[0] === appearance);
+  if (!overrides) return null;
+
   const changes = changedTextRoles(before.roles, after.roles);
   const sharedRoles = { ...document.roles };
   let next = document;
-  for (const role of TEXT_PAIRS.map(([role]) => role)) {
+  for (const [role] of TEXT_PAIRS) {
     if (changes[role] === undefined) continue;
     if (!Object.hasOwn(sharedRoles, role)) continue;
     for (const other of appearances) {
@@ -75,18 +80,90 @@ export function applyContrastFix(
     ...(before.data.ink.some((color, i) => after.data.ink[i] !== color) ? { ink: after.data.ink } : {}),
     ...(before.data.fill_ink.some((color, i) => after.data.fill_ink[i] !== color) ? { fill_ink: "auto" } : {}),
   };
-  const overrides = [...(document.overrides ?? [])];
-  for (const [id, family] of Object.entries(after.family_overrides ?? {})) {
-    const original = before.family_overrides?.[id];
-    if (!original) continue;
-    const roles = changedTextRoles(original.roles, family.roles);
-    if (Object.keys(roles).length) overrides.push({ families: [id], appearance, roles });
-  }
   return withAppearance({ ...next, roles: Object.keys(sharedRoles).length ? sharedRoles : undefined,
     overrides: overrides.length ? overrides : undefined }, appearance, {
     roles: merge(layer?.roles, Object.keys(changes).length ? changes : undefined),
     data: Object.keys(data).length ? data : undefined,
   });
+}
+
+type TextRolePatch = Partial<Record<(typeof TEXT_PAIRS)[number][0], string>>;
+
+// Theme v2 schema limits for the override array and each rule's family list.
+const MAX_OVERRIDES = 32;
+const MAX_FAMILIES_PER_OVERRIDE = 34;
+
+function fixFamilyOverrides(
+  authored: readonly ThemeFamilyOverride[],
+  inherited: readonly ThemeFamilyOverride[],
+  before: ResolvedThemeV2,
+  after: ResolvedThemeV2,
+  onlyAppearance: boolean,
+): ThemeFamilyOverride[] | null {
+  const { appearance } = after;
+  const overrides = [...authored];
+  const applies = (rule: ThemeFamilyOverride) => rule.appearance == null || rule.appearance === appearance;
+  const active = authored.map((rule, index) => ({ rule, index })).filter(({ rule }) => applies(rule));
+  const writable = active.filter(({ rule }) => onlyAppearance || rule.appearance === appearance).reverse();
+  const inheritedRules = inherited.filter(applies);
+  const families = Object.entries(after.family_overrides ?? {});
+  const pending = new Map<string, TextRolePatch>();
+
+  for (const [role] of TEXT_PAIRS) {
+    // Inherited rules precede every authored rule and are read-only.
+    const lastWriter = new Map<string, number>();
+    for (const rule of inheritedRules) {
+      if (rule.roles?.[role] != null) for (const id of rule.families) lastWriter.set(id, -1);
+    }
+    for (const { rule, index } of active) {
+      if (rule.roles?.[role] != null) for (const id of rule.families) lastWriter.set(id, index);
+    }
+
+    const corrections = new Map<string, string>();
+    for (const [id, family] of families) {
+      const original = before.family_overrides?.[id];
+      if (!original) continue;
+      const current = lastWriter.has(id) ? original.roles[role] : after.roles[role];
+      if (current !== family.roles[role]) corrections.set(id, family.roles[role]);
+    }
+    if (!corrections.size) continue;
+
+    // Prefer editing the winning declaration before adding a role to another rule.
+    for (const hasRole of [true, false]) {
+      for (const { rule, index } of writable) {
+        if ((rule.roles?.[role] != null) !== hasRole) continue;
+        const winners = rule.families.filter((id) => (lastWriter.get(id) ?? -1) <= index);
+        const color = corrections.get(winners[0]);
+        if (color === undefined || !winners.every((id) => corrections.get(id) === color)) continue;
+        overrides[index] = { ...overrides[index], roles: { ...overrides[index].roles, [role]: color } };
+        for (const id of winners) {
+          corrections.delete(id);
+          lastWriter.set(id, index);
+        }
+      }
+    }
+
+    for (const [id, color] of corrections) {
+      const roles = pending.get(id) ?? {};
+      roles[role] = color;
+      pending.set(id, roles);
+    }
+  }
+
+  const groups = new Map<string, { families: string[]; roles: TextRolePatch }>();
+  for (const [id, roles] of pending) {
+    const key = JSON.stringify(roles);
+    const group = groups.get(key);
+    if (group) group.families.push(id);
+    else groups.set(key, { families: [id], roles });
+  }
+  for (const { families, roles } of groups.values()) {
+    for (let start = 0; start < families.length; start += MAX_FAMILIES_PER_OVERRIDE) {
+      if (overrides.length === MAX_OVERRIDES) return null;
+      overrides.push({ families: families.slice(start, start + MAX_FAMILIES_PER_OVERRIDE), appearance, roles });
+    }
+  }
+  return overrides;
 }
 
 function changedTextRoles(before: ThemeRoles, after: ThemeRoles): Partial<ThemeRoles> {

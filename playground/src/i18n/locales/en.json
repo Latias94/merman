@@ -627,6 +627,8 @@
     "contrastPass": "WCAG {{grade}} · theme colors",
     "autoFix": "Auto-fix contrast",
     "noContrastFix": "The resolver could not adjust the remaining colors automatically.",
+    "contrastOverrideLimit": "Auto-fix would exceed the family override limit. Combine overlapping overrides or adjust the colors in the JSON tab.",
+    "contrastFixInvalid": "{{message}} Adjust the affected colors in the JSON tab.",
     "lowContrast": "{{foreground}} on {{background}} has {{ratio}}:1 contrast and needs {{minimum}}:1.",
     "adjusted": "{{foreground}} was adjusted to {{color}}.",
     "notices_one": "{{count}} theme notice",

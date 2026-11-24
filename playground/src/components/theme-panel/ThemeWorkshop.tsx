@@ -97,7 +97,7 @@ export function ThemeWorkshop({ catalog, facade, workspace, hostAppearance, view
   }
 
   function fixContrast() {
-    if (!document || !resolution.ok) return;
+    if (!document || !resolution.ok || exported.error) return;
     const fixed = resolve(facade, raw, { appearance: resolution.resolved.appearance, auto_fix_contrast: true });
     if (!fixed.ok) {
       setMessage({ error: true, text: fixed.message });
@@ -107,7 +107,18 @@ export function ThemeWorkshop({ catalog, facade, workspace, hostAppearance, view
       setMessage({ error: false, text: t("themeWorkshop.noContrastFix") });
       return;
     }
-    apply(formatThemeDocument(applyContrastFix(document, resolution.resolved, fixed.resolved, appearances)));
+    const candidate = applyContrastFix(document, resolution.resolved, fixed.resolved, appearances, base);
+    if (!candidate) {
+      setMessage({ error: true, text: t("themeWorkshop.contrastOverrideLimit") });
+      return;
+    }
+    const next = formatThemeDocument(candidate);
+    const checked = resolve(facade, next, { appearance: compileAppearance });
+    if (!checked.ok) {
+      setMessage({ error: true, text: t("themeWorkshop.contrastFixInvalid", { message: checked.message }) });
+      return;
+    }
+    apply(next);
   }
 
   if (view === "gallery") return null;

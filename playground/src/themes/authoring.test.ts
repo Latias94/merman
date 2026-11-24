@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { ResolvedThemeV2, ThemeDocumentV2 } from "@mermanjs/web";
+import type { ResolvedThemeV2, ThemeDocumentV2, ThemeFamilyOverride, ThemeRoles } from "@mermanjs/web";
 import { resolvedThemeFixture, themeDocumentFixture } from "../lib/theme-appearance.test-fixture.ts";
 import { applyContrastFix, contrastGrade, expandThemeDocument } from "./authoring.ts";
 import { formatThemeDocument } from "./v2.ts";
@@ -49,12 +49,110 @@ test("contrast adjustments update the active editable appearance and preserve th
   const fixed = applyContrastFix(document, before, {
     ...before, roles: { ...before.roles, "text.primary": "#555555" }, data: { ...before.data, ink: ["#777777"], fill_ink: ["#666666"] },
   }, ["light", "dark"]);
+  assert.ok(fixed);
   assert.equal(fixed.extends, "studio");
   assert.equal(fixed.roles, undefined);
   assert.deepEqual(fixed.appearances, {
     light: { roles: { "text.primary": "#555555" }, data: { ink: ["#777777"], fill_ink: "auto" } },
     dark: { roles: { "text.primary": "#EEEEEE" } },
   });
+});
+
+const studioAppearances = ["light", "dark"] as const;
+
+function familyTheme(roles: Partial<ThemeRoles>) {
+  return { ...resolvedThemeFixture, roles: { ...resolvedThemeFixture.roles, ...roles } };
+}
+
+function darkOverrides(count: number): ThemeFamilyOverride[] {
+  return Array.from({ length: count }, () => ({ families: ["flowchart"], appearance: "dark", form: { radius: 5 } }));
+}
+
+test("contrast fixes for all 34 families share one appearance-scoped override in the last slot", () => {
+  const families = Array.from({ length: 34 }, (_, i) => `family-${i}`);
+  const overrides = [...darkOverrides(30), { families, roles: { "text.primary": "#FFFFFF" } }];
+  const document: ThemeDocumentV2 = { schema_version: 2, extends: "studio", overrides };
+  const before = {
+    ...resolvedThemeFixture,
+    family_overrides: Object.fromEntries(families.map((id) => [id, familyTheme({ "text.primary": "#FFFFFF" })])),
+  };
+  const after = {
+    ...before,
+    family_overrides: Object.fromEntries(families.map((id) => [id, familyTheme({ "text.primary": "#666666" })])),
+  };
+
+  const fixed = applyContrastFix(document, before, after, studioAppearances);
+
+  assert.deepEqual(fixed?.overrides, [...overrides, { families, appearance: "light", roles: { "text.primary": "#666666" } }]);
+  assert.equal(document.overrides?.length, 31);
+});
+
+test("contrast fixes reuse writable role winners at capacity while preserving overlapping rules", () => {
+  const overrides: ThemeFamilyOverride[] = [
+    ...darkOverrides(28),
+    { families: ["flowchart", "sequence"], appearance: "light", roles: { "text.primary": "#FFFFFF", "stroke.border": "#AAAAAA" } },
+    { families: ["sequence"], appearance: "light", roles: { "text.primary": "#FFFF99" } },
+    { families: ["flowchart"], roles: { "text.muted": "#FFFFFF" } },
+    { families: ["flowchart"], appearance: "light", form: { radius: 10 } },
+  ];
+  const document: ThemeDocumentV2 = { schema_version: 2, extends: "studio", overrides };
+  const before = { ...resolvedThemeFixture, family_overrides: {
+    flowchart: familyTheme({ "text.primary": "#FFFFFF", "text.muted": "#FFFFFF" }),
+    sequence: familyTheme({ "text.primary": "#FFFF99" }),
+  } };
+  const after = { ...before, family_overrides: {
+    flowchart: familyTheme({ "text.primary": "#666666", "text.muted": "#777777" }),
+    sequence: familyTheme({ "text.primary": "#555522" }),
+  } };
+  const original = structuredClone(document);
+
+  const fixed = applyContrastFix(document, before, after, studioAppearances);
+
+  assert.deepEqual(fixed?.overrides, [
+    ...overrides.slice(0, 28),
+    { ...overrides[28], roles: { "text.primary": "#666666", "stroke.border": "#AAAAAA" } },
+    { ...overrides[29], roles: { "text.primary": "#555522" } },
+    overrides[30],
+    { ...overrides[31], roles: { "text.muted": "#777777" } },
+  ]);
+  assert.deepEqual(document, original);
+});
+
+test("contrast fixes account for corrected base colors and inherited role writers", () => {
+  const base: ThemeDocumentV2 = {
+    ...themeDocumentFixture,
+    overrides: [{ families: ["class"], roles: { "text.primary": "#EEEEEE" } }],
+  };
+  const overrides = [{ families: ["flowchart", "sequence"], form: { radius: 10 } }];
+  const document: ThemeDocumentV2 = { schema_version: 2, extends: "studio", roles: { "text.primary": "#EEEEEE" }, overrides };
+  const unfixed = familyTheme({ "text.primary": "#EEEEEE" });
+  const corrected = familyTheme({ "text.primary": "#555555" });
+  const before = { ...unfixed, family_overrides: { class: unfixed, flowchart: unfixed, sequence: unfixed } };
+  const after = { ...corrected, family_overrides: { class: corrected, flowchart: corrected, sequence: unfixed } };
+
+  const fixed = applyContrastFix(document, before, after, studioAppearances, base);
+
+  assert.deepEqual(fixed?.overrides, [
+    ...overrides,
+    { families: ["class"], appearance: "light", roles: { "text.primary": "#555555" } },
+    { families: ["sequence"], appearance: "light", roles: { "text.primary": "#EEEEEE" } },
+  ]);
+  assert.deepEqual(fixed?.appearances?.dark?.roles, document.roles);
+});
+
+test("contrast fixes decline a full document when the last role writer is shared", () => {
+  const overrides: ThemeFamilyOverride[] = [
+    ...darkOverrides(30),
+    { families: ["flowchart"], appearance: "light", roles: { "text.primary": "#222222" } },
+    { families: ["flowchart"], roles: { "text.primary": "#FFFFFF" } },
+  ];
+  const document: ThemeDocumentV2 = { schema_version: 2, extends: "studio", overrides };
+  const before = { ...resolvedThemeFixture, family_overrides: { flowchart: familyTheme({ "text.primary": "#FFFFFF" }) } };
+  const after = { ...before, family_overrides: { flowchart: familyTheme({ "text.primary": "#666666" }) } };
+  const original = structuredClone(document);
+
+  assert.equal(applyContrastFix(document, before, after, studioAppearances), null);
+  assert.deepEqual(document, original);
 });
 
 test("contrast badges reserve AAA for text with at least seven-to-one contrast", () => {
