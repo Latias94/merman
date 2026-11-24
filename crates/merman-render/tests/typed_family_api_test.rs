@@ -122,7 +122,19 @@ fn architecture_reports_the_missing_cytoscape_layout_capability() {
 #[test]
 fn mindmap_tidy_tree_renders_without_cytoscape_layout() {
     let theme = ThemeCompiler::new()
-        .compile_json(br##"{"schema_version":2,"extends":"monograph","form":{"elevation":"flat"},"data":{"fill":["#123456"],"pattern_encoding":false}}"##, None)
+        .compile_json(
+            br##"{
+                "schema_version": 2,
+                "extends": "monograph",
+                "form": {"elevation": "flat"},
+                "appearances": {"light": {"data": {
+                    "fill": ["#123456", "#AFD5ED", "#F1D2CD", "#EFE8C2"],
+                    "fill_ink": "auto",
+                    "pattern_encoding": false
+                }}}
+            }"##,
+            None,
+        )
         .expect("compile default-feature Mindmap palette");
     let parsed = match MermaidEngine::new().parse_diagram_for_render_model_with_type_sync(
         "mindmap",
@@ -150,7 +162,10 @@ fn mindmap_tidy_tree_renders_without_cytoscape_layout() {
         )
         .expect("render strict default-feature Mindmap palette");
 
-    assert!(rendered.svg().contains(r#"data-mindmap-section="0""#));
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Mindmap SVG");
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("g") && node.attribute("data-merman-mindmap-branch") == Some("0")
+    }));
     assert!(rendered.svg().contains("fill:#123456"));
 }
 
