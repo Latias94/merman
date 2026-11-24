@@ -125,8 +125,8 @@ struct Wall {
 }
 
 impl Wall {
-    fn blocks(&self, label: Bounds, own_stroke: Option<usize>) -> bool {
-        if self.stroke.is_some() && self.stroke == own_stroke || !self.bounds.overlaps(label) {
+    fn blocks(&self, label: Bounds, own_stroke: usize) -> bool {
+        if self.stroke == Some(own_stroke) || !self.bounds.overlaps(label) {
             return false;
         }
         match self.shape {
@@ -341,7 +341,7 @@ impl Clearance {
     pub(super) fn clear(
         &mut self,
         label: Bounds,
-        own_stroke: Option<usize>,
+        own_stroke: usize,
         work: &mut Work<'_>,
     ) -> LayoutResult<bool> {
         let Some(root) = self.root else {
@@ -354,7 +354,7 @@ impl Clearance {
         &mut self,
         index: usize,
         label: Bounds,
-        own_stroke: Option<usize>,
+        own_stroke: usize,
         work: &mut Work<'_>,
     ) -> LayoutResult<bool> {
         if !self.visit(work)? {
@@ -420,17 +420,14 @@ mod tests {
                     .unwrap()
             );
             let mut clearance = scene.index(&mut work).unwrap();
-            assert!(!clearance.clear(hit, None, &mut work).unwrap());
-            assert!(clearance.clear(hit, Some(1), &mut work).unwrap());
-            assert_eq!(
-                clearance.clear(corner, None, &mut work).unwrap(),
-                fits_corner
-            );
+            assert!(!clearance.clear(hit, 0, &mut work).unwrap());
+            assert!(clearance.clear(hit, 1, &mut work).unwrap());
+            assert_eq!(clearance.clear(corner, 0, &mut work).unwrap(), fits_corner);
             let marker = Bounds {
                 x: [41.0, 42.0],
                 y: [34.0, 35.0],
             };
-            assert!(!clearance.clear(marker, Some(1), &mut work).unwrap());
+            assert!(!clearance.clear(marker, 1, &mut work).unwrap());
         }
     }
 
@@ -458,9 +455,9 @@ mod tests {
             x: [6.0, 8.0],
             y: [1.0, 2.0],
         };
-        assert!(index.clear(between, None, &mut work).unwrap());
+        assert!(index.clear(between, 0, &mut work).unwrap());
         index.remaining = 1;
-        assert!(!index.clear(between, None, &mut work).unwrap());
+        assert!(!index.clear(between, 0, &mut work).unwrap());
         assert!(index.exhausted());
     }
 }

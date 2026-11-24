@@ -2,10 +2,11 @@
 
 mod clearance;
 
-use super::{Drawing, canonical_size};
-use crate::work::{LayoutResult, Work, push, reserved};
+use super::{Drawing, Link, canonical_size};
+use crate::work::{LayoutResult, Work, filled, push, reserved};
 use crate::{
-    Axis, Direction, Graph, Options, Point, RoutePoint, RoutingStyle, Size, sweep_handle_fraction,
+    Axis, Direction, EdgeSpec, Graph, MarkerMetrics, Options, Point, RoutePoint, RoutingStyle,
+    Size, Spacing, sweep_handle_fraction,
 };
 use clearance::{Bounds, Clearance, Scene};
 
@@ -20,18 +21,66 @@ pub(super) struct InlineLabel {
 }
 
 pub(super) struct GapPolicy<'a> {
-    pub(super) spacing: f64,
+    pub(super) spacing: Spacing,
     pub(super) restored: &'a [u32],
 }
 
-pub(super) fn eligible(size: Size, direction: Direction, rank_spacing: f64) -> bool {
-    // The kernel receives a measured box. The height ceiling keeps typical multi-line
-    // labels in obstacle tiers even when the configured rank gap is large.
-    size.width > 0.0
-        && size.height > 0.0
-        && size.width <= 120.0
-        && size.height <= (rank_spacing * 0.75).min(30.0)
-        && canonical_size(direction, size).height < rank_spacing
+fn label_padding(spacing: Spacing) -> f64 {
+    spacing.edge.max(2.0)
+}
+
+fn marker_lengths(edge: &EdgeSpec) -> [f64; 2] {
+    [edge.start_marker, edge.end_marker].map(|MarkerMetrics { length, width }| {
+        // An unmarked end can still reserve a straight lead for painting.
+        if width > 0.0 { length } else { 0.0 }
+    })
+}
+
+impl GapPolicy<'_> {
+    pub(super) fn admits(&self, size: Size, edge: &EdgeSpec, direction: Direction) -> bool {
+        let [start, end] = marker_lengths(edge);
+        let depth = canonical_size(direction, size).height;
+        // Use the unexpanded gap and budget for markers on the rank faces. The placed
+        // routes still need clearance checks against actual contacts and neighboring ink.
+        size.width > 0.0
+            && size.height > 0.0
+            && size.width <= 120.0
+            && size.height <= (self.spacing.rank * 0.75).min(30.0)
+            && depth + 2.0 * label_padding(self.spacing) + start + end < self.spacing.rank
+    }
+}
+
+pub(super) fn protect_transit_faces(
+    labels: &[InlineLabel],
+    arcs: &[Link],
+    ranks: &[u32],
+    split: &mut [bool],
+    work: &mut Work<'_>,
+) -> LayoutResult<()> {
+    let mut transit = Vec::new();
+    for arc in arcs {
+        work.visit(1)?;
+        let (from, to) = (arc.from as usize, arc.to as usize);
+        if ranks[to] - ranks[from] > 1 {
+            if transit.is_empty() {
+                work.charge(ranks.len())?;
+                transit = filled(ranks.len(), [false; 2])?;
+            }
+            transit[from][0] = true;
+            transit[to][1] = true;
+        }
+    }
+    if !transit.is_empty() {
+        for label in labels {
+            work.visit(1)?;
+            let arc = arcs[label.edge];
+            // Keep a tier when a longer path shares a rank face. The order and router can
+            // then assign that path a separate channel around the label from the first solve.
+            split[label.gap as usize] |=
+                transit[arc.from as usize][0] || transit[arc.to as usize][1];
+        }
+    }
+    Ok(())
 }
 
 fn scene(
@@ -79,7 +128,7 @@ fn scene(
 #[derive(Clone, Copy)]
 struct Anchor {
     at: Point,
-    normal: Point,
+    tangent: Point,
     fraction: f64,
     bend_room: f64,
 }
@@ -106,9 +155,9 @@ fn anchor(a: RoutePoint, b: RoutePoint, t: f64, style: RoutingStyle, fraction: f
             x: dx.mul_add(sx, a.x),
             y: dy.mul_add(sy, a.y),
         },
-        normal: Point {
-            x: -vy / len,
-            y: vx / len,
+        tangent: Point {
+            x: vx / len,
+            y: vy / len,
         },
         fraction,
         bend_room: t.min(1.0 - t) * straight_len,
@@ -118,6 +167,7 @@ fn anchor(a: RoutePoint, b: RoutePoint, t: f64, style: RoutingStyle, fraction: f
 fn anchors(
     route: &[RoutePoint],
     style: RoutingStyle,
+    [start_marker, end_marker]: [f64; 2],
     work: &mut Work<'_>,
 ) -> LayoutResult<[Option<Anchor>; 4]> {
     let mut total = 0.0;
@@ -131,7 +181,8 @@ fn anchors(
         total += size;
     }
     let mut anchors = [None; 4];
-    if total == 0.0 || !total.is_finite() {
+    let shaft = total - start_marker - end_marker;
+    if shaft <= 0.0 || !shaft.is_finite() {
         return Ok(anchors);
     }
     let (size, start, i) = longest;
@@ -140,7 +191,7 @@ fn anchors(
         route[i + 1],
         0.5,
         style,
-        (start + size * 0.5) / total,
+        ((start + size * 0.5 - start_marker) / shaft).clamp(0.0, 1.0),
     ));
     let mut start = 0.0;
     for leg in route.windows(2) {
@@ -148,7 +199,7 @@ fn anchors(
         let (a, b) = (leg[0], leg[1]);
         let size = (b.x - a.x).hypot(b.y - a.y);
         for (slot, fraction) in anchors.iter_mut().zip([0.5, 0.35, 0.65]) {
-            let distance = fraction * total - start;
+            let distance = fraction * shaft + start_marker - start;
             if slot.is_none() && size > 0.0 && (0.0..=size).contains(&distance) {
                 *slot = Some(anchor(a, b, distance / size, style, fraction));
             }
@@ -161,6 +212,7 @@ fn anchors(
 struct Label<'a> {
     edge: usize,
     route: &'a [RoutePoint],
+    markers: [f64; 2],
     size: Size,
     gap: [f64; 2],
 }
@@ -173,54 +225,42 @@ impl Label<'_> {
         options: &Options,
         work: &mut Work<'_>,
     ) -> LayoutResult<Option<(Point, Bounds)>> {
-        let pad = options.spacing.edge.max(2.0);
+        let pad = label_padding(options.spacing);
         let mut best = None::<(f64, Point, Bounds)>;
-        for anchor in anchors(self.route, options.routing, work)?
+        for anchor in anchors(self.route, options.routing, self.markers, work)?
             .into_iter()
             .flatten()
         {
-            let along = self.size.width * 0.5 * anchor.normal.y.abs()
-                + self.size.height * 0.5 * anchor.normal.x.abs();
-            let across = self.size.width * 0.5 * anchor.normal.x.abs()
-                + self.size.height * 0.5 * anchor.normal.y.abs();
-            let side_distance =
-                across + pad * (anchor.normal.x.abs() + anchor.normal.y.abs()) + 1.0;
-            for side in [-1.0, 1.0, 0.0] {
+            if !clearance.visit(work)? {
+                return Ok(None);
+            }
+            let at = anchor.at;
+            let along = self.size.width * 0.5 * anchor.tangent.x.abs()
+                + self.size.height * 0.5 * anchor.tangent.y.abs();
+            let padded = Bounds::label(at, self.size, pad);
+            let score =
+                (anchor.fraction - 0.5).abs() * 32.0 + (along - anchor.bend_room).clamp(0.0, 12.0);
+            if !padded.finite()
+                || padded.y[0] < self.gap[0]
+                || padded.y[1] > self.gap[1]
+                || best.is_some_and(|winner| score >= winner.0)
+                || !clearance.clear(padded, self.edge, work)?
+            {
+                continue;
+            }
+            let mut free = true;
+            for &(_, wall) in placed {
                 if !clearance.visit(work)? {
                     return Ok(None);
                 }
-                let center = side == 0.0;
-                let distance = side * side_distance;
-                let at = Point {
-                    x: distance.mul_add(anchor.normal.x, anchor.at.x),
-                    y: distance.mul_add(anchor.normal.y, anchor.at.y),
-                };
-                let padded = Bounds::label(at, self.size, pad);
-                let score = (anchor.fraction - 0.5).abs() * 32.0
-                    + (along - anchor.bend_room).clamp(0.0, 12.0)
-                    + if center { 10.0 } else { 0.0 };
-                if !padded.finite()
-                    || padded.y[0] < self.gap[0]
-                    || padded.y[1] > self.gap[1]
-                    || best.is_some_and(|winner| score >= winner.0)
-                    || !clearance.clear(padded, center.then_some(self.edge), work)?
-                {
-                    continue;
+                if padded.overlaps(wall) {
+                    free = false;
+                    break;
                 }
-                let mut free = true;
-                for &(_, wall) in placed {
-                    if !clearance.visit(work)? {
-                        return Ok(None);
-                    }
-                    if padded.overlaps(wall) {
-                        free = false;
-                        break;
-                    }
-                }
-                let bounds = Bounds::label(at, self.size, 0.0);
-                if free && bounds.contains_center(at) {
-                    best = Some((score, at, bounds));
-                }
+            }
+            let bounds = Bounds::label(at, self.size, 0.0);
+            if free && bounds.contains_center(at) {
+                best = Some((score, at, bounds));
             }
         }
         Ok(best.map(|(_, at, bounds)| (at, bounds)))
@@ -250,12 +290,12 @@ pub(super) fn place(
     let mut blocked = Vec::new();
     for (&InlineLabel { edge, gap: rank }, &gap) in labels.iter().zip(gaps) {
         let (id, route) = &drawing.edges[edge];
-        let size = graph.edges[*id as usize]
-            .label
-            .expect("inline edge has a measured label");
+        let spec = &graph.edges[*id as usize];
+        let size = spec.label.expect("inline edge has a measured label");
         let label = Label {
             edge,
             route: &route.points,
+            markers: marker_lengths(spec),
             size: canonical_size(graph.direction, size),
             gap,
         };

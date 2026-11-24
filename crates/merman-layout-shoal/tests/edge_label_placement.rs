@@ -31,7 +31,7 @@ fn graph(direction: Direction, nodes: &[Size], edges: &[(u32, u32)]) -> Graph {
 }
 
 #[test]
-fn a_short_measured_label_can_use_the_original_gap() {
+fn a_short_measured_label_stays_centered_on_its_shaft_in_the_original_gap() {
     for direction in DIRECTIONS {
         for routing in [
             RoutingStyle::Curved,
@@ -53,17 +53,13 @@ fn a_short_measured_label_can_use_the_original_gap() {
             assert_eq!(inline.stats.dummy_nodes, 0);
             assert!(legacy.stats.dummy_nodes > inline.stats.dummy_nodes);
             let edge = &inline.edges[0];
-            let label = rect(edge.label_center.unwrap(), measured);
-            let shaft = edge.points[0];
+            let center = edge.label_center.unwrap();
+            let label = rect(center, measured);
+            let start = edge.points.first().unwrap();
+            let end = edge.points.last().unwrap();
             assert!(inline.nodes.iter().all(|&node| !overlaps(node, label)));
-            match direction {
-                Direction::Down | Direction::Up => {
-                    assert!(shaft.x < label.x || shaft.x > label.x + label.width)
-                }
-                Direction::Right | Direction::Left => {
-                    assert!(shaft.y < label.y || shaft.y > label.y + label.height)
-                }
-            }
+            assert_eq!(center.x, start.x.midpoint(end.x));
+            assert_eq!(center.y, start.y.midpoint(end.y));
         }
     }
 }
@@ -144,7 +140,7 @@ fn blocked_by_markers(graph: &mut Graph) {
 }
 
 #[test]
-fn a_blocked_gap_is_restored_and_a_later_gap_still_uses_inline_placement() {
+fn a_gap_without_marker_room_splits_and_the_next_gap_can_still_place_inline() {
     let mut graph = graph(Direction::Down, &[size(60.0, 40.0); 3], &[(0, 1), (1, 2)]);
     blocked_by_markers(&mut graph);
     graph.edges[1].label = Some(size(24.0, 18.0));
@@ -164,23 +160,119 @@ fn a_blocked_gap_is_restored_and_a_later_gap_still_uses_inline_placement() {
 }
 
 #[test]
+fn a_through_edge_reserves_tiers_at_its_shared_rank_faces() {
+    let mut graph = graph(
+        Direction::Down,
+        &[size(60.0, 40.0); 4],
+        &[(0, 1), (1, 2), (2, 3), (0, 2)],
+    );
+    for edge in &mut graph.edges[..3] {
+        edge.label = Some(size(36.0, 20.0));
+    }
+    let drawing = layout(&graph, &opt_in()).unwrap();
+    assert_eq!(drawing.node_ranks, [0, 2, 4, 5]);
+    let last_edge = &drawing.edges[2];
+    assert!(
+        last_edge
+            .points
+            .iter()
+            .all(|p| p.x == last_edge.label_center.unwrap().x)
+    );
+}
+
+#[test]
+fn a_foreign_marker_restores_its_blocked_gap_and_keeps_a_later_inline_label() {
+    let mut graph = graph(
+        Direction::Down,
+        &[size(60.0, 40.0); 4],
+        &[(0, 1), (0, 2), (1, 3)],
+    );
+    let measured = size(36.0, 20.0);
+    let marker = MarkerMetrics {
+        length: 22.0,
+        width: 200.0,
+    };
+    graph.edges[0].label = Some(measured);
+    graph.edges[1].end_marker = marker;
+    graph.edges[2].label = Some(size(24.0, 18.0));
+    let drawing = layout(&graph, &opt_in()).unwrap();
+    assert_eq!(drawing.node_ranks, [0, 2, 2, 3]);
+    let target = drawing.edges[1].points.last().unwrap();
+    let recovered_label = drawing.edges[0].label_center.unwrap();
+    assert!(recovered_label.y + measured.height * 0.5 < target.y - marker.length);
+    assert!(drawing.edges[2].label_center.is_some());
+}
+
+struct Budget {
+    used: usize,
+    limit: usize,
+}
+
+impl WorkControl for Budget {
+    fn check(&mut self) -> Result<(), WorkError> {
+        Ok(())
+    }
+
+    fn charge(&mut self, units: usize) -> Result<(), WorkError> {
+        if units > self.limit - self.used {
+            return Err(WorkError::Interrupted);
+        }
+        self.used += units;
+        Ok(())
+    }
+}
+
+#[test]
+fn horizontal_gap_budgets_both_visible_markers_before_trying_inline_placement() {
+    let marker = MarkerMetrics {
+        length: 7.0,
+        width: 10.0,
+    };
+    let measured = size(34.0, 18.0);
+    for direction in [Direction::Right, Direction::Left] {
+        let mut graph = graph(direction, &[size(60.0, 40.0); 2], &[(0, 1)]);
+        graph.edges[0].label = Some(measured);
+        graph.edges[0].start_marker = marker;
+        graph.edges[0].end_marker = marker;
+        let mut options = opt_in();
+        let mut scratch = LayoutScratch::default();
+        let mut meter = Budget {
+            used: 0,
+            limit: usize::MAX,
+        };
+        options.inline_labels = false;
+        let split = layout_with_control(&graph, &options, &mut scratch, &mut meter).unwrap();
+        let mut same_budget = Budget {
+            used: 0,
+            limit: meter.used,
+        };
+        options.inline_labels = true;
+        assert_eq!(
+            layout_with_control(&graph, &options, &mut scratch, &mut same_budget).unwrap(),
+            split
+        );
+        assert_eq!(same_budget.used, meter.used);
+        assert_eq!(split.stats.dummy_nodes, 1);
+
+        // A width-zero straight lead should leave room for a label on the shaft.
+        graph.edges[0].start_marker.width = 0.0;
+        let inline = layout(&graph, &options).unwrap();
+        assert_eq!(inline.stats.dummy_nodes, 0);
+        let edge = &inline.edges[0];
+        let [start, .., end] = edge.points.as_slice() else {
+            panic!("the label should have a routed edge");
+        };
+        let label = edge.label_center.unwrap();
+        assert_eq!(label.y, start.y);
+        assert_eq!(label.y, end.y);
+        let padding = options.spacing.edge;
+        assert!((label.x - start.x).abs() > measured.width * 0.5 + padding);
+        assert!((label.x - end.x).abs() > measured.width * 0.5 + padding + marker.length);
+    }
+}
+
+#[test]
 fn work_rejection_and_zero_dummy_capacity_recover_without_losing_labels() {
-    struct Budget {
-        used: usize,
-        limit: usize,
-    }
-    impl WorkControl for Budget {
-        fn check(&mut self) -> Result<(), WorkError> {
-            Ok(())
-        }
-        fn charge(&mut self, units: usize) -> Result<(), WorkError> {
-            if units > self.limit - self.used {
-                return Err(WorkError::Interrupted);
-            }
-            self.used += units;
-            Ok(())
-        }
-    }
     let mut graph = graph(Direction::Down, &[size(60.0, 40.0); 2], &[(0, 1)]);
     blocked_by_markers(&mut graph);
     let mut scratch = LayoutScratch::default();

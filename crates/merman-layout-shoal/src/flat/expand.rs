@@ -109,7 +109,7 @@ fn sublayers(
         if let Some(size) = spec.label {
             if !inline
                 .as_ref()
-                .is_some_and(|policy| label_place::eligible(size, graph.direction, policy.spacing))
+                .is_some_and(|policy| policy.admits(size, spec, graph.direction))
                 || occupied[gap + 1] - occupied[gap] != 1
                 || g.inline_labels.len() == label_place::MAX_LABELS
             {
@@ -139,6 +139,13 @@ fn sublayers(
     }
     if !g.inline_labels.is_empty() {
         work.charge(g.inline_labels.len())?;
+        if g.inline_labels
+            .iter()
+            .any(|label| !split[label.gap as usize])
+        {
+            label_place::protect_transit_faces(&g.inline_labels, arcs, &g.rank, &mut split, work)?;
+            work.charge(g.inline_labels.len())?;
+        }
         g.inline_labels.retain(|label| !split[label.gap as usize]);
     }
     let splits = split.iter().filter(|&&yes| yes).count();
@@ -364,7 +371,7 @@ pub(super) fn build(
         graph,
         proxies,
         inline.then_some(label_place::GapPolicy {
-            spacing: options.spacing.rank,
+            spacing: options.spacing,
             restored: restored_labels,
         }),
         g,

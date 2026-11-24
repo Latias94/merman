@@ -146,7 +146,7 @@ pub struct Options {
     pub bus_routing: bool,
     /// Use obstacle-aware global routing for orthogonal paths when a route can be improved.
     pub global_orthogonal: bool,
-    /// Try placing short middle labels alongside their routed edge.
+    /// Try centering short middle labels on their route within the original rank gap.
     pub inline_labels: bool,
     /// Allow adjacent ranks to use free space below or above their shorter members.
     pub compact_ranks: bool,
