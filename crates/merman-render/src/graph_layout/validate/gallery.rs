@@ -1312,15 +1312,15 @@ fn cycle_keeps_its_backbone_and_paints_straight_exterior_lanes_in_four_direction
             "LR" => p.x,
             _ => -p.x,
         };
-        let edge = |source: usize, target: usize| {
-            let index = drawing
+        let edge_index = |source: usize, target: usize| {
+            drawing
                 .layout
                 .edges
                 .iter()
                 .position(|e| e.from == ids[source] && e.to == ids[target])
-                .unwrap();
-            &scene.edges[index]
+                .unwrap()
         };
+        let edge = |source, target| &scene.edges[edge_index(source, target)];
         for i in 0..ids.len() - 1 {
             assert!(
                 along(centers[i]) < along(centers[i + 1]),
@@ -1376,6 +1376,35 @@ fn cycle_keeps_its_backbone_and_paints_straight_exterior_lanes_in_four_direction
                 }
                 assert!(covered, "{direction}: {id} corridor missing");
             }
+        }
+        let feedback = Shaft::read(edge(5, 2)).unwrap();
+        for (source, target, side) in [(3, 5, 1.0), (7, 0, -1.0)] {
+            let owner = LabelOwner::Edge(edge_index(source, target));
+            let label = scene
+                .labels
+                .iter()
+                .find(|label| label.owner == owner)
+                .unwrap();
+            let a = Point::new(label.bounds.x0, label.bounds.y0);
+            let b = Point::new(label.bounds.x1, label.bounds.y1);
+            let lo = along(a).min(along(b));
+            let hi = along(a).max(along(b));
+            let rim = across(if side > 0.0 { b } else { a });
+            let rail = feedback
+                .lines
+                .iter()
+                .find(|line| {
+                    let (start, end) = (along(line.p0), along(line.p1));
+                    start.min(end) <= lo && hi <= start.max(end)
+                })
+                .expect("the feedback rail spans the entire label");
+            let clearance = (side * (across(rail.p0) - rim)).min(side * (across(rail.p1) - rim));
+            assert!(
+                clearance >= 12.0 - FLATNESS,
+                "{direction}: {} → {} label clearance is {clearance:.3}px",
+                ids[source],
+                ids[target]
+            );
         }
         eprintln!(
             "cycle {direction}: {:.2} × {:.2} px, zero painted crossings and three straight exterior lanes",

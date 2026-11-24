@@ -46,6 +46,19 @@ pub(super) fn straighten_exterior_lanes(
     // The order pass reserves outer lanes first. Place the innermost lane first so each
     // outer lane can read its neighbor's final position wherever their ranks overlap.
     let pitch = options.spacing.edge.max(12.0);
+    // A label needs the full pitch past its box. Extents already include each half-gap.
+    let label_clearance = |inner: u32, outer: u32| {
+        let kind = g.kind[inner as usize];
+        if kind != Kind::Label && g.kind[outer as usize] != Kind::Label {
+            return 0.0;
+        }
+        let inner_gap = if kind == Kind::Node {
+            options.spacing.node
+        } else {
+            options.spacing.edge
+        };
+        (pitch - inner_gap * 0.5 - options.spacing.edge * 0.5).max(0.0)
+    };
     work.charge(g.layers.len())?;
     let mut outside = filled(g.layers.len(), [None; 2])?;
     for lane in g.exterior_lanes.iter().rev() {
@@ -72,18 +85,20 @@ pub(super) fn straighten_exterior_lanes(
             if let Some(other) = interior {
                 let extent = extents(g, c, options, other);
                 let edge = if lane.right { extent.1 } else { extent.0 };
-                axis = axis.max(sign * x[other as usize] + edge + own);
+                axis = axis.max(sign * x[other as usize] + edge + own + label_clearance(other, v));
             }
-            if let Some((neighbor, reach)) = outside[rank][side] {
-                axis = axis.max(neighbor + pitch.max(reach + own));
+            if let Some(other) = outside[rank][side] {
+                let extent = extents(g, c, options, other);
+                let edge = if lane.right { extent.1 } else { extent.0 };
+                let distance = pitch.max(edge + own + label_clearance(other, v));
+                axis = axis.max(sign * x[other as usize] + distance);
             }
         }
         let center = finite(axis)?;
         for &v in bends {
             work.visit(1)?;
             let rank = g.rank[v as usize] as usize;
-            let extent = extents(g, c, options, v);
-            outside[rank][side] = Some((center, if lane.right { extent.1 } else { extent.0 }));
+            outside[rank][side] = Some(v);
             x[v as usize] = sign * center;
             g.keep[v as usize] = true;
         }
