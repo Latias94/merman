@@ -502,7 +502,7 @@
           "height": 112.0,
           "id": "rect-2",
           "is_cluster": false,
-          "width": 210.0,
+          "width": 230.0,
           "x": 375.0,
           "y": 186.0
         },
@@ -510,7 +510,7 @@
           "height": 112.0,
           "id": "rect-12",
           "is_cluster": false,
-          "width": 210.0,
+          "width": 230.0,
           "x": 975.0,
           "y": 420.0
         },
@@ -518,8 +518,8 @@
           "height": 294.0,
           "id": "rect-9",
           "is_cluster": false,
-          "width": 424.0,
-          "x": 878.0,
+          "width": 436.0,
+          "x": 882.0,
           "y": 445.0
         },
         {

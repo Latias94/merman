@@ -192,17 +192,19 @@ impl<'a> SequenceLayoutLoopState<'a> {
         include_block_stopy(&mut self.sequence_items, inserted_bottom_y, box_margin);
     }
 
-    fn include_rect_horizontal(&mut self, min_x: f64, max_x: f64, box_margin: f64) {
-        if let Some(item) = self.sequence_items.last_mut() {
-            item.include_horizontal(min_x - box_margin, max_x + box_margin);
-        }
-    }
-
     fn include_inserted_horizontal(&mut self, min_x: f64, max_x: f64, box_margin: f64) {
         let sequence_item_depth = self.sequence_items.len();
         let nested_margin = sequence_item_depth as f64 * box_margin;
         self.bounds_start_x = self.bounds_start_x.min(min_x - nested_margin);
         self.bounds_stop_x = self.bounds_stop_x.max(max_x + nested_margin);
+
+        // A rect uses the same insertions as a control frame. Closing an item propagates
+        // its horizontal bounds to the parent with one more box margin.
+        if !self.rect_stack.is_empty()
+            && let Some(item) = self.sequence_items.last_mut()
+        {
+            item.include_horizontal(min_x - box_margin, max_x + box_margin);
+        }
 
         // Mermaid updates every active sequence item for each insertion. The outermost item gets
         // the largest margin, while the innermost item gets one box margin. `sequence_items`
@@ -458,9 +460,6 @@ fn handle_sequence_note(
     );
     let left = note.node.x - note.node.width / 2.0;
     let right = note.node.x + note.node.width / 2.0;
-    if !state.rect_stack.is_empty() {
-        state.include_rect_horizontal(left, right, ctx.box_margin);
-    }
     state.include_inserted_horizontal(left, right, ctx.box_margin);
     state.include_inserted_bottom(note.rect_max_y, ctx.box_margin);
     state.activation_geometry.include_inserted_top(
@@ -545,19 +544,6 @@ fn handle_sequence_message(
         from_x.max(to_x) + SEQUENCE_FRAME_SIDE_PAD_PX,
         inserted_bottom_y,
     );
-    if !state.rect_stack.is_empty()
-        && let [start, end] = edge.points.as_slice()
-    {
-        // Sequence rects use the drawn message endpoints. Self messages include the label span.
-        let (left, right) = if edge.from == edge.to {
-            let label_width = edge.label.as_ref().map_or(1.0, |label| label.width);
-            let span = label_width.max(ctx.sequence_default_width) / 2.0;
-            (start.x - span, start.x + span)
-        } else {
-            (start.x.min(end.x), start.x.max(end.x))
-        };
-        state.include_rect_horizontal(left, right, ctx.box_margin);
-    }
     state.include_inserted_horizontal(inserted_min_x, inserted_max_x, ctx.box_margin);
     state.activation_geometry.include_inserted_top(
         inserted_top_y,

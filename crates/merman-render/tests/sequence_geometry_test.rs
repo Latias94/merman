@@ -95,6 +95,34 @@ fn assert_text(value: &Value, node: roxmltree::Node<'_, '_>) {
 }
 
 #[test]
+fn sequence_rect_uses_nested_message_bounds_with_mermaid_margins() {
+    let source = include_str!("../../../fixtures/sequence/stress_rect_par_over_008.mmd");
+    let (layout, svg) = render(source);
+    let rect = layout["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| {
+            node["id"]
+                .as_str()
+                .is_some_and(|id| id.starts_with("rect-"))
+        })
+        .expect("layout background rectangle");
+    // Mermaid 12.3.0 uses the outer lifeline bounds (74..476) plus both 10px box margins.
+    near(rect["x"].as_f64().unwrap(), 275.0);
+    near(rect["width"].as_f64().unwrap(), 442.0);
+
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let rect = document
+        .root_element()
+        .children()
+        .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some("rect"))
+        .expect("SVG background rectangle");
+    near(number(rect, "x"), 54.0);
+    near(number(rect, "width"), 442.0);
+}
+
+#[test]
 fn sequence_frames_and_sections_share_svg_geometry_in_source_order() {
     // Keep raw frame/title widths distinct from the minimum drawn keyword width in both looks.
     for (prefix, label_box_width) in [
