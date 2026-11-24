@@ -145,6 +145,13 @@ input in `render`, `batch`, and `mmdc`; raw SVG conversion only paints existing
 geometry and is never relaid out. Host fonts can change wrapping, node sizes and
 image/PDF snapshots.
 
+CLI builds with `system-fonts` also use their default provider for raw SVG PNG,
+JPEG, and PDF. System discovery uses the finalized SVG's text inventory, including
+text inside nested `<svg>` elements. Path-only input skips discovery and can
+render with `--font-system off` and no font files. Use explicit fonts to paint
+text with `--font-system off`. `--font-max-bytes` applies to the conversion font
+context. With only that option, raw SVG uses the build's default provider.
+
 In the CLI `native_fonts` capability document,
 `default_policy_scope: "mermaid-svg-input"` scopes the existing
 `default_measurement: "deterministic"`, `default_font_source: "none"`, and
@@ -199,7 +206,7 @@ estimates.
 
 The optional CLI feature `platform-system-font-query` adds an explicit system
 font policy. Use `--font-system platform` to query the operating system's font
-service. The backend uses Fontique and DirectWrite on Windows, Core Text on macOS,
+service. The backend uses DirectWrite on Windows, Core Text on macOS,
 and Fontconfig on Linux and FreeBSD.
 `--font-system bounded` explicitly selects bounded
 discovery in builds with platform query support. `--font-system on` selects the
@@ -307,10 +314,12 @@ parser/analysis, library defaults and host-owned FFI measurement policies are
 unchanged.
 
 SVG output does not embed fonts or convert text to outlines. Consumers must have
-the same fonts to reproduce measured geometry. Raw SVG supports explicit fonts
-only for PNG/JPEG/PDF conversion and rejects `--font-measurement`; conversion
-does not relayout existing geometry. Respect font redistribution and embedding
-licenses. Cousine fixtures are test-only and are not production assets.
+the same fonts to reproduce measured geometry. Raw SVG conversion rejects
+`--font-measurement` and `--font-max-measurements`. Workspace builds and official
+archives use `xml:lang` when selecting a font, including inherited tags and
+`<tspan>` overrides. Cargo consumers on public usvg 0.47 use scalar font selection
+without per-span language. Respect font redistribution and embedding licenses.
+Cousine fixtures are test-only and are not production assets.
 
 Rust hosts load `merman::svg::export::NativeFontOptions` and install the resulting
 context with `SvgEnvironment::with_native_font_context`. Typed binary rendering

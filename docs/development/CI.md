@@ -46,7 +46,8 @@ The core, native Node, and SVG/browser owners publish separate same-run results 
   run includes Core Text matching, snapshot identity and selection reuse, plus host-font
   shaping comparisons for right-to-left and Indic text.
   Linux exercises automatic CLI selection with both provider defaults, an empty Fontconfig
-  configuration, and an unloadable Fontconfig library.
+  configuration, and an unloadable Fontconfig library. The GNU archive and container jobs
+  exercise raw SVG conversion on the archived CLI, including the empty and missing Fontconfig cases.
 - `feature-contracts` owns Linux representative feature builds, isolated consumers, compile-fail
   examples, Rustdoc subsets/math, feature unification, runtime adapters, FFI and ASCII contracts;
 - `theme-contracts` groups the workspace-only theme acceptance cfg, preset and family terminal

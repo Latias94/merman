@@ -108,7 +108,20 @@ pub(crate) struct PreparedRustdocRenderers {
 pub(super) enum PreparedGraphicalSource {
     Mermaid(Box<crate::config::ConfiguredRenderer>),
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-    RawSvg(Box<RenderEnvironment>),
+    RawSvg(Box<PreparedRawSvg>),
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+pub(super) struct PreparedRawSvg {
+    pub(super) environment: RenderEnvironment,
+    pub(super) fonts: Option<PreparedRawSvgFonts>,
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+pub(super) struct PreparedRawSvgFonts {
+    options: merman::svg::export::NativeFontOptions,
+    system: Option<crate::cli::FontSystemKind>,
+    sources: Vec<crate::cli::FontSource>,
 }
 
 #[cfg(feature = "svg")]
@@ -131,22 +144,19 @@ pub(super) enum PreparedGraphicalOutput {
 
 #[cfg(feature = "svg")]
 impl PreparedGraphicalOutput {
-    #[cfg(all(
-        feature = "native-fonts",
-        any(feature = "png", feature = "jpeg", feature = "pdf")
-    ))]
+    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     pub(super) fn with_font_context(
         mut self,
-        context: Option<merman::svg::export::NativeFontContext>,
+        context: merman::svg::export::NativeFontContext,
     ) -> Self {
         match &mut self {
             Self::Svg => {}
             #[cfg(feature = "png")]
-            Self::Png { options } => options.font_context = context,
+            Self::Png { options } => options.font_context = Some(context),
             #[cfg(feature = "jpeg")]
-            Self::Jpeg { options } => options.font_context = context,
+            Self::Jpeg { options } => options.font_context = Some(context),
             #[cfg(feature = "pdf")]
-            Self::Pdf { options } => options.font_context = context,
+            Self::Pdf { options } => options.font_context = Some(context),
         }
         self
     }
@@ -555,25 +565,20 @@ pub(crate) fn prepare_graphical_output(
         ),
     };
     #[cfg(feature = "native-fonts")]
-    let font_context = prepare_font_context(
-        &common.render.fonts,
-        &common.cwd,
-        raw_svg,
-        matches!(&output, PreparedGraphicalOutput::Svg),
-        control,
-    )?;
+    let font_context = if raw_svg {
+        None
+    } else {
+        let svg_output = matches!(&output, PreparedGraphicalOutput::Svg);
+        let context = prepare_font_context(&common.render.fonts, &common.cwd, svg_output, control)?;
+        if common.render.fonts.max_bytes.is_some() && context.is_none() && !svg_output {
+            return Err(CliError::InvalidInput(
+                "--font-max-bytes requires a native font context for encoded output. Use --font-system on or --font-file PATH and omit --font-measurement deterministic.".to_owned(),
+            ));
+        }
+        context
+    };
     #[cfg(feature = "native-fonts")]
-    if common.render.fonts.max_bytes.is_some()
-        && font_context.is_none()
-        && !matches!(&output, PreparedGraphicalOutput::Svg)
-    {
-        return Err(CliError::InvalidInput(
-            "--font-max-bytes requires a native font context for encoded output. Use --font-system on or --font-file PATH and omit --font-measurement deterministic.".to_owned(),
-        ));
-    }
-    #[cfg(feature = "native-fonts")]
-    if font_context.is_some() && !raw_svg && css.as_ref().is_some_and(|css| !css.trim().is_empty())
-    {
+    if font_context.is_some() && css.as_ref().is_some_and(|css| !css.trim().is_empty()) {
         return Err(CliError::InvalidInput(
             "native text measurement does not support --css-file (post-layout styling); configure typography through Mermaid configuration, or use --font-measurement deterministic without font sources".to_string(),
         ));
@@ -603,10 +608,11 @@ pub(crate) fn prepare_graphical_output(
     let source = if raw_svg {
         #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
         {
-            PreparedGraphicalSource::RawSvg(Box::new(
-                RenderEnvironment::deterministic()
+            PreparedGraphicalSource::RawSvg(Box::new(PreparedRawSvg {
+                environment: RenderEnvironment::deterministic()
                     .with_resource_policy(common.resources.render_policy()),
-            ))
+                fonts: PreparedRawSvgFonts::from_args(&common.render.fonts, &common.cwd)?,
+            }))
         }
         #[cfg(not(any(feature = "png", feature = "jpeg", feature = "pdf")))]
         {
@@ -707,47 +713,80 @@ pub(crate) fn prepare_rustdoc_renderers(
     })
 }
 
-#[cfg(feature = "native-fonts")]
-fn prepare_font_context(
-    args: &crate::cli::FontCliArgs,
-    cwd: &Path,
-    raw_svg: bool,
-    svg_output: bool,
-    control: &OperationControl,
-) -> Result<Option<merman::svg::export::NativeFontContext>, CliError> {
-    use crate::cli::{FontMeasurementKind, FontSource, FontSystemKind};
-    use merman::svg::export::NativeFontOptions;
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+impl PreparedRawSvgFonts {
+    fn from_args(args: &crate::cli::FontCliArgs, cwd: &Path) -> Result<Option<Self>, CliError> {
+        use crate::cli::FontSystemKind;
 
-    let explicit = !args.sources.is_empty();
-    let requested_system = args.system.filter(|kind| *kind != FontSystemKind::Off);
-    let native_requested = args.measurement == Some(FontMeasurementKind::Native)
-        || (!raw_svg
-            && !svg_output
-            && args.measurement.is_none()
-            && cfg!(feature = "system-fonts"));
-    if args.max_measurements.is_some() {
-        if raw_svg {
+        if args.max_measurements.is_some() {
             return Err(CliError::InvalidInput(
                 "--font-max-measurements requires native Mermaid text measurement; raw SVG is not relaid out".to_owned(),
             ));
         }
-        if args.measurement == Some(FontMeasurementKind::Deterministic)
-            || !(explicit || native_requested || requested_system.is_some())
-        {
+        if args.measurement.is_some() {
             return Err(CliError::InvalidInput(
-                "--font-max-measurements requires native text measurement; provide --font-file or --font-dir, or select --font-measurement native".to_owned(),
+                "--font-measurement is only supported for Mermaid input; raw SVG is not relaid out"
+                    .to_owned(),
             ));
         }
+        let explicit = !args.sources.is_empty();
+        if !explicit
+            && args.system.is_none()
+            && args.max_bytes.is_none()
+            && !cfg!(feature = "system-fonts")
+        {
+            return Ok(None);
+        }
+        let use_system = args
+            .system
+            .map_or(!explicit, |mode| mode != FontSystemKind::Off);
+        Ok(Some(Self {
+            options: native_font_options(args, cwd, use_system),
+            system: args.system,
+            sources: args.sources.clone(),
+        }))
     }
-    if raw_svg && args.measurement.is_some() {
-        return Err(CliError::InvalidInput(
-            "--font-measurement is only supported for Mermaid input; raw SVG is not relaid out"
-                .to_string(),
-        ));
+
+    pub(super) fn load(
+        &self,
+        svg_uses_fonts: bool,
+        control: &OperationControl,
+    ) -> Result<Option<merman::svg::export::NativeFontContext>, CliError> {
+        if self.sources.is_empty() {
+            if !svg_uses_fonts {
+                return Ok(None);
+            }
+            if !self.options.system_fonts {
+                return Err(CliError::InvalidInput(
+                    "--font-system off requires explicit fonts to paint SVG text; provide --font-file or --font-dir".to_owned(),
+                ));
+            }
+        }
+        let mut options = self.options.clone();
+        options.system_fonts &= svg_uses_fonts;
+        load_cli_font_context(options, self.system, &self.sources, control).map(Some)
     }
-    if raw_svg && svg_output && (explicit || args.system.is_some()) {
+}
+
+#[cfg(feature = "native-fonts")]
+fn prepare_font_context(
+    args: &crate::cli::FontCliArgs,
+    cwd: &Path,
+    svg_output: bool,
+    control: &OperationControl,
+) -> Result<Option<merman::svg::export::NativeFontContext>, CliError> {
+    use crate::cli::{FontMeasurementKind, FontSystemKind};
+
+    let explicit = !args.sources.is_empty();
+    let requested_system = args.system.filter(|kind| *kind != FontSystemKind::Off);
+    let native_requested = args.measurement == Some(FontMeasurementKind::Native)
+        || (!svg_output && args.measurement.is_none() && cfg!(feature = "system-fonts"));
+    if args.max_measurements.is_some()
+        && (args.measurement == Some(FontMeasurementKind::Deterministic)
+            || !(explicit || native_requested || requested_system.is_some()))
+    {
         return Err(CliError::InvalidInput(
-            "font options for raw SVG require PNG, JPEG, or PDF output; fonts are not embedded into SVG".to_string(),
+            "--font-max-measurements requires native text measurement; provide --font-file or --font-dir, or select --font-measurement native".to_owned(),
         ));
     }
     if explicit && args.measurement == Some(FontMeasurementKind::Deterministic) {
@@ -770,8 +809,7 @@ fn prepare_font_context(
         return Ok(None);
     }
     let use_system = requested_system.is_some()
-        || (!raw_svg
-            && !explicit
+        || (!explicit
             && native_requested
             && args.system != Some(FontSystemKind::Off)
             && cfg!(feature = "system-fonts"));
@@ -781,9 +819,7 @@ fn prepare_font_context(
         ));
     }
     if !explicit && !use_system {
-        if args.system == Some(FontSystemKind::Off)
-            && (!svg_output || (!raw_svg && native_requested))
-        {
+        if args.system == Some(FontSystemKind::Off) && (!svg_output || native_requested) {
             return Err(CliError::InvalidInput(
                 "--font-system off leaves no fonts for native measurement or encoded painting; provide --font-file or --font-dir, or use --font-measurement deterministic for Mermaid SVG output".to_string(),
             ));
@@ -795,6 +831,19 @@ fn prepare_font_context(
         }
         return Ok(None);
     }
+    let options = native_font_options(args, cwd, use_system);
+    load_cli_font_context(options, args.system, &args.sources, control).map(Some)
+}
+
+#[cfg(feature = "native-fonts")]
+fn native_font_options(
+    args: &crate::cli::FontCliArgs,
+    cwd: &Path,
+    use_system: bool,
+) -> merman::svg::export::NativeFontOptions {
+    use crate::cli::FontSource;
+    use merman::svg::export::NativeFontOptions;
+
     let mut options = NativeFontOptions::default().with_system_fonts(use_system);
     if let Some(maximum) = args.max_bytes {
         options.limits.max_bytes = maximum;
@@ -815,28 +864,48 @@ fn prepare_font_context(
             FontSource::Directory(path) => options.with_font_dir(resolve(path)),
         };
     }
-    #[cfg(feature = "platform-system-font-query")]
-    let result =
-        if use_system && FontSystemKind::platform_selected(args.system) {
-            match options.clone().load_platform(control) {
-                Err(merman::svg::export::NativeFontError::PlatformDiscoveryUnavailable {
-                    ..
-                }) if args.system != Some(FontSystemKind::Platform) => options.load(control),
-                result => result,
-            }
-        } else {
-            options.load(control)
-        };
-    #[cfg(not(feature = "platform-system-font-query"))]
-    let result = options.load(control);
-    crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
-    result
-        .map(Some)
-        .map_err(|error| native_font_error(error, &args.sources))
+    options
 }
 
 #[cfg(feature = "native-fonts")]
-pub(super) fn native_font_error(
+fn load_cli_font_context(
+    options: merman::svg::export::NativeFontOptions,
+    system: Option<crate::cli::FontSystemKind>,
+    sources: &[crate::cli::FontSource],
+    control: &OperationControl,
+) -> Result<merman::svg::export::NativeFontContext, CliError> {
+    let result = load_native_font_context(options, system, control);
+    crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
+    result.map_err(|error| native_font_error(error, sources))
+}
+
+#[cfg(feature = "native-fonts")]
+fn load_native_font_context(
+    options: merman::svg::export::NativeFontOptions,
+    system: Option<crate::cli::FontSystemKind>,
+    control: &OperationControl,
+) -> Result<merman::svg::export::NativeFontContext, merman::svg::export::NativeFontError> {
+    #[cfg(feature = "platform-system-font-query")]
+    {
+        use crate::cli::FontSystemKind;
+        use merman::svg::export::NativeFontError;
+        if options.system_fonts && FontSystemKind::platform_selected(system) {
+            if system == Some(FontSystemKind::Platform) {
+                return options.load_platform(control);
+            }
+            return match options.clone().load_platform(control) {
+                Err(NativeFontError::PlatformDiscoveryUnavailable { .. }) => options.load(control),
+                result => result,
+            };
+        }
+    }
+    #[cfg(not(feature = "platform-system-font-query"))]
+    let _ = system;
+    options.load(control)
+}
+
+#[cfg(feature = "native-fonts")]
+fn native_font_error(
     error: merman::svg::export::NativeFontError,
     sources: &[crate::cli::FontSource],
 ) -> CliError {
@@ -1034,7 +1103,7 @@ mod font_policy_tests {
         let cwd = std::env::current_dir().unwrap();
         for policy in policies {
             let context =
-                prepare_font_context(&policy, &cwd, false, true, &merman::OperationControl::new())
+                prepare_font_context(&policy, &cwd, true, &merman::OperationControl::new())
                     .unwrap();
             assert!(
                 context.is_none(),

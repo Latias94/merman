@@ -250,7 +250,11 @@ pub(crate) fn write_compiled_capabilities(
                 system_fallback_values: &["on", "bounded", "platform"],
             },
             selected_font_bytes_bounded: true,
-            legacy_export_paths: "raw-svg-without-font-options-and-deterministic-mermaid-use-output-environment-contract",
+            legacy_export_paths: if cfg!(feature = "system-fonts") {
+                "deterministic-mermaid-uses-output-environment-contract"
+            } else {
+                "raw-svg-without-font-options-and-deterministic-mermaid-use-output-environment-contract"
+            },
             explicit_font_sources: if cfg!(feature = "platform-system-font-query") {
                 "closed-set-unless-system-fallback-requested"
             } else {

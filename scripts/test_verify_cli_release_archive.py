@@ -265,9 +265,7 @@ def valid_capabilities_payload(
                 "system_fallback_values": ["on", "bounded", "platform"],
             },
             "selected_font_bytes_bounded": True,
-            "legacy_export_paths": (
-                "raw-svg-without-font-options-and-deterministic-mermaid-use-output-environment-contract"
-            ),
+            "legacy_export_paths": "deterministic-mermaid-uses-output-environment-contract",
             "explicit_font_sources": "closed-set-unless-system-fallback-requested",
             "measurement_operations": [
                 "measure",
@@ -1518,6 +1516,15 @@ class RuntimeContractTests(unittest.TestCase):
                     PROJECT_ROOT, payload, f"native_fonts.*{field}"
                 )
 
+    def test_runtime_rejects_legacy_raw_svg_default_in_release_archive(self) -> None:
+        payload = valid_capabilities_payload()
+        payload["native_fonts"]["legacy_export_paths"] = (
+            "raw-svg-without-font-options-and-deterministic-mermaid-use-output-environment-contract"
+        )
+        self.assert_runtime_payload_rejected(
+            PROJECT_ROOT, payload, "native_fonts.*legacy_export_paths"
+        )
+
     def test_runtime_rejects_native_font_metadata_field_drift(self) -> None:
         native = valid_capabilities_payload()["native_fonts"]
         for field, value in native.items():
@@ -1724,7 +1731,7 @@ class RuntimeContractTests(unittest.TestCase):
                 host_target_checker=lambda _target: True,
             )
 
-        self.assertEqual(len(calls), 9)
+        self.assertEqual(len(calls), 12)
         self.assertEqual(
             [command[1:] for command, _stdin in calls],
             [
@@ -1735,27 +1742,30 @@ class RuntimeContractTests(unittest.TestCase):
                 ["render", "--format", "png", "-"],
                 ["render", "--format", "jpg", "-"],
                 ["render", "--format", "pdf", "-"],
+                ["render", "--input-kind", "svg", "--format", "png", "-"],
+                ["render", "--input-kind", "svg", "--format", "jpg", "-"],
+                ["render", "--input-kind", "svg", "--format", "pdf", "-"],
                 [
                     "rustdoc",
                     "build",
                     "--config",
-                    calls[7][0][4],
+                    calls[10][0][4],
                     "--quiet",
                 ],
                 [
                     "rustdoc",
                     "check",
                     "--config",
-                    calls[8][0][4],
+                    calls[11][0][4],
                     "--quiet",
                 ],
             ],
         )
-        self.assertEqual(calls[3][1], verifier.SVG_SMOKE_SOURCE)
         self.assertTrue(all(stdin == verifier.SVG_SMOKE_SOURCE for _, stdin in calls[3:7]))
-        self.assertEqual(calls[7][1], b"")
-        self.assertEqual(calls[8][1], b"")
-        self.assertEqual(calls[7][0][4], calls[8][0][4])
+        self.assertTrue(all(stdin == verifier.RAW_SVG_SMOKE_SOURCE for _, stdin in calls[7:10]))
+        self.assertEqual(calls[10][1], b"")
+        self.assertEqual(calls[11][1], b"")
+        self.assertEqual(calls[10][0][4], calls[11][0][4])
 
     def test_macos_mixed_script_png_contract(self) -> None:
         info = (
@@ -1835,7 +1845,7 @@ class RuntimeContractTests(unittest.TestCase):
                 runner=runner,
                 host_target_checker=lambda _target: True,
             )
-        self.assertEqual(len(calls), 7)
+        self.assertEqual(len(calls), 10)
         self.assertTrue(all("rustdoc" not in command for command in calls))
 
     def test_runtime_rejects_rustdoc_build_without_managed_outputs(self) -> None:

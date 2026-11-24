@@ -487,6 +487,23 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                         runner=fixture.run,
                     )
 
+    def test_installed_cli_rejects_legacy_raw_svg_default_in_release_profile(self) -> None:
+        with self.installation_fixture() as fixture:
+            fixture.capabilities["native_fonts"]["legacy_export_paths"] = (
+                "raw-svg-without-font-options-and-deterministic-mermaid-use-output-environment-contract"
+            )
+            with self.assertRaisesRegex(
+                verifier.HomebrewVerificationError, "native_fonts.*legacy_export_paths"
+            ):
+                verifier.verify_homebrew_install(
+                    formula_version="0.8.0",
+                    support_assets_since=SUPPORT_ASSETS_SINCE,
+                    prefix=fixture.prefix,
+                    binary=fixture.binary,
+                    contract_root=fixture.contract_root,
+                    runner=fixture.run,
+                )
+
     def test_native_font_fields_have_exact_json_types_and_values(self) -> None:
         native = valid_capabilities_payload()["native_fonts"]
         for field, value in native.items():

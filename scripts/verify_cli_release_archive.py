@@ -114,6 +114,10 @@ __all__ = (
 PACKAGE_NAME = "merman-cli"
 CAPABILITIES_SCHEMA_VERSION = 2
 SVG_SMOKE_SOURCE = b"flowchart LR\nA --> B\n"
+RAW_SVG_SMOKE_SOURCE = (
+    b'<svg xmlns="http://www.w3.org/2000/svg" width="160" height="32" xml:lang="en">'
+    b'<text x="4" y="22" font-family="sans-serif">Merman native SVG</text></svg>'
+)
 MACOS_FONT_SMOKE_SOURCE = (
     '---\nconfig:\n  fontFamily: Arial\n  htmlLabels: false\n---\n'
     'flowchart LR\nA["Latin 中文 日本語 한글"] --> B["AVA"]\n'
@@ -818,18 +822,22 @@ def verify_runtime_contract(
         ("jpg", _validate_jpeg),
         ("pdf", _validate_pdf),
     )
-    for output_format, validator in output_validators:
-        result = run_checked(
-            [command, "render", "--format", output_format, "-"],
-            stdin=SVG_SMOKE_SOURCE,
-            cwd=binary.parent,
-            runner=runner,
-        )
-        payload = _require_quiet_success(
-            result,
-            label=f"minimal {output_format.upper()} render",
-        )
-        validator(payload)
+    for source, input_options, label in (
+        (SVG_SMOKE_SOURCE, [], "Mermaid"),
+        (RAW_SVG_SMOKE_SOURCE, ["--input-kind", "svg"], "raw SVG"),
+    ):
+        for output_format, validator in output_validators:
+            result = run_checked(
+                [command, "render", *input_options, "--format", output_format, "-"],
+                stdin=source,
+                cwd=binary.parent,
+                runner=runner,
+            )
+            payload = _require_quiet_success(
+                result,
+                label=f"minimal {output_format.upper()} render of {label}",
+            )
+            validator(payload)
 
     if target.endswith("-apple-darwin"):
         _verify_macos_mixed_script_png(binary, runner=runner)

@@ -170,6 +170,40 @@ jobs:
           docker build --file distribution/container/Dockerfile --tag merman-cli:ci container-context
           python3 scripts/cli_container_smoke.py merman-cli:ci --version "$version"
 
+      - name: Check the archived CLI with an empty Fontconfig catalog
+        run: |
+          docker run --rm -i --network none --workdir /tmp --entrypoint sh merman-cli:ci -eu <<'SH'
+          mkdir empty-fonts
+          export FONTCONFIG_FILE=/tmp/empty-fonts.conf
+          printf '%s\n' '<fontconfig><dir>/tmp/empty-fonts</dir><cachedir>/tmp/empty-cache</cachedir></fontconfig>' \
+            > "$FONTCONFIG_FILE"
+          printf '%s\n' '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="32">' \
+            '<text x="4" y="22" font-family="DejaVu Sans">Font policy</text></svg>' > text.svg
+          printf '%s\n' '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="32">' \
+            '<path d="M4 4H22V22H4Z"/></svg>' > path.svg
+          render() {
+            merman-cli render --format png --output=- "$@"
+          }
+
+          render text.svg --font-system=bounded > bounded.png
+          render path.svg > path.png
+          printf '\211PNG\r\n\032\n' > signature
+          head -c 8 bounded.png | cmp - signature
+          head -c 8 path.png | cmp - signature
+
+          for mode in default on platform; do
+            set -- text.svg
+            if [ "$mode" != default ]; then
+              set -- "$@" "--font-system=$mode"
+            fi
+            status=0
+            render "$@" > empty.png 2> empty.err || status=$?
+            test "$status" -eq 3
+            test ! -s empty.png
+            grep -F 'selected font sources contain no usable font faces' empty.err
+          done
+          SH
+
       - name: Check the archived CLI without the Fontconfig runtime
         run: |
           docker run --rm -i --network none --user 0 --workdir /tmp --entrypoint sh merman-cli:ci -eu <<'SH'
@@ -177,21 +211,26 @@ jobs:
           test -s /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
           printf '%s\n' '---' 'config:' '  fontFamily: DejaVu Sans' '  htmlLabels: false' \
             '---' 'flowchart LR' 'A[Font fallback] --> B[Ready]' > input.mmd
+          printf '%s\n' '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="32">' \
+            '<text x="4" y="22" font-family="DejaVu Sans">Font fallback</text></svg>' > input.svg
           render() {
-            merman-cli render input.mmd --format png --output=- --svg-id=font-fallback "$@"
+            merman-cli render --format png --output=- "$@"
           }
+          check_fallback() {
+            render "$@" --font-system=bounded > bounded.png
+            render "$@" > default.png
+            render "$@" --font-system=on > on.png
+            head -c 8 bounded.png | cmp - signature
+            cmp bounded.png default.png
+            cmp bounded.png on.png
 
-          render --font-system=bounded > bounded.png
-          render > default.png
-          render --font-system=on > on.png
+            status=0
+            render "$@" --font-system=platform > platform.png 2> platform.err || status=$?
+            test "$status" -eq 3
+            test ! -s platform.png
+            grep -F 'platform system font service Fontconfig is unavailable' platform.err
+          }
           printf '\211PNG\r\n\032\n' > signature
-          head -c 8 bounded.png | cmp - signature
-          cmp bounded.png default.png
-          cmp bounded.png on.png
-
-          status=0
-          render --font-system=platform > platform.png 2> platform.err || status=$?
-          test "$status" -eq 3
-          test ! -s platform.png
-          grep -F 'platform system font service Fontconfig is unavailable' platform.err
+          check_fallback input.mmd --svg-id=font-fallback
+          check_fallback input.svg
           SH
