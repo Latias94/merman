@@ -26,7 +26,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import verify_cli_release_archive as verifier
 from ascii_capability_contract import canonical_ascii_capabilities
-from theme_preset_catalog_test_fixture import canonical_theme_preset_catalog
 import release_archive as archive_core
 import release_process as process_core
 
@@ -66,7 +65,9 @@ SOURCE_ASSET_PATHS = (
     "assets/man/merman-cli-rustdoc-build.1",
     "assets/man/merman-cli-rustdoc-check.1",
     "assets/man/merman-cli-rustdoc.1",
-    "assets/man/merman-cli-theme-inspect.1",
+    "assets/man/merman-cli-theme-check.1",
+    "assets/man/merman-cli-theme-export.1",
+    "assets/man/merman-cli-theme-list.1",
     "assets/man/merman-cli-theme.1",
     "assets/man/merman-cli.1",
 )
@@ -229,7 +230,7 @@ def valid_capabilities_payload(
         }
     return {
         "schema_version": 2,
-        "cli_contract_version": 8,
+        "cli_contract_version": 9,
         "package": {"name": "merman-cli", "version": version},
         "compatibility": {
             "mermaid": bundle["release"]["version"],
@@ -304,7 +305,6 @@ def valid_capabilities_payload(
             "context_scope": "operation-owned",
         },
         "ascii": valid_ascii_capabilities_payload(),
-        "theme_presets": canonical_theme_preset_catalog(),
     }
 
 
@@ -555,9 +555,9 @@ class ThemeAuthoringCapabilityTests(unittest.TestCase):
             error_factory=verifier.ArchiveVerificationError,
         )
         operation = next(row for row in canonical["binding_operations"]
-                         if row["id"] == "materialize-theme-json")
-        self.assertEqual(operation["maturity"], "alpha")
-        self.assertEqual(operation["input_kind"], "theme-design-json")
+                         if row["id"] == "resolve-theme")
+        self.assertEqual(operation["maturity"], "stable")
+        self.assertEqual(operation["input_kind"], "theme-resolve-request-json")
         for field in ("maturity", "input_kind"):
             with self.subTest(field=field):
                 changed = copy.deepcopy(surface)
@@ -1354,7 +1354,7 @@ class RuntimeContractTests(unittest.TestCase):
             "system_discovery": "platform-initialization-then-on-demand-families",
         })
         self.assertEqual(payload["schema_version"], 2)
-        self.assertEqual(payload["cli_contract_version"], 8)
+        self.assertEqual(payload["cli_contract_version"], 9)
         self.assertIs(native["system_discovery_compiled"], True)
         self.assertIs(native["system_discovery_runtime_available"], True)
         self.assertEqual(len(native["measurement_operations"]), 23)
@@ -1939,9 +1939,6 @@ class RuntimeContractTests(unittest.TestCase):
                     ),
                 ),
                 ("ASCII", lambda value: value.pop("ascii")),
-                ("catalog", lambda value: value.pop("theme_presets")),
-                ("catalog", lambda value: value["theme_presets"]["presets"][0].__setitem__("maturity", "stable")),
-                ("catalog", lambda value: value["theme_presets"]["presets"][0]["appearances"][0].__setitem__("qualified_cells", [{}])),
                 (
                     "ASCII output schema version",
                     lambda value: value["ascii"].__setitem__("output_schema_version", 2),

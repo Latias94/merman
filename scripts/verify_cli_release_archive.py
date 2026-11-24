@@ -15,7 +15,6 @@ import xml.etree.ElementTree as ElementTree
 
 
 if __package__:
-    from .theme_preset_catalog_contract import validate_unqualified_catalog
     from .ascii_capability_contract import (
         AsciiCapabilityContractError,
         validate_ascii_capabilities,
@@ -56,7 +55,6 @@ if __package__:
         target_matches_host,
     )
 else:
-    from theme_preset_catalog_contract import validate_unqualified_catalog
     from ascii_capability_contract import (
         AsciiCapabilityContractError,
         validate_ascii_capabilities,
@@ -583,24 +581,12 @@ def _validate_runtime_capabilities(
 ) -> None:
     observed_without_ascii = dict(observed)
     ascii_contract = observed_without_ascii.pop("ascii", None)
-    theme_presets = observed_without_ascii.pop("theme_presets", None)
     expected_capabilities = expected.get("capabilities")
     expects_ascii = isinstance(expected_capabilities, list) and any(
         isinstance(capability, dict) and capability.get("id") == "ascii"
         for capability in expected_capabilities
     )
     _require_exact_json("capabilities document", observed_without_ascii, expected)
-    expects_svg = isinstance(expected_capabilities, list) and any(
-        isinstance(capability, dict) and capability.get("id") == "svg"
-        for capability in expected_capabilities
-    )
-    if expects_svg:
-        try:
-            validate_unqualified_catalog(theme_presets)
-        except RuntimeError as error:
-            raise ArchiveVerificationError(str(error)) from error
-    elif theme_presets is not None:
-        raise ArchiveVerificationError("theme preset catalog requires SVG support")
     if expects_ascii:
         _validate_ascii_capabilities(ascii_contract)
     elif ascii_contract is not None:

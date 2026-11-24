@@ -28,16 +28,18 @@ SUPPORT_ASSETS_SINCE = "0.8.0"
 
 class HomebrewInstallVerifierTests(unittest.TestCase):
     def test_standard_release_includes_rustdoc_theme_and_their_manpages(self) -> None:
-        self.assertEqual(verifier.CLI_CONTRACT_VERSION, 8)
+        self.assertEqual(verifier.CLI_CONTRACT_VERSION, 9)
         self.assertIn("rustdoc", verifier.COMMANDS)
         self.assertIn("theme", verifier.COMMANDS)
-        self.assertEqual(len(verifier.MANPAGE_NAMES), 17)
+        self.assertEqual(len(verifier.MANPAGE_NAMES), 19)
         for name in (
             "merman-cli-rustdoc.1",
             "merman-cli-rustdoc-build.1",
             "merman-cli-rustdoc-check.1",
             "merman-cli-theme.1",
-            "merman-cli-theme-inspect.1",
+            "merman-cli-theme-check.1",
+            "merman-cli-theme-export.1",
+            "merman-cli-theme-list.1",
         ):
             self.assertIn(name, verifier.MANPAGE_NAMES)
 
@@ -126,7 +128,7 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                 "system_discovery": "platform-initialization-then-on-demand-families",
             })
             self.assertEqual(fixture.capabilities["schema_version"], 2)
-            self.assertEqual(fixture.capabilities["cli_contract_version"], 8)
+            self.assertEqual(fixture.capabilities["cli_contract_version"], 9)
             self.assertTrue(
                 verifier.verify_homebrew_install(
                     formula_version="0.8.0",
@@ -305,8 +307,9 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                     runner=fixture.run,
                 )
 
-    def test_complete_installation_requires_both_theme_manpages(self) -> None:
-        for name in ("merman-cli-theme.1", "merman-cli-theme-inspect.1"):
+    def test_complete_installation_requires_theme_manpages(self) -> None:
+        for command in ("theme", "theme-check", "theme-export", "theme-list"):
+            name = f"merman-cli-{command}.1"
             with self.subTest(name=name), self.installation_fixture() as fixture:
                 (fixture.prefix / "share/man/man1" / name).unlink()
                 with self.assertRaisesRegex(
@@ -321,48 +324,6 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                         contract_root=fixture.contract_root,
                         runner=fixture.run,
                     )
-
-    def test_preset_catalog_rejects_missing_or_unqualified_claim_drift(self) -> None:
-        for mutation in ("missing", "null", "schema", "stable", "scope", "without-svg"):
-            with self.subTest(mutation=mutation), self.installation_fixture() as fixture:
-                profile, authority = verifier._read_release_contract(fixture.contract_root)
-                catalog = fixture.capabilities["theme_presets"]
-                if mutation == "missing":
-                    fixture.capabilities.pop("theme_presets")
-                elif mutation == "null":
-                    fixture.capabilities["theme_presets"] = None
-                elif mutation == "schema":
-                    catalog["schema_version"] = True
-                elif mutation == "stable":
-                    catalog["presets"][0]["maturity"] = "stable"
-                elif mutation == "scope":
-                    catalog["presets"][0]["appearances"][0]["qualified_cells"] = [{}]
-                else:
-                    profile["expected"]["capabilities"].remove("svg")
-                    fixture.capabilities["capabilities"] = [
-                        value for value in fixture.capabilities["capabilities"] if value["id"] != "svg"
-                    ]
-                with self.assertRaisesRegex(installation_verifier.CliInstallationError, "catalog"):
-                    installation_verifier._verify_capabilities(
-                        json.dumps(fixture.capabilities).encode(),
-                        package_version=fixture.capabilities["package"]["version"],
-                        profile=profile,
-                        authority=authority,
-                        contract_root=fixture.contract_root,
-                    )
-
-    def test_legacy_cli_source_without_catalog_keeps_its_version_contract(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            source = Path(temporary) / "crates/merman-cli/src/capabilities.rs"
-            source.parent.mkdir(parents=True)
-            source.write_text("struct CapabilityDocument;\n", encoding="utf-8")
-            self.assertFalse(installation_verifier._publishes_theme_preset_catalog(Path(temporary)))
-
-            source.write_text(
-                "fn theme_preset_catalog_document() {}\n",
-                encoding="utf-8",
-            )
-            self.assertTrue(installation_verifier._publishes_theme_preset_catalog(Path(temporary)))
 
     def test_ascii_capability_subcontract_is_exact(self) -> None:
         for mutation in ("missing_encodings", "missing_swimlane", "extra_field"):
@@ -737,8 +698,8 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                     runner=fixture.run,
                 )
 
-    def test_cli_contract_version_must_be_exactly_eight(self) -> None:
-        for version in (None, 6, 7, 9, "8", 8.0, True):
+    def test_cli_contract_version_must_be_exactly_nine(self) -> None:
+        for version in (None, 7, 8, 10, "9", 9.0, True):
             with self.subTest(version=version), self.installation_fixture() as fixture:
                 if version is None:
                     fixture.capabilities.pop("cli_contract_version")
