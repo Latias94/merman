@@ -96,7 +96,9 @@ pub fn vector(x: f64, y: f64) -> Vector {
 
 #[cfg(any(
     feature = "diagram-agentflow",
+    feature = "diagram-er",
     feature = "diagram-flowchart",
+    feature = "diagram-mindmap",
     feature = "diagram-swimlane"
 ))]
 pub(crate) fn intersect_centered_rect_ray(center: Point, size: Size, target: Point) -> Point {

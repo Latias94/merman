@@ -75,11 +75,12 @@ impl ErSwimlaneRelationshipLabel {
         source: &str,
         measurer: &dyn TextMeasurer,
         style: &TextStyle,
+        html_labels: bool,
         config: &merman_model::MermaidConfig,
     ) -> Self {
         let view = super::ErConfigView::new(config.as_value());
         let wrapping_width = view.swimlane_relationship_wrapping_width();
-        let (metrics, content) = if view.swimlane_relationship_html_labels() {
+        let (metrics, content) = if html_labels {
             // nonMarkdownToHTML wraps literal text in one paragraph. The sanitizer retains
             // authored HTML semantics, while Markdown punctuation remains ordinary text.
             let html = relationship_html_source(source);
@@ -299,7 +300,7 @@ pub(super) fn layout_er_diagram_swimlane_typed(
         // Only top-level groups use the Swimlane painter. Nested groups keep the ordinary
         // cluster label mode and label type, just as render_er_subgraph_clusters dispatches.
         let is_lane = !parent_by_id.contains_key(group.id.as_str());
-        let html_labels = view.subgraph_html_labels(is_lane);
+        let html_labels = view.subgraph_html_labels(is_lane, settings.relationship_html_labels);
         let metrics = if is_lane {
             er_swimlane_title_metrics(
                 &group.title,
@@ -579,7 +580,7 @@ mod tests {
         for html in [true, false] {
             let config = json!({"layout": "swimlane", "htmlLabels": html,
                 "flowchart": {"wrappingWidth": 80}});
-            let labels = super::super::prepare_er_labels(&model, &config, &measurer);
+            let labels = super::super::prepare_er_labels(&model, &config, &measurer, true);
             let relationship = labels.relationship(0).unwrap();
             let terminal = relationship
                 .swimlane()
@@ -632,8 +633,8 @@ mod tests {
         };
         let measurer = DeterministicTextMeasurer::default();
         let settings = super::super::ErConfigView::new(&config)
-            .layout_settings_with_font_family(&model.direction, None);
-        let labels = super::super::prepare_er_labels(&model, &config, &measurer);
+            .layout_settings_for_test(&model.direction, true);
+        let labels = super::super::prepare_er_labels(&model, &config, &measurer, true);
         let policy = RenderResourcePolicy::interactive()
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 100_000)
             .unwrap();

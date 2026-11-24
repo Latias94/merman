@@ -954,6 +954,7 @@ pub(super) fn measure(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::resources::OperationWorkMeter;
     use crate::resources::RenderResourcePolicy;
     use crate::text::DeterministicTextMeasurer;
     use merman_model::families::usecase::{

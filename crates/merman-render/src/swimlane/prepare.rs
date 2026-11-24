@@ -391,6 +391,7 @@ pub(super) fn prepare(
         &FlowchartEdgeTransportPlan<'_>,
     ),
     effective_config: &PresentationConfig,
+    #[cfg(feature = "layout-shoal")] canonical: bool,
     (measurer, math_renderer): (&dyn TextMeasurer, Option<&(dyn MathRenderer + Send + Sync)>),
     svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
     edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
@@ -587,7 +588,7 @@ pub(super) fn prepare(
     if !loose_ids.is_empty() {
         let lane_id: std::borrow::Cow<'_, str> = std::borrow::Cow::Borrowed(DEFAULT_LANE_ID);
         #[cfg(feature = "layout-shoal")]
-        let lane_id = if effective_config.get_str("layout") == Some("shoal")
+        let lane_id = if canonical
             && nodes
                 .get(DEFAULT_LANE_ID)
                 .is_some_and(|node| !node.is_group())

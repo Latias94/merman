@@ -49,6 +49,7 @@ pub(crate) fn orient_feedback_edges(effective_config: &(impl ConfigLookup + ?Siz
 
 pub(crate) fn layout_options(
     effective_config: &(impl ConfigLookup + ?Sized),
+    root_algorithm: crate::layout_backend::ElkRootAlgorithm,
 ) -> elk::LayoutOptions {
     let (preset_placement, preset_alignment, preset_cycle_breaking) =
         match config_string(effective_config, &["elk", "preset"]).as_deref() {
@@ -196,14 +197,7 @@ pub(crate) fn layout_options(
     };
 
     elk::LayoutOptions {
-        algorithm: crate::layout_backend::ElkRootAlgorithm::from_name(
-            effective_config
-                .get("layout")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or(""),
-        )
-        .unwrap_or(crate::layout_backend::ElkRootAlgorithm::Layered)
-        .algorithm(),
+        algorithm: root_algorithm.algorithm(),
         container: elk::ContainerOptions {
             cycle_breaking,
             node_placement: explicit_node_placement
@@ -239,6 +233,13 @@ pub(crate) fn layout_options(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn layout_options(config: &(impl ConfigLookup + ?Sized)) -> elk::LayoutOptions {
+        super::layout_options(
+            config,
+            crate::layout_backend::ElkRootAlgorithm::for_diagnostic(config),
+        )
+    }
 
     #[test]
     fn elk_enum_options_accept_exact_names_and_pinned_source_ordinals() {

@@ -14,6 +14,7 @@ use crate::diagram_theme::{
     ThemeTypographyProperty, ThemeVariant, collect_effect_graph_capabilities, paint_capability,
 };
 use crate::family::{FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason};
+use crate::layout_backend::GraphLayoutBackend;
 use crate::mermaid_style::{
     CssFontSizeContext, is_label_style_key, is_safe_css_font_family_value,
     is_supported_css_font_style_value, is_supported_css_font_weight_value,
@@ -799,7 +800,7 @@ impl StateGeometrySupport {
 }
 
 impl StateStylePlan {
-    /// Resolves the compatibility-only plan used by parity helpers that do not install a theme.
+    /// Resolves the compatibility-only Dagre plan used by debug and parity helpers.
     ///
     /// The themed production path must use [`Self::resolve_with_config`] so dynamic selector work
     /// is charged to the render operation's cumulative meter, terminal effect lowering reads the
@@ -813,13 +814,21 @@ impl StateStylePlan {
         Self::resolve_internal(
             model,
             StateCompatibilityPlan::from_value(effective_config),
-            crate::layout_backend::resolve_graph_layout(effective_config).backend,
+            GraphLayoutBackend::Dagre,
             None,
             Arc::new(ThemeResourcePolicy::interactive()),
             None,
             &work_meter,
         )
         .expect("an unthemed State style plan cannot exhaust theme selector work")
+    }
+
+    #[cfg(test)]
+    fn backend_for_test(
+        config: &(impl crate::config::ConfigLookup + ?Sized),
+    ) -> GraphLayoutBackend {
+        crate::layout_backend::resolve(crate::DiagramFamilyId::STATE, "stateDiagram", config)
+            .expect("resolve State layout for the test")
     }
 
     #[cfg(test)]
@@ -834,7 +843,7 @@ impl StateStylePlan {
         Self::resolve_internal(
             model,
             StateCompatibilityPlan::from_value(effective_config),
-            crate::layout_backend::resolve_graph_layout(effective_config).backend,
+            Self::backend_for_test(effective_config),
             resolved_theme,
             effective_theme_resource_policy,
             title,
@@ -845,6 +854,7 @@ impl StateStylePlan {
     pub(crate) fn resolve_with_config(
         model: &StateDiagramRenderModel,
         effective_config: &merman_model::presentation::PresentationConfig,
+        backend: GraphLayoutBackend,
         resolved_theme: Option<&ResolvedDiagramTheme>,
         effective_theme_resource_policy: Arc<ThemeResourcePolicy>,
         title: Option<&str>,
@@ -853,7 +863,7 @@ impl StateStylePlan {
         Self::resolve_internal(
             model,
             StateCompatibilityPlan::from_config(effective_config),
-            crate::layout_backend::resolve_graph_layout(effective_config.as_value()).backend,
+            backend,
             resolved_theme,
             effective_theme_resource_policy,
             title,
@@ -864,7 +874,7 @@ impl StateStylePlan {
     fn resolve_internal(
         model: &StateDiagramRenderModel,
         compatibility: StateCompatibilityPlan,
-        backend: crate::layout_backend::GraphLayoutBackend,
+        backend: GraphLayoutBackend,
         resolved_theme: Option<&ResolvedDiagramTheme>,
         effective_theme_resource_policy: Arc<ThemeResourcePolicy>,
         title: Option<&str>,
@@ -1045,7 +1055,7 @@ impl StateStylePlan {
             backend,
             &hidden_prefixes,
         );
-        let shadowed_self_loops = if backend == crate::layout_backend::GraphLayoutBackend::Dagre {
+        let shadowed_self_loops = if backend == GraphLayoutBackend::Dagre {
             shadowed_self_loop_edge_indices(model, &hidden_prefixes)
         } else {
             BTreeSet::new()
@@ -1114,6 +1124,7 @@ impl StateStylePlan {
             nodes.insert(node.id.clone(), node_plan);
         }
 
+        let is_elk = matches!(backend, GraphLayoutBackend::Elk(_));
         let mut transition_ordinal = 0usize;
         let mut edges = BTreeMap::new();
         for (edge_index, edge) in model.edges.iter().enumerate() {
@@ -1134,7 +1145,7 @@ impl StateStylePlan {
                 .then(|| next_target_ordinal(&mut target_ordinals, ThemeTarget::TransitionLabel));
             let label_font_size_geometry = html_labels
                 && ordinal.is_some()
-                && if backend == crate::layout_backend::GraphLayoutBackend::Elk {
+                && if is_elk {
                     !crate::text::mermaid_html_breaks_to_newlines(&edge.label)
                         .trim()
                         .is_empty()
@@ -1153,7 +1164,7 @@ impl StateStylePlan {
                     theme_evidence.observe_target(ThemeTarget::TransitionMarker);
                 }
             }
-            let label_text = if backend == crate::layout_backend::GraphLayoutBackend::Elk {
+            let label_text = if is_elk {
                 crate::text::mermaid_html_breaks_to_newlines(&edge.label)
             } else {
                 std::borrow::Cow::Borrowed(edge.label.as_str())
@@ -2408,7 +2419,7 @@ fn source_compositing_allows_split_composites(
     model: &StateDiagramRenderModel,
     classes: &IndexMap<String, StateClassStylePlan>,
     compatibility: &StateCompatibilityPlan,
-    backend: crate::layout_backend::GraphLayoutBackend,
+    backend: GraphLayoutBackend,
     hidden_prefixes: &[String],
 ) -> bool {
     if !compatibility.html_labels()
@@ -2428,7 +2439,7 @@ fn source_compositing_allows_split_composites(
     // source hierarchy intact and report an unsupported theme effect through admission.
     // Native rules target individual shapes, so they do not impose this group boundary.
     ["root", "clusters", "nodes"].into_iter().all(|class_id| {
-        if class_id == "nodes" && backend != crate::layout_backend::GraphLayoutBackend::Dagre {
+        if class_id == "nodes" && backend != GraphLayoutBackend::Dagre {
             return true;
         }
         let Some(class) = classes.get(class_id) else {
@@ -5959,6 +5970,7 @@ mod tests {
         let plan = StateStylePlan::resolve_with_config(
             &model,
             &parsed.metadata().effective_config,
+            StateStylePlan::backend_for_test(&parsed.metadata().effective_config),
             Some(&resolved),
             Arc::new(ThemeResourcePolicy::interactive()),
             Some("Title"),
@@ -6032,6 +6044,7 @@ mod tests {
             let plan = StateStylePlan::resolve_with_config(
                 &model,
                 &parsed.metadata().effective_config,
+                StateStylePlan::backend_for_test(&parsed.metadata().effective_config),
                 Some(&resolved),
                 Arc::new(ThemeResourcePolicy::interactive()),
                 None,
@@ -6119,6 +6132,7 @@ mod tests {
             let plan = StateStylePlan::resolve_with_config(
                 &model,
                 &parsed.metadata().effective_config,
+                StateStylePlan::backend_for_test(&parsed.metadata().effective_config),
                 Some(&resolved),
                 Arc::new(ThemeResourcePolicy::interactive()),
                 None,

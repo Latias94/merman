@@ -1038,6 +1038,11 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
     layout_requirement_diagram_typed_with_work_meter_and_typography(
         model,
         &config,
+        crate::layout_backend::resolve(
+            crate::DiagramFamilyId::REQUIREMENT,
+            "requirement",
+            effective_config,
+        )?,
         text_measurer,
         &binding,
         &work_meter,
@@ -1052,18 +1057,17 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
 pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
     model: &RequirementDiagramModel,
     config: &merman_model::MermaidConfig,
+    backend: GraphLayoutBackend,
     text_measurer: &dyn TextMeasurer,
     css_binding: &RequirementCssBinding,
     work_meter: &std::sync::Arc<OperationWorkMeter>,
     #[cfg(feature = "layout-shoal")] execution: Option<&crate::LayoutExecution<'_>>,
     #[cfg(feature = "layout-elk")] operation_seed: merman_layout_elk::ElkOperationSeed,
 ) -> Result<RequirementPreparedArtifact> {
-    let effective_config = config.as_value();
     work_meter
         .policy()
         .check_model_complexity(ModelComplexity::from_requirement(model))?;
-    let selection = crate::layout_backend::resolve_graph_layout(effective_config);
-    if selection.backend == crate::layout_backend::GraphLayoutBackend::Shoal {
+    if backend == GraphLayoutBackend::Shoal {
         #[cfg(feature = "layout-shoal")]
         return shoal::layout(
             model,
@@ -1074,34 +1078,33 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
             execution,
         );
         #[cfg(not(feature = "layout-shoal"))]
-        return Err(Error::MissingCapability {
-            capability: crate::RenderCapability::LayoutShoal,
-            diagram_type: "requirement".to_owned(),
-        });
+        return Err(backend.unavailable_for("requirement"));
     }
     work_meter.charge(requirement_layout_work_units(model))?;
     let mut work_control = OperationLayoutWorkControl::new(Arc::clone(work_meter));
-    selection.validate_rootless_graph()?;
+    backend.validate_rootless_graph()?;
     let settings = &css_binding.layout;
     let measured = measure_requirement(model, config, text_measurer, settings, work_meter)?;
-    #[cfg(feature = "layout-elk")]
-    if selection.backend == GraphLayoutBackend::Elk {
-        return elk::layout(
+    match backend {
+        #[cfg(feature = "layout-elk")]
+        GraphLayoutBackend::Elk(algorithm) => elk::layout(
             &model.relationships,
             measured,
-            effective_config,
+            config.as_value(),
             text_measurer,
+            algorithm,
             operation_seed,
             &mut work_control,
-        );
+        ),
+        GraphLayoutBackend::Dagre => dagre::layout(
+            &model.relationships,
+            measured,
+            settings,
+            text_measurer,
+            &mut work_control,
+        ),
+        _ => Err(backend.unavailable_for("requirement")),
     }
-    dagre::layout(
-        &model.relationships,
-        measured,
-        settings,
-        text_measurer,
-        &mut work_control,
-    )
 }
 
 fn requirement_layout_node(id: String, rect: Rect) -> LayoutNode {

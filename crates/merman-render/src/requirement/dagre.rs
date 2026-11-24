@@ -165,7 +165,7 @@ pub(super) fn layout(
             edges: out_edges,
             bounds,
         },
-        route_contract: crate::graph_layout::RouteContract::parity(false),
+        route_contract: crate::graph_layout::RouteContract::DagreParity,
         render_layout: None,
         nodes: prepared_nodes,
         edges: prepared_edges,

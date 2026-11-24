@@ -5,8 +5,9 @@ use super::{
     calc_label_position, er_layout_bounds, er_marker_id, er_subgraph_title_metrics,
     parse_er_rel_idx_from_edge_name,
 };
-use crate::elk_options::layout_options as er_elk_layout_options;
+use crate::elk_options::layout_options;
 use crate::graph_layout::ir::Direction;
+use crate::layout_backend::ElkRootAlgorithm;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{ErDiagramLayout, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint};
 use crate::text::TextMeasurer;
@@ -17,9 +18,14 @@ use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The ER adapter consumes the selected ELK algorithm and the family's prepared measurements."
+)]
 pub(super) fn layout(
     model: &ErDiagramModel,
     effective_config: &Value,
+    algorithm: ElkRootAlgorithm,
     measurer: &dyn TextMeasurer,
     settings: ErLayoutSettings,
     prepared_labels: Arc<ErPreparedLabels>,
@@ -29,6 +35,7 @@ pub(super) fn layout(
     let mut elk_graph = er_elk_graph(
         model,
         effective_config,
+        algorithm,
         measurer,
         &settings,
         &prepared_labels,
@@ -222,6 +229,7 @@ pub(super) fn layout(
 fn er_elk_graph(
     model: &ErDiagramModel,
     effective_config: &Value,
+    algorithm: ElkRootAlgorithm,
     measurer: &dyn TextMeasurer,
     settings: &ErLayoutSettings,
     prepared_labels: &ErPreparedLabels,
@@ -389,7 +397,7 @@ fn er_elk_graph(
         // Mermaid's ELK adapter sets `spacing.baseValue = 40`; the source-backed adapter owns
         // that exact option projection, so family-specific Dagre spacing does not leak into ELK.
         spacing: elk::Spacing::default(),
-        options: er_elk_layout_options(effective_config),
+        options: layout_options(effective_config, algorithm),
     })
 }
 
@@ -405,13 +413,15 @@ fn er_elk_direction(direction: &str) -> Option<elk::Direction> {
 
 #[cfg(test)]
 mod tests {
+    use super::{ElkRootAlgorithm, layout_options};
     use crate::er::{ErConfigView, ErEntity, ErRelationship, ErSubgraph, prepare_er_labels};
     use crate::text::DeterministicTextMeasurer;
 
     #[test]
     fn er_elk_keeps_the_source_default_nonzero_seed() {
+        let config = serde_json::Value::Null;
         assert_eq!(
-            super::er_elk_layout_options(&serde_json::Value::Null)
+            layout_options(&config, ElkRootAlgorithm::for_diagnostic(&config))
                 .layered
                 .random_seed,
             1
@@ -445,20 +455,22 @@ mod tests {
                 ..Default::default()
             });
 
-        let effective_config = serde_json::json!({ "layout": "elk" });
-        let settings = ErConfigView::new(&effective_config)
-            .layout_settings_with_font_family(&model.direction, None);
+        let effective_config = serde_json::json!({ "layout": "elk.box" });
+        let settings =
+            ErConfigView::new(&effective_config).layout_settings_for_test(&model.direction, false);
         let measurer = DeterministicTextMeasurer::default();
-        let prepared_labels = prepare_er_labels(&model, &effective_config, &measurer);
+        let prepared_labels = prepare_er_labels(&model, &effective_config, &measurer, false);
         let mut graph = super::er_elk_graph(
             &model,
             &effective_config,
+            ElkRootAlgorithm::Layered,
             &measurer,
             &settings,
             &prepared_labels,
             &mut None,
         )
         .expect("ER ELK adapter graph");
+        assert_eq!(graph.options.algorithm, super::elk::Algorithm::Layered);
         graph.options.layered.random_seed = 0;
 
         assert!(super::elk::layout(&graph).is_err());
@@ -510,13 +522,16 @@ mod tests {
                 for enabled in [false, true] {
                     let config = serde_json::json!({ "layout": "elk", "elk": { "keepEntryNodeOnTop": enabled } });
                     let settings = ErConfigView::new(&config)
-                        .layout_settings_with_font_family(&model.direction, None);
+                        .layout_settings_for_test(&model.direction, false);
+                    let measurer = DeterministicTextMeasurer::default();
+                    let labels = prepare_er_labels(&model, &config, &measurer, false);
                     let graph = super::er_elk_graph(
                         &model,
                         &config,
-                        &DeterministicTextMeasurer::default(),
+                        ElkRootAlgorithm::for_diagnostic(&config),
+                        &measurer,
                         &settings,
-                        &prepare_er_labels(&model, &config, &DeterministicTextMeasurer::default()),
+                        &labels,
                         &mut None,
                     )
                     .expect("ER adapter graph");

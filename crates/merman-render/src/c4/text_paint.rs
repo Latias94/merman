@@ -326,6 +326,7 @@ impl C4TextPaintPlan {
         layout: &crate::model::C4DiagramLayout,
         typography: &mut super::C4TypographyThemePlan,
         config: &PresentationConfig,
+        uses_shoal: bool,
         work: &OperationWorkMeter,
     ) -> crate::Result<()> {
         // The writer historically selected the last source metadata for an alias, while
@@ -436,8 +437,6 @@ impl C4TextPaintPlan {
                 visibility_verified,
             });
         }
-        let uses_shoal =
-            cfg!(feature = "layout-shoal") && config.get_str("layout") == Some("shoal");
         let source_relations = (!uses_shoal).then(|| {
             model
                 .rels
@@ -1146,6 +1145,7 @@ mod tests {
             &layout,
             &mut typography,
             &config,
+            false,
             &OperationWorkMeter::new(
                 crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
             ),

@@ -10,6 +10,7 @@ use super::{
 };
 use crate::elk_edge_geometry::{self as geometry, Outline, Shape};
 use crate::graph_layout::ir::{Direction, Size};
+use crate::layout_backend::ElkRootAlgorithm;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{LayoutLabel, LayoutPoint, RequirementDiagramLayout};
 use crate::text::TextMeasurer;
@@ -25,6 +26,7 @@ pub(super) fn layout(
     measured: RequirementMeasurements<'_>,
     config: &Value,
     text_measurer: &dyn TextMeasurer,
+    algorithm: ElkRootAlgorithm,
     operation_seed: elk::ElkOperationSeed,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<RequirementPreparedArtifact> {
@@ -92,7 +94,7 @@ pub(super) fn layout(
         // The shared Mermaid ELK renderer sets spacing.baseValue=40, independently of
         // the Requirement renderer's Dagre nodeSpacing/rankSpacing fields.
         spacing: elk::Spacing::default(),
-        options: crate::elk_options::layout_options(config),
+        options: crate::elk_options::layout_options(config, algorithm),
     };
     if crate::config::config_bool(config, &["elk", "keepEntryNodeOnTop"]).unwrap_or(false) {
         crate::elk_adapter::apply_cyclic_entry_constraints(
@@ -208,7 +210,7 @@ pub(super) fn layout(
     Ok(RequirementPreparedArtifact {
         layout,
         render_layout: Some(render_layout),
-        route_contract: crate::graph_layout::RouteContract::parity(true),
+        route_contract: crate::graph_layout::RouteContract::ElkParity,
         nodes: prepared_nodes,
         edges: prepared_edges,
         measurement_binding,

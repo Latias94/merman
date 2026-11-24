@@ -11,12 +11,12 @@ use super::measure::{
     title_label_metrics,
 };
 use crate::graph_layout::ir::{Direction, direction_from_rank};
+use crate::layout_backend::ElkRootAlgorithm;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{
     Bounds, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, StateDiagramLayout,
 };
-use crate::text::TextMeasurer;
-use crate::{Error, Result};
+use crate::{Error, LayoutExecution, Result};
 use merman_layout_elk as elk;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -46,13 +46,14 @@ fn elk_direction(direction: Direction) -> elk::Direction {
 pub(super) fn layout(
     model: &StateDiagramModel,
     config: &Value,
+    algorithm: ElkRootAlgorithm,
     style_plan: &super::StateStylePlan,
     label_sidecar: Option<&super::StateLabelSidecarBuilder>,
-    measurer: &dyn TextMeasurer,
-    operation_seed: elk::ElkOperationSeed,
+    execution: &LayoutExecution<'_>,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<StateDiagramLayout> {
     validate_state_parent_cycles(model)?;
+    let measurer = execution.text_measurer();
     let hidden = state_hidden_prefixes(model);
     let settings =
         StateConfigView::new(config).layout_settings(&model.direction, style_plan.compatibility());
@@ -230,7 +231,7 @@ pub(super) fn layout(
             layer_layer: settings.rank_spacing,
             ..Default::default()
         },
-        options: crate::elk_options::layout_options(config),
+        options: crate::elk_options::layout_options(config, algorithm),
     };
     if crate::config::config_bool(config, &["elk", "keepEntryNodeOnTop"]).unwrap_or(false) {
         crate::elk_adapter::apply_cyclic_entry_constraints(
@@ -248,9 +249,12 @@ pub(super) fn layout(
         config,
         &mut Some(&mut *work),
     )?;
-    let mut placed =
-        elk::layout_with_operation_seed_and_work_control(oriented.graph(), operation_seed, work)
-            .map_err(|error| work.map_elk_error_with_context(error, "State ELK"))?;
+    let mut placed = elk::layout_with_operation_seed_and_work_control(
+        oriented.graph(),
+        execution.elk_operation_seed(),
+        work,
+    )
+    .map_err(|error| work.map_elk_error_with_context(error, "State ELK"))?;
     oriented.restore(&mut placed, &mut Some(&mut *work))?;
     let frames = crate::elk_adapter::drawing_group_frames(
         &graph,

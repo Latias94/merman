@@ -4,22 +4,6 @@ use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{LayoutLabel, LayoutPoint};
 use std::collections::HashMap;
 
-pub(super) fn layout(
-    model: &UsecaseDiagramModel,
-    config: &Value,
-    plans: &[UsecaseNodePlan],
-    edge_plans: &mut [UsecaseEdgePlan],
-    #[cfg(feature = "layout-elk")] route_contract: &crate::graph_layout::RouteContract,
-    work: &mut OperationLayoutWorkControl,
-    #[cfg(feature = "layout-elk")] operation_seed: merman_layout_elk::ElkOperationSeed,
-) -> Result<UsecaseDiagramLayout> {
-    #[cfg(feature = "layout-elk")]
-    if route_contract.is_elk_parity() {
-        return elk_layout(model, config, plans, edge_plans, work, operation_seed);
-    }
-    super::dagre::layout(model, config, plans, edge_plans, work)
-}
-
 pub(super) fn node(plan: &UsecaseNodePlan, x: f64, y: f64, width: f64, height: f64) -> LayoutNode {
     LayoutNode {
         id: plan.id.clone(),
@@ -57,12 +41,13 @@ pub(super) fn edge(
 }
 
 #[cfg(feature = "layout-elk")]
-fn elk_layout(
+pub(super) fn elk_layout(
     model: &UsecaseDiagramModel,
     config: &Value,
     plans: &[UsecaseNodePlan],
     edge_plans: &[UsecaseEdgePlan],
     work: &mut OperationLayoutWorkControl,
+    algorithm: crate::layout_backend::ElkRootAlgorithm,
     operation_seed: merman_layout_elk::ElkOperationSeed,
 ) -> Result<UsecaseDiagramLayout> {
     use merman_layout_elk as elk;
@@ -124,7 +109,7 @@ fn elk_layout(
             layer_layer: measure::number(config, "rankSpacing", 50.0),
             ..Default::default()
         },
-        options: crate::elk_options::layout_options(config),
+        options: crate::elk_options::layout_options(config, algorithm),
     };
     if config
         .pointer("/elk/keepEntryNodeOnTop")

@@ -87,7 +87,11 @@ fn consuming_family_context_moves_terminal_theme_inventory_allocations() {
     let render_session = crate::environment::RenderEnvironment::deterministic()
         .begin_session_with_theme(&theme)
         .unwrap();
-    let mut context = FamilyRenderContext::resolve(render_session, DiagramFamilyId::FLOWCHART);
+    let mut context = FamilyRenderContext::resolve(
+        render_session,
+        DiagramFamilyId::FLOWCHART,
+        GraphLayoutBackend::Dagre,
+    );
     let keys = context
         .style_plan
         .theme_evidence
@@ -186,7 +190,11 @@ fn frozen_family_report_keeps_only_request_keys_and_mutation_keeps_coverage() {
     let render_session = crate::environment::RenderEnvironment::deterministic()
         .begin_session_with_theme(&theme)
         .unwrap();
-    let mut context = FamilyRenderContext::resolve(render_session, DiagramFamilyId::FLOWCHART);
+    let mut context = FamilyRenderContext::resolve(
+        render_session,
+        DiagramFamilyId::FLOWCHART,
+        GraphLayoutBackend::Dagre,
+    );
     let ledger = &mut context.style_plan.theme_evidence;
     let weak_program = Arc::downgrade(ledger.program.as_ref().unwrap());
     let keys = ledger.shared_required_mechanisms().unwrap();
@@ -241,8 +249,12 @@ fn borrowed_and_consumed_style_classification_keep_phase_and_residual_order() {
         )
     };
     for scenario in [0, 1, 2, 4, 5, 6, 7, 8, 9] {
-        let mut plan =
-            FamilyRenderContext::resolve(session(), DiagramFamilyId::FLOWCHART).style_plan;
+        let mut plan = FamilyRenderContext::resolve(
+            session(),
+            DiagramFamilyId::FLOWCHART,
+            GraphLayoutBackend::Dagre,
+        )
+        .style_plan;
         plan.payload = FamilyStylePayload::Evaluated;
         plan.theme_evidence = FamilyThemeEvidence::from_theme(Some(&theme));
         plan.theme_evidence
@@ -889,7 +901,9 @@ fn family_report(
         .compile(spec)
         .unwrap()
         .resolve(DiagramFamilyId::STATE);
-    let mut plan = FamilyRenderContext::resolve(session(), DiagramFamilyId::STATE).style_plan;
+    let mut plan =
+        FamilyRenderContext::resolve(session(), DiagramFamilyId::STATE, GraphLayoutBackend::Dagre)
+            .style_plan;
     plan.theme_evidence = FamilyThemeEvidence::from_theme(Some(&theme));
     assert_eq!(plan.theme_evidence.required_mechanisms(), required);
     for key in applied {
@@ -9287,7 +9301,11 @@ fn planned_family_drives_flowchart_router_before_layout() {
     let swimlane = super::preparation::prepare_non_class_render(
         &flowchart,
         &options,
-        FamilyRenderContext::resolve(session(), DiagramFamilyId::SWIMLANE),
+        FamilyRenderContext::resolve(
+            session(),
+            DiagramFamilyId::SWIMLANE,
+            GraphLayoutBackend::Swimlane,
+        ),
         FamilyPreparation::Render,
     )
     .expect("planned Swimlane family should drive layout");
@@ -9304,7 +9322,11 @@ fn planned_family_drives_flowchart_router_before_layout() {
     let flowchart = super::preparation::prepare_non_class_render(
         &configured_swimlane,
         &options,
-        FamilyRenderContext::resolve(session(), DiagramFamilyId::FLOWCHART),
+        FamilyRenderContext::resolve(
+            session(),
+            DiagramFamilyId::FLOWCHART,
+            GraphLayoutBackend::Dagre,
+        ),
         FamilyPreparation::Render,
     )
     .expect("planned Flowchart family should drive layout");
@@ -9322,7 +9344,7 @@ fn flowchart_router_rejects_an_incompatible_planned_family() {
     let error = match super::preparation::prepare_non_class_render(
         &parsed,
         &LayoutOptions::default(),
-        FamilyRenderContext::resolve(session(), DiagramFamilyId::STATE),
+        FamilyRenderContext::resolve(session(), DiagramFamilyId::STATE, GraphLayoutBackend::Dagre),
         FamilyPreparation::Render,
     ) {
         Ok(_) => panic!("State cannot consume a Flowchart semantic model"),
@@ -9348,7 +9370,7 @@ fn family_artifact_rejects_planned_family_drift() {
     let error = match FamilyRenderArtifact::new(
         &parsed,
         family,
-        FamilyRenderContext::resolve(session(), DiagramFamilyId::STATE),
+        FamilyRenderContext::resolve(session(), DiagramFamilyId::STATE, GraphLayoutBackend::Dagre),
     ) {
         Ok(_) => panic!("family drift must be rejected"),
         Err(error) => error,
@@ -12198,6 +12220,14 @@ fn routed_host_and_fallback_traces_match_a_no_sidecar_family_control() {
     }
 }
 
+fn project_agentflow_for_test(
+    config: &merman_model::presentation::PresentationConfig,
+    control: &merman_model::OperationControl,
+) -> Result<merman_model::presentation::PresentationConfig> {
+    let backend = crate::layout_backend::resolve(DiagramFamilyId::AGENTFLOW, "agentflow", config)?;
+    project_agentflow_flowchart_config(config, backend, control)
+}
+
 #[test]
 fn agentflow_layout_config_prioritizes_family_measurement_keys() {
     let config = crate::test_support::presentation_config(json!({
@@ -12205,8 +12235,7 @@ fn agentflow_layout_config_prioritizes_family_measurement_keys() {
         "flowchart": { "minNodeWidth": 90 }
     }));
     let projected =
-        project_agentflow_flowchart_config(&config, &merman_model::OperationControl::new())
-            .unwrap();
+        project_agentflow_for_test(&config, &merman_model::OperationControl::new()).unwrap();
     let number = |config: &merman_model::presentation::PresentationConfig, path: &str| {
         config
             .as_value()
@@ -12263,7 +12292,7 @@ fn agentflow_projection_preserves_frozen_declarations_without_authored_routing_p
         )
         .unwrap()
         .unwrap();
-        let projected = project_agentflow_flowchart_config(&config, &control).unwrap();
+        let projected = project_agentflow_for_test(&config, &control).unwrap();
         assert!(Arc::ptr_eq(
             config.shared_explicit_config_paths(),
             projected.shared_explicit_config_paths()
@@ -12320,7 +12349,7 @@ fn agentflow_projection_clones_deep_routing_values_on_a_small_stack() {
             )
             .unwrap()
             .unwrap();
-            let projected = project_agentflow_flowchart_config(&config, &control).unwrap();
+            let projected = project_agentflow_for_test(&config, &control).unwrap();
             for key in ["diagramPadding", "nodeSpacing"] {
                 let mut value = &projected.as_value()["flowchart"][key];
                 for _ in 0..2048 {
@@ -12342,8 +12371,7 @@ fn agentflow_layout_config_keeps_flowchart_wrapping_fallback() {
             "flowchart": { "minNodeWidth": 90, "wrappingWidth": 240 }
         }));
         let projected =
-            project_agentflow_flowchart_config(&config, &merman_model::OperationControl::new())
-                .unwrap();
+            project_agentflow_for_test(&config, &merman_model::OperationControl::new()).unwrap();
         assert_eq!(projected.as_value()["flowchart"]["minNodeWidth"], 0);
         assert_eq!(projected.as_value()["flowchart"]["wrappingWidth"], 240);
     }
@@ -12362,8 +12390,7 @@ fn agentflow_projection_separates_renderer_ownership_from_shared_shape_settings(
             }
         }));
         let projected =
-            project_agentflow_flowchart_config(&config, &merman_model::OperationControl::new())
-                .unwrap();
+            project_agentflow_for_test(&config, &merman_model::OperationControl::new()).unwrap();
         let flow = &projected.as_value()["flowchart"];
         assert_eq!(flow["diagramPadding"], 8);
         assert_eq!(flow["titleTopMargin"], 0);
@@ -12389,8 +12416,7 @@ fn agentflow_projection_separates_renderer_ownership_from_shared_shape_settings(
             }
         }));
         let projected =
-            project_agentflow_flowchart_config(&config, &merman_model::OperationControl::new())
-                .unwrap();
+            project_agentflow_for_test(&config, &merman_model::OperationControl::new()).unwrap();
         let flow = &projected.as_value()["flowchart"];
         assert_eq!(flow["diagramPadding"], if value.is_null() { 8 } else { 0 });
         assert_eq!(flow["titleTopMargin"], 0);
@@ -12420,15 +12446,20 @@ fn agentflow_spacing_projection_follows_registered_backend_selection() {
             "agentflow": {"nodeSpacing": 200, "rankSpacing": 210},
             "flowchart": {"nodeSpacing": 300, "rankSpacing": 310}
         }));
-        let selected = crate::layout_backend::resolve_graph_layout(config.as_value());
-        let projected =
-            project_agentflow_flowchart_config(&config, &merman_model::OperationControl::new())
+        let selected =
+            crate::layout_backend::resolve(DiagramFamilyId::AGENTFLOW, "agentflow", &config)
                 .unwrap();
+        let projected = project_agentflow_flowchart_config(
+            &config,
+            selected,
+            &merman_model::OperationControl::new(),
+        )
+        .unwrap();
         let flow = &projected.as_value()["flowchart"];
         let elk_registered = cfg!(feature = "layout-elk")
             && crate::layout_backend::ElkRootAlgorithm::from_name(layout).is_some();
         assert_eq!(
-            selected.backend == crate::layout_backend::GraphLayoutBackend::Elk,
+            matches!(selected, GraphLayoutBackend::Elk(_)),
             elk_registered,
             "{layout}"
         );
@@ -12738,7 +12769,7 @@ fn preparation_borrows_the_canonical_models_metadata_and_flowchart_context() {
                     assert!(std::ptr::eq(value.pair().semantic(), model))
                 }
                 (
-                    BuiltinFamilyArtifact::Agentflow { semantic, flow },
+                    BuiltinFamilyArtifact::Agentflow { semantic, flow, .. },
                     RenderSemanticModel::Agentflow(model),
                 ) => {
                     assert!(std::ptr::eq(*semantic, model));

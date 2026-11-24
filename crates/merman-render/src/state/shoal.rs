@@ -1,10 +1,7 @@
 mod regions;
 
 use super::config::{StateConfigView, state_node_is_effective_group};
-use super::layout::{
-    note_group_owner_id, state_hidden_prefixes, state_layout_adapter_work,
-    validate_state_parent_cycles,
-};
+use super::layout::{note_group_owner_id, state_hidden_prefixes, validate_state_parent_cycles};
 use super::measure::{
     edge_label_metrics, state_fork_join_painted_dimensions, state_node_dimensions,
     title_label_metrics,
@@ -46,15 +43,14 @@ struct MeasuredState<'a> {
     profiles: Vec<ShapePortProfile>,
 }
 
-pub(crate) fn layout_state_diagram_shoal(
+pub(super) fn layout_state_diagram_shoal(
     model: &StateDiagramModel,
     effective_config: &Value,
     style_plan: &StateStylePlan,
     label_sidecar: Option<&StateLabelSidecarBuilder>,
     execution: &LayoutExecution<'_>,
+    work: &mut OperationLayoutWorkControl,
 ) -> Result<(StateDiagramLayout, CanonicalRoutes)> {
-    let mut work = OperationLayoutWorkControl::new(execution.work_meter());
-    work.charge_adapter(state_layout_adapter_work(model, &work)?)?;
     validate_state_parent_cycles(model)?;
     let input = measure(
         model,
@@ -62,7 +58,7 @@ pub(crate) fn layout_state_diagram_shoal(
         style_plan,
         label_sidecar,
         execution.text_measurer(),
-        &mut work,
+        work,
     )?;
     let (mut solved, placement) = placement::solve(
         &input.graph,
@@ -70,19 +66,19 @@ pub(crate) fn layout_state_diagram_shoal(
         input.groups.iter().map(|group| group.node.id.as_str()),
         Some(execution),
         Default::default(),
-        &mut work,
+        work,
     )?;
-    regions::stretch(&input, &mut solved, &mut work)?;
+    regions::stretch(&input, &mut solved, work)?;
     let mut routes = CanonicalRoutes::from_solved(
         &input.graph,
         &solved,
         &input.profiles,
         |id| group_corner_radius(input.groups[id as usize].node, style_plan),
         input.edges.iter().map(|edge| edge.id.as_str()),
-        &mut work,
+        work,
     )?;
     routes.placement = placement;
-    Ok((project(input, solved, &mut work)?, routes))
+    Ok((project(input, solved, work)?, routes))
 }
 
 fn direction_name(direction: Direction) -> &'static str {

@@ -1,5 +1,6 @@
 use crate::config::config_bool;
 use crate::elk_options::layout_options as elk_layout_options;
+use crate::layout_backend::ElkRootAlgorithm;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::math::MathRenderer;
 use crate::model::{
@@ -35,6 +36,7 @@ pub(crate) struct FlowchartElkLayoutExecution<'a> {
     measurer: &'a dyn TextMeasurer,
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
     operation_seed: elk::ElkOperationSeed,
+    algorithm: ElkRootAlgorithm,
     svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
     edge_style_plan: &'a crate::svg::FlowchartEdgeStylePlan,
     work_meter: Arc<OperationWorkMeter>,
@@ -45,6 +47,7 @@ impl<'a> FlowchartElkLayoutExecution<'a> {
         measurer: &'a dyn TextMeasurer,
         math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
         operation_seed: elk::ElkOperationSeed,
+        algorithm: ElkRootAlgorithm,
         svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
         edge_style_plan: &'a crate::svg::FlowchartEdgeStylePlan,
         work_meter: Arc<OperationWorkMeter>,
@@ -53,6 +56,7 @@ impl<'a> FlowchartElkLayoutExecution<'a> {
             measurer,
             math_renderer,
             operation_seed,
+            algorithm,
             svg_label_sidecar,
             edge_style_plan,
             work_meter,
@@ -123,6 +127,7 @@ pub(crate) fn layout_flowchart_elk_typed_with_operation_seed(
             measurer,
             math_renderer,
             operation_seed,
+            ElkRootAlgorithm::for_diagnostic(effective_config),
             None,
             &edge_style_plan,
             work_meter,
@@ -143,6 +148,7 @@ pub(crate) fn layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
         render_label_sources,
         class_defs,
         effective_config,
+        execution.algorithm,
         execution.measurer,
         execution.math_renderer,
         execution.svg_label_sidecar,
@@ -897,6 +903,7 @@ fn build_flowchart_elk_graph_with_render_labels(
         render_label_sources,
         &FlowchartClassDefinitions::new(&model.class_defs),
         effective_config,
+        ElkRootAlgorithm::for_diagnostic(effective_config),
         measurer,
         math_renderer,
         None,
@@ -926,6 +933,7 @@ fn build_flowchart_elk_graph_with_work_control(
         &FlowchartRenderContext::default(),
         &FlowchartClassDefinitions::new(&model.class_defs),
         effective_config,
+        ElkRootAlgorithm::for_diagnostic(effective_config),
         measurer,
         math_renderer,
         None,
@@ -1002,6 +1010,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control(
     render_label_sources: &FlowchartRenderContext,
     class_defs: &FlowchartClassDefinitions<'_>,
     effective_config: &PresentationConfig,
+    algorithm: ElkRootAlgorithm,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
@@ -1019,6 +1028,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control(
             render_label_sources,
             class_defs,
             effective_config,
+            algorithm,
             measurer,
             math_renderer,
             svg_label_sidecar,
@@ -1034,6 +1044,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control(
         render_label_sources,
         class_defs,
         effective_config,
+        algorithm,
         measurer,
         math_renderer,
         svg_label_sidecar,
@@ -1140,6 +1151,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
     render_label_sources: &FlowchartRenderContext,
     class_defs: &FlowchartClassDefinitions<'_>,
     effective_config: &PresentationConfig,
+    algorithm: ElkRootAlgorithm,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
@@ -1187,7 +1199,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
             group_padding_y: settings.cluster_padding,
             ..Default::default()
         },
-        options: elk_layout_options(effective_config),
+        options: elk_layout_options(effective_config, algorithm),
         ..Default::default()
     };
 
@@ -1986,6 +1998,7 @@ mod tests {
             &FlowchartRenderContext::default(),
             &FlowchartClassDefinitions::new(&model.class_defs),
             &config,
+            ElkRootAlgorithm::for_diagnostic(&config),
             &measurer,
             None,
             Some(&builder),
@@ -2073,6 +2086,7 @@ A -->|boundary| D
             render_context,
             &FlowchartClassDefinitions::new(&model.class_defs),
             &config,
+            ElkRootAlgorithm::for_diagnostic(&config),
             &measurer,
             None,
             Some(&builder),
@@ -2165,6 +2179,7 @@ A -->|boundary| D
             &FlowchartRenderContext::default(),
             &FlowchartClassDefinitions::new(&model.class_defs),
             &config,
+            ElkRootAlgorithm::for_diagnostic(&config),
             &measurer,
             None,
             Some(&builder),
@@ -3621,7 +3636,7 @@ A -->|boundary| D
     #[test]
     fn flowchart_elk_keeps_the_source_default_nonzero_seed() {
         assert_eq!(
-            elk_layout_options(&serde_json::Value::Null)
+            elk_layout_options(&serde_json::Value::Null, ElkRootAlgorithm::Layered)
                 .layered
                 .random_seed,
             1

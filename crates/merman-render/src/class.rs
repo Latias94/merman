@@ -3,6 +3,8 @@ use crate::elk_options::layout_options as class_elk_layout_options;
 use crate::entities::decode_entities_minimal;
 #[cfg(feature = "layout-elk")]
 use crate::graph_layout::ir::Direction;
+#[cfg(feature = "layout-elk")]
+use crate::layout_backend::ElkRootAlgorithm;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::math::MathRenderer;
 use crate::model::{
@@ -1942,6 +1944,7 @@ pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     operation_seed: elk::ElkOperationSeed,
+    algorithm: ElkRootAlgorithm,
     typography_theme: &ClassTextThemePlan,
     render_config: &ClassRenderConfig,
     work_control: &mut OperationLayoutWorkControl,
@@ -1961,6 +1964,7 @@ pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
     let settings = ClassElkLayoutSettings {
         // ClassDB.getData assigns class.padding ?? 16 to every namespace, independently
         // of class-node padding and ELK's fixed content inset.
+        algorithm,
         namespace_padding: settings.namespace_padding,
         title_margin_top: settings.title_margin_top,
         title_margin_bottom: settings.title_margin_bottom,
@@ -2090,6 +2094,7 @@ fn validate_class_namespace_hierarchy(model: &ClassDiagramModel) -> Result<()> {
 
 #[cfg(feature = "layout-elk")]
 struct ClassElkLayoutSettings<'a> {
+    algorithm: ElkRootAlgorithm,
     namespace_padding: f64,
     title_margin_top: f64,
     title_margin_bottom: f64,
@@ -2103,7 +2108,7 @@ fn class_measured_to_elk_graph(
     work: &mut Option<&mut OperationLayoutWorkControl>,
 ) -> Result<elk::Graph> {
     let graph = &measured.graph;
-    let options = class_elk_layout_options(settings.effective_config);
+    let options = class_elk_layout_options(settings.effective_config, settings.algorithm);
     let direction = match graph.direction {
         Direction::Down => elk::Direction::Down,
         Direction::Up => elk::Direction::Up,
@@ -3365,6 +3370,7 @@ mod tests {
         super::class_measured_to_elk_graph(
             &measured,
             &super::ClassElkLayoutSettings {
+                algorithm: super::ElkRootAlgorithm::for_diagnostic(config.as_value()),
                 namespace_padding: settings.namespace_padding,
                 title_margin_top: settings.title_margin_top,
                 title_margin_bottom: settings.title_margin_bottom,
@@ -3478,6 +3484,7 @@ mod tests {
                         (0.0, 0.0)
                     };
                     let settings = super::ClassElkLayoutSettings {
+                        algorithm: super::ElkRootAlgorithm::for_diagnostic(config.as_value()),
                         namespace_padding: layout_settings.namespace_padding,
                         title_margin_top: layout_settings.title_margin_top,
                         title_margin_bottom: layout_settings.title_margin_bottom,
@@ -3573,6 +3580,7 @@ mod tests {
                 .unwrap()
                 .0 = title_width;
             let settings = super::ClassElkLayoutSettings {
+                algorithm: super::ElkRootAlgorithm::for_diagnostic(config.as_value()),
                 namespace_padding: layout_settings.namespace_padding,
                 title_margin_top: layout_settings.title_margin_top,
                 title_margin_bottom: layout_settings.title_margin_bottom,
@@ -3673,9 +3681,12 @@ mod tests {
     #[test]
     fn class_elk_keeps_the_source_default_nonzero_seed() {
         assert_eq!(
-            super::class_elk_layout_options(&serde_json::Value::Null)
-                .layered
-                .random_seed,
+            super::class_elk_layout_options(
+                &serde_json::Value::Null,
+                super::ElkRootAlgorithm::Layered
+            )
+            .layered
+            .random_seed,
             1
         );
     }
@@ -3708,6 +3719,7 @@ mod tests {
         )
         .expect("measure Class diagram");
         let settings = super::ClassElkLayoutSettings {
+            algorithm: super::ElkRootAlgorithm::Layered,
             namespace_padding: 8.0,
             title_margin_top: 0.0,
             title_margin_bottom: 0.0,

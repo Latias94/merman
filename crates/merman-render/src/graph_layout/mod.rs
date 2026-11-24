@@ -127,15 +127,6 @@ pub(crate) enum RouteContract {
     feature = "diagram-usecase"
 ))]
 impl RouteContract {
-    #[cfg(any(feature = "diagram-requirement", feature = "diagram-usecase"))]
-    pub(crate) fn parity(uses_elk: bool) -> Self {
-        if uses_elk {
-            #[cfg(feature = "layout-elk")]
-            return Self::ElkParity;
-        }
-        Self::DagreParity
-    }
-
     pub(crate) fn is_elk_parity(&self) -> bool {
         #[cfg(any(feature = "layout-elk", all(test, feature = "diagram-flowchart")))]
         return matches!(self, Self::ElkParity);

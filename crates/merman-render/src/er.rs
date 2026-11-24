@@ -701,9 +701,16 @@ impl ErPreparedRelationshipLabel {
         text: &str,
         measurer: &dyn TextMeasurer,
         style: &TextStyle,
+        html_labels: bool,
         config: &merman_model::MermaidConfig,
     ) -> Self {
-        let label = swimlane::ErSwimlaneRelationshipLabel::prepare(text, measurer, style, config);
+        let label = swimlane::ErSwimlaneRelationshipLabel::prepare(
+            text,
+            measurer,
+            style,
+            html_labels,
+            config,
+        );
         Self {
             metrics: label.metrics(),
             terminal: ErRelationshipLabelTerminal::Swimlane(label),
@@ -730,10 +737,9 @@ impl ErPreparedLabels {
         measurer: &dyn TextMeasurer,
         settings: &ErLayoutSettings,
         config: &Value,
+        swimlane: bool,
         work_meter: &Arc<OperationWorkMeter>,
     ) -> Result<Self> {
-        let swimlane = crate::layout_backend::resolve_er_graph_layout(config).backend
-            == GraphLayoutBackend::Swimlane;
         let sanitize_config = swimlane.then(|| {
             merman_model::MermaidConfig::from_value(merman_model::json::clone_value_nonrecursive(
                 config,
@@ -816,6 +822,7 @@ impl ErPreparedLabels {
                     &relationship.role_a,
                     measurer,
                     &settings.relationship_label_style,
+                    settings.relationship_html_labels,
                     config,
                 )
             } else {
@@ -870,9 +877,10 @@ pub(crate) fn prepare_er_labels(
     model: &merman_model::families::er::ErDiagramModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
+    swimlane: bool,
 ) -> Arc<ErPreparedLabels> {
-    let settings = ErConfigView::new(effective_config)
-        .layout_settings_with_font_family(&model.direction, None);
+    let settings =
+        ErConfigView::new(effective_config).layout_settings_for_test(&model.direction, swimlane);
     let work_meter = Arc::new(OperationWorkMeter::new(
         crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
     ));
@@ -882,6 +890,7 @@ pub(crate) fn prepare_er_labels(
             measurer,
             &settings,
             effective_config,
+            swimlane,
             &work_meter,
         )
         .expect("prepare ER labels"),
@@ -1397,9 +1406,14 @@ pub(crate) struct ErPreparedLayout {
 }
 
 /// Lays out an ER model with the family's resolved layout and typography settings.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "ER layout shares prepared typography and work accounting across compiled adapters."
+)]
 pub(crate) fn layout_er_diagram_typed(
     model: &merman_model::families::er::ErDiagramModel,
     effective_config: &Value,
+    backend: GraphLayoutBackend,
     measurer: &dyn TextMeasurer,
     #[cfg(feature = "layout-elk")] operation_seed: merman_layout_elk::ElkOperationSeed,
     settings: ErLayoutSettings,
@@ -1417,14 +1431,25 @@ pub(crate) fn layout_er_diagram_typed(
         measurer,
         &settings,
         effective_config,
+        backend == GraphLayoutBackend::Swimlane,
         &work_meter,
     )?);
-    let selection = crate::layout_backend::resolve_er_graph_layout(effective_config);
-    selection.validate_rootless_graph()?;
+    backend.validate_rootless_graph()?;
 
-    #[cfg(feature = "layout-shoal")]
-    if selection.backend == GraphLayoutBackend::Shoal {
-        return shoal::layout(
+    match backend {
+        GraphLayoutBackend::Dagre => dagre::layout(
+            model,
+            measurer,
+            settings,
+            prepared_labels,
+            &mut work_control,
+        )
+        .map(|layout| ErPreparedLayout {
+            layout,
+            route_contract: RouteContract::DagreParity,
+        }),
+        #[cfg(feature = "layout-shoal")]
+        GraphLayoutBackend::Shoal => shoal::layout(
             model,
             measurer,
             &settings,
@@ -1432,11 +1457,8 @@ pub(crate) fn layout_er_diagram_typed(
             crate::config::config_diagram_look(effective_config).is_neo(),
             execution,
             &mut work_control,
-        );
-    }
-
-    if selection.backend == GraphLayoutBackend::Swimlane {
-        return swimlane::layout_er_diagram_swimlane_typed(
+        ),
+        GraphLayoutBackend::Swimlane => swimlane::layout_er_diagram_swimlane_typed(
             model,
             effective_config,
             measurer,
@@ -1447,37 +1469,24 @@ pub(crate) fn layout_er_diagram_typed(
         .map(|layout| ErPreparedLayout {
             layout,
             route_contract: RouteContract::Swimlane,
-        });
-    }
-
-    #[cfg(feature = "layout-elk")]
-    if selection.backend == GraphLayoutBackend::Elk {
-        return elk::layout(
+        }),
+        #[cfg(feature = "layout-elk")]
+        GraphLayoutBackend::Elk(algorithm) => elk::layout(
             model,
             effective_config,
+            algorithm,
             measurer,
             settings,
-            Arc::clone(&prepared_labels),
+            prepared_labels,
             operation_seed,
             &mut work_control,
         )
         .map(|layout| ErPreparedLayout {
             layout,
             route_contract: RouteContract::ElkParity,
-        });
+        }),
+        _ => Err(backend.unavailable_for("er")),
     }
-
-    dagre::layout(
-        model,
-        measurer,
-        settings,
-        prepared_labels,
-        &mut work_control,
-    )
-    .map(|layout| ErPreparedLayout {
-        layout,
-        route_contract: RouteContract::DagreParity,
-    })
 }
 
 fn validate_er_relationship_endpoints(
@@ -2051,6 +2060,7 @@ mod tests {
             &model,
             &serde_json::Value::Null,
             &DeterministicTextMeasurer::default(),
+            false,
         );
 
         let entity = prepared
@@ -2129,8 +2139,8 @@ mod tests {
             ));
             let model = er_resource_model();
             let config = serde_json::json!({"htmlLabels": html});
-            let settings = super::ErConfigView::new(&config)
-                .layout_settings_with_font_family(&model.direction, None);
+            let settings =
+                super::ErConfigView::new(&config).layout_settings_for_test(&model.direction, false);
             let error = super::ErPreparedLabels::prepare(
                 &model,
                 &DeterministicTextMeasurer::default(),
@@ -2154,8 +2164,8 @@ mod tests {
         ));
         let model = er_resource_model();
         let config = serde_json::json!({"htmlLabels": false});
-        let settings = super::ErConfigView::new(&config)
-            .layout_settings_with_font_family(&model.direction, None);
+        let settings =
+            super::ErConfigView::new(&config).layout_settings_for_test(&model.direction, false);
         let prepared = std::sync::Arc::new(
             super::ErPreparedLabels::prepare(
                 &model,
@@ -2188,8 +2198,8 @@ mod tests {
         ));
         let mut model = er_resource_model();
         let config = serde_json::json!({"htmlLabels": false});
-        let settings = super::ErConfigView::new(&config)
-            .layout_settings_with_font_family(&model.direction, None);
+        let settings =
+            super::ErConfigView::new(&config).layout_settings_for_test(&model.direction, false);
         let first = super::ErPreparedLabels::prepare(
             &model,
             &DeterministicTextMeasurer::default(),
@@ -2257,8 +2267,8 @@ mod tests {
             },
         );
         let config = serde_json::json!({"htmlLabels": false});
-        let settings = super::ErConfigView::new(&config)
-            .layout_settings_with_font_family(&model.direction, None);
+        let settings =
+            super::ErConfigView::new(&config).layout_settings_for_test(&model.direction, false);
         let error =
             super::ErPreparedLabels::prepare(&model, &CancellingLabel(control), &settings, &meter)
                 .unwrap_err();
@@ -2289,11 +2299,12 @@ mod tests {
         });
         let config = serde_json::json!({"layout": "shoal", "htmlLabels": false});
         let prepare = |measurer: &dyn TextMeasurer, meter| {
-            let settings = super::ErConfigView::new(&config)
-                .layout_settings_with_font_family(&model.direction, None);
+            let settings =
+                super::ErConfigView::new(&config).layout_settings_for_test(&model.direction, false);
             super::layout_er_diagram_typed(
                 &model,
                 &config,
+                super::GraphLayoutBackend::Shoal,
                 measurer,
                 #[cfg(feature = "layout-elk")]
                 merman_layout_elk::ElkOperationSeed::from_operation_seed(std::num::NonZeroU64::MIN),

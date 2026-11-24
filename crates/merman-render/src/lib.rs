@@ -1204,15 +1204,20 @@ impl<'a> LayoutExecution<'a> {
         request: &'a LayoutOptions,
         session: &'a RenderSession,
         family_id: DiagramFamilyId,
+        backend: layout_backend::GraphLayoutBackend,
     ) -> Self {
         Self::new(
             request,
-            crate::family::FamilyExecutionView::for_test(session, family_id),
+            crate::family::FamilyExecutionView::for_test(session, family_id, backend),
         )
     }
 
     pub(crate) const fn family_id(&self) -> DiagramFamilyId {
         self.family.family_id()
+    }
+
+    pub(crate) const fn layout_backend(&self) -> layout_backend::GraphLayoutBackend {
+        self.family.layout_backend()
     }
 
     #[cfg(feature = "diagram-state")]
@@ -1308,6 +1313,7 @@ pub(crate) fn layout_class_typed_by_engine(
     graph_layout::RouteContract,
 )> {
     use graph_layout::RouteContract;
+    use layout_backend::GraphLayoutBackend;
 
     options
         .work_meter_ref()
@@ -1315,11 +1321,11 @@ pub(crate) fn layout_class_typed_by_engine(
     let mut work_control = layout_work::OperationLayoutWorkControl::new(options.work_meter());
     let preparation_work = class::class_layout_work_units(model, &work_control)?;
     work_control.charge_adapter(preparation_work)?;
-    let selection = layout_backend::resolve_graph_layout(effective_config);
-    selection.validate_rootless_graph()?;
-    #[cfg(feature = "layout-shoal")]
-    if selection.backend == layout_backend::GraphLayoutBackend::Shoal {
-        return class::shoal::layout(
+    let backend = options.layout_backend();
+    backend.validate_rootless_graph()?;
+    match backend {
+        #[cfg(feature = "layout-shoal")]
+        GraphLayoutBackend::Shoal => class::shoal::layout(
             model,
             effective_config,
             options,
@@ -1327,32 +1333,34 @@ pub(crate) fn layout_class_typed_by_engine(
             render_config,
             &mut work_control,
         )
-        .map(|(layout, labels, routes)| (layout, labels, RouteContract::canonical_graph(routes)));
-    }
-    #[cfg(feature = "layout-elk")]
-    if selection.backend == layout_backend::GraphLayoutBackend::Elk {
-        return class::layout_class_diagram_elk_typed_with_config_and_operation_seed(
+        .map(|(layout, labels, routes)| (layout, labels, RouteContract::canonical_graph(routes))),
+        #[cfg(feature = "layout-elk")]
+        GraphLayoutBackend::Elk(algorithm) => {
+            class::layout_class_diagram_elk_typed_with_config_and_operation_seed(
+                model,
+                effective_config,
+                options.text_measurer(),
+                options.math_renderer(),
+                options.elk_operation_seed(),
+                algorithm,
+                typography_theme,
+                render_config,
+                &mut work_control,
+            )
+            .map(|(layout, labels)| (layout, labels, RouteContract::ElkParity))
+        }
+        GraphLayoutBackend::Dagre => class::layout_class_diagram_typed_with_config(
             model,
             effective_config,
             options.text_measurer(),
             options.math_renderer(),
-            options.elk_operation_seed(),
             typography_theme,
             render_config,
             &mut work_control,
         )
-        .map(|(layout, labels)| (layout, labels, RouteContract::ElkParity));
+        .map(|(layout, labels)| (layout, labels, RouteContract::DagreParity)),
+        _ => Err(backend.unavailable_for(options.family_id().as_str())),
     }
-    class::layout_class_diagram_typed_with_config(
-        model,
-        effective_config,
-        options.text_measurer(),
-        options.math_renderer(),
-        typography_theme,
-        render_config,
-        &mut work_control,
-    )
-    .map(|(layout, labels)| (layout, labels, RouteContract::DagreParity))
 }
 
 #[cfg(all(test, feature = "layout-elk"))]
@@ -1397,15 +1405,17 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
     svg_label_sidecar: Option<&flowchart::FlowchartSvgLabelSidecarBuilder>,
     edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
 ) -> Result<model::FlowchartLayout> {
+    use layout_backend::GraphLayoutBackend;
+
     options
         .family
         .session()
         .checkpoint(OperationPhase::Layout)?;
-    let selection = layout_backend::resolve_graph_layout(effective_config);
-    selection.validate_rootless_graph()?;
-    if selection.backend == layout_backend::GraphLayoutBackend::Shoal {
+    let backend = options.layout_backend();
+    backend.validate_rootless_graph()?;
+    match backend {
         #[cfg(feature = "layout-shoal")]
-        return flowchart::shoal::layout(
+        GraphLayoutBackend::Shoal => flowchart::shoal::layout(
             model,
             render_label_sources,
             class_defs,
@@ -1413,42 +1423,38 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
             options,
             svg_label_sidecar,
             edge_style_plan,
-        );
-        #[cfg(not(feature = "layout-shoal"))]
-        return Err(Error::MissingCapability {
-            capability: RenderCapability::LayoutShoal,
-            diagram_type: options.family_id().as_str().to_owned(),
-        });
-    }
-    #[cfg(feature = "layout-elk")]
-    if selection.backend == layout_backend::GraphLayoutBackend::Elk {
-        return flowchart::elk::layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
+        ),
+        #[cfg(feature = "layout-elk")]
+        GraphLayoutBackend::Elk(algorithm) => {
+            flowchart::elk::layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
+                model,
+                render_label_sources,
+                class_defs,
+                effective_config,
+                flowchart::elk::FlowchartElkLayoutExecution::new(
+                    options.text_measurer(),
+                    options.math_renderer(),
+                    options.elk_operation_seed(),
+                    algorithm,
+                    svg_label_sidecar,
+                    edge_style_plan,
+                    options.work_meter(),
+                ),
+            )
+        }
+        GraphLayoutBackend::Dagre => flowchart::dagre::layout(
             model,
             render_label_sources,
             class_defs,
             effective_config,
-            flowchart::elk::FlowchartElkLayoutExecution::new(
-                options.text_measurer(),
-                options.math_renderer(),
-                options.elk_operation_seed(),
-                svg_label_sidecar,
-                edge_style_plan,
-                options.work_meter(),
-            ),
-        );
+            options.text_measurer(),
+            options.math_renderer(),
+            svg_label_sidecar,
+            edge_style_plan,
+            options.work_meter(),
+        ),
+        _ => Err(backend.unavailable_for(options.family_id().as_str())),
     }
-
-    flowchart::dagre::layout(
-        model,
-        render_label_sources,
-        class_defs,
-        effective_config,
-        options.text_measurer(),
-        options.math_renderer(),
-        svg_label_sidecar,
-        edge_style_plan,
-        options.work_meter(),
-    )
 }
 
 #[cfg(all(test, feature = "all-diagrams"))]
@@ -1520,7 +1526,17 @@ mod tests {
         layout_flowchart_typed_by_engine(
             model,
             &parsed.metadata().effective_config,
-            &LayoutExecution::unthemed_for_test(options, session, DiagramFamilyId::FLOWCHART),
+            &LayoutExecution::unthemed_for_test(
+                options,
+                session,
+                DiagramFamilyId::FLOWCHART,
+                layout_backend::resolve(
+                    DiagramFamilyId::FLOWCHART,
+                    &parsed.metadata().diagram_type,
+                    &parsed.metadata().effective_config,
+                )
+                .unwrap(),
+            ),
         )
         .expect("flowchart layout")
     }
@@ -1543,7 +1559,17 @@ mod tests {
         layout_class_typed_by_engine(
             model,
             &parsed.metadata().effective_config,
-            &LayoutExecution::unthemed_for_test(options, session, DiagramFamilyId::CLASS),
+            &LayoutExecution::unthemed_for_test(
+                options,
+                session,
+                DiagramFamilyId::CLASS,
+                layout_backend::resolve(
+                    DiagramFamilyId::CLASS,
+                    &parsed.metadata().diagram_type,
+                    &parsed.metadata().effective_config,
+                )
+                .unwrap(),
+            ),
             &typography_theme,
             &render_config,
         )
@@ -1602,6 +1628,7 @@ mod tests {
                 &LayoutOptions::default(),
                 &session,
                 DiagramFamilyId::ERROR,
+                layout_backend::GraphLayoutBackend::Native,
             )
             .elk_operation_seed()
         }

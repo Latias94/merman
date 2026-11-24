@@ -463,6 +463,7 @@ pub(crate) struct ErEntityThemePlan {
     subgraph_source_styles: BTreeMap<String, ErEntitySourceStyle>,
     html_subgraph_labels: BTreeMap<String, ErPreparedHtmlSubgraphLabel>,
     inherited_font_stack: InheritedFontStackPlan,
+    relationship_html_labels: bool,
     has_visible_typography: bool,
     font_stack_pending: bool,
     font_stack_residual: bool,
@@ -581,7 +582,7 @@ impl ErEntityThemePlan {
         let mut html_subgraph_labels = BTreeMap::new();
         for cluster in &layout.clusters {
             let lane = swimlane_lanes.get(cluster.id.as_str());
-            if !config.subgraph_html_labels(lane.is_some())
+            if !config.subgraph_html_labels(lane.is_some(), relationship_html_labels)
                 || html_subgraph_labels.contains_key(&cluster.id)
             {
                 continue;
@@ -635,6 +636,7 @@ impl ErEntityThemePlan {
                 subgraph_source_styles,
                 html_subgraph_labels,
                 inherited_font_stack,
+                relationship_html_labels,
                 has_visible_typography: false,
                 font_stack_pending: false,
                 font_stack_residual: false,
@@ -1145,6 +1147,7 @@ impl ErEntityThemePlan {
             subgraph_source_styles,
             html_subgraph_labels,
             inherited_font_stack,
+            relationship_html_labels,
             has_visible_typography,
             font_stack_pending,
             font_stack_residual,
@@ -1177,6 +1180,10 @@ impl ErEntityThemePlan {
 
     pub(crate) fn css_binding(&self) -> &css_binding::ErCssBinding {
         &self.css_binding
+    }
+
+    pub(crate) const fn relationship_html_labels(&self) -> bool {
+        self.relationship_html_labels
     }
 
     pub(crate) fn source_style(&self, entity_index: usize) -> Option<&ErEntitySourceStyle> {

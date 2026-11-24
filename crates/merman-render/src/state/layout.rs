@@ -1,13 +1,15 @@
 //! State backend dispatch and shared semantic input preparation.
 
 use super::StateDiagramModel;
+use crate::graph_layout::RouteContract;
+use crate::layout_backend::GraphLayoutBackend;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::StateDiagramLayout;
 use crate::{Error, Result};
 use serde_json::Value;
 use std::collections::HashMap;
 
-pub(super) fn state_layout_adapter_work(
+fn state_layout_adapter_work(
     model: &StateDiagramModel,
     work_control: &OperationLayoutWorkControl,
 ) -> Result<usize> {
@@ -73,49 +75,45 @@ pub(crate) fn layout_state_diagram_typed_with_work_meter(
     style_plan: &super::StateStylePlan,
     label_sidecar: Option<&super::StateLabelSidecarBuilder>,
     execution: &crate::LayoutExecution<'_>,
-) -> Result<(StateDiagramLayout, crate::graph_layout::RouteContract)> {
-    use crate::graph_layout::RouteContract;
-    #[cfg(any(feature = "layout-shoal", feature = "layout-elk"))]
-    use crate::layout_backend::GraphLayoutBackend;
-
-    let selection = crate::layout_backend::resolve_graph_layout(effective_config);
-    #[cfg(feature = "layout-shoal")]
-    if selection.backend == GraphLayoutBackend::Shoal {
-        return super::shoal::layout_state_diagram_shoal(
+) -> Result<(StateDiagramLayout, RouteContract)> {
+    let backend = execution.layout_backend();
+    let mut work_control = OperationLayoutWorkControl::new(execution.work_meter());
+    let adapter_work = state_layout_adapter_work(model, &work_control)?;
+    work_control.charge_adapter(adapter_work)?;
+    backend.validate_rootless_graph()?;
+    match backend {
+        GraphLayoutBackend::Dagre => super::dagre::layout(
+            model,
+            effective_config,
+            style_plan,
+            execution.text_measurer(),
+            label_sidecar,
+            &mut work_control,
+        )
+        .map(|layout| (layout, RouteContract::DagreParity)),
+        #[cfg(feature = "layout-elk")]
+        GraphLayoutBackend::Elk(algorithm) => super::elk::layout(
+            model,
+            effective_config,
+            algorithm,
+            style_plan,
+            label_sidecar,
+            execution,
+            &mut work_control,
+        )
+        .map(|layout| (layout, RouteContract::ElkParity)),
+        #[cfg(feature = "layout-shoal")]
+        GraphLayoutBackend::Shoal => super::shoal::layout_state_diagram_shoal(
             model,
             effective_config,
             style_plan,
             label_sidecar,
             execution,
-        )
-        .map(|(layout, routes)| (layout, RouteContract::canonical_graph(routes)));
-    }
-    let mut work_control = OperationLayoutWorkControl::new(execution.work_meter());
-    let adapter_work = state_layout_adapter_work(model, &work_control)?;
-    work_control.charge_adapter(adapter_work)?;
-    selection.validate_rootless_graph()?;
-    #[cfg(feature = "layout-elk")]
-    if selection.backend == GraphLayoutBackend::Elk {
-        return super::elk::layout(
-            model,
-            effective_config,
-            style_plan,
-            label_sidecar,
-            execution.text_measurer(),
-            execution.elk_operation_seed(),
             &mut work_control,
         )
-        .map(|layout| (layout, RouteContract::ElkParity));
+        .map(|(layout, routes)| (layout, RouteContract::canonical_graph(routes))),
+        _ => Err(backend.unavailable_for("stateDiagram")),
     }
-    super::dagre::layout(
-        model,
-        effective_config,
-        style_plan,
-        execution.text_measurer(),
-        label_sidecar,
-        &mut work_control,
-    )
-    .map(|layout| (layout, RouteContract::DagreParity))
 }
 
 #[derive(Default)]

@@ -1035,7 +1035,11 @@ impl<'a> SvgExecution<'a> {
         Self::new(
             request,
             debug,
-            FamilyExecutionView::for_test(session, family_id),
+            FamilyExecutionView::for_test(
+                session,
+                family_id,
+                crate::layout_backend::GraphLayoutBackend::Native,
+            ),
         )
     }
 
@@ -1063,6 +1067,11 @@ impl<'a> SvgExecution<'a> {
 
     pub(crate) const fn family_id(&self) -> crate::DiagramFamilyId {
         self.family.family_id()
+    }
+
+    #[cfg(feature = "diagram-mindmap")]
+    pub(crate) const fn layout_backend(&self) -> crate::layout_backend::GraphLayoutBackend {
+        self.family.layout_backend()
     }
 
     pub(crate) fn resolved_theme(&self) -> Option<&crate::diagram_theme::ResolvedDiagramTheme> {
