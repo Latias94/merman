@@ -114,7 +114,8 @@ Initialize the `out_engine` value to zero before any constructor; a nonzero valu
 without being overwritten. `MERMAN_NATIVE_OPERATION_NONE` is a defined metadata/result sentinel
 and is not executable: `execute_collect` returns invalid argument with the generic error kind.
 Unknown numeric operation codes continue to return unsupported operation with
-`unknown-operation`.
+`unknown-operation`. Theme v2 uses new operation codes. The retired Theme v1 codes 15 through 17
+return `unknown-operation`.
 
 `api.engine_new_with_services` embeds the existing `MermanNativeEngineConfig` in a
 `MermanNativeEngineServicesConfig` and optionally accepts a contiguous array of

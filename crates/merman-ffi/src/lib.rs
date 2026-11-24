@@ -5818,18 +5818,20 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
         );
         unsafe { api.result_free.unwrap()(&mut config_result) };
 
-        let request = native_request(i32::MAX, b"flowchart TD\nA --> B");
-        let mut result = native_result();
-        assert_eq!(
-            unsafe { api.execute_collect.unwrap()(token, &request, &mut result) },
-            MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION
-        );
-        assert_eq!(result.operation, MERMAN_NATIVE_OPERATION_NONE);
-        let error = result_json(&result);
-        assert_eq!(error["version"], MERMAN_NATIVE_RESULT_SCHEMA_VERSION);
-        assert_eq!(error["kind"], MERMAN_NATIVE_ERROR_KIND_UNKNOWN_OPERATION);
-        assert!(error["capability_id"].is_null());
-        unsafe { api.result_free.unwrap()(&mut result) };
+        for code in [15, 16, 17, i32::MAX] {
+            let request = native_request(code, b"flowchart TD\nA --> B");
+            let mut result = native_result();
+            assert_eq!(
+                unsafe { api.execute_collect.unwrap()(token, &request, &mut result) },
+                MERMAN_NATIVE_STATUS_UNSUPPORTED_OPERATION
+            );
+            assert_eq!(result.operation, MERMAN_NATIVE_OPERATION_NONE);
+            let error = result_json(&result);
+            assert_eq!(error["version"], MERMAN_NATIVE_RESULT_SCHEMA_VERSION);
+            assert_eq!(error["kind"], MERMAN_NATIVE_ERROR_KIND_UNKNOWN_OPERATION);
+            assert!(error["capability_id"].is_null());
+            unsafe { api.result_free.unwrap()(&mut result) };
+        }
         assert_eq!(
             unsafe { api.engine_try_close.unwrap()(token) },
             MERMAN_NATIVE_STATUS_OK

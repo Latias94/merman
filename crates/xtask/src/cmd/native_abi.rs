@@ -860,13 +860,19 @@ fn validate_descriptor(descriptor: &NativeAbiDescriptor) -> Result<(), String> {
             .map(|operation| operation.c_name.as_str()),
         "native ABI operation code C names",
     )?;
-    validate_codes_in_descriptor_order(
-        descriptor
+    if descriptor
+        .operation_codes
+        .first()
+        .is_some_and(|op| op.code < 0)
+        || descriptor
             .operation_codes
-            .iter()
-            .map(|operation| operation.code),
-        "native ABI operation codes",
-    )?;
+            .windows(2)
+            .any(|pair| pair[0].code >= pair[1].code)
+    {
+        return Err(descriptor_error(
+            "native ABI operation codes must appear in increasing nonnegative order",
+        ));
+    }
     for operation in &descriptor.operation_codes {
         validate_identifier(&operation.id, "native ABI operation code")?;
         if !operation.c_name.starts_with("MERMAN_NATIVE_OPERATION_")
