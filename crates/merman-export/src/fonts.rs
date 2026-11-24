@@ -583,16 +583,24 @@ impl NativeFontContext {
     /// not poison the source context. Existing fatal font errors are replayed before forking.
     pub fn for_export(&self, control: &OperationControl) -> Result<Self, NativeFontError> {
         control.terminal_checkpoint_at(OperationPhase::Export)?;
-        if let Some(error) = self.0.fatal.get() {
-            return Err(Self::replay_failure(control, true, error));
-        }
+        let check_source = || {
+            control.terminal_checkpoint_at(OperationPhase::Export)?;
+            match self.0.fatal.get() {
+                Some(error) => Err(Self::replay_failure(control, true, error)),
+                None => Ok(()),
+            }
+        };
+        #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
+        let sources = self.0.sources.for_export(check_source)?;
+        #[cfg(not(all(feature = "system-fonts", not(target_family = "wasm"))))]
+        check_source()?;
         let context = Self(Arc::new(FontContextInner {
             database: Arc::clone(&self.0.database),
             selection: Arc::clone(&self.0.selection),
             #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
             discovery: self.0.discovery.clone(),
             #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
-            sources: self.0.sources.for_export()?,
+            sources,
             default_family: self.0.default_family.clone(),
             language: self.0.language.clone(),
             identity: self.0.identity.clone(),
@@ -1135,7 +1143,10 @@ impl NativeFontContext {
         exporting: bool,
         error: NativeFontError,
     ) -> NativeFontError {
-        let error = self.0.fatal.get_or_init(|| error);
+        let error = self
+            .0
+            .fatal
+            .get_or_init(|| Self::replay_failure(control, exporting, &error));
         Self::replay_failure(control, exporting, error)
     }
 
@@ -1900,15 +1911,23 @@ mod tests {
             fatal: OnceLock::new(),
         }));
         let style = TextStyle::default();
-        let result = context.measure(HostTextMeasurementRequest {
+        let request = HostTextMeasurementRequest {
             operation: TextMeasurementOperation::TitleBBoxX,
             phase: TextMeasurementPhase::SvgBBox,
             text: "long",
             style: &style,
             max_width: None,
             wrap_mode: WrapMode::SvgLike,
-        });
-        assert!(result.is_err());
+        };
+        for _ in 0..2 {
+            let control = OperationControl::new();
+            assert!(context.measure_with_control(request, &control).is_err());
+            assert!(matches!(
+                control.terminal_checkpoint_at(OperationPhase::Layout),
+                Err(OperationLedgerError::ResourceLimitExceeded(event))
+                    if event.id == "native_font_label_bytes"
+            ));
+        }
         assert!(matches!(
             context.check(),
             Err(NativeFontError::Limit {
@@ -1923,6 +1942,45 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn cancellation_at_the_label_limit_is_the_sticky_font_failure() {
+        let context = NativeFontOptions::default()
+            .with_font_file(
+                Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts/Cousine-Regular.ttf"),
+            )
+            .with_limits(NativeFontLimits {
+                max_label_bytes: 0,
+                ..Default::default()
+            })
+            .load(&OperationControl::new())
+            .unwrap();
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(1);
+        let result = context.measure_with_control(
+            HostTextMeasurementRequest {
+                operation: TextMeasurementOperation::TitleBBoxX,
+                phase: TextMeasurementPhase::SvgBBox,
+                text: "label",
+                style: &TextStyle::default(),
+                max_width: None,
+                wrap_mode: WrapMode::SvgLike,
+            },
+            &control,
+        );
+        let terminal = control
+            .terminal_checkpoint_at(OperationPhase::Layout)
+            .unwrap_err();
+        assert!(matches!(terminal, OperationLedgerError::Cancelled(_)));
+        assert!(
+            matches!(context.check(), Err(NativeFontError::Operation(error)) if error == terminal)
+        );
+        assert!(matches!(
+            context.for_export(&OperationControl::new()),
+            Err(NativeFontError::Operation(error)) if error == terminal
+        ));
+        assert_eq!(result.unwrap_err().to_string(), terminal.to_string());
     }
 
     #[test]

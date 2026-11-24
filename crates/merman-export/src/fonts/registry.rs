@@ -389,9 +389,15 @@ impl FontSourceRegistry {
         }
     }
 
-    pub(super) fn for_export(&self) -> Result<Self, NativeFontError> {
+    pub(super) fn for_export(
+        &self,
+        check_source: impl FnOnce() -> Result<(), NativeFontError>,
+    ) -> Result<Self, NativeFontError> {
         #[cfg(feature = "experimental-system-font-query")]
         let _selection = self.lock_selection()?;
+        // A failed selection can leave an admission in the snapshot state. Observe its
+        // terminal outcome under the same gate that protects selection and pinning.
+        check_source()?;
         let snapshots = self.snapshots.lock().map_err(|_| {
             NativeFontError::Measurement("font snapshot state is poisoned".to_owned())
         })?;
@@ -1108,7 +1114,9 @@ fn eligible_parsed_face(face: ttf_parser::Face<'_>, request: &CandidateRequest<'
             table(b"OS/2"),
             table(b"cmap").unwrap_or_default(),
             table(b"maxp").unwrap_or_default(),
-            request.fallback.map(|fallback| fallback.text),
+            request
+                .fallback
+                .map(|fallback| (fallback.text, fallback.rtl)),
         )
     {
         return false;
@@ -1246,6 +1254,27 @@ pub(super) fn verify_font_file(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "experimental-system-font-query")]
+    #[test]
+    fn export_checks_the_source_failure_under_the_selection_gate() {
+        let registry = FontSourceRegistry::new(BTreeMap::new(), BTreeMap::new(), 0, 0);
+        let result = registry.for_export(|| {
+            assert!(matches!(
+                registry.selection_gate.try_lock(),
+                Err(std::sync::TryLockError::WouldBlock)
+            ));
+            Err(limit_error("font-selections", 1, 0))
+        });
+        assert!(matches!(
+            result,
+            Err(NativeFontError::Limit {
+                resource: "font-selections",
+                actual: 1,
+                limit: 0,
+            })
+        ));
+    }
 
     #[cfg(feature = "experimental-system-font-query")]
     #[test]
@@ -1525,7 +1554,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(registry.resident_bytes(), resident);
-        let export = registry.for_export().unwrap();
+        let export = registry.for_export(|| Ok(())).unwrap();
         export
             .materialize(
                 make_candidate(),
@@ -1561,7 +1590,7 @@ mod tests {
                 },
             ),
         ] {
-            let export = registry.for_export().unwrap();
+            let export = registry.for_export(|| Ok(())).unwrap();
             let mut extra = make_candidate();
             let FontCandidate::File { path, .. } = &mut extra else {
                 unreachable!()
