@@ -2,6 +2,7 @@
 
 mod color;
 mod compile;
+mod contrast;
 mod document;
 mod json;
 mod presets;

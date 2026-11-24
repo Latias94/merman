@@ -3,6 +3,8 @@ use std::sync::Arc;
 
 use serde::Serialize;
 
+use super::compile::automatic_fill_ink;
+use super::contrast::backdrop;
 use super::{Appearance, Color, Form, Roles, ShadowLayer, Texture, Typography};
 
 /// Concrete canvas decorations and extra padding. The base paint is in [`Roles::canvas`].
@@ -27,6 +29,8 @@ pub struct DataPalette {
     pub fill_ink: Arc<[Color]>,
     /// Whether marks should also differ by pattern.
     pub pattern_encoding: bool,
+    #[serde(skip)]
+    pub(super) automatic_fill_ink: bool,
 }
 
 impl DataPalette {
@@ -43,6 +47,24 @@ impl DataPalette {
     /// Selects the corresponding text color by ordinal.
     pub fn fill_ink(&self, ordinal: usize) -> Color {
         self.fill_ink[ordinal % self.fill_ink.len()]
+    }
+
+    /// Selects text ink for a fill rendered over an explicit host canvas color.
+    ///
+    /// Authored ink uses the compiled slot. Automatic ink accounts for the canvas
+    /// alpha, the appearance backdrop, and the fill alpha multiplied by `fill_opacity`.
+    pub fn fill_ink_for_canvas(
+        &self,
+        ordinal: usize,
+        canvas: Color,
+        fill_opacity: f64,
+        appearance: Appearance,
+    ) -> Color {
+        if !self.automatic_fill_ink {
+            return self.fill_ink(ordinal);
+        }
+        let canvas = canvas.composite(backdrop(appearance), 1.0);
+        automatic_fill_ink(self.fill(ordinal).composite(canvas, fill_opacity))
     }
 }
 
@@ -174,6 +196,7 @@ impl ResolvedThemeV2 {
     }
 
     /// SHA-256 of the canonical compiled theme, excluding notices.
+    /// Automatic fill ink adds a marker to distinguish it from identical authored colors.
     pub const fn fingerprint(&self) -> &[u8; 32] {
         &self.fingerprint
     }

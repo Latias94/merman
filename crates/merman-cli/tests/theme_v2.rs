@@ -165,6 +165,63 @@ fn check_reports_syntax_location_and_strict_contrast() {
 }
 
 #[test]
+fn check_reports_the_same_gradient_contrast_in_rows_and_notices() {
+    let document = r##"{
+        "schema_version": 2,
+        "extends": "studio",
+        "roles": {
+            "canvas": {"kind": "linear_gradient", "angle_deg": 90, "stops": [
+                {"offset": 0, "color": "#FF0000"}, {"offset": 1, "color": "#008A00"}
+            ]},
+            "stroke.connector": {"kind": "linear_gradient", "stops": [
+                {"offset": 0, "color": "#000000"}, {"offset": 1, "color": "#FFFFFF"}
+            ]},
+            "text.primary": "#000000",
+            "text.muted": "#000000",
+            "text.title": "#000000"
+        },
+        "appearances": {"light": {"data": {
+            "ink": ["#000000", "#000000", "#000000", "#000000"],
+            "fill": ["#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF"],
+            "fill_ink": "#000000"
+        }}}
+    }"##;
+    let strict = run_with_stdin(
+        &["theme", "check", "-", "--strict-contrast", "--json"],
+        document,
+    );
+    assert_eq!(exit_code(strict.status), 1);
+    let result = json(&strict);
+    assert_eq!(result["ok"], false);
+    let rows = result["contrast"].as_array().unwrap();
+    assert!(
+        rows.iter()
+            .all(|row| row["ratio"].as_f64().is_some_and(f64::is_finite))
+    );
+    let canvas_ratio = |foreground: &str| {
+        rows.iter()
+            .find(|row| row["foreground"] == foreground && row["background"] == "canvas")
+            .and_then(|row| row["ratio"].as_f64())
+            .unwrap()
+    };
+    let ratio = canvas_ratio("text.primary");
+    assert!((ratio - 2.75317).abs() < 0.001, "{ratio}");
+    assert_eq!(canvas_ratio("stroke.connector"), 1.0);
+    let notice = result["notices"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|notice| {
+            notice["kind"] == "low_contrast"
+                && notice["foreground"] == "text.primary"
+                && notice["background"] == "canvas"
+        })
+        .unwrap();
+    assert_eq!(notice["ratio"].as_f64().unwrap(), ratio);
+    assert_eq!(notice["minimum"], 4.5);
+}
+
+#[test]
 fn document_limits_apply_before_decoding() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("theme.json");

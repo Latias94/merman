@@ -20,14 +20,13 @@ pub(crate) fn render_native_pie_svg(
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("merman");
     let settings = PieConfigView::new(effective_config).render_settings();
-    let viewport = pie_viewport(layout, model);
     let offset = pie_group_offset(layout, settings.legend_position, style.content_width);
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let root = open_pie_svg(
         &mut out,
         model,
         diagram_id,
-        viewport,
+        pie_viewport(layout, model),
         settings.use_max_width,
         options,
     )?;
@@ -43,18 +42,19 @@ pub(crate) fn render_native_pie_svg(
     }
 
     write_patterns(&mut out, diagram_id, style, layout.legend_items.len())?;
-    let background = options
-        .family
-        .session()
-        .canvas_background()
-        .map(Paint::Solid);
+    let session = options.family.session();
+    let background = session.canvas_background();
+    let background_paint = background.map(Paint::Solid);
     let gap_paint = (style.slice_gap_px > 0.0 && !layout.slices.is_empty())
-        .then_some(background.as_ref().unwrap_or(&style.canvas));
+        .then_some(background_paint.as_ref().unwrap_or(&style.canvas));
     if matches!(gap_paint, Some(Paint::LinearGradient(_))) {
+        let view_box = root.view_box().ok_or_else(|| Error::InvalidModel {
+            message: "Pie gap gradient requires a root viewBox".to_owned(),
+        })?;
         write_gap_gradient(
             &mut out,
             diagram_id,
-            viewport.0,
+            view_box,
             (layout.center_x + offset.0, layout.center_y + offset.1),
         )?;
     }
@@ -85,6 +85,11 @@ pub(crate) fn render_native_pie_svg(
         out.checkpoint()?;
     }
 
+    let host_canvas = background.zip(
+        session
+            .native_theme()
+            .map(|theme| theme.resolved().appearance()),
+    );
     for (slice, &ordinal) in layout.slices.iter().zip(&style.slice_ordinals) {
         let _ = write!(
             &mut out,
@@ -92,12 +97,15 @@ pub(crate) fn render_native_pie_svg(
             fmt(slice.text_x),
             fmt(slice.text_y)
         );
-        write_text(
-            &mut out,
-            &style.label,
-            style.data.fill_ink(ordinal),
-            &format!("{}%", slice.percent),
-        )?;
+        let ink = match host_canvas {
+            Some((canvas, appearance)) => {
+                style
+                    .data
+                    .fill_ink_for_canvas(ordinal, canvas, style.slice_opacity, appearance)
+            }
+            None => style.data.fill_ink(ordinal),
+        };
+        write_text(&mut out, &style.label, ink, &format!("{}%", slice.percent))?;
     }
     out.push_str("</g>");
 
@@ -190,7 +198,7 @@ fn write_data_fill(
 fn write_gap_gradient(
     out: &mut impl SvgOutput,
     diagram_id: SvgDiagramId<'_>,
-    bounds: root_svg::DiagramBounds,
+    view_box: root_svg::ViewBox,
     center: (f64, f64),
 ) -> Result<()> {
     // The canvas gradient uses normalized viewport coordinates. Project those same coordinates
@@ -199,10 +207,10 @@ fn write_gap_gradient(
     let _ = write!(
         out,
         r##"<defs><linearGradient id="{diagram_id}-pie-gap" xlink:href="#{diagram_id}-merman-canvas-base" gradientUnits="userSpaceOnUse" gradientTransform="translate({},{}) scale({},{})"/></defs>"##,
-        fmt(bounds.min_x - x),
-        fmt(bounds.min_y - y),
-        fmt(bounds.width),
-        fmt(bounds.height)
+        fmt(view_box.min_x - x),
+        fmt(view_box.min_y - y),
+        fmt(view_box.width),
+        fmt(view_box.height)
     );
     out.checkpoint()
 }
@@ -236,6 +244,7 @@ mod tests {
                     "schema_version": 2,
                     "appearances": {"light": {
                         "seed": {"canvas": "#FFFFFF", "ink": "#151515", "accent": "#224466"},
+                        "canvas": {"padding_px": 23},
                         "data": {
                             "fill": ["#EEEEEE", "#DDDDDD", "#222222", "#BBBBBB", "#CCCCCC", "#444444"],
                             "ink": ["#222222", "#333333", "#111111", "#555555"],
@@ -264,6 +273,7 @@ mod tests {
 config:
   pie:
     donutHole: 0.4
+    legendPosition: top
 ---
 pie showData title Capacity
   "A" : 40
@@ -404,8 +414,30 @@ pie showData title Capacity
             node.has_tag_name("linearGradient")
                 && node.attribute("id") == Some("capacity-merman-canvas-base")
         }));
-        assert!(gradient.descendants().any(|node| {
-            slices(node) && node.attribute("stroke") == Some("url(#capacity-pie-gap)")
-        }));
+        let slice = gradient.descendants().find(|node| slices(*node)).unwrap();
+        assert_eq!(slice.attribute("stroke"), Some("url(#capacity-pie-gap)"));
+
+        let view_box = gradient
+            .root_element()
+            .attribute("viewBox")
+            .unwrap()
+            .parse::<svgtypes::ViewBox>()
+            .unwrap();
+        let gap_transform = gap
+            .attribute("gradientTransform")
+            .unwrap()
+            .parse::<svgtypes::Transform>()
+            .unwrap();
+        let (pie_x, pie_y) = slice
+            .ancestors()
+            .filter(|node| node.has_tag_name("g"))
+            .filter_map(|node| node.attribute("transform"))
+            .map(|transform| transform.parse::<svgtypes::Transform>().unwrap())
+            .fold((0.0, 0.0), |(x, y), transform| {
+                (x + transform.e, y + transform.f)
+            });
+        assert_eq!((gap_transform.a, gap_transform.d), (view_box.w, view_box.h));
+        assert!((gap_transform.e + pie_x - view_box.x).abs() < 1e-9);
+        assert!((gap_transform.f + pie_y - view_box.y).abs() < 1e-9);
     }
 }

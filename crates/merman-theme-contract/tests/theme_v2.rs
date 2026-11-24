@@ -1,4 +1,6 @@
-use merman_theme_contract::v2::{Appearance, BuiltinPreset, ThemeCompiler, ThemeNotice};
+use merman_theme_contract::v2::{
+    Appearance, BuiltinPreset, Color, Paint, ResolvedThemeV2, ThemeCompiler, ThemeNotice,
+};
 use serde_json::{Value, json};
 
 #[test]
@@ -166,6 +168,110 @@ fn a_custom_theme_reports_low_contrast_and_can_adjust_it() {
         ThemeNotice::ContrastAdjusted { foreground, .. } if foreground == "text.muted"
     )));
     assert_ne!(original.roles().text_muted, fixed.roles().text_muted);
+}
+
+#[test]
+fn contrast_checks_between_canvas_stops_and_through_translucent_surfaces() {
+    let input = br##"{
+        "schema_version": 2,
+        "extends": "studio",
+        "roles": {
+            "canvas": {"kind": "linear_gradient", "angle_deg": 90, "stops": [
+                {"offset": 0, "color": "#FF0000"}, {"offset": 1, "color": "#008A00"}
+            ]},
+            "surface.node": "#00000040",
+            "text.primary": "#000000",
+            "text.muted": "#000000",
+            "text.title": "#000000"
+        },
+        "form": {"chart": {"pie_opacity": 0.8}},
+        "appearances": {"light": {"data": {
+            "ink": ["#000000", "#000000", "#000000", "#000000"],
+            "fill": ["#00000050", "#FFFFFF", "#FFFFFF", "#FFFFFF"],
+            "fill_ink": "#000000"
+        }}}
+    }"##;
+    let compiler = ThemeCompiler::new();
+    let theme = compiler.compile_json(input, None).unwrap();
+    let ratio = low_contrast(&theme, "text.primary", "canvas");
+    assert!((ratio - 2.75317).abs() < 0.001, "{ratio}");
+    let shaded_ratio = low_contrast(&theme, "text.primary", "surface.node");
+    assert!((shaded_ratio - 1.97468).abs() < 0.001, "{shaded_ratio}");
+    assert_eq!(
+        low_contrast(&theme, "data.fill_ink[0]", "data.fill"),
+        shaded_ratio
+    );
+
+    let error = compiler
+        .with_strict_contrast(true)
+        .compile_json(input, None)
+        .unwrap_err();
+    assert_eq!(error.path(), Some("text.primary"));
+    assert_eq!((error.line(), error.column()), (None, None));
+    assert_eq!(
+        error.to_string(),
+        "text.primary on canvas has 2.75:1 contrast, below 4.5:1"
+    );
+}
+
+#[test]
+fn contrast_accounts_for_transparent_stop_color_before_compositing() {
+    let input = br##"{
+        "schema_version": 2,
+        "extends": "studio",
+        "roles": {
+            "canvas": "#818181",
+            "surface.node": {"kind": "linear_gradient", "stops": [
+                {"offset": 0.2, "color": "#00000000"},
+                {"offset": 0.8, "color": "#818181CC", "opacity": 0.9}
+            ]},
+            "text.primary": "#000000"
+        }
+    }"##;
+    let theme = ThemeCompiler::new().compile_json(input, None).unwrap();
+    // Both stops composite to #818181. Halfway, the lighter stop's opacity and RGB are both halved.
+    let ratio = low_contrast(&theme, "text.primary", "surface.node");
+    assert!((ratio - 3.869905).abs() < 0.001, "{ratio}");
+}
+
+#[test]
+fn a_solid_and_a_continuous_gradient_can_cross_at_equal_luminance() {
+    let solid = Paint::Solid(Color::rgb(117, 117, 117));
+    let gradient = |first, last| {
+        serde_json::from_value::<Paint>(json!({"kind": "linear_gradient", "stops": [
+            {"offset": first, "color": "#000000"}, {"offset": last, "color": "#FFFFFF"}
+        ]}))
+        .unwrap()
+    };
+    let continuous = gradient(0.0, 1.0);
+    assert_eq!(
+        solid.minimum_contrast_over(&continuous, 1.0, None, Appearance::Light),
+        1.0
+    );
+    assert_eq!(
+        continuous.minimum_contrast_over(&solid, 1.0, None, Appearance::Light),
+        1.0
+    );
+
+    let hard_stop = gradient(0.5, 0.5);
+    let ratio = solid.minimum_contrast_over(&hard_stop, 1.0, None, Appearance::Light);
+    assert!((ratio - 4.557768).abs() < 0.001, "{ratio}");
+}
+
+fn low_contrast(theme: &ResolvedThemeV2, foreground: &str, background: &str) -> f64 {
+    theme
+        .notices()
+        .iter()
+        .find_map(|notice| match notice {
+            ThemeNotice::LowContrast {
+                foreground: fg,
+                background: bg,
+                ratio,
+                ..
+            } if fg == foreground && *bg == background => Some(*ratio),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing contrast notice for {foreground} on {background}"))
 }
 
 #[test]

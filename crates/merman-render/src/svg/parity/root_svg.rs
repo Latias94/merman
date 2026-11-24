@@ -946,6 +946,14 @@ impl std::fmt::Display for RootedSvg {
 }
 
 impl RootDocument {
+    #[cfg(feature = "diagram-pie")]
+    pub(super) fn view_box(&self) -> Option<ViewBox> {
+        match self.state {
+            RootDocumentState::Ready { view_box, .. } => view_box,
+            RootDocumentState::Deferred { .. } => None,
+        }
+    }
+
     pub(super) fn complete(self, out: String) -> Result<RootedSvg> {
         let family = self.family;
         let diagram_id = self.diagram_id.clone();

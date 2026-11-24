@@ -6,7 +6,7 @@ use merman_render::environment::{RenderEnvironment, TextMeasurementPolicy};
 use merman_render::family;
 use merman_render::model::PieDiagramLayout;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
-use merman_render::theme::{BuiltinPreset, NativeTheme, ThemeCompiler};
+use merman_render::theme::{BuiltinPreset, Color, NativeTheme, ThemeCompiler};
 use merman_render::{
     Error, LayoutOptions, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
     ResourceLimitPhase,
@@ -58,6 +58,68 @@ fn render_pie_with_session(
         .expect("svg render ok")
         .svg()
         .to_owned()
+}
+
+#[test]
+fn native_pie_percentage_ink_uses_host_canvas_and_slice_opacity() {
+    let source = "pie\n\"Opaque\": 2\n\"Translucent\": 1\n";
+    let options = SvgRenderOptions::default();
+    let environment = RenderEnvironment::deterministic();
+    let authored_ink = "#0F172A";
+    let compile = |fill_ink| {
+        let document = serde_json::json!({
+            "schema_version": 2,
+            "appearances": {"light": {
+                "seed": {"canvas": "#FFFFFF", "ink": "#151515", "accent": "#224466"},
+                "data": {
+                    "fill": ["#999999", "#EEEEEE80", "#AAAAAA", "#BBBBBB"],
+                    "fill_ink": fill_ink,
+                },
+            }},
+            "form": {"chart": {"pie_opacity": 0.65}},
+        });
+        ThemeCompiler::new()
+            .compile_json(&serde_json::to_vec(&document).unwrap(), None)
+            .unwrap()
+    };
+    let automatic = compile("auto");
+    let authored = compile(authored_ink);
+    assert_eq!(
+        serde_json::to_value(automatic.as_ref()).unwrap(),
+        serde_json::to_value(authored.as_ref()).unwrap(),
+    );
+    assert_ne!(automatic.fingerprint(), authored.fingerprint());
+
+    for (fill_ink, theme) in [("auto", automatic), (authored_ink, authored)] {
+        let native = NativeTheme::new(theme);
+        for (background, automatic_ink) in [
+            (None, "#0F172A"),
+            (Some(Color::rgb(0, 0, 0)), "#F8FAFC"),
+            (Some(Color::parse("#00000080").unwrap()), "#0F172A"),
+            (Some(Color::TRANSPARENT), "#0F172A"),
+        ] {
+            let session = environment
+                .begin_session_with_native_theme(native.clone())
+                .unwrap();
+            let session = match background {
+                Some(color) => session.with_canvas_background(color),
+                None => session,
+            };
+            let svg = render_pie_with_session(source, &options, session);
+            let svg = roxmltree::Document::parse(&svg).unwrap();
+            let inks: Vec<_> = svg
+                .descendants()
+                .filter(|node| node.attribute("class") == Some("slice"))
+                .map(|node| node.attribute("fill").unwrap())
+                .collect();
+            let expected = if fill_ink == "auto" {
+                automatic_ink
+            } else {
+                authored_ink
+            };
+            assert_eq!(inks, [expected, expected], "{fill_ink} over {background:?}");
+        }
+    }
 }
 
 #[test]

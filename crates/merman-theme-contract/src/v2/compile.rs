@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use sha2::{Digest, Sha256};
 
+use super::contrast::backdrop;
 use super::document::{
     CanvasPatch, DataPatch, ElevationEffect, ElevationPreset, ElevationSpec, FamilyOverride,
     FillInk, SeedPatch,
@@ -306,7 +307,12 @@ impl ThemeCompiler {
         };
         let canonical = crate::canonical_json::canonical_json_bytes(&result)
             .map_err(|error| ThemeError::invalid(".", error.to_string()))?;
-        result.fingerprint = Sha256::digest(canonical).into();
+        let mut fingerprint = Sha256::new();
+        fingerprint.update(canonical);
+        if result.base.data.automatic_fill_ink {
+            fingerprint.update(b"\0data.fill_ink=auto");
+        }
+        result.fingerprint = fingerprint.finalize().into();
         Ok(Arc::new(result))
     }
 }
@@ -444,7 +450,10 @@ fn derive_palette(
         hues()
             .map(|h| {
                 let ink = Color::from_oklch(l, c, h);
-                fit_contrast(ink, &[canvas], DERIVED_SERIES_CONTRAST).unwrap_or(ink)
+                fit_contrast(ink, |color| {
+                    color.contrast(canvas) >= DERIVED_SERIES_CONTRAST
+                })
+                .unwrap_or(ink)
             })
             .collect()
     });
@@ -453,19 +462,15 @@ fn derive_palette(
             .map(|h| Color::from_oklch(if dark { 0.34 } else { 0.84 }, 0.085, h))
             .collect()
     });
+    let authored_fill_ink = match data.fill_ink {
+        Some(FillInk::Color(ink)) => Some(ink),
+        Some(FillInk::Auto(_)) | None => None,
+    };
     let fill_ink = fill
         .iter()
-        .map(|color| match data.fill_ink {
-            Some(FillInk::Color(ink)) => ink,
-            _ => {
-                let background = color.composite(canvas, opacity);
-                let ink = best_ink(background, DARK_INK, LIGHT_INK);
-                if ink.contrast(background) >= TEXT_CONTRAST {
-                    ink
-                } else {
-                    best_ink(background, BLACK, WHITE)
-                }
-            }
+        .map(|color| {
+            authored_fill_ink
+                .unwrap_or_else(|| automatic_fill_ink(color.composite(canvas, opacity)))
         })
         .collect();
     DataPalette {
@@ -473,6 +478,16 @@ fn derive_palette(
         fill: fill.into(),
         fill_ink,
         pattern_encoding: data.pattern_encoding.unwrap_or(false),
+        automatic_fill_ink: authored_fill_ink.is_none(),
+    }
+}
+
+pub(super) fn automatic_fill_ink(background: Color) -> Color {
+    let ink = best_ink(background, DARK_INK, LIGHT_INK);
+    if ink.contrast(background) >= TEXT_CONTRAST {
+        ink
+    } else {
+        best_ink(background, BLACK, WHITE)
     }
 }
 
@@ -484,35 +499,16 @@ fn best_ink(background: Color, first: Color, second: Color) -> Color {
     }
 }
 
-fn backdrop(appearance: Appearance) -> Color {
-    match appearance {
-        Appearance::Light => WHITE,
-        Appearance::Dark => BLACK,
+fn paint_sample(paint: &Paint, background: Color) -> Color {
+    match paint {
+        Paint::Solid(color) => color.composite(background, 1.0),
+        Paint::LinearGradient(gradient) => gradient.stops.first().map_or(background, |stop| {
+            stop.color.composite(background, stop.opacity)
+        }),
     }
 }
 
-fn paint_colors(paint: &Paint, background: Color) -> impl Iterator<Item = Color> + '_ {
-    let (solid, stops) = match paint {
-        Paint::Solid(color) => (Some(color.composite(background, 1.0)), &[][..]),
-        Paint::LinearGradient(gradient) => (None, gradient.stops.as_slice()),
-    };
-    solid.into_iter().chain(
-        stops
-            .iter()
-            .map(move |stop| stop.color.composite(background, stop.opacity)),
-    )
-}
-
-fn paint_sample(paint: &Paint, background: Color) -> Color {
-    paint_colors(paint, background).next().unwrap_or(background)
-}
-
-fn fit_contrast(color: Color, backgrounds: &[Color], minimum: f64) -> Option<Color> {
-    let passes = |color: Color| {
-        backgrounds
-            .iter()
-            .all(|&background| color.composite(background, 1.0).contrast(background) >= minimum)
-    };
+fn fit_contrast(color: Color, passes: impl Fn(Color) -> bool) -> Option<Color> {
     if passes(color) || color.channels()[3] != 255 {
         return None;
     }
@@ -546,75 +542,90 @@ fn check_contrast(
     notices: &mut Vec<ThemeNotice>,
 ) {
     let roles = &mut family.roles;
-    let canvas: Vec<_> = paint_colors(&roles.canvas, backdrop(appearance)).collect();
-    let underlying = canvas[0];
-    let node: Vec<_> = paint_colors(&roles.surface_node, underlying).collect();
-    let container: Vec<_> = paint_colors(&roles.surface_container, underlying).collect();
-    let callout: Vec<_> = paint_colors(&roles.surface_callout, underlying).collect();
-    let emphasis: Vec<_> = paint_colors(&roles.surface_emphasis, underlying).collect();
-    let mut check =
-        |name: &str, color: &mut Color, backgrounds: &[(&'static str, &[Color])], minimum: f64| {
-            if auto_fix {
-                let samples: Vec<_> = backgrounds
-                    .iter()
-                    .flat_map(|(_, colors)| colors.iter().copied())
-                    .collect();
-                if let Some(adjusted) = fit_contrast(*color, &samples, minimum) {
-                    *color = adjusted;
-                    notices.push(ThemeNotice::ContrastAdjusted {
-                        foreground: name.to_owned(),
-                        color: adjusted,
-                    });
-                }
-            }
-            for &(background, colors) in backgrounds {
-                let ratio = colors
-                    .iter()
-                    .map(|&bg| color.composite(bg, 1.0).contrast(bg))
-                    .fold(f64::INFINITY, f64::min);
-                if ratio < minimum {
-                    notices.push(ThemeNotice::LowContrast {
-                        foreground: name.to_owned(),
-                        background,
-                        ratio,
-                        minimum,
-                    });
-                }
-            }
+    let canvas = ("canvas", &roles.canvas, None);
+    let node = ("surface.node", &roles.surface_node, Some(&roles.canvas));
+    let container = (
+        "surface.container",
+        &roles.surface_container,
+        Some(&roles.canvas),
+    );
+    let callout = (
+        "surface.callout",
+        &roles.surface_callout,
+        Some(&roles.canvas),
+    );
+    let emphasis = (
+        "surface.emphasis",
+        &roles.surface_emphasis,
+        Some(&roles.canvas),
+    );
+    let mut check = |name: &str,
+                     color: &mut Color,
+                     backgrounds: &[(&'static str, &Paint, Option<&Paint>)],
+                     opacity: f64,
+                     minimum: f64| {
+        let ratio = |color, background: &Paint, canvas: Option<&Paint>| {
+            Paint::Solid(color).minimum_contrast_over(background, opacity, canvas, appearance)
         };
+        if auto_fix
+            && let Some(adjusted) = fit_contrast(*color, |candidate| {
+                backgrounds
+                    .iter()
+                    .all(|&(_, background, canvas)| ratio(candidate, background, canvas) >= minimum)
+            })
+        {
+            *color = adjusted;
+            notices.push(ThemeNotice::ContrastAdjusted {
+                foreground: name.to_owned(),
+                color: adjusted,
+            });
+        }
+        for &(background, paint, canvas) in backgrounds {
+            let ratio = ratio(*color, paint, canvas);
+            if ratio < minimum {
+                notices.push(ThemeNotice::LowContrast {
+                    foreground: name.to_owned(),
+                    background,
+                    ratio,
+                    minimum,
+                });
+            }
+        }
+    };
 
     check(
         "text.primary",
         &mut roles.text_primary,
-        &[
-            ("canvas", &canvas),
-            ("surface.node", &node),
-            ("surface.container", &container),
-        ],
+        &[canvas, node, container],
+        1.0,
         TEXT_CONTRAST,
     );
     check(
         "text.muted",
         &mut roles.text_muted,
-        &[("canvas", &canvas), ("surface.node", &node)],
+        &[canvas, node],
+        1.0,
         TEXT_CONTRAST,
     );
     check(
         "text.title",
         &mut roles.text_title,
-        &[("canvas", &canvas), ("surface.container", &container)],
+        &[canvas, container],
+        1.0,
         TEXT_CONTRAST,
     );
     check(
         "text.callout",
         &mut roles.text_callout,
-        &[("surface.callout", &callout)],
+        &[callout],
+        1.0,
         TEXT_CONTRAST,
     );
     check(
         "text.on_emphasis",
         &mut roles.text_on_emphasis,
-        &[("surface.emphasis", &emphasis)],
+        &[emphasis],
+        1.0,
         TEXT_CONTRAST,
     );
 
@@ -623,7 +634,8 @@ fn check_contrast(
         check(
             &format!("data.ink[{index}]"),
             color,
-            &[("canvas", &canvas)],
+            &[canvas],
+            1.0,
             SERIES_CONTRAST,
         );
     }
@@ -631,16 +643,13 @@ fn check_contrast(
         family.data.ink = series.into();
     }
     let mut fill_ink = family.data.fill_ink.iter().copied().collect::<Vec<_>>();
+    let opacity = family.form.chart.pie_opacity;
     for (index, (fill, ink)) in family.data.fill.iter().zip(&mut fill_ink).enumerate() {
-        let opacity = family.form.chart.pie_opacity;
-        let fills: Vec<_> = canvas
-            .iter()
-            .map(|color| fill.composite(*color, opacity))
-            .collect();
         check(
             &format!("data.fill_ink[{index}]"),
             ink,
-            &[("data.fill", &fills)],
+            &[("data.fill", &Paint::Solid(*fill), Some(&roles.canvas))],
+            opacity,
             TEXT_CONTRAST,
         );
     }

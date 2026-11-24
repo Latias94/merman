@@ -6,6 +6,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 const CHANNEL_MAX: f64 = u8::MAX as f64;
 const GAMUT_SEARCH_STEPS: usize = 18;
 const LINEAR_RGB_GAMUT: RangeInclusive<f64> = -1e-4..=1.0001;
+const LUMINANCE_WEIGHTS: [f64; 3] = [0.2126, 0.7152, 0.0722];
+const SRGB_LINEAR_CUTOFF: f64 = 0.04045;
 
 /// An 8-bit sRGB color with straight alpha.
 ///
@@ -59,11 +61,9 @@ impl Color {
     ///
     /// Composite translucent colors over their backgrounds before measuring contrast.
     pub fn contrast(self, other: Self) -> f64 {
-        const CONTRAST_OFFSET: f64 = 0.05;
-
         let first = self.luminance();
         let second = other.luminance();
-        (first.max(second) + CONTRAST_OFFSET) / (first.min(second) + CONTRAST_OFFSET)
+        luminance_ratio(first.max(second), first.min(second))
     }
 
     /// Composites this foreground color over `background` using straight alpha in sRGB.
@@ -94,8 +94,7 @@ impl Color {
 
     /// Returns the WCAG relative luminance of the RGB channels.
     pub(super) fn luminance(self) -> f64 {
-        let [r, g, b] = self.linear_rgb();
-        0.2126 * r + 0.7152 * g + 0.0722 * b
+        dot(LUMINANCE_WEIGHTS, self.linear_rgb())
     }
 
     /// Returns OKLCH lightness, chroma, and hue in degrees from the RGB channels.
@@ -203,7 +202,7 @@ impl<'de> Deserialize<'de> for Color {
     }
 }
 
-fn normalize_channel(channel: u8) -> f64 {
+pub(super) fn normalize_channel(channel: u8) -> f64 {
     f64::from(channel) / CHANNEL_MAX
 }
 
@@ -213,11 +212,35 @@ fn quantize_channel(channel: f64) -> u8 {
 }
 
 fn srgb_to_linear(channel: f64) -> f64 {
-    if channel <= 0.04045 {
+    if channel <= SRGB_LINEAR_CUTOFF {
         channel / 12.92
     } else {
         ((channel + 0.055) / 1.055).powf(2.4)
     }
+}
+
+pub(super) fn dot([ax, ay, az]: [f64; 3], [bx, by, bz]: [f64; 3]) -> f64 {
+    ax * bx + ay * by + az * bz
+}
+
+pub(super) fn relative_luminance(rgb: [f64; 3]) -> f64 {
+    dot(LUMINANCE_WEIGHTS, rgb.map(srgb_to_linear))
+}
+
+pub(super) fn luminance_gradient(rgb: [f64; 3]) -> [f64; 3] {
+    std::array::from_fn(|index| {
+        let channel = rgb[index];
+        let slope = if channel <= SRGB_LINEAR_CUTOFF {
+            1.0 / 12.92
+        } else {
+            (2.4 / 1.055) * ((channel + 0.055) / 1.055).powf(1.4)
+        };
+        LUMINANCE_WEIGHTS[index] * slope
+    })
+}
+
+pub(super) fn luminance_ratio(first: f64, second: f64) -> f64 {
+    (first + 0.05) / (second + 0.05)
 }
 
 fn linear_to_srgb(channel: f64) -> f64 {

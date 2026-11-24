@@ -13,8 +13,7 @@ use crate::invocation::{ResolvedDestination, ResolvedThemeCheck};
 use crate::runtime::{ExecutionContext, SharedWriter};
 #[cfg(feature = "svg")]
 use merman::theme::{
-    Appearance, Category, Color, Paint, ResolvedThemeV2, ThemeNotice, ThemeOutcome,
-    ThemeOutcomeNotice,
+    Category, Color, Paint, ResolvedThemeV2, ThemeNotice, ThemeOutcome, ThemeOutcomeNotice,
 };
 #[cfg(feature = "svg")]
 use serde::Serialize;
@@ -313,93 +312,80 @@ struct ContrastRow {
 #[cfg(feature = "svg")]
 fn contrast_rows(theme: &ResolvedThemeV2) -> [ContrastRow; 12] {
     let roles = theme.roles();
-    let backdrop = match theme.appearance() {
-        Appearance::Light => Color::rgb(255, 255, 255),
-        Appearance::Dark => Color::rgb(0, 0, 0),
-    };
-    let canvas = paint_samples(&roles.canvas, backdrop).collect::<Vec<_>>();
-    let canvas_base = canvas[0];
-    let node = paint_samples(&roles.surface_node, canvas_base).collect::<Vec<_>>();
-    let container = paint_samples(&roles.surface_container, canvas_base).collect::<Vec<_>>();
-    let callout = paint_samples(&roles.surface_callout, canvas_base).collect::<Vec<_>>();
-    let emphasis = paint_samples(&roles.surface_emphasis, canvas_base).collect::<Vec<_>>();
-    let fill = canvas
-        .iter()
-        .map(|&color| {
-            theme
-                .data()
-                .fill(0)
-                .composite(color, theme.form().chart.pie_opacity)
-        })
-        .collect::<Vec<_>>();
-    let row = |foreground, paint: &Paint, background, samples: &[Color]| ContrastRow {
+    let appearance = theme.appearance();
+    let on_canvas = |foreground, paint: &Paint| ContrastRow {
         foreground,
-        background,
-        ratio: samples
-            .iter()
-            .flat_map(|&bg| paint_samples(paint, bg).map(move |fg| fg.contrast(bg)))
-            .fold(f64::INFINITY, f64::min),
+        background: "canvas",
+        ratio: paint.minimum_contrast_over(&roles.canvas, 1.0, None, appearance),
     };
-    let solid = |foreground, color, background, samples: &[Color]| {
-        row(foreground, &Paint::Solid(color), background, samples)
-    };
+    let solid_on_canvas = |foreground, color| on_canvas(foreground, &Paint::Solid(color));
+    let on_surface =
+        |foreground, color, background, paint: &Paint, background_opacity| ContrastRow {
+            foreground,
+            background,
+            ratio: Paint::Solid(color).minimum_contrast_over(
+                paint,
+                background_opacity,
+                Some(&roles.canvas),
+                appearance,
+            ),
+        };
     [
-        solid("text.primary", roles.text_primary, "canvas", &canvas),
-        solid("text.primary", roles.text_primary, "surface.node", &node),
-        solid(
+        solid_on_canvas("text.primary", roles.text_primary),
+        on_surface(
+            "text.primary",
+            roles.text_primary,
+            "surface.node",
+            &roles.surface_node,
+            1.0,
+        ),
+        on_surface(
             "text.primary",
             roles.text_primary,
             "surface.container",
-            &container,
+            &roles.surface_container,
+            1.0,
         ),
-        solid("text.muted", roles.text_muted, "canvas", &canvas),
-        solid("text.muted", roles.text_muted, "surface.node", &node),
-        solid("text.title", roles.text_title, "canvas", &canvas),
-        solid(
+        solid_on_canvas("text.muted", roles.text_muted),
+        on_surface(
+            "text.muted",
+            roles.text_muted,
+            "surface.node",
+            &roles.surface_node,
+            1.0,
+        ),
+        solid_on_canvas("text.title", roles.text_title),
+        on_surface(
             "text.title",
             roles.text_title,
             "surface.container",
-            &container,
+            &roles.surface_container,
+            1.0,
         ),
-        solid(
+        on_surface(
             "text.callout",
             roles.text_callout,
             "surface.callout",
-            &callout,
+            &roles.surface_callout,
+            1.0,
         ),
-        solid(
+        on_surface(
             "text.on_emphasis",
             roles.text_on_emphasis,
             "surface.emphasis",
-            &emphasis,
+            &roles.surface_emphasis,
+            1.0,
         ),
-        row(
-            "stroke.connector",
-            &roles.stroke_connector,
-            "canvas",
-            &canvas,
-        ),
-        solid("data.ink[0]", theme.data().ink(0), "canvas", &canvas),
-        solid(
+        on_canvas("stroke.connector", &roles.stroke_connector),
+        solid_on_canvas("data.ink[0]", theme.data().ink(0)),
+        on_surface(
             "data.fill_ink[0]",
             theme.data().fill_ink(0),
             "data.fill",
-            &fill,
+            &Paint::Solid(theme.data().fill(0)),
+            theme.form().chart.pie_opacity,
         ),
     ]
-}
-
-#[cfg(feature = "svg")]
-fn paint_samples(paint: &Paint, backdrop: Color) -> impl Iterator<Item = Color> + '_ {
-    let (solid, stops) = match paint {
-        Paint::Solid(color) => (Some(color.composite(backdrop, 1.0)), &[][..]),
-        Paint::LinearGradient(gradient) => (None, gradient.stops.as_slice()),
-    };
-    solid.into_iter().chain(
-        stops
-            .iter()
-            .map(move |stop| stop.color.composite(backdrop, stop.opacity)),
-    )
 }
 
 #[cfg(feature = "svg")]
