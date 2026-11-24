@@ -2054,14 +2054,12 @@ mod tests {
 
     #[test]
     fn descriptor_owned_operation_ids_round_trip() {
+        let specs = crate::capability::OPERATION_SPECS;
         let operations = BindingOperationKind::all().collect::<Vec<_>>();
-        assert_eq!(operations.len(), 17);
-        for operation in operations {
-            assert_eq!(
-                BindingOperationKind::from_id(operation.operation_id()).unwrap(),
-                operation
-            );
-            assert_eq!(operation.key().spec().id, operation.operation_id());
+        assert_eq!(operations.len(), specs.len());
+        for (operation, spec) in operations.into_iter().zip(specs) {
+            assert_eq!(BindingOperationKind::from_id(spec.id).unwrap(), operation);
+            assert_eq!(operation.operation_id(), spec.id);
             assert!(!operation.media_type().is_empty());
         }
     }

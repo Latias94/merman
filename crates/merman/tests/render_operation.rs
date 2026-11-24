@@ -1466,6 +1466,7 @@ fn require_portable_rejects_actual_host_display_measurements() {
 #[cfg(all(feature = "svg", feature = "diagram-class"))]
 #[test]
 fn require_portable_svg_accepts_valid_postprocessing() {
+    const SOURCE: &str = "classDiagram\ndirection TB\n";
     let request = merman::SvgRequest {
         environment: merman::SvgEnvironment::deterministic().with_theme_portability_requirement(
             merman::svg::ThemePortabilityRequirement::RequirePortable,
@@ -1476,11 +1477,12 @@ fn require_portable_svg_accepts_valid_postprocessing() {
         ),
         ..merman::SvgRequest::default()
     };
-    let output = Renderer::new()
+    let renderer = Renderer::new();
+    let output = renderer
         .render(RenderRequest::svg(
-            "classDiagram\ndirection TB\n",
+            SOURCE,
             OperationControl::new(),
-            request,
+            request.clone(),
         ))
         .expect("safe postprocessing preserves portability for a scene without text");
     let RenderOutput::Svg(Some(output)) = output else {
@@ -1489,6 +1491,42 @@ fn require_portable_svg_accepts_valid_postprocessing() {
     assert!(output.admission().status().is_portable());
     assert!(output.evidence().output_mutated());
     assert!(output.svg().contains("#111827"));
+
+    let data = renderer
+        .render_svg_data(RenderRequest::svg(SOURCE, OperationControl::new(), request))
+        .expect("the data path admits the same postprocessed output")
+        .expect("Class diagram detected");
+    assert_eq!(data, output.svg());
+}
+
+#[cfg(all(feature = "svg", feature = "math", feature = "diagram-flowchart"))]
+#[test]
+fn require_portable_svg_rejects_postprocessing_that_invalidates_prepared_math() {
+    let request = merman::SvgRequest {
+        environment: merman::SvgEnvironment::deterministic().with_theme_portability_requirement(
+            merman::svg::ThemePortabilityRequirement::RequirePortable,
+        ),
+        pipeline: Some(
+            merman::svg::SvgPipeline::resvg_safe()
+                .with_postprocessor(merman::svg::RootBackgroundPostprocessor::new("#111827")),
+        ),
+        ..merman::SvgRequest::default()
+    };
+    let error = Renderer::new()
+        .render(RenderRequest::svg(
+            "flowchart TD\nA[$$x^2$$]",
+            OperationControl::new(),
+            request,
+        ))
+        .expect_err("opaque postprocessing cannot preserve prepared math");
+    assert!(
+        matches!(
+            &error,
+            RenderError::Svg(merman::svg::RenderError::SvgPostprocess { pass, .. })
+                if pass == "prepared-math-terminal-receipt"
+        ),
+        "{error}"
+    );
 }
 
 #[cfg(all(feature = "svg", feature = "diagram-state"))]

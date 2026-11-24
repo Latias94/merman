@@ -344,8 +344,12 @@ fn portability_report_from_summary(
         }
         merman_render::svg::StandaloneSvgTerminalStatus::Compatible => {}
     }
+    // Native finalization rejects invalidated evidence for nonempty math before sealing the SVG.
     let prepared_math_evidence = native_svg
         .map(merman_render::__private::prepared_math_evidence)
+        .filter(|evidence| {
+            evidence.expected_occurrence_count() != 0 || evidence.terminal_occurrence_count() != 0
+        })
         .unwrap_or_else(merman_render::__private::PreparedMathEvidenceSummary::not_applicable);
     if !prepared_math_evidence.evidence_valid() {
         rejected = true;

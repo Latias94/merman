@@ -38,7 +38,7 @@ Rel(user, system, "Uses")
                 "schema_version":2,"extends":"paper",
                 "roles":{"surface.node":"#DDEEFF","surface.container":"#E0E8F0",
                          "stroke.connector":"#405060"},
-                "typography":{"sans":["C4 Body"],"base_size_px":19},
+                "typography":{"sans":["C4 Body","sans-serif"],"base_size_px":19},
                 "form":{"radius":7,"container_radius":11,"connector_width":3,
                         "edge_style":"orthogonal","marker_style":"open"}
             }"##,
@@ -936,22 +936,23 @@ fn c4_contextual_root_sizes_preserve_css_and_keep_independent_element_sizes() {
 
 #[test]
 fn c4_subpixel_root_fallback_multiline_sections_use_actual_em_steps() {
-    for configured_root in [false, true] {
-        let mut config = serde_json::json!({"c4": {
-            "wrap":false, "systemFontSize":-1, "systemFontFamily":"inherit"
-        }});
-        config["themeVariables"] = serde_json::json!({"fontFamily":"Cousine"});
-        if configured_root {
-            config["themeVariables"]["fontSize"] = serde_json::json!("0.5px");
-        } else {
-            config["fontSize"] = serde_json::json!(0.5);
-        }
-        let (_, _, single) =
-            render_c4_with_font_host("C4Context\nSystem(a, \"A\", \"First\")\n", config.clone());
-        let (rendered, probes, multi) = render_c4_with_font_host(
-            "C4Context\nSystem(a, \"A<br/>B\", \"First<br/>Second\")\n",
-            config,
-        );
+    let config = serde_json::json!({
+        "themeVariables": {"fontFamily":"Cousine", "fontSize":"0.5px"},
+        "c4": {"wrap":false, "systemFontSize":-1, "systemFontFamily":"inherit"}
+    });
+    for from_source in [false, true] {
+        let render = |body: &str| {
+            if from_source {
+                let source = format!("---\nconfig: {config}\n---\n{body}");
+                render_c4_with_font_host(&source, serde_json::json!({}))
+            } else {
+                render_c4_with_font_host(body, config.clone())
+            }
+        };
+        let (_, _, single) = render("C4Context\nSystem(a, \"A\", \"First\")\n");
+        let (rendered, probes, multi) =
+            render("C4Context\nSystem(a, \"A<br/>B\", \"First<br/>Second\")\n");
+        assert!(rendered.svg().contains("font-size:0.5px;"));
         let single = &single.shapes[0];
         let multi = &multi.shapes[0];
         assert!((multi.label.height - single.label.height - 0.55).abs() < 1e-9);

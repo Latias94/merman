@@ -48,7 +48,7 @@ fn native_theme_v2_architecture_layers_service_cards_and_preserves_edge_color() 
                 "schema_version":2,"extends":"studio",
                 "roles":{"surface.node":"#DDEEFF","surface.container":"#E0E8F0",
                          "stroke.border":"#405060","text.title":"#243648"},
-                "typography":{"sans":["Architecture Text"],"base_size_px":20},
+                "typography":{"sans":["Architecture Text","sans-serif"],"base_size_px":20},
                 "form":{"radius":7,"container_radius":11,"connector_width":3,
                         "edge_style":"orthogonal","marker_style":"open","elevation":"soft"}
             }"##,
@@ -99,7 +99,7 @@ fn native_theme_v2_architecture_layers_service_cards_and_preserves_edge_color() 
         .unwrap()
         .text()
         .unwrap();
-    assert!(css.contains("font-family:\"Architecture Text\";font-size:20px;"));
+    assert!(css.contains("font-family:\"Architecture Text\", sans-serif;font-size:20px;"));
     assert!(css.contains(".edge{stroke-width:3px;stroke:#123456;"));
 }
 

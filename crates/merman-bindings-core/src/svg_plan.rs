@@ -173,8 +173,8 @@ mod tests {
             assert_eq!(payload["missing_capability_ids"], serde_json::json!([]));
             result.unwrap();
             let cycle = format!("{source}\nB --> A");
-            let error = crate::render_svg(cycle.as_bytes(), b"").unwrap_err();
-            assert_eq!(error.status(), crate::BindingStatus::UnsupportedOperation);
+            let svg = crate::render_svg(cycle.as_bytes(), b"").unwrap();
+            assert!(svg.starts_with(b"<svg"));
         } else {
             assert_eq!(payload["ready"], false);
             assert_eq!(

@@ -156,8 +156,8 @@ mod tests {
         assert!(calls.iter().any(|call| {
             call == &(
                 " c".to_string(),
-                Some("italic".to_string()),
                 Some("normal".to_string()),
+                Some("italic".to_string()),
             )
         }));
     }

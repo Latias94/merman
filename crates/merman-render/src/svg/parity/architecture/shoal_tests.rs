@@ -223,7 +223,7 @@ fn architecture_shoal_open_markers_keep_canonical_contacts_under_theme_v2() {
             br##"{
                 "schema_version":2,"extends":"studio",
                 "roles":{"surface.node":"#DDEEFF","surface.container":"#E0E8F0"},
-                "typography":{"sans":["Architecture Text"],"base_size_px":26},
+                "typography":{"sans":["Architecture Text","sans-serif"],"base_size_px":24},
                 "form":{"radius":7,"container_radius":11,"connector_width":4,
                         "edge_style":"orthogonal","marker_style":"open","elevation":"flat"}
             }"##,
@@ -250,7 +250,7 @@ fn architecture_shoal_open_markers_keep_canonical_contacts_under_theme_v2() {
         .unwrap()
         .text()
         .unwrap();
-    assert!(css.contains("font-family:\"Architecture Text\";font-size:26px;"));
+    assert!(css.contains("font-family:\"Architecture Text\", sans-serif;font-size:24px;"));
     assert!(css.contains(".edge{stroke-width:4px;"));
     assert!(
         layout.edges[0].label.as_ref().unwrap().width

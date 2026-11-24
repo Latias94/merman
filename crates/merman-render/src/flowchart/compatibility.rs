@@ -189,8 +189,12 @@ mod tests {
     }
 
     #[test]
-    fn prepared_defs_keep_case_sensitive_darkness_and_empty_gradient_stops() {
-        for (theme, expected_flood) in [("custom-dark", "#FFFFFF"), ("Dark", "#000000")] {
+    fn prepared_defs_use_known_dark_themes_and_keep_empty_gradient_stops() {
+        for (theme, expected_flood) in [
+            ("neo-dark", "#FFFFFF"),
+            ("custom-dark", "#000000"),
+            ("Dark", "#000000"),
+        ] {
             let binding = FlowchartCompatibilityBinding::resolve(&serde_json::json!({
                 "theme": theme, "themeVariables": {"useGradient": " ON ",
                     "gradientStart": "", "secondaryBorderColor": "var(--stop)"}
