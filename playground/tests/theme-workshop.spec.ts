@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { expectNoDocumentOverflow, monitorBrowserErrors, openPlayground, replaceMonacoText, waitForPreviewSvg } from "./helpers/playground";
+import { expectNoDocumentOverflow, monitorBrowserErrors, openPlayground, waitForPreviewSvg } from "./helpers/playground";
 
 const nativeCanvas = (page: Page) => page.locator(".preview-container svg .merman-theme-canvas").first();
 
@@ -19,6 +19,20 @@ async function downloadDocument(page: Page, panel: Locator) {
   await panel.getByRole("button", { name: "Download JSON" }).click();
   const download = await pending;
   return JSON.parse(await readFile((await download.path())!, "utf8"));
+}
+
+async function replaceThemeJson(panel: Locator, value: string) {
+  const manifest = JSON.parse(await readFile(new URL("../dist/.vite/manifest.json", import.meta.url), "utf8")) as Record<string, { name?: string; file: string }>;
+  const chunk = Object.values(manifest).find(({ name }) => name === "monaco");
+  if (!chunk) throw new Error("Missing Monaco build output.");
+  await panel.getByTestId("theme-json-editor").locator(".monaco-editor").evaluate(async (node, { file, text }) => {
+    const exports = await import(new URL(file, location.href).href);
+    const monaco = Object.values(exports).find((candidate) => candidate && typeof candidate === "object" &&
+      "editor" in candidate && "Uri" in candidate) as typeof import("monaco-editor") | undefined;
+    const editor = monaco?.editor.getEditors().find((candidate) => candidate.getDomNode() === node);
+    if (!editor) throw new Error("Missing theme JSON editor.");
+    editor.setValue(text);
+  }, { file: chunk.file, text: value });
 }
 
 test("the runtime gallery applies native presets and offers Mermaid Classic", async ({ page }) => {
@@ -62,7 +76,7 @@ test("customize writes an editable delta and expands it to a standalone theme", 
   await expect(nativeCanvas(page).locator("pattern")).toBeAttached();
 
   await panel.getByRole("tab", { name: "JSON", exact: true }).click();
-  await expect(panel.getByRole("textbox", { name: "Theme JSON editor" })).toBeVisible();
+  await expect(panel.getByTestId("theme-json-editor").locator(".monaco-editor")).toBeVisible();
   const delta = await downloadDocument(page, panel);
   expect(delta).toMatchObject({
     schema_version: 2, extends: "studio", typography: { body_family: "serif" }, form: { density: "compact" },
@@ -82,16 +96,15 @@ test("invalid JSON preserves the live render and contrast fixes change the edita
   const errors = monitorBrowserErrors(page);
   const panel = await openWorkshop(page);
   await panel.getByRole("tab", { name: "JSON", exact: true }).click();
-  const editor = panel.getByRole("textbox", { name: "Theme JSON editor" });
-  await expect(editor).toBeVisible();
+  await expect(panel.getByTestId("theme-json-editor").locator(".monaco-editor")).toBeVisible();
 
   const valid = '{\n  "schema_version": 2,\n  "extends": "studio",\n  "roles": { "text.primary": "#EEEEEE" }\n}';
-  await replaceMonacoText(page, "Theme JSON editor", valid);
+  await replaceThemeJson(panel, valid);
   await expect(panel.locator('[data-theme-contrast="warning"]')).toContainText("WCAG contrast warnings");
   await expect(nativeCanvas(page)).toBeAttached();
   const rendered = await nativeCanvas(page).evaluate((node) => node.outerHTML);
 
-  await replaceMonacoText(page, "Theme JSON editor", valid.replace('"#EEEEEE"', 'false'));
+  await replaceThemeJson(panel, valid.replace('"#EEEEEE"', 'false'));
   await expect(panel.getByTestId("theme-json-error")).toContainText(/4:\d+/);
   await expect(panel.getByTestId("theme-json-editor").locator(".squiggly-error").first()).toBeAttached();
   await expect(panel.getByRole("button", { name: "Download JSON" })).toBeDisabled();
