@@ -3770,7 +3770,10 @@ mod tests {
         let theme_catalog: serde_json::Value =
             serde_json::from_str(&engine.theme_catalog_json().unwrap()).unwrap();
         assert_eq!(theme_catalog["schema_version"], 2);
-        assert_eq!(theme_catalog["presets"].as_array().unwrap().len(), if has_svg { 13 } else { 0 });
+        assert_eq!(
+            theme_catalog["presets"].as_array().unwrap().len(),
+            if has_svg { 13 } else { 0 }
+        );
         let capabilities = engine.diagram_family_capabilities();
         assert!(capabilities.iter().any(|capability| {
             capability.diagram_type == "flowchart"
