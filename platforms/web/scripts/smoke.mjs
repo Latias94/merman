@@ -475,11 +475,28 @@ if (hasCapability("svg")) {
   assert.deepEqual(exportedWasmModule.renderSvgResult(themeSource, JSON.stringify(outcomeOptions)), outcome);
   assert.equal(api.renderSvg(themeSource, outcomeOptions), outcome.svg);
 
-  const preparedTheme = api.prepareSource(themeSource, outcomeOptions);
+  const lightOptions = { ...outcomeOptions, theme: { preset: "studio", appearance: "light" } };
+  const preparedTheme = api.prepareSource(themeSource, lightOptions);
   try {
+    const light = preparedTheme.renderSvgResult();
+    assert.equal(light.metadata.theme_outcome.appearance, "light");
+    const dark = preparedTheme.renderSvgResult({ theme: outcomeOptions.theme });
+    assert.deepEqual(dark, outcome);
+    assert.notEqual(dark.svg, light.svg);
+
+    const cleared = preparedTheme.renderSvgResult({ theme: "none" });
+    assert.equal(cleared.metadata.theme_outcome.mode, "mermaid_parity");
+    assert.deepEqual(cleared, api.renderSvgResult(themeSource, { ...lightOptions, theme: "none" }));
+    assert.deepEqual(preparedTheme.renderSvgResult({ theme: null }), cleared);
+
+    assert.throws(
+      () => preparedTheme.renderSvgResult({ theme: "none", resources: { profile: "trusted-native" } }),
+      error => error.code_name === "MERMAN_OPTIONS_JSON_ERROR" && /transport ceiling profile/.test(error.message),
+    );
+    assert.deepEqual(preparedTheme.renderSvgResult(), light);
     const redraw = preparedTheme.renderSvgResult({ background: "#556677" });
     assert.match(redraw.svg, /#556677/i);
-    assert.deepEqual(redraw.metadata.theme_outcome, outcome.metadata.theme_outcome);
+    assert.deepEqual(redraw.metadata.theme_outcome, light.metadata.theme_outcome);
   } finally {
     preparedTheme.dispose();
   }

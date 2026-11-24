@@ -438,11 +438,13 @@ export interface WasmRenderSessionConstructor {
   new (iconPacksJson?: string | null): WasmRenderSessionBinding;
 }
 
-/** Redraw settings for frozen parse facts. Prepare again to change configuration or theme. */
+/** Output settings for a prepared source with frozen parse configuration. */
 export type PreparedSourceOutputOptions = BindingVersionOptions & {
   /** Relative deadline for this output, in milliseconds. */
   timeout_ms?: number;
   resources?: ResourceOptions;
+  /** Omit to inherit the prepared theme. Use `none` or null to clear it for this output. */
+  theme?: DiagramThemeSelection | null;
   background?: string;
   environment?: RenderEnvironmentOptions;
   layout?: LayoutOptions;

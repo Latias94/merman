@@ -357,7 +357,12 @@ The `theme` option selects a Merman preset or an editable [Theme v2 document](..
 
 The short form `"theme": "studio"` uses the preset's default appearance. You can also pass the document object directly, or pass `{"document": DOCUMENT, "appearance": "dark"}` to select a concrete appearance. `DOCUMENT` stands for a JSON object. An explicit appearance must exist in the document or preset. The host can choose an appearance based on its application settings.
 
-Native themes supply global visual defaults. With `precedence: "source"`, an explicitly selected Mermaid theme in frontmatter or a directive selects the classic rendering path. Local diagram styles can override native defaults on the elements they style. Graphical results report `metadata.theme_outcome` with `mode`, the optional `preset_id` and `appearance`, and `notices`. Prepared source can be rendered under multiple theme selections without reparsing.
+Native themes supply global visual defaults. With `precedence: "source"`, an explicitly selected Mermaid theme in frontmatter or a directive selects the classic rendering path. Local diagram styles can override native defaults on the elements they style. Graphical results report `metadata.theme_outcome` with `mode`, the optional `preset_id` and `appearance`, and `notices`.
+
+Each prepared-source output can select a theme without reparsing. Omit `theme` to inherit the
+selection supplied at preparation, pass a new selection to replace it for one output, or pass
+`"none"` or `null` to clear it. Redraws reuse the frozen parse configuration and runtime policy and
+stay within the original resource ceiling.
 
 The top-level `background` replaces the graphical canvas base and keeps any theme textures. It accepts `#RRGGBB`, `#RRGGBBAA`, or `transparent`. The top-level `export_matte` accepts an opaque hex color and selects the raster matte or PDF page paint. For terminal output, `ascii.theme` takes precedence over colors projected from the native theme. Color projection takes effect in `truecolor` and `ansi256` modes.
 

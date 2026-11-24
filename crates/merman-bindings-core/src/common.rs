@@ -1610,27 +1610,21 @@ impl BindingRequestOverlay {
     #[cfg(feature = "svg")]
     pub(crate) fn validate_prepared_output(&self) -> Result<(), BindingError> {
         if let Self::Override {
-            normalized_wire,
-            theme,
-            ..
+            normalized_wire, ..
         } = self
         {
             let fields = normalized_wire
                 .as_object()
                 .expect("request overlay is normalized");
-            let disallowed = if matches!(theme, BindingThemeOverlay::Replace(_)) {
-                Some("theme")
-            } else {
-                fields.keys().map(String::as_str).find(|key| {
-                    !matches!(
-                        *key,
-                        "version" | "background" | "environment" | "layout" | "svg"
-                    )
-                })
-            };
+            let disallowed = fields.keys().map(String::as_str).find(|key| {
+                !matches!(
+                    *key,
+                    "version" | "background" | "environment" | "layout" | "svg"
+                )
+            });
             if let Some(key) = disallowed {
                 return Err(BindingError::invalid_options_json(format!(
-                    "prepared output cannot set `{key}`; prepare a new source to change parse configuration or theme"
+                    "prepared output cannot set `{key}`. Prepare a new source to change parse configuration"
                 )));
             }
         }

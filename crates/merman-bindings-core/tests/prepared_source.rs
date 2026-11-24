@@ -1,6 +1,8 @@
 #![cfg(all(feature = "svg", feature = "diagram-flowchart"))]
 
-use merman_bindings_core::{BindingEngine, BindingEngineServices, BindingStatus, OperationControl};
+use merman_bindings_core::{
+    BindingEngine, BindingEngineServices, BindingOperationRequest, BindingStatus, OperationControl,
+};
 
 #[test]
 fn retained_source_outputs_share_frozen_semantics_and_independent_controls() {
@@ -55,11 +57,11 @@ fn retained_output_rejects_frozen_settings_and_readmits_resources() {
     let services = BindingEngineServices::new();
     for options in [
         br#"{"parse":{"suppress_errors":true}}"#.as_slice(),
-        br#"{"site_config":{}}"#,
+        br#"{"site_config":{},"theme":"studio"}"#,
         br#"{"analysis":{"fixed_today":"2030-01-01"}}"#,
         br#"{"fixed_unix_millis":375}"#,
         br#"{"fixed_local_offset_minutes":60}"#,
-        br#"{"theme":null}"#,
+        br#"{"runtime_policy":"deterministic"}"#,
     ] {
         assert_eq!(
             prepared
@@ -69,10 +71,23 @@ fn retained_output_rejects_frozen_settings_and_readmits_resources() {
             BindingStatus::OptionsJsonError
         );
     }
+    let profile_error = prepared
+        .render_svg(
+            br#"{"theme":"studio","resources":{"profile":"trusted-native"}}"#,
+            OperationControl::new(),
+            &services,
+        )
+        .unwrap_err();
+    assert_eq!(profile_error.status(), BindingStatus::OptionsJsonError);
+    assert!(
+        profile_error
+            .message()
+            .contains("transport ceiling profile")
+    );
     assert_eq!(
         prepared
             .render_svg(
-                br#"{"resources":{"limits":{"max_source_bytes":1}}}"#,
+                br#"{"theme":"studio","resources":{"limits":{"max_source_bytes":1}}}"#,
                 OperationControl::new(),
                 &services
             )
@@ -96,24 +111,56 @@ fn retained_output_rejects_frozen_settings_and_readmits_resources() {
 }
 
 #[test]
-fn retained_result_uses_the_same_metadata_and_theme_owner_as_one_shot() {
+fn retained_result_inherits_replaces_and_clears_the_theme_per_output() {
     let engine = BindingEngine::new(
-        br#"{"theme":{"preset":"studio"},"site_config":{"flowchart":{"htmlLabels":false}}}"#,
+        br#"{
+            "theme":{"preset":"studio","appearance":"light"},
+            "site_config":{"theme":"forest","flowchart":{"htmlLabels":false}},
+            "svg":{"diagram_id":"prepared-theme"}
+        }"#,
     )
     .unwrap();
     let source = b"flowchart LR\nA[Same] --> B[Output]";
-    let once = engine
-        .execute(merman_bindings_core::BindingOperationRequest::new(
-            "svg", source,
-        ))
-        .unwrap();
     let prepared = engine
         .prepare_source(source, OperationControl::new())
         .unwrap();
-    let repeated = prepared
-        .render_svg_result(b"", OperationControl::new(), &BindingEngineServices::new())
-        .unwrap();
-    assert_eq!(once, repeated);
+    let services = BindingEngineServices::new();
+    let redraw = |options: &[u8]| {
+        prepared
+            .render_svg_result(options, OperationControl::new(), &services)
+            .unwrap()
+    };
+    let render = |options: &[u8]| {
+        engine
+            .execute(BindingOperationRequest::new("svg", source).with_options_json(options))
+            .unwrap()
+    };
+
+    let light = redraw(b"");
+    assert_eq!(light, render(b""));
+    assert_eq!(
+        light.metadata().theme_outcome().unwrap()["appearance"],
+        "light"
+    );
+
+    let dark_options = br#"{"theme":{"preset":"studio","appearance":"dark"}}"#;
+    let dark = redraw(dark_options);
+    assert_eq!(dark, render(dark_options));
+    assert_eq!(
+        dark.metadata().theme_outcome().unwrap()["appearance"],
+        "dark"
+    );
+    assert_ne!(dark.data(), light.data());
+
+    let clear_options = br#"{"theme":"none"}"#;
+    let cleared = redraw(clear_options);
+    assert_eq!(cleared, render(clear_options));
+    assert_eq!(
+        cleared.metadata().theme_outcome().unwrap()["mode"],
+        "mermaid_parity"
+    );
+    assert_eq!(redraw(br#"{"theme":null}"#), cleared);
+    assert_eq!(redraw(b""), light);
 }
 
 #[test]
