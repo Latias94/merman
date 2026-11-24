@@ -1,7 +1,7 @@
 use crate::config::{config_bool, config_diagram_look, config_f64, config_f64_css_px};
+use crate::graph_layout::ir::{Direction, direction_from_rank};
 use crate::layout_backend::GraphLayoutBackend;
 use crate::text::{TextStyle, WrapMode};
-use dugong::{GraphLabel, RankDir};
 use serde_json::Value;
 
 const DEFAULT_NODE_SPACING: f64 = 140.0;
@@ -61,16 +61,9 @@ impl<'a> ErConfigView<'a> {
         };
 
         ErLayoutSettings {
-            graph: GraphLabel {
-                rankdir: rank_dir_from(direction),
-                nodesep: self.er_spacing("nodeSpacing", DEFAULT_NODE_SPACING),
-                ranksep: self.er_spacing("rankSpacing", DEFAULT_RANK_SPACING),
-                // Mermaid's unified Dagre adapter lays out inside an 8px graph margin, then its
-                // root viewport adds the same 8px around the emitted bbox.
-                marginx: 8.0,
-                marginy: 8.0,
-                ..Default::default()
-            },
+            direction: direction_from_rank(direction),
+            node_spacing: self.er_spacing("nodeSpacing", DEFAULT_NODE_SPACING),
+            rank_spacing: self.er_spacing("rankSpacing", DEFAULT_RANK_SPACING),
             label_style,
             attr_style,
             calculation_style: self.calculation_text_style(),
@@ -316,7 +309,9 @@ impl<'a> ErConfigView<'a> {
 }
 
 pub(crate) struct ErLayoutSettings {
-    pub(super) graph: GraphLabel,
+    pub(super) direction: Direction,
+    pub(super) node_spacing: f64,
+    pub(super) rank_spacing: f64,
     pub(super) label_style: TextStyle,
     pub(super) attr_style: TextStyle,
     pub(super) calculation_style: TextStyle,
@@ -350,26 +345,6 @@ pub(crate) struct ErRenderSettings {
     pub(crate) hand_drawn_seed: f64,
 }
 
-pub(super) fn rank_dir_from(direction: &str) -> RankDir {
-    match normalize_dir(direction).as_str() {
-        "TB" => RankDir::TB,
-        "BT" => RankDir::BT,
-        "LR" => RankDir::LR,
-        "RL" => RankDir::RL,
-        _ => RankDir::TB,
-    }
-}
-
-fn normalize_dir(direction: &str) -> String {
-    match direction.trim().to_uppercase().as_str() {
-        "TB" | "TD" => "TB".to_string(),
-        "BT" => "BT".to_string(),
-        "LR" => "LR".to_string(),
-        "RL" => "RL".to_string(),
-        other => other.to_string(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -400,7 +375,7 @@ mod tests {
     }
 
     #[test]
-    fn er_layout_settings_project_dagre_text_and_relationship_labels() {
+    fn er_layout_settings_project_direction_spacing_and_label_styles() {
         let cfg = json!({
             "fontFamily": "Root Sans",
             "themeVariables": {
@@ -417,11 +392,9 @@ mod tests {
 
         let settings = ErConfigView::new(&cfg).layout_settings_with_font_family("LR", None);
 
-        assert_eq!(settings.graph.rankdir, RankDir::LR);
-        assert_eq!(settings.graph.nodesep, 160.0);
-        assert_eq!(settings.graph.ranksep, 90.0);
-        assert_eq!(settings.graph.marginx, 8.0);
-        assert_eq!(settings.graph.marginy, 8.0);
+        assert_eq!(settings.direction, Direction::Right);
+        assert_eq!(settings.node_spacing, 160.0);
+        assert_eq!(settings.rank_spacing, 90.0);
         assert_eq!(
             settings.label_style.font_family.as_deref(),
             Some("Root Sans")

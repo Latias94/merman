@@ -1,10 +1,9 @@
 //! Shared helpers for state diagram layout.
 
 use super::StateNode;
-pub(super) use crate::config::config_f64;
-use crate::config::{config_f64_css_px, config_string};
+use crate::config::{config_f64, config_f64_css_px, config_string};
+use crate::graph_layout::ir::{Direction, direction_from_rank};
 use crate::text::WrapMode;
-use dugong::{GraphLabel, RankDir};
 use serde_json::Value;
 
 const DEFAULT_STATE_NODE_SPACING: f64 = 50.0;
@@ -26,16 +25,6 @@ pub(super) fn normalize_dir(direction: &str) -> String {
         "LR" => "LR".to_string(),
         "RL" => "RL".to_string(),
         other => other.to_string(),
-    }
-}
-
-pub(super) fn rank_dir_from(direction: &str) -> RankDir {
-    match normalize_dir(direction).as_str() {
-        "TB" => RankDir::TB,
-        "BT" => RankDir::BT,
-        "LR" => RankDir::LR,
-        "RL" => RankDir::RL,
-        _ => RankDir::TB,
     }
 }
 
@@ -120,14 +109,9 @@ impl<'a> StateConfigView<'a> {
     ) -> StateLayoutSettings {
         let html_labels = compatibility.html_labels();
         StateLayoutSettings {
-            graph: GraphLabel {
-                rankdir: rank_dir_from(direction),
-                nodesep: self.layout_spacing("nodeSpacing", DEFAULT_STATE_NODE_SPACING),
-                ranksep: self.layout_spacing("rankSpacing", DEFAULT_STATE_RANK_SPACING),
-                marginx: 8.0,
-                marginy: 8.0,
-                ..Default::default()
-            },
+            direction: direction_from_rank(direction),
+            node_spacing: self.layout_spacing("nodeSpacing", DEFAULT_STATE_NODE_SPACING),
+            rank_spacing: self.layout_spacing("rankSpacing", DEFAULT_STATE_RANK_SPACING),
             html_labels,
             wrap_mode: state_wrap_mode(html_labels),
             wrapping_width: self.html_label_wrapping_width(),
@@ -222,7 +206,9 @@ impl<'a> StateConfigView<'a> {
 }
 
 pub(super) struct StateLayoutSettings {
-    pub(super) graph: GraphLabel,
+    pub(super) direction: Direction,
+    pub(super) node_spacing: f64,
+    pub(super) rank_spacing: f64,
     pub(super) html_labels: bool,
     pub(super) wrap_mode: WrapMode,
     pub(super) wrapping_width: f64,
@@ -325,7 +311,7 @@ mod tests {
     }
 
     #[test]
-    fn state_layout_settings_project_dagre_wrap_and_padding() {
+    fn state_layout_settings_project_direction_spacing_wrap_and_padding() {
         let cfg = json!({
             "flowchart": {
                 "htmlLabels": false,
@@ -340,9 +326,9 @@ mod tests {
 
         let settings = StateConfigView::new(&cfg).layout_settings("LR", &compatibility(&cfg));
 
-        assert_eq!(settings.graph.rankdir, RankDir::LR);
-        assert_eq!(settings.graph.nodesep, 70.0);
-        assert_eq!(settings.graph.ranksep, 80.0);
+        assert_eq!(settings.direction, Direction::Right);
+        assert_eq!(settings.node_spacing, 70.0);
+        assert_eq!(settings.rank_spacing, 80.0);
         assert_eq!(settings.wrap_mode, WrapMode::SvgLike);
         assert_eq!(settings.wrapping_width, 260.0);
         assert_eq!(settings.state_padding, 9.0);
@@ -364,8 +350,8 @@ mod tests {
         });
         let settings = StateConfigView::new(&cfg).layout_settings("TB", &compatibility(&cfg));
 
-        assert_eq!(settings.graph.nodesep, 90.0);
-        assert_eq!(settings.graph.ranksep, 91.0);
+        assert_eq!(settings.node_spacing, 90.0);
+        assert_eq!(settings.rank_spacing, 91.0);
     }
 
     #[test]

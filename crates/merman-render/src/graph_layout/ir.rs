@@ -139,6 +139,19 @@ mod geometry {
     }
 }
 
+pub(crate) fn direction_from_rank(rank: &str) -> Direction {
+    let rank = rank.trim();
+    if rank.eq_ignore_ascii_case("BT") {
+        Direction::Up
+    } else if rank.eq_ignore_ascii_case("LR") {
+        Direction::Right
+    } else if rank.eq_ignore_ascii_case("RL") {
+        Direction::Left
+    } else {
+        Direction::Down
+    }
+}
+
 /// Dense index in the graph's node or group array. Textual IDs belong to the family.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Endpoint {

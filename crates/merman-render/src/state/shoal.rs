@@ -1,10 +1,13 @@
 mod regions;
 
-use super::config::{StateConfigView, rank_dir_from, state_node_is_effective_group};
+use super::config::{StateConfigView, state_node_is_effective_group};
 use super::layout::{
-    edge_label_metrics, note_group_owner_id, state_fork_join_painted_dimensions,
-    state_hidden_prefixes, state_layout_adapter_work, state_node_dimensions, title_label_metrics,
+    note_group_owner_id, state_hidden_prefixes, state_layout_adapter_work,
     validate_state_parent_cycles,
+};
+use super::measure::{
+    edge_label_metrics, state_fork_join_painted_dimensions, state_node_dimensions,
+    title_label_metrics,
 };
 use super::{
     StateCompatibilityPlan, StateDiagramModel, StateEdgeStylePlan, StateLabelOwner,
@@ -15,7 +18,7 @@ use crate::graph_layout::canonical::CanonicalRoutes;
 use crate::graph_layout::contour::ShapePortProfile;
 use crate::graph_layout::ir::{
     Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, Rect,
-    RoutePoint, RoutingStyle, Side, Size, SolvedGraph, TitlePosition,
+    RoutePoint, RoutingStyle, Side, Size, SolvedGraph, TitlePosition, direction_from_rank,
 };
 use crate::graph_layout::placement;
 use crate::layout_work::OperationLayoutWorkControl;
@@ -24,7 +27,6 @@ use crate::model::{
 };
 use crate::text::TextMeasurer;
 use crate::{Error, LayoutExecution, Result};
-use dugong::RankDir;
 use kurbo::Insets;
 use merman_model::families::state::StateDiagramRenderEdge;
 use serde_json::Value;
@@ -83,15 +85,6 @@ pub(crate) fn layout_state_diagram_shoal(
     Ok((project(input, solved, &mut work)?, routes))
 }
 
-fn direction(rankdir: RankDir) -> Direction {
-    match rankdir {
-        RankDir::TB => Direction::Down,
-        RankDir::BT => Direction::Up,
-        RankDir::LR => Direction::Right,
-        RankDir::RL => Direction::Left,
-    }
-}
-
 fn direction_name(direction: Direction) -> &'static str {
     match direction {
         Direction::Down => "TB",
@@ -112,13 +105,12 @@ fn measure<'a>(
     let hidden = state_hidden_prefixes(model);
     let settings =
         StateConfigView::new(config).layout_settings(&model.direction, style_plan.compatibility());
-    let rankdir = settings.graph.rankdir;
     let mut graph = MeasuredGraph {
-        direction: direction(rankdir),
+        direction: settings.direction,
         routing: RoutingStyle::Curved,
-        node_spacing: settings.graph.nodesep,
-        rank_spacing: settings.graph.ranksep,
-        component_spacing: settings.graph.nodesep.max(settings.graph.ranksep),
+        node_spacing: settings.node_spacing,
+        rank_spacing: settings.rank_spacing,
+        component_spacing: settings.node_spacing.max(settings.rank_spacing),
         inherit_crossed_group_direction: false,
         nodes: Vec::new(),
         groups: Vec::new(),
@@ -178,7 +170,7 @@ fn measure<'a>(
                     .dir
                     .as_deref()
                     .filter(|_| node.explicit_dir != Some(false))
-                    .map(|value| direction(rank_dir_from(value))),
+                    .map(direction_from_rank),
                 padding: Insets::new(padding, top, padding, padding),
                 min_size: Size {
                     width: 1.0,
@@ -223,9 +215,9 @@ fn measure<'a>(
     restore_concurrent_directions(&groups, &mut graph.groups, work)?;
     let group_directions = effective_group_directions(&graph, work)?;
     let mut profiles = Vec::with_capacity(leaves.len());
-    let (face, perpendicular) = match rankdir {
-        RankDir::TB | RankDir::BT => (Side::Top, Side::Left),
-        RankDir::LR | RankDir::RL => (Side::Left, Side::Top),
+    let (face, perpendicular) = match graph.direction {
+        Direction::Down | Direction::Up => (Side::Top, Side::Left),
+        Direction::Right | Direction::Left => (Side::Left, Side::Top),
     };
     for &(seq, node) in &leaves {
         work.charge_adapter(0)?;
@@ -234,12 +226,7 @@ fn measure<'a>(
             let direction = parent.map_or(graph.direction, |group| {
                 group_directions[group as usize].unwrap_or(graph.direction)
             });
-            state_fork_join_painted_dimensions(match direction {
-                Direction::Down => RankDir::TB,
-                Direction::Up => RankDir::BT,
-                Direction::Right => RankDir::LR,
-                Direction::Left => RankDir::RL,
-            })
+            state_fork_join_painted_dimensions(direction)
         } else {
             state_node_dimensions(node, &settings, style_plan, measurer, sidecar)?
         };

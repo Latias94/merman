@@ -4,6 +4,7 @@ use super::{
     ErEntity, ErLayoutSettings, ErPreparedLabels, ErPreparedRelationshipLabel, er_layout_bounds,
     er_marker_id, er_subgraph_title_metrics, er_swimlane_title_metrics,
 };
+use crate::graph_layout::ir::Direction;
 use crate::model::{
     ErDiagramLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, SwimlaneDirection,
     SwimlaneLaneLayout,
@@ -12,7 +13,6 @@ use crate::resources::OperationWorkMeter;
 use crate::swimlane::{MeasuredNode, layout_compound};
 use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
 use crate::{Error, Result};
-use dugong::RankDir;
 use merman_model::families::er::ErDiagramModel;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -261,11 +261,11 @@ pub(super) fn layout_er_diagram_swimlane_typed(
             ),
         });
     }
-    let direction = match settings.graph.rankdir {
-        RankDir::TB => SwimlaneDirection::Tb,
-        RankDir::BT => SwimlaneDirection::Bt,
-        RankDir::LR => SwimlaneDirection::Lr,
-        RankDir::RL => SwimlaneDirection::Rl,
+    let direction = match settings.direction {
+        Direction::Down => SwimlaneDirection::Tb,
+        Direction::Up => SwimlaneDirection::Bt,
+        Direction::Right => SwimlaneDirection::Lr,
+        Direction::Left => SwimlaneDirection::Rl,
     };
     let subgraph_by_id: HashMap<_, _> = model
         .subgraphs

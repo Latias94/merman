@@ -45,9 +45,11 @@ mod config;
 pub mod cynefin;
 #[cfg(any(
     feature = "diagram-agentflow",
+    feature = "diagram-er",
     feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-state"
+    feature = "diagram-requirement",
+    feature = "diagram-state",
+    feature = "diagram-swimlane"
 ))]
 mod dagre;
 pub mod diagram_theme;
@@ -1436,7 +1438,7 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
         );
     }
 
-    flowchart::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
+    flowchart::dagre::layout(
         model,
         render_label_sources,
         class_defs,

@@ -3,6 +3,7 @@ pub(crate) mod bpmn;
 mod class_style;
 mod compatibility;
 mod config;
+pub(crate) mod dagre;
 mod edge_label_padding;
 mod edge_occurrence;
 #[cfg(feature = "layout-elk")]
@@ -10,7 +11,6 @@ pub mod elk;
 use crate::graph_label as label;
 mod image;
 mod lane_title;
-mod layout;
 #[cfg(any(feature = "layout-elk", feature = "layout-shoal"))]
 mod measured;
 mod node;
@@ -208,8 +208,6 @@ impl Deref for FlowchartRenderModelRef<'_> {
         self.semantic
     }
 }
-
-pub(crate) use layout::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter;
 
 pub(crate) use base_typography::{
     FlowchartBaseTypographyLabelEmission, FlowchartBaseTypographyPlan,

@@ -1,6 +1,7 @@
-use crate::dagre::self_loop::compact_self_loop_geometry;
+use crate::dagre::{rankdir, self_loop::compact_self_loop_geometry};
 use crate::geom::Size;
-use crate::layout_work::DugongOperationWorkControl as DagreOperationWorkControl;
+use crate::graph_layout::ir::direction_from_rank;
+use crate::layout_work::OperationLayoutWorkControl;
 use crate::math::MathRenderer;
 use crate::model::{
     FlowchartLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
@@ -38,13 +39,7 @@ use super::{
 type FlowSubgraphIndex<'a> = HashMap<&'a str, &'a FlowSubgraph>;
 
 fn rank_dir_from_flow(direction: &str) -> RankDir {
-    match direction.trim().to_uppercase().as_str() {
-        "TB" | "TD" => RankDir::TB,
-        "BT" => RankDir::BT,
-        "LR" => RankDir::LR,
-        "RL" => RankDir::RL,
-        _ => RankDir::TB,
-    }
+    rankdir(direction_from_rank(direction))
 }
 
 fn normalize_dir(s: &str) -> String {
@@ -85,7 +80,7 @@ fn compute_effective_dir_by_id(
     g: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
     diagram_dir: &str,
     inherit_dir: bool,
-    work_control: &mut DagreOperationWorkControl,
+    work_control: &mut OperationLayoutWorkControl,
 ) -> Result<HashMap<String, String>> {
     fn compute_one_iterative(
         id: &str,
@@ -94,7 +89,7 @@ fn compute_effective_dir_by_id(
         diagram_dir: &str,
         inherit_dir: bool,
         memo: &mut HashMap<String, String>,
-        work_control: &mut DagreOperationWorkControl,
+        work_control: &mut OperationLayoutWorkControl,
     ) -> Result<()> {
         if memo.contains_key(id) {
             return Ok(());
@@ -156,16 +151,6 @@ fn compute_effective_dir_by_id(
         )?;
     }
     Ok(memo)
-}
-
-fn dir_to_rankdir(dir: &str) -> RankDir {
-    match normalize_dir(dir).as_str() {
-        "TB" | "TD" => RankDir::TB,
-        "BT" => RankDir::BT,
-        "LR" => RankDir::LR,
-        "RL" => RankDir::RL,
-        _ => RankDir::TB,
-    }
 }
 
 const SELF_LOOP_ID_EXTRA: &str = "selfLoopId";
@@ -356,7 +341,7 @@ fn merge_flowchart_self_loop_segments(
                 y: node.y,
             },
             Size::new(node.width, node.height),
-            dir_to_rankdir(rankdir),
+            rank_dir_from_flow(rankdir),
             &hints,
             0.0,
             Size::new(label_width, label_height),
@@ -428,7 +413,7 @@ fn lowest_common_parent(
     graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
     a: &str,
     b: &str,
-    work_control: &mut DagreOperationWorkControl,
+    work_control: &mut OperationLayoutWorkControl,
 ) -> Result<Option<String>> {
     if !graph.options().compound {
         return Ok(None);
@@ -457,7 +442,7 @@ fn lowest_common_parent(
 fn extract_descendants(
     id: &str,
     graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    work_control: &mut DagreOperationWorkControl,
+    work_control: &mut OperationLayoutWorkControl,
 ) -> Result<Vec<String>> {
     let initial_children = child_id_snapshot_work_upper_bound(graph, id, work_control)?;
     work_control.charge_adapter(initial_children)?;
@@ -485,7 +470,7 @@ fn edge_in_cluster(
     edge: &dugong::graphlib::EdgeKey,
     cluster_id: &str,
     descendants: &HashMap<String, Vec<String>>,
-    work_control: &mut DagreOperationWorkControl,
+    work_control: &mut OperationLayoutWorkControl,
 ) -> Result<bool> {
     if edge.v == cluster_id || edge.w == cluster_id {
         return Ok(false);
@@ -518,7 +503,7 @@ fn flowchart_find_common_edges(
     graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
     id1: &str,
     id2: &str,
-    work_control: &mut DagreOperationWorkControl,
+    work_control: &mut OperationLayoutWorkControl,
 ) -> Result<Vec<(String, String)>> {
     let edge_snapshot_work =
         work_control.checked_add(graph.edge_slot_count(), graph.edge_count())?;
@@ -569,7 +554,7 @@ fn flowchart_find_non_cluster_child(
     id: &str,
     graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
     cluster_id: &str,
-    work_control: &mut DagreOperationWorkControl,
+    work_control: &mut OperationLayoutWorkControl,
 ) -> Result<Option<String>> {
     let child_count = graph.child_count(id);
     if child_count == 0 {
@@ -615,7 +600,7 @@ fn flowchart_is_node_in_extractable_cluster(
     node_id: &str,
     root_id: &str,
     cluster_db: &HashMap<String, FlowchartClusterDbEntry>,
-    work_control: &mut DagreOperationWorkControl,
+    work_control: &mut OperationLayoutWorkControl,
 ) -> Result<bool> {
     let mut parent = graph.parent(node_id);
     while let Some(parent_id) = parent {
@@ -640,7 +625,7 @@ fn flowchart_find_safe_anchor_node(
     excluded_cluster: &str,
     descendants: &HashMap<String, Vec<String>>,
     cluster_db: &HashMap<String, FlowchartClusterDbEntry>,
-    work_control: &mut DagreOperationWorkControl,
+    work_control: &mut OperationLayoutWorkControl,
 ) -> Result<Option<String>> {
     work_control.charge_adapter(graph.child_order_slot_count(cluster_id))?;
     for child in graph.children_iter(cluster_id) {
@@ -681,7 +666,7 @@ fn flowchart_find_safe_anchor_node(
 
 fn adjust_flowchart_clusters_and_edges(
     graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    work_control: &mut DagreOperationWorkControl,
+    work_control: &mut OperationLayoutWorkControl,
 ) -> Result<std::collections::HashMap<String, bool>> {
     use serde_json::Value;
 
@@ -689,7 +674,7 @@ fn adjust_flowchart_clusters_and_edges(
         node_id: &str,
         cluster_id: &str,
         descendants: &HashMap<String, Vec<String>>,
-        work_control: &mut DagreOperationWorkControl,
+        work_control: &mut OperationLayoutWorkControl,
     ) -> Result<bool> {
         let Some(cluster_descendants) = descendants.get(cluster_id) else {
             return Ok(false);
@@ -855,7 +840,7 @@ fn adjust_flowchart_clusters_and_edges(
         .collect())
 }
 
-fn checked_n_log_n(value: usize, work_control: &DagreOperationWorkControl) -> Result<usize> {
+fn checked_n_log_n(value: usize, work_control: &OperationLayoutWorkControl) -> Result<usize> {
     if value <= 1 {
         return Ok(0);
     }
@@ -866,7 +851,7 @@ fn checked_n_log_n(value: usize, work_control: &DagreOperationWorkControl) -> Re
 fn ordered_key_update_work_upper_bound(
     entry_bound: usize,
     update_count: usize,
-    work_control: &DagreOperationWorkControl,
+    work_control: &OperationLayoutWorkControl,
 ) -> Result<usize> {
     let height = if entry_bound <= 1 {
         1
@@ -879,7 +864,7 @@ fn ordered_key_update_work_upper_bound(
 
 fn node_id_snapshot_work_upper_bound(
     graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    work_control: &DagreOperationWorkControl,
+    work_control: &OperationLayoutWorkControl,
 ) -> Result<usize> {
     work_control.checked_add(graph.node_order_slot_count(), graph.node_count())
 }
@@ -887,7 +872,7 @@ fn node_id_snapshot_work_upper_bound(
 fn child_id_snapshot_work_upper_bound(
     graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
     parent: &str,
-    work_control: &DagreOperationWorkControl,
+    work_control: &OperationLayoutWorkControl,
 ) -> Result<usize> {
     work_control.checked_add(
         graph.child_order_slot_count(parent),
@@ -898,7 +883,7 @@ fn child_id_snapshot_work_upper_bound(
 fn charge_node_insertion_ordering(
     graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
     node_id: &str,
-    work_control: &mut DagreOperationWorkControl,
+    work_control: &mut OperationLayoutWorkControl,
 ) -> Result<()> {
     if graph.has_node(node_id) || !is_javascript_array_index(node_id) {
         return Ok(());
@@ -913,7 +898,7 @@ fn charge_edge_endpoint_insertions(
     graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
     v: &str,
     w: &str,
-    work_control: &mut DagreOperationWorkControl,
+    work_control: &mut OperationLayoutWorkControl,
 ) -> Result<()> {
     let v_missing = !graph.has_node(v);
     let w_missing = w != v && !graph.has_node(w);
@@ -935,7 +920,7 @@ fn charge_edge_endpoint_insertions(
 fn remove_node_work_upper_bound(
     graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
     node_id: &str,
-    work_control: &DagreOperationWorkControl,
+    work_control: &OperationLayoutWorkControl,
 ) -> Result<usize> {
     let node_slots = graph.node_slot_count();
     let edge_slots = graph.edge_slot_count();
@@ -999,7 +984,7 @@ fn unparented_parent_batch_work_upper_bound(
     existing_parent_count: usize,
     assignment_count: usize,
     numeric_assignment_count: usize,
-    work_control: &DagreOperationWorkControl,
+    work_control: &OperationLayoutWorkControl,
 ) -> Result<usize> {
     if assignment_count == 0 {
         return Ok(0);
@@ -1040,7 +1025,7 @@ fn apply_unparented_parent_assignments(
     graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
     assignments: &[(usize, usize)],
     shape: UnparentedParentBatchShape,
-    work_control: &mut DagreOperationWorkControl,
+    work_control: &mut OperationLayoutWorkControl,
 ) -> Result<()> {
     if assignments.is_empty() {
         return Ok(());
@@ -1075,7 +1060,7 @@ fn set_parent_controlled(
     graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
     child: &str,
     parent: &str,
-    work_control: &mut DagreOperationWorkControl,
+    work_control: &mut OperationLayoutWorkControl,
 ) -> Result<()> {
     let child_exists = graph.has_node(child);
     let parent_exists = graph.has_node(parent);
@@ -1141,7 +1126,7 @@ fn copy_cluster(
     new_graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
     root_id: &str,
     descendants: &HashMap<String, Vec<String>>,
-    work_control: &mut DagreOperationWorkControl,
+    work_control: &mut OperationLayoutWorkControl,
 ) -> Result<()> {
     #[derive(Debug)]
     struct CopyFrame {
@@ -1304,7 +1289,7 @@ fn extract_clusters_recursively(
     extracted: &mut std::collections::HashMap<String, Graph<NodeLabel, EdgeLabel, GraphLabel>>,
     extracted_order: &mut Vec<String>,
     _depth: usize,
-    work_control: &mut DagreOperationWorkControl,
+    work_control: &mut OperationLayoutWorkControl,
 ) -> Result<()> {
     // Mermaid's recursive JavaScript extractor stops after depth 10 as a stack-safety bailout.
     // Merman intentionally replaces that fixed cutoff with an explicit stack plus the shared work
@@ -1321,7 +1306,7 @@ fn extract_clusters_recursively(
         graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
         subgraphs_by_id: &FlowSubgraphIndex<'_>,
         external_connections_by_id: &std::collections::HashMap<String, bool>,
-        work_control: &mut DagreOperationWorkControl,
+        work_control: &mut OperationLayoutWorkControl,
     ) -> Result<Vec<ExtractedCluster>> {
         let snapshot_work = node_id_snapshot_work_upper_bound(graph, work_control)?;
         work_control.charge_adapter(snapshot_work)?;
@@ -1384,7 +1369,7 @@ fn extract_clusters_recursively(
                 .unwrap_or_else(|| toggled_dir(flow_dir_from_rankdir(graph.graph().rankdir)));
 
             cluster_graph.set_graph(GraphLabel {
-                rankdir: dir_to_rankdir(&dir),
+                rankdir: rank_dir_from_flow(&dir),
                 // Mermaid's cluster extractor initializes subgraphs with a fixed dagre config
                 // (nodesep/ranksep=50, marginx/marginy=8). Before each recursive render Mermaid then
                 // overrides `nodesep` to the parent graph value and `ranksep` to `parent.ranksep + 25`.
@@ -1490,7 +1475,7 @@ pub(crate) fn layout_flowchart_typed_with_work_meter(
         false,
         work_meter.as_ref(),
     )?;
-    layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
+    layout(
         model,
         &FlowchartRenderContext::default(),
         &super::FlowchartClassDefinitions::new(&model.class_defs),
@@ -1507,7 +1492,7 @@ pub(crate) fn layout_flowchart_typed_with_work_meter(
     clippy::too_many_arguments,
     reason = "Layout receives independent label artifacts and cumulative work controls"
 )]
-pub(crate) fn layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
+pub(crate) fn layout(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
     class_defs: &super::FlowchartClassDefinitions<'_>,
@@ -1518,7 +1503,7 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_an
     edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
     work_meter: Arc<OperationWorkMeter>,
 ) -> Result<FlowchartLayout> {
-    let mut work_control = DagreOperationWorkControl::new(work_meter);
+    let mut work_control = OperationLayoutWorkControl::new(work_meter);
     layout_flowchart_with_model(
         model,
         render_label_sources,
@@ -1545,7 +1530,7 @@ fn layout_flowchart_with_model(
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
     edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
-    work_control: &mut DagreOperationWorkControl,
+    work_control: &mut OperationLayoutWorkControl,
 ) -> Result<FlowchartLayout> {
     let render_model = FlowchartRenderModelRef::new(model, render_label_sources);
     let model = &render_model;
@@ -2113,7 +2098,7 @@ fn layout_flowchart_with_model(
     let insert_one = |id: &str,
                       g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
                       inserted: &mut std::collections::HashSet<String>,
-                      work_control: &mut DagreOperationWorkControl|
+                      work_control: &mut OperationLayoutWorkControl|
      -> Result<()> {
         if inserted.contains(id) {
             return Ok(());
@@ -2156,7 +2141,7 @@ fn layout_flowchart_with_model(
                                   parent_assigned: &mut std::collections::HashSet<String>,
                                   parent_assignments: &mut Vec<(usize, usize)>,
                                   numeric_parent_assignments: &mut usize,
-                                  work_control: &mut DagreOperationWorkControl|
+                                  work_control: &mut OperationLayoutWorkControl|
          -> Result<()> {
             insert_one(id, g, inserted, work_control)?;
             if !parent_assigned.insert(id.to_string()) {
@@ -2767,7 +2752,7 @@ fn layout_flowchart_with_model(
         cluster_padding: f64,
         subgraph_css_sizes: &'a HashMap<&'a str, [Option<f64>; 2]>,
         styled_clusters: &'a mut HashMap<String, StyledClusterGeometry>,
-        work_control: &'a mut DagreOperationWorkControl,
+        work_control: &'a mut OperationLayoutWorkControl,
     }
 
     fn layout_graph_with_recursive_clusters(
@@ -3116,7 +3101,7 @@ fn layout_flowchart_with_model(
         is_root: bool,
         inputs: &PlaceGraphInputs<'_>,
         out: &mut PlaceGraphOutputs<'_>,
-        work_control: &mut DagreOperationWorkControl,
+        work_control: &mut OperationLayoutWorkControl,
     ) -> Result<()> {
         struct PlaceFrame<'a> {
             graph: &'a Graph<NodeLabel, EdgeLabel, GraphLabel>,
@@ -3127,7 +3112,7 @@ fn layout_flowchart_with_model(
         fn subtree_rect_iterative(
             graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
             id: &str,
-            work_control: &mut DagreOperationWorkControl,
+            work_control: &mut OperationLayoutWorkControl,
         ) -> Result<Option<Rect>> {
             let mut visiting: std::collections::HashSet<String> = std::collections::HashSet::new();
             if !visiting.insert(id.to_string()) {
@@ -3406,7 +3391,7 @@ fn layout_flowchart_with_model(
         labeled_edges: &std::collections::HashSet<usize>,
         implicit_root: Option<&str>,
         out: &mut std::collections::HashMap<String, Vec<String>>,
-        work_control: &mut DagreOperationWorkControl,
+        work_control: &mut OperationLayoutWorkControl,
     ) -> Result<()> {
         let edge_snapshot_work =
             work_control.checked_add(graph.edge_slot_count(), graph.edge_count())?;
@@ -4527,7 +4512,7 @@ flowchart TD
             &meter,
         )
         .expect("prepare edge styles");
-        let mut work_control = DagreOperationWorkControl::new(meter);
+        let mut work_control = OperationLayoutWorkControl::new(meter);
 
         layout_flowchart_with_model(
             model,
@@ -4694,7 +4679,7 @@ flowchart TD
                 )
                 .unwrap(),
         ));
-        let mut work_control = DagreOperationWorkControl::new(Arc::clone(&meter));
+        let mut work_control = OperationLayoutWorkControl::new(Arc::clone(&meter));
 
         let error = adjust_flowchart_clusters_and_edges(&mut graph, &mut work_control)
             .expect_err("the complete edge snapshot must be admitted before it is cloned");
@@ -4717,7 +4702,7 @@ flowchart TD
 
     #[test]
     fn dagre_adapter_checked_work_overflow_maps_to_the_resource_contract() {
-        let mut work_control = DagreOperationWorkControl::new(Arc::new(OperationWorkMeter::new(
+        let mut work_control = OperationLayoutWorkControl::new(Arc::new(OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
         )));
         let error = work_control.checked_mul(usize::MAX, 2).unwrap_err();
@@ -4741,7 +4726,7 @@ flowchart TD
                 .with_limit(crate::ResourceLimitId::MaxLayoutWorkUnits, 1)
                 .unwrap(),
         ));
-        let mut work_control = DagreOperationWorkControl::new(Arc::clone(&meter));
+        let mut work_control = OperationLayoutWorkControl::new(Arc::clone(&meter));
 
         let interrupted = dugong::WorkControl::charge(&mut work_control, 2)
             .expect_err("the kernel charge must exceed the operation budget");
@@ -4768,7 +4753,7 @@ flowchart TD
             RenderResourcePolicy::unbounded_for_trusted_input(),
             control,
         ));
-        let mut work_control = DagreOperationWorkControl::new(Arc::clone(&meter));
+        let mut work_control = OperationLayoutWorkControl::new(Arc::clone(&meter));
 
         let interrupted = dugong::WorkControl::charge(&mut work_control, 1)
             .expect_err("the cancelled operation must interrupt the kernel");
@@ -4786,7 +4771,7 @@ flowchart TD
         let meter = Arc::new(OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
         ));
-        let mut work_control = DagreOperationWorkControl::new(Arc::clone(&meter));
+        let mut work_control = OperationLayoutWorkControl::new(Arc::clone(&meter));
 
         let Error::InvalidModel { message } =
             work_control.map_dugong_error(dugong::LayoutError::InvalidNetworkSimplexTree)
@@ -4925,7 +4910,7 @@ flowchart TD
                 .with_limit(crate::ResourceLimitId::MaxLayoutWorkUnits, exact - 1)
                 .unwrap(),
         ));
-        let mut below = DagreOperationWorkControl::new(Arc::clone(&below_meter));
+        let mut below = OperationLayoutWorkControl::new(Arc::clone(&below_meter));
         let error = charge_node_insertion_ordering(&graph, "1", &mut below)
             .expect_err("the numeric node's two ordered-map insertions require admission");
         assert!(matches!(error, Error::ResourceLimitExceeded(_)));
@@ -4938,7 +4923,7 @@ flowchart TD
                     .with_limit(crate::ResourceLimitId::MaxLayoutWorkUnits, limit)
                     .unwrap(),
             ));
-            let mut work_control = DagreOperationWorkControl::new(Arc::clone(&meter));
+            let mut work_control = OperationLayoutWorkControl::new(Arc::clone(&meter));
             charge_node_insertion_ordering(&graph, "1", &mut work_control)
                 .expect("equal and above numeric insertion budgets succeed");
             assert_eq!(meter.used(), exact);
@@ -4955,7 +4940,7 @@ flowchart TD
                 .with_limit(crate::ResourceLimitId::MaxLayoutWorkUnits, exact - 1)
                 .unwrap(),
         ));
-        let mut below = DagreOperationWorkControl::new(Arc::clone(&below_meter));
+        let mut below = OperationLayoutWorkControl::new(Arc::clone(&below_meter));
         let error = charge_edge_endpoint_insertions(&graph, "1", "2", &mut below)
             .expect_err("both missing numeric endpoints require admission before set_edge");
         assert!(matches!(error, Error::ResourceLimitExceeded(_)));
@@ -4968,7 +4953,7 @@ flowchart TD
                     .with_limit(crate::ResourceLimitId::MaxLayoutWorkUnits, limit)
                     .unwrap(),
             ));
-            let mut work_control = DagreOperationWorkControl::new(Arc::clone(&meter));
+            let mut work_control = OperationLayoutWorkControl::new(Arc::clone(&meter));
             charge_edge_endpoint_insertions(&graph, "1", "2", &mut work_control)
                 .expect("equal and above endpoint budgets succeed");
             assert_eq!(meter.used(), exact);
@@ -4987,7 +4972,7 @@ flowchart TD
         }
         graph.set_parent_ref("b", "other");
 
-        let work_control = DagreOperationWorkControl::new(Arc::new(OperationWorkMeter::new(
+        let work_control = OperationLayoutWorkControl::new(Arc::new(OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
         )));
         assert_eq!(graph.child_count("parent"), 2);
@@ -5018,7 +5003,7 @@ flowchart TD
             let meter = Arc::new(OperationWorkMeter::new(
                 RenderResourcePolicy::unbounded_for_trusted_input(),
             ));
-            let work_control = DagreOperationWorkControl::new(meter);
+            let work_control = OperationLayoutWorkControl::new(meter);
             let numeric_bound =
                 remove_node_work_upper_bound(&numeric, "parent", &work_control).unwrap();
             let ordinary_bound =
@@ -5122,7 +5107,7 @@ flowchart TD
                 (child_ix, parent_ix)
             })
             .collect::<Vec<_>>();
-        let mut work_control = DagreOperationWorkControl::new(Arc::new(OperationWorkMeter::new(
+        let mut work_control = OperationLayoutWorkControl::new(Arc::new(OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
         )));
 
@@ -5218,7 +5203,7 @@ flowchart TD
                     })
                 })
                 .collect::<Vec<_>>();
-            let mut work_control = DagreOperationWorkControl::new(Arc::new(
+            let mut work_control = OperationLayoutWorkControl::new(Arc::new(
                 OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
             ));
             let actual = apply_unparented_parent_assignments(
@@ -5264,7 +5249,7 @@ flowchart TD
             let width_meter = Arc::new(OperationWorkMeter::new(
                 RenderResourcePolicy::unbounded_for_trusted_input(),
             ));
-            let mut width_control = DagreOperationWorkControl::new(Arc::clone(&width_meter));
+            let mut width_control = OperationLayoutWorkControl::new(Arc::clone(&width_meter));
             let expected_width_work = unparented_parent_batch_work_upper_bound(
                 width_graph.node_slot_count(),
                 0,
@@ -5310,7 +5295,7 @@ flowchart TD
             let depth_meter = Arc::new(OperationWorkMeter::new(
                 RenderResourcePolicy::unbounded_for_trusted_input(),
             ));
-            let mut depth_control = DagreOperationWorkControl::new(Arc::clone(&depth_meter));
+            let mut depth_control = OperationLayoutWorkControl::new(Arc::clone(&depth_meter));
             let expected_depth_work = unparented_parent_batch_work_upper_bound(
                 depth_graph.node_slot_count(),
                 0,
@@ -5338,7 +5323,7 @@ flowchart TD
 
     #[test]
     fn parent_batch_adapter_charges_only_real_existing_and_numeric_work() {
-        let control = DagreOperationWorkControl::new(Arc::new(OperationWorkMeter::new(
+        let control = OperationLayoutWorkControl::new(Arc::new(OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
         )));
 
@@ -5368,7 +5353,7 @@ flowchart TD
             .stack_size(512 * 1024)
             .spawn(move || {
                 let mut graph = deep_compound_graph(DEEP_SUBGRAPH_DEPTH);
-                let mut work_control = DagreOperationWorkControl::new(Arc::new(
+                let mut work_control = OperationLayoutWorkControl::new(Arc::new(
                     OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
                 ));
                 let descendants = extract_descendants("n0", &graph, &mut work_control)
@@ -5438,7 +5423,7 @@ flowchart TD
                 for i in (0..DEEP_SUBGRAPH_DEPTH).rev() {
                     g.set_parent(format!("n{}", i + 1), format!("n{i}"));
                 }
-                let mut work_control = DagreOperationWorkControl::new(Arc::new(
+                let mut work_control = OperationLayoutWorkControl::new(Arc::new(
                     OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
                 ));
                 let descendants = extract_descendants("n0", &g, &mut work_control)

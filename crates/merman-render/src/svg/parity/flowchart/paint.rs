@@ -803,7 +803,7 @@ mod tests {
                 session.work_meter(),
             )
             .unwrap();
-            crate::flowchart::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
+            crate::flowchart::dagre::layout(
                 model,
                 context,
                 &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),

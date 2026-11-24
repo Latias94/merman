@@ -1,7 +1,7 @@
 use super::super::roughjs_common::RoughRectSpec;
 use super::super::roughjs_common::parse_hex_color_to_srgba as roughjs_parse_hex_color_to_srgba;
 use super::super::*;
-use crate::requirement::requirement_color_indices;
+use crate::requirement::{RequirementEdgeIdentity, requirement_color_indices};
 use merman_model::families::requirement::RequirementDiagramModel;
 
 // Requirement diagram SVG renderer implementation (split from parity.rs).
@@ -318,12 +318,9 @@ pub(crate) fn render_requirement_diagram_svg_model(
         font_style: None,
     };
 
-    let edge_identity = |edge: &crate::model::LayoutEdge| {
-        dugong::graphlib::EdgeKey::new(&edge.from, &edge.to, Some(&edge.id))
-    };
     let mut painted_edges = std::collections::HashMap::with_capacity(layout.edges.len());
     for edge in &layout.edges {
-        let identity = edge_identity(edge);
+        let identity = RequirementEdgeIdentity::from(edge);
         let prepared_edge = prepared_edges
             .get(&identity)
             .ok_or_else(|| Error::InvalidModel {
@@ -462,7 +459,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             max_x = max_x.max(point.x);
             max_y = max_y.max(point.y);
         }
-        let identity = edge_identity(edge);
+        let identity = RequirementEdgeIdentity::from(edge);
         let painted = &painted_edges[&identity];
         if let Some(canonical) = &painted.canonical {
             min_x = min_x.min(canonical.bounds.min_x);
@@ -563,7 +560,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             return None;
         }
         let label = prepared_edges
-            .get(&edge_identity(edge))
+            .get(&RequirementEdgeIdentity::from(edge))
             .filter(|label| label.has_label)?;
         edge.label
             .as_ref()
@@ -580,7 +577,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
         for edge in &layout.edges {
             options.work_meter().charge(1)?;
             if let Some(label) = prepared_edges
-                .get(&edge_identity(edge))
+                .get(&RequirementEdgeIdentity::from(edge))
                 .filter(|label| label.has_label)
             {
                 expected_text_terminals.push(crate::requirement::RequirementTextTerminalId::edge(
@@ -686,7 +683,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
         r#"<g class="edgePaths">"#
     });
     for (edge_index, e) in layout.edges.iter().enumerate() {
-        let identity = edge_identity(e);
+        let identity = RequirementEdgeIdentity::from(e);
         let prepared_label = prepared_edges
             .get(&identity)
             .ok_or_else(|| Error::InvalidModel {
@@ -782,7 +779,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
 
     out.push_str(r#"<g class="edgeLabels">"#);
     for e in &layout.edges {
-        let identity = edge_identity(e);
+        let identity = RequirementEdgeIdentity::from(e);
         let prepared_label = prepared_edges
             .get(&identity)
             .ok_or_else(|| Error::InvalidModel {
@@ -1514,6 +1511,7 @@ fn push_requirement_shadow_defs(out: &mut impl SvgOutput, diagram_id: &str, floo
 mod tests {
     use super::super::super::output::{BoundedSvgOutput, SvgOutput};
     use super::super::*;
+    use super::RequirementEdgeIdentity;
     use crate::DiagramFamilyId;
     use crate::environment::{RenderEnvironment, TextMeasurementPhase};
     use crate::resources::{
@@ -2209,8 +2207,7 @@ mod tests {
         let (layout, _, edge_plans) = prepared.render_parts();
         assert_eq!(layout.edges.len(), 2);
         for edge in &layout.edges {
-            let identity =
-                dugong::graphlib::EdgeKey::new(&edge.from, &edge.to, Some(edge.id.as_str()));
+            let identity = RequirementEdgeIdentity::from(edge);
             let label_plan = edge_plans.get(&identity).expect("prepared edge identity");
             match (edge.from.as_str(), edge.to.as_str()) {
                 ("a-b", "c") => {
@@ -2361,7 +2358,7 @@ mod tests {
             .edges
             .iter()
             .map(|edge| {
-                let identity = dugong::graphlib::EdgeKey::new(&edge.from, &edge.to, Some(&edge.id));
+                let identity = RequirementEdgeIdentity::from(edge);
                 let plan = edge_plans.get(&identity).expect("self-loop edge plan");
                 (
                     plan.rendered_id.as_str(),

@@ -1,40 +1,46 @@
 #[cfg(feature = "layout-elk")]
 use crate::elk_options::layout_options as class_elk_layout_options;
 use crate::entities::decode_entities_minimal;
+#[cfg(feature = "layout-elk")]
+use crate::graph_layout::ir::Direction;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::math::MathRenderer;
 use crate::model::{
     Bounds, ClassDiagramLayout, ClassNodeLabelPlan, ClassNodeRowMetrics, ClassPreparedHtmlLabel,
-    ClassPreparedHtmlNodeLabels, ClassRenderItem, ClassRenderRoot, ClassRenderRootId,
-    ClassRenderTree, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
+    ClassPreparedHtmlNodeLabels, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
 };
+#[cfg(feature = "layout-elk")]
+use crate::model::{ClassRenderItem, ClassRenderRoot, ClassRenderRootId, ClassRenderTree};
 use crate::text::{
     MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, MermaidMarkdownAnalysis, TextMeasurer, TextStyle,
     WrapMode, analyze_mermaid_markdown, measure_mermaid_text_dimensions,
 };
 use crate::{Error, Result};
-use dugong::graphlib::{Graph, GraphOptions};
-use dugong::{EdgeLabel, GraphLabel, NodeLabel, RankDir};
-use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
+#[cfg(feature = "layout-elk")]
 use serde_json::Value;
 #[cfg(feature = "layout-elk")]
-use std::collections::BTreeSet;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 pub(crate) mod config;
+mod dagre;
 #[cfg(feature = "layout-elk")]
 mod elk_terminals;
 mod measured;
 pub(crate) mod node_binding;
 #[cfg(feature = "layout-shoal")]
 pub(crate) mod shoal;
-use self::config::ClassLayoutSettings;
 pub(crate) use self::config::ClassRenderConfig;
+#[doc(hidden)]
+pub use self::dagre::debug_build_class_diagram_dagre_graph;
+pub(crate) use self::dagre::layout as layout_class_diagram_typed_with_config;
 pub(crate) use node_binding::{ClassInterfaceVisualBinding, ClassNodeVisualPlan};
 mod theme;
-use self::measured::{MeasuredGraph, measure_class_diagram};
+#[cfg(feature = "layout-elk")]
+use self::measured::MeasuredClassDiagram;
+#[cfg(any(feature = "layout-elk", test))]
+use self::measured::measure_class_diagram;
 #[cfg(feature = "layout-elk")]
 use merman_layout_elk as elk;
 pub(crate) use theme::{
@@ -46,8 +52,6 @@ pub(crate) use theme::{
 
 type ClassDiagramModel = merman_model::families::class::ClassDiagram;
 type ClassNode = merman_model::families::class::ClassNode;
-type ClassLayoutGraph = Graph<NodeLabel, EdgeLabel, GraphLabel>;
-type ExtractedClusterGraph = (Box<ClassLayoutGraph>, HashSet<String>);
 
 pub(crate) const CLASS_CARDINALITY_FONT_SIZE_PX: f64 = 11.0;
 pub(crate) const CLASS_SVG_EDGE_LABEL_PADDING_PX: f64 = 2.0;
@@ -161,14 +165,6 @@ pub(crate) fn class_member_create_text_input(
         .replace('>', "&gt;")
 }
 
-struct MeasuredClassDiagram {
-    graph: MeasuredGraph,
-    class_label_plans_by_id: FxHashMap<String, Arc<ClassNodeLabelPlan>>,
-    prepared_labels: ClassPreparedLabels,
-    node_label_metrics_by_id: HashMap<String, (f64, f64)>,
-    namespace_label_metrics_by_id: HashMap<String, (f64, f64)>,
-}
-
 fn normalize_dir(direction: &str) -> String {
     match direction.trim().to_uppercase().as_str() {
         "TB" | "TD" => "TB".to_string(),
@@ -176,16 +172,6 @@ fn normalize_dir(direction: &str) -> String {
         "LR" => "LR".to_string(),
         "RL" => "RL".to_string(),
         other => other.to_string(),
-    }
-}
-
-fn rank_dir_from(direction: &str) -> RankDir {
-    match normalize_dir(direction).as_str() {
-        "TB" => RankDir::TB,
-        "BT" => RankDir::BT,
-        "LR" => RankDir::LR,
-        "RL" => RankDir::RL,
-        _ => RankDir::TB,
     }
 }
 
@@ -221,407 +207,7 @@ pub(crate) fn class_namespace_label<'a>(model: &'a ClassDiagramModel, id: &'a st
 
 type Rect = crate::geom::Box2;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct PreparedGraphId(usize);
-
-struct PreparedGraph {
-    graph: Box<Graph<NodeLabel, EdgeLabel, GraphLabel>>,
-    extracted: BTreeMap<String, PreparedGraphId>,
-    injected_cluster_root_id: Option<String>,
-}
-
-struct PreparedGraphArena {
-    graphs: Vec<PreparedGraph>,
-    top: PreparedGraphId,
-}
-
-fn extract_cluster_copy_order(
-    graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    cluster_id: &str,
-    root_id: &str,
-    out: &mut Vec<String>,
-) {
-    // Mirrors Mermaid's `copy(...)`: children are copied before the non-root cluster node itself.
-    // That order decides which nested cluster is extracted first in later recursive passes.
-    let mut stack: Vec<(String, bool)> = vec![(cluster_id.to_string(), false)];
-    while let Some((node, expanded)) = stack.pop() {
-        if expanded {
-            if node != root_id {
-                out.push(node);
-            }
-            continue;
-        }
-
-        let children = graph.children(&node);
-        if children.is_empty() {
-            if node != root_id {
-                out.push(node);
-            }
-            continue;
-        }
-
-        stack.push((node, true));
-        for child in children.iter().rev() {
-            stack.push((child.to_string(), false));
-        }
-    }
-}
-
-struct ClassClusterHierarchy<'a> {
-    ids: Vec<&'a str>,
-    index_by_id: FxHashMap<&'a str, usize>,
-    parent: Vec<Option<usize>>,
-    depth: Vec<usize>,
-    root: Vec<usize>,
-    ancestor_jumps: Vec<Vec<usize>>,
-    postorder: Vec<usize>,
-}
-
-impl<'a> ClassClusterHierarchy<'a> {
-    fn new(graph: &'a Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Self {
-        let ids = graph.nodes().collect::<Vec<_>>();
-        let index_by_id = ids
-            .iter()
-            .copied()
-            .enumerate()
-            .map(|(index, id)| (id, index))
-            .collect::<FxHashMap<_, _>>();
-        let parent = ids
-            .iter()
-            .map(|id| {
-                graph
-                    .parent(id)
-                    .and_then(|parent| index_by_id.get(parent).copied())
-            })
-            .collect::<Vec<_>>();
-        let mut depth = vec![0; ids.len()];
-        let mut root = vec![0; ids.len()];
-        let mut stack = parent
-            .iter()
-            .enumerate()
-            .filter_map(|(index, parent)| parent.is_none().then_some(index))
-            .collect::<Vec<_>>();
-        for index in stack.iter().copied() {
-            root[index] = index;
-        }
-        let mut traversal_order = Vec::with_capacity(ids.len());
-        while let Some(index) = stack.pop() {
-            traversal_order.push(index);
-            for child in graph
-                .children_iter(ids[index])
-                .filter_map(|id| index_by_id.get(id).copied())
-            {
-                depth[child] = depth[index] + 1;
-                root[child] = root[index];
-                stack.push(child);
-            }
-        }
-
-        let ancestor_levels = usize::BITS as usize - ids.len().max(1).leading_zeros() as usize;
-        let mut ancestor_jumps = Vec::with_capacity(ancestor_levels);
-        ancestor_jumps.push(
-            parent
-                .iter()
-                .enumerate()
-                .map(|(index, parent)| parent.unwrap_or(index))
-                .collect::<Vec<_>>(),
-        );
-        for level in 1..ancestor_levels {
-            let previous = &ancestor_jumps[level - 1];
-            ancestor_jumps.push(
-                previous
-                    .iter()
-                    .map(|ancestor| previous[*ancestor])
-                    .collect(),
-            );
-        }
-
-        traversal_order.reverse();
-        Self {
-            ids,
-            index_by_id,
-            parent,
-            depth,
-            root,
-            ancestor_jumps,
-            postorder: traversal_order,
-        }
-    }
-
-    fn lowest_common_ancestor(&self, mut lhs: usize, mut rhs: usize) -> Option<usize> {
-        if self.root[lhs] != self.root[rhs] {
-            return None;
-        }
-        if self.depth[lhs] < self.depth[rhs] {
-            std::mem::swap(&mut lhs, &mut rhs);
-        }
-
-        let depth_delta = self.depth[lhs] - self.depth[rhs];
-        for (level, ancestors) in self.ancestor_jumps.iter().enumerate() {
-            if depth_delta & (1 << level) != 0 {
-                lhs = ancestors[lhs];
-            }
-        }
-        if lhs == rhs {
-            return Some(lhs);
-        }
-        for ancestors in self.ancestor_jumps.iter().rev() {
-            let lhs_ancestor = ancestors[lhs];
-            let rhs_ancestor = ancestors[rhs];
-            if lhs_ancestor != rhs_ancestor {
-                lhs = lhs_ancestor;
-                rhs = rhs_ancestor;
-            }
-        }
-        self.parent[lhs]
-    }
-
-    fn boundary_crossings(&self, graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Vec<i64> {
-        // For one edge, the clusters whose strict-descendant boundary it crosses are exactly the
-        // two ancestor paths from each endpoint's parent up to, but excluding, their LCA. Tree
-        // differences mark both paths in O(log N), including Mermaid's rule that an edge incident
-        // on the cluster node itself does not make that cluster ineligible.
-        let mut crossings = vec![0_i64; self.ids.len()];
-        for edge in graph.edges() {
-            let Some(&from) = self.index_by_id.get(edge.v.as_str()) else {
-                continue;
-            };
-            let Some(&to) = self.index_by_id.get(edge.w.as_str()) else {
-                continue;
-            };
-            let common = self.lowest_common_ancestor(from, to);
-            for endpoint in [from, to] {
-                if Some(endpoint) == common {
-                    continue;
-                }
-                if let Some(parent) = self.parent[endpoint] {
-                    crossings[parent] += 1;
-                    if let Some(common) = common {
-                        crossings[common] -= 1;
-                    }
-                }
-            }
-        }
-        for index in self.postorder.iter().copied() {
-            if let Some(parent) = self.parent[index] {
-                crossings[parent] += crossings[index];
-            }
-        }
-        crossings
-    }
-}
-
-fn class_cluster_candidates(graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Vec<String> {
-    let hierarchy = ClassClusterHierarchy::new(graph);
-    let boundary_crossings = hierarchy.boundary_crossings(graph);
-    hierarchy
-        .ids
-        .iter()
-        .copied()
-        .enumerate()
-        .filter(|(index, id)| {
-            graph.children_iter(id).next().is_some() && boundary_crossings[*index] == 0
-        })
-        .map(|(_, id)| id.to_string())
-        .collect()
-}
-
-fn class_nodes_in_hierarchy_order(graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>) -> Vec<&str> {
-    // Mermaid's Dagre renderer inserts cluster elements using a hierarchy preorder. Parent
-    // clusters must therefore precede their descendants so an opaque parent fill cannot cover
-    // the child cluster's frame and label.
-    let mut ordered = Vec::with_capacity(graph.node_count());
-    let mut stack = graph.children_root().into_iter().rev().collect::<Vec<_>>();
-    while let Some(id) = stack.pop() {
-        ordered.push(id);
-        stack.extend(graph.children(id).into_iter().rev());
-    }
-    ordered
-}
-
-fn prepare_graph(
-    graph: Box<Graph<NodeLabel, EdgeLabel, GraphLabel>>,
-) -> Result<PreparedGraphArena> {
-    // Mermaid's default Class renderer uses the shared Dagre rendering-util path. Its
-    // graphlib pre-pass extracts clusters *without* external connections into their own subgraphs,
-    // toggles their rankdir (TB <-> LR), and renders them recursively to obtain concrete cluster
-    // geometry before laying out the parent graph.
-    //
-    // Reference: pinned Mermaid `rendering-util/layout-algorithms/dagre`:
-    // - eligible cluster: has children, and no edge crosses its descendant boundary
-    // - extracted subgraph gets `rankdir = parent.rankdir === 'TB' ? 'LR' : 'TB'`
-    // - `copy(...)` walks child clusters first and copies a non-root cluster node after its
-    //   children, so child extractions may later be moved under an extracted parent
-    // - recursive render copies `nodesep` and sets child `ranksep = parent.ranksep + 25`
-    // - margins are fixed at 8
-
-    struct PendingCluster {
-        id: String,
-        moved_ids: HashSet<String>,
-    }
-
-    struct PrepareFrame {
-        graph: Box<Graph<NodeLabel, EdgeLabel, GraphLabel>>,
-        candidates: Vec<String>,
-        next_candidate: usize,
-        extracted: BTreeMap<String, PreparedGraphId>,
-        injected_cluster_root_id: Option<String>,
-        pending: Option<PendingCluster>,
-    }
-
-    fn frame_for(
-        graph: Box<Graph<NodeLabel, EdgeLabel, GraphLabel>>,
-        injected_cluster_root_id: Option<String>,
-    ) -> PrepareFrame {
-        let candidates = class_cluster_candidates(&graph);
-        PrepareFrame {
-            graph,
-            candidates,
-            next_candidate: 0,
-            extracted: BTreeMap::new(),
-            injected_cluster_root_id,
-            pending: None,
-        }
-    }
-
-    let mut graphs = Vec::new();
-    let mut stack = vec![frame_for(graph, None)];
-    let mut completed_child = None;
-    loop {
-        if let Some(child_id) = completed_child.take() {
-            let Some(parent) = stack.last_mut() else {
-                return Ok(PreparedGraphArena {
-                    graphs,
-                    top: child_id,
-                });
-            };
-            let Some(pending) = parent.pending.take() else {
-                return Err(Error::InvalidModel {
-                    message: format!(
-                        "prepared Class child graph {} has no parent extraction",
-                        child_id.0
-                    ),
-                });
-            };
-            for moved_id in pending.moved_ids {
-                if let Some(moved_child_id) = parent.extracted.remove(&moved_id) {
-                    graphs[child_id.0]
-                        .extracted
-                        .insert(moved_id, moved_child_id);
-                }
-            }
-            parent.extracted.insert(pending.id, child_id);
-        }
-
-        let Some(frame) = stack.last_mut() else {
-            return Err(Error::InvalidModel {
-                message: "missing Class prepare frame".to_string(),
-            });
-        };
-        let mut child_frame = None;
-        while let Some(cluster_id) = frame.candidates.get(frame.next_candidate).cloned() {
-            frame.next_candidate += 1;
-            if frame.graph.children(&cluster_id).is_empty() {
-                continue;
-            }
-
-            let parent_dir = frame.graph.graph().rankdir;
-            let nodesep = frame.graph.graph().nodesep;
-            let ranksep = frame.graph.graph().ranksep;
-            let (mut subgraph, moved_ids) = extract_cluster_graph(&cluster_id, &mut frame.graph)?;
-            let child_label = subgraph.graph_mut();
-            child_label.rankdir = if parent_dir == RankDir::TB {
-                RankDir::LR
-            } else {
-                RankDir::TB
-            };
-            child_label.nodesep = nodesep;
-            child_label.ranksep = ranksep;
-            child_label.marginx = 8.0;
-            child_label.marginy = 8.0;
-            frame.pending = Some(PendingCluster {
-                id: cluster_id.clone(),
-                moved_ids,
-            });
-            child_frame = Some(frame_for(subgraph, Some(cluster_id)));
-            break;
-        }
-
-        if let Some(child_frame) = child_frame {
-            stack.push(child_frame);
-            continue;
-        }
-
-        let frame = stack.pop().expect("checked Class prepare frame");
-        let graph_id = PreparedGraphId(graphs.len());
-        graphs.push(PreparedGraph {
-            graph: frame.graph,
-            extracted: frame.extracted,
-            injected_cluster_root_id: frame.injected_cluster_root_id,
-        });
-        completed_child = Some(graph_id);
-    }
-}
-
-fn extract_cluster_graph(
-    cluster_id: &str,
-    graph: &mut ClassLayoutGraph,
-) -> Result<ExtractedClusterGraph> {
-    if graph.children(cluster_id).is_empty() {
-        return Err(Error::InvalidModel {
-            message: format!("cluster has no children: {cluster_id}"),
-        });
-    }
-
-    let mut descendants: Vec<String> = Vec::new();
-    extract_cluster_copy_order(graph, cluster_id, cluster_id, &mut descendants);
-
-    let moved_set: HashSet<String> = descendants.iter().cloned().collect();
-
-    let mut sub = Box::new(Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(
-        GraphOptions {
-            directed: true,
-            multigraph: true,
-            compound: true,
-        },
-    ));
-
-    // Preserve parent graph settings as a base.
-    sub.set_graph(graph.graph().clone());
-
-    for id in &descendants {
-        let Some(label) = graph.node(id).cloned() else {
-            continue;
-        };
-        sub.set_node(id.clone(), label);
-    }
-
-    for key in graph.edge_keys() {
-        if moved_set.contains(&key.v)
-            && moved_set.contains(&key.w)
-            && let Some(label) = graph.edge_by_key(&key).cloned()
-        {
-            sub.set_edge_named(key.v.clone(), key.w.clone(), key.name.clone(), Some(label));
-        }
-    }
-
-    for id in &descendants {
-        let Some(parent) = graph.parent(id) else {
-            continue;
-        };
-        if moved_set.contains(parent) {
-            sub.set_parent(id.clone(), parent.to_string());
-        }
-    }
-
-    for id in &descendants {
-        let _ = graph.remove_node(id);
-    }
-
-    Ok((sub, moved_set))
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct EdgeTerminalMetrics {
     start_left: Option<(f64, f64)>,
     start_right: Option<(f64, f64)>,
@@ -633,48 +219,6 @@ struct EdgeTerminalMetrics {
     start_arrow_type: Option<&'static str>,
     #[cfg(feature = "layout-elk")]
     end_arrow_type: Option<&'static str>,
-}
-
-fn edge_terminal_metrics_from_extras(e: &EdgeLabel) -> EdgeTerminalMetrics {
-    let get_pair = |key: &str| -> Option<(f64, f64)> {
-        let obj = e.extras.get(key)?;
-        let w = obj.get("width").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        let h = obj.get("height").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        if w > 0.0 && h > 0.0 {
-            Some((w, h))
-        } else {
-            None
-        }
-    };
-    let start_marker = e
-        .extras
-        .get("startMarker")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.0);
-    let end_marker = e
-        .extras
-        .get("endMarker")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(0.0);
-    EdgeTerminalMetrics {
-        start_left: get_pair("startLeft"),
-        start_right: get_pair("startRight"),
-        end_left: get_pair("endLeft"),
-        end_right: get_pair("endRight"),
-        start_marker,
-        end_marker,
-        #[cfg(feature = "layout-elk")]
-        start_arrow_type: None,
-        #[cfg(feature = "layout-elk")]
-        end_arrow_type: None,
-    }
-}
-
-#[derive(Debug, Clone)]
-struct LayoutFragments {
-    nodes: IndexMap<String, LayoutNode>,
-    edges: Vec<(LayoutEdge, Option<EdgeTerminalMetrics>)>,
-    render_root_id: ClassRenderRootId,
 }
 
 fn round_number(num: f64, precision: i32) -> f64 {
@@ -863,384 +407,6 @@ fn terminal_path_for_edge(
     }
 
     out
-}
-
-fn layout_prepared(
-    arena: &mut PreparedGraphArena,
-    node_label_metrics_by_id: &HashMap<String, (f64, f64)>,
-    render_roots: &mut Vec<ClassRenderRoot>,
-    work_control: &mut OperationLayoutWorkControl,
-) -> Result<(LayoutFragments, Rect)> {
-    if arena.top.0 >= arena.graphs.len() {
-        return Err(Error::InvalidModel {
-            message: format!(
-                "invalid prepared Class graph top {} for {} graphs",
-                arena.top.0,
-                arena.graphs.len()
-            ),
-        });
-    }
-
-    // Mermaid adds 25px rank separation at each recursive render boundary. Propagate those graph
-    // settings top-down before laying nodes out bottom-up.
-    let mut settings_stack = vec![arena.top];
-    while let Some(parent_id) = settings_stack.pop() {
-        let parent_ranksep = arena.graphs[parent_id.0].graph.graph().ranksep;
-        let parent_nodesep = arena.graphs[parent_id.0].graph.graph().nodesep;
-        let child_ids = arena.graphs[parent_id.0]
-            .extracted
-            .values()
-            .copied()
-            .collect::<Vec<_>>();
-        for child_id in child_ids.into_iter().rev() {
-            let Some(child) = arena.graphs.get_mut(child_id.0) else {
-                return Err(Error::InvalidModel {
-                    message: format!("missing prepared Class child graph {}", child_id.0),
-                });
-            };
-            child.graph.graph_mut().ranksep = parent_ranksep + 25.0;
-            child.graph.graph_mut().nodesep = parent_nodesep;
-            settings_stack.push(child_id);
-        }
-    }
-
-    enum PreparedFrame {
-        Enter(PreparedGraphId),
-        Exit(PreparedGraphId),
-    }
-    let mut graph_state = vec![0_u8; arena.graphs.len()];
-    let mut postorder = Vec::with_capacity(arena.graphs.len());
-    let mut stack = vec![PreparedFrame::Enter(arena.top)];
-    while let Some(frame) = stack.pop() {
-        match frame {
-            PreparedFrame::Enter(graph_id) => {
-                let Some(graph) = arena.graphs.get(graph_id.0) else {
-                    return Err(Error::InvalidModel {
-                        message: format!("missing prepared Class graph {}", graph_id.0),
-                    });
-                };
-                match graph_state[graph_id.0] {
-                    1 => {
-                        return Err(Error::InvalidModel {
-                            message: format!(
-                                "cycle in prepared Class graph arena at {}",
-                                graph_id.0
-                            ),
-                        });
-                    }
-                    2 => {
-                        return Err(Error::InvalidModel {
-                            message: format!(
-                                "prepared Class graph {} has multiple owners",
-                                graph_id.0
-                            ),
-                        });
-                    }
-                    _ => {}
-                }
-                graph_state[graph_id.0] = 1;
-                stack.push(PreparedFrame::Exit(graph_id));
-                for child_id in graph.extracted.values().rev() {
-                    stack.push(PreparedFrame::Enter(*child_id));
-                }
-            }
-            PreparedFrame::Exit(graph_id) => {
-                graph_state[graph_id.0] = 2;
-                postorder.push(graph_id);
-            }
-        }
-    }
-    if let Some(unattached) = graph_state.iter().position(|state| *state == 0) {
-        return Err(Error::InvalidModel {
-            message: format!("unattached prepared Class graph {unattached}"),
-        });
-    }
-
-    let mut results = (0..arena.graphs.len())
-        .map(|_| None)
-        .collect::<Vec<Option<(LayoutFragments, Rect)>>>();
-    for graph_id in postorder {
-        let child_links = arena.graphs[graph_id.0].extracted.clone();
-        let mut extracted_fragments = BTreeMap::new();
-        for (cluster_id, child_id) in child_links {
-            let Some(result) = results.get_mut(child_id.0).and_then(Option::take) else {
-                return Err(Error::InvalidModel {
-                    message: format!(
-                        "missing laid out Class child graph {} for {cluster_id}",
-                        child_id.0
-                    ),
-                });
-            };
-            extracted_fragments.insert(cluster_id, result);
-        }
-        let result = layout_prepared_node(
-            &mut arena.graphs[graph_id.0],
-            node_label_metrics_by_id,
-            render_roots,
-            extracted_fragments,
-            work_control,
-        )?;
-        results[graph_id.0] = Some(result);
-    }
-
-    results
-        .get_mut(arena.top.0)
-        .and_then(Option::take)
-        .ok_or_else(|| Error::InvalidModel {
-            message: format!("missing laid out Class top graph {}", arena.top.0),
-        })
-}
-
-fn layout_prepared_node(
-    prepared: &mut PreparedGraph,
-    node_label_metrics_by_id: &HashMap<String, (f64, f64)>,
-    render_roots: &mut Vec<ClassRenderRoot>,
-    extracted_fragments: BTreeMap<String, (LayoutFragments, Rect)>,
-    work_control: &mut OperationLayoutWorkControl,
-) -> Result<(LayoutFragments, Rect)> {
-    let root_namespace_id = prepared.injected_cluster_root_id.clone();
-    let render_root_id = ClassRenderRootId(render_roots.len());
-    render_roots.push(ClassRenderRoot {
-        namespace_id: root_namespace_id,
-        ..Default::default()
-    });
-    let mut fragments = LayoutFragments {
-        nodes: IndexMap::new(),
-        edges: Vec::new(),
-        render_root_id,
-    };
-
-    if let Some(root_id) = prepared.injected_cluster_root_id.clone() {
-        if prepared.graph.node(&root_id).is_none() {
-            prepared
-                .graph
-                .set_node(root_id.clone(), NodeLabel::default());
-        }
-        let top_level_ids: Vec<String> = prepared
-            .graph
-            .node_ids()
-            .into_iter()
-            .filter(|id| id != &root_id && prepared.graph.parent(id).is_none())
-            .collect();
-        for id in top_level_ids {
-            prepared.graph.set_parent(id, root_id.clone());
-        }
-    }
-
-    for (id, (_sub_frag, bounds)) in &extracted_fragments {
-        let Some(n) = prepared.graph.node_mut(id) else {
-            return Err(Error::InvalidModel {
-                message: format!("missing cluster placeholder node: {id}"),
-            });
-        };
-        n.width = bounds.width().max(1.0);
-        n.height = bounds.height().max(1.0);
-    }
-
-    // Mermaid's dagre wrapper always sets `compound: true`, and Dagre's ranker expects a connected
-    // graph. `dugong::layout` mirrors Dagre's full pipeline (including `nestingGraph`)
-    // and should be used for class diagrams even when there are no explicit clusters.
-    dugong::layout_controlled(&mut prepared.graph, work_control)
-        .map_err(|error| work_control.map_dugong_error(error))?;
-
-    // Mermaid does not render Dagre's internal dummy nodes/edges (border nodes, edge label nodes,
-    // nesting artifacts). Filter them out before computing bounds and before merging extracted
-    // layouts back into the parent.
-    let mut dummy_nodes: HashSet<String> = HashSet::new();
-    for id in prepared.graph.node_ids() {
-        let Some(n) = prepared.graph.node(&id) else {
-            continue;
-        };
-        if n.dummy.is_some() {
-            dummy_nodes.insert(id);
-            continue;
-        }
-        let is_cluster =
-            !prepared.graph.children(&id).is_empty() || prepared.extracted.contains_key(&id);
-        let (label_width, label_height) = node_label_metrics_by_id
-            .get(id.as_str())
-            .copied()
-            .map(|(w, h)| (Some(w), Some(h)))
-            .unwrap_or((None, None));
-        fragments.nodes.insert(
-            id.clone(),
-            LayoutNode {
-                id: id.clone(),
-                x: n.x.unwrap_or(0.0),
-                y: n.y.unwrap_or(0.0),
-                width: n.width,
-                height: n.height,
-                is_cluster,
-                label_width,
-                label_height,
-            },
-        );
-    }
-
-    for key in prepared.graph.edge_keys() {
-        let Some(e) = prepared.graph.edge_by_key(&key) else {
-            continue;
-        };
-        if e.nesting_edge {
-            continue;
-        }
-        if dummy_nodes.contains(&key.v) || dummy_nodes.contains(&key.w) {
-            continue;
-        }
-        if !fragments.nodes.contains_key(&key.v) || !fragments.nodes.contains_key(&key.w) {
-            continue;
-        }
-        let id = key
-            .name
-            .clone()
-            .unwrap_or_else(|| format!("edge:{}:{}", key.v, key.w));
-
-        let label = if e.width > 0.0 && e.height > 0.0 {
-            Some(LayoutLabel {
-                x: e.x.unwrap_or(0.0),
-                y: e.y.unwrap_or(0.0),
-                width: e.width,
-                height: e.height,
-            })
-        } else {
-            None
-        };
-
-        let points = e
-            .points
-            .iter()
-            .map(|p| LayoutPoint { x: p.x, y: p.y })
-            .collect::<Vec<_>>();
-
-        let edge = LayoutEdge {
-            id,
-            from: key.v.clone(),
-            to: key.w.clone(),
-            from_cluster: None,
-            to_cluster: None,
-            points,
-            label,
-            start_label_left: None,
-            start_label_right: None,
-            end_label_left: None,
-            end_label_right: None,
-            start_marker: None,
-            end_marker: None,
-            stroke_dasharray: None,
-        };
-
-        let terminals = edge_terminal_metrics_from_extras(e);
-        let has_terminals = terminals.start_left.is_some()
-            || terminals.start_right.is_some()
-            || terminals.end_left.is_some()
-            || terminals.end_right.is_some();
-        let terminal_meta = if has_terminals { Some(terminals) } else { None };
-
-        fragments.edges.push((edge, terminal_meta));
-    }
-
-    let mut child_roots = extracted_fragments
-        .iter()
-        .map(|(id, (fragments, _))| (id.clone(), fragments.render_root_id))
-        .collect::<BTreeMap<_, _>>();
-    let current_node_ids = prepared.graph.node_ids();
-    let edge_ids = fragments
-        .edges
-        .iter()
-        .map(|(edge, _)| edge.id.clone())
-        .collect();
-    let cluster_ids = class_nodes_in_hierarchy_order(&prepared.graph)
-        .into_iter()
-        .filter(|id| {
-            !dummy_nodes.contains(*id)
-                && prepared.graph.child_count(id) > 0
-                && !prepared.extracted.contains_key(*id)
-        })
-        .map(str::to_owned)
-        .collect();
-    let mut items = Vec::new();
-    for id in current_node_ids {
-        if dummy_nodes.contains(id.as_str()) {
-            continue;
-        }
-        if let Some(root_id) = child_roots.remove(id.as_str()) {
-            items.push(ClassRenderItem::Subgraph(root_id));
-        } else if prepared.graph.children(&id).is_empty() {
-            items.push(ClassRenderItem::Node(id));
-        }
-    }
-    if !child_roots.is_empty() {
-        return Err(Error::InvalidModel {
-            message: format!(
-                "class layout did not attach extracted render roots: {}",
-                child_roots.keys().cloned().collect::<Vec<_>>().join(", ")
-            ),
-        });
-    }
-    let Some(render_root) = render_roots.get_mut(render_root_id.0) else {
-        return Err(Error::InvalidModel {
-            message: format!("missing class render root arena entry {}", render_root_id.0),
-        });
-    };
-    render_root.edge_ids = edge_ids;
-    render_root.cluster_ids = cluster_ids;
-    render_root.items = items;
-
-    for (cluster_id, (mut sub_frag, sub_bounds)) in extracted_fragments {
-        let Some(cluster_node) = fragments.nodes.get(&cluster_id).cloned() else {
-            return Err(Error::InvalidModel {
-                message: format!("missing cluster placeholder layout: {cluster_id}"),
-            });
-        };
-        let (sub_cx, sub_cy) = sub_bounds.center();
-        let dx = cluster_node.x - sub_cx;
-        let dy = cluster_node.y - sub_cy;
-
-        for n in sub_frag.nodes.values_mut() {
-            n.x += dx;
-            n.y += dy;
-        }
-        for (e, _t) in &mut sub_frag.edges {
-            for p in &mut e.points {
-                p.x += dx;
-                p.y += dy;
-            }
-            if let Some(l) = e.label.as_mut() {
-                l.x += dx;
-                l.y += dy;
-            }
-        }
-
-        // The extracted subgraph includes its own copy of the cluster root node so bounds match
-        // Mermaid's `updateNodeBounds(...)`. Do not merge that node back into the parent layout,
-        // otherwise we'd overwrite the placeholder position computed by the parent graph layout.
-        let _ = sub_frag.nodes.swap_remove(&cluster_id);
-
-        fragments.nodes.extend(sub_frag.nodes);
-        fragments.edges.extend(sub_frag.edges);
-    }
-
-    let mut points: Vec<(f64, f64)> = Vec::new();
-    for n in fragments.nodes.values() {
-        let r = Rect::from_center(n.x, n.y, n.width, n.height);
-        points.push((r.min_x(), r.min_y()));
-        points.push((r.max_x(), r.max_y()));
-    }
-    for (e, _t) in &fragments.edges {
-        for p in &e.points {
-            points.push((p.x, p.y));
-        }
-        if let Some(l) = &e.label {
-            let r = Rect::from_center(l.x, l.y, l.width, l.height);
-            points.push((r.min_x(), r.min_y()));
-            points.push((r.max_x(), r.max_y()));
-        }
-    }
-    let bounds = Bounds::from_points(points)
-        .map(|b| Rect::from_min_max(b.min_x, b.min_y, b.max_x, b.max_y))
-        .unwrap_or_else(|| Rect::from_min_max(0.0, 0.0, 0.0, 0.0));
-
-    Ok((fragments, bounds))
 }
 
 struct ClassBoxMeasureCtx<'a> {
@@ -2761,43 +1927,6 @@ fn prepare_edge_title(
     )
 }
 
-fn set_extras_label_metrics(extras: &mut BTreeMap<String, Value>, key: &str, w: f64, h: f64) {
-    let obj = Value::Object(
-        [
-            ("width".to_string(), Value::from(w)),
-            ("height".to_string(), Value::from(h)),
-        ]
-        .into_iter()
-        .collect(),
-    );
-    extras.insert(key.to_string(), obj);
-}
-
-pub(crate) fn layout_class_diagram_typed_with_config(
-    model: &ClassDiagramModel,
-    effective_config: &merman_model::presentation::PresentationConfig,
-    measurer: &dyn TextMeasurer,
-    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-    typography_theme: &ClassTextThemePlan,
-    render_config: &ClassRenderConfig,
-    work_control: &mut OperationLayoutWorkControl,
-) -> Result<(ClassDiagramLayout, ClassPreparedLabels)> {
-    let settings = render_config.layout_settings();
-    let mut measured = measure_class_diagram(
-        model,
-        effective_config,
-        measurer,
-        math_renderer,
-        render_config,
-        false,
-        typography_theme,
-        Some(work_control),
-    )?;
-    let prepared_labels = std::mem::take(&mut measured.prepared_labels);
-    let layout = layout_class_diagram_dagre(model, measured, settings, work_control)?;
-    Ok((layout, prepared_labels))
-}
-
 #[cfg(feature = "layout-elk")]
 /// Lays out a Class diagram through ELK using the render operation's captured seed.
 ///
@@ -2829,185 +1958,36 @@ pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
         Some(work_control),
     )?;
     let prepared_labels = std::mem::take(&mut measured.prepared_labels);
-    let layout = layout_class_diagram_elk_from_measured(
-        model,
-        measured,
-        ClassElkLayoutSettings {
-            // ClassDB.getData assigns class.padding ?? 16 to every namespace, independently
-            // of class-node padding and ELK's fixed content inset.
-            namespace_padding: settings.namespace_padding,
-            title_margin_top: settings.title_margin_top,
-            title_margin_bottom: settings.title_margin_bottom,
-            effective_config: effective_config.as_value(),
-        },
+    let settings = ClassElkLayoutSettings {
+        // ClassDB.getData assigns class.padding ?? 16 to every namespace, independently
+        // of class-node padding and ELK's fixed content inset.
+        namespace_padding: settings.namespace_padding,
+        title_margin_top: settings.title_margin_top,
+        title_margin_bottom: settings.title_margin_bottom,
+        effective_config: effective_config.as_value(),
+    };
+    let mut elk_graph = class_measured_to_elk_graph(&measured, &settings, &mut Some(work_control))?;
+    let orientation = crate::elk_feedback_edges::orient_feedback_edges(
+        &mut elk_graph,
+        settings.effective_config,
+        &mut Some(work_control),
+    )?;
+    let mut layout = elk::layout_with_operation_seed_and_work_control(
+        orientation.graph(),
         operation_seed,
         work_control,
+    )
+    .map_err(|error| work_control.map_elk_error_with_context(error, "Class ELK"))?;
+    orientation.restore(&mut layout, &mut Some(work_control))?;
+    let layout = class_layout_from_elk(
+        model,
+        measured,
+        &elk_graph,
+        layout,
+        settings,
+        &mut Some(work_control),
     )?;
     Ok((layout, prepared_labels))
-}
-
-fn layout_class_diagram_dagre(
-    model: &ClassDiagramModel,
-    measured: MeasuredClassDiagram,
-    settings: &ClassLayoutSettings,
-    work_control: &mut OperationLayoutWorkControl,
-) -> Result<ClassDiagramLayout> {
-    let namespace_ids = class_namespace_ids_in_decl_order(model);
-    let namespace_padding = settings.namespace_padding;
-    let title_margin_top = settings.title_margin_top;
-    let title_margin_bottom = settings.title_margin_bottom;
-    let MeasuredClassDiagram {
-        graph,
-        class_label_plans_by_id,
-        prepared_labels: _,
-        node_label_metrics_by_id,
-        namespace_label_metrics_by_id,
-    } = measured;
-    let g = Box::new(graph.to_dagre());
-    let mut prepared = prepare_graph(g)?;
-    let mut render_roots = Vec::new();
-    let (mut fragments, _bounds) = layout_prepared(
-        &mut prepared,
-        &node_label_metrics_by_id,
-        &mut render_roots,
-        work_control,
-    )?;
-
-    let mut node_rect_by_id: HashMap<String, Rect> = HashMap::new();
-    for n in fragments.nodes.values() {
-        node_rect_by_id.insert(n.id.clone(), Rect::from_center(n.x, n.y, n.width, n.height));
-    }
-
-    for (edge, terminal_meta) in fragments.edges.iter_mut() {
-        let Some(meta) = terminal_meta.clone() else {
-            continue;
-        };
-        let points = if let (Some(from), Some(to)) = (
-            node_rect_by_id.get(edge.from.as_str()).copied(),
-            node_rect_by_id.get(edge.to.as_str()).copied(),
-        ) {
-            terminal_path_for_edge(&edge.points, from, to)
-        } else {
-            edge.points.clone()
-        };
-        apply_class_terminal_labels(edge, &meta, &points)?;
-    }
-
-    let mut clusters: Vec<LayoutCluster> = Vec::new();
-    // Mermaid renders namespaces as Dagre clusters. The cluster geometry comes from the Dagre
-    // compound layout (not a post-hoc union of class-node bboxes). Use the computed namespace
-    // node x/y/width/height and mirror `clusters.js` sizing tweaks for title width.
-    for &id in &namespace_ids {
-        let Some(ns_node) = fragments.nodes.get(id) else {
-            continue;
-        };
-        let cx = ns_node.x;
-        let cy = ns_node.y;
-        let base_w = ns_node.width.max(1.0);
-        let base_h = ns_node.height.max(1.0);
-
-        let title = class_namespace_label(model, id).to_string();
-        let (tw, th) = namespace_label_metrics_by_id[id];
-        let min_title_w = (tw + namespace_padding).max(1.0);
-        let width = if base_w <= min_title_w {
-            min_title_w
-        } else {
-            base_w
-        };
-        let diff = if base_w <= min_title_w {
-            (width - base_w) / 2.0 - namespace_padding
-        } else {
-            -namespace_padding
-        };
-        let offset_y = th - namespace_padding / 2.0;
-        let title_label = LayoutLabel {
-            x: cx,
-            y: (cy - base_h / 2.0) + title_margin_top + th / 2.0,
-            width: tw,
-            height: th,
-        };
-
-        clusters.push(LayoutCluster {
-            id: id.to_string(),
-            x: cx,
-            y: cy,
-            width,
-            height: base_h,
-            diff,
-            offset_y,
-            title: title.clone(),
-            title_label,
-            requested_dir: None,
-            effective_dir: normalize_dir(&model.model().direction),
-            padding: namespace_padding,
-            title_margin_top,
-            title_margin_bottom,
-        });
-    }
-
-    let render_tree = ClassRenderTree {
-        roots: render_roots,
-        top: fragments.render_root_id,
-    };
-    let nodes: Vec<LayoutNode> = fragments.nodes.into_values().collect();
-    let edges: Vec<LayoutEdge> = fragments.edges.into_iter().map(|(e, _)| e).collect();
-
-    let namespace_order: std::collections::HashMap<&str, usize> = namespace_ids
-        .iter()
-        .copied()
-        .enumerate()
-        .map(|(idx, id)| (id, idx))
-        .collect();
-    clusters.sort_by(|a, b| {
-        namespace_order
-            .get(a.id.as_str())
-            .copied()
-            .unwrap_or(usize::MAX)
-            .cmp(
-                &namespace_order
-                    .get(b.id.as_str())
-                    .copied()
-                    .unwrap_or(usize::MAX),
-            )
-            .then_with(|| a.id.cmp(&b.id))
-    });
-
-    let bounds = compute_bounds(&nodes, &edges, &clusters);
-
-    Ok(ClassDiagramLayout {
-        nodes,
-        edges,
-        clusters,
-        bounds,
-        uses_elk_adapter_dom: false,
-        class_label_plans_by_id,
-        render_tree,
-    })
-}
-
-/// Debug-only helper: builds the production Class Dagre graph and returns it before layout runs.
-///
-/// Shares measurement and the Dagre projection with production, including source order,
-/// named multiedges, terminal-label metrics, and namespace parents.
-#[doc(hidden)]
-pub fn debug_build_class_diagram_dagre_graph(
-    model: &ClassDiagramModel,
-    effective_config: &merman_model::presentation::PresentationConfig,
-    measurer: &dyn TextMeasurer,
-) -> Result<ClassLayoutGraph> {
-    let typography_theme = ClassTextThemePlan::resolve(None, effective_config);
-    let render_config = ClassRenderConfig::resolve(effective_config, &typography_theme);
-    let measured = measure_class_diagram(
-        model,
-        effective_config,
-        measurer,
-        None,
-        &render_config,
-        false,
-        &typography_theme,
-        None,
-    )?;
-    Ok(measured.graph.to_dagre())
 }
 
 fn class_layout_parent<'a>(model: &ClassDiagramModel, parent: Option<&'a str>) -> Option<&'a str> {
@@ -3117,37 +2097,6 @@ struct ClassElkLayoutSettings<'a> {
 }
 
 #[cfg(feature = "layout-elk")]
-fn layout_class_diagram_elk_from_measured(
-    model: &ClassDiagramModel,
-    measured: MeasuredClassDiagram,
-    settings: ClassElkLayoutSettings<'_>,
-    operation_seed: elk::ElkOperationSeed,
-    work_control: &mut OperationLayoutWorkControl,
-) -> Result<ClassDiagramLayout> {
-    let mut elk_graph = class_measured_to_elk_graph(&measured, &settings, &mut Some(work_control))?;
-    let orientation = crate::elk_feedback_edges::orient_feedback_edges(
-        &mut elk_graph,
-        settings.effective_config,
-        &mut Some(work_control),
-    )?;
-    let mut layout = elk::layout_with_operation_seed_and_work_control(
-        orientation.graph(),
-        operation_seed,
-        work_control,
-    )
-    .map_err(|error| work_control.map_elk_error_with_context(error, "Class ELK"))?;
-    orientation.restore(&mut layout, &mut Some(work_control))?;
-    class_layout_from_elk(
-        model,
-        measured,
-        &elk_graph,
-        layout,
-        settings,
-        &mut Some(work_control),
-    )
-}
-
-#[cfg(feature = "layout-elk")]
 fn class_measured_to_elk_graph(
     measured: &MeasuredClassDiagram,
     settings: &ClassElkLayoutSettings<'_>,
@@ -3155,11 +2104,11 @@ fn class_measured_to_elk_graph(
 ) -> Result<elk::Graph> {
     let graph = &measured.graph;
     let options = class_elk_layout_options(settings.effective_config);
-    let direction = match graph.direction.as_str() {
-        "LR" => elk::Direction::Right,
-        "RL" => elk::Direction::Left,
-        "BT" => elk::Direction::Up,
-        _ => elk::Direction::Down,
+    let direction = match graph.direction {
+        Direction::Down => elk::Direction::Down,
+        Direction::Up => elk::Direction::Up,
+        Direction::Right => elk::Direction::Right,
+        Direction::Left => elk::Direction::Left,
     };
     let parents = graph
         .parents
@@ -3805,8 +2754,6 @@ fn compute_bounds(
 
 #[cfg(test)]
 mod tests {
-    use dugong::graphlib::{Graph, GraphOptions};
-    use dugong::{EdgeLabel, GraphLabel, NodeLabel};
     use merman_core::{MermaidEngine, ParseOptions};
     use merman_model::families::class::Namespace;
     use merman_model::presentation::RenderSemanticModel;
@@ -3824,81 +2771,6 @@ mod tests {
                 "literal $${br}literal $$"
             )));
         }
-    }
-
-    #[test]
-    fn class_html_prepared_labels_follow_public_layout_and_plan_owners() {
-        use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
-        use std::sync::Arc;
-
-        let parsed = MermaidEngine::new()
-            .parse_diagram_for_render_model_sync(
-                "classDiagram\nclass A {\n<<interface>>\n+value: String\n+call()\n}\n",
-                ParseOptions::default(),
-            )
-            .unwrap()
-            .unwrap()
-            .into_presentation();
-        let RenderSemanticModel::Class(model) = parsed.model() else {
-            panic!("expected Class model");
-        };
-        let config =
-            crate::test_support::presentation_config(serde_json::json!({"htmlLabels":true}));
-        let typography = super::ClassTextThemePlan::resolve(None, &config);
-        let render_config = super::ClassRenderConfig::resolve(&config, &typography);
-        let meter = Arc::new(OperationWorkMeter::new(
-            RenderResourcePolicy::unbounded_for_trusted_input(),
-        ));
-        let mut work = super::OperationLayoutWorkControl::new(Arc::clone(&meter));
-        let (layout, sidecar) = super::layout_class_diagram_typed_with_config(
-            model,
-            &config,
-            &DeterministicTextMeasurer::default(),
-            None,
-            &typography,
-            &render_config,
-            &mut work,
-        )
-        .unwrap();
-        assert!(sidecar.titles_by_id.is_empty());
-        assert!(sidecar.edges_by_id.is_empty());
-        let retained = meter.prepared_text_retained_bytes();
-        assert!(retained > 0);
-        let plan = Arc::clone(&layout.class_label_plans_by_id["A"]);
-        let super::ClassNodeLabelPlan::PreparedHtml(labels) = plan.as_ref() else {
-            panic!("expected prepared HTML labels");
-        };
-        assert!(labels.annotation.is_some());
-        assert_eq!(labels.members.len(), 1);
-        assert_eq!(labels.methods.len(), 1);
-        assert_eq!(
-            labels
-                ._retained_reservation
-                .as_ref()
-                .unwrap()
-                .retained_bytes(),
-            retained
-        );
-        assert!(
-            serde_json::to_value(&layout)
-                .unwrap()
-                .get("class_label_plans_by_id")
-                .is_none()
-        );
-
-        let cloned_layout = layout.clone();
-        assert!(Arc::ptr_eq(
-            &layout.class_label_plans_by_id["A"],
-            &cloned_layout.class_label_plans_by_id["A"]
-        ));
-        drop(sidecar);
-        drop(work);
-        drop(layout);
-        assert_eq!(meter.prepared_text_retained_bytes(), retained);
-        drop(cloned_layout);
-        assert_eq!(meter.prepared_text_retained_bytes(), retained);
-        drop(plan);
-        assert_eq!(meter.prepared_text_retained_bytes(), 0);
     }
 
     #[test]
@@ -4465,41 +3337,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn class_dagre_debug_input_uses_the_production_graph_and_source_identity_order() {
-        let source =
-            include_str!("../../../fixtures/class/stress_class_many_relations_labels_020.mmd");
-        let parsed = MermaidEngine::new()
-            .parse_diagram_for_render_model_sync(source, ParseOptions::default())
-            .expect("parse Class fixture")
-            .expect("detect Class fixture")
-            .into_presentation();
-        let RenderSemanticModel::Class(model) = parsed.model() else {
-            panic!("expected Class render model");
-        };
-        let graph = super::debug_build_class_diagram_dagre_graph(
-            model,
-            &parsed.metadata().effective_config,
-            &DeterministicTextMeasurer::default(),
-        )
-        .expect("build Class Dagre input");
-
-        assert_eq!(graph.node_ids(), ["A", "B", "C", "D", "E"]);
-        assert!(graph.node_ids().into_iter().all(|id| {
-            graph
-                .node(&id)
-                .is_some_and(|node| node.x.is_none() && node.y.is_none())
-        }));
-        assert_eq!(
-            graph
-                .edge_keys()
-                .into_iter()
-                .map(|edge| edge.name.expect("named Class edge"))
-                .collect::<Vec<_>>(),
-            ["0", "1", "2", "3", "4", "5", "6", "7"]
-        );
-    }
-
     #[cfg(feature = "layout-elk")]
     fn class_elk_graph_for_test(source: &str) -> super::elk::Graph {
         let parsed = MermaidEngine::new()
@@ -5024,133 +3861,6 @@ mod tests {
             );
         }
         super::ClassDiagramModel::new(model, &merman_model::MermaidConfig::default())
-    }
-
-    fn class_candidate_test_graph(
-        edges: &[(&str, &str)],
-    ) -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
-        let mut graph = Graph::new(GraphOptions {
-            directed: true,
-            multigraph: true,
-            compound: true,
-        });
-        graph.set_graph(GraphLabel::default());
-        for id in [
-            "root",
-            "a",
-            "b",
-            "leaf",
-            "sibling",
-            "outside",
-            "outside_child",
-        ] {
-            graph.set_node(id, NodeLabel::default());
-        }
-        for (child, parent) in [
-            ("a", "root"),
-            ("b", "a"),
-            ("leaf", "b"),
-            ("sibling", "root"),
-            ("outside_child", "outside"),
-        ] {
-            graph.set_parent(child, parent);
-        }
-        for (index, (from, to)) in edges.iter().copied().enumerate() {
-            graph.set_edge_named(
-                from,
-                to,
-                Some(index.to_string()),
-                Some(EdgeLabel::default()),
-            );
-        }
-        graph
-    }
-
-    fn reference_class_cluster_candidates(
-        graph: &Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    ) -> Vec<String> {
-        let is_strict_descendant = |node: &str, ancestor: &str| {
-            let mut parent = graph.parent(node);
-            while let Some(id) = parent {
-                if id == ancestor {
-                    return true;
-                }
-                parent = graph.parent(id);
-            }
-            false
-        };
-        graph
-            .nodes()
-            .filter(|id| graph.children_iter(id).next().is_some())
-            .filter(|id| {
-                graph.edges().all(|edge| {
-                    edge.v == *id
-                        || edge.w == *id
-                        || is_strict_descendant(&edge.v, id) == is_strict_descendant(&edge.w, id)
-                })
-            })
-            .map(str::to_string)
-            .collect()
-    }
-
-    #[test]
-    fn class_cluster_boundary_index_matches_mermaid_descendant_semantics() {
-        let ids = [
-            "root",
-            "a",
-            "b",
-            "leaf",
-            "sibling",
-            "outside",
-            "outside_child",
-        ];
-        let mut edge_sets = vec![Vec::new()];
-        for from in ids {
-            for to in ids {
-                edge_sets.push(vec![(from, to)]);
-            }
-        }
-        edge_sets.push(vec![
-            ("leaf", "sibling"),
-            ("a", "leaf"),
-            ("outside_child", "b"),
-        ]);
-
-        for edges in edge_sets {
-            let graph = class_candidate_test_graph(&edges);
-            assert_eq!(
-                super::class_cluster_candidates(&graph),
-                reference_class_cluster_candidates(&graph),
-                "edges={edges:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn class_cluster_boundary_index_handles_max_size_namespace_chain() {
-        const NODE_COUNT: usize = 4_000;
-        let mut graph = Graph::new(GraphOptions {
-            directed: true,
-            multigraph: true,
-            compound: true,
-        });
-        graph.set_graph(GraphLabel::default());
-        for index in 0..NODE_COUNT {
-            graph.set_node(format!("n{index}"), NodeLabel::default());
-        }
-        for index in (1..NODE_COUNT).rev() {
-            graph.set_parent(format!("n{index}"), format!("n{}", index - 1));
-        }
-
-        let candidates = super::class_cluster_candidates(&graph);
-
-        assert_eq!(candidates.len(), NODE_COUNT - 1);
-        assert_eq!(candidates.first().map(String::as_str), Some("n0"));
-        let expected_last = format!("n{}", NODE_COUNT - 2);
-        assert_eq!(
-            candidates.last().map(String::as_str),
-            Some(expected_last.as_str())
-        );
     }
 
     #[test]

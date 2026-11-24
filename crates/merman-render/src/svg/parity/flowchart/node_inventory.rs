@@ -908,12 +908,18 @@ mod source_typography_tests {
             &work,
         )
         .unwrap();
-        let mut layout = crate::flowchart::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
-            &model, &render_context,
+        let mut layout = crate::flowchart::dagre::layout(
+            &model,
+            &render_context,
             &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
             &metadata.effective_config,
-            &crate::text::DeterministicTextMeasurer::default(), None, None, &edge_style, work.clone(),
-        ).unwrap();
+            &crate::text::DeterministicTextMeasurer::default(),
+            None,
+            None,
+            &edge_style,
+            work.clone(),
+        )
+        .unwrap();
         let theme = crate::flowchart::FlowchartPreparedTheme::resolve(
             None,
             &metadata.effective_config,
@@ -1011,7 +1017,7 @@ mod source_typography_tests {
             &layout_work,
         )
         .unwrap();
-        let layout = crate::flowchart::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
+        let layout = crate::flowchart::dagre::layout(
             &model,
             &render_context,
             &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),

@@ -4,12 +4,13 @@
 //! cyclic-special nodes belong only to its own adapter.
 
 use super::StateDiagramModel;
-use super::config::*;
-use super::layout::{
-    edge_label_metrics, note_group_owner_id, state_fork_join_painted_dimensions,
-    state_hidden_prefixes, state_node_dimensions, title_label_metrics,
-    validate_state_parent_cycles,
+use super::config::{StateConfigView, normalize_dir, state_node_is_effective_group};
+use super::layout::{note_group_owner_id, state_hidden_prefixes, validate_state_parent_cycles};
+use super::measure::{
+    edge_label_metrics, state_fork_join_painted_dimensions, state_node_dimensions,
+    title_label_metrics,
 };
+use crate::graph_layout::ir::{Direction, direction_from_rank};
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{
     Bounds, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, StateDiagramLayout,
@@ -33,12 +34,12 @@ fn is_self_loop_helper(id: &str) -> bool {
     !left.is_empty() && left == right
 }
 
-fn direction(value: &str) -> elk::Direction {
-    match normalize_dir(value).as_str() {
-        "LR" => elk::Direction::Right,
-        "RL" => elk::Direction::Left,
-        "BT" => elk::Direction::Up,
-        _ => elk::Direction::Down,
+fn elk_direction(direction: Direction) -> elk::Direction {
+    match direction {
+        Direction::Right => elk::Direction::Right,
+        Direction::Left => elk::Direction::Left,
+        Direction::Up => elk::Direction::Up,
+        Direction::Down => elk::Direction::Down,
     }
 }
 
@@ -55,6 +56,8 @@ pub(super) fn layout(
     let hidden = state_hidden_prefixes(model);
     let settings =
         StateConfigView::new(config).layout_settings(&model.direction, style_plan.compatibility());
+    let root_direction = elk_direction(settings.direction);
+    let requested_direction = |value: &str| elk_direction(direction_from_rank(value));
     // The parser retains each note declaration, while StateDB overwrites the physical
     // note-group metadata. Preserve the final group identity without orphaning earlier notes.
     let mut note_groups = HashMap::new();
@@ -84,11 +87,11 @@ pub(super) fn layout(
                 node.parent_id
                     .as_deref()
                     .map(|id| canonical_groups.get(id).copied().unwrap_or(id)),
-                node.dir.as_deref().map(direction),
+                node.dir.as_deref().map(requested_direction),
             )
         }),
         model.nodes.len(),
-        direction(&model.direction),
+        root_direction,
         &mut Some(&mut *work),
     )?;
     let mut nodes = Vec::with_capacity(model.nodes.len());
@@ -109,13 +112,13 @@ pub(super) fn layout(
         } else if matches!(node.shape.as_str(), "fork" | "join") {
             // ELK insertMeasuredNode replaces forkJoin's padded dimensions with the
             // painted element bbox. Dagre retains that shape function's padding.
-            let rankdir = match resolved_directions[node.id.as_str()] {
-                elk::Direction::Right => dugong::RankDir::LR,
-                elk::Direction::Left => dugong::RankDir::RL,
-                elk::Direction::Up => dugong::RankDir::BT,
-                elk::Direction::Down => dugong::RankDir::TB,
+            let direction = match resolved_directions[node.id.as_str()] {
+                elk::Direction::Right => Direction::Right,
+                elk::Direction::Left => Direction::Left,
+                elk::Direction::Up => Direction::Up,
+                elk::Direction::Down => Direction::Down,
             };
-            state_fork_join_painted_dimensions(rankdir)
+            state_fork_join_painted_dimensions(direction)
         } else {
             state_node_dimensions(node, &settings, style_plan, measurer, label_sidecar)?
         };
@@ -169,7 +172,11 @@ pub(super) fn layout(
                 .as_deref()
                 .filter(|id| !hidden.is_hidden(id))
                 .map(canonical),
-            direction: node.dir.as_deref().filter(|_| group).map(direction),
+            direction: node
+                .dir
+                .as_deref()
+                .filter(|_| group)
+                .map(requested_direction),
             hierarchy_handling: group.then_some(if node.dir.is_some() {
                 elk::HierarchyHandling::SeparateChildren
             } else {
@@ -215,12 +222,12 @@ pub(super) fn layout(
     }
     let mut graph = elk::Graph {
         id: "root".to_owned(),
-        direction: direction(&model.direction),
+        direction: root_direction,
         nodes,
         edges,
         spacing: elk::Spacing {
-            node_node: settings.graph.nodesep,
-            layer_layer: settings.graph.ranksep,
+            node_node: settings.node_spacing,
+            layer_layer: settings.rank_spacing,
             ..Default::default()
         },
         options: crate::elk_options::layout_options(config),

@@ -3,7 +3,7 @@ use crate::graph_layout::canonical::CanonicalRoutes;
 use crate::graph_layout::contour::ShapePortProfile;
 use crate::graph_layout::ir::{
     Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, Rect,
-    RoutingStyle, Side, Size, SolvedGraph, TitlePosition,
+    RoutingStyle, Side, Size, SolvedGraph, TitlePosition, direction_from_rank,
 };
 use crate::graph_layout::placement;
 use crate::layout_work::OperationLayoutWorkControl;
@@ -12,7 +12,6 @@ use crate::model::{
 };
 use crate::text::TextMeasurer;
 use crate::{Error, Result};
-use dugong::RankDir;
 use kurbo::Insets;
 use merman_model::families::er::ErDiagramModel;
 use std::collections::HashMap;
@@ -62,15 +61,6 @@ pub(super) fn layout(
     })
 }
 
-fn direction(rankdir: RankDir) -> Direction {
-    match rankdir {
-        RankDir::TB => Direction::Down,
-        RankDir::BT => Direction::Up,
-        RankDir::LR => Direction::Right,
-        RankDir::RL => Direction::Left,
-    }
-}
-
 fn direction_name(direction: Direction) -> &'static str {
     match direction {
         Direction::Down => "TB",
@@ -96,11 +86,11 @@ fn measure<'a>(
         u32::try_from(index).map_err(|_| Error::from(work.record_arithmetic_overflow()))
     };
     let mut graph = MeasuredGraph {
-        direction: direction(settings.graph.rankdir),
+        direction: settings.direction,
         routing: RoutingStyle::Curved,
-        node_spacing: settings.graph.nodesep,
-        rank_spacing: settings.graph.ranksep,
-        component_spacing: settings.graph.nodesep.max(settings.graph.ranksep),
+        node_spacing: settings.node_spacing,
+        rank_spacing: settings.rank_spacing,
+        component_spacing: settings.node_spacing.max(settings.rank_spacing),
         inherit_crossed_group_direction: false,
         nodes: Vec::with_capacity(entity_count),
         groups: Vec::with_capacity(group_count),
@@ -133,10 +123,7 @@ fn measure<'a>(
         graph.groups.push(MeasuredGroup {
             seq,
             parent: None,
-            direction: subgraph
-                .dir
-                .as_deref()
-                .map(|value| direction(super::config::rank_dir_from(value))),
+            direction: subgraph.dir.as_deref().map(direction_from_rank),
             padding: Insets::new(
                 GROUP_PADDING,
                 title.map_or(GROUP_PADDING, |size| size.height + 2.0 * GROUP_PADDING),
@@ -155,9 +142,9 @@ fn measure<'a>(
     let mut entity_ids = Vec::with_capacity(entity_count);
     let mut profiles = Vec::with_capacity(entity_count);
     let mut entity_by_name = HashMap::with_capacity(entity_count);
-    let (face, perpendicular) = match settings.graph.rankdir {
-        RankDir::TB | RankDir::BT => (Side::Top, Side::Left),
-        RankDir::LR | RankDir::RL => (Side::Left, Side::Top),
+    let (face, perpendicular) = match settings.direction {
+        Direction::Down | Direction::Up => (Side::Top, Side::Left),
+        Direction::Right | Direction::Left => (Side::Left, Side::Top),
     };
     for (name, entity) in &model.entities {
         work.charge_adapter(0)?;
