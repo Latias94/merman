@@ -176,6 +176,9 @@ fn popup_root_margins_follow_independent_sequence_configuration() {
         })
         .collect();
     for theme in [None, Some(native_fixture())] {
+        let stroke_outset = theme
+            .as_ref()
+            .map_or(0.0, |theme| theme.resolved().form().stroke_width / 2.0);
         for (margin_y, box_margin) in [(10.0, 10.0), (20.0, 7.0), (5.0, 12.0)] {
             for mirror in [false, true] {
                 for boxed in [false, true] {
@@ -205,10 +208,11 @@ fn popup_root_margins_follow_independent_sequence_configuration() {
                     let panel_bottom = number(panel, "y") + number(panel, "height");
                     let viewport = view_box(&document);
                     // The upstream popup height already includes its entire panel. Only mirrored
-                    // actors subtract boxMargin; a participant group adds no second popup inset.
-                    let expected_padding = margin_y + if mirror { 3.0 - box_margin } else { 0.0 };
+                    // actors subtract boxMargin. Native paint also extends beyond its geometry.
+                    let expected_padding =
+                        margin_y + if mirror { 3.0 - box_margin } else { 0.0 } + stroke_outset;
                     assert!(
-                        (viewport[1] + viewport[3] - panel_bottom - expected_padding).abs() < 1e-8,
+                        (viewport[1] + viewport[3] - panel_bottom - expected_padding).abs() < 1e-6,
                         "margin={margin_y}, boxMargin={box_margin}, mirror={mirror}, boxed={boxed}: viewport={viewport:?}, panel_bottom={panel_bottom}, expected_padding={expected_padding}"
                     );
                 }

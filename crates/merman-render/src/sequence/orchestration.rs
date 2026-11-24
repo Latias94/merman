@@ -86,9 +86,23 @@ struct OpenSequenceBlockLayout {
     section_ys_by_id: rustc_hash::FxHashMap<String, f64>,
 }
 
+#[derive(Default)]
+struct SequenceItemBounds {
+    stop_y: Option<f64>,
+    horizontal: Option<(f64, f64)>,
+}
+
+impl SequenceItemBounds {
+    fn include_horizontal(&mut self, min_x: f64, max_x: f64) {
+        self.horizontal = Some(self.horizontal.map_or((min_x, max_x), |(left, right)| {
+            (left.min(min_x), right.max(max_x))
+        }));
+    }
+}
+
 struct SequenceLayoutLoopState<'a> {
     cursor_y: f64,
-    block_stopy_stack: Vec<Option<f64>>,
+    sequence_items: Vec<SequenceItemBounds>,
     open_sequence_blocks: Vec<OpenSequenceBlockLayout>,
     block_layouts_by_id: rustc_hash::FxHashMap<String, SequenceBlockLayout>,
     rect_stack: Vec<SequenceRectOpen>,
@@ -136,7 +150,7 @@ impl<'a> SequenceLayoutLoopState<'a> {
 
         Ok(Self {
             cursor_y: ctx.actor_top_offset_y + ctx.max_actor_layout_height,
-            block_stopy_stack: Vec::new(),
+            sequence_items: Vec::new(),
             open_sequence_blocks: Vec::new(),
             block_layouts_by_id: rustc_hash::FxHashMap::default(),
             rect_stack: Vec::new(),
@@ -152,11 +166,11 @@ impl<'a> SequenceLayoutLoopState<'a> {
     }
 
     fn open_content_block(&mut self) {
-        self.block_stopy_stack.push(None);
+        self.sequence_items.push(SequenceItemBounds::default());
     }
 
     fn open_sequence_block(&mut self, id: &str, start_y: f64) {
-        let sequence_item_index = self.block_stopy_stack.len();
+        let sequence_item_index = self.sequence_items.len();
         self.open_content_block();
         self.open_sequence_blocks.push(OpenSequenceBlockLayout {
             id: id.to_string(),
@@ -175,18 +189,24 @@ impl<'a> SequenceLayoutLoopState<'a> {
     }
 
     fn include_inserted_bottom(&mut self, inserted_bottom_y: f64, box_margin: f64) {
-        include_block_stopy(&mut self.block_stopy_stack, inserted_bottom_y, box_margin);
+        include_block_stopy(&mut self.sequence_items, inserted_bottom_y, box_margin);
+    }
+
+    fn include_rect_horizontal(&mut self, min_x: f64, max_x: f64, box_margin: f64) {
+        if let Some(item) = self.sequence_items.last_mut() {
+            item.include_horizontal(min_x - box_margin, max_x + box_margin);
+        }
     }
 
     fn include_inserted_horizontal(&mut self, min_x: f64, max_x: f64, box_margin: f64) {
-        let nested_margin = self.block_stopy_stack.len() as f64 * box_margin;
+        let sequence_item_depth = self.sequence_items.len();
+        let nested_margin = sequence_item_depth as f64 * box_margin;
         self.bounds_start_x = self.bounds_start_x.min(min_x - nested_margin);
         self.bounds_stop_x = self.bounds_stop_x.max(max_x + nested_margin);
 
         // Mermaid updates every active sequence item for each insertion. The outermost item gets
-        // the largest margin, while the innermost item gets one box margin. `block_stopy_stack`
+        // the largest margin, while the innermost item gets one box margin. `sequence_items`
         // mirrors that stack and also includes `rect` items, which do not have a control frame.
-        let sequence_item_depth = self.block_stopy_stack.len();
         for block in &mut self.open_sequence_blocks {
             let depth_margin =
                 sequence_item_depth.saturating_sub(block.sequence_item_index) as f64 * box_margin;
@@ -205,8 +225,11 @@ impl<'a> SequenceLayoutLoopState<'a> {
         }
     }
 
-    fn close_content_block(&mut self, box_margin: f64) {
-        self.cursor_y = close_block_cursor(&mut self.block_stopy_stack, self.cursor_y, box_margin);
+    fn close_content_block(&mut self, box_margin: f64) -> Option<(f64, f64)> {
+        let (stop_y, horizontal) =
+            close_content_bounds(&mut self.sequence_items, self.cursor_y, box_margin);
+        self.cursor_y = stop_y;
+        horizontal
     }
 
     fn close_sequence_block(&mut self, box_margin: f64) {
@@ -227,31 +250,42 @@ impl<'a> SequenceLayoutLoopState<'a> {
 }
 
 fn include_block_stopy(
-    block_stopy_stack: &mut [Option<f64>],
+    sequence_items: &mut [SequenceItemBounds],
     inserted_bottom_y: f64,
     box_margin: f64,
 ) {
-    if let Some(stopy) = block_stopy_stack.last_mut() {
+    if let Some(item) = sequence_items.last_mut() {
         let candidate = inserted_bottom_y + box_margin;
-        *stopy = Some(stopy.map_or(candidate, |current| current.max(candidate)));
+        item.stop_y = Some(
+            item.stop_y
+                .map_or(candidate, |current| current.max(candidate)),
+        );
     }
 }
 
-fn close_block_cursor(
-    block_stopy_stack: &mut Vec<Option<f64>>,
+fn close_content_bounds(
+    sequence_items: &mut Vec<SequenceItemBounds>,
     cursor_y: f64,
     box_margin: f64,
-) -> f64 {
-    let closed_stopy = block_stopy_stack.pop().flatten();
-    if let Some(closed_stopy) = closed_stopy {
-        if let Some(parent_stopy) = block_stopy_stack.last_mut() {
-            let candidate = closed_stopy + box_margin;
-            *parent_stopy = Some(parent_stopy.map_or(candidate, |current| current.max(candidate)));
+) -> (f64, Option<(f64, f64)>) {
+    let closed = sequence_items.pop().unwrap_or_default();
+    let horizontal = closed
+        .horizontal
+        .filter(|(left, right)| left.is_finite() && right.is_finite());
+    if let Some(parent) = sequence_items.last_mut() {
+        if let Some(stop_y) = closed.stop_y {
+            let candidate = stop_y + box_margin;
+            parent.stop_y = Some(
+                parent
+                    .stop_y
+                    .map_or(candidate, |current| current.max(candidate)),
+            );
         }
-        closed_stopy
-    } else {
-        cursor_y + box_margin
+        if let Some((left, right)) = horizontal {
+            parent.include_horizontal(left - box_margin, right + box_margin);
+        }
     }
+    (closed.stop_y.unwrap_or(cursor_y + box_margin), horizontal)
 }
 
 fn handle_sequence_directive<'a>(
@@ -354,9 +388,13 @@ fn handle_sequence_rect(
             if semantics.kind == SequenceControlKind::Rect
                 && semantics.role == SequenceControlRole::End =>
         {
-            state.close_content_block(box_margin);
+            let horizontal = state.close_content_block(box_margin);
             if let Some(open) = state.rect_stack.pop() {
-                let closed = open.close(state.actor_center_bounds);
+                let mut closed = open.close(state.actor_center_bounds);
+                if let Some((left, right)) = horizontal {
+                    closed.node.x = (left + right) / 2.0;
+                    closed.node.width = (right - left).max(1.0);
+                }
                 nodes.push(closed.node);
 
                 if let Some(parent) = state.rect_stack.last_mut() {
@@ -418,11 +456,12 @@ fn handle_sequence_note(
         note.rect_max_x,
         note.rect_max_y,
     );
-    state.include_inserted_horizontal(
-        note.node.x - note.node.width / 2.0,
-        note.node.x + note.node.width / 2.0,
-        ctx.box_margin,
-    );
+    let left = note.node.x - note.node.width / 2.0;
+    let right = note.node.x + note.node.width / 2.0;
+    if !state.rect_stack.is_empty() {
+        state.include_rect_horizontal(left, right, ctx.box_margin);
+    }
+    state.include_inserted_horizontal(left, right, ctx.box_margin);
     state.include_inserted_bottom(note.rect_max_y, ctx.box_margin);
     state.activation_geometry.include_inserted_top(
         note.node.y - note.node.height / 2.0,
@@ -506,6 +545,19 @@ fn handle_sequence_message(
         from_x.max(to_x) + SEQUENCE_FRAME_SIDE_PAD_PX,
         inserted_bottom_y,
     );
+    if !state.rect_stack.is_empty()
+        && let [start, end] = edge.points.as_slice()
+    {
+        // Sequence rects use the drawn message endpoints. Self messages include the label span.
+        let (left, right) = if edge.from == edge.to {
+            let label_width = edge.label.as_ref().map_or(1.0, |label| label.width);
+            let span = label_width.max(ctx.sequence_default_width) / 2.0;
+            (start.x - span, start.x + span)
+        } else {
+            (start.x.min(end.x), start.x.max(end.x))
+        };
+        state.include_rect_horizontal(left, right, ctx.box_margin);
+    }
     state.include_inserted_horizontal(inserted_min_x, inserted_max_x, ctx.box_margin);
     state.activation_geometry.include_inserted_top(
         inserted_top_y,
@@ -678,42 +730,44 @@ fn include_rect_stack_bounds(
 
 #[cfg(test)]
 mod tests {
-    use super::{close_block_cursor, include_block_stopy};
+    use super::{SequenceItemBounds, close_content_bounds, include_block_stopy};
 
     #[test]
     fn block_stopy_uses_configured_margin_and_self_message_bounds() {
-        let mut ordinary = vec![None];
+        let mut ordinary = vec![SequenceItemBounds::default()];
         include_block_stopy(&mut ordinary, 100.0, 7.0);
-        assert_eq!(close_block_cursor(&mut ordinary, 100.0, 7.0), 107.0);
+        assert_eq!(close_content_bounds(&mut ordinary, 100.0, 7.0).0, 107.0);
 
-        let mut self_message = vec![None];
+        let mut self_message = vec![SequenceItemBounds::default()];
         include_block_stopy(&mut self_message, 160.0, 7.0);
-        assert_eq!(close_block_cursor(&mut self_message, 130.0, 7.0), 167.0);
+        assert_eq!(close_content_bounds(&mut self_message, 130.0, 7.0).0, 167.0);
     }
 
     #[test]
     fn nested_blocks_keep_numeric_depth_margins() {
-        let mut stack = vec![None, None];
+        let mut stack = vec![SequenceItemBounds::default(), SequenceItemBounds::default()];
         include_block_stopy(&mut stack, 160.0, 7.0);
 
-        assert_eq!(close_block_cursor(&mut stack, 130.0, 7.0), 167.0);
-        assert_eq!(close_block_cursor(&mut stack, 167.0, 7.0), 174.0);
+        assert_eq!(close_content_bounds(&mut stack, 130.0, 7.0).0, 167.0);
+        assert_eq!(close_content_bounds(&mut stack, 167.0, 7.0).0, 174.0);
     }
 
     #[test]
     fn empty_nested_block_does_not_replace_parent_content_bounds() {
-        let mut stack = vec![Some(107.0), None];
+        let mut stack = vec![SequenceItemBounds::default(), SequenceItemBounds::default()];
+        stack[0].stop_y = Some(107.0);
 
-        assert_eq!(close_block_cursor(&mut stack, 200.0, 7.0), 207.0);
-        assert_eq!(stack, vec![Some(107.0)]);
+        assert_eq!(close_content_bounds(&mut stack, 200.0, 7.0).0, 207.0);
+        assert_eq!(stack.len(), 1);
+        assert_eq!(stack[0].stop_y, Some(107.0));
     }
 
     #[test]
     fn later_content_consumes_an_earlier_self_message_overhang() {
-        let mut stack = vec![None];
+        let mut stack = vec![SequenceItemBounds::default()];
         include_block_stopy(&mut stack, 160.0, 10.0);
         include_block_stopy(&mut stack, 220.0, 10.0);
 
-        assert_eq!(close_block_cursor(&mut stack, 220.0, 10.0), 230.0);
+        assert_eq!(close_content_bounds(&mut stack, 220.0, 10.0).0, 230.0);
     }
 }
