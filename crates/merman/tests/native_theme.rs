@@ -133,12 +133,12 @@ fn native_xychart_uses_chart_polish_and_the_shared_canvas() {
     assert!(
         group("bar-plot-0")
             .children()
-            .any(|node| node.attribute("rx") == Some("4"))
+            .any(|node| node.has_tag_name("path"))
     );
     assert_eq!(
         group("line-markers-1")
             .children()
-            .filter(|node| node.has_tag_name("path"))
+            .filter(|node| node.has_tag_name("circle"))
             .count(),
         3
     );

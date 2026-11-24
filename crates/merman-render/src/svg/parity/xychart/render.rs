@@ -1,8 +1,11 @@
 use super::super::*;
+use crate::model::{XyChartDrawableElem, XyChartRectData};
 use crate::theme::{FamilyTheme, elevation_svg, pattern_svg::data_pattern};
 use crate::xychart::XyChartThemeAdapter;
-use kurbo::{Rect, RoundedRect, Shape};
-use merman_model::families::xy_chart::XyChartPlotType;
+use kurbo::{BezPath, PathEl, Rect, RoundedRect, RoundedRectRadii, Shape};
+use merman_model::families::xy_chart::{
+    XyChartAxisModel, XyChartDiagramRenderModel, XyChartPlotType,
+};
 use merman_theme_contract::v2::Elevation;
 
 // XYChart diagram SVG renderer implementation (split from parity.rs).
@@ -24,20 +27,22 @@ fn plot_group_index(group_texts: &[String], prefix: &str) -> Option<usize> {
 
 fn bar_surfaces(
     layout: &XyChartDiagramLayout,
-) -> impl Iterator<Item = &crate::model::XyChartRectData> {
+) -> impl Iterator<Item = (usize, usize, &XyChartRectData)> {
     layout
         .drawables
         .iter()
         .filter_map(|drawable| match drawable {
-            crate::model::XyChartDrawableElem::Rect { group_texts, data }
-                if plot_group_index(group_texts, "bar-plot-").is_some() =>
-            {
-                Some(data)
+            XyChartDrawableElem::Rect { group_texts, data } => {
+                Some((plot_group_index(group_texts, "bar-plot-")?, data))
             }
             _ => None,
         })
-        .flatten()
-        .filter(|bar| {
+        .flat_map(|(plot, bars)| {
+            bars.iter()
+                .enumerate()
+                .map(move |(index, bar)| (plot, index, bar))
+        })
+        .filter(|(_, _, bar)| {
             [bar.x, bar.y, bar.width, bar.height]
                 .into_iter()
                 .all(f64::is_finite)
@@ -46,11 +51,40 @@ fn bar_surfaces(
         })
 }
 
+fn bar_outline(
+    bounds: Rect,
+    model: &XyChartDiagramRenderModel,
+    plot: usize,
+    index: usize,
+    radius: f64,
+) -> BezPath {
+    let value = model.plots.get(plot).and_then(|plot| plot.data.get(index));
+    let toward_top_or_right = match (&model.y_axis, value.and_then(|(_, value)| *value)) {
+        (XyChartAxisModel::Linear { min, max, .. }, Some(value)) => {
+            let (start, end) = (min.unwrap_or(0.0), max.unwrap_or(1.0));
+            // Use zero when the value axis contains it, or the nearest domain endpoint.
+            let baseline = 0.0_f64.max(start.min(end)).min(start.max(end));
+            (value >= baseline) != (start > end)
+        }
+        _ => true,
+    };
+    let radii = match (model.orientation == "horizontal", toward_top_or_right) {
+        (true, true) => RoundedRectRadii::new(0.0, radius, radius, 0.0),
+        (true, false) => RoundedRectRadii::new(radius, 0.0, 0.0, radius),
+        (false, true) => RoundedRectRadii::new(radius, radius, 0.0, 0.0),
+        (false, false) => RoundedRectRadii::new(0.0, 0.0, radius, radius),
+    };
+    RoundedRect::from_rect(bounds, radii)
+        .path_elements(0.1)
+        .filter(|element| !matches!(element, PathEl::CurveTo(a, b, c) if a == b && b == c))
+        .collect()
+}
+
 fn write_native_chart_defs(
     out: &mut BoundedSvgOutput<'_>,
     diagram_id: SvgDiagramId<'_>,
     theme: &FamilyTheme,
-    model: &merman_model::families::xy_chart::XyChartDiagramRenderModel,
+    model: &XyChartDiagramRenderModel,
     layout: &XyChartDiagramLayout,
 ) -> Result<()> {
     if theme.data.pattern_encoding {
@@ -72,16 +106,12 @@ fn write_native_chart_defs(
 
     if theme.elevation != Elevation::Flat {
         let radius = theme.form.chart.bar_radius;
-        for (index, bar) in bar_surfaces(layout).enumerate() {
-            let silhouette = RoundedRect::new(0.0, 0.0, bar.width, bar.height, radius);
-            let id = format!("{diagram_id}-xy-bar-{index}");
-            let _ = elevation_svg::write_depth(
-                out,
-                &theme.elevation,
-                &id,
-                &silhouette.to_path(0.1),
-                (bar.x, bar.y),
-            );
+        for (ordinal, (plot, index, bar)) in bar_surfaces(layout).enumerate() {
+            let bounds = Rect::new(0.0, 0.0, bar.width, bar.height);
+            let silhouette = bar_outline(bounds, model, plot, index, radius);
+            let id = format!("{diagram_id}-xy-bar-{ordinal}");
+            let _ =
+                elevation_svg::write_depth(out, &theme.elevation, &id, &silhouette, (bar.x, bar.y));
             out.checkpoint()?;
         }
     }
@@ -108,6 +138,25 @@ fn node(tag: &'static str) -> Node {
         text: None,
         children: Vec::with_capacity(2),
     }
+}
+
+fn line_marker_center(path: &str) -> Option<(f64, f64)> {
+    use svgtypes::PathSegment;
+
+    // The layout stores markers as two half-circle arcs. The first chord bisects the circle.
+    let mut segments = svgtypes::PathParser::from(path);
+    let PathSegment::MoveTo { abs: true, x, y } = segments.next()?.ok()? else {
+        return None;
+    };
+    let PathSegment::EllipticalArc {
+        abs: false,
+        x: diameter,
+        ..
+    } = segments.next()?.ok()?
+    else {
+        return None;
+    };
+    Some((x + diameter / 2.0, y))
 }
 
 fn push_child(arena: &mut Vec<Node>, parent: usize, child: Node) -> usize {
@@ -240,22 +289,37 @@ pub(crate) fn render_xychart_diagram_svg(
 
     for shape in &layout.drawables {
         match shape {
-            crate::model::XyChartDrawableElem::Rect { group_texts, data } => {
+            XyChartDrawableElem::Rect { group_texts, data } => {
                 if data.is_empty() {
                     continue;
                 }
                 let parent = ensure_group_path(&mut arena, &mut groups_by_path, group_texts);
                 let bar_plot_index = plot_group_index(group_texts, "bar-plot-");
 
-                // Append rect elements.
                 for (mark_index, r) in data.iter().enumerate() {
-                    let mut n = node("rect");
-                    n.attr("x", fmt_xy(r.x));
-                    if !r.y.is_nan() {
-                        n.attr("y", fmt_xy(r.y));
-                    }
-                    n.attr("width", fmt_xy(r.width));
-                    n.attr("height", fmt_xy(r.height));
+                    let outline = native.zip(bar_plot_index).and_then(|(theme, plot)| {
+                        let radius = theme.form.chart.bar_radius;
+                        let bounds = Rect::new(r.x, r.y, r.x + r.width, r.y + r.height);
+                        (radius > 0.0
+                            && bounds.is_finite()
+                            && bounds.width() > 0.0
+                            && bounds.height() > 0.0)
+                            .then(|| bar_outline(bounds, model, plot, mark_index, radius))
+                    });
+                    let mut n = if let Some(outline) = outline {
+                        let mut shape = node("path");
+                        shape.attr("d", outline.to_svg());
+                        shape
+                    } else {
+                        let mut shape = node("rect");
+                        shape.attr("x", fmt_xy(r.x));
+                        if !r.y.is_nan() {
+                            shape.attr("y", fmt_xy(r.y));
+                        }
+                        shape.attr("width", fmt_xy(r.width));
+                        shape.attr("height", fmt_xy(r.height));
+                        shape
+                    };
                     let series = bar_plot_index.or_else(|| {
                         if group_texts.as_slice() == ["legend", "markers"] {
                             artifact.bar_legend_plots().get(mark_index).copied()
@@ -277,17 +341,19 @@ pub(crate) fn render_xychart_diagram_svg(
                     n.attr("stroke", escape_xml(&r.stroke_fill));
                     n.attr("stroke-width", fmt_xy(r.stroke_width));
                     if let Some(theme) = native.filter(|_| series.is_some()) {
-                        let radius = theme
-                            .form
-                            .chart
-                            .bar_radius
-                            .min(r.width / 2.0)
-                            .min(r.height / 2.0);
-                        if radius > 0.0 {
-                            n.attr("rx", fmt_xy(radius));
+                        if bar_plot_index.is_none() {
+                            let radius = theme
+                                .form
+                                .chart
+                                .bar_radius
+                                .min(r.width / 2.0)
+                                .min(r.height / 2.0);
+                            if radius > 0.0 {
+                                n.attr("rx", fmt_xy(radius));
+                            }
                         }
-                        if theme.form.chart.bar_wireframe && pattern.is_some() {
-                            n.attr("fill-opacity", "0.2");
+                        if theme.form.chart.bar_wireframe {
+                            n.attr("fill-opacity", "0.12");
                         }
                     }
                     push_child(&mut arena, parent, n);
@@ -365,7 +431,7 @@ pub(crate) fn render_xychart_diagram_svg(
                     }
                 }
             }
-            crate::model::XyChartDrawableElem::Text { group_texts, data } => {
+            XyChartDrawableElem::Text { group_texts, data } => {
                 if data.is_empty() {
                     continue;
                 }
@@ -407,17 +473,39 @@ pub(crate) fn render_xychart_diagram_svg(
                     push_child(&mut arena, parent, n);
                 }
             }
-            crate::model::XyChartDrawableElem::Path { group_texts, data } => {
+            XyChartDrawableElem::Path { group_texts, data } => {
                 if data.is_empty() {
                     continue;
                 }
                 let parent = ensure_group_path(&mut arena, &mut groups_by_path, group_texts);
+                let gridlines = native.is_some() && group_texts.as_slice() == ["gridlines"];
+                let marker_fill = native
+                    .filter(|_| plot_group_index(group_texts, "line-markers-").is_some())
+                    .map(|theme| theme.roles.surface_node.first_color().to_string());
                 for p in data {
+                    if let Some(fill) = marker_fill.as_deref()
+                        && let Some((cx, cy)) = line_marker_center(&p.path)
+                    {
+                        let mut marker = node("circle");
+                        marker.attr("cx", fmt_xy(cx));
+                        marker.attr("cy", fmt_xy(cy));
+                        marker.attr("r", "3.2");
+                        marker.attr("fill", fill);
+                        marker.attr("stroke", escape_xml(p.fill.as_deref().unwrap_or("none")));
+                        marker.attr("stroke-width", "1.8");
+                        push_child(&mut arena, parent, marker);
+                        continue;
+                    }
                     let mut n = node("path");
                     n.attr("d", escape_xml(&p.path));
                     n.attr("fill", escape_xml(p.fill.as_deref().unwrap_or("none")));
                     n.attr("stroke", escape_xml(&p.stroke_fill));
-                    n.attr("stroke-width", fmt_xy(p.stroke_width));
+                    if gridlines {
+                        n.attr("stroke-width", "0.8");
+                        n.attr("stroke-dasharray", "3 3");
+                    } else {
+                        n.attr("stroke-width", fmt_xy(p.stroke_width));
+                    }
                     push_child(&mut arena, parent, n);
                 }
             }
@@ -429,7 +517,7 @@ pub(crate) fn render_xychart_diagram_svg(
     {
         let bounds = bar_surfaces(layout).fold(
             Rect::new(0.0, 0.0, layout.width, layout.height),
-            |bounds, bar| {
+            |bounds, (_, _, bar)| {
                 let bar = Rect::new(bar.x, bar.y, bar.x + bar.width, bar.y + bar.height);
                 bounds.union(elevation_svg::bounds(&theme.elevation, bar))
             },

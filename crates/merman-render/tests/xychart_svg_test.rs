@@ -11,7 +11,8 @@ use merman_render::resources::{
     RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
 };
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
-use merman_render::theme::{BuiltinPreset, NativeTheme, ThemeCompiler};
+use merman_render::theme::{BuiltinPreset, NativeTheme, ResolvedThemeV2, ThemeCompiler};
+use std::sync::Arc;
 
 fn xychart_plot_group<'document, 'input>(
     document: &'document roxmltree::Document<'input>,
@@ -39,6 +40,22 @@ fn layout_xychart_from_text(text: &str) -> XyChartDiagramLayout {
 
 fn render_xychart_svg_from_text(text: &str) -> String {
     try_render_xychart_svg_from_text(text).expect("render svg")
+}
+
+fn render_native_xychart_svg(source: &str, theme: Arc<ResolvedThemeV2>) -> String {
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_native_theme(NativeTheme::new(theme))
+        .unwrap();
+    family::prepare(parsed.presentation(), &LayoutOptions::default(), session)
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap()
+        .svg()
+        .to_owned()
 }
 
 fn try_render_xychart_svg_from_text(text: &str) -> Result<String, merman_render::Error> {
@@ -1101,6 +1118,192 @@ fn xychart_preserves_authored_css_in_font_sizes_and_series_paint() {
 }
 
 #[test]
+fn native_xychart_guides_wireframe_and_line_markers_keep_their_paint_and_order() {
+    let source = "\
+---
+config:
+  xyChart:
+    yAxis:
+      tickWidth: 4
+---
+xychart
+  x-axis [A, B]
+  y-axis 0 --> 10
+  bar Sales [3, 7]
+  line Trend [2, 8]
+";
+    let theme = ThemeCompiler::new()
+        .compile_json(
+            br##"{"schema_version":2,"extends":"blueprint","roles":{"surface.node":"#12456A","stroke.guide":"#416182"}}"##,
+            None,
+        )
+        .unwrap();
+    let svg = render_native_xychart_svg(source, theme);
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let grid = xychart_plot_group(&document, "gridlines");
+    let plot = xychart_plot_group(&document, "plot");
+    assert_eq!(grid.parent(), plot.parent());
+    assert!(grid.range().end <= plot.range().start);
+    let guides: Vec<_> = grid.children().collect();
+    assert!(!guides.is_empty());
+    for guide in guides {
+        assert!(guide.has_tag_name("path"));
+        assert_eq!(guide.attribute("stroke"), Some("#416182"));
+        assert_eq!(guide.attribute("stroke-width"), Some("0.8"));
+        assert_eq!(guide.attribute("stroke-dasharray"), Some("3 3"));
+        let points = xychart_svg_path_points(guide);
+        assert_eq!(points.len(), 2);
+        assert_eq!(points[0].1, points[1].1);
+    }
+    let ticks = xychart_plot_group(&document, "left-axis")
+        .children()
+        .find(|node| node.attribute("class") == Some("ticks"))
+        .unwrap();
+    assert!(
+        ticks
+            .children()
+            .all(|tick| tick.attribute("stroke-width") == Some("4"))
+    );
+
+    let bars = xychart_plot_group(&document, "bar-plot-0");
+    assert_eq!(bars.children().count(), 2);
+    for bar in bars.children() {
+        assert!(bar.has_tag_name("rect"));
+        assert_eq!(bar.attribute("fill"), Some("#7AE6FF"));
+        assert_eq!(bar.attribute("fill-opacity"), Some("0.12"));
+        assert_eq!(bar.attribute("stroke"), bar.attribute("fill"));
+        assert_eq!(bar.attribute("stroke-width"), Some("1.5"));
+        assert!(bar.attribute("stroke-dasharray").is_none());
+    }
+
+    let line = xychart_plot_group(&document, "line-plot-1")
+        .first_element_child()
+        .unwrap();
+    let points = xychart_svg_path_points(line);
+    let markers: Vec<_> = xychart_plot_group(&document, "line-markers-1")
+        .children()
+        .collect();
+    assert_eq!(markers.len(), 2);
+    assert_eq!(markers.len(), points.len());
+    for (marker, (x, y)) in markers.into_iter().zip(points) {
+        assert!(marker.has_tag_name("circle"));
+        assert_eq!(marker.attribute("r"), Some("3.2"));
+        assert_eq!(marker.attribute("fill"), Some("#12456A"));
+        assert_eq!(marker.attribute("stroke"), line.attribute("stroke"));
+        assert_eq!(marker.attribute("stroke-width"), Some("1.8"));
+        for (name, expected) in [("cx", x), ("cy", y)] {
+            let actual = marker.attribute(name).unwrap().parse::<f64>().unwrap();
+            assert!(
+                (actual - expected).abs() < 1e-9,
+                "{name}: {actual} vs {expected}"
+            );
+        }
+    }
+
+    let classic_svg = render_xychart_svg_from_text(source);
+    let classic = roxmltree::Document::parse(&classic_svg).unwrap();
+    assert!(classic.descendants().all(|node| !matches!(
+        node.attribute("class"),
+        Some("gridlines" | "line-markers-1")
+    )));
+    assert!(
+        xychart_plot_group(&classic, "bar-plot-0")
+            .children()
+            .all(|bar| bar.has_tag_name("rect") && bar.attribute("fill-opacity").is_none())
+    );
+}
+
+#[test]
+fn native_xychart_rounds_only_the_bar_end_away_from_the_baseline() {
+    use kurbo::{Point, Shape};
+
+    let compiler = ThemeCompiler::new();
+    let rounded = compiler
+        .compile_preset(BuiltinPreset::Studio, None)
+        .unwrap();
+    let square = compiler
+        .compile_json(
+            br#"{"schema_version":2,"extends":"studio","form":{"chart":{"bar_radius":0}}}"#,
+            None,
+        )
+        .unwrap();
+    let top = [true, true, false, false];
+    let right = [false, true, true, false];
+    let bottom = [false, false, true, true];
+    let left = [true, false, false, true];
+    for (orientation, min, max, rounded_corners) in [
+        ("vertical", -10, 10, [bottom, top]),
+        ("horizontal", -10, 10, [left, right]),
+        ("vertical", 10, -10, [top, bottom]),
+        ("horizontal", 10, -10, [right, left]),
+    ] {
+        let source =
+            format!("xychart {orientation}\nx-axis [A, B]\ny-axis {min} --> {max}\nbar [-5, 5]\n");
+        let svg = render_native_xychart_svg(&source, rounded.clone());
+        let control_svg = render_native_xychart_svg(&source, square.clone());
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let control = roxmltree::Document::parse(&control_svg).unwrap();
+        assert_eq!(
+            document.root_element().attribute("viewBox"),
+            control.root_element().attribute("viewBox")
+        );
+        let bars = xychart_plot_group(&document, "bar-plot-0");
+        let controls = xychart_plot_group(&control, "bar-plot-0");
+        assert_eq!(bars.children().count(), 2);
+        assert_eq!(controls.children().count(), 2);
+        let depth = document
+            .descendants()
+            .filter(|node| node.attribute("data-merman-theme-depth") == Some("node"));
+        assert_eq!(depth.clone().count(), 2);
+
+        for (((bar, control), depth), rounded) in bars
+            .children()
+            .zip(controls.children())
+            .zip(depth)
+            .zip(rounded_corners)
+        {
+            assert!(bar.has_tag_name("path"));
+            assert!(control.has_tag_name("rect"));
+            let [x, y, width, height] = ["x", "y", "width", "height"]
+                .map(|name| control.attribute(name).unwrap().parse::<f64>().unwrap());
+            let silhouette = depth
+                .children()
+                .find(|node| node.has_tag_name("path"))
+                .unwrap();
+            for (node, (x, y)) in [(bar, (x, y)), (silhouette, (0.0, 0.0))] {
+                let shape = kurbo::BezPath::from_svg(node.attribute("d").unwrap()).unwrap();
+                assert_eq!(
+                    shape
+                        .elements()
+                        .iter()
+                        .filter(|element| matches!(element, kurbo::PathEl::CurveTo(..)))
+                        .count(),
+                    2
+                );
+                let bounds = shape.bounding_box();
+                assert!((bounds.x0 - x).abs() < 1e-9 && (bounds.y0 - y).abs() < 1e-9);
+                assert!(
+                    (bounds.width() - width).abs() < 1e-9
+                        && (bounds.height() - height).abs() < 1e-9
+                );
+                let inset = 0.25;
+                let near_corner = [
+                    Point::new(x + inset, y + inset),
+                    Point::new(x + width - inset, y + inset),
+                    Point::new(x + width - inset, y + height - inset),
+                    Point::new(x + inset, y + height - inset),
+                ];
+                assert_eq!(
+                    near_corner.map(|point| !shape.contains(point)),
+                    rounded,
+                    "{orientation} {min} --> {max}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn native_xychart_legend_uses_the_visible_bar_series_pattern() {
     let source = "\
 xychart
@@ -1111,21 +1314,11 @@ xychart
   line Trend [4, 5]
   bar Sales [6, 7]
 ";
-    let parsed = MermaidEngine::new()
-        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-        .unwrap()
-        .unwrap();
     let theme = ThemeCompiler::new()
         .compile_preset(BuiltinPreset::Monograph, None)
         .unwrap();
-    let session = RenderEnvironment::deterministic()
-        .begin_session_with_native_theme(NativeTheme::new(theme))
-        .unwrap();
-    let rendered = family::prepare(parsed.presentation(), &LayoutOptions::default(), session)
-        .unwrap()
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-        .unwrap();
-    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let svg = render_native_xychart_svg(source, theme);
+    let document = roxmltree::Document::parse(&svg).unwrap();
     let bar = xychart_plot_group(&document, "bar-plot-2")
         .children()
         .find(|child| child.has_tag_name("rect"))

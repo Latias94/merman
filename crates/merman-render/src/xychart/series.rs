@@ -53,14 +53,10 @@ impl XyChartSeriesPaintPlan {
                         Some(theme) => {
                             let ink = theme.data.ink(index).to_string();
                             let wireframe = bar && theme.form.chart.bar_wireframe;
-                            let fill = if bar {
-                                let fill = theme.data.fill(index);
-                                if wireframe {
-                                    fill.composite(crate::theme::Color::TRANSPARENT, 0.2)
-                                        .to_string()
-                                } else {
-                                    fill.to_string()
-                                }
+                            let fill = if wireframe {
+                                ink.clone()
+                            } else if bar {
+                                theme.data.fill(index).to_string()
                             } else {
                                 "none".to_owned()
                             };
