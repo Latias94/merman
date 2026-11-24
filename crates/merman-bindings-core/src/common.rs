@@ -1240,6 +1240,11 @@ fn parse_base_options_for_contract(
 ) -> Result<(BindingOptions, BaseBindingOptions), BindingError> {
     let wire = options_json_value(bytes)?;
     let typed = parse_options_with_theme(bytes, &wire, artifact_contract)?;
+    let base = base_options_from_wire(wire, &typed);
+    Ok((typed, base))
+}
+
+fn base_options_from_wire(wire: Value, typed: &BindingOptions) -> BaseBindingOptions {
     let resource_ceiling = typed.analysis.resources.clone().unwrap_or_default();
     let normalized_wire = normalize_analysis_wrapper(wire);
     #[cfg(any(feature = "svg", feature = "ascii"))]
@@ -1251,13 +1256,10 @@ fn parse_base_options_for_contract(
             .remove("theme");
         normalized_wire
     };
-    Ok((
-        typed,
-        BaseBindingOptions {
-            normalized_wire: Arc::new(normalized_wire),
-            resource_ceiling,
-        },
-    ))
+    BaseBindingOptions {
+        normalized_wire: Arc::new(normalized_wire),
+        resource_ceiling,
+    }
 }
 
 fn parse_options_with_theme(
@@ -2629,6 +2631,91 @@ pub fn apply_resource_ceiling_json_with_allowed_overrides(
     enforce_options_json_byte_budget(&serialized)?;
     parse_options_with_theme(options_json, &value, &DEFAULT_ARTIFACT_SNAPSHOT)?;
     Ok(serialized)
+}
+
+pub(crate) fn parse_one_shot_options_with_resource_ceiling(
+    options_json: &[u8],
+    ceiling_profile_id: &str,
+    ceiling_overrides: &[(&str, usize)],
+    allowed_request_limit_ids: &[&str],
+    artifact_contract: &ValidatedArtifactContract,
+    scope: BindingResourceScope,
+    normalize: impl FnOnce(&mut Value) -> Result<(), BindingError>,
+) -> Result<(BindingOptions, BaseBindingOptions), BindingError> {
+    let mut wire = options_value_with_resource_ceiling(
+        options_json,
+        ceiling_profile_id,
+        ceiling_overrides,
+        allowed_request_limit_ids,
+    )?;
+    enforce_compact_options_budget(&wire)?;
+    let mut options = parse_options_with_theme(options_json, &wire, &DEFAULT_ARTIFACT_SNAPSHOT)?;
+
+    const TRANSPORT_FIELDS: [&str; 2] = ["runtime_policy", "environment"];
+    let root = wire
+        .as_object_mut()
+        .expect("resource ceiling requires an object");
+    let mut transport = Value::Object(
+        TRANSPORT_FIELDS
+            .iter()
+            .filter_map(|key| root.remove_entry(*key))
+            .collect(),
+    );
+    normalize(&mut transport)?;
+    let Value::Object(transport_root) = &transport else {
+        return Err(BindingError::internal(
+            "normalized transport options must be an object",
+        ));
+    };
+    if transport_root
+        .keys()
+        .any(|key| !TRANSPORT_FIELDS.contains(&key.as_str()))
+    {
+        return Err(BindingError::internal(
+            "transport normalization may only set runtime_policy and environment",
+        ));
+    }
+    let transport_options = parse_options_value(&transport)?;
+    options.runtime_policy = transport_options.runtime_policy;
+    #[cfg(feature = "svg")]
+    {
+        options.environment = transport_options.environment;
+        options.text_measurement_selector_explicit =
+            transport_options.text_measurement_selector_explicit;
+    }
+    let Value::Object(transport_root) = transport else {
+        unreachable!()
+    };
+    root.extend(transport_root);
+    enforce_compact_options_budget(&wire)?;
+
+    validate_output_options_for_scope(&wire, scope)?;
+    if let Some(resources) = &options.analysis.resources {
+        validate_resource_limits_for_scope(resources, scope)?;
+    }
+    reject_unavailable_option_groups(&wire, artifact_contract)?;
+    validate_artifact_resource_options(options.analysis.resources.as_ref(), artifact_contract)?;
+    let base = base_options_from_wire(wire, &options);
+    Ok((options, base))
+}
+
+fn enforce_compact_options_budget(value: &Value) -> Result<(), BindingError> {
+    struct JsonByteCounter(usize);
+
+    impl std::io::Write for JsonByteCounter {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0 = self.0.saturating_add(bytes.len());
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    let mut counter = JsonByteCounter(0);
+    serde_json::to_writer(&mut counter, value).map_err(internal_json_error)?;
+    enforce_options_json_byte_len(counter.0)
 }
 
 /// Prepares typed analysis options under an explicit host resource ceiling.

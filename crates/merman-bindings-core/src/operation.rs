@@ -1485,6 +1485,50 @@ impl ValidatedArtifactContract {
             .map(|(execution, _)| execution.into_data())
     }
 
+    /// Executes a data-only diagram operation with a transport-owned resource ceiling.
+    ///
+    /// The caller can tighten the ceiling or use an explicit host-approved limit override.
+    /// After validating the request options, `normalize` may set only the `runtime_policy` and
+    /// `environment` options. The normalized options remain subject to the artifact contract.
+    #[doc(hidden)]
+    pub fn execute_once_data_with_resource_ceiling(
+        &self,
+        request: BindingOperationRequest<'_>,
+        ceiling_profile_id: &str,
+        ceiling_overrides: &[(&str, usize)],
+        allowed_request_limit_ids: &[&str],
+        normalize: impl FnOnce(&mut Value) -> Result<(), BindingError>,
+    ) -> Result<Vec<u8>, BindingError> {
+        let (operation, control) = resolve_one_shot_request(&request)?;
+        if operation.is_theme_operation() {
+            return Err(BindingError::invalid_argument(
+                "transport resource ceilings apply only to diagram operations",
+            ));
+        }
+        let (options, base_options) = crate::common::parse_one_shot_options_with_resource_ceiling(
+            request.options_json,
+            ceiling_profile_id,
+            ceiling_overrides,
+            allowed_request_limit_ids,
+            self,
+            operation.resource_scope(),
+            normalize,
+        )?;
+        let engine = BindingEngine::from_parsed_options_for_contract(
+            Arc::new(*self),
+            &options,
+            base_options,
+            BindingEngineServices::new(),
+        )?;
+        control
+            .checkpoint_at(OperationPhase::Admission)
+            .map_err(BindingError::cancelled)?;
+        let admitted = self.admit_operation(operation)?;
+        engine
+            .execute_admitted_output(admitted, request.source, request.uri, control, false)
+            .map(BindingOperationOutput::into_data)
+    }
+
     /// Executes only SVG rendering, without result metadata or the general operation dispatcher.
     ///
     /// Uses the same request preparation, artifact admission, services, resource validation and

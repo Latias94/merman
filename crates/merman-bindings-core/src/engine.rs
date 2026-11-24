@@ -109,13 +109,22 @@ impl BindingEngine {
     ) -> Result<Self, BindingError> {
         let (options, base_options) =
             common::parse_base_options_for_artifact(options_json, &artifact_contract)?;
+        Self::from_parsed_options_for_contract(artifact_contract, &options, base_options, services)
+    }
+
+    pub(crate) fn from_parsed_options_for_contract(
+        artifact_contract: Arc<ValidatedArtifactContract>,
+        options: &common::BindingOptions,
+        base_options: common::BaseBindingOptions,
+        services: BindingEngineServices,
+    ) -> Result<Self, BindingError> {
         artifact_contract.validate_engine_services(&services)?;
-        services.validate_options(&options)?;
-        validate_runtime_policy_exposure(&artifact_contract, &options)?;
-        let (selection, runtime_policy) = common::selected_runtime_policy(&options)?;
+        services.validate_options(options)?;
+        validate_runtime_policy_exposure(&artifact_contract, options)?;
+        let (selection, runtime_policy) = common::selected_runtime_policy(options)?;
         Self::with_parsed_options_and_services(
             artifact_contract,
-            &options,
+            options,
             runtime_policy,
             selection.id(),
             base_options,
