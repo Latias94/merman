@@ -12,13 +12,14 @@ use crate::{
 pub(crate) struct ComponentCache {
     accepted: Entries,
     pending: Entries,
-    limit: usize,
+    pending_limit: usize,
     active: bool,
 }
 
 impl ComponentCache {
     pub(crate) fn begin(&mut self, limit: usize) {
-        self.limit = limit;
+        // The previous snapshot remains available until the current solve is accepted.
+        self.pending_limit = limit.saturating_sub(self.accepted.bytes());
         self.active = limit > 0;
     }
 
@@ -106,18 +107,18 @@ impl ComponentCache {
         if !options.capture_node_ranks {
             return Ok(());
         }
-        let left = self.limit.saturating_sub(self.pending.bytes());
+        let left = self.pending_limit.saturating_sub(self.pending.bytes());
         let Some(left) = left.checked_sub(size_of::<Entry>()) else {
             return Ok(());
         };
         // Prepay the publication sort and witness update. Publication follows the final work check.
-        let sort_cost = (self.limit / size_of::<Entry>()).ilog2() as usize + 1;
+        let sort_cost = (self.pending_limit / size_of::<Entry>()).ilog2() as usize + 1;
         let entry = work.compare(|work| {
             work.visit(sort_cost)?;
             optional_allocation(Entry::new(component, graph, options, local, left, work))
         })?;
         if let Some(Some(entry)) = entry {
-            self.pending.push(entry, self.limit);
+            self.pending.push(entry, self.pending_limit);
         }
         Ok(())
     }
@@ -250,6 +251,10 @@ impl Entry {
             }
         }
 
+        work.charge(
+            n.checked_add(m)
+                .ok_or(crate::WorkError::ArithmeticOverflow)?,
+        )?;
         let mut nodes = reserved(n)?;
         for (i, &output_id) in c.ids.iter().enumerate() {
             work.visit(3)?;
@@ -348,11 +353,14 @@ impl Entry {
         }
         for (i, (node, old)) in c.nodes.iter().zip(&self.nodes).enumerate() {
             work.visit(1)?;
+            let (Some(position), Some(order)) = (node.position_hint, node.order_hint) else {
+                return Ok(None);
+            };
             // The flat solvers use declaration order and its ties. Dense NodeIds and the
             // absolute sequence values may shift when another component is edited.
             let same_declaration = (i == 0
-                || (c.nodes[i - 1].seq == node.seq)
-                    == (self.nodes[i - 1].spec.seq == old.spec.seq))
+                || c.nodes[i - 1].seq.cmp(&node.seq)
+                    == self.nodes[i - 1].spec.seq.cmp(&old.spec.seq))
                 && (node.seq == u32::MAX) == (old.spec.seq == u32::MAX);
             let mut spec = node_spec(*node);
             spec.seq = old.spec.seq;
@@ -363,8 +371,8 @@ impl Entry {
                 || !node
                     .position_hint_in(self.direction, old.rank)
                     .is_some_and(|(_, unchanged)| unchanged)
-                || node.position_hint.unwrap().center != old.relative
-                || node.order_hint.unwrap().cross_key != old.absolute_cross
+                || position.center != old.relative
+                || order.cross_key != old.absolute_cross
             {
                 return Ok(None);
             }
@@ -376,15 +384,16 @@ impl Entry {
             }
         }
 
-        work.visit(self.nodes.len())?;
+        work.charge(self.nodes.len())?;
         let mut nodes = reserved(self.nodes.len())?;
         nodes.extend(self.nodes.iter().map(|node| node.rect));
         let mut ranks = Vec::new();
         if options.capture_node_ranks {
-            work.visit(self.nodes.len())?;
+            work.charge(self.nodes.len())?;
             ranks = reserved(self.nodes.len())?;
             ranks.extend(self.nodes.iter().map(|node| node.rank));
         }
+        work.charge(self.edges.len())?;
         let mut edges = reserved(self.edges.len())?;
         for ((_, _, id), edge) in occurrences(c).zip(&self.edges) {
             work.visit(1)?;
@@ -693,7 +702,11 @@ mod tests {
             |g: &mut Graph| g.nodes[3].position_hint.as_mut().unwrap().center.y += 1.,
             |g: &mut Graph| g.nodes[3].order_hint.as_mut().unwrap().cross_key += 1.,
             |g: &mut Graph| g.nodes[3].order_hint.as_mut().unwrap().rank += 1,
+            |g: &mut Graph| g.nodes[3].order_hint = None,
+            |g: &mut Graph| g.nodes[3].order_hint_direction = Some(Direction::Right),
             |g: &mut Graph| g.nodes[3].position_hint = None,
+            |g: &mut Graph| g.nodes[3].seq = g.nodes[2].seq,
+            |g: &mut Graph| (g.nodes[2].seq, g.nodes[3].seq) = (g.nodes[3].seq, g.nodes[2].seq),
             |g: &mut Graph| g.nodes[3].set_current_incident_signature(Some(0)),
             |g: &mut Graph| {
                 let node = &mut g.nodes[3];
@@ -776,5 +789,37 @@ mod tests {
             first
         );
         assert_eq!(zero.retained_bytes(), 0);
+    }
+
+    #[test]
+    fn pending_snapshots_share_the_budget_with_the_accepted_snapshot() {
+        let graph = measured_graph(Direction::Down);
+        let options = options();
+        let mut unrestricted = LayoutScratch::default();
+        layout_with_control(&graph, &options, &mut unrestricted, &mut NoopWorkControl).unwrap();
+        let capacity = unrestricted
+            .frame()
+            .expanded
+            .component_cache
+            .accepted
+            .bytes();
+        assert!(capacity > 0);
+
+        let mut scratch = LayoutScratch::with_max_retained_bytes(capacity);
+        layout_with_control(&graph, &options, &mut scratch, &mut NoopWorkControl).unwrap();
+        let mut frame = scratch.frame();
+        let accepted = frame.expanded.component_cache.accepted.bytes();
+        assert!(accepted > 0);
+        frame.begin_components();
+        super::super::run(
+            &graph,
+            &options,
+            frame.expanded,
+            &mut Work::new(&mut NoopWorkControl),
+        )
+        .unwrap();
+        let cache = &frame.expanded.component_cache;
+        assert_eq!(cache.accepted.bytes(), accepted);
+        assert!(cache.pending.bytes() + accepted <= capacity);
     }
 }
