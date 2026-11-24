@@ -38,7 +38,7 @@ fn native_theme_v2_ishikawa_separates_head_and_bones_in_both_looks() {
                 "roles":{"surface.emphasis":"#305070","text.on_emphasis":"#FFFFFF",
                          "surface.node":"#E0F0D0","stroke.connector":"#506070",
                          "stroke.border":"#708090","text.primary":"#102030"},
-                "typography":{"sans":["Fishbone Body"],"serif":["Head Serif"],
+                "typography":{"sans":["Fishbone Body","sans-serif"],"serif":["Head Serif","serif"],
                               "title_family":"serif","base_size_px":21,"title_weight":700}
             }"##,
             None,
@@ -74,13 +74,11 @@ fn native_theme_v2_ishikawa_separates_head_and_bones_in_both_looks() {
             .unwrap()
             .text()
             .unwrap();
-        assert!(
-            css.contains(
-                "text { font-family: \"Fishbone Body\"; font-size: 21px; fill: #102030; }"
-            )
-        );
+        assert!(css.contains(
+            "text { font-family: \"Fishbone Body\", sans-serif; font-size: 21px; fill: #102030; }"
+        ));
         assert!(css.contains(".ishikawa-head-label { font-weight: 700;"));
-        assert!(css.contains("font-family: \"Head Serif\"; fill: #FFFFFF;"));
+        assert!(css.contains("font-family: \"Head Serif\", serif; fill: #FFFFFF;"));
         assert!(css.contains(".ishikawa-head { fill: #305070; stroke: #708090;"));
         assert!(css.contains(".ishikawa-label-box { fill: #E0F0D0; stroke: #708090;"));
         assert!(css.contains(".ishikawa-sub-branch { stroke: #708090; }"));

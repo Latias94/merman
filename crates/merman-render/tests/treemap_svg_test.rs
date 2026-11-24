@@ -1771,11 +1771,11 @@ classDef chosen fill:#123456,color:#abcdef;
             br##"{
                 "schema_version": 2,
                 "extends": "studio",
-                "data": {
-                    "fill": ["#475569", "#334155"],
-                    "ink": ["#F8FAFC", "#E2E8F0"],
+                "appearances": {"light": {"data": {
+                    "fill": ["#475569", "#334155", "#526377", "#3D4B60"],
+                    "ink": ["#F8FAFC", "#E2E8F0", "#F1F5F9", "#F8FAFC"],
                     "pattern_encoding": true
-                },
+                }}},
                 "typography": {"sans": ["Treemap Native", "sans-serif"], "base_size_px": 20},
                 "form": {"radius": 7}
             }"##,

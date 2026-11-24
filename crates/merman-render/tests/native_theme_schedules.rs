@@ -30,7 +30,7 @@ fn theme() -> NativeTheme {
                     "status.info": "#2266AA", "status.warn": "#BC852C",
                     "status.danger": "#AA2233", "status.success": "#278858"
                 },
-                "typography": {"sans": ["Schedule Face", "sans-serif"], "base_size_px": 28},
+                "typography": {"sans": ["Schedule Face", "sans-serif"], "base_size_px": 24},
                 "form": {"radius": 7, "container_radius": 11, "chart": {"gridlines": true, "bar_radius": 6}}
             }"##,
             None,
@@ -127,7 +127,7 @@ fn native_theme_v2_gantt_layers_rows_and_preserves_task_states() {
     );
     assert_eq!(
         by_id("schedule-ordinary-text").attribute("font-size"),
-        Some("28")
+        Some("24")
     );
     assert!(
         row("today")
@@ -308,13 +308,23 @@ fn native_theme_v2_journey_preserves_score_actor_and_authored_label_styles() {
     let authored = format!(
         "---\nconfig:\n  journey:\n    taskFontFamily: Georgia\n    taskFontSize: 19\n    sectionFills: ['#543210']\n    sectionColours: ['#FEDCBA']\n    actorColours: ['#123456']\n---\n{source}"
     );
+    // Mermaid appends authored arrays to the defaults. Draw the first authored slot in each list.
+    let mut authored = authored;
+    for index in 1..=7 {
+        use std::fmt::Write;
+        writeln!(
+            authored,
+            "  section Phase {index}\n    Task: 3: Actor {index}"
+        )
+        .unwrap();
+    }
     let authored = render(&authored, Some(theme()));
     let authored = roxmltree::Document::parse(&authored).unwrap();
     let section = authored
         .descendants()
         .find(|node| {
             node.has_tag_name("rect")
-                && node.attribute("class") == Some("journey-section section-type-0")
+                && node.attribute("class") == Some("journey-section section-type-7")
         })
         .unwrap();
     assert_eq!(section.attribute("fill"), Some("#543210"));
@@ -322,7 +332,7 @@ fn native_theme_v2_journey_preserves_score_actor_and_authored_label_styles() {
         authored
             .descendants()
             .any(|node| node.has_tag_name("circle")
-                && node.attribute("class") == Some("actor-0")
+                && node.attribute("class") == Some("actor-6")
                 && node.attribute("fill") == Some("#123456"))
     );
     for tag in ["div", "text"] {
