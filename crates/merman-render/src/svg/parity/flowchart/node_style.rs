@@ -72,7 +72,7 @@ impl FlowchartClusterStructuralSources {
     }
 
     pub(super) fn prepare(
-        class_defs: &indexmap::IndexMap<String, Vec<String>>,
+        class_defs: &crate::flowchart::FlowchartClassDefinitions<'_>,
         html_labels: bool,
         label_dom: crate::flowchart::FlowchartLabelDom<'_>,
         hand_drawn: bool,
@@ -87,24 +87,22 @@ impl FlowchartClusterStructuralSources {
         )?
         .foreground_status();
         for class in ["root", "clusters", "cluster"] {
-            let Some(declarations) = class_defs.get(class) else {
+            let Some(shell) =
+                class_defs.prepare_shell(class, |units| work.charge(units).map_err(Into::into))?
+            else {
                 continue;
             };
-            for declaration in declarations {
-                work.charge(declaration.len())?;
-            }
-            let styles = crate::flowchart::FlowchartClassDefStyles::prepare(declarations);
             // Native selectors reach rects or rough paths. HTML >* only reaches a native
             // cluster rect from the cluster itself; rough paths have explicit paint attributes.
             if !html_labels || (class == "cluster" && !hand_drawn) {
-                for declaration in styles.shape.values() {
-                    let status = match declaration.property() {
-                        "fill" => &mut sources.fill,
-                        "stroke" => &mut sources.stroke,
-                        "stroke-width" => &mut sources.stroke_width,
-                        _ => continue,
-                    };
-                    *status = FlowchartSourceFacetStatus::Unverified;
+                for (applies, status) in [
+                    (shell.paint.fill, &mut sources.fill),
+                    (shell.paint.stroke, &mut sources.stroke),
+                    (shell.paint.stroke_width, &mut sources.stroke_width),
+                ] {
+                    if applies {
+                        *status = FlowchartSourceFacetStatus::Unverified;
+                    }
                 }
             }
         }
@@ -113,13 +111,11 @@ impl FlowchartClusterStructuralSources {
 }
 
 impl FlowchartNodeTerminalSourceOwnership {
-    fn prepare(
+    fn prepare_shape(
         shape: Option<&str>,
-        class_defs: &indexmap::IndexMap<String, Vec<String>>,
+        class_defs: &crate::flowchart::FlowchartClassDefinitions<'_>,
         html_labels: bool,
-        fonts: &crate::flowchart::FlowchartStructuralLabelTypography,
         hand_drawn: bool,
-        source: &FlowchartCompiledStyles,
         work: &crate::resources::OperationWorkMeter,
     ) -> crate::Result<Self> {
         let mut owners = Self {
@@ -133,43 +129,6 @@ impl FlowchartNodeTerminalSourceOwnership {
             font_size: FlowchartSourceFacetStatus::Absent,
             residuals: Vec::new(),
         };
-        owners.label_foreground = fonts.foreground_status();
-        for (font_source, status, ordinary) in [
-            (
-                fonts.font_stack.as_ref(),
-                &mut owners.font_stack,
-                source.source_font_stack_status(),
-            ),
-            (
-                fonts.font_size.as_ref(),
-                &mut owners.font_size,
-                source.source_font_size_status(),
-            ),
-        ] {
-            let Some(font_source) = font_source else {
-                continue;
-            };
-            *status = FlowchartSourceFacetStatus::from_parts(true, font_source.measurable());
-            // A content declaration remains specified below the ordinary label style;
-            // an admitted parent font cannot discharge its measurement residual.
-            if !font_source.measurable() && (font_source.owns_content() || ordinary.is_absent()) {
-                let declaration = font_source.declaration.bind(
-                    crate::diagram_theme::SourceStyleProvenance::generated_class_css(
-                        std::sync::Arc::clone(&font_source.class_id),
-                        crate::diagram_theme::SourceStyleChannel::Stylesheet,
-                        font_source.ordinal,
-                    ),
-                );
-                let reason = super::style::label_source_residual_reason(&declaration, true)
-                    .unwrap_or(crate::diagram_theme::SourceStyleResidualReason::UnsupportedSurface);
-                owners
-                    .residuals
-                    .push(crate::diagram_theme::SourceStyleResidual::from_declaration(
-                        &declaration,
-                        reason,
-                    ));
-            }
-        }
         let Some(shape) = shape else {
             return Ok(owners);
         };
@@ -225,33 +184,88 @@ impl FlowchartNodeTerminalSourceOwnership {
             .chain(body_class.map(|class| (class, true)));
         for (class, direct_terminal) in classes {
             work.charge(1)?;
-            let Some(declarations) = class_defs.get(class) else {
+            let Some(shell) =
+                class_defs.prepare_shell(class, |units| work.charge(units).map_err(Into::into))?
+            else {
                 continue;
             };
-            for declaration in declarations {
-                work.charge(declaration.len())?;
-            }
-            // Read parsed CSSOM declarations directly, never Mermaid's comma-delimited syntax.
-            let styles = crate::flowchart::FlowchartClassDefStyles::prepare(declarations);
-            for declaration in styles.shape.values() {
-                let owner = match declaration.property() {
-                    "fill" if direct_terminal || inherits_paint => &mut owners.fill,
-                    "stroke" if direct_terminal || inherits_paint => &mut owners.stroke,
-                    // BPMN rings retain a fixed terminal width even under .rough-node.
-                    "stroke-width" if direct_terminal || inherits_width => &mut owners.stroke_width,
-                    "stroke-dasharray" if direct_terminal || inherits_dash => {
-                        &mut owners.stroke_dasharray
-                    }
-                    // rx/ry do not inherit and only round native Process/RoundedRectangle rects.
-                    "rx" | "ry" if direct_terminal && native_rectangle => &mut owners.radius,
-                    _ => continue,
-                };
+            let paint = &shell.paint;
+            for (applies, owner) in [
+                (
+                    paint.fill && (direct_terminal || inherits_paint),
+                    &mut owners.fill,
+                ),
+                (
+                    paint.stroke && (direct_terminal || inherits_paint),
+                    &mut owners.stroke,
+                ),
+                // BPMN rings retain a fixed terminal width even under .rough-node.
+                (
+                    paint.stroke_width && (direct_terminal || inherits_width),
+                    &mut owners.stroke_width,
+                ),
+                (
+                    paint.stroke_dasharray && (direct_terminal || inherits_dash),
+                    &mut owners.stroke_dasharray,
+                ),
+                // rx/ry do not inherit and only round native Process/RoundedRectangle rects.
+                (
+                    paint.radius && direct_terminal && native_rectangle,
+                    &mut owners.radius,
+                ),
+            ] {
                 // Ownership blocks typed paint even for values outside the admitted paint set.
                 // It does not certify the independent source transport or remove its residuals.
-                *owner = FlowchartSourceFacetStatus::Unverified;
+                if applies {
+                    *owner = FlowchartSourceFacetStatus::Unverified;
+                }
             }
         }
         Ok(owners)
+    }
+
+    fn with_label_sources(
+        mut self,
+        fonts: &crate::flowchart::FlowchartStructuralLabelTypography,
+        source: &FlowchartCompiledStyles,
+    ) -> Self {
+        self.label_foreground = fonts.foreground_status();
+        for (font_source, status, ordinary) in [
+            (
+                fonts.font_stack.as_ref(),
+                &mut self.font_stack,
+                source.source_font_stack_status(),
+            ),
+            (
+                fonts.font_size.as_ref(),
+                &mut self.font_size,
+                source.source_font_size_status(),
+            ),
+        ] {
+            let Some(font_source) = font_source else {
+                continue;
+            };
+            *status = FlowchartSourceFacetStatus::from_parts(true, font_source.measurable());
+            // A content declaration remains specified below the ordinary label style;
+            // an admitted parent font cannot discharge its measurement residual.
+            if !font_source.measurable() && (font_source.owns_content() || ordinary.is_absent()) {
+                let declaration = font_source.declaration.bind(
+                    crate::diagram_theme::SourceStyleProvenance::generated_class_css(
+                        std::sync::Arc::clone(&font_source.class_id),
+                        crate::diagram_theme::SourceStyleChannel::Stylesheet,
+                        font_source.ordinal,
+                    ),
+                );
+                let reason = super::style::label_source_residual_reason(&declaration, true)
+                    .unwrap_or(crate::diagram_theme::SourceStyleResidualReason::UnsupportedSurface);
+                self.residuals
+                    .push(crate::diagram_theme::SourceStyleResidual::from_declaration(
+                        &declaration,
+                        reason,
+                    ));
+            }
+        }
+        self
     }
 
     pub(super) fn merge_into_evidence(
@@ -474,7 +488,7 @@ impl PreparedNodeTerminal {
         reason = "The prepared source typography joins existing independent node facet inputs"
     )]
     pub(super) fn prepare(
-        class_defs: &indexmap::IndexMap<String, Vec<String>>,
+        class_defs: &crate::flowchart::FlowchartClassDefinitions<'_>,
         (classes, inline_styles, include_default_class): (&[String], &[String], bool),
         terminal_shape: Option<&str>,
         structural: &crate::flowchart::FlowchartStructuralLabelTypography,
@@ -485,25 +499,24 @@ impl PreparedNodeTerminal {
         work: &crate::resources::OperationWorkMeter,
     ) -> crate::Result<Option<Self>> {
         let style = FlowchartNodeThemeStyle::resolve(theme, ordinal, work)?;
-        let source = if include_default_class {
-            flowchart_compile_node_styles(class_defs, classes, inline_styles, &[])
-        } else {
-            flowchart_compile_styles(class_defs, classes, inline_styles, &[])
-        };
-        let terminal_sources = FlowchartNodeTerminalSourceOwnership::prepare(
+        let terminal_sources = FlowchartNodeTerminalSourceOwnership::prepare_shape(
             terminal_shape.filter(|_| theme.is_some()),
             class_defs,
             inputs.classdef_html_labels,
-            structural,
             inputs.look.is_hand_drawn(),
-            &source,
             work,
         )?;
-        // Geometry queries still run the metered source and theme resolution above, but
-        // they do not consume SVG paint strings or terminal provenance.
+        // Geometry queries admit structural style work before returning their layout. The
+        // assigned and inline style compilation below supplies only SVG paint and provenance.
         let Some(source_text_style) = source_text_style else {
             return Ok(None);
         };
+        let source = if include_default_class {
+            flowchart_compile_node_styles(class_defs.source, classes, inline_styles, &[])
+        } else {
+            flowchart_compile_styles(class_defs.source, classes, inline_styles, &[])
+        };
+        let terminal_sources = terminal_sources.with_label_sources(structural, &source);
         // Radius configuration reaches RoundedRectangle in every look, but only Neo's
         // Process writer consumes the numeric compatibility radius.
         let radius_config_override = match terminal_shape

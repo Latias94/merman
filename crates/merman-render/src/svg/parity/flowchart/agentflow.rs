@@ -1,6 +1,7 @@
 //! Flowchart container colors and Agentflow's separate kind-first palette.
 
 use super::*;
+use serde_json::Value;
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::fmt;
@@ -16,18 +17,63 @@ const KINDS: [&str; 7] = [
     "action",
 ];
 
+pub(super) struct ContainerPalette<'a> {
+    borders: &'a [Value],
+    backgrounds: &'a [Value],
+    look: &'a str,
+}
+
+impl<'a> ContainerPalette<'a> {
+    pub(super) fn new(config: &'a (impl crate::config::ConfigLookup + ?Sized)) -> Self {
+        let variables = config.get("themeVariables");
+        let colors = |key: &str| {
+            variables
+                .and_then(|value| value.get(key))
+                .and_then(Value::as_array)
+                .map_or(&[][..], Vec::as_slice)
+        };
+        let borders = if matches!(
+            config.get("theme").and_then(Value::as_str),
+            Some("redux-color" | "redux-dark-color")
+        ) {
+            colors("borderColorArray")
+        } else {
+            &[]
+        };
+        let look = config
+            .get("look")
+            .and_then(Value::as_str)
+            .filter(|look| {
+                !look.is_empty()
+                    && look
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+            })
+            .unwrap_or("classic");
+        Self {
+            borders,
+            backgrounds: colors("bkgColorArray"),
+            look,
+        }
+    }
+
+    pub(super) fn color_count(&self) -> usize {
+        self.borders.len()
+    }
+}
+
 fn container_slot(ordinal: usize, palette_len: usize) -> usize {
     (KINDS.len() + ordinal % palette_len.saturating_sub(KINDS.len()).max(1)) % palette_len
 }
 
 pub(super) fn container_color_slot(ctx: &FlowchartRenderCtx<'_>, id: &str) -> Option<usize> {
-    let colors = &ctx.compatibility.palette;
+    let count = ctx.palette.color_count();
     let ordinal = ctx.model.subgraph_color_ordinal(id)?;
-    (!colors.is_empty()).then(|| {
+    (count > 0).then(|| {
         if ctx.diagram_type == "agentflow" {
-            container_slot(ordinal, colors.len())
+            container_slot(ordinal, count)
         } else {
-            ordinal % colors.len()
+            ordinal % count
         }
     })
 }
@@ -35,7 +81,7 @@ pub(super) fn container_color_slot(ctx: &FlowchartRenderCtx<'_>, id: &str) -> Op
 pub(super) fn write_css(
     out: &mut impl SvgOutput,
     diagram_id: impl std::fmt::Display + Copy,
-    binding: &crate::flowchart::FlowchartCompatibilityBinding,
+    palette: &ContainerPalette<'_>,
     defer_palette: bool,
 ) -> Result<Option<usize>> {
     let _ = write!(
@@ -43,33 +89,29 @@ pub(super) fn write_css(
         "#{diagram_id} .flow-cluster rect{{fill:none;stroke-width:0.75px;}}"
     );
     out.checkpoint()?;
-    let borders = &binding.palette;
-    if borders.is_empty() {
+    if palette.borders.is_empty() {
         return Ok(None);
     }
-    let look = &binding.palette_look;
+    let look = palette.look;
     for (slot, kind) in KINDS.iter().enumerate() {
         out.checkpoint()?;
         let selector = format!(r##"#{diagram_id} [data-look="{look}"].node.af-kind-{kind}"##);
         let _ = write!(
             out,
             "{selector} rect,{selector} path,{selector} polygon{{{}}}",
-            agentflow_declarations(binding, slot)
+            agentflow_declarations(palette, slot)
         );
     }
     if defer_palette {
         return Ok(Some(out.len()));
     }
-    write_agentflow_container_css(out, diagram_id, binding, None)?;
+    write_agentflow_container_css(out, diagram_id, palette, None)?;
     Ok(None)
 }
 
-fn agentflow_declarations(
-    binding: &crate::flowchart::FlowchartCompatibilityBinding,
-    slot: usize,
-) -> String {
-    let borders = &binding.palette;
-    let backgrounds = &binding.palette_backgrounds;
+fn agentflow_declarations(palette: &ContainerPalette<'_>, slot: usize) -> String {
+    let borders = palette.borders;
+    let backgrounds = palette.backgrounds;
     let color_value = |value: &serde_json::Value| {
         value
             .as_str()
@@ -91,11 +133,11 @@ fn agentflow_declarations(
 pub(super) fn write_agentflow_container_css(
     out: &mut impl SvgOutput,
     diagram_id: impl std::fmt::Display + Copy,
-    binding: &crate::flowchart::FlowchartCompatibilityBinding,
+    palette: &ContainerPalette<'_>,
     used: Option<&BTreeSet<usize>>,
 ) -> Result<()> {
-    let borders = &binding.palette;
-    let look = &binding.palette_look;
+    let borders = palette.borders;
+    let look = palette.look;
     for ordinal in 0..borders.len().saturating_sub(KINDS.len()).max(1) {
         let slot = container_slot(ordinal, borders.len());
         if used.is_some_and(|used| !used.contains(&slot)) {
@@ -110,7 +152,7 @@ pub(super) fn write_agentflow_container_css(
         let _ = write!(
             out,
             "{expanded} rect,{collapsed} rect,{expanded} path,{collapsed} path{{{}}}",
-            agentflow_declarations(binding, slot)
+            agentflow_declarations(palette, slot)
         );
     }
     out.checkpoint()
@@ -121,19 +163,18 @@ pub(super) fn write_agentflow_container_css(
 pub(super) fn write_flowchart_container_css(
     out: &mut impl SvgOutput,
     diagram_id: impl std::fmt::Display + Copy,
-    binding: &crate::flowchart::FlowchartCompatibilityBinding,
+    palette: &ContainerPalette<'_>,
     slots: impl IntoIterator<Item = usize, IntoIter: ExactSizeIterator>,
 ) -> Result<()> {
-    let look = &binding.palette_look;
-    let backgrounds =
-        (!binding.palette_backgrounds.is_empty()).then_some(&binding.palette_backgrounds);
+    let look = palette.look;
+    let backgrounds = (!palette.backgrounds.is_empty()).then_some(palette.backgrounds);
     let slots = slots.into_iter();
     let remaining_slots = slots.len().saturating_sub(1);
     let mut prefix = String::new();
     let mut fragments = String::new();
     for (index, slot) in slots.enumerate() {
         out.checkpoint()?;
-        let border = container_palette_value(&binding.palette[slot]);
+        let border = container_palette_value(&palette.borders[slot]);
         let background =
             backgrounds.map(|values| container_palette_value(&values[slot % values.len()]));
         fragments.clear();
@@ -200,11 +241,11 @@ pub(super) fn write_flowchart_container_css(
 
 /// Keep opaque compatibility declarations and resource-bearing selectors on the full path.
 pub(super) fn can_defer_palette(ctx: &FlowchartRenderCtx<'_>) -> Result<bool> {
-    let binding = ctx.compatibility;
-    if binding.palette.is_empty() {
+    let palette = &ctx.palette;
+    if palette.borders.is_empty() {
         return Ok(false);
     }
-    for value in binding.palette.iter().chain(&binding.palette_backgrounds) {
+    for value in palette.borders.iter().chain(palette.backgrounds) {
         ctx.checkpoint_emit()?;
         let Some(value) = value.as_str() else {
             return Ok(false);
@@ -292,4 +333,30 @@ fn append_container_fragment(buffer: &mut String, arguments: fmt::Arguments<'_>)
     let start = buffer.len();
     let _ = buffer.write_fmt(arguments);
     start..buffer.len()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn palette_borrows_opaque_values_without_reordering_slots() {
+        let config = json!({
+            "theme": "redux-color", "look": "neo",
+            "themeVariables": {"borderColorArray": [null, " blue "], "bkgColorArray": [12]}
+        });
+        let palette = ContainerPalette::new(&config);
+        assert_eq!(palette.borders, [Value::Null, json!(" blue ")]);
+        assert_eq!(palette.backgrounds, [json!(12)]);
+        assert_eq!(palette.look, "neo");
+        assert!(std::ptr::eq(
+            &palette.borders[1],
+            &config["themeVariables"]["borderColorArray"][1]
+        ));
+        assert!(std::ptr::eq(
+            &palette.backgrounds[0],
+            &config["themeVariables"]["bkgColorArray"][0]
+        ));
+    }
 }

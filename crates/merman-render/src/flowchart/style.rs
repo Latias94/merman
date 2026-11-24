@@ -446,16 +446,18 @@ pub(super) fn flowchart_declared_font_facets(
     ]
 }
 
+const IMPLICIT_NODE_CLASSES: [&str; 2] = ["default", "node"];
+
 pub(crate) fn flowchart_effective_node_class_names<'a>(
     class_defs: &'a IndexMap<String, Vec<String>>,
     classes: &'a [String],
 ) -> Vec<&'a str> {
-    let mut effective: Vec<&'a str> = Vec::with_capacity(classes.len() + 2);
-    if class_defs.contains_key("default") {
-        effective.push("default");
-    }
-    if class_defs.contains_key("node") {
-        effective.push("node");
+    let mut effective: Vec<&'a str> =
+        Vec::with_capacity(classes.len() + IMPLICIT_NODE_CLASSES.len());
+    for name in IMPLICIT_NODE_CLASSES {
+        if class_defs.contains_key(name) {
+            effective.push(name);
+        }
     }
     effective.extend(classes.iter().map(|class| class.as_str()));
     effective
@@ -937,16 +939,20 @@ fn flowchart_html_span_box_style(
     classes: &[String],
     font_size: f64,
 ) -> HtmlSpanBoxStyle {
-    let effective = flowchart_effective_node_class_names(class_defs, classes);
     let mut style = HtmlSpanBoxStyle::new(font_size);
 
     // `createCssStyles()` emits one selector per class definition in definition order. All
     // selectors have equal specificity, so stylesheet order, rather than the order in a node's
     // `class` attribute, owns the cascade for the generated `<span>`.
-    for (class, declarations) in class_defs {
-        if !effective.contains(&class.as_str()) {
-            continue;
-        }
+    let mut matching = IMPLICIT_NODE_CLASSES
+        .into_iter()
+        .chain(classes.iter().map(String::as_str))
+        .filter_map(|class| class_defs.get_full(class))
+        .map(|(index, _, declarations)| (index, declarations))
+        .collect::<Vec<_>>();
+    matching.sort_unstable_by_key(|(index, _)| *index);
+    matching.dedup_by_key(|(index, _)| *index);
+    for (_, declarations) in matching {
         for declaration in declarations {
             for declaration in flowchart_split_mermaid_style_decls(declaration) {
                 let Some((property, value, _important)) = parse_style_decl(declaration) else {
@@ -1006,6 +1012,26 @@ pub(crate) fn flowchart_apply_html_node_class_box_metrics(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn html_class_box_styles_follow_stylesheet_order() {
+        let class_defs = [
+            ("third", "padding-left:4em"),
+            ("node", "display:inline-block"),
+            ("default", "padding:2px"),
+            ("unrelated", "padding:89px"),
+            ("second", "padding-left:1em"),
+        ]
+        .into_iter()
+        .map(|(name, declaration)| (name.to_owned(), vec![declaration.to_owned()]))
+        .collect();
+        let classes = ["second", "third", "third", "unknown"].map(str::to_owned);
+        let style = flowchart_html_span_box_style(&class_defs, &classes, 10.0);
+
+        assert_eq!(style.padding.left, 10.0);
+        assert_eq!(style.padding.right, 2.0);
+        assert!(matches!(style.display, HtmlSpanDisplay::InlineBlock));
+    }
 
     #[test]
     fn text_style_resolution_uses_the_compiled_invalid_winner() {

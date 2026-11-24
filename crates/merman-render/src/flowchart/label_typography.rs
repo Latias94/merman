@@ -176,10 +176,14 @@ impl FlowchartLabelTypography {
         source: (&[String], &[String], bool),
         structural: &super::FlowchartStructuralLabelTypography,
     ) -> Cow<'a, TextStyle> {
+        let target = ThemeTarget::NodeLabel;
+        if !self.has_fonts(target) {
+            return structural.apply_to_parent(self.parent_style(target, parent));
+        }
         let [stack, size] =
             super::style::flowchart_declared_font_facets(class_defs, source.0, source.1, source.2);
         let parent = self.parent_style_with_source(
-            ThemeTarget::NodeLabel,
+            target,
             parent,
             stack || !structural.font_stack_status().is_absent(),
             size || !structural.font_size_status().is_absent(),

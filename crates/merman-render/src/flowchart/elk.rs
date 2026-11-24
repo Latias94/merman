@@ -25,8 +25,8 @@ use super::config::{FlowchartConfigView, FlowchartLayoutSettings};
 use super::label::compute_bounds;
 use super::node::NodeLayoutDimensionsRequest;
 use super::{
-    FlowchartLabelMetricsRequest, FlowchartRenderModelRef, FlowchartSvgLabelOwner,
-    FlowchartSvgLabelSidecarBuilder, FlowchartSvgWidthMode,
+    FlowchartClassDefinitions, FlowchartLabelMetricsRequest, FlowchartRenderModelRef,
+    FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder, FlowchartSvgWidthMode,
     flowchart_apply_html_node_class_box_metrics,
     flowchart_effective_text_style_for_classes_with_provenance, flowchart_node_svg_width_mode,
     measure_flowchart_svg_label_for_layout_with_metrics_and_source_style,
@@ -119,6 +119,7 @@ pub(crate) fn layout_flowchart_elk_typed_with_operation_seed(
     layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
         model,
         &FlowchartRenderContext::default(),
+        &FlowchartClassDefinitions::new(&model.class_defs),
         effective_config,
         FlowchartElkLayoutExecution::new(
             measurer,
@@ -134,6 +135,7 @@ pub(crate) fn layout_flowchart_elk_typed_with_operation_seed(
 pub(crate) fn layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
+    class_defs: &FlowchartClassDefinitions<'_>,
     effective_config: &PresentationConfig,
     execution: FlowchartElkLayoutExecution<'_>,
 ) -> Result<FlowchartLayout> {
@@ -141,6 +143,7 @@ pub(crate) fn layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
     let mut graph = build_flowchart_elk_graph_with_render_labels_and_work_control(
         model,
         render_label_sources,
+        class_defs,
         effective_config,
         execution.measurer,
         execution.math_renderer,
@@ -892,6 +895,7 @@ fn build_flowchart_elk_graph_with_render_labels(
     build_flowchart_elk_graph_with_render_labels_and_work_control(
         model,
         render_label_sources,
+        &FlowchartClassDefinitions::new(&model.class_defs),
         effective_config,
         measurer,
         math_renderer,
@@ -920,6 +924,7 @@ fn build_flowchart_elk_graph_with_work_control(
     build_flowchart_elk_graph_with_render_labels_and_work_control(
         model,
         &FlowchartRenderContext::default(),
+        &FlowchartClassDefinitions::new(&model.class_defs),
         effective_config,
         measurer,
         math_renderer,
@@ -995,6 +1000,7 @@ fn comparison_sort_work_units(
 fn build_flowchart_elk_graph_with_render_labels_and_work_control(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
+    class_defs: &FlowchartClassDefinitions<'_>,
     effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
@@ -1011,6 +1017,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control(
         return build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
             &projected_model.model,
             render_label_sources,
+            class_defs,
             effective_config,
             measurer,
             math_renderer,
@@ -1025,6 +1032,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control(
     build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
         model,
         render_label_sources,
+        class_defs,
         effective_config,
         measurer,
         math_renderer,
@@ -1130,6 +1138,7 @@ fn project_collapsed_flowchart_model(
 fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
+    class_defs: &FlowchartClassDefinitions<'_>,
     effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
@@ -1235,6 +1244,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
 
     let cluster_measure_ctx = ElkMeasureContext {
         model: render_model,
+        class_defs,
         effective_config,
         measurer,
         math_renderer,
@@ -1247,6 +1257,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
     };
     let node_measure_ctx = NodeMeasureContext {
         model: render_model,
+        class_defs,
         effective_config,
         measurer,
         math_renderer,
@@ -1360,6 +1371,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
 #[derive(Clone, Copy)]
 struct ElkMeasureContext<'a> {
     model: FlowchartRenderModelRef<'a>,
+    class_defs: &'a FlowchartClassDefinitions<'a>,
     effective_config: &'a PresentationConfig,
     measurer: &'a dyn TextMeasurer,
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
@@ -1385,6 +1397,7 @@ fn canonical_subgraphs(model: &FlowchartModel) -> Vec<(usize, &FlowSubgraph)> {
 #[derive(Clone, Copy)]
 struct NodeMeasureContext<'a> {
     model: FlowchartRenderModelRef<'a>,
+    class_defs: &'a FlowchartClassDefinitions<'a>,
     effective_config: &'a PresentationConfig,
     measurer: &'a dyn TextMeasurer,
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
@@ -1613,7 +1626,7 @@ fn subgraph_label(
     let collapsed = ctx.model.is_subgraph_collapsed(sg.id.as_str());
     let structural = if collapsed {
         Some(super::FlowchartStructuralLabelTypography::prepare(
-            &ctx.model.class_defs,
+            ctx.class_defs,
             ctx.class_html_labels,
             super::FlowchartLabelDom::node(
                 "collapsedGroup",
@@ -1716,7 +1729,7 @@ fn node_dimensions_and_label(
         ),
     );
     let structural = super::FlowchartStructuralLabelTypography::prepare(
-        &ctx.model.class_defs,
+        ctx.class_defs,
         label_dom.0,
         label_dom.1,
         |units| charge_adapter_work(work_control, units),
@@ -2267,6 +2280,7 @@ mod tests {
         let graph = build_flowchart_elk_graph_with_render_labels_and_work_control(
             &model,
             &FlowchartRenderContext::default(),
+            &FlowchartClassDefinitions::new(&model.class_defs),
             &config,
             &measurer,
             None,
@@ -2353,6 +2367,7 @@ A -->|boundary| D
         let graph = build_flowchart_elk_graph_with_render_labels_and_work_control(
             model,
             render_context,
+            &FlowchartClassDefinitions::new(&model.class_defs),
             &config,
             &measurer,
             None,
@@ -2444,6 +2459,7 @@ A -->|boundary| D
         let graph = build_flowchart_elk_graph_with_render_labels_and_work_control(
             &model,
             &FlowchartRenderContext::default(),
+            &FlowchartClassDefinitions::new(&model.class_defs),
             &config,
             &measurer,
             None,

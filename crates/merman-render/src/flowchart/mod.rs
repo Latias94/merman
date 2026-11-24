@@ -25,7 +25,8 @@ use std::borrow::Cow;
 use std::ops::Deref;
 
 pub(crate) use class_style::{
-    FlowchartClassDefStyles, FlowchartLabelDom, FlowchartStructuralLabelTypography,
+    FlowchartClassDefStyles, FlowchartClassDefinitions, FlowchartLabelDom,
+    FlowchartStructuralLabelTypography,
 };
 pub(crate) use compatibility::{
     FlowchartCompatibilityBinding, FlowchartEffectEligibility, FlowchartPreparedTheme,

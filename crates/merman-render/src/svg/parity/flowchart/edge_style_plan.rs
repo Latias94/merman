@@ -1,6 +1,7 @@
 //! Operation-local Flowchart edge source-style plan.
 
 use super::*;
+use crate::flowchart::FlowchartClassDefinitions;
 use std::cell::OnceCell;
 use std::sync::Arc;
 
@@ -86,26 +87,30 @@ struct FlowchartStructuralEdgePathStyle {
 
 impl FlowchartStructuralEdgePathStyle {
     fn prepare(
-        class_defs: &IndexMap<String, Vec<String>>,
+        class_defs: &FlowchartClassDefinitions<'_>,
         work: &crate::resources::OperationWorkMeter,
     ) -> crate::Result<Vec<Self>> {
         let mut definitions = ["root", "nodes", "edgePaths", "edges"]
             .into_iter()
             .filter_map(|class| {
                 class_defs
-                    .get_full(class)
-                    .map(|(index, _, declarations)| (index, class, declarations))
+                    .source
+                    .get_index_of(class)
+                    .map(|index| (index, class))
             })
             .collect::<Vec<_>>();
-        definitions.sort_unstable_by_key(|(index, _, _)| *index);
+        definitions.sort_unstable_by_key(|(index, _)| *index);
         let mut styles = Vec::with_capacity(definitions.len());
-        for (_, class, declarations) in definitions {
-            for declaration in declarations {
-                work.charge(declaration.len())?;
-            }
-            // Inspect the same safe CSSOM projection emitted by the stylesheet. In particular,
-            // invalid and resource-bearing raw class declarations must not become source owners.
-            let (shape, _) = css::flowchart_classdef_css_declarations(declarations);
+        for (_, class) in definitions {
+            let shape = {
+                let Some(styles) = class_defs
+                    .prepare_shell_cssom(class, |units| work.charge(units).map_err(Into::into))?
+                else {
+                    continue;
+                };
+                // Invalid and resource-bearing declarations are absent from the emitted CSSOM.
+                css::flowchart_classdef_cssom_string(&styles.shape)
+            };
             if shape.is_empty() {
                 continue;
             }
@@ -202,10 +207,27 @@ impl FlowchartEdgeStrokeWidthResolution {
 }
 
 impl FlowchartEdgeStylePlan {
+    #[cfg(test)]
     pub(crate) fn prepare_for_model(
         model: &crate::flowchart::FlowchartModel,
         effective_config: &merman_model::presentation::PresentationConfig,
         swimlane: bool,
+        work_meter: &crate::resources::OperationWorkMeter,
+    ) -> crate::Result<Self> {
+        Self::prepare_with_class_definitions(
+            model,
+            effective_config,
+            swimlane,
+            &FlowchartClassDefinitions::new(&model.class_defs),
+            work_meter,
+        )
+    }
+
+    pub(crate) fn prepare_with_class_definitions(
+        model: &crate::flowchart::FlowchartModel,
+        effective_config: &merman_model::presentation::PresentationConfig,
+        swimlane: bool,
+        class_defs: &FlowchartClassDefinitions<'_>,
         work_meter: &crate::resources::OperationWorkMeter,
     ) -> crate::Result<Self> {
         let default_edge_style = model
@@ -224,7 +246,7 @@ impl FlowchartEdgeStylePlan {
             effective_config.config_path_overrides_typed_default("themeVariables.strokeWidth");
         if !model.edges.is_empty() {
             plan.structural_path_styles =
-                FlowchartStructuralEdgePathStyle::prepare(&model.class_defs, work_meter)?;
+                FlowchartStructuralEdgePathStyle::prepare(class_defs, work_meter)?;
         }
         Ok(plan)
     }
@@ -923,8 +945,11 @@ mod tests {
                 &meter,
             )
             .unwrap();
-            plan.structural_path_styles =
-                FlowchartStructuralEdgePathStyle::prepare(&class_defs, &meter).unwrap();
+            plan.structural_path_styles = FlowchartStructuralEdgePathStyle::prepare(
+                &FlowchartClassDefinitions::new(&class_defs),
+                &meter,
+            )
+            .unwrap();
             plan.bind_path_sources_for(key, html, edges_group, nested, &meter)
                 .unwrap();
             assert_eq!(
@@ -958,8 +983,11 @@ mod tests {
             &meter,
         )
         .unwrap();
-        plan.structural_path_styles =
-            FlowchartStructuralEdgePathStyle::prepare(&class_defs, &meter).unwrap();
+        plan.structural_path_styles = FlowchartStructuralEdgePathStyle::prepare(
+            &FlowchartClassDefinitions::new(&class_defs),
+            &meter,
+        )
+        .unwrap();
         let key = crate::flowchart::FlowchartEdgeKey::new(0);
         plan.bind_path_sources_for(key, false, false, false, &meter)
             .unwrap();
@@ -1117,8 +1145,11 @@ mod tests {
                 &meter,
             )
             .unwrap();
-            plan.structural_path_styles =
-                FlowchartStructuralEdgePathStyle::prepare(&class_defs, &meter).unwrap();
+            plan.structural_path_styles = FlowchartStructuralEdgePathStyle::prepare(
+                &FlowchartClassDefinitions::new(&class_defs),
+                &meter,
+            )
+            .unwrap();
             let original = plan
                 .resolve_edge_stroke_width(key, &edge, &edge_theme, 1.3, hand_drawn)
                 .unwrap();

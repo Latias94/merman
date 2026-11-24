@@ -246,6 +246,7 @@ pub(super) fn with_flowchart_paint_context<T>(
         measurer,
         config: effective_config,
         compatibility: &prepared_theme.compatibility,
+        palette: super::agentflow::ContainerPalette::new(effective_config),
         effect_eligibility: &prepared_theme.effects,
         hand_drawn_seed,
         work_meter: options.work_meter(),
@@ -764,7 +765,7 @@ mod tests {
             layout_session.work_meter(),
         )
         .unwrap();
-        let layout = crate::flowchart::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(model, context, &parsed.metadata().effective_config, &layout_session.text_measurer(crate::environment::TextMeasurementPhase::Layout), None, None, &layout_style, std::sync::Arc::clone(layout_session.work_meter())).unwrap();
+        let layout = crate::flowchart::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(model, context, &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs), &parsed.metadata().effective_config, &layout_session.text_measurer(crate::environment::TextMeasurementPhase::Layout), None, None, &layout_style, std::sync::Arc::clone(layout_session.work_meter())).unwrap();
         let mut resources = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input();
         if tiny_svg_budget {
             resources = resources
@@ -827,6 +828,7 @@ mod tests {
         let nodes = super::super::node_inventory::FlowchartPreparedNodes::prepare(
             model,
             context,
+            &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
             super::super::node_inventory::FlowchartNodeLayoutView::Flowchart(&layout),
             &sidecar,
             None,
