@@ -709,10 +709,21 @@ After the first upload, configure each implementation crate's Trusted Publisher 
 package and version on the reviewed source ref. The single-fork workflow checks Rust API
 compatibility, builds workspace export features, and verifies the registry archive or dry-run.
 It also compiles a fresh SVG raster and PDF consumer with the normalized `.crate` as its sole
-local patch. The other three fork versions come from crates.io at the versions selected in the
-reviewed workspace. Publish required compatible siblings before dispatching the workflow. Changes
-that require a coordinated incompatible fork upgrade need group qualification and a publication
-order before using the single-fork workflow again.
+local patch, pinned to the exact candidate version. Cargo resolves the other three forks from
+crates.io within the following compatibility ranges and logs the selected versions.
+
+| Fork | Registry requirement |
+| --- | --- |
+| `merman-usvg` | `^0.50.0` |
+| `merman-resvg` | `^0.50.0` |
+| `merman-krilla` | `^0.8.2` |
+| `merman-krilla-svg` | `^0.8.1` |
+
+A candidate `merman-usvg 0.50.1` can therefore compile with published `merman-resvg 0.50.0`
+while the checkout contains a pending `merman-resvg 0.50.1`. Cargo also applies the dependency
+requirements in the normalized archives. Publish the versions those requirements need before
+dispatching. Coordinate incompatible fork upgrades through group qualification and an explicit
+publication order, then update the compatibility ranges for the new series.
 
 ## Release Preflight
 

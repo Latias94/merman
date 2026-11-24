@@ -965,7 +965,7 @@ def preflight_independent_crate(
     outside the coupled publish graph. Later renderer fork releases can also
     compile the prepared archive with published siblings.
     """
-    if verify_fork_consumer and package_name not in renderer_fork_consumer.FORKS:
+    if verify_fork_consumer and package_name not in renderer_fork_consumer.FORK_REQUIREMENTS:
         raise CratesIoPublishError("the renderer fork consumer requires a renderer fork package")
     package = _workspace_package(metadata, package_name)
     if package.version != expected_version:
@@ -990,13 +990,8 @@ def preflight_independent_crate(
         )
     if verify_fork_consumer:
         _assert_artifact_unchanged(prepared)
-        workspace = _workspace_packages_by_name(metadata)
-        missing_siblings = set(renderer_fork_consumer.FORKS) - workspace.keys()
-        if missing_siblings:
-            raise CratesIoPublishError("workspace is missing renderer forks: " + ", ".join(sorted(missing_siblings)))
-        versions = {name: workspace[name]["version"] for name in renderer_fork_consumer.FORKS}
         renderer_fork_consumer.verify(
-            prepared.artifact_path, candidate=package.name, versions=versions,
+            prepared.artifact_path, candidate=package.name, version=package.version,
             repo_root=repo_root, target_directory=target_directory,
         )
     if registry_checksum is not None:

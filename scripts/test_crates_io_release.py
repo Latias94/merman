@@ -321,12 +321,12 @@ class CratesIoReceiptTests(unittest.TestCase):
         self.assertEqual(commands[0][0:4], ["cargo", "publish", "-p", "roughr-merman"])
 
     def test_renderer_fork_bootstrap_and_supplemental_preflight_share_the_prepared_archive(self) -> None:
-        metadata = package_metadata("alpha", *renderer_fork_consumer.FORKS)
+        metadata = package_metadata("alpha", *renderer_fork_consumer.FORK_REQUIREMENTS)
         metadata["metadata"] = {
-            "merman-release": {"independent-packages": list(renderer_fork_consumer.FORKS)}
+            "merman-release": {"independent-packages": list(renderer_fork_consumer.FORK_REQUIREMENTS)}
         }
         with tempfile.TemporaryDirectory() as temporary:
-            for name in renderer_fork_consumer.FORKS:
+            for name in renderer_fork_consumer.FORK_REQUIREMENTS:
                 prepared = self.prepared(Path(temporary), name)
                 with (
                     self.subTest(package=name),
@@ -345,8 +345,7 @@ class CratesIoReceiptTests(unittest.TestCase):
                     ))
                     assert_unchanged.assert_called_once_with(prepared)
                     verify.assert_called_once_with(
-                        prepared.artifact_path, candidate=name,
-                        versions=dict.fromkeys(renderer_fork_consumer.FORKS, "1.0.0"),
+                        prepared.artifact_path, candidate=name, version="1.0.0",
                         repo_root=ROOT,
                         target_directory=ROOT / "target",
                     )

@@ -18,7 +18,13 @@ from scripts.release_registry_dependents import (
 )
 
 
-FORKS = ("merman-krilla", "merman-krilla-svg", "merman-resvg", "merman-usvg")
+# Compatibility floors for the published series, documented in RELEASING.md.
+FORK_REQUIREMENTS = {
+    "merman-krilla": "^0.8.2",
+    "merman-krilla-svg": "^0.8.1",
+    "merman-resvg": "^0.50.0",
+    "merman-usvg": "^0.50.0",
+}
 CRATES_IO_SOURCE = "registry+https://github.com/rust-lang/crates.io-index"
 CONSUMER = '''\
 use krilla_svg::SurfaceExt;
@@ -49,7 +55,7 @@ fn main() {
 '''
 
 
-def _manifest(versions: dict[str, str], candidate: str, candidate_path: Path) -> str:
+def _manifest(candidate: PackageSpec, candidate_path: Path) -> str:
     lines = [
         "[workspace]",
         "[package]",
@@ -60,54 +66,62 @@ def _manifest(versions: dict[str, str], candidate: str, candidate_path: Path) ->
         "",
         "[dependencies]",
     ]
-    for name in FORKS:
+    for name, registry_requirement in FORK_REQUIREMENTS.items():
         alias = name.removeprefix("merman-")
+        requirement = f"={candidate.version}" if name == candidate.name else registry_requirement
         lines.append(
-            f'{alias} = {{ package = "{name}", version = "={versions[name]}", default-features = false }}'
+            f'{alias} = {{ package = "{name}", version = "{requirement}", default-features = false }}'
         )
     lines.extend([
         "",
         "[patch.crates-io]",
-        f'{candidate} = {{ path = {toml_string(str(candidate_path))} }}',
+        f'{candidate.name} = {{ path = {toml_string(str(candidate_path))} }}',
     ])
     return "\n".join(lines) + "\n"
 
 
 def _verify_resolution(
-    metadata: dict, versions: dict[str, str], candidate: str, candidate_path: Path
-) -> None:
+    metadata: dict, candidate: PackageSpec, candidate_path: Path
+) -> dict[str, str]:
+    # Cargo enforces the manifest requirements. Check the identity and source of each fork.
     resolved_ids = {node["id"] for node in metadata["resolve"]["nodes"]}
-    for name in FORKS:
+    resolved_versions = {}
+    for name, requirement in FORK_REQUIREMENTS.items():
         selected = [
             package for package in metadata["packages"]
             if package["name"] == name and package["id"] in resolved_ids
         ]
-        expected_source = None if name == candidate else CRATES_IO_SOURCE
-        valid = (
-            len(selected) == 1
-            and selected[0]["version"] == versions[name]
-            and selected[0]["source"] == expected_source
-        )
-        if valid and name == candidate:
-            valid = Path(selected[0]["manifest_path"]).resolve() == candidate_path / "Cargo.toml"
+        is_candidate = name == candidate.name
+        expected_source = None if is_candidate else CRATES_IO_SOURCE
+        valid = len(selected) == 1 and selected[0]["source"] == expected_source
+        if valid and is_candidate:
+            valid = (
+                selected[0]["version"] == candidate.version
+                and Path(selected[0]["manifest_path"]).resolve() == candidate_path / "Cargo.toml"
+            )
         if not valid:
-            expected = "the extracted candidate" if name == candidate else "crates.io"
+            expected = (
+                f"{candidate.version} from the extracted candidate" if is_candidate
+                else f"matching {requirement} from crates.io"
+            )
             observed = [(package["version"], package["source"]) for package in selected]
             raise RegistryDependentError(
-                f"expected exactly one {name} {versions[name]} from {expected}; resolved {observed}"
+                f"expected exactly one {name} {expected}; resolved {observed}"
             )
+        resolved_versions[name] = selected[0]["version"]
+    return resolved_versions
 
 
 def verify(
     archive: Path,
     *,
     candidate: str,
-    versions: dict[str, str],
+    version: str,
     repo_root: Path,
     target_directory: Path,
     run_check=run_cargo_check,
 ) -> None:
-    spec = PackageSpec(candidate, versions[candidate])
+    spec = PackageSpec(candidate, version)
     toolchain = tomllib.loads((repo_root / "rust-toolchain.toml").read_text(encoding="utf-8"))
     with tempfile.TemporaryDirectory(prefix="merman-renderer-fork-") as temporary:
         root = Path(temporary)
@@ -122,7 +136,7 @@ def verify(
         project = root / "consumer"
         (project / "src").mkdir(parents=True)
         (project / "src/main.rs").write_text(CONSUMER, encoding="utf-8")
-        (project / "Cargo.toml").write_text(_manifest(versions, candidate, candidate_path), encoding="utf-8")
+        (project / "Cargo.toml").write_text(_manifest(spec, candidate_path), encoding="utf-8")
         # The consumer lives outside the checkout, so select the repository toolchain explicitly.
         env = {
             **os.environ,
@@ -135,12 +149,15 @@ def verify(
         if resolved.returncode:
             detail = (resolved.stderr or resolved.stdout).strip()
             raise RegistryDependentError(f"could not resolve registry siblings for {archive.name}: {detail}")
-        _verify_resolution(json.loads(resolved.stdout), versions, candidate, candidate_path)
+        resolved_versions = _verify_resolution(json.loads(resolved.stdout), spec, candidate_path)
 
         checked = run_check(["cargo", "check", "--locked"], cwd=project, env=env)
         if checked.returncode:
             detail = (checked.stderr or checked.stdout).strip()
             raise RegistryDependentError(f"fork consumer failed with {archive.name}: {detail}")
 
-    siblings = ", ".join(f"{name} {versions[name]}" for name in FORKS if name != candidate)
+    siblings = ", ".join(
+        f"{name} {resolved_version}"
+        for name, resolved_version in resolved_versions.items() if name != candidate
+    )
     print(f"Compiled {archive.name} with registry siblings {siblings}")

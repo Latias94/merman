@@ -2211,17 +2211,39 @@ jobs:
         independent = read(WORKFLOW_ROOT / "release-independent-crate.yml")
         preflight = workflow_job(independent, "preflight")
         publish = workflow_job(independent, "publish")
-        self.assertIn(
-            'args=(preflight-independent --package "$PACKAGE" --version "$VERSION")', preflight
-        )
-        self.assertIn(
-            'if [[ "$PACKAGE" != "roughr-merman" ]]; then\n'
-            '            args+=(--verify-fork-consumer)\n'
-            '          fi', preflight
-        )
-        self.assertIn('python3 scripts/crates_io_release.py "${args[@]}"', preflight)
         self.assertNotIn("--verify-fork-consumer", publish)
         self.assertIn("needs: [validate-inputs, preflight]", publish)
+        step = preflight.split(
+            "      - name: Verify registry bytes or dry-run independent crate publication\n", 1
+        )[1].split("\n      - ", 1)[0]
+        settings, command = step.split("        run: |\n", 1)
+        self.assertNotRegex(settings, r"(?m)^\s+(if|continue-on-error):")
+        self.assertIn("PACKAGE: ${{ needs.validate-inputs.outputs.package }}", settings)
+        self.assertIn("VERSION: ${{ needs.validate-inputs.outputs.version }}", settings)
+        if not BASH or (
+            os.name == "nt" and Path(BASH).parent.name.casefold() in {"system32", "windowsapps"}
+        ):
+            self.skipTest("workflow execution requires Bash")
+
+        record_python = 'python3() { printf "%s\\n" "$@"; return "$PREFLIGHT_EXIT"; }\n'
+        for package, exit_code in (
+            ("merman-krilla", 0), ("merman-krilla-svg", 0), ("merman-resvg", 0),
+            ("merman-usvg", 0), ("merman-usvg", 7), ("roughr-merman", 0),
+        ):
+            with self.subTest(package=package, exit_code=exit_code):
+                result = subprocess.run(
+                    [BASH, "-c", record_python + textwrap.dedent(command)],
+                    env={"PATH": "", "PACKAGE": package, "VERSION": "0.50.1", "PREFLIGHT_EXIT": str(exit_code)},
+                    capture_output=True, text=True, timeout=15,
+                )
+                expected = [
+                    "scripts/crates_io_release.py", "preflight-independent",
+                    "--package", package, "--version", "0.50.1",
+                ]
+                if package != "roughr-merman":
+                    expected.append("--verify-fork-consumer")
+                self.assertEqual(result.returncode, exit_code, result.stderr)
+                self.assertEqual(result.stdout.splitlines(), expected)
 
     def test_tag_bound_publishers_recheck_remote_tag_at_mutation_boundary(self) -> None:
         jobs = (
