@@ -4,12 +4,66 @@ mod search;
 mod visibility;
 
 use crate::model::{Axis, Point, Rect, RoutePoint, Side};
-use crate::work::{LayoutError, LayoutResult, Work, WorkError, reserved};
+use crate::work::{LayoutError, LayoutResult, Work, WorkControl, WorkError, reserved};
 use search::{Search, Trails};
 use std::cmp::Ordering;
 use visibility::{Bounds, Grid, GridQuery, Obstacles};
 
 pub(crate) const DEFAULT_MAX_ORTHO_GRID_NODES: usize = 4_096;
+
+/// One span of an already placed drawing. The caller reserves the terminal
+/// leads. Each side faces away from its reserved lead, toward the inner span.
+#[derive(Clone, Copy, Debug)]
+pub struct OrthogonalSpan {
+    /// Fixed inner knot and outward side of the source lead.
+    pub start: (RoutePoint, Side),
+    /// Fixed inner knot and outward side of the target lead.
+    pub end: (RoutePoint, Side),
+}
+
+/// Routes fixed spans in drawing coordinates with one obstacle index.
+///
+/// Obstacles receive half the edge separation on each side. `bounds`, when
+/// supplied, is an inclusive limit for all spans. Each search admits at most
+/// 4,096 visibility vertices, and returns `None` in place if it exceeds that
+/// cap or finds no route. Successful paths include both fixed knots and affect
+/// later spans' crossing and overlap cost. Cancellation and work exhaustion
+/// abort the batch with an error.
+pub fn route_orthogonal_spans(
+    obstacles: &[Rect],
+    bounds: Option<Rect>,
+    edge_sep: f64,
+    spans: &[OrthogonalSpan],
+    control: &mut impl WorkControl,
+) -> Result<Vec<Option<Vec<RoutePoint>>>, LayoutError> {
+    let mut work = Work::new(control);
+    work.check()?;
+    if spans.is_empty() {
+        return Ok(Vec::new());
+    }
+    work.charge(spans.len())?;
+    let mut routes = reserved(spans.len())?;
+    let mut router =
+        OrthoRouter::new(obstacles, edge_sep, DEFAULT_MAX_ORTHO_GRID_NODES, &mut work)?;
+    for &span in spans {
+        let path = router.route(
+            OrthoRequest {
+                start: span.start.0,
+                end: span.end.0,
+                start_side: Some(span.start.1),
+                end_side: Some(span.end.1),
+                bounds,
+            },
+            &mut work,
+        )?;
+        if let Some(points) = &path {
+            router.record_route(points, &mut work)?;
+        }
+        routes.push(path);
+    }
+    work.finish()?;
+    Ok(routes)
+}
 
 /// A single span between two fixed knots. A supplied side points from its knot
 /// away from the reserved lead. The span can continue outward or turn at the knot.

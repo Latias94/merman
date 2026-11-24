@@ -146,7 +146,8 @@ fn project(
             }];
             work.visit(vertices.len())?;
             for run in vertices
-                .split(|&v| locked(s, c, v as usize))
+                .chunk_by(|&a, &b| s.same_lane(a as usize, b as usize))
+                .flat_map(|lane| lane.split(|&v| locked(s, c, v as usize)))
                 .filter(|run| !run.is_empty())
             {
                 if !row.fit(s, run, &anchors, origin, &mut x, work)? {

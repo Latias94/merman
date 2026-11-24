@@ -9,6 +9,8 @@ mod expand;
 mod extras;
 mod fan;
 mod hub;
+pub(crate) mod lanes;
+pub(crate) use extras::BoundaryRoutes;
 mod label_place;
 mod order;
 mod pack;

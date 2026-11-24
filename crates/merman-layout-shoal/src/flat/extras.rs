@@ -10,6 +10,7 @@
 //! obstacles, one outward slide sorts at most K intervals in O(K log K) time and O(K)
 //! temporary storage. No search advances one drawing unit at a time.
 
+mod boundary;
 mod corridor;
 mod obstacles;
 #[cfg(test)]
@@ -21,6 +22,7 @@ use crate::{
     Axis, Direction, EdgeGeometry, EdgeSpec, Graph, LayoutError, MarkerMetrics, NodeSpec, Options,
     Point, PortSideHint, Rect, RoutePoint, Side, Size, WorkError,
 };
+pub(crate) use boundary::BoundaryRoutes;
 use obstacles::{Bounds, Obstacles, Owner, RouteWalls};
 
 pub(crate) fn route_corridor(

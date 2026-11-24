@@ -378,6 +378,15 @@ pub struct Graph {
     pub nodes: Vec<NodeSpec>,
     pub groups: Vec<GroupSpec>,
     pub edges: Vec<EdgeSpec>,
+    /// Root groups that form swimlanes, in physical left-to-right or top-to-bottom order.
+    /// Each root group must appear exactly once and every node must belong to a lane through
+    /// its parent chain. Callers can assign loose items to a synthetic root group in this list.
+    /// An empty list uses ordinary graph layout. Lanes use [`crate::WidthPolicy::Natural`] and
+    /// center their measured title on the start side of the graph's flow. The padding on that
+    /// side is the minimum thickness reserved for the header. Nested groups use their usual
+    /// direction, title placement and intermediate border contacts.
+    /// Edges to a lane shell are routed against its final box and do not rank lane contents.
+    pub lane_order: Vec<GroupId>,
 }
 
 #[non_exhaustive]
@@ -443,6 +452,7 @@ pub struct LayoutOutput {
     pub nodes: Vec<Rect>,
     /// Local ranks in node input order when [`crate::Options::capture_node_ranks`] is enabled.
     /// Disconnected components and compound containers have their own rank origins.
+    /// Direct contents of swimlanes share a rank origin even across disconnected components.
     pub node_ranks: Vec<u32>,
     pub groups: Vec<GroupGeometry>,
     pub edges: Vec<EdgeGeometry>,

@@ -228,15 +228,36 @@ fn obstacles(
                 push(&mut walls, label(center, size))?;
             }
         }
-        for (marker, side, contact) in [
+        for (end, (marker, side, contact)) in [
             (spec.start_marker, geometry.ports.0, geometry.points.first()),
             (spec.end_marker, geometry.ports.1, geometry.points.last()),
-        ] {
+        ]
+        .into_iter()
+        .enumerate()
+        {
             if marker.width > 0.0
                 && marker.length > 0.0
                 && let Some(&contact) = contact
             {
-                let at = offset(contact, side, marker.length * 0.5);
+                let mut distance = marker.length * 0.5;
+                if !graph.lane_order.is_empty() {
+                    // A lane endpoint connected to a member can use the inward normal. The
+                    // public side still identifies the physical face for contour clipping.
+                    let next = if end == 0 {
+                        geometry.points.get(1)
+                    } else {
+                        geometry.points.iter().rev().nth(1)
+                    };
+                    if next.is_some_and(|p| match side {
+                        Side::Top => p.y > contact.y,
+                        Side::Right => p.x < contact.x,
+                        Side::Bottom => p.y < contact.y,
+                        Side::Left => p.x > contact.x,
+                    }) {
+                        distance = -distance;
+                    }
+                }
+                let at = offset(contact, side, distance);
                 let (width, height) = match side.axis() {
                     Axis::Horizontal => (marker.length, marker.width),
                     Axis::Vertical => (marker.width, marker.length),

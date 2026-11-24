@@ -3,11 +3,11 @@ use crate::work::push;
 use crate::{MarkerMetrics, Options};
 
 #[derive(Clone, Copy)]
-struct Slot {
-    wire: usize,
-    end: usize,
-    at: f64,
-    fixed: bool,
+pub(super) struct Slot {
+    pub(super) wire: usize,
+    pub(super) end: usize,
+    pub(super) at: f64,
+    pub(super) fixed: bool,
 }
 
 type Faces = [Vec<Slot>; 4];
@@ -36,7 +36,7 @@ fn clear_across(mut at: f64, fixed: &[f64], pitch: f64, work: &mut Work<'_>) -> 
     Ok(at)
 }
 
-fn spread(
+pub(super) fn spread(
     slots: &mut [Slot],
     low: f64,
     high: f64,
@@ -153,7 +153,7 @@ fn marker_blockers(
     Ok(())
 }
 
-fn closest_clear_port(
+pub(super) fn closest_clear_port(
     preferred: f64,
     (low, high): (f64, f64),
     blocked: &[(f64, f64)],
@@ -238,8 +238,17 @@ pub(super) fn items(
             {
                 old
             } else {
-                let side = named(hint)
-                    .unwrap_or_else(|| wire.border().expect("special leg has a border").2);
+                let side = named(hint).unwrap_or_else(|| match wire.ends[1 - end] {
+                    End::Lane { side, inward, .. } => {
+                        if inward {
+                            side
+                        } else {
+                            routes::opposite(side)
+                        }
+                    }
+                    End::Border { side, .. } => side,
+                    End::Item { .. } => unreachable!("special leg has a boundary"),
+                });
                 let offset = match hint {
                     PortSideHint::FixedOffset { offset, .. } => Some(offset),
                     _ if side.axis() == Axis::Horizontal => nodes[slot]
@@ -280,17 +289,7 @@ pub(super) fn items(
             if slots.iter().all(|slot| slot.fixed) {
                 continue;
             }
-            let length = across(side, nodes[slot].size);
-            let measured = if flow_sides(graph.direction).0.axis() == side.axis() {
-                nodes[slot].port_span
-            } else {
-                nodes[slot]
-                    .perpendicular_port_span
-                    .or(nodes[slot].port_span)
-            };
-            let span = measured
-                .unwrap_or(length - 2.0 * options.spacing.corner_clearance)
-                .clamp(0.0, length);
+            let span = item_span(&nodes[slot], side, graph, options);
             let center = cross(side, rect.center());
             let bounds = (center - span / 2.0, center + span / 2.0);
             let pitch = options.spacing.port_pitch;
@@ -342,6 +341,18 @@ pub(super) fn items(
         }
     }
     Ok(())
+}
+
+pub(super) fn item_span(node: &NodeSpec, side: Side, graph: &Graph, options: &Options) -> f64 {
+    let length = across(side, node.size);
+    let measured = if flow_sides(graph.direction).0.axis() == side.axis() {
+        node.port_span
+    } else {
+        node.perpendicular_port_span.or(node.port_span)
+    };
+    measured
+        .unwrap_or(length - 2.0 * options.spacing.corner_clearance)
+        .clamp(0.0, length)
 }
 
 pub(super) fn border(

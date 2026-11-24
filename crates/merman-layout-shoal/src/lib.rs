@@ -14,6 +14,7 @@ mod work;
 
 pub use model::*;
 pub use options::*;
+pub use ortho::{OrthogonalSpan, route_orthogonal_spans};
 pub use scratch::LayoutScratch;
 pub use work::{LayoutError, NoopWorkControl, WorkControl, WorkError};
 
@@ -37,6 +38,9 @@ pub fn layout_with_control(
     let mut frame = scratch.frame();
     let mut work = work::Work::new(control);
     work.charge(1)?;
+    if !graph.lane_order.is_empty() && options.width_policy != WidthPolicy::Natural {
+        return Err(LayoutError::Unsupported("width fitting for swimlanes"));
+    }
     let reuse_components = options.reuse_unchanged_components
         && options.width_policy == WidthPolicy::Natural
         && graph.groups.is_empty();
@@ -109,7 +113,7 @@ fn solve(
     expanded: &mut flat::Expanded,
     work: &mut work::Work<'_>,
 ) -> Result<LayoutOutput, LayoutError> {
-    if graph.groups.is_empty() {
+    if graph.groups.is_empty() && graph.lane_order.is_empty() {
         flat::run(graph, options, expanded, work)
     } else {
         compound::run(graph, options, expanded, work)

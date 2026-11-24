@@ -63,6 +63,8 @@ Use `Endpoint::Group` to connect a group directly to an outside node, another gr
 
 For curved routes between facing sibling boundaries, Shoal can straighten the corridor between the groups and align both contacts on a shared lane. It preserves the order and spacing of adjacent ports and checks the change against nodes, labels, markers and other routes.
 
+Set `Graph::lane_order` to the root group IDs in physical left-to-right or top-to-bottom order. Shoal arranges lane members on a shared rank grid, aligns the lane borders, and places titles on the starting side of the flow. Use `WidthPolicy::Natural` for these graphs and put loose items into a root lane. For an already placed grid, `route_orthogonal_spans` routes between fixed lead ends around the supplied obstacle rectangles.
+
 ## Work control and buffer reuse
 
 Use `layout_with_control(&graph, &options, &mut scratch, &mut control)` to share buffers across a batch or apply an operation budget. `WorkControl::check` polls cancellation. `charge(units)` admits work before bulk operations and during graph walks. The standard library handles sorting after admission of its comparison budget. `WorkControl::try_charge_optional` admits refinements such as compound seam alignment. Declining optional work keeps a valid drawing from the preceding pass. `NoopWorkControl` runs without a caller limit.

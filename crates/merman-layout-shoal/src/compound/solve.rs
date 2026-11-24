@@ -1,4 +1,5 @@
 mod fit;
+mod lanes;
 mod ports;
 mod routes;
 #[cfg(test)]
@@ -23,6 +24,7 @@ pub(super) struct Frame {
     pub(super) legs: Vec<EdgeGeometry>,
     pub(super) ports: Vec<Point>,
     pub(super) stats: LayoutStats,
+    pub(super) lane_shells: Vec<(Rect, Option<Point>)>,
 }
 
 const SIDES: [Side; 4] = [Side::Top, Side::Right, Side::Bottom, Side::Left];
@@ -142,6 +144,12 @@ enum End {
         flat: Option<NodeId>,
         hint: PortSideHint,
     },
+    Lane {
+        index: usize,
+        hint: PortSideHint,
+        side: Side,
+        inward: bool,
+    },
 }
 
 impl End {
@@ -149,12 +157,13 @@ impl End {
         match self {
             Self::Item { slot, .. } => Some(NodeId(slot as u32)),
             Self::Border { flat, .. } => flat,
+            Self::Lane { .. } => None,
         }
     }
 
     fn port(self) -> PortSideHint {
         match self {
-            Self::Item { hint, .. } => hint,
+            Self::Item { hint, .. } | Self::Lane { hint, .. } => hint,
             Self::Border { .. } => PortSideHint::Auto,
         }
     }
@@ -209,6 +218,14 @@ fn end(
             }
         }
         Terminal::Item(item, border) => {
+            if let Some(index) = hierarchy.lane_shell(ctx.graph, item) {
+                return Ok(End::Lane {
+                    index,
+                    hint,
+                    side: flow_sides(ctx.graph.direction).0,
+                    inward: false,
+                });
+            }
             let slot = hierarchy.item_slot(item);
             let mut child = None;
             let hint = if let Some(border) = border {
@@ -409,6 +426,11 @@ pub(super) fn level(
     work: &mut Work<'_>,
 ) -> LayoutResult<Frame> {
     let (graph, mut wires) = measure(id, ctx, frames, work)?;
+    if id == ctx.graph.groups.len()
+        && let Some(membership) = &ctx.hierarchy.lanes
+    {
+        return lanes::root(ctx, membership, &graph, wires, expanded, work);
+    }
     let drawing = flat::run(&graph, ctx.options, expanded, work)?;
     let mut edges = drawing.edges.into_iter();
     for wire in &mut wires {
@@ -470,5 +492,6 @@ pub(super) fn level(
         legs,
         ports,
         stats: drawing.stats,
+        lane_shells: Vec::new(),
     })
 }

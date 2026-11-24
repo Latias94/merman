@@ -180,6 +180,21 @@ impl Tile {
             bounds,
         })
     }
+
+    /// Include empty swimlanes in the single tile and return its cross-axis translation.
+    pub(super) fn cover_columns(&mut self, span: f64, direction: Direction) -> LayoutResult<f64> {
+        let (start, length) = match direction.axis() {
+            crate::Axis::Vertical => (&mut self.bounds.x, &mut self.bounds.width),
+            crate::Axis::Horizontal => (&mut self.bounds.y, &mut self.bounds.height),
+        };
+        let end = (*start + *length).max(span);
+        *start = start.min(0.0);
+        *length = end - *start;
+        if !length.is_finite() {
+            return Err(PRECISION);
+        }
+        Ok(-*start)
+    }
 }
 
 fn shelves(

@@ -351,3 +351,49 @@ fn cancelling_route_registration_leaves_no_partial_trail() {
         .unwrap();
     assert_eq!(draw(&mut router, req).unwrap().len(), 4);
 }
+
+#[test]
+fn measured_batch_keeps_holes_and_accounts_for_earlier_spans() {
+    let bounds = rect(-10.0, -40.0, 220.0, 80.0);
+    let walls = [rect(70.0, 16.0, 12.0, 8.0)];
+    let start = RoutePoint::gap_boundary(0.0, 0.0, Axis::Horizontal);
+    let end = RoutePoint::gap_boundary(200.0, 0.0, Axis::Horizontal);
+    let clear = OrthogonalSpan {
+        start: (start, Side::Right),
+        end: (end, Side::Left),
+    };
+    let blocked = OrthogonalSpan {
+        start: (point(75.0, 20.0), Side::Right),
+        ..clear
+    };
+    let route = |control: &mut CheckLimit| {
+        route_orthogonal_spans(&walls, Some(bounds), 4.0, &[clear, blocked, clear], control)
+    };
+    let mut observed = CheckLimit::default();
+    let paths = route(&mut observed).unwrap();
+    assert_eq!(paths.len(), 3);
+    assert_eq!(paths[0], Some(vec![start, end]));
+    assert_eq!(paths[1], None);
+    let detour = paths[2].as_ref().expect("a less costly parallel span");
+    assert!(detour.len() > 2);
+    assert_clear(
+        detour,
+        OrthoRequest {
+            start,
+            end,
+            start_side: Some(Side::Right),
+            end_side: Some(Side::Left),
+            bounds: Some(bounds),
+        },
+        &walls,
+        2.0,
+    );
+    let mut limited = CheckLimit {
+        limit: Some(observed.checks - 1),
+        ..CheckLimit::default()
+    };
+    assert_eq!(
+        route(&mut limited),
+        Err(LayoutError::Work(WorkError::Interrupted))
+    );
+}

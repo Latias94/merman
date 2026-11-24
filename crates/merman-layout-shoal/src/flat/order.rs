@@ -412,7 +412,7 @@ fn editor_seed(
 ) -> LayoutResult<Option<EditorSeed>> {
     work.charge(nodes.len())?;
     let mut preference = filled(nodes.len(), NO_PREFERENCE)?;
-    let anchored = !rules.pins.is_empty() || nodes.iter().any(synthetic);
+    let anchored = !rules.pins.is_empty() || !rules.lanes.is_empty() || nodes.iter().any(synthetic);
     let mut ids = snapshot(stateless, work)?;
     let mut survivors = reserved(
         order
@@ -430,6 +430,7 @@ fn editor_seed(
             || !nodes.get(left).is_some_and(synthetic)
                 && !nodes.get(right).is_some_and(synthetic)
                 && rules.pin(left) == rules.pin(right)
+                && rules.lane(left) == rules.lane(right)
                 && rules
                     .groups
                     .as_ref()
@@ -496,6 +497,7 @@ struct Sweep {
 #[derive(Default)]
 struct Rules<'a> {
     pins: &'a [NodeSpec],
+    lanes: &'a [usize],
     fixed: [Option<usize>; 2],
     groups: Option<Groups<'a>>,
 }
@@ -505,12 +507,16 @@ impl Rules<'_> {
         self.pins.get(v).map_or(0, |n| n.pin)
     }
 
+    fn lane(&self, v: usize) -> usize {
+        self.lanes.get(v).copied().unwrap_or_default()
+    }
+
     fn fixed(&self, rank: usize) -> bool {
         self.fixed.contains(&Some(rank))
     }
 
     fn can_mirror<const LIMITED: bool>(&self) -> bool {
-        !LIMITED || self.pins.is_empty() && self.fixed == [None; 2]
+        !LIMITED || self.pins.is_empty() && self.lanes.is_empty() && self.fixed == [None; 2]
     }
 
     fn initial(
@@ -525,9 +531,12 @@ impl Rules<'_> {
             if row.len() < 2 || self.fixed(r) {
                 continue;
             }
-            if !self.pins.is_empty() {
+            if !self.pins.is_empty() || !self.lanes.is_empty() {
                 validate::charge_sort(row.len(), work)?;
-                row.sort_unstable_by_key(|&v| (self.pin(v as usize), order.place[v as usize].pos));
+                row.sort_unstable_by_key(|&v| {
+                    let v = v as usize;
+                    (self.lane(v), self.pin(v), order.place[v].pos)
+                });
                 order.reindex(r, ports, work)?;
             }
             if let Some(groups) = &mut self.groups {
@@ -603,12 +612,13 @@ impl Sweep {
                 continue;
             }
             work.sort(&mut self.moving, |&a, &b| {
-                let pin = if LIMITED {
-                    rules.pin(a).cmp(&rules.pin(b))
+                let constraint = if LIMITED {
+                    (rules.lane(a), rules.pin(a)).cmp(&(rules.lane(b), rules.pin(b)))
                 } else {
                     Ordering::Equal
                 };
-                pin.then_with(|| numeric_cmp(self.mean[a], self.mean[b]))
+                constraint
+                    .then_with(|| numeric_cmp(self.mean[a], self.mean[b]))
                     .then_with(|| {
                         let old = order.place[a].pos.cmp(&order.place[b].pos);
                         if right { old.reverse() } else { old }
@@ -746,6 +756,7 @@ fn transpose_with_keys<const LIMITED: bool>(
                 let (a, b) = (order.ids[i], order.ids[i + 1]);
                 if LIMITED
                     && (rules.pin(a as usize) != rules.pin(b as usize)
+                        || rules.lane(a as usize) != rules.lane(b as usize)
                         || rules.groups.as_ref().is_some_and(|groups| {
                             groups.owner[a as usize] != groups.owner[b as usize]
                         }))
@@ -1106,6 +1117,21 @@ pub(super) fn constrained(
             }
         }
     }
+    publish::<true>(g, &c.nodes, options, &mut rules, work)
+}
+
+pub(super) fn constrained_lanes(
+    g: &mut Expanded,
+    c: &Component,
+    lanes: &[usize],
+    options: &Options,
+    work: &mut Work<'_>,
+) -> LayoutResult<u64> {
+    let mut rules = Rules {
+        pins: if c.pinned { &c.nodes } else { &[] },
+        lanes,
+        ..Rules::default()
+    };
     publish::<true>(g, &c.nodes, options, &mut rules, work)
 }
 
