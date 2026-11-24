@@ -69,7 +69,7 @@ fn place(columns: &[Column], spans: &[[f64; 2]], work: &mut Work<'_>) -> LayoutR
         let width = (before + natural + after).max(column.min_width);
         let first = result.span;
         result.span += width;
-        if !result.span.is_finite() || result.span <= first {
+        if !result.span.is_finite() || (width != 0.0 && result.span <= first) {
             return Err(LayoutError::InvalidInput(
                 "swimlane width exceeds coordinate precision",
             ));
@@ -96,6 +96,7 @@ pub(crate) fn run(
     debug_assert_eq!(items.len(), graph.nodes.len());
     let mut options = *options;
     options.inline_labels = false;
+    work.charge(columns.len())?;
     let mut spans = filled(columns.len(), [f64::INFINITY, f64::NEG_INFINITY])?;
     let Some(c) = validate::collect(graph, &options, true, work)?.pop() else {
         spans.fill([0.0, 0.0]);
@@ -161,6 +162,7 @@ pub(crate) fn run(
     debug_assert!(inline.is_empty());
     extras::finish(&mut drawing, g, &c, graph, options, work)?;
     hub::spread(&mut drawing, &c, graph, options, work)?;
+    // Compound assembly measures crossings once the lane contacts and nested legs are stitched.
     bus::bundle(&mut drawing, &c, graph, options, work)?;
     if options.compact_ranks {
         routing::compact_ranks(&mut drawing, &c, g, graph, options, work)?;
@@ -189,6 +191,33 @@ pub(crate) fn run(
         column[0] += shift;
         column[1] += shift;
     }
-    let drawing = pack::assemble(vec![tile], graph, options, stats, work)?;
+    work.charge(1)?;
+    let mut tiles = reserved(1)?;
+    tiles.push(tile);
+    let drawing = pack::assemble(tiles, graph, options, stats, work)?;
     Ok((drawing, placement.shells))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::NoopWorkControl;
+
+    #[test]
+    fn empty_columns_can_share_a_boundary_without_hiding_precision_loss() {
+        let column = |min_width| Column {
+            min_width,
+            padding: [0.0, 0.0],
+        };
+        let mut control = NoopWorkControl;
+        let mut work = Work::new(&mut control);
+        let spans = [[0.0, 0.0]; 2];
+        let placement = place(&[column(8.0), column(0.0)], &spans, &mut work).unwrap();
+        assert_eq!(placement.shells, [[0.0, 8.0], [8.0, 8.0]]);
+        assert_eq!(placement.content, placement.shells);
+        assert!(matches!(
+            place(&[column(2.0_f64.powi(54)), column(1.0)], &spans, &mut work),
+            Err(LayoutError::InvalidInput(_))
+        ));
+    }
 }

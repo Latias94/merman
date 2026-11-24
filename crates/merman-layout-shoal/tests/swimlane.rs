@@ -170,6 +170,20 @@ fn shared_ranks() -> Graph {
 }
 
 #[test]
+fn stitched_lane_edges_report_the_crossing_between_distinct_edges() {
+    let mut graph = Graph::default();
+    graph.groups = [GroupSpec::new(0), GroupSpec::new(1)].into();
+    graph.lane_order = [GroupId(0), GroupId(1)].into();
+    graph.nodes = [node(0, 0), node(1, 1), node(2, 0), node(3, 1)].into();
+    graph.edges = [edge(NodeId(0), NodeId(3)), edge(NodeId(1), NodeId(2))].into();
+    for direction in DIRECTIONS {
+        graph.direction = direction;
+        let drawing = layout(&graph, &Options::default()).unwrap();
+        assert_eq!(drawing.stats.routed_crossings, 1, "{direction:?}");
+    }
+}
+
+#[test]
 fn one_rank_grid_spans_declared_lanes_empty_tracks_and_islands_in_four_directions() {
     let mut graph = shared_ranks();
     let mut options = Options::default();
