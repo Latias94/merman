@@ -248,6 +248,7 @@ pub(crate) struct PlatformCmap<'a> {
         read_fonts::tables::cmap::CmapSubtable<'a>,
     )>,
     glyph_count: u32,
+    legacy_symbol: Option<harfrust::Font>,
 }
 
 #[cfg(all(
@@ -256,17 +257,62 @@ pub(crate) struct PlatformCmap<'a> {
 ))]
 impl<'a> PlatformCmap<'a> {
     pub(crate) fn parse(data: &'a [u8], glyph_count: u16) -> Option<Self> {
+        Self::parse_with_os2(data, None, glyph_count)
+    }
+
+    pub(crate) fn parse_with_os2(
+        data: &'a [u8],
+        os2: Option<&[u8]>,
+        glyph_count: u16,
+    ) -> Option<Self> {
         use read_fonts::{FontData, FontRead, tables::cmap::Cmap};
 
         let cmap = Cmap::read(FontData::new(data)).ok()?;
         let nominal = cmap
             .best_subtable()
             .map(|(_, record, table)| (record, table));
+        let legacy_symbol = os2
+            .filter(|os2| Self::is_legacy_arabic_os2(os2))
+            .filter(|_| {
+                nominal
+                    .as_ref()
+                    .is_some_and(|(record, _)| record.is_symbol())
+            })
+            .and_then(|os2| {
+                use harfrust::font::{Blob, TableFunction};
+                // Reuse HarfRust's legacy PUA maps, which depend on the OS/2
+                // encoding page and are not part of the Unicode cmap.
+                let cmap = Blob::from(data.to_vec());
+                let os2 = Blob::from(os2.to_vec());
+                let tables =
+                    TableFunction::new(std::sync::Arc::new(move |tag| match &tag.to_be_bytes() {
+                        b"cmap" => Some(cmap.clone()),
+                        b"OS/2" => Some(os2.clone()),
+                        _ => None,
+                    }));
+                harfrust::Font::new(tables, 0)
+            });
         Some(Self {
             cmap,
             nominal,
             glyph_count: u32::from(glyph_count),
+            legacy_symbol,
         })
+    }
+
+    fn is_legacy_arabic_os2(os2: &[u8]) -> bool {
+        // OS/2 version 0 stores the legacy symbol encoding in fsSelection.
+        os2.starts_with(&[0, 0]) && matches!(os2.get(62), Some(0xb2 | 0xb3))
+    }
+
+    pub(crate) fn is_symbol(&self) -> bool {
+        self.nominal
+            .as_ref()
+            .is_some_and(|(record, _)| record.is_symbol())
+    }
+
+    pub(crate) fn may_use_arabic_symbol_page(ch: char) -> bool {
+        matches!(ch, '\u{600}'..='\u{8ff}' | '\u{fb50}'..='\u{fdff}' | '\u{fe70}'..='\u{fefc}')
     }
 
     pub(crate) fn maps(&self, ch: char) -> bool {
@@ -286,13 +332,19 @@ impl<'a> PlatformCmap<'a> {
                 .map_codepoint(codepoint)
                 .filter(|glyph| glyph.to_u32() != 0)
         };
-        map(codepoint).or_else(|| {
-            if record.is_symbol() && codepoint <= 0xff {
-                map(0xf000 + codepoint)
-            } else {
-                None
-            }
-        })
+        map(codepoint)
+            .or_else(|| {
+                if record.is_symbol() && codepoint <= 0xff {
+                    map(0xf000 + codepoint)
+                } else {
+                    None
+                }
+            })
+            .or_else(|| {
+                self.legacy_symbol.as_ref().and_then(|font| {
+                    harfrust::ShaperFont::new(font).default_nominal_glyph(codepoint)
+                })
+            })
     }
 
     fn directional_base(&self, ch: char, rtl: bool) -> char {
@@ -307,14 +359,26 @@ impl<'a> PlatformCmap<'a> {
         ch
     }
 
-    pub(crate) fn non_default_variation(&self, rtl: bool) -> impl Fn((char, char)) -> bool + '_ {
+    pub(crate) fn maps_directional(&self, ch: char, rtl: bool) -> bool {
+        self.maps(self.directional_base(ch, rtl))
+    }
+
+    pub(crate) fn maps_variation(
+        &self,
+        rtl: bool,
+        allow_default: bool,
+    ) -> impl Fn((char, char)) -> bool + '_ {
         use read_fonts::tables::cmap::MapVariant;
 
         let table = self.cmap.uvs_subtable().map(|(_, subtable)| subtable);
         move |(base, selector)| {
             table.as_ref().is_some_and(|table| {
                 let base = self.directional_base(base, rtl);
-                matches!(table.map_variant(base, selector), Some(MapVariant::Variant(glyph)) if self.valid_glyph(glyph))
+                match table.map_variant(base, selector) {
+                    Some(MapVariant::Variant(glyph)) => self.valid_glyph(glyph),
+                    Some(MapVariant::UseDefault) => allow_default && self.maps(base),
+                    None => false,
+                }
             })
         }
     }
@@ -433,6 +497,27 @@ pub(crate) fn allows_font_tables(
     let Some(cmap) = cmap::Table::parse(cmap_data) else {
         return false;
     };
+    if is_last_resort_head(head) {
+        return false;
+    }
+    if os2.is_some_and(PlatformCmap::is_legacy_arabic_os2)
+        && fallback.is_some_and(|(text, rtl)| {
+            let Some(glyphs) = maxp::Table::parse(maxp) else {
+                return false;
+            };
+            PlatformCmap::parse_with_os2(cmap_data, os2, glyphs.number_of_glyphs.get()).is_some_and(
+                |cmap| {
+                    cmap.is_symbol()
+                        && text.chars().any(|ch| {
+                            PlatformCmap::may_use_arabic_symbol_page(ch)
+                                && cmap.maps_directional(ch, rtl)
+                        })
+                },
+            )
+        })
+    {
+        return true;
+    }
     if !cmap
         .subtables
         .into_iter()
@@ -449,7 +534,7 @@ pub(crate) fn allows_font_tables(
             let Some(cmap) = PlatformCmap::parse(cmap_data, maxp.number_of_glyphs.get()) else {
                 return false;
             };
-            let maps_variant = cmap.non_default_variation(rtl);
+            let maps_variant = cmap.maps_variation(rtl, false);
             let mut symbol = false;
             let keycap = text.ends_with('\u{20e3}');
             let mut chars = text.chars().peekable();

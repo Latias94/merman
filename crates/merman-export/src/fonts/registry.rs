@@ -766,6 +766,8 @@ impl FontSourceRegistry {
                         OperationPhase::Layout,
                         &mut bytes,
                     )?;
+                    #[cfg(windows)]
+                    opened.validate_dwrite_file_identity(face)?;
                     let actual_axes = file_axes(face, &bytes, index, &path)?;
                     if actual_axes != preflight_axes {
                         return Err(source_error(
@@ -787,6 +789,16 @@ impl FontSourceRegistry {
                 let Ok(parsed) = ttf_parser::Face::parse(&data, index) else {
                     return Ok(None);
                 };
+                #[cfg(windows)]
+                if let Some(identity) = face.dwrite_identity {
+                    platform_file::validate_dwrite_metrics(
+                        identity,
+                        parsed
+                            .raw_face()
+                            .table(ttf_parser::Tag::from_bytes(b"hmtx")),
+                        &path,
+                    )?;
+                }
                 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
                 if !platform_file::has_required_variation(face, &parsed, &request) {
                     return Ok(None);

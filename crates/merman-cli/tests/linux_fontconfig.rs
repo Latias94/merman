@@ -319,14 +319,20 @@ fn system_ui_and_empty_defaults_keep_generic_family_precedence() {
 #[test]
 fn system_ui_weak_caller_alias_preserves_native_language_order() {
     with_catalog(
-        &["Cousine-Regular.ttf", "NotoSans-Latin-subset.ttf"],
+        &["NotoSans-Latin-subset.ttf", "MermanVariableWeight.ttf"],
         r#"
-        <alias binding="weak"><family>system-ui</family><prefer><family>Cousine</family><family>Noto Sans</family></prefer></alias>
+        <alias binding="weak"><family>system-ui</family><prefer><family>Cousine</family><family>Noto Sans</family><family>Merman Variable Weight</family></prefer></alias>
         <match target="scan"><test name="family"><string>Cousine</string></test>
         <edit name="lang" mode="assign"><langset><string>en</string></langset></edit></match>
         <match target="scan"><test name="family"><string>Noto Sans</string></test>
+        <edit name="lang" mode="assign"><langset><string>en</string></langset></edit></match>
+        <match target="scan"><test name="family"><string>Merman Variable Weight</string></test>
         <edit name="lang" mode="assign"><langset><string>ja</string></langset></edit></match>"#,
         |_| {
+            assert_eq!(
+                selected(&catalog(None), "system-ui", "A", "en"),
+                ["NotoSans-Regular"]
+            );
             let context = catalog(Some("Cousine-Regular.ttf"));
             assert_eq!(
                 selected(&context, "system-ui", "A", "en"),
@@ -334,7 +340,7 @@ fn system_ui_weak_caller_alias_preserves_native_language_order() {
             );
             assert_eq!(
                 selected(&context, "system-ui", "A", "ja"),
-                ["NotoSans-Regular"]
+                ["MermanVariableWeight-Thin"]
             );
         },
     );
@@ -453,7 +459,9 @@ fn rtl_variation_beats_nominal_mirroring_with_bounded_cmap_reads() {
                 let bytes = fs::read(fixture(name)).unwrap();
                 fs::write(root.join(path), replace_table(bytes, b"cmap", cmap)).unwrap();
             };
-            let mut large = coverage_cmap(&['∈'], None);
+            // Same selector, different base. The complete cmap exceeds the
+            // discovery budget, but its candidate mapping can be skipped.
+            let mut large = variant_cmap(&['∈'], Some(('A', '\u{fe0f}', false)), 10);
             large.resize(64 * 1024, 0);
             write_font("Cousine-Regular.ttf", "fonts/Nominal.ttf", large.as_slice());
             // The RTL shaper mirrors ∋ to ∈ in this face, so its ∋ + VS16
@@ -510,6 +518,149 @@ fn rtl_variation_beats_nominal_mirroring_with_bounded_cmap_reads() {
             }
         },
     );
+}
+
+#[test]
+fn an_unrelated_ideographic_uvs_does_not_read_the_full_cmap() {
+    with_catalog(
+        &[],
+        r#"
+        <match target="scan"><test name="family"><string>Cousine</string></test>
+        <edit name="lang" mode="assign"><langset><string>en</string></langset></edit></match>
+        <match target="scan"><test name="family"><string>MermanProbeFull</string></test>
+        <edit name="lang" mode="assign"><langset><string>ja</string></langset></edit></match>"#,
+        |root| {
+            for (name, base) in [("Cousine-Regular.ttf", '文'), ("MermanProbeFull.ttf", '中')] {
+                let font = fs::read(fixture(name)).unwrap();
+                let mut cmap = variant_cmap(&['中'], Some((base, '\u{e0100}', false)), 10);
+                if base == '文' {
+                    cmap.resize(64 * 1024, 0);
+                }
+                fs::write(
+                    root.join("fonts").join(name),
+                    replace_table(font, b"cmap", &cmap),
+                )
+                .unwrap();
+            }
+            let context = NativeFontOptions::default()
+                .with_system_fonts(true)
+                .with_font_file(fixture("MermanProbeBase.ttf"))
+                .with_limits(NativeFontLimits {
+                    max_system_scan_bytes: 8192,
+                    ..NativeFontLimits::default()
+                })
+                .load_platform(&OperationControl::new())
+                .unwrap();
+            assert_eq!(
+                selected(&context, "MermanProbeBase", "中\u{e0100}", "en"),
+                ["MermanProbeFull"]
+            );
+        },
+    );
+}
+
+#[test]
+fn variation_covers_canonically_equivalent_scan_charsets() {
+    with_catalog(
+        &[],
+        r#"
+        <match target="scan"><test name="family"><string>MermanProbeFull</string></test>
+        <edit name="charset" mode="assign"><charset><int>233</int></charset></edit></match>"#,
+        |root| {
+            let fixture = fs::read(fixture("MermanProbeFull.ttf")).unwrap();
+            let cmap = coverage_cmap(&['e', 'é', '\u{301}'], Some('❤'));
+            fs::write(
+                root.join("fonts/Variant.ttf"),
+                replace_table(fixture, b"cmap", &cmap),
+            )
+            .unwrap();
+            let context = catalog(Some("MermanProbeBase.ttf"));
+            for text in ["e\u{301}\u{200d}❤\u{fe0f}", "é\u{200d}❤\u{fe0f}"] {
+                let selected = selected(&context, "MermanProbeBase", text, "en");
+                assert!(!selected.is_empty(), "{text:?}");
+                assert!(
+                    selected.iter().all(|name| name == "MermanProbeFull"),
+                    "{text:?}: {selected:?}"
+                );
+            }
+        },
+    );
+}
+
+#[test]
+fn default_and_non_default_variations_follow_native_rank() {
+    with_catalog(
+        &[],
+        r#"
+        <match target="scan"><test name="family"><string>MermanProbeFull</string></test>
+        <edit name="lang" mode="assign"><langset><string>en</string></langset></edit></match>
+        <match target="scan"><test name="family"><string>MermanProbePartial</string></test>
+        <edit name="lang" mode="assign"><langset><string>ja</string></langset></edit></match>"#,
+        |root| {
+            for (file, default) in [
+                ("MermanProbeFull.ttf", true),
+                ("MermanProbePartial.ttf", false),
+            ] {
+                let font = fs::read(fixture(file)).unwrap();
+                let cmap = variant_cmap(&['❤'], Some(('❤', '\u{fe0f}', default)), 10);
+                fs::write(
+                    root.join("fonts").join(file),
+                    replace_table(font, b"cmap", &cmap),
+                )
+                .unwrap();
+            }
+            let context = catalog(Some("MermanProbeBase.ttf"));
+            for (lang, expected) in [("en", "MermanProbeFull"), ("ja", "MermanProbePartial")] {
+                assert_eq!(
+                    selected(&context, "MermanProbeBase", "❤\u{fe0f}", lang),
+                    [expected]
+                );
+            }
+        },
+    );
+}
+
+#[test]
+fn mongolian_selector_is_context_for_shaping_and_not_scan_coverage() {
+    with_catalog(&[], "", |root| {
+        let font = fs::read(fixture("MermanProbeFull.ttf")).unwrap();
+        let cmap = coverage_cmap(&['\u{1820}'], None);
+        fs::write(
+            root.join("fonts/Mongolian.ttf"),
+            replace_table(font, b"cmap", &cmap),
+        )
+        .unwrap();
+        let context = catalog(Some("MermanProbeBase.ttf"));
+        assert_eq!(
+            selected(&context, "MermanProbeBase", "\u{1820}\u{180f}", "mn"),
+            ["MermanProbeFull"]
+        );
+    });
+}
+
+#[test]
+fn legacy_arabic_symbol_font_can_supply_ordinary_arabic_text() {
+    with_catalog(&[], "", |root| {
+        let font = fs::read(fixture("MermanProbeFull.ttf")).unwrap();
+        let mut cmap = coverage_cmap(&['\u{f141}'], None);
+        cmap[6..8].fill(0); // Microsoft Symbol encoding.
+        let record = table_record(&font, b"OS/2");
+        let offset = table_offset(&font, record);
+        let mut os2 = font[offset..offset + 78].to_vec();
+        os2[..2].fill(0);
+        os2[62] = 0xb2;
+        let font = replace_table(font, b"OS/2", &os2);
+        fs::write(
+            root.join("fonts/Legacy.ttf"),
+            replace_table(font, b"cmap", &cmap),
+        )
+        .unwrap();
+        let context = catalog(Some("MermanProbeBase.ttf"));
+        assert_eq!(
+            selected(&context, "MermanProbeBase", "ا", "ar"),
+            ["MermanProbeFull"]
+        );
+    });
 }
 
 #[test]
@@ -631,14 +782,18 @@ fn table_offset(font: &[u8], record: usize) -> usize {
 }
 
 fn coverage_cmap(nominal: &[char], vs16_base: Option<char>) -> Vec<u8> {
-    let nominal_offset = if vs16_base.is_some() { 20u32 } else { 12 };
+    variant_cmap(nominal, vs16_base.map(|base| (base, '\u{fe0f}', false)), 10)
+}
+
+fn variant_cmap(nominal: &[char], variant: Option<(char, char, bool)>, encoding: u8) -> Vec<u8> {
+    let nominal_offset = if variant.is_some() { 20u32 } else { 12 };
     let nominal_length = 16 + 12 * nominal.len() as u32;
-    let mut cmap = vec![0, 0, 0, if vs16_base.is_some() { 2 } else { 1 }];
-    if vs16_base.is_some() {
+    let mut cmap = vec![0, 0, 0, if variant.is_some() { 2 } else { 1 }];
+    if variant.is_some() {
         cmap.extend_from_slice(&[0, 0, 0, 5]);
         cmap.extend_from_slice(&(nominal_offset + nominal_length).to_be_bytes());
     }
-    cmap.extend_from_slice(&[0, 3, 0, 10]);
+    cmap.extend_from_slice(&[0, 3, 0, encoding]);
     cmap.extend_from_slice(&nominal_offset.to_be_bytes());
     cmap.extend_from_slice(&[0, 12, 0, 0]);
     cmap.extend_from_slice(&nominal_length.to_be_bytes());
@@ -650,13 +805,17 @@ fn coverage_cmap(nominal: &[char], vs16_base: Option<char>) -> Vec<u8> {
         cmap.extend_from_slice(&code);
         cmap.extend_from_slice(&1u32.to_be_bytes());
     }
-    if let Some(base) = vs16_base {
-        // Format 14, one selector with a non-default glyph for the requested base.
-        cmap.extend_from_slice(&[
-            0, 14, 0, 0, 0, 30, 0, 0, 0, 1, 0, 0xfe, 0x0f, 0, 0, 0, 0, 0, 0, 0, 21, 0, 0, 0, 1,
-        ]);
+    if let Some((base, selector, default)) = variant {
+        cmap.extend_from_slice(&[0, 14, 0, 0, 0, if default { 29 } else { 30 }, 0, 0, 0, 1]);
+        cmap.extend_from_slice(&u32::from(selector).to_be_bytes()[1..]);
+        cmap.extend_from_slice(if default {
+            &[0, 0, 0, 21, 0, 0, 0, 0]
+        } else {
+            &[0, 0, 0, 0, 0, 0, 0, 21]
+        });
+        cmap.extend_from_slice(&1u32.to_be_bytes());
         cmap.extend_from_slice(&u32::from(base).to_be_bytes()[1..]);
-        cmap.extend_from_slice(&1u16.to_be_bytes());
+        cmap.extend_from_slice(if default { &[0][..] } else { &[0, 1] });
     }
     cmap
 }

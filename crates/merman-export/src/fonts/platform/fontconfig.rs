@@ -21,6 +21,7 @@ const FC_WEIGHT: &CStr = c"weight";
 const FC_WIDTH: &CStr = c"width";
 const FC_SLANT: &CStr = c"slant";
 const FC_CHARSET: &CStr = c"charset";
+const FC_SYMBOL: &CStr = c"symbol";
 const FC_FILE: &CStr = c"file";
 const FC_INDEX: &CStr = c"index";
 const FC_POSTSCRIPT_NAME: &CStr = c"postscriptname";
@@ -60,13 +61,42 @@ enum MatchScope<'a> {
 #[derive(Clone, Copy)]
 enum CoveragePass {
     Nominal,
-    NonDefaultVariation,
+    ExactVariation,
     NominalOrVariation,
 }
 
 enum Coverage {
     Nominal,
-    NonDefaultVariation(Vec<(char, char)>),
+    Variation(Vec<(char, char)>),
+}
+
+impl Coverage {
+    fn supported_by(&self, face: &FaceInfo, rtl: bool) -> bool {
+        let Self::Variation(required) = self else {
+            return true;
+        };
+        let Source::Binary(data) = &face.source else {
+            return false;
+        };
+        let Ok(face) = ttf_parser::Face::parse(data.as_ref().as_ref(), face.index) else {
+            return false;
+        };
+        let table = |tag| face.raw_face().table(Tag::from_bytes(tag));
+        table(b"cmap")
+            .and_then(|cmap| {
+                crate::font_selection::PlatformCmap::parse_with_os2(
+                    cmap,
+                    table(b"OS/2"),
+                    face.number_of_glyphs(),
+                )
+            })
+            .is_some_and(|cmap| {
+                required
+                    .iter()
+                    .copied()
+                    .all(cmap.maps_variation(rtl, false))
+            })
+    }
 }
 
 type InstanceBases<'a> = HashMap<(&'a CStr, u32), Option<PatternRef<'a>>>;
@@ -344,6 +374,12 @@ impl Catalog {
             _ => Vec::new(),
         };
         callers.sort_by_key(|(rank, _)| *rank);
+        let weak_callers = if matches!(scope, MatchScope::SystemUi(_)) {
+            let first_weak = callers.partition_point(|(rank, _)| *rank < names.len());
+            callers.split_off(first_weak)
+        } else {
+            Vec::new()
+        };
         let mut callers = callers.into_iter().peekable();
         let caller_exact = matches!(scope, MatchScope::Named(_));
         // A caller at the first strong position precedes every possible system match.
@@ -355,21 +391,24 @@ impl Catalog {
             }
         }
 
-        // After substitution, sorting only affects the order of multiple eligible patterns.
+        // Rank weak caller aliases against the same language, coverage and family
+        // scores as installed fonts without changing the shared Fontconfig config.
+        let weak_patterns = self.weak_caller_patterns(&weak_callers, control)?;
+        let mut weak_ptrs: Vec<_> = weak_patterns.iter().map(|(p, _)| p.as_ptr()).collect();
         let mut matching = self.scan_patterns().filter(|face| {
             preferred
                 .as_deref()
                 .is_none_or(|names| face.family_rank(names).is_some())
         });
-        let (single, sorted) = match (matching.next(), matching.next()) {
-            (first, None) => (first, None),
-            (_, Some(_)) => (None, Some(self.sort(&pattern, query.text)?)),
+        let (single, sorted) = match (matching.next(), matching.next(), weak_ptrs.is_empty()) {
+            (first, None, true) => (first, None),
+            _ => (None, Some(self.sort(&pattern, query.text, &mut weak_ptrs)?)),
         };
         let has_variation = query.text.is_some_and(cluster::has_variation_sequence);
         // Keep the named cascade in family order. In a broad cascade a true
         // variation glyph takes precedence over nominal coverage or mirroring.
         let passes: &[_] = match (has_variation, preferred.is_some()) {
-            (true, false) => &[CoveragePass::NonDefaultVariation, CoveragePass::Nominal],
+            (true, false) => &[CoveragePass::ExactVariation, CoveragePass::Nominal],
             (true, true) => &[CoveragePass::NominalOrVariation],
             (false, _) => &[CoveragePass::Nominal],
         };
@@ -386,11 +425,8 @@ impl Catalog {
                     let Some(rank) = face.family_rank(names) else {
                         continue;
                     };
-                    // A weak system-ui alias follows the system cascade, where
-                    // Fontconfig can rank a language match ahead of that alias.
-                    while let Some((_, caller)) = callers.next_if(|(position, _)| {
-                        *position <= rank && (caller_exact || *position < names.len())
-                    }) {
+                    while let Some((_, caller)) = callers.next_if(|(position, _)| *position <= rank)
+                    {
                         if let Some(id) = lock.outside(|| {
                             accept(FontCandidate::Loaded(caller.clone()), caller_exact)
                         })? {
@@ -401,6 +437,18 @@ impl Catalog {
                 let Some(coverage) = face.coverage(query.text, query.rtl, pass) else {
                     continue;
                 };
+                if let Some((_, caller)) = weak_patterns
+                    .iter()
+                    .find(|(p, _)| p.as_ptr() == face.raw.as_ptr())
+                {
+                    if coverage.supported_by(caller, query.rtl)
+                        && let Some(id) = lock
+                            .outside(|| accept(FontCandidate::Loaded((*caller).clone()), false))?
+                    {
+                        return Ok(Some(id));
+                    }
+                    continue;
+                }
                 let Some((path, mut physical)) = self.file_face(face, &mut bases) else {
                     continue;
                 };
@@ -418,7 +466,7 @@ impl Catalog {
                 physical.variations = prepared.as_ref().variations();
                 physical.required_uvs = match coverage {
                     Coverage::Nominal => None,
-                    Coverage::NonDefaultVariation(required) => Some(required),
+                    Coverage::Variation(required) => Some(required),
                 };
                 drop(prepared);
                 let exact_name = matches!(scope, MatchScope::Named(_))
@@ -440,23 +488,107 @@ impl Catalog {
                 return Ok(Some(id));
             }
         }
+        for (_, caller) in weak_callers {
+            if !weak_patterns.iter().any(|(_, face)| face.id == caller.id)
+                && let Some(id) =
+                    lock.outside(|| accept(FontCandidate::Loaded(caller.clone()), false))?
+            {
+                return Ok(Some(id));
+            }
+        }
         Ok(None)
     }
 
-    fn sort(&self, pattern: &Pattern<'_>, text: Option<&str>) -> Result<FontSet, NativeFontError> {
+    fn weak_caller_patterns<'a>(
+        &self,
+        callers: &[(usize, &'a FaceInfo)],
+        control: &OperationControl,
+    ) -> Result<Vec<(Pattern<'static>, &'a FaceInfo)>, NativeFontError> {
+        let mut patterns = Vec::<(Pattern<'static>, &FaceInfo)>::new();
+        if callers.is_empty() {
+            return Ok(patterns);
+        }
+        let Some(faces) = MemoryFaces::new(self.api) else {
+            return Ok(patterns);
+        };
+        for &(_, caller) in callers {
+            control.terminal_checkpoint_at(OperationPhase::Layout)?;
+            let Source::Binary(data) = &caller.source else {
+                continue;
+            };
+            if patterns.iter().any(|(_, face)| face.id == caller.id) {
+                continue;
+            }
+            let raw = faces.query(self.api, data.as_ref().as_ref(), caller.index);
+            let Some(pattern) = Pattern::from_raw(self.api, raw) else {
+                continue;
+            };
+            // SAFETY: The scanned pattern is private. Its file entry refers to
+            // a placeholder; caller data is already bound to its snapshot.
+            unsafe {
+                (self.api.FcPatternDel)(pattern.as_ptr(), FC_FILE.as_ptr());
+                if (self.api.FcConfigSubstitute)(
+                    self.config.as_ptr(),
+                    pattern.as_ptr(),
+                    FC_MATCH_SCAN,
+                ) == 0
+                {
+                    return Err(failed("applying caller scan substitutions"));
+                }
+            }
+            patterns.push((pattern, caller));
+        }
+        Ok(patterns)
+    }
+
+    fn sort(
+        &self,
+        pattern: &Pattern<'_>,
+        text: Option<&str>,
+        weak_callers: &mut [*mut FcPattern],
+    ) -> Result<FontSet, NativeFontError> {
         let scoring = pattern.for_scoring(text)?;
         let pattern = scoring.as_ref().unwrap_or(pattern);
         let mut status = FC_RESULT_NO_MATCH;
         // SAFETY: The configuration and pattern are live. Keep all alternatives;
         // candidates with identical advertised coverage can have different eligibility.
         let raw = unsafe {
-            (self.api.FcFontSort)(
-                self.config.as_ptr(),
-                pattern.as_ptr(),
-                0,
-                ptr::null_mut(),
-                &mut status,
-            )
+            if weak_callers.is_empty() {
+                (self.api.FcFontSort)(
+                    self.config.as_ptr(),
+                    pattern.as_ptr(),
+                    0,
+                    ptr::null_mut(),
+                    &mut status,
+                )
+            } else {
+                let mut callers = FcFontSet::borrow(weak_callers)
+                    .ok_or_else(|| failed("ranking caller fonts"))?;
+                let config = self.config.as_ptr();
+                let mut sets = [
+                    &mut callers as *mut FcFontSet,
+                    (self.api.FcConfigGetFonts)(config, FC_SET_SYSTEM),
+                    (self.api.FcConfigGetFonts)(config, FC_SET_APPLICATION),
+                ];
+                // A config can omit a set. Pass only live sets, including our
+                // caller set whose pointer array is borrowed for this call.
+                let mut count = 1;
+                for index in 1..sets.len() {
+                    if !sets[index].is_null() {
+                        sets[count] = sets[index];
+                        count += 1;
+                    }
+                }
+                (self.api.FcFontSetSort)(
+                    config,
+                    sets.as_mut_ptr(),
+                    count as c_int,
+                    pattern.as_ptr(),
+                    0,
+                    ptr::null_mut(),
+                    &mut status,
+                )
+            }
         };
         // Fontconfig 2.13+ returns an allocated empty set for zero matches. A
         // NULL pointer can also signal internal failure with status still NoMatch.
@@ -885,6 +1017,15 @@ impl<'a> PatternRef<'a> {
         (status == FC_RESULT_MATCH).then_some(value)
     }
 
+    fn is_symbol(self) -> bool {
+        let mut value = 0;
+        // SAFETY: The pattern and output are live.
+        let status = unsafe {
+            (self.api.FcPatternGetBool)(self.raw.as_ptr(), FC_SYMBOL.as_ptr(), 0, &mut value)
+        };
+        status == FC_RESULT_MATCH && value != 0
+    }
+
     fn charset(self, index: c_int) -> Option<NonNull<FcCharSet>> {
         let mut chars = ptr::null_mut();
         // SAFETY: A returned charset is borrowed from the live immutable pattern.
@@ -908,7 +1049,13 @@ impl<'a> PatternRef<'a> {
             return Some(Coverage::Nominal);
         };
         let first = self.charset(0);
+        let symbol = self.is_symbol();
         let maps = |ch| {
+            if symbol && crate::font_selection::PlatformCmap::may_use_arabic_symbol_page(ch) {
+                // Fontconfig advertises PUA values for legacy Arabic Symbol
+                // fonts. The OS/2-aware SFNT probe verifies the actual mapping.
+                return true;
+            }
             let has_char = |chars: NonNull<FcCharSet>| {
                 // SAFETY: The charset belongs to this borrowed scan pattern.
                 unsafe { (self.api.FcCharSetHasChar)(chars.as_ptr(), u32::from(ch)) != 0 }
@@ -919,15 +1066,13 @@ impl<'a> PatternRef<'a> {
         };
         if cluster::has_advertised_coverage(text, rtl, maps) {
             return Some(match pass {
-                CoveragePass::NonDefaultVariation => Coverage::NonDefaultVariation(Vec::new()),
+                CoveragePass::ExactVariation => Coverage::Variation(Vec::new()),
                 _ => Coverage::Nominal,
             });
         }
         match pass {
             CoveragePass::Nominal => None,
-            _ => {
-                cluster::unadvertised_variations(text, rtl, maps).map(Coverage::NonDefaultVariation)
-            }
+            _ => cluster::unadvertised_variations(text, rtl, maps).map(Coverage::Variation),
         }
     }
 

@@ -35,22 +35,13 @@ pub(super) fn check(
         return Ok(true);
     }
 
-    let [Some(cmap), Some(maxp)] = read_tables(font, [b"cmap", b"maxp"], control)? else {
+    let [Some(cmap), Some(maxp), os2] = read_tables(font, [b"cmap", b"maxp", b"OS/2"], control)?
+    else {
         return Ok(false);
     };
     let (cmap, maxp) = (table_bytes(&cmap), table_bytes(&maxp));
-    let Some(mapping) = ttf_parser::cmap::Table::parse(cmap) else {
-        return Ok(false);
-    };
-    let [head, os2] = if implicit {
-        if !mapping
-            .subtables
-            .into_iter()
-            .any(|table| table.is_unicode())
-        {
-            return Ok(false);
-        }
-        let [head, os2] = read_tables(font, [b"head", b"OS/2"], control)?;
+    let head = if implicit {
+        let head = read_table(font, u32::from_be_bytes(*b"head"), control)?;
         if !head.as_deref().is_some_and(|head| {
             crate::font_selection::allows_font_tables(
                 table_bytes(head),
@@ -62,9 +53,9 @@ pub(super) fn check(
         }) {
             return Ok(false);
         }
-        [head, os2]
+        head
     } else {
-        [None, None]
+        None
     };
     let Some(request) = fallback else {
         return Ok(true);
@@ -73,7 +64,13 @@ pub(super) fn check(
         return Ok(false);
     };
     let glyph_count = glyphs.number_of_glyphs.get();
-    if !cluster::cmap_may_cover(cmap, glyph_count, request.text, request.rtl) {
+    if !cluster::cmap_may_cover_with_os2(
+        cmap,
+        os2.as_deref().map(table_bytes),
+        glyph_count,
+        request.text,
+        request.rtl,
+    ) {
         return Ok(false);
     }
     if request.scalar().is_some() || cluster::has_variation_sequence(request.text) {

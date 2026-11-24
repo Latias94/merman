@@ -231,18 +231,21 @@ that error instead. An intentionally empty Fontconfig configuration does not tri
 fallback, and neither do font-data, resource-limit, or cancellation errors.
 
 Fontconfig ranks the requested family names together, honoring strong and weak
-aliases. Merman verifies scan-time aliases against the physical face and keeps
+aliases. For a weak `system-ui` alias, explicitly supplied fonts compete with
+installed fonts under the same Fontconfig language and family ranking. Merman
+verifies scan-time aliases against the physical face and keeps
 alternatives with overlapping coverage. A text face can therefore supply a glyph
 when a preferred face is pictorial or covers only a subset. If a font file
 disappears, measurement and painting can reuse a snapshot already admitted. For
 new selections, the resolver tries the remaining candidates and reports the first
 missing path if none succeeds.
 
-Platform queries and metadata mappings run outside Merman's scan budgets.
-Selected font bytes use bounded immutable snapshots shared by measurement and
-painting, including the default system face acquired on demand. Generic family
-lookup stops at the first accepted face. The resolver can reject non-covering
-candidates before acquiring new snapshots and verifies coverage on admitted data.
+Operating system queries have their own runtime cost. Merman's table preflight
+reads count toward a separate discovery budget. For Fontconfig variation sequences,
+preflight checks the requested base and selector before reading a full character
+map. Selected font bytes use bounded immutable snapshots shared by measurement and
+painting, including the default system face acquired on demand. The resolver
+verifies coverage on admitted data.
 
 Workspace builds repair each missing shaping cluster with one physical face,
 preserving glyphs in the surrounding clusters. Platform fallback tries the

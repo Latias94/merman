@@ -30,6 +30,14 @@ mod fontconfig;
 
 pub(super) const MAX_FVAR_TABLE_BYTES: usize = 1024 * 1024;
 
+#[cfg(windows)]
+#[derive(Clone, Copy)]
+pub(super) struct DwriteFileIdentity {
+    pub(super) last_write_time: u64,
+    pub(super) hmtx_len: usize,
+    pub(super) hmtx_digest: [u8; 32],
+}
+
 #[derive(Clone)]
 pub(super) struct PlatformFace {
     index: u32,
@@ -38,6 +46,8 @@ pub(super) struct PlatformFace {
     other_families: Vec<String>,
     pub(super) variations: Vec<usvg::FontVariation>,
     pub(super) fallback_scale: f32,
+    #[cfg(windows)]
+    pub(super) dwrite_identity: Option<DwriteFileIdentity>,
     #[cfg(windows)]
     pub(super) fvar_digest: Option<[u8; 32]>,
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
@@ -871,6 +881,8 @@ mod tests {
             other_families: Vec::new(),
             variations: Vec::new(),
             fallback_scale: 1.0,
+            #[cfg(windows)]
+            dwrite_identity: None,
             #[cfg(windows)]
             fvar_digest: None,
             #[cfg(any(target_os = "linux", target_os = "freebsd"))]

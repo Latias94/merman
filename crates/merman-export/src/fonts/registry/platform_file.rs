@@ -3,6 +3,8 @@
 use super::super::resolver::GlyphFallback;
 use super::*;
 use std::io::{Seek, SeekFrom};
+#[cfg(windows)]
+use std::os::windows::fs::MetadataExt;
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 use ttf_parser::Tag;
 use ttf_parser::{Face, RawFaceTables, fvar};
@@ -46,6 +48,29 @@ impl<'a> OpenPlatformFont<'a> {
             .map_err(|error| source_error(self.path, error))
     }
 
+    #[cfg(windows)]
+    pub(super) fn validate_dwrite_file_identity(
+        &self,
+        expected: &platform::PlatformFace,
+    ) -> Result<(), NativeFontError> {
+        if let Some(identity) = expected.dwrite_identity {
+            self.control
+                .terminal_checkpoint_at(OperationPhase::Admission)?;
+            let metadata = self
+                .file
+                .metadata()
+                .map_err(|error| source_error(self.path, error))?;
+            if metadata.last_write_time() != identity.last_write_time || metadata.len() != self.len
+            {
+                return Err(source_error(
+                    self.path,
+                    "font file metadata changed after DirectWrite lookup; retry the operation",
+                ));
+            }
+        }
+        Ok(())
+    }
+
     pub(super) fn probe(
         &mut self,
         expected: &platform::PlatformFace,
@@ -54,6 +79,8 @@ impl<'a> OpenPlatformFont<'a> {
         limits: &NativeFontLimits,
         scan_bytes: &mut usize,
     ) -> Result<Option<Vec<FontVariation>>, NativeFontError> {
+        #[cfg(windows)]
+        self.validate_dwrite_file_identity(expected)?;
         let mut probe = Probe {
             source: self,
             limits,
@@ -99,8 +126,13 @@ impl<'a> OpenPlatformFont<'a> {
         if !required_variation_matches(expected, Some(&cmap), glyph_count, request.fallback) {
             return Ok(None);
         }
+        let os2 = if request.fallback.is_some() || request.implicit {
+            // Include the full version-zero prefix used by legacy symbol fonts.
+            probe.prefix(&directory, b"OS/2", 78)?
+        } else {
+            None
+        };
         if request.implicit {
-            let os2 = probe.prefix(&directory, b"OS/2", 34)?;
             if !crate::font_selection::allows_font_tables(
                 &head,
                 os2.as_deref(),
@@ -114,7 +146,13 @@ impl<'a> OpenPlatformFont<'a> {
             }
         }
         if let Some(fallback) = request.fallback {
-            if !platform::cluster::cmap_may_cover(&cmap, glyph_count, fallback.text, fallback.rtl) {
+            if !platform::cluster::cmap_may_cover_with_os2(
+                &cmap,
+                os2.as_deref(),
+                glyph_count,
+                fallback.text,
+                fallback.rtl,
+            ) {
                 return Ok(None);
             }
             if fallback.scalar().is_none()
@@ -154,6 +192,18 @@ impl<'a> OpenPlatformFont<'a> {
                 }
             }
         }
+        #[cfg(windows)]
+        if let Some(identity) = expected.dwrite_identity {
+            let hmtx = if directory
+                .entry(b"hmtx")
+                .is_some_and(|(_, len)| len == identity.hmtx_len)
+            {
+                probe.table(&directory, b"hmtx", identity.hmtx_len)?
+            } else {
+                None
+            };
+            validate_dwrite_metrics(identity, hmtx.as_deref(), probe.source.path)?;
+        }
         let fvar = if expected.has_variations() {
             probe.table(&directory, b"fvar", platform::MAX_FVAR_TABLE_BYTES)?
         } else {
@@ -163,6 +213,24 @@ impl<'a> OpenPlatformFont<'a> {
             .map(Some)
             .map_err(|reason| source_error(probe.source.path, reason))
     }
+}
+
+#[cfg(windows)]
+pub(super) fn validate_dwrite_metrics(
+    identity: platform::DwriteFileIdentity,
+    hmtx: Option<&[u8]>,
+    path: &Path,
+) -> Result<(), NativeFontError> {
+    if !hmtx.is_some_and(|hmtx| {
+        hmtx.len() == identity.hmtx_len
+            && <[u8; 32]>::from(Sha256::digest(hmtx)) == identity.hmtx_digest
+    }) {
+        return Err(source_error(
+            path,
+            "font horizontal metrics changed after DirectWrite lookup; retry the operation",
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
@@ -189,11 +257,14 @@ fn required_variation_matches(
     if let Some(required) = &expected.required_uvs {
         return mapping.zip(fallback).is_some_and(|(cmap, request)| {
             crate::font_selection::PlatformCmap::parse(cmap, glyph_count).is_some_and(|cmap| {
-                let maps = cmap.non_default_variation(request.rtl);
                 if required.is_empty() {
-                    platform::cluster::variation_sequences(request.text).any(maps)
+                    platform::cluster::variation_sequences(request.text)
+                        .any(cmap.maps_variation(request.rtl, true))
                 } else {
-                    required.iter().copied().all(maps)
+                    required
+                        .iter()
+                        .copied()
+                        .all(cmap.maps_variation(request.rtl, false))
                 }
             })
         });
@@ -356,19 +427,7 @@ impl Probe<'_, '_> {
         let mut records = [0; 32 * 8];
         let records = &mut records[..count * 8];
         self.read(offset + 4, records)?;
-        let mut selectors = [false; 256];
-        let variants = platform::cluster::variation_sequences(request.text)
-            .take_while(|_| required.is_empty())
-            .chain(required.iter().copied());
-        for (_, selector) in variants {
-            let selector = u32::from(selector);
-            let index = if selector <= 0xfe0f {
-                selector - 0xfe00
-            } else {
-                selector - 0xe0100 + 16
-            };
-            selectors[index as usize] = true;
-        }
+        let mut selected = None;
         for record in records.as_chunks::<8>().0.iter().rev() {
             if record[..4] != [0, 0, 0, 5] {
                 continue;
@@ -384,38 +443,120 @@ impl Probe<'_, '_> {
             }
             let mut header = [0; 10];
             self.read(start_offset, &mut header)?;
-            let min_mapping = match be_u16(&header[..2]) {
-                14 => 9,
-                15 => 10,
+            let glyph_width = match be_u16(&header[..2]) {
+                14 => 5,
+                15 => 6,
                 _ => continue,
             };
             let length = be_u32(&header[2..6]) as usize;
             let count = be_u32(&header[6..]) as usize;
-            if !(10..=remaining).contains(&length) || count > (length - 10) / 11 {
-                continue;
+            let table = UvsTable {
+                offset: start_offset,
+                length,
+                count,
+                glyph_width,
+            };
+            // Use the same reverse search and format 15 precedence as read-fonts.
+            let table = (table, remaining);
+            if glyph_width == 6 {
+                selected = Some(table);
+                break;
             }
-            // Leave unusually large selector lists to the full parser.
-            if count > selectors.len() {
-                return Ok(true);
+            selected.get_or_insert(table);
+        }
+        let Some((table, remaining)) = selected else {
+            return Ok(false);
+        };
+        if !(10..=remaining).contains(&table.length) || table.count > (table.length - 10) / 11 {
+            return Ok(false);
+        }
+
+        let allow_default = required.is_empty();
+        let variants = platform::cluster::variation_sequences(request.text)
+            .take_while(|_| allow_default)
+            .chain(required.iter().copied());
+        for (base, selector) in variants {
+            let mut found = self.has_uvs_pair(&table, base, selector, allow_default)?;
+            // The effective base depends on the preferred nominal cmap. Keep
+            // either possibility here and resolve the direction after parsing it.
+            if !found
+                && request.rtl
+                && let Some(mirror) = unicode_bidi_mirroring::get_mirrored(base)
+            {
+                found = self.has_uvs_pair(&table, mirror, selector, allow_default)?;
             }
-            let mut entries = [0; 256 * 11];
-            let entries = &mut entries[..count * 11];
-            self.read(start_offset + 10, entries)?;
-            for entry in entries.as_chunks::<11>().0 {
-                let selector = u32::from_be_bytes([0, entry[0], entry[1], entry[2]]);
-                let index = match selector {
-                    0xfe00..=0xfe0f => selector - 0xfe00,
-                    0xe0100..=0xe01ef => selector - 0xe0100 + 16,
-                    _ => continue,
-                };
-                let mapping = be_u32(&entry[7..]) as usize;
-                // Require space for a count and at least one glyph record.
-                if selectors[index as usize]
-                    && mapping != 0
-                    && mapping <= length.saturating_sub(min_mapping)
-                {
-                    return Ok(true);
+            if found == allow_default {
+                return Ok(found);
+            }
+        }
+        Ok(!allow_default)
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    fn has_uvs_pair(
+        &mut self,
+        table: &UvsTable,
+        base: char,
+        selector: char,
+        allow_default: bool,
+    ) -> Result<bool, NativeFontError> {
+        let mut left = 0;
+        let mut right = table.count;
+        while left < right {
+            let mid = left + (right - left) / 2;
+            let mut record = [0; 11];
+            self.read(table.offset + 10 + 11 * mid as u64, &mut record)?;
+            match be_u24(&record).cmp(&u32::from(selector)) {
+                std::cmp::Ordering::Less => left = mid + 1,
+                std::cmp::Ordering::Greater => right = mid,
+                std::cmp::Ordering::Equal => {
+                    let non_default = be_u32(&record[7..]) as usize;
+                    let default = be_u32(&record[3..7]) as usize;
+                    return Ok(
+                        (allow_default && self.has_uvs_mapping(table, default, base, 4)?)
+                            || self.has_uvs_mapping(table, non_default, base, table.glyph_width)?,
+                    );
                 }
+            }
+        }
+        Ok(false)
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    fn has_uvs_mapping(
+        &mut self,
+        table: &UvsTable,
+        start: usize,
+        base: char,
+        width: usize,
+    ) -> Result<bool, NativeFontError> {
+        let Some(remaining) = table.length.checked_sub(start) else {
+            return Ok(false);
+        };
+        if start == 0 || remaining < 4 {
+            return Ok(false);
+        }
+        let offset = table.offset + start as u64;
+        let mut count = [0; 4];
+        self.read(offset, &mut count)?;
+        let mut right = be_u32(&count) as usize;
+        if right > (remaining - 4) / width {
+            return Ok(false);
+        }
+        let base = u32::from(base);
+        let mut left = 0;
+        while left < right {
+            let mid = left + (right - left) / 2;
+            let mut record = [0; 6];
+            self.read(offset + 4 + (width * mid) as u64, &mut record[..width])?;
+            let first = be_u24(&record);
+            let last = first + if width == 4 { u32::from(record[3]) } else { 0 };
+            if base < first {
+                right = mid;
+            } else if base > last {
+                left = mid + 1;
+            } else {
+                return Ok(width == 4 || record[3..width].iter().any(|&byte| byte != 0));
             }
         }
         Ok(false)
@@ -441,6 +582,19 @@ impl Probe<'_, '_> {
         }
         self.read_vec(offset, len).map(Some)
     }
+}
+
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+struct UvsTable {
+    offset: u64,
+    length: usize,
+    count: usize,
+    glyph_width: usize,
+}
+
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+fn be_u24(bytes: &[u8]) -> u32 {
+    u32::from_be_bytes([0, bytes[0], bytes[1], bytes[2]])
 }
 
 pub(super) fn axes(

@@ -68,8 +68,8 @@ The development source targets the next breaking release. When upgrading from
 continue to compile. Exhaustive `NativeFontError` matches must also handle
 `PlatformDiscoveryUnavailable { .. }`.
 
-With system fonts authorized, `load_platform` uses Fontique for family matching
-and DirectWrite for fallback on Windows. On macOS it queries Core Text descriptors
+With system fonts authorized, `load_platform` uses DirectWrite for family matching
+and glyph fallback on Windows. On macOS it queries Core Text descriptors
 one family at a time with automatic activation disabled and skips font assets
 that still need to be downloaded. Linux and FreeBSD submit the authored family
 order to Fontconfig, which applies strong and weak aliases. Merman accepts
@@ -79,12 +79,12 @@ stops at the first accepted face.
 
 Layout and painting share the same bounded snapshots. A system-only context starts
 with zero resident font bytes and acquires each face on demand, including the
-generic default for text without a font family. Platform metadata access and file
-mappings run outside Merman's scan budgets and preemptive cancellation.
-Before acquiring a new fallback source, mapped coverage tables can reject an
-unrelated font without consuming the selected-file budget. Coverage and identity
-are checked again on admitted bytes. Existing snapshots take precedence over
-later file changes. When explicit files contain identical bytes, each supplied
+generic default for text without a font family. Operating system queries have their
+own runtime cost. Merman accounts for its own preflight table reads separately from
+the selected-file budget. Coverage and identity are checked on admitted bytes.
+On Windows, new snapshots are checked against the selected DirectWrite reference's
+write time, horizontal metrics, and variation axes when present. Existing snapshots
+take precedence over later file changes. When explicit files contain identical bytes, each supplied
 path refers to the same retained snapshot. Each input still counts toward the
 acquisition limits. If a repeated path changes during acquisition, registry
 construction reports the path and asks the caller to retry.

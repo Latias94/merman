@@ -1,8 +1,9 @@
 //! DirectWrite family matching and cluster fallback over local physical font faces.
 
 use super::{
-    AcceptFallback, FamilyFace, FamilyQuery, GlyphFallback, MAX_FVAR_TABLE_BYTES, NativeFontError,
-    OperationControl, OperationPhase, PlatformFace, cluster, css_width, ranked_axis_faces,
+    AcceptFallback, DwriteFileIdentity, FamilyFace, FamilyQuery, GlyphFallback,
+    MAX_FVAR_TABLE_BYTES, NativeFontError, OperationControl, OperationPhase, PlatformFace, cluster,
+    css_width, ranked_axis_faces,
 };
 use sha2::{Digest, Sha256};
 use std::{
@@ -696,7 +697,7 @@ fn file_face(
         return None;
     }
     let face = matched.native();
-    let path = file_path(face)?;
+    let (path, last_write_time) = local_file_reference(face)?;
     if request.is_some_and(|request| !covers_cluster(face, request)) {
         return None;
     }
@@ -708,6 +709,17 @@ fn file_face(
         .or_else(|| physical_name(names, name_id::FAMILY))?;
     // SAFETY: The face is live and GetIndex identifies its member of the local file.
     let index = unsafe { face.GetIndex() };
+    let hmtx = FontTable::read(face, b"hmtx")?;
+    let hmtx = hmtx.bytes();
+    // There are at most u16::MAX glyphs, each with at most four bytes of hmtx data.
+    if hmtx.is_empty() || hmtx.len() > 4 * usize::from(u16::MAX) {
+        return None;
+    }
+    let dwrite_identity = Some(DwriteFileIdentity {
+        last_write_time,
+        hmtx_len: hmtx.len(),
+        hmtx_digest: Sha256::digest(hmtx).into(),
+    });
     let (variations, fvar_digest) = variations(matched)?;
     Some((
         path,
@@ -718,6 +730,7 @@ fn file_face(
             other_families: Vec::new(),
             variations,
             fallback_scale,
+            dwrite_identity,
             fvar_digest,
         },
     ))
@@ -748,7 +761,7 @@ fn physical_name(table: name::Table<'_>, id: u16) -> Option<String> {
     find(true).or_else(|| find(false))
 }
 
-fn file_path(face: &IDWriteFontFace) -> Option<PathBuf> {
+fn local_file_reference(face: &IDWriteFontFace) -> Option<(PathBuf, u64)> {
     // SAFETY: The face owns the output file, the file owns the reference key, and the
     // path buffer includes a NUL slot.
     unsafe {
@@ -783,7 +796,14 @@ fn file_path(face: &IDWriteFontFace) -> Option<PathBuf> {
         let mut path = vec![0; len.checked_add(1)?];
         loader.GetFilePathFromKey(key, key_len, &mut path).ok()?;
         let path = PathBuf::from(OsString::from_wide(&path[..len]));
-        path.is_absolute().then_some(path)
+        if !path.is_absolute() {
+            return None;
+        }
+        // This timestamp belongs to the selected reference, even if the path is replaced.
+        let time = loader.GetLastWriteTimeFromKey(key, key_len).ok()?;
+        let last_write_time =
+            (u64::from(time.dwHighDateTime) << 32) | u64::from(time.dwLowDateTime);
+        Some((path, last_write_time))
     }
 }
 
@@ -1005,9 +1025,10 @@ fn covers_cluster(face: &IDWriteFontFace, request: GlyphFallback<'_>) -> bool {
     else {
         return false;
     };
+    let os2 = os2.as_ref().map(FontTable::bytes);
     if !crate::font_selection::allows_font_tables(
         head.bytes(),
-        os2.as_ref().map(FontTable::bytes),
+        os2,
         cmap.bytes(),
         maxp.bytes(),
         Some((request.text, request.rtl)),
@@ -1015,8 +1036,9 @@ fn covers_cluster(face: &IDWriteFontFace, request: GlyphFallback<'_>) -> bool {
         return false;
     }
     maxp::Table::parse(maxp.bytes()).is_some_and(|maxp| {
-        cluster::cmap_may_cover(
+        cluster::cmap_may_cover_with_os2(
             cmap.bytes(),
+            os2,
             maxp.number_of_glyphs.get(),
             request.text,
             request.rtl,
@@ -1601,6 +1623,7 @@ mod tests {
             std::env::temp_dir().join(format!("merman-dwrite-fvar-{}.ttf", std::process::id()));
         let original = path.with_extension("variable.ttf");
         fs::write(&path, variable).unwrap();
+        let modified = fs::metadata(&path).unwrap().modified().unwrap();
         let control = OperationControl::new();
         let request = GlyphFallback::from("A");
         let mut base = base_face();
@@ -1633,16 +1656,145 @@ mod tests {
         let limits = NativeFontLimits::default();
         fs::rename(&path, &original).unwrap();
         fs::write(&path, replacement).unwrap();
+        fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(modified))
+            .unwrap();
         let result = registry.materialize(candidate, Some('A'), &mut database, &limits, &control);
         fs::remove_file(&path).unwrap();
         fs::remove_file(&original).unwrap();
         assert!(
-            matches!(result, Err(NativeFontError::Source { .. })),
+            matches!(&result, Err(NativeFontError::Source { message, .. }) if message.contains("variation axes selected by the platform")),
             "{result:?}"
         );
         assert_eq!(registry.admitted_faces(), 0);
         assert_eq!(registry.resident_bytes(), 0);
         assert!(database.is_empty());
+    }
+
+    #[test]
+    fn directwrite_rejects_changed_horizontal_metrics_with_the_same_path_and_timestamp() {
+        use crate::fonts::{NativeFontLimits, registry::FontSourceRegistry};
+        use std::{fs, sync::Arc};
+
+        let variable = include_bytes!("../../../tests/fonts/MermanVariableWeight.ttf");
+        let parsed = ttf_parser::Face::parse(variable, 0).unwrap();
+        let glyph = parsed.glyph_index('A').unwrap();
+        let hmtx = parsed
+            .raw_face()
+            .table(ttf_parser::Tag::from_bytes(b"hmtx"))
+            .unwrap();
+        let offset = hmtx.as_ptr() as usize - variable.as_ptr() as usize + usize::from(glyph.0) * 4;
+        let mut replacement = variable.to_vec();
+        replacement[offset..offset + 2]
+            .copy_from_slice(&(parsed.glyph_hor_advance(glyph).unwrap() + 1).to_be_bytes());
+        let replaced = ttf_parser::Face::parse(&replacement, 0).unwrap();
+        assert_ne!(
+            parsed.glyph_hor_advance(glyph),
+            replaced.glyph_hor_advance(glyph)
+        );
+
+        let path =
+            std::env::temp_dir().join(format!("merman-dwrite-hmtx-{}.ttf", std::process::id()));
+        let original = path.with_extension("variable.ttf");
+        fs::write(&path, variable).unwrap();
+        let modified = fs::metadata(&path).unwrap().modified().unwrap();
+        let control = OperationControl::new();
+        let candidates = {
+            let name = "Merman Variable Weight";
+            let mut catalog =
+                fixture_catalog(&[&path], &[('A', w!("Merman Variable Weight"), 1.0)]);
+            let mut candidates = Vec::new();
+            if catalog.modern_fallback.is_some() {
+                let query =
+                    FamilyQuery::new(name, Weight(510), Stretch::Normal, Style::Normal, None);
+                let named = catalog.family_candidates(&query, &control, &mut 0).unwrap();
+                let candidate = named.into_iter().next().unwrap().candidate;
+                candidates.push((
+                    "modern named",
+                    candidate,
+                    vec![FontVariation::new(*b"wght", 510.0)],
+                ));
+            }
+            catalog.modern_fallback = None;
+            let mut base = base_face();
+            base.weight = Weight(100);
+            let mut selected = None;
+            catalog
+                .fallback("A".into(), &base, &control, &mut |candidate| {
+                    selected = Some(candidate);
+                    Ok(Some(ID::dummy()))
+                })
+                .unwrap();
+            candidates.push(("classic fallback", selected.unwrap(), Vec::new()));
+            candidates
+        };
+
+        let admit = |candidate, limits: &NativeFontLimits| {
+            let registry = FontSourceRegistry::new(Default::default(), Default::default(), 0, 0);
+            let mut database = Arc::new(Database::new());
+            let result =
+                registry.materialize(candidate, Some('A'), &mut database, limits, &control);
+            (
+                result,
+                registry.admitted_faces(),
+                registry.resident_bytes(),
+                database.is_empty(),
+            )
+        };
+        let mut replacement_db = Database::new();
+        replacement_db.load_font_data(replacement.clone());
+        for (kind, candidate, coordinates) in &candidates {
+            let (_, expected, _) = physical_face(candidate.clone());
+            expected
+                .validate(replacement_db.faces().next().unwrap(), &path)
+                .unwrap();
+            assert_eq!(&expected.variations, coordinates, "{kind}");
+            let observed_fvar = replaced
+                .raw_face()
+                .table(ttf_parser::Tag::from_bytes(b"fvar"))
+                .unwrap();
+            assert_eq!(
+                expected.fvar_digest,
+                Some(Sha256::digest(observed_fvar).into())
+            );
+            let (result, faces, bytes, _) = admit(candidate.clone(), &NativeFontLimits::default());
+            assert!(result.unwrap().is_some(), "{kind}");
+            assert_eq!((faces, bytes), (1, variable.len()), "{kind}");
+        }
+
+        fs::rename(&path, &original).unwrap();
+        fs::write(&path, &replacement).unwrap();
+        fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(modified))
+            .unwrap();
+        let metadata = fs::metadata(&path).unwrap();
+        assert_eq!(metadata.modified().unwrap(), modified);
+        assert_eq!(metadata.len(), variable.len() as u64);
+        // A replaced table should fail the bounded probe before any full-file budget check.
+        let limits = NativeFontLimits {
+            max_files: 0,
+            max_bytes: 0,
+            ..Default::default()
+        };
+        let rejected: Vec<_> = candidates
+            .into_iter()
+            .map(|(kind, candidate, _)| (kind, admit(candidate, &limits)))
+            .collect();
+        fs::remove_file(path).unwrap();
+        fs::remove_file(original).unwrap();
+        for (kind, (result, faces, bytes, database_empty)) in rejected {
+            assert!(
+                matches!(&result, Err(NativeFontError::Source { message, .. }) if message.contains("horizontal metrics changed")),
+                "{kind}: {result:?}"
+            );
+            assert_eq!((faces, bytes, database_empty), (0, 0, true), "{kind}");
+        }
     }
 
     #[test]
