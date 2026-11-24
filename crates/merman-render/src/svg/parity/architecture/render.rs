@@ -8,6 +8,7 @@ use merman_model::families::architecture::{
 use super::ArchitectureEmitCheckpoints;
 use super::edges::{ArchitectureEdgeRenderContext, push_architecture_edges};
 use super::geometry::{GroupRect, GroupRectComputer, bounds_from_rect, extend_bounds};
+use super::icons::ArchitectureNodeResources;
 use super::nodes::{
     ArchitectureNodeRenderContext, push_architecture_group_surfaces, push_architecture_groups,
     push_architecture_services_and_junctions,
@@ -313,18 +314,19 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
 
     let text_measurer = options.text_measurer();
 
+    let legacy_bounds =
+        || architecture_legacy_bounds(layout, model, &node_xy, &settings, text_measurer);
     #[cfg(feature = "layout-shoal")]
     let drawing = shoal_geometry
-        .map(|geometry| ArchitectureDrawingBounds::from_shoal(layout, model, geometry));
+        .map(|geometry| ArchitectureDrawingBounds::from_shoal(layout, model, geometry))
+        .unwrap_or_else(legacy_bounds);
     #[cfg(not(feature = "layout-shoal"))]
-    let drawing = None;
+    let drawing = legacy_bounds();
     let ArchitectureDrawingBounds {
         mut content_bounds,
         junction_bounds,
         group_rects,
-    } = drawing.unwrap_or_else(|| {
-        architecture_legacy_bounds(layout, model, &node_xy, &settings, text_measurer)
-    });
+    } = drawing;
 
     let is_empty = model.nodes.is_empty() && model.groups.is_empty() && model.edges.is_empty();
 
@@ -429,9 +431,11 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
             settings: &settings,
             native,
             text_measurer,
-            sanitize_config: effective_config,
-            icon_registry: options.icon_registry(),
-            work_meter: options.work_meter(),
+            resources: ArchitectureNodeResources {
+                effective_config,
+                icon_registry: options.icon_registry(),
+                work_meter: options.work_meter(),
+            },
             icon_scope_root: None,
             service_icon_scope_prefix: None,
             group_icon_scope_prefix: None,

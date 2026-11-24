@@ -89,7 +89,13 @@ impl RadarTypographyThemePlan {
 #[derive(Debug)]
 pub(crate) struct RadarSeriesPaintPlan {
     colors: [String; RADAR_COLOR_SCALE_KEYS.len()],
-    native_palette: Option<(Box<[String]>, Box<[String]>)>,
+    native_palette: Option<RadarNativePalette>,
+}
+
+#[derive(Debug)]
+struct RadarNativePalette {
+    ink: Box<[String]>,
+    fill: Box<[String]>,
 }
 
 impl RadarSeriesPaintPlan {
@@ -115,7 +121,10 @@ impl RadarSeriesPaintPlan {
                     }
                 })
                 .unzip();
-            plan.native_palette = Some((ink.into_boxed_slice(), fill.into_boxed_slice()));
+            plan.native_palette = Some(RadarNativePalette {
+                ink: ink.into_boxed_slice(),
+                fill: fill.into_boxed_slice(),
+            });
         }
         plan
     }
@@ -136,13 +145,13 @@ impl RadarSeriesPaintPlan {
     pub(crate) fn colors(&self) -> &[String] {
         self.native_palette
             .as_ref()
-            .map_or(&self.colors, |(ink, _)| ink)
+            .map_or(self.colors.as_slice(), |palette| palette.ink.as_ref())
     }
 
     pub(crate) fn fill_css(&self, index: usize) -> &str {
         self.native_palette
             .as_ref()
-            .map_or(self.colors.as_slice(), |(_, fill)| fill)[index]
+            .map_or(self.colors.as_slice(), |palette| palette.fill.as_ref())[index]
             .as_str()
     }
 }

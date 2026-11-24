@@ -1994,6 +1994,7 @@ mod tests {
         let web = render_web_typescript(&descriptor, &digest).unwrap();
         let header = render_c_header(&descriptor, &digest).unwrap();
         assert!(rust.contains("pub maturity: &'static str"));
+        assert!(web.contains(r#""maturity": "stable""#));
         assert!(header.contains("const char *maturity;"));
     }
 

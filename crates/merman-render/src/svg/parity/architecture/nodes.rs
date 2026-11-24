@@ -9,7 +9,8 @@ use super::super::{SvgDiagramId, SvgOutput, escape_attr_into, escape_xml_into, f
 use super::ArchitectureEmitCheckpoints;
 use super::geometry::{GroupRect, extend_bounds};
 use super::icons::{
-    arch_icon_needs_id_scope, write_arch_icon_svg, write_arch_icon_svg_with_registry,
+    ArchitectureNodeResources, arch_icon_needs_id_scope, write_arch_icon_svg,
+    write_arch_icon_svg_with_registry,
 };
 #[cfg(feature = "layout-shoal")]
 use super::labels::write_architecture_centered_text;
@@ -27,9 +28,7 @@ pub(super) struct ArchitectureNodeRenderContext<'a, O: SvgOutput> {
     pub(super) settings: &'a ArchitectureRenderSettings,
     pub(super) native: Option<&'a crate::architecture::ArchitectureNativeStyle>,
     pub(super) text_measurer: &'a dyn TextMeasurer,
-    pub(super) sanitize_config: &'a merman_model::presentation::PresentationConfig,
-    pub(super) icon_registry: Option<&'a crate::svg::IconRegistry>,
-    pub(super) work_meter: &'a crate::resources::OperationWorkMeter,
+    pub(super) resources: ArchitectureNodeResources<'a>,
     pub(super) icon_scope_root: Option<IconIdScopePrefix>,
     pub(super) service_icon_scope_prefix: Option<IconIdScopePrefix>,
     pub(super) group_icon_scope_prefix: Option<IconIdScopePrefix>,
@@ -102,9 +101,8 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
     let settings = ctx.settings;
     let native = ctx.native;
     let text_measurer = ctx.text_measurer;
-    let sanitize_config = ctx.sanitize_config;
-    let icon_registry = ctx.icon_registry;
-    let work_meter = ctx.work_meter;
+    let resources = &ctx.resources;
+    let work_meter = resources.work_meter;
     let icon_scope_root = &mut ctx.icon_scope_root;
     let service_icon_scope_prefix = &mut ctx.service_icon_scope_prefix;
     if model.nodes.is_empty() {
@@ -187,7 +185,7 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
             match (svc.icon.as_deref(), svc.icon_text.as_deref()) {
                 (Some(icon), _) => {
                     out.push_str("<g>");
-                    if arch_icon_needs_id_scope(icon, icon_registry.is_some()) {
+                    if arch_icon_needs_id_scope(icon, resources.icon_registry.is_some()) {
                         let id_scope = architecture_icon_scope(
                             icon_scope_root,
                             service_icon_scope_prefix,
@@ -200,10 +198,8 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
                             out,
                             icon,
                             settings.icon_size_px,
-                            icon_registry,
                             id_scope,
-                            sanitize_config,
-                            work_meter,
+                            resources,
                             native,
                         )?;
                     } else {
@@ -252,7 +248,7 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
                     let sanitized = crate::html::resolve_svg_fragment(
                         merman_markup::sanitize::sanitize_xhtml_in_svg_context_with_sink(
                             icon_text.trim(),
-                            sanitize_config.as_config(),
+                            resources.effective_config.as_config(),
                             &sink,
                         ),
                         work_meter,
@@ -410,8 +406,7 @@ pub(super) fn push_architecture_groups<'a, O: SvgOutput>(
     let settings = ctx.settings;
     let text_measurer = ctx.text_measurer;
     let content_bounds = &mut *ctx.content_bounds;
-    let icon_registry = ctx.icon_registry;
-    let work_meter = ctx.work_meter;
+    let resources = &ctx.resources;
     let icon_scope_root = &mut ctx.icon_scope_root;
     let group_icon_scope_prefix = &mut ctx.group_icon_scope_prefix;
 
@@ -420,7 +415,12 @@ pub(super) fn push_architecture_groups<'a, O: SvgOutput>(
     } else {
         out.push_str(r#"<g class="architecture-groups">"#);
 
-        for (_group_index, grp) in group_rects.iter().enumerate() {
+        let groups = group_rects.iter();
+        #[cfg(feature = "layout-shoal")]
+        let groups = groups.enumerate();
+        for grp in groups {
+            #[cfg(feature = "layout-shoal")]
+            let (group_index, grp) = grp;
             checkpoints.checkpoint()?;
             let x = grp.x;
             let y = grp.y;
@@ -430,7 +430,7 @@ pub(super) fn push_architecture_groups<'a, O: SvgOutput>(
             let x1 = x - settings.half_icon;
             let y1 = y - settings.half_icon;
             #[cfg(feature = "layout-shoal")]
-            let canonical = ctx.shoal.map(|geometry| &geometry.groups[_group_index]);
+            let canonical = ctx.shoal.map(|geometry| &geometry.groups[group_index]);
 
             if emit_surfaces {
                 push_architecture_group_surface(
@@ -462,23 +462,21 @@ pub(super) fn push_architecture_groups<'a, O: SvgOutput>(
                     x = fmt(icon_x),
                     y = fmt(icon_y)
                 );
-                if arch_icon_needs_id_scope(icon, icon_registry.is_some()) {
+                if arch_icon_needs_id_scope(icon, resources.icon_registry.is_some()) {
                     let id_scope = architecture_icon_scope(
                         icon_scope_root,
                         group_icon_scope_prefix,
                         ctx.diagram_id,
                         "-group-",
                         grp.id,
-                        work_meter,
+                        resources.work_meter,
                     )?;
                     write_arch_icon_svg_with_registry(
                         out,
                         icon,
                         group_icon_size_px,
-                        icon_registry,
                         id_scope,
-                        ctx.sanitize_config,
-                        work_meter,
+                        resources,
                         ctx.native,
                     )?;
                 } else {

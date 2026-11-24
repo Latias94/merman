@@ -10,18 +10,17 @@ pub(super) fn document(doc: &ThemeDocumentV2) -> Result<(), ThemeError> {
             "expected theme schema version 2",
         ));
     }
-    if let Some(id) = doc.id() {
-        if id.len() > 48
+    if let Some(id) = doc.id()
+        && (id.len() > 48
             || !id.starts_with(|ch: char| ch.is_ascii_lowercase())
             || !id
                 .bytes()
-                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
-        {
-            return Err(ThemeError::invalid(
-                "id",
-                "expected a lowercase theme ID of up to 48 characters",
-            ));
-        }
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-'))
+    {
+        return Err(ThemeError::invalid(
+            "id",
+            "expected a lowercase theme ID of up to 48 characters",
+        ));
     }
     if let Some(name) = &doc.name {
         bounds("name", name.chars().count() as f64, 1.0, 64.0)?;

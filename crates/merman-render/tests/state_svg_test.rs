@@ -1,9 +1,3 @@
-type FamilyFixture = (
-    merman_model::presentation::PresentationDiagram,
-    merman_render::LayoutOptions,
-    merman_render::environment::RenderSession,
-);
-
 mod common;
 
 use merman_core::{MermaidEngine, ParseOptions};
@@ -18,7 +12,7 @@ use merman_render::family;
 use merman_render::resources::{
     RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
 };
-use merman_render::svg::{SvgDebugOptions, SvgPipeline, SvgRenderOptions};
+use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{
     DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
 };
@@ -28,17 +22,6 @@ fn classic_engine() -> MermaidEngine {
     MermaidEngine::new().with_site_config(
         merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "theme": "default",
-            "look": "classic",
-            "layout": "dagre"
-        })),
-    )
-}
-
-// Typed adapter fixtures select their Mermaid baseline through the recipe, leaving
-// external configuration free to own only the properties each case authors.
-fn classic_typed_engine() -> MermaidEngine {
-    MermaidEngine::new().with_site_config(
-        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
             "look": "classic",
             "layout": "dagre"
         })),
@@ -85,18 +68,6 @@ fn state_edge_label_position(svg: &str, edge_id: &str) -> (f64, f64) {
         components.0.trim().parse().expect("numeric label x"),
         components.1.trim().parse().expect("numeric label y"),
     )
-}
-
-fn svg_view_box(svg: &str) -> [f64; 4] {
-    let document = roxmltree::Document::parse(svg).expect("valid SVG XML");
-    let values = document
-        .root_element()
-        .attribute("viewBox")
-        .expect("root viewBox")
-        .split_whitespace()
-        .map(|value| value.parse::<f64>().expect("numeric viewBox component"))
-        .collect::<Vec<_>>();
-    values.try_into().expect("four-component viewBox")
 }
 
 fn assert_state_rough_path_pair(
@@ -171,80 +142,6 @@ fn assert_state_rough_path_pair(
         stroke_path.attribute("stroke-width"),
         Some(expected_stroke_width)
     );
-}
-
-fn state_diagram_title_x(svg: &str) -> f64 {
-    let document = roxmltree::Document::parse(svg).expect("valid State SVG XML");
-    document
-        .descendants()
-        .find(|node| {
-            node.has_tag_name("text") && node.attribute("class") == Some("statediagramTitleText")
-        })
-        .and_then(|node| node.attribute("x"))
-        .expect("State diagram title x")
-        .parse()
-        .expect("numeric State diagram title x")
-}
-
-fn state_effect_filter_regions(svg: &str) -> Vec<(f64, f64, [f64; 4])> {
-    let document = roxmltree::Document::parse(svg).expect("valid themed State SVG XML");
-    let mut regions = document
-        .descendants()
-        .filter(|node| {
-            node.has_tag_name("rect")
-                && node.attribute("class") == Some("basic label-container")
-                && node.attribute("filter").is_some()
-        })
-        .map(|rect| {
-            let filter_id = rect
-                .attribute("filter")
-                .and_then(|value| value.strip_prefix("url(#"))
-                .and_then(|value| value.strip_suffix(')'))
-                .expect("State rect typed filter reference");
-            let filter = document
-                .descendants()
-                .find(|node| node.has_tag_name("filter") && node.attribute("id") == Some(filter_id))
-                .expect("referenced State filter definition");
-            let parse = |node: roxmltree::Node<'_, '_>, name: &str| {
-                node.attribute(name)
-                    .unwrap_or_else(|| panic!("missing {name} on {}", node.tag_name().name()))
-                    .parse::<f64>()
-                    .unwrap_or_else(|_| panic!("numeric {name} on {}", node.tag_name().name()))
-            };
-            (
-                parse(rect, "width"),
-                parse(rect, "height"),
-                [
-                    parse(filter, "x"),
-                    parse(filter, "y"),
-                    parse(filter, "width"),
-                    parse(filter, "height"),
-                ],
-            )
-        })
-        .collect::<Vec<_>>();
-    regions.sort_by(|left, right| left.0.total_cmp(&right.0));
-    regions
-}
-
-fn assert_filter_region_matches_outsets(
-    width: f64,
-    height: f64,
-    region: [f64; 4],
-    expected: [f64; 4],
-) {
-    let actual = [
-        -region[1] * height,
-        (region[0] + region[2] - 1.0) * width,
-        (region[1] + region[3] - 1.0) * height,
-        -region[0] * width,
-    ];
-    for (actual, expected) in actual.into_iter().zip(expected) {
-        assert!(
-            actual >= expected - 1.0e-5 && actual <= expected + 1.0e-3,
-            "expected outset {expected}, got {actual} from region {region:?}"
-        );
-    }
 }
 
 fn render_state_svg_from_text(text: &str) -> String {
@@ -479,188 +376,6 @@ fn state_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
         resource_override.id == ResourceLimitId::MaxSvgBytes
             && resource_override.value == below_exact
     }));
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct StateThemeEvidenceCounts {
-    required: usize,
-    accounted: usize,
-    applied: usize,
-    not_applicable: usize,
-    residual: usize,
-}
-
-fn state_terminal_owner_config_for_origin(
-    mut config: serde_json::Value,
-    origin: &str,
-) -> serde_json::Value {
-    if origin != "source" {
-        return config;
-    }
-
-    // `theme-base` does not admit `stateBorder` as a source-authored variable. The State writer
-    // resolves that terminal through `stateBorder -> nodeBorder`, so the source witness must own
-    // the surviving fallback while the site witness continues to exercise the preferred path.
-    let theme = config
-        .get("theme")
-        .and_then(serde_json::Value::as_str)
-        .map(str::to_string);
-    let Some(theme_variables) = config
-        .get_mut("themeVariables")
-        .and_then(serde_json::Value::as_object_mut)
-    else {
-        return config;
-    };
-    let Some(state_border) = theme_variables.remove("stateBorder") else {
-        return config;
-    };
-
-    assert_eq!(
-        theme.as_deref(),
-        Some("base"),
-        "the State source-owner fallback witness is specific to theme-base"
-    );
-    assert!(
-        theme_variables
-            .insert("nodeBorder".to_string(), state_border)
-            .is_none(),
-        "the State source-owner fixture must select exactly one border fallback"
-    );
-    config
-}
-
-fn state_note_rough_paths(svg: &str) -> Vec<String> {
-    let document = roxmltree::Document::parse(svg).expect("valid State SVG XML");
-    let note_label = document
-        .descendants()
-        .find(|node| {
-            node.has_tag_name("g")
-                && node.attribute("class").is_some_and(|classes| {
-                    classes.split_whitespace().any(|class| class == "noteLabel")
-                })
-        })
-        .expect("State note label group");
-    let note_node = note_label.parent().expect("State note node group");
-    note_node
-        .children()
-        .find(|node| {
-            node.has_tag_name("g")
-                && node.attribute("class").is_some_and(|classes| {
-                    classes
-                        .split_whitespace()
-                        .any(|class| class == "outer-path")
-                })
-        })
-        .expect("State note outer path group")
-        .children()
-        .filter(|node| node.has_tag_name("path"))
-        .map(|node| {
-            node.attribute("d")
-                .expect("State note rough path")
-                .to_string()
-        })
-        .collect()
-}
-
-fn state_edge_label_foreign_object_height(svg: &str, edge_id: &str) -> f64 {
-    let document = roxmltree::Document::parse(svg).expect("valid State SVG XML");
-    document
-        .descendants()
-        .find(|node| {
-            node.has_tag_name("g")
-                && node.attribute("data-id") == Some(edge_id)
-                && node
-                    .attribute("class")
-                    .is_some_and(|classes| classes.split_whitespace().any(|class| class == "label"))
-        })
-        .and_then(|label| {
-            label
-                .descendants()
-                .find(|node| node.has_tag_name("foreignObject"))
-        })
-        .and_then(|node| node.attribute("height"))
-        .and_then(|height| height.parse::<f64>().ok())
-        .unwrap_or_else(|| panic!("missing numeric State edge label height for {edge_id}"))
-}
-
-fn state_cluster_title_geometry(svg: &str, cluster_id: &str) -> (f64, f64, f64) {
-    let document = roxmltree::Document::parse(svg).expect("valid State SVG XML");
-    let cluster = document
-        .descendants()
-        .find(|node| node.has_tag_name("g") && node.attribute("data-id") == Some(cluster_id))
-        .unwrap_or_else(|| panic!("missing State cluster {cluster_id}"));
-    let title_height = cluster
-        .descendants()
-        .find(|node| node.has_tag_name("foreignObject"))
-        .and_then(|node| node.attribute("height"))
-        .and_then(|height| height.parse::<f64>().ok())
-        .unwrap_or_else(|| panic!("missing State cluster title height for {cluster_id}"));
-    let outer_y = cluster
-        .descendants()
-        .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some("outer"))
-        .and_then(|node| node.attribute("y"))
-        .and_then(|y| y.parse::<f64>().ok())
-        .unwrap_or_else(|| panic!("missing State cluster outer y for {cluster_id}"));
-    let inner_y = cluster
-        .children()
-        .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some("inner"))
-        .and_then(|node| node.attribute("y"))
-        .and_then(|y| y.parse::<f64>().ok())
-        .unwrap_or_else(|| panic!("missing State cluster inner y for {cluster_id}"));
-    (title_height, outer_y, inner_y)
-}
-
-fn render_unhosted_state_svg_with_config(
-    source: &str,
-    config: serde_json::Value,
-    origin: &str,
-) -> String {
-    let (engine, source) = if origin == "site" {
-        (
-            classic_typed_engine().with_site_config(
-                merman_core::presentation::SourcePresentationConfig::from_value(config),
-            ),
-            source.to_string(),
-        )
-    } else {
-        assert_eq!(origin, "source");
-        (
-            classic_typed_engine().with_site_config(
-                merman_core::presentation::SourcePresentationConfig::from_value(
-                    serde_json::json!({"secure": []}),
-                ),
-            ),
-            format!("%%{{init: {config}}}%%\n{source}"),
-        )
-    };
-    render_state_svg_from_text_with_engine(engine, &source)
-}
-
-fn state_svg_stylesheet(svg: &str) -> String {
-    roxmltree::Document::parse(svg)
-        .expect("valid State SVG")
-        .descendants()
-        .find(|node| node.has_tag_name("style"))
-        .and_then(|node| node.text())
-        .expect("State stylesheet")
-        .to_owned()
-}
-
-fn state_transition_inline_stroke(svg: &str) -> Option<String> {
-    let document = roxmltree::Document::parse(svg).expect("valid State SVG");
-    let edges = document
-        .descendants()
-        .filter(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
-        .collect::<Vec<_>>();
-    let [edge] = edges.as_slice() else {
-        panic!("expected one State transition terminal: {svg}");
-    };
-    edge.attribute("style")
-        .unwrap_or_default()
-        .split(';')
-        .filter_map(|declaration| declaration.split_once(':'))
-        .find(|(property, _)| property.trim() == "stroke")
-        .map(|(_, value)| value.trim().to_owned())
 }
 
 #[test]
@@ -2904,21 +2619,6 @@ fn state_svg_min_width_updates_html_box_without_changing_wrapping() {
             .count(),
         1
     );
-}
-
-fn state_inline_numeric_property(node: roxmltree::Node<'_, '_>, property: &str) -> Option<String> {
-    node.attribute("style")?
-        .split(';')
-        .filter_map(|declaration| declaration.split_once(':'))
-        .filter(|(name, _)| name.trim() == property)
-        .map(|(_, value)| {
-            value
-                .trim()
-                .trim_end_matches("!important")
-                .trim()
-                .to_owned()
-        })
-        .next_back()
 }
 
 #[test]

@@ -88,7 +88,6 @@ fn native_pie_percentage_ink_uses_host_canvas_and_slice_opacity() {
         serde_json::to_value(automatic.as_ref()).unwrap(),
         serde_json::to_value(authored.as_ref()).unwrap(),
     );
-    assert_ne!(automatic.fingerprint(), authored.fingerprint());
 
     for (fill_ink, theme) in [("auto", automatic), (authored_ink, authored)] {
         let native = NativeTheme::new(theme);

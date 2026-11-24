@@ -1,7 +1,7 @@
 mod common;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{MermaidEngine, ParseOptions};
+use merman_core::ParseOptions;
 use merman_render::LayoutOptions;
 
 use merman_render::environment::RenderEnvironment;

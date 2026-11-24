@@ -1,5 +1,4 @@
 use merman_core::{MermaidEngine, ParseOptions};
-use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
 
 use merman_render::environment::RenderEnvironment;

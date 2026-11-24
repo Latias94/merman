@@ -281,7 +281,6 @@ fn validate_state_parent_cycles_with_step(
 }
 
 #[cfg(test)]
-
 mod tests {
     use super::*;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};

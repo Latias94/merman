@@ -581,12 +581,11 @@ fn requirement_html_sized_icons_keep_their_advance_in_node_measurement() {
                 .all(|call| !call.text.contains('\u{fffc}'))
         );
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-        let width = requirement_foreign_object_for_text(&document, "Account")
+        requirement_foreign_object_for_text(&document, "Account")
             .attribute("width")
             .unwrap()
             .parse::<f64>()
-            .unwrap();
-        width
+            .unwrap()
     };
     let ordinary = width("<big>Account</big>");
     let with_icon = width("<big><i class='fa fa-car'></i>Account</big>");

@@ -1,4 +1,5 @@
 use super::super::markers::er_marker_paint_bounds;
+use crate::er::ErCssBinding;
 use crate::graph_layout::{canonical::CanonicalRoutes, route_paint::RouteStyle};
 use crate::model::{LayoutEdge, LayoutPoint};
 use crate::resources::OperationWorkMeter;
@@ -17,16 +18,21 @@ pub(super) fn paint_edge(
     routes: &CanonicalRoutes,
     edge: &LayoutEdge,
     translation: Vec2,
-    look: &str,
-    neo_stroke_width: f64,
-    native: Option<&crate::er::ErNativeStyle>,
+    binding: &ErCssBinding,
     work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Result<PaintedEdge> {
+    let look = binding.render_settings.diagram_look.as_str();
     let neo = look == "neo";
-    let stroke_outset = native.map_or(if neo { neo_stroke_width } else { 1.0 }, |style| {
-        style.connector_width
-    }) / 2.0;
+    let native = binding.native.as_ref();
+    let stroke_outset = native.map_or(
+        if neo {
+            binding.neo_marker_stroke_width
+        } else {
+            1.0
+        },
+        |style| style.connector_width,
+    ) / 2.0;
     work_meter.charge(edge.points.len())?;
     use merman_theme_contract::v2::EdgeStyle;
     let style = match native.map(|style| style.edge_style) {

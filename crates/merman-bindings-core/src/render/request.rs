@@ -1022,9 +1022,6 @@ mod tests {
         );
     }
 
-    const PORTABILITY_SOURCE: &[u8] =
-        b"sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello";
-
     #[test]
     fn theme_evaluation_limits_keep_resource_status_for_render_outputs() {
         let error = classify_render_error(

@@ -146,7 +146,7 @@ pub(crate) fn render_native_pie_svg(
 }
 
 fn uses_pattern(style: &PieNativeStyle, ordinal: usize) -> bool {
-    style.data.pattern_encoding && ordinal % 6 != 0
+    style.data.pattern_encoding && !ordinal.is_multiple_of(6)
 }
 
 fn write_patterns(

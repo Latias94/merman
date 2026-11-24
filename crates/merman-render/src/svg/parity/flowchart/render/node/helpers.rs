@@ -117,14 +117,6 @@ impl<'a> NodeWrapperClasses<'a> {
         self
     }
 
-    pub(in crate::svg::parity::flowchart) fn contains(self, expected: &str) -> bool {
-        self.base
-            .split_ascii_whitespace()
-            .chain(self.assigned.iter().map(String::as_str))
-            .chain(self.extra.into_iter().flat_map(str::split_ascii_whitespace))
-            .any(|class| class.trim() == expected)
-    }
-
     fn write(self, out: &mut impl crate::svg::parity::SvgOutput) {
         escape_xml_into(out, self.base);
         for c in self.assigned {

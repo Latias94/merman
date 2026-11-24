@@ -16,6 +16,7 @@ use crate::environment::{
 use crate::environment::{
     MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfileIdentity,
 };
+#[cfg(feature = "math")]
 use crate::svg::SvgPipelinePreset;
 use crate::text::{TextMetrics, WrapMode};
 

@@ -26,7 +26,7 @@ fn paper_cut_elevation_fits_the_default_png_filter_budget() {
         .filter(|node| node.attribute("data-merman-theme-depth") == Some("node"))
         .collect();
     assert_eq!(layers.len(), 6, "three depth layers per node");
-    for layer in layers.chunks_exact(3) {
+    for layer in layers.as_chunks::<3>().0 {
         let colors: Vec<_> = layer
             .iter()
             .map(|group| {

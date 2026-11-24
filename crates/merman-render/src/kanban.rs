@@ -73,6 +73,10 @@ pub(crate) struct KanbanPreparedArtifact {
 }
 
 #[derive(Debug)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "The family artifact is already boxed. The inline Mermaid binding avoids another allocation."
+)]
 pub(crate) enum KanbanAppearance {
     Mermaid(KanbanCssBinding),
     Native(Box<KanbanNativeStyle>),

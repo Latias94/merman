@@ -1871,7 +1871,6 @@ pub fn debug_build_state_diagram_dagre_graph(
 }
 
 #[cfg(test)]
-
 mod tests {
     use super::*;
     use crate::text::DeterministicTextMeasurer;

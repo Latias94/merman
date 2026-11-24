@@ -282,7 +282,7 @@ pub(crate) fn validate_font_stack_families(
     let families = families
         .into_iter()
         .map(Into::into)
-        .map(|family| validate_font_family(family))
+        .map(validate_font_family)
         .collect::<Result<Vec<_>, _>>()?;
     if families.is_empty() || families.len() > MAX_FONT_STACK_ENTRIES {
         return Err(FontStackError::InvalidLength);

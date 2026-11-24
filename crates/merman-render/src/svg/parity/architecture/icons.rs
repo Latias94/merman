@@ -1,4 +1,7 @@
+use crate::resources::OperationWorkMeter;
+use crate::svg::IconRegistry;
 use crate::svg::icon_registry::{IconIdScope, scope_svg_internal_ids};
+use merman_model::presentation::PresentationConfig;
 
 use super::super::{SvgOutput, fmt_into};
 use std::borrow::Cow;
@@ -74,17 +77,21 @@ pub(super) fn write_arch_icon_svg(
     Ok(())
 }
 
+pub(super) struct ArchitectureNodeResources<'a> {
+    pub(super) effective_config: &'a PresentationConfig,
+    pub(super) icon_registry: Option<&'a IconRegistry>,
+    pub(super) work_meter: &'a OperationWorkMeter,
+}
+
 pub(super) fn write_arch_icon_svg_with_registry(
     out: &mut impl SvgOutput,
     icon_name: &str,
     icon_size_px: f64,
-    icon_registry: Option<&crate::svg::IconRegistry>,
     id_scope: IconIdScope,
-    effective_config: &merman_model::presentation::PresentationConfig,
-    work_meter: &crate::resources::OperationWorkMeter,
+    resources: &ArchitectureNodeResources<'_>,
     native: Option<&crate::architecture::ArchitectureNativeStyle>,
 ) -> crate::Result<()> {
-    let svg = match icon_registry {
+    let svg = match resources.icon_registry {
         Some(registry) => registry.render_icon(crate::svg::icon_registry::IconRenderRequest {
             icon_name,
             width_px: icon_size_px,
@@ -92,8 +99,8 @@ pub(super) fn write_arch_icon_svg_with_registry(
             fallback_prefix: Some("mermaid-architecture"),
             extra_class: None,
             id_scope,
-            effective_config,
-            work_meter,
+            effective_config: resources.effective_config,
+            work_meter: resources.work_meter,
         })?,
         None => None,
     };
@@ -108,9 +115,9 @@ pub(super) fn write_arch_icon_svg_with_registry(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
+    use crate::resources::RenderResourcePolicy;
+    use crate::svg::IconPack;
     use crate::svg::icon_registry::icon_id_scope_for_test;
-    use crate::svg::{IconPack, IconRegistry};
 
     #[test]
     fn write_arch_icon_svg_preserves_builtin_id_scoping_behavior() {
@@ -159,16 +166,19 @@ mod tests {
         );
         let work_meter =
             OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let resources = ArchitectureNodeResources {
+            effective_config: &effective_config,
+            icon_registry: Some(&registry),
+            work_meter: &work_meter,
+        };
 
         let mut service = String::new();
         write_arch_icon_svg_with_registry(
             &mut service,
             "test:clip",
             80.0,
-            Some(&registry),
             icon_id_scope_for_test("diagram-service-a-icon"),
-            &effective_config,
-            &work_meter,
+            &resources,
             None,
         )
         .unwrap();
@@ -177,10 +187,8 @@ mod tests {
             &mut group,
             "test:clip",
             60.0,
-            Some(&registry),
             icon_id_scope_for_test("diagram-group-app-icon"),
-            &effective_config,
-            &work_meter,
+            &resources,
             None,
         )
         .unwrap();

@@ -1644,9 +1644,11 @@ pub(crate) struct FlowchartSvgLabelSidecar {
     base_typography: Option<super::FlowchartBaseTypographyPlan>,
     node_owner_by_id: FxHashMap<String, FlowchartSvgLabelOwner>,
     empty_subgraph_owner_by_id: FxHashMap<String, FlowchartSvgLabelOwner>,
+    #[cfg(test)]
     edge_owner_by_id: FxHashMap<String, FlowchartSvgLabelOwner>,
     subgraph_title_owner_by_id: FxHashMap<String, FlowchartSvgLabelOwner>,
     swimlane_node_owner_by_id: FxHashMap<String, FlowchartSvgLabelOwner>,
+    #[cfg(test)]
     swimlane_edge_owner_by_id: FxHashMap<String, FlowchartSvgLabelOwner>,
     swimlane_group_title_owner_by_id: FxHashMap<String, FlowchartSvgLabelOwner>,
     prepared_resource_error: Option<ResourceLimitExceeded>,
@@ -1700,6 +1702,7 @@ impl FlowchartSvgLabelSidecar {
                     insert_last_owner(&mut sidecar.empty_subgraph_owner_by_id, render_id, owner);
                 }
                 FlowchartSvgLabelOwner::Edge(_) => {
+                    #[cfg(test)]
                     insert_last_owner(&mut sidecar.edge_owner_by_id, render_id, owner);
                 }
                 FlowchartSvgLabelOwner::SubgraphTitle(_) => {
@@ -1711,6 +1714,7 @@ impl FlowchartSvgLabelSidecar {
                     insert_last_owner(&mut sidecar.swimlane_node_owner_by_id, render_id, owner);
                 }
                 FlowchartSvgLabelOwner::SwimlaneEdgeLabel(_) => {
+                    #[cfg(test)]
                     insert_last_owner(&mut sidecar.swimlane_edge_owner_by_id, render_id, owner);
                 }
                 FlowchartSvgLabelOwner::SwimlaneGroupTitle(_) => {
@@ -1794,6 +1798,7 @@ impl FlowchartSvgLabelSidecar {
             .copied()
     }
 
+    #[cfg(test)]
     pub(crate) fn edge_owner(
         &self,
         edge_id: &str,

@@ -12,6 +12,10 @@ const INFO_VERSION_BASELINE_X_PX: f64 = 100.0;
 const INFO_VERSION_BASELINE_Y_PX: f64 = 40.0;
 
 #[derive(Debug)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "The boxed Info family artifact already owns the appearance."
+)]
 pub(crate) enum InfoAppearance {
     Mermaid(InfoClassicStyle),
     Native(InfoNativeStyle),

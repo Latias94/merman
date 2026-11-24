@@ -162,7 +162,8 @@ struct PreparedEdgeStyles {
     path_sources: OnceCell<FlowchartEdgePathSourceFacets>,
     animation: FlowchartEdgeAnimationResolution,
     swimlane_label: Option<Arc<FlowchartCompiledStyles>>,
-    stroke_width: Option<FlowchartEdgeStrokeWidthResolution>,
+    // The outer option records preparation. The inner option holds the numeric CSS width.
+    stroke_width: Option<Option<f32>>,
 }
 
 #[derive(Debug)]
@@ -174,17 +175,6 @@ pub(crate) struct FlowchartEdgeStylePlan {
     structural_path_styles: Vec<FlowchartStructuralEdgePathStyle>,
     #[cfg(test)]
     parsed_class_declaration_count: usize,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(in crate::svg::parity::flowchart) struct FlowchartEdgeStrokeWidthResolution {
-    paint_value: Option<f32>,
-}
-
-impl FlowchartEdgeStrokeWidthResolution {
-    pub(in crate::svg::parity::flowchart) fn paint_outset(self) -> Option<f64> {
-        self.paint_value.map(|value| f64::from(value) / 2.0)
-    }
 }
 
 impl FlowchartEdgeStylePlan {
@@ -460,10 +450,11 @@ impl FlowchartEdgeStylePlan {
         Ok(self)
     }
 
-    pub(in crate::svg::parity::flowchart) fn stroke_width_for(
+    #[cfg(feature = "layout-shoal")]
+    pub(in crate::svg::parity::flowchart) fn stroke_outset_for(
         &self,
         key: crate::flowchart::FlowchartEdgeKey,
-    ) -> crate::Result<FlowchartEdgeStrokeWidthResolution> {
+    ) -> crate::Result<Option<f64>> {
         let occurrence = self.occurrence(key)?;
         let mut resolved = occurrence
             .stroke_width
@@ -480,13 +471,12 @@ impl FlowchartEdgeStylePlan {
         {
             // Generated class rules are important, but important declarations emitted directly
             // on the path retain inline specificity. Unknown winners must stay unbounded.
-            resolved.paint_value = match occurrence.artifact.emission.edge_important_stroke_width()
-            {
+            resolved = match occurrence.artifact.emission.edge_important_stroke_width() {
                 Some(declaration) => admitted_flowchart_source_stroke_width(declaration.value()),
                 None => source.stroke_width_value,
             };
         }
-        Ok(resolved)
+        Ok(resolved.map(|width| f64::from(width) / 2.0))
     }
 
     fn resolve_edge_stroke_width(
@@ -495,7 +485,7 @@ impl FlowchartEdgeStylePlan {
         edge: &crate::flowchart::FlowEdge,
         mermaid_stroke_width: f32,
         hand_drawn: bool,
-    ) -> crate::Result<FlowchartEdgeStrokeWidthResolution> {
+    ) -> crate::Result<Option<f32>> {
         let artifact = &self.occurrence(key)?.artifact;
         let class_value = if hand_drawn {
             1.0
@@ -506,7 +496,7 @@ impl FlowchartEdgeStylePlan {
                 _ => mermaid_stroke_width,
             }
         };
-        let paint_value = match artifact.source_stroke_width_status {
+        Ok(match artifact.source_stroke_width_status {
             crate::flowchart::FlowchartSourceFacetStatus::Admitted => {
                 artifact.source_stroke_width_value
             }
@@ -514,8 +504,7 @@ impl FlowchartEdgeStylePlan {
             // extent that the headless viewport can safely claim.
             crate::flowchart::FlowchartSourceFacetStatus::Unverified => None,
             crate::flowchart::FlowchartSourceFacetStatus::Absent => Some(class_value),
-        };
-        Ok(FlowchartEdgeStrokeWidthResolution { paint_value })
+        })
     }
 
     #[cfg(test)]

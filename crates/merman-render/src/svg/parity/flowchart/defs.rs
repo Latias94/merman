@@ -69,6 +69,7 @@ struct FlowchartMarkerViewport {
     size: [f64; 2],
 }
 
+#[cfg(any(feature = "layout-shoal", test))]
 impl FlowchartMarkerViewport {
     fn rotation_radius(self) -> f64 {
         // All built-in markers use a zero-origin viewBox and the SVG default
@@ -408,7 +409,6 @@ pub(in crate::svg::parity::flowchart) struct FlowchartMarkerEmissionPlan {
     edges: FxHashMap<String, Vec<FlowchartEdgeMarkerReferences>>,
     edge_occurrences: FxHashMap<crate::flowchart::FlowchartEdgeKey, FlowchartEdgeMarkerReferences>,
     variants: IndexMap<FlowchartMarkerVariantKey, String>,
-    hand_drawn: bool,
     marker_style: MarkerStyle,
     base_marker_bytes: usize,
     bpmn_markers: bool,
@@ -418,13 +418,12 @@ pub(in crate::svg::parity::flowchart) struct FlowchartMarkerEmissionPlan {
 }
 
 impl FlowchartMarkerEmissionPlan {
-    fn new(hand_drawn: bool) -> Self {
+    fn new() -> Self {
         Self {
             #[cfg(test)]
             edges: FxHashMap::default(),
             edge_occurrences: FxHashMap::default(),
             variants: IndexMap::new(),
-            hand_drawn,
             marker_style: MarkerStyle::Classic,
             base_marker_bytes: 0,
             bpmn_markers: false,
@@ -441,7 +440,7 @@ impl FlowchartMarkerEmissionPlan {
         let look = ctx.compatibility.look;
         let hand_drawn = look.is_hand_drawn();
         let neo = look.is_neo();
-        let mut plan = Self::new(hand_drawn);
+        let mut plan = Self::new();
         if let Some(native) = ctx.native {
             plan.marker_style = native.form.marker_style;
         }
@@ -1081,7 +1080,7 @@ mod tests {
     fn bpmn_markers_keep_their_source_viewports_no_fill_and_no_neo_margin_variant() {
         let work = meter();
         let color = PreparedFlowchartMarkerColor::prepare("#2468ac", &work).unwrap();
-        let mut plan = FlowchartMarkerEmissionPlan::new(false);
+        let mut plan = FlowchartMarkerEmissionPlan::new();
         for spec in BPMN_MARKER_SHAPE_SPECS {
             let reference = plan
                 .register_reference(spec.base, Some(&color), true, &work)
@@ -1128,7 +1127,7 @@ mod tests {
     #[test]
     fn bpmn_marker_references_defs_and_budget_share_one_prepared_plan() {
         let work = meter();
-        let mut plan = FlowchartMarkerEmissionPlan::new(false);
+        let mut plan = FlowchartMarkerEmissionPlan::new();
         for (id, edge_type) in [
             ("open", "arrow_open_head"),
             ("hollow", "arrow_hollow_circle"),
@@ -1180,7 +1179,7 @@ mod tests {
             plan.base_marker_bytes + plan.extra_marker_bytes + plan.edge_marker_attribute_bytes - 1,
             usize::MAX,
         );
-        let mut rejected = FlowchartMarkerEmissionPlan::new(false);
+        let mut rejected = FlowchartMarkerEmissionPlan::new();
         for (id, edge_type) in [
             ("open", "arrow_open_head"),
             ("hollow", "arrow_hollow_circle"),
@@ -1389,7 +1388,7 @@ mod tests {
         let circle = edge("circle", "double_arrow_circle");
         let cross = edge("cross", "double_arrow_cross");
         let point = edge("point", "double_arrow_point");
-        let mut plan = FlowchartMarkerEmissionPlan::new(false);
+        let mut plan = FlowchartMarkerEmissionPlan::new();
         let meter = meter();
         plan.register_edge(&circle, Some("#ef4444"), &meter)
             .unwrap();
@@ -1475,7 +1474,7 @@ mod tests {
     fn duplicate_mermaid_edge_ids_keep_occurrence_scoped_marker_references() {
         let first = edge("duplicate", "double_arrow_circle");
         let second = edge("duplicate", "double_arrow_cross");
-        let mut plan = FlowchartMarkerEmissionPlan::new(false);
+        let mut plan = FlowchartMarkerEmissionPlan::new();
         let meter = meter();
         plan.register_edge(&first, Some("#ef4444"), &meter).unwrap();
         plan.register_edge(&second, Some("#22c55e"), &meter)
@@ -1510,7 +1509,7 @@ mod tests {
     fn colored_marker_plan_deduplicates_by_base_and_color_id_with_first_raw_color() {
         let first = edge("first", "arrow_point");
         let second = edge("second", "arrow_point");
-        let mut plan = FlowchartMarkerEmissionPlan::new(false);
+        let mut plan = FlowchartMarkerEmissionPlan::new();
         let meter = meter();
         plan.register_edge(&first, Some("#abc"), &meter).unwrap();
         plan.register_edge(&second, Some("$abc"), &meter).unwrap();
@@ -1572,7 +1571,7 @@ mod tests {
     fn same_colored_bidirectional_base_is_deduplicated_without_merging_start_and_end() {
         let first = edge("first", "double_arrow_point");
         let second = edge("second", "double_arrow_point");
-        let mut plan = FlowchartMarkerEmissionPlan::new(false);
+        let mut plan = FlowchartMarkerEmissionPlan::new();
         let meter = meter();
         plan.register_edge(&first, Some("#ef4444"), &meter).unwrap();
         assert_eq!(meter.used(), 7);
@@ -1613,7 +1612,7 @@ mod tests {
     #[test]
     fn uncolored_edges_keep_base_marker_references_and_emit_no_extra_defs() {
         let edge = edge("edge", "arrow_point");
-        let mut plan = FlowchartMarkerEmissionPlan::new(false);
+        let mut plan = FlowchartMarkerEmissionPlan::new();
         let meter = meter();
         plan.register_edge(&edge, None, &meter).unwrap();
 
@@ -1645,7 +1644,7 @@ mod tests {
         assert_eq!(normalization_work, 3);
 
         let short_meter = meter_with_limits(usize::MAX, normalization_work);
-        let mut plan = FlowchartMarkerEmissionPlan::new(false);
+        let mut plan = FlowchartMarkerEmissionPlan::new();
         let error = plan
             .register_edge(&edge, Some(&color), &short_meter)
             .expect_err("normalization must be rejected before scanning the color");
@@ -1661,7 +1660,7 @@ mod tests {
 
         let exact_work = 1 + normalization_work + 1 + 1;
         let exact_meter = meter();
-        let mut exact_plan = FlowchartMarkerEmissionPlan::new(false);
+        let mut exact_plan = FlowchartMarkerEmissionPlan::new();
         exact_plan
             .register_edge(&edge, Some(&color), &exact_meter)
             .expect("normalization, reference, and variant work must be charged once each");
@@ -1674,14 +1673,14 @@ mod tests {
         let mut emitted = String::new();
         push_base_markers(&mut emitted, diagram_id, "agentflow", MarkerStyle::Classic);
         let exact_meter = meter_with_limits(emitted.len(), usize::MAX);
-        let mut exact_plan = FlowchartMarkerEmissionPlan::new(false);
+        let mut exact_plan = FlowchartMarkerEmissionPlan::new();
         exact_plan
             .finalize_svg_budget(diagram_id, "agentflow", false, &exact_meter)
             .unwrap();
         assert_eq!(exact_plan.base_marker_bytes, emitted.len());
         assert_eq!(exact_meter.projected_svg_bytes(), emitted.len());
         let short_meter = meter_with_limits(emitted.len() - 1, usize::MAX);
-        let mut short_plan = FlowchartMarkerEmissionPlan::new(false);
+        let mut short_plan = FlowchartMarkerEmissionPlan::new();
         let error = short_plan
             .finalize_svg_budget(diagram_id, "agentflow", false, &short_meter)
             .expect_err("hierarchy definitions cannot escape the precharged SVG ceiling");
@@ -1693,7 +1692,7 @@ mod tests {
     fn marker_plan_precharges_exact_serialized_bytes_and_work() {
         let edge = edge("edge", "double_arrow_circle");
         let probe_meter = meter();
-        let mut probe = FlowchartMarkerEmissionPlan::new(false);
+        let mut probe = FlowchartMarkerEmissionPlan::new();
         probe
             .register_edge(&edge, Some("#ef4444"), &probe_meter)
             .unwrap();
@@ -1708,7 +1707,7 @@ mod tests {
         assert_eq!(probe_meter.projected_svg_bytes(), projected);
 
         let exact_meter = meter_with_limits(projected, work);
-        let mut exact = FlowchartMarkerEmissionPlan::new(false);
+        let mut exact = FlowchartMarkerEmissionPlan::new();
         exact
             .register_edge(&edge, Some("#ef4444"), &exact_meter)
             .unwrap();
@@ -1719,7 +1718,7 @@ mod tests {
         assert_eq!(exact_meter.projected_svg_bytes(), projected);
 
         let short_svg_meter = meter_with_limits(projected - 1, usize::MAX);
-        let mut short_svg = FlowchartMarkerEmissionPlan::new(false);
+        let mut short_svg = FlowchartMarkerEmissionPlan::new();
         short_svg
             .register_edge(&edge, Some("#ef4444"), &short_svg_meter)
             .unwrap();
@@ -1730,7 +1729,7 @@ mod tests {
         assert_eq!(short_svg_meter.projected_svg_bytes(), 0);
 
         let short_work_meter = meter_with_limits(usize::MAX, work - 1);
-        let mut short_work = FlowchartMarkerEmissionPlan::new(false);
+        let mut short_work = FlowchartMarkerEmissionPlan::new();
         let result = short_work
             .register_edge(&edge, Some("#ef4444"), &short_work_meter)
             .and_then(|_| {
@@ -1747,7 +1746,7 @@ mod tests {
     fn marker_defs_check_the_whole_svg_ceiling_before_each_append() {
         let edge = edge("edge", "double_arrow_cross");
         let probe_meter = meter();
-        let mut probe = FlowchartMarkerEmissionPlan::new(false);
+        let mut probe = FlowchartMarkerEmissionPlan::new();
         probe
             .register_edge(&edge, Some("#22c55e"), &probe_meter)
             .unwrap();
@@ -1758,7 +1757,7 @@ mod tests {
         let prefix = "x".repeat(probe.edge_marker_attribute_bytes + 1);
 
         let exact_meter = meter_with_limits(prefix.len() + projected, usize::MAX);
-        let mut exact_plan = FlowchartMarkerEmissionPlan::new(false);
+        let mut exact_plan = FlowchartMarkerEmissionPlan::new();
         exact_plan
             .register_edge(&edge, Some("#22c55e"), &exact_meter)
             .unwrap();
@@ -1778,7 +1777,7 @@ mod tests {
         assert_eq!(exact_out.len(), prefix.len() + projected);
 
         let short_meter = meter_with_limits(prefix.len() + projected - 1, usize::MAX);
-        let mut short_plan = FlowchartMarkerEmissionPlan::new(false);
+        let mut short_plan = FlowchartMarkerEmissionPlan::new();
         short_plan
             .register_edge(&edge, Some("#22c55e"), &short_meter)
             .unwrap();
@@ -1803,7 +1802,7 @@ mod tests {
     fn marker_attributes_check_the_whole_svg_ceiling_before_append() {
         let edge = edge("edge", "double_arrow_point");
         let probe_meter = meter();
-        let mut probe = FlowchartMarkerEmissionPlan::new(false);
+        let mut probe = FlowchartMarkerEmissionPlan::new();
         probe
             .register_edge(&edge, Some("#2563eb"), &probe_meter)
             .unwrap();
@@ -1815,7 +1814,7 @@ mod tests {
         let prefix = "x".repeat(definitions + 1);
 
         let exact_meter = meter_with_limits(prefix.len() + attributes, usize::MAX);
-        let mut exact_plan = FlowchartMarkerEmissionPlan::new(false);
+        let mut exact_plan = FlowchartMarkerEmissionPlan::new();
         exact_plan
             .register_edge(&edge, Some("#2563eb"), &exact_meter)
             .unwrap();
@@ -1836,7 +1835,7 @@ mod tests {
         assert_eq!(exact_out.len(), prefix.len() + attributes);
 
         let short_meter = meter_with_limits(prefix.len() + attributes - 1, usize::MAX);
-        let mut short_plan = FlowchartMarkerEmissionPlan::new(false);
+        let mut short_plan = FlowchartMarkerEmissionPlan::new();
         short_plan
             .register_edge(&edge, Some("#2563eb"), &short_meter)
             .unwrap();
@@ -1883,7 +1882,7 @@ mod paint_security_tests {
                 crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
             );
             let edge = super::tests::edge("edge", "arrow_point");
-            let mut plan = FlowchartMarkerEmissionPlan::new(false);
+            let mut plan = FlowchartMarkerEmissionPlan::new();
             plan.register_edge(&edge, Some(raw), &work).unwrap();
             plan.finalize_svg_budget("diagram", "flowchart-v2", loose, &work)
                 .unwrap();

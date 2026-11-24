@@ -36,6 +36,7 @@ pub(crate) enum StateTerminalSurface {
     StateClassic,
     StateHandDrawn,
     StateNeo,
+    #[cfg(feature = "layout-shoal")]
     Transition,
     NoteClassic,
     NoteHandDrawn,
@@ -935,7 +936,10 @@ impl StateCompatibilityPlan {
                 | SpecialChoiceNeo,
                 Stroke,
             ) => StateTerminalPaintRef::Css(&self.node_border),
+            #[cfg(feature = "layout-shoal")]
             (Transition, StrokeWidth) => StateTerminalPaintRef::Css(&self.stroke_width),
+            #[cfg(feature = "layout-shoal")]
+            (Transition, Fill | Stroke) => return None,
             (NoteClassic | NoteHandDrawn | NoteNeo, Fill) => {
                 StateTerminalPaintRef::Css(&self.note_bkg)
             }
@@ -1006,7 +1010,6 @@ impl StateCompatibilityPlan {
             (SpecialEndInnerClassic, Fill | Stroke) => {
                 StateTerminalPaintRef::Css(&self.end_inner_fill)
             }
-            _ => return None,
         })
     }
 

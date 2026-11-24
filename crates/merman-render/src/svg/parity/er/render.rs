@@ -889,9 +889,7 @@ pub(crate) fn render_er_diagram_svg_model(
                         routes,
                         e,
                         kurbo::Vec2::new(translate_x, translate_y),
-                        data_look,
-                        binding.neo_marker_stroke_width,
-                        native,
+                        binding,
                         options.work_meter(),
                         &hand_drawn_seed,
                     )?;

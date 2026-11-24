@@ -302,11 +302,10 @@ pub(super) fn render_relationship_label(
     let label_id = format!("edge-label-{}-{}-{dom_id}", edge.from, edge.to);
     let _ = write!(
         out,
-        r#"<g class="label edgeLabel" id="{}" transform="translate({}, {})"><rect width="0.1" height="0.1"/><g class="label"{} transform="translate({}, {})"><rect/>"#,
+        r#"<g class="label edgeLabel" id="{}" transform="translate({}, {})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate({}, {})"><rect/>"#,
         escape_attr(&label_id),
         fmt(label.x + context.translate_x),
         fmt(label.y + context.translate_y),
-        r#" style="""#,
         fmt(-label.width / 2.0),
         fmt(-label.height / 2.0),
     );

@@ -3,8 +3,6 @@ use crate::resources::{OperationWorkMeter, PreparedTextRetainedReservation};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 use merman_model::presentation::PresentationConfig;
-#[cfg(test)]
-use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 

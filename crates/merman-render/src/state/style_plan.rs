@@ -751,11 +751,7 @@ fn apply_source_shape_property(
         "border-radius" | "rx" | "ry" => apply_numeric_source_property(declaration, radius),
         "padding" => apply_numeric_source_property(declaration, padding),
         "opacity" | "fill-opacity" | "stroke-opacity" => {
-            if source_opacity_value_is_admissible(declaration) {
-                true
-            } else {
-                false
-            }
+            source_opacity_value_is_admissible(declaration)
         }
         "stroke-dasharray" | "stroke-linecap" | "stroke-linejoin" => true,
         _ => false,

@@ -49,9 +49,9 @@ impl SequenceRoleTypographyConfig {
         property: SequenceFontProperty,
     ) -> Option<SequenceTypographyMeasurementWinner> {
         match property {
-            SequenceFontProperty::FontStack => self.font_stack_measurement_winner,
-            SequenceFontProperty::FontSize => self.font_size_measurement_winner,
-            SequenceFontProperty::FontWeight => self.font_weight_measurement_winner,
+            SequenceFontProperty::Stack => self.font_stack_measurement_winner,
+            SequenceFontProperty::Size => self.font_size_measurement_winner,
+            SequenceFontProperty::Weight => self.font_weight_measurement_winner,
         }
     }
 }
@@ -59,9 +59,9 @@ impl SequenceRoleTypographyConfig {
 #[cfg(test)]
 #[derive(Clone, Copy)]
 enum SequenceFontProperty {
-    FontStack,
-    FontSize,
-    FontWeight,
+    Stack,
+    Size,
+    Weight,
 }
 
 pub(crate) struct SequenceConfigView<'a> {
@@ -211,18 +211,13 @@ impl<'a> SequenceConfigView<'a> {
         let theme_variable_font_family_owns = self
             .explicitly_configured("themeVariables.fontFamily")
             && theme_variable_font_family.is_some();
+        let root_font_family_present = root_font_family_value.is_some();
         let root_font_family_owns =
-            root_font_family_value.is_some() && self.explicitly_configured("fontFamily");
+            root_font_family_present && self.explicitly_configured("fontFamily");
         let role_font_family_owns =
             role_font_family.is_some() && self.explicitly_configured(family_path);
-        let root_font_family_present = root_font_family_value.is_some();
         // Mermaid mirrors truthy root font values over the role-local Sequence value.
-        let (font_family, _font_stack_measurement_winner) = if root_font_family_owns {
-            (
-                root_font_family,
-                Some(SequenceTypographyMeasurementWinner { path: "fontFamily" }),
-            )
-        } else if root_font_family_present {
+        let (font_family, _font_stack_measurement_winner) = if root_font_family_present {
             (
                 root_font_family,
                 Some(SequenceTypographyMeasurementWinner { path: "fontFamily" }),
@@ -245,16 +240,10 @@ impl<'a> SequenceConfigView<'a> {
             .sequence_config
             .get(size_key)
             .and_then(crate::config::json_f64_css_px);
-        let root_font_size_owns =
-            root_font_size_value.is_some() && self.explicitly_configured("fontSize");
-        let role_font_size_owns = role_font_size.is_some() && self.explicitly_configured(size_path);
         let root_font_size_present = root_font_size_value.is_some();
-        let (font_size, _font_size_measurement_winner) = if root_font_size_owns {
-            (
-                root_font_size.unwrap_or(16.0),
-                Some(SequenceTypographyMeasurementWinner { path: "fontSize" }),
-            )
-        } else if root_font_size_present {
+        let root_font_size_owns = root_font_size_present && self.explicitly_configured("fontSize");
+        let role_font_size_owns = role_font_size.is_some() && self.explicitly_configured(size_path);
+        let (font_size, _font_size_measurement_winner) = if root_font_size_present {
             (
                 root_font_size.unwrap_or(16.0),
                 Some(SequenceTypographyMeasurementWinner { path: "fontSize" }),
@@ -275,21 +264,12 @@ impl<'a> SequenceConfigView<'a> {
         let role_font_weight_value = self.sequence_config.get(weight_key);
         let root_font_weight = root_font_weight_value.and_then(Self::parse_font_weight);
         let role_font_weight = role_font_weight_value.and_then(Self::parse_font_weight);
+        let root_font_weight_present = root_font_weight_value.is_some();
         let root_font_weight_owns =
-            root_font_weight_value.is_some() && self.explicitly_configured("fontWeight");
+            root_font_weight_present && self.explicitly_configured("fontWeight");
         let role_font_weight_owns =
             role_font_weight_value.is_some() && self.explicitly_configured(weight_path);
-        let (font_weight, _font_weight_measurement_winner) = if root_font_weight_owns {
-            (
-                root_font_weight,
-                Some(SequenceTypographyMeasurementWinner { path: "fontWeight" }),
-            )
-        } else if role_font_weight_owns && root_font_weight_value.is_none() {
-            (
-                role_font_weight,
-                Some(SequenceTypographyMeasurementWinner { path: weight_path }),
-            )
-        } else if root_font_weight_value.is_some() {
+        let (font_weight, _font_weight_measurement_winner) = if root_font_weight_present {
             (
                 root_font_weight,
                 Some(SequenceTypographyMeasurementWinner { path: "fontWeight" }),
@@ -309,7 +289,7 @@ impl<'a> SequenceConfigView<'a> {
             || root_font_size_owns
             || (role_font_size_owns && !root_font_size_present)
             || root_font_weight_owns
-            || (role_font_weight_owns && root_font_weight_value.is_none());
+            || (role_font_weight_owns && !root_font_weight_present);
 
         SequenceRoleTypographyConfig {
             measurement_style: TextStyle {
@@ -620,7 +600,7 @@ mod tests {
             );
             assert_eq!(
                 resolved
-                    .measurement_winner(SequenceFontProperty::FontSize)
+                    .measurement_winner(SequenceFontProperty::Size)
                     .map(SequenceTypographyMeasurementWinner::path),
                 Some(expected_path),
                 "{config}"
@@ -654,15 +634,15 @@ mod tests {
             Some("700")
         );
         assert_eq!(
-            resolved.measurement_winner(SequenceFontProperty::FontStack),
+            resolved.measurement_winner(SequenceFontProperty::Stack),
             Some(SequenceTypographyMeasurementWinner { path: "fontFamily" })
         );
         assert_eq!(
-            resolved.measurement_winner(SequenceFontProperty::FontSize),
+            resolved.measurement_winner(SequenceFontProperty::Size),
             Some(SequenceTypographyMeasurementWinner { path: "fontSize" })
         );
         assert_eq!(
-            resolved.measurement_winner(SequenceFontProperty::FontWeight),
+            resolved.measurement_winner(SequenceFontProperty::Weight),
             Some(SequenceTypographyMeasurementWinner { path: "fontWeight" })
         );
     }
@@ -683,7 +663,7 @@ mod tests {
             Some("Root Family")
         );
         assert_eq!(
-            resolved.measurement_winner(SequenceFontProperty::FontStack),
+            resolved.measurement_winner(SequenceFontProperty::Stack),
             Some(SequenceTypographyMeasurementWinner { path: "fontFamily" })
         );
     }
@@ -706,7 +686,7 @@ mod tests {
             Some("Root Family")
         );
         assert_eq!(
-            resolved.measurement_winner(SequenceFontProperty::FontStack),
+            resolved.measurement_winner(SequenceFontProperty::Stack),
             Some(SequenceTypographyMeasurementWinner { path: "fontFamily" })
         );
     }
@@ -730,7 +710,7 @@ mod tests {
             Some("Root Family")
         );
         assert_eq!(
-            resolved.measurement_winner(SequenceFontProperty::FontStack),
+            resolved.measurement_winner(SequenceFontProperty::Stack),
             Some(SequenceTypographyMeasurementWinner { path: "fontFamily" })
         );
     }
@@ -792,19 +772,19 @@ mod tests {
             Some("500")
         );
         assert_eq!(
-            resolved.measurement_winner(SequenceFontProperty::FontStack),
+            resolved.measurement_winner(SequenceFontProperty::Stack),
             Some(SequenceTypographyMeasurementWinner {
                 path: "sequence.actorFontFamily",
             })
         );
         assert_eq!(
-            resolved.measurement_winner(SequenceFontProperty::FontSize),
+            resolved.measurement_winner(SequenceFontProperty::Size),
             Some(SequenceTypographyMeasurementWinner {
                 path: "sequence.actorFontSize",
             })
         );
         assert_eq!(
-            resolved.measurement_winner(SequenceFontProperty::FontWeight),
+            resolved.measurement_winner(SequenceFontProperty::Weight),
             Some(SequenceTypographyMeasurementWinner {
                 path: "sequence.actorFontWeight",
             })
