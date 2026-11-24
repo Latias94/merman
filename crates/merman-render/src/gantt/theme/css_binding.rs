@@ -1,6 +1,9 @@
-use crate::config::{config_f64, config_string, selected_config_string};
+use crate::config::{config_f64, config_string};
 use crate::svg::PreparedCommonCss;
+use crate::theme::{FamilyTheme, font_family_css};
+use merman_model::presentation::PresentationConfig;
 
+use super::super::GanttNativeStyle;
 use super::font_size::GanttFontSize;
 
 #[derive(Debug, Clone)]
@@ -15,7 +18,6 @@ pub(crate) struct GanttCssBinding {
     pub(crate) alt_section_bkg_color: String,
     pub(crate) title_color: String,
     pub(crate) title_text_color: String,
-    pub(super) title_text_color_path: Option<&'static str>,
     pub(crate) grid_color: String,
     pub(crate) axis_color: Option<String>,
     pub(crate) today_line_color: String,
@@ -35,6 +37,57 @@ pub(crate) struct GanttCssBinding {
 }
 
 impl GanttCssBinding {
+    pub(super) fn for_native(
+        theme: &FamilyTheme,
+        config: &PresentationConfig,
+    ) -> (GanttNativeStyle, Self) {
+        let typography = &theme.typography;
+        let config_value = config.as_value();
+        let font = ["themeVariables.fontFamily", "fontFamily"]
+            .into_iter()
+            .filter(|path| config.explicit_config_owns_path(path))
+            .find_map(|path| {
+                config
+                    .get_str(path)
+                    .and_then(crate::config::normalized_config_font_family)
+            })
+            .unwrap_or_else(|| font_family_css(typography.stack(typography.body_family)));
+        let base_size = [
+            (
+                "themeVariables.fontSize",
+                &["themeVariables", "fontSize"][..],
+            ),
+            ("fontSize", &["fontSize"][..]),
+        ]
+        .into_iter()
+        .filter(|(path, _)| config.explicit_config_owns_path(path))
+        .find_map(|(_, path)| crate::config::config_f64_css_absolute_px(config_value, path))
+        .filter(|size| *size >= 0.0)
+        .unwrap_or(typography.base_size_px);
+        let native = GanttNativeStyle::new(theme, config, &font, base_size);
+        let mut css = Self::new(config_value, &font);
+        css.common = PreparedCommonCss::with_resolved_typography(
+            config_value,
+            font,
+            format!("{base_size}px"),
+        );
+        let gantt_config = config_value.get("gantt").unwrap_or(config_value);
+        let task_size = serde_json::json!(
+            native
+                .task_font_size
+                .unwrap_or_else(|| config_f64(gantt_config, &["fontSize"]).unwrap_or(11.0))
+        );
+        let section_size = serde_json::json!(base_size);
+        let section_size = if config.explicit_config_owns_path("gantt.sectionFontSize") {
+            gantt_config.get("sectionFontSize")
+        } else {
+            Some(&section_size)
+        };
+        css.task_font_size = GanttFontSize::resolve(Some(&task_size), base_size);
+        css.section_font_size = GanttFontSize::resolve(section_size, base_size);
+        (native, css)
+    }
+
     pub(super) fn new(config: &serde_json::Value, font_family: &str) -> Self {
         let option = |key: &str, fallback: &str| {
             config_string(config, &["themeVariables", key]).unwrap_or_else(|| fallback.to_owned())
@@ -52,15 +105,6 @@ impl GanttCssBinding {
         let section_font_size =
             GanttFontSize::resolve(gantt_config.get("sectionFontSize"), inherited_font_size);
         let title_color = option("titleColor", "#333");
-        let title_text_color_path = selected_config_string(config, &["themeVariables.titleColor"])
-            .and_then(|(path, color)| {
-                if color.trim().is_empty() {
-                    selected_config_string(config, &["themeVariables.textColor"])
-                        .map(|(path, _)| path)
-                } else {
-                    Some(path)
-                }
-            });
         let title_text_color = if title_color.trim().is_empty() {
             text_color.clone()
         } else {
@@ -73,7 +117,6 @@ impl GanttCssBinding {
             text_color,
             title_color,
             title_text_color,
-            title_text_color_path,
             exclude_bkg_color: option("excludeBkgColor", "#eeeeee"),
             section_bkg_color: option("sectionBkgColor", "rgba(102, 102, 255, 0.49)"),
             section_bkg_color2: option("sectionBkgColor2", "#fff400"),
@@ -95,29 +138,5 @@ impl GanttCssBinding {
             crit_bkg_color: option("critBkgColor", "red"),
             vert_line_color: option("vertLineColor", "navy"),
         }
-    }
-
-    pub(super) fn bind_winners(
-        &mut self,
-        title: Option<&super::GanttGlobalFillExpectation>,
-        text: Option<&super::GanttTextFillExpectation>,
-        warning: Option<&super::GanttWarningStrokeExpectation>,
-    ) {
-        if let Some(title) = title {
-            self.title_color = title.css.to_string();
-        }
-        if let Some(text) = text {
-            self.text_color = text.grid_css.to_string();
-            self.task_text_color = text.task_css.to_string();
-        }
-        if let Some(warning) = warning {
-            self.today_line_color = warning.today_css.to_string();
-            self.vert_line_color = warning.vert_css.to_string();
-        }
-        self.title_text_color = if self.title_color.trim().is_empty() {
-            self.text_color.clone()
-        } else {
-            self.title_color.clone()
-        };
     }
 }

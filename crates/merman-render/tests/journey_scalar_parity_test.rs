@@ -2,25 +2,19 @@
 
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
-use merman_render::diagram_theme::{DiagramThemeCompiler, DiagramThemeSpec};
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
-mod common;
-
 fn render_journey_scalar(token: &str) -> String {
     let source = format!("journey\nsection Checkout\nPay: {token}: Customer\n");
-    let theme = DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new())
-        .expect("compile the default Journey theme");
-    let parsed = common::install_parse_compatibility(&theme, MermaidEngine::new())
+    let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
         .expect("parse Journey scalar source")
         .expect("detect Journey scalar source")
         .into_presentation();
     let session = RenderEnvironment::deterministic()
-        .begin_session_with_theme(&theme)
+        .begin_session()
         .expect("begin a Journey render session");
     family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare Journey scalar layout")
@@ -110,9 +104,6 @@ fn journey_canonical_score_roundtrips_preserve_svg_faces_and_nan_overrides() {
     use merman_model::presentation::{PresentationDiagram, RenderSemanticModel};
     use merman_model::resources::{InputResourcePolicy, ResourceProfile};
 
-    let theme = DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new())
-        .expect("compile the default Journey theme");
     for (token, explicit_nan, expected_y, expected_path) in [
         (
             "Infinity",
@@ -132,7 +123,7 @@ fn journey_canonical_score_roundtrips_preserve_svg_faces_and_nan_overrides() {
         ("3.5", false, "345", Some(("M7.5,0", "347"))),
     ] {
         let source = format!("journey\nsection Checkout\nPay: {token}: Customer\n");
-        let parsed = common::install_parse_compatibility(&theme, MermaidEngine::new())
+        let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
             .expect("parse Journey scalar source")
             .expect("detect Journey scalar source")
@@ -155,7 +146,7 @@ fn journey_canonical_score_roundtrips_preserve_svg_faces_and_nan_overrides() {
         .expect("private presentation construction cannot be cancelled")
         .expect("construct restored Journey presentation");
         let session = RenderEnvironment::deterministic()
-            .begin_session_with_theme(&theme)
+            .begin_session()
             .expect("begin a Journey render session");
         let artifact = family::prepare(
             &presentation,

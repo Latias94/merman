@@ -13,7 +13,7 @@ const chunk = (name: string) => {
   return entry.file;
 };
 const paths = { monaco: chunk("monaco"), store: chunk("store") };
-const readingRecipe = readFileSync(new URL("../src/themes/recipes/reading.theme.json", import.meta.url), "utf8");
+const themeDocument = '{"schema_version":2,"extends":"studio","seed":{"accent":"#0052CC"}}';
 
 declare global {
   interface Window {
@@ -129,8 +129,8 @@ test("workspace-only changes invalidate preview actions and restore them with th
     { code: "flowchart LR\nchanged[Different source]" },
     { mermaidConfig: '{"htmlLabels":false}' },
     { diagramTheme: "dark" },
-    { themePresetId: "reading" },
-    { themeRecipeJson: readingRecipe },
+    { themePresetId: "studio" },
+    { themeDocumentJson: themeDocument },
     { svgPipeline: "readable" },
     { textMeasurementMode: "headless" },
     { diagramFont: "monospace" },

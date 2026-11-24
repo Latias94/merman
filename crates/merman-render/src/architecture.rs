@@ -20,18 +20,13 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use serde_json::Value;
 
 mod css_binding;
+mod native_theme;
 mod theme;
 
 pub(crate) use css_binding::ArchitectureCssBinding;
+pub(crate) use native_theme::{ArchitectureNativeStyle, ArchitectureThemeAdapter};
 
-pub(crate) use theme::{
-    ArchitectureArrowSide, ArchitectureEdgeTerminal, ArchitectureEdgeTerminalEmission,
-    ArchitectureGroupTerminal, ArchitectureGroupTerminalEmission, ArchitectureGroupThemePlan,
-    ArchitecturePaintTerminalEmission, ArchitectureServiceTerminal,
-    ArchitectureServiceTerminalEmission, ArchitectureSurfaceRenderState,
-    ArchitectureTextTerminalEmission, ArchitectureThemeOutcome, ArchitectureTypographyEmission,
-    ArchitectureTypographyThemePlan,
-};
+pub(crate) use theme::{ArchitectureGroupThemePlan, ArchitectureTypographyThemePlan};
 
 struct ArchitectureManateeWorkControl<'a> {
     meter: &'a OperationWorkMeter,
@@ -1276,7 +1271,7 @@ struct ArchitectureFcoseNodeBoundsExtrasInput<'m, 'a> {
     model: &'m ArchitectureModelView<'a>,
     text_measurer: &'m dyn TextMeasurer,
     icon_size: f64,
-    font_size_px: f64,
+    text_style: &'m TextStyle,
 }
 
 const CYTOSCAPE_DEFAULT_FONT_FAMILY: &str = "Helvetica Neue,Helvetica,sans-serif";
@@ -1312,9 +1307,9 @@ fn architecture_fcose_node_bounds_extras<'a>(
         model,
         text_measurer,
         icon_size,
-        font_size_px,
+        text_style,
     } = input;
-    let text_style = architecture_cytoscape_text_style(font_size_px);
+    let font_size_px = text_style.font_size;
 
     let mut node_bounds_extras: FxHashMap<&str, manatee::BoundsExtras> = FxHashMap::default();
     node_bounds_extras.reserve(model.nodes.len().saturating_mul(2));
@@ -1323,7 +1318,7 @@ fn architecture_fcose_node_bounds_extras<'a>(
             architecture_measure_cytoscape_compound_child_bbox_extras(
                 n.title,
                 text_measurer,
-                &text_style,
+                text_style,
                 icon_size,
                 font_size_px,
             )
@@ -1331,7 +1326,7 @@ fn architecture_fcose_node_bounds_extras<'a>(
             architecture_measure_cytoscape_final_node_bbox_extras(
                 n.title,
                 text_measurer,
-                &text_style,
+                text_style,
                 icon_size,
                 font_size_px,
             )
@@ -1845,9 +1840,8 @@ fn architecture_cytoscape_service_bounds<'a>(
     nodes: &[LayoutNode],
     text_measurer: &dyn TextMeasurer,
     icon_size: f64,
-    font_size_px: f64,
+    text_style: &TextStyle,
 ) -> Vec<ArchitectureCytoscapeServiceBounds> {
-    let text_style = architecture_cytoscape_text_style(font_size_px);
     let mut node_by_id: FxHashMap<&str, &LayoutNode> = FxHashMap::default();
     node_by_id.reserve(nodes.len().saturating_mul(2));
     for node in nodes {
@@ -1871,8 +1865,8 @@ fn architecture_cytoscape_service_bounds<'a>(
         let label_bounds = architecture_cytoscape_child_label_bounds(
             node.title,
             text_measurer,
-            &text_style,
-            font_size_px,
+            text_style,
+            text_style.font_size,
         );
         let label_metrics = label_bounds.map(|label| ArchitectureCytoscapeServiceLabelMetrics {
             text_width: label.metrics.width,
@@ -2020,12 +2014,31 @@ fn admit_architecture_layout(
     })
 }
 
-pub(crate) fn layout_architecture_diagram_typed(
+#[cfg(test)]
+fn layout_architecture_diagram_typed(
     model: &ArchitectureDiagramModel,
     effective_config: &Value,
     text_measurer: &dyn TextMeasurer,
     operation_seed: u64,
     work_meter: &OperationWorkMeter,
+) -> Result<ArchitectureDiagramLayout> {
+    layout_architecture_diagram_typed_with_style(
+        model,
+        effective_config,
+        text_measurer,
+        operation_seed,
+        work_meter,
+        None,
+    )
+}
+
+pub(crate) fn layout_architecture_diagram_typed_with_style(
+    model: &ArchitectureDiagramModel,
+    effective_config: &Value,
+    text_measurer: &dyn TextMeasurer,
+    operation_seed: u64,
+    work_meter: &OperationWorkMeter,
+    native_text: Option<&TextStyle>,
 ) -> Result<ArchitectureDiagramLayout> {
     let adapter_work_plan = checked_typed_architecture_adapter_work_plan(model)
         .ok_or_else(|| work_meter.arithmetic_overflow())?;
@@ -2045,6 +2058,7 @@ pub(crate) fn layout_architecture_diagram_typed(
         operation_seed,
         work_meter,
         admission,
+        native_text,
     )
 }
 
@@ -2073,6 +2087,7 @@ fn layout_architecture_diagram_model(
         operation_seed,
         work_meter,
         admission,
+        None,
     )
 }
 
@@ -2083,14 +2098,21 @@ fn layout_architecture_diagram_model_admitted(
     operation_seed: u64,
     work_meter: &OperationWorkMeter,
     admission: ArchitectureLayoutAdmission,
+    native_text: Option<&TextStyle>,
 ) -> Result<ArchitectureDiagramLayout> {
     let icon_size = config_f64(effective_config, &["architecture", "iconSize"]).unwrap_or(80.0);
     let icon_size = icon_size.max(1.0);
     let half_icon = icon_size / 2.0;
     let padding_px = config_f64(effective_config, &["architecture", "padding"]).unwrap_or(40.0);
     let padding_px = padding_px.max(0.0);
-    let font_size_px = config_f64(effective_config, &["architecture", "fontSize"]).unwrap_or(16.0);
-    let font_size_px = font_size_px.max(1.0);
+    let fallback_text;
+    let text_style = if let Some(native) = native_text {
+        native
+    } else {
+        let size = config_f64(effective_config, &["architecture", "fontSize"]).unwrap_or(16.0);
+        fallback_text = architecture_cytoscape_text_style(size.max(1.0));
+        &fallback_text
+    };
     let fcose_randomize =
         config_bool(effective_config, &["architecture", "randomize"]).unwrap_or(false);
     let fcose_node_separation = config_f64(effective_config, &["architecture", "nodeSeparation"])
@@ -2117,7 +2139,7 @@ fn layout_architecture_diagram_model_admitted(
             model,
             text_measurer,
             icon_size,
-            font_size_px,
+            text_style,
         });
     let mut nodes: Vec<LayoutNode> = Vec::new();
 
@@ -2181,13 +2203,8 @@ fn layout_architecture_diagram_model_admitted(
         fcose_compound_bounds = projection.compound_bounds;
     }
 
-    let cytoscape_service_bounds = architecture_cytoscape_service_bounds(
-        model,
-        &nodes,
-        text_measurer,
-        icon_size,
-        font_size_px,
-    );
+    let cytoscape_service_bounds =
+        architecture_cytoscape_service_bounds(model, &nodes, text_measurer, icon_size, text_style);
 
     let mut node_by_id: FxHashMap<&str, &LayoutNode> = FxHashMap::default();
     node_by_id.reserve(nodes.len());
@@ -3707,7 +3724,7 @@ mod tests {
                 model: &model,
                 text_measurer: &measurer,
                 icon_size: 80.0,
-                font_size_px: 16.0,
+                text_style: &super::architecture_cytoscape_text_style(16.0),
             },
         );
         let grouped = node_bounds_extras.get("api").expect("api node extras");

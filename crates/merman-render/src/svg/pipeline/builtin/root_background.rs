@@ -17,18 +17,6 @@ impl RootBackgroundEdit {
         Self { range, replacement }
     }
 
-    pub(crate) fn additional_len(&self) -> usize {
-        self.replacement.len().saturating_sub(self.range.len())
-    }
-
-    pub(crate) fn adjusted_end(&self, end: usize) -> Option<usize> {
-        if self.range.end > end {
-            return None;
-        }
-        end.checked_sub(self.range.len())?
-            .checked_add(self.replacement.len())
-    }
-
     pub(crate) fn apply(self, svg: &mut String) {
         svg.replace_range(self.range, &self.replacement);
     }
@@ -269,6 +257,5 @@ mod tests {
 
         assert_eq!(&svg[edit.range.clone()], "background-color: white;");
         assert_eq!(edit.replacement, "background-color: transparent;");
-        assert_eq!(edit.additional_len(), "transparent".len() - "white".len());
     }
 }

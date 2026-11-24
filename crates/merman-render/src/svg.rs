@@ -35,6 +35,21 @@ pub(crate) use parity::class_canonical_marker;
 pub(crate) use parity::cssom_color_value;
 #[cfg(all(feature = "diagram-er", feature = "layout-shoal"))]
 pub(crate) use parity::er_canonical_marker;
+#[cfg(any(
+    feature = "diagram-er",
+    feature = "diagram-requirement",
+    feature = "diagram-pie",
+    feature = "diagram-treemap",
+    feature = "diagram-flowchart",
+    feature = "diagram-agentflow",
+    feature = "diagram-swimlane",
+    feature = "diagram-sequence",
+    feature = "diagram-zenuml",
+    feature = "diagram-kanban",
+))]
+pub(crate) use parity::escape_attr;
+#[cfg(any(feature = "diagram-er", feature = "diagram-requirement"))]
+pub(crate) use parity::escape_xml;
 #[cfg(all(feature = "diagram-state", feature = "layout-shoal"))]
 pub(crate) use parity::state_canonical_marker;
 #[cfg(any(
@@ -42,18 +57,12 @@ pub(crate) use parity::state_canonical_marker;
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
-pub(crate) use parity::{
-    FlowchartRenderConfig, flowchart_node_label_fill_config_override,
-    prepare_flowchart_render_config,
-};
-#[cfg(any(feature = "diagram-er", feature = "diagram-requirement"))]
-pub(crate) use parity::{escape_attr, escape_xml};
+pub(crate) use parity::{FlowchartRenderConfig, prepare_flowchart_render_config};
 mod pipeline;
 pub(crate) mod scanner;
 
 pub(crate) use css_identifier::escape_css_identifier;
 pub use fallback::foreign_object_label_fallback_svg_text;
-pub(crate) use icon_registry::IconCurrentColorUse;
 pub use icon_registry::{
     IconPack, IconRegistry, IconRegistryBuildError, IconRegistryBuildErrorKind,
     IconRegistryBuilder, IconRegistryResourceLimitDescriptor, IconRegistryResourceLimitId,
@@ -69,9 +78,7 @@ pub use parity::*;
     feature = "diagram-agentflow"
 ))]
 pub(crate) use parity::{FlowchartEdgeStylePlan, FlowchartNodeLayoutView, FlowchartPreparedNodes};
-pub(crate) use parity::{
-    RootThemeAppliedSvg, edge_geometry_family_artifact, render_builtin_family_artifact,
-};
+pub(crate) use parity::{edge_geometry_family_artifact, render_builtin_family_artifact};
 pub(crate) use pipeline::SvgPostprocessExecution;
 pub use pipeline::{
     CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor,
@@ -83,6 +90,3 @@ pub use pipeline::{
     finalize_resvg_svg, rebase_svg_ids, validate_static_inline_svg,
     validate_static_inline_svg_admission,
 };
-
-#[cfg(feature = "diagram-block")]
-pub(crate) use parity::block_edge_is_visible;

@@ -292,7 +292,7 @@
     "version": "0.9.3",
     "command_profile": "artifact-profile-target-union",
     "offline": true,
-    "cargo_lock_sha256": "74b2c00837a7e1a78b761cf8632a2857d705e08decde59ccb0e84ca03787f482",
+    "cargo_lock_sha256": "c1c15af93aba48a871833d335b1deca7ba6067332726f0ee2ede1482222d3fcf",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "b3030c431abb12f44bedd1589f9919df88fe1b34aec9aabf9794a6ae5a16a2fb"
   },

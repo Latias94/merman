@@ -174,27 +174,26 @@ profile must still reject math through core's ordinary structured error.
 The host must also impose its own linear-memory limit and fuel/epoch/timeout
 policy; cooperative profiles are not a process sandbox or hard wall-clock bound.
 
-### Theme presets and editable recipes
+### Theme presets and editable documents
 
-SVG requests can select a built-in design through the shared Options JSON grammar:
+Select a native preset through the render request's options.
 
 ```json
-{"version":1,"operation_id":"svg","options":{"theme":{"preset":"paper-cut"}}}
+{"version":1,"operation_id":"svg","options":{"theme":{"preset":"studio","appearance":"dark"}}}
 ```
 
-Merman `0.10.0` also includes `carbon-copy` and `pop-art`; use
-`{"preset":"editor","appearance":"dark"}` for a paired design. Discover actual available
-designs and appearance IDs through `operation_id: "theme-catalog"` with empty source and no
-options overlay. For export, execute `export-theme-preset-json` with raw UTF-8 source
-`paper-cut` and no options overlay. Its successful data bytes contain the complete recipe.
+Query `theme-catalog` with empty source and no options overlay. Its schema-2 data lists presets,
+appearances, classic Mermaid names, and native capabilities by family. To export an editable
+document, execute `export-theme-preset` with the raw UTF-8 source `studio`. To validate a
+document, execute `resolve-theme` with a JSON source object containing `document` and optional
+`appearance` or `auto_fix_contrast`. Both operations return their JSON in the result's data
+segment.
 
-Save that JSON and edit its shared tokens, such as `design.tokens.surface.value`. Pass the
-complete document as the render options' `theme` value, or use `theme: {recipe, appearance}`
-to select an appearance of a saved pair. Release every owned result with `merman_wasi_result_free`
-after copying its data. Catalog availability does not establish output qualification; effects
-retain family/look constraints and SVG viewers need the named fonts. See the
-[theme guide](../../docs/rendering/custom-diagram-themes.md) for complete configuration and
-source-style precedence. These semantic operations do not change WASI ABI 1.
+Pass a saved document as `options.theme`, or select one of its appearances with
+`theme: {document, appearance}`. Graphical results include `theme_outcome` in the metadata
+segment, with the rendering mode, applicable preset and appearance, and notices. Copy the
+segments you need before calling `merman_wasi_result_free`. See the
+[Theme v2 guide](../../docs/rendering/custom-diagram-themes.md) for authoring and precedence.
 
 ## Ownership, lifecycle and limits
 

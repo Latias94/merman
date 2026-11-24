@@ -11,6 +11,7 @@ use merman_render::environment::{
 use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{TextMetrics, WrapMode};
+use merman_render::theme::{NativeTheme, ThemeCompiler};
 
 #[derive(Debug, Clone, Copy)]
 enum HostOutcome {
@@ -575,31 +576,23 @@ A["math $$x$$ label words"] --> B
 }
 
 #[test]
-fn typed_label_weights_reach_layout_and_writer_measurements() {
-    use merman_render::diagram_theme::{
-        DiagramThemeCompiler, DiagramThemeSpec, Specified, TextStylePatch,
-        ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
-    };
-    let mut rules = ThemeRuleSet::default();
-    for (target, weight) in [(ThemeTarget::NodeLabel, 600), (ThemeTarget::EdgeLabel, 500)] {
-        rules = rules.with_rule(ThemeRule::new(
-            target,
-            ThemeStylePatch {
-                typography: TextStylePatch {
-                    font_weight: Specified::Value(weight),
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-        ));
-    }
-    let theme = DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_styles(rules))
+fn label_weights_reach_layout_and_writer_measurements() {
+    let theme = ThemeCompiler::new()
+        .compile_json(
+            br##"{
+                "schema_version": 2,
+                "appearances": {"light": {
+                    "seed": {"canvas": "#FFFFFF", "ink": "#141414", "accent": "#224466"}
+                }},
+                "typography": {"label_weight": 600}
+            }"##,
+            None,
+        )
         .unwrap();
-    for (root_weight, source_weight, node_weight, edge_weight, source_result) in [
-        (None, "bolder", "600", "500", "900"),
-        (Some("900"), "lighter", "900", "900", "700"),
-        (Some("bolder"), "lighter", "700", "700", "400"),
+    for (root_weight, source_weight, label_weight, source_result) in [
+        (None, "bolder", "600", "900"),
+        (Some("900"), "lighter", "900", "700"),
+        (Some("bolder"), "lighter", "700", "400"),
     ] {
         for backend in [
             "dagre",
@@ -607,38 +600,38 @@ fn typed_label_weights_reach_layout_and_writer_measurements() {
             "elk",
         ] {
             for html in [false, true] {
-                let engine = common::install_parse_compatibility(
-                &theme,
-                MermaidEngine::new().with_site_config(
+                let engine = MermaidEngine::new().with_site_config(
                     merman_core::presentation::SourcePresentationConfig::from_value(
                         serde_json::json!({"layout":backend, "htmlLabels": html, "fontWeight": root_weight}),
                     ),
-                ),
-            );
+                );
                 let parsed = engine
-            .parse_diagram_for_render_model_sync(
-                &format!("flowchart LR\nA[NodeAlpha] -->|EdgeGamma| B[NodeBeta]\nclassDef emphasis font-weight:800!important\nclass B emphasis\nstyle B font-weight:{source_weight}!important"),
-                ParseOptions::strict(),
-            )
-            .unwrap()
-            .unwrap().into_presentation();
+                    .parse_diagram_for_render_model_sync(
+                        &format!("flowchart LR\nA[NodeAlpha] -->|EdgeGamma| B[NodeBeta]\nclassDef emphasis font-weight:800!important\nclass B emphasis\nstyle B font-weight:{source_weight}!important"),
+                        ParseOptions::strict(),
+                    )
+                    .unwrap()
+                    .unwrap()
+                    .into_presentation();
                 let identity = TextMeasurementProfileIdentity::new(
                     MeasurementProfileId::new("test.flowchart-label-weight").unwrap(),
                     "1",
                 )
                 .unwrap();
                 let host = Arc::new(RecordingFlowchartHost::new(HostOutcome::Success));
-                let session = RenderEnvironment::deterministic()
-                    .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+                let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+                    TextMeasurementPolicy::host_display(
                         identity,
                         host.clone(),
                         TextMeasurementPhase::ALL,
-                    ))
-                    .with_theme_portability_requirement(
-                        ThemePortabilityRequirement::RequirePortable,
-                    )
-                    .begin_session_with_theme(&theme)
-                    .unwrap();
+                    ),
+                );
+                let session = if root_weight.is_some() {
+                    environment.begin_session()
+                } else {
+                    environment.begin_session_with_native_theme(NativeTheme::new(theme.clone()))
+                }
+                .unwrap();
                 let artifact =
                     family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
                         .unwrap();
@@ -652,8 +645,8 @@ fn typed_label_weights_reach_layout_and_writer_measurements() {
                     ("writer", &requests[layout_count..]),
                 ] {
                     for (label, weight) in [
-                        ("NodeAlpha", node_weight),
-                        ("EdgeGamma", edge_weight),
+                        ("NodeAlpha", label_weight),
+                        ("EdgeGamma", label_weight),
                         ("NodeBeta", source_result),
                     ] {
                         let matching: Vec<_> = phase_requests
@@ -683,10 +676,6 @@ fn typed_label_weights_reach_layout_and_writer_measurements() {
 
 #[test]
 fn node_shaped_subgraph_weights_match_their_measured_label_boxes() {
-    use merman_render::diagram_theme::{
-        DiagramThemeCompiler, DiagramThemeSpec, Specified, TextStylePatch, ThemeRule, ThemeRuleSet,
-        ThemeStylePatch, ThemeTarget,
-    };
     use merman_render::environment::TextMeasurementProfile;
     use merman_render::text::{TextMeasurer, TextStyle};
     #[derive(Default)]
@@ -709,20 +698,6 @@ fn node_shaped_subgraph_weights_match_their_measured_label_boxes() {
             }
         }
     }
-    let theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
-                ThemeTarget::NodeLabel,
-                ThemeStylePatch {
-                    typography: TextStylePatch {
-                        font_weight: Specified::Value(600),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                },
-            ))),
-        )
-        .unwrap();
     for (backend, collapsed) in [
         ("dagre", false),
         ("dagre", true),
@@ -738,11 +713,13 @@ fn node_shaped_subgraph_weights_match_their_measured_label_boxes() {
             .unwrap(),
             host.clone(),
         );
-        let engine = common::install_parse_compatibility(&theme, MermaidEngine::new().with_site_config(
-            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({"layout":backend,"htmlLabels":true,"flowchart":{"wrappingWidth":1000}})),
-        ));
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(
+                serde_json::json!({"layout": backend, "htmlLabels": true, "flowchart": {"wrappingWidth": 1000}}),
+            ),
+        );
         let source = format!(
-            "flowchart LR\nsubgraph G[GroupTitle]\nend\nstyle G font-weight:bolder\n{}",
+            "flowchart LR\nsubgraph G[GroupTitle]\nend\nstyle G font-weight:900\n{}",
             if collapsed {
                 "G@{view: collapsed}\n"
             } else {
@@ -756,7 +733,7 @@ fn node_shaped_subgraph_weights_match_their_measured_label_boxes() {
             .into_presentation();
         let session = RenderEnvironment::deterministic()
             .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile))
-            .begin_session_with_theme(&theme)
+            .begin_session()
             .unwrap();
         let artifact =
             family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
@@ -964,6 +941,3 @@ fn overridden_shape_label_transforms_honor_svg_bbox_y_without_shifting_html() {
         }
     }
 }
-
-#[allow(dead_code)]
-mod common;

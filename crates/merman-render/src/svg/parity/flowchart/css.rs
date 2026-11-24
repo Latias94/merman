@@ -43,42 +43,15 @@ pub(in crate::svg::parity::flowchart) fn flowchart_classdef_css_declarations(
     let styles = crate::flowchart::FlowchartClassDefStyles::prepare(declarations);
 
     // This is deliberately a safe headless projection, not a complete browser CSS engine:
-    // `PreparedSourceStyleDeclaration` rejects resource-bearing values that CSSOM would retain.
+    // `FlowchartStyleDeclaration` rejects resource-bearing values that CSSOM would retain.
     (
         flowchart_classdef_cssom_string(&styles.shape),
         flowchart_classdef_cssom_string(&styles.text),
     )
 }
 
-/// SVG cluster labels omit inline label styles, but assigned classes still reach their tspans.
-pub(in crate::svg::parity::flowchart) fn cluster_title_class_foreground(
-    class_defs: &IndexMap<String, Vec<String>>,
-    classes: &[String],
-    work: &crate::resources::OperationWorkMeter,
-) -> Result<crate::flowchart::FlowchartSourceFacetStatus> {
-    use crate::flowchart::FlowchartSourceFacetStatus;
-    let mut status = FlowchartSourceFacetStatus::Absent;
-    for class in classes {
-        work.charge(1)?;
-        let Some(declarations) = class_defs.get(class) else {
-            continue;
-        };
-        for declaration in declarations {
-            work.charge(declaration.len())?;
-        }
-        let styles = crate::flowchart::FlowchartClassDefStyles::prepare(declarations);
-        if let Some(declaration) = styles.text.get("fill") {
-            status = status.merge(FlowchartSourceFacetStatus::from_parts(
-                true,
-                crate::mermaid_style::is_supported_css_color_value(declaration.value()),
-            ));
-        }
-    }
-    Ok(status)
-}
-
 pub(super) fn flowchart_classdef_cssom_string(
-    cssom: &IndexMap<String, std::sync::Arc<crate::diagram_theme::PreparedSourceStyleDeclaration>>,
+    cssom: &IndexMap<String, std::sync::Arc<crate::flowchart::FlowchartStyleDeclaration>>,
 ) -> String {
     let mut style = String::new();
     for (property, declaration) in cssom {
@@ -151,11 +124,11 @@ pub(super) fn write_flowchart_css<DiagramId, DropShadowId, DropShadowSmallId, Gr
     drop_shadow_small_id: DropShadowSmallId,
     gradient_id: GradientId,
     theme: &crate::flowchart::FlowchartCompatibilityBinding,
+    native_theme: bool,
     palette: &super::agentflow::ContainerPalette<'_>,
     font_family: &str,
     font_size: f64,
     class_defs: &IndexMap<String, Vec<String>>,
-    text_surface_paint: Option<&crate::flowchart::FlowchartTextSurfacePaintPlan>,
     defer_palette: bool,
 ) -> Result<Option<usize>>
 where
@@ -169,49 +142,28 @@ where
     let arrowhead_color = theme.arrowhead_color.as_str();
     let node_border = theme.node_border.as_str();
     let main_bkg = theme.main_bkg.as_str();
-    let text_color = text_surface_paint.map_or(theme.text_color.as_str(), |plan| {
-        plan.generic_text.color(
-            crate::flowchart::FlowchartTextPaintChannel::DiagramTitle,
-            theme.text_color.as_str(),
-        )
-    });
-    let node_text_color = text_surface_paint.map_or(theme.node_text_color.as_str(), |plan| {
-        plan.generic_text.color(
-            crate::flowchart::FlowchartTextPaintChannel::Node,
-            theme.node_text_color.as_str(),
-        )
-    });
-    let document_title_color = text_surface_paint.map_or(text_color, |plan| {
-        plan.document_title_color(theme.text_color.as_str())
-    });
+    let text_color = theme.text_color.as_str();
+    let node_text_color = theme.node_text_color.as_str();
     let title_color = theme.title_color.as_str();
     let stroke_width = theme.stroke_width.as_str();
+    let connector_width = theme.connector_stroke_width.map(|value| value.to_string());
+    let connector_width = connector_width.as_deref().unwrap_or(stroke_width);
     let error_bkg = theme.error_bkg.as_str();
     let error_text = theme.error_text.as_str();
-    let edge_label_background = text_surface_paint
-        .map_or(theme.edge_label_background.as_str(), |plan| {
-            plan.background.color(theme.edge_label_background.as_str())
-        });
+    let edge_label_background = theme.edge_label_background.as_str();
     let tertiary = theme.tertiary.as_str();
     let cluster_bkg = theme.cluster_bkg.as_str();
     let cluster_border = theme.cluster_border.as_str();
     let tooltip_border = &theme.border2;
     let drop_shadow = &theme.drop_shadow;
 
-    let typed_background =
-        text_surface_paint.is_some_and(|plan| plan.background.supplies_background());
-    // Typed paint owns one layer, including its alpha. Mermaid configuration retains
-    // the historical paragraph/div compositing and native rectangle fade.
-    let background_underlay = if typed_background {
-        "transparent"
-    } else {
+    let faded_label_background;
+    let label_bkg = if native_theme {
+        // Native labels paint their own backplate, including the transparent case.
         edge_label_background
-    };
-    let background_opacity = if typed_background { "1" } else { "0.5" };
-    let label_bkg = if typed_background {
-        edge_label_background.to_owned()
     } else {
-        css_rgba_fade(edge_label_background, 0.5)?
+        faded_label_background = css_rgba_fade(edge_label_background, 0.5)?;
+        &faded_label_background
     };
     let scoped_drop_shadow = ScopedFlowchartDropShadow {
         source: drop_shadow,
@@ -227,6 +179,9 @@ where
         fmt(font_size),
         text_color
     );
+    if let Some(weight) = theme.root_font_weight {
+        let _ = write!(out, "#{id}{{font-weight:{weight};}}");
+    }
     out.push_str(
         r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
     );
@@ -243,7 +198,7 @@ where
     let _ = write!(
         &mut *out,
         r#"#{} .edge-thickness-normal{{stroke-width:{}px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
-        id, stroke_width, id, id, id, id, id
+        id, connector_width, id, id, id, id, id
     );
     let _ = write!(
         &mut *out,
@@ -278,23 +233,13 @@ where
         id, font_family, node_text_color
     );
     let _ = write!(out, "#{id} .cluster-label text{{");
-    write_cluster_title_paint(out, text_surface_paint, title_color, false);
+    write_cluster_title_paint(out, title_color, false);
     let _ = write!(out, "}}#{id} .cluster-label span{{");
-    write_cluster_title_paint(out, text_surface_paint, title_color, true);
+    write_cluster_title_paint(out, title_color, true);
     let _ = write!(
         out,
         "}}#{id} .cluster-label span p{{background-color:transparent;}}#{id} .label text,#{id} span{{fill:{node_text_color};color:{node_text_color};}}"
     );
-    if let Some(plan) = text_surface_paint.filter(|plan| plan.generic_text.requested()) {
-        let edge_text_color = plan.generic_text.color(
-            crate::flowchart::FlowchartTextPaintChannel::Edge,
-            theme.node_text_color.as_str(),
-        );
-        let _ = write!(
-            out,
-            "#{id} .edgeLabel .label,#{id} .edgeLabel .label text,#{id} .edgeLabel span{{fill:{edge_text_color};color:{edge_text_color};}}"
-        );
-    }
     let _ = write!(
         &mut *out,
         r#"#{id} .node rect,#{id} .node circle,#{id} .node ellipse,#{id} .node polygon,#{id} .node path{{fill:{main_bkg};stroke:{node_border};stroke-width:{stroke_width}px;}}#{id} .rough-node .label text,#{id} .node .label text,#{id} .image-shape .label,#{id} .icon-shape .label{{text-anchor:middle;}}#{id} .node .katex path{{fill:#000;stroke:#000;stroke-width:1px;}}#{id} .rough-node .label,#{id} .node .label,#{id} .image-shape .label,#{id} .icon-shape .label{{text-align:center;}}#{id} .node.clickable{{cursor:pointer;}}"#
@@ -302,15 +247,15 @@ where
     let _ = write!(
         &mut *out,
         r#"#{} .root .anchor path{{fill:{}!important;stroke-width:0;stroke:{};}}#{} .arrowheadPath{{fill:{};}}#{} .edgePaths .path{{stroke:{};stroke-width:{}px;}}#{} .flowchart-link{{stroke:{};fill:none;}}"#,
-        id, stroke, stroke, id, arrowhead_color, id, stroke, stroke_width, id, stroke
+        id, stroke, stroke, id, arrowhead_color, id, stroke, connector_width, id, stroke
     );
     let _ = write!(
         &mut *out,
-        r#"#{} .edgeLabel{{background-color:{};text-align:center;}}#{} .edgeLabel p{{background-color:{};}}#{} .edgeLabel rect{{opacity:{background_opacity};background-color:{};fill:{};}}#{} .labelBkg{{background-color:{};}}"#,
+        r#"#{} .edgeLabel{{background-color:{};text-align:center;}}#{} .edgeLabel p{{background-color:{};}}#{} .edgeLabel rect{{opacity:0.5;background-color:{};fill:{};}}#{} .labelBkg{{background-color:{};}}"#,
         id,
-        background_underlay,
+        edge_label_background,
         id,
-        background_underlay,
+        edge_label_background,
         id,
         edge_label_background,
         edge_label_background,
@@ -321,15 +266,15 @@ where
         out,
         "#{id} .cluster rect{{fill:{cluster_bkg};stroke:{cluster_border};stroke-width:1px;}}#{id} .cluster text{{"
     );
-    write_cluster_title_paint(out, text_surface_paint, title_color, false);
+    write_cluster_title_paint(out, title_color, false);
     let _ = write!(out, "}}#{id} .cluster span{{");
-    write_cluster_title_paint(out, text_surface_paint, title_color, true);
+    write_cluster_title_paint(out, title_color, true);
     out.push('}');
     let _ = write!(
         &mut *out,
         r#"#{id} .node .collapsed-indicator{{fill:{cluster_border};stroke:none;opacity:0.6;}}#{id} .node .collapsed-separator{{stroke:{cluster_border};stroke-width:0.75px;}}"#,
     );
-    let title_css = write!(
+    let _ = write!(
         &mut *out,
         "#{} div.mermaidTooltip{{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:{};font-size:12px;background:{};border:1px solid {};border-radius:2px;pointer-events:none;z-index:100;}}#{} .{}{{text-anchor:middle;font-size:18px;fill:{};}}#{} rect.text{{fill:none;stroke-width:0;}}",
         id,
@@ -338,23 +283,18 @@ where
         tooltip_border,
         id,
         title_css_class(diagram_type),
-        document_title_color,
+        text_color,
         id
     );
-    if title_css.is_ok()
-        && let Some(plan) = text_surface_paint
-    {
-        plan.record_document_title_css(document_title_color);
-    }
     let _ = write!(
         &mut *out,
-        r#"#{} .icon-shape,#{} .image-shape{{background-color:{};text-align:center;}}#{} .icon-shape p,#{} .image-shape p{{background-color:{};padding:2px;}}#{} .icon-shape .label rect,#{} .image-shape .label rect{{opacity:{background_opacity};background-color:{};fill:{};}}#{} .label-icon{{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}}#{} .node .label-icon path{{fill:currentColor;stroke:revert;stroke-width:revert;}}"#,
+        r#"#{} .icon-shape,#{} .image-shape{{background-color:{};text-align:center;}}#{} .icon-shape p,#{} .image-shape p{{background-color:{};padding:2px;}}#{} .icon-shape .label rect,#{} .image-shape .label rect{{opacity:0.5;background-color:{};fill:{};}}#{} .label-icon{{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}}#{} .node .label-icon path{{fill:currentColor;stroke:revert;stroke-width:revert;}}"#,
         id,
         id,
-        background_underlay,
+        edge_label_background,
         id,
         id,
-        background_underlay,
+        edge_label_background,
         id,
         id,
         edge_label_background,
@@ -426,18 +366,9 @@ where
     Ok(palette_offset)
 }
 
-fn write_cluster_title_paint(
-    out: &mut impl std::fmt::Write,
-    plan: Option<&crate::flowchart::FlowchartTextSurfacePaintPlan>,
-    configured: &str,
-    html: bool,
-) {
-    if let Some(plan) = plan {
-        let _ = plan.write_css(out, configured, html);
-    } else {
-        let property = if html { "color" } else { "fill" };
-        let _ = write!(out, "{property}:{configured};");
-    }
+fn write_cluster_title_paint(out: &mut impl std::fmt::Write, configured: &str, html: bool) {
+    let property = if html { "color" } else { "fill" };
+    let _ = write!(out, "{property}:{configured};");
 }
 
 #[cfg(test)]
@@ -458,11 +389,11 @@ fn flowchart_css(
         format!("{diagram_id}-merman-flowchart-document-filter-drop-shadow-small"),
         format!("{diagram_id}-merman-flowchart-document-gradient-root"),
         &crate::flowchart::FlowchartCompatibilityBinding::resolve(effective_config),
+        false,
         &super::agentflow::ContainerPalette::new(effective_config),
         font_family,
         font_size,
         class_defs,
-        None,
         false,
     )?;
     Ok(out)
@@ -561,11 +492,11 @@ mod tests {
             "bounded-css-merman-flowchart-document-filter-drop-shadow-small",
             "bounded-css-merman-flowchart-document-gradient-root",
             &crate::flowchart::FlowchartCompatibilityBinding::resolve(&config),
+            false,
             &super::super::agentflow::ContainerPalette::new(&config),
             "sans-serif",
             16.0,
             &class_defs,
-            None,
             false,
         )
         .expect_err("the fixed Flowchart CSS prefix must exceed the tiny ceiling");
@@ -591,11 +522,11 @@ mod tests {
             "shadow-small",
             "gradient",
             &crate::flowchart::FlowchartCompatibilityBinding::resolve(&config),
+            false,
             &super::super::agentflow::ContainerPalette::new(&config),
             "sans-serif",
             16.0,
             &class_defs,
-            None,
             false,
         )
         .unwrap();

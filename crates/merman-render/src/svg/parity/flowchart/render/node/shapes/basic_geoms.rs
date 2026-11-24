@@ -17,7 +17,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_diamond(
     out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-) -> super::super::emission::FlowchartNodeShapeEmissionReceipt {
+) {
     let w = common.layout_node.width.max(1.0);
     let h = common.layout_node.height.max(1.0);
     let tx = -w / 2.0 + 0.5;
@@ -59,7 +59,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_diamond(
             fmt_display(common.stroke_width as f64),
             escape_attr(common.stroke_dasharray),
         );
-        return super::super::emission::FlowchartNodeShapeEmissionReceipt::unverified();
+        return;
     }
 
     let effect_style;
@@ -71,7 +71,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_diamond(
     };
     let _ = write!(
         out,
-        r#"<polygon points="{},0 {},{} {},{} 0,{}" class="label-container" transform="translate({},{})"{}{} />"#,
+        r#"<polygon points="{},0 {},{} {},{} 0,{}" class="label-container" transform="translate({},{})"{} />"#,
         fmt(w / 2.0),
         fmt(w),
         fmt(-h / 2.0),
@@ -81,10 +81,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_diamond(
         fmt(tx),
         fmt(ty),
         OptionalStyleAttr(body_style),
-        common.effect_filter_attr,
     );
-    super::super::emission::FlowchartNodeShapeEmissionReceipt::classic_polygon()
-        .with_effect_reach(common.effect_selected)
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_circle(
@@ -92,7 +89,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_circle(
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-) -> crate::Result<super::super::emission::FlowchartNodeShapeEmissionReceipt> {
+) -> crate::Result<()> {
     let w = common.layout_node.width.max(1.0);
     let h = common.layout_node.height.max(1.0);
     let r = (w.min(h) / 2.0).max(0.5);
@@ -117,22 +114,19 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_circle(
             write_rough_circle_paths(out, common, &paths, common.stroke_width);
             out.push_str("</g>");
             out.checkpoint()?;
-            return Ok(super::super::emission::FlowchartNodeShapeEmissionReceipt::unverified());
+            return Ok(());
         }
     }
     let _ = write!(
         out,
-        r#"<circle class="basic label-container"{} style="{}{}" r="{}" cx="0" cy="0"/>"#,
-        common.effect_filter_attr,
+        r#"<circle class="basic label-container" style="{}{}" r="{}" cx="0" cy="0"/>"#,
         escape_attr(common.style),
         common.effect_filter_style,
         fmt(r),
     );
     out.checkpoint()?;
-    Ok(
-        super::super::emission::FlowchartNodeShapeEmissionReceipt::unverified()
-            .with_effect_reach(common.effect_selected),
-    )
+
+    Ok(())
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_double_circle(
@@ -140,7 +134,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_double_circle(
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-) -> crate::Result<super::super::emission::FlowchartNodeShapeEmissionReceipt> {
+) -> crate::Result<()> {
     let geometry = crate::flowchart::DoubleCircleGeometry::from_outer_diameter(
         common.layout_node.width.min(common.layout_node.height),
         common.look_is_neo(),
@@ -187,13 +181,12 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_double_circle(
             write_rough_circle_paths(out, common, &inner, 1.5);
             out.push_str("</g></g>");
             out.checkpoint()?;
-            return Ok(super::super::emission::FlowchartNodeShapeEmissionReceipt::unverified());
+            return Ok(());
         }
     }
     let _ = write!(
         out,
-        r#"<g class="basic label-container"{} style="{}{}"><circle class="outer-circle" cx="0" cy="0" r="{}" style="{}"#,
-        common.effect_filter_attr,
+        r#"<g class="basic label-container" style="{}{}"><circle class="outer-circle" cx="0" cy="0" r="{}" style="{}"#,
         escape_attr(common.style),
         common.effect_filter_style,
         fmt(geometry.outer_radius),
@@ -209,10 +202,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_double_circle(
     common.write_child_filter_style(out);
     out.push_str(r#""/></g>"#);
     out.checkpoint()?;
-    Ok(
-        super::super::emission::FlowchartNodeShapeEmissionReceipt::unverified()
-            .with_effect_reach(common.effect_selected),
-    )
+
+    Ok(())
 }
 
 fn hand_drawn_circle_style(styles: &[String]) -> String {

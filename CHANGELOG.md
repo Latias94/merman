@@ -35,6 +35,8 @@ In the recorded native benchmark on an Apple M4 Pro, a nested Flowchart took 0.5
 
 ### Changed
 
+- **Native Theme v2.** All 34 SVG diagram families share 13 editable presets and 19 appearances. The CLI selects a preset or JSON document with `--theme`, accepts an explicit `--appearance`, and provides `theme list`, `theme export`, and `theme check`. SVG and color terminal output use the same preset catalog. [Theme guide](docs/rendering/custom-diagram-themes.md)
+- **Breaking theme API change.** Rust callers select a `merman::theme::ThemeSelection` through `with_native_theme`. Bindings accept the v2 document and expose `theme-catalog`, `export-theme-preset`, and `resolve-theme`. Native renders report `theme_outcome`. Update existing theme documents and their callers together. [Binding options](docs/bindings/OPTIONS_JSON.md#diagram-theme)
 - **CLI fonts on macOS and Linux.** Official archives use Core Text or Fontconfig by default for native Mermaid PNG, JPEG, and PDF exports. Platform lookup opens the selected fonts on demand and avoids the bounded scan's aggregate character-map limit. On Linux the automatic policy retries bounded discovery if the Fontconfig runtime cannot load. Use `--font-system bounded` to select the previous provider, or `--font-file` to pin the fonts used for both measurement and painting. [CLI font guide](crates/merman-cli/README.md#explicit-fonts)
 
 ## [0.11.0] - 2026-11-21

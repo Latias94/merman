@@ -16,8 +16,6 @@ use rustc_hash::FxHashMap;
 pub(super) struct ClassSplitEdgeGroupsRenderState<'a> {
     pub(super) content_bounds: &'a mut Option<Bounds>,
     pub(super) detail: &'a mut ClassRenderDetails,
-    pub(super) theme_receipt: &'a mut crate::class::ClassThemeOutcomes,
-    pub(super) typography_receipt: &'a mut Option<crate::class::ClassTextOutcomes>,
 }
 
 pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
@@ -45,8 +43,6 @@ pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
     pub(super) timing: RenderTiming,
     pub(super) uses_elk_adapter_dom: bool,
     pub(super) edge_paths_class: &'static str,
-    pub(super) capture_text_facts: bool,
-    pub(super) text_paint: Option<&'a crate::class::ClassTextPaint>,
     pub(super) relation_theme: &'a crate::class::ClassRelationThemePlan,
     pub(super) emit: ClassEmitCheckpoint<'a>,
 }
@@ -61,24 +57,13 @@ pub(super) fn render_class_split_edge_groups<O: SvgOutput>(
     let ClassSplitEdgeGroupsRenderState {
         content_bounds,
         detail,
-        theme_receipt,
-        typography_receipt,
     } = state;
-    let path_emission = render_class_split_edge_paths(
-        out,
-        content_bounds,
-        detail,
-        theme_receipt,
-        ctx,
-        bounds_dx,
-        bounds_dy,
-    )?;
+    let path_emission =
+        render_class_split_edge_paths(out, content_bounds, detail, ctx, bounds_dx, bounds_dy)?;
     render_class_split_edge_labels(
         out,
         content_bounds,
         detail,
-        theme_receipt,
-        typography_receipt,
         ctx,
         bounds_dx,
         bounds_dy,
@@ -90,40 +75,25 @@ pub(super) fn render_class_split_edge_paths<'edges, O: SvgOutput>(
     out: &mut O,
     content_bounds: &mut Option<Bounds>,
     detail: &mut ClassRenderDetails,
-    theme_receipt: &mut crate::class::ClassThemeOutcomes,
     ctx: &ClassSplitEdgeGroupsRenderContext<'edges>,
     bounds_dx: f64,
     bounds_dy: f64,
 ) -> crate::Result<ClassEdgePathEmission<'edges>> {
     let local_ctx = local_edge_context(ctx, bounds_dx, bounds_dy);
-    render_class_edge_paths(out, content_bounds, detail, theme_receipt, &local_ctx)
+    render_class_edge_paths(out, content_bounds, detail, &local_ctx)
 }
 
-#[allow(
-    clippy::too_many_arguments,
-    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
-)]
 pub(super) fn render_class_split_edge_labels<O: SvgOutput>(
     out: &mut O,
     content_bounds: &mut Option<Bounds>,
     detail: &mut ClassRenderDetails,
-    theme_receipt: &mut crate::class::ClassThemeOutcomes,
-    typography_receipt: &mut Option<crate::class::ClassTextOutcomes>,
     ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
     bounds_dx: f64,
     bounds_dy: f64,
     path_emission: &ClassEdgePathEmission<'_>,
 ) -> crate::Result<()> {
     let local_ctx = local_edge_context(ctx, bounds_dx, bounds_dy);
-    render_class_edge_labels(
-        out,
-        content_bounds,
-        detail,
-        theme_receipt,
-        typography_receipt,
-        &local_ctx,
-        path_emission,
-    )
+    render_class_edge_labels(out, content_bounds, detail, &local_ctx, path_emission)
 }
 
 fn local_edge_context<'a>(
@@ -158,8 +128,6 @@ fn local_edge_context<'a>(
         uses_elk_adapter_dom: ctx.uses_elk_adapter_dom,
         edge_paths_class: ctx.edge_paths_class,
         relation_theme: ctx.relation_theme,
-        text_paint: ctx.text_paint,
-        capture_text_facts: ctx.capture_text_facts,
         emit: ctx.emit,
     }
 }

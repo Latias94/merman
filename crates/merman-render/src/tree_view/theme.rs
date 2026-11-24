@@ -1,1401 +1,193 @@
-use std::collections::{BTreeMap, BTreeSet};
-use std::num::NonZeroUsize;
-use std::sync::OnceLock;
+use serde_json::Value;
 
-use merman_model::families::tree_view::{TreeViewDiagramModel, TreeViewNode};
-
-use crate::diagram_theme::{
-    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
-    FamilyThemeSelectorShape, ResolvedDiagramTheme, ResolvedStyleProperty, Specified,
-    ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
-};
-use crate::family::{
-    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
-    FamilyThemeResidualReason, InheritedFontStackOutcome, InheritedFontStackPlan,
-    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
-    resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
-    unsupported_residual_for_facet,
-};
-use crate::resources::{OperationWorkError, OperationWorkMeter};
+use crate::config::{config_css_number_or_string, config_f64, config_string};
 
 use super::config::DEFAULT_LINE_THICKNESS;
+use super::native_theme::TreeViewNativeStyle;
 
-mod css_binding;
-pub(crate) use css_binding::TreeViewCssBinding;
-
-/// Final Tree View theme shared by layout, terminal SVG emission, and family evidence.
+/// Operation-local values shared by Tree View measurement and SVG emission.
 #[derive(Debug)]
-pub(crate) struct TreeViewThemePlan {
-    css: TreeViewCssBinding,
-    line_thickness_override: Option<TreeViewTerminalStrokeWidth>,
-    expected_line_count: Option<NonZeroUsize>,
-    has_potential_typography: bool,
-    label_color: Option<TreeViewPaintAssignment>,
-    highlight_fill: Option<TreeViewPaintAssignment>,
-    highlight_stroke: Option<TreeViewPaintAssignment>,
-    highlight_paint_winners: BTreeSet<(usize, ResolvedStyleProperty)>,
-    expected_highlight_count: usize,
-    line_color: Option<TreeViewPaintAssignment>,
-    icon_color: Option<TreeViewPaintAssignment>,
-    icon_fallback_color: Option<Box<str>>,
-    inherited_font_stack: InheritedFontStackPlan,
-    typed_font_size_requested: bool,
-    config_owns_font_size: bool,
-    evidence: FamilyThemeOutcomes,
-    highlight_fallbacks: FamilyThemeOutcomes,
-    pending_stroke_width_key: Option<FamilyThemeMechanismKey>,
-    terminal_receipt: OnceLock<TreeViewThemeReceipt>,
+pub(crate) struct TreeViewCssBinding {
+    pub(crate) native: Option<TreeViewNativeStyle>,
+    pub(crate) font_family: String,
+    pub(crate) label_font_size: f64,
+    pub(crate) label_font_size_css: String,
+    pub(crate) root_font_size_css: Option<String>,
+    pub(crate) label_font_size_verified: bool,
+    pub(crate) line_thickness: f64,
+    pub(crate) label_color: String,
+    pub(crate) line_color: String,
+    pub(crate) icon_color: String,
+    pub(crate) description_color: String,
+    pub(crate) highlight_bg: String,
+    pub(crate) highlight_stroke: String,
 }
 
-#[derive(Debug, Clone)]
-struct TreeViewPaintAssignment {
-    key: FamilyThemeMechanismKey,
-    paint: DirectStaticPaint,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum TreeViewPaintProperty {
-    Fill,
-    StrokeThenFill,
-}
-
-fn resolve_tree_view_paint(
-    theme: &ResolvedDiagramTheme,
-    style: &crate::diagram_theme::ResolvedThemeStyle,
-    targets: &[ThemeTarget],
-    property: TreeViewPaintProperty,
-    source_owned: bool,
-    residuals: &mut BTreeMap<FamilyThemeMechanismKey, FamilyThemeResidualReason>,
-) -> Option<TreeViewPaintAssignment> {
-    // Marker siblings are reconciled from this static surface. Labels use the
-    // real text occurrence domain so inherited and ordinal Text winners are preserved.
-    if targets.contains(&ThemeTarget::Marker) {
-        record_unsupported_marker_winners(theme, style, residuals);
+impl TreeViewCssBinding {
+    fn configured_color(config: &Value, key: &str) -> Option<String> {
+        config_string(config, &["themeVariables", "treeView", key])
     }
-    let properties: &[ResolvedStyleProperty] = match property {
-        TreeViewPaintProperty::Fill => &[ResolvedStyleProperty::Fill],
-        TreeViewPaintProperty::StrokeThenFill => {
-            &[ResolvedStyleProperty::Stroke, ResolvedStyleProperty::Fill]
+
+    fn configured_font_size_css(config: &Value) -> Option<String> {
+        config_css_number_or_string(config, &["themeVariables", "treeView", "labelFontSize"])
+    }
+
+    pub(crate) fn from_config(config: &Value) -> Self {
+        let color = |key, fallback: &str| {
+            Self::configured_color(config, key).unwrap_or_else(|| fallback.to_string())
+        };
+        let label_font_size_css = Self::configured_font_size_css(config);
+        let (label_font_size, root_font_size_css) = match label_font_size_css.as_deref() {
+            Some(size) => resolve_label_font_size(config, size),
+            None => (Some(16.0), None),
+        };
+        Self {
+            native: None,
+            font_family: crate::config::config_font_family_css(config),
+            label_font_size: label_font_size.unwrap_or(16.0),
+            label_font_size_verified: label_font_size.is_some(),
+            root_font_size_css,
+            label_font_size_css: label_font_size_css.unwrap_or_else(|| "16px".to_string()),
+            line_thickness: config_f64(config, &["treeView", "lineThickness"])
+                .unwrap_or(DEFAULT_LINE_THICKNESS)
+                .max(0.0),
+            label_color: color("labelColor", "black"),
+            line_color: color("lineColor", "black"),
+            icon_color: color("iconColor", "#546e7a"),
+            description_color: color("descriptionColor", "#6a9955"),
+            highlight_bg: color("highlightBg", "rgba(255, 193, 7, 0.15)"),
+            highlight_stroke: color("highlightStroke", "#ffc107"),
         }
+    }
+
+    pub(crate) fn for_native(
+        config: &merman_model::presentation::PresentationConfig,
+        theme: &crate::theme::FamilyTheme,
+    ) -> Self {
+        let typography = &theme.typography;
+        let roles = &theme.roles;
+        let line_thickness = config_f64(config, &["treeView", "lineThickness"])
+            .filter(|_| config.explicit_config_owns_path("treeView.lineThickness"))
+            .unwrap_or(theme.form.connector_width)
+            .max(0.0);
+        Self {
+            native: Some(TreeViewNativeStyle {
+                node_fill: roles.surface_node.first_color(),
+                on_highlight: roles.text_on_emphasis,
+                label_weight: typography.label_weight.to_string(),
+                directory_weight: typography.title_weight.to_string(),
+            }),
+            font_family: crate::theme::font_family_css(typography.stack(typography.code_family)),
+            label_font_size: typography.base_size_px,
+            label_font_size_css: format!("{}px", typography.base_size_px),
+            root_font_size_css: None,
+            label_font_size_verified: true,
+            line_thickness,
+            label_color: roles.text_primary.to_string(),
+            line_color: roles.stroke_guide.first_color().to_string(),
+            icon_color: roles.text_muted.to_string(),
+            description_color: roles.text_muted.to_string(),
+            highlight_bg: roles.surface_emphasis.first_color().to_string(),
+            highlight_stroke: roles.stroke_border.first_color().to_string(),
+        }
+    }
+
+    pub(crate) fn includes_guide_outset(&self) -> bool {
+        self.native.is_some() && self.line_thickness > 0.0
+    }
+}
+
+fn resolve_label_font_size(config: &Value, size: &str) -> (Option<f64>, Option<String>) {
+    use crate::mermaid_style::{
+        CssFontSizeContext, CssFontSizeOwnership, css_font_size_is_zero,
+        css_font_size_value_override, resolve_mermaid_absolute_font_size_px,
+        resolve_mermaid_font_size_px,
     };
-    for selected_property in properties {
-        let resolution = match selected_property {
-            ResolvedStyleProperty::Fill => style.fill_resolution(),
-            ResolvedStyleProperty::Stroke => style.stroke_resolution(),
-            _ => unreachable!("Tree View paint resolver only selects fill/stroke"),
-        };
-        let Some(origin) = resolution.winner() else {
-            continue;
-        };
-        let facet = match selected_property {
-            ResolvedStyleProperty::Fill => FamilyThemeRuleFacet::fill(resolution.specified()),
-            ResolvedStyleProperty::Stroke => FamilyThemeRuleFacet::stroke(resolution.specified()),
-            _ => None,
-        };
-        let key = FamilyThemeMechanismKey::Rule {
-            index: origin.rule_index(),
-            target: origin.target(),
-        };
-        let Some(facet) = facet else {
-            residuals.insert(key, FamilyThemeResidualReason::UnsupportedPaint);
-            return None;
-        };
-        if source_owned {
-            return None;
-        }
-        let disposition = theme.rule_facet_disposition(origin.rule_index(), facet);
-        if disposition != Some(FamilyThemeDisposition::TypedAdapter) {
-            if disposition == Some(FamilyThemeDisposition::Unsupported) {
-                residuals.insert(key, unsupported_residual_for_facet(facet));
-            }
-            return None;
-        }
-        let paint = match selected_property {
-            ResolvedStyleProperty::Fill => resolve_direct_static_fill(
-                theme,
-                style,
-                targets,
-                DirectStaticSelectorDomain::Default,
-            ),
-            ResolvedStyleProperty::Stroke => resolve_direct_static_stroke(
-                theme,
-                style,
-                targets,
-                DirectStaticSelectorDomain::Default,
-            ),
-            _ => None,
-        };
-        let Some(paint) = paint else {
-            residuals.insert(key, FamilyThemeResidualReason::UnsupportedPaint);
-            return None;
-        };
-        return Some(TreeViewPaintAssignment { key, paint });
-    }
-    None
-}
 
-fn record_unsupported_marker_winners(
-    theme: &ResolvedDiagramTheme,
-    style: &crate::diagram_theme::ResolvedThemeStyle,
-    residuals: &mut BTreeMap<FamilyThemeMechanismKey, FamilyThemeResidualReason>,
-) {
-    let winners = style.winner_rule_properties().collect::<Vec<_>>();
-    for route in theme.family_mechanism_routes().iter().copied() {
-        let FamilyThemeMechanism::RuleFacet {
-            rule_index,
-            target: ThemeTarget::Marker,
-            selector,
-            facet,
-        } = route.mechanism()
-        else {
-            continue;
-        };
-        if route.disposition() != FamilyThemeDisposition::Unsupported {
-            continue;
+    let ownership = css_font_size_value_override(size);
+    if ownership.is_some() {
+        if let Some(size) = resolve_mermaid_absolute_font_size_px(size) {
+            return (Some(size), None);
         }
-        let property = resolved_style_property_for_facet(facet);
-        let winner_matches = winners.iter().any(|(winner_property, origin)| {
-            let selector_matches = match selector {
-                FamilyThemeSelectorShape::Static { variant } => {
-                    origin.ordinal().is_none() && origin.variant() == variant
-                }
-                FamilyThemeSelectorShape::Ordinal { variant, selector } => {
-                    origin.ordinal() == Some(selector) && origin.variant() == variant
-                }
-            };
-            *winner_property == property
-                && origin.rule_index() == rule_index
-                && origin.target() == ThemeTarget::Marker
-                && selector_matches
-        });
-        if winner_matches {
-            residuals.insert(
-                FamilyThemeMechanismKey::Rule {
-                    index: rule_index,
-                    target: ThemeTarget::Marker,
-                },
-                unsupported_residual_for_facet(facet),
-            );
+        if css_font_size_is_zero(size) {
+            return (Some(0.0), None);
         }
     }
-}
 
-#[derive(Debug)]
-struct TreeViewTerminalStrokeWidth {
-    value_px: f64,
-    token: Box<str>,
-}
-
-impl TreeViewThemePlan {
-    pub(crate) fn resolve(
-        theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &merman_model::presentation::PresentationConfig,
-        model: &TreeViewDiagramModel,
-        work_meter: &OperationWorkMeter,
-    ) -> Result<Self, OperationWorkError> {
-        let inherited_font_stack =
-            InheritedFontStackPlan::resolve_property_local(theme, effective_config);
-        let mut css = TreeViewCssBinding::with_font_family(
-            effective_config.as_value(),
-            inherited_font_stack.font_family_css(),
-        );
-        let Some(theme) = theme else {
-            return Ok(Self::baseline_with_css(
-                None,
-                css,
-                inherited_font_stack,
-                false,
-            ));
-        };
-        let typed_font_size_requested = theme.family_mechanism_routes().iter().any(|route| {
-            route.mechanism()
-                == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
-                && route.disposition() == FamilyThemeDisposition::TypedAdapter
-        });
-        let config_owns_font_size = effective_config
-            .config_path_overrides_typed_default("themeVariables.treeView.labelFontSize")
-            && css.font_size_configured;
-        if typed_font_size_requested && !config_owns_font_size {
-            css.label_font_size = f64::from(theme.typography().font_size_px());
-            css.label_font_size_css = format!("{}px", theme.typography().font_size_px());
-            css.label_font_size_verified = true;
-            css.root_font_size_css = None;
-        }
-        let (node_count, expected_line_count, expected_highlight_count) =
-            tree_view_terminal_counts(&model.root);
-        let has_potential_typography =
-            node_count != 0 && (!css.label_font_size_verified || css.label_font_size != 0.0);
-        let mut paint_residuals =
-            BTreeMap::<FamilyThemeMechanismKey, FamilyThemeResidualReason>::new();
-
-        let mermaid_owns_line_thickness =
-            crate::config::config_f64(effective_config.as_value(), &["treeView", "lineThickness"])
-                .is_some()
-                && effective_config.config_path_overrides_typed_default("treeView.lineThickness");
-        let static_style = theme.style_with_work_meter(
-            ThemeTarget::Edge,
-            ThemeVariant::Default,
-            None,
-            work_meter,
-        )?;
-        let static_winners = static_style
-            .winner_rule_properties()
-            .map(|(property, origin)| (origin.rule_index(), property))
-            .collect::<BTreeSet<_>>();
-        let static_line_thickness_candidate = (!mermaid_owns_line_thickness)
-            .then(|| typed_line_thickness(theme, &static_style))
-            .flatten();
-        let static_winner_rule = static_line_thickness_candidate.as_ref().and_then(|_| {
-            static_style
-                .stroke_width_resolution()
-                .winner()
-                .map(|origin| origin.rule_index())
-        });
-        let direct_static_winner_rule = static_winner_rule
-            .filter(|rule_index| has_direct_static_stroke_width_route(theme, *rule_index));
-
-        let has_ordinal_edge_rules = theme
-            .family_rules()
-            .any(|(_, rule)| rule.target() == ThemeTarget::Edge && rule.ordinal().is_some());
-        let mut occurrence_winners = BTreeSet::<(usize, ResolvedStyleProperty)>::new();
-        let mut static_width_wins_every_line =
-            expected_line_count != 0 && direct_static_winner_rule.is_some();
-        if expected_line_count != 0 {
-            if has_ordinal_edge_rules {
-                for ordinal in 1..=expected_line_count {
-                    let style = theme.style_with_work_meter(
-                        ThemeTarget::Edge,
-                        ThemeVariant::Default,
-                        Some(ordinal),
-                        work_meter,
-                    )?;
-                    occurrence_winners.extend(
-                        style
-                            .winner_rule_properties()
-                            .map(|(property, origin)| (origin.rule_index(), property)),
-                    );
-                    static_width_wins_every_line &= style
-                        .stroke_width_resolution()
-                        .winner()
-                        .map(|origin| origin.rule_index())
-                        == direct_static_winner_rule;
-                }
-            } else {
-                occurrence_winners.extend(static_winners.iter().copied());
-            }
-        }
-        let terminal_winner_rule = static_width_wins_every_line
-            .then_some(direct_static_winner_rule)
-            .flatten();
-        let line_thickness_override = terminal_winner_rule.and(static_line_thickness_candidate);
-
-        let mut evidence = FamilyThemeOutcomes::default();
-
-        let label_config_owned = effective_config
-            .config_paint_overrides_typed_default("themeVariables.treeView.labelColor")
-            && TreeViewCssBinding::configured_color(effective_config.as_value(), "labelColor")
-                .is_some();
-        let line_config_owned = effective_config
-            .config_paint_overrides_typed_default("themeVariables.treeView.lineColor")
-            && TreeViewCssBinding::configured_color(effective_config.as_value(), "lineColor")
-                .is_some();
-        let icon_config_owned = effective_config
-            .config_paint_overrides_typed_default("themeVariables.treeView.iconColor")
-            && TreeViewCssBinding::configured_color(effective_config.as_value(), "iconColor")
-                .is_some();
-        let highlight_config_owns_fill = effective_config
-            .config_paint_overrides_typed_default("themeVariables.treeView.highlightBg")
-            && TreeViewCssBinding::configured_color(effective_config.as_value(), "highlightBg")
-                .is_some();
-        let highlight_config_owns_stroke = effective_config
-            .config_paint_overrides_typed_default("themeVariables.treeView.highlightStroke")
-            && TreeViewCssBinding::configured_color(effective_config.as_value(), "highlightStroke")
-                .is_some();
-        let highlight_style = theme.style_with_work_meter(
-            ThemeTarget::Node,
-            ThemeVariant::Default,
-            None,
-            work_meter,
-        )?;
-        let assignment = |paint: DirectStaticPaint| TreeViewPaintAssignment {
-            key: FamilyThemeMechanismKey::Rule {
-                index: paint.rule_index(),
-                target: ThemeTarget::Node,
-            },
-            paint,
-        };
-        let highlight_fill = (expected_highlight_count != 0 && !highlight_config_owns_fill)
-            .then(|| {
-                resolve_direct_static_fill(
-                    theme,
-                    &highlight_style,
-                    &[ThemeTarget::Node],
-                    DirectStaticSelectorDomain::Default,
-                )
+    let root_css = config_css_number_or_string(config, &["themeVariables", "fontSize"])
+        .or_else(|| config_css_number_or_string(config, &["fontSize"]))
+        .unwrap_or_else(|| "16px".to_string());
+    let root_px = css_font_size_value_override(&root_css)
+        .and_then(|_| resolve_mermaid_absolute_font_size_px(&root_css));
+    // Pin the SVG root to the very context used for em, percentages and inherited sizes.
+    // rem follows the containing document's root instead, so it remains unverified.
+    let root_css = root_px.map_or(root_css, |size| format!("{size}px"));
+    let resolved = match ownership {
+        None => root_px, // Invalid font-size declarations inherit the actual root size.
+        Some(winner) if winner.ownership() != CssFontSizeOwnership::Unverified => {
+            root_px.and_then(|root_px| {
+                resolve_mermaid_font_size_px(size, CssFontSizeContext::uniform(root_px))
             })
-            .flatten()
-            .map(assignment);
-        let highlight_stroke = (expected_highlight_count != 0 && !highlight_config_owns_stroke)
-            .then(|| {
-                resolve_direct_static_stroke(
-                    theme,
-                    &highlight_style,
-                    &[ThemeTarget::Node],
-                    DirectStaticSelectorDomain::Default,
-                )
-            })
-            .flatten()
-            .map(assignment);
-        let mut highlight_paint_winners = BTreeSet::new();
-        if expected_highlight_count != 0 {
-            let has_ordinal_rules = theme.family_rules().any(|(_, rule)| {
-                rule.target() == ThemeTarget::Node
-                    && rule.ordinal().is_some()
-                    && matches!(rule.variant(), None | Some(ThemeVariant::Default))
-            });
-            for ordinal in 1..=if has_ordinal_rules {
-                expected_highlight_count
-            } else {
-                1
-            } {
-                work_meter.charge(1)?;
-                let style = theme.style_with_work_meter(
-                    ThemeTarget::Node,
-                    ThemeVariant::Default,
-                    Some(ordinal),
-                    work_meter,
-                )?;
-                highlight_paint_winners.extend(
-                    style
-                        .winner_rule_properties()
-                        .filter(|(property, _)| {
-                            matches!(
-                                property,
-                                ResolvedStyleProperty::Fill | ResolvedStyleProperty::Stroke
-                            )
-                        })
-                        .map(|(property, origin)| (origin.rule_index(), property)),
-                );
-            }
         }
-        // The resolved text style already includes the generic Text cascade.
-        let label_style = theme.text_style_with_work_meter(
-            ThemeTarget::NodeLabel,
-            ThemeVariant::Default,
-            None,
-            work_meter,
-        )?;
-        let mut label_paint_residuals = BTreeMap::new();
-        let label_color = resolve_tree_view_paint(
-            theme,
-            &label_style,
-            &[ThemeTarget::NodeLabel, ThemeTarget::Text],
-            TreeViewPaintProperty::Fill,
-            label_config_owned,
-            &mut label_paint_residuals,
-        );
-        if has_potential_typography {
-            paint_residuals.extend(label_paint_residuals);
-        }
-        // Mermaid's line terminal is stroke-first. A fill-only Edge rule is the documented
-        // fallback for themes that do not provide a stroke assignment.
-        let line_color = resolve_tree_view_paint(
-            theme,
-            &static_style,
-            &[ThemeTarget::Edge],
-            TreeViewPaintProperty::StrokeThenFill,
-            line_config_owned,
-            &mut paint_residuals,
-        );
-        // Only omitted Marker paint inherits Edge; Clear retains the baseline icon paint.
-        let marker_style = theme.style_with_work_meter(
-            ThemeTarget::Marker,
-            ThemeVariant::Default,
-            None,
-            work_meter,
-        )?;
-        let icon_color = resolve_tree_view_paint(
-            theme,
-            &marker_style,
-            &[ThemeTarget::Marker],
-            TreeViewPaintProperty::StrokeThenFill,
-            icon_config_owned,
-            &mut paint_residuals,
-        );
-        let marker_paint_unspecified = marker_style
-            .stroke_resolution()
-            .specified()
-            .is_unspecified()
-            && marker_style.fill_resolution().specified().is_unspecified();
-        let icon_fallback_color = (!icon_config_owned && marker_paint_unspecified)
-            .then(|| {
-                line_color
-                    .as_ref()
-                    .map(|assignment| assignment.paint.css().into())
-            })
-            .flatten();
-
-        for (key, reason) in &paint_residuals {
-            evidence.mark_residual(key.clone(), *reason);
-        }
-        let mut observations = BTreeMap::<usize, TreeViewEdgeRuleObservation>::new();
-        for route in theme.family_mechanism_routes().iter().copied() {
-            match route.mechanism() {
-                FamilyThemeMechanism::RuleFacet {
-                    rule_index,
-                    target: ThemeTarget::Edge,
-                    selector,
-                    facet,
-                } => {
-                    let observation = observations.entry(rule_index).or_default();
-                    let property = resolved_style_property_for_facet(facet);
-                    if !selector.ordinal_domain_intersects_occurrence_count(expected_line_count) {
-                        continue;
-                    }
-                    let route_won = occurrence_winners.contains(&(rule_index, property));
-                    if !route_won
-                        || (mermaid_owns_line_thickness
-                            && facet == FamilyThemeRuleFacet::StrokeWidth)
-                    {
-                        continue;
-                    }
-
-                    observation.applicable = true;
-                    match (route.disposition(), selector, facet) {
-                        (
-                            FamilyThemeDisposition::TypedAdapter,
-                            FamilyThemeSelectorShape::Static { variant: None },
-                            FamilyThemeRuleFacet::StrokeWidth,
-                        ) if terminal_winner_rule == Some(rule_index) => {
-                            observation.stroke_width_pending = true;
-                        }
-                        (FamilyThemeDisposition::Unsupported, _, facet) => {
-                            observation
-                                .residual
-                                .get_or_insert(unsupported_residual_for_facet(facet));
-                        }
-                        (FamilyThemeDisposition::TypedAdapter, _, _) => {
-                            observation.incomplete = true;
-                        }
-                    }
-                }
-                FamilyThemeMechanism::BaseTypography(_)
-                | FamilyThemeMechanism::RuleFacet { .. }
-                | FamilyThemeMechanism::OrdinalPalette { .. }
-                | FamilyThemeMechanism::EffectBinding { .. } => {}
-            }
-        }
-
-        let mut pending_stroke_width_key = None;
-        for (rule_index, observation) in observations {
-            let key = FamilyThemeMechanismKey::Rule {
-                index: rule_index,
-                target: ThemeTarget::Edge,
-            };
-            if !observation.applicable {
-                evidence.mark_not_applicable(key);
-            } else if let Some(reason) = observation.residual {
-                evidence.mark_residual(key, reason);
-            } else if observation.incomplete {
-                // A mixed rule stays unaccounted until every winning facet has a terminal owner.
-            } else if observation.stroke_width_pending {
-                debug_assert!(pending_stroke_width_key.is_none());
-                pending_stroke_width_key = Some(key);
-            } else {
-                evidence.mark_not_applicable(key);
-            }
-        }
-
-        // Zero-sized labels retain geometry occurrences while their fill is not applicable.
-        let label_source_ownership =
-            (label_config_owned || !has_potential_typography).then(|| vec![true; node_count]);
-        let label_domain = UnsupportedTerminalDomain::textual(
-            ThemeTarget::NodeLabel,
-            &[ThemeTarget::NodeLabel, ThemeTarget::Text],
-            TerminalVariantDomain::uniform(node_count, ThemeVariant::Default),
-        );
-        let label_domain = match label_source_ownership.as_deref() {
-            Some(ownership) => label_domain.with_source_owned_fill(ownership),
-            None => label_domain,
-        };
-        let absent = TerminalVariantDomain::uniform(0, ThemeVariant::Default);
-        work_meter.charge(expected_highlight_count.saturating_mul(2))?;
-        let highlight_fill_ownership = vec![highlight_config_owns_fill; expected_highlight_count];
-        let highlight_stroke_ownership =
-            vec![highlight_config_owns_stroke; expected_highlight_count];
-        let mut highlight_fallbacks = FamilyThemeOutcomes::default();
-        reconcile_unsupported_terminal_domains(
-            theme,
-            &mut highlight_fallbacks,
-            &[UnsupportedTerminalDomain::direct(
-                ThemeTarget::Node,
-                TerminalVariantDomain::uniform(expected_highlight_count, ThemeVariant::Default),
-            )
-            .with_source_owned_fill(&highlight_fill_ownership)
-            .with_source_owned_stroke(&highlight_stroke_ownership)],
-            work_meter,
-        )?;
-        reconcile_unsupported_terminal_domains(
-            theme,
-            &mut evidence,
-            &[
-                label_domain,
-                UnsupportedTerminalDomain::direct(ThemeTarget::Title, absent),
-                UnsupportedTerminalDomain::direct(ThemeTarget::EdgeLabelBackground, absent),
-                UnsupportedTerminalDomain::direct(ThemeTarget::Cluster, absent),
-                UnsupportedTerminalDomain::direct(ThemeTarget::ClusterLabel, absent),
-                UnsupportedTerminalDomain::fallbacks_only(
-                    ThemeTarget::Edge,
-                    TerminalVariantDomain::uniform(expected_line_count, ThemeVariant::Default),
-                ),
-            ],
-            work_meter,
-        )?;
-
-        let mut selected_paint_keys = [
-            label_color.as_ref(),
-            line_color.as_ref(),
-            icon_color.as_ref(),
-        ]
-        .into_iter()
-        .flatten()
-        .map(|assignment| assignment.key.clone())
-        .collect::<BTreeSet<_>>();
-        for (property, assignment) in [
-            (ResolvedStyleProperty::Fill, highlight_fill.as_ref()),
-            (ResolvedStyleProperty::Stroke, highlight_stroke.as_ref()),
-        ] {
-            if let Some(assignment) = assignment
-                && highlight_paint_winners.contains(&(assignment.paint.rule_index(), property))
-            {
-                selected_paint_keys.insert(assignment.key.clone());
-            }
-        }
-        let pending_stroke_width_key = pending_stroke_width_key.clone();
-        for route in theme.family_mechanism_routes().iter().copied() {
-            let key = theme.family_mechanism_key(route);
-            match route.mechanism() {
-                FamilyThemeMechanism::BaseTypography(_) => {}
-                FamilyThemeMechanism::RuleFacet {
-                    target:
-                        ThemeTarget::NodeLabel
-                        | ThemeTarget::Node
-                        | ThemeTarget::Text
-                        | ThemeTarget::Edge
-                        | ThemeTarget::Marker,
-                    facet: FamilyThemeRuleFacet::Fill(_) | FamilyThemeRuleFacet::Stroke(_),
-                    ..
-                } if route.disposition() == FamilyThemeDisposition::TypedAdapter
-                    && !selected_paint_keys.contains(&key)
-                    && !paint_residuals.contains_key(&key) =>
-                {
-                    evidence.mark_not_applicable(key);
-                }
-                FamilyThemeMechanism::RuleFacet {
-                    target: ThemeTarget::Edge,
-                    facet: FamilyThemeRuleFacet::StrokeWidth,
-                    ..
-                } if route.disposition() == FamilyThemeDisposition::TypedAdapter
-                    && pending_stroke_width_key.as_ref() != Some(&key) =>
-                {
-                    evidence.mark_not_applicable(key);
-                }
-                _ => {}
-            }
-        }
-
-        if let Some(assignment) = &label_color {
-            css.label_color = assignment.paint.css().to_string();
-        }
-        if let Some(assignment) = &line_color {
-            css.line_color = assignment.paint.css().to_string();
-        }
-        if let Some(color) = icon_color
-            .as_ref()
-            .map(|assignment| assignment.paint.css())
-            .or(icon_fallback_color.as_deref())
-        {
-            css.icon_color = color.to_string();
-        }
-        if let Some(width) = &line_thickness_override {
-            css.line_thickness = width.value_px;
-        }
-        if let Some(assignment) = &highlight_fill {
-            css.highlight_bg = assignment.paint.css().to_owned();
-        }
-        if let Some(assignment) = &highlight_stroke {
-            css.highlight_stroke = assignment.paint.css().to_owned();
-        }
-        Ok(Self {
-            css,
-            line_thickness_override,
-            expected_line_count: NonZeroUsize::new(expected_line_count),
-            has_potential_typography,
-            label_color,
-            highlight_fill,
-            highlight_stroke,
-            highlight_paint_winners,
-            expected_highlight_count,
-            line_color,
-            icon_color,
-            icon_fallback_color,
-            inherited_font_stack,
-            typed_font_size_requested,
-            config_owns_font_size,
-            evidence,
-            highlight_fallbacks,
-            pending_stroke_width_key,
-            terminal_receipt: OnceLock::new(),
-        })
-    }
-
-    #[cfg(test)]
-    pub(crate) fn baseline(expected_line_count: usize) -> Self {
-        Self::baseline_with_css(
-            NonZeroUsize::new(expected_line_count),
-            TreeViewCssBinding::from_config(&serde_json::Value::Null),
-            InheritedFontStackPlan::resolve_property_local(
-                None,
-                &merman_model::presentation::PresentationConfig::default(),
-            ),
-            false,
-        )
-    }
-
-    fn baseline_with_css(
-        expected_line_count: Option<NonZeroUsize>,
-        css: TreeViewCssBinding,
-        inherited_font_stack: InheritedFontStackPlan,
-        has_potential_typography: bool,
-    ) -> Self {
-        Self {
-            css,
-            line_thickness_override: None,
-            expected_line_count,
-            has_potential_typography,
-            label_color: None,
-            highlight_fill: None,
-            highlight_stroke: None,
-            highlight_paint_winners: BTreeSet::new(),
-            expected_highlight_count: 0,
-            line_color: None,
-            icon_color: None,
-            icon_fallback_color: None,
-            inherited_font_stack,
-            typed_font_size_requested: false,
-            config_owns_font_size: false,
-            evidence: FamilyThemeOutcomes::default(),
-            highlight_fallbacks: FamilyThemeOutcomes::default(),
-            pending_stroke_width_key: None,
-            terminal_receipt: OnceLock::new(),
-        }
-    }
-
-    pub(crate) fn css(&self) -> &TreeViewCssBinding {
-        &self.css
-    }
-
-    pub(crate) fn terminal_stroke_width_token(&self, emitted_stroke_width_px: f64) -> Option<&str> {
-        self.line_thickness_override
-            .as_ref()
-            .filter(|width| width.value_px.to_bits() == emitted_stroke_width_px.to_bits())
-            .map(|width| width.token.as_ref())
-    }
-
-    pub(crate) fn additional_paint_outset_px(&self) -> f64 {
-        self.line_thickness_override.as_ref().map_or(0.0, |width| {
-            ((width.value_px - DEFAULT_LINE_THICKNESS).max(0.0)) / 2.0
-        })
-    }
-
-    pub(crate) fn record_terminal(&self, receipt: TreeViewThemeReceipt) -> bool {
-        receipt.proves(self) && self.terminal_receipt.set(receipt).is_ok()
-    }
-
-    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
-        for residual in self.highlight_fallbacks.residuals() {
-            evidence.mark_residual(residual.key().clone(), residual.reason());
-        }
-        evidence.merge_borrowed(&self.evidence);
-        if self.typed_font_size_requested {
-            let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontSize);
-            if !self.css.label_font_size_verified && self.has_potential_typography {
-                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-            } else if self.config_owns_font_size || !self.has_potential_typography {
-                evidence.mark_not_applicable(key);
-            } else if self.terminal_receipt.get().is_some() {
-                evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
-            } else {
-                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-            }
-        }
-        self.inherited_font_stack
-            .record_unsupported_typography_evidence(evidence, self.has_potential_typography);
-        if let Some(assignment) = &self.label_color {
-            if !self.has_potential_typography {
-                evidence.mark_not_applicable(assignment.key.clone());
-            } else if !self.css.label_font_size_verified {
-                evidence.mark_residual(
-                    assignment.key.clone(),
-                    FamilyThemeResidualReason::UnsupportedTypography,
-                );
-            }
-        }
-        if let Some(receipt) = self.terminal_receipt.get() {
-            for (property, assignment) in [
-                (ResolvedStyleProperty::Fill, self.highlight_fill.as_ref()),
-                (
-                    ResolvedStyleProperty::Stroke,
-                    self.highlight_stroke.as_ref(),
-                ),
-            ] {
-                if let Some(assignment) = assignment
-                    && receipt.highlights_seen != 0
-                    && self
-                        .highlight_paint_winners
-                        .contains(&(assignment.paint.rule_index(), property))
-                {
-                    evidence.mark_applied_with_capabilities(
-                        assignment.key.clone(),
-                        [assignment.paint.capability()],
-                    );
-                }
-            }
-            if let Some(key) = self.pending_stroke_width_key.clone() {
-                evidence.mark_applied_with_capabilities(key, [ThemeCapability::BorderStyling]);
-            }
-            if let Some(assignment) = &self.label_color
-                && self.has_potential_typography
-                && self.css.label_font_size_verified
-                && receipt.label_color_matches(assignment.paint.css())
-            {
-                evidence.mark_applied_with_capabilities(
-                    assignment.key.clone(),
-                    [assignment.paint.capability(), ThemeCapability::SolidPaint],
-                );
-            }
-            if let Some(assignment) = &self.line_color
-                && receipt.line_color_matches(assignment.paint.css())
-            {
-                evidence.mark_applied_with_capabilities(
-                    assignment.key.clone(),
-                    [
-                        assignment.paint.capability(),
-                        ThemeCapability::BorderStyling,
-                    ],
-                );
-            }
-            if let Some(assignment) = &self.icon_color {
-                if receipt.expected_icon_count == 0 {
-                    evidence.mark_not_applicable(assignment.key.clone());
-                } else if receipt.paintable_icons_seen == 0 && receipt.unverified_icons_seen == 0 {
-                    // Fixed-color and empty/unknown icon bodies are occurrence-local N/A: they
-                    // do not consume the Tree View icon color terminal.
-                    evidence.mark_not_applicable(assignment.key.clone());
-                } else if receipt.icon_color_matches(assignment.paint.css()) {
-                    evidence.mark_applied_with_capabilities(
-                        assignment.key.clone(),
-                        [assignment.paint.capability(), ThemeCapability::SolidPaint],
-                    );
-                }
-            }
-        }
-        if self.inherited_font_stack.typed_font_stack_requested() {
-            let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
-            match self.inherited_font_stack.outcome() {
-                InheritedFontStackOutcome::Typed if !self.has_potential_typography => {
-                    evidence.mark_not_applicable(key);
-                }
-                InheritedFontStackOutcome::Typed
-                    if self.css.label_font_size_verified
-                        && self.terminal_receipt.get().is_some_and(|receipt| {
-                            receipt.font_family_matches(self.inherited_font_stack.font_family_css())
-                        }) =>
-                {
-                    evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
-                }
-                InheritedFontStackOutcome::ConfigOwned => evidence.mark_not_applicable(key),
-                InheritedFontStackOutcome::Typed | InheritedFontStackOutcome::Unsupported => {
-                    evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-                }
-                InheritedFontStackOutcome::Inactive => {}
-            }
-        }
-        evidence.merge_borrowed(&self.highlight_fallbacks);
-    }
-
-    pub(crate) fn label_color_css(&self) -> &str {
-        &self.css.label_color
-    }
-
-    pub(crate) fn ensure_portable_typography(
-        &self,
-        portability: crate::diagram_theme::ThemePortabilityRequirement,
-    ) -> crate::Result<()> {
-        if !self.css.label_font_size_verified
-            && portability == crate::diagram_theme::ThemePortabilityRequirement::RequirePortable
-        {
-            return Err(crate::Error::UnverifiedFamilyStyle {
-                family_id: crate::DiagramFamilyId::TREE_VIEW,
-                residual_count: 1,
-            });
-        }
-        Ok(())
-    }
-
-    pub(crate) fn line_color_css(&self) -> &str {
-        &self.css.line_color
-    }
-
-    pub(crate) fn icon_color_css(&self) -> &str {
-        &self.css.icon_color
-    }
-
-    pub(crate) fn typed_icon_color_css(&self) -> Option<&str> {
-        self.icon_color
-            .as_ref()
-            .map(|assignment| assignment.paint.css())
-            .or(self.icon_fallback_color.as_deref())
-    }
-
-    pub(crate) fn begin_terminal_receipt(
-        &self,
-        label_count: usize,
-        count_icons: impl FnOnce() -> usize,
-    ) -> Option<TreeViewThemeReceipt> {
-        let expected_line_count = self.expected_line_count?;
-        Some(
-            TreeViewThemeReceipt::new(
-                self.label_color
-                    .as_ref()
-                    .map(|assignment| assignment.paint.css()),
-                self.line_color
-                    .as_ref()
-                    .map(|assignment| assignment.paint.css()),
-                self.typed_icon_color_css(),
-                self.inherited_font_stack.font_family_css(),
-                label_count,
-                count_icons(),
-                expected_line_count.get(),
-                self.line_thickness_override
-                    .as_ref()
-                    .map(|width| width.token.as_ref()),
-            )
-            .with_highlights(
-                self.highlight_fill
-                    .as_ref()
-                    .map(|assignment| assignment.paint.css()),
-                self.highlight_stroke
-                    .as_ref()
-                    .map(|assignment| assignment.paint.css()),
-                self.expected_highlight_count,
-            )
-            .with_font_size(
-                self.typed_font_size_requested
-                    .then_some(self.css.label_font_size_css.as_str()),
-            ),
-        )
-    }
-}
-
-fn typed_line_thickness(
-    theme: &ResolvedDiagramTheme,
-    style: &crate::diagram_theme::ResolvedThemeStyle,
-) -> Option<TreeViewTerminalStrokeWidth> {
-    let origin = style.stroke_width_resolution().winner()?;
-    if theme.rule_facet_disposition(origin.rule_index(), FamilyThemeRuleFacet::StrokeWidth)
-        != Some(FamilyThemeDisposition::TypedAdapter)
-    {
-        return None;
-    }
-    match style.stroke_width_resolution().specified() {
-        Specified::Value(value) => Some(TreeViewTerminalStrokeWidth {
-            value_px: f64::from(*value),
-            token: value.to_string().into_boxed_str(),
-        }),
-        Specified::Clear => Some(TreeViewTerminalStrokeWidth {
-            value_px: DEFAULT_LINE_THICKNESS,
-            token: DEFAULT_LINE_THICKNESS.to_string().into_boxed_str(),
-        }),
-        Specified::Unspecified => None,
-    }
-}
-
-fn has_direct_static_stroke_width_route(
-    theme: &ResolvedDiagramTheme,
-    expected_rule_index: usize,
-) -> bool {
-    theme
-        .family_mechanism_routes()
-        .iter()
-        .copied()
-        .any(|route| {
-            route.disposition() == FamilyThemeDisposition::TypedAdapter
-                && matches!(
-                    route.mechanism(),
-                    FamilyThemeMechanism::RuleFacet {
-                        rule_index,
-                        target: ThemeTarget::Edge,
-                        selector: FamilyThemeSelectorShape::Static { variant: None },
-                        facet: FamilyThemeRuleFacet::StrokeWidth,
-                    } if rule_index == expected_rule_index
-                )
-        })
-}
-
-fn tree_view_terminal_counts(root: &TreeViewNode) -> (usize, usize, usize) {
-    let mut node_count = 0usize;
-    let mut line_count = 0usize;
-    let mut highlight_count = 0usize;
-    let mut stack = vec![root];
-    while let Some(node) = stack.pop() {
-        node_count = node_count.saturating_add(1);
-        line_count = line_count.saturating_add(1);
-        if super::is_tree_view_highlight_class(node.css_class.as_deref()) {
-            highlight_count = highlight_count.saturating_add(1);
-        }
-        if !node.children.is_empty() {
-            line_count = line_count.saturating_add(1);
-        }
-        stack.extend(node.children.iter());
-    }
-    (node_count, line_count, highlight_count)
-}
-
-/// Renderer-owned proof for Tree View's final CSS and terminal occurrence streams.
-#[derive(Debug)]
-pub(crate) struct TreeViewThemeReceipt {
-    expected_highlight_fill: Option<Box<str>>,
-    expected_highlight_stroke: Option<Box<str>>,
-    expected_highlight_count: usize,
-    highlights_seen: usize,
-    highlight_css_seen: bool,
-    expected_font_size: Option<Box<str>>,
-    font_size_seen: bool,
-    expected_label_color: Option<Box<str>>,
-    expected_line_color: Option<Box<str>>,
-    expected_icon_color: Option<Box<str>>,
-    expected_font_family: Box<str>,
-    expected_label_count: usize,
-    expected_icon_count: usize,
-    expected_line_count: usize,
-    expected_stroke_width: Option<Box<str>>,
-    css_seen: bool,
-    css_matches: bool,
-    labels_seen: usize,
-    icons_seen: usize,
-    paintable_icons_seen: usize,
-    unverified_icons_seen: usize,
-    lines_seen: usize,
-    terminal_matches: bool,
-}
-
-impl TreeViewThemeReceipt {
-    #[allow(
-        clippy::too_many_arguments,
-        reason = "The family terminal receipt reconciles emitted geometry, paint, and source ownership."
-    )]
-    fn new(
-        expected_label_color: Option<&str>,
-        expected_line_color: Option<&str>,
-        expected_icon_color: Option<&str>,
-        expected_font_family: &str,
-        expected_label_count: usize,
-        expected_icon_count: usize,
-        expected_line_count: usize,
-        expected_stroke_width: Option<&str>,
-    ) -> Self {
-        Self {
-            expected_highlight_fill: None,
-            expected_highlight_stroke: None,
-            expected_highlight_count: 0,
-            highlights_seen: 0,
-            highlight_css_seen: false,
-            expected_font_size: None,
-            font_size_seen: false,
-            expected_label_color: expected_label_color.map(Into::into),
-            expected_line_color: expected_line_color.map(Into::into),
-            expected_icon_color: expected_icon_color.map(Into::into),
-            expected_font_family: expected_font_family.into(),
-            expected_label_count,
-            expected_icon_count,
-            expected_line_count,
-            expected_stroke_width: expected_stroke_width.map(Into::into),
-            css_seen: false,
-            css_matches: true,
-            labels_seen: 0,
-            icons_seen: 0,
-            paintable_icons_seen: 0,
-            unverified_icons_seen: 0,
-            lines_seen: 0,
-            terminal_matches: true,
-        }
-    }
-
-    fn with_highlights(mut self, fill: Option<&str>, stroke: Option<&str>, count: usize) -> Self {
-        self.expected_highlight_fill = fill.map(Into::into);
-        self.expected_highlight_stroke = stroke.map(Into::into);
-        self.expected_highlight_count = count;
-        self
-    }
-
-    fn with_font_size(mut self, size: Option<&str>) -> Self {
-        self.expected_font_size = size.map(Into::into);
-        self
-    }
-
-    pub(crate) fn record_font_size(&mut self, size: &str) {
-        self.css_matches &= !self.font_size_seen;
-        self.font_size_seen = true;
-        self.css_matches &= self
-            .expected_font_size
-            .as_deref()
-            .is_none_or(|expected| expected == size);
-    }
-
-    pub(crate) fn record_highlight_css(&mut self, fill: &str, stroke: &str) {
-        self.css_matches &= !self.highlight_css_seen;
-        self.highlight_css_seen = true;
-        self.css_matches &= self
-            .expected_highlight_fill
-            .as_deref()
-            .is_none_or(|expected| expected == fill);
-        self.css_matches &= self
-            .expected_highlight_stroke
-            .as_deref()
-            .is_none_or(|expected| expected == stroke);
-    }
-
-    pub(crate) fn record_highlight(&mut self, fill: &str, stroke: &str) {
-        self.highlights_seen = self.highlights_seen.saturating_add(1);
-        self.terminal_matches &= self
-            .expected_highlight_fill
-            .as_deref()
-            .is_none_or(|expected| expected == fill);
-        self.terminal_matches &= self
-            .expected_highlight_stroke
-            .as_deref()
-            .is_none_or(|expected| expected == stroke);
-    }
-
-    pub(crate) fn record_css(
-        &mut self,
-        font_family: &str,
-        label_color: &str,
-        line_color: &str,
-        icon_color: &str,
-    ) {
-        if self.css_seen {
-            self.css_matches = false;
-            return;
-        }
-        self.css_seen = true;
-        self.css_matches &= font_family == self.expected_font_family.as_ref();
-        if let Some(expected) = &self.expected_label_color {
-            self.css_matches &= label_color == expected.as_ref();
-        }
-        if let Some(expected) = &self.expected_line_color {
-            self.css_matches &= line_color == expected.as_ref();
-        }
-        if let Some(expected) = &self.expected_icon_color {
-            self.css_matches &= icon_color == expected.as_ref();
-        }
-    }
-
-    pub(crate) fn record_label(&mut self, emitted_color: &str) {
-        self.labels_seen = self.labels_seen.saturating_add(1);
-        if let Some(expected) = &self.expected_label_color {
-            self.terminal_matches &= emitted_color == expected.as_ref();
-        }
-    }
-
-    pub(crate) fn record_icon(
-        &mut self,
-        emitted_color: &str,
-        current_color_use: crate::svg::IconCurrentColorUse,
-    ) {
-        self.icons_seen = self.icons_seen.saturating_add(1);
-        match current_color_use {
-            crate::svg::IconCurrentColorUse::Consumed => {
-                self.paintable_icons_seen = self.paintable_icons_seen.saturating_add(1);
-                if let Some(expected) = &self.expected_icon_color {
-                    self.terminal_matches &= emitted_color == expected.as_ref();
-                }
-            }
-            crate::svg::IconCurrentColorUse::NotConsumed => {}
-            crate::svg::IconCurrentColorUse::Unverified => {
-                self.unverified_icons_seen = self.unverified_icons_seen.saturating_add(1);
-            }
-        }
-    }
-
-    pub(crate) fn record_line(&mut self, emitted_color: &str, emitted_stroke_width: Option<&str>) {
-        self.lines_seen = self.lines_seen.saturating_add(1);
-        if let Some(expected) = &self.expected_line_color {
-            self.terminal_matches &= emitted_color == expected.as_ref();
-        }
-        if let Some(expected) = &self.expected_stroke_width {
-            self.terminal_matches &= emitted_stroke_width == Some(expected.as_ref());
-        }
-    }
-
-    fn proves(&self, plan: &TreeViewThemePlan) -> bool {
-        // Admit complete terminal facts independently of an icon's paint class.
-        // icon_color_matches alone proves the requested currentColor channel.
-        self.css_seen
-            && self.css_matches
-            && self.highlights_seen == self.expected_highlight_count
-            && (self.expected_highlight_count == 0 || self.highlight_css_seen)
-            && (self.expected_font_size.is_none() || self.font_size_seen)
-            && self.labels_seen == self.expected_label_count
-            && self.icons_seen == self.expected_icon_count
-            && self.lines_seen == self.expected_line_count
-            && self.terminal_matches
-            && plan.expected_line_count.map(NonZeroUsize::get) == Some(self.expected_line_count)
-    }
-
-    fn label_color_matches(&self, expected: &str) -> bool {
-        self.css_seen
-            && self.css_matches
-            && self.labels_seen == self.expected_label_count
-            && self.expected_label_color.as_deref() == Some(expected)
-    }
-
-    fn line_color_matches(&self, expected: &str) -> bool {
-        self.css_seen
-            && self.css_matches
-            && self.lines_seen == self.expected_line_count
-            && self.expected_line_color.as_deref() == Some(expected)
-    }
-
-    fn icon_color_matches(&self, expected: &str) -> bool {
-        self.css_seen
-            && self.css_matches
-            && self.icons_seen == self.expected_icon_count
-            && self.paintable_icons_seen > 0
-            && self.unverified_icons_seen == 0
-            && self.expected_icon_color.as_deref() == Some(expected)
-    }
-
-    fn font_family_matches(&self, expected: &str) -> bool {
-        self.css_seen && self.css_matches && self.expected_font_family.as_ref() == expected
-    }
-}
-
-#[derive(Debug, Default)]
-struct TreeViewEdgeRuleObservation {
-    applicable: bool,
-    incomplete: bool,
-    residual: Option<FamilyThemeResidualReason>,
-    stroke_width_pending: bool,
+        Some(_) => None,
+    };
+    (resolved, Some(root_css))
 }
 
 #[cfg(test)]
 mod tests {
-    fn collect_evidence(
-        theme: &crate::diagram_theme::ResolvedDiagramTheme,
-        record: impl FnOnce(&mut crate::family::FamilyThemeEvidence),
-    ) -> crate::family::FamilyThemeEvidence {
-        let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(theme));
-        record(&mut evidence);
-        evidence
-    }
-
     use super::*;
-    use crate::DiagramFamilyId;
-    use crate::diagram_theme::{
-        CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
-        ThemeStylePatch,
-    };
-    use crate::resources::RenderResourcePolicy;
-
-    fn work_meter() -> OperationWorkMeter {
-        OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input())
-    }
-
-    fn resolved_fill(target: ThemeTarget) -> ResolvedDiagramTheme {
-        let styles = ThemeRuleSet::default().with_rule(
-            ThemeRule::new(
-                target,
-                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
-            )
-            .for_family(DiagramFamilyId::TREE_VIEW),
-        );
-        DiagramThemeCompiler::new()
-            .compile(DiagramThemeSpec::new().with_styles(styles))
-            .expect("compile TreeView terminal fixture")
-            .resolve(DiagramFamilyId::TREE_VIEW)
-    }
+    use serde_json::json;
 
     #[test]
-    fn no_recipe_binds_config_without_requesting_terminal_proof() {
-        let config = crate::test_support::presentation_config(serde_json::json!({
-            "treeView": {"lineThickness": 3},
-            "themeVariables": {
-                "fontFamily": "Custom Font",
-                "treeView": {"labelFontSize": "22px", "lineColor": "var(--line)"}
-            }
+    fn binding_preserves_configured_tree_view_roles() {
+        let binding = TreeViewCssBinding::from_config(&json!({
+            "themeVariables": { "treeView": {
+                "labelFontSize": "20px", "labelColor": "#FF0000",
+                "lineColor": "#00FF00", "iconColor": "#111111",
+                "descriptionColor": "#222222", "highlightBg": "rgba(1, 2, 3, 0.4)",
+                "highlightStroke": "#333333"
+            }}
         }));
-        let model = TreeViewDiagramModel::default();
-        let plan = TreeViewThemePlan::resolve(None, &config, &model, &work_meter())
-            .expect("bind Mermaid-only Tree View");
-        assert_eq!(plan.css().font_family, "Custom Font");
-        assert_eq!(plan.css().label_font_size, 22.0);
-        assert_eq!(plan.css().line_thickness, 3.0);
-        assert_eq!(plan.line_color_css(), "var(--line)");
-        assert!(
-            plan.begin_terminal_receipt(1, || panic!("unrequested icon count"))
-                .is_none()
-        );
+        assert_eq!(binding.label_font_size, 20.0);
+        assert_eq!(binding.label_font_size_css, "20px");
+        assert_eq!(binding.label_color, "#FF0000");
+        assert_eq!(binding.line_color, "#00FF00");
+        assert_eq!(binding.icon_color, "#111111");
+        assert_eq!(binding.description_color, "#222222");
+        assert_eq!(binding.highlight_bg, "rgba(1, 2, 3, 0.4)");
+        assert_eq!(binding.highlight_stroke, "#333333");
     }
 
     #[test]
-    fn requested_recipes_keep_terminal_proof_without_a_typed_override() {
-        let empty = DiagramThemeCompiler::new()
-            .compile(DiagramThemeSpec::new())
-            .expect("compile empty TreeView recipe")
-            .resolve(DiagramFamilyId::TREE_VIEW);
-        let unsupported = resolved_fill(ThemeTarget::Node);
-        for theme in [&empty, &unsupported] {
-            let plan = TreeViewThemePlan::resolve(
-                Some(theme),
-                &merman_model::presentation::PresentationConfig::empty_object(),
-                &TreeViewDiagramModel::default(),
-                &work_meter(),
-            )
-            .expect("bind requested TreeView recipe");
-            assert!(plan.begin_terminal_receipt(1, || 0).is_some());
-        }
+    fn binding_preserves_default_tree_view_roles() {
+        let binding = TreeViewCssBinding::from_config(&json!({}));
+        assert_eq!(binding.label_font_size, 16.0);
+        assert!(binding.label_font_size_verified);
+        assert_eq!(binding.label_font_size_css, "16px");
+        assert_eq!(binding.label_color, "black");
+        assert_eq!(binding.line_color, "black");
+        assert_eq!(binding.icon_color, "#546e7a");
+        assert_eq!(binding.description_color, "#6a9955");
+        assert_eq!(binding.highlight_bg, "rgba(255, 193, 7, 0.15)");
+        assert_eq!(binding.highlight_stroke, "#ffc107");
     }
 
     #[test]
-    fn terminal_binding_keeps_property_local_config_ownership() {
-        let theme = resolved_fill(ThemeTarget::NodeLabel);
-        let model = TreeViewDiagramModel::default();
-        let mut config = merman_model::presentation::PresentationConfig::empty_object();
-        let typed = TreeViewThemePlan::resolve(Some(&theme), &config, &model, &work_meter())
-            .expect("bind typed Tree View");
-        assert_eq!(typed.label_color_css(), "#123456");
-
-        config = merman_core::MermaidEngine::new()
-            .parse_metadata_sync(
-                "---\nconfig:\n  themeVariables:\n    treeView:\n      labelColor: currentColor\n---\ntreeView-beta\n    \"root\"\n",
-            )
-            .expect("parse Tree View authored config ownership")
-            .effective_config;
-        assert!(config.config_path_overrides_typed_default("themeVariables.treeView.labelColor"));
-        assert!(!config.config_path_overrides_typed_default("themeVariables.treeView.lineColor"));
-        let authored = TreeViewThemePlan::resolve(Some(&theme), &config, &model, &work_meter())
-            .expect("bind authored Tree View");
-        assert_eq!(authored.label_color_css(), "currentColor");
-        assert!(authored.label_color.is_none());
-        assert_eq!(authored.line_color_css(), "black");
-
-        let host_config = merman_core::MermaidEngine::new()
-            .with_site_config(
-                merman_core::presentation::SourcePresentationConfig::from_value(
-                    serde_json::json!({
-                        "themeVariables": {"treeView": {"labelColor": "var(--label)"}}
-                    }),
-                ),
-            )
-            .parse_metadata_sync("treeView-beta\n    \"root\"\n")
-            .expect("parse Tree View host config ownership")
-            .effective_config;
-        assert!(
-            host_config.config_path_overrides_typed_default("themeVariables.treeView.labelColor")
-        );
-        let host = TreeViewThemePlan::resolve(Some(&theme), &host_config, &model, &work_meter())
-            .expect("bind host Tree View");
-        assert_eq!(host.label_color_css(), "var(--label)");
-        assert!(host.label_color.is_none());
-    }
-
-    #[test]
-    fn terminal_receipt_requires_css_and_exact_terminal_occurrences() {
-        let mut complete = TreeViewThemeReceipt::new(
-            Some("#123456"),
-            Some("#654321"),
-            Some("#abcdef"),
-            "Excalifont",
-            1,
-            1,
-            1,
-            Some("6"),
-        );
-        complete.record_css("Excalifont", "#123456", "#654321", "#abcdef");
-        complete.record_label("#123456");
-        complete.record_icon("#abcdef", crate::svg::IconCurrentColorUse::Consumed);
-        complete.record_line("#654321", Some("6"));
-        assert!(complete.css_matches);
-        assert_eq!(complete.labels_seen, 1);
-        assert_eq!(complete.icons_seen, 1);
-        assert_eq!(complete.lines_seen, 1);
-
-        complete.record_line("#654321", Some("6"));
-        assert_eq!(complete.lines_seen, 2);
-        assert!(!complete.proves(&TreeViewThemePlan::baseline(1)));
-
-        let mut mismatch =
-            TreeViewThemeReceipt::new(None, None, None, "Excalifont", 1, 0, 1, Some("6"));
-        mismatch.record_css("Excalifont", "black", "black", "#546e7a");
-        mismatch.record_label("black");
-        mismatch.record_line("black", Some("5"));
-        assert!(!mismatch.proves(&TreeViewThemePlan::baseline(1)));
-    }
-
-    #[test]
-    fn node_body_paint_is_not_applicable_without_highlight_surfaces() {
-        let theme = resolved_fill(ThemeTarget::Node);
-        let model = TreeViewDiagramModel::default();
-
-        let evidence = collect_evidence(&theme, |evidence| {
-            TreeViewThemePlan::resolve(
-                Some(&theme),
-                &merman_model::presentation::PresentationConfig::default(),
-                &model,
-                &work_meter(),
-            )
-            .expect("resolve visible TreeView Node evidence")
-            .record_evidence(evidence);
-        });
-
-        assert!(evidence.residuals().is_empty());
-        assert_eq!(
-            evidence.not_applicable_mechanisms(),
-            &[FamilyThemeMechanismKey::Rule {
-                index: 0,
-                target: ThemeTarget::Node,
-            }]
-        );
-    }
-
-    #[test]
-    fn tree_view_model_title_is_not_a_visible_title_terminal() {
-        let theme = resolved_fill(ThemeTarget::Title);
-        let model = TreeViewDiagramModel {
-            title: Some("Not rendered".to_string()),
-            ..Default::default()
-        };
-
-        let evidence = collect_evidence(&theme, |evidence| {
-            TreeViewThemePlan::resolve(
-                Some(&theme),
-                &merman_model::presentation::PresentationConfig::default(),
-                &model,
-                &work_meter(),
-            )
-            .expect("resolve terminal-less TreeView title evidence")
-            .record_evidence(evidence);
-        });
-
-        assert_eq!(
-            evidence.not_applicable_mechanisms(),
-            &[FamilyThemeMechanismKey::Rule {
-                index: 0,
-                target: ThemeTarget::Title,
-            }]
-        );
-        assert!(evidence.residuals().is_empty());
+    fn binding_keeps_opaque_css_and_measurement_fallback_separate() {
+        let binding = TreeViewCssBinding::from_config(&json!({
+            "themeVariables": {"treeView": {
+                "labelFontSize": "var(--tree-size)", "labelColor": "var(--tree-color)"
+            }}
+        }));
+        assert_eq!(binding.label_font_size_css, "var(--tree-size)");
+        assert_eq!(binding.label_font_size, 16.0);
+        assert!(!binding.label_font_size_verified);
+        assert_eq!(binding.label_color, "var(--tree-color)");
+        let binding = TreeViewCssBinding::from_config(&json!({
+            "themeVariables": {"treeView": {"labelFontSize": 0}}
+        }));
+        assert_eq!(binding.label_font_size_css, "0");
+        assert_eq!(binding.label_font_size, 0.0);
     }
 }

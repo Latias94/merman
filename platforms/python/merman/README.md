@@ -4,9 +4,9 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams from Python without a browser or JavaScript runtime. The package ships Merman's Rust engine and exposes it through UniFFI.
 
-This guide documents Merman and Python package version `0.11.0`. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability. Use the [stable upgrade guide](https://github.com/Latias94/merman/blob/main/docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) when migrating from `0.9.3` or a `0.10.0` alpha.
+The installation commands below pin Python package version `0.11.0`. The Theme v2 examples target the current source checkout. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability. Use the [stable upgrade guide](https://github.com/Latias94/merman/blob/main/docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) when migrating from `0.9.3` or a `0.10.0` alpha.
 
-> The `0.11.0` wheel uses direct UniFFI binding API `8` and ASCII output schema `4`. The published `0.10.0` wheel uses binding API `7` and ASCII output schema `3`. Options JSON schema `3`, facts schema `3`, and theme execution evidence schema `2` retain their independent versions. Install the Python wrapper and native library as one wheel rather than mixing releases.
+> The `0.11.0` wheel uses direct UniFFI binding API `8` and ASCII output schema `4`. The published `0.10.0` wheel uses binding API `7` and ASCII output schema `3`. The `0.11.0` wheel also uses Options JSON schema `3` and facts schema `3`. Install the matching Python wrapper and native library as one wheel.
 
 ## Install
 
@@ -96,7 +96,7 @@ svg = client.render_svg(source, resource_options)
 
 Use `CONSTRAINED` for untrusted, public, or multi-tenant input; `INTERACTIVE` is for cooperative local editing. Leave the profile unset when a reusable request must inherit its constructor ceiling. The native CLI's default is intentionally separate (`trusted-native`).
 
-Call `client.runtime_catalog_json()` to inspect the loaded runtime catalog and exact resource profile values instead of duplicating limits in application code. Decode `client.theme_catalog_json()` for the open-ended versioned theme preset and artifact-availability catalog. `merman.get_runtime_catalog(client)` strictly validates its flat schema `1` artifact facts, package identity, transport API, supported options/payload schema IDs, named metadata IDs, sorted stable IDs, and local output/operation relations as one atomic response. New stable IDs remain forward compatible. The current direct binding API version is `8`, independent from native C ABI and the text-measurement protocol version.
+Call `client.runtime_catalog_json()` to inspect the loaded runtime catalog and exact resource profile values instead of duplicating limits in application code. Decode `client.theme_catalog_json()` for the theme catalog of the loaded artifact. `merman.get_runtime_catalog(client)` strictly validates its flat schema `1` artifact facts, package identity, transport API, supported options/payload schema IDs, named metadata IDs, sorted stable IDs, and local output/operation relations as one atomic response. New stable IDs remain forward compatible. The current direct binding API version is `8`, independent from native C ABI and the text-measurement protocol version.
 
 For API 8, replace `binding_api_version_v7()` with `binding_api_version_v8()` and regenerate the
 package and native library together. ASCII schema `4` replaces `overflowed` with
@@ -122,48 +122,40 @@ before the next checkpoint, so hard preemption requires a worker or process boun
 
 ## Diagram Themes
 
-Use `client.theme_catalog_json()` to discover 11 design groups with 14 concrete presets, including
-`paper-cut`, `carbon-copy`, and `pop-art`. Select a preset through schema-3 options:
+Call `client.theme_catalog_json()` and decode schema `2` to discover 13 built-in presets, classic Mermaid IDs, and native theme capability flags by family. Each preset lists its appearance choices, default appearance, and six swatches for the default.
 
 ```python
 import json
+import merman
 
-catalog = json.loads(client.theme_catalog_json())
-print([(preset["id"], preset["supported_appearances"]) for preset in catalog["presets"]])
-pie_source = 'pie\n"A":35\n"B":65'
-themed_svg = client.render_svg(pie_source, '{"version":3,"theme":{"preset":"ghibli"}}')
+client = merman.Merman()
+
+
+def execute(operation_id, source, options=None):
+    return client.execute(merman.MermanOperationRequestV4(
+        operation_id=operation_id, source=source, uri=None,
+        options_json=json.dumps(options) if options is not None else None,
+        control=None,
+    ))
+
+
+exported = execute("export-theme-preset", "studio")
+theme_json = bytes(exported.data).decode("utf-8")
+checked = execute("resolve-theme", json.dumps({"document": theme_json, "appearance": "dark"}))
+resolution = json.loads(bytes(checked.data))
+if not resolution["ok"]:
+    raise ValueError(resolution["message"])
+
+rendered = execute("svg", "flowchart LR\nA[Review] --> B[Publish]", {
+    "theme": {"document": json.loads(theme_json), "appearance": "dark"},
+    "background": "transparent",
+})
+print(json.loads(rendered.metadata.raw_json)["theme_outcome"])
 ```
 
-For a reusable engine, omit `theme` to inherit its selection, use `theme: null` to clear it,
-or supply a complete selection or recipe to replace it.
+`export-theme-preset` takes the raw preset ID and returns editable Theme v2 JSON. `resolve-theme` accepts a JSON object or original JSON text in `document`. Use the original text to retain document-relative error locations in `line`, `column`, and `path`. Set `auto_fix_contrast` in the same envelope to enable contrast correction. [Authoring smoke](examples/theme_authoring.py)
 
-Each schema-1 catalog entry groups a design's `supported_appearances`, `default_appearance`, and
-`appearances`. Read swatches, `family_designs`, `application_notes`, `qualified_cells`, and the exact
-`concrete_preset_id` from the relevant appearance entry. Select Editor Dark using
-`{"theme":{"preset":"editor","appearance":"dark"}}`. Follow-app/editor is host policy; resolve it
-to `light` or `dark` before rendering. Editor, Gruvbox, and Ayu provide both appearances;
-omitted appearance uses the declared default, and an unsupported explicit appearance fails.
-
-`client.execute()` already carries the complete authoring workflow through
-`MermanOperationRequestV4`. `export-theme-preset-json` takes the plain `editor` ID and returns the
-complete `ThemeRecipeV1`; shared values live in `design`, with local exceptions in
-`design.appearances` and a `design.default_appearance`. Keep that document for saving and editing.
-`materialize-theme-json` accepts schema-1 `action: "inspect"` with `recipe` to validate every
-appearance, or `action: "materialize"` with an optional concrete `appearance` to obtain its `spec`.
-Save the complete recipe with `json.dumps(recipe, indent=2)`, edit its `design` values, and reload
-it with `json.loads(...)`, preserving `schema_version` and `kind`. Use
-`json.dumps({"theme": {"recipe": recipe, "appearance": "dark"}})` for render options.
-The [authoring example](examples/theme_authoring.py) shows the exact `MermanOperationRequestV4`
-calls, complete-pair export, inspection, editing, and reuse through one-shot and independent clients.
-
-Built-in presets are alpha, with empty public qualification cells. Catalog availability and
-family design scope do not certify the result for every diagram or output target. Flowchart
-glow and shadow effects support the documented shapes in Classic and Neo. Other families retain
-their own look and output restrictions; selecting a preset does not change the look or layout engine.
-Fonts must be supplied by the host and final SVG viewer; font-stack names do not embed fonts, and caller-provided font
-resources in recipes are rejected. The wheel does not expose the native C/WASI memory-font
-constructor. See the [theme guide](https://github.com/Latias94/merman/blob/main/docs/rendering/custom-diagram-themes.md)
-for version-1 recipes, support discovery, and portability policy.
+Use a preset ID such as `"studio"`, an inline Theme v2 document, or a selector containing `preset` or `document` as the `theme` value. Select `appearance` and `precedence` in a selector. Set `site_config.theme` for classic Mermaid themes. For a reusable engine, omit `theme` to inherit its selection or use `"none"` to clear it for one request. `background` replaces the SVG canvas paint. On custom artifacts with PNG, JPEG, or PDF export, use `export_matte` for an opaque export backing color. Native themes supply palettes for truecolor and 256-color ASCII, and `ascii.theme` supplies an explicit override. [Theme v2 schema](https://github.com/Latias94/merman/blob/main/schemas/theme-v2.schema.json)
 
 ## Text Measurement
 

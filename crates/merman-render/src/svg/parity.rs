@@ -39,8 +39,6 @@ pub(crate) const C4_EXTERNAL_PERSON_IMG: &str = "data:image/png;base64,iVBORw0KG
 mod architecture;
 #[cfg(feature = "diagram-block")]
 mod block;
-#[cfg(feature = "diagram-block")]
-pub(crate) use block::block_edge_is_visible;
 #[cfg(feature = "diagram-c4")]
 mod c4;
 #[cfg(feature = "diagram-class")]
@@ -69,10 +67,7 @@ pub(crate) use css::PreparedCommonNeoCss;
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
-pub(crate) use flowchart::{
-    FlowchartRenderConfig, flowchart_node_label_fill_config_override,
-    prepare_flowchart_render_config,
-};
+pub(crate) use flowchart::{FlowchartRenderConfig, prepare_flowchart_render_config};
 pub(crate) use look_defs::PreparedLookDefs;
 pub(crate) use util::cssom_color_value;
 #[cfg_attr(
@@ -267,7 +262,6 @@ mod roughjs_common;
 mod sankey;
 #[cfg(feature = "diagram-sequence")]
 mod sequence;
-mod shadow;
 #[cfg(feature = "diagram-state")]
 mod state;
 #[cfg(all(feature = "diagram-state", feature = "layout-shoal"))]
@@ -324,8 +318,6 @@ mod wardley;
 mod xychart;
 #[cfg(feature = "diagram-zenuml")]
 mod zenuml;
-#[cfg(feature = "diagram-gantt")]
-use css::gantt_css;
 #[cfg(feature = "diagram-pie")]
 use css::write_pie_css;
 #[cfg_attr(
@@ -335,10 +327,7 @@ use css::write_pie_css;
         reason = "Common SVG imports are consumed by the selected family emitters."
     )
 )]
-use css::{
-    MermaidBaseCss, write_mermaid_base_css_prefix_with_font_emission,
-    write_mermaid_base_css_root_rule_with_font_emission, write_prepared_info_css,
-};
+use css::{MermaidBaseCss, write_prepared_info_css};
 use output::{BoundedSvgOutput, SvgOutput};
 use path_bounds::{svg_path_bounds_from_d, svg_path_length_from_d};
 #[cfg(feature = "diagram-mindmap")]
@@ -915,57 +904,6 @@ pub(crate) struct SvgExecution<'a> {
     pub(crate) debug: &'a SvgDebugOptions,
 }
 
-/// Complete family SVG paired with evidence produced by the operation-owned root consumer.
-pub(crate) struct RootThemeAppliedSvg {
-    svg: String,
-    root_theme: crate::diagram_theme::RootThemeReport,
-    preserves_typed_theme_evidence: bool,
-    family_theme_evidence: Option<crate::family::FamilyThemeOutcomes>,
-    #[cfg(feature = "diagram-packet")]
-    packet_theme_outcome: Option<crate::packet::PacketThemeOutcome>,
-}
-
-impl RootThemeAppliedSvg {
-    pub(crate) fn as_str(&self) -> &str {
-        &self.svg
-    }
-
-    pub(crate) fn take_family_theme_evidence(
-        &mut self,
-    ) -> Option<crate::family::FamilyThemeOutcomes> {
-        self.family_theme_evidence.take()
-    }
-
-    #[cfg(feature = "diagram-packet")]
-    pub(crate) fn take_packet_theme_outcome(
-        &mut self,
-    ) -> Option<crate::packet::PacketThemeOutcome> {
-        self.packet_theme_outcome.take()
-    }
-
-    pub(crate) fn into_parts(self) -> (String, crate::diagram_theme::RootThemeReport, bool) {
-        (
-            self.svg,
-            self.root_theme,
-            self.preserves_typed_theme_evidence,
-        )
-    }
-}
-
-impl std::ops::Deref for RootThemeAppliedSvg {
-    type Target = str;
-
-    fn deref(&self) -> &Self::Target {
-        &self.svg
-    }
-}
-
-impl std::fmt::Display for RootThemeAppliedSvg {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(&self.svg)
-    }
-}
-
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -1035,6 +973,19 @@ impl<'a> SvgExecution<'a> {
         self.request.diagram_id.is_some()
     }
 
+    fn root_viewport<'execution>(
+        &self,
+        family: crate::DiagramFamilyId,
+        diagram_id: SvgDiagramId<'execution>,
+    ) -> root_svg::RootViewportContext<'execution> {
+        let padding = self
+            .family
+            .session()
+            .native_theme()
+            .map_or(0.0, |theme| theme.resolved().canvas().padding_px);
+        root_svg::RootViewportContext::new(family, diagram_id).with_canvas_padding(padding)
+    }
+
     fn finish_diagram_id_projection(&self) -> Result<()> {
         self.diagram_id_projection.finish()
     }
@@ -1047,13 +998,11 @@ impl<'a> SvgExecution<'a> {
         self.family.family_id()
     }
 
-    pub(crate) fn resolved_theme(&self) -> Option<&crate::diagram_theme::ResolvedDiagramTheme> {
-        self.family.resolved_theme()
-    }
-
-    #[cfg(feature = "diagram-state")]
-    pub(crate) fn state_style_plan(&self) -> Option<&crate::state::StateStylePlan> {
-        self.family.style_plan().and_then(|plan| plan.state())
+    #[allow(dead_code, reason = "Used by enabled diagram families.")]
+    pub(crate) fn native_family_theme<A: crate::theme::FamilyThemeAdapter>(
+        &self,
+    ) -> Option<&crate::theme::FamilyTheme> {
+        self.family.native_theme::<A>()
     }
 
     pub(crate) fn text_measurer_for(&self, phase: TextMeasurementPhase) -> RoutedTextMeasurer<'_> {
@@ -1105,12 +1054,6 @@ impl<'a> SvgExecution<'a> {
 
     pub(crate) fn work_meter(&self) -> &crate::resources::OperationWorkMeter {
         self.family.session().work_meter().as_ref()
-    }
-
-    pub(crate) fn theme_resource_policy(
-        &self,
-    ) -> std::sync::Arc<crate::diagram_theme::ThemeResourcePolicy> {
-        self.family.session().effective_theme_resource_policy()
     }
 
     /// Replays a terminal observed while an SVG ID was being projected.
@@ -1179,40 +1122,11 @@ pub(crate) fn render_builtin_family_artifact(
     options: &SvgRenderOptions,
     debug: &SvgDebugOptions,
     generation: super::SvgGeneration,
-) -> Result<RootThemeAppliedSvg> {
+) -> Result<(String, bool)> {
     let mut execution = SvgExecution::new(options, debug, family_execution)?;
     execution.generation = generation;
-    let mut family_theme_evidence = None;
-    #[cfg(feature = "diagram-packet")]
-    let mut packet_theme_outcome = None;
-    let rooted_svg = render_builtin_family_artifact_raw(
-        family,
-        metadata,
-        &execution,
-        &mut family_theme_evidence,
-        #[cfg(feature = "diagram-packet")]
-        &mut packet_theme_outcome,
-    );
-    execution.finish_diagram_id_projection()?;
-    let rooted_svg = rooted_svg?;
-    let (rooted_svg, root_theme) =
-        apply_root_paint(rooted_svg, family_execution, execution.work_meter())?;
-    let svg = rooted_svg.into_string_for(execution.family_id())?;
-    let (svg, theme_css_applied) =
-        apply_theme_css(svg, &metadata.effective_config, family_execution.session())?;
-    let root_theme = if theme_css_applied {
-        root_theme.invalidate_for_output_mutation()
-    } else {
-        root_theme
-    };
-    Ok(RootThemeAppliedSvg {
-        svg,
-        root_theme,
-        preserves_typed_theme_evidence: !theme_css_applied,
-        family_theme_evidence,
-        #[cfg(feature = "diagram-packet")]
-        packet_theme_outcome,
-    })
+    let rooted_svg = render_builtin_family_artifact_raw(family, metadata, &execution);
+    finish_family_svg(rooted_svg, &execution, &metadata.effective_config)
 }
 
 #[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
@@ -1223,7 +1137,7 @@ pub(crate) fn render_architecture_family_artifact(
     family_execution: FamilyExecutionView<'_>,
     options: &SvgRenderOptions,
     debug: &SvgDebugOptions,
-) -> Result<RootThemeAppliedSvg> {
+) -> Result<(String, bool)> {
     // Keep the deep-group Architecture path out of the heterogeneous dispatcher so it fits in
     // the renderer's supported low-stack worker budget.
     let execution = SvgExecution::new(options, debug, family_execution)?;
@@ -1234,39 +1148,29 @@ pub(crate) fn render_architecture_family_artifact(
         artifact.group_theme(),
         &execution,
     );
-    execution.finish_diagram_id_projection()?;
-    let (rooted_svg, outcome) = rooted_svg?;
-    let (rooted_svg, root_theme) =
-        apply_root_paint(rooted_svg, family_execution, execution.work_meter())?;
-    let svg = rooted_svg.into_string_for(execution.family_id())?;
-    let (svg, theme_css_applied) =
-        apply_theme_css(svg, effective_config, family_execution.session())?;
-    let root_theme = if theme_css_applied {
-        root_theme.invalidate_for_output_mutation()
-    } else {
-        root_theme
-    };
-    Ok(RootThemeAppliedSvg {
-        svg,
-        root_theme,
-        preserves_typed_theme_evidence: !theme_css_applied,
-        family_theme_evidence: Some(outcome.evidence),
-        #[cfg(feature = "diagram-packet")]
-        packet_theme_outcome: None,
-    })
+    finish_family_svg(rooted_svg, &execution, effective_config)
 }
 
-fn apply_root_paint(
-    rooted_svg: root_svg::RootedSvg,
-    family: FamilyExecutionView<'_>,
-    meter: &crate::resources::OperationWorkMeter,
-) -> Result<(root_svg::RootedSvg, crate::diagram_theme::RootThemeReport)> {
-    if let Some(theme) = family.session().native_theme() {
-        return rooted_svg
-            .apply_native_canvas(theme, meter)?
-            .apply_root_theme(None, meter);
-    }
-    rooted_svg.apply_root_theme(family.root_theme_plan(), meter)
+fn finish_family_svg(
+    rooted_svg: Result<root_svg::RootedSvg>,
+    execution: &SvgExecution<'_>,
+    effective_config: &merman_model::presentation::PresentationConfig,
+) -> Result<(String, bool)> {
+    execution.finish_diagram_id_projection()?;
+    let rooted_svg = rooted_svg?;
+    let session = execution.family.session();
+    let meter = execution.work_meter();
+    let background = session.canvas_background();
+    let rooted_svg = if let Some(theme) = session.native_theme() {
+        rooted_svg.apply_native_canvas(theme, background, meter)?
+    } else if let Some(background) = background {
+        let paint = merman_theme_contract::v2::Paint::Solid(background);
+        rooted_svg.apply_canvas(&paint, &[], &paint, meter)?
+    } else {
+        rooted_svg
+    };
+    let svg = rooted_svg.into_string_for(execution.family_id())?;
+    apply_theme_css(svg, effective_config, session)
 }
 
 #[allow(
@@ -1277,10 +1181,6 @@ fn render_builtin_family_artifact_raw(
     family: &crate::family::BuiltinFamilyArtifact,
     metadata: &merman_model::presentation::PresentationMetadata,
     options: &SvgExecution<'_>,
-    family_theme_evidence: &mut Option<crate::family::FamilyThemeOutcomes>,
-    #[cfg(feature = "diagram-packet")] packet_theme_outcome: &mut Option<
-        crate::packet::PacketThemeOutcome,
-    >,
 ) -> Result<root_svg::RootedSvg> {
     use crate::family::BuiltinFamilyArtifact;
 
@@ -1303,10 +1203,6 @@ fn render_builtin_family_artifact_raw(
                 artifact.group_theme(),
                 options,
             )
-            .map(|(svg, outcome)| {
-                *family_theme_evidence = Some(outcome.evidence);
-                svg
-            })
         }
         #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
         BuiltinFamilyArtifact::Flowchart(artifact) => {
@@ -1325,22 +1221,21 @@ fn render_builtin_family_artifact_raw(
             artifact.pair().layout(),
             artifact.pair().semantic(),
             title,
-            artifact.typography_theme(),
+            artifact.style(),
             options,
         ),
         #[cfg(feature = "diagram-wardley")]
         BuiltinFamilyArtifact::Wardley(artifact) => wardley::render_wardley_diagram_svg_model(
             artifact.pair().layout(),
             artifact.pair().semantic(),
-            title,
-            artifact.typography_theme(),
+            artifact.style(),
             options,
         ),
         #[cfg(feature = "diagram-railroad")]
         BuiltinFamilyArtifact::Railroad(artifact) => railroad::render_railroad_diagram_svg_model(
             artifact.pair().layout(),
             artifact.pair().semantic(),
-            artifact.typography_theme(),
+            artifact.style(),
             measurer,
             options,
         ),
@@ -1350,7 +1245,7 @@ fn render_builtin_family_artifact_raw(
                 artifact.pair().layout(),
                 artifact.pair().semantic(),
                 effective_config,
-                artifact.node_palette(),
+                artifact.appearance(),
                 artifact.prepared_labels(),
                 options,
             )
@@ -1362,7 +1257,7 @@ fn render_builtin_family_artifact_raw(
             artifact.label_sidecar(),
             #[cfg(feature = "layout-shoal")]
             artifact.canonical_routes(),
-            artifact.effect_evidence(),
+            artifact.style(),
             effective_config.as_value(),
             title,
             measurer,
@@ -1378,7 +1273,6 @@ fn render_builtin_family_artifact_raw(
                 artifact.typography_theme(),
                 artifact.node_visual_plan(),
                 artifact.render_config(),
-                artifact.theme_evidence(),
                 effective_config,
                 title,
                 measurer,
@@ -1401,7 +1295,7 @@ fn render_builtin_family_artifact_raw(
             artifact.pair().semantic(),
             effective_config.as_value(),
             title,
-            artifact.theme_plan(),
+            artifact.style(),
             options,
         ),
         #[cfg(feature = "diagram-kanban")]
@@ -1412,48 +1306,51 @@ fn render_builtin_family_artifact_raw(
         BuiltinFamilyArtifact::Gantt(artifact) => gantt::render_gantt_diagram_svg_model(
             artifact.pair().layout(),
             artifact.pair().semantic(),
-            artifact.task_theme(),
+            artifact.style(),
+            artifact.task_source_indices(),
             effective_config.as_value(),
             options,
         ),
         #[cfg(feature = "diagram-pie")]
-        BuiltinFamilyArtifact::Pie(artifact) => pie::render_pie_diagram_svg_model_with_paint_plan(
-            artifact.pair().layout(),
-            artifact.pair().semantic(),
-            artifact.theme(),
-            effective_config.as_value(),
-            options,
-        ),
-        #[cfg(feature = "diagram-packet")]
-        BuiltinFamilyArtifact::Packet(artifact) => {
-            let (svg, outcome) = packet::render_packet_diagram_svg_model(
+        BuiltinFamilyArtifact::Pie(artifact) => match artifact.appearance() {
+            crate::pie::PieAppearance::Mermaid(theme) => {
+                pie::render_pie_diagram_svg_model_with_paint_plan(
+                    artifact.pair().layout(),
+                    artifact.pair().semantic(),
+                    theme,
+                    effective_config.as_value(),
+                    options,
+                )
+            }
+            crate::pie::PieAppearance::Native(style) => pie::render_native_pie_svg(
                 artifact.pair().layout(),
                 artifact.pair().semantic(),
-                artifact.typography_theme(),
+                style,
                 effective_config.as_value(),
-                title,
                 options,
-            )?;
-            *packet_theme_outcome = outcome;
-            Ok(svg)
-        }
+            ),
+        },
+        #[cfg(feature = "diagram-packet")]
+        BuiltinFamilyArtifact::Packet(artifact) => packet::render_packet_diagram_svg_model(
+            artifact.pair().layout(),
+            artifact.pair().semantic(),
+            artifact.typography_theme(),
+            effective_config.as_value(),
+            title,
+            options,
+        ),
         #[cfg(feature = "diagram-timeline")]
         BuiltinFamilyArtifact::Timeline(artifact) => timeline::render_timeline_diagram_svg_model(
             artifact.pair().layout(),
-            artifact.event_theme(),
-            artifact.typography_theme(),
-            artifact.text_paint(),
+            artifact.style(),
             options,
         ),
         #[cfg(feature = "diagram-journey")]
         BuiltinFamilyArtifact::Journey(artifact) => journey::render_journey_diagram_svg_model(
             artifact.pair().layout(),
             artifact.pair().semantic(),
-            artifact.task_theme(),
-            artifact.typography_theme(),
-            artifact.text_paint(),
+            artifact.style(),
             title,
-            measurer,
             options,
         ),
         #[cfg(feature = "diagram-requirement")]
@@ -1478,22 +1375,15 @@ fn render_builtin_family_artifact_raw(
             options,
         ),
         #[cfg(feature = "diagram-sankey")]
-        BuiltinFamilyArtifact::Sankey(artifact) => sankey::render_sankey_diagram_svg(
-            artifact.pair().layout(),
-            artifact.node_palette(),
-            artifact.typography_theme(),
-            effective_config.as_value(),
-            options,
-        ),
+        BuiltinFamilyArtifact::Sankey(artifact) => {
+            sankey::render_sankey_diagram_svg(artifact.pair().layout(), artifact.style(), options)
+        }
         #[cfg(feature = "diagram-radar")]
         BuiltinFamilyArtifact::Radar(artifact) => {
             radar::render_radar_diagram_svg_model_with_theme_plans(
                 artifact.pair().layout(),
                 artifact.pair().semantic(),
                 artifact.series_paint(),
-                artifact.title_theme(),
-                artifact.axis_paint(),
-                artifact.text_paint(),
                 artifact.typography_theme(),
                 effective_config.as_value(),
                 title,
@@ -1510,32 +1400,22 @@ fn render_builtin_family_artifact_raw(
             }
         },
         #[cfg(feature = "diagram-treemap")]
-        BuiltinFamilyArtifact::Treemap(artifact) => treemap::render_treemap_diagram_svg(
+        BuiltinFamilyArtifact::Treemap(artifact) => {
+            treemap::render_treemap_diagram_svg(artifact.pair().layout(), artifact.style(), options)
+        }
+        #[cfg(feature = "diagram-venn")]
+        BuiltinFamilyArtifact::Venn(artifact) => venn::render_venn_diagram_svg_model(
             artifact.pair().layout(),
-            artifact.title_theme(),
+            artifact.pair().semantic(),
             artifact.typography_theme(),
+            title,
             options,
         ),
-        #[cfg(feature = "diagram-venn")]
-        BuiltinFamilyArtifact::Venn(artifact) => {
-            venn::render_venn_diagram_svg_model_with_title_theme(
-                artifact.pair().layout(),
-                artifact.pair().semantic(),
-                artifact.title_theme(),
-                artifact.typography_theme(),
-                title,
-                options,
-            )
-        }
         #[cfg(feature = "diagram-block")]
         BuiltinFamilyArtifact::Block(artifact) => block::render_block_diagram_svg_model_with_theme(
             artifact.pair().layout(),
             artifact.pair().semantic(),
-            artifact.node_paint_theme(),
-            artifact.node_label_paint_theme(),
-            artifact.edge_paint_theme(),
-            artifact.marker_paint_theme(),
-            artifact.label_background_theme(),
+            artifact.node_bindings(),
             artifact.typography_theme(),
             artifact.prepared_labels(),
             options,
@@ -1558,7 +1438,6 @@ fn render_builtin_family_artifact_raw(
                 artifact.pair().layout(),
                 artifact.pair().semantic(),
                 artifact.point_theme(),
-                artifact.text_paint(),
                 effective_config.as_value(),
                 options,
             )
@@ -1571,8 +1450,6 @@ fn render_builtin_family_artifact_raw(
         BuiltinFamilyArtifact::GitGraph(artifact) => gitgraph::render_gitgraph_diagram_svg_model(
             artifact.pair().layout(),
             artifact.pair().semantic(),
-            artifact.node_palette(),
-            artifact.static_paint(),
             artifact.typography_theme(),
             effective_config.as_value(),
             title,
@@ -1597,10 +1474,10 @@ fn render_builtin_family_artifact_raw(
         }
         #[cfg(feature = "diagram-event-modeling")]
         BuiltinFamilyArtifact::EventModeling(artifact) => {
-            eventmodeling::render_eventmodeling_diagram_svg_with_text_theme(
+            eventmodeling::render_eventmodeling_diagram_svg(
                 artifact.pair().layout(),
                 artifact.pair().semantic(),
-                artifact.text_theme(),
+                artifact.style(),
                 artifact.prepared_labels(),
                 options,
             )
@@ -1636,7 +1513,9 @@ fn apply_theme_css(
         return Ok((svg, false));
     };
 
-    session.use_trusted_theme_lane(crate::diagram_theme::TrustedThemeLane::RawThemeCss)?;
+    if !session.allows_trusted_theme_css() {
+        return Err(Error::UntrustedThemeCss);
+    }
     let metadata = SvgPostprocessMetadata::from_svg_with_execution(
         &svg,
         SvgPostprocessExecution::new(session),

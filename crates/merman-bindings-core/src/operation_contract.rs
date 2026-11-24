@@ -1,8 +1,3 @@
-use crate::theme_execution_evidence::{
-    BINDING_THEME_EXECUTION_EVIDENCE_MAX_ID_UTF8_BYTES,
-    BINDING_THEME_EXECUTION_EVIDENCE_MAX_TARGET_REASON_IDS,
-    BINDING_THEME_EXECUTION_EVIDENCE_SCHEMA_VERSION,
-};
 use crate::{
     BINDING_OPERATION_SCHEMA_VERSION, BindingError, BindingErrorKind, BindingOperationKind,
     BindingStatus,
@@ -65,44 +60,6 @@ pub struct BindingOutputPlanContract {
     fields: &'static [BindingJsonFieldContract],
 }
 
-/// One known nested theme-execution-evidence revision.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[non_exhaustive]
-pub struct BindingThemeExecutionEvidenceContract {
-    version: u32,
-    fields: &'static [BindingJsonFieldContract],
-    max_id_utf8_bytes: usize,
-    max_target_reason_ids: usize,
-    target_reason_ids_unique: bool,
-}
-
-impl BindingThemeExecutionEvidenceContract {
-    #[must_use]
-    pub const fn version(&self) -> u32 {
-        self.version
-    }
-
-    #[must_use]
-    pub const fn fields(&self) -> &'static [BindingJsonFieldContract] {
-        self.fields
-    }
-
-    #[must_use]
-    pub const fn max_id_utf8_bytes(&self) -> usize {
-        self.max_id_utf8_bytes
-    }
-
-    #[must_use]
-    pub const fn max_target_reason_ids(&self) -> usize {
-        self.max_target_reason_ids
-    }
-
-    #[must_use]
-    pub const fn target_reason_ids_unique(&self) -> bool {
-        self.target_reason_ids_unique
-    }
-}
-
 impl BindingOutputPlanContract {
     #[must_use]
     pub const fn kind(&self) -> &'static str {
@@ -123,11 +80,10 @@ pub struct BindingOperationMetadataContract {
     metadata_schema_version: u32,
     fields: &'static [BindingJsonFieldContract],
     output_plans: &'static [BindingOutputPlanContract],
-    theme_execution_evidence_versions: &'static [BindingThemeExecutionEvidenceContract],
+    theme_outcome_fields: &'static [BindingJsonFieldContract],
     layout_adaptation_fields: &'static [BindingJsonFieldContract],
     additional_fields_policy: &'static str,
     unknown_output_plan_policy: &'static str,
-    unknown_theme_execution_evidence_policy: &'static str,
     original_json_policy: &'static str,
 }
 
@@ -158,10 +114,8 @@ impl BindingOperationMetadataContract {
     }
 
     #[must_use]
-    pub const fn theme_execution_evidence_versions(
-        &self,
-    ) -> &'static [BindingThemeExecutionEvidenceContract] {
-        self.theme_execution_evidence_versions
+    pub const fn theme_outcome_fields(&self) -> &'static [BindingJsonFieldContract] {
+        self.theme_outcome_fields
     }
 
     #[must_use]
@@ -172,11 +126,6 @@ impl BindingOperationMetadataContract {
     #[must_use]
     pub const fn unknown_output_plan_policy(&self) -> &'static str {
         self.unknown_output_plan_policy
-    }
-
-    #[must_use]
-    pub const fn unknown_theme_execution_evidence_policy(&self) -> &'static str {
-        self.unknown_theme_execution_evidence_policy
     }
 
     #[must_use]
@@ -193,7 +142,7 @@ const TOP_LEVEL_FIELDS: &[BindingJsonFieldContract] = &[
     field("byte_length", "unsigned-integer", true, Some(64), false),
     field("output_plan", "object", false, None, true),
     field("layout_adaptation", "object", false, None, true),
-    field("theme_execution_evidence", "object", false, None, true),
+    field("theme_outcome", "object", false, None, true),
     field("shoal_layout_frame", "object", false, None, true),
 ];
 
@@ -204,27 +153,12 @@ const LAYOUT_ADAPTATION_FIELDS: &[BindingJsonFieldContract] = &[
     field("overflowed", "boolean", true, None, false),
 ];
 
-const THEME_EXECUTION_EVIDENCE_V2_FIELDS: &[BindingJsonFieldContract] = &[
-    field("version", "unsigned-integer", true, Some(32), false),
-    field("family_id", "string", true, None, true),
-    field("theme_status", "string", true, None, true),
-    field("output_mutated", "boolean", true, None, false),
-    field("target_kind", "string", true, None, true),
-    field("target_status", "string", true, None, true),
-    field("target_reason_ids", "array", true, None, true),
-    field("font_source", "string", true, None, true),
-    field("materialized_theme", "string-or-null", true, None, false),
-    field("diagnostics", "array", false, None, true),
+const THEME_OUTCOME_FIELDS: &[BindingJsonFieldContract] = &[
+    field("mode", "string", true, None, true),
+    field("preset_id", "string", false, None, true),
+    field("appearance", "string", false, None, false),
+    field("notices", "array", true, None, true),
 ];
-
-const THEME_EXECUTION_EVIDENCE_VERSIONS: &[BindingThemeExecutionEvidenceContract] =
-    &[BindingThemeExecutionEvidenceContract {
-        version: BINDING_THEME_EXECUTION_EVIDENCE_SCHEMA_VERSION,
-        fields: THEME_EXECUTION_EVIDENCE_V2_FIELDS,
-        max_id_utf8_bytes: BINDING_THEME_EXECUTION_EVIDENCE_MAX_ID_UTF8_BYTES,
-        max_target_reason_ids: BINDING_THEME_EXECUTION_EVIDENCE_MAX_TARGET_REASON_IDS,
-        target_reason_ids_unique: true,
-    }];
 
 const RASTER_FIELDS: &[BindingJsonFieldContract] = &[
     field("kind", "string", true, None, false),
@@ -312,11 +246,10 @@ const OPERATION_METADATA_CONTRACT: BindingOperationMetadataContract =
         metadata_schema_version: BINDING_OPERATION_SCHEMA_VERSION,
         fields: TOP_LEVEL_FIELDS,
         output_plans: OUTPUT_PLANS,
-        theme_execution_evidence_versions: THEME_EXECUTION_EVIDENCE_VERSIONS,
+        theme_outcome_fields: THEME_OUTCOME_FIELDS,
         layout_adaptation_fields: LAYOUT_ADAPTATION_FIELDS,
         additional_fields_policy: "preserve",
         unknown_output_plan_policy: "preserve",
-        unknown_theme_execution_evidence_policy: "preserve",
         original_json_policy: "preserve-exact-bytes",
     };
 
@@ -529,10 +462,6 @@ mod tests {
         assert_eq!(contract.metadata_schema_version(), 1);
         assert_eq!(contract.additional_fields_policy(), "preserve");
         assert_eq!(contract.unknown_output_plan_policy(), "preserve");
-        assert_eq!(
-            contract.unknown_theme_execution_evidence_policy(),
-            "preserve"
-        );
         assert_eq!(contract.original_json_policy(), "preserve-exact-bytes");
 
         let byte_length = contract
@@ -542,18 +471,7 @@ mod tests {
             .unwrap();
         assert_eq!(byte_length.integer_width_bits(), Some(64));
         assert_eq!(contract.output_plans().len(), 3);
-        let evidence = &contract.theme_execution_evidence_versions()[0];
-        assert_eq!(evidence.version(), 2);
-        assert_eq!(evidence.max_id_utf8_bytes(), 128);
-        assert_eq!(evidence.max_target_reason_ids(), 32);
-        assert!(evidence.target_reason_ids_unique());
-        assert_eq!(evidence.fields().len(), 10);
-        assert_eq!(evidence.fields()[8].name(), "materialized_theme");
-        assert!(evidence.fields()[8].required());
-        assert_eq!(evidence.fields()[9].name(), "diagnostics");
-        assert!(!evidence.fields()[9].required());
-        assert_eq!(evidence.fields()[1].name(), "family_id");
-        assert_eq!(evidence.fields()[2].name(), "theme_status");
+        assert_eq!(contract.theme_outcome_fields(), THEME_OUTCOME_FIELDS);
         let ascii = contract
             .output_plans()
             .iter()
@@ -605,7 +523,7 @@ mod tests {
     #[test]
     fn shared_expectation_matrix_covers_every_descriptor_operation() {
         let rows = binding_operation_expectations();
-        assert_eq!(rows.len(), 17);
+        assert_eq!(rows.len(), crate::OperationKey::ALL.len());
         for (row, operation) in rows.iter().zip(BindingOperationKind::all()) {
             assert_eq!(row.operation_id(), operation.operation_id());
             assert_eq!(row.maturity(), operation.maturity());
@@ -676,32 +594,27 @@ mod tests {
             .unwrap();
         assert_eq!(emitted_overflowed["required"], true);
         assert_eq!(emitted_overflowed["nullable"], false);
-        assert_eq!(
-            contract["theme_execution_evidence_versions"][0]["version"],
-            2
-        );
-        assert_eq!(
-            contract["theme_execution_evidence_versions"][0]["max_id_utf8_bytes"],
-            128
-        );
-        assert_eq!(
-            contract["unknown_theme_execution_evidence_policy"],
-            "preserve"
-        );
+        let theme = contract["theme_outcome_fields"].as_array().unwrap();
+        assert_eq!(theme[0]["name"], "mode");
+        assert_eq!(theme[3]["name"], "notices");
 
         let matrix: serde_json::Value =
             serde_json::from_slice(&binding_operation_expectations_json().unwrap()).unwrap();
-        assert_eq!(matrix.as_array().unwrap().len(), 17);
+        assert_eq!(
+            matrix.as_array().unwrap().len(),
+            crate::OperationKey::ALL.len()
+        );
         assert_eq!(matrix[0]["operation_id"], "analysis-facts-json");
         assert_eq!(matrix[0]["maturity"], "stable");
         assert_eq!(matrix[0]["input_kind"], "mermaid-source");
-        let materialize = matrix
+        let resolve = matrix
             .as_array()
             .unwrap()
             .iter()
-            .find(|row| row["operation_id"] == "materialize-theme-json")
+            .find(|row| row["operation_id"] == "resolve-theme")
             .unwrap();
-        assert_eq!(materialize["maturity"], "alpha");
+        assert_eq!(resolve["maturity"], "stable");
+        assert_eq!(resolve["input_kind"], "theme-resolve-request-json");
         let png = matrix
             .as_array()
             .unwrap()
@@ -711,6 +624,9 @@ mod tests {
         assert_eq!(png["output_id"], "png");
         assert_eq!(png["availability_capability_id"], "png");
         assert_eq!(png["compiled_prerequisite_ids"], serde_json::json!(["svg"]));
-        assert_eq!(matrix[16]["operation_id"], "validation-json");
+        assert_eq!(
+            matrix.as_array().unwrap().last().unwrap()["operation_id"],
+            "validation-json"
+        );
     }
 }

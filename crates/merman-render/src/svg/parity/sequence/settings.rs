@@ -76,11 +76,7 @@ impl SequenceRenderSettings {
     #[cfg(test)]
     pub(super) fn from_effective_config(effective_config: &serde_json::Value) -> Self {
         let config = crate::test_support::presentation_config(effective_config.clone());
-        let meter = crate::resources::OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::interactive(),
-        );
-        let typography = crate::sequence::SequenceTypographyPlan::resolve(&config, None, &meter)
-            .expect("resolve Sequence test typography");
+        let typography = crate::sequence::SequenceTypographyPlan::resolve(&config);
         Self::from_resolved_typography(config.as_value(), &typography)
     }
 }
@@ -109,30 +105,18 @@ mod tests {
 
     #[test]
     fn resolved_theme_typography_is_used_when_constructing_render_settings() {
-        use crate::diagram_theme::{
-            DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
-        };
-        let theme = DiagramThemeCompiler::new()
-            .compile(
-                DiagramThemeSpec::new().with_typography(
-                    TypographySpec::default().with_family_style(
-                        crate::DiagramFamilyId::SEQUENCE,
-                        ThemeTextStyle::default()
-                            .with_font_stack(FontStack::single("monospace").unwrap())
-                            .with_font_size_px(31.0)
-                            .unwrap(),
-                    ),
-                ),
-            )
+        let theme = crate::theme::ThemeCompiler::new()
+            .compile_json(br#"{
+                "schema_version": 2, "extends": "paper",
+                "typography": {"base_size_px": 24, "body_family": "mono", "mono": ["Fixture Mono", "monospace"]}
+            }"#, None)
             .unwrap();
-        let resolved = theme.resolve(crate::DiagramFamilyId::SEQUENCE);
         let config = merman_model::presentation::PresentationConfig::default();
-        let meter = crate::resources::OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::interactive(),
+        let typography = crate::sequence::SequenceTypographyPlan::for_native(
+            config.as_value(),
+            theme.family("sequence"),
+            None,
         );
-        let typography =
-            crate::sequence::SequenceTypographyPlan::resolve(&config, Some(&resolved), &meter)
-                .unwrap();
         let settings =
             SequenceRenderSettings::from_resolved_typography(config.as_value(), &typography);
 
@@ -142,8 +126,11 @@ mod tests {
             &settings.note_text_style,
             &settings.loop_text_style,
         ] {
-            assert_eq!(style.font_family.as_deref(), Some("monospace"));
-            assert_eq!(style.font_size, 31.0);
+            assert_eq!(
+                style.font_family.as_deref(),
+                Some(r#""Fixture Mono", monospace"#)
+            );
+            assert_eq!(style.font_size, 24.0);
         }
     }
 

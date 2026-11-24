@@ -1,5 +1,6 @@
 use criterion::{Criterion, SamplingMode, Throughput, criterion_group, criterion_main};
-use merman::svg::{DiagramThemeCompiler, SvgPipeline, ThemePreset};
+use merman::svg::SvgPipeline;
+use merman::theme::{BuiltinPreset, ThemeCompiler, ThemeSelection};
 use merman::{
     MermaidEngine, OperationControl, ParseOptions, PdfRequest, PngRequest, RenderOutput,
     RenderRequest, RenderTarget, Renderer, SourcePresentationConfig, SvgRequest,
@@ -62,9 +63,11 @@ fn bench_native_export(criterion: &mut Criterion) {
                 "htmlLabels": false,
             })),
         ));
-    let cyberpunk = DiagramThemeCompiler::new()
-        .compile_preset(ThemePreset::Cyberpunk)
-        .unwrap();
+    let cyberpunk = ThemeSelection::compiled(
+        ThemeCompiler::new()
+            .compile_preset(BuiltinPreset::Cyberpunk, None)
+            .unwrap(),
+    );
     let artifact_directory = std::env::var_os("MERMAN_BENCH_ARTIFACT_DIR").map(PathBuf::from);
     if let Some(directory) = &artifact_directory {
         std::fs::create_dir_all(directory).unwrap();
@@ -104,7 +107,7 @@ fn bench_native_export(criterion: &mut Criterion) {
                 let name = format!("{family}/{theme_id}/{format}");
                 let mut request = RenderRequest::new(source, target, OperationControl::new());
                 if let Some(theme) = &theme {
-                    request = request.with_theme(theme.clone());
+                    request = request.with_native_theme(theme.clone());
                 }
                 let before = renderer
                     .render(request.clone())

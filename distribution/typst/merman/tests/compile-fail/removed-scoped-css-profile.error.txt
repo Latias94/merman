@@ -1,1 +1,1 @@
-merman profile field `scoped-css` was removed; use `diagram-theme`, `theme-variables`, or `background`
+merman profile field `scoped-css` was removed; use `theme`, `site-config`, or `background`

@@ -8,6 +8,12 @@ See the [release index](../release/README.md) for published-version migrations.
 
 ## Refresh wrappers and runtime artifacts
 
+Current source uses Web transport API `12` and Theme v2. Update theme callers alongside their
+runtime artifacts. Select native themes through the new `theme` forms and consume
+`metadata.theme_outcome` on binding render results. [Theme v2 guide](../rendering/custom-diagram-themes.md)
+
+For the published `v0.11.0` migration, use the versions below.
+
 These contracts are versioned independently of the workspace release:
 
 | Contract | Published `v0.10.0` | `v0.11.0` |

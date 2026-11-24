@@ -10,7 +10,6 @@ fn metadata(diagram_type: &str) -> AuthoredPresentationMetadata {
         config: MermaidConfig::empty_object(),
         effective_config: MermaidConfig::empty_object(),
         title: None,
-        theme_recipe: None,
     }
 }
 
@@ -144,42 +143,6 @@ fn explicit_empty_facts_survive_an_independent_data_projection() {
         restored.compatibility_json().unwrap().as_value(),
         &json!({})
     );
-}
-
-#[test]
-fn family_paint_declarations_require_the_matching_model() {
-    let config = PresentationConfig::try_from_frozen_parts_controlled(
-        FrozenPresentationConfigParts::new(MermaidConfig::empty_object())
-            .with_theme_compatibility(
-                Some(
-                    ThemeCompatibilityRecipe::try_new([0x41; 32], MermaidConfig::empty_object())
-                        .unwrap(),
-                ),
-                std::sync::Arc::from([]),
-            )
-            .with_family_paint_inputs(Some(FamilyPaintInputs::Er(ErPaintInputs::default()))),
-        &InputResourcePolicy::default(),
-        &OperationControl::new(),
-    )
-    .unwrap()
-    .unwrap();
-    let result = PresentationDiagram::try_from_frozen(
-        PresentationMetadata {
-            diagram_type: "error".to_string(),
-            config: MermaidConfig::empty_object(),
-            effective_config: config,
-            title: None,
-        },
-        error_model(),
-        PresentationContext::None,
-        &InputResourcePolicy::default(),
-        &OperationControl::new(),
-    )
-    .unwrap();
-    assert!(matches!(
-        result,
-        Err(PresentationDataError::PaintFamily { .. })
-    ));
 }
 
 #[cfg(feature = "diagram-flowchart")]

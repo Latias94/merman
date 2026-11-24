@@ -17,34 +17,6 @@ const FIXED_CLUSTER_PADDING: f64 = 8.0;
 // markdown subgraph titles rely on that default instead of `flowchart.wrappingWidth`.
 pub(crate) const FLOWCHART_FIXED_LABEL_WRAP_WIDTH: f64 = 200.0;
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct FlowchartTypographyConfigOwnership {
-    pub(crate) font_stack: bool,
-    pub(crate) font_size: bool,
-    pub(crate) font_weight: Option<u16>,
-    pub(crate) invalid_font_weight: bool,
-}
-
-pub(crate) fn flowchart_typography_config_ownership(
-    config: &merman_model::presentation::PresentationConfig,
-) -> FlowchartTypographyConfigOwnership {
-    let view = FlowchartConfigView::new(config);
-    let raw_weight = config
-        .explicit_config_owns_path("fontWeight")
-        .then(|| config.get_str("fontWeight"))
-        .flatten();
-    let font_weight = raw_weight.and_then(|raw| crate::text::resolve_css_font_weight(raw, 400));
-    FlowchartTypographyConfigOwnership {
-        font_weight,
-        invalid_font_weight: raw_weight.is_some() && font_weight.is_none(),
-        font_stack: view
-            .font_family_source(Some(config))
-            .is_some_and(|(_, path)| config.explicit_config_owns_path(path)),
-        font_size: view.theme_font_size_px().is_some()
-            && config.explicit_config_owns_path("themeVariables.fontSize"),
-    }
-}
-
 pub(crate) struct FlowchartConfigView<'a, C: ConfigLookup + ?Sized> {
     effective_config: &'a C,
     flowchart_config: &'a Value,

@@ -1,1 +1,0 @@
-merman options must select only one of `diagram-theme`, `theme-preset`, or `theme-recipe`

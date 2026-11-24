@@ -1,8 +1,6 @@
 //! Resolve diagram appearance while the source and initialization layers are still distinct.
 
 use super::appearance_selection::{APPEARANCE_KEYS, AppearanceOrigin, select_appearance_value};
-#[cfg(test)]
-use super::presentation::SourcePresentationConfig;
 use crate::{MermaidConfig, MermaidThemeId, family};
 use serde_json::Value;
 use std::borrow::Cow;
@@ -30,7 +28,6 @@ impl<'a> AppearanceDecision<'a> {
         diagram_type: &'a str,
         source: &'a MermaidConfig,
         initialize: &'a MermaidConfig,
-        compatibility: Option<&'a MermaidConfig>,
         defaults: &'a MermaidConfig,
     ) -> Self {
         #[cfg(test)]
@@ -38,7 +35,7 @@ impl<'a> AppearanceDecision<'a> {
         let section =
             family::config_namespace_for_diagram_type(diagram_type).unwrap_or(diagram_type);
         let winners = APPEARANCE_KEYS.map(|key| {
-            select_appearance_value(section, key, source, initialize, compatibility, defaults)
+            select_appearance_value(section, key, source, initialize, defaults)
                 .map(|(value, origin)| AppearanceWinner { value, origin })
         });
         Self {
@@ -66,10 +63,10 @@ impl<'a> AppearanceDecision<'a> {
         };
         let independent_key =
             |key: &str| !key.is_empty() && !key.contains('.') && !APPEARANCE_KEYS.contains(&key);
-        // The theme program reads themeVariables and its input owners. Appearance writes
+        // The theme program reads themeVariables. Appearance writes
         // only root and existing scoped appearance keys. A disjoint merge on existing
         // root sections leaves these inputs and the insertion order unchanged. Dotted
-        // keys at these boundaries can also alias the ownership journal's paths.
+        // keys at these boundaries can alias authored paths.
         source.iter().all(|(key, value)| {
             independent_key(key)
                 && key != "themeVariables"
@@ -109,10 +106,6 @@ impl<'a> AppearanceDecision<'a> {
         &self,
         effective: &mut super::presentation::SourcePresentationConfig,
     ) {
-        effective.set_source_theme_palette(self.winners[0].as_ref().is_some_and(|winner| {
-            matches!(winner.origin, AppearanceOrigin::Source)
-                && winner.value.as_str().is_some_and(|name| name != "null")
-        }));
         for (key, winner) in APPEARANCE_KEYS.into_iter().zip(&self.winners) {
             let Some(winner) = winner else {
                 continue;
@@ -127,16 +120,16 @@ impl<'a> AppearanceDecision<'a> {
             let section_has_key = scoped.is_some();
             if explicit {
                 // Equal values can still acquire a different owner.
-                effective.set_value_explicit(key, value.clone());
+                effective.set_value(key, value.clone());
             } else if effective.get(key) != Some(value) {
-                effective.set_value_preserving_theme_compatibility(key, value.clone());
+                effective.set_computed_value(key, value.clone());
             }
             if section_has_key {
                 let scoped_key = format!("{}.{key}", self.section);
                 if explicit {
-                    effective.set_value_explicit(&scoped_key, value.clone());
+                    effective.set_value(&scoped_key, value.clone());
                 } else if effective.get_path(&[self.section, key]) != Some(value) {
-                    effective.set_value_preserving_theme_compatibility(&scoped_key, value.clone());
+                    effective.set_computed_value(&scoped_key, value.clone());
                 }
             }
         }
@@ -144,71 +137,10 @@ impl<'a> AppearanceDecision<'a> {
 }
 
 #[cfg(test)]
-pub(crate) fn resolve_appearance(
-    diagram_type: &str,
-    source: &MermaidConfig,
-    initialize: &MermaidConfig,
-    compatibility: Option<&MermaidConfig>,
-    defaults: &MermaidConfig,
-    effective: &mut SourcePresentationConfig,
-) {
-    let decision =
-        AppearanceDecision::resolve(diagram_type, source, initialize, compatibility, defaults);
-    decision.apply_to_presentation(effective);
-}
-
-#[cfg(test)]
 mod tests {
     use super::super::presentation::SourcePresentationConfig;
     use super::*;
     use serde_json::json;
-
-    #[test]
-    fn source_selected_palette_owns_paint_without_claiming_typography_or_geometry() {
-        let defaults = MermaidConfig::from_value(json!({"theme": "default"}));
-        let empty = SourcePresentationConfig::empty_object();
-        for (source, initialize, compatibility, expected) in [
-            (json!({"theme": "base"}), json!({}), json!({}), true),
-            (json!({"theme": "default"}), json!({}), json!({}), true),
-            (json!({}), json!({"theme": "forest"}), json!({}), false),
-            (json!({}), json!({}), json!({"theme": "dark"}), false),
-            (json!({}), json!({}), json!({}), false),
-            (json!({"theme": "null"}), json!({}), json!({}), false),
-        ] {
-            let source = MermaidConfig::from_value(source);
-            let initialize = MermaidConfig::from_value(initialize);
-            let compatibility = MermaidConfig::from_value(compatibility);
-            let decision = AppearanceDecision::resolve(
-                "er",
-                &source,
-                &initialize,
-                Some(&compatibility),
-                &defaults,
-            );
-            let mut effective = SourcePresentationConfig::from_value(json!({
-                "themeVariables": {"textColor": "#333", "fontFamily": "serif", "fontSize": "16px"}
-            }));
-            decision.apply_to_presentation(&mut effective);
-            assert_eq!(
-                effective.config_paint_overrides_typed_default("themeVariables.textColor"),
-                expected,
-                "source={source:?}, initialize={initialize:?}, compatibility={compatibility:?}"
-            );
-            for path in [
-                "themeVariables.textColor",
-                "themeVariables.fontFamily",
-                "themeVariables.fontSize",
-            ] {
-                assert!(
-                    !effective.config_path_overrides_typed_default(path),
-                    "{path}"
-                );
-            }
-            assert!(!effective.config_paint_overrides_typed_default("themeVariables.missing"));
-            assert!(!effective.config_paint_overrides_typed_default("c4.relationship_line_color"));
-            assert!(!empty.config_paint_overrides_typed_default("themeVariables.textColor"));
-        }
-    }
 
     fn resolve(initialize: Value, source: Value) -> SourcePresentationConfig {
         let defaults = MermaidConfig::from_value(json!({
@@ -220,14 +152,8 @@ mod tests {
         let mut effective = SourcePresentationConfig::from_config(defaults.clone());
         effective.deep_merge(initialize.as_value());
         effective.deep_merge(source.as_value());
-        resolve_appearance(
-            "flowchart-v2",
-            &source,
-            &initialize,
-            None,
-            &defaults,
-            &mut effective,
-        );
+        AppearanceDecision::resolve("flowchart-v2", &source, &initialize, &defaults)
+            .apply_to_presentation(&mut effective);
         effective
     }
 
@@ -236,8 +162,7 @@ mod tests {
         let source = MermaidConfig::from_value(json!({"theme": "dark", "layout": null}));
         let empty = MermaidConfig::empty_object();
         let defaults = MermaidConfig::from_value(json!({"theme": "default", "layout": "dagre"}));
-        let decision =
-            AppearanceDecision::resolve("flowchart-v2", &source, &empty, None, &defaults);
+        let decision = AppearanceDecision::resolve("flowchart-v2", &source, &empty, &defaults);
         let mut effective = SourcePresentationConfig::from_value(json!({"theme": "dark"}));
         decision.apply_to_presentation(&mut effective);
         assert!(effective.explicit_config_owns_path("theme"));
@@ -259,8 +184,7 @@ mod tests {
         }));
         let empty = MermaidConfig::empty_object();
         let defaults = MermaidConfig::from_value(json!({"theme": "default"}));
-        let decision =
-            AppearanceDecision::resolve("flowchart-v2", &source, &empty, None, &defaults);
+        let decision = AppearanceDecision::resolve("flowchart-v2", &source, &empty, &defaults);
         let original = SourcePresentationConfig::from_value(json!({
             "theme": "dark", "look": "classic", "layout": "dagre",
             "flowchart": {"theme": "dark", "look": "classic", "layout": "dagre"},
@@ -319,16 +243,14 @@ mod tests {
             ),
         ] {
             let source = MermaidConfig::from_value(source);
-            let decision =
-                AppearanceDecision::resolve("flowchart-v2", &source, &empty, None, &defaults);
+            let decision = AppearanceDecision::resolve("flowchart-v2", &source, &empty, &defaults);
             assert_eq!(
                 decision.materialization_plan(Some("dark"), Some("dark")),
                 expected
             );
         }
         let initialize = MermaidConfig::from_value(json!({"flowchart": {"theme": "forest"}}));
-        let decision =
-            AppearanceDecision::resolve("flowchart-v2", &empty, &initialize, None, &defaults);
+        let decision = AppearanceDecision::resolve("flowchart-v2", &empty, &initialize, &defaults);
         assert_eq!(
             decision.materialization_plan(Some("dark"), Some("dark")),
             MaterializationPlan::Materialize {
@@ -412,14 +334,8 @@ mod tests {
             let source = MermaidConfig::from_value(source);
             effective.deep_merge(initialize.as_value());
             effective.deep_merge(source.as_value());
-            resolve_appearance(
-                "mindmap",
-                &source,
-                &initialize,
-                None,
-                &defaults,
-                &mut effective,
-            );
+            AppearanceDecision::resolve("mindmap", &source, &initialize, &defaults)
+                .apply_to_presentation(&mut effective);
             assert_eq!(effective.as_value()["layout"], expected);
         }
     }

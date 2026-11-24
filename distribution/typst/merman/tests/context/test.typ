@@ -19,32 +19,38 @@
 #assert.eq(inferred-width-config.binding_options.version, 3)
 #assert(not "presentation" in inferred-width-config.binding_options)
 #assert(not "host_theme" in inferred-width-config.binding_options)
-#let preset-config = render-config(
-  theme-preset: "ayu-dark",
-  pipeline: "readable",
-)
-#assert.eq(preset-config.binding_options.theme.preset, "ayu-dark")
-#assert.eq(preset-config.binding_options.svg.pipeline, "readable")
-#assert(not "presentation" in preset-config.binding_options)
-#assert(not "host_theme" in preset-config.binding_options)
-#let profile-theme-config = render-config(
-  profile: mermaid-profile(
-    diagram-theme: (
-      typography: (default: (font_weight: 600)),
-    ),
-    typography: (font: "Profile Diagram Sans", size: "18px"),
-    pipeline: "parity",
+#let inferred-style = context-text-style(("Arial", "sans-serif"), 12pt)
+#let preset-config = render-config(theme: "studio", appearance: "dark", context-text-style: inferred-style)
+#assert.eq(preset-config.binding_options.theme, (
+  document: (
+    schema_version: 2,
+    extends: "studio",
+    typography: (sans: ("Arial", "sans-serif"), body_family: "sans", base_size_px: 16),
   ),
+  appearance: "dark",
+))
+#let explicit-theme = (schema_version: 2, extends: "studio", typography: (title_weight: 700))
+#let themed-config = render-config(
+  profile: mermaid-profile(theme: explicit-theme, typography: (size: "18px")),
+  typography: (font: "Direct Sans"),
+  context-text-style: inferred-style,
 )
-#assert.eq(
-  profile-theme-config.binding_options.theme.spec.typography.default.font_stack,
-  ("Profile Diagram Sans",),
-)
-#assert.eq(profile-theme-config.binding_options.theme.spec.typography.default.font_size_px, 18)
-#assert.eq(profile-theme-config.binding_options.theme.spec.typography.default.font_weight, 600)
-#assert.eq(profile-theme-config.binding_options.svg.pipeline, "parity")
-#assert(not "presentation" in profile-theme-config.binding_options)
-#assert(not "host_theme" in profile-theme-config.binding_options)
+#assert.eq(themed-config.binding_options.theme.typography, (
+  title_weight: 700,
+  sans: ("Direct Sans", "sans-serif"),
+  body_family: "sans",
+  base_size_px: 18,
+))
+#let large-text-config = render-config(theme: explicit-theme, context-text-style: context-text-style("Arial", 30pt))
+#assert.eq(large-text-config.binding_options.theme.typography.base_size_px, 24)
+#assert.eq(large-text-config.binding_options.theme.typography.sans, ("Arial", "sans-serif"))
+#let classic-config = render-config(theme: "forest", context-text-style: inferred-style)
+#assert(not "theme" in classic-config.binding_options)
+#assert.eq(classic-config.binding_options.site_config, (
+  theme: "forest",
+  fontFamily: "Arial, sans-serif",
+  themeVariables: (fontFamily: "Arial, sans-serif", fontSize: "16px"),
+))
 #let profile-layout-width-config = config-with-context-width(
   render-config(profile: mermaid-profile(layout: (container_width: 333))),
   typst-length-to-css-px(72pt),
@@ -63,19 +69,6 @@
   333,
   message: "profile container-width should take precedence over document context width",
 )
-#let partial-typography-config = render-config(
-  profile: mermaid-profile(typography: (font: "Profile Sans", size: "16px")),
-  typography: (font: "Direct Sans"),
-)
-#assert.eq(
-  partial-typography-config.binding_options.theme.spec.typography.default.font_stack,
-  ("Direct Sans",),
-)
-#assert.eq(
-  partial-typography-config.binding_options.theme.spec.typography.default.font_size_px,
-  16,
-  message: "partial direct typography should preserve the profile size",
-)
 #let replacement-site-config = render-config(
   profile: mermaid-profile(site-config: (theme: "dark", fontFamily: "Profile Sans")),
   site-config: (theme: "neutral"),
@@ -84,15 +77,6 @@
   replacement-site-config.binding_options.site_config,
   (theme: "neutral"),
   message: "a direct site-config should replace the profile object",
-)
-#let theme-alias-config = render-config(
-  profile: mermaid-profile(base-theme: "dark"),
-  theme-name: "forest",
-)
-#assert.eq(
-  theme-alias-config.binding_options.site_config.theme,
-  "forest",
-  message: "theme-name should override the base-theme compatibility alias",
 )
 #let full-layout-config = render-config(
   profile: mermaid-profile(container-width: 333, container-height: 222),
@@ -131,6 +115,7 @@
   source,
   id: "context-typst-length",
   pipeline: "readable",
+  theme: "studio",
   typography: (font: "Typst Length Sans", size: 12pt),
 )
 #assert(typst-length-svg.contains("16px"), message: "12pt typography must become 16 CSS px")
@@ -139,6 +124,8 @@
 #mermaid(
   source,
   document-context: true,
+  theme: "studio",
+  appearance: "dark",
   id: "context-enabled",
   width: 100%,
 )

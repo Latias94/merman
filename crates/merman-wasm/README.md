@@ -16,16 +16,16 @@ See the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for available vers
 
 The generated transport exposes generic operation dispatch plus stable convenience functions for the capabilities compiled into its artifact profile. It can project SVG, semantic JSON, layout JSON, ASCII/Unicode, validation, diagnostics, document facts, metadata, and editor operations.
 
-Merman `0.11.0` reports the following contracts. Published `0.10.0` uses transport API `10` and ASCII output schema `3`. Published `0.10.0-alpha.2` artifacts retain transport API `9`; `0.10.0-alpha.1` retains transport API `8`, facts schema `2`, and theme execution evidence schema `1`. Version `0.9.3` retains transport API `5`. Upgrade the facade, glue, and WASM together; source builds must use one revision.
+Current source builds report the contracts below. Published `0.11.0` uses transport API `11` and ASCII output schema `4`. Published `0.10.0` uses transport API `10` and ASCII output schema `3`. Upgrade the facade, glue, and WASM together from one revision.
 
-- transport API version `11`
+- transport API version `12`
 - ASCII output schema `4` for ASCII-capable artifacts
 - Options JSON schema `3`;
 - runtime catalog schema `1`;
 - text-measurement protocol version `1`;
 - diagnostics payload schema `1`;
 - analysis-facts payload schema `3` (generic semantic facts and required per-diagram `appearance`, tagged `known` or `unknown`; the Flowchart-only rich graph remains removed). See the [source appearance migration](../../docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
-- theme execution evidence schema `2` (including the actual materialized Mermaid palette or null).
+- theme catalog and editable documents at schema `2`, with `metadata.theme_outcome` for SVG results.
 
 These contracts are independently versioned. Native ABI numbers, Typst plugin ABI numbers, Mermaid diagram IDs, and JSON payload versions are not interchangeable.
 
@@ -53,37 +53,16 @@ availability, which does not imply local SVG or ASCII support.
 
 ## Theme Presets And Editable JSON
 
-The SVG-capable full and render packages expose `themeCatalog()`, `exportThemePreset()`,
-`materializeTheme()`, and `describeThemeSupport()` through their public wrappers. Select a
-built-in design with `{ theme: { preset: "paper-cut" } }`. Carbon Copy (`carbon-copy`) and
-Pop Art (`pop-art`) are also available. Export a complete recipe to customize it.
+Call `themeCatalog()` to discover preset IDs, supported appearances, and swatches. SVG-capable
+artifacts expose `exportThemePreset(id)` and `resolveTheme(requestJson)`. The raw resolver runs
+`resolve-theme` with a JSON request containing `document`, optional `appearance`, and optional
+`auto_fix_contrast`. The `document` field accepts a v2 object or the original JSON text for
+source-relative diagnostics. The public Web wrapper builds this request from
+`resolveTheme(document, options?)`.
 
-```ts
-import { exportThemePreset, initMerman, renderSvgResult, themeCatalog } from "@mermanjs/web";
-
-await initMerman();
-const catalog = themeCatalog();
-const recipe = exportThemePreset("paper-cut");
-if (recipe.kind !== "design") throw new Error("Expected an editable design");
-recipe.design.tokens!["surface"]!.value = "#DCEAF7";
-const themeJson = JSON.stringify(recipe, null, 2);
-const { svg, metadata } = renderSvgResult("flowchart LR\nA[Source] --> B[Custom theme]", {
-  theme: recipe,
-});
-```
-
-Keep the complete JSON document when saving or sharing it. For a paired preset, use
-`{ theme: { preset: "editor", appearance: "dark" } }`. For a saved recipe, use
-`{ theme: { recipe, appearance: "dark" } }` only when that recipe declares Dark.
-`materializeTheme({ schema_version: 1, action: "inspect", recipe })` validates every declared
-appearance. Hosts resolve Follow-app/editor before making the request.
-
-Catalog availability, per-appearance family design scope, and output qualification are separate
-facts. Inspect the render's `metadata` for its actual theme and target outcome. Mermaid
-configuration stays in `site_config`, separately from the editable recipe. See the
-[browser theme workflow](../../platforms/web/README.md#choose-a-preset-for-a-diagram) and
-[theme guide](../../docs/rendering/custom-diagram-themes.md) for selection, JSON import/export,
-support queries, and appearance overrides.
+Use `theme: "studio"` in render options to select a default appearance, or wrap a preset ID or
+an editable document in a selector to request `light` or `dark`. Read `metadata.theme_outcome` for
+the result's rendering mode, appearance, and notices. [Browser theme guide](../../platforms/web/README.md#choose-a-preset-for-a-diagram)
 
 ## Cooperative cancellation and deadlines
 

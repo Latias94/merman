@@ -98,7 +98,7 @@ impl BlockShapeGeometry {
         // Mermaid renders a block twice: the first pass measures the label and shape, while the
         // second pass supplies the grid-allocated slot.  Keep the final outline calculation
         // separate from the slot itself so routing never intersects the slot by accident.
-        let boundary = rendered_boundary_for(
+        let mut boundary = rendered_boundary_for(
             BlockShapeInputs {
                 block_type,
                 directions,
@@ -113,6 +113,22 @@ impl BlockShapeGeometry {
                 width_in_columns,
             },
         )?;
+        if let (
+            Some((node_radius, container_radius)),
+            BlockShapeBoundary::Rectangle {
+                width,
+                height,
+                radius,
+                kind,
+            },
+        ) = (shape_settings.native_radii, &mut boundary)
+        {
+            let requested = match kind {
+                BlockRectangleKind::Basic => node_radius,
+                BlockRectangleKind::Composite => container_radius,
+            };
+            *radius = requested.min((*width).min(*height) / 2.0);
+        }
 
         Some(Self {
             id: node.id.clone(),
@@ -159,6 +175,24 @@ impl BlockShapeGeometry {
                 translation,
             } => intersect_polygon(&center, points, translation, target),
         }
+    }
+
+    pub(crate) fn intersect_native(&self, target: &LayoutPoint) -> LayoutPoint {
+        if let BlockShapeBoundary::Rectangle {
+            width,
+            height,
+            radius,
+            ..
+        } = &self.boundary
+            && *radius > 0.0
+        {
+            let center = LayoutPoint {
+                x: self.allocated.x,
+                y: self.allocated.y,
+            };
+            return intersect_rounded_rect(&center, *width, *height, *radius, *radius, target);
+        }
+        self.intersect(target)
     }
 
     /// Returns the geometric bounds of the emitted outline in diagram coordinates.

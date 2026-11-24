@@ -19,6 +19,7 @@ pub struct BindingPreparedSource {
     runtime_policy_id: &'static str,
     runtime_policy: merman::model::runtime::RuntimePolicy,
     base_options: common::BaseBindingOptions,
+    theme: Option<merman::theme::ThemeSelection>,
     defaults: RenderOperationConfig,
     default_options: common::BindingOptions,
 }
@@ -45,8 +46,7 @@ impl BindingEngine {
             &options,
             runtime_policy.clone(),
             self.artifact_contract.render_capability_policy(),
-            None,
-            base_options.theme_resource_policy().clone(),
+            self.base_theme.clone(),
         )?;
         control
             .checkpoint_at(OperationPhase::Postprocess)
@@ -57,6 +57,7 @@ impl BindingEngine {
             runtime_policy_id: self.runtime_policy_id,
             runtime_policy,
             base_options,
+            theme: self.base_theme.clone(),
             defaults,
             default_options: options,
         })
@@ -126,7 +127,6 @@ impl BindingPreparedSource {
             options,
             operation.resource_scope(),
             &self.artifact,
-            self.base_options.theme_resource_policy(),
         )?;
         overlay.validate_prepared_output()?;
         let config = match overlay {
@@ -142,8 +142,7 @@ impl BindingPreparedSource {
                     &options,
                     self.runtime_policy.clone(),
                     self.artifact.render_capability_policy(),
-                    None,
-                    self.base_options.theme_resource_policy().clone(),
+                    self.theme.clone(),
                 )?
             }
         };

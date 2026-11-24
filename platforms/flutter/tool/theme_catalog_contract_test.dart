@@ -1,197 +1,140 @@
 import 'package:merman/merman.dart';
 
-Map<String, Object?> _appearance(String mode) => {
-  'appearance': mode,
-  'concrete_preset_id': 'editor-$mode',
-  'available': true,
-  'availability_reason_ids': <String>[],
-  'family_designs': <Object?>[],
-  'preview_colors': <String>[],
-  'application_notes': <Object?>[],
-  'qualified_cells': <Object?>[],
-  'future_field': {
-    'scope': [mode],
-  },
+final _studio = <String, Object?>{
+  'id': 'studio',
+  'name': 'Studio',
+  'description': 'A reading theme.',
+  'category': 'reading',
+  'appearances': ['light', 'dark'],
+  'default_appearance': 'light',
+  'swatches': [
+    '#F8FAFC',
+    '#FFFFFF',
+    '#EFF4FA',
+    '#2563EB',
+    '#0F172A',
+    '#BFDBFE',
+  ],
+  'future_field': {'label': 'retained'},
 };
 
-Map<String, Object?> _preset() => {
-  'id': 'editor',
-  'display_name': 'Editor',
-  'supported_appearances': ['light', 'dark'],
-  'default_appearance': 'light',
-  'appearances': [_appearance('light'), _appearance('dark')],
-  'maturity': 'alpha',
-  'available': true,
-  'availability_reason_ids': <String>[],
-  'license_expression': 'MIT OR Apache-2.0',
-  'required_attribution': null,
-  'export_kind': 'design',
-  'future_field': {'shared': true},
+final _flowchart = <String, Object?>{
+  'id': 'flowchart',
+  'capabilities': 33,
+  'future_field': true,
 };
 
 Map<String, Object?> _catalog() => {
-  'schema_version': 1,
-  'structured_spec_available': true,
-  'recipe_schema_version': 1,
-  'authoring_request_schema_version': 1,
-  'authoring_result_schema_version': 1,
-  'supported_output_ids': ['svg'],
-  'presets': [_preset()],
-  'mermaid_theme_designs': [
-    {
-      'id': 'default',
-      'display_name': 'Default',
-      'default_appearance': 'light',
-      'appearances': [
-        {'appearance': 'light', 'theme_id': 'default'},
-      ],
-    },
-    {
-      'id': 'dark',
-      'display_name': 'Dark',
-      'default_appearance': 'dark',
-      'appearances': [
-        {'appearance': 'dark', 'theme_id': 'dark'},
-      ],
-    },
-    {
-      'id': 'neo',
-      'display_name': 'Neo',
-      'default_appearance': 'light',
-      'appearances': [
-        {'appearance': 'light', 'theme_id': 'neo'},
-        {'appearance': 'dark', 'theme_id': 'neo-dark'},
-      ],
-    },
+  'schema_version': 2,
+  'presets': [_studio],
+  'mermaid_themes': ['default', 'dark'],
+  'families': [
+    _flowchart,
+    {'id': 'gitGraph', 'capabilities': 0},
   ],
-  'known_capability_ids': ['semantic-rules'],
-  'known_text_capability_ids': <String>[],
-  'known_font_container_ids': <String>[],
-  'known_font_source_ids': <String>[],
-  'known_semantic_target_ids': ['node'],
-  'known_variant_ids': <String>[],
-  'resource_limits': <Object?>[],
-  'future_field': {'enabled': true},
+  'future_field': [42],
 };
 
-void _expect(bool condition, String message) {
-  if (!condition) throw StateError(message);
-}
+void main() => runThemeCatalogContractTests();
 
-void _reject(void Function() action) {
-  try {
-    action();
-  } on MermanException catch (error) {
-    _expect(
-      error.codeName == 'DART_NATIVE_CONTRACT_ERROR',
-      'unexpected error: $error',
-    );
-    return;
+void runThemeCatalogContractTests() {
+  final catalog = MermanThemeCatalog.fromJson(_catalog());
+  final studio = catalog.presets.single;
+  final flowchart = catalog.families.first;
+  if (catalog.schemaVersion != 2 ||
+      studio.id != 'studio' ||
+      studio.name != 'Studio' ||
+      studio.description != 'A reading theme.' ||
+      studio.category != 'reading' ||
+      studio.defaultAppearance != 'light' ||
+      studio.appearances.join(',') != 'light,dark' ||
+      studio.swatches.last != '#BFDBFE' ||
+      catalog.mermaidThemes.join(',') != 'default,dark' ||
+      flowchart.id != 'flowchart' ||
+      flowchart.capabilities != 33 ||
+      catalog.families.last.id != 'gitGraph' ||
+      (studio.jsonObject['future_field'] as Map)['label'] != 'retained' ||
+      flowchart.jsonObject['future_field'] != true ||
+      (catalog.jsonObject['future_field'] as List).single != 42) {
+    throw StateError('theme catalog lost fields or changed their order');
   }
-  throw StateError('malformed paired catalog was accepted');
-}
 
-void runPairedThemeCatalogContractTests() {
-  final source = _catalog();
-  final catalog = MermanThemeCatalog.fromJson(source);
-  final preset = catalog.presets.single;
-  _expect(
-    catalog.recipeSchemaVersion == 1 &&
-        catalog.authoringRequestSchemaVersion == 1 &&
-        catalog.authoringResultSchemaVersion == 1 &&
-        preset.supportedAppearances.join(',') == 'light,dark' &&
-        preset.appearances.last.concretePresetId == 'editor-dark',
-    'one theme must retain its concrete appearances and schema discovery',
-  );
-  _expect(
-    catalog.mermaidThemeDesigns[0].id == 'default' &&
-        catalog.mermaidThemeDesigns[1].id == 'dark' &&
-        catalog.mermaidThemeDesigns[2].appearances.last.themeId == 'neo-dark',
-    'upstream groups must retain literal IDs and independent Default/Dark designs',
-  );
-  final rawScope =
-      (preset.appearances.last.jsonObject['future_field'] as Map)['scope']
-          as List;
-  (source['future_field'] as Map)['enabled'] = false;
-  _expect(
-    (catalog.jsonObject['future_field'] as Map)['enabled'] == true &&
-        (preset.jsonObject['future_field'] as Map)['shared'] == true &&
-        rawScope.single == 'dark',
-    'typed metadata must retain independent immutable raw extension fields',
-  );
-  try {
-    rawScope.add('changed');
-    throw StateError('raw extension data remained mutable');
-  } on UnsupportedError {
-    _expect(rawScope.single == 'dark', 'extension data changed');
-  }
-  for (final mutate in <void Function(Map<String, Object?>)>[
-    (value) => value['supported_appearances'] = <String>[],
-    (value) => value['supported_appearances'] = ['light', 'light'],
-    (value) => value['supported_appearances'] = ['dark', 'light'],
-    (value) => value['default_appearance'] = 'auto',
-    (value) => value['default_appearance'] = null,
-    (value) => value['appearances'] = <Object?>[],
-    (value) => (value['appearances'] as List).last['appearance'] = 'light',
-    (value) => (value['appearances'] as List).last['concrete_preset_id'] =
-        'editor-light',
-    (value) => (value['appearances'] as List).last['available'] = false,
-    (value) => value['available'] = false,
-    (value) => value['export_kind'] = 'complete_spec',
+  for (final mutate in <void Function()>[
+    () => catalog.presets.clear(),
+    () => catalog.families.clear(),
+    () => catalog.mermaidThemes.clear(),
+    () => studio.appearances.clear(),
+    () => studio.swatches.clear(),
+    () => (studio.jsonObject['future_field'] as Map).clear(),
+    () => (catalog.jsonObject['future_field'] as List).clear(),
   ]) {
-    final value = _preset();
-    mutate(value);
-    _reject(() => MermanThemePreset.fromJson(value));
+    try {
+      mutate();
+    } on UnsupportedError {
+      continue;
+    }
+    throw StateError('theme catalog value was mutable');
   }
-  final rejectedPair = _preset();
-  rejectedPair['available'] = false;
-  rejectedPair['availability_reason_ids'] = [
-    'theme-preset.resource-policy-rejected',
-  ];
-  for (final mode in rejectedPair['appearances'] as List) {
-    mode['available'] = false;
-    mode['availability_reason_ids'] = ['theme-preset.resource-policy-rejected'];
-  }
-  final rejected = MermanThemePreset.fromJson(rejectedPair);
-  _expect(
-    !rejected.available &&
-        rejected.appearances.every((mode) => !mode.available),
-    'availability reasons must preserve namespaced IDs and the complete-design gate',
-  );
-  for (final field in [
-    'recipe_schema_version',
-    'authoring_request_schema_version',
-    'authoring_result_schema_version',
-  ]) {
-    _reject(() => MermanThemeCatalog.fromJson({..._catalog(), field: null}));
-  }
-  final empty = MermanThemeCatalog.fromJson({
+
+  final nonRendering = MermanThemeCatalog.fromJson({
     ..._catalog(),
-    'structured_spec_available': false,
-    'recipe_schema_version': null,
-    'authoring_request_schema_version': null,
-    'authoring_result_schema_version': null,
-    'presets': <Object?>[],
-    'mermaid_theme_designs': <Object?>[],
-    'supported_output_ids': <String>[],
-    'known_capability_ids': <String>[],
-    'known_semantic_target_ids': <String>[],
+    'presets': [],
+    'families': [],
   });
-  _expect(
-    !empty.structuredSpecAvailable && empty.recipeSchemaVersion == null,
-    'capability-reduced artifacts must not promise theme authoring schemas',
-  );
-  final duplicate = _catalog();
-  (duplicate['presets'] as List).add(_preset());
-  _reject(() => MermanThemeCatalog.fromJson(duplicate));
-  final badMermaid = _catalog();
-  (badMermaid['mermaid_theme_designs'] as List).last['appearances'] = [
-    {'appearance': 'dark', 'theme_id': 'neo-dark'},
-  ];
-  _reject(() => MermanThemeCatalog.fromJson(badMermaid));
-}
+  if (nonRendering.presets.isNotEmpty ||
+      nonRendering.families.isNotEmpty ||
+      !nonRendering.mermaidThemes.contains('default')) {
+    throw StateError('non-rendering theme catalog did not retain Mermaid IDs');
+  }
 
-void main() {
-  runPairedThemeCatalogContractTests();
-  print('Paired theme catalog Dart contract tests passed');
+  for (final invalid in [
+    {..._catalog(), 'schema_version': 1},
+    _catalog()..remove('families'),
+    {
+      ..._catalog(),
+      'presets': [_studio, _studio],
+    },
+    {
+      ..._catalog(),
+      'mermaid_themes': ['dark', 'dark'],
+    },
+    {
+      ..._catalog(),
+      'families': [_flowchart, _flowchart],
+    },
+    {
+      ..._catalog(),
+      'families': [
+        {..._flowchart, 'capabilities': -1},
+      ],
+    },
+    for (final fields in [
+      {'appearances': []},
+      {
+        'appearances': ['dark'],
+        'default_appearance': 'light',
+      },
+      {
+        'appearances': ['light', 'light'],
+      },
+      {
+        'swatches': ['#123456'],
+      },
+      {'swatches': List.filled(6, 'invalid')},
+    ])
+      {
+        ..._catalog(),
+        'presets': [
+          {..._studio, ...fields},
+        ],
+      },
+  ]) {
+    try {
+      MermanThemeCatalog.fromJson(invalid);
+    } on MermanException {
+      continue;
+    }
+    throw StateError('accepted malformed theme catalog: $invalid');
+  }
+  print('Theme v2 catalog Dart contract tests passed');
 }

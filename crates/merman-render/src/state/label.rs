@@ -28,62 +28,6 @@ fn state_label_xhtml(text: &str) -> String {
     mermaid_markdown_to_xhtml_label_fragment(decoded.as_ref(), true)
 }
 
-/// Inspect adopted author HTML only when it exists. Plain and generated Markdown styling
-/// continues to use the prepared writer decisions without a completed-SVG observation.
-pub(crate) fn state_label_source_style_facts(
-    text: &str,
-) -> Option<crate::text::VisibleTextStyleFacts> {
-    let decoded = decode_mermaid_entities_for_render_text(text);
-    if !decoded.contains('<') {
-        return None;
-    }
-    Some(crate::text::VisibleTextStyleFacts::from_xhtml_fragment(
-        &state_label_xhtml(text),
-    ))
-}
-
-/// Resolve visibility against the final inherited size, using the writer's text projection.
-pub(super) fn state_label_used_style_facts(
-    text: &str,
-    font_size: f64,
-    html_labels: bool,
-    plain: bool,
-) -> crate::text::VisibleTextStyleFacts {
-    use crate::text::VisibleTextStyleFacts;
-
-    if !html_labels {
-        if plain {
-            return VisibleTextStyleFacts::plain_text_at_font_size(
-                &state_svg_plain_lines(text).join("\n"),
-                Some(font_size),
-            );
-        }
-        let decoded = merman_model::text::restore_mermaid_entity_spelling(text);
-        let source = crate::text::split_html_br_lines(decoded.as_ref()).join("\n");
-        return VisibleTextStyleFacts::from_svg_markdown_projection_at_font_size(
-            &source,
-            Some(font_size),
-        );
-    }
-
-    let fragment = if plain {
-        // Composite/title labels adopt HTML but do not interpret Markdown emphasis.
-        let decoded = decode_mermaid_entities_for_render_text(text);
-        let normalized = crate::text::split_html_br_lines(&decoded).join("<br/>");
-        format!(
-            "<p>{}</p>",
-            crate::xml::normalize_html_entities_for_xml(&normalized)
-        )
-    } else {
-        state_label_xhtml(text)
-    };
-    if let Some(text) = simple_xhtml_text(&fragment) {
-        VisibleTextStyleFacts::plain_text_at_font_size(&text, Some(font_size))
-    } else {
-        VisibleTextStyleFacts::from_xhtml_fragment_at_font_size(&fragment, Some(font_size))
-    }
-}
-
 fn simple_xhtml_text(fragment: &str) -> Option<Cow<'_, str>> {
     let inner = fragment.strip_prefix("<p>")?.strip_suffix("</p>")?;
     if inner.contains('<') || inner.contains('>') {

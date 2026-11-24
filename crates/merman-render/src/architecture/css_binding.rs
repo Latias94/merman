@@ -16,6 +16,41 @@ pub(crate) struct ArchitectureCssBinding {
 }
 
 impl ArchitectureCssBinding {
+    pub(super) fn apply_native(
+        &mut self,
+        theme: &crate::theme::FamilyTheme,
+        native: &super::ArchitectureNativeStyle,
+        config: &merman_model::presentation::PresentationConfig,
+    ) {
+        use super::native_theme::authored;
+
+        self.arch_font_size_px = native.layout_text.font_size;
+        self.edge_color = authored(
+            config,
+            &["themeVariables.archEdgeColor", "themeVariables.lineColor"],
+        )
+        .map_or_else(
+            || theme.roles.stroke_connector.first_color().to_string(),
+            str::to_owned,
+        );
+        self.arrow_color = authored(config, &["themeVariables.archEdgeArrowColor"])
+            .map_or_else(|| self.edge_color.clone(), str::to_owned);
+        if !config.explicit_config_owns_path("themeVariables.archEdgeWidth") {
+            self.edge_width = format!("{}px", theme.form.connector_width);
+        }
+        self.group_border_color = authored(
+            config,
+            &[
+                "themeVariables.archGroupBorderColor",
+                "themeVariables.primaryBorderColor",
+            ],
+        )
+        .map_or_else(|| native.node_stroke.clone(), str::to_owned);
+        if !config.explicit_config_owns_path("themeVariables.archGroupBorderWidth") {
+            self.group_border_width = format!("{}px", native.stroke_width);
+        }
+    }
+
     pub(super) fn edge_color_source(config: &serde_json::Value) -> (&'static str, Option<&str>) {
         if let Some(color) = config
             .pointer("/themeVariables/archEdgeColor")

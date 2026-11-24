@@ -209,10 +209,9 @@ fn measure(
     let look_is_neo = crate::config::mermaid_config_diagram_look(config).is_neo();
     let theme_radius = crate::config::config_f64(config, &["themeVariables", "radius"])
         .map(|r| (r.max(0.), r.max(0.)));
-    let process_radius = (look_is_neo
-        && config.config_path_overrides_typed_default("themeVariables.radius"))
-    .then_some(theme_radius)
-    .flatten();
+    let process_radius = (look_is_neo && config.explicit_config_owns_path("themeVariables.radius"))
+        .then_some(theme_radius)
+        .flatten();
     let mut graph = MeasuredGraph {
         direction,
         routing: match curve {

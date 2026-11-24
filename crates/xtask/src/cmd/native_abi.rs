@@ -2638,28 +2638,26 @@ mod tests {
         let descriptor = committed_descriptor();
         let root = crate::cmd::workspace_root();
         let operations = resolve_operations(&root, &descriptor).unwrap();
-        let materialize = operations
+        let resolve = operations
             .iter()
-            .find(|operation| operation.id == "materialize_theme_json")
-            .expect("theme materialization operation must be projected");
-        assert_eq!(materialize.maturity.as_deref(), Some("alpha"));
+            .find(|operation| operation.id == "resolve_theme")
+            .expect("theme resolution operation must be projected");
+        assert_eq!(resolve.maturity.as_deref(), Some("stable"));
 
         let mut c = String::new();
         render_c_operation_type(&mut c, &operations);
-        assert!(
-            c.contains("#define MERMAN_NATIVE_OPERATION_MATURITY_MATERIALIZE_THEME_JSON \"alpha\"")
-        );
+        assert!(c.contains("#define MERMAN_NATIVE_OPERATION_MATURITY_RESOLVE_THEME \"stable\""));
 
         let mut rust = String::new();
         render_rust_operation_type(&mut rust, &operations);
         render_rust_operation_catalog(&mut rust, &operations);
         assert!(rust.contains(
-            "pub const MERMAN_NATIVE_OPERATION_MATURITY_MATERIALIZE_THEME_JSON: &str = \"alpha\";"
+            "pub const MERMAN_NATIVE_OPERATION_MATURITY_RESOLVE_THEME: &str = \"stable\";"
         ));
         assert!(rust.contains("pub maturity: Option<&'static str>"));
 
         let flutter = render_flutter_operations(&operations);
         assert!(flutter.contains("this.maturity"));
-        assert!(flutter.contains("MERMAN_NATIVE_OPERATION_MATURITY_MATERIALIZE_THEME_JSON"));
+        assert!(flutter.contains("MERMAN_NATIVE_OPERATION_MATURITY_RESOLVE_THEME"));
     }
 }

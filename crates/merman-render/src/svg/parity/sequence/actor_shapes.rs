@@ -1,7 +1,7 @@
 use super::super::*;
 use super::SequenceEmitCheckpoints;
 use super::geometry::node_left_top;
-use super::math_label::{record_sequence_katex_terminal_emission, sequence_katex_label};
+use super::math_label::sequence_katex_label;
 use crate::math::PREPARED_MATH_TERMINAL_SWITCH_ATTRIBUTE;
 use crate::sequence::{SEQUENCE_GLYPH_BAND_HEIGHT, SequenceActorBands, SequenceMathHeightMode};
 use merman_model::families::sequence::SequenceActor;
@@ -15,16 +15,11 @@ pub(super) struct ActorLifelineIdentity<'a> {
 pub(super) struct ActorLabelContext<'a> {
     pub(super) compat: &'a crate::sequence::SequenceCompatBinding,
     pub(super) diagram_id: SvgDiagramId<'a>,
-    pub(super) typed_fill: Option<&'a str>,
-    pub(super) typed_stroke: Option<&'a str>,
-    pub(super) translate_y: f64,
-    pub(super) shadow: &'a super::text_effect::SequenceTextShadow<'a>,
-    pub(super) shadow_evidence: &'a crate::diagram_theme::SvgShadowEvidenceRecorder,
+    pub(super) native: bool,
     pub(super) wrap_width_px: f64,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) style: &'a TextStyle,
     pub(super) typography: &'a crate::sequence::SequenceResolvedTypography,
-    pub(super) typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
     pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
     pub(super) actor_label_footprints: &'a [Option<crate::sequence::SequenceActorLabelFootprint>],
     pub(super) actor_index: Option<usize>,
@@ -37,43 +32,6 @@ impl<'a> ActorLabelContext<'a> {
             actor_index: Some(actor_index),
             ..*self
         }
-    }
-
-    pub(super) fn write_shadow(
-        &self,
-        out: &mut impl SvgOutput,
-        text: &str,
-        x: f64,
-        y: f64,
-        legacy_size: f64,
-        baseline: super::text_effect::TextShadowBaseline,
-    ) -> Result<Option<super::text_effect::SequenceTextShadowApplication>> {
-        if !self.shadow.needs_bounds() || self.shadow.is_paintless(text) {
-            return Ok(None);
-        }
-        let mut style = self.typography.terminal_text_style().clone();
-        if !self.typography.requires_resolved_emission() {
-            style.font_size = legacy_size;
-        }
-        self.shadow
-            .write_definition(out, text, x, y, baseline, &style, self.measurer)
-    }
-
-    pub(super) fn record_shadow(
-        &self,
-        application: Option<&super::text_effect::SequenceTextShadowApplication>,
-        text: &str,
-        surface: crate::sequence::SequenceTextSurface,
-        translate_y: f64,
-    ) {
-        self.shadow.record_translated_terminal(
-            application,
-            self.shadow.is_paintless(text),
-            self.shadow_evidence,
-            self.typography_receipt,
-            surface,
-            translate_y + self.translate_y,
-        );
     }
 
     fn write_actor(
@@ -144,10 +102,6 @@ impl<'a> ActorLabelContext<'a> {
         }
     }
 
-    pub(super) fn separate_label_shadow(&self) -> bool {
-        self.is_neo() && self.shadow.needs_bounds()
-    }
-
     pub(super) fn write_style_attr(
         &self,
         out: &mut impl SvgOutput,
@@ -166,30 +120,20 @@ impl<'a> ActorLabelContext<'a> {
     ) {
         let mut style = String::new();
         let mut declaration = |property: &str, color: &str| {
-            if (property == "fill" && self.typed_fill.is_some())
-                || (property == "stroke" && self.typed_stroke.is_some())
-            {
-                return;
-            }
             if !style.is_empty() {
                 style.push(' ');
             }
             let color = super::super::util::cssom_color_value(color);
             let _ = write!(style, "{property}: {color};");
         };
-        if self.compat.actor_palette_mode() {
+        if !self.native && self.compat.actor_palette_mode() {
             let (stroke, fill) = self.compat.actor_palette(actor_index);
-            let stroke = stroke.or_else(|| {
-                matches!(actor_type, "actor" | "boundary" | "control" | "database")
-                    .then(|| self.compat.actor_palette_stroke_fallback())
-                    .flatten()
-            });
             for (property, color) in [("stroke", stroke), ("fill", fill)] {
                 if let Some(color) = color {
                     declaration(property, color);
                 }
             }
-        } else {
+        } else if !self.native {
             let theme = self.compat;
             if matches!(actor_type, "actor" | "boundary" | "control" | "database") {
                 declaration("stroke", theme.actor_border.as_str());
@@ -214,54 +158,7 @@ pub(super) fn is_actor_man_variant(actor_type: &str) -> bool {
     matches!(actor_type, "actor" | "boundary" | "control" | "entity")
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum ActorFillCoverage {
-    TypedCss,
-    Unhandled,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum ActorStrokeCoverage {
-    TypedCss,
-    Unhandled,
-}
-
 pub(super) const LIFELINE_STROKE_WIDTH_PX: f64 = 0.5;
-
-/// Classifies which actor shapes are actually covered by the `.actor` CSS consumer.
-///
-/// The static Actor theme route may only claim evidence for shapes that receive the generated
-/// CSS. Actor-man glyphs have child `circle`/`line` nodes targeted directly by the generated
-/// selectors. Control remains conservative because its marker path still inherits the wrapper's
-/// inline fill; a participant custom class likewise owns its rectangle fill.
-pub(super) fn actor_fill_coverage(actor: &SequenceActor) -> ActorFillCoverage {
-    match actor.actor_type.as_str() {
-        // These actor-man glyphs use only circles/lines covered by the generated selectors.
-        "actor" | "boundary" | "entity" => ActorFillCoverage::TypedCss,
-        // The control arrow marker path still inherits the wrapper's inline fill. Do not sign the
-        // whole Actor fill route until the marker writer participates in the typed receipt.
-        "control" => ActorFillCoverage::Unhandled,
-        // Custom participant, collections, queue, and database bodies omit `.actor`; their
-        // source-owned paint must not be counted as typed theme consumption.
-        _ if actor_custom_class(actor).is_some() => ActorFillCoverage::Unhandled,
-        _ => ActorFillCoverage::TypedCss,
-    }
-}
-
-/// Classifies which actor shapes receive the generated actor stroke without an inline override.
-pub(super) fn actor_stroke_coverage(actor: &SequenceActor) -> ActorStrokeCoverage {
-    match actor.actor_type.as_str() {
-        // Actor-man children, regular rectangles, collections, and queue paths all receive the
-        // generated `.actor`/`.actor-man` stroke selectors directly or through an unstyled parent.
-        "actor" | "boundary" | "entity" => ActorStrokeCoverage::TypedCss,
-        // Mermaid's control and database glyphs put inline stroke on their wrappers. The control
-        // marker path still inherits that stroke even though its circle/line children are covered.
-        // Do not claim a typed stroke until those writers have dedicated terminal receipts.
-        "control" | "database" => ActorStrokeCoverage::Unhandled,
-        _ if actor_custom_class(actor).is_some() => ActorStrokeCoverage::Unhandled,
-        _ => ActorStrokeCoverage::TypedCss,
-    }
-}
 
 pub(super) fn write_actor_man_lifeline(
     out: &mut impl SvgOutput,
@@ -270,11 +167,10 @@ pub(super) fn write_actor_man_lifeline(
     y1: f64,
     y2: f64,
     actor_id: &str,
-    filter: &str,
 ) {
     let _ = write!(
         out,
-        r##"<g><line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="{stroke_width}px" stroke="#999" name="{name}" data-et="life-line" data-id="{data_id}"{filter}/></g>"##,
+        r##"<g><line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="{stroke_width}px" stroke="#999" name="{name}" data-et="life-line" data-id="{data_id}"/></g>"##,
         idx = idx,
         cx = fmt(cx),
         y1 = fmt(y1),
@@ -288,7 +184,7 @@ pub(super) fn write_actor_man_lifeline(
 impl ActorLabelContext<'_> {
     #[allow(
         clippy::too_many_arguments,
-        reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+        reason = "The SVG writer takes geometry, styles, and source text."
     )]
     pub(super) fn write_lifeline_root_open(
         &self,
@@ -298,7 +194,6 @@ impl ActorLabelContext<'_> {
         y1: f64,
         y2: f64,
         identity: ActorLifelineIdentity<'_>,
-        filter: &str,
     ) {
         let ActorLifelineIdentity { actor_id, actor } = identity;
         let actor_type = actor.actor_type.as_str();
@@ -313,7 +208,7 @@ impl ActorLabelContext<'_> {
         };
         let _ = write!(
             out,
-            r##"<line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="{stroke_width}px" stroke="#999" name="{name}" data-et="life-line" data-id="{data_id}"{filter}/><g id="root-{idx}"{root_class} data-et="participant" data-type="{actor_type}" data-id="{data_id}"{look_attr}"##,
+            r##"<line id="actor{idx}" x1="{cx}" y1="{y1}" x2="{cx}" y2="{y2}" class="actor-line 200" stroke-width="{stroke_width}px" stroke="#999" name="{name}" data-et="life-line" data-id="{data_id}"/><g id="root-{idx}"{root_class} data-et="participant" data-type="{actor_type}" data-id="{data_id}"{look_attr}"##,
             idx = idx,
             cx = fmt(cx),
             y1 = fmt(y1),
@@ -329,7 +224,7 @@ impl ActorLabelContext<'_> {
                 ""
             },
         );
-        if actor_type == "collections" && !self.separate_label_shadow() {
+        if actor_type == "collections" {
             self.write_shadow_attr(out);
         }
         out.push('>');
@@ -338,7 +233,7 @@ impl ActorLabelContext<'_> {
 
 #[allow(
     clippy::too_many_arguments,
-    reason = "The SVG writer takes geometry, source properties, and terminal evidence separately."
+    reason = "The SVG writer takes geometry and source properties."
 )]
 pub(super) fn write_collection_actor_shape(
     out: &mut impl SvgOutput,
@@ -358,12 +253,6 @@ pub(super) fn write_collection_actor_shape(
     } else {
         "#eaeaea"
     };
-    let separate_shadow = label_ctx.separate_label_shadow();
-    if separate_shadow {
-        out.push_str("<g");
-        label_ctx.write_shadow_attr(out);
-        out.push('>');
-    }
     for (rect_x, rect_y, class) in [
         (x, y, actor_placement_class(actor, placement_class)),
         (x - OFFSET, y + OFFSET, "actor".to_string()),
@@ -383,9 +272,6 @@ pub(super) fn write_collection_actor_shape(
         }
         label_ctx.write_style_attr(out, "collections", actor_index);
         out.push_str("/>");
-    }
-    if separate_shadow {
-        out.push_str("</g>");
     }
     write_actor_property_icon(out, n, property_icon);
     label_ctx.write_actor(out, n.x - OFFSET, y + OFFSET + height / 2.0, actor)
@@ -507,7 +393,6 @@ pub(super) fn actor_rect_geometry_supported(actor: &SequenceActor) -> bool {
         && actor_custom_class(actor).is_none()
 }
 
-// Keep the geometry and text receipts with their respective terminal owners.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn write_rect_actor_shape(
     out: &mut impl SvgOutput,
@@ -518,8 +403,6 @@ pub(super) fn write_rect_actor_shape(
     actor_index: usize,
     label_ctx: &ActorLabelContext<'_>,
     rect_style: SequenceActorRectStyle,
-    receipt: &crate::sequence::SequenceActorThemeReceipt,
-    shadow: Option<super::actor_effect::SequenceActorShadow<'_>>,
     property_icon: Option<&str>,
 ) -> Result<()> {
     write_rect_actor_body(
@@ -531,49 +414,10 @@ pub(super) fn write_rect_actor_shape(
         actor_index,
         label_ctx,
         rect_style,
-        shadow.is_some() || receipt.effect_cleared,
-        None,
     );
     out.checkpoint()?;
-    if shadow.is_some() || actor_rect_geometry_supported(actor) && receipt.effect_cleared {
-        receipt.record_effect_rect();
-    }
-    if actor_rect_geometry_supported(actor) {
-        receipt.record_geometry_rect();
-    }
     write_actor_property_icon(out, n, property_icon);
     label_ctx.write_actor(out, n.x, n.y, actor)
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(super) fn write_rect_actor_depth(
-    out: &mut impl SvgOutput,
-    n: &LayoutNode,
-    actor_id: &str,
-    actor: &SequenceActor,
-    actor_index: usize,
-    label_ctx: &ActorLabelContext<'_>,
-    rect_style: SequenceActorRectStyle,
-    shadow: super::actor_effect::SequenceActorShadow<'_>,
-) -> Result<()> {
-    let filter = shadow.write_depth_definition(out);
-    out.push_str(r#"<g data-merman-theme-depth="actor" aria-hidden="true" pointer-events="none">"#);
-    write_rect_actor_body(
-        out,
-        n,
-        actor_id,
-        actor,
-        "actor-depth",
-        actor_index,
-        label_ctx,
-        rect_style,
-        true,
-        Some(&filter),
-    );
-    out.push_str("</g>");
-    out.checkpoint()?;
-    shadow.record_emission();
-    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -586,8 +430,6 @@ fn write_rect_actor_body(
     actor_index: usize,
     label_ctx: &ActorLabelContext<'_>,
     rect_style: SequenceActorRectStyle,
-    suppress_look_filter: bool,
-    depth_filter: Option<&str>,
 ) {
     let (x, y) = node_left_top(n);
     let custom_class = actor_custom_class(actor);
@@ -614,9 +456,7 @@ fn write_rect_actor_body(
         h = fmt(n.height),
         fill = escape_xml_display(fill),
     );
-    if depth_filter.is_none() {
-        let _ = write!(out, r#" name="{}""#, escape_xml(actor_id));
-    }
+    let _ = write!(out, r#" name="{}""#, escape_xml(actor_id));
     let _ = write!(
         out,
         r#" rx="{radius}" ry="{radius}" class="{class}""#,
@@ -625,9 +465,7 @@ fn write_rect_actor_body(
     );
     if is_neo {
         out.push_str(r#" data-look="neo""#);
-        if !suppress_look_filter {
-            label_ctx.write_shadow_attr(out);
-        }
+        label_ctx.write_shadow_attr(out);
     }
     label_ctx.write_style_attr_with_width(
         out,
@@ -635,9 +473,6 @@ fn write_rect_actor_body(
         actor_index,
         supported.then_some(rect_style.stroke_width).flatten(),
     );
-    if let Some(filter) = depth_filter {
-        let _ = write!(out, r#" filter="{}""#, escape_attr(filter));
-    }
     out.push_str("/>");
 }
 
@@ -727,19 +562,8 @@ fn write_actor_label(
         );
         let raw_lines = crate::text::split_mermaid_common_br_lines(rendered_label);
         let line_count = raw_lines.len();
-        write_actor_label_lines(out, cx, cy, raw_lines, line_count, label_class, ctx, false)?;
+        write_actor_label_lines(out, cx, cy, raw_lines, line_count, label_class, ctx)?;
         out.push_str("</switch>");
-        record_sequence_katex_terminal_emission(
-            ctx.typography_receipt,
-            crate::sequence::SequenceTextSurface::ParticipantLabel,
-            &katex,
-        );
-        ctx.record_shadow(
-            None,
-            rendered_label,
-            crate::sequence::SequenceTextSurface::ParticipantLabel,
-            0.0,
-        );
         return ctx.checkpoints.checkpoint();
     }
 
@@ -755,19 +579,18 @@ fn write_actor_label(
             raw_lines.len(),
             label_class,
             ctx,
-            true,
         )?;
     } else {
         let raw_lines = crate::text::split_mermaid_common_br_lines(label);
         let line_count = raw_lines.len();
-        write_actor_label_lines(out, cx, cy, raw_lines, line_count, label_class, ctx, true)?;
+        write_actor_label_lines(out, cx, cy, raw_lines, line_count, label_class, ctx)?;
     }
     ctx.checkpoints.checkpoint()
 }
 
 #[allow(
     clippy::too_many_arguments,
-    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+    reason = "The SVG writer takes geometry, styles, and source text."
 )]
 fn write_actor_label_lines<'a>(
     out: &mut impl SvgOutput,
@@ -777,7 +600,6 @@ fn write_actor_label_lines<'a>(
     line_count: usize,
     label_class: &str,
     ctx: &ActorLabelContext<'_>,
-    record_receipt: bool,
 ) -> Result<()> {
     let n = line_count.max(1) as f64;
     for (i, raw) in raw_lines.into_iter().enumerate() {
@@ -788,22 +610,6 @@ fn write_actor_label_lines<'a>(
         } else {
             (i as f64 - (n - 1.0) / 2.0) * ctx.style.font_size
         };
-        let application = if record_receipt {
-            ctx.write_shadow(
-                out,
-                decoded.as_ref(),
-                cx,
-                cy + dy,
-                ctx.style.font_size,
-                super::text_effect::TextShadowBaseline::Middle,
-            )?
-        } else {
-            None
-        };
-        let filter = application
-            .as_ref()
-            .map(|a| format!(" filter=\"{}\"", escape_attr(&a.filter)))
-            .unwrap_or_default();
         let legacy_style = format!(
             "text-anchor: middle; {}",
             super::settings::sequence_text_style_attribute(ctx.style)
@@ -813,7 +619,7 @@ fn write_actor_label_lines<'a>(
             .terminal_style("text-anchor: middle", legacy_style);
         let _ = write!(
             out,
-            r#"<text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="actor {label_class}" style="{style}"{filter}><tspan x="{x}" dy="{dy}">{text}</tspan></text>"#,
+            r#"<text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="actor {label_class}" style="{style}"><tspan x="{x}" dy="{dy}">{text}</tspan></text>"#,
             x = fmt(cx),
             y = fmt(cy),
             style = escape_attr_display(&inline_style),
@@ -821,16 +627,6 @@ fn write_actor_label_lines<'a>(
             text = super::escape_prepared_text(decoded.as_ref())
         );
         out.checkpoint()?;
-        if record_receipt {
-            ctx.record_shadow(
-                application.as_ref(),
-                decoded.as_ref(),
-                crate::sequence::SequenceTextSurface::ParticipantLabel,
-                0.0,
-            );
-            ctx.typography_receipt
-                .record_terminal_text(crate::sequence::SequenceTextSurface::ParticipantLabel);
-        }
     }
     ctx.checkpoints.checkpoint()
 }

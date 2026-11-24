@@ -4,7 +4,6 @@ import Merman
 @main
 struct MermanAppleSmoke {
     static func main() throws {
-        if try importThemeRecipeInFreshProcess() { return }
         let client = Merman()
         guard client.bindingApiVersionV8() == 8 else {
             throw SmokeError.failed("unexpected UniFFI binding API version")
@@ -163,40 +162,6 @@ struct MermanAppleSmoke {
             }
         }
 
-        let invalidThemeRequest = MermanOperationRequestV4(
-            operationId: "materialize-theme-json",
-            source: #"{"styles":{"node":{"typography":{"font_stack":[]}}}}"#,
-            uri: nil,
-            optionsJson: nil,
-            control: nil
-        )
-        for operation: () throws -> MermanOperationResult in [
-            { try client.execute(request: invalidThemeRequest) },
-            { try engine.execute(request: invalidThemeRequest) },
-        ] {
-            do {
-                _ = try operation()
-                throw SmokeError.failed("invalid theme design was accepted")
-            } catch let error as MermanError {
-                switch error {
-                case let .Binding(_, codeName, _, _, _, _, _, _, detailsJson, _):
-                    guard let data = detailsJson?.data(using: .utf8),
-                          let details = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                          let authoring = details["theme_authoring"] as? [String: Any],
-                          let diagnostics = authoring["diagnostics"] as? [[String: Any]],
-                          let diagnostic = diagnostics.first,
-                          let context = diagnostic["details"] as? [String: String],
-                          codeName == "MERMAN_INVALID_ARGUMENT",
-                          authoring["schema_version"] as? Int == 1,
-                          diagnostic["code"] as? String == "theme-authoring.invalid-token-value",
-                          diagnostic["path"] as? String == "/styles/node/typography/font_stack",
-                          context == ["expected_domain_id": "font-stack"] else {
-                        throw SmokeError.failed("theme authoring lost its structured details")
-                    }
-                }
-            }
-        }
-
         let deadline = MermanOperationControl(timeoutMs: 0)
         let request = MermanOperationRequestV4(
             operationId: "svg",
@@ -221,9 +186,7 @@ struct MermanAppleSmoke {
             }
         }
 
-        try verifyThemeAuthoringGoldens(client: client)
-        try verifyThemePresetRecipes(client: client)
-        try verifyThemePaintAndFontBoundaries(client: client)
+        try verifyThemeV2(client: client, engine: engine)
         try verifyDenseThemeScenes(client: client)
         try engine.close()
         print("merman Apple UniFFI smoke passed")

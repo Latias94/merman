@@ -1,6 +1,4 @@
-use super::{
-    UsecaseDiagramLayout, UsecaseEdgePlan, UsecaseLabelPlan, UsecaseNodePlan, UsecaseThemePlan,
-};
+use super::{UsecaseDiagramLayout, UsecaseEdgePlan, UsecaseLabelPlan, UsecaseNodePlan};
 use crate::graph_layout::canonical::CanonicalRoutes;
 use crate::graph_layout::contour::ShapePortProfile;
 use crate::graph_layout::ir::{
@@ -98,7 +96,6 @@ pub(super) fn layout(
     config: &Value,
     plans: &[UsecaseNodePlan],
     edge_plans: &[UsecaseEdgePlan],
-    theme: &UsecaseThemePlan,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<(UsecaseDiagramLayout, UsecaseCanonicalLayout)> {
     work.charge_adapter(work.checked_add(plans.len(), model.nodes.len())?)?;
@@ -263,7 +260,7 @@ pub(super) fn layout(
     for plan in edge_plans {
         work.charge_adapter(0)?;
         let marker = |start| {
-            UsecaseMarker::for_edge(plan, start, neo, theme)
+            UsecaseMarker::for_edge(plan, start, neo)
                 .map_or_else(Default::default, |marker| marker.metrics())
         };
         graph.edges.push(MeasuredEdge {

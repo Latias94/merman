@@ -144,10 +144,9 @@ test("candidate runtime outputs follow explicit binding operation ownership", ()
   const contract = resolveCandidateRuntimeContract();
 
   assert.deepEqual(contract.operationIds, [
-    "describe-theme-support-json",
-    "export-theme-preset-json",
+    "export-theme-preset",
     "layout-json",
-    "materialize-theme-json",
+    "resolve-theme",
     "semantic-json",
     "svg",
     "svg-plan-json",

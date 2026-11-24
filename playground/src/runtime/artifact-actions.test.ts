@@ -99,7 +99,7 @@ test("a stale publication cannot be exported as the current workspace", async ()
 });
 
 test("host Follow changes reject stale copy/new exports while an already-open export keeps its concrete appearance", async () => {
-  const value = { ...workspace("same-source"), themePresetId: "editor", themeAppearance: "follow" as const };
+  const value = { ...workspace("same-source"), themePresetId: "studio", themeAppearance: "follow" as const };
   const operation = freezeRenderOperation({
     workspace: value, hostAppearance: "light", themeCatalog: themeCatalogFixture(),
     asciiEnabled: false, compareEnabled: false, diagnosticsEnabled: false,
@@ -107,7 +107,12 @@ test("host Follow changes reject stale copy/new exports while an already-open ex
     versions: { merman: "test-merman", mermaid: MERMAID_JS_VERSION },
   });
   const original = completedPublication("same-source");
-  const publication = { ...original, snapshot: { ...original.snapshot, operation } };
+  assert.equal(original.status, "success");
+  const metadata: SvgRenderMetadata = {
+    version: 1, operation_id: "svg", media_type: "image/svg+xml", runtime_policy: "default", byte_length: 0,
+    theme_outcome: { mode: "merman_native", preset_id: "studio", appearance: "light", notices: [] },
+  };
+  const publication = { ...original, merman: { ...original.merman, metadata }, snapshot: { ...original.snapshot, operation } };
   let hostAppearance: "light" | "dark" = "light";
   const calls: string[] = [];
   const renderedOptions: unknown[] = [];
@@ -128,7 +133,7 @@ test("host Follow changes reject stale copy/new exports while an already-open ex
     action: "copy-svg", engine: "merman", publicationId: publication.snapshot.publicationId,
   }), { code: "publication-not-current" });
   exports.rasterArtifact(target);
-  assert.deepEqual(renderedOptions, [{ preset: "editor", appearance: "light" }]);
+  assert.deepEqual(renderedOptions, [{ preset: "studio", appearance: "light" }]);
   assert.deepEqual(calls, []);
 });
 
@@ -136,8 +141,8 @@ test("export rejects a publication whose theme alone differs from the current se
   const publication = completedPublication("same-source");
   const publicationId = publication.snapshot.publicationId;
   for (const theme of [
-    { themePresetId: "cyberpunk", themeRecipeJson: null },
-    { themePresetId: null, themeRecipeJson: '{"schema_version":1,"kind":"design"}' },
+    { themePresetId: "cyberpunk", themeDocumentJson: null },
+    { themePresetId: null, themeDocumentJson: '{"schema_version":2,"extends":"studio"}' },
   ]) {
     const calls: string[] = [];
     const dependencies = {
@@ -160,7 +165,7 @@ test("export freezes the unavailable preset notice with the actual base-theme ra
   const base = completedPublication("base-theme");
   const applied = { ...workspace("base-theme"), themePresetId: "future-preset" };
   const operation = freezeRenderOperation({
-    ...base.snapshot.operation, workspace: applied, themePresets: [],
+    ...base.snapshot.operation, workspace: applied, themeCatalog: { ...themeCatalogFixture(), presets: [] },
   });
   const publication: CompletedRenderBatch = { ...base, snapshot: { ...base.snapshot, operation } };
   const inputs: ConfiguredMermanOperationInput[] = [];
@@ -370,11 +375,7 @@ test("freezes an export target that does not retarget after a newer publication"
   const metadata: SvgRenderMetadata = {
     version: 1, operation_id: "svg", media_type: "image/svg+xml",
     runtime_policy: "default", byte_length: initial.merman.artifact.svg.length,
-    theme_execution_evidence: {
-      version: 2, family_id: "flowchart", theme_status: "verified", output_mutated: false,
-      target_kind: "inline_svg", target_status: "unverified", target_reason_ids: [],
-      font_source: "browser", materialized_theme: "default",
-    },
+    theme_outcome: { mode: "merman_native", preset_id: "studio", appearance: "light", notices: [] },
   };
   const first: CompletedRenderBatch = { ...initial, merman: { ...initial.merman, metadata } };
   let state: RenderCoordinatorState = first;
@@ -407,9 +408,9 @@ test("freezes an export target that does not retarget after a newer publication"
   assert.equal(label(target.svgArtifact.svg), "merman");
   assert.equal(label(mermaidTarget.svgArtifact.svg), "mermaid");
   assert.equal(target.publicationId, first.snapshot.publicationId);
-  assert.equal(target.metadata, metadata);
+  assert.equal(target.appearance, "light");
   assert.equal(target.svgPipeline, first.snapshot.operation.svgPipeline);
-  assert.equal(mermaidTarget.metadata, null);
+  assert.equal(mermaidTarget.appearance, null);
   assert.equal(mermaidTarget.svgPipeline, null);
   assert.equal(label(targetOwner.rasterArtifact(target).svg), "frozen-raster");
   assert.equal(label(targetOwner.rasterArtifact(target).svg), "frozen-raster");

@@ -168,13 +168,13 @@ The compatibility version is generated from the
 merman-cli capabilities --json
 ```
 
-The current JSON document uses capability schema 2 and CLI contract 8. It includes the
+The current JSON document uses capability schema 2 and CLI contract 9. It includes the
 Merman package version, pinned Mermaid and `mmdc` versions, compiled command/capability/output
 sets, and the canonical descriptor digest. ASCII-enabled builds also expose schema-1
 family/profile/encoding/fallback discovery plus success/error report schemas and streams.
-Contract 7 adds the native `theme inspect` command, concrete `--theme-appearance light|dark`
-selection, and the grouped schema-1 `theme_presets` catalog. These additions do not extend the
-mmdc dialect or reinterpret its literal Mermaid `--theme` values.
+Contract 9 uses `theme list --json` to discover native presets and their appearances, `theme export`
+to start a document, and `theme check` to validate it. Native `--theme` accepts preset IDs, Theme v2
+JSON files, and Mermaid names. The `mmdc` dialect accepts literal Mermaid theme names.
 Contract 8 returns versioned geometry from native `layout`. Use `layout --snapshot` for the
 full metadata and semantic response provided by `layout` under contract 7.
 

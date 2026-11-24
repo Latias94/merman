@@ -5,8 +5,6 @@ pub(crate) struct TimelineSectionCssBinding {
     pub(crate) c_scale: String,
     pub(crate) c_scale_label: String,
     pub(crate) c_scale_inv: String,
-    source_scale_present: bool,
-    source_inverse_present: bool,
 }
 
 /// Operation-owned visual inputs, including browser CSS and absent gradient stops.
@@ -31,14 +29,6 @@ pub(crate) struct TimelineCssBinding {
 }
 
 impl TimelineCssBinding {
-    pub(super) fn config_owns_color(
-        config: &merman_model::presentation::PresentationConfig,
-        key: &str,
-    ) -> bool {
-        let path = format!("themeVariables.{key}");
-        config.get_str(&path).is_some() && config.config_paint_overrides_typed_default(&path)
-    }
-
     pub(crate) fn section_font_weight(&self) -> Option<&str> {
         (self.is_redux_theme && !self.sections.is_empty()).then_some(self.font_weight.as_str())
     }
@@ -62,7 +52,7 @@ impl TimelineCssBinding {
         }
     }
 
-    pub(crate) fn section_font_weight_is_measurable(&self) -> bool {
+    fn section_font_weight_is_measurable(&self) -> bool {
         self.section_font_weight().is_none_or(|weight| {
             crate::mermaid_style::parse_style_declaration(&format!("font-weight:{weight}"))
                 .is_some_and(|declaration| {
@@ -99,16 +89,10 @@ impl TimelineCssBinding {
             .map(|index| {
                 let [fill, label, inverse] =
                     crate::svg::render_theme::timeline_default_section_colors(index);
-                let source_fill =
-                    config_string(config, &["themeVariables", &format!("cScale{index}")]);
-                let source_inverse =
-                    config_string(config, &["themeVariables", &format!("cScaleInv{index}")]);
                 TimelineSectionCssBinding {
-                    source_scale_present: source_fill.is_some(),
-                    source_inverse_present: source_inverse.is_some(),
-                    c_scale: source_fill.unwrap_or_else(|| fill.into()),
+                    c_scale: color(&format!("cScale{index}"), fill),
                     c_scale_label: color(&format!("cScaleLabel{index}"), label),
-                    c_scale_inv: source_inverse.unwrap_or_else(|| inverse.into()),
+                    c_scale_inv: color(&format!("cScaleInv{index}"), inverse),
                 }
             })
             .collect();
@@ -133,20 +117,6 @@ impl TimelineCssBinding {
             gradient_stops: ["gradientStart", "gradientStop"]
                 .map(|key| config_string(config, &["themeVariables", key])),
         }
-    }
-
-    pub(crate) fn source_scale(&self, slot: usize) -> Option<&str> {
-        let section = self.sections.get(slot)?;
-        section
-            .source_scale_present
-            .then_some(section.c_scale.as_str())
-    }
-
-    pub(crate) fn source_inverse(&self, slot: usize) -> Option<&str> {
-        let section = self.sections.get(slot)?;
-        section
-            .source_inverse_present
-            .then_some(section.c_scale_inv.as_str())
     }
 
     pub(crate) fn section_palette_color(&self, slot: usize) -> Option<&str> {
@@ -257,9 +227,14 @@ mod tests {
         assert_eq!(binding.section_palette_color(2), None);
         assert_eq!(binding.section_palette_color(3), Some("var(--border)"));
         assert_eq!(binding.border_colors, [None, Some("var(--border)".into())]);
-        assert_eq!(binding.source_scale(0), None);
-        assert_eq!(binding.source_inverse(0), None);
-        assert!(!binding.sections[0].c_scale.is_empty());
+        assert_eq!(
+            binding.sections[0].c_scale,
+            "hsl(240, 100%, 76.2745098039%)"
+        );
+        assert_eq!(
+            binding.sections[0].c_scale_inv,
+            "hsl(60, 100%, 86.2745098039%)"
+        );
     }
 
     #[test]

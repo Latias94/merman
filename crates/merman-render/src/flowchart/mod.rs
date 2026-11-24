@@ -3,10 +3,10 @@ pub(crate) mod bpmn;
 mod class_style;
 mod compatibility;
 mod config;
-mod edge_label_padding;
 mod edge_occurrence;
 #[cfg(feature = "layout-elk")]
 pub mod elk;
+pub(crate) mod native_theme;
 use crate::graph_label as label;
 mod image;
 mod lane_title;
@@ -18,9 +18,10 @@ mod self_loop;
 mod shapes;
 #[cfg(feature = "layout-shoal")]
 pub(crate) mod shoal;
+mod source_style;
 mod style;
+pub(crate) use source_style::{FlowchartSourceFacetStatus, FlowchartStyleDeclaration};
 mod svg_label_artifact;
-mod theme_evidence;
 
 pub(crate) use merman_model::families::flowchart::{
     FlowEdge, FlowNode, FlowSubgraph, FlowchartModel, FlowchartRenderContext,
@@ -32,10 +33,7 @@ pub(crate) use class_style::{
     FlowchartClassDefStyles, FlowchartClassDefinitions, FlowchartLabelDom,
     FlowchartStructuralLabelTypography,
 };
-pub(crate) use compatibility::{
-    FlowchartCompatibilityBinding, FlowchartEffectEligibility, FlowchartPreparedTheme,
-};
-pub(crate) use edge_label_padding::FlowchartEdgeLabelPadding;
+pub(crate) use compatibility::{FlowchartCompatibilityBinding, FlowchartPreparedTheme};
 pub(crate) use edge_occurrence::{
     FlowchartEdgeKey, FlowchartEdgeOwners, FlowchartEdgeTransportPlan,
 };
@@ -211,20 +209,14 @@ impl Deref for FlowchartRenderModelRef<'_> {
 
 pub(crate) use layout::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter;
 
-pub(crate) use base_typography::{
-    FlowchartBaseTypographyLabelEmission, FlowchartBaseTypographyPlan,
-    FlowchartBaseTypographyStyles,
-};
+pub(crate) use base_typography::{FlowchartBaseTypographyPlan, FlowchartBaseTypographyStyles};
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
 pub(crate) use config::FlowchartLayoutSettings;
-pub(crate) use config::{
-    FLOWCHART_FIXED_LABEL_WRAP_WIDTH, FlowchartConfigView, FlowchartTypographyConfigOwnership,
-    flowchart_typography_config_ownership,
-};
+pub(crate) use config::{FLOWCHART_FIXED_LABEL_WRAP_WIDTH, FlowchartConfigView};
 pub(crate) use image::{ImageSquareGeometry, ImageSquareSizing};
 #[cfg(not(test))]
 pub(crate) use label::flowchart_non_markdown_svg_source_word_lines;
@@ -279,20 +271,3 @@ pub(crate) use svg_label_artifact::{
     measure_flowchart_svg_label_for_layout_with_metrics_and_source_style,
     measure_flowchart_svg_label_for_layout_with_source_style,
 };
-pub(crate) use theme_evidence::{
-    FlowchartClusterThemeEmission, FlowchartClusterThemeStyle, FlowchartEdgeLabelThemeEmission,
-    FlowchartEdgeThemeEmission, FlowchartEdgeThemeStyle, FlowchartFacetPrecedence,
-    FlowchartNodeThemeEmission, FlowchartNodeThemeStyle, FlowchartRadiusEmission,
-    FlowchartShapeFacetEmissionReceipt, FlowchartSourceFacetStatus, FlowchartThemeEvidenceRecorder,
-    FlowchartThemeFacetEmission,
-};
-
-mod text_paint;
-pub(crate) use text_paint::{
-    FlowchartTextPaintChannel, FlowchartTextPaintFacts, FlowchartTextPaintPlan,
-};
-mod text_surface_paint;
-pub(crate) use text_surface_paint::FlowchartTextSurfacePaintPlan;
-
-mod label_typography;
-pub(crate) use label_typography::FlowchartLabelTypography;

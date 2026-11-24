@@ -24,10 +24,9 @@
     ],
     "system_adapter_ids": [],
     "operation_ids": [
-      "describe-theme-support-json",
-      "export-theme-preset-json",
+      "export-theme-preset",
       "layout-json",
-      "materialize-theme-json",
+      "resolve-theme",
       "semantic-json",
       "svg",
       "svg-plan-json"
@@ -39,6 +38,7 @@
       "theme-catalog"
     ],
     "option_group_ids": [
+      "background",
       "environment",
       "fixed_local_offset_minutes",
       "fixed_today",

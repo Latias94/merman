@@ -15,6 +15,8 @@ mod key_set;
 mod lifecycle;
 mod metadata;
 mod metadata_registry;
+#[cfg(any(feature = "svg", feature = "ascii"))]
+mod native_theme;
 mod operation;
 mod operation_contract;
 mod option_contract;
@@ -29,17 +31,12 @@ mod svg_viewport;
 pub use svg_viewport::BindingSvgViewport;
 #[cfg(feature = "svg")]
 mod text_measurement;
-#[cfg(feature = "svg")]
-mod theme_design;
-mod theme_execution_evidence;
 mod transport_contract;
 
 #[cfg(feature = "ascii")]
 mod ascii;
 #[cfg(feature = "svg")]
 mod render;
-#[cfg(feature = "svg")]
-mod theme;
 
 pub use artifact_contract::{ArtifactContractSpec, ValidatedArtifactContract};
 pub use capability::{
@@ -53,9 +50,6 @@ pub use catalog_contract::{
 };
 #[cfg(feature = "analysis")]
 pub use common::analysis_options_with_resource_ceiling;
-#[cfg(feature = "svg")]
-#[doc(hidden)]
-pub use common::prepare_theme_authoring_options_json;
 pub use common::{
     BINDING_OPTIONS_SCHEMA_VERSION, BINDING_RESULT_PAYLOAD_VERSION,
     BindingCancellationErrorDetails, BindingDiagnosticErrorDetails, BindingDiagnosticSpan,
@@ -93,7 +87,7 @@ pub use metadata::{
     configurable_lint_rule_catalog_json, diagram_family_capabilities,
     diagram_family_capabilities_json, lint_rule_catalog, lint_rule_catalog_json,
     runtime_constructor_resource_limits, supported_diagrams, supported_diagrams_json,
-    supported_themes, supported_themes_json,
+    supported_themes, supported_themes_json, theme_catalog_json,
 };
 pub use metadata_registry::{MetadataKey, MetadataSpec};
 pub use operation::{
@@ -105,9 +99,9 @@ pub use operation::{
 pub use operation_contract::{
     BINDING_OPERATION_METADATA_CONTRACT_SCHEMA_VERSION, BindingJsonFieldContract,
     BindingOperationExpectation, BindingOperationMetadataContract, BindingOutputPlanContract,
-    BindingThemeExecutionEvidenceContract, BindingUnavailableOperationExpectation,
-    binding_operation_expectations, binding_operation_expectations_json,
-    operation_metadata_contract, operation_metadata_contract_json,
+    BindingUnavailableOperationExpectation, binding_operation_expectations,
+    binding_operation_expectations_json, operation_metadata_contract,
+    operation_metadata_contract_json,
 };
 pub use option_contract::{BindingOptionGroupKey, BindingOptionGroupSpec};
 pub use payload_contract::{BINDING_OPERATION_SCHEMA_VERSION, BindingPayloadSchemaKey};
@@ -123,13 +117,6 @@ pub use services::BindingEngineServices;
 #[cfg(feature = "svg")]
 pub use services::{BindingIconRegistry, build_icon_registry, build_icon_registry_from_json};
 pub use svg_plan::{SVG_PLAN_SCHEMA_VERSION, SvgPlanPayload, svg_plan_json};
-pub use theme_execution_evidence::{
-    BINDING_THEME_EXECUTION_EVIDENCE_MAX_ID_UTF8_BYTES,
-    BINDING_THEME_EXECUTION_EVIDENCE_MAX_TARGET_REASON_IDS,
-    BINDING_THEME_EXECUTION_EVIDENCE_SCHEMA_VERSION, BindingThemeDiagnostic,
-    BindingThemeExecutionEvidence, BindingThemeExecutionEvidenceV2,
-    BindingUnknownThemeExecutionEvidence,
-};
 
 /// Parses Mermaid into the canonical semantic JSON model without requiring any render backend.
 pub fn parse_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, BindingError> {
@@ -142,8 +129,6 @@ pub use merman_analysis::{ANALYSIS_FACTS_PAYLOAD_VERSION, ANALYSIS_PAYLOAD_VERSI
 #[cfg(feature = "ascii")]
 pub use ascii::render_ascii;
 #[cfg(feature = "svg")]
-pub use merman::svg::ThemeResourcePolicy;
-#[cfg(feature = "svg")]
 pub use merman::svg::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
     HostTextMeasurementRequest, HostTextMeasurer, IconPack, IconRegistryResourceLimitDescriptor,
@@ -151,6 +136,8 @@ pub use merman::svg::{
     TextMeasurementPhase, TextMetrics, TextStyle, WrapMode,
     icon_registry_resource_limit_descriptors, validate_host_text_measurement,
 };
+#[cfg(any(feature = "svg", feature = "ascii"))]
+pub use native_theme::{export_theme_preset_json, resolve_theme_json, resolve_theme_request_json};
 #[cfg(feature = "jpeg")]
 pub use render::render_jpeg;
 #[cfg(feature = "pdf")]
@@ -163,18 +150,6 @@ pub use render::{edge_geometry_json, layout_json, render_svg};
 pub use text_measurement::{
     HostTextMeasurementRecord, HostTextMeasurementResultKind, HostTextMeasurementTransportFields,
     HostTextWhiteSpaceCode, decode_host_text_measurement, host_text_measurement_transport_fields,
-};
-#[cfg(feature = "svg")]
-pub use theme::{
-    compile_theme_selection_json, compile_theme_selection_json_with,
-    compile_theme_selection_json_with_appearance,
-};
-#[cfg(feature = "svg")]
-pub use theme_design::{
-    compile_theme_design_json, compile_theme_design_json_with, describe_theme_support_json,
-    describe_theme_support_json_with_resource_policy, export_theme_preset_json,
-    export_theme_preset_json_with, export_theme_preset_json_with_resource_policy,
-    materialize_theme_design_json, materialize_theme_design_json_with_resource_policy,
 };
 pub use transport_contract::{
     BindingTransportExposureSpec, BindingTransportKey, WEB_TRANSPORT_API_VERSION,

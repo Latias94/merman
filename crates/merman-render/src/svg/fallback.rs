@@ -1068,7 +1068,7 @@ fn writer_owned_fallback_background<'a, E>(
     if occurrence.is_empty() || fill.is_empty() {
         return Ok(None);
     }
-    if crate::diagram_theme::ThemeColorValue::parse(fill).is_err() {
+    if merman_markup::theme_color::ThemeColor::parse(fill).is_err() {
         return Ok(None);
     }
     Ok(Some((occurrence, fill)))

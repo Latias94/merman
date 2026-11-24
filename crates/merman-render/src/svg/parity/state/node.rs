@@ -170,9 +170,6 @@ pub(super) fn render_state_node_svg(
     let stroke_path_style_attr = node_style
         .map(crate::state::StateNodeStylePlan::stroke_path_style_attr)
         .unwrap_or_default();
-    let semantic_shape_style_attr = node_style
-        .map(crate::state::StateNodeStylePlan::semantic_shape_style_attr)
-        .unwrap_or_default();
     let text_style_attr = node_style
         .map(crate::state::StateNodeStylePlan::label_style_attr)
         .unwrap_or_default();
@@ -280,7 +277,7 @@ pub(super) fn render_state_node_svg(
                     details.leaf_nodes_roughjs += start.elapsed();
                 }
                 let surface = compatibility
-                    .node_shape_surface(node, crate::diagram_theme::ThemeTarget::SpecialState)
+                    .node_shape_surface(node, crate::state::StateNodeKind::Special)
                     .expect("State start node must have a compatibility surface");
                 let compatibility_fill = compatibility.terminal_paint_css(
                     surface,
@@ -320,7 +317,7 @@ pub(super) fn render_state_node_svg(
                 out.push_str(&link_close);
                 return Ok(());
             }
-            let mut semantic_style = semantic_shape_style_attr.to_string();
+            let mut semantic_style = String::new();
             if !small_shadow_attr.is_empty() {
                 let _ = write!(
                     semantic_style,
@@ -976,7 +973,7 @@ pub(super) fn render_state_node_svg(
             let lh = metrics.height.max(0.0);
 
             let surface = compatibility
-                .node_shape_surface(node, crate::diagram_theme::ThemeTarget::State)
+                .node_shape_surface(node, crate::state::StateNodeKind::Ordinary)
                 .expect("ordinary State node must have a compatibility surface");
             let compatibility_fill = compatibility.terminal_paint_css(
                 surface,

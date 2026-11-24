@@ -23,7 +23,7 @@ const WORKSPACE: WorkspaceSnapshot = {
   diagramTheme: "forest",
   diagramFont: "arial",
   themePresetId: "future-theme",
-  themeRecipeJson: null,
+  themeDocumentJson: null,
   svgPipeline: "readable",
   textMeasurementMode: "headless",
 };
@@ -255,7 +255,7 @@ test("hydrates a shared custom recipe with its workspace and view", () => {
   const workspace: WorkspaceSnapshot = {
     ...WORKSPACE,
     themePresetId: null,
-    themeRecipeJson: '{"schema_version":1,"kind":"design","design":{}}',
+    themeDocumentJson: '{"schema_version":1,"kind":"design","design":{}}',
   };
   const issueUrl = new URL(
     createIssueShareUrl(workspace, VIEW, {

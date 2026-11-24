@@ -1,14 +1,14 @@
 # merman-typst-plugin
 
-`merman-typst-plugin` is the Typst WebAssembly transport for `merman`. It uses `wasm-minimal-protocol` and delegates rendering, analysis, and theme authoring to `merman-bindings-core`; it does not own a second Mermaid parser, renderer, or theme materializer.
+`merman-typst-plugin` is the Typst WebAssembly transport for `merman`. It uses `wasm-minimal-protocol` and delegates rendering, analysis, and Theme v2 operations to `merman-bindings-core`.
 
 > **Implementation transport:** Typst authors should import the [`@preview/merman`](https://typst.app/universe/package/merman) package. Do not load this raw WebAssembly artifact or depend on the Rust crate directly; the Typst wrapper owns package versioning, options, error presentation, and artifact loading.
 
-Typst wrapper `0.6.0` bundles this transport from Merman `0.10.0`; wrapper `0.5.0` bundles Merman `0.9.0`, and wrapper `0.4.0` bundles Merman `0.8.0`. See the [Typst package guide](../../distribution/typst/merman/README.md) for imports, rendering options, and upgrade instructions.
+The current source tree builds wrapper `0.6.0` with Merman `0.11.0`. Wrapper `0.5.0` bundled Merman `0.9.0`, and wrapper `0.4.0` bundled Merman `0.8.0`. See the [Typst package guide](../../distribution/typst/merman/README.md) for imports, rendering options, and upgrade instructions.
 
 ## Typst Plugin ABI 3
 
-The current Typst plugin ABI version is `3`. It is independent from native ABI 3 and from the shared binding options schema. ABI 3 combines theme authoring and catalog discovery into one change from published ABI 2. These authoring operations remain Alpha until the C7a qualification gate closes; adding them to the transport does not freeze their payload contract. The WebAssembly module distinguishes callable ABI operations from linker metadata.
+The Typst plugin ABI is versioned independently of the native ABI and shared binding schemas. Use the wrapper and plugin from the same package. The WebAssembly module distinguishes callable ABI operations from linker metadata.
 
 It imports exactly these two protocol functions:
 
@@ -37,16 +37,17 @@ compiler's default linker exports. No other function, memory, table, or global e
 
 `wasm-profiles.json` owns the ABI number. Run `cargo run -p xtask -- gen-typst-profile-constants` after changing it; the generated Rust projection contains both the numeric `TYPST_PLUGIN_ABI_VERSION` constant and the ASCII bytes returned by `abi_version`. `verify-typst-profile-constants` and the aggregate `verify-generated` gate reject drift. `package_version` returns the Rust workspace package version.
 
-`capabilities_json` reports the flat runtime catalog schema `1` compiled from the canonical `typst-wasm` artifact recipe. It contains only current artifact facts: transport and package identity, capability/output/operation IDs, registry size, text measurement, and resource descriptors. It does not copy the global capability vocabulary or independently versioned options and result schemas. `render_svg_json`, `analyze_json`, `theme_operation_json`, and `theme_catalog_json` return result envelope schema 1 with `version`, `operation`, `ok`, `code`, `code_name`, `kind`, `capability_id`, `message`, and `data`. A successful render stores the SVG in `data.svg`; successful analysis stores canonical analysis schema 1 in `data.analysis`; successful theme operations store the shared canonical wire result in `data.result`. The theme dispatcher accepts only `materialize-theme-json`, `describe-theme-support-json`, and `export-theme-preset-json`. The theme catalog export uses operation `theme-catalog` and stores catalog schema 1 in `data.result`, including preset metadata and the actual constrained theme resource limits. Runtime discovery advertises `theme-catalog` in `metadata_ids`. A failed operation keeps its machine-readable error kind and optional capability ID. ABI 1's legacy `validate_json` projection is not exported.
+`capabilities_json` reports the flat runtime catalog schema 1 for the `typst-wasm` artifact. `render_svg_json`, `analyze_json`, `theme_operation_json`, and `theme_catalog_json` use result envelope schema 1. A successful render returns `data.svg`, analysis returns `data.analysis`, and a theme call returns `data.result`. Transport errors include a machine-readable error kind and an optional capability ID.
+
+`theme_catalog_json` returns shared catalog schema 2 and appears as `theme-catalog` in `metadata_ids`. `theme_operation_json` accepts `export-theme-preset` with raw UTF-8 preset ID bytes and `resolve-theme` with a JSON object containing `document`, optional `appearance`, and optional `auto_fix_contrast`. Pass empty `options_json` bytes for both operations.
 
 For SVG rendering, Typst's effective default combines the `constrained` base profile with the
 shared `interactive` layout-work allowance, currently 14,100,000 units. An omitted or null
 `resources.profile` inherits this host default; explicit `"constrained"` without a numeric layout
 override retains the shared 125,000 units. An explicit finite positive integer in
 `resources.limits.max_layout_work_units` overrides either choice. Other ceilings, options byte
-admission, and theme preflight remain constrained. The runtime catalog still reports shared profile
-capacities. These defaults and overrides require matching wrapper `0.6.0` and its bundled plugin.
-Analysis and theme operations retain their ordinary constrained defaults.
+admission, and analysis retain the constrained policy. The runtime catalog reports shared profile
+capacities. Theme resolution uses the shared Theme v2 compiler budget.
 
 The closed Typst import surface has no synchronous font-measurement service. Its runtime catalog
 therefore advertises only the built-in `deterministic` text-measurement provider; Typst font assets

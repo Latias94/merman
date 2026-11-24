@@ -62,7 +62,6 @@ fn er_presentation_from_model(model: ErDiagramModel) -> PresentationDiagram {
             config: config.clone(),
             effective_config: config,
             title: None,
-            theme_recipe: None,
         },
         RenderSemanticModel::Er(model),
         PresentationContext::None,

@@ -1,512 +1,111 @@
-use std::collections::{BTreeMap, BTreeSet};
+use merman_model::presentation::PresentationConfig;
 
-use crate::diagram_theme::{
-    FamilyThemeMechanism, FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme,
-    ResolvedStyleProperty, Specified, ThemeTarget, ThemeVariant,
-};
-use crate::family::{
-    DirectStaticSelectorDomain, resolve_direct_static_fill, resolve_direct_static_stroke,
-};
-use crate::resources::{OperationWorkError, OperationWorkMeter};
+use crate::theme::{Color, FamilyTheme};
 
-mod cluster;
 mod css_binding;
-mod evidence;
-mod node;
-mod note;
-mod outcomes;
 mod paint;
 mod relation_width;
 mod text;
-mod title;
 
-use cluster::ClassClusterThemePlan;
 pub(crate) use css_binding::ClassCssThemeBinding;
-pub(crate) use evidence::ClassThemeEvidenceRecorder;
-pub(crate) use node::ClassNodePaintBinding;
-use node::ClassNodeThemePlan;
-pub(crate) use note::ClassNoteThemePlan;
-pub(crate) use outcomes::ClassThemeOutcomeSummary;
-pub(crate) use outcomes::{
-    ClassMarkerPaintBinding, ClassNodePaintOutcomes, ClassRelationPaintOutcome, ClassThemeOutcomes,
-};
-pub(crate) use relation_width::ClassRelationWidthBinding;
-pub(crate) use text::{
-    ClassNodeLabelStyleFacts, ClassTextOutcomes, ClassTextPaint, ClassTextTerminalFacts,
-    ClassTextThemePlan,
-};
-use title::ClassTitleThemePlan;
+use paint::ClassPaintBinding;
+use relation_width::ClassRelationWidthBinding;
+pub(crate) use text::ClassTextThemePlan;
 
-/// Background fill and unsupported sibling origins share the first static resolution.
-#[derive(Debug, Clone, Default)]
-struct ClassEdgeLabelBackgroundPlan {
-    config_owned_fill: bool,
-    paint: Option<outcomes::ClassSelectedPaint>,
-    static_winners: BTreeMap<ResolvedStyleProperty, usize>,
-}
-
-impl ClassEdgeLabelBackgroundPlan {
-    fn resolve(
-        theme: &ResolvedDiagramTheme,
-        config: &merman_model::presentation::PresentationConfig,
-        work_meter: &OperationWorkMeter,
-    ) -> Result<Self, OperationWorkError> {
-        let mut plan = Self {
-            config_owned_fill: paint::ClassConfigPaint::background(config.as_value())
-                .config_owned(config),
-            ..Self::default()
-        };
-        // Source-owned backgrounds have no prepared style; completion still resolves
-        // their unsupported siblings without claiming the source-owned fill.
-        if plan.config_owned_fill {
-            return Ok(plan);
-        }
-        let style = theme.style_with_work_meter(
-            ThemeTarget::EdgeLabelBackground,
-            ThemeVariant::Default,
-            None,
-            work_meter,
-        )?;
-        plan.static_winners = style
-            .winner_rule_properties()
-            .map(|(property, origin)| (property, origin.rule_index()))
-            .collect();
-        plan.paint = resolve_direct_static_fill(
-            theme,
-            &style,
-            &[ThemeTarget::EdgeLabelBackground],
-            DirectStaticSelectorDomain::Default,
-        )
-        .map(|paint| {
-            let (css, rule_index, _) = paint.into_parts();
-            outcomes::ClassSelectedPaint {
-                target: ThemeTarget::EdgeLabelBackground,
-                rule_index,
-                css: css.into_string(),
-            }
-        });
-        Ok(plan)
-    }
-
-    fn static_winner_rule(&self, property: ResolvedStyleProperty) -> Option<usize> {
-        self.static_winners.get(&property).copied()
-    }
-}
-
-/// Prepared final Class relation paint winner shared by bounds, SVG emission, and evidence.
-/// Node resolution stays behind the same crate-private handle for existing renderer callers.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug)]
 pub(crate) struct ClassRelationThemePlan {
-    theme_requested: bool,
-    stroke_binding: paint::ClassPaintBinding,
-    stroke_width: ClassRelationWidthBinding,
-    static_winner_rules: BTreeMap<ResolvedStyleProperty, usize>,
-    ordinal_winner_rules: BTreeSet<(usize, ResolvedStyleProperty)>,
-    node_plan: ClassNodeThemePlan,
-    note_plan: ClassNoteThemePlan,
-    cluster_plan: ClassClusterThemePlan,
-    namespace_title_plan: ClassTitleThemePlan,
-    diagram_title_plan: ClassTitleThemePlan,
-    track_edge_label_backgrounds: bool,
-    edge_label_background: ClassEdgeLabelBackgroundPlan,
+    stroke: ClassPaintBinding,
+    width: ClassRelationWidthBinding,
+    note_fill: ClassPaintBinding,
+    note_stroke: ClassPaintBinding,
+    cluster_fill: ClassPaintBinding,
+    cluster_stroke: ClassPaintBinding,
+    namespace_title: ClassPaintBinding,
+    diagram_title: ClassPaintBinding,
+    native_edge_label_background: Option<String>,
+    native_edge_curve: Option<&'static str>,
 }
 
 impl ClassRelationThemePlan {
     pub(crate) fn resolve(
-        theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &merman_model::presentation::PresentationConfig,
-        relation_count: usize,
-        node_count: usize,
-        work_meter: &OperationWorkMeter,
-    ) -> Result<Self, OperationWorkError> {
-        let mut stroke_width = ClassRelationWidthBinding::compatibility(effective_config);
-        let mermaid_owns_stroke_width = stroke_width.config_owned();
-        let mut stroke_binding = paint::ClassPaintBinding::compatibility(
-            effective_config,
-            &["themeVariables.lineColor"],
-            crate::config::config_string(
-                effective_config.as_value(),
-                &["themeVariables", "lineColor"],
-            )
-            .unwrap_or_else(|| "#333333".into()),
-        );
-        let mermaid_owns_stroke = stroke_binding.config_owned();
-        let mut node_plan = ClassNodeThemePlan::from_config(effective_config);
-        let note_plan = ClassNoteThemePlan::resolve(theme, effective_config, work_meter)?;
-        let diagram_title_plan =
-            ClassTitleThemePlan::resolve_diagram_title(theme, effective_config, work_meter)?;
-        let Some(theme) = theme else {
-            return Ok(Self {
-                stroke_binding,
-                stroke_width,
-                node_plan,
-                note_plan,
-                diagram_title_plan,
-                ..Self::default()
-            });
+        theme: Option<&FamilyTheme>,
+        config: &PresentationConfig,
+        canvas: Option<Color>,
+    ) -> Self {
+        let paint = |key, fallback| ClassPaintBinding::from_config(config, key, fallback);
+        let mut plan = Self {
+            stroke: paint("lineColor", "#333333"),
+            width: ClassRelationWidthBinding::from_config(config),
+            note_fill: paint("noteBkgColor", "#fff5ad"),
+            note_stroke: paint("noteBorderColor", "#aaaa33"),
+            cluster_fill: paint("clusterBkg", "#ffffde"),
+            cluster_stroke: paint("clusterBorder", "#aaaa33"),
+            namespace_title: paint("titleColor", "#333"),
+            diagram_title: paint("textColor", "#333"),
+            native_edge_label_background: None,
+            native_edge_curve: None,
         };
-        let track_edge_label_backgrounds = theme.family_mechanism_routes().iter().any(|route| {
-            matches!(
-                route.mechanism(),
-                FamilyThemeMechanism::RuleFacet {
-                    target: ThemeTarget::EdgeLabelBackground,
-                    ..
-                } | FamilyThemeMechanism::OrdinalPalette {
-                    target: ThemeTarget::EdgeLabelBackground
-                } | FamilyThemeMechanism::EffectBinding {
-                    target: ThemeTarget::EdgeLabelBackground,
-                    ..
-                }
-            )
-        });
-        let edge_label_background =
-            ClassEdgeLabelBackgroundPlan::resolve(theme, effective_config, work_meter)?;
-        let style = theme.style_with_work_meter(
-            ThemeTarget::Edge,
-            ThemeVariant::Default,
-            None,
-            work_meter,
-        )?;
-        let static_winner_rules = style
-            .winner_rule_properties()
-            .filter(|(property, _)| {
-                (!matches!(
-                    property,
-                    ResolvedStyleProperty::Fill | ResolvedStyleProperty::Stroke
-                ) || !mermaid_owns_stroke)
-                    && (*property != ResolvedStyleProperty::StrokeWidth
-                        || !mermaid_owns_stroke_width)
-                    && (*property != ResolvedStyleProperty::Fill
-                        || matches!(
-                            style.stroke_resolution().specified(),
-                            Specified::Unspecified
-                        ))
-            })
-            .map(|(property, origin)| (property, origin.rule_index()))
-            .collect::<BTreeMap<_, _>>();
-        node_plan.resolve_static(theme, work_meter)?;
-        let ordinal_rule_targets = theme
-            .family_rules()
-            .filter_map(|(_, rule)| rule.ordinal().is_some().then_some(rule.target()))
-            .collect::<BTreeSet<_>>();
-        let mut ordinal_winner_rules = BTreeSet::new();
-        if ordinal_rule_targets.contains(&ThemeTarget::Edge) {
-            for ordinal in 1..=relation_count {
-                let ordinal_style = theme.style_with_work_meter(
-                    ThemeTarget::Edge,
-                    ThemeVariant::Default,
-                    Some(ordinal),
-                    work_meter,
-                )?;
-                for (property, origin) in ordinal_style.winner_rule_properties() {
-                    if (matches!(
-                        property,
-                        ResolvedStyleProperty::Fill | ResolvedStyleProperty::Stroke
-                    ) && mermaid_owns_stroke)
-                        || (property == ResolvedStyleProperty::StrokeWidth
-                            && mermaid_owns_stroke_width)
-                    {
-                        continue;
-                    }
-                    if property != ResolvedStyleProperty::Fill
-                        || matches!(
-                            ordinal_style.stroke_resolution().specified(),
-                            Specified::Unspecified
-                        )
-                    {
-                        ordinal_winner_rules.insert((origin.rule_index(), property));
-                    }
-                }
-            }
+        if let Some(theme) = theme {
+            let roles = &theme.roles;
+            let border = roles.stroke_border.first_color().to_string();
+            plan.stroke
+                .apply_native(roles.stroke_connector.first_color().to_string());
+            plan.width.apply_native(theme.form.connector_width);
+            plan.note_fill
+                .apply_native(roles.surface_callout.first_color().to_string());
+            plan.note_stroke.apply_native(border.clone());
+            plan.cluster_fill
+                .apply_native(roles.surface_container.first_color().to_string());
+            plan.cluster_stroke.apply_native(border);
+            plan.namespace_title
+                .apply_native(roles.text_title.to_string());
+            plan.diagram_title
+                .apply_native(roles.text_title.to_string());
+            let background = config
+                .explicit_config_owns_path("themeVariables.edgeLabelBackground")
+                .then(|| {
+                    crate::config::config_string(
+                        config.as_value(),
+                        &["themeVariables", "edgeLabelBackground"],
+                    )
+                })
+                .flatten()
+                .unwrap_or_else(|| super::native_theme::edge_background(theme, canvas));
+            plan.native_edge_label_background = Some(background);
+            plan.native_edge_curve = Some(super::native_theme::edge_curve(theme.form.edge_style));
         }
-        node_plan.resolve_ordinals(
-            theme,
-            node_count,
-            ordinal_rule_targets.contains(&ThemeTarget::Node)
-                || ordinal_rule_targets.contains(&ThemeTarget::NodeLabel)
-                || ordinal_rule_targets.contains(&ThemeTarget::Text),
-            work_meter,
-        )?;
-        let stroke_is_specified = !matches!(
-            style.stroke_resolution().specified(),
-            Specified::Unspecified
-        );
-        let candidate = if mermaid_owns_stroke {
-            None
-        } else if stroke_is_specified {
-            resolve_direct_static_stroke(
-                theme,
-                &style,
-                &[ThemeTarget::Edge],
-                DirectStaticSelectorDomain::Default,
-            )
-        } else {
-            resolve_direct_static_fill(
-                theme,
-                &style,
-                &[ThemeTarget::Edge],
-                DirectStaticSelectorDomain::Default,
-            )
-        }
-        .map(|paint| {
-            let (css, rule_index, _) = paint.into_parts();
-            outcomes::ClassSelectedPaint {
-                target: ThemeTarget::Edge,
-                rule_index,
-                css: css.into_string(),
-            }
-        });
-        stroke_binding.lower(&style, stroke_is_specified, candidate);
-        stroke_width.lower(theme, &style);
-        Ok(Self {
-            theme_requested: true,
-            stroke_binding,
-            stroke_width,
-            static_winner_rules,
-            ordinal_winner_rules,
-            node_plan,
-            note_plan,
-            cluster_plan: ClassClusterThemePlan::default(),
-            namespace_title_plan: ClassTitleThemePlan::default(),
-            diagram_title_plan,
-            track_edge_label_backgrounds,
-            edge_label_background,
-        })
+        plan
     }
 
-    pub(crate) fn edge_label_background(&self) -> Option<(usize, &str)> {
-        self.edge_label_background
-            .paint
-            .as_ref()
-            .map(|paint| (paint.rule_index, paint.css.as_str()))
+    pub(crate) fn native_edge_label_background(&self) -> Option<&str> {
+        self.native_edge_label_background.as_deref()
     }
 
-    pub(crate) fn with_cluster_domain(
-        mut self,
-        theme: Option<&ResolvedDiagramTheme>,
-        config: &merman_model::presentation::PresentationConfig,
-        cluster_count: usize,
-        work_meter: &OperationWorkMeter,
-    ) -> Result<Self, OperationWorkError> {
-        self.cluster_plan =
-            ClassClusterThemePlan::resolve(theme, config, cluster_count, work_meter)?;
-        self.namespace_title_plan =
-            ClassTitleThemePlan::resolve(theme, config, cluster_count, work_meter)?;
-        Ok(self)
+    pub(crate) const fn native_edge_curve(&self) -> Option<&'static str> {
+        self.native_edge_curve
     }
 
-    pub(crate) fn namespace_title_fill(&self) -> Option<(usize, &str)> {
-        self.namespace_title_plan
-            .fill
-            .typed()
-            .map(|paint| (paint.rule_index, paint.css.as_str()))
-    }
-
-    pub(crate) fn namespace_title_terminal(&self) -> Option<(usize, &str)> {
-        self.namespace_title_plan
-            .fill
-            .typed()
-            .map(|paint| (paint.rule_index, self.namespace_title_plan.terminal_style()))
-    }
-
-    pub(crate) fn diagram_title_terminal(&self) -> Option<(usize, &str)> {
-        self.diagram_title_plan
-            .fill
-            .typed()
-            .map(|paint| (paint.rule_index, self.diagram_title_plan.terminal_style()))
-    }
-
-    pub(crate) fn cluster_terminal_style(&self) -> &str {
-        self.cluster_plan.terminal_style()
+    pub(crate) fn diagram_title_css_default(&self) -> &str {
+        self.diagram_title.css()
     }
 
     pub(crate) fn cluster_css_defaults(&self) -> (&str, &str) {
-        (
-            self.cluster_plan.fill.compatibility_css(),
-            self.cluster_plan.stroke.compatibility_css(),
-        )
+        (self.cluster_fill.css(), self.cluster_stroke.css())
     }
 
     pub(crate) fn relation_css_default(&self) -> &str {
-        self.stroke_binding.compatibility_css()
+        self.stroke.css()
     }
 
     pub(crate) fn namespace_title_css_default(&self) -> &str {
-        self.namespace_title_plan.fill.compatibility_css()
-    }
-
-    pub(crate) fn cluster_paint_rule_indices(&self) -> (Option<usize>, Option<usize>) {
-        (
-            self.cluster_plan.fill.typed().map(|paint| paint.rule_index),
-            self.cluster_plan
-                .stroke
-                .typed()
-                .map(|paint| paint.rule_index),
-        )
+        self.namespace_title.css()
     }
 
     pub(crate) fn relation_width(&self) -> &ClassRelationWidthBinding {
-        &self.stroke_width
+        &self.width
     }
 
-    pub(crate) fn typed_stroke(&self) -> Option<(usize, &str)> {
-        self.stroke_binding
-            .typed()
-            .map(|expected| (expected.rule_index, expected.css.as_str()))
-    }
-
-    pub(crate) fn begin_outcomes(
-        &self,
-        markers: Vec<ClassMarkerPaintBinding>,
-    ) -> ClassThemeOutcomes {
-        ClassThemeOutcomes::new(
-            self.theme_requested,
-            markers,
-            self.stroke_binding.stroke_property(),
-            self.track_edge_label_backgrounds,
-        )
-    }
-
-    pub(crate) fn node_paint(&self, ordinal: usize) -> &ClassNodePaintBinding {
-        self.node_plan.paint(ordinal)
-    }
-
-    pub(crate) fn note_paint(&self) -> &ClassNoteThemePlan {
-        &self.note_plan
-    }
-
-    fn route_won(
-        &self,
-        rule_index: usize,
-        target: ThemeTarget,
-        selector: FamilyThemeSelectorShape,
-        facet: FamilyThemeRuleFacet,
-    ) -> bool {
-        if target != ThemeTarget::Edge {
-            return false;
-        }
-        let property = crate::family::resolved_style_property_for_facet(facet);
-        match selector {
-            FamilyThemeSelectorShape::Static {
-                variant: None | Some(ThemeVariant::Default),
-            } => self.static_winner_rules.get(&property).copied() == Some(rule_index),
-            FamilyThemeSelectorShape::Ordinal {
-                variant: None | Some(ThemeVariant::Default),
-                ..
-            } => self.ordinal_winner_rules.contains(&(rule_index, property)),
-            FamilyThemeSelectorShape::Static { .. } | FamilyThemeSelectorShape::Ordinal { .. } => {
-                false
-            }
-        }
-    }
-
-    fn node_route_won(
-        &self,
-        rule_index: usize,
-        target: ThemeTarget,
-        selector: FamilyThemeSelectorShape,
-        facet: FamilyThemeRuleFacet,
-    ) -> bool {
-        self.node_plan
-            .route_won(rule_index, target, selector, facet)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn relation_stroke_binding_retains_the_fallback_property_and_clear_owner() {
-        use crate::diagram_theme::{
-            CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
-            ThemeStylePatch,
-        };
-        for clear_stroke in [false, true] {
-            let mut patch =
-                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap());
-            if clear_stroke {
-                patch.stroke.paint = Specified::Clear;
-            }
-            let theme = DiagramThemeCompiler::new()
-                .compile(DiagramThemeSpec::new().with_styles(
-                    ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Edge, patch)),
-                ))
-                .unwrap()
-                .resolve(crate::DiagramFamilyId::CLASS);
-            let meter =
-                OperationWorkMeter::new(crate::resources::RenderResourcePolicy::interactive());
-            let plan = ClassRelationThemePlan::resolve(
-                Some(&theme),
-                &merman_model::presentation::PresentationConfig::empty_object(),
-                1,
-                0,
-                &meter,
-            )
-            .unwrap();
-            if clear_stroke {
-                assert!(plan.typed_stroke().is_none());
-                assert!(plan.stroke_binding.stroke_property().is_none());
-                assert_eq!(plan.stroke_binding.action_rule(), Some(0));
-            } else {
-                assert_eq!(plan.typed_stroke(), Some((0, "#123456")));
-                assert_eq!(
-                    plan.stroke_binding.stroke_property(),
-                    Some(ResolvedStyleProperty::Fill)
-                );
-            }
-            assert_eq!(plan.relation_css_default(), "#333333");
-        }
-    }
-
-    #[test]
-    fn authored_relation_color_preserves_origin_even_for_equal_tokens() {
-        use crate::diagram_theme::{
-            CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
-            ThemeStylePatch,
-        };
-        let theme = DiagramThemeCompiler::new()
-            .compile(
-                DiagramThemeSpec::new().with_styles(
-                    ThemeRuleSet::default().with_rule(ThemeRule::new(
-                        ThemeTarget::Edge,
-                        ThemeStylePatch::default()
-                            .with_stroke(CanvasPaint::solid("#333333").unwrap()),
-                    )),
-                ),
-            )
-            .unwrap()
-            .resolve(crate::DiagramFamilyId::CLASS);
-        let meter = OperationWorkMeter::new(crate::resources::RenderResourcePolicy::interactive());
-        for token in ["#333333", "#123456"] {
-            let config = merman_core::MermaidEngine::new()
-                .with_site_config(
-                    merman_core::presentation::SourcePresentationConfig::from_value(
-                        serde_json::json!({"themeVariables":{"lineColor":token}}),
-                    ),
-                )
-                .parse_metadata_sync("classDiagram\nA --> B\n")
-                .unwrap()
-                .effective_config;
-            let plan =
-                ClassRelationThemePlan::resolve(Some(&theme), &config, 1, 0, &meter).unwrap();
-            assert!(plan.stroke_binding.config_owned());
-            assert_eq!(plan.stroke_binding.css(), token);
-            assert_eq!(plan.relation_css_default(), token);
-            assert_eq!(plan.typed_stroke(), None);
-            assert_eq!(plan.stroke_binding.stroke_property(), None);
-        }
-        // Host colors enter the core theme derivation before Class binding. Opaque CSS is
-        // therefore rejected here even though the renderer preserves already prepared tokens.
-        assert!(
-            merman_core::MermaidEngine::new()
-                .with_site_config(
-                    merman_core::presentation::SourcePresentationConfig::from_value(
-                        serde_json::json!({"themeVariables":{"lineColor":"var(--edge)"}}),
-                    )
-                )
-                .parse_metadata_sync("classDiagram\nA --> B\n")
-                .is_err()
-        );
+    pub(crate) fn note_paint(&self) -> (&str, &str) {
+        (self.note_fill.css(), self.note_stroke.css())
     }
 }

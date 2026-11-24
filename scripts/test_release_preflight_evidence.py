@@ -347,8 +347,7 @@ class PreflightWorkflowTests(unittest.TestCase):
         )
         self.assertEqual(
             set(re.findall(r"--test ([^\s]+)", step)),
-            {"theme_flowchart_edge_effects", "flowchart_edge_label_theme", "render_operation",
-             "theme_composed_effects"},
+            {"native_theme", "render_operation", "prepared_source"},
         )
         fonts = versions.split(
             "      - name: Install CLI validators and native font dependencies\n", 1,

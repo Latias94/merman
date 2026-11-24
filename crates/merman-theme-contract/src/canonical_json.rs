@@ -35,6 +35,7 @@ impl CanonicalJsonError {
     }
 
     /// Returns the stable failure category without exposing encoder-specific text.
+    #[cfg(test)]
     pub const fn kind(&self) -> CanonicalJsonErrorKind {
         self.kind
     }

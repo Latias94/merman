@@ -47,6 +47,7 @@ pub(super) fn write_arch_icon_svg(
     icon_name: &str,
     icon_size_px: f64,
     id_scope: Option<IconIdScope>,
+    native: Option<&crate::architecture::ArchitectureNativeStyle>,
 ) -> crate::Result<()> {
     let body = arch_icon_body(icon_name);
     let body = if arch_icon_body_has_internal_ids(icon_name) {
@@ -62,7 +63,13 @@ pub(super) fn write_arch_icon_svg(
     out.push_str(r#"" height=""#);
     fmt_into(out, icon_size_px);
     out.push_str(r#"" viewBox="0 0 80 80">"#);
-    out.push_str(body.as_ref());
+    if let Some(native) = native {
+        // The card supplies the icon tile. Registered multicolor icons are emitted separately.
+        let ink = super::super::escape_attr(&native.icon_ink);
+        out.push_str(&body.replace("#087ebf", "none").replace("#fff", &ink));
+    } else {
+        out.push_str(body.as_ref());
+    }
     out.push_str("</svg>");
     Ok(())
 }
@@ -75,6 +82,7 @@ pub(super) fn write_arch_icon_svg_with_registry(
     id_scope: IconIdScope,
     effective_config: &merman_model::presentation::PresentationConfig,
     work_meter: &crate::resources::OperationWorkMeter,
+    native: Option<&crate::architecture::ArchitectureNativeStyle>,
 ) -> crate::Result<()> {
     let svg = match icon_registry {
         Some(registry) => registry.render_icon(crate::svg::icon_registry::IconRenderRequest {
@@ -92,7 +100,7 @@ pub(super) fn write_arch_icon_svg_with_registry(
     if let Some(svg) = svg {
         out.push_str(&svg);
     } else {
-        write_arch_icon_svg(out, icon_name, icon_size_px, Some(id_scope))?;
+        write_arch_icon_svg(out, icon_name, icon_size_px, Some(id_scope), native)?;
     }
     Ok(())
 }
@@ -107,7 +115,7 @@ mod tests {
     #[test]
     fn write_arch_icon_svg_preserves_builtin_id_scoping_behavior() {
         let mut server = String::new();
-        write_arch_icon_svg(&mut server, "server", 80.0, None).unwrap();
+        write_arch_icon_svg(&mut server, "server", 80.0, None, None).unwrap();
         assert!(server.starts_with(
             r#"<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80">"#
         ));
@@ -120,6 +128,7 @@ mod tests {
             "database",
             80.0,
             Some(icon_id_scope_for_test("scope-b")),
+            None,
         )
         .unwrap();
         assert!(database.contains(r#"id="IconifyId"#), "{database}");
@@ -160,6 +169,7 @@ mod tests {
             icon_id_scope_for_test("diagram-service-a-icon"),
             &effective_config,
             &work_meter,
+            None,
         )
         .unwrap();
         let mut group = String::new();
@@ -171,6 +181,7 @@ mod tests {
             icon_id_scope_for_test("diagram-group-app-icon"),
             &effective_config,
             &work_meter,
+            None,
         )
         .unwrap();
 

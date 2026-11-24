@@ -18,16 +18,6 @@ pub(crate) fn presentation_config_from_config(config: MermaidConfig) -> Presenta
     .unwrap()
 }
 
-pub(crate) fn install_parse_compatibility(
-    theme: &crate::diagram_theme::DiagramTheme,
-    engine: merman_core::MermaidEngine,
-) -> merman_core::MermaidEngine {
-    let plan = merman_core::presentation::ThemeCompatibilityPlan::from_recipe(
-        theme.compatibility_recipe().clone(),
-    );
-    engine.with_theme_plan(&plan)
-}
-
 /// Exercises source-owned mutation while preserving the imported frozen declarations exactly.
 pub(crate) fn set_config_value(
     config: PresentationConfig,

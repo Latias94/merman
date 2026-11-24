@@ -2,12 +2,9 @@ mod font_size;
 mod theme;
 
 pub(crate) use font_size::WardleyFontSize;
-pub(crate) use theme::{
-    WardleyPaintBinding, WardleySurfaceReceipt, WardleyTextRole, WardleyTypographyThemePlan,
-};
+pub(crate) use theme::{WardleyPaintBinding, WardleyStyle, WardleyTextRole, WardleyThemeAdapter};
 
 use crate::config::{config_bool, config_f64_or};
-use crate::diagram_theme::ThemeTarget;
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
 use merman_model::families::wardley::{
@@ -16,20 +13,6 @@ use merman_model::families::wardley::{
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
-
-pub(crate) const PAINT_TARGETS: &[ThemeTarget] = &[
-    ThemeTarget::Node,
-    ThemeTarget::NodeLabel,
-    ThemeTarget::Edge,
-    ThemeTarget::EdgeLabel,
-    ThemeTarget::Marker,
-    ThemeTarget::Title,
-    ThemeTarget::Axis,
-];
-
-fn owns_target(target: ThemeTarget) -> bool {
-    PAINT_TARGETS.contains(&target)
-}
 
 const DEFAULT_WIDTH: f64 = 900.0;
 const DEFAULT_HEIGHT: f64 = 600.0;
@@ -678,45 +661,34 @@ pub(crate) fn layout_wardley_diagram_typed(
     measurer: &dyn TextMeasurer,
 ) -> Result<WardleyDiagramLayout> {
     let config = crate::test_support::presentation_config(effective_config.clone());
-    let typography_theme = WardleyTypographyThemePlan::resolve(
-        None,
-        &config,
-        &crate::resources::OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-        ),
-    )?;
-    layout_wardley_diagram_typed_with_theme(
+    let style = WardleyStyle::resolve(&config, None);
+    layout_wardley_diagram_typed_with_style(
         model,
         diagram_title,
         effective_config,
-        &typography_theme,
+        &style,
         measurer,
     )
 }
 
-pub(crate) fn layout_wardley_diagram_typed_with_theme(
+pub(crate) fn layout_wardley_diagram_typed_with_style(
     model: &WardleyDiagramModel,
     diagram_title: Option<&str>,
     effective_config: &Value,
-    typography_theme: &WardleyTypographyThemePlan,
+    style: &WardleyStyle,
     measurer: &dyn TextMeasurer,
 ) -> Result<WardleyDiagramLayout> {
-    let mut layout = layout_wardley_diagram_with_font_family(
-        model,
-        diagram_title,
-        effective_config,
-        typography_theme.font_family_css(),
-        measurer,
-    )?;
-    typography_theme.apply_known_font_sizes(&mut layout);
+    let mut layout =
+        layout_wardley_diagram(model, diagram_title, effective_config, style, measurer)?;
+    style.apply_known_font_sizes(&mut layout);
     Ok(layout)
 }
 
-fn layout_wardley_diagram_with_font_family(
+fn layout_wardley_diagram(
     model: &WardleyDiagramModel,
     diagram_title: Option<&str>,
     effective_config: &Value,
-    font_family_css: &str,
+    style: &WardleyStyle,
     measurer: &dyn TextMeasurer,
 ) -> Result<WardleyDiagramLayout> {
     if model
@@ -728,7 +700,8 @@ fn layout_wardley_diagram_with_font_family(
             message: "Wardley annotation numbers must not be NaN".to_string(),
         });
     }
-    let settings = WardleySettings::from_config(effective_config);
+    let mut settings = WardleySettings::from_config(effective_config);
+    style.apply_layout_settings(&mut settings);
     let width = model.size.map_or(settings.width, |size| size.width);
     let height = model.size.map_or(settings.height, |size| size.height);
     let chart_width = width - settings.padding * 2.0;
@@ -1114,8 +1087,12 @@ fn layout_wardley_diagram_with_font_family(
     } else {
         model.annotations_box.map(|position| {
             let padding = 10.0;
-            let line_height = 16.0;
-            let font_size = 11.0;
+            let role = WardleyTextRole::AnnotationBoxLine;
+            let font_size = style
+                .font_size(role)
+                .and_then(|size| size.used_px)
+                .unwrap_or(11.0);
+            let line_height = font_size + 5.0;
             let mut sorted_annotations: Vec<_> = model
                 .annotations
                 .iter()
@@ -1148,9 +1125,11 @@ fn layout_wardley_diagram_with_font_family(
             }
 
             let style = TextStyle {
-                font_family: Some(font_family_css.to_string()),
+                font_family: Some(style.font_family_css().to_owned()),
                 font_size,
-                font_weight: None,
+                font_weight: style
+                    .native_font_weight(role)
+                    .map(|weight| weight.to_string()),
                 font_style: None,
             };
             let line_texts: Vec<String> = sorted_annotations

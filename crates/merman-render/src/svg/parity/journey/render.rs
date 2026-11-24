@@ -1,7 +1,7 @@
 use super::super::*;
 use crate::journey::{
     JOURNEY_FACE_RADIUS_PX, JOURNEY_TITLE_EXTRA_HEIGHT_PX, JOURNEY_VIEWBOX_TOP_PAD_PX,
-    JourneyCssBinding, JourneyTextPlacement,
+    JourneyCssBinding, JourneyNativeStyle, JourneyStyle, JourneyTextPlacement,
 };
 use crate::text::split_html_br_lines;
 use merman_model::families::journey::JourneyDiagramModel;
@@ -26,8 +26,9 @@ struct JourneyTextStyle<'a> {
     placement: JourneyTextPlacement,
     task_font_size: f64,
     task_font_family: &'a str,
+    native_weight: Option<u16>,
     section_colour: Option<&'a str>,
-    typed_fill: Option<&'a str>,
+    native_fill: Option<&'a str>,
 }
 
 fn write_text_candidate(
@@ -37,7 +38,7 @@ fn write_text_candidate(
     text_box: JourneyTextBox,
     style: JourneyTextStyle<'_>,
     text_fill: &str,
-) -> Result<bool> {
+) -> Result<()> {
     let JourneyTextBox {
         x,
         y,
@@ -48,8 +49,9 @@ fn write_text_candidate(
         placement,
         task_font_size,
         task_font_family,
+        native_weight,
         section_colour,
-        typed_fill,
+        native_fill,
     } = style;
     let content_esc = escape_xml(content);
     let class_esc = escape_attr(class);
@@ -57,9 +59,17 @@ fn write_text_candidate(
     let fill_esc = escape_attr(text_fill);
     let cx = x + width / 2.0;
     let cy = y + height / 2.0;
+    let native_typography = native_weight.map(|weight| {
+        let mut css = format!(" font-family: {font_family_esc}; font-weight: {weight};");
+        if task_font_size >= 0.0 {
+            let _ = write!(css, " font-size: {}px;", fmt(task_font_size));
+        }
+        css
+    });
+    let native_font_style = native_typography.as_deref().unwrap_or_default();
 
     if placement == JourneyTextPlacement::Old {
-        let fill_style = typed_fill
+        let fill_style = native_fill
             .map(|fill| {
                 let fill = escape_attr(fill);
                 format!(" fill: {fill}; color: {fill};")
@@ -67,18 +77,17 @@ fn write_text_candidate(
             .unwrap_or_default();
         let _ = write!(
             out,
-            r#"<text x="{x}" y="{y}" class="{class}" style="text-anchor: middle;{fill_style}">{text}</text>"#,
+            r#"<text x="{x}" y="{y}" class="{class}" style="text-anchor: middle;{native_font_style}{fill_style}">{text}</text>"#,
             x = fmt(cx),
             y = fmt(cy + 5.0),
             class = class_esc,
             text = content_esc,
         );
-        out.checkpoint()?;
-        return Ok(!content_esc.trim().is_empty());
+        return out.checkpoint();
     }
 
     if placement == JourneyTextPlacement::Fo {
-        let fill_style = typed_fill
+        let fill_style = native_fill
             .map(|fill| {
                 let fill = escape_attr(fill);
                 format!(" color: {fill}; fill: {fill};")
@@ -95,7 +104,7 @@ fn write_text_candidate(
         );
         let _ = write!(
             out,
-            r#"<div class="{class}" xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><div class="label" style="display: table-cell; text-align: center; vertical-align: middle;{fill_style}">{text}</div></div>"#,
+            r#"<div class="{class}" xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><div class="label" style="display: table-cell; text-align: center; vertical-align: middle;{native_font_style}{fill_style}">{text}</div></div>"#,
             class = class_esc,
             text = content_esc
         );
@@ -104,14 +113,9 @@ fn write_text_candidate(
     }
 
     let lines = split_html_br_lines(content);
-    let mut has_visible_text =
-        placement == JourneyTextPlacement::Fo && !content_esc.trim().is_empty();
     let n = lines.len().max(1) as f64;
     for (i, line) in lines.into_iter().enumerate() {
         let line_esc = escape_xml(line);
-        if placement == JourneyTextPlacement::Tspan {
-            has_visible_text |= !line_esc.trim().is_empty();
-        }
         let dy = (i as f64) * task_font_size - (task_font_size * (n - 1.0)) / 2.0;
         let _ = write!(
             out,
@@ -126,11 +130,15 @@ fn write_text_candidate(
             let _ = write!(out, r#" fill="{}""#, escape_attr(colour));
         }
         out.push_str(r#" style="text-anchor: middle;"#);
-        if task_font_size >= 0.0 {
-            let _ = write!(out, " font-size: {}px;", fmt(task_font_size));
+        if let Some(css) = native_typography.as_deref() {
+            out.push_str(css);
+        } else {
+            if task_font_size >= 0.0 {
+                let _ = write!(out, " font-size: {}px;", fmt(task_font_size));
+            }
+            let _ = write!(out, " font-family: {font_family_esc};");
         }
-        let _ = write!(out, " font-family: {font_family_esc};");
-        if let Some(fill) = typed_fill {
+        if let Some(fill) = native_fill {
             let _ = write!(
                 out,
                 " fill: {}; color: {};",
@@ -153,19 +161,15 @@ fn write_text_candidate(
     if placement == JourneyTextPlacement::Fo {
         out.push_str("</switch>");
     }
-    out.checkpoint()?;
-    Ok(has_visible_text)
+    out.checkpoint()
 }
 
-fn write_task_rect<'a>(
+fn write_task_rect(
     out: &mut impl SvgOutput,
     task: &crate::model::JourneyTaskLayout,
-    radius_token: &'a str,
-    fill: Option<&str>,
-    stroke: Option<&str>,
-) -> (&'a str, &'a str) {
-    let emitted_rx = radius_token;
-    let emitted_ry = radius_token;
+    radius: &str,
+    native_stroke: Option<&str>,
+) {
     let _ = write!(
         out,
         r##"<rect x="{}" y="{}" fill="{}" stroke="#666""##,
@@ -173,90 +177,64 @@ fn write_task_rect<'a>(
         fmt(task.y),
         escape_attr(&task.fill)
     );
-    if fill.is_some() || stroke.is_some() {
-        out.push_str(r#" style=""#);
-        if let Some(fill) = fill {
-            let _ = write!(out, "fill:{};", escape_attr(fill));
-        }
-        if let Some(stroke) = stroke {
-            let _ = write!(out, "stroke:{};", escape_attr(stroke));
-        }
-        out.push('"');
+    if let Some(stroke) = native_stroke {
+        let _ = write!(out, r#" style="stroke:{};""#, escape_attr(stroke));
     }
     let _ = write!(
         out,
         r#" width="{}" height="{}" rx="{}" ry="{}" class="task task-type-{}"/>"#,
         fmt(task.width),
         fmt(task.height),
-        emitted_rx,
-        emitted_ry,
+        radius,
+        radius,
         task.num
     );
-    (emitted_rx, emitted_ry)
 }
 
 fn write_section_rect(
     out: &mut impl SvgOutput,
     section: &crate::model::JourneySectionLayout,
-    palette_fill: Option<&str>,
+    native: Option<&JourneyNativeStyle>,
 ) {
     let class = format!("journey-section section-type-{}", section.num);
     out.push_str("<g>");
-    match palette_fill {
-        Some(palette_fill) => {
-            let _ = write!(
-                out,
-                r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="#666" style="fill:{palette_fill};" width="{w}" height="{h}" rx="3" ry="3" class="{class}"/>"##,
-                x = fmt(section.x),
-                y = fmt(section.y),
-                fill = escape_attr(&section.fill),
-                palette_fill = escape_attr(palette_fill),
-                w = fmt(section.width),
-                h = fmt(section.height),
-                class = escape_attr(&class),
-            );
-        }
-        None => {
-            let _ = write!(
-                out,
-                r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" rx="3" ry="3" class="{class}"/>"##,
-                x = fmt(section.x),
-                y = fmt(section.y),
-                fill = escape_attr(&section.fill),
-                w = fmt(section.width),
-                h = fmt(section.height),
-                class = escape_attr(&class),
-            );
-        }
+    if let Some(native) = native {
+        let _ = write!(
+            out,
+            r#"<rect x="{x}" y="{y}" fill="{fill}" stroke="{stroke}" stroke-width="{stroke_width}" width="{w}" height="{h}" rx="{radius}" ry="{radius}" class="{class}"/>"#,
+            x = fmt(section.x),
+            y = fmt(section.y),
+            fill = escape_attr(&section.fill),
+            stroke = escape_attr(&native.border),
+            stroke_width = fmt(native.border_width),
+            w = fmt(section.width),
+            h = fmt(section.height),
+            radius = fmt(native.container_radius),
+            class = escape_attr(&class),
+        );
+        return;
     }
+    let _ = write!(
+        out,
+        r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" rx="3" ry="3" class="{class}"/>"##,
+        x = fmt(section.x),
+        y = fmt(section.y),
+        fill = escape_attr(&section.fill),
+        w = fmt(section.width),
+        h = fmt(section.height),
+        class = escape_attr(&class),
+    );
 }
 
-struct JourneyCss {
-    css: String,
-    font_family: String,
-    font_size_css: String,
-    base_typography_emitted: bool,
-    root_typography_emitted: bool,
-}
-
-fn journey_css_with_resolved_typography(
-    diagram_id: impl SvgDiagramIdValue,
-    theme: &JourneyCssBinding,
-    emit_palette_css: bool,
-    mut text_receipt: Option<&mut crate::journey::JourneyTextPaintReceipt<'_>>,
-) -> JourneyCss {
+fn journey_css(diagram_id: impl SvgDiagramIdValue, theme: &JourneyCssBinding) -> String {
     let mut out = String::new();
-    let base_typography_emitted = theme
+    theme
         .common
-        .write_prefix_with_font_emission(&mut out, diagram_id)
-        .map(|_| true)
+        .write_prefix(&mut out, diagram_id)
         .expect("String-backed Journey base CSS emission cannot fail");
     let font = theme.common.font_family();
     let text_color = theme.text_color.as_str();
     let line_color = theme.common.line_color();
-    if let Some(receipt) = text_receipt.as_deref_mut() {
-        receipt.record_css(text_color);
-    }
 
     // Mermaid's journey diagram reuses the historical "user-journey" stylesheet, post-processed by
     // Mermaid's CSS pipeline (nesting expansion + id scoping + minification).
@@ -265,42 +243,27 @@ fn journey_css_with_resolved_typography(
         r#"#{} .label{{font-family:{};color:{};}}"#,
         diagram_id, font, text_color
     );
-    if let Some(receipt) = text_receipt.as_deref_mut() {
-        receipt.record_css(text_color);
-    }
     let _ = write!(&mut out, r#"#{} .mouth{{stroke:#666;}}"#, diagram_id);
     let _ = write!(
         &mut out,
         r#"#{} line{{stroke:{};}}"#,
         diagram_id, text_color
     );
-    if let Some(receipt) = text_receipt.as_deref_mut() {
-        receipt.record_css(text_color);
-    }
     let _ = write!(
         &mut out,
         r#"#{} .legend{{fill:{};font-family:{};}}"#,
         diagram_id, text_color, font
     );
-    if let Some(receipt) = text_receipt.as_deref_mut() {
-        receipt.record_css(text_color);
-    }
     let _ = write!(
         &mut out,
         r#"#{} .label text{{fill:{};}}"#,
         diagram_id, text_color
     );
-    if let Some(receipt) = text_receipt.as_deref_mut() {
-        receipt.record_css(text_color);
-    }
     let _ = write!(
         &mut out,
         r#"#{} .label{{color:{};}}"#,
         diagram_id, text_color
     );
-    if let Some(receipt) = text_receipt {
-        receipt.record_css(text_color);
-    }
     let _ = write!(
         &mut out,
         r#"#{} .face{{fill:{};stroke:#999;}}"#,
@@ -362,14 +325,12 @@ fn journey_css_with_resolved_typography(
         r#"#{} div.mermaidTooltip{{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:{};font-size:12px;background:{};border:1px solid {};border-radius:2px;pointer-events:none;z-index:100;}}"#,
         diagram_id, font, theme.tertiary_color, theme.border2
     );
-    if emit_palette_css {
-        for (i, fill) in theme.fill_types.iter().enumerate() {
-            let _ = write!(
-                &mut out,
-                r#"#{} .task-type-{},#{} .section-type-{}{{fill:{};}}"#,
-                diagram_id, i, diagram_id, i, fill
-            );
-        }
+    for (i, fill) in theme.fill_types.iter().enumerate() {
+        let _ = write!(
+            &mut out,
+            r#"#{} .task-type-{},#{} .section-type-{}{{fill:{};}}"#,
+            diagram_id, i, diagram_id, i, fill
+        );
     }
     for (i, fill) in theme.actor_colors.iter().enumerate() {
         if let Some(fill) = fill {
@@ -391,39 +352,20 @@ fn journey_css_with_resolved_typography(
         diagram_id
     );
 
-    let root_typography_emitted = theme
+    theme
         .common
-        .write_root_with_font_emission(&mut out, diagram_id, diagram_id)
-        .map(|_| true)
+        .write_root(&mut out, diagram_id, diagram_id)
         .expect("String-backed Journey root CSS emission cannot fail");
-    JourneyCss {
-        css: out,
-        font_family: font.to_owned(),
-        font_size_css: theme.common.font_size_css().to_owned(),
-        base_typography_emitted,
-        root_typography_emitted,
-    }
+    out
 }
 
-#[allow(
-    clippy::too_many_arguments,
-    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
-)]
 pub(crate) fn render_journey_diagram_svg_model(
     layout: &crate::model::JourneyDiagramLayout,
     model: &JourneyDiagramModel,
-    task_theme: &crate::journey::JourneyTaskTheme,
-    typography_theme: &crate::journey::JourneyTypographyThemePlan,
-    text_paint: &crate::journey::JourneyTextPaintPlan,
+    style: &JourneyStyle,
     diagram_title: Option<&str>,
-    _measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    if task_theme.task_count() != layout.tasks.len() {
-        return Err(crate::Error::InvalidModel {
-            message: "Journey task theme count did not match the layout".to_string(),
-        });
-    }
     let diagram_id = options.diagram_id_or("merman");
 
     let diagram_title = layout
@@ -452,7 +394,8 @@ pub(crate) fn render_journey_diagram_svg_model(
         vb_h += JOURNEY_TITLE_EXTRA_HEIGHT_PX;
     }
 
-    let theme = typography_theme.css_binding();
+    let theme = style.css_binding();
+    let native = style.native();
     let render_settings = &theme.render;
     let task_font_size = render_settings.task_text_style.font_size;
     let task_font_family = render_settings
@@ -462,9 +405,7 @@ pub(crate) fn render_journey_diagram_svg_model(
         .unwrap_or("\"Open Sans\", sans-serif");
     let title_font_size = render_settings.title_font_size.as_str();
     let title_font_family = render_settings.title_font_family.as_str();
-    let title_color = text_paint
-        .title_fill_css()
-        .unwrap_or(&render_settings.title_color);
+    let title_color = &render_settings.title_color;
 
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let aria_labelledby = model
@@ -493,19 +434,19 @@ pub(crate) fn render_journey_diagram_svg_model(
         trailing_newline: false,
         ..root_svg::RootDomProfile::default()
     };
-    let root_document =
-        root_svg::RootViewportContext::new(crate::DiagramFamilyId::JOURNEY, diagram_id)
-            .write_open(
-                &mut out,
-                root_svg::RootViewportSpec::mermaid(
-                    root_svg::DiagramBounds::from_view_box(vb_min_x, vb_min_y, vb_w, vb_h),
-                    layout.use_max_width,
-                )
-                .with_mermaid_responsive_height(layout.use_max_width, svg_height)
-                .with_fixed_size(layout.width, svg_height)
-                .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(layout.width)),
-                root_chrome,
-            )?;
+    let root_document = options
+        .root_viewport(crate::DiagramFamilyId::JOURNEY, diagram_id)
+        .write_open(
+            &mut out,
+            root_svg::RootViewportSpec::mermaid(
+                root_svg::DiagramBounds::from_view_box(vb_min_x, vb_min_y, vb_w, vb_h),
+                layout.use_max_width,
+            )
+            .with_mermaid_responsive_height(layout.use_max_width, svg_height)
+            .with_fixed_size(layout.width, svg_height)
+            .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(layout.width)),
+            root_chrome,
+        )?;
     options.checkpoint_emit()?;
 
     if let Some(title) = model.acc_title.as_deref() {
@@ -526,39 +467,40 @@ pub(crate) fn render_journey_diagram_svg_model(
     }
     out.checkpoint()?;
 
-    let mut text_receipt =
-        text_paint.begin_terminal_receipt(layout, diagram_title.is_some(), options.work_meter())?;
-    let css = journey_css_with_resolved_typography(
-        diagram_id,
-        theme,
-        !task_theme.palette_surface_owned(),
-        text_receipt.as_mut(),
-    );
-    let mut typography_receipt = typography_theme.begin_terminal_receipt(layout, diagram_title);
-    if let Some(receipt) = typography_receipt.as_mut() {
-        receipt.record_css_emission(
-            &css.font_family,
-            &css.font_size_css,
-            css.base_typography_emitted,
-            css.root_typography_emitted,
-        );
-    }
     out.push_str("<style>");
-    super::super::output::XmlTextOutput::new(&mut out).push_str(&css.css);
+    if let Some(native) = native {
+        let id = super::super::util::css_selector_diagram_id(diagram_id);
+        let mut css = String::new();
+        theme.common.write_prefix(&mut css, id)?;
+        let _ = write!(
+            css,
+            "#{id}{{font-weight:{weight};}}\
+             #{id} .legend{{fill:{text};}}\
+             #{id} .task{{stroke-width:{stroke_width};}}\
+             #{id} .mouth{{fill:currentColor;stroke:currentColor;}}",
+            weight = native.label_weight,
+            text = native.text,
+            stroke_width = fmt(native.border_width),
+        );
+        super::super::output::XmlTextOutput::new(&mut out).push_str(&css);
+    } else {
+        let css = journey_css(diagram_id, theme);
+        super::super::output::XmlTextOutput::new(&mut out).push_str(&css);
+    }
     out.push_str("</style>");
     out.push_str(r#"<g/>"#);
     let arrowhead_id = scoped_svg_id(diagram_id, "arrowhead");
     let arrowhead_url = scoped_svg_url(diagram_id, "arrowhead");
+    let arrow_fill = native
+        .map(|style| format!(r#" fill="{}""#, escape_attr(&style.arrow)))
+        .unwrap_or_default();
     let _ = write!(
         &mut out,
-        r#"<defs><marker id="{}" refX="5" refY="2" markerWidth="6" markerHeight="4" orient="auto"><path d="M 0,0 V 4 L6,2 Z"/></marker></defs>"#,
+        r#"<defs><marker id="{}" refX="5" refY="2" markerWidth="6" markerHeight="4" orient="auto"><path d="M 0,0 V 4 L6,2 Z"{arrow_fill}/></marker></defs>"#,
         escape_attr_display(arrowhead_id)
     );
     out.checkpoint()?;
 
-    if let Some(receipt) = text_receipt.as_mut() {
-        receipt.record_label(crate::journey::JourneyTextPaintRole::Arrowhead, None);
-    }
     for item in &layout.actor_legend {
         let _ = write!(
             &mut out,
@@ -579,12 +521,6 @@ pub(crate) fn render_journey_diagram_svg_model(
                 tx = fmt(line.tspan_x),
                 text = line_esc,
             );
-            if let Some(receipt) = typography_receipt.as_mut() {
-                receipt.record_text_run(&line.text, !line_esc.trim().is_empty());
-            }
-            if let Some(receipt) = text_receipt.as_mut() {
-                receipt.record_label(crate::journey::JourneyTextPaintRole::Legend, None);
-            }
         }
         out.checkpoint()?;
     }
@@ -594,9 +530,7 @@ pub(crate) fn render_journey_diagram_svg_model(
     let mut section_colour = Some("black");
     // Match layout's empty initial section: tasks before the first section have no header.
     let mut last_section = "";
-    let mut task_theme_receipt: Option<crate::journey::JourneyTaskThemeReceipt> =
-        task_theme.begin_terminal_receipt();
-    for (task_index, task) in layout.tasks.iter().enumerate() {
+    for task in &layout.tasks {
         if last_section != task.section {
             let section = section_iter
                 .next()
@@ -608,14 +542,16 @@ pub(crate) fn render_journey_diagram_svg_model(
                 .section_colours
                 .get(section_index % render_settings.section_colours.len().max(1))
                 .map(String::as_str);
-            let uses_section_colour = section_colour.is_some();
-            let section_text_fill = text_paint.surface_fill_css(uses_section_colour);
-            write_section_rect(
-                &mut out,
-                section,
-                task_theme.terminal_palette_fill_for_section(section_index),
-            );
-            let has_visible_text = write_text_candidate(
+            let native_ink = native.map(|style| {
+                if style.section_colors_owned
+                    && let Some(color) = section_colour
+                {
+                    return std::borrow::Cow::Borrowed(color);
+                }
+                style.section_ink(section_index, section.num as usize)
+            });
+            write_section_rect(&mut out, section, native);
+            write_text_candidate(
                 &mut out,
                 &section.section,
                 &section_class,
@@ -629,70 +565,61 @@ pub(crate) fn render_journey_diagram_svg_model(
                     placement: render_settings.text_placement,
                     task_font_size,
                     task_font_family,
+                    native_weight: native.map(|style| style.label_weight),
                     section_colour,
-                    typed_fill: section_text_fill,
+                    native_fill: native_ink.as_deref(),
                 },
                 &theme.text_color,
             )?;
-            if let Some(receipt) = typography_receipt.as_mut() {
-                receipt.record_text_run(&section.section, has_visible_text);
-            }
             out.push_str("</g>");
             out.checkpoint()?;
-            if let Some(receipt) = text_receipt.as_mut() {
-                receipt.record_surface_label(
-                    crate::journey::JourneyTextPaintRole::Section,
-                    section_text_fill,
-                    uses_section_colour,
-                    has_visible_text,
-                );
-            }
-            if let Some(receipt) = task_theme_receipt.as_mut() {
-                receipt.record_checkpointed_section(
-                    section_index,
-                    task_theme.terminal_palette_fill_for_section(section_index),
-                );
-            }
             section_index += 1;
         }
 
         last_section = task.section.as_str();
 
+        let line_stroke = native.map_or("#666", |style| style.connector.as_str());
         let _ = write!(
             &mut out,
-            r##"<g><line id="{id}" x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" class="task-line" stroke-width="1px" stroke-dasharray="4 2" stroke="#666"/>"##,
+            r#"<g><line id="{id}" x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" class="task-line" stroke-width="1px" stroke-dasharray="4 2" stroke="{line_stroke}"/>"#,
             id = escape_attr_display(scoped_svg_id(diagram_id, &task.line_id)),
             x1 = fmt(task.line_x1),
             y1 = fmt(task.line_y1),
             x2 = fmt(task.line_x2),
             y2 = fmt(task.line_y2),
+            line_stroke = escape_attr(line_stroke),
         );
         options.checkpoint_emit()?;
 
-        if let Some(receipt) = text_receipt.as_mut() {
-            receipt.record_line();
-        }
-
+        let face_paint = native.map(|style| style.face_paint(&task.mouth));
+        let face_attributes = face_paint.as_ref().map_or_else(String::new, |(fill, ink)| {
+            format!(r#" fill="{}" stroke="{ink}""#, escape_attr(fill))
+        });
+        let face_ink = face_paint.as_ref().map_or("#666", |(_, ink)| *ink);
         let _ = write!(
             &mut out,
-            r#"<circle cx="{cx}" cy="{cy}" class="face" r="{r}" stroke-width="2" overflow="visible"/>"#,
+            r#"<circle cx="{cx}" cy="{cy}" class="face" r="{r}" stroke-width="2" overflow="visible"{face_attributes}/>"#,
             cx = fmt(task.face_cx),
             cy = fmt_task_face_y(task.face_cy),
             r = fmt(JOURNEY_FACE_RADIUS_PX),
         );
-        out.push_str("<g>");
+        if native.is_some() {
+            let _ = write!(&mut out, r#"<g color="{face_ink}">"#);
+        } else {
+            out.push_str("<g>");
+        }
         let eye_dx = JOURNEY_FACE_RADIUS_PX / 3.0;
         let eye_r = 1.5;
         let _ = write!(
             &mut out,
-            r##"<circle cx="{cx}" cy="{cy}" r="{r}" stroke-width="2" fill="#666" stroke="#666"/>"##,
+            r#"<circle cx="{cx}" cy="{cy}" r="{r}" stroke-width="2" fill="{face_ink}" stroke="{face_ink}"/>"#,
             cx = fmt(task.face_cx - eye_dx),
             cy = fmt_task_face_y(task.face_cy.map(|v| v - eye_dx)),
             r = fmt(eye_r),
         );
         let _ = write!(
             &mut out,
-            r##"<circle cx="{cx}" cy="{cy}" r="{r}" stroke-width="2" fill="#666" stroke="#666"/>"##,
+            r#"<circle cx="{cx}" cy="{cy}" r="{r}" stroke-width="2" fill="{face_ink}" stroke="{face_ink}"/>"#,
             cx = fmt(task.face_cx + eye_dx),
             cy = fmt_task_face_y(task.face_cy.map(|v| v - eye_dx)),
             r = fmt(eye_r),
@@ -718,7 +645,7 @@ pub(crate) fn render_journey_diagram_svg_model(
             crate::model::JourneyMouthKind::Ambivalent => {
                 let _ = write!(
                     &mut out,
-                    r##"<line class="mouth" stroke="#666" x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="1px"/>"##,
+                    r#"<line class="mouth" stroke="{face_ink}" x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="1px"/>"#,
                     x1 = fmt(task.face_cx - 5.0),
                     y1 = fmt_task_face_y(task.face_cy.map(|v| v + 7.0)),
                     x2 = fmt(task.face_cx + 5.0),
@@ -727,23 +654,14 @@ pub(crate) fn render_journey_diagram_svg_model(
             }
         }
 
-        if !matches!(task.mouth, crate::model::JourneyMouthKind::Ambivalent)
-            && let Some(receipt) = text_receipt.as_mut()
-        {
-            receipt.record_label(crate::journey::JourneyTextPaintRole::Mouth, None);
-        }
         out.push_str("</g>");
 
-        let emitted_fill = task_theme.terminal_fill_css_for_task(task_index);
-        let emitted_stroke = task_theme
-            .terminal_stroke_for_task(task_index)
-            .map(|(_, css)| css);
-        let (emitted_rx, emitted_ry) = write_task_rect(
+        let native_radius = native.map(|style| fmt(style.radius).to_string());
+        write_task_rect(
             &mut out,
             task,
-            task_theme.terminal_radius_for_task(task_index),
-            emitted_fill,
-            emitted_stroke,
+            native_radius.as_deref().unwrap_or("3"),
+            native.map(|style| style.border.as_str()),
         );
 
         for c in &task.actor_circles {
@@ -762,8 +680,14 @@ pub(crate) fn render_journey_diagram_svg_model(
 
         // Pre-section tasks use the literal black baseline rather than sectionColours.
         let uses_section_colour = section_index != 0 && section_colour.is_some();
-        let task_text_fill = text_paint.surface_fill_css(uses_section_colour);
-        let has_visible_text = write_text_candidate(
+        let task_text_fill = native.map(|style| {
+            if uses_section_colour && style.section_colors_owned {
+                section_colour.unwrap_or(&style.text)
+            } else {
+                &style.text
+            }
+        });
+        write_text_candidate(
             &mut out,
             &task.task,
             "task",
@@ -777,40 +701,23 @@ pub(crate) fn render_journey_diagram_svg_model(
                 placement: render_settings.text_placement,
                 task_font_size,
                 task_font_family,
+                native_weight: native.map(|style| style.label_weight),
                 section_colour,
-                typed_fill: task_text_fill,
+                native_fill: task_text_fill,
             },
             &theme.text_color,
         )?;
-        if let Some(receipt) = typography_receipt.as_mut() {
-            receipt.record_text_run(&task.task, has_visible_text);
-        }
 
         out.push_str("</g>");
         out.checkpoint()?;
-        if let Some(receipt) = text_receipt.as_mut() {
-            receipt.record_surface_label(
-                crate::journey::JourneyTextPaintRole::Task,
-                task_text_fill,
-                uses_section_colour,
-                has_visible_text,
-            );
-        }
-        if let Some(receipt) = task_theme_receipt.as_mut() {
-            receipt.record_checkpointed_task_with_terminal_paint(
-                task_index,
-                emitted_rx,
-                emitted_ry,
-                emitted_fill,
-                task_theme.terminal_stroke_for_task(task_index),
-            );
-        }
     }
 
     if let Some(title) = diagram_title {
+        let title_weight =
+            native.map_or_else(|| "bold".to_owned(), |style| style.title_weight.to_string());
         let _ = write!(
             &mut out,
-            r#"<text x="{x}" font-size="{fs}" font-weight="bold" y="{y}" fill="{fill}" font-family="{ff}">{text}</text>"#,
+            r#"<text x="{x}" font-size="{fs}" font-weight="{title_weight}" y="{y}" fill="{fill}" font-family="{ff}">{text}</text>"#,
             x = fmt(layout.title_x),
             fs = escape_attr(title_font_size),
             y = fmt(layout.title_y),
@@ -819,45 +726,22 @@ pub(crate) fn render_journey_diagram_svg_model(
             text = escape_xml(title),
         );
         out.checkpoint()?;
-        if let Some(receipt) = text_receipt.as_mut() {
-            receipt.record_title(title, title_color);
-        }
-        if let Some(receipt) = typography_receipt.as_mut() {
-            receipt.record_text_run(title, !title.trim().is_empty());
-        }
     }
 
+    let axis_stroke = native.map_or("black", |style| style.connector.as_str());
     let _ = write!(
         &mut out,
-        r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="4" stroke="black" marker-end="{marker_end}"/>"#,
+        r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke-width="4" stroke="{axis_stroke}" marker-end="{marker_end}"/>"#,
         x1 = fmt(layout.activity_line.x1),
         y1 = fmt(layout.activity_line.y1),
         x2 = fmt(layout.activity_line.x2),
         y2 = fmt(layout.activity_line.y2),
+        axis_stroke = escape_attr(axis_stroke),
         marker_end = escape_attr_display(arrowhead_url),
     );
 
     out.push_str("</svg>\n");
-    let rooted_svg = root_document.complete(out.finish()?)?;
-    if let Some(mut receipt) = text_receipt {
-        receipt.record_line();
-        if !text_paint.record_terminal(receipt) {
-            return Err(crate::Error::InvalidModel {
-                message: "Journey text paint receipt did not match the terminal SVG".to_owned(),
-            });
-        }
-    }
-    if task_theme_receipt.is_some_and(|receipt| !task_theme.record_terminal(receipt)) {
-        return Err(crate::Error::InvalidModel {
-            message: "Journey task radius receipt did not match the terminal SVG".to_string(),
-        });
-    }
-    if typography_receipt.is_some_and(|receipt| !typography_theme.record_terminal(receipt)) {
-        return Err(crate::Error::InvalidModel {
-            message: "Journey typography receipt did not match the terminal SVG".to_string(),
-        });
-    }
-    Ok(rooted_svg)
+    root_document.complete(out.finish()?)
 }
 
 #[cfg(test)]
@@ -870,9 +754,7 @@ mod tests {
     use crate::resources::{
         RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
     };
-    use crate::text::DeterministicTextMeasurer;
     use merman_model::families::journey::JourneyDiagramModel;
-    use merman_model::presentation::PresentationConfig;
 
     fn bounded_journey_layout() -> crate::model::JourneyDiagramLayout {
         crate::model::JourneyDiagramLayout {
@@ -949,48 +831,26 @@ mod tests {
             SvgExecution::unthemed_for_test(&request, &debug, &session, DiagramFamilyId::JOURNEY)
                 .expect("SVG execution");
         let layout = bounded_journey_layout();
-        let task_theme = crate::journey::JourneyTaskTheme::baseline(&layout.tasks);
-        let typography_theme = crate::journey::JourneyTypographyThemePlan::resolve(
-            None,
+        let typography_theme = JourneyStyle::resolve(
             &crate::test_support::presentation_config(serde_json::json!({})),
+            None,
         );
         render_journey_diagram_svg_model(
             &layout,
             &JourneyDiagramModel::default(),
-            &task_theme,
             &typography_theme,
-            &crate::journey::JourneyTextPaintPlan::resolve(
-                None,
-                &PresentationConfig::empty_object(),
-                None,
-                &typography_theme,
-                execution.work_meter(),
-            )?,
             None,
-            &DeterministicTextMeasurer::default(),
             &execution,
         )
     }
 
     #[test]
-    fn task_rect_optional_paints_preserve_geometry_and_attribute_encoding() {
+    fn task_rect_preserves_geometry_and_encodes_native_stroke() {
         let mut task = bounded_journey_layout().tasks.remove(0);
         task.fill = "A&B".to_string();
-        for (fill, stroke, expected) in [
-            (None, None, None),
-            (Some("#123456"), None, Some("fill:#123456;")),
-            (None, Some("#654321"), Some("stroke:#654321;")),
-            (
-                Some("#123456"),
-                Some("#654321"),
-                Some("fill:#123456;stroke:#654321;"),
-            ),
-        ] {
+        for (stroke, expected) in [(None, None), (Some("#654321"), Some("stroke:#654321;"))] {
             let mut out = String::new();
-            assert_eq!(
-                write_task_rect(&mut out, &task, "9", fill, stroke),
-                ("9", "9")
-            );
+            write_task_rect(&mut out, &task, "9", stroke);
             let document = crate::xml_dom::Document::parse(&out).unwrap();
             let rect = document.root_element();
             assert_eq!(rect.attribute("style"), expected);
@@ -1060,13 +920,9 @@ mod tests {
             }
         });
 
-        let typography = crate::journey::JourneyTypographyThemePlan::resolve(
-            None,
-            &crate::test_support::presentation_config(cfg),
-        );
-        let css =
-            journey_css_with_resolved_typography("journey", typography.css_binding(), true, None)
-                .css;
+        let typography =
+            JourneyStyle::resolve(&crate::test_support::presentation_config(cfg), None);
+        let css = journey_css("journey", typography.css_binding());
 
         assert!(css.contains(
             r#"#journey .label{font-family:"ibm plex sans",arial,sans-serif;color:#101010;}"#
@@ -1093,13 +949,9 @@ mod tests {
     #[test]
     fn journey_css_uses_default_font_and_edge_color() {
         let cfg = serde_json::json!({});
-        let typography = crate::journey::JourneyTypographyThemePlan::resolve(
-            None,
-            &crate::test_support::presentation_config(cfg),
-        );
-        let css =
-            journey_css_with_resolved_typography("journey", typography.css_binding(), true, None)
-                .css;
+        let typography =
+            JourneyStyle::resolve(&crate::test_support::presentation_config(cfg), None);
+        let css = journey_css("journey", typography.css_binding());
 
         assert!(css.contains(
             r#"#journey .label{font-family:"trebuchet ms",verdana,arial,sans-serif;color:#333;}"#
@@ -1191,27 +1043,15 @@ mod tests {
             diagram_id: Some("journey".to_string()),
             ..Default::default()
         };
-        let task_theme = crate::journey::JourneyTaskTheme::baseline(&layout.tasks);
-        let typography_theme = crate::journey::JourneyTypographyThemePlan::resolve(
-            None,
-            &crate::test_support::presentation_config(cfg.clone()),
-        );
+        let typography_theme =
+            JourneyStyle::resolve(&crate::test_support::presentation_config(cfg.clone()), None);
 
         let svg = with_test_svg_execution(DiagramFamilyId::JOURNEY, &options, |options| {
             render_journey_diagram_svg_model(
                 &layout,
                 &JourneyDiagramModel::default(),
-                &task_theme,
                 &typography_theme,
-                &crate::journey::JourneyTextPaintPlan::resolve(
-                    None,
-                    &crate::test_support::presentation_config(cfg.clone()),
-                    None,
-                    &typography_theme,
-                    options.work_meter(),
-                )?,
                 None,
-                &DeterministicTextMeasurer::default(),
                 options,
             )
         })
@@ -1256,27 +1096,17 @@ mod tests {
             diagram_id: Some("journeyFixed".to_string()),
             ..Default::default()
         };
-        let task_theme = crate::journey::JourneyTaskTheme::baseline(&layout.tasks);
-        let typography_theme = crate::journey::JourneyTypographyThemePlan::resolve(
-            None,
+        let typography_theme = JourneyStyle::resolve(
             &crate::test_support::presentation_config(serde_json::json!({})),
+            None,
         );
 
         let svg = with_test_svg_execution(DiagramFamilyId::JOURNEY, &options, |options| {
             render_journey_diagram_svg_model(
                 &layout,
                 &JourneyDiagramModel::default(),
-                &task_theme,
                 &typography_theme,
-                &crate::journey::JourneyTextPaintPlan::resolve(
-                    None,
-                    &PresentationConfig::empty_object(),
-                    None,
-                    &typography_theme,
-                    options.work_meter(),
-                )?,
                 None,
-                &DeterministicTextMeasurer::default(),
                 options,
             )
         })

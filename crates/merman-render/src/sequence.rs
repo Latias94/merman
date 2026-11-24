@@ -37,22 +37,16 @@ mod math_artifact;
 mod message_metrics;
 mod messages;
 mod metrics;
-mod note_artifact;
+mod native_theme;
 mod notes;
 mod orchestration;
 mod rect;
 mod root_bounds;
 mod terminal_css;
-mod terminal_theme;
-mod text_effect;
 mod theme_binding;
-mod theme_evidence;
 mod typography;
+pub(crate) use native_theme::{SequenceNativeStyle, SequenceThemeAdapter};
 pub(crate) use terminal_css::SequencePreparedCss;
-pub(crate) use terminal_theme::{
-    SequencePreparedNumberTheme, SequencePreparedStaticRectTheme, SequencePreparedTerminalTheme,
-};
-pub(crate) use text_effect::SequencePreparedTextEffect;
 pub(crate) use theme_binding::SequenceCompatBinding;
 
 pub(crate) use activation::{sequence_activation_stack_bounds, sequence_activation_start_x};
@@ -62,7 +56,6 @@ pub(crate) use constants::{
     SEQUENCE_FRAME_SIDE_PAD_PX, SEQUENCE_GLYPH_BAND_HEIGHT, SEQUENCE_MESSAGE_WRAP_PADDING_SIDES,
     SequenceActorBands, SequenceActorLabelFootprint,
 };
-pub(crate) use drawing_geometry::SequenceFramePlacement;
 pub(crate) use math_artifact::{
     SequenceMathArtifactStore, SequenceMathOccurrence, SequenceMathSidecar,
     SequenceMathSidecarBuilder,
@@ -75,13 +68,7 @@ pub(crate) use metrics::{
     sequence_drawn_text_first_y, sequence_drawn_text_style, sequence_drawn_text_y,
     sequence_inline_font_family, wrap_sequence_label_like_mermaid_lines,
 };
-pub(crate) use note_artifact::{
-    SequenceNoteWrapWidths, SequencePreparedNoteLabelView, SequencePreparedNoteLabels,
-};
-pub(crate) use notes::{
-    SequenceWrappedSideNoteLabelContext, prepare_wrapped_side_note_label,
-    sequence_note_final_wrapped_lines, typed_wrapped_side_note_style,
-};
+pub(crate) use notes::sequence_note_final_wrapped_lines;
 
 use actors::{SequenceActorLayoutPlan, SequenceActorLayoutPlanContext, plan_sequence_actors};
 use block_steps::{BlockStepPlanContext, calculate_sequence_block_widths};
@@ -89,20 +76,12 @@ use config::SequenceLayoutSettings;
 use drawing_geometry::{SequenceFrameGeometry, prepare_sequence_frame_geometry};
 use message_metrics::SequenceMessageMetricSidecar;
 use orchestration::{SequenceLayoutGraph, SequenceLayoutGraphContext, build_sequence_layout_graph};
-use rect::{SequenceRectStackBoundsContext, sequence_rect_stack_x_bounds};
 use root_bounds::{
     SequenceRootBoundsContext, SequenceRootGeometry, prepare_sequence_root_geometry,
 };
-pub(crate) use theme_evidence::{
-    SequenceActorThemeReceipt, SequenceControlThemeEmission, SequenceControlThemeReceipt,
-    SequenceLifelineThemeEmission, SequenceLifelineThemeReceipt, SequenceMessageThemeEmission,
-    SequenceMessageThemeReceipt, SequenceNumberLabelThemeEmission, SequenceNumberLabelThemeReceipt,
-    SequenceStaticRectThemeEmission, SequenceStaticRectThemeReceipt, SequenceThemeEvidenceRecorder,
-    SequenceTypographyThemeReceipt,
-};
 pub(crate) use typography::{
-    SequenceResolvedTypography, SequenceTerminalForegroundProvenance, SequenceTerminalTextStyle,
-    SequenceTextSurface, SequenceTypographyPlan, SequenceTypographyRole,
+    SequenceResolvedTypography, SequenceTerminalTextStyle, SequenceTextSurface,
+    SequenceTypographyPlan,
 };
 
 /// Phase-aware cancellation projection for Sequence text and math callbacks.
@@ -196,18 +175,13 @@ pub(crate) struct SequencePreparedArtifact {
     visible_model: Option<Box<SequenceDiagramModel>>,
     actor_popup_layouts: HashMap<String, actors::SequenceActorPopupLayout>,
     actor_label_footprints: Vec<Option<SequenceActorLabelFootprint>>,
-    wrapped_note_text: SequencePreparedNoteLabels,
     message_metrics: SequenceMessageMetricSidecar,
     box_indices: Vec<Option<usize>>,
-    frame_placements: Vec<Option<SequenceFramePlacement>>,
+    frame_placements: Vec<Option<usize>>,
     math_sidecar: SequenceMathSidecar,
-    theme_evidence: SequenceThemeEvidenceRecorder,
-    effect_evidence: crate::diagram_theme::SvgShadowEvidenceRecorder,
-    expected_effect_applications: std::cell::Cell<usize>,
+    native: Option<Box<SequenceNativeStyle>>,
     typography: Arc<SequenceTypographyPlan>,
-    terminal_theme: SequencePreparedTerminalTheme,
     activation_geometry: SequencePreparedActivationGeometry,
-    activation_theme: SequencePreparedStaticRectTheme,
     css: SequencePreparedCss,
     block_label_box_metrics: SequenceBlockLabelBoxMetrics,
 }
@@ -220,19 +194,11 @@ impl SequencePreparedArtifact {
         self.visible_model.as_deref().unwrap_or(source)
     }
 
-    pub(crate) fn effect_evidence(&self) -> &crate::diagram_theme::SvgShadowEvidenceRecorder {
-        &self.effect_evidence
-    }
-
-    pub(crate) fn expected_effect_applications(&self) -> &std::cell::Cell<usize> {
-        &self.expected_effect_applications
-    }
-
     pub(crate) fn box_indices(&self) -> &[Option<usize>] {
         &self.box_indices
     }
 
-    pub(crate) fn frame_placements(&self) -> &[Option<SequenceFramePlacement>] {
+    pub(crate) fn frame_placements(&self) -> &[Option<usize>] {
         &self.frame_placements
     }
 
@@ -240,36 +206,20 @@ impl SequencePreparedArtifact {
         &self.layout
     }
 
-    pub(crate) const fn theme_evidence(&self) -> &SequenceThemeEvidenceRecorder {
-        &self.theme_evidence
+    pub(crate) fn native(&self) -> Option<&SequenceNativeStyle> {
+        self.native.as_deref()
     }
 
     pub(crate) const fn math_sidecar(&self) -> &SequenceMathSidecar {
         &self.math_sidecar
     }
 
-    pub(crate) fn wrapped_note_text(&self) -> &SequencePreparedNoteLabels {
-        &self.wrapped_note_text
-    }
-
     pub(crate) fn typography(&self) -> &SequenceTypographyPlan {
         self.typography.as_ref()
     }
 
-    pub(crate) const fn number_theme(&self) -> &SequencePreparedNumberTheme {
-        &self.terminal_theme.number
-    }
-
-    pub(crate) const fn terminal_theme(&self) -> &SequencePreparedTerminalTheme {
-        &self.terminal_theme
-    }
-
     pub(crate) const fn activation_geometry(&self) -> &SequencePreparedActivationGeometry {
         &self.activation_geometry
-    }
-
-    pub(crate) const fn activation_theme(&self) -> &SequencePreparedStaticRectTheme {
-        &self.activation_theme
     }
 
     pub(crate) const fn css(&self) -> &SequencePreparedCss {
@@ -545,10 +495,6 @@ pub(crate) fn sequence_block_widths_for_render(
         measurer,
         msg_text_style: &settings.msg_text_style,
         note_text_style: &settings.note_text_style,
-        note_non_normal_typed_terminal_style: prepared
-            .typography()
-            .note()
-            .non_normal_typed_terminal_style(),
         loop_text_style: &settings.loop_text_style,
         math_config: effective_config,
         math_terminal_style: prepared
@@ -579,7 +525,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
     model: &SequenceDiagramModel,
     diagram_title: Option<&str>,
     effective_config: &PresentationConfig,
-    resolved_theme: Option<&crate::diagram_theme::ResolvedDiagramTheme>,
+    native: Option<(&crate::theme::FamilyTheme, Option<crate::theme::Color>)>,
     measurer: &dyn TextMeasurer,
     math_backend: Option<&crate::math::ConfiguredMathBackend>,
     work_meter: Arc<OperationWorkMeter>,
@@ -601,25 +547,14 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         };
     let model = visible_model.as_deref().unwrap_or(model);
 
-    let typography = Arc::new(SequenceTypographyPlan::resolve(
-        effective_config,
-        resolved_theme,
-        work_meter.as_ref(),
-    )?);
+    let typography = Arc::new(match native {
+        Some((theme, background)) => {
+            SequenceTypographyPlan::for_native(effective_config.as_value(), theme, background)
+        }
+        None => SequenceTypographyPlan::resolve(effective_config),
+    });
     checkpoints.checkpoint()?;
-    let terminal_theme = SequencePreparedTerminalTheme::resolve(
-        model,
-        effective_config,
-        resolved_theme,
-        work_meter.as_ref(),
-    )?;
     let effective_title = sequence_render_title(model.title.as_deref(), diagram_title);
-    let theme_evidence = SequenceThemeEvidenceRecorder::with_title(
-        resolved_theme,
-        effective_config,
-        effective_title,
-        work_meter.as_ref(),
-    )?;
     let base_text_style = typography.base_measurement_style();
     let effective_config_value = effective_config.as_value();
     let settings =
@@ -674,7 +609,6 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         box_margin: settings.box_margin,
         box_text_margin: settings.box_text_margin,
         wrap_padding: settings.wrap_padding,
-        note_margin: settings.note_margin,
         checkpoints,
     })?;
     let message_metric_view = message_metrics.view(model, &settings.msg_text_style, measurer);
@@ -682,8 +616,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
     let clusters: Vec<LayoutCluster> = Vec::new();
 
     let SequenceLayoutGraph {
-        mut nodes,
-        wrapped_note_text,
+        nodes,
         edges,
         block_layouts_by_id,
         activations,
@@ -728,46 +661,6 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         message_metrics: message_metric_view,
         checkpoints,
     })?;
-
-    let wrapped_note_text = SequencePreparedNoteLabels::new(
-        model,
-        wrapped_note_text,
-        &SequenceWrappedSideNoteLabelContext {
-            measurer,
-            measurement_style: &settings.note_text_style,
-            terminal_style: typography.note().terminal_text_style(),
-            config: effective_config,
-            default_width: settings.sequence_default_width,
-            note_margin: settings.note_margin,
-            wrap_padding: settings.wrap_padding,
-            checkpoints: checkpoints.text(),
-        },
-        &work_meter,
-    )?;
-
-    let rect_x_bounds = sequence_rect_stack_x_bounds(SequenceRectStackBoundsContext {
-        model,
-        actor_index: &actor_index,
-        actor_centers_x: &actor_centers_x,
-        edges: &edges,
-        nodes: &nodes,
-        actor_width_min: settings.sequence_default_width,
-        box_margin: settings.box_margin,
-        checkpoints,
-    })?;
-    if !rect_x_bounds.is_empty() {
-        for (node_index, n) in nodes.iter_mut().enumerate() {
-            checkpoints.checkpoint_loop(node_index)?;
-            let Some(start_id) = n.id.strip_prefix("rect-") else {
-                continue;
-            };
-            let Some((min_x, max_x)) = rect_x_bounds.get(start_id).copied() else {
-                continue;
-            };
-            n.x = (min_x + max_x) / 2.0;
-            n.width = (max_x - min_x).max(1.0);
-        }
-    }
 
     let SequenceFrameGeometry {
         frames,
@@ -847,17 +740,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
 
     let math_sidecar = math_sidecar_builder.finish()?;
     checkpoints.checkpoint()?;
-    let activation_theme = SequencePreparedStaticRectTheme::resolve(
-        resolved_theme,
-        crate::diagram_theme::ThemeTarget::Activation,
-        !activations.is_empty(),
-        effective_config.config_paint_overrides_typed_default("themeVariables.activationBkgColor"),
-        effective_config
-            .config_paint_overrides_typed_default("themeVariables.activationBorderColor"),
-        work_meter.as_ref(),
-    )?;
-
-    let css = SequencePreparedCss::resolve(&typography, &terminal_theme);
+    let css = SequencePreparedCss::resolve(&typography);
     Ok(SequencePreparedArtifact {
         visible_model,
         layout: SequenceDiagramLayout {
@@ -872,16 +755,18 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         },
         actor_popup_layouts,
         actor_label_footprints,
-        wrapped_note_text,
         message_metrics,
         math_sidecar,
-        theme_evidence,
-        effect_evidence: Default::default(),
-        expected_effect_applications: Default::default(),
+        native: native.map(|(theme, _)| {
+            Box::new(SequenceNativeStyle {
+                form: theme.form,
+                elevation: theme.elevation.clone(),
+                container: theme.roles.surface_container.first_color(),
+                title: theme.roles.text_title,
+            })
+        }),
         typography,
-        terminal_theme,
         activation_geometry,
-        activation_theme,
         css,
         block_label_box_metrics,
         box_indices,
@@ -1013,131 +898,6 @@ mod resource_tests {
             panic!("expected Sequence model");
         };
         model.clone()
-    }
-
-    #[test]
-    fn wrapped_note_artifact_reserves_exact_bytes_and_releases_on_late_preparation_failure() {
-        use crate::diagram_theme::{
-            DiagramThemeCompiler, DiagramThemeSpec, FontStyle, Specified, TextStylePatch,
-            ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
-        };
-
-        const LATE_TITLE: &str = "cancel after note retention";
-
-        struct CancelAtTitle {
-            meter: Arc<OperationWorkMeter>,
-            title_calls: Cell<usize>,
-            pre_retention_probes: Cell<usize>,
-        }
-        impl TextMeasurer for CancelAtTitle {
-            fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
-                DeterministicTextMeasurer::default().measure(text, style)
-            }
-
-            fn measure_svg_title_bbox_x(&self, text: &str, style: &TextStyle) -> (f64, f64) {
-                if text != LATE_TITLE {
-                    if self.meter.prepared_text_retained_bytes() == 0 {
-                        self.pre_retention_probes
-                            .set(self.pre_retention_probes.get() + 1);
-                    }
-                    return DeterministicTextMeasurer::default()
-                        .measure_svg_title_bbox_x(text, style);
-                }
-                self.title_calls.set(self.title_calls.get() + 1);
-                assert!(self.meter.prepared_text_retained_bytes() > 0);
-                self.meter.control().cancel();
-                (0.0, 0.0)
-            }
-        }
-
-        let source = "---\nconfig: {sequence: {wrap: true}}\n---\nsequenceDiagram\nparticipant A\nNote right of A: alpha beta gamma";
-        let model = sequence_model(source);
-        let config = crate::test_support::presentation_config(json!({"sequence": {"wrap": true}}));
-        let theme = DiagramThemeCompiler::new()
-            .compile(
-                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
-                    ThemeRule::new(
-                        ThemeTarget::NoteLabel,
-                        ThemeStylePatch {
-                            typography: TextStylePatch {
-                                font_style: Specified::Value(FontStyle::Italic),
-                                ..TextStylePatch::default()
-                            },
-                            ..ThemeStylePatch::default()
-                        },
-                    ),
-                )),
-            )
-            .unwrap();
-        let resolved = theme.resolve(crate::DiagramFamilyId::SEQUENCE);
-        let measurer = DeterministicTextMeasurer::default();
-        let prepare = |meter: &Arc<OperationWorkMeter>| {
-            prepare_sequence_diagram_typed_with_title_and_work_meter(
-                &model,
-                None,
-                &config,
-                Some(&resolved),
-                &measurer,
-                None,
-                Arc::clone(meter),
-            )
-        };
-        let measuring = Arc::new(OperationWorkMeter::new(
-            RenderResourcePolicy::unbounded_for_trusted_input(),
-        ));
-        let artifact = prepare(&measuring).unwrap();
-        let exact_bytes = measuring.prepared_text_retained_bytes();
-        assert!(exact_bytes > "alpha beta gamma".len());
-        drop(artifact);
-        assert_eq!(measuring.prepared_text_retained_bytes(), 0);
-
-        for ceiling in [1, exact_bytes - 1, exact_bytes] {
-            let meter = Arc::new(OperationWorkMeter::new(
-                RenderResourcePolicy::unbounded_for_trusted_input()
-                    .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, ceiling)
-                    .unwrap(),
-            ));
-            if ceiling == exact_bytes {
-                let artifact = prepare(&meter).unwrap();
-                assert_eq!(meter.prepared_text_retained_bytes(), exact_bytes);
-                drop(artifact);
-            } else {
-                let Error::ResourceLimitExceeded(error) = prepare(&meter).unwrap_err() else {
-                    panic!("expected retained Note text to respect the prepared-text byte ceiling");
-                };
-                assert_eq!(
-                    error.limit,
-                    ResourceLimitId::MaxPreparedTextRetainedBytes.as_str()
-                );
-                assert_eq!(error.cause, ResourceLimitCause::Ceiling);
-                assert_eq!(error.max, ceiling);
-            }
-            assert_eq!(meter.prepared_text_retained_bytes(), 0);
-        }
-
-        let meter = Arc::new(OperationWorkMeter::new(
-            RenderResourcePolicy::unbounded_for_trusted_input(),
-        ));
-        let cancelling_measurer = CancelAtTitle {
-            meter: Arc::clone(&meter),
-            title_calls: Cell::new(0),
-            pre_retention_probes: Cell::new(0),
-        };
-        let error = prepare_sequence_diagram_typed_with_title_and_work_meter(
-            &model,
-            Some(LATE_TITLE),
-            &config,
-            Some(&resolved),
-            &cancelling_measurer,
-            None,
-            Arc::clone(&meter),
-        )
-        .unwrap_err();
-        assert!(matches!(error, Error::Cancelled(error) if error.phase == OperationPhase::Layout));
-        assert!(cancelling_measurer.pre_retention_probes.get() > 0);
-        assert_eq!(cancelling_measurer.title_calls.get(), 1);
-        assert!(meter.prepared_text_retained_bytes_peak() > 0);
-        assert_eq!(meter.prepared_text_retained_bytes(), 0);
     }
 
     #[test]

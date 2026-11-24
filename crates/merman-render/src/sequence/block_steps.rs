@@ -48,9 +48,9 @@ impl SequenceBlockLabelBoxMetrics {
             terminal_height: LEGACY_SEQUENCE_BLOCK_LABEL_BOX_HEIGHT,
             typography_expanded: false,
         };
-        // Authored Mermaid fonts preserve raw frame/title sizing. Only typed
+        // Authored Mermaid fonts preserve raw frame/title sizing. Native
         // typography adds measured space beyond the upstream label-box contract.
-        if !typography.has_typed_typography() {
+        if typography.native_terminal_style().is_none() {
             return Ok(legacy);
         }
 
@@ -143,7 +143,6 @@ pub(super) struct BlockStepPlanContext<'a> {
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) msg_text_style: &'a TextStyle,
     pub(super) note_text_style: &'a TextStyle,
-    pub(super) note_non_normal_typed_terminal_style: Option<&'a TextStyle>,
     pub(super) loop_text_style: &'a TextStyle,
     pub(super) math_config: &'a PresentationConfig,
     pub(super) math_terminal_style: super::SequenceTerminalTextStyle<'a>,
@@ -284,7 +283,6 @@ struct BlockFrameWidthContext<'a> {
     measurer: &'a dyn TextMeasurer,
     msg_text_style: &'a TextStyle,
     note_text_style: &'a TextStyle,
-    note_non_normal_typed_terminal_style: Option<&'a TextStyle>,
     loop_text_style: &'a TextStyle,
     math_config: &'a PresentationConfig,
     math_terminal_style: super::SequenceTerminalTextStyle<'a>,
@@ -317,7 +315,6 @@ impl<'a> BlockStepPlanContext<'a> {
             measurer: self.measurer,
             msg_text_style: self.msg_text_style,
             note_text_style: self.note_text_style,
-            note_non_normal_typed_terminal_style: self.note_non_normal_typed_terminal_style,
             loop_text_style: self.loop_text_style,
             math_config: self.math_config,
             math_terminal_style: self.math_terminal_style,
@@ -535,7 +532,6 @@ fn calculate_sequence_block_bounds(
                     wrap_padding: ctx.wrap_padding,
                     measurer: ctx.measurer,
                     note_text_style: ctx.note_text_style,
-                    note_non_normal_typed_terminal_style: ctx.note_non_normal_typed_terminal_style,
                     math_config: ctx.math_config,
                     math_terminal_style: ctx.note_math_terminal_style,
                     math_sidecar: ctx.math_sidecar,
@@ -658,20 +654,15 @@ mod tests {
                 measurer: &measurer,
                 msg_text_style: &msg_style,
                 note_text_style: &note_style,
-                note_non_normal_typed_terminal_style: None,
                 loop_text_style: &msg_style,
                 math_config: &math_config,
                 math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
                     text_style: &msg_style,
                     foreground: "#333",
-                    foreground_provenance:
-                        crate::sequence::SequenceTerminalForegroundProvenance::PresentationConfig,
                 },
                 note_math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
                     text_style: &note_style,
                     foreground: "#333",
-                    foreground_provenance:
-                        crate::sequence::SequenceTerminalForegroundProvenance::PresentationConfig,
                 },
                 math_sidecar: &math_sidecar,
                 message_metrics: SequenceMessageMetricView::empty(),
@@ -843,20 +834,15 @@ mod tests {
                 measurer: &measurer,
                 msg_text_style: &text_style,
                 note_text_style: &text_style,
-                note_non_normal_typed_terminal_style: None,
                 loop_text_style: &text_style,
                 math_config: &math_config,
                 math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
                     text_style: &text_style,
                     foreground: "#333",
-                    foreground_provenance:
-                        crate::sequence::SequenceTerminalForegroundProvenance::PresentationConfig,
                 },
                 note_math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
                     text_style: &text_style,
                     foreground: "#333",
-                    foreground_provenance:
-                        crate::sequence::SequenceTerminalForegroundProvenance::PresentationConfig,
                 },
                 math_sidecar: &math_sidecar,
                 message_metrics: SequenceMessageMetricView::empty(),

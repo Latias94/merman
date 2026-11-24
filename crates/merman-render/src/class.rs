@@ -27,22 +27,19 @@ pub(crate) mod config;
 #[cfg(feature = "layout-elk")]
 mod elk_terminals;
 mod measured;
+mod native_theme;
 pub(crate) mod node_binding;
 #[cfg(feature = "layout-shoal")]
 pub(crate) mod shoal;
 use self::config::ClassLayoutSettings;
 pub(crate) use self::config::ClassRenderConfig;
-pub(crate) use node_binding::{ClassInterfaceVisualBinding, ClassNodeVisualPlan};
+pub(crate) use node_binding::ClassNodeVisualPlan;
 mod theme;
 use self::measured::{MeasuredEdge, MeasuredGraph, MeasuredNode};
+pub(crate) use self::native_theme::{ClassNativeStyle, ClassThemeAdapter};
 #[cfg(feature = "layout-elk")]
 use merman_layout_elk as elk;
-pub(crate) use theme::{
-    ClassCssThemeBinding, ClassMarkerPaintBinding, ClassNodeLabelStyleFacts, ClassNodePaintBinding,
-    ClassNodePaintOutcomes, ClassRelationPaintOutcome, ClassRelationThemePlan, ClassTextOutcomes,
-    ClassTextPaint, ClassTextTerminalFacts, ClassTextThemePlan, ClassThemeEvidenceRecorder,
-    ClassThemeOutcomes,
-};
+pub(crate) use theme::{ClassCssThemeBinding, ClassRelationThemePlan, ClassTextThemePlan};
 
 type ClassDiagramModel = merman_model::families::class::ClassDiagram;
 type ClassNode = merman_model::families::class::ClassNode;
@@ -1249,14 +1246,14 @@ struct ClassBoxMeasureCtx<'a> {
     mermaid_config: &'a merman_model::presentation::PresentationConfig,
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
     text_style: &'a TextStyle,
-    inherited_font_size: Option<f64>,
+    code_text_style: &'a TextStyle,
+    native_title_style: Option<&'a TextStyle>,
     html_calc_text_style: &'a TextStyle,
     wrap_probe_font_size: f64,
     wrap_mode: WrapMode,
     padding: f64,
     hide_empty_members_box: bool,
     capture_row_metrics: bool,
-    capture_style_facts: bool,
 }
 
 pub(crate) fn class_math_label_metrics(
@@ -1282,49 +1279,6 @@ pub(crate) fn class_math_label_metrics(
     })
 }
 
-pub(crate) fn class_text_is_math_only(text: &str) -> bool {
-    let mut saw_math = false;
-    for line in crate::text::split_mermaid_common_br_lines(text) {
-        let Some(parsed) = crate::math::parse_delimited_math_line(line) else {
-            if !line.trim().is_empty() {
-                return false;
-            }
-            continue;
-        };
-        saw_math = true;
-        if parsed
-            .fragments
-            .iter()
-            .any(|fragment| !fragment.leading_text.trim().is_empty())
-            || !parsed.trailing_text.trim().is_empty()
-        {
-            return false;
-        }
-    }
-    saw_math
-}
-
-pub(crate) fn class_html_label_visible_style_facts(
-    text: &str,
-) -> crate::text::VisibleTextStyleFacts {
-    if !text.contains('<') {
-        return crate::text::VisibleTextStyleFacts::plain_text(text);
-    }
-    let fragment = crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true);
-    crate::text::VisibleTextStyleFacts::from_xhtml_fragment(&fragment)
-}
-
-fn class_html_label_visible_style_facts_at_font_size(
-    text: &str,
-    font_size: Option<f64>,
-) -> crate::text::VisibleTextStyleFacts {
-    if !text.contains('<') {
-        return crate::text::VisibleTextStyleFacts::plain_text_at_font_size(text, font_size);
-    }
-    let fragment = crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true);
-    crate::text::VisibleTextStyleFacts::from_xhtml_fragment_at_font_size(&fragment, font_size)
-}
-
 pub(crate) fn class_svg_empty_markdown_fallback(text: &str) -> Option<String> {
     if text.is_empty()
         || analyze_class_svg_markdown(text)
@@ -1343,76 +1297,6 @@ pub(crate) fn class_svg_empty_markdown_fallback(text: &str) -> Option<String> {
     Some(format!("{first}{}", remaining.trim()))
 }
 
-pub(crate) fn class_svg_label_visible_style_facts(
-    text: &str,
-) -> crate::text::VisibleTextStyleFacts {
-    crate::text::VisibleTextStyleFacts::from_svg_markdown_projection(text)
-}
-
-fn class_label_parent_owns_color(css_style: &str) -> bool {
-    css_style
-        .split(';')
-        .filter_map(crate::mermaid_style::parse_style_declaration)
-        .any(|declaration| matches!(declaration.property(), "color" | "fill"))
-}
-
-fn class_node_styles_own_color(styles: &[String]) -> bool {
-    styles
-        .iter()
-        .filter_map(|style| crate::mermaid_style::parse_style_declaration(style))
-        .any(|declaration| declaration.property() == "color")
-}
-
-fn class_label_style_facts(
-    facts: &crate::text::VisibleTextStyleFacts,
-    text: &str,
-    css_style: &str,
-    node_owns_color: bool,
-    node_font_ownership: crate::mermaid_style::CssFontFamilyOwnership,
-    node_font_size_ownership: crate::mermaid_style::CssFontSizeOwnership,
-    writer_uses_html_labels: bool,
-) -> ClassNodeLabelStyleFacts {
-    use crate::mermaid_style::{CssFontFamilyOwnership, CssFontSizeOwnership};
-
-    let local_font_ownership = crate::mermaid_style::css_font_family_ownership([css_style]);
-    let writer_font_ownership =
-        if writer_uses_html_labels && node_font_ownership != CssFontFamilyOwnership::Inherited {
-            node_font_ownership
-        } else {
-            local_font_ownership
-        };
-    let local_font_size_ownership =
-        crate::mermaid_style::css_font_size_declaration_ownership([css_style]);
-    let writer_font_size_ownership =
-        if writer_uses_html_labels && node_font_size_ownership != CssFontSizeOwnership::Inherited {
-            node_font_size_ownership
-        } else {
-            local_font_size_ownership
-        };
-    let font_ownership_unverified = crate::math::contains_delimited_math(text)
-        || local_font_ownership == CssFontFamilyOwnership::Unverified
-        || writer_font_ownership == CssFontFamilyOwnership::Unverified;
-    let font_size_ownership_unverified = crate::math::contains_delimited_math(text)
-        || local_font_size_ownership == CssFontSizeOwnership::Unverified
-        || writer_font_size_ownership == CssFontSizeOwnership::Unverified;
-    let text_is_math_only = class_text_is_math_only(text);
-    let parent_owns_color =
-        node_owns_color || text_is_math_only || class_label_parent_owns_color(css_style);
-    let mut summary = ClassNodeLabelStyleFacts::default();
-    summary.observe(
-        facts,
-        parent_owns_color,
-        !parent_owns_color && crate::math::contains_delimited_math(text) && !text_is_math_only,
-        local_font_ownership == CssFontFamilyOwnership::SourceOwned,
-        writer_font_ownership == CssFontFamilyOwnership::SourceOwned,
-        font_ownership_unverified,
-        local_font_size_ownership == CssFontSizeOwnership::SourceOwned,
-        writer_font_size_ownership == CssFontSizeOwnership::SourceOwned,
-        font_size_ownership_unverified,
-    );
-    summary
-}
-
 fn class_box_dimensions(
     node: &ClassNode,
     ctx: &ClassBoxMeasureCtx<'_>,
@@ -1420,7 +1304,6 @@ fn class_box_dimensions(
     f64,
     f64,
     Option<ClassNodeLabelPlan>,
-    ClassNodeLabelStyleFacts,
     Option<ClassPreparedSvgTitle>,
 ) {
     let measurer = ctx.measurer;
@@ -1433,7 +1316,6 @@ fn class_box_dimensions(
     let padding = ctx.padding;
     let hide_empty_members_box = ctx.hide_empty_members_box;
     let capture_row_metrics = ctx.capture_row_metrics;
-    let capture_style_facts = ctx.capture_style_facts;
 
     // Mermaid class nodes are sized by rendering the label groups (`textHelper(...)`) and taking
     // the resulting SVG bbox (`getBBox()`), then expanding by class padding (see upstream:
@@ -1442,44 +1324,12 @@ fn class_box_dimensions(
     // Emulate that sizing logic deterministically using the same text measurer.
     let node_requires_math = class_node_requires_math(node);
     let use_html_labels = matches!(wrap_mode, WrapMode::HtmlLike) || node_requires_math;
-    let writer_uses_html_labels = use_html_labels;
     let prepare_html_labels = use_html_labels && !node_requires_math;
-    let node_label_style = if writer_uses_html_labels {
+    let node_label_style = if use_html_labels {
         node_binding::class_apply_inline_styles(node).style_attr
     } else {
         String::new()
     };
-    let writer_font_size =
-        crate::text::visible_text_font_size_after_style(ctx.inherited_font_size, &node_label_style);
-    let node_font_ownership = if capture_style_facts {
-        crate::mermaid_style::css_font_family_declaration_ownership(
-            node.styles.iter().map(String::as_str),
-        )
-    } else {
-        crate::mermaid_style::CssFontFamilyOwnership::Inherited
-    };
-    let node_font_size_ownership = if capture_style_facts {
-        crate::mermaid_style::css_font_size_declaration_ownership(
-            node.styles.iter().map(String::as_str),
-        )
-    } else {
-        crate::mermaid_style::CssFontSizeOwnership::Inherited
-    };
-    let node_owns_color = capture_style_facts && class_node_styles_own_color(&node.styles);
-    let label_style_facts =
-        |facts: Option<&crate::text::VisibleTextStyleFacts>, text: &str, css_style: &str| {
-            facts.map_or_else(ClassNodeLabelStyleFacts::default, |facts| {
-                class_label_style_facts(
-                    facts,
-                    text,
-                    css_style,
-                    node_owns_color,
-                    node_font_ownership,
-                    node_font_size_ownership,
-                    writer_uses_html_labels,
-                )
-            })
-        };
     let padding = padding.max(0.0);
     let gap = padding;
     let text_padding = if use_html_labels { 0.0 } else { 3.0 };
@@ -1607,30 +1457,25 @@ fn class_box_dimensions(
     }
 
     let measure_label = |text: &str,
-                         css_style: &str|
-     -> (
-        crate::text::TextMetrics,
-        Option<ClassPreparedHtmlLabel>,
-        ClassNodeLabelStyleFacts,
-    ) {
-        let effective_style = if writer_uses_html_labels {
-            class_html_node_text_style(text_style, css_style, &node_label_style)
+                         css_style: &str,
+                         base_style: &TextStyle|
+     -> (crate::text::TextMetrics, Option<ClassPreparedHtmlLabel>) {
+        let effective_style = if use_html_labels {
+            class_html_node_text_style(base_style, css_style, &node_label_style)
         } else {
             class_svg_row_text_style(
-                text_style,
+                base_style,
                 css_style,
                 class_svg_empty_markdown_fallback(text).is_some(),
             )
         };
         let style = effective_style.as_ref();
-        let visible_font_size =
-            crate::text::visible_text_font_size_after_style(ctx.inherited_font_size, css_style);
-        let visible_font_size = if writer_uses_html_labels {
-            crate::text::visible_text_font_size_after_style(visible_font_size, &node_label_style)
+        let calc_style = if ctx.native_title_style.is_some() {
+            style
         } else {
-            visible_font_size
+            html_calc_text_style
         };
-        let max_width_px = class_html_create_text_width_px(text, measurer, html_calc_text_style);
+        let max_width_px = class_html_create_text_width_px(text, measurer, calc_style);
         if let Some(metrics) = class_math_label_metrics(
             text,
             measurer,
@@ -1639,53 +1484,22 @@ fn class_box_dimensions(
             mermaid_config,
             math_renderer,
         ) {
-            let visible_style_facts = capture_style_facts.then(|| {
-                class_html_label_visible_style_facts_at_font_size(text, visible_font_size)
-            });
-            let style_facts = label_style_facts(visible_style_facts.as_ref(), text, css_style);
-            return (metrics, None, style_facts);
+            return (metrics, None);
         }
         if use_html_labels {
-            let prepared =
-                crate::class::class_prepare_html_label(measurer, style, text, max_width_px, "");
-            let metrics = prepared.metrics;
-            let visible_style_facts = capture_style_facts.then(|| {
-                crate::text::VisibleTextStyleFacts::from_xhtml_fragment_at_font_size(
-                    &prepared.xhtml,
-                    visible_font_size,
-                )
-            });
-            let style_facts = label_style_facts(visible_style_facts.as_ref(), text, css_style);
-            (
-                metrics,
-                prepare_html_labels.then_some(prepared),
-                style_facts,
-            )
+            let prepared = class_prepare_html_label(measurer, style, text, max_width_px, "");
+            (prepared.metrics, prepare_html_labels.then_some(prepared))
         } else if let Some(fallback) = class_svg_empty_markdown_fallback(text) {
-            let visible_style_facts = capture_style_facts.then(|| {
-                crate::text::VisibleTextStyleFacts::plain_text_at_font_size(
-                    &fallback,
-                    visible_font_size,
-                )
-            });
             (
                 measurer.measure_wrapped(&fallback, style, None, wrap_mode),
                 None,
-                label_style_facts(visible_style_facts.as_ref(), &fallback, css_style),
             )
         } else if analyze_class_svg_markdown(text).has_styled_runs {
-            let visible_style_facts = capture_style_facts.then(|| {
-                crate::text::VisibleTextStyleFacts::from_svg_markdown_projection_at_font_size(
-                    text,
-                    visible_font_size,
-                )
-            });
             (
                 crate::text::measure_markdown_with_inline_styles(
                     measurer, text, style, None, wrap_mode,
                 ),
                 None,
-                label_style_facts(visible_style_facts.as_ref(), text, css_style),
             )
         } else {
             let wrapped = if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun) {
@@ -1694,7 +1508,7 @@ fn class_box_dimensions(
                     text,
                     measurer,
                     style,
-                    html_calc_text_style,
+                    calc_style,
                     wrap_probe_font_size,
                     false,
                 )
@@ -1710,17 +1524,7 @@ fn class_box_dimensions(
             } else {
                 measurer.measure_wrapped(&wrapped, style, None, wrap_mode)
             };
-            let visible_style_facts = capture_style_facts.then(|| {
-                crate::text::VisibleTextStyleFacts::from_svg_markdown_projection_at_font_size(
-                    text,
-                    visible_font_size,
-                )
-            });
-            (
-                metrics,
-                None,
-                label_style_facts(visible_style_facts.as_ref(), text, css_style),
-            )
+            (metrics, None)
         }
     };
 
@@ -1742,11 +1546,9 @@ fn class_box_dimensions(
     let mut annotation_rect: Option<Rect> = None;
     let mut annotation_group_height = 0.0;
     let mut annotation_prepared = None;
-    let mut annotation_style_facts = ClassNodeLabelStyleFacts::default();
     if let Some(t) = node.annotation_text_for_render() {
-        let (m, prepared, style_facts) = measure_label(&t, "");
+        let (m, prepared) = measure_label(&t, "", text_style);
         annotation_prepared = prepared;
-        annotation_style_facts = style_facts;
         annotation_rect = label_rect(m, 0.0);
         if let Some(r) = annotation_rect {
             annotation_group_height = r.height().max(0.0);
@@ -1769,6 +1571,8 @@ fn class_box_dimensions(
     // Both pinned shapeUtil implementations apply bolder after createText wrapping.
     let title_markdown_analysis =
         (!use_html_labels).then(|| analyze_class_svg_markdown(&title_text));
+    let title_style = ctx.native_title_style.unwrap_or(text_style);
+    let title_calc_style = ctx.native_title_style.unwrap_or(html_calc_text_style);
     let wrapped_title_text = if matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun)
         && title_markdown_analysis
             .as_ref()
@@ -1778,8 +1582,8 @@ fn class_box_dimensions(
             &title_text,
             &title_source,
             measurer,
-            text_style,
-            html_calc_text_style,
+            title_style,
+            title_calc_style,
             wrap_probe_font_size,
             false,
         )
@@ -1789,11 +1593,17 @@ fn class_box_dimensions(
     let svg_title =
         (!use_html_labels).then(|| ClassSvgTitleLabel::new(&title_source, &wrapped_title_text));
     let title_max_width_px = use_html_labels.then(|| {
-        class_html_create_text_width_px(title_text.as_str(), measurer, html_calc_text_style).max(1)
+        class_html_create_text_width_px(title_text.as_str(), measurer, title_calc_style).max(1)
     });
     let title_max_width = title_max_width_px.map(|width| width as f64);
 
-    let bold_title_style = if writer_uses_html_labels {
+    let bold_title_style = if let Some(native) = ctx.native_title_style {
+        if use_html_labels {
+            class_html_node_text_style(native, "", &node_label_style).into_owned()
+        } else {
+            native.clone()
+        }
+    } else if use_html_labels {
         class_html_node_text_style(text_style, "font-weight:bolder", &node_label_style).into_owned()
     } else {
         TextStyle {
@@ -1805,8 +1615,8 @@ fn class_box_dimensions(
     };
     let math_title_metrics = crate::math::contains_delimited_math(&title_text).then(|| {
         let max_width = title_max_width.unwrap_or_else(|| {
-            class_html_create_text_width_px(title_text.as_str(), measurer, html_calc_text_style)
-                .max(1) as f64
+            class_html_create_text_width_px(title_text.as_str(), measurer, title_calc_style).max(1)
+                as f64
         });
         class_math_label_metrics(
             &title_text,
@@ -1835,40 +1645,14 @@ fn class_box_dimensions(
             svg_title
                 .as_ref()
                 .expect("prepared SVG title")
-                .metrics(measurer, text_style)
+                .metrics(measurer, title_style)
         }
     });
     let title_rect = label_rect(title_metrics, 0.0);
     let title_group_height = title_rect.map(|r| r.height()).unwrap_or(0.0);
-    let title_xhtml = title_prepared
-        .as_ref()
-        .map(|prepared| prepared.xhtml.as_str());
-    let title_visible_style_facts = capture_style_facts.then(|| {
-        title_xhtml.map_or_else(
-            || {
-                if writer_uses_html_labels {
-                    class_html_label_visible_style_facts_at_font_size(&title_text, writer_font_size)
-                } else {
-                    crate::text::VisibleTextStyleFacts::plain_text_at_font_size(
-                        &svg_title.as_ref().expect("prepared SVG title").plain_text(),
-                        writer_font_size,
-                    )
-                }
-            },
-            |fragment| {
-                crate::text::VisibleTextStyleFacts::from_xhtml_fragment_at_font_size(
-                    fragment,
-                    writer_font_size,
-                )
-            },
-        )
-    });
-    let title_style_facts = label_style_facts(title_visible_style_facts.as_ref(), &title_text, "");
-
     let capture_fallback_row_metrics = capture_row_metrics && !prepare_html_labels;
     let measure_rows = |rows: &[merman_model::families::class::ClassMember]| {
         let mut rows_rect: Option<Rect> = None;
-        let mut style_facts = ClassNodeLabelStyleFacts::default();
         let mut metrics_out: Option<Vec<crate::text::TextMetrics>> =
             capture_fallback_row_metrics.then(|| Vec::with_capacity(rows.len()));
         let mut prepared_out = prepare_html_labels.then(|| Vec::with_capacity(rows.len()));
@@ -1879,8 +1663,8 @@ fn class_box_dimensions(
             } else {
                 row.display_text_for_render()
             };
-            let (metrics, prepared, row_style_facts) = measure_label(&t, row.css_style.as_str());
-            style_facts.merge(row_style_facts);
+            let (metrics, prepared) =
+                measure_label(&t, row.css_style.as_str(), ctx.code_text_style);
             if let Some(out) = metrics_out.as_mut() {
                 out.push(metrics);
             }
@@ -1897,12 +1681,11 @@ fn class_box_dimensions(
             y_offset += metrics.height.max(0.0) + text_padding;
         }
 
-        (rows_rect, metrics_out, prepared_out, style_facts)
+        (rows_rect, metrics_out, prepared_out)
     };
 
     // Members group.
-    let (members_rect, members_metrics_out, members_prepared_out, members_style_facts) =
-        measure_rows(&node.members);
+    let (members_rect, members_metrics_out, members_prepared_out) = measure_rows(&node.members);
     let mut members_group_height = members_rect.map(|r| r.height()).unwrap_or(0.0);
     if members_group_height <= 0.0 {
         // Mermaid reserves half a gap when the members group is empty.
@@ -1910,8 +1693,7 @@ fn class_box_dimensions(
     }
 
     // Methods group.
-    let (methods_rect, methods_metrics_out, methods_prepared_out, methods_style_facts) =
-        measure_rows(&node.methods);
+    let (methods_rect, methods_metrics_out, methods_prepared_out) = measure_rows(&node.methods);
 
     // Combine into the bbox returned by `textHelper(...)`.
     let mut bbox_opt: Option<Rect> = None;
@@ -1987,11 +1769,6 @@ fn class_box_dimensions(
         rect_h -= padding;
     }
 
-    let mut style_facts = title_style_facts;
-    style_facts.merge(annotation_style_facts);
-    style_facts.merge(members_style_facts);
-    style_facts.merge(methods_style_facts);
-
     let label_plan = if prepare_html_labels {
         Some(ClassNodeLabelPlan::PreparedHtml(
             ClassPreparedHtmlNodeLabels {
@@ -2017,13 +1794,7 @@ fn class_box_dimensions(
         metrics: title_metrics,
         _retained_reservation: None,
     });
-    (
-        rect_w.max(1.0),
-        rect_h.max(1.0),
-        label_plan,
-        style_facts,
-        svg_title,
-    )
+    (rect_w.max(1.0), rect_h.max(1.0), label_plan, svg_title)
 }
 
 pub(crate) fn class_calculate_text_width_like_mermaid_px(
@@ -2326,7 +2097,8 @@ impl ClassSvgTitleLabel {
         self.literal_first_row
     }
 
-    pub(crate) fn plain_text(&self) -> String {
+    #[cfg(test)]
+    fn plain_text(&self) -> String {
         self.label.plain_text()
     }
 
@@ -2335,7 +2107,11 @@ impl ClassSvgTitleLabel {
         measurer: &dyn TextMeasurer,
         style: &TextStyle,
     ) -> crate::text::TextMetrics {
-        let role = ClassTitleMeasurer { inner: measurer };
+        let weight = style.font_weight.as_deref().unwrap_or("bolder");
+        let role = ClassTitleMeasurer {
+            inner: measurer,
+            weight,
+        };
         let mut metrics = crate::text::measure_svg_markdown_word_lines(
             &role,
             self.lines(),
@@ -2349,7 +2125,7 @@ impl ClassSvgTitleLabel {
             .all(|(_, kind)| *kind == crate::text::MermaidMarkdownWordType::Normal)
         {
             let mut role_style = style.clone();
-            role_style.font_weight = Some("bolder".to_owned());
+            role_style.font_weight = Some(weight.to_owned());
             role_style.font_style = Some("normal".to_owned());
             metrics.width = self
                 .lines()
@@ -2371,12 +2147,13 @@ impl ClassSvgTitleLabel {
 /// addText clears every title tspan's weight, including strong and emphasis runs.
 struct ClassTitleMeasurer<'a> {
     inner: &'a dyn TextMeasurer,
+    weight: &'a str,
 }
 
 impl ClassTitleMeasurer<'_> {
-    fn role_style(style: &TextStyle) -> TextStyle {
+    fn role_style(&self, style: &TextStyle) -> TextStyle {
         TextStyle {
-            font_weight: Some("bolder".to_owned()),
+            font_weight: Some(self.weight.to_owned()),
             ..style.clone()
         }
     }
@@ -2388,7 +2165,7 @@ impl TextMeasurer for ClassTitleMeasurer<'_> {
     }
 
     fn measure(&self, text: &str, style: &TextStyle) -> crate::text::TextMetrics {
-        self.inner.measure(text, &Self::role_style(style))
+        self.inner.measure(text, &self.role_style(style))
     }
 
     fn measure_wrapped(
@@ -2399,27 +2176,27 @@ impl TextMeasurer for ClassTitleMeasurer<'_> {
         wrap_mode: WrapMode,
     ) -> crate::text::TextMetrics {
         self.inner
-            .measure_wrapped(text, &Self::role_style(style), max_width, wrap_mode)
+            .measure_wrapped(text, &self.role_style(style), max_width, wrap_mode)
     }
 
     fn measure_svg_text_computed_length_px(&self, text: &str, style: &TextStyle) -> f64 {
         self.inner
-            .measure_svg_text_computed_length_px(text, &Self::role_style(style))
+            .measure_svg_text_computed_length_px(text, &self.role_style(style))
     }
 
     fn measure_svg_tspan_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
         self.inner
-            .measure_svg_tspan_text_bbox_width_px(text, &Self::role_style(style))
+            .measure_svg_tspan_text_bbox_width_px(text, &self.role_style(style))
     }
 
     fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
         self.inner
-            .measure_svg_tspan_text_bbox_height_px(text, &Self::role_style(style))
+            .measure_svg_tspan_text_bbox_height_px(text, &self.role_style(style))
     }
 
     fn measure_svg_create_text_bbox_y_offset_px(&self, text: &str, style: &TextStyle) -> f64 {
         self.inner
-            .measure_svg_create_text_bbox_y_offset_px(text, &Self::role_style(style))
+            .measure_svg_create_text_bbox_y_offset_px(text, &self.role_style(style))
     }
 }
 
@@ -2442,14 +2219,6 @@ impl ClassSvgLabel {
                 )
             },
         )
-    }
-
-    pub(crate) fn visible_style_facts(&self) -> crate::text::VisibleTextStyleFacts {
-        let visible =
-            self.lines().iter().flatten().any(|(word, _)| {
-                !crate::text::trim_html_collapsible_ascii_whitespace(word).is_empty()
-            });
-        crate::text::VisibleTextStyleFacts::plain_text(if visible { "text" } else { "" })
     }
 
     pub(crate) fn plain_text(&self) -> String {
@@ -2781,7 +2550,6 @@ pub(crate) fn layout_class_diagram_typed_with_config(
     effective_config: &merman_model::presentation::PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-    typography_theme: &ClassTextThemePlan,
     render_config: &ClassRenderConfig,
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<(ClassDiagramLayout, ClassPreparedLabels)> {
@@ -2793,7 +2561,6 @@ pub(crate) fn layout_class_diagram_typed_with_config(
         math_renderer,
         render_config,
         false,
-        typography_theme,
         Some(work_control),
     )?;
     let prepared_labels = std::mem::take(&mut measured.prepared_labels);
@@ -2816,7 +2583,6 @@ pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     operation_seed: elk::ElkOperationSeed,
-    typography_theme: &ClassTextThemePlan,
     render_config: &ClassRenderConfig,
     work_control: &mut OperationLayoutWorkControl,
 ) -> Result<(ClassDiagramLayout, ClassPreparedLabels)> {
@@ -2828,7 +2594,6 @@ pub(crate) fn layout_class_diagram_elk_typed_with_config_and_operation_seed(
         math_renderer,
         render_config,
         true,
-        typography_theme,
         Some(work_control),
     )?;
     let prepared_labels = std::mem::take(&mut measured.prepared_labels);
@@ -2860,7 +2625,6 @@ fn measure_class_diagram(
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     render_config: &ClassRenderConfig,
     uses_elk_adapter: bool,
-    typography_theme: &ClassTextThemePlan,
     work_control: Option<&OperationLayoutWorkControl>,
 ) -> Result<MeasuredClassDiagram> {
     validate_class_namespace_hierarchy(model)?;
@@ -2881,7 +2645,6 @@ fn measure_class_diagram(
     let mut class_label_plans_by_id: FxHashMap<String, Arc<ClassNodeLabelPlan>> =
         FxHashMap::default();
     let mut prepared_labels = ClassPreparedLabels::default();
-    let mut class_node_style_facts_by_id = BTreeMap::new();
     let mut node_label_metrics_by_id: HashMap<String, (f64, f64)> = HashMap::new();
     let namespace_ids = class_namespace_ids_in_decl_order(model);
 
@@ -2900,28 +2663,29 @@ fn measure_class_diagram(
         mermaid_config,
         math_renderer,
         text_style,
-        inherited_font_size: typography_theme.visible_font_size_px(),
+        code_text_style: render_config.code_text_style(),
+        native_title_style: render_config
+            .native_style
+            .as_ref()
+            .map(|native| &native.title_style),
         html_calc_text_style,
         wrap_probe_font_size,
         wrap_mode: wrap_mode_node,
         padding: class_padding,
         hide_empty_members_box,
         capture_row_metrics,
-        capture_style_facts: typography_theme.requires_node_style_facts(),
     };
 
     let insert_class_node =
         |g: &mut MeasuredGraph,
          c: &ClassNode,
          class_label_plans_by_id: &mut FxHashMap<String, Arc<ClassNodeLabelPlan>>,
-         class_node_style_facts_by_id: &mut BTreeMap<Box<str>, ClassNodeLabelStyleFacts>,
          prepared_labels: &mut ClassPreparedLabels|
          -> Result<()> {
             if let Some(work_control) = work_control {
                 work_control.checked_add(0, 0)?;
             }
-            let (w, h, label_plan, style_facts, svg_title) =
-                class_box_dimensions(c, &class_box_measure_ctx);
+            let (w, h, label_plan, svg_title) = class_box_dimensions(c, &class_box_measure_ctx);
             if let Some(mut label_plan) = label_plan {
                 let id = c.id.clone();
                 if let Some(work_control) = work_control {
@@ -2934,9 +2698,6 @@ fn measure_class_diagram(
                     prepared.reserve_retained_bytes(&c.id, work_control)?;
                 }
                 prepared_labels.titles_by_id.insert(c.id.clone(), prepared);
-            }
-            if class_box_measure_ctx.capture_style_facts {
-                class_node_style_facts_by_id.insert(c.id.as_str().into(), style_facts);
             }
             g.set_node(
                 c.id.clone(),
@@ -3019,21 +2780,12 @@ fn measure_class_diagram(
             &mut g,
             c.node,
             &mut class_label_plans_by_id,
-            &mut class_node_style_facts_by_id,
             &mut prepared_labels,
         )?;
         if let Some(parent) = class_layout_parent(model, c.parent) {
             g.set_parent(c.id.clone(), parent.to_string());
         }
     }
-    if typography_theme.requires_node_style_facts()
-        && !typography_theme.seal_node_style_facts(class_node_style_facts_by_id)
-    {
-        return Err(Error::InvalidModel {
-            message: "Class label style facts changed after layout preparation".to_string(),
-        });
-    }
-
     for n in model.notes() {
         insert_note_node(&mut g, n, &mut node_label_metrics_by_id);
         if let Some(parent) = class_layout_parent(model, n.parent) {
@@ -3354,7 +3106,6 @@ pub fn debug_build_class_diagram_dagre_graph(
         None,
         &render_config,
         false,
-        &typography_theme,
         None,
     )?;
     Ok(measured.graph.to_dagre())
@@ -4164,19 +3915,6 @@ mod tests {
     use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode};
 
     #[test]
-    fn class_math_only_labels_use_common_break_rows() {
-        for br in ["<br>", "</BR >", "<br\u{feff}/>"] {
-            assert!(super::class_text_is_math_only(&format!("$$x$${br}$$y$$")));
-            assert!(!super::class_text_is_math_only(&format!(
-                "$$x$${br}value: $$y$$"
-            )));
-            assert!(!super::class_text_is_math_only(&format!(
-                "literal $${br}literal $$"
-            )));
-        }
-    }
-
-    #[test]
     fn class_html_prepared_labels_follow_public_layout_and_plan_owners() {
         use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
         use std::sync::Arc;
@@ -4205,7 +3943,6 @@ mod tests {
             &config,
             &DeterministicTextMeasurer::default(),
             None,
-            &typography,
             &render_config,
             &mut work,
         )
@@ -4290,7 +4027,6 @@ mod tests {
                         None,
                         &render_config,
                         uses_elk_adapter,
-                        &typography,
                         Some(&work),
                     );
                     (result, meter)
@@ -4453,7 +4189,6 @@ mod tests {
             None,
             &render_config,
             false,
-            &typography,
             Some(&work),
         );
         assert!(matches!(result, Err(crate::Error::Cancelled(_))));
@@ -4545,7 +4280,6 @@ mod tests {
                     None,
                     &render_config,
                     uses_elk_adapter,
-                    &typography,
                     Some(&work),
                 );
                 (result, meter)
@@ -4621,7 +4355,7 @@ mod tests {
     }
 
     #[test]
-    fn metrics_only_html_measurement_does_not_collect_discarded_style_facts() {
+    fn metrics_only_html_measurement_matches_prepared_labels() {
         let measurer = DeterministicTextMeasurer::default();
         let style = TextStyle::default();
         for (label, css, width) in [
@@ -4635,145 +4369,13 @@ mod tests {
         ] {
             let expected =
                 super::class_prepare_html_label(&measurer, &style, label, width, css).metrics;
-            let (actual, collections) =
-                crate::text::VisibleTextStyleFacts::count_collections(|| {
-                    super::class_html_measure_label_metrics(&measurer, &style, label, width, css)
-                });
+            let actual =
+                super::class_html_measure_label_metrics(&measurer, &style, label, width, css);
             assert_eq!(
                 (actual.width, actual.height, actual.line_count),
                 (expected.width, expected.height, expected.line_count)
             );
-            assert_eq!(collections, 0, "{label}");
         }
-    }
-
-    #[test]
-    fn admitted_deep_class_label_ownership_uses_an_iterative_traversal() {
-        const CHILD: &str = "MERMAN_CLASS_STYLE_DEPTH_CHILD";
-        const DEPTH: usize = 4096;
-        if let Ok(security) = std::env::var(CHILD) {
-            let stage = |name: &str| {
-                println!("deep Class {security} stage={name}");
-                std::io::Write::flush(&mut std::io::stdout()).unwrap();
-            };
-            stage("construct-source");
-            let label = format!(
-                "{}visible{}",
-                "<span>".repeat(DEPTH),
-                "</span>".repeat(DEPTH)
-            );
-            let source = format!("classDiagram\nclass Alpha[\"{label}\"]\n");
-            let policy = crate::resources::RenderResourcePolicy::interactive();
-            policy
-                .check_source_bytes(&source)
-                .expect("within normal source budget");
-            stage("source-budget-accepted-before-engine-parse");
-            let parsed = MermaidEngine::new()
-                .with_site_config(
-                    merman_core::presentation::SourcePresentationConfig::from_value(
-                        serde_json::json!({"htmlLabels": true, "securityLevel": security}),
-                    ),
-                )
-                .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
-                .unwrap()
-                .unwrap()
-                .into_presentation();
-            stage("engine-parse-completed");
-            let RenderSemanticModel::Class(model) = parsed.model() else {
-                panic!("expected Class")
-            };
-            policy
-                .check_model_complexity(
-                    merman_model::resources::model_complexity_from_render_model(parsed.model()),
-                )
-                .expect("within normal Class model budget");
-            stage("model-budget-accepted");
-            let label = model.class("Alpha").expect("Alpha class").label.clone();
-            stage("before-markdown-xhtml-projection");
-            let fragment = crate::text::mermaid_markdown_to_xhtml_label_fragment(&label, true);
-            stage("markdown-xhtml-projection-completed");
-            let wrapped = format!("<root>{fragment}</root>");
-            stage("before-roxmltree-parse");
-            let document = crate::xml_dom::Document::parse(&wrapped).unwrap();
-            stage("roxmltree-parse-completed");
-            let mut parents = Vec::new();
-            let mut observed_depth = 0;
-            for node in document.root_element().descendants() {
-                let parent = node.parent().map(|parent| parent.id());
-                while parents.last().copied() != parent && !parents.is_empty() {
-                    parents.pop();
-                }
-                observed_depth = observed_depth.max(parents.len());
-                if node.is_element() {
-                    parents.push(node.id());
-                }
-            }
-            assert!(
-                observed_depth >= DEPTH,
-                "sanitizer reduced input depth to {observed_depth}"
-            );
-            println!(
-                "admitted {security} source_bytes={} Class_label_bytes={} XHTML_depth={observed_depth}",
-                source.len(),
-                label.len()
-            );
-            std::io::Write::flush(&mut std::io::stdout()).unwrap();
-            stage("before-classifier-on-normal-2mib-thread");
-            let facts = std::thread::Builder::new()
-                .stack_size(2 * 1024 * 1024)
-                .spawn(move || super::class_html_label_visible_style_facts(&label))
-                .unwrap()
-                .join()
-                .unwrap();
-            assert!(facts.parse_valid());
-            assert_eq!(facts.visible_run_count(), 1);
-            assert_eq!(facts.inherited_color_run_count(), 1);
-            return;
-        }
-        for security in ["strict", "loose"] {
-            let result = std::process::Command::new(std::env::current_exe().unwrap())
-                .args([
-                    "--exact",
-                    "class::tests::admitted_deep_class_label_ownership_uses_an_iterative_traversal",
-                    "--nocapture",
-                ])
-                .env(CHILD, security)
-                .output()
-                .unwrap();
-            assert!(
-                result.status.success(),
-                "{security}: {}\n{}",
-                String::from_utf8_lossy(&result.stdout),
-                String::from_utf8_lossy(&result.stderr)
-            );
-        }
-    }
-
-    #[test]
-    fn class_label_facts_follow_the_html_writer_inner_node_font_cascade() {
-        let visible = crate::text::VisibleTextStyleFacts::plain_text("member");
-        let html = super::class_label_style_facts(
-            &visible,
-            "member",
-            "font-family:MemberOwned",
-            false,
-            crate::mermaid_style::CssFontFamilyOwnership::Unverified,
-            crate::mermaid_style::CssFontSizeOwnership::Inherited,
-            true,
-        );
-        assert_eq!(html.unverified_font_run_count(), 1);
-
-        let svg = super::class_label_style_facts(
-            &visible,
-            "member",
-            "font-family:MemberOwned",
-            false,
-            crate::mermaid_style::CssFontFamilyOwnership::Unverified,
-            crate::mermaid_style::CssFontSizeOwnership::Inherited,
-            false,
-        );
-        assert_eq!(svg.unverified_font_run_count(), 0);
-        assert_eq!(svg.writer_inherited_font_run_count(), 0);
     }
 
     #[test]
@@ -4871,7 +4473,6 @@ mod tests {
             None,
             &render_config,
             true,
-            &typography_theme,
             None,
         )
         .expect("measure Class diagram");
@@ -4979,7 +4580,6 @@ mod tests {
                         None,
                         &render_config,
                         true,
-                        &typography_theme,
                         None,
                     )
                     .unwrap();
@@ -5076,7 +4676,6 @@ mod tests {
                 None,
                 &render_config,
                 true,
-                &typography_theme,
                 None,
             )
             .unwrap();
@@ -5216,7 +4815,6 @@ mod tests {
             None,
             &render_config,
             true,
-            &typography_theme,
             None,
         )
         .expect("measure Class diagram");
@@ -5685,16 +5283,16 @@ mod tests {
             mermaid_config: &config,
             math_renderer: None,
             text_style: &style,
-            inherited_font_size: Some(style.font_size),
+            code_text_style: &style,
+            native_title_style: None,
             html_calc_text_style: &style,
             wrap_probe_font_size: 16.0,
             wrap_mode: WrapMode::HtmlLike,
             padding: 12.0,
             hide_empty_members_box: false,
             capture_row_metrics: true,
-            capture_style_facts: false,
         };
-        let (_, _, plan, _, _) = super::class_box_dimensions(&node, &context);
+        let (_, _, plan, _) = super::class_box_dimensions(&node, &context);
         let Some(super::ClassNodeLabelPlan::PreparedHtml(labels)) = plan else {
             panic!("expected prepared HTML labels");
         };
@@ -5796,17 +5394,17 @@ mod tests {
             mermaid_config: &config,
             math_renderer: Some(&ClassMathGeometryRenderer),
             text_style: &text_style,
-            inherited_font_size: Some(text_style.font_size),
+            code_text_style: &text_style,
+            native_title_style: None,
             html_calc_text_style: &text_style,
             wrap_probe_font_size: 10.0,
             wrap_mode: WrapMode::SvgLike,
             padding: 8.0,
             hide_empty_members_box: true,
             capture_row_metrics: false,
-            capture_style_facts: true,
         };
 
-        let (width, _, _, _, _) = super::class_box_dimensions(&node, &context);
+        let (width, _, _, _) = super::class_box_dimensions(&node, &context);
 
         assert_eq!(width, 139.0);
     }

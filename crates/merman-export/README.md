@@ -56,9 +56,8 @@ See [CLI font coverage and limitations](../../docs/FEATURES.md#optional-cli-font
 
 `png` and `jpeg` share private bitmap preparation. `pdf` is a separate vector export capability. Features are additive, but one output does not implicitly expose another output's API. The published `merman-export`, `merman`, and `merman-render` versions must match because the sealed SVG type crosses their crate boundaries.
 
-Themes can select font-family names and typography values, but caller-supplied theme font files
-remain rejected. For explicit native shaping across layout and typed binary outputs, use the
-separate `native-fonts` context rather than a theme recipe.
+Theme v2 documents select font-family names and typography values. Use a `native-fonts` context
+to supply font files and share explicit shaping across layout and binary outputs.
 
 ### Platform font discovery in development
 

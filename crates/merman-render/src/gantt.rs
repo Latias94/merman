@@ -12,10 +12,13 @@ use std::fmt::Write as _;
 
 use merman_model::families::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 
+mod native_theme;
 mod task_bar;
 mod theme;
+pub(crate) use native_theme::{GanttNativeStyle, GanttThemeAdapter};
 use task_bar::GanttTaskBarState;
-pub(crate) use theme::{GanttTaskTheme, GanttTaskThemeReceipt, unsupported_native_font_size};
+pub(crate) use task_bar::label_state_classes;
+pub(crate) use theme::{GanttCssBinding, GanttStyle, unsupported_native_font_size};
 
 // Mermaid falls back to 1200 only when the parent element exposes no `offsetWidth`.
 const DEFAULT_CONTAINER_WIDTH: f64 = 1200.0;
@@ -1135,17 +1138,12 @@ pub(crate) fn layout_gantt_diagram_typed(
     model: &GanttDiagramRenderModel,
     diagram_title: Option<&str>,
     config: &serde_json::Value,
-    task_theme: &GanttTaskTheme,
+    style: &GanttStyle,
     text_measurer: &dyn TextMeasurer,
     container_width: f64,
     local_time_zone: &merman_model::time::LocalTimeZone,
     work_meter: &OperationWorkMeter,
-) -> Result<GanttDiagramLayout> {
-    if task_theme.task_count() != model.tasks.len() {
-        return Err(crate::Error::InvalidModel {
-            message: "Gantt task theme count did not match the semantic model".to_string(),
-        });
-    }
+) -> Result<(GanttDiagramLayout, Vec<usize>)> {
     let mut m = model.clone();
     let title = m.title.as_deref().or(diagram_title).map(str::to_owned);
 
@@ -1157,11 +1155,14 @@ pub(crate) fn layout_gantt_diagram_typed(
     let right_padding = cfg_f64(gantt_cfg, &["rightPadding"]).unwrap_or(75.0);
     let grid_line_start_padding = cfg_f64(gantt_cfg, &["gridLineStartPadding"]).unwrap_or(35.0);
     let title_top_margin = cfg_f64(gantt_cfg, &["titleTopMargin"]).unwrap_or(25.0);
-    let font_size = task_theme.css_binding().task_font_size.measurement_px();
-    let section_font_size = task_theme.css_binding().section_font_size.measurement_px();
+    let font_size = style.css_binding().task_font_size.measurement_px();
+    let section_font_size = style.css_binding().section_font_size.measurement_px();
     // Mermaid's baseline arithmetic uses the numeric option even when an invalid
     // negative font-size attribute inherits a different used size for its glyphs.
-    let baseline_font_size = cfg_f64(gantt_cfg, &["fontSize"]).unwrap_or(11.0);
+    let baseline_font_size = style
+        .native()
+        .and_then(|native| native.task_font_size)
+        .unwrap_or_else(|| cfg_f64(gantt_cfg, &["fontSize"]).unwrap_or(11.0));
     let number_section_styles = cfg_i64(gantt_cfg, &["numberSectionStyles"]).unwrap_or(4);
 
     let cfg_display_mode = gantt_cfg
@@ -1376,19 +1377,32 @@ pub(crate) fn layout_gantt_diagram_typed(
     // `"trebuchet ms", verdana, arial, sans-serif`), not the axis group's `sans-serif`.
     // The family-local theme plan owns this value so measurement and terminal CSS share one
     // resolved winner.
-    let task_font_family = task_theme.font_family_css().to_string();
-    let text_style = TextStyle {
-        font_family: Some(task_font_family.clone()),
+    let mut text_style = TextStyle {
+        font_family: Some(style.font_family_css().to_owned()),
         font_size,
         font_weight: None,
         font_style: None,
     };
+    let native_styles = style.native().map(|native| {
+        text_style.font_weight = Some(native.label_weight.clone());
+        let clickable = TextStyle {
+            font_weight: Some("bold".into()),
+            ..text_style.clone()
+        };
+        let milestone = TextStyle {
+            font_style: Some("italic".into()),
+            ..text_style.clone()
+        };
+        let clickable_milestone = TextStyle {
+            font_weight: clickable.font_weight.clone(),
+            ..milestone.clone()
+        };
+        (clickable, milestone, clickable_milestone)
+    });
 
     let mut tasks: Vec<GanttTaskLayout> = Vec::new();
-    for (semantic_task_index, t) in &indexed_tasks {
-        let task_radius = task_theme
-            .radius_px(*semantic_task_index)
-            .expect("Gantt task theme count was validated before layout");
+    let task_radius = style.radius_px();
+    for (_, t) in &indexed_tasks {
         let start_x = scale_time(t.start_ms, min_ms, max_ms, range);
         let end_x = scale_time(t.end_ms, min_ms, max_ms, range);
         let render_end_x = scale_time(t.render_end_ms.unwrap_or(t.end_ms), min_ms, max_ms, range);
@@ -1445,8 +1459,22 @@ pub(crate) fn layout_gantt_diagram_typed(
 
         // Mermaid measures `textWidth` via `this.getBBox().width`, which does not include trailing
         // whitespace. Preserve the original task text for rendering, but trim it for measurement.
+        let style =
+            native_styles
+                .as_ref()
+                .map_or(&text_style, |(clickable, milestone, both)| {
+                    match (
+                        t.classes.iter().any(|class| class == "clickable"),
+                        t.milestone,
+                    ) {
+                        (true, true) => both,
+                        (true, false) => clickable,
+                        (false, true) => milestone,
+                        (false, false) => &text_style,
+                    }
+                });
         let text_width = text_measurer
-            .measure_svg_raw_text_bbox_width_px(t.task.trim_end(), &text_style)
+            .measure_svg_raw_text_bbox_width_px(t.task.trim_end(), style)
             .max(0.0);
 
         // Mermaid uses `renderEndTime` for the X-position calculation but `endTime` for the class
@@ -1615,16 +1643,7 @@ pub(crate) fn layout_gantt_diagram_typed(
         max_y: height,
     });
 
-    if !task_theme
-        .bind_layout_occurrences(indexed_tasks.into_iter().map(|(index, _)| index).collect())
-    {
-        return Err(crate::Error::InvalidModel {
-            message: "Gantt task theme could not bind semantic occurrences to layout order"
-                .to_string(),
-        });
-    }
-
-    Ok(GanttDiagramLayout {
+    let layout = GanttDiagramLayout {
         bounds,
         width,
         height,
@@ -1659,7 +1678,9 @@ pub(crate) fn layout_gantt_diagram_typed(
         title,
         title_x: width / 2.0,
         title_y: title_top_margin,
-    })
+    };
+    let task_source_indices = indexed_tasks.into_iter().map(|(index, _)| index).collect();
+    Ok((layout, task_source_indices))
 }
 
 #[cfg(all(test, feature = "diagram-gantt"))]
@@ -1995,12 +2016,15 @@ mod tests {
         });
 
         let utc = merman_model::time::LocalTimeZone::utc();
-        let task_theme = super::GanttTaskTheme::baseline(&model.tasks);
-        let layout = layout_gantt_diagram_typed(
+        let style = super::GanttStyle::resolve(
+            &merman_model::presentation::PresentationConfig::empty_object(),
+            None,
+        );
+        let (layout, _) = layout_gantt_diagram_typed(
             &model,
             None,
             &serde_json::json!({}),
-            &task_theme,
+            &style,
             &DeterministicTextMeasurer::default(),
             800.0,
             &utc,

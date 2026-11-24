@@ -8,7 +8,7 @@ use crate::theme::mk_border;
 
 fn inherit(stage: &mut ThemeState, key: &str, source: &str) -> Result<(), ColorError> {
     // The first stateLabelColor fallback may reference an absent stateBkg. JavaScript leaves
-    // it undefined until the following fallback; no value or provenance exists to copy yet.
+    // it undefined until the following fallback; no value exists to copy yet.
     if stage.variables.contains_key(source) {
         stage.assign_if_falsy(key, |stage| copy(stage, source))?;
     }
@@ -51,16 +51,15 @@ fn adjust(
 }
 
 fn set_string_if_missing(stage: &mut ThemeState, key: &str, value: &str) -> Result<(), ColorError> {
-    stage.assign_if_falsy(key, |_| Ok(ComputedValue::string(value)))
+    stage.assign_if_falsy(key, |_| Ok(Value::String(value.to_string())))
 }
 
 pub(super) fn update(stage: &mut ThemeState) -> Result<(), ColorError> {
     let dark_mode = stage.variables.get("darkMode").is_some_and(is_js_truthy);
 
-    stage.assign_if_falsy("primaryTextColor", |stage| {
-        Ok(stage.computed(
-            Value::String(if dark_mode { "#eee" } else { "#333" }.to_owned()),
-            &["darkMode"],
+    stage.assign_if_falsy("primaryTextColor", |_| {
+        Ok(Value::String(
+            if dark_mode { "#eee" } else { "#333" }.to_owned(),
         ))
     })?;
     adjust(stage, "secondaryColor", "primaryColor", -120.0, 0.0, 0.0)?;
@@ -72,10 +71,7 @@ pub(super) fn update(stage: &mut ThemeState) -> Result<(), ColorError> {
         ("noteBorderColor", "noteBkgColor"),
     ] {
         stage.assign_if_falsy(key, |stage| {
-            let mut value =
-                transform_color(copy(stage, source)?, |color| mk_border(color, dark_mode))?;
-            value.inherit(stage, "darkMode");
-            Ok(value)
+            transform_color(copy(stage, source)?, |color| mk_border(color, dark_mode))
         })?;
     }
     set_string_if_missing(stage, "noteBkgColor", "#fff5ad")?;
@@ -103,13 +99,11 @@ pub(super) fn update(stage: &mut ThemeState) -> Result<(), ColorError> {
         ],
     )?;
     stage.assign_if_falsy("edgeLabelBackground", |stage| {
-        let mut value = if dark_mode {
-            darkened(stage, "secondaryColor", 30.0)?
+        if dark_mode {
+            darkened(stage, "secondaryColor", 30.0)
         } else {
-            copy(stage, "secondaryColor")?
-        };
-        value.inherit(stage, "darkMode");
-        Ok(value)
+            copy(stage, "secondaryColor")
+        }
     })?;
     inherit_many(
         stage,
@@ -186,9 +180,7 @@ pub(super) fn update(stage: &mut ThemeState) -> Result<(), ColorError> {
         ("rowEven", if dark_mode { -10.0 } else { 5.0 }),
     ] {
         stage.assign_if_falsy(key, |stage| {
-            let mut value = adjusted(stage, "mainBkg", ColorAdjustment::hsl(0.0, 0.0, amount))?;
-            value.inherit(stage, "darkMode");
-            Ok(value)
+            adjusted(stage, "mainBkg", ColorAdjustment::hsl(0.0, 0.0, amount))
         })?;
     }
     inherit_many(
@@ -244,9 +236,7 @@ pub(super) fn update(stage: &mut ThemeState) -> Result<(), ColorError> {
     for_theme_color_indices(stage, |stage, index| {
         let key = format!("cScale{index}");
         stage.assign(&key, |stage| {
-            let mut value = darkened(stage, &key, if dark_mode { 75.0 } else { 25.0 })?;
-            value.inherit(stage, "darkMode");
-            Ok(value)
+            darkened(stage, &key, if dark_mode { 75.0 } else { 25.0 })
         })
     })?;
     for_theme_color_indices(stage, |stage, index| {
@@ -255,13 +245,11 @@ pub(super) fn update(stage: &mut ThemeState) -> Result<(), ColorError> {
             inverted(stage, &source)
         })?;
         stage.assign_if_falsy(&format!("cScalePeer{index}"), |stage| {
-            let mut value = if dark_mode {
-                lightened(stage, &source, 10.0)?
+            if dark_mode {
+                lightened(stage, &source, 10.0)
             } else {
-                darkened(stage, &source, 10.0)?
-            };
-            value.inherit(stage, "darkMode");
-            Ok(value)
+                darkened(stage, &source, 10.0)
+            }
         })
     })?;
     inherit(stage, "scaleLabelColor", "labelTextColor")?;
@@ -275,13 +263,11 @@ pub(super) fn update(stage: &mut ThemeState) -> Result<(), ColorError> {
             (format!("surfacePeer{index}"), 8 + index * 3),
         ] {
             stage.assign_if_falsy(&key, |stage| {
-                let mut value = adjusted(
+                adjusted(
                     stage,
                     "mainBkg",
                     ColorAdjustment::hsl(180.0, -15.0, multiplier * amount as f64),
-                )?;
-                value.inherit(stage, "darkMode");
-                Ok(value)
+                )
             })?;
         }
     }
@@ -399,13 +385,11 @@ pub(super) fn update(stage: &mut ThemeState) -> Result<(), ColorError> {
     )?;
     set_string_if_missing(stage, "requirementBorderSize", "1")?;
     stage.assign_if_falsy("relationLabelBackground", |stage| {
-        let mut value = if dark_mode {
-            darkened(stage, "secondaryColor", 30.0)?
+        if dark_mode {
+            darkened(stage, "secondaryColor", 30.0)
         } else {
-            copy(stage, "secondaryColor")?
-        };
-        value.inherit(stage, "darkMode");
-        Ok(value)
+            copy(stage, "secondaryColor")
+        }
     })?;
     inherit(stage, "relationLabelColor", "actorTextColor")?;
     inherit_many(
@@ -422,13 +406,11 @@ pub(super) fn update(stage: &mut ThemeState) -> Result<(), ColorError> {
     for index in 0..8 {
         let key = format!("git{index}");
         stage.assign(&key, |stage| {
-            let mut value = if dark_mode {
-                lightened(stage, &key, 25.0)?
+            if dark_mode {
+                lightened(stage, &key, 25.0)
             } else {
-                darkened(stage, &key, 25.0)?
-            };
-            value.inherit(stage, "darkMode");
-            Ok(value)
+                darkened(stage, &key, 25.0)
+            }
         })?;
     }
     for index in 0..8 {
@@ -440,13 +422,11 @@ pub(super) fn update(stage: &mut ThemeState) -> Result<(), ColorError> {
         )?;
     }
     stage.assign_if_falsy("branchLabelColor", |stage| {
-        let mut value = if dark_mode {
-            ComputedValue::string("black")
+        if dark_mode {
+            Ok(Value::String("black".to_string()))
         } else {
-            copy(stage, "labelTextColor")?
-        };
-        value.inherit(stage, "darkMode");
-        Ok(value)
+            copy(stage, "labelTextColor")
+        }
     })?;
     for index in 0..8 {
         inherit(stage, &format!("gitBranchLabel{index}"), "branchLabelColor")?;
@@ -624,9 +604,9 @@ mod tests {
     }
 
     #[test]
-    fn base_falsy_intermediates_do_not_claim_default_dependents_after_replay() {
+    fn base_falsy_intermediates_use_calculated_fallbacks_before_replay() {
         let mut config = SourcePresentationConfig::from_value(json!({"theme": "base"}));
-        config.deep_merge_explicit(&json!({"themeVariables": {"actorBkg": "", "stateBkg": false}}));
+        config.deep_merge(&json!({"themeVariables": {"actorBkg": "", "stateBkg": false}}));
         apply_theme_defaults(&mut config).unwrap();
         assert_eq!(config.get_str("themeVariables.actorBkg"), Some(""));
         assert_eq!(
@@ -637,64 +617,12 @@ mod tests {
             config.get_str("themeVariables.stateLabelColor"),
             Some("#333")
         );
-        for key in [
-            "labelBoxBkgColor",
-            "stateLabelColor",
-            "labelBackgroundColor",
-        ] {
-            assert!(
-                !config.config_path_overrides_typed_default(&format!("themeVariables.{key}")),
-                "{key}"
-            );
-        }
-    }
-
-    #[test]
-    fn base_owned_fallbacks_and_nested_fields_keep_their_actual_source() {
-        let mut config = SourcePresentationConfig::from_value(json!({"theme": "base"}));
-        config.deep_merge_explicit(&json!({"themeVariables": {
-            "primaryColor": "#181818", "actorBkg": "", "stateBkg": false,
-            "lineColor": "#a0a0a0", "background": "#112233"
-        }}));
-        apply_theme_defaults(&mut config).unwrap();
-        for key in [
-            "mainBkg",
-            "nodeBkg",
-            "personBkg",
-            "labelBoxBkgColor",
-            "labelBackgroundColor",
-            "pie1",
-            "requirementBackground",
-            "tagLabelBackground",
-            "arrowheadColor",
-            "defaultLinkColor",
-            "relationColor",
-            "emArrowhead",
-            "emRelationStroke",
-            "radar.axisColor",
-            "xyChart.backgroundColor",
-        ] {
-            assert!(
-                config.config_path_overrides_typed_default(&format!("themeVariables.{key}")),
-                "{key}"
-            );
-        }
-        for key in [
-            "stateLabelColor",
-            "radar.axisStrokeWidth",
-            "xyChart.titleColor",
-        ] {
-            assert!(
-                !config.config_path_overrides_typed_default(&format!("themeVariables.{key}")),
-                "{key}"
-            );
-        }
     }
 
     #[test]
     fn base_color_limit_failure_keeps_config_transactional() {
         let mut config = SourcePresentationConfig::from_value(json!({"theme": "base"}));
-        config.deep_merge_explicit(&json!({"themeVariables": {"THEME_COLOR_LIMIT": 65}}));
+        config.deep_merge(&json!({"themeVariables": {"THEME_COLOR_LIMIT": 65}}));
         let before = config.as_value().clone();
         assert!(matches!(
             apply_theme_defaults(&mut config),

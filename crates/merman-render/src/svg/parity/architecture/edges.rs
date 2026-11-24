@@ -5,10 +5,9 @@ use crate::architecture_metrics::{
 use crate::model::Bounds;
 use crate::text::TextMeasurer;
 use merman_model::families::architecture::{ArchitectureDiagramModel, ArchitectureEdgeModel};
+use merman_theme_contract::v2::{EdgeStyle, MarkerStyle};
 
-use super::super::{
-    SvgDiagramId, SvgOutput, escape_attr_into, escape_xml_into, fmt, fmt_into, fmt_string,
-};
+use super::super::{SvgDiagramId, SvgOutput, escape_xml_into, fmt, fmt_into, fmt_string};
 use super::ArchitectureEmitCheckpoints;
 use super::geometry::{arrow_shift, bounds_from_rect, extend_bounds, is_arch_dir_x, is_arch_dir_y};
 use super::labels::{
@@ -25,14 +24,10 @@ pub(super) struct ArchitectureEdgeRenderContext<'a, O: SvgOutput> {
     pub(super) model: &'a ArchitectureDiagramModel,
     pub(super) node_xy: &'a rustc_hash::FxHashMap<&'a str, (f64, f64)>,
     pub(super) settings: &'a ArchitectureRenderSettings,
+    pub(super) native: Option<&'a crate::architecture::ArchitectureNativeStyle>,
     pub(super) text_measurer: &'a dyn TextMeasurer,
     pub(super) content_bounds: &'a mut Option<Bounds>,
     pub(super) junction_bounds: &'a rustc_hash::FxHashMap<&'a str, Bounds>,
-    pub(super) edge_inline_style: Option<&'a str>,
-    pub(super) edge_style_emitted: &'a mut bool,
-    pub(super) surface_styles: Option<&'a mut crate::architecture::ArchitectureSurfaceRenderState>,
-    pub(super) typography_emission:
-        Option<&'a mut crate::architecture::ArchitectureTypographyEmission>,
     pub(super) checkpoints: ArchitectureEmitCheckpoints<'a>,
 }
 
@@ -61,9 +56,27 @@ struct ArchitectureArrowPoints {
 }
 
 impl ArchitectureArrowPoints {
-    fn new(arrow_size: f64) -> Self {
+    fn new(arrow_size: f64, style: MarkerStyle) -> Self {
         let s = fmt_string(arrow_size);
         let hs = fmt_string(arrow_size / 2.0);
+        if style == MarkerStyle::Stealth {
+            let inset = fmt_string(arrow_size * 0.28);
+            let far = fmt_string(arrow_size * 0.72);
+            return Self {
+                left: format!("{s},{hs} 0,{s} {inset},{hs} 0,0"),
+                right: format!("0,{hs} {s},0 {far},{hs} {s},{s}"),
+                top: format!("0,0 {hs},{s} {s},0 {hs},{inset}"),
+                bottom: format!("{hs},0 {s},{s} {hs},{far} 0,{s}"),
+            };
+        }
+        if style == MarkerStyle::Open {
+            return Self {
+                left: format!("0,{s} {s},{hs} 0,0"),
+                right: format!("{s},0 0,{hs} {s},{s}"),
+                top: format!("0,0 {hs},{s} {s},0"),
+                bottom: format!("{s},{s} {hs},0 0,{s}"),
+            };
+        }
         Self {
             left: format!("{s},{hs} 0,{s} 0,0"),
             right: format!("0,{hs} {s},0 {s},{s}"),
@@ -79,6 +92,63 @@ impl ArchitectureArrowPoints {
             'T' => self.top.as_str(),
             'B' => self.bottom.as_str(),
             _ => self.right.as_str(),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum ArchitectureEdgeRoute {
+    Straight,
+    Curved,
+    Orthogonal { first: (f64, f64), last: (f64, f64) },
+    Segments,
+}
+
+impl ArchitectureEdgeRoute {
+    fn resolve(
+        edge: &ArchitectureEdgeModel,
+        points: ArchitectureEdgePoints,
+        style: Option<EdgeStyle>,
+    ) -> Self {
+        match style {
+            Some(EdgeStyle::Straight) => Self::Straight,
+            Some(EdgeStyle::Curved) => Self::Curved,
+            Some(EdgeStyle::Orthogonal) => {
+                let (first, last) = match (is_arch_dir_x(edge.lhs_dir), is_arch_dir_x(edge.rhs_dir))
+                {
+                    (true, true) => {
+                        let x = (points.start_x + points.end_x) / 2.0;
+                        ((x, points.start_y), (x, points.end_y))
+                    }
+                    (false, false) => {
+                        let y = (points.start_y + points.end_y) / 2.0;
+                        ((points.start_x, y), (points.end_x, y))
+                    }
+                    (true, false) => {
+                        let bend = (points.end_x, points.start_y);
+                        (bend, bend)
+                    }
+                    (false, true) => {
+                        let bend = (points.start_x, points.end_y);
+                        (bend, bend)
+                    }
+                };
+                Self::Orthogonal { first, last }
+            }
+            Some(EdgeStyle::Sketch) | None => Self::Segments,
+        }
+    }
+
+    fn arrow_neighbors(self, points: ArchitectureEdgePoints) -> ((f64, f64), (f64, f64)) {
+        match self {
+            Self::Straight => (
+                (points.end_x, points.end_y),
+                (points.start_x, points.start_y),
+            ),
+            Self::Orthogonal { first, last } => (first, last),
+            Self::Curved | Self::Segments => {
+                ((points.mid_x, points.mid_y), (points.mid_x, points.mid_y))
+            }
         }
     }
 }
@@ -128,28 +198,41 @@ fn write_architecture_edge_path(
     diagram_id: SvgDiagramId<'_>,
     edge: &ArchitectureEdgeModel,
     points: ArchitectureEdgePoints,
-    edge_inline_style: Option<&str>,
+    route: ArchitectureEdgeRoute,
 ) {
     out.push_str(r#"<path d="M "#);
     fmt_into(out, points.start_x);
     out.push(',');
     fmt_into(out, points.start_y);
-    out.push_str(" L ");
-    fmt_into(out, points.mid_x);
-    out.push(',');
-    fmt_into(out, points.mid_y);
-    out.push_str(" L");
+    match route {
+        ArchitectureEdgeRoute::Straight => out.push_str(" L"),
+        ArchitectureEdgeRoute::Curved => {
+            let _ = write!(out, " Q{},{} ", fmt(points.mid_x), fmt(points.mid_y));
+        }
+        ArchitectureEdgeRoute::Orthogonal { first, last } => {
+            let _ = write!(
+                out,
+                " L{},{} L{},{} L",
+                fmt(first.0),
+                fmt(first.1),
+                fmt(last.0),
+                fmt(last.1)
+            );
+        }
+        ArchitectureEdgeRoute::Segments => {
+            out.push_str(" L ");
+            fmt_into(out, points.mid_x);
+            out.push(',');
+            fmt_into(out, points.mid_y);
+            out.push_str(" L");
+        }
+    }
     fmt_into(out, points.end_x);
     out.push(',');
     fmt_into(out, points.end_y);
     out.push_str(r#" " class="edge" id=""#);
     write_architecture_edge_id_attr(out, diagram_id, "L", &edge.lhs_id, &edge.rhs_id, 0);
     out.push('"');
-    if let Some(style) = edge_inline_style {
-        out.push_str(r#" style=""#);
-        escape_attr_into(out, style);
-        out.push('"');
-    }
     out.push_str("/>");
 }
 
@@ -190,17 +273,20 @@ fn write_architecture_arrow_transform(
 fn write_architecture_arrow_polygon(
     out: &mut impl SvgOutput,
     arrow: &ArchitectureArrowGeometry<'_>,
-    inline_style: Option<&str>,
+    marker_style: MarkerStyle,
 ) {
-    out.push_str(r#"<polygon points=""#);
+    if marker_style == MarkerStyle::Open {
+        out.push_str(r#"<polyline points=""#);
+    } else {
+        out.push_str(r#"<polygon points=""#);
+    }
     out.push_str(arrow.points);
     out.push_str(r#"" transform=""#);
     write_architecture_arrow_transform(out, arrow.transform);
-    out.push_str(r#"" class="arrow""#);
-    if let Some(style) = inline_style {
-        out.push_str(r#" style=""#);
-        escape_attr_into(out, style);
-        out.push('"');
+    if marker_style == MarkerStyle::Open {
+        out.push_str(r#"" class="arrow arrow-open""#);
+    } else {
+        out.push_str(r#"" class="arrow""#);
     }
     out.push_str("/>");
 }
@@ -449,9 +535,6 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
 ) -> crate::Result<()> {
     let checkpoints = ctx.checkpoints;
     checkpoints.checkpoint()?;
-    let edge_inline_style = ctx.edge_inline_style;
-    let mut surface_styles = ctx.surface_styles.take();
-    let mut typography_emission = ctx.typography_emission.take();
     let out = &mut *ctx.out;
     let diagram_id = ctx.diagram_id;
     let layout = ctx.layout;
@@ -602,16 +685,22 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
     // Edges (including conservative label bounds).
     if !model.edges.is_empty() {
         let arrow_size = settings.icon_size_px / 6.0;
-        let arrow_points = ArchitectureArrowPoints::new(arrow_size);
+        let marker_style = ctx
+            .native
+            .map_or(MarkerStyle::Classic, |native| native.marker_style);
+        let arrow_points = ArchitectureArrowPoints::new(arrow_size, marker_style);
+        let edge_style = ctx.native.map(|native| native.edge_style);
         for (edge_idx, edge) in model.edges.iter().enumerate() {
             let points = edge_points(edge_idx, edge);
+            let route = ArchitectureEdgeRoute::resolve(edge, points, edge_style);
+            let ((lhs_x, lhs_y), (rhs_x, rhs_y)) = route.arrow_neighbors(points);
             let lhs_arrow = (edge.lhs_into == Some(true)).then(|| {
                 architecture_arrow_geometry(
                     edge.lhs_dir,
                     points.start_x,
                     points.start_y,
-                    points.mid_x,
-                    points.mid_y,
+                    lhs_x,
+                    lhs_y,
                     arrow_size,
                     &arrow_points,
                 )
@@ -621,8 +710,8 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
                     edge.rhs_dir,
                     points.end_x,
                     points.end_y,
-                    points.mid_x,
-                    points.mid_y,
+                    rhs_x,
+                    rhs_y,
                     arrow_size,
                     &arrow_points,
                 )
@@ -639,33 +728,20 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
             }
 
             let label_plan = architecture_edge_label_plan(edge, points, settings, text_measurer);
-            let has_visible_label = label_plan.as_ref().is_some_and(|plan| {
-                svg_lines_have_visible_text(&plan.lines, settings.text_style.font_size)
-            });
             if let Some(label_plan) = label_plan.as_ref() {
                 extend_bounds(content_bounds, label_plan.bounds.clone());
             }
 
             out.push_str("<g>");
-            write_architecture_edge_path(out, diagram_id, edge, points, edge_inline_style);
+            write_architecture_edge_path(out, diagram_id, edge, points, route);
             checkpoints.checkpoint()?;
 
-            let lhs_arrow_style = surface_styles.as_deref().and_then(|styles| {
-                styles.edge_arrow_style(edge_idx, crate::architecture::ArchitectureArrowSide::Lhs)
-            });
-            let rhs_arrow_style = surface_styles.as_deref().and_then(|styles| {
-                styles.edge_arrow_style(edge_idx, crate::architecture::ArchitectureArrowSide::Rhs)
-            });
-            let label_style = surface_styles
-                .as_deref()
-                .and_then(|styles| styles.edge_label_style(edge_idx));
-
             if let Some(arrow) = lhs_arrow.as_ref() {
-                write_architecture_arrow_polygon(out, arrow, lhs_arrow_style);
+                write_architecture_arrow_polygon(out, arrow, marker_style);
             }
 
             if let Some(arrow) = rhs_arrow.as_ref() {
-                write_architecture_arrow_polygon(out, arrow, rhs_arrow_style);
+                write_architecture_arrow_polygon(out, arrow, marker_style);
             }
 
             if let Some(label_plan) = label_plan {
@@ -676,35 +752,14 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
                     transform = label_plan.transform.as_str()
                 );
                 out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
-                write_svg_text_lines(out, &label_plan.lines, label_style);
+                write_svg_text_lines(out, &label_plan.lines);
                 out.push_str("</g></g>");
             }
 
             out.push_str("</g>");
             out.checkpoint()?;
-            *ctx.edge_style_emitted |= edge_inline_style.is_some();
-            if let Some(emission) = typography_emission.as_deref_mut() {
-                emission.record_svg_text(has_visible_label);
-            }
-            if let Some(styles) = surface_styles.as_deref_mut() {
-                styles.record_checkpointed_edge(
-                    crate::architecture::ArchitectureEdgeTerminalEmission {
-                        index: edge_idx,
-                        label: crate::architecture::ArchitectureTextTerminalEmission {
-                            emitted: has_visible_label,
-                        },
-                        lhs_arrow: crate::architecture::ArchitecturePaintTerminalEmission {
-                            emitted: lhs_arrow.is_some(),
-                        },
-                        rhs_arrow: crate::architecture::ArchitecturePaintTerminalEmission {
-                            emitted: rhs_arrow.is_some(),
-                        },
-                    },
-                );
-            }
         }
     }
-    ctx.typography_emission = typography_emission;
     Ok(())
 }
 
@@ -818,7 +873,6 @@ mod tests {
         with_test_svg_execution(crate::DiagramFamilyId::ARCHITECTURE, &request, |options| {
             let diagram_id = options.diagram_id_or("architecture");
             let typography = crate::architecture::ArchitectureTypographyThemePlan::resolve(
-                None,
                 &merman_model::presentation::PresentationConfig::empty_object(),
             );
             let mut settings = ArchitectureRenderSettings::from_prepared(diagram_id, &typography);
@@ -858,7 +912,6 @@ mod tests {
                 };
                 let mut content_bounds = None;
                 let mut out = String::new();
-                let mut edge_style_emitted = false;
                 let mut ctx = ArchitectureEdgeRenderContext {
                     out: &mut out,
                     diagram_id,
@@ -866,13 +919,10 @@ mod tests {
                     model: &model,
                     node_xy: &node_xy,
                     settings: &settings,
+                    native: None,
                     text_measurer: &measurer,
                     content_bounds: &mut content_bounds,
                     junction_bounds: &junction_bounds,
-                    edge_inline_style: None,
-                    edge_style_emitted: &mut edge_style_emitted,
-                    surface_styles: None,
-                    typography_emission: None,
                     checkpoints: ArchitectureEmitCheckpoints::new(options.work_meter()),
                 };
 
@@ -911,7 +961,6 @@ mod tests {
         with_test_svg_execution(crate::DiagramFamilyId::ARCHITECTURE, &request, |options| {
             let diagram_id = options.diagram_id_or("architecture");
             let typography = crate::architecture::ArchitectureTypographyThemePlan::resolve(
-                None,
                 &merman_model::presentation::PresentationConfig::empty_object(),
             );
             let settings = ArchitectureRenderSettings::from_prepared(diagram_id, &typography);
@@ -922,7 +971,6 @@ mod tests {
             let measurer = DeterministicTextMeasurer::default();
             let mut content_bounds = None;
             let mut out = RejectAtFirstCheckpoint::default();
-            let mut edge_style_emitted = false;
             let mut ctx = ArchitectureEdgeRenderContext {
                 out: &mut out,
                 diagram_id,
@@ -930,13 +978,10 @@ mod tests {
                 model: &model,
                 node_xy: &node_xy,
                 settings: &settings,
+                native: None,
                 text_measurer: &measurer,
                 content_bounds: &mut content_bounds,
                 junction_bounds: &junction_bounds,
-                edge_inline_style: None,
-                edge_style_emitted: &mut edge_style_emitted,
-                surface_styles: None,
-                typography_emission: None,
                 checkpoints: ArchitectureEmitCheckpoints::new(options.work_meter()),
             };
 

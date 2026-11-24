@@ -68,8 +68,7 @@ impl DetectorEntry {
                     return false;
                 }
                 if let Some((path, value)) = fact.config_effect.assignment() {
-                    // Public assignment records the detector's ownership even when the value
-                    // was already `elk`; overlay replay relies on that provenance.
+                    // Keep the explicit layout when the diagram selects a different palette.
                     config(state).set_value(path, serde_json::Value::String(value.to_string()));
                 }
                 true
@@ -266,7 +265,7 @@ mod tests {
             "flowchart-elk"
         );
         assert_eq!(before.as_value(), after.as_value());
-        assert!(after.path_was_mutated_after(&before, "layout"));
+        assert!(after.explicit_config_owns_path("layout"));
     }
 
     #[test]

@@ -20,7 +20,7 @@ impl<'a> BlockConfigView<'a> {
 
     pub(crate) fn layout_settings(&self) -> BlockLayoutSettings {
         BlockLayoutSettings {
-            padding: self.block_f64("padding").unwrap_or(DEFAULT_BLOCK_PADDING),
+            padding: self.padding(),
             text_style: TextStyle {
                 font_family: Some(config_font_family_or_first_array_css(self.effective_config)),
                 font_size: crate::config::config_theme_or_root_font_size_px_opt(
@@ -32,6 +32,10 @@ impl<'a> BlockConfigView<'a> {
                 font_style: None,
             },
         }
+    }
+
+    pub(crate) fn padding(&self) -> f64 {
+        self.block_f64("padding").unwrap_or(DEFAULT_BLOCK_PADDING)
     }
 
     pub(crate) fn shape_settings(&self) -> BlockShapeSettings {
@@ -47,6 +51,7 @@ impl<'a> BlockConfigView<'a> {
         BlockShapeSettings {
             neo_square: self.effective_config.get("look").and_then(Value::as_str) == Some("neo"),
             round_radius,
+            native_radii: None,
         }
     }
 
@@ -64,11 +69,17 @@ pub(crate) struct BlockLayoutSettings {
 pub(crate) struct BlockShapeSettings {
     pub(crate) neo_square: bool,
     pub(crate) round_radius: f64,
+    pub(super) native_radii: Option<(f64, f64)>,
 }
 
 impl BlockShapeSettings {
     pub(crate) fn resolve(effective_config: &Value) -> Self {
         BlockConfigView::new(effective_config).shape_settings()
+    }
+
+    pub(crate) fn with_native(mut self, native: Option<&super::BlockNativeStyle>) -> Self {
+        self.native_radii = native.map(|style| (style.form.radius, style.form.container_radius));
+        self
     }
 }
 

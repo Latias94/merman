@@ -1,1 +1,1 @@
-merman theme-appearance requires `theme-preset` or `theme-recipe`
+merman appearance requires a Merman theme preset or document

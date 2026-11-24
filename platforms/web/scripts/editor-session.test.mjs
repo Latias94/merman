@@ -239,6 +239,7 @@ const EDITOR_OPTION_GROUP_IDS = [
   "version",
 ];
 const SVG_OPTION_GROUP_IDS = [
+  "background",
   "environment",
   "fixed_local_offset_minutes",
   "fixed_today",

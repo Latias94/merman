@@ -8,11 +8,6 @@ type FamilyFixture = (
 
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_model::presentation::RenderSemanticModel;
-use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack,
-    ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
-    ThemeTextStyle, ThemeVariant, TypographySpec,
-};
 use merman_render::environment::{
     HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
     MeasurementProfileId, RenderEnvironment, TextMeasurementOperation, TextMeasurementPhase,
@@ -22,6 +17,7 @@ use merman_render::family;
 use merman_render::model::ArchitectureDiagramLayout;
 use merman_render::svg::{IconPack, IconRegistry, SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{TextMetrics, TextStyle};
+use merman_render::theme::{NativeTheme, ThemeCompiler};
 use merman_render::{DiagramFamilyId, LayoutOptions};
 use regex::Regex;
 use serde_json::json;
@@ -36,6 +32,76 @@ use std::sync::{Arc, Mutex};
 const DEEP_ARCHITECTURE_RENDER_STACK_SIZE: usize = 512 * 1024;
 #[cfg(not(windows))]
 const DEEP_ARCHITECTURE_RENDER_STACK_SIZE: usize = 128 * 1024;
+
+#[test]
+fn native_theme_v2_architecture_layers_service_cards_and_preserves_edge_color() {
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(
+            "---\nconfig:\n  themeVariables:\n    archEdgeColor: '#123456'\n---\narchitecture-beta\ngroup backend(cloud)[Backend]\nservice api(server)[API] in backend\nservice db[Database] in backend\napi:R --> L:db\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap();
+    let theme = ThemeCompiler::new()
+        .compile_json(
+            br##"{
+                "schema_version":2,"extends":"studio",
+                "roles":{"surface.node":"#DDEEFF","surface.container":"#E0E8F0",
+                         "stroke.border":"#405060","text.title":"#243648"},
+                "typography":{"sans":["Architecture Text"],"base_size_px":20},
+                "form":{"radius":7,"container_radius":11,"connector_width":3,
+                        "edge_style":"orthogonal","marker_style":"open","elevation":"soft"}
+            }"##,
+            None,
+        )
+        .unwrap();
+    let prepared = family::prepare(
+        parsed.presentation(),
+        &LayoutOptions::headless_svg_defaults(),
+        RenderEnvironment::deterministic()
+            .begin_session_with_native_theme(NativeTheme::new(theme))
+            .unwrap(),
+    )
+    .unwrap();
+    let rendered = prepared
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let nodes: Vec<_> = document.descendants().collect();
+    let position = |class| {
+        nodes
+            .iter()
+            .position(|node| node.attribute("class") == Some(class))
+            .unwrap()
+    };
+    let group = position("architecture-group-surfaces");
+    let depth = nodes
+        .iter()
+        .position(|node| node.attribute("data-merman-theme-depth") == Some("node"))
+        .unwrap();
+    let edges = position("architecture-edges");
+    let card = position("architecture-native-service-card");
+    assert!(group < depth && depth < edges && edges < card);
+    assert!(nodes[group].children().any(|node| {
+        node.attribute("rx") == Some("11")
+            && node
+                .attribute("style")
+                .is_some_and(|style| style.contains("fill:#E0E8F0"))
+    }));
+    assert_eq!(nodes[card].attribute("rx"), Some("7"));
+    assert_eq!(nodes[card].attribute("fill"), Some("#DDEEFF"));
+    let edge = nodes[position("edge")];
+    assert_eq!(edge.attribute("d").unwrap().matches('L').count(), 3);
+    assert!(nodes[position("arrow arrow-open")].has_tag_name("polyline"));
+    let css = nodes
+        .iter()
+        .find(|node| node.has_tag_name("style"))
+        .unwrap()
+        .text()
+        .unwrap();
+    assert!(css.contains("font-family:\"Architecture Text\";font-size:20px;"));
+    assert!(css.contains(".edge{stroke-width:3px;stroke:#123456;"));
+}
 
 #[derive(Default)]
 struct CountingArchitectureHost {
@@ -147,376 +213,20 @@ fn prepare_architecture_text_with_engine(engine: &MermaidEngine, text: &str) -> 
     (parsed, layout_options.clone(), session)
 }
 
-fn architecture_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
-    DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_typography(
-            TypographySpec::default().with_family_style(DiagramFamilyId::ARCHITECTURE, typography),
-        ))
-        .expect("compile Architecture typography theme")
-}
-
-#[test]
-fn architecture_cytoscape_title_requests_are_not_applicable_without_a_diagram_title_dom() {
-    for source in [
-        "architecture-beta\ntitle Nonvisual diagram title\nservice api(server)[API]\n",
-        "---\ntitle: Nonvisual diagram title\n---\narchitecture-beta\nservice api(server)[API]\n",
-    ] {
-        let render = |theme: &DiagramTheme| {
-            let (parsed, options, session) = prepare_architecture_with_theme_and_environment(
-                source,
-                theme,
-                MermaidEngine::new(),
-                RenderEnvironment::deterministic(),
-            );
-            family::prepare(&parsed, &options, session)
-                .unwrap()
-                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-                .unwrap()
-        };
-        let baseline = DiagramThemeCompiler::new()
-            .compile(DiagramThemeSpec::new())
-            .unwrap();
-        let baseline = render(&baseline);
-        for variant in [
-            None,
-            Some(ThemeVariant::Default),
-            Some(ThemeVariant::Primary),
-        ] {
-            let mut rule = ThemeRule::new(
-                ThemeTarget::Title,
-                ThemeStylePatch::default()
-                    .with_fill(CanvasPaint::solid("#2468ac").unwrap())
-                    .with_stroke(CanvasPaint::solid("#987654").unwrap()),
-            );
-            if let Some(variant) = variant {
-                rule = rule.with_variant(variant);
-            }
-            let theme = DiagramThemeCompiler::new()
-                .compile(
-                    DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)),
-                )
-                .unwrap();
-            let rendered = render(&theme);
-            assert_eq!(rendered.svg(), baseline.svg());
-            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-            assert!(
-                document
-                    .descendants()
-                    .any(|node| node.is_text() && node.text() == Some("API"))
-            );
-            assert!(
-                !document.descendants().any(|node| {
-                    node.is_text() && node.text() == Some("Nonvisual diagram title")
-                })
-            );
-            let completion = rendered.into_completion();
-            let evidence = merman_render::__private::family_evidence(completion.report());
-            assert_eq!(evidence.required_count(), 1);
-            assert_eq!(evidence.accounted_count(), 1);
-            assert_eq!(evidence.applied_count(), 0);
-            assert_eq!(evidence.not_applicable_count(), 1);
-            assert_eq!(evidence.theme_residual_count(), 0);
-        }
-    }
-}
-
-#[test]
-fn architecture_all_presets_keep_nonvisual_diagram_titles_not_applicable() {
-    let presets = merman_render::diagram_theme::theme_preset_descriptors();
-    let source = "---\ntitle: Nonvisual metadata title\n---\narchitecture-beta\ntitle Nonvisual diagram title\ngroup backend(cloud)[Backend]\nservice api(server)[API] in backend\n";
-    for preset in presets {
-        let theme = DiagramThemeCompiler::new()
-            .compile_preset(preset.preset())
-            .unwrap();
-        let parsed = common::install_parse_compatibility(&theme, MermaidEngine::new())
-            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-            .unwrap()
-            .unwrap()
-            .into_presentation();
-        let session = RenderEnvironment::deterministic()
-            .with_theme_portability_requirement(ThemePortabilityRequirement::BestEffort)
-            .begin_session_with_theme(&theme)
-            .unwrap();
-        let rendered = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
-            .unwrap()
-            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-            .unwrap();
-        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-        for label in ["API", "Backend"] {
-            assert!(
-                document
-                    .descendants()
-                    .any(|node| node.is_text() && node.text() == Some(label))
-            );
-        }
-        assert!(!document.descendants().any(|node| {
-            node.is_text()
-                && matches!(
-                    node.text(),
-                    Some("Nonvisual metadata title" | "Nonvisual diagram title")
-                )
-        }));
-        let completion = rendered.into_completion();
-        let evidence = merman_render::__private::family_evidence(completion.report());
-        assert!(evidence.not_applicable_count() > 0, "{}", preset.id());
-        assert_eq!(
-            evidence.accounted_count(),
-            evidence.required_count(),
-            "{}",
-            preset.id()
-        );
-        assert!(
-            completion
-                .report()
-                .theme_diagnostics()
-                .iter()
-                .all(|diagnostic| {
-                    diagnostic.target() != Some(ThemeTarget::Title)
-                        && diagnostic.code() != "evidence-incomplete"
-                }),
-            "{}",
-            preset.id()
-        );
-    }
-}
-
-fn architecture_text_fill_theme(fill: CanvasPaint, variant: Option<ThemeVariant>) -> DiagramTheme {
-    let rule = ThemeRule::new(
-        ThemeTarget::Text,
-        ThemeStylePatch::default().with_fill(fill),
-    )
-    .for_family(DiagramFamilyId::ARCHITECTURE);
-    let rule = match variant {
-        Some(variant) => rule.with_variant(variant),
-        None => rule,
-    };
-    DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
-        .expect("compile Architecture text theme")
-}
-
-fn prepare_architecture_with_theme_and_environment(
+fn prepare_architecture_with_environment(
     source: &str,
-    theme: &DiagramTheme,
     engine: MermaidEngine,
     environment: RenderEnvironment,
 ) -> FamilyFixture {
-    let parsed = common::install_parse_compatibility(theme, engine)
+    let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-        .expect("parse themed Architecture")
-        .expect("detect themed Architecture")
+        .expect("parse Architecture")
+        .expect("detect Architecture")
         .into_presentation();
     let session = environment
-        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
-        .begin_session_with_theme(theme)
-        .expect("begin strict portable Architecture session");
+        .begin_session()
+        .expect("begin Architecture session");
     (parsed, LayoutOptions::headless_svg_defaults(), session)
-}
-
-fn try_render_architecture_with_theme(
-    source: &str,
-    theme: &DiagramTheme,
-) -> merman_render::Result<family::RenderedFamilySvg> {
-    let engine = MermaidEngine::new().with_site_config(
-        merman_core::presentation::SourcePresentationConfig::from_value(json!({
-            "architecture": {"numIter": 1, "randomize": false}
-        })),
-    );
-    let (parsed, options, session) = prepare_architecture_with_theme_and_environment(
-        source,
-        theme,
-        engine,
-        RenderEnvironment::deterministic(),
-    );
-    family::prepare(&parsed, &options, session)?
-        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-}
-
-#[test]
-fn architecture_group_clear_restores_baseline_with_complete_evidence() {
-    use merman_render::diagram_theme::Specified;
-
-    let source =
-        "architecture-beta\ngroup backend(cloud)[Backend]\nservice api(server)[API] in backend";
-    let baseline_theme = DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new())
-        .unwrap();
-    let baseline = try_render_architecture_with_theme(source, &baseline_theme).unwrap();
-    let document = roxmltree::Document::parse(baseline.svg()).unwrap();
-    assert!(document.descendants().any(|node| {
-        node.has_tag_name("rect") && node.attribute("id") == Some("architecture-group-backend")
-    }));
-
-    for (clear_fill, clear_stroke) in [(true, false), (false, true), (true, true)] {
-        for preceding_value in [false, true] {
-            let mut value = ThemeStylePatch::default();
-            let mut clear = ThemeStylePatch::default();
-            if clear_fill {
-                value.paint.fill = Specified::Value(CanvasPaint::solid("#123456").unwrap());
-                clear.paint.fill = Specified::Clear;
-            }
-            if clear_stroke {
-                value.stroke.paint = Specified::Value(CanvasPaint::solid("#654321").unwrap());
-                clear.stroke.paint = Specified::Clear;
-            }
-            let mut rules = ThemeRuleSet::default();
-            if preceding_value {
-                rules = rules.with_rule(ThemeRule::new(ThemeTarget::Cluster, value));
-            }
-            let theme = DiagramThemeCompiler::new()
-                .compile(
-                    DiagramThemeSpec::new()
-                        .with_styles(rules.with_rule(ThemeRule::new(ThemeTarget::Cluster, clear))),
-                )
-                .unwrap();
-
-            // Reproduction: Clear emits no inline style, but a real group still seals it.
-            let rendered = try_render_architecture_with_theme(source, &theme)
-                .expect("a checkpointed group must complete a winning Clear in strict mode");
-            assert_eq!(rendered.svg(), baseline.svg());
-            let completion = rendered.into_completion();
-            let evidence = merman_render::__private::family_evidence(completion.report());
-            assert_eq!(evidence.required_count(), 1 + usize::from(preceding_value));
-            assert_eq!(evidence.accounted_count(), evidence.required_count());
-            assert_eq!(evidence.applied_count(), 1);
-            assert_eq!(
-                evidence.not_applicable_count(),
-                usize::from(preceding_value)
-            );
-            assert_eq!(evidence.theme_residual_count(), 0);
-
-            let absent = try_render_architecture_with_theme(
-                "architecture-beta\nservice api(server)[API]",
-                &theme,
-            )
-            .unwrap();
-            let completion = absent.into_completion();
-            let evidence = merman_render::__private::family_evidence(completion.report());
-            assert_eq!(evidence.accounted_count(), evidence.required_count());
-            assert_eq!(evidence.applied_count(), 0);
-            assert_eq!(evidence.not_applicable_count(), evidence.required_count());
-            assert_eq!(evidence.theme_residual_count(), 0);
-        }
-    }
-}
-
-#[test]
-fn architecture_edge_nonmatching_variants_are_not_applicable() {
-    use merman_render::diagram_theme::OrdinalSelector;
-
-    let source =
-        "architecture-beta\nservice api(server)[API]\nservice db(database)[DB]\napi:R --> L:db";
-    let baseline_theme = DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new())
-        .unwrap();
-    let baseline = try_render_architecture_with_theme(source, &baseline_theme).unwrap();
-    let document = roxmltree::Document::parse(baseline.svg()).unwrap();
-    assert!(
-        document
-            .descendants()
-            .any(|node| { node.has_tag_name("path") && node.attribute("class") == Some("edge") })
-    );
-
-    for ordinal in [None, Some(OrdinalSelector::Exact(1))] {
-        let mut rule = ThemeRule::new(
-            ThemeTarget::Edge,
-            ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#ff0000").unwrap()),
-        )
-        .with_variant(ThemeVariant::Primary);
-        if let Some(ordinal) = ordinal {
-            rule = rule.with_ordinal(ordinal);
-        }
-        let theme = DiagramThemeCompiler::new()
-            .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
-            .unwrap();
-
-        // Reproduction: Primary has no Architecture edge terminal, even at a real ordinal.
-        let rendered = try_render_architecture_with_theme(source, &theme)
-            .expect("a nonmatching variant must not create a strict-mode paint residual");
-        assert_eq!(rendered.svg(), baseline.svg());
-        let completion = rendered.into_completion();
-        let evidence = merman_render::__private::family_evidence(completion.report());
-        assert_eq!(evidence.required_count(), 1);
-        assert_eq!(evidence.accounted_count(), 1);
-        assert_eq!(evidence.applied_count(), 0);
-        assert_eq!(evidence.not_applicable_count(), 1);
-        assert_eq!(evidence.theme_residual_count(), 0);
-    }
-}
-
-#[test]
-fn architecture_edge_overridden_default_variant_is_not_applicable() {
-    let source =
-        "architecture-beta\nservice api(server)[API]\nservice db(database)[DB]\napi:R --> L:db";
-    let winner = ThemeRule::new(
-        ThemeTarget::Edge,
-        ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#123456").unwrap()),
-    );
-    let baseline_theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(winner.clone())),
-        )
-        .unwrap();
-    let baseline = try_render_architecture_with_theme(source, &baseline_theme).unwrap();
-    let theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(
-                ThemeRuleSet::default()
-                    .with_rule(
-                        ThemeRule::new(
-                            ThemeTarget::Edge,
-                            ThemeStylePatch::default()
-                                .with_stroke(CanvasPaint::solid("#ff0000").unwrap()),
-                        )
-                        .with_variant(ThemeVariant::Default),
-                    )
-                    .with_rule(winner),
-            ),
-        )
-        .unwrap();
-
-    // Reproduction: matching Default must also win its property to produce a residual.
-    let rendered = try_render_architecture_with_theme(source, &theme)
-        .expect("a superseded Default request must not reject the supported winner");
-    assert_eq!(rendered.svg(), baseline.svg());
-    let completion = rendered.into_completion();
-    let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.required_count(), 2);
-    assert_eq!(evidence.accounted_count(), 2);
-    assert_eq!(evidence.applied_count(), 1);
-    assert_eq!(evidence.not_applicable_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 0);
-}
-
-#[test]
-fn architecture_edge_winning_default_variant_retains_unsupported_residual() {
-    use merman_render::diagram_theme::OrdinalSelector;
-
-    let source =
-        "architecture-beta\nservice api(server)[API]\nservice db(database)[DB]\napi:R --> L:db";
-    for ordinal in [None, Some(OrdinalSelector::Exact(1))] {
-        let mut rule = ThemeRule::new(
-            ThemeTarget::Edge,
-            ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#ff0000").unwrap()),
-        )
-        .with_variant(ThemeVariant::Default);
-        if let Some(ordinal) = ordinal {
-            rule = rule.with_ordinal(ordinal);
-        }
-        let theme = DiagramThemeCompiler::new()
-            .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
-            .unwrap();
-
-        // Guard: matching, winning Default selectors retain the existing unsupported contract.
-        let error = try_render_architecture_with_theme(source, &theme)
-            .err()
-            .expect("an unsupported Default winner must remain rejected in strict mode");
-        assert_eq!(
-            error.unverified_family_theme(),
-            Some((DiagramFamilyId::ARCHITECTURE, 1))
-        );
-        assert_eq!(error.incomplete_family_theme(), None);
-    }
 }
 
 fn render_architecture_fixture(fixture_name: &str) -> String {
@@ -639,28 +349,25 @@ service worker[Worker] in outer
 api:R -[request]-> L:worker
 "#;
     for fill in ["#17324D", "#17324D80"] {
-        let theme = DiagramThemeCompiler::new()
-            .compile(
-                DiagramThemeSpec::new().with_styles(
-                    ThemeRuleSet::default()
-                        .with_rule(ThemeRule::new(
-                            ThemeTarget::Cluster,
-                            ThemeStylePatch::default().with_fill(CanvasPaint::solid(fill).unwrap()),
-                        ))
-                        .with_rule(ThemeRule::new(
-                            ThemeTarget::Text,
-                            ThemeStylePatch::default()
-                                .with_fill(CanvasPaint::solid("#123456").unwrap()),
-                        ))
-                        .with_rule(ThemeRule::new(
-                            ThemeTarget::Edge,
-                            ThemeStylePatch::default()
-                                .with_stroke(CanvasPaint::solid("#c2188b").unwrap()),
-                        )),
-                ),
-            )
+        let theme = ThemeCompiler::new().compile_json(
+            format!(r##"{{"schema_version":2,"extends":"paper","roles":{{"surface.container":"{fill}"}}}}"##).as_bytes(),
+            None,
+        ).unwrap();
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
             .unwrap();
-        let rendered = try_render_architecture_with_theme(source, &theme).unwrap();
+        let session = RenderEnvironment::deterministic()
+            .begin_session_with_native_theme(NativeTheme::new(theme))
+            .unwrap();
+        let rendered = family::prepare(
+            parsed.presentation(),
+            &LayoutOptions::headless_svg_defaults(),
+            session,
+        )
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
         let root = document.root_element();
         let layers = root
@@ -696,7 +403,7 @@ api:R -[request]-> L:worker
             );
             assert_eq!(
                 background.attribute("style"),
-                Some(format!("fill:{fill};").as_str())
+                Some(format!("fill:{fill};stroke-dasharray:none;").as_str())
             );
         }
         let foreground = group("architecture-groups");
@@ -715,18 +422,12 @@ api:R -[request]-> L:worker
                 >= 2,
             "group icons must stay in the foreground: {fill}"
         );
-        for label in foreground
-            .descendants()
-            .filter(|node| node.has_tag_name("text"))
-        {
-            assert_eq!(label.attribute("style"), Some("fill:#123456;"));
-        }
         let edges = group("architecture-edges");
-        assert!(edges.descendants().any(|node| {
-            node.has_tag_name("path")
-                && node.attribute("class") == Some("edge")
-                && node.attribute("style") == Some("stroke:#c2188b;")
-        }));
+        assert!(
+            edges.descendants().any(|node| {
+                node.has_tag_name("path") && node.attribute("class") == Some("edge")
+            })
+        );
         assert!(
             edges
                 .descendants()
@@ -740,10 +441,6 @@ api:R -[request]-> L:worker
                     .any(|node| node.is_text() && node.text() == Some(label))
             );
         }
-        let evidence =
-            merman_render::__private::family_evidence(rendered.into_completion().report());
-        assert_eq!(evidence.applied_count(), 3, "{fill}");
-        assert_eq!(evidence.theme_residual_count(), 0, "{fill}");
     }
 }
 
@@ -1101,373 +798,6 @@ fn architecture_service_icon_text_uses_upstream_string_truthiness() {
 }
 
 #[test]
-fn architecture_typed_service_background_matches_emission_and_source_ownership() {
-    let theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(
-                ThemeRuleSet::default()
-                    .with_rule(ThemeRule::new(
-                        ThemeTarget::Node,
-                        ThemeStylePatch::default()
-                            .with_fill(CanvasPaint::solid("#123456").unwrap()),
-                    ))
-                    .with_rule(ThemeRule::new(
-                        ThemeTarget::Node,
-                        ThemeStylePatch::default()
-                            .with_stroke(CanvasPaint::solid("#654321").unwrap()),
-                    )),
-            ),
-        )
-        .expect("compile Architecture service background theme");
-    for (declaration, has_background) in [
-        ("service api [API]", true),
-        (r#"service api "" [API]"#, true),
-        (r#"service api " " [API]"#, false),
-        (r#"service api "X" [API]"#, false),
-    ] {
-        for stroke_owner in [
-            None,
-            Some("archGroupBorderColor"),
-            Some("primaryBorderColor"),
-        ] {
-            let source_owns_stroke = stroke_owner == Some("archGroupBorderColor");
-            let source = format!("architecture-beta\n{declaration}\n");
-            let mut config = json!({
-                "architecture": {"numIter": 1, "randomize": false},
-                "themeVariables": {},
-            });
-            if let Some(owner) = stroke_owner {
-                config["themeVariables"][owner] = json!("#abcdef");
-            }
-            let engine = MermaidEngine::new().with_site_config(
-                merman_core::presentation::SourcePresentationConfig::from_value(config),
-            );
-            let (parsed, options, session) = prepare_architecture_with_theme_and_environment(
-                &source,
-                &theme,
-                engine,
-                RenderEnvironment::deterministic(),
-            );
-            let rendered = family::prepare(&parsed, &options, session)
-                .expect("prepare themed Architecture service")
-                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-                .expect("render themed Architecture service with complete background evidence");
-            let document =
-                roxmltree::Document::parse(rendered.svg()).expect("valid Architecture SVG");
-            let background = document.descendants().find(|node| {
-                node.has_tag_name("path") && node.attribute("class") == Some("node-bkg")
-            });
-            assert_eq!(background.is_some(), has_background, "{declaration}");
-            if let Some(background) = background {
-                assert_eq!(background.attribute("id"), Some("architecture-node-api"));
-                assert_eq!(
-                    background.attribute("style"),
-                    Some(if source_owns_stroke {
-                        "fill:#123456;"
-                    } else {
-                        "fill:#123456;stroke:#654321;"
-                    }),
-                    "{declaration}, stroke owner: {stroke_owner:?}"
-                );
-            }
-            assert_eq!(
-                architecture_stylesheet(rendered.svg())
-                    .contains("#architecture .node-bkg{fill:none;stroke:#abcdef;"),
-                source_owns_stroke,
-                "{declaration}, stroke owner: {stroke_owner:?}"
-            );
-
-            let evidence =
-                merman_render::__private::family_evidence(rendered.into_completion().report());
-            let applied = if has_background {
-                2 - usize::from(source_owns_stroke)
-            } else {
-                0
-            };
-            assert_eq!(evidence.required_count(), 2);
-            assert_eq!(evidence.accounted_count(), 2);
-            assert_eq!(evidence.applied_count(), applied, "{declaration}");
-            assert_eq!(evidence.not_applicable_count(), 2 - applied);
-            assert_eq!(evidence.theme_residual_count(), 0);
-        }
-    }
-}
-
-#[test]
-fn architecture_icon_text_typography_evidence_matches_emission_without_titles() {
-    let theme = architecture_typography_theme(
-        ThemeTextStyle::default()
-            .with_font_size_px(24.0)
-            .expect("valid Architecture font size"),
-    );
-    for (declaration, has_icon_text, visible) in [
-        ("service api", false, false),
-        (r#"service api """#, false, false),
-        (r#"service api " ""#, true, false),
-        (r#"service api "<br/>""#, true, false),
-        (r#"service api "<g>x<b>y</b>z</g>""#, true, false),
-        (
-            r#"service api "<span style='font-size:0'>X</span>""#,
-            true,
-            false,
-        ),
-        (r#"service api "X""#, true, true),
-    ] {
-        let source = format!("architecture-beta\n{declaration}\n");
-        let rendered = try_render_architecture_with_theme(&source, &theme)
-            .expect("render Architecture icon-only typography fixture");
-        let document = roxmltree::Document::parse(rendered.svg()).expect("valid Architecture SVG");
-        assert_eq!(
-            document
-                .descendants()
-                .any(|node| node.has_tag_name("foreignObject")),
-            has_icon_text,
-            "{declaration}"
-        );
-        let evidence =
-            merman_render::__private::family_evidence(rendered.into_completion().report());
-        assert_eq!(evidence.required_count(), 1);
-        assert_eq!(evidence.accounted_count(), 1);
-        assert_eq!(
-            evidence.applied_count(),
-            usize::from(visible),
-            "{declaration}"
-        );
-        assert_eq!(evidence.not_applicable_count(), usize::from(!visible));
-        assert_eq!(evidence.theme_residual_count(), 0);
-    }
-}
-
-#[test]
-fn architecture_icon_text_does_not_claim_svg_text_fill() {
-    let theme = architecture_text_fill_theme(CanvasPaint::solid("#123456").unwrap(), None);
-    for fragment in [" ", "<br/>", "Visible"] {
-        let source = format!("architecture-beta\nservice api \"{fragment}\"\n");
-        let rendered = try_render_architecture_with_theme(&source, &theme).unwrap();
-        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-        assert!(
-            document
-                .descendants()
-                .any(|node| node.has_tag_name("foreignObject"))
-        );
-        let evidence =
-            merman_render::__private::family_evidence(rendered.into_completion().report());
-        assert_eq!(evidence.required_count(), 1);
-        assert_eq!(evidence.applied_count(), 0);
-        assert_eq!(evidence.not_applicable_count(), 1);
-        assert_eq!(evidence.theme_residual_count(), 0);
-    }
-}
-
-#[test]
-fn architecture_svg_text_evidence_uses_final_words_for_every_label_role() {
-    let theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new()
-                .with_typography(
-                    TypographySpec::default().with_default(
-                        ThemeTextStyle::default()
-                            .with_font_stack(FontStack::single("Architecture Visible").unwrap())
-                            .with_font_size_px(24.0)
-                            .unwrap(),
-                    ),
-                )
-                .with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
-                    ThemeTarget::Text,
-                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
-                ))),
-        )
-        .unwrap();
-    for body in [
-        "service api [$LABEL]\n",
-        "group core [$LABEL]\nservice api in core\n",
-        "service api\nservice db\napi:R -[$LABEL]- L:db\n",
-    ] {
-        for (label, visible) in [("---", false), ("<br/>", false), ("Visible", true)] {
-            let source = format!("architecture-beta\n{}", body.replace("$LABEL", label));
-            let rendered = try_render_architecture_with_theme(&source, &theme).unwrap();
-            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-            let text = document
-                .descendants()
-                .filter(|node| node.has_tag_name("text"))
-                .collect::<Vec<_>>();
-            assert_eq!(text.len(), 1, "keep the text branch: {source}");
-            assert_eq!(
-                text[0].descendants().any(|node| {
-                    node.is_text() && node.text().is_some_and(|text| !text.trim().is_empty())
-                }),
-                visible,
-                "{source}",
-            );
-            if visible {
-                assert_eq!(text[0].attribute("style"), Some("fill:#123456;"));
-            }
-            let completion = rendered.into_completion();
-            let evidence = merman_render::__private::family_evidence(completion.report());
-            assert_eq!(evidence.required_count(), 3);
-            assert_eq!(
-                evidence.applied_count(),
-                if visible { 3 } else { 0 },
-                "{source}"
-            );
-            assert_eq!(evidence.not_applicable_count(), if visible { 0 } else { 3 });
-            assert_eq!(evidence.accounted_count(), 3);
-            assert_eq!(evidence.theme_residual_count(), 0);
-        }
-    }
-
-    let mixed = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(
-                ThemeRuleSet::default().with_rule(ThemeRule::new(
-                    ThemeTarget::Text,
-                    ThemeStylePatch::default()
-                        .with_fill(CanvasPaint::solid("#123456").unwrap())
-                        .with_stroke(CanvasPaint::solid("#654321").unwrap()),
-                )),
-            ),
-        )
-        .unwrap();
-    for label in ["---", "<br/>"] {
-        let source = format!("architecture-beta\nservice api [{label}]\n");
-        let rendered = try_render_architecture_with_theme(&source, &mixed).unwrap();
-        let evidence =
-            merman_render::__private::family_evidence(rendered.into_completion().report());
-        assert_eq!(evidence.not_applicable_count(), 1);
-        assert_eq!(evidence.theme_residual_count(), 0);
-    }
-    assert!(
-        try_render_architecture_with_theme("architecture-beta\nservice api [Visible]\n", &mixed)
-            .is_err()
-    );
-}
-
-#[test]
-fn architecture_icon_text_typography_retains_unverified_child_ownership() {
-    let theme = architecture_typography_theme(
-        ThemeTextStyle::default()
-            .with_font_stack(FontStack::single("Architecture Visible").unwrap())
-            .with_font_size_px(24.0)
-            .unwrap(),
-    );
-    for (fragment, residuals) in [
-        ("<span style='font-family:serif'>X</span>", 1),
-        ("<span style='font-size:12px'>X</span>", 1),
-        ("<span class='external'>X</span>", 2),
-    ] {
-        let source = format!("architecture-beta\nservice api \"{fragment}\"\n");
-        let error = try_render_architecture_with_theme(&source, &theme)
-            .err()
-            .expect("child-owned or unknown fonts cannot prove inherited theme consumption");
-        assert_eq!(
-            error.unverified_family_theme(),
-            Some((DiagramFamilyId::ARCHITECTURE, residuals)),
-            "{fragment}"
-        );
-    }
-    let inherited = "architecture-beta\nservice api \"<span>X</span>\"\n";
-    let rendered = try_render_architecture_with_theme(inherited, &theme).unwrap();
-    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.applied_count(), 2);
-    assert_eq!(evidence.theme_residual_count(), 0);
-}
-
-#[test]
-fn architecture_zero_root_size_keeps_icon_box_and_visible_descendant_family() {
-    let theme = architecture_typography_theme(
-        ThemeTextStyle::default()
-            .with_font_stack(FontStack::single("Architecture Visible").unwrap())
-            .with_font_size_px(24.0)
-            .unwrap(),
-    );
-    for (fragment, applied) in [("X", 0), ("<span style='font-size:12px'>X</span>", 1)] {
-        let source = format!(
-            "---\nconfig: {{themeVariables: {{fontSize: 0}}}}\n---\narchitecture-beta\nservice api \"{fragment}\"\n"
-        );
-        let rendered = try_render_architecture_with_theme(&source, &theme).unwrap();
-        assert!(architecture_stylesheet(rendered.svg()).contains("font-size:0px;"));
-        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-        let icon = document
-            .descendants()
-            .find(|node| node.has_tag_name("foreignObject"))
-            .unwrap();
-        assert_eq!(icon.attribute("width"), Some("80"));
-        assert_eq!(icon.attribute("height"), Some("80"));
-        assert!(
-            icon.descendants()
-                .any(|node| node.attribute("style") == Some("-webkit-line-clamp: Infinity;"))
-        );
-        assert!(
-            icon.descendants()
-                .any(|node| node.is_text() && node.text() == Some("X"))
-        );
-        let evidence =
-            merman_render::__private::family_evidence(rendered.into_completion().report());
-        assert_eq!(evidence.applied_count(), applied, "{fragment}");
-        assert_eq!(evidence.not_applicable_count(), 2 - applied);
-        assert_eq!(evidence.theme_residual_count(), 0);
-    }
-}
-
-#[test]
-fn architecture_unknown_root_size_keeps_independent_icon_text_font_stack() {
-    let theme = architecture_typography_theme(
-        ThemeTextStyle::default().with_font_stack(FontStack::single("Cousine").unwrap()),
-    );
-    for (fragment, applied, residuals) in [
-        ("<span style='font-size:12px'>X</span>", 1, 0),
-        ("<span style='font-size:0px'>X</span>", 0, 0),
-        ("<span style='font-size:1em'>X</span>", 0, 1),
-        ("X", 0, 1),
-    ] {
-        for from_source in [false, true] {
-            let body = format!("architecture-beta\nservice api \"{fragment}\"\n");
-            let config = json!({"themeVariables":{"fontSize":"calc(0px)"}});
-            let (source, mut site) = if from_source {
-                (format!("---\nconfig: {config}\n---\n{body}"), json!({}))
-            } else {
-                (body, config)
-            };
-            site["architecture"] = json!({"numIter":1,"randomize":false});
-            let (parsed, options, session) = prepare_architecture_with_theme_and_environment(
-                &source,
-                &theme,
-                MermaidEngine::new().with_site_config(
-                    merman_core::presentation::SourcePresentationConfig::from_value(site),
-                ),
-                RenderEnvironment::deterministic(),
-            );
-            let rendered = family::prepare(&parsed, &options, session)
-                .unwrap()
-                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
-            if residuals != 0 {
-                assert_eq!(
-                    rendered
-                        .err()
-                        .expect("unknown visibility remains residual")
-                        .unverified_family_theme(),
-                    Some((DiagramFamilyId::ARCHITECTURE, residuals)),
-                    "{fragment}: source={from_source}"
-                );
-                continue;
-            }
-            let rendered = rendered.expect("fixed child visibility proves inherited font stack");
-            assert!(architecture_stylesheet(rendered.svg()).contains("font-size:calc(0px);"));
-            let evidence =
-                merman_render::__private::family_evidence(rendered.into_completion().report());
-            assert_eq!(evidence.required_count(), 1);
-            assert_eq!(
-                evidence.applied_count(),
-                applied,
-                "{fragment}: source={from_source}"
-            );
-            assert_eq!(evidence.not_applicable_count(), 1 - applied);
-            assert_eq!(evidence.theme_residual_count(), 0);
-        }
-    }
-}
-
-#[test]
 fn architecture_svg_honors_mermaid_11_15_style_theme_variables() {
     let engine = MermaidEngine::new().with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
         "secure": ["secure", "securityLevel", "startOnLoad", "maxTextSize", "suppressErrorRendering", "maxEdges"]
@@ -1501,83 +831,6 @@ architecture-beta
     assert!(!svg.contains(
         r#"#architecture-theme .node-bkg{fill:none;stroke:#778899;stroke-width:2px;stroke-dasharray:8;}"#
     ));
-}
-
-#[test]
-fn architecture_typed_text_fill_reaches_all_text_terminals_for_unqualified_and_default_routes() {
-    let source = r#"architecture-beta
-  group platform(cloud)[Platform]
-  service api(server)[API] in platform
-  service db(database)[DB] in platform
-  api:R -[request]- L:db
-"#;
-    for variant in [None, Some(ThemeVariant::Default)] {
-        let theme = architecture_text_fill_theme(
-            CanvasPaint::solid("#123456").expect("valid Architecture text fill"),
-            variant,
-        );
-        let (fixture_parsed_3, fixture_layout_3, fixture_session_3) =
-            prepare_architecture_with_theme_and_environment(
-                source,
-                &theme,
-                MermaidEngine::new(),
-                RenderEnvironment::deterministic(),
-            );
-        let artifact = family::prepare(&fixture_parsed_3, &fixture_layout_3, fixture_session_3)
-            .expect("prepare family fixture");
-        let rendered = artifact
-            .render_svg(
-                &SvgRenderOptions {
-                    diagram_id: Some("architecture-text-fill".to_string()),
-                    ..Default::default()
-                },
-                &SvgDebugOptions::default(),
-            )
-            .expect("render themed Architecture text")
-            .into_completion();
-        let (svg, report) = rendered.into_output_and_report();
-        let document = roxmltree::Document::parse(&svg).expect("valid Architecture SVG");
-        let text_nodes = document
-            .descendants()
-            .filter(|node| node.has_tag_name("text"))
-            .collect::<Vec<_>>();
-        assert!(
-            !text_nodes.is_empty(),
-            "Architecture fixture must emit text terminals"
-        );
-        for label in ["Platform", "API", "DB", "request"] {
-            let terminals = text_nodes
-                .iter()
-                .filter(|node| {
-                    node.descendants()
-                        .filter_map(|child| child.is_text().then(|| child.text()).flatten())
-                        .collect::<String>()
-                        .trim()
-                        == label
-                })
-                .collect::<Vec<_>>();
-            assert_eq!(
-                terminals.len(),
-                1,
-                "missing or duplicated Architecture label {label}: {svg}"
-            );
-            assert!(
-                terminals
-                    .iter()
-                    .all(|node| node.attribute("style").is_some_and(|style| {
-                        style
-                            .split(';')
-                            .any(|declaration| declaration == "fill:#123456")
-                    })),
-                "typed Text.fill must reach {label} for variant {variant:?}: {svg}"
-            );
-        }
-        let evidence = merman_render::__private::family_evidence(&report);
-        assert_eq!(evidence.required_count(), 1);
-        assert_eq!(evidence.applied_count(), 1);
-        assert_eq!(evidence.not_applicable_count(), 0);
-        assert_eq!(evidence.theme_residual_count(), 0);
-    }
 }
 
 #[test]
@@ -1755,8 +1008,7 @@ fn architecture_icon_text_clamp_uses_root_svg_font_size_not_architecture_layout_
 #[test]
 fn architecture_icon_text_clamp_preserves_upstream_computed_font_digits() {
     let body = "architecture-beta\nservice api \"Text Text Text Text\" [Measured]\n";
-    let font_stack = FontStack::single("Architecture Clamp").unwrap();
-    let expected_font_family = font_stack.as_css();
+    let font_family = "ArchitectureClamp";
     for (size, expected_clamp) in [
         (0.0, "Infinity"),
         (0.25, "3"),
@@ -1767,36 +1019,22 @@ fn architecture_icon_text_clamp_preserves_upstream_computed_font_digits() {
         (15.5, "0"),
         (80.0, "0"),
     ] {
-        for owner in ["site", "source", "typed"] {
-            let typed_size = if owner == "typed" {
-                // Typed sizes are positive; this value becomes zero in the emitted root CSS.
-                if size == 0.0 { 0.0000001 } else { size as f32 }
-            } else {
-                29.0
-            };
-            let theme = architecture_typography_theme(
-                ThemeTextStyle::default()
-                    .with_font_stack(font_stack.clone())
-                    .with_font_size_px(typed_size)
-                    .unwrap(),
-            );
+        for owner in ["site", "source"] {
             let mut site = json!({
                 "architecture": {"fontSize": 16, "numIter": 1, "randomize": false}
             });
-            let font_config = json!({"themeVariables": {"fontSize": format!("{size}px")}});
+            let font_config = json!({"themeVariables": {"fontSize": format!("{size}px"), "fontFamily": font_family}});
             let source = match owner {
                 "site" => {
                     site["themeVariables"] = font_config["themeVariables"].clone();
                     body.to_owned()
                 }
                 "source" => format!("---\nconfig: {font_config}\n---\n{body}"),
-                "typed" => body.to_owned(),
                 _ => unreachable!(),
             };
             let host = Arc::new(CountingArchitectureHost::default());
-            let (parsed, options, session) = prepare_architecture_with_theme_and_environment(
+            let (parsed, options, session) = prepare_architecture_with_environment(
                 &source,
-                &theme,
                 MermaidEngine::new().with_site_config(
                     merman_core::presentation::SourcePresentationConfig::from_value(site),
                 ),
@@ -1828,9 +1066,7 @@ fn architecture_icon_text_clamp_preserves_upstream_computed_font_digits() {
                 let styles = host.styles.lock().unwrap();
                 let measured_styles = styles
                     .iter()
-                    .filter(|style| {
-                        style.font_family.as_deref() == Some(expected_font_family.as_str())
-                    })
+                    .filter(|style| style.font_family.as_deref() == Some(font_family))
                     .collect::<Vec<_>>();
                 assert!(!measured_styles.is_empty(), "{owner}/{size}");
                 assert!(
@@ -1843,101 +1079,7 @@ fn architecture_icon_text_clamp_preserves_upstream_computed_font_digits() {
 }
 
 #[test]
-fn architecture_ignored_base_size_leaves_typed_svg_size_available() {
-    let theme =
-        architecture_typography_theme(ThemeTextStyle::default().with_font_size_px(29.0).unwrap());
-    let body = "architecture-beta\nservice api(server)[API]\n";
-    for (value, expected) in [
-        (json!(false), 29.0),
-        (json!("bad"), 29.0),
-        (json!("calc(24px);fill:red"), 29.0),
-        (serde_json::Value::Null, 29.0),
-        (json!({}), 29.0),
-        (json!([]), 29.0),
-        (json!(-2), 29.0),
-        (json!("-2px"), 29.0),
-        (json!(0), 0.0),
-        (json!("0px"), 0.0),
-        (json!("0em"), 0.0),
-        (json!("0%"), 0.0),
-        (json!("0rem"), 0.0),
-        (json!(0.5), 0.5),
-        (json!("0.5px"), 0.5),
-        (json!(23), 23.0),
-        (json!("23px"), 23.0),
-    ] {
-        let config = json!({"themeVariables":{"fontSize":value}});
-        for from_source in [false, true] {
-            let (source, site) = if from_source {
-                (format!("---\nconfig: {config}\n---\n{body}"), json!({}))
-            } else {
-                (body.to_owned(), config.clone())
-            };
-            let (parsed, options, session) = prepare_architecture_with_theme_and_environment(
-                &source,
-                &theme,
-                MermaidEngine::new().with_site_config(
-                    merman_core::presentation::SourcePresentationConfig::from_value(site),
-                ),
-                RenderEnvironment::deterministic(),
-            );
-            let rendered = family::prepare(&parsed, &options, session)
-                .unwrap()
-                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-                .unwrap();
-            assert!(
-                rendered.svg().contains(&format!("font-size:{expected}px;")),
-                "source={from_source}: {value}"
-            );
-            assert!(
-                roxmltree::Document::parse(rendered.svg())
-                    .unwrap()
-                    .descendants()
-                    .any(|node| node.has_tag_name("tspan") && node.text() == Some("API"))
-            );
-            let evidence =
-                merman_render::__private::family_evidence(rendered.into_completion().report());
-            assert_eq!(evidence.applied_count(), usize::from(expected == 29.0));
-            assert_eq!(
-                evidence.not_applicable_count(),
-                usize::from(expected != 29.0)
-            );
-            assert_eq!(evidence.theme_residual_count(), 0);
-        }
-    }
-}
-
-#[test]
-fn architecture_ignored_theme_size_does_not_promote_the_root_fallback_to_owner() {
-    let theme =
-        architecture_typography_theme(ThemeTextStyle::default().with_font_size_px(29.0).unwrap());
-    let source = "---\nconfig: {fontSize: 21, themeVariables: {fontSize: -2}}\n---\narchitecture-beta\nservice api [API]\n";
-    let rendered = try_render_architecture_with_theme(source, &theme).unwrap();
-    assert!(architecture_stylesheet(rendered.svg()).contains("font-size:29px;"));
-    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.applied_count(), 1);
-    assert_eq!(evidence.not_applicable_count(), 0);
-}
-
-#[test]
-fn architecture_host_root_sizes_preserve_css_without_certifying_estimates() {
-    let theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new()
-                .with_typography(
-                    TypographySpec::default().with_default(
-                        ThemeTextStyle::default()
-                            .with_font_stack(FontStack::single("Cousine").unwrap())
-                            .with_font_size_px(29.0)
-                            .unwrap(),
-                    ),
-                )
-                .with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
-                    ThemeTarget::Text,
-                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
-                ))),
-        )
-        .unwrap();
+fn architecture_host_root_sizes_preserve_css() {
     let body = "architecture-beta\nservice api(server)[API]\n";
     for size in [
         "1em",
@@ -1961,20 +1103,17 @@ fn architecture_host_root_sizes_preserve_css_without_certifying_estimates() {
                 (body.to_owned(), config)
             };
             site["architecture"] = json!({"numIter":1, "randomize":false, "fontSize":19});
-            let parsed = common::install_parse_compatibility(
-                &theme,
-                MermaidEngine::new().with_site_config(
+            let parsed = MermaidEngine::new()
+                .with_site_config(
                     merman_core::presentation::SourcePresentationConfig::from_value(site),
-                ),
-            )
-            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
-            .unwrap()
-            .unwrap()
-            .into_presentation();
+                )
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap()
+                .into_presentation();
             let host = Arc::new(CountingArchitectureHost::default());
             let session = counting_architecture_environment(Arc::clone(&host))
-                .with_theme_portability_requirement(ThemePortabilityRequirement::BestEffort)
-                .begin_session_with_theme(&theme)
+                .begin_session()
                 .unwrap();
             let rendered =
                 family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
@@ -1984,12 +1123,6 @@ fn architecture_host_root_sizes_preserve_css_without_certifying_estimates() {
             assert!(
                 architecture_stylesheet(rendered.svg()).contains(&format!("font-size:{size};"))
             );
-            assert!(!architecture_stylesheet(rendered.svg()).contains("font-size:29px;"));
-            let evidence =
-                merman_render::__private::family_evidence(rendered.into_completion().report());
-            assert_eq!(evidence.applied_count(), 0, "{size}: source={from_source}");
-            assert_eq!(evidence.not_applicable_count(), 1);
-            assert_eq!(evidence.theme_residual_count(), 2);
             let styles = host.styles.lock().unwrap();
             assert!(styles.iter().any(|style| {
                 style.font_family.as_deref() == Some("Helvetica Neue,Helvetica,sans-serif")
@@ -2001,34 +1134,16 @@ fn architecture_host_root_sizes_preserve_css_without_certifying_estimates() {
 
 #[test]
 fn architecture_small_svg_sizes_reach_measurement_and_keep_text_dom() {
-    let theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new()
-                .with_typography(
-                    TypographySpec::default().with_default(
-                        ThemeTextStyle::default()
-                            .with_font_stack(FontStack::single("ArchitectureSmall").unwrap())
-                            .with_font_size_px(0.5)
-                            .unwrap(),
-                    ),
-                )
-                .with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
-                    ThemeTarget::Text,
-                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
-                ))),
-        )
-        .unwrap();
-    for configured_size in [None, Some(0.0), Some(0.5)] {
-        let prefix = configured_size.map_or_else(String::new, |size| {
-            format!("---\nconfig: {{themeVariables: {{fontSize: {size}}}}}\n---\n")
-        });
+    for expected_size in [0.0, 0.5] {
+        let prefix = format!(
+            "---\nconfig: {{themeVariables: {{fontSize: {expected_size}, fontFamily: ArchitectureSmall}}}}\n---\n"
+        );
         let source = format!(
             "{prefix}architecture-beta\ngroup core [Group<br/>Second]\nservice api [API<br/>Second] in core\nservice db\napi:R -[Edge<br/>Second]- L:db\n"
         );
         let host = Arc::new(CountingArchitectureHost::default());
-        let (parsed, options, session) = prepare_architecture_with_theme_and_environment(
+        let (parsed, options, session) = prepare_architecture_with_environment(
             &source,
-            &theme,
             MermaidEngine::new().with_site_config(
                 merman_core::presentation::SourcePresentationConfig::from_value(
                     json!({"architecture": {"numIter": 1, "randomize": false}}),
@@ -2041,7 +1156,6 @@ fn architecture_small_svg_sizes_reach_measurement_and_keep_text_dom() {
         let rendered = artifact
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
             .unwrap();
-        let expected_size = configured_size.unwrap_or(0.5);
         assert!(
             architecture_stylesheet(rendered.svg())
                 .contains(&format!("font-size:{expected_size}px;"))
@@ -2075,34 +1189,18 @@ fn architecture_small_svg_sizes_reach_measurement_and_keep_text_dom() {
                     .any(|style| style.font_family.as_deref() == Some("ArchitectureSmall"))
             );
         }
-        let evidence =
-            merman_render::__private::family_evidence(rendered.into_completion().report());
-        let applied = if expected_size == 0.0 {
-            0
-        } else if configured_size.is_some() {
-            2
-        } else {
-            3
-        };
-        assert_eq!(evidence.required_count(), 3);
-        assert_eq!(evidence.applied_count(), applied);
-        assert_eq!(evidence.not_applicable_count(), 3 - applied);
-        assert_eq!(evidence.theme_residual_count(), 0);
     }
 }
 
 #[test]
 fn architecture_small_service_text_rows_use_the_emitted_em_step() {
-    let theme =
-        architecture_typography_theme(ThemeTextStyle::default().with_font_size_px(0.5).unwrap());
     for (size, expected_delta) in [(0.0, 0.0), (0.5, 0.55)] {
         let render_height = |label: &str| {
             let source = format!(
                 "---\nconfig: {{themeVariables: {{fontSize: {size}}}}}\n---\narchitecture-beta\nservice api [{label}]\n"
             );
-            let (parsed, options, session) = prepare_architecture_with_theme_and_environment(
+            let (parsed, options, session) = prepare_architecture_with_environment(
                 &source,
-                &theme,
                 MermaidEngine::new(),
                 counting_architecture_environment(Arc::new(CountingArchitectureHost::default())),
             );
@@ -2127,172 +1225,6 @@ fn architecture_small_service_text_rows_use_the_emitted_em_step() {
             "zero text has no glyph extent; 0.5px rows advance by 0.55px",
         );
     }
-}
-
-#[test]
-fn architecture_typed_base_typography_reaches_svg_css_and_preserves_cytoscape_layout_owner() {
-    let font_stack =
-        FontStack::new(["Architecture Typed", "monospace"]).expect("valid Architecture font");
-    let expected_font_family = font_stack.as_css();
-    let theme = architecture_typography_theme(
-        ThemeTextStyle::default()
-            .with_font_stack(font_stack)
-            .with_font_size_px(24.0)
-            .expect("valid Architecture font size"),
-    );
-    let host = Arc::new(CountingArchitectureHost::default());
-    let source = r#"architecture-beta
-  group platform(cloud)[Platform]
-  service api(server)[API] in platform
-  service icon_text "Typed icon text" [Icon text title]
-  api:R -[request]- L:icon_text
-"#;
-    let (fixture_parsed_4, fixture_layout_4, fixture_session_4) =
-        prepare_architecture_with_theme_and_environment(
-            source,
-            &theme,
-            MermaidEngine::new().with_site_config(
-                merman_core::presentation::SourcePresentationConfig::from_value(json!({
-                    "architecture": { "fontSize": 19 }
-                })),
-            ),
-            counting_architecture_environment(Arc::clone(&host)),
-        );
-    let artifact = family::prepare(&fixture_parsed_4, &fixture_layout_4, fixture_session_4)
-        .expect("prepare family fixture");
-
-    let layout_styles = host
-        .styles
-        .lock()
-        .expect("Architecture layout styles lock")
-        .clone();
-    assert!(
-        layout_styles.iter().any(|style| {
-            style.font_family.as_deref() == Some("Helvetica Neue,Helvetica,sans-serif")
-                && style.font_size == 19.0
-        }),
-        "Cytoscape layout must keep architecture.fontSize and its fixed font owner: {layout_styles:?}"
-    );
-    assert!(
-        layout_styles.iter().all(|style| {
-            style.font_family.as_deref() != Some(expected_font_family.as_str())
-                || style.font_size != 24.0
-        }),
-        "typed SVG typography must not leak into Cytoscape layout measurements: {layout_styles:?}"
-    );
-
-    host.calls.store(0, Ordering::Relaxed);
-    host.operations
-        .lock()
-        .expect("Architecture host operations lock")
-        .clear();
-    host.styles
-        .lock()
-        .expect("Architecture host styles lock")
-        .clear();
-
-    let rendered = artifact
-        .render_svg(
-            &SvgRenderOptions {
-                diagram_id: Some("architecture-typed".to_string()),
-                ..Default::default()
-            },
-            &SvgDebugOptions::default(),
-        )
-        .expect("render themed Architecture");
-    let stylesheet = architecture_stylesheet(rendered.svg());
-    assert!(
-        stylesheet.contains("Architecture Typed")
-            && stylesheet.contains("monospace")
-            && stylesheet.contains("#architecture-typed{font-family:")
-            && stylesheet.contains("font-size:24px"),
-        "typed Architecture typography must reach the final stylesheet: {stylesheet}"
-    );
-    assert_eq!(
-        icon_text_line_clamp(rendered.svg(), "architecture-typed-service-icon_text"),
-        3,
-        "iconText must inherit the typed root SVG font size"
-    );
-
-    let render_styles = host
-        .styles
-        .lock()
-        .expect("Architecture render styles lock")
-        .clone();
-    assert!(
-        render_styles.iter().any(|style| {
-            style.font_family.as_deref() == Some(expected_font_family.as_str())
-                && style.font_size == 24.0
-        }),
-        "final SVG text measurements must use the typed base typography: {render_styles:?}"
-    );
-
-    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 2);
-    assert_eq!(evidence.applied_count(), 2);
-    assert_eq!(evidence.not_applicable_count(), 0);
-    assert_eq!(evidence.theme_residual_count(), 0);
-}
-
-#[test]
-fn architecture_near_integer_font_size_uses_one_canonical_css_value() {
-    let font_stack =
-        FontStack::new(["Architecture Canonical", "monospace"]).expect("valid Architecture font");
-    let theme = architecture_typography_theme(
-        ThemeTextStyle::default()
-            .with_font_stack(font_stack)
-            // This is the largest f32 below 16.0. CSS emission canonicalizes it to 16px.
-            .with_font_size_px(f32::from_bits(0x417f_ffff))
-            .expect("valid Architecture font size"),
-    );
-    let host = Arc::new(CountingArchitectureHost::default());
-    let source = r#"architecture-beta
-  group platform(cloud)[Platform]
-  service api(server)[API] in platform
-  service icon_text "Canonical icon text" [Icon text title]
-  api:R -[request]- L:icon_text
-"#;
-    let (fixture_parsed_5, fixture_layout_5, fixture_session_5) =
-        prepare_architecture_with_theme_and_environment(
-            source,
-            &theme,
-            MermaidEngine::new(),
-            counting_architecture_environment(Arc::clone(&host)),
-        );
-    let artifact = family::prepare(&fixture_parsed_5, &fixture_layout_5, fixture_session_5)
-        .expect("prepare family fixture");
-
-    let rendered = artifact
-        .render_svg(
-            &SvgRenderOptions {
-                diagram_id: Some("architecture-canonical-size".to_string()),
-                ..Default::default()
-            },
-            &SvgDebugOptions::default(),
-        )
-        .expect("render themed Architecture");
-    let stylesheet = architecture_stylesheet(rendered.svg());
-    assert!(
-        stylesheet.contains("font-size:16px")
-            && !stylesheet.contains("15.999999")
-            && !stylesheet.contains("15.999998"),
-        "near-integer typed font size must use the canonical CSS spelling: {stylesheet}"
-    );
-
-    let render_styles = host
-        .styles
-        .lock()
-        .expect("Architecture render styles lock")
-        .clone();
-    assert!(
-        render_styles.iter().any(|style| style.font_size == 16.0),
-        "text measurement must consume the same canonical font size as CSS: {render_styles:?}"
-    );
-
-    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 2);
-    assert_eq!(evidence.applied_count(), 2);
-    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]
@@ -2491,96 +1423,6 @@ fn architecture_root_width_diagnostic_matrix() {
 }
 
 #[test]
-fn repair_u7_architecture_source_owned_stroke_suppresses_unsupported_stroke_only() {
-    use merman_render::diagram_theme::{
-        GradientStop, LinearGradient, OrdinalSelector, ThemeColorValue,
-    };
-    let gradient = CanvasPaint::LinearGradient(
-        LinearGradient::new(
-            0.0,
-            [
-                GradientStop::new(0.0, ThemeColorValue::parse("#ff0000").unwrap()).unwrap(),
-                GradientStop::new(1.0, ThemeColorValue::parse("#0000ff").unwrap()).unwrap(),
-            ],
-        )
-        .unwrap(),
-    );
-    let source =
-        "architecture-beta\nservice api(server)[API]\nservice db(database)[DB]\napi:R --> L:db";
-    for owner in ["archEdgeColor", "lineColor"] {
-        for ordinal in [false, true] {
-            let paint = if ordinal {
-                CanvasPaint::solid("#123456").unwrap()
-            } else {
-                gradient.clone()
-            };
-            let rule = ThemeRule::new(
-                ThemeTarget::Edge,
-                ThemeStylePatch::default().with_stroke(paint),
-            );
-            let rule = if ordinal {
-                rule.with_ordinal(OrdinalSelector::Exact(1))
-            } else {
-                rule
-            };
-            let theme = DiagramThemeCompiler::new()
-                .compile(
-                    DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)),
-                )
-                .unwrap();
-            let config = json!({"themeVariables":{owner:"#abcdef"}});
-            let (fixture_parsed_6, fixture_layout_6, fixture_session_6) =
-                prepare_architecture_with_theme_and_environment(
-                    source,
-                    &theme,
-                    MermaidEngine::new().with_site_config(
-                        merman_core::presentation::SourcePresentationConfig::from_value(config),
-                    ),
-                    RenderEnvironment::deterministic(),
-                );
-            let artifact = family::prepare(&fixture_parsed_6, &fixture_layout_6, fixture_session_6)
-                .expect("prepare family fixture");
-            let rendered = artifact
-                .render_svg(
-                    &SvgRenderOptions {
-                        diagram_id: Some("owned-edge".into()),
-                        ..Default::default()
-                    },
-                    &SvgDebugOptions::default(),
-                )
-                .unwrap();
-            let stylesheet = architecture_stylesheet(rendered.svg());
-            let edge_stroke = stylesheet
-                .split('}')
-                .filter_map(|rule| rule.split_once('{'))
-                .find(|(selector, _)| selector.trim().ends_with(".edge"))
-                .and_then(|(_, declarations)| {
-                    declarations
-                        .split(';')
-                        .rev()
-                        .filter_map(|declaration| declaration.split_once(':'))
-                        .find_map(|(property, value)| {
-                            (property.trim() == "stroke").then_some(value.trim())
-                        })
-                });
-            assert_eq!(edge_stroke, Some("#abcdef"));
-            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-            let edges = document
-                .descendants()
-                .filter(|node| node.has_tag_name("path") && node.attribute("class") == Some("edge"))
-                .collect::<Vec<_>>();
-            assert!(!edges.is_empty());
-            assert!(edges.iter().all(|node| node.attribute("style").is_none()));
-            let evidence =
-                merman_render::__private::family_evidence(rendered.into_completion().report());
-            assert_eq!(evidence.applied_count(), 0);
-            assert_eq!(evidence.not_applicable_count(), 1);
-            assert_eq!(evidence.theme_residual_count(), 0);
-        }
-    }
-}
-
-#[test]
 fn architecture_without_theme_measures_service_titles_only_for_the_viewport() {
     let source = "architecture-beta\nservice api(server)[API]";
     let host = Arc::new(CountingArchitectureHost::default());
@@ -2629,314 +1471,6 @@ fn architecture_without_theme_measures_service_titles_only_for_the_viewport() {
     );
 }
 
-#[test]
-fn architecture_requested_text_style_does_not_repeat_viewport_measurements() {
-    let source = "architecture-beta\nservice api(server)[API]";
-    let themes = [
-        architecture_text_fill_theme(CanvasPaint::solid("#123456").unwrap(), None),
-        architecture_typography_theme(
-            ThemeTextStyle::default()
-                .with_font_stack(FontStack::single("Architecture Typed").unwrap())
-                .with_font_size_px(24.0)
-                .unwrap(),
-        ),
-    ];
-    for theme in themes {
-        let host = Arc::new(CountingArchitectureHost::default());
-        let (fixture_parsed_7, fixture_layout_7, fixture_session_7) =
-            prepare_architecture_with_theme_and_environment(
-                source,
-                &theme,
-                MermaidEngine::new(),
-                counting_architecture_environment(Arc::clone(&host)),
-            );
-        let artifact = family::prepare(&fixture_parsed_7, &fixture_layout_7, fixture_session_7)
-            .expect("prepare family fixture");
-        host.operations.lock().unwrap().clear();
-        let rendered = artifact
-            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-            .unwrap();
-        let operations = host.operations.lock().unwrap();
-        for operation in [
-            TextMeasurementOperation::BBoxX,
-            TextMeasurementOperation::TspanBBoxHeight,
-            TextMeasurementOperation::CreateTextMiddleBBoxYOffset,
-        ] {
-            assert_eq!(
-                operations
-                    .iter()
-                    .filter(|actual| **actual == operation)
-                    .count(),
-                1,
-                "the final viewport owns the only {operation:?} measurement: {operations:?}",
-            );
-        }
-        let evidence =
-            merman_render::__private::family_evidence(rendered.into_completion().report());
-        assert!(evidence.applied_count() > 0);
-        assert_eq!(evidence.theme_residual_count(), 0);
-    }
-}
-
-#[test]
-fn architecture_edge_and_marker_ownership_follows_selected_palette_paths() {
-    let source =
-        "architecture-beta\nservice api(server)[API]\nservice db(database)[DB]\napi:R --> L:db";
-    let theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(
-                ThemeRuleSet::default()
-                    .with_rule(ThemeRule::new(
-                        ThemeTarget::Edge,
-                        ThemeStylePatch::default()
-                            .with_stroke(CanvasPaint::solid("#995511").unwrap()),
-                    ))
-                    .with_rule(ThemeRule::new(
-                        ThemeTarget::Marker,
-                        ThemeStylePatch::default()
-                            .with_fill(CanvasPaint::solid("#446688").unwrap()),
-                    )),
-            ),
-        )
-        .unwrap();
-    for (baseline, variables, edge_applies_by_owner, marker_applies_by_owner) in [
-        (
-            "default",
-            json!({"archEdgeColor": "#333333"}),
-            [false, false],
-            [true, true],
-        ),
-        (
-            "default",
-            json!({"archEdgeColor": "#abcdef"}),
-            [false, false],
-            [true, true],
-        ),
-        (
-            "default",
-            json!({"archEdgeColor": "#333333", "archEdgeArrowColor": "#333333"}),
-            [false, false],
-            [false, false],
-        ),
-        (
-            "default",
-            json!({"lineColor": "#333333"}),
-            [false, true],
-            [false, true],
-        ),
-        (
-            "base",
-            json!({"lineColor": "#777"}),
-            [true, true],
-            [true, true],
-        ),
-        (
-            "base",
-            json!({"lineColor": "#123456"}),
-            [true, true],
-            [true, true],
-        ),
-        (
-            "base",
-            json!({"archEdgeColor": "#777"}),
-            [false, false],
-            [true, true],
-        ),
-        (
-            "base",
-            json!({"archEdgeArrowColor": "#777"}),
-            [true, true],
-            [false, false],
-        ),
-        (
-            "dark",
-            json!({"lineColor": "lightgrey"}),
-            [true, true],
-            [true, true],
-        ),
-    ] {
-        for source_owned in [false, true] {
-            let edge_applies = edge_applies_by_owner[usize::from(source_owned)];
-            let marker_applies = marker_applies_by_owner[usize::from(source_owned)];
-            let config = json!({"themeVariables": variables});
-            let mut site = json!({"theme": baseline});
-            let source = if source_owned {
-                format!("---\nconfig: {config}\n---\n{source}")
-            } else {
-                site["themeVariables"] = variables.clone();
-                source.to_owned()
-            };
-            let engine = MermaidEngine::new().with_site_config(
-                merman_core::presentation::SourcePresentationConfig::from_value(site),
-            );
-            let (parsed, options, session) = prepare_architecture_with_theme_and_environment(
-                &source,
-                &theme,
-                engine,
-                RenderEnvironment::deterministic(),
-            );
-            let rendered = family::prepare(&parsed, &options, session)
-                .unwrap()
-                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-                .unwrap();
-            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-            let arrow = document
-                .descendants()
-                .find(|node| node.attribute("class") == Some("arrow"))
-                .unwrap();
-            assert_eq!(
-                arrow.attribute("style"),
-                marker_applies.then_some("fill:#446688;"),
-                "baseline={baseline} source_owned={source_owned} variables={variables}"
-            );
-            let edge = document
-                .descendants()
-                .find(|node| node.has_tag_name("path") && node.attribute("class") == Some("edge"))
-                .unwrap();
-            assert_eq!(
-                edge.attribute("style"),
-                edge_applies.then_some("stroke:#995511;"),
-                "baseline={baseline} source_owned={source_owned} variables={variables}"
-            );
-            let evidence =
-                merman_render::__private::family_evidence(rendered.into_completion().report());
-            assert_eq!(evidence.required_count(), 2);
-            let applied = usize::from(edge_applies) + usize::from(marker_applies);
-            assert_eq!(evidence.applied_count(), applied);
-            assert_eq!(evidence.not_applicable_count(), 2 - applied);
-            assert_eq!(evidence.theme_residual_count(), 0);
-        }
-    }
-}
-
-#[test]
-fn architecture_group_border_keeps_constructor_color_and_property_ownership() {
-    let diagram =
-        "architecture-beta\ngroup backend(cloud)[Backend]\nservice api(server)[API] in backend";
-    let theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
-                ThemeTarget::Cluster,
-                ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#995511").unwrap()),
-            ))),
-        )
-        .unwrap();
-    for (baseline, constructor_color) in [
-        ("default", "hsl(240, 60%, 86.2745098039%)"),
-        ("base", "#000"),
-        ("dark", "#cccccc"),
-    ] {
-        for primary_border in [constructor_color, "#123456"] {
-            for explicit_group in [false, true] {
-                for from_source in [false, true] {
-                    let mut variables = json!({"primaryBorderColor": primary_border});
-                    if explicit_group {
-                        variables["archGroupBorderColor"] = json!("#556677");
-                    }
-                    let mut site = json!({"theme": baseline});
-                    let source = if from_source {
-                        format!(
-                            "---\nconfig: {}\n---\n{diagram}",
-                            json!({"themeVariables": variables})
-                        )
-                    } else {
-                        site["themeVariables"] = variables.clone();
-                        diagram.to_owned()
-                    };
-                    let (parsed, options, session) =
-                        prepare_architecture_with_theme_and_environment(
-                            &source,
-                            &theme,
-                            MermaidEngine::new().with_site_config(
-                                merman_core::presentation::SourcePresentationConfig::from_value(
-                                    site,
-                                ),
-                            ),
-                            RenderEnvironment::deterministic(),
-                        );
-                    let rendered = family::prepare(&parsed, &options, session)
-                        .unwrap()
-                        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-                        .unwrap();
-                    assert_eq!(
-                        rendered
-                            .metadata()
-                            .effective_config
-                            .get_str("themeVariables.archGroupBorderColor"),
-                        Some(if explicit_group {
-                            "#556677"
-                        } else {
-                            constructor_color
-                        }),
-                        "{baseline}: primary={primary_border}, explicit={explicit_group}, source={from_source}"
-                    );
-                    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-                    let group = document
-                        .descendants()
-                        .find(|node| {
-                            node.has_tag_name("rect")
-                                && node
-                                    .attribute("id")
-                                    .is_some_and(|id| id.ends_with("-group-backend"))
-                        })
-                        .unwrap();
-                    assert_eq!(
-                        group.attribute("style"),
-                        (!explicit_group).then_some("stroke:#995511;"),
-                        "{baseline}: primary={primary_border}, explicit={explicit_group}, source={from_source}"
-                    );
-                    let evidence = merman_render::__private::family_evidence(
-                        rendered.into_completion().report(),
-                    );
-                    assert_eq!(evidence.required_count(), 1);
-                    assert_eq!(evidence.applied_count(), usize::from(!explicit_group));
-                    assert_eq!(evidence.not_applicable_count(), usize::from(explicit_group));
-                    assert_eq!(evidence.theme_residual_count(), 0);
-                }
-            }
-        }
-    }
-}
-
-#[test]
-fn repair_u7_architecture_source_stroke_keeps_other_property_residuals() {
-    let source =
-        "architecture-beta\nservice api(server)[API]\nservice db(database)[DB]\napi:R --> L:db";
-    let patch = ThemeStylePatch::default()
-        .with_stroke(CanvasPaint::solid("#123456").unwrap())
-        .with_fill(CanvasPaint::solid("#654321").unwrap());
-    let theme = DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_styles(
-            ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Edge, patch)),
-        ))
-        .unwrap();
-    let parsed = common::install_parse_compatibility(
-        &theme,
-        MermaidEngine::new().with_site_config(
-            merman_core::presentation::SourcePresentationConfig::from_value(
-                json!({"themeVariables":{"archEdgeColor":"#abcdef"}}),
-            ),
-        ),
-    )
-    .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-    .unwrap()
-    .unwrap()
-    .into_presentation();
-    let session = RenderEnvironment::deterministic()
-        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
-        .begin_session_with_theme(&theme)
-        .unwrap();
-    let prepared = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session);
-    let result = prepared.and_then(|artifact| {
-        artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-    });
-    assert!(
-        result.is_err(),
-        "the source-owned stroke cannot certify an unsupported Edge.fill sibling"
-    );
-}
-
-#[allow(dead_code)]
 mod common;
 
 #[test]

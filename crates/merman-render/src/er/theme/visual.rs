@@ -1,22 +1,6 @@
 use super::*;
 use std::fmt::Write;
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct ErTextVisual {
-    pub(crate) typed_style: String,
-    pub(crate) wrapper_attr: String,
-    pub(crate) inline_attr: String,
-}
-
-impl ErTextVisual {
-    fn byte_len(&self) -> usize {
-        self.typed_style
-            .len()
-            .saturating_add(self.wrapper_attr.len())
-            .saturating_add(self.inline_attr.len())
-    }
-}
-
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ErRowVisual {
     pub(crate) fill: String,
@@ -30,7 +14,6 @@ pub(crate) struct ErSourceVisual {
     pub(crate) rect_style_attr: String,
     pub(crate) source_text_attr: String,
     pub(crate) svg_source_text_attr: String,
-    pub(crate) subgraph_text_style: String,
     pub(crate) label_div_color_prefix: String,
     pub(crate) label_div_typography_prefix: String,
     pub(crate) span_style_attr: String,
@@ -49,7 +32,6 @@ impl ErSourceVisual {
             &self.rect_style_attr,
             &self.source_text_attr,
             &self.svg_source_text_attr,
-            &self.subgraph_text_style,
             &self.label_div_color_prefix,
             &self.label_div_typography_prefix,
             &self.span_style_attr,
@@ -120,24 +102,6 @@ fn path_attr(style: &str) -> String {
     }
 }
 
-pub(super) fn text_visual(paint: Option<&str>) -> ErTextVisual {
-    let typed_style = paint
-        .map(|css| format!("color:{css};fill:{css}"))
-        .unwrap_or_default();
-    ErTextVisual {
-        inline_attr: path_attr(&typed_style),
-        typed_style,
-        wrapper_attr: paint
-            .map(|css| {
-                format!(
-                    r#" style="fill:{} !important""#,
-                    crate::svg::escape_attr(css)
-                )
-            })
-            .unwrap_or_default(),
-    }
-}
-
 pub(super) fn label_style(source: &ErEntitySourceStyle, html_labels: bool) -> String {
     crate::svg::escape_attr(&label_style_css(source, html_labels))
 }
@@ -185,35 +149,17 @@ impl ErEntityThemePlan {
         model: &merman_model::families::er::ErDiagramModel,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
-        for terminal in self.text_terminals.values_mut() {
-            terminal.visual = text_visual(terminal.paint.as_ref().map(|paint| paint.css.as_str()));
-            work.charge(1usize.saturating_add(terminal.visual.byte_len()))?;
-        }
         for (index, entity) in model.entities.values().enumerate() {
             work.charge(1usize.saturating_add(entity.attributes.len()))?;
             let source = &self.entity_source_styles[index];
-            let fill = self.typed_fill(index);
-            let stroke = self.typed_stroke(index);
             let mut output = source_text_visual(source);
-            let mut rect = Vec::new();
-            if !source.rect_declarations.is_empty() {
-                rect.push(declarations(&source.rect_declarations, true, "; "));
-            }
-            if let Some((_, css)) = fill {
-                rect.push(format!("fill:{css}"));
-            }
-            if let Some((_, css)) = stroke {
-                rect.push(format!("stroke:{css}"));
-            }
-            output.rect_style_attr = attr(&rect.join("; "));
+            output.rect_style_attr = attr(&declarations(&source.rect_declarations, true, "; "));
             output.box_fill = source
                 .fill()
-                .or_else(|| fill.map(|(_, css)| css))
                 .unwrap_or(&self.css_binding.main_bkg)
                 .to_owned();
             output.box_stroke = source
                 .stroke()
-                .or_else(|| stroke.map(|(_, css)| css))
                 .unwrap_or(&self.css_binding.node_border)
                 .to_owned();
             let width = source
@@ -245,33 +191,18 @@ impl ErEntityThemePlan {
                 crate::svg::escape_xml(&declarations(&group, false, ";"))
             );
             let redux = self.css_binding.source_fill_owns_odd_rows();
-            let mut overrides: Vec<_> = source
+            let overrides: Vec<_> = source
                 .rect_declarations
                 .iter()
                 .filter(|d| redux || d.property().contains("stroke"))
                 .map(|d| declarations(std::slice::from_ref(d), true, "; "))
                 .collect();
-            if source.stroke().is_none()
-                && let Some((_, css)) = stroke
-            {
-                overrides.push(format!("stroke:{css}"));
-            }
             output.override_style_attr = path_attr(&overrides.join("; "));
-            let mut base = overrides.clone();
-            if let Some((_, css)) = fill {
-                base.push(format!("fill:{css}"));
-            }
-            output.base_fill_style_attr = path_attr(&base.join("; "));
+            output.base_fill_style_attr = output.override_style_attr.clone();
             let even_override = if source.rect_declarations.is_empty() {
                 output.override_style_attr.clone()
             } else {
-                let mut parts = vec![declarations(&source.rect_declarations, true, "; ")];
-                if source.stroke().is_none()
-                    && let Some((_, css)) = stroke
-                {
-                    parts.push(format!("stroke:{css}"));
-                }
-                path_attr(&parts.join("; "))
+                path_attr(&declarations(&source.rect_declarations, true, "; "))
             };
             for row_index in 0..entity.attributes.len() {
                 let baseline = if row_index.is_multiple_of(2) {
@@ -279,41 +210,23 @@ impl ErEntityThemePlan {
                 } else {
                     self.css_binding.row_even.as_deref()
                 };
-                let typed = self.typed_table_row(&entity.id, row_index);
                 let border_style_attr = if row_index.is_multiple_of(2) {
                     output.override_style_attr.clone()
                 } else {
                     even_override.clone()
                 };
-                let typed_style = typed
-                    .map(|(_, css)| format!("fill:{css}"))
-                    .unwrap_or_default();
-                let fill_style_attr = if typed.is_some() {
-                    let mut parts = vec![typed_style.clone()];
-                    parts.extend(overrides.iter().cloned());
-                    path_attr(&parts.join("; "))
-                } else {
-                    border_style_attr.clone()
-                };
                 output.rows.push(ErRowVisual {
                     fill: baseline.unwrap_or("none").to_owned(),
-                    has_fill: baseline.is_some_and(|v| !v.is_empty() && v != "none")
-                        || typed.is_some(),
-                    fill_style_attr,
+                    has_fill: baseline.is_some_and(|v| !v.is_empty() && v != "none"),
+                    fill_style_attr: border_style_attr.clone(),
                     border_style_attr,
                 });
             }
             work.charge(output.byte_len())?;
             self.entity_source_styles[index].visual = output;
         }
-        for (id, source) in &mut self.subgraph_source_styles {
-            let mut output = source_visual(source);
-            let terminal = self
-                .text_terminals
-                .get(&ErTextTerminalId::SubgraphLabel(id.clone().into()));
-            output.subgraph_text_style = terminal
-                .map(|terminal| terminal.visual.typed_style.clone())
-                .unwrap_or_default();
+        for source in self.subgraph_source_styles.values_mut() {
+            let output = source_visual(source);
             work.charge(output.byte_len())?;
             source.visual = output;
         }

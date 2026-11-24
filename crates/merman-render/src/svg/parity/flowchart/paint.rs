@@ -28,11 +28,7 @@ pub(super) fn with_flowchart_paint_context<T>(
         diagram_type,
         diagram_title: _,
         svg_label_sidecar,
-        theme_evidence,
-        effect_evidence,
-        expected_effect_applications: _,
         edge_style_plan,
-        edge_theme,
     } = request;
     let render_model = crate::flowchart::FlowchartRenderModelRef::new(model, render_context);
     let model = &render_model;
@@ -85,13 +81,7 @@ pub(super) fn with_flowchart_paint_context<T>(
     let default_edge_style = &render_config.default_edge_style;
     let node_border_color = &render_config.node_border_color;
     let node_stroke_width = render_config.node_stroke_width;
-    let node_typography_config_ownership = render_config.node_typography_config_ownership;
-    let node_label_fill_config_override = render_config.node_label_fill_config_override;
-    let node_fill_config_override = render_config.node_fill_config_override;
-    let node_stroke_width_config_override = render_config.node_stroke_width_config_override;
-    let edge_stroke_config_override = render_config.edge_stroke_config_override;
     let edge_corner_radius = render_config.edge_corner_radius;
-    let edge_label_padding = render_config.edge_label_padding;
     let compact_edge_corners = render_config.compact_edge_corners;
 
     let mut nodes_by_id: FxHashMap<&str, &crate::flowchart::FlowNode> =
@@ -230,18 +220,16 @@ pub(super) fn with_flowchart_paint_context<T>(
     }
     let flowchart_edge_trace = options.debug.flowchart_edge_trace();
     let checkpoint_emit = || options.checkpoint_emit();
-    let text_surface_paint = &prepared_theme.text_surface;
+    let mut palette = super::agentflow::ContainerPalette::new(effective_config);
+    if prepared_theme.native.is_some() {
+        palette = palette.without_theme_colors();
+    }
     let mut ctx = FlowchartRenderCtx {
         prepared_nodes,
         edges_by_key: edge_order
             .iter()
             .map(|edge| (edge.key, edge.edge))
             .collect(),
-        label_effects: std::cell::OnceCell::new(),
-        node_effects: std::cell::OnceCell::new(),
-        edge_effects: std::cell::OnceCell::new(),
-        effect_evidence,
-        text_surface_paint,
         model,
         diagram_id,
         diagram_type,
@@ -250,12 +238,10 @@ pub(super) fn with_flowchart_paint_context<T>(
         measurer,
         config: effective_config,
         compatibility: &prepared_theme.compatibility,
-        palette: super::agentflow::ContainerPalette::new(effective_config),
-        effect_eligibility: &prepared_theme.effects,
+        native: prepared_theme.native.as_ref(),
+        palette,
         hand_drawn_seed,
         work_meter: options.work_meter(),
-        resolved_theme: options.resolved_theme(),
-        theme_evidence,
         emit: FlowchartEmitCheckpoint::new(&checkpoint_emit),
         math_renderer: options.math_renderer(),
         svg_label_sidecar: Some(svg_label_sidecar),
@@ -273,17 +259,10 @@ pub(super) fn with_flowchart_paint_context<T>(
         swimlane_layout,
         node_border_color,
         node_stroke_width,
-        node_typography_config_ownership,
-        node_label_fill_config_override,
-        node_fill_config_override,
-        node_stroke_width_config_override,
-        edge_stroke_config_override,
         edge_corner_radius,
-        edge_label_padding,
         compact_edge_corners,
         default_edge_interpolate,
         default_edge_style,
-        edge_theme,
         trace_edge_id: flowchart_edge_trace.map(|(edge_id, _)| edge_id),
         trace_collector: flowchart_edge_trace.map(|(_, collector)| collector),
         edge_order,
@@ -825,25 +804,15 @@ mod tests {
         )
         .unwrap();
         let sidecar = crate::flowchart::FlowchartSvgLabelSidecar::default();
-        let theme = crate::flowchart::FlowchartPreparedTheme::resolve(
-            None,
-            &parsed.metadata().effective_config,
-            super::super::render_config::flowchart_node_label_fill_config_override(
-                &parsed.metadata().effective_config,
-            ),
-            execution.work_meter(),
-        )
-        .unwrap();
-        let edge_theme =
-            crate::flowchart::FlowchartEdgeThemeStyle::resolve(None, execution.work_meter())
-                .unwrap();
+        let theme =
+            crate::flowchart::FlowchartPreparedTheme::resolve(&parsed.metadata().effective_config);
+
         let config = super::super::render_config::prepare_flowchart_render_config(
             model,
             &parsed.metadata().effective_config,
             &theme.compatibility,
             layout.uses_elk_adapter_dom,
             None,
-            sidecar.edge_label_padding(),
         );
         let style = FlowchartEdgeStylePlan::prepare_for_model(
             model,
@@ -852,13 +821,7 @@ mod tests {
             execution.work_meter(),
         )
         .unwrap()
-        .with_resolved_stroke_widths(
-            model,
-            &edge_theme,
-            &parsed.metadata().effective_config,
-            &theme.compatibility,
-            execution.work_meter(),
-        )
+        .with_resolved_stroke_widths(model, &theme.compatibility, execution.work_meter())
         .unwrap()
         .with_typography_work_meter(std::sync::Arc::clone(session.work_meter()));
         style
@@ -870,7 +833,6 @@ mod tests {
             &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
             super::super::node_inventory::FlowchartNodeLayoutView::Flowchart(&layout),
             &sidecar,
-            None,
             &parsed.metadata().effective_config,
             &theme,
             &config,
@@ -891,11 +853,7 @@ mod tests {
                 diagram_type: &parsed.metadata().diagram_type,
                 diagram_title: None,
                 svg_label_sidecar: &sidecar,
-                effect_evidence: &Default::default(),
-                expected_effect_applications: &Default::default(),
-                theme_evidence: &Default::default(),
                 edge_style_plan: &style,
-                edge_theme: &edge_theme,
             },
             &execution,
         )

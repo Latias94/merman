@@ -40,9 +40,9 @@ impl PreparedLookDefs {
         let flood_color = config
             .get("theme")
             .and_then(serde_json::Value::as_str)
-            .filter(|theme| theme.contains("dark"))
-            .map(|_| "#FFFFFF")
-            .unwrap_or("#000000");
+            .and_then(|name| merman_model::config::MermaidThemeId::parse(name).ok())
+            .filter(|theme| theme.is_dark())
+            .map_or("#000000", |_| "#FFFFFF");
         let gradient = config_bool(config, &["themeVariables", "useGradient"])
             .unwrap_or(false)
             .then(|| {
@@ -107,7 +107,7 @@ mod tests {
             (serde_json::json!("unknown"), false),
         ] {
             let prepared = PreparedLookDefs::new(&serde_json::json!({
-                "theme":"custom-dark-name", "darkMode":false,
+                "theme":"neo-dark", "darkMode":false,
                 "themeVariables":{"useGradient":value,"primaryBorderColor":"var(--start)","gradientStop":"a&b"}
             }));
             assert_eq!(prepared.flood_color, "#FFFFFF");
@@ -121,6 +121,7 @@ mod tests {
         }
         let fallback =
             PreparedLookDefs::new(&serde_json::json!({"themeVariables":{"useGradient":true}}));
+        assert_eq!(fallback.flood_color, "#000000");
         assert_eq!(
             fallback.gradient,
             Some(("#9370DB".to_owned(), "#9370DB".to_owned()))

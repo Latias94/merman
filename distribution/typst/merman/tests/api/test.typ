@@ -1,11 +1,6 @@
 #import "@preview/merman:0.6.0": (
   analyze-mermaid,
-  describe-theme-support,
-  export-theme-preset,
-  materialize-theme,
-  theme-catalog,
   mermaid,
-  mermaid-theme-definition,
   mermaid-figure,
   mermaid-profile,
   mermaid-result,
@@ -212,11 +207,9 @@
   options: (
     version: 3,
     theme: (
-      spec: (
-        typography: (
-          default: (font_stack: ("API Options Sans",), font_size_px: 17),
-        ),
-      ),
+      schema_version: 2,
+      extends: "studio",
+      typography: (sans: ("API Options Sans", "sans-serif")),
     ),
     svg: (diagram_id: "api-options", pipeline: "readable"),
   ),
@@ -257,7 +250,7 @@
   source,
   id: "api-theme-layer",
   pipeline: "readable",
-  theme-name: "forest",
+  theme: "forest",
 )
 #let profile-theme-svg = mermaid-svg(
   source,
@@ -265,7 +258,7 @@
   pipeline: "readable",
   profile: mermaid-profile(
     site-config: (theme: "dark"),
-    theme-name: "forest",
+    theme: "forest",
   ),
 )
 #assert.eq(
@@ -279,7 +272,7 @@
   pipeline: "readable",
   profile: mermaid-profile(site-config: (theme: "dark")),
   site-config: (theme: "neutral"),
-  theme-name: "forest",
+  theme: "forest",
 )
 #assert.eq(
   direct-theme-svg,
@@ -290,7 +283,7 @@
 #let capabilities = merman-capabilities()
 #assert.eq(
   capabilities.package_version,
-  sys.inputs.at("merman-version", default: "0.10.0"),
+  sys.inputs.at("merman-version", default: "0.11.0"),
   message: "Typst package must bundle the expected Merman runtime",
 )
 #assert.eq(capabilities.schema_version, 1)
@@ -303,174 +296,12 @@
   capabilities.capabilities.operation_ids,
   (
     "analysis-json",
-    "describe-theme-support-json",
-    "export-theme-preset-json",
-    "materialize-theme-json",
+    "export-theme-preset",
+    "resolve-theme",
     "svg",
   ),
 )
 
-#let theme-definition = (
-  tokens: (text: (type: "color", value: "#123456")),
-  styles: (text: (fill: (kind: "solid", color: (ref: "text")))),
-)
-#let materialized-theme = materialize-theme(theme-definition)
-#assert.eq(materialized-theme.schema_version, 1)
-#assert.eq(materialized-theme.authoring_schema_version, 1)
-#assert.eq(materialized-theme.expansion_version, 1)
-#assert.eq(materialized-theme.spec_schema_version, 1)
-#assert(materialized-theme.spec.styles.len() > 0)
-
-#let materialization-limit = materialize-theme(
-  theme-definition,
-  options: (
-    version: 3,
-    resources: (
-      profile: "constrained",
-      limits: (max_theme_encoded_bytes: 1),
-    ),
-  ),
-)
-#assert(
-  not ("spec" in materialization-limit),
-  message: "materialization must enforce caller resource limits before decoding",
-)
-
-#let theme-support = describe-theme-support((
-  schema_version: 1,
-  family: "sequence",
-  output: "standalone-svg",
-  subject: (kind: "base-typography", property: "font-stack"),
-))
-#assert.eq(theme-support.schema_version, 1)
-#assert.eq(theme-support.query.family, "sequence")
-
-#let preset-export = export-theme-preset("editor")
-#assert.eq(preset-export.kind, "design")
-#assert(type(preset-export.design) == dictionary)
-#assert.eq(preset-export.design.appearances.keys().sorted(), ("dark", "light"))
-#let paired-inspection = materialize-theme((
-  schema_version: 1,
-  action: "inspect",
-  recipe: preset-export,
-))
-#assert.eq(paired-inspection.schema_version, 1)
-#assert.eq(paired-inspection.supported_appearances, ("light", "dark"))
-#assert.eq(paired-inspection.default_appearance, "light")
-#let selected-light = materialize-theme((
-  schema_version: 1, action: "materialize", recipe: preset-export, appearance: "light",
-))
-#let selected-dark = materialize-theme((
-  schema_version: 1, action: "materialize", recipe: preset-export, appearance: "dark",
-))
-#assert.eq(selected-light.effective_appearance, "light")
-#assert.eq(selected-dark.effective_appearance, "dark")
-#assert(selected-light.spec != selected-dark.spec)
-#assert.eq(selected-light.spec, materialize-theme(preset-export.design).spec)
-
-#let light-definition = (
-  tokens: (
-    canvas: (type: "color", value: "#f8fafc"),
-    surface: (type: "color", value: "#ffffff"),
-    text: (type: "color", value: "#0f172a"),
-    border: (type: "color", value: "#cbd5e1"),
-    line: (type: "color", value: "#64748b"),
-  ),
-  canvas: (base: (kind: "solid", color: (ref: "canvas"))),
-  styles: (
-    text: (fill: (kind: "solid", color: (ref: "text"))),
-    node: (
-      fill: (kind: "solid", color: (ref: "surface")),
-      stroke: (paint: (kind: "solid", color: (ref: "border"))),
-    ),
-    edge: (stroke: (paint: (kind: "solid", color: (ref: "line")))),
-  ),
-  rules: (
-    (
-      family: "flowchart",
-      target: "node",
-      style: (fill: "#dbeafe"),
-    ),
-  ),
-)
-#let dark-definition = (
-  tokens: (
-    canvas: (type: "color", value: "#0f172a"),
-    surface: (type: "color", value: "#1e293b"),
-    text: (type: "color", value: "#e2e8f0"),
-    border: (type: "color", value: "#475569"),
-    line: (type: "color", value: "#94a3b8"),
-  ),
-  canvas: (base: (kind: "solid", color: (ref: "canvas"))),
-  styles: (
-    text: (fill: (kind: "solid", color: (ref: "text"))),
-    node: (
-      fill: (kind: "solid", color: (ref: "surface")),
-      stroke: (paint: (kind: "solid", color: (ref: "border"))),
-    ),
-    edge: (stroke: (paint: (kind: "solid", color: (ref: "line")))),
-  ),
-  rules: (
-    (
-      family: "flowchart",
-      target: "node",
-      style: (fill: "#1e3a8a"),
-    ),
-  ),
-)
-#let light-json = json.encode(light-definition)
-#let light-from-json = materialize-theme(light-json)
-#let light-from-typed = materialize-theme(light-definition)
-#let dark-json = json.encode(dark-definition)
-#let dark-from-json = materialize-theme(dark-json)
-#let dark-from-typed = materialize-theme(dark-definition)
-#assert.eq(
-  light-from-json.spec,
-  light-from-typed.spec,
-  message: "JSON import and typed construction must materialize identically",
-)
-#assert.eq(
-  dark-from-json.spec,
-  dark-from-typed.spec,
-  message: "dark JSON import and typed construction must materialize identically",
-)
-#assert(light-json != "", message: "the authoring definition must have a readable JSON export")
-#assert(dark-json != "", message: "the dark authoring definition must have a readable JSON export")
-
-#let unknown-support = describe-theme-support((
-  schema_version: 1,
-  family: "future-family",
-  output: "standalone-svg",
-  subject: (kind: "rule", target: "node", facet: "fill"),
-))
-#assert.eq(unknown-support.state, "unverified")
-#assert(unknown-support.reason_ids.contains("theme-support.unknown-family"))
-
-#set text(font: "Definition Context Sans", size: 12pt)
-#mermaid-theme-definition(
-  "flowchart LR\nA[Light] --> B[Authored]",
-  light-json,
-  document-context: true,
-  width: 80%,
-)
-#mermaid-theme-definition(
-  "flowchart LR\nA[Dark] --> B[Authored]",
-  dark-definition,
-  width: 80%,
-)
-#mermaid-theme-definition(
-  "flowchart LR\nA[Invalid] --> B[Theme]",
-  (styles: (text: (fill: (ref: "missing")))),
-  document-context: true,
-  error-mode: "text",
-)
-#mermaid-theme-definition(
-  "flowchart LR\nA[Invalid] --> B[Theme]",
-  (styles: (text: (fill: (ref: "missing")))),
-  document-context: true,
-  error-mode: "placeholder",
-  width: 80%,
-)
 #assert(
   capabilities.capabilities.text_measurement.provider_ids.contains("deterministic"),
   message: "capabilities should keep text measurement boundary",
@@ -511,27 +342,3 @@ flowchart LR
 ```
 
 API fixture passed.
-
-#let catalog = theme-catalog()
-#assert.eq(catalog.schema_version, 1)
-#assert(catalog.structured_spec_available)
-#assert.eq(catalog.supported_output_ids, ("svg",))
-#assert.eq(catalog.presets.map(preset => preset.id), (
-  "editor", "one-dark", "gruvbox", "ayu", "brutalist", "spotless", "cyberpunk", "ghibli",
-  "paper-cut", "carbon-copy", "pop-art",
-))
-#assert.eq(catalog.presets.at(0).id, "editor")
-#assert.eq(catalog.presets.at(0).supported_appearances, ("light", "dark"))
-#assert.eq(catalog.presets.at(0).appearances.map(mode => mode.concrete_preset_id), (
-  "editor-light", "editor-dark",
-))
-#for preset in catalog.presets {
-  for mode in preset.appearances {
-    assert.eq(mode.qualified_cells, ())
-    assert.eq(mode.available, preset.available)
-  }
-}
-#assert.eq(merman-capabilities().metadata_ids, ("theme-catalog",))
-#let catalog-preset = export-theme-preset(catalog.presets.at(0).id)
-#assert.eq(catalog-preset.kind, catalog.presets.at(0).export_kind)
-#assert(type(catalog-preset.design) == dictionary)

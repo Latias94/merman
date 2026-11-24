@@ -92,7 +92,7 @@ test("freezes one configured input for detection, parse, layout, and render", ()
         containerHeight: 600,
         screenAvailableWidth: 1280,
       },
-      themePresetId: "editor-light",
+      themePresetId: "studio",
       svgPipeline: "resvg-safe",
     },
   );
@@ -106,7 +106,7 @@ test("freezes one configured input for detection, parse, layout, and render", ()
   assert.match(input.configuredSource, /flowchart TD/);
   assert.deepEqual(input.bindingOptions, {
     version: BINDING_OPTIONS_SCHEMA_VERSION,
-    theme: { preset: "editor-light" },
+    theme: "studio",
     site_config: {
       theme: "forest",
       fontFamily: "Arial, Helvetica, sans-serif",
@@ -158,14 +158,14 @@ test("generic operation inputs keep deterministic defaults and accept an explici
 });
 
 test("browser facade keeps each measured or headless SVG with its single execution metadata", async (context) => {
-  const { calls, support, supportCalls } = browserRenderFixture;
+  const { calls } = browserRenderFixture;
   const browserModuleUrl = new URL("./merman-browser.ts", import.meta.url).href;
   const fixtureUrl = new URL("./merman-browser-test-fixture.ts", import.meta.url).href;
   const fixtureSource = `
     export * from ${JSON.stringify(fixtureUrl)};
     import { browserRenderFixture } from ${JSON.stringify(fixtureUrl)};
     export function renderAscii(source, options) {
-      browserRenderFixture.calls.push({ mode: "legacy", source, optionsJson: JSON.stringify(options) });
+      browserRenderFixture.calls.push({ mode: "legacy", source, optionsJson: options });
       return "ascii";
     }
   `;
@@ -182,13 +182,22 @@ test("browser facade keeps each measured or headless SVG with its single executi
   const browserSession = mermanBrowserDependencies.createSession();
   context.after(() => browserSession.dispose());
 
+  await context.test("theme resolution forwards authored bytes and preserves diagnostic locations", () => {
+    const document = '{\n  "schema_version": 2,\n  "seed": { "accent": }\n}';
+    const options = { appearance: "dark", auto_fix_contrast: true } as const;
+    assert.deepEqual(browserSession.facade.resolveTheme(document, options), {
+      ok: false, line: 3, column: 8, path: "seed.accent", message: "A color is required.",
+    });
+    assert.deepEqual(browserRenderFixture.themeCalls, [{ document, options }]);
+  });
+
   for (const mode of ["browser", "headless"] as const) {
     await context.test(`${mode} publishes exactly one result call`, () => {
       calls.length = 0;
-      const recipe = '{"schema_version":1,"kind":"design","design":{"tokens":{"accent":{"type":"color","value":"red"},"accent":{"type":"color","value":"blue"}}}}';
+      const recipe = '{"schema_version":2,"extends":"studio","seed":{"accent":"#abcdef","accent":"#123456"}}';
       const input = configuredMermanOperationInput("flowchart TD\nA", "forest", "{}", {
         textMeasurementMode: mode,
-        themeRecipeJson: recipe,
+        themeDocumentJson: recipe,
         runtimeSnapshot: { unixMillis: 1_794_633_825_678, localOffsetMinutes: 345 },
       });
       browserRenderFixture.result = {
@@ -199,7 +208,7 @@ test("browser facade keeps each measured or headless SVG with its single executi
           media_type: "image/svg+xml",
           runtime_policy: "default",
           byte_length: 0,
-          theme_execution_evidence: { version: 99, future_status: mode },
+          theme_outcome: { mode: "merman_native", appearance: "light", notices: [] },
         },
       };
       const result = browserSession.facade.render(input);
@@ -222,7 +231,7 @@ test("browser facade keeps each measured or headless SVG with its single executi
     calls.length = 0;
     const input = configuredMermanOperationInput("gantt\nTask: task, 2026-11-14, 1d", "auto", "{}", {
       runtimeSnapshot: { unixMillis: 1_794_633_825_678, localOffsetMinutes: 345 },
-      themeRecipeJson: '{"schema_version":1,"kind":"design","design":{}}',
+      themeDocumentJson: '{"schema_version":2,"extends":"studio"}',
       svgPipeline: "resvg-safe",
     });
     const result = browserSession.facade.renderAscii(input);
@@ -234,6 +243,7 @@ test("browser facade keeps each measured or headless SVG with its single executi
       site_config: input.bindingOptions.site_config,
       fixed_unix_millis: 1_794_633_825_678,
       fixed_local_offset_minutes: 345,
+      theme: { schema_version: 2, extends: "studio" },
     });
   });
 
@@ -247,13 +257,13 @@ test("browser facade keeps each measured or headless SVG with its single executi
     assert.equal(invalidResult.error, invalidInput.configurationError);
     assert.equal(calls.length, 0);
 
-    browserRenderFixture.failure = { message: "Recipe is invalid.", code_name: "MERMAN_INVALID_OPTIONS" };
+    browserRenderFixture.failure = { message: "Theme document is invalid.", code_name: "MERMAN_INVALID_OPTIONS" };
     const result = browserSession.facade.render(configuredMermanOperationInput("flowchart TD\nA", "auto", "{}", undefined));
     browserRenderFixture.failure = null;
     assert.equal(result.status, "failure");
     if (result.status !== "failure") return;
     assert.equal(result.stage, "render");
-    assert.equal(result.error.summary, "Recipe is invalid.");
+    assert.equal(result.error.summary, "Theme document is invalid.");
     assert.match(result.error.detail ?? "", /MERMAN_INVALID_OPTIONS/);
     assert.equal(calls.length, 1);
   });
@@ -290,26 +300,21 @@ test("browser facade keeps each measured or headless SVG with its single executi
     assert.equal(calls.length, 1);
   });
 
-  await context.test("support discovery delegates to the existing SDK without interpreting outcomes", () => {
-    const query = '{"schema_version":1,"family_id":"flowchart"}';
-    assert.equal(browserSession.facade.describeThemeSupport(query), support);
-    assert.deepEqual(supportCalls, [[query, undefined]]);
-  });
 });
 
-test("custom recipe reaches the Rust transport intact and changes render identity", (context) => {
+test("custom v2 document reaches the Rust transport intact and changes render identity", (context) => {
   const unixMillis = Date.parse("2026-11-14T05:23:45.678Z");
   context.mock.timers.enable({ apis: ["Date"], now: unixMillis });
   context.mock.method(Date.prototype, "getTimezoneOffset", () => -345);
-  const recipe = '{"schema_version":1,"kind":"design","design":{"tokens":{"accent":{"type":"color","value":"#123456"},"accent":{"type":"color","value":"#abcdef"}}}}';
+  const recipe = '{"schema_version":2,"extends":"studio","seed":{"accent":"#123456","accent":"#abcdef"}}';
   const input = configuredMermanOperationInput("flowchart TD\nA", "auto", "{}", {
-    themeRecipeJson: recipe,
+    themeDocumentJson: recipe,
   });
   assert.equal(input.configurationError, null);
   // Duplicate fields must reach Rust admission instead of disappearing in JSON.parse.
   assert.ok(input.bindingOptionsJson?.includes(recipe));
   assert.deepEqual(JSON.parse(input.bindingOptionsJson!).theme, JSON.parse(recipe));
-  const custom = operation({ workspace: { themeRecipeJson: recipe } });
+  const custom = operation({ workspace: { themeDocumentJson: recipe } });
   assert.equal(sameRenderOperation(operation(), custom), false);
   assert.equal(JSON.parse(custom.bindingOptionsJson!).fixed_unix_millis, unixMillis);
   assert.equal(JSON.parse(custom.bindingOptionsJson!).fixed_local_offset_minutes, 345);
@@ -321,12 +326,12 @@ test("custom recipe reaches the Rust transport intact and changes render identit
   assert.equal(JSON.parse(exported.bindingOptionsJson!).fixed_local_offset_minutes, 345);
 });
 
-test("invalid recipe and mixed selections are configuration errors", () => {
+test("invalid documents and mixed selections are configuration errors", () => {
   for (const options of [
-    { themeRecipeJson: "null" },
-    { themeRecipeJson: "{}" },
-    { themeRecipeJson: '{"schema_version":1,"kind":"design"},"site_config":{}' },
-    { themeRecipeJson: '{"schema_version":1,"kind":"complete_spec","complete_spec":{}}', themePresetId: "brutalist" },
+    { themeDocumentJson: "null" },
+    { themeDocumentJson: "{}" },
+    { themeDocumentJson: '{"schema_version":1,"kind":"design"},"site_config":{}' },
+    { themeDocumentJson: '{"schema_version":2,"extends":"studio"}', themePresetId: "brutalist" },
   ]) {
     const input = configuredMermanOperationInput("flowchart TD\nA", "auto", "{}", options);
     assert.ok(input.configurationError);
@@ -403,7 +408,7 @@ test("keeps the UI font in initialization without authoring a source theme", () 
   assert.equal(input.bindingOptions.svg, undefined);
 });
 
-test("default operation inputs inherit the recipe font instead of injecting a UI default", () => {
+test("default operation inputs inherit the theme font instead of injecting a UI default", () => {
   for (const options of [undefined, { diagramFont: "inherit" as const }, { themePresetId: "ghibli" }]) {
     const input = configuredMermanOperationInput("pie\n\"Tea\": 4", "auto", "{}", options);
     assert.equal(input.bindingOptions.site_config?.fontFamily, undefined);
@@ -417,7 +422,7 @@ test("host presets retain only actual user config in the source layer", () => {
   for (const configJson of ["{}", '{"htmlLabels":false}']) {
     const input = configuredMermanOperationInput(source, "default", configJson, {
       diagramFont: "trebuchet",
-      themePresetId: "editor-dark",
+      themePresetId: "studio",
     });
     assert.equal(
       input.configuredSource,
@@ -425,7 +430,7 @@ test("host presets retain only actual user config in the source layer", () => {
     );
     assert.equal(input.bindingOptions.site_config?.theme, "default");
     assert.match(String(input.bindingOptions.site_config?.fontFamily), /trebuchet ms/);
-    assert.deepEqual(input.bindingOptions.theme, { preset: "editor-dark" });
+    assert.equal(input.bindingOptions.theme, "studio");
     assert.equal(input.configurationError, null);
   }
 });
@@ -435,7 +440,7 @@ test("runtime preserves authored theme and font overrides after safe UI initiali
   const configJson = '{"theme":"forest","fontFamily":"User Font","themeVariables":{"fontFamily":"Variable Font"}}';
   const input = configuredMermanOperationInput(source, "default", configJson, {
     diagramFont: "arial",
-    themePresetId: "editor-light",
+    themePresetId: "studio",
   });
   assert.equal(input.configuredSource, `%%{init: ${configJson}}%%\n${source}`);
   assert.deepEqual(input.bindingOptions.site_config, {
@@ -443,30 +448,30 @@ test("runtime preserves authored theme and font overrides after safe UI initiali
     fontFamily: "Arial, Helvetica, sans-serif",
     themeVariables: { fontFamily: "Arial, Helvetica, sans-serif" },
   });
-  assert.deepEqual(input.bindingOptions.theme, { preset: "editor-light" });
+  assert.equal(input.bindingOptions.theme, "studio");
   assert.equal(input.configurationError, null);
 });
 
 test("preview catalog admission preserves selections and only omits unavailable presets", () => {
-  for (const [themePresets, unavailable] of [
-    [undefined, false],
-    [[], true],
-    [[{ id: "ghibli", available: false }], true],
-    [[{ id: "ghibli", available: true }], false],
+  const catalog = themeCatalogFixture();
+  for (const [themeCatalog, id, unavailable] of [
+    [undefined, "future-preset", false],
+    [catalog, "future-preset", true],
+    [catalog, "studio", false],
   ] as const) {
-    const frozen = operation({ workspace: { themePresetId: " ghibli " }, themePresets });
-    assert.equal(frozen.themePresetId, " ghibli ");
-    assert.equal(frozen.unavailableThemePresetId, unavailable ? " ghibli " : null);
-    assert.deepEqual(frozen.bindingOptions.theme, unavailable ? undefined : { preset: " ghibli " });
+    const frozen = operation({ workspace: { themePresetId: id }, themeCatalog });
+    assert.equal(frozen.themePresetId, id);
+    assert.equal(frozen.unavailableThemePresetId, unavailable ? id : null);
+    assert.equal(frozen.bindingOptions.theme, unavailable ? undefined : id);
     const raster = renderOperationWithSvgPipeline(frozen, "resvg-safe");
     assert.equal(raster.unavailableThemePresetId, frozen.unavailableThemePresetId);
-    assert.deepEqual(raster.bindingOptions.theme, frozen.bindingOptions.theme);
+    assert.equal(raster.bindingOptions.theme, frozen.bindingOptions.theme);
   }
   const invalid = operation({
-    themePresets: [],
+    themeCatalog: { ...themeCatalogFixture(), presets: [] },
     workspace: {
       themePresetId: "future-preset",
-      themeRecipeJson: '{"schema_version":1,"kind":"complete_spec","complete_spec":{}}',
+      themeDocumentJson: '{"schema_version":2,"extends":"studio"}',
     },
   });
   assert.ok(invalid.configurationError);
@@ -499,7 +504,7 @@ test("keeps Mermaid theme, compiled theme preset, and SVG pipeline independent",
 
   assert.equal(plain.bindingOptions.theme, undefined);
   assert.equal(plain.bindingOptions.svg, undefined);
-  assert.deepEqual(themeOnly.bindingOptions.theme, { preset: "future-theme" });
+  assert.equal(themeOnly.bindingOptions.theme, "future-theme");
   assert.deepEqual(pipelineOnly.bindingOptions.svg, { pipeline: "readable" });
   for (const [input, theme] of [[plain, "default"], [themeOnly, "dark"], [pipelineOnly, "neutral"]] as const) {
     assert.equal(input.bindingOptions.version, BINDING_OPTIONS_SCHEMA_VERSION);
@@ -616,7 +621,7 @@ function operation({
   versions = { merman: "test", mermaid: "11.16.0" },
   runtimeSnapshot,
   viewport = { width: 800, height: 600 },
-  themePresets,
+  themeCatalog,
   workspace: workspaceOverrides = {},
 }: {
   asciiEnabled?: boolean;
@@ -626,7 +631,7 @@ function operation({
   versions?: FreezeRenderOperationInput["versions"];
   runtimeSnapshot?: FreezeRenderOperationInput["runtimeSnapshot"];
   viewport?: FreezeRenderOperationInput["viewport"];
-  themePresets?: FreezeRenderOperationInput["themePresets"];
+  themeCatalog?: FreezeRenderOperationInput["themeCatalog"];
   workspace?: Partial<WorkspaceSnapshot>;
 } = {}) {
   const workspace: WorkspaceSnapshot = {
@@ -642,7 +647,7 @@ function operation({
     versions,
     runtimeSnapshot,
     viewport,
-    themePresets,
+    themeCatalog,
     workspace,
   });
 }

@@ -167,6 +167,21 @@ impl ThemeDocumentV2 {
         self.id.as_deref()
     }
 
+    /// The display name supplied by the author.
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+
+    /// A short description of this design.
+    pub fn description(&self) -> Option<&str> {
+        self.description.as_deref()
+    }
+
+    /// The design's catalog category.
+    pub const fn category(&self) -> Option<Category> {
+        self.category
+    }
+
     /// The built-in document this theme extends, when supplied.
     pub fn extends(&self) -> Option<&str> {
         self.extends.as_deref()
@@ -314,6 +329,19 @@ pub enum Paint {
 impl From<Color> for Paint {
     fn from(color: Color) -> Self {
         Self::Solid(color)
+    }
+}
+
+impl Paint {
+    /// Returns the starting color for surfaces that use a single color.
+    pub fn first_color(&self) -> Color {
+        match self {
+            Self::Solid(color) => *color,
+            Self::LinearGradient(gradient) => gradient
+                .stops
+                .first()
+                .map_or(Color::TRANSPARENT, |stop| stop.color),
+        }
     }
 }
 
@@ -498,6 +526,19 @@ pub struct ShadowLayer {
     /// Shadow opacity.
     #[serde(default = "opaque")]
     pub opacity: f64,
+}
+
+impl ShadowLayer {
+    /// Describes one resolved shadow in the renderer's coordinate system.
+    pub const fn new(dx: f64, dy: f64, blur: f64, color: Color, opacity: f64) -> Self {
+        Self {
+            dx,
+            dy,
+            blur,
+            color,
+            opacity,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

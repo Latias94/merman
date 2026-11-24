@@ -13,17 +13,12 @@ import type {
   HostTextMetricsResult,
   HostTextMeasurer,
   HostTextMeasurerSvgBindingOptions,
-  ThemeAuthoringInput,
-  ThemeAuthoringRequestV1,
-  ThemeAuthoringResultFor,
-  ThemeRecipeV1,
   SvgBindingOptions,
-  ThemeAuthoringOptions,
   SvgPlanResult,
   SvgRenderResult,
-  ThemeCapabilityDescriptor,
-  ThemeDesignV1,
-  ThemeSupportQueryV1,
+  ThemeDocumentV2,
+  ThemeResolution,
+  ThemeResolveOptions,
 } from "./public-types.js";
 
 /** Parse once; each method starts a fresh output operation in the creating runtime. */
@@ -98,7 +93,7 @@ export function renderSvg(source: string, options?: SvgBindingOptions | string):
   return getMerman().renderSvg(source, encodeOptions(options));
 }
 
-/** Render once and inspect the theme/target outcome without discarding execution metadata. */
+/** Render once and return the SVG and its theme outcome. */
 export function renderSvgResult(source: string, options?: SvgBindingOptions | string): SvgRenderResult {
   return getMerman().renderSvgResult(source, encodeOptions(options));
 }
@@ -122,45 +117,26 @@ export function svgPlanJson(
   return getMerman().svgPlanJson(source, encodeOptions(options));
 }
 
-export function materializeTheme<Input extends ThemeAuthoringInput>(
-  design: Input,
-  options?: ThemeAuthoringOptions | string
-): ThemeAuthoringResultFor<Input> {
-  return getMerman().materializeTheme(
-    encodeThemeAuthoringInput(design, "theme design"),
-    encodeOptions(options)
-  ) as ThemeAuthoringResultFor<Input>;
+/** Return an editable document for a built-in Merman preset. */
+export function exportThemePreset(presetId: string): ThemeDocumentV2 {
+  const wasm = getMerman();
+  if (!wasm.exportThemePreset) {
+    throw new Error("Merman WASM does not expose exportThemePreset().");
+  }
+  return wasm.exportThemePreset(presetId);
 }
 
-export function describeThemeSupport(
-  query: ThemeSupportQueryV1 | string,
-  options?: ThemeAuthoringOptions | string
-): ThemeCapabilityDescriptor;
-export function describeThemeSupport(
-  query: ThemeSupportQueryV1 | string,
-  options?: ThemeAuthoringOptions | string
-): ThemeCapabilityDescriptor {
-  return getMerman().describeThemeSupport(
-    encodeThemeAuthoringInput(query, "theme support query"),
-    encodeOptions(options)
-  );
-}
-
-export function exportThemePreset(
-  presetId: string,
-  options?: ThemeAuthoringOptions | string
-): ThemeRecipeV1 {
-  return getMerman().exportThemePreset(
-    presetId,
-    encodeOptions(options)
-  );
-}
-
-function encodeThemeAuthoringInput(
-  value: ThemeDesignV1 | ThemeSupportQueryV1 | ThemeAuthoringRequestV1 | string,
-  label: string
-): string {
-  return typeof value === "string" ? value : encodeJsonInput(value, label);
+/** Resolve theme settings and report diagnostics against the original JSON text. */
+export function resolveTheme(
+  document: ThemeDocumentV2 | string,
+  options?: ThemeResolveOptions,
+): ThemeResolution {
+  const wasm = getMerman();
+  if (!wasm.resolveTheme) {
+    throw new Error("Merman WASM does not expose resolveTheme().");
+  }
+  const request = encodeJsonInput({ ...options, document }, "theme resolution request");
+  return wasm.resolveTheme(request);
 }
 
 export function edgeGeometryJson(source: string, options?: SvgBindingOptions | string): string {

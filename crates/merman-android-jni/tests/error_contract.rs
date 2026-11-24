@@ -27,21 +27,14 @@ fn android_error_wire_preserves_unsigned_resource_counts() {
 
 #[cfg(feature = "svg")]
 #[test]
-fn android_materialize_theme_error_preserves_authoring_envelope() {
-    let error =
-        merman_bindings_core::execute_once(merman_bindings_core::BindingOperationRequest::new(
-            "materialize-theme-json",
-            br#"{"styles":{"node":{"typography":{"font_stack":[]}}}}"#,
-        ))
-        .expect_err("invalid font stack");
-    let payload = binding_error_text(error);
-    for field in [
-        r#""code_name":"MERMAN_INVALID_ARGUMENT""#,
-        r#""theme_authoring":{"schema_version":1,"diagnostics":["#,
-        r#""code":"theme-authoring.invalid-token-value""#,
-        r#""path":"/styles/node/typography/font_stack""#,
-        r#""details":{"expected_domain_id":"font-stack"}"#,
-    ] {
-        assert!(payload.contains(field), "missing {field}: {payload}");
-    }
+fn android_theme_resolution_preserves_the_document_path() {
+    let result = merman_bindings_core::execute_once(
+        merman_bindings_core::BindingOperationRequest::new(
+            "resolve-theme",
+            br#"{"document":{"schema_version":2,"seed":{"accent":"red"}}}"#,
+        ),
+    ).unwrap();
+    let payload = std::str::from_utf8(result.data()).unwrap();
+    assert!(payload.contains(r#""ok":false"#), "{payload}");
+    assert!(payload.contains(r#""path":"seed.accent""#), "{payload}");
 }

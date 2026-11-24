@@ -4,15 +4,13 @@
 Node.js 22+ and static-site builds. A small loader selects one exact-version native package for the
 current host; it has no browser-WASM fallback or postinstall downloader.
 
-This guide documents `0.11.0`. Check the [host installation guide](../../docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability. See the [Node changelog](CHANGELOG.md) and [0.11.0 migration guide](../../docs/migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts) for changes and upgrade actions.
+The quick start uses the published `0.11.0` package. For verified versions, changes, and upgrade actions, see the [host installation guide](../../docs/release/PREBUILT_PRODUCTS.md#published-versions), [Node changelog](CHANGELOG.md), and [0.11.0 migration guide](../../docs/migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts).
 
 Application developers should start with the [`@mermanjs/node` package guide](packages/node/README.md).
 
 ## Quick start
 
-The nine-package group contains the loader, seven native platform packages, and explicit `@mermanjs/node-wasm` transport. Keep wrappers and native/WASM artifacts at the same exact version and source revision. Version `0.11.0` targets Mermaid `12.3.0` and uses Node transport API `2`, Options JSON schema `3`, and theme execution evidence schema `2`. [Options JSON](../../docs/bindings/OPTIONS_JSON.md)
-
-Version `0.10.0-alpha.1` retains Mermaid `12.2.0` and theme execution evidence schema `1`; Node binding API `1` and Options JSON schema `3` are unchanged. See the [Mermaid 12.3 migration](../../docs/migrations/mermaid-12-3.md) for Step animation and static output policy, shared shapes, and layout changes.
+The nine-package group contains the loader, seven native platform packages, and explicit `@mermanjs/node-wasm` transport. Keep wrappers and native/WASM artifacts at the same exact version and source revision. Version `0.11.0` targets Mermaid `12.3.0` and uses Node transport API `2` and Options JSON schema `3`. [Options JSON](../../docs/bindings/OPTIONS_JSON.md) · [Mermaid 12.3 migration](../../docs/migrations/mermaid-12-3.md)
 
 ```sh
 npm install --save-exact @mermanjs/node@0.11.0
@@ -33,18 +31,27 @@ try {
 
 ## Diagram themes
 
-Call `engine.metadataJson("theme-catalog")` to discover 11 design groups with 14 concrete presets,
-including `paper-cut`, `carbon-copy`, and `pop-art`. Select a preset through `optionsJson`, for
-example `{"theme":{"preset":"editor","appearance":"dark"}}`. Editor, Gruvbox, and Ayu provide
-both appearances; the host resolves Follow-app policy before rendering.
+The current source tree's native and Node-WASM builds share the theme v2 API. Call
+`engine.themeCatalog()` for the 13 editable presets, their appearances and swatches, Mermaid
+classic theme IDs, and native capabilities by diagram family.
 
-`engine.exportThemePreset("editor")` returns the complete editable recipe. Serialize it with
-`JSON.stringify(recipe, null, 2)`, edit the JSON, then reload it as the `recipe` in
-`theme: { recipe, appearance: "dark" }`. Keep the complete document to preserve both appearances.
-The [native theme example](packages/node/README.md#compiled-themes) shows discovery, export,
-whole-recipe inspection, and rendering; [Node-WASM](packages/node-wasm/README.md#compiled-themes)
-uses the same APIs. Presets retain alpha maturity and the [documented family and output
-limits](../../docs/rendering/diagram-theme-coverage.md).
+```js
+console.log(engine.themeCatalog().presets);
+const svg = await engine.renderSvg("flowchart LR\nA --> B", {
+  optionsJson: JSON.stringify({ theme: { preset: "studio", appearance: "dark" } }),
+});
+```
+
+Pass a preset ID as a string to use its default appearance. Pass a v2 theme document directly,
+or use a selector with `preset` or `document` to choose an appearance and precedence. An omitted
+request theme inherits the constructor selection. `theme: "none"` clears it for the request.
+
+`await engine.exportThemePreset("studio")` returns an editable theme document.
+`await engine.resolveTheme(document, { appearance: "dark" })` previews resolved values and contrast
+notices. Pass raw JSON text to preserve document-relative diagnostic locations. Read `theme_outcome`
+from the generic SVG result's `metadata_json` for the applied mode, appearance, and notices.
+See the [native package example](packages/node/README.md#compiled-themes) and the
+[Node-WASM package guide](packages/node-wasm/README.md#compiled-themes).
 
 ## SVG output pipelines
 

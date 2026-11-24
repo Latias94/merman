@@ -71,14 +71,12 @@ fn animation_id(value: &str) -> String {
 fn step_color<'a>(
     ctx: &'a FlowchartRenderCtx<'_>,
     key: crate::flowchart::FlowchartEdgeKey,
-    typed_stroke: Option<&'a str>,
 ) -> crate::Result<&'a str> {
     let source = ctx
         .edge_style_plan
         .edge_for(key)?
         .edge_marker_color(ctx.compatibility.look.is_hand_drawn());
-    Ok(typed_stroke
-        .or(source)
+    Ok(source
         .unwrap_or(&ctx.compatibility.line_color)
         .trim_start_matches("stroke:")
         .trim())
@@ -90,7 +88,6 @@ pub(super) fn write_edge_marks(
     key: crate::flowchart::FlowchartEdgeKey,
     edge: &crate::flowchart::FlowEdge,
     path: &str,
-    typed_stroke: Option<&str>,
 ) -> crate::Result<()> {
     let Some(step) = edge
         .step
@@ -111,7 +108,7 @@ pub(super) fn write_edge_marks(
             message: "Step edge has no document identity".to_owned(),
         })?;
     let motion = animation_id(&format!("{edge_id}-step"));
-    let color = step_color(ctx, key, typed_stroke)?;
+    let color = step_color(ctx, key)?;
     let parked = parked_transform(path);
     let mut number = ryu_js::Buffer::new();
     let begin = number.format(begin).to_owned();
@@ -439,15 +436,7 @@ impl StepBadges {
                 continue;
             };
             let point = point + kurbo::Vec2::new(entry.origin_x, entry.abs_top_transform);
-            let precedence = crate::flowchart::FlowchartFacetPrecedence::new(
-                ctx.edge_style_plan.emitted_source_stroke_status_for(
-                    edge.key,
-                    ctx.compatibility.look.is_hand_drawn(),
-                )?,
-                ctx.edge_stroke_config_override,
-            );
-            let color = step_color(ctx, edge.key, ctx.edge_theme.stroke_value(precedence, true))?
-                .to_owned();
+            let color = step_color(ctx, edge.key)?.to_owned();
             result
                 .by_root
                 .entry(hierarchy.edge_root(edge.key)?.unwrap_or("").to_owned())

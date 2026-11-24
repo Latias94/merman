@@ -54,7 +54,7 @@ export default defineConfig({
     },
     {
       name: "chromium-mobile-interactions",
-      testMatch: [/mobile\.interactions\.spec\.ts/u, /mounted-diagram\.spec\.ts/u, /theme-library\.spec\.ts/u, /theme-expansion\.spec\.ts/u],
+      testMatch: [/mobile\.interactions\.spec\.ts/u, /mounted-diagram\.spec\.ts/u, /theme-workshop\.spec\.ts/u],
       use: {
         ...devices["Pixel 7"],
         permissions: ["clipboard-read", "clipboard-write"],
@@ -64,7 +64,7 @@ export default defineConfig({
       name: "firefox-smoke",
       testMatch: [
         /cross-browser\.smoke\.spec\.ts/u,
-        /theme-text-surface\.smoke\.spec\.ts/u,
+        /theme-workshop\.spec\.ts/u,
       ],
       use: { ...devices["Desktop Firefox"] },
     },
@@ -72,7 +72,7 @@ export default defineConfig({
       name: "webkit-smoke",
       testMatch: [
         /cross-browser\.smoke\.spec\.ts/u,
-        /theme-text-surface\.smoke\.spec\.ts/u,
+        /theme-workshop\.spec\.ts/u,
       ],
       use: { ...devices["Desktop Safari"] },
     },

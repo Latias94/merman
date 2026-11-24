@@ -205,7 +205,7 @@ fn deadline_and_output_budget_failure_do_not_poison_reuse() {
 }
 
 #[test]
-fn preparation_keeps_parse_options_and_existing_theme_binding() {
+fn preparation_keeps_parse_options() {
     let renderer = Renderer::new();
     let source = "flowchart TD\nA -->";
     assert!(
@@ -233,37 +233,49 @@ fn preparation_keeps_parse_options_and_existing_theme_binding() {
         .svg()
         .contains("<svg")
     );
-    let theme = merman::svg::DiagramThemeCompiler::new()
-        .compile(
-            merman::svg::DiagramThemeSpec::new().with_styles(
-                merman::svg::ThemeRuleSet::default().with_rule(
-                    merman::svg::ThemeRule::new(
-                        merman::svg::ThemeTarget::Node,
-                        merman::svg::ThemeStylePatch::default()
-                            .with_fill(merman::svg::CanvasPaint::solid("#1d4ed8").unwrap()),
-                    )
-                    .for_family(merman::model::family::DiagramFamilyId::FLOWCHART),
-                ),
-            ),
-        )
-        .unwrap();
+}
+
+#[cfg(feature = "diagram-flowchart")]
+#[test]
+fn prepared_source_can_render_with_different_native_appearances() {
+    use merman::theme::{Appearance, BuiltinPreset, ThemeSelection};
+
+    let renderer = Renderer::new();
     let source = "flowchart LR\nA --> B";
-    let prepared = renderer
-        .prepare_source(
-            PrepareSourceRequest::new(source, OperationControl::new()).with_theme(theme.clone()),
-        )
-        .unwrap()
-        .unwrap();
-    let direct = renderer
-        .render(
-            merman::RenderRequest::svg(source, OperationControl::new(), SvgRequest::default())
-                .with_theme(theme),
-        )
-        .unwrap();
-    let RenderOutput::Svg(Some(direct)) = direct else {
-        panic!("SVG");
+    let prepared = prepare(&renderer, source);
+    let baseline = svg(&renderer, &prepared);
+    let render = |appearance| {
+        let request = SvgRequest::default().with_native_theme(ThemeSelection::preset(
+            BuiltinPreset::Studio,
+            Some(appearance),
+        ));
+        let RenderOutput::Svg(Some(themed)) = renderer
+            .render_prepared(
+                &prepared,
+                RenderTarget::Svg(request.clone()),
+                OperationControl::new(),
+            )
+            .unwrap()
+        else {
+            panic!("expected prepared SVG");
+        };
+        let direct = renderer
+            .render_svg_data(merman::RenderRequest::svg(
+                source,
+                OperationControl::new(),
+                request,
+            ))
+            .unwrap()
+            .unwrap();
+        assert_eq!(themed.svg(), direct);
+        assert_eq!(themed.theme_outcome().appearance, Some(appearance));
+        themed
     };
-    assert_eq!(svg(&renderer, &prepared).svg(), direct.svg());
+    assert_ne!(
+        render(Appearance::Light).svg(),
+        render(Appearance::Dark).svg()
+    );
+    assert_eq!(svg(&renderer, &prepared).svg(), baseline.svg());
 }
 
 #[test]

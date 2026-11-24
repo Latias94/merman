@@ -1,37 +1,53 @@
-import type { ThemeCatalog, ThemePresetCatalogEntry, ThemeRecipeInspectionV1 } from "@mermanjs/web";
+import type { ResolvedThemeV2, ThemeCatalog, ThemeDocumentV2, ThemePresetCatalogEntry, ThemeResolution } from "@mermanjs/web";
 
 export function pairedPresetFixture(): ThemePresetCatalogEntry {
   return {
-    id: "editor", display_name: "Editor", supported_appearances: ["light", "dark"], default_appearance: "light",
-    available: true, availability_reason_ids: [], maturity: "alpha", license_expression: "MIT",
-    required_attribution: null, export_kind: "design",
-    appearances: (["light", "dark"] as const).map((appearance) => ({
-      appearance, concrete_preset_id: `editor-${appearance}`, available: true,
-      availability_reason_ids: [], preview_colors: [], family_designs: [], application_notes: [], qualified_cells: [],
-    })),
+    id: "studio", name: "Studio", description: "Reading theme", category: "reading",
+    appearances: ["light", "dark"], default_appearance: "light",
+    swatches: ["#ffffff", "#f8fafc", "#e2e8f0", "#1d4ed8", "#0f172a", "#bfdbfe"],
   };
 }
 
 export function themeCatalogFixture(): ThemeCatalog {
   return {
-    schema_version: 1, structured_spec_available: true, recipe_schema_version: 1,
-    authoring_request_schema_version: 1, authoring_result_schema_version: 1,
-    supported_output_ids: ["svg"], presets: [pairedPresetFixture()],
-    mermaid_theme_designs: [
-      { id: "neo", display_name: "Neo", default_appearance: "light",
-        appearances: [{ appearance: "light", theme_id: "neo" }, { appearance: "dark", theme_id: "neo-dark" }] },
-      { id: "default", display_name: "Default", default_appearance: "light", appearances: [{ appearance: "light", theme_id: "default" }] },
-      { id: "dark", display_name: "Dark", default_appearance: "dark", appearances: [{ appearance: "dark", theme_id: "dark" }] },
-      { id: "forest", display_name: "Forest", default_appearance: "light", appearances: [{ appearance: "light", theme_id: "forest" }] },
-    ],
-    known_capability_ids: [], known_text_capability_ids: [], known_font_container_ids: [], known_font_source_ids: [],
-    known_semantic_target_ids: [], known_variant_ids: [], resource_limits: [],
+    schema_version: 2,
+    presets: [pairedPresetFixture(), { ...pairedPresetFixture(), id: "paper-cut", name: "Paper Cut", category: "art", appearances: ["light"] }],
+    mermaid_themes: ["neo", "neo-dark", "default", "dark", "forest"],
+    families: [],
   };
 }
 
-export function themeInspectionFixture(): ThemeRecipeInspectionV1 {
-  return {
-    schema_version: 1, recipe_schema_version: 1, supported_appearances: ["light", "dark"], default_appearance: "light",
-    appearances: [{ appearance: "light", references: [] }, { appearance: "dark", references: [] }],
-  };
+export const themeDocumentFixture: ThemeDocumentV2 = {
+  schema_version: 2,
+  default_appearance: "light",
+  appearances: {
+    light: { seed: { canvas: "#ffffff", ink: "#000000", accent: "#1d4ed8" } },
+    dark: { seed: { canvas: "#111827", ink: "#ffffff", accent: "#bfdbfe" } },
+  },
+};
+
+export const resolvedThemeFixture: ResolvedThemeV2 = {
+  id: null,
+  appearance: "light",
+  roles: {
+    canvas: "#FFFFFF",
+    "surface.node": "#FFFFFF", "surface.container": "#FFFFFF", "surface.callout": "#FFFFFF", "surface.emphasis": "#FFFFFF",
+    "stroke.border": "#111111", "stroke.connector": "#111111", "stroke.guide": "#CCCCCC",
+    "text.primary": "#111111", "text.muted": "#111111", "text.title": "#111111", "text.callout": "#111111", "text.on_emphasis": "#111111",
+    "status.info": "#2563EB", "status.success": "#15803D", "status.warn": "#B45309", "status.danger": "#B91C1C",
+  },
+  data: { ink: [], fill: [], fill_ink: [], pattern_encoding: false },
+  form: { density: "balanced", radius: 6, container_radius: 10, stroke_width: 1, connector_width: 1.5,
+    edge_style: "curved", marker_style: "stealth", edge_label_bg: "auto",
+    chart: { gridlines: true, bar_radius: 4, bar_wireframe: false, line_markers: true, pie_gap_px: 1.5, pie_opacity: 1 },
+  },
+  typography: { sans: ["Arial", "sans-serif"], serif: ["Georgia", "serif"], mono: ["Consolas", "monospace"],
+    body_family: "sans", title_family: "sans", code_family: "mono", base_size_px: 14, title_weight: 600, label_weight: 500 },
+  elevation: { kind: "flat" },
+  node_ordinal_palette: false,
+  canvas: { textures: [], padding_px: 0 },
+};
+
+export function themeResolutionFixture(): Extract<ThemeResolution, { ok: true }> {
+  return { ok: true, notices: [], resolved: resolvedThemeFixture };
 }

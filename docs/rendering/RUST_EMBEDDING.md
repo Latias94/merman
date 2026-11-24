@@ -5,7 +5,8 @@ to your local source. Use the [0.8.0 to 0.9.0 upgrade guide](../release/V080_TO_
 published managed JSON and canonical record migrations, the
 [versioned upgrade index](../release/README.md) for other releases, and
 [package surfaces](../release/PACKAGE_SURFACES.md) to choose a binding or artifact.
-Compiled-theme authoring remains experimental and requires a matching artifact.
+For native preset selection, editable documents, and per-render theme outcomes, see the
+[Theme v2 guide](custom-diagram-themes.md).
 
 The [0.10 prepared-rendering migration](../migrations/render-reuse-host-integration.md) covers reusable parsed sources, borrowed low-level family preparation and independent geometry budgets when upgrading from `0.9.x`.
 

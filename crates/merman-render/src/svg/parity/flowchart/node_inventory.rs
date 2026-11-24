@@ -248,17 +248,10 @@ thread_local! {
 
 #[derive(Debug)]
 pub(super) struct FlowchartPreparedCluster {
-    pub(super) theme: crate::flowchart::FlowchartClusterThemeStyle,
     pub(super) compiled: FlowchartCompiledStyles,
-    pub(super) structural_sources: super::node_style::FlowchartClusterStructuralSources,
     pub(super) rect_style: String,
     pub(super) fill: String,
     pub(super) stroke: String,
-    pub(super) typed_fill: Option<String>,
-    pub(super) typed_stroke_width: Option<f32>,
-    pub(super) fill_precedence: crate::flowchart::FlowchartFacetPrecedence,
-    pub(super) stroke_precedence: crate::flowchart::FlowchartFacetPrecedence,
-    pub(super) stroke_width_precedence: crate::flowchart::FlowchartFacetPrecedence,
     pub(super) title_text_style: std::sync::Arc<crate::flowchart::FlowchartNodeSourceTypography>,
 }
 
@@ -278,7 +271,6 @@ impl FlowchartPreparedNodes {
         class_defs: &crate::flowchart::FlowchartClassDefinitions<'_>,
         layout: FlowchartNodeLayoutView<'_>,
         svg_labels: &crate::flowchart::FlowchartSvgLabelSidecar,
-        theme: Option<&crate::diagram_theme::ResolvedDiagramTheme>,
         config: &merman_model::presentation::PresentationConfig,
         prepared_theme: &crate::flowchart::FlowchartPreparedTheme,
         render_config: &super::render_config::FlowchartRenderConfig,
@@ -287,10 +279,7 @@ impl FlowchartPreparedNodes {
     ) -> crate::Result<Self> {
         let swimlane = matches!(layout, FlowchartNodeLayoutView::Swimlane(_));
         let typography = svg_labels.base_typography().map_or_else(
-            || {
-                crate::flowchart::FlowchartBaseTypographyPlan::resolve(theme, config)
-                    .render_styles(config)
-            },
+            || crate::flowchart::FlowchartBaseTypographyPlan::resolve(config).render_styles(config),
             |plan| plan.render_styles(config),
         );
         let source_base = if crate::flowchart::FlowchartConfigView::new(config).node_wrap_mode()
@@ -300,7 +289,6 @@ impl FlowchartPreparedNodes {
         } else {
             &typography.text_style
         };
-        let label_typography = svg_labels.label_typography();
         let (owners, use_projected_edges) = match layout {
             FlowchartNodeLayoutView::Flowchart(layout) => (
                 &layout.edge_owners,
@@ -327,6 +315,7 @@ impl FlowchartPreparedNodes {
         let selection_inputs = super::node_style::NodeSelectionInputs::new(
             &prepared_theme.compatibility,
             render_config,
+            prepared_theme.native.as_ref(),
         );
         let mut terminals = FxHashMap::default();
         let mut admitted_nodes = FxHashSet::default();
@@ -408,12 +397,8 @@ impl FlowchartPreparedNodes {
             {
                 Some(style) => std::borrow::Cow::Borrowed(style),
                 None => {
-                    let parent = label_typography.node_source_parent_style(
-                        source_base,
-                        &model.class_defs,
-                        (classes, styles, include_default_class),
-                        &structural,
-                    );
+                    let parent =
+                        structural.apply_to_parent(std::borrow::Cow::Borrowed(source_base));
                     let mut style = if include_default_class {
                         crate::flowchart::flowchart_effective_text_style_for_node_classes
                     } else {
@@ -451,7 +436,6 @@ impl FlowchartPreparedNodes {
                 &structural,
                 source_text_style,
                 ordinals.get(id.as_str()).copied(),
-                theme,
                 &occurrence_inputs,
                 work,
             )?;
@@ -514,7 +498,6 @@ impl FlowchartPreparedNodes {
                 .collect::<Vec<_>>(),
             FlowchartNodeLayoutView::Flowchart(_) => Vec::new(),
         };
-        let mut ordinal = 1usize;
         for id in model
             .subgraphs
             .iter()
@@ -538,71 +521,13 @@ impl FlowchartPreparedNodes {
                 &[],
                 Some(work),
             )?;
-            let structural_sources = if swimlane {
-                super::node_style::FlowchartClusterStructuralSources::absent()
-            } else {
-                super::node_style::FlowchartClusterStructuralSources::prepare(
-                    class_defs,
-                    prepared_theme.compatibility.html_labels,
-                    crate::flowchart::FlowchartLabelDom::cluster(
-                        input
-                            .subgraphs_by_id
-                            .get(id)
-                            .zip(input.subgraph_indices_by_id.get(id))
-                            .map_or("", |(subgraph, index)| {
-                                render_model.subgraph_title_for_render(*index, subgraph)
-                            }),
-                        input
-                            .subgraphs_by_id
-                            .get(id)
-                            .and_then(|subgraph| subgraph.label_type.as_deref())
-                            .unwrap_or("text"),
-                        render_config.edge_html_labels,
-                    ),
-                    prepared_theme.compatibility.look.is_hand_drawn(),
-                    work,
-                )?
-            };
-            let theme =
-                crate::flowchart::FlowchartClusterThemeStyle::resolve(theme, Some(ordinal), work)?;
-            ordinal = ordinal
-                .checked_add(1)
-                .ok_or_else(|| work.arithmetic_overflow())?;
-            let fill_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
-                compiled.source_fill_status().merge(structural_sources.fill),
-                render_config.cluster_fill_config_override,
-            );
-            let stroke_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
-                compiled
-                    .source_stroke_status()
-                    .merge(structural_sources.stroke),
-                render_config.cluster_stroke_config_override,
-            );
-            let stroke_width_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
-                compiled
-                    .source_stroke_width_status()
-                    .merge(structural_sources.stroke_width),
-                false,
-            );
-            let typed_fill = theme.fill_value(fill_precedence, true).map(str::to_owned);
             let fill = (model.keyword == "agentflow-beta")
                 .then_some(compiled.fill.as_deref())
                 .flatten()
-                .or(typed_fill.as_deref())
                 .unwrap_or(&render_config.cluster_fill_color)
                 .to_owned();
-            let stroke = theme
-                .stroke_value(stroke_precedence, true)
-                .unwrap_or(&render_config.cluster_stroke_color)
-                .to_owned();
-            let typed_stroke_width = theme.stroke_width_value(stroke_width_precedence);
-            let mut rect_style = compiled.node_style.trim().to_owned();
-            theme.append_inline_style(
-                &mut rect_style,
-                fill_precedence,
-                stroke_precedence,
-                stroke_width_precedence,
-            );
+            let stroke = render_config.cluster_stroke_color.clone();
+            let rect_style = compiled.node_style.trim().to_owned();
             let lane = top_lane_ids.contains(id);
             let owner = if lane {
                 svg_labels.swimlane_group_title_owner(id)
@@ -635,25 +560,17 @@ impl FlowchartPreparedNodes {
             cluster_retained_bytes = cluster_retained_bytes
                 .saturating_add(rect_style.len())
                 .saturating_add(fill.len())
-                .saturating_add(stroke.len())
-                .saturating_add(typed_fill.as_ref().map_or(0, String::len));
+                .saturating_add(stroke.len());
             if prepare_paint {
                 #[cfg(all(test, feature = "diagram-flowchart"))]
                 PAINT_TABLE_ENTRIES_BUILT.set(PAINT_TABLE_ENTRIES_BUILT.get() + 1);
                 clusters.insert(
                     id.to_owned(),
                     FlowchartPreparedCluster {
-                        theme,
                         compiled,
-                        structural_sources,
                         rect_style,
                         fill,
                         stroke,
-                        typed_fill,
-                        typed_stroke_width,
-                        fill_precedence,
-                        stroke_precedence,
-                        stroke_width_precedence,
                         title_text_style,
                     },
                 );
@@ -891,13 +808,7 @@ mod source_typography_tests {
             &metadata.effective_config,
             &crate::text::DeterministicTextMeasurer::default(), None, None, &edge_style, work.clone(),
         ).unwrap();
-        let theme = crate::flowchart::FlowchartPreparedTheme::resolve(
-            None,
-            &metadata.effective_config,
-            false,
-            &work,
-        )
-        .unwrap();
+        let theme = crate::flowchart::FlowchartPreparedTheme::resolve(&metadata.effective_config);
         let sidecar = crate::flowchart::FlowchartSvgLabelSidecar::default();
         let render_config = super::render_config::prepare_flowchart_render_config(
             &model,
@@ -905,7 +816,6 @@ mod source_typography_tests {
             &theme.compatibility,
             layout.uses_elk_adapter_dom,
             sidecar.base_typography(),
-            sidecar.edge_label_padding(),
         );
         let before = work.prepared_text_retained_bytes();
         let prepared = FlowchartPreparedNodes::prepare(
@@ -914,7 +824,6 @@ mod source_typography_tests {
             &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
             FlowchartNodeLayoutView::Flowchart(&layout),
             &sidecar,
-            None,
             &metadata.effective_config,
             &theme,
             &render_config,
@@ -1005,13 +914,7 @@ mod source_typography_tests {
                 .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, 1)
                 .unwrap(),
         ));
-        let theme = crate::flowchart::FlowchartPreparedTheme::resolve(
-            None,
-            &metadata.effective_config,
-            false,
-            &work,
-        )
-        .unwrap();
+        let theme = crate::flowchart::FlowchartPreparedTheme::resolve(&metadata.effective_config);
         let sidecar = crate::flowchart::FlowchartSvgLabelSidecar::default();
         let render_config = super::render_config::prepare_flowchart_render_config(
             &model,
@@ -1019,7 +922,6 @@ mod source_typography_tests {
             &theme.compatibility,
             layout.uses_elk_adapter_dom,
             sidecar.base_typography(),
-            sidecar.edge_label_padding(),
         );
         let result = FlowchartPreparedNodes::prepare(
             &model,
@@ -1027,7 +929,6 @@ mod source_typography_tests {
             &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
             FlowchartNodeLayoutView::Flowchart(&layout),
             &sidecar,
-            None,
             &metadata.effective_config,
             &theme,
             &render_config,

@@ -23,29 +23,19 @@ impl<'a> KanbanConfigView<'a> {
 
     #[cfg(test)]
     pub(crate) fn layout_settings(&self) -> KanbanLayoutSettings {
-        let config = crate::test_support::presentation_config(self.effective_config.clone());
-        let typography = super::KanbanTypographyPlan::resolve(None, &config);
-        self.layout_settings_with_resolved_typography(
-            typography.font_family_css(),
-            typography.font_size_px(),
-        )
+        let common = crate::svg::PreparedCommonCss::new(self.effective_config, None);
+        self.layout_settings_with_text_style(common_label_style(&common))
     }
 
-    pub(crate) fn layout_settings_with_resolved_typography(
+    pub(crate) fn layout_settings_with_text_style(
         &self,
-        font_family: &str,
-        font_size_px: f64,
+        text_style: TextStyle,
     ) -> KanbanLayoutSettings {
         KanbanLayoutSettings {
             section_width: self.section_width(),
             viewbox_padding: self.viewbox_padding(),
             use_max_width: self.use_max_width(),
-            text_style: TextStyle {
-                font_family: Some(font_family.to_owned()),
-                font_size: font_size_px,
-                font_weight: None,
-                font_style: None,
-            },
+            text_style,
         }
     }
 
@@ -78,6 +68,21 @@ impl<'a> KanbanConfigView<'a> {
         config_bool(self.mindmap_config, &["useMaxWidth"])
             .or_else(|| config_bool(self.kanban_config, &["useMaxWidth"]))
             .unwrap_or(DEFAULT_USE_MAX_WIDTH)
+    }
+}
+
+pub(super) fn common_label_style(common: &crate::svg::PreparedCommonCss) -> TextStyle {
+    let size = crate::mermaid_style::parse_svg_number_or_px(common.font_size_css())
+        .expect("prepared Kanban common CSS has an absolute root font size");
+    label_style(common.font_family(), size)
+}
+
+pub(super) fn label_style(family: &str, size: f64) -> TextStyle {
+    TextStyle {
+        font_family: Some(family.to_owned()),
+        font_size: size,
+        font_weight: None,
+        font_style: None,
     }
 }
 
@@ -160,7 +165,7 @@ mod tests {
             "kanban": { "sectionWidth": 240 }
         });
         let settings = KanbanConfigView::new(&cfg)
-            .layout_settings_with_resolved_typography("Typed, sans-serif", 24.0);
+            .layout_settings_with_text_style(label_style("Typed, sans-serif", 24.0));
 
         assert_eq!(settings.section_width, 240.0);
         assert_eq!(

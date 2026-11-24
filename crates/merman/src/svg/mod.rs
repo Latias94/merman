@@ -7,37 +7,6 @@
 
 pub use crate::SvgEnvironment;
 pub use merman_model::family::DiagramFamilyId;
-pub use merman_render::diagram_theme::{
-    BlendMode, CanvasLayer, CanvasPaint, CanvasSpec, DiagramEffectSet, DiagramTheme,
-    DiagramThemeCompiler, DiagramThemeSpec, EffectBinding, EffectColorSpace, EffectComposition,
-    EffectGraph, EffectInput, EffectPrimitive, FontAssetSpec, FontCatalog, FontCatalogError,
-    FontCatalogFingerprint, FontCatalogSpec, FontContainer, FontEmbeddingRequirement, FontSource,
-    FontSourcePolicy, FontStack, FontStyle, GenericFontFamily, GradientStop, InsetsPx, LineHeight,
-    LinearGradient, MAX_FONT_ALIASES_HARD_CAP, MAX_FONT_ASSET_COMPRESSED_BYTES_HARD_CAP,
-    MAX_FONT_ASSET_DECODED_BYTES_HARD_CAP, MAX_FONT_ASSETS_HARD_CAP,
-    MAX_FONT_CATALOG_DECODED_BYTES_HARD_CAP, MAX_FONT_DECODED_EXPANSION_RATIO_HARD_CAP,
-    MAX_FONT_FACES_HARD_CAP, MAX_FONT_TABLES_HARD_CAP, MAX_THEME_BASE64_BYTES_HARD_CAP,
-    MAX_THEME_ENCODED_BYTES_HARD_CAP, MaterializedThemeRecipeV1, MermaidThemeCompatibility,
-    MermaidThemeValue, OrdinalPalette, OrdinalSelector, PatternKind, PatternSpec, RadialGradient,
-    Specified, StrokeLineCap, StrokeLineJoin, THEME_PRESET_CATALOG_SCHEMA_VERSION_V1,
-    THEME_RESOURCE_LIMIT_COUNT, THEME_RESOURCE_LIMIT_DESCRIPTORS, TextAlign, TextDecoration,
-    TextLayoutCapability, TextStylePatch, TextTransform, ThemeAdmissionError, ThemeAdmissionPolicy,
-    ThemeAppearance, ThemeAppearanceOverridesV1, ThemeAssets, ThemeCapability, ThemeColorValue,
-    ThemeCompileError, ThemeCompileValidationError, ThemeDesignCompileError, ThemeEffectPatch,
-    ThemeGeometryPatch, ThemeLength, ThemeMermaidAppearanceMetadataV1,
-    ThemeMermaidDesignMetadataV1, ThemePaintPatch, ThemePortabilityRequirement, ThemePreset,
-    ThemePresetAppearanceMetadataV1, ThemePresetApplicationNoteV1, ThemePresetDescriptor,
-    ThemePresetFamilyDesignV1, ThemePresetMetadataV1, ThemePresetParseError,
-    ThemePresetQualifiedCell, ThemePresetQualifiedCellV1, ThemePresetSelectionDescriptor,
-    ThemeRecipeFingerprint, ThemeRecipeInspectionV1, ThemeRecipeReferenceUseV1, ThemeRecipeReport,
-    ThemeRecipeV1, ThemeRequirements, ThemeResourceLimitDescriptor, ThemeResourceLimitExceeded,
-    ThemeResourceLimitId, ThemeResourceLimitOverride, ThemeResourceLimitOverrideError,
-    ThemeResourceLimitPhase, ThemeResourcePolicy, ThemeResourcePolicyRestrictionError, ThemeRule,
-    ThemeRuleSet, ThemeSpacingPatch, ThemeStrokePatch, ThemeStylePatch, ThemeTarget,
-    ThemeTextStyle, ThemeVariant, ThemeWrapMode, TrustedThemeLane, TrustedThemeLanes,
-    TypographySpec, WhiteSpace, describe_mermaid_theme_designs, describe_theme_presets,
-    theme_preset_descriptors, theme_preset_selection_descriptors, theme_resource_limit_descriptors,
-};
 pub use merman_render::environment::{
     HostFallbackReason, HostMeasurementResult, HostTextMeasurement, HostTextMeasurementError,
     HostTextMeasurementRequest, HostTextMeasurer, MeasurementProfileId,
@@ -67,8 +36,11 @@ pub use merman_render::svg::{
     icon_registry_resource_limit_descriptors,
 };
 pub use merman_render::text::{
-    DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
+    DeterministicTextMeasurer, FontCatalog, FontCatalogFingerprint, FontSource, FontSourcePolicy,
+    FontSourcePolicyError, FontStack, FontStackError, FontStyle, GenericFontFamily, TextMeasurer,
+    TextMetrics, TextStyle, WrapMode,
 };
+pub use merman_render::theme::ThemePortabilityRequirement;
 pub use merman_render::{
     Error as RenderError, LayoutAdaptation, LayoutAdaptationObservation, LayoutOptions,
     RenderCapability, RenderCapabilityPolicy, Result as RenderResult, ShoalLayoutFrame,

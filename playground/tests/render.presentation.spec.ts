@@ -731,7 +731,7 @@ test("Merman Gantt presents non-overlapping date ticks", async ({ page }) => {
 test.describe("Gantt today marker", () => {
   test.use({ timezoneId: "Asia/Kathmandu" });
 
-  for (const theme of ["native", "custom recipe"] as const) {
+  for (const theme of ["native", "custom v2 theme"] as const) {
     test(`keeps the ${theme} marker inside today's task and honors source styles`, async ({ page }) => {
       const errors = monitorBrowserErrors(page);
       // 11:08:45.678 in Kathmandu, so neither UTC nor local midnight is the marker position.
@@ -748,8 +748,8 @@ test.describe("Gantt today marker", () => {
       await page.goto(`./${encodeShareHash({
         ...DEFAULT_WORKSPACE_SNAPSHOT,
         code: source,
-        themeRecipeJson: theme === "custom recipe"
-          ? '{"schema_version":1,"kind":"design","design":{"canvas":{"base":"#fef3c7"}}}'
+        themeDocumentJson: theme === "custom v2 theme"
+          ? '{"schema_version":2,"extends":"studio","seed":{"canvas":"#FEF3C7"}}'
           : null,
       })}`, { waitUntil: "domcontentloaded" });
       await waitForPreviewSvg(page);

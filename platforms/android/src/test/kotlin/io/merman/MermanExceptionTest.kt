@@ -8,23 +8,6 @@ import org.json.JSONObject
 
 class MermanExceptionTest {
     @Test
-    fun preservesThemeAuthoringAndAdditiveErrorDetails() {
-        val details = """{"theme_authoring":{"schema_version":1,"diagnostics":[{"code":"theme-authoring.invalid-token-value","severity":"error","path":"/styles/node/typography/font_stack","details":{"expected_domain_id":"font-stack"},"message":"font stack must not be empty"}]},"future_details":{"retained":true}}"""
-        val error = MermanException(
-            """{"version":1,"ok":false,"code":1,"code_name":"MERMAN_INVALID_ARGUMENT","kind":"generic","capability_id":null,"details":$details,"message":"invalid theme design"}""",
-        )
-        assertEquals(1, error.code)
-        val projected = JSONObject(requireNotNull(error.detailsJson))
-        val authoring = projected.getJSONObject("theme_authoring")
-        assertEquals(1, authoring.getInt("schema_version"))
-        val diagnostic = authoring.getJSONArray("diagnostics").getJSONObject(0)
-        assertEquals("theme-authoring.invalid-token-value", diagnostic.getString("code"))
-        assertEquals("/styles/node/typography/font_stack", diagnostic.getString("path"))
-        assertEquals("font-stack", diagnostic.getJSONObject("details").getString("expected_domain_id"))
-        assertTrue(projected.getJSONObject("future_details").getBoolean("retained"))
-    }
-
-    @Test
     fun parsesStructuredResourceFailureDetails() {
         val error = MermanException(
             """{"version":1,"ok":false,"code":10,"code_name":"MERMAN_RESOURCE_LIMIT_EXCEEDED","kind":"generic","capability_id":null,"details":{"resource":{"cause":"arithmetic_overflow","limit_id":"max_embedded_image_bytes","phase":"embedded_image_decode","actual":5,"max":4,"profile":"constrained"}},"message":"embedded image is too large"}""",
@@ -187,6 +170,8 @@ class MermanExceptionTest {
         assertEquals("MERMAN_PARSE_ERROR", error.codeName)
         assertEquals(MermanErrorKind.GENERIC, error.kind)
         assertNull(error.diagnosticDetails)
+        val details = JSONObject(requireNotNull(error.detailsJson))
+        assertEquals("parser", details.getJSONObject("future_context").getString("source"))
     }
 
     @Test

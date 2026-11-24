@@ -28,14 +28,6 @@ impl<'a> FlowchartEmitCheckpoint<'a> {
 pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) prepared_nodes:
         &'a super::node_inventory::FlowchartPreparedNodes,
-    pub(in crate::svg::parity::flowchart) label_effects:
-        std::cell::OnceCell<super::label_effect::FlowchartLabelEffects>,
-    pub(in crate::svg::parity::flowchart) node_effects:
-        std::cell::OnceCell<super::node_effect::FlowchartNodeEffects>,
-    pub(in crate::svg::parity::flowchart) edge_effects:
-        std::cell::OnceCell<super::edge_effect::FlowchartEdgeEffects>,
-    pub(in crate::svg::parity::flowchart) effect_evidence:
-        &'a crate::diagram_theme::SvgShadowEvidenceRecorder,
     pub(in crate::svg::parity::flowchart) model: &'a crate::flowchart::FlowchartRenderModelRef<'a>,
     pub(in crate::svg::parity::flowchart) diagram_id: SvgDiagramId<'a>,
     pub(in crate::svg::parity::flowchart) diagram_type: &'a str,
@@ -46,17 +38,11 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
         &'a merman_model::presentation::PresentationConfig,
     pub(in crate::svg::parity::flowchart) compatibility:
         &'a crate::flowchart::FlowchartCompatibilityBinding,
+    pub(in crate::svg::parity::flowchart) native:
+        Option<&'a crate::flowchart::native_theme::FlowchartNativeStyle>,
     pub(in crate::svg::parity::flowchart) palette: super::agentflow::ContainerPalette<'a>,
-    pub(in crate::svg::parity::flowchart) effect_eligibility:
-        &'a crate::flowchart::FlowchartEffectEligibility,
     pub(in crate::svg::parity::flowchart) hand_drawn_seed: roughr::core::RoughRandomness,
     pub(in crate::svg::parity::flowchart) work_meter: &'a crate::resources::OperationWorkMeter,
-    pub(in crate::svg::parity::flowchart) resolved_theme:
-        Option<&'a crate::diagram_theme::ResolvedDiagramTheme>,
-    pub(in crate::svg::parity::flowchart) text_surface_paint:
-        &'a crate::flowchart::FlowchartTextSurfacePaintPlan,
-    pub(in crate::svg::parity::flowchart) theme_evidence:
-        &'a crate::flowchart::FlowchartThemeEvidenceRecorder,
     pub(in crate::svg::parity::flowchart) emit: FlowchartEmitCheckpoint<'a>,
     pub(in crate::svg::parity::flowchart) math_renderer:
         Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
@@ -77,19 +63,10 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) swimlane_layout: Option<&'a crate::model::SwimlaneLayout>,
     pub(in crate::svg::parity::flowchart) node_border_color: &'a String,
     pub(in crate::svg::parity::flowchart) node_stroke_width: f32,
-    pub(in crate::svg::parity::flowchart) node_typography_config_ownership:
-        crate::flowchart::FlowchartTypographyConfigOwnership,
-    pub(in crate::svg::parity::flowchart) node_label_fill_config_override: bool,
-    pub(in crate::svg::parity::flowchart) node_fill_config_override: bool,
-    pub(in crate::svg::parity::flowchart) node_stroke_width_config_override: bool,
-    pub(in crate::svg::parity::flowchart) edge_stroke_config_override: bool,
     pub(in crate::svg::parity::flowchart) edge_corner_radius: f64,
-    pub(in crate::svg::parity::flowchart) edge_label_padding:
-        crate::flowchart::FlowchartEdgeLabelPadding,
     pub(in crate::svg::parity::flowchart) compact_edge_corners: bool,
     pub(in crate::svg::parity::flowchart) default_edge_interpolate: &'a String,
     pub(in crate::svg::parity::flowchart) default_edge_style: &'a Vec<String>,
-    pub(in crate::svg::parity::flowchart) edge_theme: &'a crate::flowchart::FlowchartEdgeThemeStyle,
     pub(in crate::svg::parity::flowchart) trace_edge_id: Option<&'a str>,
     pub(in crate::svg::parity::flowchart) trace_collector:
         Option<&'a crate::svg::FlowchartEdgeTraceCollector>,
@@ -167,7 +144,6 @@ impl<'a> FlowchartRenderCtx<'a> {
             crate::flowchart::FlowchartRectangleGeometry {
                 shape,
                 group: shape,
-                resolved_dimensions: [false; 2],
             }
         })
     }
@@ -192,20 +168,6 @@ impl<'a> FlowchartRenderCtx<'a> {
 
     pub(in crate::svg::parity::flowchart) fn subgraph_has_children(&self, id: &str) -> bool {
         self.subgraph_ids_with_children.contains(id)
-    }
-
-    pub(in crate::svg::parity::flowchart) fn record_base_typography_label_emission(
-        &self,
-        emission: crate::flowchart::FlowchartBaseTypographyLabelEmission,
-    ) {
-        let Some(plan) = self
-            .svg_label_sidecar
-            .and_then(crate::flowchart::FlowchartSvgLabelSidecar::base_typography)
-            .filter(|plan| plan.requires_terminal_evidence())
-        else {
-            return;
-        };
-        plan.record_label_emission(emission);
     }
 
     pub(in crate::svg::parity::flowchart) fn is_subgraph_collapsed(&self, id: &str) -> bool {

@@ -30,10 +30,9 @@ const PYTHON_OUTPUT: &str = "platforms/python/merman/src/merman/_binding_contrac
 const KOTLIN_OUTPUT: &str = "platforms/android/src/main/kotlin/io/merman/MermanBindingContract.kt";
 const DART_OUTPUT: &str = "platforms/flutter/lib/src/generated/binding_contract.dart";
 const NODE_STATIC_SVG_OPERATIONS: &[OperationKey] = &[
-    OperationKey::DescribeThemeSupportJson,
-    OperationKey::ExportThemePresetJson,
+    OperationKey::ExportThemePreset,
     OperationKey::LayoutJson,
-    OperationKey::MaterializeThemeJson,
+    OperationKey::ResolveTheme,
     OperationKey::SemanticJson,
     OperationKey::Svg,
     OperationKey::SvgPlanJson,
@@ -49,11 +48,10 @@ const DEFAULT_NATIVE_PREBUILT_OPERATIONS: &[OperationKey] = &[
     OperationKey::Ascii,
     OperationKey::DocumentAnalysisFactsJson,
     OperationKey::DocumentAnalysisJson,
-    OperationKey::DescribeThemeSupportJson,
-    OperationKey::ExportThemePresetJson,
+    OperationKey::ExportThemePreset,
     OperationKey::EdgeGeometryJson,
     OperationKey::LayoutJson,
-    OperationKey::MaterializeThemeJson,
+    OperationKey::ResolveTheme,
     OperationKey::SemanticJson,
     OperationKey::Svg,
     OperationKey::SvgPlanJson,

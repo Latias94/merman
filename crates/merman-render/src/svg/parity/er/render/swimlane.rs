@@ -13,7 +13,6 @@ pub(super) fn render_cluster(
     paint: &ErSwimlanePaintLayout,
     subgraph: Option<&crate::er::ErSubgraph>,
     context: ErSubgraphRenderContext<'_>,
-    receipt: &mut crate::er::ErEntityThemeReceipt<'_>,
 ) -> Result<()> {
     let binding = context.theme.css_binding();
     let source = subgraph
@@ -152,31 +151,19 @@ pub(super) fn render_cluster(
             text_attr,
             prepared.fragment(),
         );
-        if context.record_text {
-            receipt.record_html_subgraph_label(&lane.id);
-        }
     } else {
-        let text_style = source.map_or("", |source| source.visual.subgraph_text_style.as_str());
         out.push_str("<g>");
         write_er_svg_label_background(out);
         let _ = write!(out, r#"<g transform="translate({}, 0)">"#, fmt(width / 2.0));
         crate::svg::parity::label::write_svg_text_markdown_wrapped_centered_with_style(
             out,
             &lane.title,
-            text_style,
+            "",
             context.measurer,
             context.label_style,
             None,
         );
         out.push_str("</g></g>");
-        if context.record_text
-            && let Some(group) = subgraph
-        {
-            receipt.record_subgraph_label(
-                &group.id,
-                &crate::er::subgraph_svg_text_facts(group, context.label_style.font_size),
-            );
-        }
     }
     out.push_str("</g></g>");
     out.checkpoint()
@@ -286,7 +273,7 @@ fn write_lane_rect(
 
 #[allow(
     clippy::too_many_arguments,
-    reason = "The prepared Swimlane label keeps geometry, source identity, foreground, and backing evidence together."
+    reason = "The prepared Swimlane label keeps geometry and source styling together."
 )]
 pub(super) fn render_relationship_label(
     out: &mut impl SvgOutput,
@@ -295,8 +282,6 @@ pub(super) fn render_relationship_label(
     model: &merman_model::families::er::ErDiagramModel,
     layout: &ErDiagramLayout,
     context: ErSubgraphRenderContext<'_>,
-    receipt: &mut crate::er::ErEntityThemeReceipt<'_>,
-    background: [Option<&str>; 2],
 ) -> Result<()> {
     let Some(label) = &edge.label else {
         return Ok(());
@@ -313,7 +298,6 @@ pub(super) fn render_relationship_label(
         .ok_or_else(|| Error::InvalidModel {
             message: format!("missing prepared Swimlane relationship terminal {index}"),
         })?;
-    let visual = context.theme.relation_label_visual(index);
     let dom_id = er_edge_dom_id(&edge.id, &model.relationships);
     let label_id = format!("edge-label-{}-{}-{dom_id}", edge.from, edge.to);
     let _ = write!(
@@ -322,67 +306,30 @@ pub(super) fn render_relationship_label(
         escape_attr(&label_id),
         fmt(label.x + context.translate_x),
         fmt(label.y + context.translate_y),
-        visual.map_or(r#" style="""#, |visual| {
-            if visual.wrapper_attr.is_empty() {
-                r#" style="""#
-            } else {
-                visual.wrapper_attr.as_str()
-            }
-        }),
+        r#" style="""#,
         fmt(-label.width / 2.0),
         fmt(-label.height / 2.0),
     );
     if let Some((fragment, wrapper_style)) = prepared.html() {
-        let wrapper_background =
-            background[0].map(|paint| format!("{wrapper_style};background-color:{paint};"));
-        let wrapper_style = wrapper_background.as_deref().unwrap_or(wrapper_style);
-        let span_style = background[1].map(|paint| {
-            format!(
-                r#" style="{};background-color:{};""#,
-                escape_attr(visual.map_or("", |visual| visual.typed_style.as_str())),
-                escape_attr(paint)
-            )
-        });
         let _ = write!(
             out,
-            r#"<foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject>"#,
+            r#"<foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel">{}</span></div></foreignObject>"#,
             fmt(label.width),
             fmt(label.height),
             escape_attr(wrapper_style),
-            span_style
-                .as_deref()
-                .unwrap_or_else(|| visual.map_or("", |visual| visual.inline_attr.as_str())),
             fragment,
         );
     } else {
         let lines = prepared.svg_lines().ok_or_else(|| Error::InvalidModel {
             message: format!("missing prepared Swimlane SVG rows for relationship {index}"),
         })?;
-        if let Some(paint) = background[1] {
-            let _ = write!(
-                out,
-                r#"<rect class="background" style="fill:{} !important;stroke:none" x="0" y="0" width="{}" height="{}"/>"#,
-                escape_attr(paint),
-                fmt(label.width),
-                fmt(label.height)
-            );
-        } else {
-            write_er_svg_label_background(out);
-        }
+        write_er_svg_label_background(out);
         crate::svg::parity::label::write_svg_text_source_word_lines_with_style(
-            out,
-            lines,
-            visual.map_or("", |visual| visual.typed_style.as_str()),
-            false,
-            None,
+            out, lines, "", false, None,
         );
     }
     out.push_str("</g></g>");
     out.checkpoint()?;
-    let facts = prepared_label.visible_style_facts();
-    if receipt.records_text_terminals() && facts.parse_valid() && facts.has_visible_runs() {
-        receipt.record_relation_label_text(index, facts);
-    }
     Ok(())
 }
 

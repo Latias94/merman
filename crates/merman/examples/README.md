@@ -26,9 +26,7 @@ cargo run -p merman --example render_svg > diagram.svg
 | Inspect computed geometry and routes | [`inspect_layout.rs`](inspect_layout.rs) | Stops after typed layout and serializes the result. |
 | Apply application-wide Mermaid defaults | [`configure_mermaid.rs`](configure_mermaid.rs) | Keeps host configuration outside user-authored diagram source. |
 | Make relative dates deterministic | [`deterministic_gantt.rs`](deterministic_gantt.rs) | Pins "today" and the local offset for snapshots and reproducible builds. |
-| Apply a bundled diagram theme | [`theme_preset.rs`](theme_preset.rs) | Defaults to Paper Cut; accepts preset IDs and explicit paired appearances. |
-| Customize a bundled theme as editable JSON | [`theme_recipe.rs`](theme_recipe.rs) | Exports Paper Cut, edits a typed color token, and imports the saved recipe to render SVG. |
-| Map an application's own theme tokens | [`custom_diagram_theme.rs`](custom_diagram_theme.rs) | Compiles a typed theme definition from shared color tokens. |
+| Apply or customize a native theme | [`custom_diagram_theme.rs`](custom_diagram_theme.rs) | Compiles a Theme v2 document and renders a Flowchart. |
 | Control consumer SVG cleanup and styling | [`custom_svg_pipeline.rs`](custom_svg_pipeline.rs) | Builds an explicit resvg-safe, background, and scoped-CSS pipeline. |
 
 Use `Renderer` with a typed `RenderRequest` for every source-to-target operation. SVG request IDs can be normalized with `merman::svg::sanitize_svg_id`; dynamic integrations should use stable ASCII keys and ensure the normalized results are unique rather than deriving IDs only from display titles. The same request boundary also carries layout, compiled theme, resource, pipeline, and cancellation policy.
@@ -69,42 +67,26 @@ Configure host defaults, compiled themes, and output policy:
 
 ```sh
 cargo run -p merman --example configure_mermaid > configured.svg
-cargo run -p merman --example theme_preset > preset.svg
-cargo run -p merman --example theme_recipe -- target/theme-recipe
 cargo run -p merman --example custom_diagram_theme > custom-theme.svg
 cargo run -p merman --example custom_svg_pipeline > consumer-safe.svg
 ```
 
-### Theme presets and editable recipes
+### Native themes and editable documents
 
-`theme_preset` uses `compiler.compile_preset(ThemePreset::PaperCut)` by default and writes one
-resvg-safe SVG to stdout. Its optional arguments are `[preset-id [light|dark]]`. Use exact catalog
-IDs to choose another built-in design or an appearance from a paired design:
+`custom_diagram_theme` compiles a Theme v2 document that extends Studio and selects its dark
+appearance. Pass a preset ID to render that preset's default appearance.
 
 ```sh
-cargo run -p merman --example theme_preset -- pop-art > pop-art.svg
-cargo run -p merman --example theme_preset -- carbon-copy > carbon-copy.svg
-cargo run -p merman --example theme_preset -- editor light > editor-light.svg
-cargo run -p merman --example theme_preset -- editor dark > editor-dark.svg
+cargo run -p merman --example custom_diagram_theme -- paper-cut > paper-cut.svg
 ```
 
-An explicit appearance must be declared by the selected design. Paper Cut, Carbon Copy, and
-Pop Art provide Light; Editor, Gruvbox, and Ayu provide Light and Dark. Omitting the appearance
-uses the design's declared default. The host resolves any application appearance preference
-before calling `compile_preset_selection`; unknown IDs and unsupported appearances return errors.
+Use `ThemeSelection::preset` to select a built-in preset and appearance in Rust. To author a
+custom theme, export an editable document with `merman-cli theme export <id>` or write a patch
+with `extends`. Compile it with `ThemeCompiler::compile_json` and pass the selection to
+`SvgRequest::with_native_theme`. Read `SvgOutput::theme_outcome` for the appearance and any
+compilation or rendering notices.
 
-`theme_recipe` accepts an optional output directory, defaulting to `target/theme-recipe`. It writes
-the complete exported recipe to `paper-cut.json`, changes the typed `surface` color token to
-`#DCEAF7`, and saves the customized document as `theme.json`. Existing token references, canvas,
-effects, and appearance metadata remain in that document. It then reads `theme.json`, runs
-`check_design_json_input` before typed deserialization, compiles it with `compile_recipe`, and
-renders `diagram.svg` using `RenderRequest::with_theme`. Status goes to stderr.
-
-The same `surface` token also supplies Paper Cut's Sequence actor tabs and Class cards, so this
-edit applies to those consumers when the recipe is used with their source. Use
-[`custom_diagram_theme.rs`](custom_diagram_theme.rs) when starting from application-owned tokens
-instead. See the [theme guide](../../../docs/rendering/custom-diagram-themes.md) for the complete
-recipe contract and appearance-local overrides.
+[Theme guide](../../../docs/rendering/custom-diagram-themes.md) · [Rust example](custom_diagram_theme.rs)
 
 ## Host Integration Recipes
 
@@ -117,12 +99,11 @@ These recipes compose existing APIs; they introduce no additional library preset
 | Terminal display | Charset, display-cell width, family layout, overflow | `AsciiRequest`; [`render_terminal.rs`](render_terminal.rs) | `AsciiOutput.text` and extents | Host decides where/how to print or scroll. |
 | Agent pipe or log | Plain encoding, explicit width, fallback permission | `AsciiOutput::report()`; [`render_agent_log.rs`](render_agent_log.rs) | One JSON object including text and metadata | Hard failures remain errors, not retry instructions. |
 | Themed terminal | Explicit palette and supported color encoding | `AsciiTerminalPalette`; [`terminal_palette.rs`](terminal_palette.rs) | TrueColor text with the same logical layout | Palette detection and styled-to-plain retry belong to the host. |
-| Browser/editor preview | Compiled theme, Mermaid overrides, diagram ID, SVG policy | `RenderRequest::with_theme`, `SvgRequest`; [`custom_diagram_theme.rs`](custom_diagram_theme.rs) | SVG artifact | Host performs DOM admission and insertion. |
+| Browser/editor preview | Compiled theme, Mermaid overrides, diagram ID, SVG policy | `SvgRequest::with_native_theme`; [`custom_diagram_theme.rs`](custom_diagram_theme.rs) | SVG artifact and theme outcome | Host performs DOM admission and insertion. |
 | Rust font integration | Final font and a function that measures complete strings | `DeterministicTextMeasurer::with_width_callback(...)`; [`render_svg_monospace.rs`](render_svg_monospace.rs) | SVG with Merman-owned wrapping | If measurement can fail or must vary by operation, use `HostTextMeasurer`. |
 | Image export | Fit box, scale, background, resource budget | `PngRequest`; [`render_png.rs`](render_png.rs) | Bytes and `RasterPlan` dimensions | Saving the example's file is application code after rendering. |
 
-The existing APIs cover these scenarios. SVG themes and ASCII palettes have separate semantics;
-there is no need to introduce a shared theme object to use the same application colors in both.
+A native theme selection can also supply a terminal palette in TrueColor or ANSI256 mode.
 
 ### Bounded terminal text and machine reports
 
@@ -184,18 +165,22 @@ is invalid even if the particular diagram fits. A host may choose a separate Pla
 width refusal, but must keep that decision explicit and must not retry cancellation or quota errors.
 
 Rust maps colors through `AsciiColorTheme::from_terminal_palette`. Bindings expose the palette as
-`ascii.theme` in [Options JSON](../../../docs/bindings/OPTIONS_JSON.md). SVG uses the independent
-[compiled diagram theme](../../../docs/rendering/custom-diagram-themes.md); selecting one does
-not synchronize the other or select an SVG pipeline.
+`ascii.theme` in [Options JSON](../../../docs/bindings/OPTIONS_JSON.md). The native diagram theme supplies terminal colors when `ascii.theme` is absent.
 
 ### Browser preview and image artifacts
 
-[`render_svg.rs`](render_svg.rs) demonstrates the default Mermaid-parity SVG target. For custom
-host colors, use [`custom_diagram_theme.rs`](custom_diagram_theme.rs): that example explicitly
-chooses resvg-safe output, so change the pipeline choice explicitly when adapting it for a browser.
+[`render_svg.rs`](render_svg.rs) demonstrates the default Mermaid-parity SVG target.
+[`custom_diagram_theme.rs`](custom_diagram_theme.rs) demonstrates native themes with resvg-safe output.
 Parity may contain HTML labels. `readable` is a specialized text overlay and can duplicate those
 labels in a browser. `resvg-safe` addresses raster-consumer compatibility. None of these names replaces
 host DOM admission; see the [SVG pipeline contract](../../../docs/rendering/SVG_OUTPUT_PIPELINE.md).
+
+Use `SvgEnvironment::with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)`
+to require portable output. A requested elevation or categorical pattern needs support from the
+selected family. Best-effort SVG reports omissions through `theme_outcome()`. Target admission
+also checks the finalized SVG and the fonts the target uses. Use `RenderEvidence::output_mutated`
+to observe custom SVG postprocessing. `SvgEnvironment::with_trusted_theme_css(true)` enables
+raw Mermaid CSS from trusted configuration.
 
 Use [`render_png.rs`](render_png.rs) for an optional high-fidelity image. `Renderer::render()` returns
 bytes and a raster plan before the example writes a file. A host can inspect the dimensions, keep the
@@ -203,7 +188,7 @@ bytes in memory, or save them without adding file/viewer actions to the library.
 the export path; callers do not need to build a separate product rendering backend.
 
 ```sh
-cargo run -p merman --no-default-features --features all-diagrams,svg --example custom_diagram_theme > custom-theme.svg
+cargo run -p merman --no-default-features --features diagram-flowchart,svg --example custom_diagram_theme > custom-theme.svg
 cargo run -p merman --no-default-features --features all-diagrams,png,system-fonts --example render_png -- target/diagram.png
 ```
 
@@ -244,7 +229,7 @@ Copy the relevant `.rs` file into your application's `examples/` directory and r
 cargo run --example render_svg
 ```
 
-Enable `features = ["diagram-flowchart", "png", "system-fonts"]` on the Merman dependency when copying `render_png`, or `features = ["all-diagrams", "ascii"]` when copying `render_terminal`, `render_agent_log`, or `terminal_palette`. Enable `compat-json` when copying `deterministic_gantt`. Add `serde_json = "1"` when copying `configure_mermaid`, `deterministic_gantt`, `render_agent_log`, `custom_diagram_theme`, or `theme_recipe`.
+Enable `features = ["diagram-flowchart", "png", "system-fonts"]` on the Merman dependency when copying `render_png`, or `features = ["all-diagrams", "ascii"]` when copying `render_terminal`, `render_agent_log`, or `terminal_palette`. Enable `compat-json` when copying `deterministic_gantt`. Add `serde_json = "1"` when copying `configure_mermaid`, `deterministic_gantt`, or `render_agent_log`.
 
 `render_svg_monospace` uses Merman's `svg` feature. It also needs `usvg` with its `system-fonts` and `text` features plus `rustybuzz`.
 
@@ -262,7 +247,7 @@ The table lists output and engine requirements in addition to that family select
 | --- | --- |
 | `inspect_semantics` | None beyond the required diagram families |
 | `deterministic_gantt` | `compat-json` |
-| `render_svg`, `render_svg_monospace`, `embed_multiple_svgs`, `render_many`, `inspect_layout`, `configure_mermaid`, `theme_preset`, `theme_recipe`, `custom_diagram_theme`, `custom_svg_pipeline` | `svg` |
+| `render_svg`, `render_svg_monospace`, `embed_multiple_svgs`, `render_many`, `inspect_layout`, `configure_mermaid`, `custom_diagram_theme`, `custom_svg_pipeline` | `svg` |
 | `render_terminal`, `render_agent_log`, `terminal_palette` | `ascii` |
 | `render_png` | `png`, `system-fonts` |
 | `standalone_resvg` | `native-fonts` (also enables `svg`) |
@@ -302,15 +287,16 @@ CARGO_PROFILE_BENCH_DEBUG=true cargo flamegraph \
 
 Run `cargo run -p merman --example redraw_prepared` to parse once and render at two widths.
 `Renderer::prepare_source(PrepareSourceRequest)` returns an immutable `PreparedSource` whose clones
-share canonical typed semantics. It retains effective configuration, parse options, the existing
-compiled theme binding and the actual parse-time runtime context. Implicit Gantt dates and generated
-IDs stay fixed until a new preparation.
+share canonical typed semantics. It retains effective configuration, parse options, and the
+parse-time runtime context. Implicit Gantt dates and generated IDs stay fixed until a new
+preparation.
 
 `Renderer::render_prepared(&source, target, control)` uses the current renderer's output runtime and
 fresh cancellation, deadline, work ledger and admission. Its explicit input policy wins over target
-input defaults; `render_prepared_with_resource_policy` overrides it for one output. Parse settings,
-source configuration and theme selection belong to preparation. Completed SVGs, documents, layout
-projections and geometry own their public data and remain valid after the source is dropped.
+input defaults. `render_prepared_with_resource_policy` overrides it for one output. Set parse
+options and source configuration during preparation, and select the native theme on each render
+target. Completed SVGs, documents, layout projections, and geometry own their public data and
+remain valid after the source is dropped.
 
 The low-level `merman_render::family::prepare` now borrows `&ParsedDiagramRender`; keep that parse
 owner alive until the family artifact finishes. Layout, render session and derived Agentflow working

@@ -11,9 +11,9 @@ use merman_model::families::railroad::{
     RailroadAstNode, RailroadDiagramModel, RailroadRepeatBound, RailroadRuleModel,
 };
 
-mod theme;
+mod native_theme;
 
-pub(crate) use theme::{RailroadSurfaceReceipt, RailroadTypographyThemePlan};
+pub(crate) use native_theme::RailroadThemeAdapter;
 
 #[derive(Debug, Clone)]
 pub(crate) struct RailroadStyle {
@@ -23,14 +23,17 @@ pub(crate) struct RailroadStyle {
     pub arc_radius: f64,
     pub font_size: f64,
     pub font_family: String,
+    pub(crate) native_typography: Option<native_theme::RailroadNativeTypography>,
     pub terminal_fill: String,
     pub terminal_stroke: String,
     pub terminal_text_color: String,
+    pub(crate) terminal_radius: f64,
     pub non_terminal_fill: String,
     pub non_terminal_stroke: String,
     pub non_terminal_text_color: String,
     pub line_color: String,
     pub stroke_width: f64,
+    pub(crate) connector_width: Option<f64>,
     pub marker_fill: String,
     pub comment_fill: String,
     pub comment_stroke: String,
@@ -40,6 +43,22 @@ pub(crate) struct RailroadStyle {
     pub rule_name_color: String,
     pub marker_radius: f64,
     pub use_max_width: bool,
+}
+
+impl RailroadStyle {
+    pub(crate) fn terminal_font_family(&self) -> &str {
+        self.native_typography
+            .as_ref()
+            .and_then(|typography| typography.terminal_font_family.as_deref())
+            .unwrap_or(&self.font_family)
+    }
+
+    pub(crate) fn rule_name_font_family(&self) -> &str {
+        self.native_typography
+            .as_ref()
+            .and_then(|typography| typography.rule_name_font_family.as_deref())
+            .unwrap_or(&self.font_family)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -101,21 +120,7 @@ pub(crate) fn layout_railroad_diagram_typed_for_type(
     layout_railroad_diagram_typed_for_type_with_style(model, diagram_type, &style, measurer)
 }
 
-pub(crate) fn layout_railroad_diagram_typed_for_type_with_theme(
-    model: &RailroadDiagramModel,
-    diagram_type: &str,
-    typography_theme: &RailroadTypographyThemePlan,
-    measurer: &dyn TextMeasurer,
-) -> Result<RailroadDiagramLayout> {
-    layout_railroad_diagram_typed_for_type_with_style(
-        model,
-        diagram_type,
-        typography_theme.style(),
-        measurer,
-    )
-}
-
-fn layout_railroad_diagram_typed_for_type_with_style(
+pub(crate) fn layout_railroad_diagram_typed_for_type_with_style(
     model: &RailroadDiagramModel,
     diagram_type: &str,
     style: &RailroadStyle,
@@ -306,6 +311,17 @@ fn parse_js_float_prefix(text: &str) -> Option<f64> {
     text[..end].parse::<f64>().ok()
 }
 
+pub(crate) fn resolve_railroad_style(
+    config: &merman_model::presentation::PresentationConfig,
+    native: Option<&crate::theme::FamilyTheme>,
+) -> RailroadStyle {
+    let mut style = railroad_style(config.as_value());
+    if let Some(theme) = native {
+        native_theme::apply(&mut style, theme, config);
+    }
+    style
+}
+
 pub(crate) fn railroad_style(effective_config: &serde_json::Value) -> RailroadStyle {
     let theme_font_family = sanitize_font_family_value(
         theme_config_value(effective_config, "fontFamily", None),
@@ -393,6 +409,7 @@ pub(crate) fn railroad_style(effective_config: &serde_json::Value) -> RailroadSt
             railroad_config_value(effective_config, "fontFamily"),
             &theme_font_family,
         ),
+        native_typography: None,
         terminal_fill: sanitize_color_value(
             railroad_config_value(effective_config, "terminalFill"),
             &theme_terminal_fill,
@@ -405,6 +422,7 @@ pub(crate) fn railroad_style(effective_config: &serde_json::Value) -> RailroadSt
             railroad_config_value(effective_config, "terminalTextColor"),
             &theme_terminal_text_color,
         ),
+        terminal_radius: 10.0,
         non_terminal_fill: sanitize_color_value(
             railroad_config_value(effective_config, "nonTerminalFill"),
             &theme_non_terminal_fill,
@@ -425,6 +443,7 @@ pub(crate) fn railroad_style(effective_config: &serde_json::Value) -> RailroadSt
             railroad_config_value(effective_config, "strokeWidth"),
             2.0,
         ),
+        connector_width: None,
         marker_fill: sanitize_color_value(
             railroad_config_value(effective_config, "markerFill"),
             &theme_line_color,
@@ -468,7 +487,17 @@ fn layout_rule(
     measurer: &dyn TextMeasurer,
 ) -> RailroadRuleLayout {
     let rule_name = format!("{} =", rule.name);
-    let name_width = measure_text(rule_name.as_str(), style, measurer).0 + 20.0;
+    let name_width = measure_text(
+        &rule_name,
+        style.rule_name_font_family(),
+        style.font_size,
+        style
+            .native_typography
+            .as_ref()
+            .map(|typo| typo.title_weight),
+        measurer,
+    )
+    .0 + 20.0;
     let definition_x = name_width + 20.0;
     let definition = layout_expr(&rule.definition, style, measurer);
     let baseline_y = 20.0_f64.max(definition.up);
@@ -550,7 +579,13 @@ fn layout_box(
     style: &RailroadStyle,
     measurer: &dyn TextMeasurer,
 ) -> ExprLayout {
-    let (text_width, text_height) = measure_text(label, style, measurer);
+    let font_family = if kind == "terminal" {
+        style.terminal_font_family()
+    } else {
+        &style.font_family
+    };
+    let (text_width, text_height) =
+        measure_text(label, font_family, style.font_size, None, measurer);
     let width = text_width + style.padding * 2.0;
     let height = text_height + style.padding * 2.0;
     let element = RailroadElementLayout {
@@ -1057,11 +1092,17 @@ fn empty_expr() -> ExprLayout {
     }
 }
 
-fn measure_text(text: &str, style: &RailroadStyle, measurer: &dyn TextMeasurer) -> (f64, f64) {
+fn measure_text(
+    text: &str,
+    font_family: &str,
+    font_size: f64,
+    font_weight: Option<u16>,
+    measurer: &dyn TextMeasurer,
+) -> (f64, f64) {
     let text_style = TextStyle {
-        font_family: Some(style.font_family.clone()),
-        font_size: style.font_size,
-        font_weight: None,
+        font_family: Some(font_family.to_owned()),
+        font_size,
+        font_weight: font_weight.map(|weight| weight.to_string()),
         font_style: None,
     };
     let width = measurer.measure_svg_raw_text_bbox_width_px(text, &text_style);

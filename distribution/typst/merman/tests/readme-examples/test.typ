@@ -1,5 +1,4 @@
 #import "@preview/merman:0.6.0": (
-  export-theme-preset,
   mermaid,
   mermaid-figure,
   mermaid-profile,
@@ -41,8 +40,8 @@
 #mermaid(layout-source, profile: dagre)
 
 #let diagram-style = mermaid-profile(
-  theme-preset: "editor",
-  theme-appearance: "light",
+  theme: "studio",
+  appearance: "light",
 )
 #let diagram = mermaid.with(
   profile: diagram-style,
@@ -50,7 +49,7 @@
   width: 100%,
 )
 #diagram("flowchart LR\n  Source --> Document")
-#diagram("flowchart LR\nA --> B", theme-preset: "paper-cut")
+#diagram("flowchart LR\nA --> B", theme: "paper-cut")
 
 #{
   show raw.where(lang: "mermaid"): show-mermaid-blocks(
@@ -64,7 +63,7 @@
 
 #let workflow = "flowchart LR\n  Draft --> Review\n  Review --> Publish"
 #let diagrams = mermaid-profile(
-  theme-preset: "editor",
+  theme: "studio",
   background: "#ffffff",
   typography: (font: ("Arial", "sans-serif"), size: "16px"),
   figure: (caption-position: top, gap: 1em, outlined: false),
@@ -79,29 +78,13 @@
 
 See @publishing for the workflow.
 
-#let recipe-source = "flowchart LR\n  Recipe --> YourDocument"
-#let original = export-theme-preset("paper-cut")
-#let recipe = original
-#let tokens = recipe.design.tokens
-#let paper = tokens.at("paper")
-#paper.insert("value", "#fff4df")
-#tokens.insert("paper", paper)
-#let body-font = tokens.at("body-font")
-#body-font.insert("value", ("Arial", "sans-serif"))
-#tokens.insert("body-font", body-font)
-#let design = recipe.design
-#design.insert("tokens", tokens)
-#recipe.insert("design", design)
-
-#let imported = json(bytes(json.encode(recipe, pretty: true)))
-#assert.eq(imported, recipe, message: "the complete edited recipe must survive a JSON round trip")
-#assert.eq(imported.design.tokens.at("paper").value, "#fff4df")
-#assert.eq(imported.design.tokens.at("body-font").value, ("Arial", "sans-serif"))
-#let original-svg = mermaid-svg(recipe-source, theme-recipe: original, id: "recipe-check", pipeline: "readable")
-#let edited-svg = mermaid-svg(recipe-source, theme-recipe: imported, id: "recipe-check", pipeline: "readable")
-#assert(edited-svg != original-svg, message: "editing the shared recipe tokens must change rendered SVG")
-#assert(lower(edited-svg).contains("#fff4df"), message: "the edited paper color must reach SVG output")
-#mermaid(recipe-source, theme-recipe: imported, width: 100%)
+#let theme-source = "flowchart LR\n  Theme --> YourDocument"
+#let custom = (schema_version: 2, extends: "paper-cut", seed: (canvas: "#fff4df"))
+#let imported = json(bytes(json.encode(custom, pretty: true)))
+#assert.eq(imported, custom)
+#let custom-svg = mermaid-svg(theme-source, theme: imported, id: "theme-check", pipeline: "readable")
+#assert(lower(custom-svg).contains("#fff4df"), message: "the edited paper color must reach SVG output")
+#mermaid(theme-source, theme: imported, width: 100%)
 
 #{
   show raw.where(lang: "mermaid"): show-mermaid-blocks(profile: diagrams, error-mode: "panic")

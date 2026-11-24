@@ -84,6 +84,71 @@ fn a_host_background_replaces_the_canvas_and_keeps_its_texture() {
     }
 }
 
+#[cfg(feature = "diagram-pie")]
+#[test]
+fn canvas_padding_expands_viewport_and_paint_without_moving_content() {
+    let compiler = ThemeCompiler::new();
+    let baseline = NativeTheme::new(
+        compiler
+            .compile_preset(BuiltinPreset::Blueprint, None)
+            .unwrap(),
+    );
+    let padded = NativeTheme::new(
+        compiler
+            .compile_json(
+                br#"{"schema_version":2,"extends":"blueprint","appearances":{"dark":{"canvas":{"padding_px":12}}}}"#,
+                None,
+            )
+            .unwrap(),
+    );
+    let source = format!("---\nconfig:\n  pie:\n    useMaxWidth: false\n---\n{PIE_SOURCE}");
+    let original = render(&source, Some(&baseline));
+    let expanded = render(&source, Some(&padded));
+    let original = roxmltree::Document::parse(&original).unwrap();
+    let expanded = roxmltree::Document::parse(&expanded).unwrap();
+    let original_root = original.root_element();
+    let expanded_root = expanded.root_element();
+    let view_box = |root: roxmltree::Node<'_, '_>| {
+        root.attribute("viewBox")
+            .unwrap()
+            .split_whitespace()
+            .map(|value| value.parse::<f64>().unwrap())
+            .collect::<Vec<_>>()
+    };
+    let before = view_box(original_root);
+    let after = view_box(expanded_root);
+    let canvas = expanded_root.first_element_child().unwrap();
+    let paint = canvas.first_element_child().unwrap();
+    for (index, (name, offset)) in [
+        ("x", -12.0),
+        ("y", -12.0),
+        ("width", 24.0),
+        ("height", 24.0),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let coord = paint.attribute(name).unwrap().parse::<f64>().unwrap();
+        assert!((after[index] - before[index] - offset).abs() < 0.001);
+        assert!((coord - after[index]).abs() < 0.001);
+    }
+    for name in ["width", "height"] {
+        let size =
+            |root: roxmltree::Node<'_, '_>| root.attribute(name).unwrap().parse::<f64>().unwrap();
+        assert!((size(expanded_root) - size(original_root) - 24.0).abs() < 0.001);
+    }
+    let slice_path = |document: &roxmltree::Document<'_>| {
+        document
+            .descendants()
+            .find(|node| node.attribute("class") == Some("pieCircle"))
+            .unwrap()
+            .attribute("d")
+            .unwrap()
+            .to_owned()
+    };
+    assert_eq!(slice_path(&original), slice_path(&expanded));
+}
+
 #[cfg(feature = "diagram-info")]
 #[test]
 fn info_measures_and_draws_with_the_native_code_stack() {

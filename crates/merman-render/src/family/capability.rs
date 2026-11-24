@@ -403,14 +403,6 @@ fn validate_render_input(
     session: &RenderSession,
 ) -> Result<DiagramFamilyId> {
     let family = validate_paired_render_model(parsed)?;
-    let meta = parsed.metadata();
-    if !meta
-        .effective_config
-        .theme_compatibility()
-        .matches_recipe(session.theme_compatibility_recipe())
-    {
-        return Err(Error::ThemeParseBindingMismatch);
-    }
     session
         .work_meter()
         .preflight_parsed_render(parsed, OperationPhase::Layout)?;

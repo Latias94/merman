@@ -39,7 +39,9 @@ impl BindingOptionGroupSpec {
 #[non_exhaustive]
 pub enum BindingOptionGroupKey {
     Ascii,
+    Background,
     Environment,
+    ExportMatte,
     FixedLocalOffsetMinutes,
     FixedToday,
     FixedUnixMillis,
@@ -60,7 +62,9 @@ pub enum BindingOptionGroupKey {
 impl BindingOptionGroupKey {
     pub const ALL: &'static [Self] = &[
         Self::Ascii,
+        Self::Background,
         Self::Environment,
+        Self::ExportMatte,
         Self::FixedLocalOffsetMinutes,
         Self::FixedToday,
         Self::FixedUnixMillis,
@@ -82,7 +86,9 @@ impl BindingOptionGroupKey {
     pub const fn id(self) -> &'static str {
         match self {
             Self::Ascii => "ascii",
+            Self::Background => "background",
             Self::Environment => "environment",
+            Self::ExportMatte => "export_matte",
             Self::FixedLocalOffsetMinutes => "fixed_local_offset_minutes",
             Self::FixedToday => "fixed_today",
             Self::FixedUnixMillis => "fixed_unix_millis",
@@ -105,22 +111,24 @@ impl BindingOptionGroupKey {
     pub const fn spec(self) -> &'static BindingOptionGroupSpec {
         match self {
             Self::Ascii => &OPTION_GROUP_SPECS[0],
-            Self::Environment => &OPTION_GROUP_SPECS[1],
-            Self::FixedLocalOffsetMinutes => &OPTION_GROUP_SPECS[2],
-            Self::FixedToday => &OPTION_GROUP_SPECS[3],
-            Self::FixedUnixMillis => &OPTION_GROUP_SPECS[4],
-            Self::Jpeg => &OPTION_GROUP_SPECS[5],
-            Self::Layout => &OPTION_GROUP_SPECS[6],
-            Self::Lint => &OPTION_GROUP_SPECS[7],
-            Self::Parse => &OPTION_GROUP_SPECS[8],
-            Self::Pdf => &OPTION_GROUP_SPECS[9],
-            Self::Raster => &OPTION_GROUP_SPECS[10],
-            Self::Resources => &OPTION_GROUP_SPECS[11],
-            Self::RuntimePolicy => &OPTION_GROUP_SPECS[12],
-            Self::SiteConfig => &OPTION_GROUP_SPECS[13],
-            Self::Svg => &OPTION_GROUP_SPECS[14],
-            Self::Theme => &OPTION_GROUP_SPECS[15],
-            Self::Version => &OPTION_GROUP_SPECS[16],
+            Self::Background => &OPTION_GROUP_SPECS[1],
+            Self::Environment => &OPTION_GROUP_SPECS[2],
+            Self::ExportMatte => &OPTION_GROUP_SPECS[3],
+            Self::FixedLocalOffsetMinutes => &OPTION_GROUP_SPECS[4],
+            Self::FixedToday => &OPTION_GROUP_SPECS[5],
+            Self::FixedUnixMillis => &OPTION_GROUP_SPECS[6],
+            Self::Jpeg => &OPTION_GROUP_SPECS[7],
+            Self::Layout => &OPTION_GROUP_SPECS[8],
+            Self::Lint => &OPTION_GROUP_SPECS[9],
+            Self::Parse => &OPTION_GROUP_SPECS[10],
+            Self::Pdf => &OPTION_GROUP_SPECS[11],
+            Self::Raster => &OPTION_GROUP_SPECS[12],
+            Self::Resources => &OPTION_GROUP_SPECS[13],
+            Self::RuntimePolicy => &OPTION_GROUP_SPECS[14],
+            Self::SiteConfig => &OPTION_GROUP_SPECS[15],
+            Self::Svg => &OPTION_GROUP_SPECS[16],
+            Self::Theme => &OPTION_GROUP_SPECS[17],
+            Self::Version => &OPTION_GROUP_SPECS[18],
         }
     }
 
@@ -150,10 +158,22 @@ const OPTION_GROUP_SPECS: &[BindingOptionGroupSpec] = &[
         requires_svg_pipeline: false,
     },
     BindingOptionGroupSpec {
+        key: BindingOptionGroupKey::Background,
+        always_available: false,
+        any_capabilities: &[],
+        requires_svg_pipeline: true,
+    },
+    BindingOptionGroupSpec {
         key: BindingOptionGroupKey::Environment,
         always_available: false,
         any_capabilities: &[],
         requires_svg_pipeline: true,
+    },
+    BindingOptionGroupSpec {
+        key: BindingOptionGroupKey::ExportMatte,
+        always_available: false,
+        any_capabilities: &[CapabilityKey::Jpeg, CapabilityKey::Pdf, CapabilityKey::Png],
+        requires_svg_pipeline: false,
     },
     BindingOptionGroupSpec {
         key: BindingOptionGroupKey::FixedLocalOffsetMinutes,
@@ -236,7 +256,7 @@ const OPTION_GROUP_SPECS: &[BindingOptionGroupSpec] = &[
     BindingOptionGroupSpec {
         key: BindingOptionGroupKey::Theme,
         always_available: false,
-        any_capabilities: &[],
+        any_capabilities: &[CapabilityKey::Ascii],
         requires_svg_pipeline: true,
     },
     BindingOptionGroupSpec {

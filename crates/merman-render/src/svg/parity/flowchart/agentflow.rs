@@ -60,6 +60,12 @@ impl<'a> ContainerPalette<'a> {
     pub(super) fn color_count(&self) -> usize {
         self.borders.len()
     }
+
+    pub(super) fn without_theme_colors(mut self) -> Self {
+        self.borders = &[];
+        self.backgrounds = &[];
+        self
+    }
 }
 
 fn container_slot(ordinal: usize, palette_len: usize) -> usize {

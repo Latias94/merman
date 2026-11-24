@@ -2,6 +2,18 @@
 
 The Typst package has its own version axis; its bundled Merman version is recorded separately.
 
+## [Unreleased]
+
+### Breaking changes
+
+- Use `theme` for a Merman preset, a Theme v2 document, or a classic Mermaid theme. Use `appearance` for the light or dark mode of a Merman theme. Move Mermaid variables to `site-config.themeVariables`. See [Theme v2 migration](README.md#theme-v2-migration).
+- Use `theme-catalog()` for schema 2 metadata, `export-theme-preset` for an editable Theme v2 document, and `resolve-theme` for validation and contrast notices.
+
+### Changed
+
+- A `background` color overrides the canvas base for classic and native themes. Use `"transparent"` to clear that paint.
+- `document-context: true` combines available width and current typography with the selected theme in one render call.
+
 ## [0.6.0] - 2026-11-12
 
 Bundles Merman `0.10.0` with Mermaid `12.3.0` behavior. Update imports to `@preview/merman:0.6.0` and review the migration actions below. The minimum compiler remains Typst `0.15.0`.

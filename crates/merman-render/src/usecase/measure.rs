@@ -35,7 +35,7 @@ pub(super) fn number(config: &Value, key: &str, fallback: f64) -> f64 {
     configured_number(config, key).unwrap_or(fallback)
 }
 
-pub(super) fn configured_number(config: &Value, key: &str) -> Option<f64> {
+fn configured_number(config: &Value, key: &str) -> Option<f64> {
     config
         .get("usecase")
         .and_then(|value| value.get(key))
@@ -43,7 +43,7 @@ pub(super) fn configured_number(config: &Value, key: &str) -> Option<f64> {
         .filter(|value| value.is_finite() && *value >= 0.0)
 }
 
-pub(super) fn configured_generic_font_size(config: &Value) -> Option<f64> {
+fn configured_generic_font_size(config: &Value) -> Option<f64> {
     crate::config::config_f64_css_absolute_px(config, &["themeVariables", "fontSize"])
         .filter(|size| size.is_finite() && *size >= 0.0)
 }
@@ -81,7 +81,7 @@ pub(super) fn text_style(config: &Value, actor: Option<bool>) -> TextStyle {
     }
 }
 
-pub(super) fn styles(
+fn styles(
     model: &UsecaseDiagramModel,
     classes: &[String],
     inline: &[String],
@@ -163,7 +163,6 @@ struct LabelContext<'a> {
     math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     styles: &'a indexmap::IndexMap<String, String>,
     root_font_size: f64,
-    theme_style: &'a UsecaseThemeStyle,
 }
 
 fn measure_plain_label(
@@ -334,7 +333,6 @@ fn label(
             .filter(|(key, _)| crate::mermaid_style::is_label_style_key(key))
             .map(|(key, value)| (key.clone(), value.clone()))
             .collect(),
-        theme_style: context.theme_style.clone(),
     })
 }
 
@@ -460,7 +458,6 @@ pub(super) fn measure(
     model: &UsecaseDiagramModel,
     full_config: &merman_model::presentation::PresentationConfig,
     css_binding: &UsecaseCssBinding,
-    theme_plan: &UsecaseThemePlan,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
     work: &mut OperationLayoutWorkControl,
@@ -503,18 +500,13 @@ pub(super) fn measure(
                     actor || (node.business && node.kind == UsecaseNodeKind::UseCaseEllipse);
                 (&css_binding.root_font, role_group.then_some(role_font))
             };
-            let theme_style = theme_plan.label(&node.id);
-            let inherited = theme_style.text_style(inherited);
-            let element_defaults =
-                element_defaults.map(|defaults| theme_style.text_style(defaults));
-            let style = styled(&inherited, element_defaults.as_ref(), &css, root_font_size);
+            let style = styled(inherited, element_defaults, &css, root_font_size);
             let label_context = LabelContext {
                 config: full_config,
                 measurer,
                 math_renderer,
                 styles: &css,
                 root_font_size,
-                theme_style: &theme_style,
             };
             // Sanitize before escaping or folding stereotypes, as UsecaseDB does.
             let source_label = sanitize(&node.label);
@@ -553,33 +545,19 @@ pub(super) fn measure(
                 .filter(|value| !value.is_empty() && !folded_stereotype)
                 .map(|value| {
                     // The separate SVG stereotype lacks .actor-label/.usecase-label.
-                    let stereotype_theme = theme_plan.stereotype(&node.id);
-                    let stereotype_style = if html {
-                        styled(
-                            &stereotype_theme.text_style(role_font),
-                            None,
-                            &css,
-                            root_font_size,
-                        )
+                    let font = if html {
+                        role_font
                     } else {
-                        styled(
-                            &stereotype_theme.text_style(&css_binding.root_font),
-                            None,
-                            &css,
-                            root_font_size,
-                        )
+                        &css_binding.root_font
                     };
-                    let stereotype_context = LabelContext {
-                        theme_style: &stereotype_theme,
-                        ..label_context
-                    };
+                    let stereotype_style = styled(font, None, &css, root_font_size);
                     label(
                         &format!("«{value}»"),
                         UsecaseLabelType::Text,
                         &stereotype_style,
                         wrapping_width,
                         0.0,
-                        &stereotype_context,
+                        &label_context,
                         work,
                     )
                 })
@@ -634,15 +612,13 @@ pub(super) fn measure(
     for note in &model.notes {
         work.charge_adapter(1)?;
         let css = styles(model, &[], &[]);
-        let theme_style = theme_plan.label(&note.id);
-        let style = styled(&theme_style.text_style(generic), None, &css, root_font_size);
+        let style = styled(generic, None, &css, root_font_size);
         let label_context = LabelContext {
             config: full_config,
             measurer,
             math_renderer,
             styles: &css,
             root_font_size,
-            theme_style: &theme_style,
         };
         let main = label(
             &sanitize(&note.label),
@@ -673,15 +649,13 @@ pub(super) fn measure(
     for node in &model.json_nodes {
         work.charge_adapter(1)?;
         let css = styles(model, &node.classes, &node.styles);
-        let theme_style = theme_plan.label(&node.id);
-        let style = styled(&theme_style.text_style(generic), None, &css, root_font_size);
+        let style = styled(generic, None, &css, root_font_size);
         let label_context = LabelContext {
             config: full_config,
             measurer,
             math_renderer,
             styles: &css,
             root_font_size,
-            theme_style: &theme_style,
         };
         let main = label(
             &sanitize(&node.id),
@@ -733,11 +707,6 @@ pub(super) fn measure(
             .get("stroke-width")
             .and_then(|value| value.trim_end_matches("px").parse::<f64>().ok())
             .filter(|value| value.is_finite() && *value >= 0.0)
-            .or_else(|| {
-                theme_plan
-                    .shell(&node.id)
-                    .and_then(|style| style.stroke_width)
-            })
             .unwrap_or(1.0);
         nodes.push(UsecaseNodePlan {
             id: node.id.clone(),
@@ -765,15 +734,13 @@ pub(super) fn measure(
     for boundary in &model.boundaries {
         work.charge_adapter(1)?;
         let css = styles(model, &boundary.classes, &boundary.styles);
-        let theme_style = theme_plan.label(&boundary.id);
-        let style = styled(&theme_style.text_style(generic), None, &css, root_font_size);
+        let style = styled(generic, None, &css, root_font_size);
         let label_context = LabelContext {
             config: full_config,
             measurer,
             math_renderer,
             styles: &css,
             root_font_size,
-            theme_style: &theme_style,
         };
         let main = label(
             &sanitize(&boundary.label),
@@ -810,15 +777,12 @@ pub(super) fn measure(
             .iter()
             .any(|(key, value)| key.contains("animation") || value.contains("animation"));
         apply_inline_styles(&mut css, &edge.styles);
-        let theme_style = theme_plan.edge_label(&edge.id);
-        let style = theme_style.text_style(generic);
         let label_context = LabelContext {
             config: full_config,
             measurer,
             math_renderer,
             styles: &css,
             root_font_size,
-            theme_style: &theme_style,
         };
         let (text, kind, start, end, dotted) = match edge.relationship_type {
             UsecaseRelationshipType::Include => (
@@ -873,7 +837,7 @@ pub(super) fn measure(
                     let mut plan = label(
                         &sanitize(text),
                         kind,
-                        &style,
+                        generic,
                         Some(200.0),
                         0.0,
                         &label_context,
@@ -1073,7 +1037,6 @@ mod tests {
                 &model,
                 &crate::test_support::presentation_config(config.clone()),
                 &UsecaseCssBinding::new(&config),
-                &UsecaseThemePlan::default(),
                 &DeterministicTextMeasurer::default(),
                 None,
                 &mut work(),
@@ -1131,7 +1094,6 @@ mod tests {
             &model,
             &crate::test_support::presentation_config(config.clone()),
             &css_binding,
-            &UsecaseThemePlan::default(),
             &DeterministicTextMeasurer::default(),
             None,
             &mut work,
@@ -1160,98 +1122,42 @@ mod tests {
     }
 
     #[test]
-    fn parallel_self_loop_theme_reconciliation_still_requires_surviving_edge_emission() {
-        use crate::diagram_theme::{
-            CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
-            ThemeStylePatch, ThemeTarget,
-        };
-        use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason};
+    fn parallel_self_loops_keep_the_last_relationship_after_dagre_projection() {
+        let mut model = styled_model();
+        let mut ordinary = model.relationships[0].clone();
+        ordinary.id = "ordinary".into();
+        model.relationships[0].target = "A".into();
+        let mut second = model.relationships[0].clone();
+        second.id = "second".into();
+        model.relationships.extend([second, ordinary]);
 
-        let theme = DiagramThemeCompiler::new()
-            .compile(
-                DiagramThemeSpec::new().with_styles(
-                    ThemeRuleSet::default().with_rule(ThemeRule::new(
-                        ThemeTarget::Edge,
-                        ThemeStylePatch::default()
-                            .with_stroke(CanvasPaint::solid("#123456").unwrap()),
-                    )),
-                ),
-            )
-            .unwrap()
-            .resolve(crate::DiagramFamilyId::USECASE);
-        for emit_ordinary in [false, true] {
-            let mut model = styled_model();
-            model.class_defs.clear();
-            let first = &mut model.relationships[0];
-            first.target = "A".into();
-            first.classes.clear();
-            first.styles.clear();
-            let mut second = first.clone();
-            second.id = "second".into();
-            let mut ordinary = first.clone();
-            ordinary.id = "ordinary".into();
-            ordinary.target = "B".into();
-            model.relationships.extend([second, ordinary]);
-            let config = json!({"layout":"dagre", "look":"classic", "htmlLabels":false});
-            let full_config = crate::test_support::presentation_config(config.clone());
-            let css_binding = UsecaseCssBinding::new(&config);
-            let meter = Arc::new(OperationWorkMeter::new(RenderResourcePolicy::default()));
-            let mut theme_plan =
-                UsecaseThemePlan::resolve(Some(&theme), &full_config, &model, None, &meter)
-                    .unwrap();
-            let mut work = OperationLayoutWorkControl::new(meter);
-            let (mut nodes, mut edges) = measure(
-                &model,
-                &full_config,
-                &css_binding,
-                &theme_plan,
-                &DeterministicTextMeasurer::default(),
-                None,
-                &mut work,
-            )
-            .unwrap();
-            super::super::dagre::expand_self_loops(
-                &mut nodes,
-                &mut edges,
-                &css_binding.generic_font,
-                &mut work,
-            )
-            .unwrap();
-            let segments: Vec<_> = edges
+        let config = json!({"layout":"dagre", "look":"classic", "htmlLabels":false});
+        let full_config = crate::test_support::presentation_config(config.clone());
+        let css_binding = UsecaseCssBinding::new(&config);
+        let mut work = work();
+        let (mut nodes, mut edges) = measure(
+            &model,
+            &full_config,
+            &css_binding,
+            &DeterministicTextMeasurer::default(),
+            None,
+            &mut work,
+        )
+        .unwrap();
+        super::super::dagre::expand_self_loops(
+            &mut nodes,
+            &mut edges,
+            &css_binding.generic_font,
+            &mut work,
+        )
+        .unwrap();
+        assert_eq!(edges.len(), 4);
+        assert_eq!(edges[3].id, "ordinary");
+        assert!(
+            edges[..3]
                 .iter()
-                .filter(|edge| edge.original_id.is_some())
-                .collect();
-            assert_eq!(segments.len(), 3);
-            assert!(
-                segments
-                    .iter()
-                    .all(|edge| edge.original_id.as_deref() == Some("second"))
-            );
-            theme_plan.retain_edge_terminals(&edges, &mut work).unwrap();
-            assert!(theme_plan.edge("edge").is_none());
-            let receipt = theme_plan.begin_receipt();
-            theme_plan.edge("second").unwrap().record_emitted(&receipt);
-            if emit_ordinary {
-                theme_plan
-                    .edge("ordinary")
-                    .unwrap()
-                    .record_emitted(&receipt);
-            }
-            theme_plan.record_terminal(receipt);
-            let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
-            theme_plan.record_evidence(&mut evidence);
-            if emit_ordinary {
-                assert_eq!(evidence.applied().len(), 1);
-                assert!(evidence.residuals().is_empty());
-            } else {
-                assert!(evidence.applied().is_empty());
-                assert_eq!(evidence.residuals().len(), 1);
-                assert_eq!(
-                    evidence.residuals()[0].reason(),
-                    FamilyThemeResidualReason::UnsupportedPaint
-                );
-            }
-        }
+                .all(|edge| edge.original_id.as_deref() == Some("second"))
+        );
     }
 
     #[test]
@@ -1300,7 +1206,6 @@ mod tests {
             &model,
             &crate::test_support::presentation_config(json!({"usecase": {"minNodeWidth": 900}})),
             &UsecaseCssBinding::new(&json!({"usecase": {"minNodeWidth": 900}})),
-            &UsecaseThemePlan::default(),
             &measurer,
             None,
             &mut work(),
@@ -1310,7 +1215,6 @@ mod tests {
             &model,
             &crate::test_support::presentation_config(json!({"usecase": {"actorFontSize": 40}})),
             &UsecaseCssBinding::new(&json!({"usecase": {"actorFontSize": 40}})),
-            &UsecaseThemePlan::default(),
             &measurer,
             None,
             &mut work(),
@@ -1339,7 +1243,6 @@ mod tests {
             &model,
             &crate::test_support::presentation_config(json!({})),
             &UsecaseCssBinding::new(&json!({})),
-            &UsecaseThemePlan::default(),
             &DeterministicTextMeasurer::default(),
             None,
             &mut work(),

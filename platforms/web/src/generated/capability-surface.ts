@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:8957a869ae1112ea4a82880dd70d9e4aac90b86000872fd00566890b3a624aa8" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:ece23386718c7ab5761aa12ceb2d415298082601a129b92aa9b3a97477be2ffa" as const;
 
 export const WEB_CAPABILITIES = [
   {
@@ -105,16 +105,6 @@ export const WEB_BINDING_OPERATIONS = [
     "requires_uri": false
   },
   {
-    "id": "describe-theme-support-json",
-    "maturity": "alpha",
-    "capability": "svg",
-    "output": null,
-    "compiled_prerequisites": [],
-    "input_kind": "theme-support-query-json",
-    "media_type": "application/json",
-    "requires_uri": false
-  },
-  {
     "id": "document-analysis-facts-json",
     "maturity": "stable",
     "capability": "analysis",
@@ -145,8 +135,8 @@ export const WEB_BINDING_OPERATIONS = [
     "requires_uri": false
   },
   {
-    "id": "export-theme-preset-json",
-    "maturity": "alpha",
+    "id": "export-theme-preset",
+    "maturity": "stable",
     "capability": "svg",
     "output": null,
     "compiled_prerequisites": [],
@@ -165,12 +155,12 @@ export const WEB_BINDING_OPERATIONS = [
     "requires_uri": false
   },
   {
-    "id": "materialize-theme-json",
-    "maturity": "alpha",
+    "id": "resolve-theme",
+    "maturity": "stable",
     "capability": "svg",
     "output": null,
     "compiled_prerequisites": [],
-    "input_kind": "theme-design-json",
+    "input_kind": "theme-resolve-request-json",
     "media_type": "application/json",
     "requires_uri": false
   },
@@ -241,13 +231,12 @@ export const WEB_BINDING_OPERATION_IDS = [
   "analysis-facts-json",
   "analysis-json",
   "ascii",
-  "describe-theme-support-json",
   "document-analysis-facts-json",
   "document-analysis-json",
   "edge-geometry-json",
-  "export-theme-preset-json",
+  "export-theme-preset",
   "layout-json",
-  "materialize-theme-json",
+  "resolve-theme",
   "semantic-json",
   "svg",
   "svg-plan-json",

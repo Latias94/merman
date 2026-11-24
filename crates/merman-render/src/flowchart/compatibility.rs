@@ -15,6 +15,7 @@ pub(crate) struct FlowchartCompatibilityBinding {
     pub(crate) node_text_color: String,
     pub(crate) title_color: String,
     pub(crate) stroke_width: String,
+    pub(crate) connector_stroke_width: Option<f32>,
     pub(crate) stroke_width_configured: bool,
     pub(crate) error_bkg: String,
     pub(crate) error_text: String,
@@ -25,6 +26,7 @@ pub(crate) struct FlowchartCompatibilityBinding {
     pub(crate) border2: String,
     pub(crate) drop_shadow: String,
     pub(crate) root_font_family: String,
+    pub(crate) root_font_weight: Option<u16>,
     pub(crate) agentflow_container_stroke: String,
     pub(crate) neo: crate::svg::PreparedCommonNeoCss,
     pub(crate) html_labels: bool,
@@ -32,7 +34,6 @@ pub(crate) struct FlowchartCompatibilityBinding {
     pub(crate) node_corner_radius: f64,
     pub(crate) node_corner_radius_configured: bool,
     pub(crate) rounded_rect_radius: Value,
-    pub(crate) rounded_rect_radius_configured: bool,
     pub(crate) rounded_rect_radius_truthy: bool,
     pub(crate) rounded_rect_radius_numeric: Option<f64>,
     pub(crate) note_fill: String,
@@ -77,10 +78,6 @@ impl FlowchartCompatibilityBinding {
             look: crate::config::config_diagram_look(config).into_static(),
             hand_drawn_seed: config.get("handDrawnSeed").and_then(Value::as_f64),
             look_defs: crate::svg::PreparedLookDefs::new(config),
-            rounded_rect_radius_configured: node_corner_radius.is_some()
-                || rounded_rect_radius
-                    .as_str()
-                    .is_some_and(|value| !value.trim().is_empty()),
             rounded_rect_radius,
             rounded_rect_radius_truthy,
             rounded_rect_radius_numeric,
@@ -102,6 +99,7 @@ impl FlowchartCompatibilityBinding {
             main_bkg: theme("mainBkg", "#ECECFF"),
             stroke_width_configured: stroke_width.is_some(),
             stroke_width: stroke_width.unwrap_or_else(|| "1".to_owned()),
+            connector_stroke_width: None,
             error_bkg: theme("errorBkgColor", "#552222"),
             error_text: theme("errorTextColor", "#552222"),
             edge_label_background: theme("edgeLabelBackground", "rgba(232,232,232, 0.8)"),
@@ -115,6 +113,7 @@ impl FlowchartCompatibilityBinding {
             cluster_border,
             drop_shadow: theme("dropShadow", "none"),
             root_font_family: crate::config::config_root_font_family_css(config),
+            root_font_weight: None,
             neo: crate::svg::PreparedCommonNeoCss::new(config),
             html_labels: super::FlowchartConfigView::new(config).effective_html_labels(),
             node_stroke_width: crate::config::config_f64(
@@ -133,80 +132,30 @@ impl FlowchartCompatibilityBinding {
 #[derive(Debug)]
 pub(crate) struct FlowchartPreparedTheme {
     pub(crate) compatibility: FlowchartCompatibilityBinding,
-    pub(crate) text_surface: super::FlowchartTextSurfacePaintPlan,
-    pub(crate) effects: FlowchartEffectEligibility,
-}
-
-#[derive(Debug, Default)]
-pub(crate) struct FlowchartEffectEligibility {
-    pub(crate) edge: bool,
-    pub(crate) label: bool,
-    pub(crate) marker: bool,
-    pub(crate) marker_route_work: usize,
-}
-
-impl FlowchartEffectEligibility {
-    fn resolve(theme: Option<&crate::diagram_theme::ResolvedDiagramTheme>) -> Self {
-        use crate::diagram_theme::{FamilyThemeMechanism, FamilyThemeRuleFacet, ThemeTarget};
-        let Some(theme) = theme else {
-            return Self::default();
-        };
-        let mut eligibility = Self {
-            marker_route_work: theme.family_mechanism_routes().len(),
-            ..Self::default()
-        };
-        for route in theme.family_mechanism_routes() {
-            match route.mechanism() {
-                FamilyThemeMechanism::EffectBinding {
-                    target: ThemeTarget::Edge,
-                    ..
-                }
-                | FamilyThemeMechanism::RuleFacet {
-                    target: ThemeTarget::Edge,
-                    facet: FamilyThemeRuleFacet::Effect,
-                    ..
-                } => eligibility.edge = true,
-                FamilyThemeMechanism::EffectBinding {
-                    target: ThemeTarget::NodeLabel | ThemeTarget::EdgeLabel,
-                    ..
-                }
-                | FamilyThemeMechanism::RuleFacet {
-                    target: ThemeTarget::NodeLabel | ThemeTarget::EdgeLabel,
-                    facet: FamilyThemeRuleFacet::Effect,
-                    ..
-                } => eligibility.label = true,
-                FamilyThemeMechanism::RuleFacet {
-                    target: ThemeTarget::Marker,
-                    ..
-                }
-                | FamilyThemeMechanism::OrdinalPalette {
-                    target: ThemeTarget::Marker,
-                }
-                | FamilyThemeMechanism::EffectBinding {
-                    target: ThemeTarget::Marker,
-                    ..
-                } => eligibility.marker = true,
-                _ => {}
-            }
-        }
-        eligibility
-    }
+    pub(crate) native: Option<super::native_theme::FlowchartNativeStyle>,
 }
 
 impl FlowchartPreparedTheme {
-    pub(crate) fn resolve(
-        theme: Option<&crate::diagram_theme::ResolvedDiagramTheme>,
-        config: &merman_model::presentation::PresentationConfig,
-        node_owned: bool,
-        work: &crate::resources::OperationWorkMeter,
-    ) -> Result<Self, crate::resources::OperationWorkError> {
-        Ok(Self {
-            effects: FlowchartEffectEligibility::resolve(theme),
+    pub(crate) fn resolve(config: &merman_model::presentation::PresentationConfig) -> Self {
+        Self {
+            native: None,
             compatibility: FlowchartCompatibilityBinding::resolve(config),
-            text_surface: super::FlowchartTextSurfacePaintPlan::resolve(
-                theme, config, node_owned, work,
-            )?,
-        })
+        }
+    }
+
+    pub(crate) fn with_native(
+        mut self,
+        theme: Option<&crate::theme::FamilyTheme>,
+        background: Option<crate::theme::Color>,
+    ) -> Self {
+        self.native = theme.map(|theme| {
+            super::native_theme::FlowchartNativeStyle::resolve(
+                theme,
+                background,
+                &mut self.compatibility,
+            )
+        });
+        self
     }
 }
 

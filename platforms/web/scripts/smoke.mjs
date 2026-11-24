@@ -384,44 +384,29 @@ assert.equal(
 );
 assert.equal(runtimeCatalog.resources.cli_default_profile, "trusted-native");
 assert.ok(runtimeCatalog.metadata_ids.includes("theme-catalog"));
-assert.equal(themeCatalog.schema_version, 1);
-if (hasCapability("svg")) {
-  assert.equal(themeCatalog.structured_spec_available, true);
-  assert.equal(themeCatalog.recipe_schema_version, 1);
-  assert.equal(themeCatalog.authoring_request_schema_version, 1);
-  assert.equal(themeCatalog.authoring_result_schema_version, 1);
-  const upstreamThemeIds = themeCatalog.mermaid_theme_designs
-    .flatMap(({ appearances }) => appearances.map(({ theme_id }) => theme_id)).sort();
-  assert.deepEqual(upstreamThemeIds, [...api.supportedThemes()].sort());
-  assert.equal(themeCatalog.mermaid_theme_designs.length, 8);
-  assert.equal(themeCatalog.mermaid_theme_designs.filter(({ appearances }) => appearances.length === 2).length, 3);
-  assert.deepEqual(themeCatalog.supported_output_ids, ["svg"]);
-  assert.deepEqual(themeCatalog.presets, JSON.parse(await readFile(path.join(
-    repoRoot, "crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/preset-catalog.json",
-  ), "utf8")));
-  assert.ok(themeCatalog.presets.every(({ maturity }) => maturity === "alpha"));
-  assert.ok(themeCatalog.known_capability_ids.includes("semantic-rules"));
-  assert.ok(themeCatalog.known_text_capability_ids.includes("opentype-shaping"));
-  assert.ok(themeCatalog.known_font_container_ids.includes("woff2"));
-  assert.ok(themeCatalog.known_semantic_target_ids.includes("state-label"));
-  assert.ok(
-    themeCatalog.resource_limits.some(
-      ({ id, effective_value, hard_cap }) =>
-        id === "max_theme_encoded_bytes" && effective_value > 0 && !hard_cap,
-    ),
-  );
-
-  for (const operationId of [
-    "materialize-theme-json",
-    "describe-theme-support-json",
-    "export-theme-preset-json",
-  ]) {
-    assert.ok(
-      capabilities.operation_ids.includes(operationId),
-      `Web runtime catalog must advertise ${operationId}`,
-    );
+assert.equal(themeCatalog.schema_version, 2);
+assert.deepEqual(themeCatalog.mermaid_themes, api.supportedThemes());
+assert.deepEqual(themeCatalog, exportedWasmModule.themeCatalog());
+if (hasCapability("svg") || hasCapability("ascii")) {
+  assert.equal(themeCatalog.presets.length, 13);
+  assert.equal(new Set(themeCatalog.presets.map(({ id }) => id)).size, 13);
+  for (const preset of themeCatalog.presets) {
+    assert.ok(preset.name && preset.description);
+    assert.ok(["reading", "editor", "art"].includes(preset.category));
+    assert.ok(preset.appearances.includes(preset.default_appearance));
+    assert.equal(preset.swatches.length, 6);
+    for (const color of preset.swatches) assert.match(color, /^#[0-9a-f]{6}([0-9a-f]{2})?$/i);
   }
-
+  assert.equal(themeCatalog.families.length, 34);
+  assert.ok(themeCatalog.families.every(({ capabilities }) => Number.isSafeInteger(capabilities)));
+} else {
+  assert.deepEqual(themeCatalog.presets, []);
+  assert.deepEqual(themeCatalog.families, []);
+}
+for (const operationId of ["export-theme-preset", "resolve-theme"]) {
+  assert.equal(capabilities.operation_ids.includes(operationId), hasCapability("svg"), operationId);
+}
+if (hasCapability("svg")) {
   await preparedSourceSmoke(api, exportedWasmModule, hostTextMeasurementResult);
   const adaptiveSource = "kanban\n  todo[Todo]\n    a[First]\n  doing[Doing]\n    b[Second]\n  done[Done]\n    c[Third]";
   assert.deepEqual(api.svgPlanJson(adaptiveSource).supported_layout_adaptation_ids, ["none", "fit-width"]);
@@ -443,324 +428,104 @@ if (hasCapability("svg")) {
     adaptive.dispose();
   }
 
-  const themeDesign = {
-    tokens: { text: { type: "color", value: "#123456" } },
-    styles: { text: { fill: { kind: "solid", color: { ref: "text" } } } },
-  };
-  const themeResourceOptions = { resources: { profile: "constrained" } };
-  const pairedRecipe = JSON.parse(await readFile(path.join(
-    repoRoot, "crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/paired.recipe.json",
-  ), "utf8"));
-  const inspectionRequest = { schema_version: 1, action: "inspect", recipe: pairedRecipe };
-  const pairedInspection = api.materializeTheme(inspectionRequest, themeResourceOptions);
-  assert.deepEqual(pairedInspection.supported_appearances, ["light", "dark"]);
-  assert.equal(pairedInspection.default_appearance, "light");
-  assert.deepEqual(exportedWasmModule.materializeTheme(
-    JSON.stringify(inspectionRequest), JSON.stringify(themeResourceOptions),
-  ), pairedInspection);
-  const selectedResults = ["light", "dark"].map((appearance) => api.materializeTheme({
-    schema_version: 1, action: "materialize", recipe: pairedRecipe, appearance,
-  }, themeResourceOptions));
-  assert.notDeepEqual(selectedResults[0].spec, selectedResults[1].spec);
-  const pairSource = "flowchart LR\nA[Review] --> B[Publish]";
-  const selectedSvg = ["light", "dark", "light"].map((appearance) => api.renderSvg(pairSource, {
-    theme: { recipe: pairedRecipe, appearance }, svg: { diagram_id: "paired-theme-smoke" },
-  }));
-  assert.notEqual(selectedSvg[0], selectedSvg[1]);
-  assert.equal(selectedSvg[0], selectedSvg[2]);
-  const materializedTheme = api.materializeTheme(
-    themeDesign,
-    themeResourceOptions,
-  );
-  assert.equal(materializedTheme.schema_version, 1);
-  assert.ok(Array.isArray(materializedTheme.spec.styles));
-  assert.deepEqual(
-    exportedWasmModule.materializeTheme(
-      JSON.stringify(themeDesign),
-      JSON.stringify(themeResourceOptions),
-    ),
-    materializedTheme,
-  );
+  const studio = api.exportThemePreset("studio");
+  assert.equal(studio.schema_version, 2);
+  assert.equal(studio.id, "studio");
+  assert.deepEqual(studio, exportedWasmModule.exportThemePreset("studio"));
+  const resolveOptions = { appearance: "dark", auto_fix_contrast: true };
+  const resolved = api.resolveTheme(studio, resolveOptions);
+  assert.equal(resolved.ok, true);
+  assert.equal(resolved.resolved.appearance, "dark");
+  assert.deepEqual(resolved, exportedWasmModule.resolveTheme(JSON.stringify({ document: studio, ...resolveOptions })));
+  assert.deepEqual(resolved, api.resolveTheme(JSON.stringify(studio, null, 2), resolveOptions));
 
-  const errorVectors = JSON.parse(await readFile(path.join(
-    repoRoot, "crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/errors.json",
-  ), "utf8"));
-  for (const vector of errorVectors) {
-    for (const materialize of [
-      () => api.materializeTheme(vector.source, vector.options_json),
-      () => exportedWasmModule.materializeTheme(vector.source, vector.options_json),
-    ]) {
-      assert.throws(materialize, (error) => {
-        assert.equal(error.code_name, vector.code_name);
-        assert.deepEqual(error.details?.resource ?? null, vector.resource ?? null);
-        const envelope = structuredClone(error.details?.theme_authoring);
-        assert.ok(Array.isArray(envelope?.diagnostics));
-        for (const diagnostic of envelope.diagnostics) {
-          assert.equal(typeof diagnostic.message, "string");
-          assert.ok(diagnostic.message.trim().length > 0);
-          delete diagnostic.message;
-        }
-        assert.deepEqual(envelope, vector.theme_authoring, vector.id);
-        return true;
-      });
-    }
-  }
-
-  const supportVectors = JSON.parse(await readFile(path.join(
-    repoRoot, "crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/support.json",
-  ), "utf8"));
-  for (const vector of supportVectors) {
-    assert.deepEqual(api.describeThemeSupport(vector.query), vector.expected, vector.id);
-    assert.deepEqual(exportedWasmModule.describeThemeSupport(JSON.stringify(vector.query)),
-      vector.expected, vector.id);
-  }
-
-  const presetExport = api.exportThemePreset("editor-light");
-  assert.equal(presetExport.schema_version, 1);
-  assert.equal(presetExport.kind, "design");
-  assert.equal(typeof presetExport.design, "object");
-  assert.deepEqual(
-    exportedWasmModule.exportThemePreset("editor-light"),
-    presetExport,
-  );
-  const restoredRecipe = JSON.parse(JSON.stringify(presetExport));
-  const recipeSource = "flowchart LR\nA[Theme recipe] --> B[Reloaded]";
-  const recipeSvgOptions = { diagram_id: "theme-recipe-roundtrip" };
-  const presetSvg = api.renderSvg(recipeSource, {
-    theme: { preset: "editor-light" }, svg: recipeSvgOptions,
-  });
-  assert.equal(api.renderSvg(recipeSource, {
-    theme: restoredRecipe, svg: recipeSvgOptions,
-  }), presetSvg, "saved recipes must reproduce their preset without unpacking");
-  assert.equal(exportedWasmModule.renderSvg(recipeSource, JSON.stringify({
-    theme: restoredRecipe, svg: recipeSvgOptions,
-  })), presetSvg, "raw WASM and public recipe selection must agree");
-  const cyberpunk = api.exportThemePreset("cyberpunk");
-  assert.deepEqual(Object.keys(cyberpunk.design.appearances), ["dark"]);
-  assert.equal(cyberpunk.design.default_appearance, "dark");
-  for (const [id, value] of [
-    ["surface", "#161F25"], ["warning-yellow", "#F3E600"],
-    ["text", "#EAF4F0"], ["subtle-text", "#A5BCC0"],
-    ["actor-background", { ref: "surface" }],
-    ["actor-border", { ref: "warning-yellow" }],
-    ["actor-text", { ref: "warning-yellow" }],
+  for (const [raw, column, path, message] of [
+    ['{\n  "schema_version": 2,\n  "extends": ]\n}', 14, "extends", /expected value/],
+    ['{\n  "schema_version": 2,\n  "schema_version": 2\n}', 18, ".", /duplicate/],
   ]) {
-    assert.deepEqual(cyberpunk.design.tokens[id].value, value, id);
+    const error = api.resolveTheme(raw);
+    assert.equal(error.ok, false);
+    assert.equal(error.line, 3);
+    assert.equal(error.column, column);
+    assert.equal(error.path, path);
+    assert.match(error.message, message);
   }
-  for (const [family, target, ink] of [
-    ["flowchart", "node-label", "warning-yellow"], ["sequence", "actor-label", "actor-text"],
-  ]) {
-    const label = cyberpunk.design.rules.findLast((rule) => rule.family === family && rule.target === target);
-    assert.deepEqual(label.style.fill, { kind: "solid", color: { ref: ink } });
-    assert.equal(label.variant, undefined, "yellow names must also reach exterior labels");
-  }
-  const effects = Object.entries(cyberpunk.design.tokens).filter(([, token]) => token.type === "effect");
-  for (const [id, { value }] of effects) {
-    assert.equal(value.composition, id === "panel-depth" ? "independent" : "cascade", id);
-    assert.equal(value.shadows.length, id === "panel-depth" ? 2 : 1, id);
-  }
-  assert.deepEqual(cyberpunk.design.tokens["panel-depth"].value.shadows, [
-    { offset_x: -3, offset_y: 0, std_deviation: 0, color: { ref: "alert-red" }, opacity: 0.8 },
-    { offset_x: 4, offset_y: 4, std_deviation: 0, color: { ref: "neon-cyan" }, opacity: 0.85 },
-  ]);
-  // Exercise the public recipe, not a separately authored C6 mechanism fixture.
-  const canvas = api.materializeTheme(cyberpunk.design).spec.canvas;
-  assert.deepEqual(canvas.base, { kind: "solid", color: "#080D11" });
-  assert.equal(canvas.layers.length, 3);
-  const [radial, xGrid, yGrid] = canvas.layers;
-  assert.deepEqual(canvas.layers.map((layer) => layer.blend_mode), ["screen", "screen", "screen"]);
-  assert.equal(radial.paint.kind, "radial-gradient");
-  assert.deepEqual(radial.paint.center_x, { percent: 50 });
-  assert.deepEqual(radial.paint.center_y, { percent: 50 });
-  assert.ok(Math.abs(radial.paint.radius.percent - 100 / Math.SQRT2) < 0.00001);
-  assert.deepEqual(radial.paint.stops.map((stop) => stop.color),
-    ["rgba(243, 230, 0, 0.04)", "rgba(243, 230, 0, 0)"]);
-  assert.equal(radial.paint.stops[0].offset, 0);
-  assert.ok(Math.abs(radial.paint.stops[1].offset - 0.7) < 0.000001);
-  for (const [layer, angle] of [[xGrid, 90], [yGrid, 180]]) {
-    assert.equal(layer.paint.kind, "linear-gradient");
-    assert.equal(layer.paint.angle_degrees, angle);
-    assert.deepEqual(layer.paint.repetition, { kind: "tiled", width_px: 40, height_px: 40 });
-    assert.deepEqual(layer.paint.stops.map((stop) => stop.color),
-      ["rgba(41, 243, 236, 0.035)", "rgba(41, 243, 236, 0.035)", "rgba(41, 243, 236, 0)", "rgba(41, 243, 236, 0)"]);
-    for (const [index, offset] of [0, 1 / 40, 1 / 40, 1].entries()) {
-      assert.ok(Math.abs(layer.paint.stops[index].offset - offset) < 0.000001);
-    }
-  }
-  const glowSource = "flowchart LR\nA[Alpha] -->|Advance| B[Beta]";
-  const glowOptions = {
-    site_config: { htmlLabels: false },
-    svg: { diagram_id: "public-cyberpunk", pipeline: "resvg-safe" },
-  };
-  const glowSvg = api.renderSvg(glowSource, { ...glowOptions, theme: { preset: "cyberpunk" } });
-  assert.equal(api.renderSvg(glowSource, {
-    ...glowOptions, theme: JSON.parse(JSON.stringify(cyberpunk)),
-  }), glowSvg, "export/import must retain dark panels, yellow lettering and red/cyan registration");
-  const originalCyberpunk = structuredClone(cyberpunk);
-  const customized = customizeNodeColors(cyberpunk, {
-    background: "#142535", nodeBorder: "#fb7185", classFill: "#22354d",
-  });
-  assert.deepEqual(cyberpunk, originalCyberpunk, "editing a copy must not mutate the exported preset");
-  assert.deepEqual(customized.design.rules.slice(0, -2), cyberpunk.design.rules,
-    "scoped edits must preserve unrelated authored facets and source order");
-  const reloaded = JSON.parse(JSON.stringify(customized));
-  const editedSource = "classDiagram\nclass Account {\n +String name\n}";
-  const editedOptions = { theme: reloaded, svg: { diagram_id: "edited-recipe", pipeline: "resvg-safe" } };
-  const editedSvg = api.renderSvg(editedSource, editedOptions);
-  assert.equal(editedSvg, exportedWasmModule.renderSvg(editedSource, JSON.stringify(editedOptions)));
-  for (const paint of ["#142535", "#fb7185", "#22354d"]) assert.ok(editedSvg.includes(paint));
-  assert.throws(() => api.renderSvg(editedSource, {
-    ...editedOptions, resources: { limits: { max_source_bytes: 1 } },
-  }), (error) => {
-    assert.equal(error.code_name, "MERMAN_RESOURCE_LIMIT_EXCEEDED");
-    assert.equal(error.details.resource.limit_id, "max_source_bytes");
-    return true;
-  });
-  const outcomeOptions = { theme: { spec: { styles: [{
-    kind: "rule", family: "class", target: "node", style: { stroke: { width: 2 } },
-  }] } }, svg: { pipeline: "resvg-safe" } };
-  const outcomeSource = "classDiagram\nclass 用户";
-  const outcome = api.renderSvgResult(outcomeSource, outcomeOptions);
-  assert.equal(outcome.svg, api.renderSvg(outcomeSource, outcomeOptions));
+  const lowContrast = { schema_version: 2, extends: "studio", roles: { "text.primary": "#FFFFFF" } };
+  const unchecked = api.resolveTheme(lowContrast);
+  assert.equal(unchecked.ok, true);
+  assert.ok(unchecked.notices.some(({ kind, foreground }) => kind === "low_contrast" && foreground === "text.primary"));
+  const corrected = api.resolveTheme(lowContrast, { auto_fix_contrast: true });
+  assert.equal(corrected.ok, true);
+  assert.ok(corrected.notices.some(({ kind, foreground }) => kind === "contrast_adjusted" && foreground === "text.primary"));
+  assert.notEqual(corrected.resolved.roles["text.primary"], unchecked.resolved.roles["text.primary"]);
+
+  const restored = JSON.parse(JSON.stringify(studio));
+  const themeSource = "flowchart LR\nA[用户] --> B[Done]";
+  const themeSvgOptions = { diagram_id: "theme-roundtrip" };
+  const outcomeOptions = { theme: { preset: "studio", appearance: "dark" }, svg: themeSvgOptions };
+  const outcome = api.renderSvgResult(themeSource, outcomeOptions);
   assert.equal(outcome.metadata.version, 1);
   assert.equal(outcome.metadata.operation_id, "svg");
   assert.equal(outcome.metadata.media_type, "image/svg+xml");
   assert.equal(outcome.metadata.byte_length, Buffer.byteLength(outcome.svg, "utf8"));
   assert.ok(outcome.metadata.byte_length > outcome.svg.length, "UTF-8 bytes differ for Chinese labels");
-  assert.equal(outcome.metadata.theme_execution_evidence.version, 2);
-  assert.equal(outcome.metadata.theme_execution_evidence.materialized_theme, "redux-color");
-  assert.equal(outcome.metadata.theme_execution_evidence.family_id, "class");
-  assert.ok(["residual", "incomplete"].includes(outcome.metadata.theme_execution_evidence.theme_status));
-  assert.notEqual(outcome.metadata.theme_execution_evidence.target_status, "portable");
-  assert.deepEqual(exportedWasmModule.renderSvgResult(outcomeSource, JSON.stringify(outcomeOptions)), outcome);
+  assert.deepEqual(outcome.metadata.theme_outcome, {
+    mode: "merman_native", preset_id: "studio", appearance: "dark", notices: [],
+  });
+  assert.deepEqual(exportedWasmModule.renderSvgResult(themeSource, JSON.stringify(outcomeOptions)), outcome);
+  assert.equal(api.renderSvg(themeSource, outcomeOptions), outcome.svg);
+
+  const preparedTheme = api.prepareSource(themeSource, outcomeOptions);
+  try {
+    const redraw = preparedTheme.renderSvgResult({ background: "#556677" });
+    assert.match(redraw.svg, /#556677/i);
+    assert.deepEqual(redraw.metadata.theme_outcome, outcome.metadata.theme_outcome);
+  } finally {
+    preparedTheme.dispose();
+  }
+
+  const restoredOptions = { theme: { document: restored, appearance: "dark" }, svg: themeSvgOptions };
+  assert.equal(api.renderSvg(themeSource, restoredOptions), outcome.svg);
+  assert.equal(api.renderSvg(themeSource, { theme: restored, svg: themeSvgOptions }),
+    api.renderSvg(themeSource, { theme: "studio", svg: themeSvgOptions }));
+  const customized = customizeNodeColors(restored, "dark", {
+    background: "#142535", nodeBorder: "#FB7185", nodeFill: "#22354D",
+  });
+  const customizedSvg = api.renderSvg(themeSource, {
+    ...restoredOptions,
+    theme: { document: customized, appearance: "dark" },
+    background: "#334455",
+  });
+  for (const color of ["#334455", "#FB7185", "#22354D"]) {
+    assert.ok(customizedSvg.toUpperCase().includes(color), color);
+  }
+  assert.ok(!customizedSvg.toUpperCase().includes("#142535"), "the explicit background replaces the authored canvas");
+
+  const authored = "%%{init: {theme: 'dark'}}%%\n" + themeSource;
+  const sourceOptions = { ...outcomeOptions, theme: { ...outcomeOptions.theme, precedence: "source" } };
+  const parity = api.renderSvgResult(authored, sourceOptions);
+  assert.equal(parity.metadata.theme_outcome.mode, "mermaid_parity");
+  assert.equal(parity.svg, api.renderSvg(authored, { theme: "none", svg: themeSvgOptions }));
+  assert.ok(parity.metadata.theme_outcome.notices.some((notice) => typeof notice === "string"));
+
   let resultMeasureCalls = 0;
   const resultMeasurer = (request) => {
     resultMeasureCalls += 1;
     return hostTextMeasurementResult(request);
   };
-  const measuredOutcome = api.renderSvgResultWithTextMeasurer(outcomeSource, resultMeasurer, outcomeOptions);
+  const measuredOutcome = api.renderSvgResultWithTextMeasurer(themeSource, resultMeasurer, outcomeOptions);
   assert.ok(resultMeasureCalls > 0, "the result operation must invoke its host measurer");
   const firstMeasureCalls = resultMeasureCalls;
-  assert.equal(measuredOutcome.svg, api.renderSvgWithTextMeasurer(outcomeSource, resultMeasurer, outcomeOptions));
+  assert.equal(measuredOutcome.svg, api.renderSvgWithTextMeasurer(themeSource, resultMeasurer, outcomeOptions));
   assert.equal(resultMeasureCalls, firstMeasureCalls * 2, "result and string paths must perform the same measurement work");
-  assert.equal(measuredOutcome.metadata.byte_length, Buffer.byteLength(measuredOutcome.svg, "utf8"));
-  assert.ok(["residual", "incomplete"].includes(measuredOutcome.metadata.theme_execution_evidence.theme_status));
-  for (const render of [api.renderSvg, api.renderSvgResult]) {
-    assert.throws(() => render(outcomeSource, {
-      ...outcomeOptions, environment: { theme_portability: "require-portable" },
-    }), (error) => {
-      assert.equal(error.code_name, "MERMAN_RENDER_ERROR");
-      return true;
-    });
-    assert.throws(() => render(outcomeSource, {
-      environment: { theme_portability: "future-policy" },
-    }), (error) => {
-      assert.equal(error.code_name, "MERMAN_INVALID_ARGUMENT");
-      return true;
-    });
-  }
-  const portableSource = "sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello";
-  const portableOptions = {
-    theme: { spec: { canvas: { base: "#f7f3e8" } } },
-    environment: { theme_portability: "require-portable" },
-    svg: { pipeline: "resvg-safe" },
-  };
-  assert.throws(() => api.renderSvgResult(portableSource, portableOptions), (error) => {
-    assert.equal(error.code_name, "MERMAN_RENDER_ERROR");
-    return true;
-  }, "system font references cannot establish portable SVG output");
-  const fontSpec = { assets: { fonts: [{
-    id: "caller-font", format: "woff2", data_base64: "d09GMg==",
-  }] } };
-  for (const theme of [
-    { spec: fontSpec },
-    { schema_version: 1, kind: "complete_spec", complete_spec: fontSpec },
-  ]) {
-    for (const render of [api.renderSvg, api.renderSvgResult]) {
-      assert.throws(() => render(portableSource, { theme }), (error) => {
-        assert.equal(error.kind, "generic");
-        assert.match(error.message, /invalid theme: embedded theme font resources are not supported/);
-        assert.equal(error.code_name, "MERMAN_INVALID_ARGUMENT");
-        assert.ok(error.capability_id == null);
-        return true;
-      });
-    }
-  }
-  const hostFontSvg = api.renderSvg(portableSource, { theme: { spec: {
-    typography: { default: { font_stack: ["Merman Smoke Absent Font", "sans-serif"] } },
-  } } });
-  assert.match(hostFontSvg, /Merman Smoke Absent Font/);
-  assert.doesNotMatch(hostFontSvg, /@font-face|data:font/);
-  const unsupportedPortableRecipe = structuredClone(portableOptions);
-  unsupportedPortableRecipe.theme.spec.styles = [{
-    kind: "rule", family: "sequence", target: "lifeline", style: { radius: 6, stroke: { paint: "#2563eb" } },
-  }];
-  const partial = api.renderSvgResult(portableSource, {
-    ...unsupportedPortableRecipe, environment: { theme_portability: "best-effort" },
-  });
-  assert.ok(partial.metadata.theme_execution_evidence.target_reason_ids.includes("theme_evidence_incomplete"));
-  const radiusDiagnostic = partial.metadata.theme_execution_evidence.diagnostics.find(
-    (diagnostic) => diagnostic.target === "lifeline" && diagnostic.code === "unsupported-geometry",
-  );
-  assert.deepEqual(radiusDiagnostic, {
-    code: "unsupported-geometry", subject: "rule", target: "lifeline",
-    source_document: "complete_spec", source_paths: ["/styles/0"], generated: false,
-  });
-  assert.ok(partial.svg.includes("#2563eb"), "a residual rule may still apply its supported paint");
-  const geometrySource = "sequenceDiagram\nparticipant Alice\nparticipant Bob\nloop Retry\nAlice->>Bob: Hello\nend";
-  for (const target of ["lifeline", "message", "loop"]) {
-    const geometryOnlyOptions = structuredClone(portableOptions);
-    geometryOnlyOptions.theme.spec.styles = [6, 8].map((radius) => ({
-      kind: "rule", family: "sequence", target, style: { radius },
-    }));
-    const geometryOnly = api.renderSvgResult(geometrySource, {
-      ...geometryOnlyOptions, environment: { theme_portability: "best-effort" },
-    });
-    assert.ok(geometryOnly.metadata.theme_execution_evidence.target_reason_ids.includes(
-      "theme_evidence_incomplete"), `${target}: unsupported geometry must be reported`);
-    assert.deepEqual(geometryOnly.metadata.theme_execution_evidence.diagnostics.filter(
-      (diagnostic) => diagnostic.subject === "rule"), [{
-        code: "unsupported-geometry", subject: "rule", target,
-        source_document: "complete_spec", source_paths: ["/styles/1"], generated: false,
-      }], `${target}: only the winning unsupported rule remains in diagnostics`);
-    assert.throws(() => api.renderSvgResult(geometrySource, geometryOnlyOptions),
-      (error) => error.code_name === "MERMAN_RENDER_ERROR");
-  }
-  const diagnosticDesign = {
-    schema_version: 1, kind: "design", design: {
-      palettes: { node: ["#123456"] },
-      rules: [{ family: "sequence", target: "lifeline", style: { radius: 6 } }],
-    },
-  };
-  const designOutcome = api.renderSvgResult(portableSource, {
-    theme: diagnosticDesign, svg: { pipeline: "resvg-safe" },
-  });
-  assert.ok(designOutcome.metadata.theme_execution_evidence.diagnostics.some((diagnostic) =>
-    diagnostic.target === "lifeline" && diagnostic.source_document === "design"
-      && JSON.stringify(diagnostic.source_paths) === '["/design/rules/0/style"]' && !diagnostic.generated),
-  "authoring materialization must preserve the authored rule path");
-  for (const invalidRecipe of [
-    { ...restoredRecipe, schema_version: 2 },
-    { ...restoredRecipe, preset: "editor-light" },
-    { ...restoredRecipe, spec: {} },
-  ]) {
-    assert.throws(() => api.renderSvg(recipeSource, { theme: invalidRecipe }), (error) => {
-      assert.equal(error.code_name, "MERMAN_OPTIONS_JSON_ERROR");
-      return true;
-    });
-  }
+  assert.deepEqual(measuredOutcome.metadata.theme_outcome, outcome.metadata.theme_outcome);
 } else {
   assert.equal(typeof api.prepareSource, "undefined");
   assert.equal(typeof exportedWasmModule.PreparedSource, "undefined");
-  assert.equal(themeCatalog.structured_spec_available, false);
-  assert.deepEqual(themeCatalog.supported_output_ids, []);
-  assert.deepEqual(themeCatalog.presets, []);
-  assert.deepEqual(themeCatalog.known_capability_ids, []);
-  assert.deepEqual(themeCatalog.known_semantic_target_ids, []);
-  assert.deepEqual(themeCatalog.resource_limits, []);
-  assert.equal(typeof api.materializeTheme, "undefined");
-  assert.equal(typeof api.describeThemeSupport, "undefined");
   assert.equal(typeof api.exportThemePreset, "undefined");
+  assert.equal(typeof api.resolveTheme, "undefined");
+  assert.equal(typeof exportedWasmModule.exportThemePreset, "undefined");
+  assert.equal(typeof exportedWasmModule.resolveTheme, "undefined");
 }
 const resourceLimitIds = runtimeCatalog.resources.limits
   .map((limit) => limit.id)
@@ -1387,6 +1152,12 @@ if (hasCapability("ascii")) {
   const ascii = api.renderAscii(source, deterministicTime);
   assert.match(ascii, /Hello/);
   assert.match(ascii, /World/);
+  assert.equal(api.renderAscii(source, { ...deterministicTime, theme: "studio" }), ascii);
+  const themedAscii = (appearance) => api.renderAscii(source, {
+    theme: { preset: "studio", appearance }, ascii: { color_mode: "truecolor" },
+  });
+  assert.match(themedAscii("dark"), /\x1b\[(38|48);2;/);
+  assert.notEqual(themedAscii("dark"), themedAscii("light"));
   const asciiResult = api.renderAsciiResult(source, deterministicTime);
   assert.equal(asciiResult.text, ascii);
   assert.equal(asciiResult.metadata.version, 1);
@@ -2029,21 +1800,10 @@ async function runSameProcessPackageSmoke() {
     false
   );
   assert.deepEqual(analysis.themeCatalog(), {
-    schema_version: 1,
-    structured_spec_available: false,
-    recipe_schema_version: null,
-    authoring_request_schema_version: null,
-    authoring_result_schema_version: null,
-    supported_output_ids: [],
+    schema_version: 2,
     presets: [],
-    mermaid_theme_designs: [],
-    known_capability_ids: [],
-    known_text_capability_ids: [],
-    known_font_container_ids: [],
-    known_font_source_ids: [],
-    known_semantic_target_ids: [],
-    known_variant_ids: [],
-    resource_limits: [],
+    mermaid_themes: analysis.supportedThemes(),
+    families: [],
   });
   assert.equal(typeof analysis.renderSvg, "undefined");
 
@@ -2060,10 +1820,8 @@ async function runSameProcessPackageSmoke() {
     full.runtimeCatalog().resources.general_binding_default_profile,
     "interactive"
   );
-  assert.deepEqual(full.themeCatalog().presets, JSON.parse(await readFile(path.join(
-    repoRoot, "crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/preset-catalog.json",
-  ), "utf8")));
-  assert.ok(full.themeCatalog().known_semantic_target_ids.includes("node"));
+  assert.ok(full.themeCatalog().presets.some(({ id }) => id === "studio"));
+  assert.ok(full.themeCatalog().families.some(({ id, capabilities }) => id === "flowchart" && capabilities > 0));
   assert.match(full.renderSvg(source, options), /<svg/);
   const prepared = full.prepareSource(source, options);
   assert.equal(typeof analysis.prepareSource, "undefined");

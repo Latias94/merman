@@ -14,24 +14,22 @@ use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
 use merman_layout_elk as elk;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 mod config;
+mod native_theme;
 #[cfg(feature = "layout-shoal")]
 mod shoal;
 mod swimlane;
-mod text_facts;
 mod theme;
+pub(crate) use native_theme::{ErNativeStyle, ErThemeAdapter};
 
 use crate::layout_backend::GraphLayoutBackend;
 use config::ErLayoutSettings;
 pub(crate) use config::{ErConfigView, ErEntityMeasurementSettings};
 pub(crate) use swimlane::ErSwimlanePaintLayout;
 pub(crate) use swimlane::relationship_html_source as swimlane_relationship_html_source;
-pub(crate) use theme::{
-    ErAttributeTextRole, ErBaseFontSizePlan, ErCssBinding, ErEntitySourceStyle, ErEntityThemePlan,
-    ErEntityThemeReceipt, subgraph_svg_text_facts,
-};
+pub(crate) use theme::{ErCssBinding, ErEntitySourceStyle, ErEntityThemePlan};
 
 pub(crate) type ErEntity = merman_model::families::er::ErEntity;
 pub(crate) type ErRelationship = merman_model::families::er::ErRelationship;
@@ -54,8 +52,6 @@ pub(crate) struct ErBoxLabel {
     generic_workaround: bool,
     svg_markup: Option<String>,
     html_layout: Option<ErHtmlLabelLayout>,
-    terminal_font_size: Option<f64>,
-    visible_style_facts: OnceLock<text_facts::ErTextFacts>,
 }
 
 impl ErBoxLabel {
@@ -102,8 +98,6 @@ impl ErBoxLabel {
             generic_workaround,
             svg_markup: None,
             html_layout: None,
-            terminal_font_size: None,
-            visible_style_facts: OnceLock::new(),
         }
     }
 
@@ -161,14 +155,12 @@ impl ErBoxLabel {
         width: i64,
         wrap_mode: WrapMode,
         root_font_size: f64,
-        probe_font_size: Option<f64>,
         work_meter: &OperationWorkMeter,
     ) -> Result<TextMetrics> {
         use merman_model::OperationPhase;
 
         work_meter.checkpoint(OperationPhase::Layout)?;
         let text_style = source_style.text_style(probe_style, root_font_size);
-        self.terminal_font_size = source_style.terminal_font_size(probe_font_size);
         if wrap_mode == WrapMode::HtmlLike {
             if self.rendered_text().is_empty() {
                 self.html_layout = Some(ErHtmlLabelLayout {
@@ -184,9 +176,6 @@ impl ErBoxLabel {
             // createText measures its original group/div/span before addText may remove
             // span descendants. Its selected whitespace state survives that removal.
             let span_style = source_style.text_style(&text_style, root_font_size);
-            if !self.uses_generic_workaround() {
-                self.terminal_font_size = source_style.terminal_font_size(self.terminal_font_size);
-            }
             let max_width = Some(width.max(0) as f64);
             let nowrap = crate::text::measure_xhtml_label_fragment_with_terminal_fonts(
                 measurer,
@@ -328,24 +317,6 @@ impl ErBoxLabel {
             width,
             height,
             line_count: lines.len(),
-        })
-    }
-
-    pub(crate) fn visible_style_facts(&self) -> &crate::text::VisibleTextStyleFacts {
-        &self.text_facts().visible
-    }
-
-    fn text_facts(&self) -> &text_facts::ErTextFacts {
-        self.visible_style_facts.get_or_init(|| {
-            if let Some(markup) = &self.svg_markup {
-                text_facts::ErTextFacts::svg(markup, self.terminal_font_size)
-            } else {
-                assert!(
-                    self.html_layout.is_some(),
-                    "ER text facts require a prepared terminal"
-                );
-                text_facts::ErTextFacts::html(&self.xhtml_fragment, self.terminal_font_size)
-            }
         })
     }
 }
@@ -571,8 +542,6 @@ enum ErRelationshipLabelTerminal {
     Markdown {
         xhtml_fragment: String,
         svg: Option<ErPreparedSvgRelationshipLabel>,
-        font_size_px: f64,
-        visible_style_facts: OnceLock<text_facts::ErTextFacts>,
     },
     Swimlane(swimlane::ErSwimlaneRelationshipLabel),
 }
@@ -618,8 +587,6 @@ impl ErPreparedRelationshipLabel {
             terminal: ErRelationshipLabelTerminal::Markdown {
                 xhtml_fragment,
                 svg,
-                font_size_px: style.font_size,
-                visible_style_facts: OnceLock::new(),
             },
             _retained: None,
         }
@@ -670,36 +637,6 @@ impl ErPreparedRelationshipLabel {
         (self.metrics.width.max(0.0), self.metrics.height.max(0.0))
     }
 
-    pub(crate) fn visible_style_facts(&self) -> &crate::text::VisibleTextStyleFacts {
-        &self.text_facts().visible
-    }
-
-    fn text_facts(&self) -> &text_facts::ErTextFacts {
-        match &self.terminal {
-            ErRelationshipLabelTerminal::Markdown {
-                xhtml_fragment,
-                svg,
-                font_size_px,
-                visible_style_facts,
-                ..
-            } => visible_style_facts.get_or_init(|| {
-                if let Some(svg) = svg {
-                    let mut text = String::new();
-                    for (word, _) in svg.word_lines.iter().flatten() {
-                        text.push_str(
-                            &crate::text::SvgTextEntityMode::CreateTextSource.visible_word(word),
-                        );
-                        text.push(' ');
-                    }
-                    text_facts::ErTextFacts::plain(&text, Some(*font_size_px))
-                } else {
-                    text_facts::ErTextFacts::html(xhtml_fragment, Some(*font_size_px))
-                }
-            }),
-            ErRelationshipLabelTerminal::Swimlane(label) => label.text_facts(),
-        }
-    }
-
     fn new_swimlane(
         text: &str,
         measurer: &dyn TextMeasurer,
@@ -719,9 +656,6 @@ impl ErPreparedRelationshipLabel {
 pub(crate) struct ErPreparedLabels {
     entity_measures: BTreeMap<String, ErEntityMeasure>,
     relationship_labels: Vec<ErPreparedRelationshipLabel>,
-    entity_font_size_px: f64,
-    attribute_font_size_px: f64,
-    relationship_font_size_px: f64,
     // The theme plan prepares cluster labels after layout and uses this same retained ledger.
     retained_work_meter: Option<Arc<OperationWorkMeter>>,
     _retained: Option<PreparedTextRetainedReservation>,
@@ -803,6 +737,7 @@ impl ErPreparedLabels {
                 &settings.label_style,
                 &settings.attr_style,
                 &settings.calculation_style,
+                settings.code_family.as_deref(),
                 settings.entity_measurement,
                 source_style,
                 work_meter,
@@ -839,9 +774,6 @@ impl ErPreparedLabels {
         Ok(Self {
             entity_measures,
             relationship_labels,
-            entity_font_size_px: settings.label_style.font_size,
-            attribute_font_size_px: settings.attr_style.font_size,
-            relationship_font_size_px: settings.relationship_label_style.font_size,
             retained_work_meter: Some(Arc::clone(work_meter)),
             _retained: Some(retained),
         })
@@ -853,18 +785,6 @@ impl ErPreparedLabels {
 
     pub(crate) fn relationship(&self, index: usize) -> Option<&ErPreparedRelationshipLabel> {
         self.relationship_labels.get(index)
-    }
-
-    pub(crate) const fn entity_font_size_px(&self) -> f64 {
-        self.entity_font_size_px
-    }
-
-    pub(crate) const fn attribute_font_size_px(&self) -> f64 {
-        self.attribute_font_size_px
-    }
-
-    pub(crate) const fn relationship_font_size_px(&self) -> f64 {
-        self.relationship_font_size_px
     }
 }
 
@@ -1041,6 +961,7 @@ pub(crate) fn measure_entity_box(
         label_style,
         attr_style,
         label_style,
+        None,
         settings,
         theme::compile_er_entity_source_style(entity, &indexmap::IndexMap::new()),
         &work_meter,
@@ -1058,6 +979,7 @@ fn measure_entity_box_with_source(
     label_style: &TextStyle,
     attr_style: &TextStyle,
     calculation_style: &TextStyle,
+    code_family: Option<&str>,
     settings: ErEntityMeasurementSettings,
     source_style: theme::ErEntitySourceStyle,
     work_meter: &OperationWorkMeter,
@@ -1097,8 +1019,16 @@ fn measure_entity_box_with_source(
     };
     let label_probe_style = source_style.text_style(label_style, root_font_size);
     let attr_probe_style = source_style.text_style(attr_style, root_font_size);
-    let label_probe_size = source_style.terminal_font_size(Some(label_style.font_size));
-    let attr_probe_size = source_style.terminal_font_size(Some(attr_style.font_size));
+    let native_type_style = code_family.map(|family| {
+        source_style.text_style(
+            &TextStyle {
+                font_family: Some(family.to_owned()),
+                ..attr_style.clone()
+            },
+            root_font_size,
+        )
+    });
+    let type_style = native_type_style.as_ref().unwrap_or(&attr_probe_style);
 
     // No attributes: use `drawRect`-like padding rules from Mermaid erBox.ts.
     if entity.attributes.is_empty() {
@@ -1126,7 +1056,6 @@ fn measure_entity_box_with_source(
             label_max_width_px,
             settings.label_wrap_mode,
             root_font_size,
-            label_probe_size,
             work_meter,
         )?;
         let label_html_width = label_metrics.width.max(0.0);
@@ -1168,7 +1097,6 @@ fn measure_entity_box_with_source(
         label_text_width_px.saturating_add(100),
         settings.label_wrap_mode,
         root_font_size,
-        label_probe_size,
         work_meter,
     )?;
     let label_html_width = label_metrics.width.max(0.0);
@@ -1200,30 +1128,33 @@ fn measure_entity_box_with_source(
         let mut name_label = ErBoxLabel::from_source(&a.name);
         let mut key_label = ErBoxLabel::from_source(&a.keys.join(","));
         let mut comment_label = ErBoxLabel::from_source(&a.comment);
-        let cell_max_widths_px =
-            [&type_label, &name_label, &key_label, &comment_label].map(|label| {
-                calculate_text_width_like_mermaid_px(
-                    measurer,
-                    calculation_style,
-                    label.markdown_input(),
-                )
-                .saturating_add(100)
-            });
-        let [type_m, name_m, keys_m, comment_m] = [
-            (&mut type_label, cell_max_widths_px[0]),
-            (&mut name_label, cell_max_widths_px[1]),
-            (&mut key_label, cell_max_widths_px[2]),
-            (&mut comment_label, cell_max_widths_px[3]),
+        let cell_max_widths_px = [
+            (
+                &type_label,
+                native_type_style.as_ref().unwrap_or(calculation_style),
+            ),
+            (&name_label, calculation_style),
+            (&key_label, calculation_style),
+            (&comment_label, calculation_style),
         ]
-        .map(|(label, width)| {
+        .map(|(label, style)| {
+            calculate_text_width_like_mermaid_px(measurer, style, label.markdown_input())
+                .saturating_add(100)
+        });
+        let [type_m, name_m, keys_m, comment_m] = [
+            (&mut type_label, cell_max_widths_px[0], type_style),
+            (&mut name_label, cell_max_widths_px[1], &attr_probe_style),
+            (&mut key_label, cell_max_widths_px[2], &attr_probe_style),
+            (&mut comment_label, cell_max_widths_px[3], &attr_probe_style),
+        ]
+        .map(|(label, width, style)| {
             label.prepare_metrics(
                 measurer,
-                &attr_probe_style,
+                style,
                 &source_style,
                 width,
                 settings.label_wrap_mode,
                 root_font_size,
-                attr_probe_size,
                 work_meter,
             )
         });
@@ -1759,14 +1690,21 @@ pub(crate) fn layout_er_diagram_typed_with_resolved_typography(
     #[cfg(feature = "layout-elk")] operation_seed: elk::ElkOperationSeed,
     font_family_css: Option<&str>,
     font_size_px: Option<f64>,
+    native: Option<&ErNativeStyle>,
     work_meter: Arc<crate::resources::OperationWorkMeter>,
 ) -> Result<ErPreparedLayout> {
     let mut work_control = OperationLayoutWorkControl::new(Arc::clone(&work_meter));
-    let settings = ErConfigView::new(effective_config).layout_settings_with_resolved_typography(
-        &model.direction,
-        font_family_css,
-        font_size_px,
-    );
+    let mut settings = ErConfigView::new(effective_config)
+        .layout_settings_with_resolved_typography(
+            &model.direction,
+            native
+                .and_then(|style| style.body_family.as_deref())
+                .or(font_family_css),
+            native.and_then(|style| style.font_size).or(font_size_px),
+        );
+    if let Some(native) = native {
+        native.apply_layout(&mut settings);
+    }
     let adapter_work = er_layout_adapter_work(model, &work_control)?;
     work_control.charge_adapter(adapter_work)?;
     validate_er_relationship_endpoints(model)?;
@@ -1921,6 +1859,7 @@ fn layout_er_diagram_dagre_typed(
         graph: graph_label,
         label_style,
         attr_style: _,
+        code_family: _,
         calculation_style: _,
         relationship_label_style: _,
         relationship_html_labels,
@@ -2723,6 +2662,7 @@ fn er_elk_graph(
         graph,
         label_style,
         attr_style: _,
+        code_family: _,
         calculation_style: _,
         relationship_label_style: _,
         relationship_html_labels,
@@ -3109,7 +3049,6 @@ mod tests {
                 i64::MAX,
                 WrapMode::HtmlLike,
                 style.font_size,
-                Some(style.font_size),
                 &meter,
             )
             .expect("prepare table label metrics")
@@ -3513,56 +3452,6 @@ mod tests {
     }
 
     #[test]
-    fn er_prepared_labels_defer_visible_style_parsing_until_theme_evidence_needs_it() {
-        let mut model = merman_model::families::er::ErDiagramModel {
-            direction: "TB".to_string(),
-            ..Default::default()
-        };
-        model.entities.insert(
-            "ENTITY".to_string(),
-            merman_model::families::er::ErEntity {
-                id: "entity-ENTITY-0".to_string(),
-                label: "**Entity**".to_string(),
-                ..Default::default()
-            },
-        );
-        model
-            .relationships
-            .push(merman_model::families::er::ErRelationship {
-                entity_a: "entity-ENTITY-0".to_string(),
-                role_a: "**owns**".to_string(),
-                entity_b: "entity-ENTITY-0".to_string(),
-                ..Default::default()
-            });
-        let prepared = super::prepare_er_labels(
-            &model,
-            &serde_json::Value::Null,
-            &DeterministicTextMeasurer::default(),
-        );
-
-        let entity = prepared
-            .entity("entity-ENTITY-0")
-            .expect("prepared entity label");
-        let relationship = prepared
-            .relationship(0)
-            .expect("prepared relationship label");
-        let super::ErRelationshipLabelTerminal::Markdown {
-            visible_style_facts: relationship_facts,
-            ..
-        } = &relationship.terminal
-        else {
-            panic!("ordinary ER labels keep their Markdown terminal");
-        };
-        assert!(entity.label.visible_style_facts.get().is_none());
-        assert!(relationship_facts.get().is_none());
-
-        assert!(entity.label.visible_style_facts().has_visible_runs());
-        assert!(relationship.visible_style_facts().has_visible_runs());
-        assert!(entity.label.visible_style_facts.get().is_some());
-        assert!(relationship_facts.get().is_some());
-    }
-
-    #[test]
     fn er_calculate_text_width_uses_shared_mermaid_family_selection() {
         let width = super::calculate_text_width_like_mermaid_px(
             &ErProbeMeasurer,
@@ -3782,6 +3671,7 @@ mod tests {
                 measurer,
                 #[cfg(feature = "layout-elk")]
                 merman_layout_elk::ElkOperationSeed::from_operation_seed(std::num::NonZeroU64::MIN),
+                None,
                 None,
                 None,
                 meter,

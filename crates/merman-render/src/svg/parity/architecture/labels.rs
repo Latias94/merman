@@ -3,9 +3,7 @@ use std::collections::VecDeque;
 use crate::architecture_metrics::ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX;
 use crate::model::Bounds;
 
-use super::super::{
-    SvgOutput, decode_mermaid_entities_for_render_text, escape_attr_into, escape_xml_into, fmt,
-};
+use super::super::{SvgOutput, decode_mermaid_entities_for_render_text, escape_xml_into, fmt};
 use super::geometry::extend_bounds;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -503,30 +501,12 @@ pub(super) fn svg_lines_have_visible_text(lines: &[SvgLine], font_size_px: f64) 
     font_size_px > 0.0 && svg_lines_have_visible_words(lines)
 }
 
-pub(super) fn svg_source_has_visible_text(source: Option<&str>, font_size_px: f64) -> bool {
-    font_size_px > 0.0
-        && source.is_some_and(|source| {
-            !source.trim().is_empty()
-                && svg_lines_have_visible_text(&parse_svg_word_lines(source.trim()), font_size_px)
-        })
-}
-
-pub(super) fn write_svg_text_lines(
-    out: &mut impl SvgOutput,
-    lines: &[SvgLine],
-    inline_style: Option<&str>,
-) -> bool {
-    let has_visible_words = svg_lines_have_visible_words(lines);
-    out.push_str(r#"<text y="-10.1""#);
-    out.push_str(r#" style=""#);
-    if let Some(style) = inline_style {
-        escape_attr_into(out, style);
-    }
-    out.push_str(r#"">"#);
+pub(super) fn write_svg_text_lines(out: &mut impl SvgOutput, lines: &[SvgLine]) {
+    out.push_str(r#"<text y="-10.1" style="">"#);
     if lines.is_empty() || (lines.len() == 1 && lines[0].is_empty()) {
         out.push_str(r#"<tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"/>"#);
         out.push_str("</text>");
-        return has_visible_words;
+        return;
     }
     for (idx, line) in lines.iter().enumerate() {
         if idx == 0 {
@@ -565,7 +545,6 @@ pub(super) fn write_svg_text_lines(
         out.push_str("</tspan>");
     }
     out.push_str("</text>");
-    has_visible_words
 }
 
 pub(super) fn write_architecture_service_title(
@@ -575,8 +554,7 @@ pub(super) fn write_architecture_service_title(
     title_width_px: f64,
     measurer: &dyn crate::text::TextMeasurer,
     style: &crate::text::TextStyle,
-    inline_style: Option<&str>,
-) -> bool {
+) {
     let lines = wrap_svg_words_to_lines(title, title_width_px, measurer, style);
     let _ = write!(
         out,
@@ -584,9 +562,8 @@ pub(super) fn write_architecture_service_title(
         x = fmt(icon_size_px / 2.0),
         y = fmt(icon_size_px)
     );
-    let has_visible_words = write_svg_text_lines(out, &lines, inline_style);
+    write_svg_text_lines(out, &lines);
     out.push_str("</g></g>");
-    has_visible_words
 }
 
 #[cfg(test)]
@@ -683,7 +660,7 @@ mod tests {
         let style = text_style();
         let mut out = String::new();
 
-        write_architecture_service_title(&mut out, "s1", 80.0, 120.0, &measurer, &style, None);
+        write_architecture_service_title(&mut out, "s1", 80.0, 120.0, &measurer, &style);
 
         assert_eq!(
             out,
@@ -700,7 +677,6 @@ mod tests {
         write_svg_text_lines(
             &mut out,
             &wrap_svg_words_to_lines("Service Farm", 120.0, &measurer, &style),
-            None,
         );
 
         assert_eq!(

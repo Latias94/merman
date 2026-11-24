@@ -49,8 +49,8 @@ The core, native Node, and SVG/browser owners publish separate same-run results 
   configuration, and an unloadable Fontconfig library.
 - `feature-contracts` owns Linux representative feature builds, isolated consumers, compile-fail
   examples, Rustdoc subsets/math, feature unification, runtime adapters, FFI and ASCII contracts;
-- `theme-contracts` verifies the embedded native preset colors and runs theme discovery and
-  SVG/PNG authoring tests;
+- `theme-contracts` verifies embedded Theme v2 preset colors and runs Rust theme, render-operation,
+  and prepared-source tests.
 - `svg-parity` owns the complete DOM comparison and Chromium containment oracle;
 - `node-contracts` runs Node-WASM and N-API as parallel matrix members on PRs and main;
 - Pages builds its Web package once while compiling the optimized size tool independently;
@@ -72,11 +72,8 @@ blocking assertions; it changes their placement and dependencies. Runner queue t
 builds remain part of elapsed feedback time, so measured PR results are required before claiming
 a runtime target has been met.
 
-The feature and theme jobs use the existing `core` selector and
-contribute required results to the same `pr-gate`. Their Cargo recipes retain separate feature
-sets and subprocess-scoped acceptance flags; no job-wide feature union or acceptance cfg is used.
-The offline all-feature public theme consumer remains in `build-test`, after experimental
-platform-font builds have fetched its dependencies. Rust caches retain registry data with
+The feature and theme jobs use the `core` selector and contribute required results to `pr-gate`.
+Their Cargo recipes select features for each check. Rust caches retain registry data with
 `cache-targets: false`; these jobs do not transfer compiled targets or reuse results from a
 different source revision.
 
@@ -192,8 +189,8 @@ them after classification, so one owner executes once and its result is availabl
 run executes the full workspace on Linux, macOS, and Windows; routine pull requests and main pushes keep the full
 Linux suite while host runners compile the workspace and run focused filesystem, process, FFI, and
 ELK stack-safety contracts. The historical KTD23 retirement authorization and its dedicated
-commands were removed with their witness; current theme authoring, font boundaries, preset
-qualification and support discovery remain separate checks. Only pull-request and merge-queue
+commands were removed with their witness. Current checks cover native preset colors, theme
+rendering, and font boundaries. Only pull-request and merge-queue
 runs emit the required `pr-gate` status name;
 push, schedule, and manual lifecycles use event-specific gate names so their results cannot satisfy
 the pull-request check by identity collision.
@@ -351,10 +348,8 @@ keep the editor usable while preview WASM is blocked and retain staged language-
 Editor synchronization coverage preserves external replacement, empty documents, Unicode edits,
 late mounting and undo/redo. Preview controls must invalidate old artifacts when any current
 render input changes, while repeated debounce scheduling leaves an unchanged preview alone.
-Theme surface smoke coverage also checks the measured native State composite title against its
-header and samples actual depth/surface overlap pixels for both supported filter color spaces.
-These checks exercise the current layer composition rather than compare with the former
-single filtered-body output.
+Theme workshop browser tests exercise preset selection, theme document editing, contrast
+diagnostics, and preview updates.
 
 JavaScript toolchains are pinned in their owning workflows. Linux Node native packages use
 separate GNU and musl container baselines; update them only with native compatibility
@@ -407,8 +402,8 @@ The `cli-and-lsp-archives` job owns final CLI/LSP archive evidence on native x86
 runners for both macOS and GNU Linux. It evaluates the full pinned cargo-dist plan with the
 requested version without creating a tag, checks the selected target's runner/host and planned
 assets, then builds and executes both final archives with adjacent-checksum verification.
-Both macOS targets run the mixed-script PNG check. Both GNU runners check the glibc floor,
-with preset qualification on x86_64 and system resource probes on ARM64.
+Both macOS targets run the mixed-script PNG check. Both GNU runners check the glibc floor.
+The GNU ARM64 runner also runs system resource probes.
 
 Each target uploads its plan, build manifest, archives, and checksums as `preflight-cli-lsp-<target>`.
 Keep the run and source SHA with any target-admission decision. This job replaces the former

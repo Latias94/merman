@@ -762,31 +762,11 @@ pub struct ParsedDiagramRender {
 
 impl ParsedDiagramRender {
     pub(crate) fn from_parse_output_controlled(
-        mut meta: PresentationMetadata,
+        meta: PresentationMetadata,
         output: RenderSemanticParseOutput,
         control: &OperationControl,
     ) -> OperationControlResult<Result<Self>> {
         let (model, context) = output.into_parts();
-        // A custom overlay or a suppressed source failure does not consume family paint facts
-        // captured for the originally detected language. Preserve all other frozen ownership.
-        if matches!(
-            model,
-            RenderSemanticModel::CustomJson(_) | RenderSemanticModel::Error(_)
-        ) && meta.effective_config.family_paint_inputs().is_some()
-        {
-            let parts = meta
-                .effective_config
-                .frozen_parts()
-                .with_family_paint_inputs(None);
-            meta.effective_config = match merman_model::presentation::PresentationConfig::try_from_frozen_parts_controlled(
-                parts,
-                &crate::config::presentation::source_config_construction_policy(),
-                control,
-            )? {
-                Ok(config) => config,
-                Err(error) => return Ok(Err(crate::Error::diagram_parse_fallback(&meta.diagram_type, error.to_string()))),
-            };
-        }
         let diagram_type = meta.diagram_type.clone();
         Ok(PresentationDiagram::try_from_frozen(
             meta,

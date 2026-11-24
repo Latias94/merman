@@ -10,7 +10,6 @@ pub(crate) struct JourneyCssBinding {
     pub(crate) layout: JourneyLayoutSettings,
     pub(crate) render: JourneyRenderSettings,
     pub(crate) text_color: String,
-    pub(super) text_color_source_path: Option<&'static str>,
     pub(crate) face_color: String,
     pub(crate) main_bkg: String,
     pub(crate) node_border: String,
@@ -28,12 +27,8 @@ impl JourneyCssBinding {
         let color = |key: &str, fallback: &str| {
             config_string(config, &["themeVariables", key]).unwrap_or_else(|| fallback.to_owned())
         };
-        // The cluster title fallback uses the Mermaid base text color, before typed Text.fill.
-        let (text_color_source_path, base_text_color) =
-            crate::config::selected_config_string(config, &["themeVariables.textColor"])
-                .map_or((None, "#333"), |(path, color)| (Some(path), color));
-        let title_color = color("titleColor", base_text_color);
-        let text_color = base_text_color.to_owned();
+        let text_color = color("textColor", "#333");
+        let title_color = color("titleColor", &text_color);
         let common = PreparedCommonCss::with_resolved_typography(
             config,
             font_family.to_owned(),
@@ -46,7 +41,6 @@ impl JourneyCssBinding {
             layout: config_view.layout_settings(),
             render: config_view.render_settings(),
             text_color,
-            text_color_source_path,
             face_color: color("faceColor", "#FFF8DC"),
             main_bkg: color("mainBkg", "#ECECFF"),
             node_border: color("nodeBorder", "#9370DB"),
@@ -64,11 +58,9 @@ impl JourneyCssBinding {
         }
     }
 
-    pub(super) fn with_text_paint(mut self, fill: Option<&str>) -> Self {
-        if let Some(fill) = fill {
-            self.common = self.common.with_text_color(fill);
-            self.text_color = fill.to_owned();
-        }
+    pub(super) fn with_text_color(mut self, fill: &str) -> Self {
+        self.common = self.common.with_text_color(fill);
+        self.text_color = fill.to_owned();
         self
     }
 
@@ -116,7 +108,7 @@ mod tests {
             }
         });
         let binding =
-            JourneyCssBinding::new(&config, "Base Font", "20px").with_text_paint(Some("#123456"));
+            JourneyCssBinding::new(&config, "Base Font", "20px").with_text_color("#123456");
         assert_eq!(binding.layout.actor_colours, ["currentColor"]);
         assert_eq!(binding.layout.section_fills, ["var(--section-color)"]);
         assert_eq!(binding.fill_types[0], "var(--css-section-color)");

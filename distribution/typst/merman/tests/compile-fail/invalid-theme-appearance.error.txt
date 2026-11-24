@@ -1,1 +1,1 @@
-merman theme-appearance must be `light` or `dark`
+merman appearance must be `light` or `dark`

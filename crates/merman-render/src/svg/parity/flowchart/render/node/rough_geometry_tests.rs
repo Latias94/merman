@@ -110,20 +110,13 @@ fn with_context<T>(
     )
     .unwrap();
     let sidecar = crate::flowchart::FlowchartSvgLabelSidecar::default();
-    let theme = crate::flowchart::FlowchartPreparedTheme::resolve(
-        None,
-        &metadata.effective_config,
-        flow::render_config::flowchart_node_label_fill_config_override(&metadata.effective_config),
-        execution.work_meter(),
-    )
-    .unwrap();
+    let theme = crate::flowchart::FlowchartPreparedTheme::resolve(&metadata.effective_config);
     let render_config = flow::render_config::prepare_flowchart_render_config(
         &model,
         &metadata.effective_config,
         &theme.compatibility,
         false,
         sidecar.base_typography(),
-        sidecar.edge_label_padding(),
     );
     let edge_style_plan = flow::FlowchartEdgeStylePlan::prepare_for_model(
         &model,
@@ -132,13 +125,7 @@ fn with_context<T>(
         execution.work_meter(),
     )
     .unwrap()
-    .with_resolved_stroke_widths(
-        &model,
-        &Default::default(),
-        &metadata.effective_config,
-        &theme.compatibility,
-        execution.work_meter(),
-    )
+    .with_resolved_stroke_widths(&model, &theme.compatibility, execution.work_meter())
     .unwrap()
     .with_typography_work_meter(std::sync::Arc::clone(session.work_meter()));
     edge_style_plan
@@ -150,7 +137,6 @@ fn with_context<T>(
         &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
         flow::node_inventory::FlowchartNodeLayoutView::Flowchart(&layout),
         &sidecar,
-        None,
         &metadata.effective_config,
         &theme,
         &render_config,
@@ -171,11 +157,8 @@ fn with_context<T>(
             diagram_type: &metadata.diagram_type,
             diagram_title: None,
             svg_label_sidecar: &sidecar,
-            theme_evidence: &Default::default(),
-            effect_evidence: &Default::default(),
-            expected_effect_applications: &Default::default(),
+
             edge_style_plan: &edge_style_plan,
-            edge_theme: &Default::default(),
         },
         &execution,
         |ctx, _, _| consume(ctx),

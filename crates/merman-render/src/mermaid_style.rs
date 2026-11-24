@@ -5,7 +5,9 @@ mod typography;
 pub(crate) use html_text::{
     HtmlTextGeometry, HtmlTextGeometryDeclarations, HtmlTextProperty, HtmlTextSpacing,
 };
-pub(crate) use typography::{TextStyleCascade, root_dependent_font_size};
+pub(crate) use typography::{
+    TextStyleCascade, root_dependent_font_size, source_font_size_after_style,
+};
 
 use cssparser::{
     BasicParseErrorKind, Delimiter, ParseError, Parser, SourcePosition, Token, parse_important,
@@ -199,7 +201,7 @@ pub(crate) fn parse_css_font_family_value(value: &str) -> Option<ParsedCssFontFa
                 if name.eq_ignore_ascii_case("default") {
                     return None;
                 }
-                if crate::diagram_theme::is_css_wide_keyword(name) {
+                if crate::text::is_css_wide_keyword(name) {
                     if family != FamilyName::Missing || family_count != 0 {
                         return None;
                     }
@@ -728,7 +730,7 @@ pub(crate) fn is_static_css_font_family_list(value: &str) -> bool {
         } else {
             let mut component_count = 0usize;
             while let Ok(component) = parser.try_parse(|parser| parser.expect_ident_cloned()) {
-                if crate::diagram_theme::is_css_wide_keyword(component.as_ref()) {
+                if crate::text::is_css_wide_keyword(component.as_ref()) {
                     return false;
                 }
                 component_count = component_count.saturating_add(1);

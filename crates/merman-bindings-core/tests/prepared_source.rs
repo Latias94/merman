@@ -98,7 +98,7 @@ fn retained_output_rejects_frozen_settings_and_readmits_resources() {
 #[test]
 fn retained_result_uses_the_same_metadata_and_theme_owner_as_one_shot() {
     let engine = BindingEngine::new(
-        br#"{"theme":{"preset":"editor-light"},"site_config":{"flowchart":{"htmlLabels":false}}}"#,
+        br#"{"theme":{"preset":"studio"},"site_config":{"flowchart":{"htmlLabels":false}}}"#,
     )
     .unwrap();
     let source = b"flowchart LR\nA[Same] --> B[Output]";
@@ -119,7 +119,7 @@ fn retained_result_uses_the_same_metadata_and_theme_owner_as_one_shot() {
 #[test]
 fn retained_source_outlives_the_lazy_engine_and_keeps_runtime_and_theme_defaults() {
     let options = br#"{
-        "theme":{"preset":"editor-light"},
+        "theme":{"preset":"studio"},
         "site_config":{"flowchart":{"htmlLabels":false}}
     }"#;
     let runtime_policy = merman::model::runtime::RuntimePolicy::deterministic()

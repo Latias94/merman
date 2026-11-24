@@ -1,4 +1,3 @@
-use merman_model::presentation::PresentationConfig;
 use serde_json::Value;
 
 #[derive(Debug)]
@@ -43,15 +42,6 @@ impl QuadrantChartCssBinding {
                 .flatten()
                 .map(|color| (color, "primaryTextColor"))
             })
-    }
-
-    pub(in crate::quadrantchart) fn config_owns_color(
-        config: &PresentationConfig,
-        key: &'static str,
-    ) -> bool {
-        Self::configured_color(config.as_value(), key).is_some_and(|(_, key)| {
-            config.config_paint_overrides_typed_default(&format!("themeVariables.{key}"))
-        })
     }
 
     pub(crate) fn resolve(config: &Value) -> Self {

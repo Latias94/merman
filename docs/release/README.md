@@ -2,6 +2,12 @@
 
 Use this index to choose an upgrade path by the version you have installed. Stable `0.9.3` retains Mermaid `12.1.0`, the Presentation API, and Options JSON schema `2`. Published prerelease `0.10.0-alpha.1` retains Mermaid `12.2.0` and Options JSON schema `3`. Use the [host installation guide](PREBUILT_PRODUCTS.md) for independently delivered package versions and channels. Typst, Tree-sitter, Roughr, and the VS Code extension use independent version numbers.
 
+## Current source
+
+Theme v2 changes native theme documents and catalogs to schema `2` and reports
+`theme_outcome` in graphical result metadata. Use `merman-cli theme list`, `theme export`, and
+`theme check` for discovery and authoring. [Theme v2 guide](../rendering/custom-diagram-themes.md)
+
 ## Merman 0.11.0
 
 Upgrade from `0.10.0` by updating ASCII report readers to schema `4` and replacing Web, Node, and UniFFI wrappers together with their runtime artifacts. To keep receiving the full layout snapshot, use `merman-cli layout --snapshot` or Rust's `RenderRequest::layout_snapshot`. Review Windows CLI image sizes when you adopt the official archive, which uses platform system font selection. [Changelog](../../CHANGELOG.md) · [Migration guide](../migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts)
@@ -10,7 +16,7 @@ Upgrade from `0.10.0` by updating ASCII report readers to schema `4` and replaci
 
 The [0.10.0 changelog](../../CHANGELOG.md#0100---2026-11-12) is cumulative from stable `0.9.3`; published alpha.1 and alpha.2 sections remain historical snapshots. Use the [consolidated 0.9.3 to 0.10.0 upgrade guide](V093_TO_V0100_UPGRADE_GUIDE.md) for the final contracts instead of applying superseded alpha APIs in sequence. Alpha users can start with the guide's [remaining actions](V093_TO_V0100_UPGRADE_GUIDE.md#upgrading-from-an-alpha).
 
-Merman `0.10.0` selects Mermaid `12.3.0` and ELK `0.12.1`, adds prepared rendering and reusable theme recipes, and groups the built-in catalog into **11 designs with 14 concrete appearances**. Paper Cut, Carbon Copy and Pop Art are presets; Editor, Gruvbox and Ayu provide paired Light/Dark choices. The Playground library has **28 designs in a complete current runtime**, including all 11 built-in preset groups and standalone Reading and Prism pairs. See the [visual showcase and examples](../../CHANGELOG.md#designed-themes-ready-to-customize) and [theme guide](../rendering/custom-diagram-themes.md#choose-an-appearance) for editable JSON and concrete selection.
+Merman `0.10.0` selects Mermaid `12.3.0` and ELK `0.12.1`, adds prepared rendering and reusable theme recipes, and groups the built-in catalog into **11 designs with 14 concrete appearances**. Paper Cut, Carbon Copy and Pop Art are presets; Editor, Gruvbox and Ayu provide paired Light/Dark choices. The Playground shipped with **28 designs**, including all 11 built-in preset groups and standalone Reading and Prism pairs. See the [visual showcase and examples](../../CHANGELOG.md#designed-themes-ready-to-customize) and [tagged theme guide](https://github.com/Latias94/merman/blob/v0.10.0/docs/rendering/custom-diagram-themes.md#choose-an-appearance) for editable JSON and concrete selection.
 
 Use matching source-built wrappers, generated glue and runtimes: the final Web transport API is `10`, CLI contract is `7`, Options JSON schema is `3`, analysis facts schema is `3`, and theme execution evidence schema is `2`. Theme recipes retain schema `1`. Source-default Rust/CLI builds keep math opt-in, including `complete-svg` / `complete-svg-elk`; the [upgrade guide](V093_TO_V0100_UPGRADE_GUIDE.md#select-math-and-font-services-explicitly) gives explicit feature choices.
 
@@ -22,7 +28,7 @@ The [alpha.2 changelog](../../CHANGELOG.md#0100-alpha2---2026-11-06) records cha
 
 Published alpha.2 selects Mermaid `12.3.0` and the selected ELK `0.12.1` behavior. Start with the [Mermaid 12.3 migration](../migrations/mermaid-12-3.md) for Rust model changes, layout dependencies, Step animation and static output. Custom hosts also need the [binding contract migration](UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up): Web transport API `9`, analysis facts schema `3` and theme execution evidence schema `2` replace alpha.1's `8`, `2` and `1`. Build wrappers and native/WASM artifacts together from the same source revision.
 
-Preview the [15-design theme gallery](../../CHANGELOG.md#theme-design-gallery) for 30 SVG examples drawn from Flowchart, Sequence, Class, XY Chart and Pie. Each design has an editable JSON recipe and all five examples in the Playground's **Theme designs** library. These are custom recipes, separate from the 11 built-in presets. The gallery explains how to open a sample, apply its theme and copy JSON or integration code; the [theme guide](../rendering/custom-diagram-themes.md#standalone-explorations-and-example-scenes) covers file placement and optional layout settings. Hosted Playground availability follows its deployed build.
+Preview the [15-design theme gallery](../../CHANGELOG.md#theme-design-gallery) for 30 SVG examples drawn from Flowchart, Sequence, Class, XY Chart and Pie. Each design has an editable JSON recipe and all five examples in that release's **Theme designs** library. The [tagged theme guide](https://github.com/Latias94/merman/blob/v0.10.0-alpha.2/docs/rendering/custom-diagram-themes.md) covers the sample workflow and editable files.
 
 ## Merman 0.10.0-alpha.1
 

@@ -15,7 +15,7 @@ use css::write_class_css;
 mod defs;
 #[cfg(feature = "layout-shoal")]
 pub(crate) use defs::class_canonical_marker;
-use defs::{class_marker_paint_bindings, class_markers};
+use defs::class_markers;
 
 mod edge;
 

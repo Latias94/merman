@@ -3,11 +3,54 @@
 use std::sync::Arc;
 
 pub(crate) mod canvas_svg;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-agentflow",
+    feature = "diagram-swimlane"
+))]
+pub(crate) mod edge_label_bg;
+#[cfg(any(
+    all(feature = "diagram-architecture", feature = "layout-cytoscape"),
+    feature = "diagram-flowchart",
+    feature = "diagram-agentflow",
+    feature = "diagram-swimlane",
+    feature = "diagram-sequence",
+    feature = "diagram-zenuml",
+    feature = "diagram-kanban",
+    feature = "diagram-block",
+    feature = "diagram-xychart",
+    feature = "diagram-usecase",
+    feature = "diagram-state",
+))]
+pub(crate) mod elevation_svg;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-agentflow",
+    feature = "diagram-swimlane",
+    feature = "diagram-block",
+    feature = "diagram-state",
+))]
+pub(crate) mod marker_svg;
+#[cfg(any(
+    feature = "diagram-pie",
+    feature = "diagram-treemap",
+    feature = "diagram-xychart"
+))]
+pub(crate) mod pattern_svg;
 
 pub use merman_theme_contract::v2::{
     Appearance, BuiltinPreset, Color, FamilyTheme, ResolvedThemeV2, ThemeCapabilityFlags,
     ThemeCompiler, ThemeDocumentV2, ThemeError, ThemeNotice,
 };
+
+/// Whether rendering requires portable output for the selected target.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum ThemePortabilityRequirement {
+    #[default]
+    BestEffort,
+    RequirePortable,
+}
 
 /// Immutable native theme and an optional host canvas color.
 #[derive(Clone, Debug)]
@@ -55,14 +98,121 @@ pub trait FamilyThemeAdapter {
     }
 }
 
-#[cfg(any(feature = "diagram-info", feature = "diagram-pie"))]
+/// Returns the native theme capabilities implemented by this build for a logical family.
+pub fn family_capabilities(family: crate::DiagramFamilyId) -> ThemeCapabilityFlags {
+    match family {
+        #[cfg(feature = "diagram-flowchart")]
+        crate::DiagramFamilyId::FLOWCHART => {
+            crate::flowchart::native_theme::FlowchartThemeAdapter::CAPS
+        }
+        #[cfg(feature = "diagram-agentflow")]
+        crate::DiagramFamilyId::AGENTFLOW => {
+            crate::flowchart::native_theme::AgentflowThemeAdapter::CAPS
+        }
+        #[cfg(feature = "diagram-swimlane")]
+        crate::DiagramFamilyId::SWIMLANE => {
+            crate::flowchart::native_theme::SwimlaneThemeAdapter::CAPS
+        }
+        #[cfg(feature = "diagram-class")]
+        crate::DiagramFamilyId::CLASS => crate::class::ClassThemeAdapter::CAPS,
+        #[cfg(feature = "diagram-er")]
+        crate::DiagramFamilyId::ER => crate::er::ErThemeAdapter::CAPS,
+        #[cfg(feature = "diagram-requirement")]
+        crate::DiagramFamilyId::REQUIREMENT => crate::requirement::RequirementThemeAdapter::CAPS,
+        #[cfg(feature = "diagram-sequence")]
+        crate::DiagramFamilyId::SEQUENCE => crate::sequence::SequenceThemeAdapter::CAPS,
+        #[cfg(feature = "diagram-zenuml")]
+        crate::DiagramFamilyId::ZENUML => crate::zenuml::ZenumlThemeAdapter::CAPS,
+        #[cfg(feature = "diagram-kanban")]
+        crate::DiagramFamilyId::KANBAN => crate::kanban::KanbanThemeAdapter::CAPS,
+        #[cfg(feature = "diagram-packet")]
+        crate::DiagramFamilyId::PACKET => crate::packet::PacketThemeAdapter::CAPS,
+        #[cfg(feature = "diagram-railroad")]
+        crate::DiagramFamilyId::RAILROAD => crate::railroad::RailroadThemeAdapter::CAPS,
+        #[cfg(feature = "diagram-ishikawa")]
+        crate::DiagramFamilyId::ISHIKAWA => crate::ishikawa::IshikawaThemeAdapter::CAPS,
+        #[cfg(feature = "diagram-wardley")]
+        crate::DiagramFamilyId::WARDLEY => crate::wardley::WardleyThemeAdapter::CAPS,
+        #[cfg(feature = "diagram-cynefin")]
+        crate::DiagramFamilyId::CYNEFIN => crate::cynefin::CynefinThemeAdapter::CAPS,
+        #[cfg(feature = "diagram-quadrant-chart")]
+        crate::DiagramFamilyId::QUADRANT_CHART => {
+            crate::quadrantchart::QuadrantChartThemeAdapter::CAPS
+        }
+        #[cfg(feature = "diagram-radar")]
+        crate::DiagramFamilyId::RADAR => crate::radar::RadarThemeAdapter::CAPS,
+        #[cfg(feature = "diagram-venn")]
+        crate::DiagramFamilyId::VENN => crate::venn::VennThemeAdapter::CAPS,
+        #[cfg(feature = "diagram-git-graph")]
+        crate::DiagramFamilyId::GIT_GRAPH => crate::gitgraph::GitGraphThemeAdapter::CAPS,
+        #[cfg(feature = "diagram-mindmap")]
+        crate::DiagramFamilyId::MINDMAP => crate::mindmap::MindmapThemeAdapter::CAPS,
+        #[cfg(feature = "diagram-tree-view")]
+        crate::DiagramFamilyId::TREE_VIEW => crate::tree_view::TreeViewThemeAdapter::CAPS,
+        #[cfg(feature = "diagram-usecase")]
+        crate::DiagramFamilyId::USECASE => crate::usecase::UsecaseThemeAdapter::CAPS,
+        #[cfg(feature = "diagram-state")]
+        crate::DiagramFamilyId::STATE => crate::state::StateThemeAdapter::CAPS,
+        #[cfg(all(feature = "diagram-architecture", feature = "layout-cytoscape"))]
+        crate::DiagramFamilyId::ARCHITECTURE => crate::architecture::ArchitectureThemeAdapter::CAPS,
+        #[cfg(feature = "diagram-c4")]
+        crate::DiagramFamilyId::C4 => crate::c4::C4ThemeAdapter::CAPS,
+        #[cfg(feature = "diagram-block")]
+        crate::DiagramFamilyId::BLOCK => crate::block::BlockThemeAdapter::CAPS,
+        #[cfg(feature = "diagram-event-modeling")]
+        crate::DiagramFamilyId::EVENT_MODELING => {
+            crate::eventmodeling::EventModelingThemeAdapter::CAPS
+        }
+        #[cfg(feature = "diagram-gantt")]
+        crate::DiagramFamilyId::GANTT => crate::gantt::GanttThemeAdapter::CAPS,
+        #[cfg(feature = "diagram-timeline")]
+        crate::DiagramFamilyId::TIMELINE => crate::timeline::TimelineThemeAdapter::CAPS,
+        #[cfg(feature = "diagram-journey")]
+        crate::DiagramFamilyId::JOURNEY => crate::journey::JourneyThemeAdapter::CAPS,
+        #[cfg(feature = "diagram-info")]
+        crate::DiagramFamilyId::INFO => crate::info::InfoThemeAdapter::CAPS,
+        #[cfg(feature = "diagram-pie")]
+        crate::DiagramFamilyId::PIE => crate::pie::PieThemeAdapter::CAPS,
+        #[cfg(feature = "diagram-sankey")]
+        crate::DiagramFamilyId::SANKEY => crate::sankey::SankeyThemeAdapter::CAPS,
+        #[cfg(feature = "diagram-treemap")]
+        crate::DiagramFamilyId::TREEMAP => crate::treemap::TreemapThemeAdapter::CAPS,
+        #[cfg(feature = "diagram-xychart")]
+        crate::DiagramFamilyId::XY_CHART => crate::xychart::XyChartThemeAdapter::CAPS,
+        _ if crate::family::supports_diagram_type(family.as_str()) => ThemeCapabilityFlags::CANVAS,
+        _ => ThemeCapabilityFlags::default(),
+    }
+}
+
+/// Reports requested visual treatments that the family does not implement.
+pub fn unsupported_features(
+    theme: &ResolvedThemeV2,
+    family: crate::DiagramFamilyId,
+) -> impl Iterator<Item = &'static str> {
+    let caps = family_capabilities(family);
+    let theme = theme.family(family.as_str());
+    [
+        (!matches!(theme.elevation, merman_theme_contract::v2::Elevation::Flat)
+            && !caps.contains(ThemeCapabilityFlags::ELEVATION))
+        .then_some("This diagram family does not support theme elevation."),
+        (theme.data.pattern_encoding && !caps.contains(ThemeCapabilityFlags::PATTERN_ENCODING))
+            .then_some("This diagram family does not support categorical theme patterns."),
+    ]
+    .into_iter()
+    .flatten()
+}
+
+#[allow(dead_code, reason = "Used by enabled diagram families.")]
 pub(crate) fn font_family_css(families: &[String]) -> String {
     let mut css = String::new();
     for (index, family) in families.iter().enumerate() {
         if index != 0 {
             css.push_str(", ");
         }
-        if crate::diagram_theme::GenericFontFamily::from_css_keyword(family).is_some() {
+        if matches!(
+            family.as_str(),
+            "serif" | "sans-serif" | "monospace" | "system-ui" | "cursive" | "fantasy"
+        ) {
             css.push_str(family);
         } else {
             cssparser::serialize_string(family, &mut css)

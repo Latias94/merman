@@ -839,33 +839,21 @@ jobs:
         self.assertNotIn("flutter-v", text.split("  workflow_dispatch:", 1)[0])
         self.assertNotIn("tree-sitter-mermaid-v", text.split("  workflow_dispatch:", 1)[0])
 
-    def test_optimized_renderer_theme_evidence_runs_in_preflight(self) -> None:
-        versions = workflow_job(read(WORKFLOW_ROOT / "release-preflight.yml"), "versions-and-packages")
-        step = versions.split(
-            "      - name: Test optimized renderer theme evidence\n", 1,
-        )[1].split("\n      - name:", 1)[0]
-        self.assertNotIn("continue-on-error", step)
-        command = " ".join(step.replace("\\\n", " ").split())
-        self.assertIn(
-            "cargo test --release --locked -p merman-render --no-default-features "
-            "--lib family::evidence_support::tests", command,
-        )
-
     def test_public_theme_pixel_tests_use_system_fonts(self) -> None:
         step = read(CI_WORKFLOW).split(
-            "      - name: Test theme authoring and Flowchart paint across SVG and PNG\n", 1,
+            "      - name: Test native theme consumers\n", 1,
         )[1].split("\n      - name:", 1)[0]
         features = step.split("--features ", 1)[1].split()[0].split(",")
         self.assertIn("system-fonts", features)
 
-    def test_theme_authoring_and_font_resource_boundaries_run_in_ci_and_preflight(self) -> None:
+    def test_native_theme_and_export_boundaries_run_in_ci_and_preflight(self) -> None:
         for name, runner, binding_features in (
             ("ci.yml", "cargo nextest run", "svg,diagram-flowchart"),
             ("release-preflight.yml", "cargo test", "svg,all-diagrams"),
         ):
             with self.subTest(workflow=name):
                 step = read(WORKFLOW_ROOT / name).split(
-                    "      - name: Test theme authoring and font resource boundaries\n", 1,
+                    "      - name: Test native theme rendering and export boundaries\n", 1,
                 )[1].split("\n      - name:", 1)[0]
                 self.assertNotIn("continue-on-error", step)
                 self.assertNotIn("if:", step)
@@ -878,8 +866,7 @@ jobs:
                 )
                 self.assertIn(
                     f"{runner} --locked -p merman-render --no-default-features "
-                    "--features diagram-flowchart,diagram-swimlane "
-                    "--test theme_font_capability --test flowchart_node_effects", command,
+                    "--features diagram-pie,diagram-info --test native_theme_canvas", command,
                 )
                 self.assertIn(
                     f"{runner} --locked -p merman-bindings-core --no-default-features "
@@ -915,15 +902,6 @@ jobs:
                     self.assertIn("--no-default-features", command)
                     features = set(command.split("--features ", 1)[1].split()[0].split(","))
                     self.assertLessEqual(required_features, features)
-
-    def test_support_discovery_runs_explicitly_in_ci_and_preflight(self) -> None:
-        for name in ("ci.yml", "release-preflight.yml"):
-            with self.subTest(workflow=name):
-                commands = " ".join(read(WORKFLOW_ROOT / name).replace("\\\n", " ").split())
-                self.assertIn(
-                    "cargo nextest run --locked -p merman-render --no-default-features "
-                    "--features all-diagrams --test theme_support_discovery_test", commands,
-                )
 
     def test_release_gates_attestation_and_publication_on_verified_archives(self) -> None:
         text = read(WORKFLOW_ROOT / "release.yml")

@@ -1,93 +1,3 @@
-pub use merman_render::family::ThemeDiagnostic;
-
-/// Coarse terminal state for one bounded theme-evidence scope.
-///
-/// The renderer keeps mechanism keys, selectors, element receipts, and residual ledgers private.
-/// Callers only need to know whether the scope was fully accounted for and how much bounded
-/// evidence remained outside the portable path.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[non_exhaustive]
-pub enum ThemeEvidenceStatus {
-    NotApplicable,
-    Verified,
-    Residual,
-    Incomplete,
-}
-
-impl ThemeEvidenceStatus {
-    /// Alpha, revision-scoped discovery view for the coarse evidence states exposed by the facade.
-    pub const ALL: &'static [Self] = &[
-        Self::NotApplicable,
-        Self::Verified,
-        Self::Residual,
-        Self::Incomplete,
-    ];
-}
-
-/// Coarse document-level projection of renderer-owned theme evidence.
-///
-/// This is intentionally not a mechanism ledger. It answers whether root and family work was
-/// accounted for while keeping the proof implementation private and free to evolve.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ThemeEvidenceSummary {
-    status: ThemeEvidenceStatus,
-    output_mutated: bool,
-}
-
-impl ThemeEvidenceSummary {
-    const fn new(status: ThemeEvidenceStatus, output_mutated: bool) -> Self {
-        Self {
-            status,
-            output_mutated,
-        }
-    }
-
-    pub const fn status(self) -> ThemeEvidenceStatus {
-        self.status
-    }
-
-    pub const fn output_mutated(self) -> bool {
-        self.output_mutated
-    }
-
-    pub const fn is_verified(self) -> bool {
-        matches!(self.status, ThemeEvidenceStatus::Verified) && !self.output_mutated
-    }
-
-    /// Returns whether the document either required no theme evidence or verified all required
-    /// evidence without a later output mutation.
-    pub const fn is_satisfied(self) -> bool {
-        matches!(
-            self.status,
-            ThemeEvidenceStatus::NotApplicable | ThemeEvidenceStatus::Verified
-        ) && !self.output_mutated
-    }
-}
-
-#[derive(Clone, Copy)]
-struct ThemeEvidenceScopeProjection {
-    status: ThemeEvidenceStatus,
-    required_count: usize,
-    accounted_count: usize,
-    residual_count: usize,
-    output_mutated: bool,
-}
-
-impl ThemeEvidenceScopeProjection {
-    const fn incomplete_count(self) -> usize {
-        self.required_count.saturating_sub(self.accounted_count)
-    }
-
-    const fn is_satisfied(self) -> bool {
-        matches!(
-            self.status,
-            ThemeEvidenceStatus::NotApplicable | ThemeEvidenceStatus::Verified
-        ) && self.incomplete_count() == 0
-            && self.residual_count == 0
-            && !self.output_mutated
-    }
-}
-
 /// Immutable native font measurement diagnostics from one completed SVG operation.
 ///
 /// This snapshot does not retain font services or describe later painting operations.
@@ -124,16 +34,10 @@ pub struct RenderEvidence {
     execution_path: super::OperationExecutionPath,
     session: merman_render::environment::RenderSessionReport,
     family_id: merman_model::family::DiagramFamilyId,
-    theme_evidence: ThemeEvidenceSummary,
-    materialized_theme: Option<merman_model::config::MermaidThemeId>,
-    theme_diagnostics: Box<[ThemeDiagnostic]>,
+    output_mutated: bool,
     required_capabilities: Box<[merman_render::RenderCapability]>,
     #[cfg(feature = "native-fonts")]
     native_font_diagnostics: Option<NativeFontDiagnostics>,
-    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-    root_applied_capabilities: Box<[merman_render::diagram_theme::ThemeCapability]>,
-    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-    native_filter_receipt: Option<merman_render::__private::NativeSvgFilterReceipt>,
 }
 
 impl RenderEvidence {
@@ -142,32 +46,15 @@ impl RenderEvidence {
         required_capabilities: Vec<merman_render::RenderCapability>,
     ) -> Self {
         let family_id = family.family_id();
-        let materialized_theme = family.materialized_theme();
-        let theme_evidence = theme_evidence_from_summaries(
-            merman_render::__private::root_evidence(&family),
-            merman_render::__private::family_evidence(&family),
-        );
-        #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-        let root_applied_capabilities =
-            merman_render::__private::root_applied_capabilities(&family);
-        #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-        let native_filter_receipt = merman_render::__private::family_native_filter_receipt(&family);
-        let (session, theme_diagnostics) =
-            merman_render::__private::into_session_and_theme_diagnostics(family);
+        let output_mutated = family.output_mutated();
         Self {
             execution_path: super::OperationExecutionPath::Renderer,
-            session,
+            session: family.into_session_report(),
             family_id,
-            theme_evidence,
-            materialized_theme,
-            theme_diagnostics,
+            output_mutated,
             required_capabilities: required_capabilities.into_boxed_slice(),
             #[cfg(feature = "native-fonts")]
             native_font_diagnostics: None,
-            #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-            root_applied_capabilities,
-            #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-            native_filter_receipt,
         }
     }
 
@@ -199,15 +86,8 @@ impl RenderEvidence {
 
     pub(super) fn portability_requirement(
         &self,
-    ) -> merman_render::diagram_theme::ThemePortabilityRequirement {
+    ) -> merman_render::theme::ThemePortabilityRequirement {
         self.session().portability_requirement()
-    }
-
-    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-    pub(crate) fn native_filter_receipt(
-        &self,
-    ) -> Option<merman_render::__private::NativeSvgFilterReceipt> {
-        self.native_filter_receipt
     }
 
     pub fn measurement_routes(&self) -> &[merman_render::environment::TextMeasurementRoute; 4] {
@@ -246,209 +126,17 @@ impl RenderEvidence {
         self.family_id
     }
 
-    pub fn theme_recipe_fingerprint(
-        &self,
-    ) -> Option<merman_render::diagram_theme::ThemeRecipeFingerprint> {
-        self.session().theme_recipe_fingerprint()
-    }
-
-    pub const fn font_catalog_fingerprint(
-        &self,
-    ) -> merman_render::diagram_theme::FontCatalogFingerprint {
+    pub const fn font_catalog_fingerprint(&self) -> merman_render::text::FontCatalogFingerprint {
         self.session().font_catalog_fingerprint()
     }
 
-    /// Explanations of unverified theme work, captured from this completed operation.
-    /// An empty list does not replace theme evidence or target admission checks.
-    pub fn theme_diagnostics(&self) -> &[ThemeDiagnostic] {
-        &self.theme_diagnostics
-    }
-
-    pub const fn theme_evidence(&self) -> ThemeEvidenceSummary {
-        self.theme_evidence
-    }
-
-    /// Executed Mermaid palette from the same operation, not a source declaration or certificate.
-    pub const fn materialized_theme(&self) -> Option<merman_model::config::MermaidThemeId> {
-        self.materialized_theme
+    /// Reports whether document CSS or a custom postprocessor changed the generated SVG.
+    pub const fn output_mutated(&self) -> bool {
+        self.output_mutated
     }
 
     /// Returns the optional render capabilities selected during family preparation.
     pub fn required_capabilities(&self) -> &[merman_render::RenderCapability] {
         &self.required_capabilities
-    }
-
-    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-    pub(crate) fn root_applied_capabilities(
-        &self,
-    ) -> &[merman_render::diagram_theme::ThemeCapability] {
-        &self.root_applied_capabilities
-    }
-}
-
-pub(super) fn theme_evidence_from_summaries(
-    root: merman_render::__private::RootEvidenceSummary,
-    family: merman_render::__private::FamilyEvidenceSummary,
-) -> ThemeEvidenceSummary {
-    let (root, family_scope) = theme_evidence_scope_projections(root, family);
-    summarize_theme_evidence(
-        root,
-        family_scope,
-        family.source_residual_count(),
-        family.mermaid_compatibility_residual_count(),
-    )
-}
-
-fn theme_evidence_scope_projections(
-    root: merman_render::__private::RootEvidenceSummary,
-    family: merman_render::__private::FamilyEvidenceSummary,
-) -> (ThemeEvidenceScopeProjection, ThemeEvidenceScopeProjection) {
-    let root_status = match root.status() {
-        merman_render::diagram_theme::RootThemeVerification::NotApplicable => {
-            ThemeEvidenceStatus::NotApplicable
-        }
-        merman_render::diagram_theme::RootThemeVerification::Verified => {
-            ThemeEvidenceStatus::Verified
-        }
-        merman_render::diagram_theme::RootThemeVerification::Unverified => {
-            ThemeEvidenceStatus::Residual
-        }
-        merman_render::diagram_theme::RootThemeVerification::Incomplete => {
-            ThemeEvidenceStatus::Incomplete
-        }
-        _ => ThemeEvidenceStatus::Incomplete,
-    };
-
-    let family_status = match family.status() {
-        merman_render::__private::FamilyEvidenceStatus::NotApplicable => {
-            ThemeEvidenceStatus::NotApplicable
-        }
-        merman_render::__private::FamilyEvidenceStatus::Verified => ThemeEvidenceStatus::Verified,
-        merman_render::__private::FamilyEvidenceStatus::Unverified => ThemeEvidenceStatus::Residual,
-        merman_render::__private::FamilyEvidenceStatus::Unadapted
-        | merman_render::__private::FamilyEvidenceStatus::Incomplete => {
-            ThemeEvidenceStatus::Incomplete
-        }
-    };
-
-    (
-        ThemeEvidenceScopeProjection {
-            status: root_status,
-            required_count: root.required_count(),
-            accounted_count: root.accounted_count(),
-            residual_count: root.residual_count(),
-            output_mutated: root.output_mutated(),
-        },
-        ThemeEvidenceScopeProjection {
-            status: family_status,
-            required_count: family.required_count(),
-            accounted_count: family.accounted_count(),
-            residual_count: family.theme_residual_count(),
-            output_mutated: family.output_mutated(),
-        },
-    )
-}
-
-fn summarize_theme_evidence(
-    root: ThemeEvidenceScopeProjection,
-    family: ThemeEvidenceScopeProjection,
-    source_residual_count: usize,
-    mermaid_compatibility_residual_count: usize,
-) -> ThemeEvidenceSummary {
-    let extra_residual_count =
-        source_residual_count.saturating_add(mermaid_compatibility_residual_count);
-    let residual_count = root
-        .residual_count
-        .saturating_add(family.residual_count)
-        .saturating_add(extra_residual_count);
-    let output_mutated = root.output_mutated || family.output_mutated;
-    let status = if root.status == ThemeEvidenceStatus::NotApplicable
-        && family.status == ThemeEvidenceStatus::NotApplicable
-        && residual_count == 0
-        && !output_mutated
-    {
-        ThemeEvidenceStatus::NotApplicable
-    } else if root.is_satisfied()
-        && family.is_satisfied()
-        && extra_residual_count == 0
-        && !output_mutated
-    {
-        ThemeEvidenceStatus::Verified
-    } else if root.status == ThemeEvidenceStatus::Incomplete
-        || family.status == ThemeEvidenceStatus::Incomplete
-        || root.incomplete_count() != 0
-        || family.incomplete_count() != 0
-    {
-        ThemeEvidenceStatus::Incomplete
-    } else if residual_count != 0
-        || output_mutated
-        || root.status == ThemeEvidenceStatus::Residual
-        || family.status == ThemeEvidenceStatus::Residual
-    {
-        ThemeEvidenceStatus::Residual
-    } else {
-        ThemeEvidenceStatus::Incomplete
-    };
-
-    ThemeEvidenceSummary::new(status, output_mutated)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        ThemeEvidenceScopeProjection, ThemeEvidenceStatus, ThemeEvidenceSummary,
-        summarize_theme_evidence,
-    };
-
-    #[test]
-    fn theme_evidence_status_exposes_the_complete_coarse_catalog() {
-        assert_eq!(
-            ThemeEvidenceStatus::ALL,
-            &[
-                ThemeEvidenceStatus::NotApplicable,
-                ThemeEvidenceStatus::Verified,
-                ThemeEvidenceStatus::Residual,
-                ThemeEvidenceStatus::Incomplete,
-            ]
-        );
-    }
-
-    #[test]
-    fn theme_evidence_summary_rejects_output_mutation() {
-        let summary = ThemeEvidenceSummary::new(ThemeEvidenceStatus::Verified, true);
-
-        assert!(!summary.is_verified());
-        assert!(!summary.is_satisfied());
-    }
-
-    #[test]
-    fn not_applicable_theme_evidence_is_satisfied_but_not_verified() {
-        let summary = ThemeEvidenceSummary::new(ThemeEvidenceStatus::NotApplicable, false);
-
-        assert!(!summary.is_verified());
-        assert!(summary.is_satisfied());
-    }
-
-    #[test]
-    fn incomplete_theme_evidence_takes_precedence_over_residuals() {
-        let root = ThemeEvidenceScopeProjection {
-            status: ThemeEvidenceStatus::Incomplete,
-            required_count: 2,
-            accounted_count: 1,
-            residual_count: 1,
-            output_mutated: false,
-        };
-        let family = ThemeEvidenceScopeProjection {
-            status: ThemeEvidenceStatus::Residual,
-            required_count: 1,
-            accounted_count: 1,
-            residual_count: 1,
-            output_mutated: false,
-        };
-
-        let summary = summarize_theme_evidence(root, family, 1, 1);
-
-        assert_eq!(summary.status(), ThemeEvidenceStatus::Incomplete);
-        assert!(!summary.is_satisfied());
     }
 }

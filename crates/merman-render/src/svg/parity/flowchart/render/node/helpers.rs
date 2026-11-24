@@ -602,23 +602,9 @@ pub(in crate::svg::parity::flowchart) fn node_source_text_style<'a>(
     } else {
         &ctx.text_style
     };
-    let label_base_style = ctx
-        .svg_label_sidecar
-        .map_or_else(
-            crate::flowchart::FlowchartLabelTypography::default,
-            |sidecar| sidecar.label_typography(),
-        )
-        .source_parent_style(
-            crate::diagram_theme::ThemeTarget::NodeLabel,
-            label_base_style,
-            ctx.class_defs,
-            node_classes,
-            node_styles,
-            true,
-        );
     std::borrow::Cow::Owned(
         crate::flowchart::flowchart_effective_text_style_for_node_classes(
-            label_base_style.as_ref(),
+            label_base_style,
             ctx.class_defs,
             node_classes,
             node_styles,

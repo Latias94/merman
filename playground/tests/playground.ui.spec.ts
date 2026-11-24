@@ -258,7 +258,7 @@ test("export workbench targets toolbar and Compare artifacts through one dialog"
   await expect(page.getByRole("menuitem", { name: "Copy Mermaid source", exact: true }))
     .toHaveAccessibleDescription("Copies the source text. Appearance selected in this workspace is not included.");
   await expect(page.getByRole("menuitem", { name: "Open in Mermaid Live", exact: true }))
-    .toHaveAccessibleDescription("Mermaid.ink and Mermaid Live render the source again. Merman appearance extensions are not included.");
+    .toHaveAccessibleDescription("Mermaid.ink and Mermaid Live render with Mermaid settings from the source and configuration.");
   await page.getByRole("menuitem", { name: "Export image…" }).click();
   const dialog = page.getByRole("dialog", { name: "Export image" });
   await expect(dialog).toHaveAttribute("data-export-engine", "merman");

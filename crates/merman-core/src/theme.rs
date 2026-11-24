@@ -324,9 +324,8 @@ impl ThemeVariableDependency {
     }
 }
 
-// Ordered dependencies from the pinned Mermaid theme programs. This ledger is consumed by both
-// calculation and ownership propagation. Order and assignment mode are significant: Mermaid
-// calculates through unconditional intermediate assignments before replaying explicit targets.
+// The pinned Mermaid programs calculate through unconditional intermediate assignments
+// before replaying explicit targets. Preserve the order and assignment mode of these steps.
 const THEME_VARIABLE_DEPENDENCIES: &[ThemeVariableDependency] = &[
     assigned_theme_dependency!(Default, "border1", "nodeBorder"),
     assigned_theme_dependency!(Default, "textColor", "titleColor"),
@@ -471,7 +470,7 @@ const THEME_VARIABLE_DEPENDENCIES: &[ThemeVariableDependency] = &[
     copied_theme_dependency!(ReduxDarkColor, "background", "altSectionBkgColor"),
     // Unlike theme-default, every other pinned theme creates its Venn variables during
     // calculate(). Keep Default's constructor snapshot stable while replaying the non-Default
-    // nullish assignments and their ownership edges.
+    // nullish assignments and their operands.
     copied_theme_dependency!(LegacyNonDefault, "titleColor", "vennTitleTextColor"),
     copied_theme_dependency!(LegacyNonDefault, "textColor", "vennSetTextColor"),
     copied_theme_dependency!(LegacyNonDefault, "primaryTextColor", "stateLabelColor"),
@@ -707,71 +706,6 @@ impl ThemeProgram {
         }
     }
 
-    fn propagate_derived_ownership(
-        self,
-        explicit_dependency_variables: &[(&str, bool)],
-        config: &mut SourcePresentationConfig,
-    ) {
-        match self.dependencies {
-            ThemeDependencyGraph::DarkenedScale | ThemeDependencyGraph::DarkenedScaleAndGit => {
-                propagate_standard_color_scale_ownership(config);
-            }
-            ThemeDependencyGraph::None
-            | ThemeDependencyGraph::Default
-            | ThemeDependencyGraph::DynamicGit => {}
-        }
-
-        let dependencies = self.variable_dependencies().collect::<Vec<_>>();
-        let mut calculated_origins = BTreeMap::new();
-        for dependency in &dependencies {
-            for variable in [dependency.source, dependency.target] {
-                calculated_origins.entry(variable).or_insert_with(|| {
-                    config
-                        .theme_variable_has_calculation_owner(variable)
-                        .then_some(variable)
-                });
-            }
-        }
-
-        let mut winning_assignments = BTreeMap::new();
-        for (index, dependency) in dependencies.iter().enumerate() {
-            if !dependency.condition.permits(
-                explicit_dependency_variables
-                    .iter()
-                    .find_map(|(variable, truthy)| {
-                        (*variable == dependency.source).then_some(*truthy)
-                    }),
-            ) {
-                continue;
-            }
-            if dependency.assignment == ThemeVariableDependencyAssignment::IfMissing
-                && explicit_dependency_variables
-                    .iter()
-                    .any(|(variable, _)| *variable == dependency.target)
-            {
-                continue;
-            }
-            let source_origin = calculated_origins.get(dependency.source).copied().flatten();
-            calculated_origins.insert(dependency.target, source_origin);
-            winning_assignments.insert(dependency.target, index);
-        }
-
-        for (index, dependency) in dependencies.iter().enumerate() {
-            if explicit_dependency_variables
-                .iter()
-                .any(|(variable, _)| *variable == dependency.target)
-                || winning_assignments.get(dependency.target) != Some(&index)
-            {
-                continue;
-            }
-            if let Some(source_origin) =
-                calculated_origins.get(dependency.target).copied().flatten()
-            {
-                config.propagate_theme_variable_ownership(source_origin, dependency.target);
-            }
-        }
-    }
-
     fn apply_dependency_graph(
         self,
         explicit: &Map<String, Value>,
@@ -860,23 +794,6 @@ fn apply_theme_variable_dependencies(
         calculated.insert(dependency.target.to_string(), value);
     }
     Ok(())
-}
-
-fn propagate_theme_variable_to_scales(
-    config: &mut SourcePresentationConfig,
-    source: &str,
-    indices: impl IntoIterator<Item = usize>,
-) {
-    for index in indices {
-        config.propagate_theme_variable_ownership(source, THEME_SCALE_KEYS[index]);
-    }
-}
-
-fn propagate_standard_color_scale_ownership(config: &mut SourcePresentationConfig) {
-    propagate_theme_variable_to_scales(config, "primaryColor", [0]);
-    propagate_theme_variable_to_scales(config, "secondaryColor", [1]);
-    propagate_theme_variable_to_scales(config, "tertiaryColor", [2]);
-    propagate_theme_variable_to_scales(config, "primaryColor", 3..12);
 }
 
 fn get_truthy_string(map: &Map<String, Value>, key: &str) -> Option<String> {
@@ -1357,25 +1274,6 @@ fn ensure_default_xychart_theme(tv: &mut Map<String, Value>) {
     );
 
     tv.insert("xyChart".to_string(), Value::Object(xy));
-}
-
-fn propagate_default_xychart_ownership(
-    explicit: &Map<String, Value>,
-    config: &mut SourcePresentationConfig,
-) {
-    let Some(Value::Object(xy)) = explicit.get("xyChart") else {
-        return;
-    };
-    for (key, source) in std::iter::once(("backgroundColor", "background")).chain(
-        XYCHART_TEXT_COLOR_KEYS
-            .iter()
-            .map(|&key| (key, "primaryTextColor")),
-    ) {
-        // A replayed leaf has its own owner, even when its null/false value is ignored by SVG.
-        if !xy.contains_key(key) {
-            config.propagate_theme_variable_ownership(source, &format!("xyChart.{key}"));
-        }
-    }
 }
 
 fn apply_quadrant_theme_defaults(
@@ -1860,54 +1758,18 @@ pub(crate) fn apply_theme_defaults(
     let raw = theme_variables_map(config.as_config());
     let explicit = program.normalize_overrides(raw);
 
-    if let Some(staged_program) = program.staged_program() {
-        if explicit.is_empty() && !config.has_theme_variable_calculation_owners() {
-            let variables = staged_program.resolved_without_overrides()?.clone();
-            config.retain_normalized_theme_compatibility_variables(&explicit);
-            config.set_value_preserving_theme_compatibility(
-                "themeVariables",
-                Value::Object(variables),
-            );
-            config.set_materialized_theme(theme);
-            return Ok(());
+    let resolved = if let Some(staged_program) = program.staged_program() {
+        if explicit.is_empty() {
+            staged_program.resolved_without_overrides()?.clone()
+        } else {
+            staged::Resolution::execute(staged_program, program.prepared_constructor(), &explicit)?
+                .variables
         }
-        let resolution = staged::Resolution::execute_with_owners(
-            staged_program,
-            program.prepared_constructor(),
-            &explicit,
-            config,
-        )?;
-        // Keep the staged path transactional: normalization affects compatibility ownership,
-        // so defer that side effect until every evaluated assignment has succeeded.
-        config.retain_normalized_theme_compatibility_variables(&explicit);
-        resolution.materialize_into(config);
-        config.set_materialized_theme(theme);
-        return Ok(());
-    }
-
-    program.validate_evaluated_inputs(&explicit)?;
-    let resolved = program.resolve_legacy(&explicit)?;
-    // Calculation owns only local variables. Commit values and normalization together after every
-    // fallible calculation succeeds, without staging an unrelated full configuration tree.
-    config.retain_normalized_theme_compatibility_variables(&explicit);
-    let has_calculation_owners = config.has_theme_variable_calculation_owners();
-    config.commit_legacy_theme_variables(resolved);
-    if has_calculation_owners {
-        let explicit_dependency_variables = program
-            .variable_dependencies()
-            .flat_map(|dependency| [dependency.source, dependency.target])
-            .filter_map(|variable| {
-                explicit
-                    .get(variable)
-                    .map(|value| (variable, is_js_truthy(value)))
-            })
-            .collect::<Vec<_>>();
-        program.propagate_derived_ownership(&explicit_dependency_variables, config);
-        if theme == MermaidThemeId::Default {
-            propagate_default_xychart_ownership(&explicit, config);
-        }
-    }
-    config.set_materialized_theme(theme);
+    } else {
+        program.validate_evaluated_inputs(&explicit)?;
+        program.resolve_legacy(&explicit)?
+    };
+    config.set_computed_value("themeVariables", Value::Object(resolved));
     Ok(())
 }
 
@@ -1917,10 +1779,8 @@ pub(crate) fn materialize_selected_theme(
 ) -> Result<SourcePresentationConfig, ThemeResolutionError> {
     #[cfg(test)]
     crate::config::record_config_work(|work| work.selected_theme_materializations += 1);
-    effective_config.set_value_preserving_theme_compatibility(
-        "theme",
-        Value::String(selected_theme.as_str().to_string()),
-    );
+    effective_config
+        .set_computed_value("theme", Value::String(selected_theme.as_str().to_string()));
     apply_theme_defaults(&mut effective_config)?;
     Ok(effective_config)
 }
@@ -2057,7 +1917,7 @@ fn apply_extended_theme_visible_derivations(
         theme,
         MermaidThemeId::ReduxColor | MermaidThemeId::ReduxDarkColor
     ) {
-        // Resolve categorical fallbacks before the shared dependency ledger derives pie/Gantt.
+        // Resolve categorical fallbacks before deriving pie and Gantt colors.
         for scale in THEME_SCALE_KEYS.iter().copied() {
             if explicit.contains_key(scale) {
                 // Both Redux color themes use fixed categorical fallbacks in
@@ -2763,7 +2623,7 @@ mod tests {
                 Some(unrelated.as_str())
             );
             assert_eq!(work.json_cow_copies, 0, "{theme}: {work:?}");
-            assert_eq!(work.explicit_path_candidates, 0, "{theme}: {work:?}");
+
             assert_eq!(work.selected_theme_materializations, 1, "{theme}: {work:?}");
         }
     }
@@ -2802,281 +2662,6 @@ mod tests {
                     .unwrap()
                     .len()
                     > 1
-            );
-        }
-    }
-
-    #[test]
-    fn unowned_legacy_materialization_does_not_construct_derived_owner_queries() {
-        for theme in MermaidThemeId::ALL
-            .iter()
-            .copied()
-            .filter(|theme| ThemeProgram::resolve(*theme).staged_program().is_none())
-        {
-            let mut config = SourcePresentationConfig::from_value(json!({
-                "theme": theme.as_str(),
-                "themeVariables": { "primaryColor": "#123456" },
-            }));
-            let (_, work) =
-                crate::config::measure_config_work(|| apply_theme_defaults(&mut config).unwrap());
-            assert_eq!(work.explicit_path_candidates, 0, "{theme}: {work:?}");
-            assert_eq!(
-                config.get_str("themeVariables.primaryColor"),
-                Some("#123456")
-            );
-            assert!(!config.config_path_overrides_typed_default("themeVariables.primaryColor"));
-            assert!(!config.config_path_overrides_typed_default("themeVariables.nodeBkg"));
-        }
-    }
-
-    #[test]
-    fn retired_or_non_variable_compatibility_owners_do_not_construct_derived_queries() {
-        for authority in ["theme-only", "shadowed-variable", "normalized-null"] {
-            let input = match authority {
-                "theme-only" => json!({"theme": "redux-color"}),
-                _ => json!({"theme": "redux-color", "themeVariables": {"primaryColor": "#123456"}}),
-            };
-            let binding = merman_model::presentation::ThemeCompatibilityRecipe::try_new(
-                [0x78; 32],
-                MermaidConfig::from_value(input),
-            )
-            .unwrap();
-            let mut config = SourcePresentationConfig::from_theme_compatibility_recipe(binding);
-            match authority {
-                "shadowed-variable" => {
-                    config.set_value("themeVariables.primaryColor", json!("#123456"))
-                }
-                "normalized-null" => config.set_value_preserving_theme_compatibility(
-                    "themeVariables.primaryColor",
-                    Value::Null,
-                ),
-                _ => {}
-            }
-            let mut expected = SourcePresentationConfig::from_value(config.as_value().clone());
-            apply_theme_defaults(&mut expected).unwrap();
-            let (_, work) =
-                crate::config::measure_config_work(|| apply_theme_defaults(&mut config).unwrap());
-            assert_eq!(config.as_value(), expected.as_value(), "{authority}");
-            assert_eq!(work.explicit_path_candidates, 0, "{authority}: {work:?}");
-            config.freeze_theme_compatibility();
-            assert!(
-                !config.config_path_overrides_typed_default("themeVariables.nodeBkg"),
-                "{authority}"
-            );
-            assert_eq!(
-                config.mermaid_compatibility_residual_count(),
-                1,
-                "only theme remains owned for {authority}"
-            );
-        }
-    }
-
-    #[test]
-    fn legacy_owner_propagation_keeps_tracking_frozen_and_same_value_authorities() {
-        for theme in [MermaidThemeId::Default, MermaidThemeId::ReduxColor] {
-            let input =
-                json!({"theme": theme.as_str(), "themeVariables": {"textColor": "#123456"}});
-            let mut expected = SourcePresentationConfig::from_value(input.clone());
-            apply_theme_defaults(&mut expected).unwrap();
-            for authority in ["tracking", "frozen", "same-value", "parent"] {
-                let mut config = if matches!(authority, "tracking" | "frozen") {
-                    let binding = merman_model::presentation::ThemeCompatibilityRecipe::try_new(
-                        [0x75; 32],
-                        MermaidConfig::from_value(input.clone()),
-                    )
-                    .unwrap();
-                    SourcePresentationConfig::from_theme_compatibility_recipe(binding)
-                } else {
-                    SourcePresentationConfig::from_value(input.clone())
-                };
-                match authority {
-                    "frozen" => config.freeze_theme_compatibility(),
-                    "same-value" => {
-                        config.set_value_explicit("themeVariables.textColor", json!("#123456"))
-                    }
-                    "parent" => {
-                        config.set_value_explicit("themeVariables", input["themeVariables"].clone())
-                    }
-                    _ => {}
-                }
-                apply_theme_defaults(&mut config).unwrap();
-                config.freeze_theme_compatibility();
-                assert_eq!(
-                    config.as_value(),
-                    expected.as_value(),
-                    "{theme}/{authority}"
-                );
-                assert_eq!(
-                    config.get_str("themeVariables.signalTextColor"),
-                    Some("#123456")
-                );
-                assert!(
-                    config.config_path_overrides_typed_default("themeVariables.signalTextColor"),
-                    "{theme}/{authority}"
-                );
-                if authority != "parent" {
-                    assert!(
-                        !config.config_path_overrides_typed_default("themeVariables.radius"),
-                        "{theme}/{authority}"
-                    );
-                }
-            }
-
-            let binding = merman_model::presentation::ThemeCompatibilityRecipe::try_new(
-                [0x76; 32],
-                MermaidConfig::from_value(input),
-            )
-            .unwrap();
-            let mut shadowed = SourcePresentationConfig::from_theme_compatibility_recipe(binding);
-            shadowed.set_value("themeVariables.textColor", json!("#123456"));
-            apply_theme_defaults(&mut shadowed).unwrap();
-            assert_eq!(shadowed.as_value(), expected.as_value());
-            assert!(
-                !shadowed.config_path_overrides_typed_default("themeVariables.signalTextColor")
-            );
-        }
-    }
-
-    #[test]
-    fn legacy_compatibility_derived_owners_survive_public_engine_initialization() {
-        for theme in [MermaidThemeId::Default, MermaidThemeId::ReduxColor] {
-            let binding = merman_model::presentation::ThemeCompatibilityRecipe::try_new(
-                [0x77; 32],
-                MermaidConfig::from_value(json!({
-                    "theme": theme.as_str(), "themeVariables": {"textColor": "#123456"},
-                })),
-            )
-            .unwrap();
-            let parsed = crate::MermaidEngine::new()
-                .with_theme_compatibility(binding)
-                .parse_metadata_sync("sequenceDiagram\nA->>B: Hello")
-                .expect("parse initialized compatibility through the public operation");
-            assert_eq!(
-                parsed
-                    .effective_config
-                    .get_str("themeVariables.signalTextColor"),
-                Some("#123456")
-            );
-            assert!(
-                parsed
-                    .effective_config
-                    .config_path_overrides_typed_default("themeVariables.signalTextColor"),
-                "{theme} must retain its actual compatibility-derived owner"
-            );
-            let fields = parsed
-                .effective_config
-                .theme_compatibility()
-                .shared_fields();
-            assert!(
-                fields.iter().any(|field| field
-                    .shared_assignment_paths()
-                    .iter()
-                    .any(|path| path.as_ref() == "themeVariables.signalTextColor")),
-                "{theme} must freeze the derived physical path into its conceptual input field"
-            );
-        }
-    }
-
-    #[test]
-    fn legacy_theme_ownership_guard_preserves_owned_scale_derivations() {
-        for frozen in [false, true] {
-            let value = json!({
-                "theme": "neo-dark", "themeVariables": {"primaryColor": "#123456"},
-            });
-            let binding = merman_model::presentation::ThemeCompatibilityRecipe::try_new(
-                [0x7c; 32],
-                MermaidConfig::from_value(value.clone()),
-            )
-            .expect("valid Neo Dark compatibility binding");
-            let mut bound = SourcePresentationConfig::from_theme_compatibility_recipe(binding);
-            if frozen {
-                bound.freeze_theme_compatibility();
-            }
-            apply_theme_defaults(&mut bound).unwrap();
-            bound.freeze_theme_compatibility();
-            let fields = bound.mermaid_compatibility_fields().unwrap();
-            assert!(
-                fields.iter().any(|field| {
-                    field
-                        .shared_assignment_paths()
-                        .iter()
-                        .any(|path| path.as_ref() == "themeVariables.cScale0")
-                }),
-                "frozen={frozen}"
-            );
-
-            let mut raw = SourcePresentationConfig::from_value(value);
-            let (_, unowned_work) = crate::config::measure_config_work(|| {
-                apply_theme_defaults(&mut raw).unwrap();
-            });
-            assert_eq!(raw.as_value(), bound.as_value(), "frozen={frozen}");
-            assert_eq!(unowned_work.explicit_path_candidates, 0, "{unowned_work:?}");
-        }
-
-        let mut explicit = SourcePresentationConfig::from_value(json!({"theme": "neo-dark"}));
-        explicit.set_value_explicit("themeVariables.primaryColor", json!("#123456"));
-        let (_, work) = crate::config::measure_config_work(|| {
-            apply_theme_defaults(&mut explicit).unwrap();
-        });
-        assert!(work.explicit_path_candidates > 0, "{work:?}");
-        for target in ["cScale0", "taskBkgColor", "activeTaskBkgColor"] {
-            assert!(
-                explicit.config_path_overrides_typed_default(&format!("themeVariables.{target}"))
-            );
-        }
-    }
-
-    #[test]
-    fn legacy_late_failure_keeps_config_and_compatibility_ownership() {
-        for theme in [MermaidThemeId::NeoDark, MermaidThemeId::ReduxDark] {
-            let binding = merman_model::presentation::ThemeCompatibilityRecipe::try_new(
-                [0x6a; 32],
-                MermaidConfig::from_value(json!({
-                    "theme": theme.as_str(),
-                    "themeVariables": {"nodeBkg": "#123456", "cScale2": "#abcdef"},
-                })),
-            )
-            .expect("valid extended theme compatibility binding");
-            let mut config = SourcePresentationConfig::from_theme_compatibility_recipe(binding);
-            config.set_value_preserving_theme_compatibility(
-                "unrelated",
-                json!({"nested": [1, 2, 3]}),
-            );
-            config.set_value_preserving_theme_compatibility(
-                "themeVariables.cScale2",
-                Value::String("not-a-color".to_string()),
-            );
-            config.set_value_preserving_theme_compatibility("themeVariables.nodeBkg", Value::Null);
-            config.set_value_explicit("themeVariables.background", json!("#012345"));
-
-            let program = *ThemeProgram::resolve(theme);
-            assert_eq!(program.kind, ThemeProgramKind::Extended);
-            let normalized = program.normalize_overrides(theme_variables_map(config.as_config()));
-            program
-                .validate_evaluated_inputs(&normalized)
-                .expect("cScale2 fails during calculation, after early input validation");
-
-            let before = config.clone();
-            let mut expected_compatibility = before.clone();
-            expected_compatibility.freeze_theme_compatibility();
-
-            assert_eq!(
-                apply_theme_defaults(&mut config),
-                Err(ThemeResolutionError::Color(ColorError::UnsupportedFormat {
-                    input: "not-a-color".to_string(),
-                })),
-                "{theme}"
-            );
-            assert_eq!(config.as_value(), before.as_value(), "{theme}");
-            assert!(!config.path_was_mutated_after(&before, ""), "{theme}");
-            assert!(config.config_path_overrides_typed_default("themeVariables.background"));
-            assert!(!config.config_path_overrides_typed_default("themeVariables.cScalePeer2"));
-
-            config.freeze_theme_compatibility();
-            assert_eq!(
-                config.mermaid_compatibility_fields(),
-                expected_compatibility.mermaid_compatibility_fields(),
-                "a failed {theme} execution must not retire compatibility ownership"
             );
         }
     }
@@ -3226,86 +2811,56 @@ mod tests {
                     | "redux-color"
                     | "redux-dark-color"
             );
-            for owned in [false, true] {
-                for node_text in [None, Some(""), Some("#556677")] {
-                    let mut variables =
-                        json!({"primaryTextColor": "#123456", "textColor": "#fedcba"});
-                    if let Some(color) = node_text {
-                        variables["nodeTextColor"] = json!(color);
-                    }
-                    let mut config = SourcePresentationConfig::from_value(json!({
-                        "theme": theme,
-                        "themeVariables": variables,
-                    }));
-                    if owned {
-                        config.deep_merge_explicit(&json!({"themeVariables": variables}));
-                    }
-                    apply_theme_defaults(&mut config).unwrap();
-                    let expected = node_text.or(derives_node_text.then_some("#123456"));
-                    assert_eq!(
-                        config.get_str("themeVariables.nodeTextColor"),
-                        expected,
-                        "{theme}: owned={owned}, node={node_text:?}"
-                    );
-                    assert_eq!(
-                        config.config_path_overrides_typed_default("themeVariables.nodeTextColor"),
-                        owned && (derives_node_text || node_text.is_some()),
-                        "{theme}: owned={owned}, node={node_text:?}"
-                    );
-                    assert_eq!(config.get_str("themeVariables.textColor"), Some("#fedcba"));
+            for node_text in [None, Some(""), Some("#556677")] {
+                let mut variables = json!({"primaryTextColor": "#123456", "textColor": "#fedcba"});
+                if let Some(color) = node_text {
+                    variables["nodeTextColor"] = json!(color);
                 }
+                let mut config = SourcePresentationConfig::from_value(json!({
+                    "theme": theme,
+                    "themeVariables": variables,
+                }));
+                apply_theme_defaults(&mut config).unwrap();
+                let expected = node_text.or(derives_node_text.then_some("#123456"));
+                assert_eq!(
+                    config.get_str("themeVariables.nodeTextColor"),
+                    expected,
+                    "{theme}: node={node_text:?}"
+                );
+                assert_eq!(config.get_str("themeVariables.textColor"), Some("#fedcba"));
             }
         }
     }
 
     #[test]
-    fn architecture_color_dependencies_preserve_explicit_replay_and_ownership() {
+    fn architecture_color_dependencies_preserve_explicit_replay() {
         for &theme in MermaidThemeId::NAMES {
             for line_color in ["#333333", "#123456", "#777"] {
                 for arrow_color in [None, Some("#556677")] {
-                    for owned in [false, true] {
-                        let mut variables = json!({"lineColor": line_color});
-                        if let Some(color) = arrow_color {
-                            variables["archEdgeArrowColor"] = json!(color);
-                        }
-                        let mut config = SourcePresentationConfig::from_value(json!({
-                            "theme": theme,
-                            "themeVariables": variables,
-                        }));
-                        if owned {
-                            config.deep_merge_explicit(&json!({"themeVariables": variables}));
-                        }
-                        apply_theme_defaults(&mut config).unwrap();
-                        let expected_edge = match theme {
-                            "base" => "#777",
-                            "dark" => "lightgrey",
-                            _ => line_color,
-                        };
-                        assert_eq!(
-                            config.get_str("themeVariables.archEdgeColor"),
-                            Some(expected_edge),
-                            "{theme}: owned={owned}, arrow={arrow_color:?}"
-                        );
-                        assert_eq!(
-                            config.get_str("themeVariables.archEdgeArrowColor"),
-                            Some(arrow_color.unwrap_or(expected_edge)),
-                            "{theme}: owned={owned}, arrow={arrow_color:?}"
-                        );
-                        assert_eq!(
-                            config.config_path_overrides_typed_default(
-                                "themeVariables.archEdgeColor"
-                            ),
-                            owned && !matches!(theme, "base" | "dark"),
-                            "{theme}: owned={owned}, arrow={arrow_color:?}"
-                        );
-                        assert_eq!(
-                            config.config_path_overrides_typed_default(
-                                "themeVariables.archEdgeArrowColor"
-                            ),
-                            owned && (!matches!(theme, "base" | "dark") || arrow_color.is_some()),
-                            "{theme}: owned={owned}, arrow={arrow_color:?}"
-                        );
+                    let mut variables = json!({"lineColor": line_color});
+                    if let Some(color) = arrow_color {
+                        variables["archEdgeArrowColor"] = json!(color);
                     }
+                    let mut config = SourcePresentationConfig::from_value(json!({
+                        "theme": theme,
+                        "themeVariables": variables,
+                    }));
+                    apply_theme_defaults(&mut config).unwrap();
+                    let expected_edge = match theme {
+                        "base" => "#777",
+                        "dark" => "lightgrey",
+                        _ => line_color,
+                    };
+                    assert_eq!(
+                        config.get_str("themeVariables.archEdgeColor"),
+                        Some(expected_edge),
+                        "{theme}: arrow={arrow_color:?}"
+                    );
+                    assert_eq!(
+                        config.get_str("themeVariables.archEdgeArrowColor"),
+                        Some(arrow_color.unwrap_or(expected_edge)),
+                        "{theme}: arrow={arrow_color:?}"
+                    );
                 }
             }
         }
@@ -3326,104 +2881,41 @@ mod tests {
                     if let Some(color) = group_border {
                         variables["archGroupBorderColor"] = json!(color);
                     }
-                    config.deep_merge_explicit(&json!({"themeVariables": variables}));
+                    config.deep_merge(&json!({"themeVariables": variables}));
                     apply_theme_defaults(&mut config).unwrap();
                     assert_eq!(
                         config.get_str("themeVariables.archGroupBorderColor"),
                         Some(group_border.unwrap_or(expected)),
                         "{theme}: primary={primary_border}, group={group_border:?}"
                     );
-                    assert_eq!(
-                        config.config_path_overrides_typed_default(
-                            "themeVariables.archGroupBorderColor"
-                        ),
-                        group_border.is_some(),
-                        "{theme}: primary={primary_border}, group={group_border:?}"
-                    );
                 }
             }
         }
     }
 
     #[test]
-    fn theme_variable_derived_ownership_follows_base_primary_color_dependencies() {
-        for (theme, derives_main_background, derives_node_border) in [
-            (MermaidThemeId::Base, true, true),
-            (MermaidThemeId::Default, false, false),
-            (MermaidThemeId::Dark, false, false),
-            (MermaidThemeId::Forest, false, false),
-            (MermaidThemeId::Neutral, false, false),
-            (MermaidThemeId::Neo, false, false),
-            (MermaidThemeId::NeoDark, false, false),
-            (MermaidThemeId::Redux, false, false),
-            (MermaidThemeId::ReduxDark, false, false),
-            (MermaidThemeId::ReduxColor, false, false),
-            (MermaidThemeId::ReduxDarkColor, false, false),
+    fn base_cluster_colors_drive_dependent_values() {
+        for source in [
+            "primaryColor",
+            "tertiaryColor",
+            "tertiaryBorderColor",
+            "secondaryColor",
         ] {
-            let mut config =
-                SourcePresentationConfig::from_value(json!({ "theme": theme.as_str() }));
-            config.deep_merge_explicit(&json!({
-                "themeVariables": { "primaryColor": "#fff4dd" }
+            let mut config = SourcePresentationConfig::from_value(json!({
+                "theme": "base", "themeVariables": { (source): "#123456" }
             }));
-
             apply_theme_defaults(&mut config).unwrap();
-
             assert_eq!(
-                config.config_path_overrides_typed_default("themeVariables.mainBkg"),
-                derives_main_background,
-                "theme {theme}"
+                config.get_str("themeVariables.clusterBkg"),
+                config.get_str("themeVariables.tertiaryColor")
             );
             assert_eq!(
-                config.config_path_overrides_typed_default("themeVariables.nodeBorder"),
-                derives_node_border,
-                "theme {theme}"
+                config.get_str("themeVariables.clusterBorder"),
+                config.get_str("themeVariables.tertiaryBorderColor")
             );
-            assert!(
-                !config.config_path_overrides_typed_default("themeVariables.radius"),
-                "theme {theme} must not generalize derived ownership to sibling variables"
-            );
-        }
-    }
-
-    #[test]
-    fn theme_variable_derived_ownership_follows_base_cluster_dependencies() {
-        for (source, owned_fill, owned_stroke) in [
-            ("primaryColor", true, true),
-            ("tertiaryColor", true, true),
-            ("tertiaryBorderColor", false, true),
-            ("secondaryColor", false, false),
-        ] {
-            for explicit in [false, true] {
-                let values = json!({ "themeVariables": { source: "#123456" } });
-                let mut config = SourcePresentationConfig::from_value(json!({"theme": "base"}));
-                if explicit {
-                    config.deep_merge_explicit(&values);
-                } else {
-                    config.deep_merge(&values);
-                }
-                apply_theme_defaults(&mut config).unwrap();
-                for (target, owns) in [("clusterBkg", owned_fill), ("clusterBorder", owned_stroke)]
-                {
-                    assert_eq!(
-                        config.config_path_overrides_typed_default(&format!(
-                            "themeVariables.{target}"
-                        )),
-                        explicit && owns,
-                        "source={source}, target={target}, explicit={explicit}"
-                    );
-                }
-                assert_eq!(
-                    config.get_str("themeVariables.clusterBkg"),
-                    config.get_str("themeVariables.tertiaryColor")
-                );
-                assert_eq!(
-                    config.get_str("themeVariables.clusterBorder"),
-                    config.get_str("themeVariables.tertiaryBorderColor")
-                );
-            }
         }
         let mut config = SourcePresentationConfig::from_value(json!({"theme": "base"}));
-        config.deep_merge_explicit(&json!({"themeVariables": {
+        config.deep_merge(&json!({"themeVariables": {
             "tertiaryColor": "#123456", "clusterBkg": "#abcdef", "clusterBorder": "#fedcba"
         }}));
         apply_theme_defaults(&mut config).unwrap();
@@ -3435,96 +2927,7 @@ mod tests {
     }
 
     #[test]
-    fn theme_variable_derived_ownership_requires_owned_primary_color() {
-        let mut config = SourcePresentationConfig::from_value(json!({
-            "theme": "base",
-            "themeVariables": { "primaryColor": "#fff4dd" }
-        }));
-
-        apply_theme_defaults(&mut config).unwrap();
-
-        assert!(!config.config_path_overrides_typed_default("themeVariables.mainBkg"));
-    }
-
-    #[test]
-    fn theme_variable_derived_ownership_follows_color_scale_inputs() {
-        for (theme, source, expected_owned) in [
-            ("default", "secondaryColor", &[][..]),
-            ("base", "secondaryColor", &[1][..]),
-            (
-                "base",
-                "primaryColor",
-                &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
-            ),
-            (
-                "forest",
-                "primaryColor",
-                &[0, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
-            ),
-            (
-                "neo-dark",
-                "primaryColor",
-                &[0, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
-            ),
-            ("neutral", "primaryColor", &[][..]),
-        ] {
-            let mut config = SourcePresentationConfig::from_value(json!({ "theme": theme }));
-            config.deep_merge_explicit(&json!({
-                "themeVariables": { (source): "#336699" }
-            }));
-
-            apply_theme_defaults(&mut config).unwrap();
-
-            for index in 0..12 {
-                assert_eq!(
-                    config.config_path_overrides_typed_default(&format!(
-                        "themeVariables.cScale{index}"
-                    )),
-                    expected_owned.contains(&index),
-                    "theme {theme} source {source} has incorrect cScale{index} ownership"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn signal_color_ownership_follows_themes_that_derive_it_from_text_color() {
-        for (theme, text_color, derives_signal_color) in [
-            (MermaidThemeId::Default, "#22c55e", true),
-            (MermaidThemeId::Base, "#333", true),
-            (MermaidThemeId::Dark, "lightgrey", false),
-            (MermaidThemeId::Forest, "#333", false),
-            (MermaidThemeId::Neutral, "#333", false),
-            (MermaidThemeId::Neo, "#333", true),
-            (MermaidThemeId::NeoDark, "#ccc", true),
-            (MermaidThemeId::Redux, "#28253D", true),
-            (MermaidThemeId::ReduxDark, "#FFFFFF", false),
-            (MermaidThemeId::ReduxColor, "#28253D", true),
-            (MermaidThemeId::ReduxDarkColor, "#FFFFFF", false),
-        ] {
-            let mut config =
-                SourcePresentationConfig::from_value(json!({ "theme": theme.as_str() }));
-            config.deep_merge_explicit(&json!({
-                "themeVariables": { "textColor": text_color }
-            }));
-
-            apply_theme_defaults(&mut config).unwrap();
-
-            assert_eq!(
-                config.get_str("themeVariables.signalColor"),
-                Some(text_color),
-                "theme {theme} intentionally uses an equal final value in this provenance probe"
-            );
-            assert_eq!(
-                config.config_path_overrides_typed_default("themeVariables.signalColor"),
-                derives_signal_color,
-                "theme {theme}"
-            );
-        }
-    }
-
-    #[test]
-    fn variable_dependency_ownership_follows_the_selected_theme_program() {
+    fn variable_dependencies_follow_the_selected_theme_program() {
         let cases: &[(&str, &str, &str, &[&str])] = &[
             (
                 "default",
@@ -3618,7 +3021,7 @@ mod tests {
 
         for &(theme, source, value, targets) in cases {
             let mut config = SourcePresentationConfig::from_value(json!({ "theme": theme }));
-            config.deep_merge_explicit(&json!({
+            config.deep_merge(&json!({
                 "themeVariables": { (source): value }
             }));
 
@@ -3630,15 +3033,7 @@ mod tests {
                     Some(value),
                     "theme {theme} source {source} has incorrect {target} value"
                 );
-                assert!(
-                    config.config_path_overrides_typed_default(&format!("themeVariables.{target}")),
-                    "theme {theme} source {source} must own derived {target}"
-                );
             }
-            assert!(
-                !config.config_path_overrides_typed_default("themeVariables.sequenceNumberColor"),
-                "theme {theme} source {source} must not own an unrelated Sequence variable"
-            );
         }
     }
 
@@ -3653,42 +3048,27 @@ mod tests {
             "redux-dark-color",
         ] {
             for background in [json!(false), json!(0)] {
-                for owned_primary in [false, true] {
-                    let mut config = SourcePresentationConfig::from_value(json!({
-                        "theme": theme,
-                        "themeVariables": { "primaryTextColor": "#123456" }
-                    }));
-                    config.deep_merge_explicit(
-                        &json!({ "themeVariables": { "stateBkg": background } }),
-                    );
-                    if owned_primary {
-                        config.deep_merge_explicit(
-                            &json!({ "themeVariables": { "primaryTextColor": "#123456" } }),
-                        );
-                    }
-                    apply_theme_defaults(&mut config).unwrap();
-                    assert_eq!(
-                        config.get_str("themeVariables.stateLabelColor"),
-                        Some("#123456"),
-                        "{theme}: {background}"
-                    );
-                    assert_eq!(
-                        config
-                            .config_path_overrides_typed_default("themeVariables.stateLabelColor"),
-                        owned_primary,
-                        "the winning primary text source must own the derived label"
-                    );
-                    assert_eq!(
-                        config.as_value().pointer("/themeVariables/stateBkg"),
-                        Some(&background)
-                    );
-                }
+                let mut config = SourcePresentationConfig::from_value(json!({
+                    "theme": theme,
+                    "themeVariables": { "primaryTextColor": "#123456" }
+                }));
+                config.deep_merge(&json!({ "themeVariables": { "stateBkg": background } }));
+                apply_theme_defaults(&mut config).unwrap();
+                assert_eq!(
+                    config.get_str("themeVariables.stateLabelColor"),
+                    Some("#123456"),
+                    "{theme}: {background}"
+                );
+                assert_eq!(
+                    config.as_value().pointer("/themeVariables/stateBkg"),
+                    Some(&background)
+                );
             }
         }
     }
 
     #[test]
-    fn extended_theme_transformed_dependencies_share_value_and_ownership_semantics() {
+    fn extended_theme_transforms_dependency_values() {
         for theme in [
             "neo",
             "neo-dark",
@@ -3698,7 +3078,7 @@ mod tests {
             "redux-dark-color",
         ] {
             let mut background = SourcePresentationConfig::from_value(json!({ "theme": theme }));
-            background.deep_merge_explicit(&json!({
+            background.deep_merge(&json!({
                 "themeVariables": { "background": "#ffffff" }
             }));
             apply_theme_defaults(&mut background).unwrap();
@@ -3712,15 +3092,10 @@ mod tests {
                     Some(expected),
                     "theme {theme} has incorrect background-derived {target} value"
                 );
-                assert!(
-                    background
-                        .config_path_overrides_typed_default(&format!("themeVariables.{target}")),
-                    "theme {theme} background must own derived {target}"
-                );
             }
 
             let mut secondary = SourcePresentationConfig::from_value(json!({ "theme": theme }));
-            secondary.deep_merge_explicit(&json!({
+            secondary.deep_merge(&json!({
                 "themeVariables": { "secondaryColor": "#22c55e" }
             }));
             apply_theme_defaults(&mut secondary).unwrap();
@@ -3730,31 +3105,23 @@ mod tests {
                 Some(expected_activation_border.as_str()),
                 "theme {theme} has incorrect activationBorderColor value"
             );
-            for target in ["activationBorderColor", "activationBkgColor"] {
-                assert!(
-                    secondary
-                        .config_path_overrides_typed_default(&format!("themeVariables.{target}")),
-                    "theme {theme} secondaryColor must own derived {target}"
-                );
-            }
         }
     }
 
     #[test]
-    fn variable_dependency_ownership_requires_an_owned_source_and_yields_to_explicit_targets() {
-        let mut unowned = SourcePresentationConfig::from_value(json!({
+    fn explicit_background_values_win_over_derived_values() {
+        let mut derived = SourcePresentationConfig::from_value(json!({
             "theme": "base",
             "themeVariables": { "mainBkg": "#0f172a" }
         }));
-        apply_theme_defaults(&mut unowned).unwrap();
+        apply_theme_defaults(&mut derived).unwrap();
         assert_eq!(
-            unowned.get_str("themeVariables.labelBoxBkgColor"),
+            derived.get_str("themeVariables.labelBoxBkgColor"),
             Some("#0f172a")
         );
-        assert!(!unowned.config_path_overrides_typed_default("themeVariables.labelBoxBkgColor"));
 
         let mut explicit_target = SourcePresentationConfig::from_value(json!({ "theme": "base" }));
-        explicit_target.deep_merge_explicit(&json!({
+        explicit_target.deep_merge(&json!({
             "themeVariables": {
                 "mainBkg": "#0f172a",
                 "actorBkg": "#1e293b",
@@ -3770,36 +3137,16 @@ mod tests {
             explicit_target.get_str("themeVariables.labelBoxBkgColor"),
             Some("#334155")
         );
-
-        for theme in [
-            "neo",
-            "neo-dark",
-            "redux",
-            "redux-dark",
-            "redux-color",
-            "redux-dark-color",
-        ] {
-            let mut unowned_route = SourcePresentationConfig::from_value(json!({ "theme": theme }));
-            unowned_route.deep_merge_explicit(&json!({
-                "themeVariables": { "nodeBkg": "#0ea5e9" }
-            }));
-            apply_theme_defaults(&mut unowned_route).unwrap();
-            assert!(
-                !unowned_route
-                    .config_path_overrides_typed_default("themeVariables.labelBoxBkgColor"),
-                "theme {theme} must not route nodeBkg ownership into Sequence Loop paint"
-            );
-        }
     }
 
     #[test]
-    fn unconditional_sequence_intermediates_ignore_explicit_replay_for_downstream_provenance() {
+    fn unconditional_sequence_intermediates_feed_calculation_before_replay() {
         for (theme, expected_actor_line, expected_label_box_background) in [
             ("default", "#9370DB", "#ECECFF"),
             ("dark", "#ccc", "#1f2020"),
         ] {
             let mut config = SourcePresentationConfig::from_value(json!({ "theme": theme }));
-            config.deep_merge_explicit(&json!({
+            config.deep_merge(&json!({
                 "themeVariables": {
                     "actorBorder": "#ec4899",
                     "actorBkg": "#0f172a"
@@ -3828,30 +3175,22 @@ mod tests {
                     Some(expected),
                     "theme {theme} must calculate {target} before explicit replay"
                 );
-                assert!(
-                    !config.config_path_overrides_typed_default(&path),
-                    "theme {theme} explicit intermediate must not own downstream {target}"
-                );
             }
         }
 
         let mut forest = SourcePresentationConfig::from_value(json!({ "theme": "forest" }));
-        forest.deep_merge_explicit(&json!({
+        forest.deep_merge(&json!({
             "themeVariables": { "primaryColor": "#ec4899" }
         }));
         apply_theme_defaults(&mut forest).unwrap();
         assert_eq!(forest.get_str("themeVariables.mainBkg"), Some("#cde498"));
-        assert!(
-            !forest.config_path_overrides_typed_default("themeVariables.mainBkg"),
-            "Forest primaryColor does not feed the independently constructed mainBkg"
-        );
     }
 
     #[test]
     fn source_text_color_recalculates_scoped_sequence_but_preserves_unchanged_global_theme() {
-        for (theme, initialized_signal, source_signal, source_owns_signal) in [
-            (None, "#28253D", "#22c55e", true),
-            (Some("default"), "#333", "#333", false),
+        for (theme, initialized_signal, source_signal) in [
+            (None, "#28253D", "#22c55e"),
+            (Some("default"), "#333", "#333"),
         ] {
             let mut site = json!({
                 "secure": [
@@ -3897,13 +3236,6 @@ Alice->>Bob: Hello
                     .effective_config
                     .get_str("themeVariables.signalColor"),
                 Some(source_signal)
-            );
-            assert_eq!(
-                metadata
-                    .effective_config
-                    .config_path_overrides_typed_default("themeVariables.signalColor"),
-                source_owns_signal,
-                "source ownership follows actual recalculation of the selected Sequence theme"
             );
             assert!(
                 metadata
@@ -3952,24 +3284,12 @@ Alice->>Bob: Hello
                     Some(expected_arrowhead.as_str()),
                     "{origin} {theme} must retain its constructor arrowhead snapshot"
                 );
-                assert!(
-                    !metadata
-                        .effective_config
-                        .config_path_overrides_typed_default("themeVariables.arrowheadColor"),
-                    "{origin} {theme} background ownership must not propagate into the constructor-seeded arrowhead"
-                );
                 assert_eq!(
                     metadata
                         .effective_config
                         .get_str("themeVariables.lineColor"),
                     Some("#fefdfc"),
                     "{origin} {theme} must still recompute lineColor from explicit background"
-                );
-                assert!(
-                    metadata
-                        .effective_config
-                        .config_path_overrides_typed_default("themeVariables.lineColor"),
-                    "{origin} {theme} explicit background must still own derived lineColor"
                 );
             }
         }
@@ -4029,10 +3349,6 @@ Alice->>Bob: Hello
                     Some(expected),
                     "{origin} base {target}"
                 );
-                assert!(
-                    base.config_path_overrides_typed_default(&path),
-                    "{origin} base source must own derived {target}"
-                );
             }
 
             let neutral = effective_config(
@@ -4045,29 +3361,24 @@ Alice->>Bob: Hello
             );
             let neutral_expectations = if origin == "site" {
                 [
-                    ("vennTitleTextColor", "#345678", true),
-                    ("vennSetTextColor", "#abcdef", true),
+                    ("vennTitleTextColor", "#345678"),
+                    ("vennSetTextColor", "#abcdef"),
                 ]
             } else {
                 // Mermaid's directive sanitizer does not admit the internal Neutral `text`
                 // constructor variable. Source config therefore retains the `#333` title
-                // snapshot, while the public `textColor` input still owns Venn set text.
+                // snapshot, while the public `textColor` input sets Venn set text.
                 [
-                    ("vennTitleTextColor", "#333", false),
-                    ("vennSetTextColor", "#abcdef", true),
+                    ("vennTitleTextColor", "#333"),
+                    ("vennSetTextColor", "#abcdef"),
                 ]
             };
-            for (target, expected, owned) in neutral_expectations {
+            for (target, expected) in neutral_expectations {
                 let path = format!("themeVariables.{target}");
                 assert_eq!(
                     neutral.get_str(&path),
                     Some(expected),
                     "{origin} neutral {target}"
-                );
-                assert_eq!(
-                    neutral.config_path_overrides_typed_default(&path),
-                    owned,
-                    "{origin} neutral source has incorrect derived ownership for {target}"
                 );
             }
             assert_eq!(
@@ -4111,22 +3422,17 @@ Alice->>Bob: Hello
                     Some(expected),
                     "{origin} default must retain the constructor snapshot for {target}"
                 );
-                assert!(
-                    !default.config_path_overrides_typed_default(&path),
-                    "{origin} default constructor snapshot must not acquire source ownership"
-                );
             }
         }
     }
 
     #[test]
-    fn theme_dependency_ledger_preserves_site_and_source_values_and_ownership() {
+    fn theme_dependencies_preserve_site_and_source_values() {
         const SOURCE: &str = "stateDiagram-v2\nReady --> Done: Finish\n";
         struct Case {
             theme: &'static str,
             variables: Value,
-            owned: Vec<(&'static str, String)>,
-            unowned: Vec<(&'static str, String)>,
+            expected: Vec<(&'static str, String)>,
         }
 
         let note_border = mk_border("#abcdef", false).unwrap();
@@ -4143,7 +3449,7 @@ Alice->>Bob: Hello
                     "textColor": "#234567",
                     "mainBkg": "#345678"
                 }),
-                owned: vec![
+                expected: vec![
                     ("noteBorderColor", note_border.clone()),
                     ("transitionColor", "#123456".to_string()),
                     ("specialStateColor", "#123456".to_string()),
@@ -4151,19 +3457,16 @@ Alice->>Bob: Hello
                     ("stateBkg", "#345678".to_string()),
                     ("labelBackgroundColor", "#345678".to_string()),
                 ],
-                unowned: vec![],
             },
             Case {
                 theme: "neo",
                 variables: json!({ "noteBkgColor": "#abcdef" }),
-                owned: vec![("noteBorderColor", note_border.clone())],
-                unowned: vec![],
+                expected: vec![("noteBorderColor", note_border.clone())],
             },
             Case {
                 theme: "neo-dark",
                 variables: json!({ "noteBkgColor": "#abcdef" }),
-                owned: vec![("noteBorderColor", note_border)],
-                unowned: vec![],
+                expected: vec![("noteBorderColor", note_border)],
             },
             Case {
                 theme: "forest",
@@ -4174,7 +3477,7 @@ Alice->>Bob: Hello
                     "textColor": "#789abc",
                     "mainBkg": "#89abcd"
                 }),
-                owned: vec![
+                expected: vec![
                     ("actorBorder", forest_actor_border.clone()),
                     ("actorLineColor", forest_actor_border),
                     ("actorBkg", "#89abcd".to_string()),
@@ -4189,7 +3492,6 @@ Alice->>Bob: Hello
                     ("stateBkg", "#89abcd".to_string()),
                     ("labelBackgroundColor", "#89abcd".to_string()),
                 ],
-                unowned: vec![],
             },
             Case {
                 theme: "neutral",
@@ -4200,7 +3502,7 @@ Alice->>Bob: Hello
                     "textColor": "#234567",
                     "mainBkg": "#345678"
                 }),
-                owned: vec![
+                expected: vec![
                     ("actorBorder", neutral_actor_border.clone()),
                     ("actorLineColor", neutral_actor_border.clone()),
                     ("labelBoxBorderColor", neutral_actor_border),
@@ -4209,8 +3511,6 @@ Alice->>Bob: Hello
                     ("transitionLabelColor", "#234567".to_string()),
                     ("stateBkg", "#345678".to_string()),
                     ("labelBackgroundColor", "#345678".to_string()),
-                ],
-                unowned: vec![
                     ("noteBorderColor", "#999".to_string()),
                     ("transitionColor", "#000".to_string()),
                     ("specialStateColor", "#222".to_string()),
@@ -4226,15 +3526,13 @@ Alice->>Bob: Hello
                     "lineColor": "#fedcba",
                     "textColor": "#56789a"
                 }),
-                owned: vec![
+                expected: vec![
                     ("noteBorderColor", "#234567".to_string()),
                     ("noteBkgColor", dark_note_background),
                     ("noteTextColor", "#345678".to_string()),
                     ("transitionLabelColor", "#56789a".to_string()),
                     ("stateBkg", "#123456".to_string()),
                     ("labelBackgroundColor", "#123456".to_string()),
-                ],
-                unowned: vec![
                     ("transitionColor", "lightgrey".to_string()),
                     ("specialStateColor", "#f4f4f4".to_string()),
                 ],
@@ -4242,8 +3540,7 @@ Alice->>Bob: Hello
             Case {
                 theme: "dark",
                 variables: json!({ "secondBkg": "#abcdef" }),
-                owned: vec![],
-                unowned: vec![
+                expected: vec![
                     ("noteBkgColor", dark_default_note_background.clone()),
                     ("activationBkgColor", dark_default_note_background),
                 ],
@@ -4251,8 +3548,7 @@ Alice->>Bob: Hello
             Case {
                 theme: "dark",
                 variables: json!({ "lineColor": "#fedcba" }),
-                owned: vec![],
-                unowned: vec![
+                expected: vec![
                     ("transitionColor", "lightgrey".to_string()),
                     ("specialStateColor", "#f4f4f4".to_string()),
                 ],
@@ -4266,12 +3562,10 @@ Alice->>Bob: Hello
                     "textColor": "#234567",
                     "mainBkg": "#345678"
                 }),
-                owned: vec![
+                expected: vec![
                     ("noteBorderColor", "#456789".to_string()),
                     ("noteTextColor", "#56789a".to_string()),
                     ("specialStateColor", "#123456".to_string()),
-                ],
-                unowned: vec![
                     ("transitionColor", "#333333".to_string()),
                     ("transitionLabelColor", "#333".to_string()),
                     ("stateBkg", "#ECECFF".to_string()),
@@ -4306,35 +3600,12 @@ Alice->>Bob: Hello
                     panic!("parse {origin} {} dependency config: {error}", case.theme)
                 });
 
-                for (target, expected) in &case.owned {
+                for (target, expected) in &case.expected {
                     let path = format!("themeVariables.{target}");
                     assert_eq!(
                         metadata.effective_config.get_str(&path),
                         Some(expected.as_str()),
-                        "{origin} {} has incorrect owned {target} value",
-                        case.theme
-                    );
-                    assert!(
-                        metadata
-                            .effective_config
-                            .config_path_overrides_typed_default(&path),
-                        "{origin} {} source variables must own derived {target}",
-                        case.theme
-                    );
-                }
-                for (target, expected) in &case.unowned {
-                    let path = format!("themeVariables.{target}");
-                    assert_eq!(
-                        metadata.effective_config.get_str(&path),
-                        Some(expected.as_str()),
-                        "{origin} {} has incorrect unowned {target} value",
-                        case.theme
-                    );
-                    assert!(
-                        !metadata
-                            .effective_config
-                            .config_path_overrides_typed_default(&path),
-                        "{origin} {} must preserve unowned {target} semantics",
+                        "{origin} {} has incorrect {target} value",
                         case.theme
                     );
                 }
@@ -4343,39 +3614,22 @@ Alice->>Bob: Hello
     }
 
     #[test]
-    fn state_terminal_dependency_ledger_preserves_ordered_values_and_ownership() {
+    fn state_terminal_dependencies_preserve_ordered_values() {
         fn config_with_explicit_theme_variables(
             theme: &str,
             theme_variables: Value,
         ) -> SourcePresentationConfig {
             let mut config = SourcePresentationConfig::from_value(json!({ "theme": theme }));
-            config.deep_merge_explicit(&json!({ "themeVariables": theme_variables }));
+            config.deep_merge(&json!({ "themeVariables": theme_variables }));
             config
         }
 
-        fn assert_owned(config: &SourcePresentationConfig, target: &str, expected: &str) {
+        fn assert_color(config: &SourcePresentationConfig, target: &str, expected: &str) {
             let path = format!("themeVariables.{target}");
             assert_eq!(
                 config.get_str(&path),
                 Some(expected),
                 "incorrect {target} value"
-            );
-            assert!(
-                config.config_path_overrides_typed_default(&path),
-                "explicit source must own derived {target}"
-            );
-        }
-
-        fn assert_unowned(config: &SourcePresentationConfig, target: &str, expected: &str) {
-            let path = format!("themeVariables.{target}");
-            assert_eq!(
-                config.get_str(&path),
-                Some(expected),
-                "incorrect {target} value"
-            );
-            assert!(
-                !config.config_path_overrides_typed_default(&path),
-                "calculated default must not own {target}"
             );
         }
 
@@ -4395,10 +3649,10 @@ Alice->>Bob: Hello
             ("specialStateColor", "#345678"),
             ("titleColor", "#456789"),
         ] {
-            assert_owned(&default, target, expected);
+            assert_color(&default, target, expected);
         }
-        assert_unowned(&default, "compositeBackground", "white");
-        assert_unowned(&default, "transitionColor", "#333333");
+        assert_color(&default, "compositeBackground", "white");
+        assert_color(&default, "transitionColor", "#333333");
 
         let mut base = config_with_explicit_theme_variables(
             "base",
@@ -4423,7 +3677,7 @@ Alice->>Bob: Hello
             ("stateLabelColor", "#56789a"),
             ("titleColor", "#6789ab"),
         ] {
-            assert_owned(&base, target, expected);
+            assert_color(&base, target, expected);
         }
 
         let mut explicit_state_background = config_with_explicit_theme_variables(
@@ -4435,16 +3689,16 @@ Alice->>Bob: Hello
             }),
         );
         apply_theme_defaults(&mut explicit_state_background).unwrap();
-        assert_owned(&explicit_state_background, "stateLabelColor", "#345678");
+        assert_color(&explicit_state_background, "stateLabelColor", "#345678");
 
         let mut derived_state_background =
             config_with_explicit_theme_variables("base", json!({ "mainBkg": "#123456" }));
         apply_theme_defaults(&mut derived_state_background).unwrap();
-        assert_owned(&derived_state_background, "stateBkg", "#123456");
-        assert_unowned(&derived_state_background, "stateLabelColor", "#333");
+        assert_color(&derived_state_background, "stateBkg", "#123456");
+        assert_color(&derived_state_background, "stateLabelColor", "#333");
 
         let dark_edge_label = theme_color::lighten("#234567", 25.0).unwrap();
-        for (theme, variables, owned, unowned) in [
+        for (theme, variables, expected, unchanged) in [
             (
                 "dark",
                 json!({
@@ -4502,11 +3756,8 @@ Alice->>Bob: Hello
         ] {
             let mut config = config_with_explicit_theme_variables(theme, variables);
             apply_theme_defaults(&mut config).unwrap();
-            for (target, expected) in owned {
-                assert_owned(&config, target, &expected);
-            }
-            for (target, expected) in unowned {
-                assert_unowned(&config, target, &expected);
+            for (target, expected) in expected.into_iter().chain(unchanged) {
+                assert_color(&config, target, &expected);
             }
         }
 
@@ -4531,20 +3782,12 @@ Alice->>Bob: Hello
             );
             apply_theme_defaults(&mut config).unwrap();
 
-            assert_owned(&config, "titleColor", "#6789ab");
-            assert_owned(&config, "innerEndBackground", "#456789");
-            assert_owned(&config, "specialStateColor", "#234567");
-            assert_owned(&config, "stateLabelColor", "#56789a");
-            if theme == "redux-dark" {
-                assert_unowned(&config, "compositeBackground", expected_composite);
-            } else {
-                assert_owned(&config, "compositeBackground", expected_composite);
-            }
-            if matches!(theme, "redux" | "redux-dark") {
-                assert_unowned(&config, "compositeTitleBackground", expected_title);
-            } else {
-                assert_owned(&config, "compositeTitleBackground", expected_title);
-            }
+            assert_color(&config, "titleColor", "#6789ab");
+            assert_color(&config, "innerEndBackground", "#456789");
+            assert_color(&config, "specialStateColor", "#234567");
+            assert_color(&config, "stateLabelColor", "#56789a");
+            assert_color(&config, "compositeBackground", expected_composite);
+            assert_color(&config, "compositeTitleBackground", expected_title);
         }
 
         let mut default_gradient = config_with_explicit_theme_variables(
@@ -4555,12 +3798,12 @@ Alice->>Bob: Hello
             }),
         );
         apply_theme_defaults(&mut default_gradient).unwrap();
-        assert_unowned(
+        assert_color(
             &default_gradient,
             "gradientStart",
             &mk_border("#ECECFF", false).unwrap(),
         );
-        assert_unowned(
+        assert_color(
             &default_gradient,
             "gradientStop",
             &mk_border("#ffffde", false).unwrap(),
@@ -4574,8 +3817,8 @@ Alice->>Bob: Hello
             }),
         );
         apply_theme_defaults(&mut base_gradient).unwrap();
-        assert_owned(&base_gradient, "gradientStart", "#123456");
-        assert_owned(&base_gradient, "gradientStop", "#234567");
+        assert_color(&base_gradient, "gradientStart", "#123456");
+        assert_color(&base_gradient, "gradientStop", "#234567");
 
         for (theme, gradient_start, gradient_stop) in [
             ("dark", "#cccccc", "hsl(180, 0%, 18.3529411765%)"),
@@ -4598,8 +3841,8 @@ Alice->>Bob: Hello
                 }),
             );
             apply_theme_defaults(&mut config).unwrap();
-            assert_unowned(&config, "gradientStart", gradient_start);
-            assert_unowned(&config, "gradientStop", gradient_stop);
+            assert_color(&config, "gradientStart", gradient_start);
+            assert_color(&config, "gradientStop", gradient_stop);
         }
 
         let mut base_sources = config_with_explicit_theme_variables(
@@ -4631,7 +3874,7 @@ Alice->>Bob: Hello
             ("gradientStop", derived_secondary_border.as_str()),
             ("activationBorderColor", derived_activation_border.as_str()),
         ] {
-            assert_owned(&base_sources, target, expected);
+            assert_color(&base_sources, target, expected);
         }
 
         for theme in [
@@ -4650,53 +3893,36 @@ Alice->>Bob: Hello
                 }),
             );
             apply_theme_defaults(&mut config).unwrap();
-            assert_unowned(&config, "gradientStart", "#0042eb");
-            assert_unowned(&config, "gradientStop", "#eb0042");
+            assert_color(&config, "gradientStart", "#0042eb");
+            assert_color(&config, "gradientStop", "#eb0042");
         }
     }
 
     #[test]
-    fn gantt_terminal_fill_dependencies_preserve_values_and_ownership() {
+    fn gantt_terminal_fill_dependencies_preserve_values() {
         fn config_with_explicit_theme_variables(
             theme: &str,
             theme_variables: Value,
         ) -> SourcePresentationConfig {
             let mut config = SourcePresentationConfig::from_value(json!({ "theme": theme }));
-            config.deep_merge_explicit(&json!({ "themeVariables": theme_variables }));
+            config.deep_merge(&json!({ "themeVariables": theme_variables }));
             config
         }
 
-        fn assert_owned(config: &SourcePresentationConfig, target: &str, expected: &str) {
+        fn assert_color(config: &SourcePresentationConfig, target: &str, expected: &str) {
             let path = format!("themeVariables.{target}");
             assert_eq!(
                 config.get_str(&path),
                 Some(expected),
                 "incorrect {target} value"
-            );
-            assert!(
-                config.config_path_overrides_typed_default(&path),
-                "the explicit Gantt source must own derived {target}"
-            );
-        }
-
-        fn assert_unowned(config: &SourcePresentationConfig, target: &str, expected: &str) {
-            let path = format!("themeVariables.{target}");
-            assert_eq!(
-                config.get_str(&path),
-                Some(expected),
-                "incorrect {target} value"
-            );
-            assert!(
-                !config.config_path_overrides_typed_default(&path),
-                "the pinned Gantt constant must not inherit unrelated ownership for {target}"
             );
         }
 
         let mut base =
             config_with_explicit_theme_variables("base", json!({ "primaryColor": "#123456" }));
         apply_theme_defaults(&mut base).unwrap();
-        assert_owned(&base, "taskBkgColor", "#123456");
-        assert_owned(
+        assert_color(&base, "taskBkgColor", "#123456");
+        assert_color(
             &base,
             "activeTaskBkgColor",
             &theme_color::lighten("#123456", 23.0).unwrap(),
@@ -4710,17 +3936,17 @@ Alice->>Bob: Hello
             }),
         );
         apply_theme_defaults(&mut dark).unwrap();
-        assert_owned(
+        assert_color(
             &dark,
             "taskBkgColor",
             &theme_color::lighten("#123456", 23.0).unwrap(),
         );
-        assert_owned(&dark, "doneTaskBkgColor", "#abcdef");
+        assert_color(&dark, "doneTaskBkgColor", "#abcdef");
 
         let mut forest =
             config_with_explicit_theme_variables("forest", json!({ "mainBkg": "#123456" }));
         apply_theme_defaults(&mut forest).unwrap();
-        assert_owned(&forest, "activeTaskBkgColor", "#123456");
+        assert_color(&forest, "activeTaskBkgColor", "#123456");
 
         let mut neutral = config_with_explicit_theme_variables(
             "neutral",
@@ -4738,7 +3964,7 @@ Alice->>Bob: Hello
             ("doneTaskBkgColor", "#345678"),
             ("critBkgColor", "#456789"),
         ] {
-            assert_owned(&neutral, target, expected);
+            assert_color(&neutral, target, expected);
         }
 
         let active_dark = theme_color::lighten("#123456", 23.0).unwrap();
@@ -4746,8 +3972,8 @@ Alice->>Bob: Hello
             let mut config =
                 config_with_explicit_theme_variables(theme, json!({ "primaryColor": "#123456" }));
             apply_theme_defaults(&mut config).unwrap();
-            assert_owned(&config, "taskBkgColor", "#123456");
-            assert_owned(&config, "activeTaskBkgColor", &active_dark);
+            assert_color(&config, "taskBkgColor", "#123456");
+            assert_color(&config, "activeTaskBkgColor", &active_dark);
         }
 
         let pinned_light_active = theme_color::lighten("#ECECFE", 23.0).unwrap();
@@ -4755,8 +3981,8 @@ Alice->>Bob: Hello
             let mut config =
                 config_with_explicit_theme_variables(theme, json!({ "primaryColor": "#123456" }));
             apply_theme_defaults(&mut config).unwrap();
-            assert_unowned(&config, "taskBkgColor", "#ECECFE");
-            assert_unowned(&config, "activeTaskBkgColor", &pinned_light_active);
+            assert_color(&config, "taskBkgColor", "#ECECFE");
+            assert_color(&config, "activeTaskBkgColor", &pinned_light_active);
         }
 
         let mut explicit_targets = config_with_explicit_theme_variables(
@@ -4775,12 +4001,12 @@ Alice->>Bob: Hello
             ("doneTaskBkgColor", "#333333"),
             ("critBkgColor", "#444444"),
         ] {
-            assert_owned(&explicit_targets, target, expected);
+            assert_color(&explicit_targets, target, expected);
         }
     }
 
     #[test]
-    fn neutral_site_text_owns_unconditional_sequence_derivations() {
+    fn neutral_site_text_drives_unconditional_sequence_derivations() {
         let metadata = crate::MermaidEngine::new()
             .with_site_config(SourcePresentationConfig::from_value(json!({
                 "theme": "neutral",
@@ -4806,17 +4032,11 @@ Alice->>Bob: Hello
                 Some("#56789a"),
                 "Neutral site text has incorrect derived {target} value"
             );
-            assert!(
-                metadata
-                    .effective_config
-                    .config_path_overrides_typed_default(&path),
-                "Neutral site text must own derived {target}"
-            );
         }
     }
 
     #[test]
-    fn dark_site_main_contrast_owns_unconditional_state_and_sequence_derivations() {
+    fn dark_site_main_contrast_drives_state_and_sequence_derivations() {
         let metadata = crate::MermaidEngine::new()
             .with_site_config(SourcePresentationConfig::from_value(json!({
                 "theme": "dark",
@@ -4839,12 +4059,6 @@ Alice->>Bob: Hello
                 metadata.effective_config.get_str(&path),
                 Some("#456789"),
                 "Dark site mainContrastColor has incorrect derived {target} value"
-            );
-            assert!(
-                metadata
-                    .effective_config
-                    .config_path_overrides_typed_default(&path),
-                "Dark site mainContrastColor must own derived {target}"
             );
         }
     }
@@ -5042,7 +4256,6 @@ Alice->>Bob: Hello
                 "{variable}"
             );
             assert_eq!(config.as_value(), before.as_value(), "{variable}");
-            assert!(!config.path_was_mutated_after(&before, ""), "{variable}");
         }
     }
 
@@ -5066,7 +4279,7 @@ Alice->>Bob: Hello
     }
 
     #[test]
-    fn base_finalize_uses_presence_and_preserves_explicit_gradient_ownership() {
+    fn base_finalize_uses_node_border_presence() {
         let program = ThemeProgram::resolve(MermaidThemeId::Base);
         for border in [json!(false), json!(0), Value::Null] {
             let explicit = json!({"nodeBorder": border});
@@ -5076,21 +4289,8 @@ Alice->>Bob: Hello
                 explicit.as_object().unwrap(),
             )
             .unwrap();
-            assert_eq!(
-                resolved.trace().final_resolved.variables["useGradient"],
-                json!(false)
-            );
-            assert!(
-                resolved
-                    .trace()
-                    .final_resolved
-                    .depends_on("useGradient", "nodeBorder")
-            );
+            assert_eq!(resolved.variables["useGradient"], json!(false));
         }
-        let mut config = SourcePresentationConfig::from_value(json!({"theme": "base"}));
-        config.deep_merge_explicit(&json!({"themeVariables": {"nodeBorder": "#123456"}}));
-        apply_theme_defaults(&mut config).unwrap();
-        assert!(config.config_path_overrides_typed_default("themeVariables.useGradient"));
     }
 
     #[test]
@@ -5173,35 +4373,6 @@ Alice->>Bob: Hello
             } else {
                 assert_eq!(variables["fillType0"], "#701a75");
                 assert_eq!(variables["altSectionBkgColor"], "#000000");
-            }
-        }
-    }
-
-    #[test]
-    fn mermaid_12_dependency_updates_propagate_authored_ownership() {
-        for theme in MermaidThemeId::NAMES {
-            let mut config = SourcePresentationConfig::from_value(json!({"theme": theme}));
-            config.deep_merge_explicit(
-                &json!({"themeVariables": {"secondaryBorderColor": "#123456"}}),
-            );
-            apply_theme_defaults(&mut config).unwrap();
-            assert_eq!(
-                config.config_path_overrides_typed_default("themeVariables.flowContainerStroke"),
-                *theme != "default",
-                "{theme}",
-            );
-        }
-        for theme in ["redux-color", "redux-dark-color"] {
-            let mut config = SourcePresentationConfig::from_value(json!({"theme": theme}));
-            config.deep_merge_explicit(
-                &json!({"themeVariables": {"cScale0": "#123456", "cScale1": "#abcdef"}}),
-            );
-            apply_theme_defaults(&mut config).unwrap();
-            for target in ["pie1", "pie2", "sectionBkgColor", "sectionBkgColor2"] {
-                assert!(
-                    config.config_path_overrides_typed_default(&format!("themeVariables.{target}")),
-                    "{theme}/{target}"
-                );
             }
         }
     }
@@ -5848,126 +5019,29 @@ flowchart TD
     }
 
     #[test]
-    fn staged_theme_failure_is_transactional_for_config_and_compatibility_ownership() {
-        let binding = merman_model::presentation::ThemeCompatibilityRecipe::try_new(
-            [0x5a; 32],
-            MermaidConfig::from_value(json!({
-                "theme": "dark",
-                "themeVariables": {
-                    "mainBkg": "#abcdef",
-                    "nodeBkg": "#123456"
-                }
-            })),
-        )
-        .expect("valid dark compatibility binding");
-        let mut config = SourcePresentationConfig::from_theme_compatibility_recipe(binding);
-        // Keep compatibility ownership attached while presenting the staged executor with one
-        // invalid color and one null override that normalization would otherwise retire.
-        config.set_value_preserving_theme_compatibility(
-            "themeVariables.mainBkg",
-            Value::String("not-a-color".to_string()),
-        );
-        config.set_value_preserving_theme_compatibility("themeVariables.nodeBkg", Value::Null);
-
-        let before_value = config.as_value().clone();
-        let mut expected_compatibility = config.clone();
-        expected_compatibility.freeze_theme_compatibility();
-
-        assert!(apply_theme_defaults(&mut config).is_err());
-        assert_eq!(config.as_value(), &before_value);
-
-        config.freeze_theme_compatibility();
-        assert_eq!(
-            config.mermaid_compatibility_fields(),
-            expected_compatibility.mermaid_compatibility_fields(),
-            "a failed staged execution must not retire compatibility ownership"
-        );
-    }
-
-    #[test]
-    fn base_theme_failure_is_transactional_for_config_and_compatibility_ownership() {
-        let binding = merman_model::presentation::ThemeCompatibilityRecipe::try_new(
-            [0x6a; 32],
-            MermaidConfig::from_value(json!({
-                "theme": "base",
-                "themeVariables": {
-                    "nodeBkg": "#123456",
-                    "cScale2": "#abcdef"
-                }
-            })),
-        )
-        .expect("valid Base compatibility binding");
-        let mut config = SourcePresentationConfig::from_theme_compatibility_recipe(binding);
-        config.set_value_preserving_theme_compatibility(
-            "themeVariables.cScale2",
-            Value::String("not-a-color".to_string()),
-        );
-        config.set_value_preserving_theme_compatibility("themeVariables.nodeBkg", Value::Null);
-
-        let before_value = config.as_value().clone();
-        let mut expected_compatibility = config.clone();
-        expected_compatibility.freeze_theme_compatibility();
-
-        assert!(apply_theme_defaults(&mut config).is_err());
-        assert_eq!(config.as_value(), &before_value);
-
-        config.freeze_theme_compatibility();
-        assert_eq!(
-            config.mermaid_compatibility_fields(),
-            expected_compatibility.mermaid_compatibility_fields(),
-            "a failed Base execution must not retire compatibility ownership"
-        );
-    }
-
-    #[test]
-    fn legacy_theme_failure_is_transactional_for_config_and_compatibility_ownership() {
-        for theme in MermaidThemeId::ALL
+    fn theme_failure_leaves_values_and_authored_paths_intact() {
+        let staged_cases = [("dark", "mainBkg"), ("base", "cScale2")];
+        let other_cases = MermaidThemeId::ALL
             .iter()
-            .copied()
-            .filter(|theme| ThemeProgram::resolve(*theme).staged_program().is_none())
-        {
-            let binding = merman_model::presentation::ThemeCompatibilityRecipe::try_new(
-                [0x6b; 32],
-                MermaidConfig::from_value(json!({
-                    "theme": theme.as_str(),
-                    "themeVariables": {
-                        "primaryColor": "#123456",
-                        "nodeBkg": "#abcdef",
-                    },
-                })),
-            )
-            .expect("valid legacy-theme compatibility binding");
-            let mut config = SourcePresentationConfig::from_theme_compatibility_recipe(binding);
-            config.set_value_preserving_theme_compatibility(
-                "themeVariables.primaryColor",
-                json!("not-a-color"),
-            );
-            config.set_value_preserving_theme_compatibility("themeVariables.nodeBkg", Value::Null);
-            config.set_value_explicit("hostOption", json!(true));
-            let before_value = config.as_value().clone();
-            let mut expected_compatibility = config.clone();
-            expected_compatibility.freeze_theme_compatibility();
-
+            .filter(|theme| ThemeProgram::resolve(**theme).staged_program().is_none())
+            .map(|theme| (theme.as_str(), "primaryColor"));
+        for (theme, variable) in staged_cases.into_iter().chain(other_cases) {
+            let mut config = SourcePresentationConfig::from_value(json!({
+                "theme": theme,
+                "themeVariables": {"nodeBkg": null},
+            }));
+            config.set_value(&format!("themeVariables.{variable}"), json!("not-a-color"));
+            let before = config.clone();
             let (result, work) =
                 crate::config::measure_config_work(|| apply_theme_defaults(&mut config));
             assert!(
                 result.is_err(),
-                "{theme} must reject the invalid evaluated color"
+                "{theme}: {variable} must reject the invalid color"
             );
-            assert_eq!(config.as_value(), &before_value, "{theme}");
+            assert_eq!(config.as_value(), before.as_value(), "{theme}");
             assert_eq!(work.json_cow_copies, 0, "{theme}: {work:?}");
-            assert!(config.explicit_config_owns_path("hostOption"));
+            assert!(config.explicit_config_owns_path(&format!("themeVariables.{variable}")));
             assert!(!config.explicit_config_owns_path("themeVariables.nodeBkg"));
-            config.freeze_theme_compatibility();
-            assert_eq!(
-                config.mermaid_compatibility_fields(),
-                expected_compatibility.mermaid_compatibility_fields(),
-                "a failed {theme} execution must not retire compatibility ownership",
-            );
-            assert_eq!(
-                config.theme_parse_binding(),
-                expected_compatibility.theme_parse_binding()
-            );
         }
     }
 
@@ -6014,7 +5088,7 @@ flowchart TD
     }
 
     #[test]
-    fn staged_object_dependencies_remain_field_local() {
+    fn staged_object_dependencies_preserve_background_color() {
         let metadata = crate::MermaidEngine::new()
             .with_site_config(SourcePresentationConfig::from_value(json!({
                 "theme": "dark",
@@ -6028,22 +5102,10 @@ flowchart TD
             config.get_str("themeVariables.xyChart.backgroundColor"),
             Some("#123456")
         );
-        assert!(
-            config.config_path_overrides_typed_default("themeVariables.xyChart.backgroundColor"),
-            "the derived XY background must retain ownership from the explicit root background"
-        );
-        assert!(
-            !config.config_path_overrides_typed_default("themeVariables.xyChart.plotColorPalette"),
-            "one derived object field must not claim its constructor-owned siblings"
-        );
-        assert!(
-            !config.config_path_overrides_typed_default("themeVariables.xyChart.titleColor"),
-            "field-local ownership must not widen to the whole XY theme object"
-        );
     }
 
     #[test]
-    fn staged_theme_interface_matches_upstream_stage_oracles_and_ownership() {
+    fn staged_theme_interface_matches_upstream_stage_oracles() {
         let mut mismatches = Vec::new();
         for case in &generated_theme_oracles().stage_oracle_cases {
             let theme_name = case.get("theme").and_then(Value::as_str).unwrap();
@@ -6082,7 +5144,7 @@ flowchart TD
                     .get(stage_name)
                     .and_then(Value::as_object)
                     .unwrap();
-                let actual = Value::Object(actual.variables.clone());
+                let actual = Value::Object(actual.clone());
                 for (path, observation) in expected {
                     let state = observation.get("state").and_then(Value::as_str).unwrap();
                     let actual_value = value_at_path(&actual, path);
@@ -6104,154 +5166,6 @@ flowchart TD
                         other => panic!("unexpected stage observation state `{other}`"),
                     }
                 }
-            }
-
-            match id {
-                "node-border-finalize" => {
-                    assert_ne!(
-                        trace.explicit_replay.variables["useGradient"],
-                        trace.final_resolved.variables["useGradient"]
-                    );
-                    assert!(trace.final_resolved.depends_on("useGradient", "nodeBorder"));
-                }
-                "node-border-explicit-gradient" => {
-                    assert!(
-                        trace
-                            .final_resolved
-                            .depends_on("useGradient", "useGradient")
-                    );
-                    assert!(!trace.final_resolved.depends_on("useGradient", "nodeBorder"));
-                }
-                "partial-objects" | "nested-object-replay" => {
-                    assert!(
-                        trace.final_resolved.variables["radar"]
-                            .get("axisColor")
-                            .is_some()
-                    );
-                    assert!(
-                        trace.final_resolved.variables["radar"]
-                            .get("curveOpacity")
-                            .is_some()
-                    );
-                }
-                "secondary-border" | "falsy-container-stroke" => {
-                    assert!(
-                        trace
-                            .after_update
-                            .depends_on("flowContainerStroke", "secondaryBorderColor")
-                    );
-                }
-                "primary-and-derived-replay" => {
-                    assert!(
-                        trace.after_update.depends_on("fillType0", "primaryColor"),
-                        "{theme_name} Journey fill must inherit primaryColor ownership"
-                    );
-                    assert!(
-                        !trace.after_update.depends_on("mainBkg", "primaryColor"),
-                        "{theme_name} constructor-owned mainBkg must remain independent"
-                    );
-                    match theme {
-                        MermaidThemeId::Dark => {
-                            assert!(trace.after_update.depends_on("cScale0", "primaryColor"));
-                            assert!(!trace.after_update.depends_on("cScale2", "primaryColor"));
-                        }
-                        MermaidThemeId::Forest => {
-                            assert!(trace.after_update.depends_on("cScale0", "primaryColor"));
-                            assert!(!trace.after_update.depends_on("cScale2", "primaryColor"));
-                            assert!(trace.after_update.depends_on("cScale3", "primaryColor"));
-                        }
-                        MermaidThemeId::Neutral => {
-                            for target in ["cScale0", "cScale2", "cScale3"] {
-                                assert!(
-                                    !trace.after_update.depends_on(target, "primaryColor"),
-                                    "Neutral {target} is constructor/update constant"
-                                );
-                            }
-                        }
-                        _ => unreachable!(),
-                    }
-                }
-                "color-limit-and-tag-replay" => {
-                    for target in ["cScaleInv8", "cScalePeer8", "cScaleLabel8"] {
-                        assert!(
-                            !trace.after_update.depends_on(target, target),
-                            "{theme_name} {target} must be replaced inside the active loop bound"
-                        );
-                        assert!(
-                            !trace.after_update.depends_on(target, "THEME_COLOR_LIMIT"),
-                            "loop control must not become value ownership for {theme_name} {target}"
-                        );
-                    }
-                    for target in ["cScaleInv9", "cScalePeer9", "cScaleLabel9"] {
-                        assert!(
-                            trace.after_update.depends_on(target, target),
-                            "{theme_name} {target} must remain the skipped explicit value"
-                        );
-                        assert!(
-                            !trace.after_update.depends_on(target, "THEME_COLOR_LIMIT"),
-                            "{theme_name} {target} must not be written beyond the loop bound"
-                        );
-                    }
-                    if theme == MermaidThemeId::Forest {
-                        for target in ["pie8", "pie9"] {
-                            assert!(!trace.after_update.depends_on(target, "THEME_COLOR_LIMIT"));
-                            assert!(!trace.after_update.depends_on(target, target));
-                            assert!(trace.explicit_replay.depends_on(target, target));
-                        }
-                    } else {
-                        assert!(!trace.after_update.depends_on("pie8", "pie8"));
-                        assert!(!trace.after_update.depends_on("pie8", "THEME_COLOR_LIMIT"));
-                        assert!(trace.after_update.depends_on("pie9", "pie9"));
-                        assert!(!trace.after_update.depends_on("pie9", "THEME_COLOR_LIMIT"));
-                    }
-                    assert!(
-                        !trace
-                            .after_update
-                            .depends_on("tagLabelBorder", "tagLabelBorder"),
-                        "the unconditional Tag assignment must replace explicit ownership"
-                    );
-                    assert!(
-                        trace
-                            .explicit_replay
-                            .depends_on("tagLabelBorder", "tagLabelBorder"),
-                        "explicit replay must restore Tag ownership"
-                    );
-                    if matches!(theme, MermaidThemeId::Dark | MermaidThemeId::Neutral) {
-                        assert!(
-                            trace.after_update.depends_on("scaleLabelColor", "darkMode"),
-                            "{theme_name} false darkMode branch must retain control provenance"
-                        );
-                    }
-                }
-                "falsy-or-chain" => {
-                    assert!(
-                        trace
-                            .after_update
-                            .depends_on("stateLabelColor", "primaryTextColor")
-                    );
-                    assert!(!trace.after_update.depends_on("stateLabelColor", "stateBkg"));
-                }
-                "operator-and-replay" => {
-                    for target in ["primaryBorderColor", "gradientStart", "pieOpacity", "venn1"] {
-                        assert!(trace.explicit_replay.depends_on(target, target));
-                    }
-                    assert!(
-                        !trace.after_update.depends_on("pieOpacity", "pieOpacity"),
-                        "JavaScript || must replace explicit numeric zero before replay"
-                    );
-                    assert!(
-                        trace.after_update.depends_on("venn1", "venn1"),
-                        "JavaScript ?? must retain explicit numeric zero"
-                    );
-                }
-                "null-elision" => {
-                    assert!(
-                        !trace.overrides_applied.depends_on("venn1", "venn1"),
-                        "public initialize semantics must elide a top-level null override"
-                    );
-                    assert!(!trace.explicit_replay.depends_on("venn1", "venn1"));
-                }
-                other => panic!("unexpected staged oracle `{theme_name}/{other}`"),
             }
         }
 
@@ -6403,7 +5317,7 @@ flowchart TD
     }
 
     #[test]
-    fn default_xychart_object_replacement_propagates_only_actual_root_dependencies() {
+    fn default_xychart_object_replacement_uses_root_colors() {
         for replace_object in [false, true] {
             let mut site = json!({"themeVariables":{
                 "primaryTextColor":"#131300", "background":"#142536"
@@ -6423,23 +5337,6 @@ flowchart TD
             assert_eq!(
                 config.get_str("themeVariables.xyChart.backgroundColor"),
                 Some(if replace_object { "#142536" } else { "white" })
-            );
-            for key in XYCHART_TEXT_COLOR_KEYS
-                .iter()
-                .copied()
-                .chain(["backgroundColor"])
-            {
-                assert_eq!(
-                    config.config_path_overrides_typed_default(&format!(
-                        "themeVariables.xyChart.{key}"
-                    )),
-                    replace_object,
-                    "{key}: replace={replace_object}"
-                );
-            }
-            assert!(
-                !config
-                    .config_path_overrides_typed_default("themeVariables.xyChart.plotColorPalette")
             );
         }
     }

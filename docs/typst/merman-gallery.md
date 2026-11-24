@@ -8,11 +8,13 @@ Run locally:
 cargo run -p xtask -- typst-package-smoke --skip-wasm-build --typst /path/to/typst --keep-artifacts
 ```
 
-Artifacts are written to `target/typst-package-smoke/out`.
+The command prints the unique directory under `target/typst-package-smoke/`. PDFs are in that run's `out/` subdirectory.
 
 ## Examples
 
 - `examples/basic.pdf`: minimal image rendering with `mermaid`.
+- `examples/theme-gallery.pdf` displays Studio in both appearances, Paper Cut, and Pop Art.
+- `examples/theme-authoring.pdf` exports a preset and resolves a custom Theme v2 document.
 - `examples/document-context.pdf`: `document-context: true` for direct calls and raw blocks.
 - `examples/profile.pdf`: profile reuse across direct calls and raw Mermaid fences.
 - `examples/figure.pdf`: Typst `figure` wrapping with profile figure defaults.
@@ -26,6 +28,7 @@ Artifacts are written to `target/typst-package-smoke/out`.
 
 - `tests/api/test.pdf`: canonical API surface, profiles, options escape hatch, capabilities, figures, and raw block show rules.
 - `tests/context/test.pdf`: explicit default behavior, context opt-in, direct override, and layout width precedence.
+- `tests/themes/test.pdf` exercises the v2 catalog, preset export, resolution diagnostics, and native and classic rendering.
 - `tests/errors/test.pdf`: structured invalid-source errors plus text and placeholder in-document modes.
 - `tests/figure/test.pdf`: caption, placement/scope defaults, profile figure defaults, direct overrides, and document context.
 - `tests/raw-blocks/test.pdf`: explicit and document-context raw block handlers.

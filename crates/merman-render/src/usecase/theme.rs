@@ -4,9 +4,6 @@ use crate::config::{config_f64, config_string};
 use crate::text::TextStyle;
 use serde_json::Value;
 
-mod compiled;
-pub(crate) use compiled::{UsecaseThemePlan, UsecaseThemeReceipt, UsecaseThemeStyle};
-
 #[derive(Debug, Clone)]
 pub(crate) struct UsecaseCssPaint {
     color: String,
@@ -25,7 +22,7 @@ impl UsecaseCssPaint {
             .unwrap_or_else(|| Self::literal(fallback))
     }
 
-    pub(super) fn literal(color: &str) -> Self {
+    fn literal(color: &str) -> Self {
         Self {
             color: color.to_owned(),
             variable: None,
@@ -34,15 +31,6 @@ impl UsecaseCssPaint {
 
     pub(crate) fn css(&self) -> &str {
         &self.color
-    }
-
-    pub(super) fn source_owned(
-        &self,
-        config: &merman_model::presentation::PresentationConfig,
-    ) -> bool {
-        self.variable.is_some_and(|key| {
-            config.config_paint_overrides_typed_default(&format!("themeVariables.{key}"))
-        })
     }
 }
 
@@ -85,6 +73,7 @@ pub(crate) struct UsecaseCssBinding {
     pub(crate) hand_drawn_seed: f64,
     pub(crate) neo: crate::svg::PreparedCommonNeoCss,
     pub(crate) look_defs: crate::svg::PreparedLookDefs,
+    pub(crate) native_title_font: Option<TextStyle>,
 }
 
 impl UsecaseCssBinding {
@@ -178,21 +167,84 @@ impl UsecaseCssBinding {
             hand_drawn_seed: config_f64(config, &["handDrawnSeed"]).unwrap_or(0.0),
             neo: crate::svg::PreparedCommonNeoCss::new(config),
             look_defs: crate::svg::PreparedLookDefs::new(config),
+            native_title_font: None,
         }
     }
 
-    pub(super) fn palette_fill(&self, index: usize) -> Option<UsecaseCssPaint> {
-        (!self.palette.is_empty() && !self.backgrounds.is_empty()).then(|| UsecaseCssPaint {
-            color: self.backgrounds[index % self.palette.len() % self.backgrounds.len()].clone(),
-            variable: Some("bkgColorArray"),
-        })
-    }
+    pub(super) fn apply_native(
+        &mut self,
+        config: &merman_model::presentation::PresentationConfig,
+        theme: &crate::theme::FamilyTheme,
+        background: Option<crate::theme::Color>,
+    ) {
+        use merman_theme_contract::v2::EdgeLabelBackground;
 
-    pub(super) fn palette_stroke(&self, index: usize) -> Option<UsecaseCssPaint> {
-        (!self.palette.is_empty()).then(|| UsecaseCssPaint {
-            color: self.palette[index % self.palette.len()].clone(),
-            variable: Some("borderColorArray"),
-        })
+        let roles = &theme.roles;
+        let paint = |binding: &mut UsecaseCssPaint, color: crate::theme::Color| {
+            if !binding.variable.is_some_and(|key| {
+                config.explicit_config_owns_path(&format!("themeVariables.{key}"))
+            }) {
+                *binding = UsecaseCssPaint::literal(&color.to_string());
+            }
+        };
+        let node = roles.surface_node.first_color();
+        let outline = roles.stroke_border.first_color();
+        let connector = roles.stroke_connector.first_color();
+        for binding in [&mut self.main, &mut self.body, &mut self.actor] {
+            paint(binding, node);
+        }
+        for binding in [
+            &mut self.node_border,
+            &mut self.border,
+            &mut self.boundary_border,
+            &mut self.note_border,
+        ] {
+            paint(binding, outline);
+        }
+        for binding in [
+            &mut self.actor_border,
+            &mut self.line,
+            &mut self.include,
+            &mut self.extend,
+        ] {
+            paint(binding, connector);
+        }
+        for binding in [&mut self.text, &mut self.root_text, &mut self.actor_text] {
+            paint(binding, roles.text_primary);
+        }
+        paint(&mut self.title, roles.text_title);
+        paint(&mut self.boundary, roles.surface_container.first_color());
+        paint(&mut self.note, roles.surface_callout.first_color());
+        paint(&mut self.note_text, roles.text_callout);
+        let canvas = background.unwrap_or_else(|| roles.canvas.first_color());
+        let edge_label = match theme.form.edge_label_bg {
+            EdgeLabelBackground::Auto | EdgeLabelBackground::Canvas => canvas,
+            EdgeLabelBackground::Pill => node,
+            EdgeLabelBackground::Transparent => crate::theme::Color::TRANSPARENT,
+        };
+        paint(&mut self.edge_background, edge_label);
+        self.palette.clear();
+        self.backgrounds.clear();
+
+        let typography = &theme.typography;
+        let family = crate::theme::font_family_css(typography.stack(typography.body_family));
+        for style in [
+            &mut self.generic_font,
+            &mut self.root_font,
+            &mut self.actor_font,
+            &mut self.usecase_font,
+        ] {
+            style.font_family = Some(family.clone());
+            style.font_size = typography.base_size_px;
+            style.font_weight = Some(typography.label_weight.to_string());
+        }
+        let title = crate::theme::font_family_css(typography.stack(typography.title_family));
+        self.native_title_font = Some(TextStyle {
+            font_family: Some(title),
+            font_size: typography.base_size_px,
+            font_weight: Some(typography.title_weight.to_string()),
+            ..TextStyle::default()
+        });
     }
 }
 

@@ -3,17 +3,11 @@ mod common;
 use std::sync::Arc;
 
 use common::legacy_init_theme_compat_engine;
-use merman_core::{MermaidEngine, ParseOptions};
-use merman_render::DiagramFamilyId;
+use merman_core::ParseOptions;
 use merman_render::LayoutOptions;
-use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
-    Specified, ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
-    ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
-};
 use merman_render::environment::{
-    MeasurementProfileId, RenderEnvironment, TextMeasurementPolicy, TextMeasurementProfile,
-    TextMeasurementProfileIdentity,
+    MeasurementProfileId, RenderEnvironment, RenderSession, TextMeasurementPolicy,
+    TextMeasurementProfile, TextMeasurementProfileIdentity,
 };
 use merman_render::family;
 use merman_render::model::CynefinDiagramLayout;
@@ -22,6 +16,7 @@ use merman_render::resources::{
 };
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
+use merman_render::theme::{Color, NativeTheme, ThemeCompiler};
 
 fn parse_layout_and_render(
     input: &str,
@@ -40,6 +35,14 @@ fn parse_layout_and_render_with_environment(
     environment: &RenderEnvironment,
 ) -> (CynefinDiagramLayout, String) {
     let session = environment.begin_session().unwrap();
+    parse_layout_and_render_with_session(input, layout_options, session)
+}
+
+fn parse_layout_and_render_with_session(
+    input: &str,
+    layout_options: &LayoutOptions,
+    session: RenderSession,
+) -> (CynefinDiagramLayout, String) {
     let parsed = legacy_init_theme_compat_engine()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
         .expect("parse cynefin")
@@ -89,37 +92,6 @@ fn try_render_cynefin_svg_with_resource_policy(
     Ok(rendered.svg().to_owned())
 }
 
-fn cynefin_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
-    DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_typography(
-            TypographySpec::default().with_family_style(DiagramFamilyId::CYNEFIN, typography),
-        ))
-        .expect("compile Cynefin typography theme")
-}
-
-fn cynefin_text_fill_theme(fill: CanvasPaint) -> DiagramTheme {
-    let rule = ThemeRule::new(
-        ThemeTarget::Text,
-        ThemeStylePatch::default().with_fill(fill),
-    )
-    .for_family(DiagramFamilyId::CYNEFIN);
-    DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
-        .expect("compile Cynefin text fill theme")
-}
-
-fn cynefin_default_text_fill_theme(fill: CanvasPaint) -> DiagramTheme {
-    let rule = ThemeRule::new(
-        ThemeTarget::Text,
-        ThemeStylePatch::default().with_fill(fill),
-    )
-    .for_family(DiagramFamilyId::CYNEFIN)
-    .with_variant(ThemeVariant::Default);
-    DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
-        .expect("compile explicit-Default Cynefin text fill theme")
-}
-
 fn cynefin_stylesheet(svg: &str) -> String {
     roxmltree::Document::parse(svg)
         .expect("valid Cynefin SVG")
@@ -140,7 +112,7 @@ fn cynefin_rule_body<'a>(stylesheet: &'a str, diagram_id: &str, selector: &str) 
     &body[..end]
 }
 
-const CYNEFIN_TEXT_FILL_SOURCE: &str = r#"---
+const CYNEFIN_NATIVE_SOURCE: &str = r#"---
 config:
   cynefin:
     showDomainDescriptions: true
@@ -153,36 +125,165 @@ complex
 clear --> complex : "Probe"
 "#;
 
-fn try_render_cynefin_with_theme(
-    source: &str,
-    theme: &DiagramTheme,
-    engine: MermaidEngine,
-    environment: &RenderEnvironment,
-    diagram_id: &str,
-) -> merman_render::Result<(CynefinDiagramLayout, family::RenderedFamilySvg)> {
-    let parsed = common::install_parse_compatibility(theme, engine)
-        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-        .expect("parse themed Cynefin")
-        .expect("detect themed Cynefin")
-        .into_presentation();
-    let session = environment.begin_session_with_theme(theme).unwrap();
-    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)?;
-    let projection = artifact.layout_json()?;
-    let layout = serde_json::from_value(projection["layout"]["CynefinDiagram"].clone())
-        .expect("Cynefin layout projection");
-    let rendered = artifact.render_svg(
-        &SvgRenderOptions {
-            diagram_id: Some(diagram_id.to_string()),
-            ..SvgRenderOptions::default()
-        },
-        &SvgDebugOptions::default(),
-    )?;
-    Ok((layout, rendered))
+#[derive(Debug)]
+struct CynefinNativeFontProbe;
+
+impl TextMeasurer for CynefinNativeFontProbe {
+    fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+        assert_eq!(
+            style.font_family.as_deref(),
+            Some("\"Domain Sans\", sans-serif")
+        );
+        assert_eq!(style.font_size, 20.0);
+        assert_eq!(style.font_weight.as_deref(), Some("550"));
+        TextMetrics {
+            width: 10.0 * text.len() as f64,
+            height: 20.0,
+            line_count: 1,
+        }
+    }
 }
 
-fn portable_cynefin_environment() -> RenderEnvironment {
-    RenderEnvironment::deterministic()
-        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+#[test]
+fn cynefin_native_domains_and_items_keep_the_canvas_visible() {
+    let theme = ThemeCompiler::new()
+        .compile_json(
+            br##"{
+              "schema_version": 2,
+              "extends": "studio",
+              "roles": {
+                "canvas": "#F8FAFC", "surface.container": "#DEE5EA", "surface.node": "#EEF1F2",
+                "stroke.connector": "#36485A", "text.primary": "#223344", "text.title": "#19364D"
+              },
+              "appearances": {"light": {"data": {"fill": ["#BAD4E9", "#E9CDBA", "#D1E9BA", "#E9BACD", "#DCBAE9"]}}},
+              "typography": {"sans": ["Domain Sans", "sans-serif"], "base_size_px": 20, "label_weight": 550}
+            }"##,
+            None,
+        )
+        .unwrap();
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.cynefin-native-font").unwrap(),
+        "1",
+    )
+    .unwrap();
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
+            identity,
+            Arc::new(CynefinNativeFontProbe),
+        )),
+    );
+    let session = environment
+        .begin_session_with_native_theme(NativeTheme::new(theme.clone()))
+        .unwrap();
+    let (layout, svg) = parse_layout_and_render_with_session(
+        CYNEFIN_NATIVE_SOURCE,
+        &LayoutOptions::default(),
+        session,
+    );
+    assert_eq!(
+        layout
+            .items
+            .iter()
+            .find(|item| item.label == "Runbook")
+            .unwrap()
+            .width,
+        90.0
+    );
+    let doc = roxmltree::Document::parse(&svg).unwrap();
+    let canvas = doc.root_element().first_element_child().unwrap();
+    assert_eq!(canvas.attribute("class"), Some("merman-theme-canvas"));
+    assert_eq!(
+        canvas.first_element_child().unwrap().attribute("fill"),
+        Some("#F8FAFC")
+    );
+    let by_class = |class| {
+        doc.descendants()
+            .filter(move |node| node.attribute("class") == Some(class))
+    };
+    let domains: Vec<_> = by_class("cynefinDomain").collect();
+    assert_eq!(domains.len(), 4);
+    assert!(
+        domains
+            .iter()
+            .all(|domain| domain.attribute("fill") == Some("#DEE5EA")
+                && domain.attribute("fill-opacity") == Some("0.4"))
+    );
+    let confusion = by_class("cynefinConfusion").next().unwrap();
+    assert_eq!(confusion.attribute("fill"), Some("#DEE5EA"));
+    assert_eq!(confusion.attribute("fill-opacity"), Some("0.5"));
+    let accents: Vec<_> = by_class("cynefinDomainAccent").collect();
+    assert_eq!(
+        accents
+            .iter()
+            .filter_map(|node| node.attribute("fill"))
+            .collect::<Vec<_>>(),
+        ["#D1E9BA", "#E9CDBA", "#E9BACD", "#BAD4E9", "#DCBAE9"]
+    );
+    let clip = doc
+        .descendants()
+        .find(|node| node.has_tag_name("clipPath"))
+        .unwrap();
+    assert_eq!(
+        clip.first_element_child().unwrap().attribute("d"),
+        confusion.attribute("d")
+    );
+    assert_eq!(
+        accents[4].attribute("clip-path"),
+        Some("url(#cynefin-confusion-clip-cynefin-test)")
+    );
+    assert!(by_class("cynefinItem").all(|node| node.attribute("fill") == Some("#EEF1F2")));
+    let css = cynefin_stylesheet(&svg);
+    assert!(
+        cynefin_rule_body(&css, "cynefin-test", ".cynefinDomainLabel").contains("fill:#19364D;")
+    );
+    assert_eq!(
+        cynefin_rule_body(&css, "cynefin-test", ".cynefinItemText"),
+        "font-size:20px;fill:#223344;"
+    );
+    assert!(
+        cynefin_rule_body(&css, "cynefin-test", ".cynefinArrowLine").contains("stroke:#36485A;")
+    );
+    assert!(cynefin_rule_body(&css, "cynefin-test", ".cynefinArrowHead").contains("fill:#36485A;"));
+
+    let source = r#"---
+config:
+  themeVariables:
+    fontFamily: 'SourceCynefinFont, monospace'
+    cynefin:
+      complexBg: '#AECFEF'
+      textColor: '#2C3D50'
+      arrowColor: '#B04225'
+---
+cynefin-beta
+complex
+"Retrospective"
+complex --> clear : "Practice"
+"#;
+    let native = NativeTheme::new(theme).with_background(Color::TRANSPARENT);
+    let session = RenderEnvironment::deterministic()
+        .begin_session_with_native_theme(native)
+        .unwrap();
+    let (_, svg) = parse_layout_and_render_with_session(source, &LayoutOptions::default(), session);
+    let doc = roxmltree::Document::parse(&svg).unwrap();
+    let canvas = doc.root_element().first_element_child().unwrap();
+    assert_eq!(canvas.attribute("class"), Some("merman-theme-canvas"));
+    assert!(canvas.first_element_child().is_none());
+    for class in ["cynefinDomain", "cynefinDomainAccent", "cynefinItem"] {
+        assert!(
+            doc.descendants()
+                .any(|node| node.attribute("class") == Some(class)
+                    && node.attribute("fill") == Some("#AECFEF"))
+        );
+    }
+    let css = cynefin_stylesheet(&svg);
+    assert!(css.contains("#cynefin-test{font-family:SourceCynefinFont,monospace;"));
+    assert!(cynefin_rule_body(&css, "cynefin-test", ".cynefinItemText").contains("fill:#2C3D50;"));
+    assert!(
+        cynefin_rule_body(&css, "cynefin-test", ".cynefinArrowLine").contains("stroke:#B04225;")
+    );
+    let (_, classic) = parse_layout_and_render(source, &LayoutOptions::default());
+    assert!(!classic.contains("cynefinDomainAccent"));
+    assert!(!classic.contains("merman-theme-canvas"));
 }
 
 #[test]
@@ -273,243 +374,6 @@ complex
     );
 }
 
-#[test]
-fn cynefin_typed_text_fill_reaches_all_visible_text_selectors() {
-    for (case, fill, expected_fill) in [
-        (
-            "solid",
-            CanvasPaint::solid("#123456").expect("valid Cynefin text fill"),
-            "#123456",
-        ),
-        ("transparent", CanvasPaint::Transparent, "transparent"),
-    ] {
-        let theme = cynefin_text_fill_theme(fill);
-        let diagram_id = format!("cynefin-text-fill-{case}");
-        let (_, rendered) = try_render_cynefin_with_theme(
-            CYNEFIN_TEXT_FILL_SOURCE,
-            &theme,
-            MermaidEngine::new(),
-            &portable_cynefin_environment(),
-            &diagram_id,
-        )
-        .expect("render strict portable Cynefin text fill");
-
-        let stylesheet = cynefin_stylesheet(rendered.svg());
-        for selector in [".cynefinSubtitle", ".cynefinItemText", ".cynefinArrowLabel"] {
-            let body = cynefin_rule_body(&stylesheet, &diagram_id, selector);
-            assert!(
-                body.contains(&format!("fill:{expected_fill};")),
-                "Cynefin {selector} did not receive {case} text.fill: {body}"
-            );
-        }
-
-        let completion = rendered.into_completion();
-        let evidence = merman_render::__private::family_evidence(completion.report());
-        assert_eq!(evidence.required_count(), 1, "case={case}");
-        assert_eq!(evidence.accounted_count(), 1, "case={case}");
-        assert_eq!(evidence.applied_count(), 1, "case={case}");
-        assert_eq!(evidence.not_applicable_count(), 0, "case={case}");
-        assert_eq!(evidence.theme_residual_count(), 0, "case={case}");
-        assert_eq!(
-            evidence.mermaid_compatibility_residual_count(),
-            0,
-            "case={case}"
-        );
-    }
-}
-
-#[test]
-fn cynefin_text_palette_only_remains_residual_when_its_fallback_is_needed() {
-    for case in ["static", "default", "config", "empty", "uncovered"] {
-        let palette =
-            OrdinalPalette::new([ThemeColorValue::parse("#abcdef").expect("valid palette color")])
-                .expect("non-empty palette");
-        let mut styles = ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::Text, palette);
-        if matches!(case, "static" | "default") {
-            let mut rule = ThemeRule::new(
-                ThemeTarget::Text,
-                ThemeStylePatch::default()
-                    .with_fill(CanvasPaint::solid("#123456").expect("valid text fill")),
-            )
-            .for_family(DiagramFamilyId::CYNEFIN);
-            if case == "default" {
-                rule = rule.with_variant(ThemeVariant::Default);
-            }
-            styles = styles.with_rule(rule);
-        }
-        let theme = DiagramThemeCompiler::new()
-            .compile(DiagramThemeSpec::new().with_styles(styles))
-            .expect("compile text palette theme");
-        let engine = if case == "config" {
-            MermaidEngine::new().with_site_config(
-                merman_core::presentation::SourcePresentationConfig::from_value(
-                    serde_json::json!({
-                        "themeVariables": { "cynefin": { "textColor": "#123456" } }
-                    }),
-                ),
-            )
-        } else {
-            MermaidEngine::new()
-        };
-        let source = if case == "empty" {
-            "---\nconfig:\n  cynefin:\n    showDomainDescriptions: false\n---\ncynefin-beta\n"
-        } else {
-            CYNEFIN_TEXT_FILL_SOURCE
-        };
-        let result = try_render_cynefin_with_theme(
-            source,
-            &theme,
-            engine,
-            &portable_cynefin_environment(),
-            "cynefin-palette-fallback",
-        );
-        if case == "uncovered" {
-            let error = result
-                .err()
-                .expect("unsupported palette must remain a strict residual");
-            assert_eq!(
-                error.unverified_family_theme(),
-                Some((DiagramFamilyId::CYNEFIN, 1))
-            );
-            assert_eq!(error.incomplete_family_theme(), None);
-            continue;
-        }
-        let (_, rendered) = result.unwrap_or_else(|error| panic!("{case}: {error}"));
-        if case != "empty" {
-            let stylesheet = cynefin_stylesheet(rendered.svg());
-            for selector in [".cynefinSubtitle", ".cynefinItemText", ".cynefinArrowLabel"] {
-                assert!(
-                    cynefin_rule_body(&stylesheet, "cynefin-palette-fallback", selector)
-                        .contains("fill:#123456;"),
-                    "{case}: {selector}"
-                );
-            }
-        }
-        let completion = rendered.into_completion();
-        let evidence = merman_render::__private::family_evidence(completion.report());
-        assert_eq!(evidence.not_applicable_count(), 1, "{case}");
-        assert_eq!(evidence.theme_residual_count(), 0, "{case}");
-        assert_eq!(
-            evidence.required_count(),
-            evidence.accounted_count(),
-            "{case}"
-        );
-        assert_eq!(
-            evidence.applied_count(),
-            usize::from(matches!(case, "static" | "default")),
-            "{case}"
-        );
-    }
-}
-
-#[test]
-fn cynefin_explicit_text_color_outranks_typed_text_fill() {
-    let theme = cynefin_text_fill_theme(
-        CanvasPaint::solid("#123456").expect("valid Cynefin typed text fill"),
-    );
-    let engine = MermaidEngine::new().with_site_config(
-        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
-            "themeVariables": {
-                "cynefin": { "textColor": "#fedcba" }
-            }
-        })),
-    );
-    let (_, rendered) = try_render_cynefin_with_theme(
-        CYNEFIN_TEXT_FILL_SOURCE,
-        &theme,
-        engine,
-        &portable_cynefin_environment(),
-        "cynefin-site-text-fill",
-    )
-    .expect("render site-owned Cynefin text fill");
-
-    let stylesheet = cynefin_stylesheet(rendered.svg());
-    for selector in [".cynefinSubtitle", ".cynefinItemText", ".cynefinArrowLabel"] {
-        let body = cynefin_rule_body(&stylesheet, "cynefin-site-text-fill", selector);
-        assert!(body.contains("fill:#fedcba;"), "{selector}: {body}");
-        assert!(
-            !body.contains("#123456"),
-            "typed fill leaked into {selector}"
-        );
-    }
-
-    let completion = rendered.into_completion();
-    let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.accounted_count(), 1);
-    assert_eq!(evidence.applied_count(), 0);
-    assert_eq!(evidence.not_applicable_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 0);
-}
-
-#[test]
-fn cynefin_explicit_default_text_fill_reaches_the_typed_terminal() {
-    let theme = cynefin_default_text_fill_theme(
-        CanvasPaint::solid("#123456").expect("valid explicit-Default Cynefin text fill"),
-    );
-    let (_, rendered) = try_render_cynefin_with_theme(
-        CYNEFIN_TEXT_FILL_SOURCE,
-        &theme,
-        MermaidEngine::new(),
-        &portable_cynefin_environment(),
-        "cynefin-default-text-fill",
-    )
-    .expect("render explicit-Default Cynefin text fill");
-
-    let stylesheet = cynefin_stylesheet(rendered.svg());
-    for selector in [".cynefinSubtitle", ".cynefinItemText", ".cynefinArrowLabel"] {
-        assert!(
-            cynefin_rule_body(&stylesheet, "cynefin-default-text-fill", selector)
-                .contains("fill:#123456;"),
-            "{selector} did not receive explicit-Default text.fill"
-        );
-    }
-    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.accounted_count(), 1);
-    assert_eq!(evidence.applied_count(), 1);
-    assert_eq!(evidence.not_applicable_count(), 0);
-    assert_eq!(evidence.theme_residual_count(), 0);
-}
-
-#[test]
-fn cynefin_text_fill_is_not_applicable_without_visible_text_surfaces() {
-    let theme = cynefin_text_fill_theme(
-        CanvasPaint::solid("#123456").expect("valid empty Cynefin text fill"),
-    );
-    let source = r#"---
-config:
-  cynefin:
-    showDomainDescriptions: false
----
-cynefin-beta
-"#;
-    let (_, rendered) = try_render_cynefin_with_theme(
-        source,
-        &theme,
-        MermaidEngine::new(),
-        &portable_cynefin_environment(),
-        "cynefin-empty-text-fill",
-    )
-    .expect("render empty Cynefin text surface");
-
-    let document = roxmltree::Document::parse(rendered.svg()).expect("valid empty Cynefin SVG");
-    assert!(!document.descendants().any(|node| {
-        node.has_tag_name("text")
-            && matches!(
-                node.attribute("class"),
-                Some("cynefinSubtitle" | "cynefinItemText" | "cynefinArrowLabel")
-            )
-    }));
-    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.accounted_count(), 1);
-    assert_eq!(evidence.applied_count(), 0);
-    assert_eq!(evidence.not_applicable_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 0);
-}
-
-#[derive(Debug)]
 struct FontAwareTextMeasurer;
 
 impl TextMeasurer for FontAwareTextMeasurer {
@@ -560,77 +424,6 @@ complex
     );
 }
 
-#[derive(Debug)]
-struct CynefinTypedFontProbeMeasurer {
-    expected_font_family: String,
-}
-
-impl TextMeasurer for CynefinTypedFontProbeMeasurer {
-    fn measure(&self, _text: &str, style: &TextStyle) -> TextMetrics {
-        assert_eq!(
-            style.font_family.as_deref(),
-            Some(self.expected_font_family.as_str()),
-            "Cynefin measurement must use the same resolved font winner as terminal CSS"
-        );
-        TextMetrics {
-            width: 100.0,
-            height: style.font_size,
-            line_count: 1,
-        }
-    }
-}
-
-#[test]
-fn cynefin_typed_font_stack_drives_measurement_css_and_terminal_evidence() {
-    let font_stack =
-        FontStack::new(["Cynefin Typed", "monospace"]).expect("valid Cynefin font stack");
-    let expected_font = font_stack.as_css();
-    let theme = cynefin_typography_theme(ThemeTextStyle::default().with_font_stack(font_stack));
-    let identity = TextMeasurementProfileIdentity::new(
-        MeasurementProfileId::new("test.cynefin-typed-font-probe").unwrap(),
-        "test",
-    )
-    .unwrap();
-    let environment = portable_cynefin_environment().with_text_measurement_policy(
-        TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
-            identity,
-            Arc::new(CynefinTypedFontProbeMeasurer {
-                expected_font_family: expected_font.clone(),
-            }),
-        )),
-    );
-    let (layout, rendered) = try_render_cynefin_with_theme(
-        "cynefin-beta\ncomplex\n\"Measure me\"\n",
-        &theme,
-        MermaidEngine::new(),
-        &environment,
-        "cynefin-typed-font",
-    )
-    .expect("render directly themed Cynefin");
-
-    assert_eq!(layout.items[0].width, 120.0);
-    let svg = rendered.svg();
-    for rule in [
-        format!("#cynefin-typed-font{{font-family:{expected_font};"),
-        format!("#cynefin-typed-font svg{{font-family:{expected_font};"),
-        format!("#cynefin-typed-font :root{{--mermaid-font-family:{expected_font};}}"),
-    ] {
-        assert!(
-            svg.contains(&rule),
-            "missing resolved Cynefin font rule {rule:?}"
-        );
-    }
-
-    let completion = rendered.into_completion();
-    let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.accounted_count(), 1);
-    assert_eq!(evidence.applied_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
-}
-
-#[derive(Debug)]
 struct CynefinTerminalSizeMeasurer(f64);
 
 impl TextMeasurer for CynefinTerminalSizeMeasurer {
@@ -681,42 +474,11 @@ fn cynefin_item_measurement_uses_the_final_nonnegative_css_size() {
     }
 }
 
-fn cynefin_font_binding_theme() -> DiagramTheme {
-    DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new()
-                .with_typography(
-                    TypographySpec::default().with_family_style(
-                        DiagramFamilyId::CYNEFIN,
-                        ThemeTextStyle::default()
-                            .with_font_stack(FontStack::single("monospace").unwrap()),
-                    ),
-                )
-                .with_styles(
-                    [
-                        ThemeTarget::Text,
-                        ThemeTarget::NodeLabel,
-                        ThemeTarget::Title,
-                    ]
-                    .into_iter()
-                    .fold(ThemeRuleSet::default(), |rules, target| {
-                        rules.with_rule(ThemeRule::new(
-                            target,
-                            ThemeStylePatch::default()
-                                .with_fill(CanvasPaint::solid("#123456").unwrap()),
-                        ))
-                    }),
-                ),
-        )
-        .unwrap()
-}
-
 const CYNEFIN_FONT_BINDING_SOURCE: &str =
     "cynefin-beta\ntitle Cynefin\ncomplex\n\"Item\"\nclear --> complex : \"Transition\"\n";
 
 #[test]
 fn cynefin_font_binding_retains_json_types_and_ignored_role_declarations() {
-    let theme = cynefin_font_binding_theme();
     for (value, direct, annotation, title, item_px) in [
         (serde_json::json!(24), "24px", "23px", "26px", 24.0),
         (serde_json::json!("24"), "24px", "23px", "242px", 24.0),
@@ -735,34 +497,30 @@ fn cynefin_font_binding_retains_json_types_and_ignored_role_declarations() {
             32.0,
         ),
     ] {
-        let engine = MermaidEngine::new().with_site_config(
-            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
-                "themeVariables": {"fontSize": "24pt", "cynefin": {
-                    "domainFontSize": value, "itemFontSize": value
-                }}
-            })),
-        );
+        let config = serde_json::json!({
+            "themeVariables": {"fontSize": "24pt", "cynefin": {
+                "domainFontSize": value, "itemFontSize": value
+            }}
+        });
+        let source = format!("---\nconfig: {config}\n---\n{CYNEFIN_FONT_BINDING_SOURCE}");
         let identity = TextMeasurementProfileIdentity::new(
             MeasurementProfileId::new("test.cynefin-font-binding").unwrap(),
             "1",
         )
         .unwrap();
-        let environment = portable_cynefin_environment().with_text_measurement_policy(
+        let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
             TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
                 identity,
                 Arc::new(CynefinTerminalSizeMeasurer(item_px)),
             )),
         );
-        let (layout, rendered) = try_render_cynefin_with_theme(
-            CYNEFIN_FONT_BINDING_SOURCE,
-            &theme,
-            engine,
+        let (layout, svg) = parse_layout_and_render_with_environment(
+            &source,
+            &LayoutOptions::default(),
             &environment,
-            "cynefin-font-binding",
-        )
-        .unwrap();
+        );
         assert_eq!(layout.items[0].width, item_px * 4.0 + 20.0);
-        let stylesheet = cynefin_stylesheet(rendered.svg());
+        let stylesheet = cynefin_stylesheet(&svg);
         for (selector, expected) in [
             (".cynefinDomainLabel", direct),
             (".cynefinItemText", direct),
@@ -771,1164 +529,10 @@ fn cynefin_font_binding_retains_json_types_and_ignored_role_declarations() {
             (".cynefinTitle", title),
         ] {
             assert!(
-                cynefin_rule_body(&stylesheet, "cynefin-font-binding", selector)
+                cynefin_rule_body(&stylesheet, "cynefin-test", selector)
                     .contains(&format!("font-size:{expected};")),
                 "{value}/{selector}"
             );
         }
-        let evidence =
-            merman_render::__private::family_evidence(rendered.into_completion().report());
-        assert_eq!(evidence.required_count(), 4);
-        assert_eq!(evidence.applied_count(), 4, "{value}");
-        assert_eq!(evidence.theme_residual_count(), 0);
-    }
-}
-
-#[test]
-fn cynefin_unverified_final_sizes_do_not_certify_font_or_text_paint() {
-    let theme = cynefin_font_binding_theme();
-    for size in [
-        "1e-50",
-        "1e-39",
-        "1e-400",
-        "1e400",
-        "1px;fill:red",
-        "var(--size)",
-    ] {
-        let engine = || {
-            MermaidEngine::new().with_site_config(
-                merman_core::presentation::SourcePresentationConfig::from_value(
-                    serde_json::json!({
-                        "themeVariables": {"fontSize": "0px", "cynefin": {
-                            "domainFontSize": size, "itemFontSize": size
-                        }}
-                    }),
-                ),
-            )
-        };
-        let (_, rendered) = try_render_cynefin_with_theme(
-            CYNEFIN_FONT_BINDING_SOURCE,
-            &theme,
-            engine(),
-            &RenderEnvironment::deterministic(),
-            "cynefin-unverified-font",
-        )
-        .unwrap();
-        let stylesheet = cynefin_stylesheet(rendered.svg());
-        assert!(!stylesheet.contains("fill:red"));
-        assert!(!stylesheet.contains("var(--size)"));
-        let evidence =
-            merman_render::__private::family_evidence(rendered.into_completion().report());
-        assert_eq!(evidence.required_count(), 4);
-        assert_eq!(evidence.accounted_count(), 4);
-        assert_eq!(evidence.applied_count(), 0, "{size}");
-        assert_eq!(evidence.theme_residual_count(), 4, "{size}");
-        assert!(
-            try_render_cynefin_with_theme(
-                CYNEFIN_FONT_BINDING_SOURCE,
-                &theme,
-                engine(),
-                &portable_cynefin_environment(),
-                "cynefin-unverified-font-strict",
-            )
-            .is_err(),
-            "{size}"
-        );
-    }
-}
-
-#[test]
-fn cynefin_numeric_painter_underflow_keeps_the_independent_title_consumer() {
-    let theme = cynefin_font_binding_theme();
-    for (value, css, expected_applied, expected_residual) in [
-        (0.0, "0px", 2, 0),
-        (24.0, "24px", 4, 0),
-        (1e-50, "1e-50px", 1, 3),
-    ] {
-        let engine = || {
-            MermaidEngine::new().with_site_config(
-                merman_core::presentation::SourcePresentationConfig::from_value(
-                    serde_json::json!({
-                        "themeVariables": {"fontSize": "0px", "cynefin": {
-                            "domainFontSize": value, "itemFontSize": value
-                        }}
-                    }),
-                ),
-            )
-        };
-        let (_, rendered) = try_render_cynefin_with_theme(
-            CYNEFIN_FONT_BINDING_SOURCE,
-            &theme,
-            engine(),
-            &RenderEnvironment::deterministic(),
-            "cynefin-painter-range",
-        )
-        .unwrap();
-        let stylesheet = cynefin_stylesheet(rendered.svg());
-        assert!(
-            cynefin_rule_body(&stylesheet, "cynefin-painter-range", ".cynefinItemText")
-                .contains(&format!("font-size:{css};"))
-        );
-        if value < 1.0 {
-            assert!(
-                cynefin_rule_body(&stylesheet, "cynefin-painter-range", ".cynefinTitle")
-                    .contains("font-size:2px;")
-            );
-        }
-        let evidence =
-            merman_render::__private::family_evidence(rendered.into_completion().report());
-        assert_eq!(evidence.required_count(), 4);
-        assert_eq!(evidence.accounted_count(), 4);
-        assert_eq!(evidence.applied_count(), expected_applied, "{value}");
-        assert_eq!(
-            evidence.theme_residual_count(),
-            expected_residual,
-            "{value}"
-        );
-        assert_eq!(
-            try_render_cynefin_with_theme(
-                CYNEFIN_FONT_BINDING_SOURCE,
-                &theme,
-                engine(),
-                &portable_cynefin_environment(),
-                "cynefin-painter-range-strict",
-            )
-            .is_ok(),
-            expected_residual == 0
-        );
-    }
-}
-
-#[test]
-fn cynefin_zero_sized_roles_retire_only_their_visible_font_and_paint_consumers() {
-    let theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new()
-                .with_typography(
-                    TypographySpec::default().with_family_style(
-                        DiagramFamilyId::CYNEFIN,
-                        ThemeTextStyle::default()
-                            .with_font_stack(FontStack::single("monospace").unwrap()),
-                    ),
-                )
-                .with_styles(
-                    [
-                        ThemeTarget::Text,
-                        ThemeTarget::NodeLabel,
-                        ThemeTarget::EdgeLabel,
-                    ]
-                    .into_iter()
-                    .fold(ThemeRuleSet::default(), |rules, target| {
-                        rules.with_rule(ThemeRule::new(
-                            target,
-                            ThemeStylePatch::default()
-                                .with_fill(CanvasPaint::solid("#123456").unwrap()),
-                        ))
-                    }),
-                ),
-        )
-        .unwrap();
-    for (item_size, has_item, has_title, expected_applied) in [
-        (1, false, false, 0),
-        (0, true, false, 0),
-        (-1, true, false, 0),
-        (0, true, true, 1),
-        (2, true, false, 3),
-    ] {
-        let engine = MermaidEngine::new().with_site_config(
-            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
-                "themeVariables": {"fontSize": "0px", "cynefin": {
-                    "domainFontSize": 0, "itemFontSize": item_size
-                }}
-            })),
-        );
-        let source = format!(
-            "cynefin-beta\n{}complex\n{}clear --> complex : \"Transition\"\n",
-            if has_title {
-                "title Visible title\n"
-            } else {
-                ""
-            },
-            if has_item { "\"Item\"\n" } else { "" },
-        );
-        let (_, rendered) = try_render_cynefin_with_theme(
-            &source,
-            &theme,
-            engine,
-            &portable_cynefin_environment(),
-            "cynefin-zero-roles",
-        )
-        .unwrap();
-        let stylesheet = cynefin_stylesheet(rendered.svg());
-        for selector in [".cynefinSubtitle", ".cynefinArrowLabel"] {
-            assert!(
-                cynefin_rule_body(&stylesheet, "cynefin-zero-roles", selector)
-                    .contains(&format!("font-size:{}px;", item_size - 1))
-            );
-        }
-        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-        for text in document
-            .descendants()
-            .filter(|node| node.has_tag_name("text"))
-        {
-            if expected_applied <= 1 {
-                assert_eq!(text.attribute("style"), None);
-            }
-        }
-        let evidence =
-            merman_render::__private::family_evidence(rendered.into_completion().report());
-        assert_eq!(evidence.required_count(), 4);
-        assert_eq!(evidence.accounted_count(), 4);
-        assert_eq!(
-            evidence.applied_count(),
-            expected_applied,
-            "{item_size}/{has_title}"
-        );
-        assert_eq!(evidence.not_applicable_count(), 4 - expected_applied);
-        assert_eq!(evidence.theme_residual_count(), 0);
-    }
-}
-
-#[test]
-fn cynefin_hidden_labels_keep_unsupported_geometry_applicable() {
-    let theme = cynefin_paint_theme(ThemeRuleSet::default().with_rule(ThemeRule::new(
-        ThemeTarget::NodeLabel,
-        ThemeStylePatch::default().with_padding(merman_render::diagram_theme::InsetsPx::all(2.0)),
-    )));
-    let engine = MermaidEngine::new().with_site_config(
-        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
-            "themeVariables": {"fontSize": "0px", "cynefin": {
-                "domainFontSize": 0, "itemFontSize": 0
-            }}
-        })),
-    );
-    let (_, rendered) = try_render_cynefin_with_theme(
-        "cynefin-beta\ncomplex\n\"Item\"\n",
-        &theme,
-        engine,
-        &RenderEnvironment::deterministic(),
-        "cynefin-hidden-geometry",
-    )
-    .unwrap();
-    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.not_applicable_count(), 0);
-    assert_eq!(evidence.theme_residual_count(), 1);
-}
-
-#[test]
-fn cynefin_empty_item_does_not_invalidate_font_stack_terminal_evidence() {
-    let font_stack =
-        FontStack::new(["Cynefin Empty Item", "monospace"]).expect("valid Cynefin font stack");
-    let expected_font = font_stack.as_css();
-    let theme = cynefin_typography_theme(ThemeTextStyle::default().with_font_stack(font_stack));
-
-    let (_, rendered) = try_render_cynefin_with_theme(
-        "cynefin-beta\ncomplex\n\"\"\n",
-        &theme,
-        MermaidEngine::new(),
-        &portable_cynefin_environment(),
-        "cynefin-empty-item-font",
-    )
-    .expect("an empty Cynefin item must not invalidate inherited font evidence");
-
-    assert!(rendered.svg().contains(&format!(
-        "#cynefin-empty-item-font{{font-family:{expected_font};"
-    )));
-    let completion = rendered.into_completion();
-    let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.accounted_count(), 1);
-    assert_eq!(evidence.applied_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 0);
-}
-
-#[test]
-fn cynefin_direct_font_stack_exceeds_the_retired_legacy_bridge_limit() {
-    let families = (0..32)
-        .map(|index| format!("CynefinFont{index:02}{}", "x".repeat(140)))
-        .collect::<Vec<_>>();
-    let font_stack = FontStack::new(families).expect("valid large Cynefin font stack");
-    let expected_font = font_stack.as_css();
-    assert!(expected_font.len() > 4 * 1024);
-    let theme = cynefin_typography_theme(ThemeTextStyle::default().with_font_stack(font_stack));
-
-    let (_, rendered) = try_render_cynefin_with_theme(
-        "cynefin-beta\ncomplex\n\"A\"\n",
-        &theme,
-        MermaidEngine::new(),
-        &portable_cynefin_environment(),
-        "cynefin-large-font",
-    )
-    .expect("render Cynefin beyond the legacy bridge string budget");
-    assert!(rendered.svg().contains(&format!(
-        "#cynefin-large-font{{font-family:{expected_font};"
-    )));
-
-    let completion = rendered.into_completion();
-    let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.applied_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 0);
-}
-
-#[test]
-fn cynefin_explicit_site_and_source_font_paths_outrank_the_typed_stack() {
-    let theme =
-        cynefin_typography_theme(ThemeTextStyle::default().with_font_stack(
-            FontStack::single("TypedCynefinFont").expect("valid typed Cynefin font"),
-        ));
-    let cases = [
-        (
-            "site-font",
-            MermaidEngine::new().with_site_config(
-                merman_core::presentation::SourcePresentationConfig::from_value(
-                    serde_json::json!({
-                        "themeVariables": { "fontFamily": "SiteCynefinFont,serif" }
-                    }),
-                ),
-            ),
-            "cynefin-beta\ncomplex\n\"A\"\n".to_string(),
-            "SiteCynefinFont,serif",
-        ),
-        (
-            "source-font",
-            MermaidEngine::new().with_site_config(
-                merman_core::presentation::SourcePresentationConfig::from_value(
-                    serde_json::json!({
-                        "secure": []
-                    }),
-                ),
-            ),
-            concat!(
-                "%%{init: {\"fontFamily\": \"SourceCynefinFont,monospace\"}}%%\n",
-                "cynefin-beta\ncomplex\n\"A\"\n"
-            )
-            .to_string(),
-            "SourceCynefinFont,monospace",
-        ),
-    ];
-
-    for (case, engine, source, expected_font) in cases {
-        let (_, rendered) = try_render_cynefin_with_theme(
-            &source,
-            &theme,
-            engine,
-            &portable_cynefin_environment(),
-            case,
-        )
-        .expect("explicit Cynefin font ownership remains portable");
-        assert!(
-            rendered
-                .svg()
-                .contains(&format!("#{case}{{font-family:{expected_font};"))
-        );
-        assert!(!rendered.svg().contains("TypedCynefinFont"));
-
-        let completion = rendered.into_completion();
-        let evidence = merman_render::__private::family_evidence(completion.report());
-        assert_eq!(evidence.applied_count(), 0);
-        assert_eq!(evidence.not_applicable_count(), 1);
-        assert_eq!(evidence.theme_residual_count(), 0);
-    }
-}
-
-#[test]
-fn cynefin_mixed_base_typography_fails_closed() {
-    let typography = ThemeTextStyle::default()
-        .with_font_stack(
-            FontStack::single("MixedCynefinFont").expect("valid mixed Cynefin font stack"),
-        )
-        .with_font_size_px(24.0)
-        .expect("valid unsupported Cynefin font size");
-    let theme = cynefin_typography_theme(typography);
-    let error = try_render_cynefin_with_theme(
-        "cynefin-beta\ncomplex\n\"A\"\n",
-        &theme,
-        MermaidEngine::new(),
-        &portable_cynefin_environment(),
-        "cynefin-mixed-typography",
-    )
-    .err()
-    .expect("RequirePortable must reject mixed Cynefin typography");
-
-    assert_eq!(
-        error.unverified_family_theme(),
-        Some((DiagramFamilyId::CYNEFIN, 1))
-    );
-    assert_eq!(error.incomplete_family_theme(), None);
-}
-
-#[test]
-fn repair_u7_cynefin_unmatched_text_variant_is_not_applicable() {
-    let theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(
-                ThemeRuleSet::default().with_rule(
-                    ThemeRule::new(
-                        ThemeTarget::Text,
-                        ThemeStylePatch::default()
-                            .with_fill(CanvasPaint::solid("#abcdef").unwrap()),
-                    )
-                    .with_variant(ThemeVariant::Warning),
-                ),
-            ),
-        )
-        .unwrap();
-    let (_, rendered) = try_render_cynefin_with_theme(
-        CYNEFIN_TEXT_FILL_SOURCE,
-        &theme,
-        MermaidEngine::new(),
-        &portable_cynefin_environment(),
-        "unmatched-variant",
-    )
-    .unwrap();
-    assert!(!rendered.svg().contains("#abcdef"));
-    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.not_applicable_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 0);
-}
-
-#[test]
-fn repair_u7_cynefin_matching_ordinal_text_variant_remains_residual() {
-    let theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(
-                ThemeRuleSet::default().with_rule(
-                    ThemeRule::new(
-                        ThemeTarget::Text,
-                        ThemeStylePatch::default()
-                            .with_fill(CanvasPaint::solid("#abcdef").unwrap()),
-                    )
-                    .with_variant(ThemeVariant::Default)
-                    .with_ordinal(merman_render::diagram_theme::OrdinalSelector::Exact(1)),
-                ),
-            ),
-        )
-        .unwrap();
-    let (_, rendered) = try_render_cynefin_with_theme(
-        CYNEFIN_TEXT_FILL_SOURCE,
-        &theme,
-        MermaidEngine::new(),
-        &RenderEnvironment::deterministic(),
-        "matched-variant",
-    )
-    .unwrap();
-    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.theme_residual_count(), 1);
-    assert_eq!(evidence.not_applicable_count(), 0);
-    assert!(
-        try_render_cynefin_with_theme(
-            CYNEFIN_TEXT_FILL_SOURCE,
-            &theme,
-            MermaidEngine::new(),
-            &portable_cynefin_environment(),
-            "matched-variant"
-        )
-        .is_err()
-    );
-}
-
-fn cynefin_inline_property<'a>(node: roxmltree::Node<'a, '_>, property: &str) -> Option<&'a str> {
-    node.attribute("style")?.split(';').find_map(|declaration| {
-        let (name, value) = declaration.split_once(':')?;
-        (name == property).then_some(value)
-    })
-}
-
-fn cynefin_element<'a, 'input>(
-    document: &'a roxmltree::Document<'input>,
-    class: &str,
-) -> roxmltree::Node<'a, 'input> {
-    document
-        .descendants()
-        .find(|node| node.attribute("class") == Some(class))
-        .unwrap()
-}
-
-fn cynefin_paint_theme(styles: ThemeRuleSet) -> DiagramTheme {
-    DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_styles(styles))
-        .unwrap()
-}
-
-#[test]
-fn cynefin_compiled_paints_reach_domain_item_title_edge_and_marker_terminals() {
-    let mut styles = ThemeRuleSet::default();
-    for (target, fill, stroke) in [
-        (ThemeTarget::Node, Some("#123456"), Some("#654321")),
-        (ThemeTarget::NodeLabel, Some("#112233"), None),
-        (ThemeTarget::Title, Some("#223344"), None),
-        (ThemeTarget::EdgeLabel, Some("#334455"), None),
-        (ThemeTarget::Edge, None, Some("#445566")),
-        (ThemeTarget::Marker, Some("#556677"), Some("#667788")),
-    ] {
-        let mut patch = ThemeStylePatch::default();
-        if let Some(fill) = fill {
-            patch = patch.with_fill(CanvasPaint::solid(fill).unwrap());
-        }
-        if let Some(stroke) = stroke {
-            patch = patch.with_stroke(CanvasPaint::solid(stroke).unwrap());
-        }
-        styles =
-            styles.with_rule(ThemeRule::new(target, patch).with_variant(ThemeVariant::Default));
-    }
-    let theme = cynefin_paint_theme(styles);
-    let source = "---\ntitle: Typed title\n---\ncynefin-beta\nclear\n\"Runbook\"\ncomplex\n\"Retrospective\"\nclear --> complex : \"Probe\"\n";
-    let (_, rendered) = try_render_cynefin_with_theme(
-        source,
-        &theme,
-        MermaidEngine::new(),
-        &portable_cynefin_environment(),
-        "cynefin-surfaces",
-    )
-    .unwrap();
-    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-    for class in ["cynefinDomain", "cynefinConfusion", "cynefinItem"] {
-        let node = cynefin_element(&document, class);
-        assert_eq!(
-            cynefin_inline_property(node, "fill"),
-            Some("#123456"),
-            "{class}"
-        );
-        assert_eq!(
-            cynefin_inline_property(node, "stroke"),
-            Some("#654321"),
-            "{class}"
-        );
-    }
-    for (class, expected) in [
-        ("cynefinDomainLabel", "#112233"),
-        ("cynefinSubtitle", "#112233"),
-        ("cynefinItemText", "#112233"),
-        ("cynefinTitle", "#223344"),
-        ("cynefinArrowLabel", "#334455"),
-        ("cynefinArrowHead", "#556677"),
-    ] {
-        assert_eq!(
-            cynefin_inline_property(cynefin_element(&document, class), "fill"),
-            Some(expected),
-            "{class}"
-        );
-    }
-    assert_eq!(
-        cynefin_inline_property(cynefin_element(&document, "cynefinArrowLine"), "stroke"),
-        Some("#445566")
-    );
-    assert_eq!(
-        cynefin_inline_property(cynefin_element(&document, "cynefinArrowHead"), "stroke"),
-        Some("#667788")
-    );
-    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.accounted_count(), evidence.required_count());
-}
-
-#[test]
-fn cynefin_domain_palette_repeats_by_domain_and_is_shared_with_items() {
-    let theme = cynefin_paint_theme(
-        ThemeRuleSet::default().with_ordinal_palette(
-            ThemeTarget::Node,
-            OrdinalPalette::new([
-                ThemeColorValue::parse("#112233").unwrap(),
-                ThemeColorValue::parse("#445566").unwrap(),
-            ])
-            .unwrap(),
-        ),
-    );
-    let (_, rendered) = try_render_cynefin_with_theme(
-        CYNEFIN_TEXT_FILL_SOURCE,
-        &theme,
-        MermaidEngine::new(),
-        &portable_cynefin_environment(),
-        "cynefin-domain-palette",
-    )
-    .unwrap();
-    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-    let domains = document
-        .descendants()
-        .filter(|node| node.attribute("class") == Some("cynefinDomain"))
-        .collect::<Vec<_>>();
-    assert_eq!(domains.len(), 4);
-    for (domain, expected) in domains
-        .into_iter()
-        .zip(["#112233", "#445566", "#112233", "#445566"])
-    {
-        assert_eq!(cynefin_inline_property(domain, "fill"), Some(expected));
-    }
-    assert_eq!(
-        cynefin_inline_property(cynefin_element(&document, "cynefinConfusion"), "fill"),
-        Some("#112233")
-    );
-    for item in document
-        .descendants()
-        .filter(|node| node.attribute("class") == Some("cynefinItem"))
-    {
-        let label = item.next_sibling_element().unwrap().text().unwrap();
-        assert_eq!(
-            cynefin_inline_property(item, "fill"),
-            Some(if label == "Runbook" {
-                "#445566"
-            } else {
-                "#112233"
-            })
-        );
-    }
-}
-
-#[test]
-fn cynefin_clear_restores_family_paint_and_transparent_is_an_actual_override() {
-    for clear in [false, true] {
-        let mut patch = ThemeStylePatch::default();
-        patch.paint.fill = if clear {
-            Specified::Clear
-        } else {
-            Specified::Value(CanvasPaint::Transparent)
-        };
-        patch.stroke.paint = patch.paint.fill.clone();
-        let styles = ThemeRuleSet::default()
-            .with_rule(ThemeRule::new(
-                ThemeTarget::Node,
-                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#aa0000").unwrap()),
-            ))
-            .with_rule(ThemeRule::new(ThemeTarget::Node, patch));
-        let theme = cynefin_paint_theme(styles);
-        let (_, rendered) = try_render_cynefin_with_theme(
-            CYNEFIN_TEXT_FILL_SOURCE,
-            &theme,
-            MermaidEngine::new(),
-            &portable_cynefin_environment(),
-            "cynefin-clear",
-        )
-        .unwrap();
-        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-        let domain = cynefin_element(&document, "cynefinDomain");
-        assert_eq!(
-            cynefin_inline_property(domain, "fill"),
-            Some(if clear { "#E8F5E9" } else { "transparent" })
-        );
-        assert_eq!(
-            cynefin_inline_property(domain, "stroke"),
-            Some(if clear { "none" } else { "transparent" })
-        );
-        assert!(!rendered.svg().contains("#aa0000"));
-    }
-}
-
-#[test]
-fn cynefin_source_owns_only_its_authored_paint_properties() {
-    let theme = cynefin_paint_theme(
-        ThemeRuleSet::default()
-            .with_rule(ThemeRule::new(
-                ThemeTarget::Node,
-                ThemeStylePatch::default()
-                    .with_fill(CanvasPaint::solid("#123456").unwrap())
-                    .with_stroke(CanvasPaint::solid("#654321").unwrap()),
-            ))
-            .with_rule(ThemeRule::new(
-                ThemeTarget::Title,
-                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#223344").unwrap()),
-            )),
-    );
-    let source = "---\ntitle: Source title\nconfig:\n  themeVariables:\n    cynefin:\n      complexBg: '#aabbcc'\n      labelColor: '#ddeeff'\n---\ncynefin-beta\ncomplex\n\"Probe\"\n";
-    let (_, rendered) = try_render_cynefin_with_theme(
-        source,
-        &theme,
-        MermaidEngine::new(),
-        &portable_cynefin_environment(),
-        "cynefin-source",
-    )
-    .unwrap();
-    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-    let first = cynefin_element(&document, "cynefinDomain");
-    assert_eq!(first.attribute("fill"), Some("#aabbcc"));
-    assert_eq!(cynefin_inline_property(first, "fill"), None);
-    assert_eq!(cynefin_inline_property(first, "stroke"), Some("#654321"));
-    assert_eq!(
-        cynefin_inline_property(cynefin_element(&document, "cynefinTitle"), "fill"),
-        None
-    );
-    let css = cynefin_stylesheet(rendered.svg());
-    assert!(cynefin_rule_body(&css, "cynefin-source", ".cynefinTitle").contains("fill:#ddeeff;"));
-}
-
-#[test]
-fn cynefin_paint_ownership_uses_the_selected_family_color() {
-    let diagram = "cynefin-beta\ntitle Palette title\nclear\n\"Runbook\"\ncomplex\n\"Retrospective\"\nclear --> complex : \"Probe\"\n";
-    for (target, root_key, nested_key, class, stroke) in [
-        (
-            ThemeTarget::Text,
-            "textColor",
-            "textColor",
-            "cynefinSubtitle",
-            false,
-        ),
-        (
-            ThemeTarget::Title,
-            "primaryTextColor",
-            "labelColor",
-            "cynefinTitle",
-            false,
-        ),
-        (
-            ThemeTarget::Edge,
-            "lineColor",
-            "arrowColor",
-            "cynefinArrowLine",
-            true,
-        ),
-        (
-            ThemeTarget::Marker,
-            "lineColor",
-            "arrowColor",
-            "cynefinArrowHead",
-            false,
-        ),
-    ] {
-        let paint = CanvasPaint::solid("#c2188b").unwrap();
-        let patch = if stroke {
-            ThemeStylePatch::default().with_stroke(paint)
-        } else {
-            ThemeStylePatch::default().with_fill(paint)
-        };
-        let theme =
-            cynefin_paint_theme(ThemeRuleSet::default().with_rule(ThemeRule::new(target, patch)));
-        for from_source in [false, true] {
-            for local in [
-                None,
-                Some(serde_json::Value::Null),
-                Some(serde_json::json!("#446688")),
-            ] {
-                // Null removes the initialized role, selecting the explicitly owned root fallback.
-                let owned = local.is_some();
-                let expected_color = match local.as_ref() {
-                    None => "#c2188b",
-                    Some(serde_json::Value::Null) => "#125634",
-                    Some(_) => "#446688",
-                };
-                let mut variables = serde_json::json!({(root_key): "#125634"});
-                if let Some(local) = &local {
-                    variables["cynefin"] = serde_json::json!({(nested_key): local});
-                }
-                let mut site = serde_json::json!({"cynefin": {"seed": 42}});
-                let source = if from_source {
-                    format!(
-                        "---\nconfig: {}\n---\n{diagram}",
-                        serde_json::json!({"themeVariables": variables})
-                    )
-                } else {
-                    site["themeVariables"] = variables.clone();
-                    diagram.to_owned()
-                };
-                let (_, rendered) = try_render_cynefin_with_theme(
-                    &source,
-                    &theme,
-                    MermaidEngine::new().with_site_config(
-                        merman_core::presentation::SourcePresentationConfig::from_value(site),
-                    ),
-                    &portable_cynefin_environment(),
-                    "cynefin-selected-color",
-                )
-                .unwrap();
-                let property = if stroke { "stroke" } else { "fill" };
-                if target == ThemeTarget::Text {
-                    let css = cynefin_stylesheet(rendered.svg());
-                    assert!(
-                        cynefin_rule_body(&css, "cynefin-selected-color", ".cynefinSubtitle")
-                            .contains(&format!("fill:{expected_color};")),
-                        "{target:?}: source={from_source}, variables={variables}, css={css}"
-                    );
-                } else {
-                    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-                    let terminal = cynefin_element(&document, class);
-                    assert_eq!(
-                        cynefin_inline_property(terminal, property),
-                        (!owned).then_some("#c2188b"),
-                        "{target:?}: source={from_source}, variables={variables}"
-                    );
-                    if owned {
-                        let css = cynefin_stylesheet(rendered.svg());
-                        assert!(
-                            cynefin_rule_body(&css, "cynefin-selected-color", &format!(".{class}"))
-                                .contains(&format!("{property}:{expected_color};"))
-                        );
-                    }
-                }
-                let evidence =
-                    merman_render::__private::family_evidence(rendered.into_completion().report());
-                assert_eq!(evidence.required_count(), 1);
-                assert_eq!(evidence.applied_count(), usize::from(!owned));
-                assert_eq!(evidence.not_applicable_count(), usize::from(owned));
-                assert_eq!(evidence.theme_residual_count(), 0);
-            }
-        }
-    }
-}
-
-#[test]
-fn cynefin_boundary_color_does_not_own_domain_background_strokes() {
-    let theme = cynefin_paint_theme(ThemeRuleSet::default().with_rule(ThemeRule::new(
-        ThemeTarget::Node,
-        ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#c2188b").unwrap()),
-    )));
-    for from_source in [false, true] {
-        let config = serde_json::json!({"themeVariables":{"cynefin":{"boundaryColor":"#125634"}}});
-        let (source, site) = if from_source {
-            (
-                CYNEFIN_TEXT_FILL_SOURCE.replacen(
-                    "cynefin-beta",
-                    &format!("%%{{init: {config}}}%%\ncynefin-beta"),
-                    1,
-                ),
-                serde_json::json!({}),
-            )
-        } else {
-            (CYNEFIN_TEXT_FILL_SOURCE.to_owned(), config)
-        };
-        let (_, rendered) = try_render_cynefin_with_theme(
-            &source,
-            &theme,
-            MermaidEngine::new().with_site_config(
-                merman_core::presentation::SourcePresentationConfig::from_value(site),
-            ),
-            &portable_cynefin_environment(),
-            "cynefin-boundary-ownership",
-        )
-        .unwrap();
-        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-        let domains = document
-            .descendants()
-            .filter(|node| node.attribute("class") == Some("cynefinDomain"))
-            .collect::<Vec<_>>();
-        assert_eq!(domains.len(), 4);
-        for domain in domains {
-            assert_eq!(cynefin_inline_property(domain, "stroke"), Some("#c2188b"));
-        }
-        for class in ["cynefinBoundary", "cynefinConfusion", "cynefinItem"] {
-            assert_eq!(
-                cynefin_inline_property(cynefin_element(&document, class), "stroke"),
-                None
-            );
-            let css = cynefin_stylesheet(rendered.svg());
-            assert!(
-                cynefin_rule_body(&css, "cynefin-boundary-ownership", &format!(".{class}"))
-                    .contains("stroke:#125634;")
-            );
-        }
-        drop(document);
-        let evidence =
-            merman_render::__private::family_evidence(rendered.into_completion().report());
-        assert_eq!(evidence.required_count(), 1);
-        assert_eq!(evidence.applied_count(), 1);
-        assert_eq!(evidence.theme_residual_count(), 0);
-    }
-}
-
-#[test]
-fn cynefin_arrow_fill_does_not_own_marker_stroke_or_its_clear() {
-    for clear in [false, true] {
-        let mut rules = ThemeRuleSet::default().with_rule(ThemeRule::new(
-            ThemeTarget::Marker,
-            ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#c2188b").unwrap()),
-        ));
-        if clear {
-            let mut patch = ThemeStylePatch::default();
-            patch.stroke.paint = Specified::Clear;
-            rules = rules.with_rule(ThemeRule::new(ThemeTarget::Marker, patch));
-        }
-        let theme = cynefin_paint_theme(rules);
-        for from_source in [false, true] {
-            let config = serde_json::json!({"theme":"dark", "themeVariables":{"cynefin":{"arrowColor":"#125634"}}});
-            let (source, site) = if from_source {
-                (
-                    CYNEFIN_TEXT_FILL_SOURCE.replacen(
-                        "cynefin-beta",
-                        &format!("%%{{init: {config}}}%%\ncynefin-beta"),
-                        1,
-                    ),
-                    serde_json::json!({}),
-                )
-            } else {
-                (CYNEFIN_TEXT_FILL_SOURCE.to_owned(), config)
-            };
-            let (_, rendered) = try_render_cynefin_with_theme(
-                &source,
-                &theme,
-                MermaidEngine::new().with_site_config(
-                    merman_core::presentation::SourcePresentationConfig::from_value(site),
-                ),
-                &portable_cynefin_environment(),
-                "cynefin-marker-ownership",
-            )
-            .unwrap();
-            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-            let marker = cynefin_element(&document, "cynefinArrowHead");
-            assert_eq!(
-                cynefin_inline_property(marker, "stroke"),
-                Some(if clear { "none" } else { "#c2188b" })
-            );
-            assert_eq!(cynefin_inline_property(marker, "fill"), None);
-            let css = cynefin_stylesheet(rendered.svg());
-            assert!(
-                cynefin_rule_body(&css, "cynefin-marker-ownership", ".cynefinArrowHead")
-                    .contains("fill:#125634;")
-            );
-            drop(document);
-            let evidence =
-                merman_render::__private::family_evidence(rendered.into_completion().report());
-            assert_eq!(evidence.applied_count(), 1);
-            assert_eq!(evidence.not_applicable_count(), usize::from(clear));
-            assert_eq!(evidence.theme_residual_count(), 0);
-        }
-    }
-}
-
-#[test]
-fn cynefin_absent_title_is_not_applicable_and_mixed_title_facets_stay_residual() {
-    let mut patch = ThemeStylePatch::default().with_fill(CanvasPaint::solid("#abcdef").unwrap());
-    patch.paint.opacity = Specified::Value(0.5);
-    let theme = cynefin_paint_theme(
-        ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Title, patch)),
-    );
-    let (_, absent) = try_render_cynefin_with_theme(
-        CYNEFIN_TEXT_FILL_SOURCE,
-        &theme,
-        MermaidEngine::new(),
-        &portable_cynefin_environment(),
-        "cynefin-title-absent",
-    )
-    .unwrap();
-    assert!(!absent.svg().contains("#abcdef"));
-    let evidence = merman_render::__private::family_evidence(absent.into_completion().report());
-    assert_eq!(evidence.not_applicable_count(), 1);
-    let source = "---\ntitle: Mixed title\n---\ncynefin-beta\n";
-    let (_, present) = try_render_cynefin_with_theme(
-        source,
-        &theme,
-        MermaidEngine::new(),
-        &RenderEnvironment::deterministic(),
-        "cynefin-title-mixed",
-    )
-    .unwrap();
-    let document = roxmltree::Document::parse(present.svg()).unwrap();
-    assert_eq!(
-        cynefin_inline_property(cynefin_element(&document, "cynefinTitle"), "fill"),
-        Some("#abcdef")
-    );
-    let evidence = merman_render::__private::family_evidence(present.into_completion().report());
-    assert_eq!(evidence.applied_count(), 0);
-    assert_eq!(evidence.theme_residual_count(), 1);
-    let error = try_render_cynefin_with_theme(
-        source,
-        &theme,
-        MermaidEngine::new(),
-        &portable_cynefin_environment(),
-        "cynefin-title-mixed",
-    )
-    .err()
-    .unwrap();
-    assert_eq!(
-        error.unverified_family_theme(),
-        Some((DiagramFamilyId::CYNEFIN, 1))
-    );
-}
-
-#[test]
-fn cynefin_empty_compiled_theme_keeps_plain_svg_bytes() {
-    let source = "cynefin-beta\nclear\n\"Runbook\"\nclear --> complex : \"Probe\"\n";
-    let (_, baseline) = parse_layout_and_render(source, &LayoutOptions::default());
-    let theme = cynefin_paint_theme(ThemeRuleSet::default());
-    let (_, rendered) = try_render_cynefin_with_theme(
-        source,
-        &theme,
-        MermaidEngine::new(),
-        &portable_cynefin_environment(),
-        "cynefin-test",
-    )
-    .unwrap();
-    assert_eq!(rendered.svg().as_bytes(), baseline.as_bytes());
-}
-
-#[test]
-fn cynefin_all_presets_apply_authored_roles_and_preserve_family_defaults() {
-    let presets = merman_render::diagram_theme::theme_preset_descriptors();
-    for preset in presets {
-        let compiler = DiagramThemeCompiler::new();
-        let theme = compiler.compile_preset(preset.preset()).unwrap();
-        let recipe =
-            serde_json::to_value(compiler.export_preset(preset.preset()).unwrap()).unwrap();
-        let design = serde_json::from_value(recipe["design"].clone()).unwrap();
-        let materialized = merman_render::diagram_theme::materialize_theme_design(&design).unwrap();
-        let baseline_theme = compiler
-            .compile_spec_wire(merman_render::diagram_theme::DiagramThemeSpecWireV1 {
-                mermaid: materialized.mermaid.clone(),
-                ..Default::default()
-            })
-            .unwrap();
-        let spec = serde_json::to_value(materialized).unwrap();
-        let expected = |target: &str, facet: &str| {
-            spec["styles"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .rev()
-                .find_map(|rule| {
-                    (rule["kind"] == "rule"
-                        && rule["target"] == target
-                        && rule.get("family").is_none_or(|family| family == "cynefin")
-                        && rule.get("ordinal").is_none()
-                        && rule.get("variant").is_none())
-                    .then(|| rule.pointer(facet))
-                    .flatten()
-                })
-                .or_else(|| {
-                    (target == "node" && facet == "/style/fill")
-                        .then(|| {
-                            spec["styles"].as_array().unwrap().iter().find_map(|rule| {
-                                (rule["kind"] == "ordinal-palette" && rule["target"] == target)
-                                    .then(|| &rule["colors"][0])
-                            })
-                        })
-                        .flatten()
-                })
-                .map(|paint| {
-                    ThemeColorValue::parse(
-                        paint.as_str().or_else(|| paint["color"].as_str()).unwrap(),
-                    )
-                    .unwrap()
-                    .as_css()
-                })
-        };
-        let source = "---\ntitle: Preset title\n---\ncynefin-beta\nclear\n\"Runbook\"\nclear --> complex : \"Probe\"\n";
-        let (_, rendered) = try_render_cynefin_with_theme(
-            source,
-            &theme,
-            MermaidEngine::new(),
-            &RenderEnvironment::deterministic(),
-            "cynefin-preset",
-        )
-        .unwrap();
-        let (_, baseline) = try_render_cynefin_with_theme(
-            source,
-            &baseline_theme,
-            MermaidEngine::new(),
-            &RenderEnvironment::deterministic(),
-            "cynefin-preset",
-        )
-        .unwrap();
-        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-        let baseline_document = roxmltree::Document::parse(baseline.svg()).unwrap();
-        // Title/domain labels have their own roles. Text fills the item/subtitle CSS instead.
-        for (class, property, target, facet) in [
-            ("cynefinTitle", "fill", "title", "/style/fill"),
-            ("cynefinDomain", "fill", "node", "/style/fill"),
-            ("cynefinDomain", "stroke", "node", "/style/stroke/paint"),
-            ("cynefinArrowLine", "stroke", "edge", "/style/stroke/paint"),
-            ("cynefinItemText", "fill", "node-label", "/style/fill"),
-            ("cynefinDomainLabel", "fill", "node-label", "/style/fill"),
-            ("cynefinSubtitle", "fill", "node-label", "/style/fill"),
-        ] {
-            let paint = expected(target, facet);
-            assert_eq!(
-                cynefin_inline_property(cynefin_element(&document, class), property),
-                paint.as_deref().or_else(|| cynefin_inline_property(
-                    cynefin_element(&baseline_document, class),
-                    property
-                )),
-                "{}: {class}.{property}",
-                preset.id()
-            );
-        }
-        let marker_fill =
-            expected("marker", "/style/fill").or_else(|| expected("edge", "/style/stroke/paint"));
-        assert_eq!(
-            cynefin_inline_property(cynefin_element(&document, "cynefinArrowHead"), "fill"),
-            marker_fill.as_deref().or_else(|| cynefin_inline_property(
-                cynefin_element(&baseline_document, "cynefinArrowHead"),
-                "fill"
-            )),
-            "{}",
-            preset.id()
-        );
-        let stylesheet = cynefin_stylesheet(rendered.svg());
-        for selector in [".cynefinItemText", ".cynefinSubtitle", ".cynefinArrowLabel"] {
-            assert!(
-                cynefin_rule_body(&stylesheet, "cynefin-preset", selector).contains(&format!(
-                    "fill:{};",
-                    expected("text", "/style/fill").unwrap()
-                )),
-                "{}: {selector}",
-                preset.id()
-            );
-        }
-        // Unowned body attributes and the title/domain CSS retain the selected Mermaid baseline.
-        for (class, property) in [("cynefinDomain", "fill"), ("cynefinDomain", "stroke")] {
-            assert_eq!(
-                cynefin_element(&document, class).attribute(property),
-                cynefin_element(&baseline_document, class).attribute(property),
-                "{}: {property}",
-                preset.id()
-            );
-        }
-        let baseline_css = cynefin_stylesheet(baseline.svg());
-        for selector in [".cynefinTitle", ".cynefinDomainLabel"] {
-            let fill = |css: &str| {
-                cynefin_rule_body(css, "cynefin-preset", selector)
-                    .split(';')
-                    .find_map(|declaration| declaration.strip_prefix("fill:"))
-                    .unwrap()
-                    .to_owned()
-            };
-            assert_eq!(
-                fill(&stylesheet),
-                fill(&baseline_css),
-                "{}: {selector}",
-                preset.id()
-            );
-        }
-        let stack = spec
-            .pointer("/typography/families/cynefin/font_stack")
-            .or_else(|| spec.pointer("/typography/default/font_stack"))
-            .unwrap()
-            .as_array()
-            .unwrap();
-        let font = FontStack::new(stack.iter().map(|value| value.as_str().unwrap()))
-            .unwrap()
-            .as_css();
-        assert!(
-            stylesheet.contains(&format!("#cynefin-preset{{font-family:{font};")),
-            "{}",
-            preset.id()
-        );
-        let completion = rendered.into_completion();
-        let evidence = merman_render::__private::family_evidence(completion.report());
-        assert_eq!(
-            evidence.accounted_count(),
-            evidence.required_count(),
-            "{}: {evidence:?}",
-            preset.id()
-        );
-        assert_eq!(
-            evidence.theme_residual_count(),
-            0,
-            "{}: {evidence:?}",
-            preset.id()
-        );
-        if evidence.mermaid_compatibility_residual_count() > 0 {
-            assert_eq!(
-                evidence.status(),
-                merman_render::__private::FamilyEvidenceStatus::Unverified
-            );
-        }
-        assert!(
-            completion
-                .report()
-                .theme_diagnostics()
-                .iter()
-                .all(|diagnostic| diagnostic.target() != Some(ThemeTarget::Title)
-                    && diagnostic.code() != "evidence-incomplete"),
-            "{}",
-            preset.id()
-        );
     }
 }

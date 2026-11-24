@@ -1,19 +1,8 @@
-use std::sync::OnceLock;
-
 use merman_model::presentation::PresentationConfig;
 
 use crate::Result;
-use crate::diagram_theme::{
-    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
-    ThemeCapability, ThemeTypographyProperty,
-};
-use crate::family::{
-    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason, InheritedFontStackOutcome,
-    InheritedFontStackPlan, InheritedTextRunFacts, InheritedTextRunSpec,
-    InheritedTextViewportFacts, unsupported_residual_for_facet,
-};
 use crate::model::ErrorDiagramLayout;
-use crate::text::TextMeasurer;
+use crate::text::{TextMeasurer, TextStyle};
 
 pub const UPSTREAM_MERMAID_VERSION: &str = merman_model::baseline::PINNED_MERMAID_BASELINE_VERSION;
 
@@ -30,142 +19,175 @@ const ERROR_VERSION_BASELINE_X_PX: f64 = 1250.0;
 const ERROR_VERSION_BASELINE_Y_PX: f64 = 400.0;
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum ErrorTextRole {
-    Message,
-    Version,
-    Detail(usize),
+pub(crate) struct ErrorTextSpec<'a> {
+    text: &'a str,
+    font_size_px: f64,
+    baseline_x_px: f64,
+    baseline_y_px: f64,
 }
 
-#[derive(Debug)]
-pub(crate) struct ErrorSurfaceReceipt {
-    expected_font_family_css: Box<str>,
-    expected_message: InheritedTextRunFacts,
-    expected_version: InheritedTextRunFacts,
-    expected_details: Box<[InheritedTextRunFacts]>,
-    detail_text_counts: Box<[usize]>,
-    css_emitted: bool,
-    css_emission_unique: bool,
-    message_text_count: usize,
-    version_text_count: usize,
-    terminal_matches: bool,
-}
-
-impl ErrorSurfaceReceipt {
-    fn new(
-        expected_font_family_css: &str,
-        expected_message: &InheritedTextRunFacts,
-        expected_version: &InheritedTextRunFacts,
-        expected_details: &[InheritedTextRunFacts],
+impl<'a> ErrorTextSpec<'a> {
+    pub(crate) const fn new(
+        text: &'a str,
+        font_size_px: f64,
+        baseline_x_px: f64,
+        baseline_y_px: f64,
     ) -> Self {
         Self {
-            expected_font_family_css: expected_font_family_css.into(),
-            expected_message: expected_message.clone(),
-            expected_version: expected_version.clone(),
-            expected_details: expected_details.into(),
-            detail_text_counts: vec![0; expected_details.len()].into_boxed_slice(),
-            css_emitted: false,
-            css_emission_unique: true,
-            message_text_count: 0,
-            version_text_count: 0,
-            terminal_matches: true,
+            text,
+            font_size_px,
+            baseline_x_px,
+            baseline_y_px,
         }
-    }
-
-    pub(crate) fn record_css_emission(
-        &mut self,
-        root_font_family_css: &str,
-        inherited_font_family_css: &str,
-        root_variable_font_family_css: &str,
-    ) {
-        if self.css_emitted {
-            self.css_emission_unique = false;
-            return;
-        }
-        let expected = self.expected_font_family_css.as_ref();
-        self.terminal_matches &= !expected.trim().is_empty();
-        self.terminal_matches &= root_font_family_css == expected;
-        self.terminal_matches &= inherited_font_family_css == expected;
-        self.terminal_matches &= root_variable_font_family_css == expected;
-        self.css_emitted = true;
-    }
-
-    pub(crate) fn record_error_text(
-        &mut self,
-        role: ErrorTextRole,
-        emitted_class: &str,
-        text: &str,
-        font_size_px: f64,
-        x: f64,
-        y: f64,
-    ) {
-        self.terminal_matches &= emitted_class == "error-text";
-        let expected = match role {
-            ErrorTextRole::Message => &self.expected_message,
-            ErrorTextRole::Version => &self.expected_version,
-            ErrorTextRole::Detail(index) => {
-                let Some(expected) = self.expected_details.get(index) else {
-                    self.terminal_matches = false;
-                    return;
-                };
-                expected
-            }
-        };
-        self.terminal_matches &= expected.matches_terminal(text, font_size_px, x, y);
-        if text.trim().is_empty() {
-            return;
-        }
-        match role {
-            ErrorTextRole::Message => {
-                self.message_text_count = self.message_text_count.saturating_add(1);
-            }
-            ErrorTextRole::Version => {
-                self.version_text_count = self.version_text_count.saturating_add(1);
-            }
-            ErrorTextRole::Detail(index) => {
-                self.detail_text_counts[index] = self.detail_text_counts[index].saturating_add(1);
-            }
-        }
-    }
-
-    fn proves_font_stack(&self) -> bool {
-        self.css_emitted
-            && self.css_emission_unique
-            && self.message_text_count == 1
-            && self.version_text_count == 1
-            && self.detail_text_counts.iter().all(|count| *count == 1)
-            && self.terminal_matches
     }
 }
 
-/// Final inherited Error font shared by terminal CSS emission and family evidence.
+/// Prepared geometry for one inherited SVG text run.
+///
+/// The layout and writer share the same measured coordinates.
+#[derive(Debug, Clone)]
+pub(crate) struct ErrorTextRun {
+    text: Box<str>,
+    font_size_px: f64,
+    x: f64,
+    y: f64,
+}
+
+impl ErrorTextRun {
+    pub(crate) fn text(&self) -> &str {
+        &self.text
+    }
+
+    pub(crate) const fn font_size_px(&self) -> f64 {
+        self.font_size_px
+    }
+
+    pub(crate) const fn x(&self) -> f64 {
+        self.x
+    }
+
+    pub(crate) const fn y(&self) -> f64 {
+        self.y
+    }
+}
+
+/// One measurement-owned viewport and its final inherited text runs.
+#[derive(Debug)]
+pub(crate) struct ErrorViewport {
+    width_px: f64,
+    height_px: f64,
+    runs: Box<[ErrorTextRun]>,
+}
+
+impl ErrorViewport {
+    pub(crate) fn prepare<'a>(
+        baseline_width_px: f64,
+        baseline_height_px: f64,
+        specs: impl IntoIterator<Item = ErrorTextSpec<'a>>,
+        font_family_css: &str,
+        measurer: &dyn TextMeasurer,
+    ) -> Self {
+        debug_assert!(baseline_width_px.is_finite() && baseline_width_px > 0.0);
+        debug_assert!(baseline_height_px.is_finite() && baseline_height_px > 0.0);
+
+        struct MeasuredRun<'a> {
+            spec: ErrorTextSpec<'a>,
+            anchor_x_ratio: f64,
+            anchor_y_ratio: f64,
+        }
+
+        let mut width_px = baseline_width_px;
+        let mut height_px = baseline_height_px;
+        let mut measured = Vec::new();
+        for spec in specs {
+            debug_assert!(spec.font_size_px.is_finite() && spec.font_size_px > 0.0);
+            debug_assert!(spec.baseline_x_px > 0.0 && spec.baseline_x_px < baseline_width_px);
+            debug_assert!(spec.baseline_y_px > 0.0 && spec.baseline_y_px < baseline_height_px);
+            let anchor_x_ratio =
+                (spec.baseline_x_px / baseline_width_px).clamp(f64::EPSILON, 1.0 - f64::EPSILON);
+            let anchor_y_ratio =
+                (spec.baseline_y_px / baseline_height_px).clamp(f64::EPSILON, 1.0 - f64::EPSILON);
+            let style = TextStyle {
+                font_family: Some(font_family_css.to_string()),
+                font_size: spec.font_size_px,
+                ..TextStyle::default()
+            };
+            let (left, right) = measurer.measure_svg_text_bbox_x(spec.text, &style);
+            let bbox_height = measurer.measure_svg_raw_text_bbox_height_px(spec.text, &style);
+            width_px = width_px
+                .max(required_axis_extent(left.max(0.0), anchor_x_ratio))
+                .max(required_axis_extent(right.max(0.0), 1.0 - anchor_x_ratio));
+            height_px = height_px
+                .max(required_axis_extent(bbox_height.max(0.0), anchor_y_ratio))
+                .max(required_axis_extent(
+                    bbox_height.max(0.0),
+                    1.0 - anchor_y_ratio,
+                ));
+            measured.push(MeasuredRun {
+                spec,
+                anchor_x_ratio,
+                anchor_y_ratio,
+            });
+        }
+
+        let runs = measured
+            .into_iter()
+            .map(|measured| ErrorTextRun {
+                text: measured.spec.text.into(),
+                font_size_px: measured.spec.font_size_px,
+                x: if width_px == baseline_width_px {
+                    measured.spec.baseline_x_px
+                } else {
+                    measured.anchor_x_ratio * width_px
+                },
+                y: if height_px == baseline_height_px {
+                    measured.spec.baseline_y_px
+                } else {
+                    measured.anchor_y_ratio * height_px
+                },
+            })
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+
+        Self {
+            width_px,
+            height_px,
+            runs,
+        }
+    }
+
+    pub(crate) const fn width_px(&self) -> f64 {
+        self.width_px
+    }
+
+    pub(crate) const fn height_px(&self) -> f64 {
+        self.height_px
+    }
+
+    pub(crate) fn runs(&self) -> &[ErrorTextRun] {
+        &self.runs
+    }
+
+    pub(crate) fn run(&self, index: usize) -> &ErrorTextRun {
+        &self.runs[index]
+    }
+}
+
+fn required_axis_extent(measured_extent: f64, available_ratio: f64) -> f64 {
+    if measured_extent == 0.0 {
+        return 0.0;
+    }
+    measured_extent / available_ratio
+}
+
 #[derive(Debug)]
 pub(crate) struct ErrorTypographyThemePlan {
     css_binding: crate::svg::PreparedCommonCss,
-    inherited_font_stack: InheritedFontStackPlan,
-    terminal_geometry: InheritedTextViewportFacts,
-    evidence: FamilyThemeOutcomes,
-    unsupported_routes: Box<[ErrorUnsupportedRoute]>,
-    terminal_receipt: OnceLock<ErrorSurfaceReceipt>,
-}
-
-#[derive(Debug)]
-struct ErrorUnsupportedRoute {
-    key: FamilyThemeMechanismKey,
-    reason: FamilyThemeResidualReason,
+    terminal_geometry: ErrorViewport,
 }
 
 impl ErrorTypographyThemePlan {
-    #[cfg(test)]
-    pub(crate) fn resolve(
-        theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &PresentationConfig,
-        measurer: &dyn TextMeasurer,
-    ) -> Self {
-        Self::resolve_with_message(theme, effective_config, measurer, None)
-    }
-
     pub(crate) fn resolve_with_message(
-        theme: Option<&ResolvedDiagramTheme>,
         effective_config: &PresentationConfig,
         measurer: &dyn TextMeasurer,
         message: Option<&str>,
@@ -176,24 +198,21 @@ impl ErrorTypographyThemePlan {
         } else {
             500.0 + details.len() as f64 * 56.0
         };
-        let inherited_font_stack =
-            InheritedFontStackPlan::resolve_property_local(theme, effective_config);
-        let css_binding = crate::svg::PreparedCommonCss::new(
-            effective_config.as_value(),
-            Some(inherited_font_stack.font_family_css()),
-        );
+        let family = crate::config::config_font_family_css(effective_config);
+        let css_binding =
+            crate::svg::PreparedCommonCss::new(effective_config.as_value(), Some(&family));
         let version = format!("mermaid version {UPSTREAM_MERMAID_VERSION}");
-        let terminal_geometry = InheritedTextViewportFacts::prepare(
+        let terminal_geometry = ErrorViewport::prepare(
             ERROR_BASELINE_VIEWBOX_WIDTH,
             baseline_height,
             [
-                InheritedTextRunSpec::new(
+                ErrorTextSpec::new(
                     ERROR_MESSAGE,
                     ERROR_MESSAGE_FONT_SIZE_PX,
                     ERROR_MESSAGE_BASELINE_X_PX,
                     ERROR_MESSAGE_BASELINE_Y_PX,
                 ),
-                InheritedTextRunSpec::new(
+                ErrorTextSpec::new(
                     &version,
                     ERROR_VERSION_FONT_SIZE_PX,
                     ERROR_VERSION_BASELINE_X_PX,
@@ -202,37 +221,19 @@ impl ErrorTypographyThemePlan {
             ]
             .into_iter()
             .chain(details.iter().enumerate().map(|(index, line)| {
-                InheritedTextRunSpec::new(line, 42.0, 1440.0, 510.0 + index as f64 * 56.0)
+                ErrorTextSpec::new(line, 42.0, 1440.0, 510.0 + index as f64 * 56.0)
             })),
-            inherited_font_stack.font_family_css(),
+            &family,
             measurer,
         );
-        let unsupported_routes = error_unsupported_routes(theme);
         Self {
             css_binding,
-            inherited_font_stack,
             terminal_geometry,
-            evidence: FamilyThemeOutcomes::default(),
-            unsupported_routes,
-            terminal_receipt: OnceLock::new(),
         }
-    }
-
-    pub(crate) fn font_family_css(&self) -> &str {
-        self.inherited_font_stack.font_family_css()
     }
 
     pub(crate) fn css_binding(&self) -> &crate::svg::PreparedCommonCss {
         &self.css_binding
-    }
-
-    pub(crate) fn begin_terminal_receipt(&self) -> ErrorSurfaceReceipt {
-        ErrorSurfaceReceipt::new(
-            self.font_family_css(),
-            self.message_geometry(),
-            self.version_geometry(),
-            self.detail_geometry(),
-        )
     }
 
     pub(crate) const fn viewport_width_px(&self) -> f64 {
@@ -243,89 +244,17 @@ impl ErrorTypographyThemePlan {
         self.terminal_geometry.height_px()
     }
 
-    pub(crate) fn message_geometry(&self) -> &InheritedTextRunFacts {
+    pub(crate) fn message_geometry(&self) -> &ErrorTextRun {
         self.terminal_geometry.run(0)
     }
 
-    pub(crate) fn version_geometry(&self) -> &InheritedTextRunFacts {
+    pub(crate) fn version_geometry(&self) -> &ErrorTextRun {
         self.terminal_geometry.run(1)
     }
 
-    pub(crate) fn detail_geometry(&self) -> &[InheritedTextRunFacts] {
+    pub(crate) fn detail_geometry(&self) -> &[ErrorTextRun] {
         &self.terminal_geometry.runs()[2..]
     }
-
-    pub(crate) fn record_terminal(&self, receipt: ErrorSurfaceReceipt) -> bool {
-        self.terminal_receipt.set(receipt).is_ok()
-    }
-
-    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
-        evidence.merge_borrowed(&self.evidence);
-        for route in &self.unsupported_routes {
-            evidence.mark_residual(route.key.clone(), route.reason);
-        }
-        let Some(receipt) = self.terminal_receipt.get() else {
-            return;
-        };
-        self.inherited_font_stack
-            .record_unsupported_typography_evidence(
-                evidence,
-                receipt.message_text_count != 0 || receipt.version_text_count != 0,
-            );
-        let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
-        if self.inherited_font_stack.typed_font_stack_active() {
-            if receipt.proves_font_stack() {
-                evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
-            } else {
-                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-            }
-        } else {
-            match self.inherited_font_stack.outcome() {
-                InheritedFontStackOutcome::ConfigOwned if receipt.proves_font_stack() => {
-                    evidence.mark_not_applicable(key);
-                }
-                InheritedFontStackOutcome::Typed
-                | InheritedFontStackOutcome::ConfigOwned
-                | InheritedFontStackOutcome::Unsupported => {
-                    evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-                }
-                InheritedFontStackOutcome::Inactive => {}
-            }
-        }
-    }
-}
-
-fn error_unsupported_routes(theme: Option<&ResolvedDiagramTheme>) -> Box<[ErrorUnsupportedRoute]> {
-    let Some(theme) = theme else {
-        return Box::new([]);
-    };
-    theme
-        .family_mechanism_routes()
-        .iter()
-        .copied()
-        .filter_map(|route| {
-            if route.disposition() != FamilyThemeDisposition::Unsupported {
-                return None;
-            }
-            let reason = match route.mechanism() {
-                FamilyThemeMechanism::RuleFacet { facet, .. } => {
-                    unsupported_residual_for_facet(facet)
-                }
-                FamilyThemeMechanism::OrdinalPalette { .. } => {
-                    FamilyThemeResidualReason::UnsupportedOrdinalPalette
-                }
-                FamilyThemeMechanism::EffectBinding { .. } => {
-                    FamilyThemeResidualReason::UnsupportedEffect
-                }
-                FamilyThemeMechanism::BaseTypography(_) => return None,
-            };
-            Some(ErrorUnsupportedRoute {
-                key: theme.family_mechanism_key(route),
-                reason,
-            })
-        })
-        .collect::<Vec<_>>()
-        .into_boxed_slice()
 }
 
 /// Wraps the upstream error text at 75 Unicode code points and at most four lines.
@@ -386,53 +315,11 @@ mod tests {
     use crate::text::DeterministicTextMeasurer;
 
     #[test]
-    fn error_font_receipt_requires_unique_css_and_cannot_repair_a_wrong_first_emission() {
-        let config = PresentationConfig::default();
-        let plan =
-            ErrorTypographyThemePlan::resolve(None, &config, &DeterministicTextMeasurer::default());
-        let with_text = || {
-            let mut receipt = plan.begin_terminal_receipt();
-            for (role, run) in [
-                (ErrorTextRole::Message, plan.message_geometry()),
-                (ErrorTextRole::Version, plan.version_geometry()),
-            ] {
-                receipt.record_error_text(
-                    role,
-                    "error-text",
-                    run.text(),
-                    run.font_size_px(),
-                    run.x(),
-                    run.y(),
-                );
-            }
-            receipt
-        };
-        let font = plan.font_family_css();
-        let mut duplicate = with_text();
-        assert!(!duplicate.proves_font_stack());
-        duplicate.record_css_emission(font, font, font);
-        assert!(duplicate.proves_font_stack());
-        duplicate.record_css_emission(font, font, font);
-        assert!(!duplicate.proves_font_stack());
-
-        for first in [
-            ("wrong", font, font),
-            (font, "wrong", font),
-            (font, font, "wrong"),
-        ] {
-            let mut bad_first = with_text();
-            bad_first.record_css_emission(first.0, first.1, first.2);
-            assert!(!bad_first.proves_font_stack());
-            bad_first.record_css_emission(font, font, font);
-            assert!(!bad_first.proves_font_stack());
-        }
-    }
-
-    #[test]
     fn error_layout_preserves_upstream_canvas_and_anchors_for_the_default_font() {
         let measurer = DeterministicTextMeasurer::default();
         let config = PresentationConfig::default();
-        let typography_theme = ErrorTypographyThemePlan::resolve(None, &config, &measurer);
+        let typography_theme =
+            ErrorTypographyThemePlan::resolve_with_message(&config, &measurer, None);
         let layout = layout_error_diagram_typed(
             &merman_model::families::error::ErrorDiagramModel {
                 diagram_type: "error".to_string(),
@@ -515,11 +402,10 @@ mod detail_tests {
     use super::*;
 
     #[test]
-    fn detail_text_participates_in_viewport_and_terminal_font_evidence() {
+    fn detail_text_expands_the_viewport() {
         let config = PresentationConfig::default();
         let measurer = crate::text::DeterministicTextMeasurer::default();
         let plan = ErrorTypographyThemePlan::resolve_with_message(
-            None,
             &config,
             &measurer,
             Some("A short error"),
@@ -532,49 +418,5 @@ mod detail_tests {
         assert!(detail.y() > 510.0);
         assert!(detail.y() < plan.viewport_height_px());
         assert_eq!(detail.font_size_px(), 42.0);
-        let mut receipt = plan.begin_terminal_receipt();
-        receipt.record_css_emission(
-            plan.font_family_css(),
-            plan.font_family_css(),
-            plan.font_family_css(),
-        );
-        for (role, run) in [
-            (ErrorTextRole::Message, plan.message_geometry()),
-            (ErrorTextRole::Version, plan.version_geometry()),
-        ] {
-            receipt.record_error_text(
-                role,
-                "error-text",
-                run.text(),
-                run.font_size_px(),
-                run.x(),
-                run.y(),
-            );
-        }
-        assert!(
-            !receipt.proves_font_stack(),
-            "unrecorded detail text must withhold complete evidence"
-        );
-        receipt.record_error_text(
-            ErrorTextRole::Detail(0),
-            "error-text",
-            detail.text(),
-            detail.font_size_px(),
-            detail.x(),
-            detail.y(),
-        );
-        assert!(receipt.proves_font_stack());
-        receipt.record_error_text(
-            ErrorTextRole::Detail(0),
-            "error-text",
-            detail.text(),
-            detail.font_size_px(),
-            detail.x(),
-            detail.y(),
-        );
-        assert!(
-            !receipt.proves_font_stack(),
-            "duplicate terminals must invalidate the receipt"
-        );
     }
 }

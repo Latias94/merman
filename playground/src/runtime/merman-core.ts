@@ -4,12 +4,13 @@ import type {
   AsciiCapability,
   AsciiDiagramType,
   DiagramDetectionFacts,
-  DiagramFamilyCapability,
   DiagramType,
-  SvgRenderMetadata,
-  ThemeName,
-  ThemeCatalog,
   RuntimeCatalog,
+  SvgRenderMetadata,
+  ThemeCatalog,
+  ThemeDocumentV2,
+  ThemeResolution,
+  ThemeResolveOptions,
   ValidationResult,
 } from "@mermanjs/web";
 import { projectError, type ErrorProjection } from "./error-projection.ts";
@@ -67,18 +68,14 @@ export type MermanAsciiResult =
 
 export interface MermanDomainFacade {
   readonly packageVersion: string;
-  exportThemePreset: typeof import("@mermanjs/web").exportThemePreset;
-  describeThemeSupport: typeof import("@mermanjs/web").describeThemeSupport;
-  materializeTheme: typeof import("@mermanjs/web").materializeTheme;
-  validateThemeRecipe(recipeJson: string): string;
+  exportThemePreset(id: string): ThemeDocumentV2;
+  resolveTheme(documentJson: string, options?: ThemeResolveOptions): ThemeResolution;
   runtimeCatalog(): RuntimeCatalog;
   themeCatalog(): ThemeCatalog;
-  diagramFamilyCapabilities(): DiagramFamilyCapability[];
   detectDiagram(input: ConfiguredMermanOperationInput): DiagramDetectionFacts;
   getAsciiCapabilities(): AsciiCapability[];
   getAsciiSupportedDiagrams(): AsciiDiagramType[];
   getSupportedDiagrams(): DiagramType[];
-  getThemes(): ThemeName[];
   layoutJson(input: ConfiguredMermanOperationInput): string;
   parseJson(input: ConfiguredMermanOperationInput): string;
   render(input: ConfiguredMermanOperationInput): MermanRenderResult;

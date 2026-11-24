@@ -41,7 +41,12 @@ versions, named metadata IDs, sorted capability/output/operation/adapter IDs, te
 availability, complete resource-to-operation relations, and agreement between the table and catalog
 package versions before it becomes usable.
 
-Detailed registries remain separate from that flat catalog. `supportedDiagrams()`, `asciiCapabilities()`, `diagramFamilyCapabilities()`, `lintRuleCatalog()`, `supportedThemes()`, and `themeCatalog()` call the generic appended ABI 3 `metadata_collect` slot and return immutable typed Dart values. The theme catalog describes the selected artifact's typed semantic-theme vocabulary and carries an explicit open-string maturity for every built-in preset. The initial inventory is `alpha`; catalog presence does not imply a stable preset or cross-target portability claim. This keeps the metadata surface extensible without adding per-catalog native symbols or copying detailed catalogs into the runtime catalog.
+`supportedDiagrams()`, `asciiCapabilities()`, `diagramFamilyCapabilities()`, `lintRuleCatalog()`,
+`supportedThemes()`, and `themeCatalog()` call the generic ABI 3 `metadata_collect` slot and
+return immutable typed Dart values. The schema-2 `themeCatalog()` exposes native presets with
+their appearances and default swatches, classic Mermaid theme IDs, and native capability flags
+by diagram family. See [Options JSON](OPTIONS_JSON.md#diagram-theme) for render selection and
+theme authoring operations.
 
 The generated `MermanResourceLimitId` describes the complete catalog vocabulary. `MermanResourceOverrideId` is the narrower set accepted by `MermanResourceOptionsBuilder`, whose profile is optional so reusable requests can inherit their constructor ceiling. The generated values intentionally do not duplicate the loaded artifact's descriptive metadata or budget table.
 

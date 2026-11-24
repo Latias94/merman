@@ -54,11 +54,10 @@ pub(super) fn render_sequence_box_frames_and_rect_blocks(
     checkpoints: SequenceEmitCheckpoints<'_>,
 ) -> Result<()> {
     let actor_typography = label_ctx.typography;
-    let typography_receipt = label_ctx.typography_receipt;
     // Mermaid renders "box" frames as root-level `<g><rect class="rect"/>...</g>` nodes before actors.
     // Mermaid renders boxes "behind" other elements; multiple boxes end up reversed in DOM order.
     checkpoints.checkpoint()?;
-    for (emission_index, (b, box_index)) in model
+    for (emission_index, (_, box_index)) in model
         .boxes
         .iter()
         .zip(options.box_indices)
@@ -67,10 +66,6 @@ pub(super) fn render_sequence_box_frames_and_rect_blocks(
     {
         checkpoints.checkpoint_loop(emission_index)?;
         let Some(box_index) = *box_index else {
-            if b.name.is_some() {
-                typography_receipt
-                    .record_missing_text_effect(crate::sequence::SequenceTextSurface::BoxTitle);
-            }
             continue;
         };
         let box_layout = &options.boxes[box_index];
@@ -94,18 +89,6 @@ pub(super) fn render_sequence_box_frames_and_rect_blocks(
                 let decoded = crate::sequence::prepare_sequence_text_line(raw);
                 let name = decoded.as_ref();
                 let dy = (index as f64 - (count - 1.0) / 2.0) * options.actor_text_style.font_size;
-                let application = label_ctx.write_shadow(
-                    out,
-                    name,
-                    cx,
-                    text_y + dy,
-                    options.actor_text_style.font_size,
-                    super::text_effect::TextShadowBaseline::Middle,
-                )?;
-                let filter = application
-                    .as_ref()
-                    .map(|a| format!(" filter=\"{}\"", escape_attr(&a.filter)))
-                    .unwrap_or_default();
                 let style = actor_typography.terminal_style(
                     "text-anchor: middle",
                     format!(
@@ -115,7 +98,7 @@ pub(super) fn render_sequence_box_frames_and_rect_blocks(
                 );
                 let _ = write!(
                     out,
-                    r#"<text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="text" style="{style}"{filter}><tspan x="{x}" dy="{dy}">{text}</tspan></text>"#,
+                    r#"<text x="{x}" y="{y}" dominant-baseline="central" alignment-baseline="central" class="text" style="{style}"><tspan x="{x}" dy="{dy}">{text}</tspan></text>"#,
                     x = fmt(cx),
                     y = fmt(text_y),
                     dy = fmt(dy),
@@ -123,14 +106,6 @@ pub(super) fn render_sequence_box_frames_and_rect_blocks(
                     text = super::escape_prepared_text(name)
                 );
                 out.checkpoint()?;
-                label_ctx.record_shadow(
-                    application.as_ref(),
-                    name,
-                    crate::sequence::SequenceTextSurface::BoxTitle,
-                    0.0,
-                );
-                typography_receipt
-                    .record_terminal_text(crate::sequence::SequenceTextSurface::BoxTitle);
             }
         }
         out.push_str("</g>");

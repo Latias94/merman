@@ -1981,14 +1981,8 @@ mod tests {
             let id = operation["id"]
                 .as_str()
                 .expect("binding operation id must be a string");
-            let expected = match id {
-                "describe-theme-support-json"
-                | "export-theme-preset-json"
-                | "materialize-theme-json" => "alpha",
-                _ => "stable",
-            };
             assert_eq!(
-                operation["maturity"], expected,
+                operation["maturity"], "stable",
                 "binding operation `{id}` must declare its canonical maturity"
             );
         }
@@ -1999,7 +1993,6 @@ mod tests {
         let web = render_web_typescript(&descriptor, &digest).unwrap();
         let header = render_c_header(&descriptor, &digest).unwrap();
         assert!(rust.contains("pub maturity: &'static str"));
-        assert!(web.contains("\"maturity\": \"alpha\""));
         assert!(header.contains("const char *maturity;"));
     }
 
@@ -2022,9 +2015,9 @@ mod tests {
         let theme_operation = changed
             .binding_operations
             .iter_mut()
-            .find(|operation| operation.id == "materialize-theme-json")
+            .find(|operation| operation.id == "resolve-theme")
             .unwrap();
-        theme_operation.maturity = "stable".to_string();
+        theme_operation.maturity = "alpha".to_string();
         assert_ne!(semantic_digest(&changed).unwrap(), baseline);
     }
 

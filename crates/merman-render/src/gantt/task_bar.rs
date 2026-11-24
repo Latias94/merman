@@ -1,7 +1,5 @@
 use merman_model::families::gantt::GanttRenderTask;
 
-use crate::diagram_theme::ThemeVariant;
-
 /// Canonical terminal state for one Gantt task bar.
 ///
 /// Mermaid gives `active` precedence over `done`, then combines the selected state with `crit`.
@@ -37,15 +35,6 @@ impl GanttTaskBarState {
         }
     }
 
-    pub(super) const fn theme_variant(self) -> ThemeVariant {
-        match self {
-            Self::Default => ThemeVariant::Default,
-            Self::Active | Self::ActiveCrit => ThemeVariant::Active,
-            Self::Done | Self::DoneCrit => ThemeVariant::Success,
-            Self::Crit => ThemeVariant::Error,
-        }
-    }
-
     pub(super) const fn bar_class_prefix(self) -> &'static str {
         match self {
             Self::Default => "task",
@@ -60,28 +49,10 @@ impl GanttTaskBarState {
     pub(super) const fn is_critical(self) -> bool {
         matches!(self, Self::Crit | Self::ActiveCrit | Self::DoneCrit)
     }
-
-    pub(super) const fn final_fill_path(self) -> &'static str {
-        match self {
-            Self::Default => "themeVariables.taskBkgColor",
-            Self::Active | Self::ActiveCrit => "themeVariables.activeTaskBkgColor",
-            Self::Done | Self::DoneCrit => "themeVariables.doneTaskBkgColor",
-            Self::Crit => "themeVariables.critBkgColor",
-        }
-    }
-
-    pub(super) const fn final_stroke_path(self) -> &'static str {
-        match self {
-            Self::Default => "themeVariables.taskBorderColor",
-            Self::Active => "themeVariables.activeTaskBorderColor",
-            Self::Done => "themeVariables.doneTaskBorderColor",
-            Self::ActiveCrit | Self::DoneCrit | Self::Crit => "themeVariables.critBorderColor",
-        }
-    }
 }
 
 // Mermaid labels retain every authored status class, unlike bars' active-first state.
-pub(super) fn label_state_classes(task: &GanttRenderTask, suffix: &str) -> String {
+pub(crate) fn label_state_classes(task: &GanttRenderTask, suffix: &str) -> String {
     let mut classes = Vec::new();
     if task.active {
         classes.push(format!(

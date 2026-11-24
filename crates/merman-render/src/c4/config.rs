@@ -257,7 +257,7 @@ pub(super) fn cssom_accepts_value_priority(value: &str, important: bool) -> bool
     let mut parser = cssparser::Parser::new(value);
     parser
         .expect_ident()
-        .is_ok_and(|name| crate::diagram_theme::is_css_wide_keyword(name))
+        .is_ok_and(|name| crate::text::is_css_wide_keyword(name))
         && parser.is_exhausted()
 }
 

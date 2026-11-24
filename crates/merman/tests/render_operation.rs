@@ -4,9 +4,12 @@ use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::Duration;
 
+#[cfg(feature = "svg")]
+use merman::theme::{Appearance, BuiltinPreset, ThemeMode, ThemeSelection};
+
 use merman::{
     OperationControl, OperationPhase, ParseOptions, PresentationArtifact, RenderError,
-    RenderOutput, RenderRequest, Renderer, ThemeEvidenceStatus,
+    RenderOutput, RenderRequest, Renderer,
     model::resources::{InputResourceLimitId, InputResourcePolicy},
 };
 
@@ -119,75 +122,8 @@ impl merman::svg::HostTextMeasurer for FixedHostTextMeasurer {
 }
 
 #[cfg(feature = "svg")]
-fn portable_state_theme() -> merman::svg::DiagramTheme {
-    let palette = merman::svg::OrdinalPalette::new([
-        merman::svg::ThemeColorValue::parse("#0f172a").expect("valid first palette color"),
-        merman::svg::ThemeColorValue::parse("#22d3ee").expect("valid second palette color"),
-    ])
-    .expect("valid state palette");
-    merman::svg::DiagramThemeCompiler::new()
-        .compile(
-            merman::svg::DiagramThemeSpec::new().with_styles(
-                merman::svg::ThemeRuleSet::default()
-                    .with_ordinal_palette(merman::svg::ThemeTarget::State, palette),
-            ),
-        )
-        .expect("portable state theme should compile")
-}
-
-#[cfg(feature = "svg")]
-fn portable_pie_palette_theme() -> merman::svg::DiagramTheme {
-    let palette = merman::svg::OrdinalPalette::new([
-        merman::svg::ThemeColorValue::parse("#ef4444").expect("valid first palette color"),
-        merman::svg::ThemeColorValue::parse("#22c55e").expect("valid second palette color"),
-        merman::svg::ThemeColorValue::parse("#2563eb").expect("valid third palette color"),
-    ])
-    .expect("valid Pie palette");
-    merman::svg::DiagramThemeCompiler::new()
-        .compile(
-            merman::svg::DiagramThemeSpec::new().with_styles(
-                merman::svg::ThemeRuleSet::default()
-                    .with_ordinal_palette(merman::svg::ThemeTarget::PieSlice, palette),
-            ),
-        )
-        .expect("portable Pie theme should compile")
-}
-
-#[cfg(all(feature = "svg", feature = "layout-cytoscape"))]
-fn architecture_group_paint_theme() -> merman::svg::DiagramTheme {
-    let style = merman::svg::ThemeStylePatch::default()
-        .with_fill(
-            merman::svg::CanvasPaint::solid("#0f172a").expect("valid Architecture group fill"),
-        )
-        .with_stroke(
-            merman::svg::CanvasPaint::solid("#22d3ee").expect("valid Architecture group stroke"),
-        );
-    merman::svg::DiagramThemeCompiler::new()
-        .compile(
-            merman::svg::DiagramThemeSpec::new().with_styles(
-                merman::svg::ThemeRuleSet::default().with_rule(
-                    merman::svg::ThemeRule::new(merman::svg::ThemeTarget::Cluster, style)
-                        .for_family(merman::model::family::DiagramFamilyId::ARCHITECTURE),
-                ),
-            ),
-        )
-        .expect("Architecture group paint theme should compile")
-}
-
-#[cfg(feature = "svg")]
-fn flowchart_paint_theme() -> merman::svg::DiagramTheme {
-    let styles = merman::svg::ThemeRuleSet::default().with_rule(
-        merman::svg::ThemeRule::new(
-            merman::svg::ThemeTarget::Node,
-            merman::svg::ThemeStylePatch::default().with_fill(
-                merman::svg::CanvasPaint::solid("#1d4ed8").expect("fixture paint is valid"),
-            ),
-        )
-        .for_family(merman::model::family::DiagramFamilyId::FLOWCHART),
-    );
-    merman::svg::DiagramThemeCompiler::new()
-        .compile(merman::svg::DiagramThemeSpec::new().with_styles(styles))
-        .expect("flowchart paint theme should compile")
+fn studio_dark() -> ThemeSelection {
+    ThemeSelection::preset(BuiltinPreset::Studio, Some(Appearance::Dark))
 }
 
 #[cfg(feature = "svg")]
@@ -225,7 +161,7 @@ fn render_host_measured_document_with_profile(
                 OperationControl::new(),
                 request,
             )
-            .with_theme(flowchart_paint_theme()),
+            .with_native_theme(studio_dark()),
         )
         .expect("host-measured document should complete before target admission");
     let RenderOutput::Document(Some(document)) = output else {
@@ -863,12 +799,9 @@ fn layout_json_deadline_precedes_require_portable_rejection() {
     ));
 }
 
-#[cfg(feature = "svg")]
+#[cfg(all(feature = "svg", feature = "diagram-sequence"))]
 #[test]
-fn completed_svg_evidence_freezes_family_and_theme_identity() {
-    let theme = merman::svg::DiagramThemeCompiler::new()
-        .compile_preset(merman::svg::ThemePreset::OneDark)
-        .expect("one-dark theme should compile");
+fn completed_svg_reports_family_and_native_theme_identity() {
     let request = merman::SvgRequest::default();
 
     let output = Renderer::new()
@@ -878,7 +811,7 @@ fn completed_svg_evidence_freezes_family_and_theme_identity() {
                 OperationControl::new(),
                 request,
             )
-            .with_theme(theme.clone()),
+            .with_native_theme(studio_dark()),
         )
         .expect("themed sequence SVG should render");
     let RenderOutput::Svg(Some(output)) = output else {
@@ -890,15 +823,15 @@ fn completed_svg_evidence_freezes_family_and_theme_identity() {
         output.evidence().family_id(),
         merman::model::family::DiagramFamilyId::SEQUENCE
     );
-    assert_eq!(
-        output.evidence().theme_recipe_fingerprint(),
-        Some(theme.recipe_fingerprint())
-    );
+    let outcome = output.theme_outcome();
+    assert_eq!(outcome.mode, ThemeMode::MermanNative);
+    assert_eq!(outcome.preset_id, Some(BuiltinPreset::Studio));
+    assert_eq!(outcome.appearance, Some(Appearance::Dark));
 }
 
 #[cfg(feature = "svg")]
 #[test]
-fn unthemed_svg_reports_theme_evidence_as_not_applicable() {
+fn unthemed_svg_reports_mermaid_parity() {
     let output = Renderer::new()
         .render(RenderRequest::svg(
             "flowchart TD\nA[Start] --> B[Done]",
@@ -910,285 +843,58 @@ fn unthemed_svg_reports_theme_evidence_as_not_applicable() {
         panic!("expected an SVG output");
     };
 
-    let summary = output.evidence().theme_evidence();
-    assert_eq!(summary.status(), ThemeEvidenceStatus::NotApplicable);
-    assert!(!summary.output_mutated());
-    assert!(!summary.is_verified());
-    assert!(summary.is_satisfied());
+    assert_eq!(output.theme_outcome().mode, ThemeMode::MermaidParity);
+    assert!(output.theme_outcome().notices.is_empty());
+    assert!(!output.evidence().output_mutated());
 }
 
-#[cfg(feature = "svg")]
+#[cfg(all(feature = "svg", feature = "diagram-info"))]
 #[test]
-fn themed_state_svg_reports_verified_coarse_theme_evidence() {
-    let theme = portable_state_theme();
-    let output = Renderer::new()
-        .render(
-            RenderRequest::svg(
-                "stateDiagram-v2\n[*] --> Ready\nReady --> [*]",
-                OperationControl::new(),
-                merman::SvgRequest::default(),
-            )
-            .with_theme(theme),
-        )
-        .expect("themed state SVG should render");
-    let RenderOutput::Svg(Some(output)) = output else {
-        panic!("expected a themed state SVG");
-    };
+fn unsupported_native_treatments_are_reported_or_rejected() {
+    use merman::svg::{RenderError as SvgRenderError, ThemePortabilityRequirement};
+    use merman::theme::ThemeOutcomeNotice;
 
-    let summary = output.evidence().theme_evidence();
-    assert_eq!(summary.status(), ThemeEvidenceStatus::Verified);
-    assert!(!summary.output_mutated());
-    assert!(summary.is_verified());
-    assert!(summary.is_satisfied());
-
-    let admission = output.admission();
-    assert_eq!(admission.artifact_kind(), merman::RenderArtifactKind::Svg);
-}
-
-#[cfg(feature = "svg")]
-#[test]
-fn pie_ordinal_palette_drives_terminal_slice_fills_and_verified_evidence() {
-    let output = Renderer::new()
-        .render(
-            RenderRequest::svg(
-                "pie\n  \"Alpha\" : 60\n  \"Hidden\" : 0.1\n  \"Gamma\" : 39.9\n",
-                OperationControl::new(),
-                merman::SvgRequest::default(),
-            )
-            .with_theme(portable_pie_palette_theme()),
-        )
-        .expect("themed Pie SVG should render");
-    let RenderOutput::Svg(Some(output)) = output else {
-        panic!("expected a themed Pie SVG");
-    };
-
-    let document = roxmltree::Document::parse(output.svg()).expect("valid Pie SVG");
-    let slice_fills = document
-        .descendants()
-        .filter(|node| {
-            node.has_tag_name("path")
-                && node.attribute("class").is_some_and(|class| {
-                    class
-                        .split_ascii_whitespace()
-                        .any(|part| part == "pieCircle")
-                })
-        })
-        .map(|node| node.attribute("fill").expect("Pie slice fill"))
-        .collect::<Vec<_>>();
-    assert_eq!(slice_fills, ["#ef4444", "#2563eb"]);
-    let legend_styles = document
-        .descendants()
-        .filter(|node| {
-            node.has_tag_name("rect")
-                && node.parent().is_some_and(|parent| {
-                    parent.has_tag_name("g") && parent.attribute("class") == Some("legend")
-                })
-        })
-        .map(|node| node.attribute("style").expect("Pie legend style"))
-        .collect::<Vec<_>>();
-    assert_eq!(
-        legend_styles,
-        [
-            "fill: rgb(239, 68, 68); stroke: rgb(239, 68, 68);",
-            "fill: rgb(34, 197, 94); stroke: rgb(34, 197, 94);",
-            "fill: rgb(37, 99, 235); stroke: rgb(37, 99, 235);",
-        ]
-    );
-
-    let summary = output.evidence().theme_evidence();
-    assert_eq!(summary.status(), ThemeEvidenceStatus::Verified);
-    assert!(summary.is_verified());
-    assert!(summary.is_satisfied());
-}
-
-#[cfg(feature = "svg")]
-#[test]
-fn pie_site_palette_slot_outranks_the_typed_default() {
-    let renderer =
-        Renderer::new().with_presentation_engine(merman::MermaidEngine::new().with_site_config(
-            merman::SourcePresentationConfig::from_value(serde_json::json!({
-                "themeVariables": {"pie1": "#111827"}
-            })),
+    let renderer = Renderer::new();
+    for (preset, expected) in [
+        (
+            BuiltinPreset::Studio,
+            "This diagram family does not support theme elevation.",
+        ),
+        (
+            BuiltinPreset::Monograph,
+            "This diagram family does not support categorical theme patterns.",
+        ),
+    ] {
+        let render = |requirement| {
+            let request = merman::SvgRequest {
+                environment: merman::SvgEnvironment::deterministic()
+                    .with_theme_portability_requirement(requirement),
+                ..Default::default()
+            }
+            .with_native_theme(ThemeSelection::preset(preset, None));
+            renderer.render(RenderRequest::svg("info", OperationControl::new(), request))
+        };
+        let RenderOutput::Svg(Some(output)) =
+            render(ThemePortabilityRequirement::BestEffort).unwrap()
+        else {
+            panic!("expected a best-effort SVG");
+        };
+        assert_eq!(output.theme_outcome().preset_id, Some(preset));
+        assert!(output.theme_outcome().notices.iter().any(|notice|
+            matches!(notice, ThemeOutcomeNotice::Rendering(message) if *message == expected)
         ));
-    let output = renderer
-        .render(
-            RenderRequest::svg(
-                "pie\n  \"Site\" : 1\n  \"Typed\" : 1\n",
-                OperationControl::new(),
-                merman::SvgRequest::default(),
-            )
-            .with_theme(portable_pie_palette_theme()),
-        )
-        .expect("source-owned Pie palette slot should render");
-    let RenderOutput::Svg(Some(output)) = output else {
-        panic!("expected a themed Pie SVG");
-    };
-
-    let document = roxmltree::Document::parse(output.svg()).expect("valid Pie SVG");
-    let slice_fills = document
-        .descendants()
-        .filter(|node| {
-            node.has_tag_name("path")
-                && node.attribute("class").is_some_and(|class| {
-                    class
-                        .split_ascii_whitespace()
-                        .any(|part| part == "pieCircle")
-                })
-        })
-        .map(|node| node.attribute("fill").expect("Pie slice fill"))
-        .collect::<Vec<_>>();
-    assert_eq!(slice_fills, ["#111827", "#22c55e"]);
-    assert_eq!(
-        output.evidence().theme_evidence().status(),
-        ThemeEvidenceStatus::Verified
-    );
+        let error = render(ThemePortabilityRequirement::RequirePortable).unwrap_err();
+        assert!(
+            matches!(error, RenderError::Svg(SvgRenderError::UnsupportedNativeThemeFeature {
+            family_id: merman::model::family::DiagramFamilyId::INFO, message,
+        }) if message == expected)
+        );
+    }
 }
 
-#[cfg(all(feature = "svg", feature = "layout-cytoscape"))]
+#[cfg(all(feature = "svg", feature = "diagram-class"))]
 #[test]
-fn architecture_group_paint_reaches_the_terminal_rect_and_verified_evidence() {
-    let output = Renderer::new()
-        .render(
-            RenderRequest::svg(
-                "architecture-beta\n  group core(cloud)[Core]\n  service api(server)[API] in core\n",
-                OperationControl::new(),
-                merman::SvgRequest::default(),
-            )
-            .with_theme(architecture_group_paint_theme()),
-        )
-        .expect("themed Architecture SVG should render");
-    let RenderOutput::Svg(Some(output)) = output else {
-        panic!("expected a themed Architecture SVG");
-    };
-
-    let document = roxmltree::Document::parse(output.svg()).expect("valid Architecture SVG");
-    let group = document
-        .descendants()
-        .find(|node| {
-            node.has_tag_name("rect")
-                && node
-                    .attribute("id")
-                    .is_some_and(|id| id.ends_with("-group-core"))
-        })
-        .expect("Architecture group rect");
-    let style = group.attribute("style").expect("typed inline group paint");
-    assert!(
-        style.contains("fill:#0f172a"),
-        "unexpected group style: {style}"
-    );
-    assert!(
-        style.contains("stroke:#22d3ee"),
-        "unexpected group style: {style}"
-    );
-    assert_eq!(
-        output.evidence().theme_evidence().status(),
-        ThemeEvidenceStatus::Verified
-    );
-}
-
-#[cfg(all(feature = "svg", feature = "layout-cytoscape"))]
-#[test]
-fn architecture_site_group_border_outranks_typed_stroke_without_shadowing_typed_fill() {
-    let renderer =
-        Renderer::new().with_presentation_engine(merman::MermaidEngine::new().with_site_config(
-            merman::SourcePresentationConfig::from_value(serde_json::json!({
-                "themeVariables": {"archGroupBorderColor": "#f97316"}
-            })),
-        ));
-    let output = renderer
-        .render(
-            RenderRequest::svg(
-                "architecture-beta\n  group core(cloud)[Core]\n  service api(server)[API] in core\n",
-                OperationControl::new(),
-                merman::SvgRequest::default(),
-            )
-            .with_theme(architecture_group_paint_theme()),
-        )
-        .expect("source-owned Architecture group border should render");
-    let RenderOutput::Svg(Some(output)) = output else {
-        panic!("expected a themed Architecture SVG");
-    };
-
-    let document = roxmltree::Document::parse(output.svg()).expect("valid Architecture SVG");
-    let group = document
-        .descendants()
-        .find(|node| {
-            node.has_tag_name("rect")
-                && node
-                    .attribute("id")
-                    .is_some_and(|id| id.ends_with("-group-core"))
-        })
-        .expect("Architecture group rect");
-    assert_eq!(group.attribute("style"), Some("fill:#0f172a;"));
-    assert!(
-        output.svg().contains(".node-bkg{fill:none;stroke:#f97316;"),
-        "source-owned group border should remain in the Mermaid CSS"
-    );
-    assert_eq!(
-        output.evidence().theme_evidence().status(),
-        ThemeEvidenceStatus::Verified
-    );
-}
-
-#[cfg(all(feature = "svg", feature = "layout-cytoscape"))]
-#[test]
-fn architecture_group_ordinal_paint_remains_fail_closed() {
-    let theme = merman::svg::DiagramThemeCompiler::new()
-        .compile(
-            merman::svg::DiagramThemeSpec::new().with_styles(
-                merman::svg::ThemeRuleSet::default().with_rule(
-                    merman::svg::ThemeRule::new(
-                        merman::svg::ThemeTarget::Cluster,
-                        merman::svg::ThemeStylePatch::default().with_fill(
-                            merman::svg::CanvasPaint::solid("#7c3aed")
-                                .expect("valid Architecture ordinal fill"),
-                        ),
-                    )
-                    .for_family(merman::model::family::DiagramFamilyId::ARCHITECTURE)
-                    .with_ordinal(
-                        merman::svg::OrdinalSelector::exact(1)
-                            .expect("valid Architecture group ordinal"),
-                    ),
-                ),
-            ),
-        )
-        .expect("Architecture ordinal theme should compile");
-    let output = Renderer::new()
-        .render(
-            RenderRequest::svg(
-                "architecture-beta\n  group core(cloud)[Core]\n  service api(server)[API] in core\n",
-                OperationControl::new(),
-                merman::SvgRequest::default(),
-            )
-            .with_theme(theme),
-        )
-        .expect("unsupported Architecture ordinal paint should remain observable");
-    let RenderOutput::Svg(Some(output)) = output else {
-        panic!("expected an Architecture SVG");
-    };
-
-    assert_eq!(
-        output.evidence().theme_evidence().status(),
-        ThemeEvidenceStatus::Residual
-    );
-    assert!(!output.svg().contains("fill:#7c3aed"));
-}
-
-#[cfg(feature = "svg")]
-#[test]
-fn standalone_class_svg_separates_verified_relation_width_from_font_portability() {
-    let styles = merman::svg::ThemeRuleSet::default().with_rule(
-        merman::svg::ThemeRule::new(
-            merman::svg::ThemeTarget::Edge,
-            merman::svg::ThemeStylePatch::default()
-                .with_stroke_width(5.0)
-                .expect("valid Class relation width"),
-        )
-        .for_family(merman::model::family::DiagramFamilyId::CLASS),
-    );
-    let theme = merman::svg::DiagramThemeCompiler::new()
-        .compile(merman::svg::DiagramThemeSpec::new().with_styles(styles))
-        .expect("compile Class relation theme");
+fn standalone_native_class_svg_preserves_font_portability() {
     let request = merman::SvgRequest {
         pipeline: Some(merman::svg::SvgPipeline::resvg_safe()),
         ..merman::SvgRequest::default()
@@ -1200,7 +906,7 @@ fn standalone_class_svg_separates_verified_relation_width_from_font_portability(
                 OperationControl::new(),
                 request,
             )
-            .with_theme(theme),
+            .with_native_theme(studio_dark()),
         )
         .expect("best-effort standalone Class SVG should retain both evidence axes");
     let RenderOutput::Svg(Some(output)) = output else {
@@ -1212,10 +918,9 @@ fn standalone_class_svg_separates_verified_relation_width_from_font_portability(
         merman::model::family::DiagramFamilyId::CLASS
     );
     assert_eq!(
-        output.evidence().theme_evidence().status(),
-        ThemeEvidenceStatus::Verified
+        output.theme_outcome().preset_id,
+        Some(BuiltinPreset::Studio)
     );
-    assert!(output.svg().contains("stroke-width:5px !important"));
     let admission = output.admission();
     assert_eq!(
         admission.status(),
@@ -1229,10 +934,10 @@ fn standalone_class_svg_separates_verified_relation_width_from_font_portability(
     );
 }
 
-#[cfg(feature = "svg")]
+#[cfg(all(feature = "svg", feature = "diagram-state"))]
 #[test]
-fn custom_postprocessing_is_visible_in_coarse_theme_evidence() {
-    let theme = portable_state_theme();
+fn custom_postprocessing_is_visible_in_render_evidence() {
+    let theme = studio_dark();
     let request = merman::SvgRequest {
         pipeline: Some(
             merman::svg::SvgPipeline::parity()
@@ -1247,27 +952,21 @@ fn custom_postprocessing_is_visible_in_coarse_theme_evidence() {
                 OperationControl::new(),
                 request,
             )
-            .with_theme(theme),
+            .with_native_theme(theme),
         )
         .expect("postprocessed themed SVG should render in best-effort mode");
     let RenderOutput::Svg(Some(output)) = output else {
         panic!("expected a postprocessed SVG");
     };
 
-    let summary = output.evidence().theme_evidence();
-    assert_eq!(summary.status(), ThemeEvidenceStatus::Residual);
-    assert!(summary.output_mutated());
-    assert!(!summary.is_verified());
-    assert!(!summary.is_satisfied());
+    assert_eq!(output.theme_outcome().mode, ThemeMode::MermanNative);
+    assert!(output.evidence().output_mutated());
+    assert!(output.svg().contains("#111827"));
 }
 
-#[cfg(feature = "svg")]
+#[cfg(all(feature = "svg", feature = "diagram-flowchart"))]
 #[test]
 fn rendered_document_retains_selected_theme_and_portability() {
-    let theme = merman::svg::DiagramThemeCompiler::new()
-        .compile_preset(merman::svg::ThemePreset::OneDark)
-        .expect("one-dark theme should compile");
-
     let output = Renderer::new()
         .render(
             RenderRequest::document(
@@ -1275,7 +974,7 @@ fn rendered_document_retains_selected_theme_and_portability() {
                 OperationControl::new(),
                 merman::SvgRequest::default(),
             )
-            .with_theme(theme.clone()),
+            .with_native_theme(studio_dark()),
         )
         .expect("rendered document should complete");
     let RenderOutput::Document(Some(document)) = output else {
@@ -1291,10 +990,10 @@ fn rendered_document_retains_selected_theme_and_portability() {
         document.standalone_svg_admission().artifact_kind(),
         merman::RenderArtifactKind::Svg
     );
-    assert_eq!(
-        document.evidence().theme_recipe_fingerprint(),
-        Some(theme.recipe_fingerprint())
-    );
+    let outcome = document.theme_outcome();
+    assert_eq!(outcome.mode, ThemeMode::MermanNative);
+    assert_eq!(outcome.preset_id, Some(BuiltinPreset::Studio));
+    assert_eq!(outcome.appearance, Some(Appearance::Dark));
 }
 
 #[cfg(all(feature = "svg", feature = "math"))]
@@ -1332,24 +1031,10 @@ fn rendered_document_binds_prepared_math_terminal_proof() {
     assert!(document.svg().contains("merman-prepared-math-native"));
 }
 
-#[cfg(feature = "png")]
+#[cfg(all(feature = "png", feature = "diagram-flowchart"))]
 #[test]
-fn native_root_capability_whitelist_admits_emitted_canvas_layers() {
-    let layer = merman::svg::CanvasLayer::new(
-        merman::svg::CanvasPaint::solid("#22d3ee").expect("valid root layer paint"),
-    )
-    .with_opacity(0.45)
-    .expect("valid root layer opacity")
-    .with_offset(3.0, 5.0)
-    .expect("valid root layer offset")
-    .with_blend_mode(merman::svg::BlendMode::Screen);
-    let canvas = merman::svg::CanvasSpec::solid("#0f172a")
-        .expect("valid root base paint")
-        .with_layer(layer)
-        .expect("valid root canvas layer");
-    let theme = merman::svg::DiagramThemeCompiler::new()
-        .compile(merman::svg::DiagramThemeSpec::new().with_canvas(canvas))
-        .expect("root canvas theme should compile");
+fn native_export_admits_the_theme_canvas_texture() {
+    let theme = ThemeSelection::preset(BuiltinPreset::Blueprint, None);
     let output = Renderer::new()
         .render(
             RenderRequest::document(
@@ -1357,25 +1042,31 @@ fn native_root_capability_whitelist_admits_emitted_canvas_layers() {
                 OperationControl::new(),
                 merman::SvgRequest::default(),
             )
-            .with_theme(theme),
+            .with_native_theme(theme),
         )
         .expect("root canvas document should render");
     let RenderOutput::Document(Some(document)) = output else {
         panic!("expected a rendered document");
     };
 
-    assert!(document.svg().contains("mix-blend-mode:screen"));
+    let svg = roxmltree::Document::parse(document.svg()).unwrap();
+    let canvas = svg
+        .descendants()
+        .find(|node| node.attribute("class") == Some("merman-theme-canvas"))
+        .expect("native canvas group");
+    assert!(
+        canvas
+            .descendants()
+            .any(|node| node.has_tag_name("pattern"))
+    );
     let png = document
         .export_png(
             &merman::svg::export::RasterOptions::default(),
             OperationControl::new(),
         )
         .expect("qualified root canvas capabilities should export to PNG");
-    assert!(
-        !png.admission()
-            .reasons()
-            .contains(&merman::TargetAdmissionReason::NativeRootCapabilityUnsupported)
-    );
+    assert!(png.bytes().starts_with(b"\x89PNG\r\n\x1a\n"));
+    assert_eq!(png.theme_outcome(), document.theme_outcome());
 }
 
 #[cfg(feature = "svg")]
@@ -1442,13 +1133,13 @@ fn require_portable_svg_target_rejects_actual_host_display_measurements() {
     let error = Renderer::new()
         .render(
             RenderRequest::svg(SOURCE, OperationControl::new(), request.clone())
-                .with_theme(flowchart_paint_theme()),
+                .with_native_theme(studio_dark()),
         )
         .expect_err("strict SVG admission must reject actual host measurement provenance");
     let data_error = Renderer::new()
         .render_svg_data(
             RenderRequest::svg(SOURCE, OperationControl::new(), request)
-                .with_theme(flowchart_paint_theme()),
+                .with_native_theme(studio_dark()),
         )
         .expect_err("strict SVG data must reject the same host measurement provenance");
     let RenderError::TargetAdmission(data_error) = data_error else {
@@ -1514,7 +1205,7 @@ fn portable_svg_data_matches_the_result_for_a_scene_without_font_dependencies() 
 #[test]
 fn ordinary_svg_leaves_native_admission_unverified() {
     for pipeline in [None, Some(merman::svg::SvgPipeline::parity())] {
-        for theme in [None, Some(flowchart_paint_theme())] {
+        for theme in [None, Some(studio_dark())] {
             let mut request = RenderRequest::svg(
                 "flowchart TD\nA[Alpha] --> B[Beta]",
                 OperationControl::new(),
@@ -1524,7 +1215,7 @@ fn ordinary_svg_leaves_native_admission_unverified() {
                 },
             );
             if let Some(theme) = theme {
-                request = request.with_theme(theme);
+                request = request.with_native_theme(theme);
             }
             let RenderOutput::Svg(Some(output)) = Renderer::new().render(request).unwrap() else {
                 panic!("expected standalone SVG output");
@@ -1557,7 +1248,7 @@ fn svg_admission_preserves_the_caller_selected_pipeline() {
         let output = Renderer::new()
             .render(
                 RenderRequest::svg(SOURCE, OperationControl::new(), request)
-                    .with_theme(flowchart_paint_theme()),
+                    .with_native_theme(studio_dark()),
             )
             .expect("best-effort SVG should retain the selected pipeline output");
         let RenderOutput::Svg(Some(output)) = output else {
@@ -1578,7 +1269,7 @@ fn svg_admission_preserves_the_caller_selected_pipeline() {
         let error = Renderer::new()
             .render(
                 RenderRequest::svg(SOURCE, OperationControl::new(), request)
-                    .with_theme(flowchart_paint_theme()),
+                    .with_native_theme(studio_dark()),
             )
             .expect_err("strict SVG should reject an incompatible selected pipeline artifact");
         let RenderError::TargetAdmission(error) = error else {
@@ -1645,7 +1336,7 @@ fn svg_admission_preserves_the_caller_selected_pipeline() {
 
 #[cfg(feature = "svg")]
 #[test]
-fn ordinary_svg_retains_known_evidence_rejection_without_native_observation() {
+fn ordinary_svg_reports_postprocessing_without_native_observation() {
     const SOURCE: &str = "---\nconfig:\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nA[Alpha] --> B[Beta]";
 
     let render = |pipeline| {
@@ -1659,7 +1350,7 @@ fn ordinary_svg_retains_known_evidence_rejection_without_native_observation() {
                         ..merman::SvgRequest::default()
                     },
                 )
-                .with_theme(flowchart_paint_theme()),
+                .with_native_theme(studio_dark()),
             )
             .expect("best-effort SVG should return the selected artifact");
         let RenderOutput::Svg(Some(output)) = output else {
@@ -1674,11 +1365,10 @@ fn ordinary_svg_retains_known_evidence_rejection_without_native_observation() {
     assert!(output.svg().contains("data-test-missing-fragment"));
     let admission = output.admission();
     assert_ne!(output.svg(), baseline.svg());
-    assert_eq!(admission.status(), merman::TargetAdmissionStatus::Rejected);
-    assert!(
-        admission
-            .reasons()
-            .contains(&merman::TargetAdmissionReason::ThemeEvidenceIncomplete)
+    assert!(output.evidence().output_mutated());
+    assert_eq!(
+        admission.status(),
+        merman::TargetAdmissionStatus::Unverified
     );
     assert!(
         admission
@@ -1708,7 +1398,7 @@ fn ordinary_svg_retains_known_evidence_rejection_without_native_observation() {
                     ..merman::SvgRequest::default()
                 },
             )
-            .with_theme(flowchart_paint_theme()),
+            .with_native_theme(studio_dark()),
         )
         .expect_err("strict SVG should reject the same exact invalid artifact");
     let RenderError::TargetAdmission(strict_error) = strict_error else {
@@ -1773,9 +1463,9 @@ fn require_portable_rejects_actual_host_display_measurements() {
     );
 }
 
-#[cfg(feature = "png")]
+#[cfg(all(feature = "svg", feature = "diagram-class"))]
 #[test]
-fn require_portable_without_a_theme_does_not_fall_back_to_best_effort() {
+fn require_portable_svg_accepts_valid_postprocessing() {
     let request = merman::SvgRequest {
         environment: merman::SvgEnvironment::deterministic().with_theme_portability_requirement(
             merman::svg::ThemePortabilityRequirement::RequirePortable,
@@ -1787,46 +1477,24 @@ fn require_portable_without_a_theme_does_not_fall_back_to_best_effort() {
         ..merman::SvgRequest::default()
     };
     let output = Renderer::new()
-        .render(RenderRequest::document(
-            "info",
+        .render(RenderRequest::svg(
+            "classDiagram\ndirection TB\n",
             OperationControl::new(),
             request,
         ))
-        .expect("target-neutral document completion should retain rejected evidence");
-    let RenderOutput::Document(Some(document)) = output else {
-        panic!("expected an unthemed rendered document");
+        .expect("safe postprocessing preserves portability for a scene without text");
+    let RenderOutput::Svg(Some(output)) = output else {
+        panic!("expected a standalone SVG");
     };
-    assert_eq!(document.evidence().theme_recipe_fingerprint(), None);
-    assert!(
-        document
-            .portability()
-            .reasons()
-            .contains(&merman::TargetAdmissionReason::ThemeEvidenceIncomplete)
-    );
-
-    let error = document
-        .export_png(
-            &merman::svg::export::RasterOptions::default(),
-            OperationControl::new(),
-        )
-        .expect_err("the unthemed session must retain the host's strict portability requirement");
-    let RenderError::TargetAdmission(error) = error else {
-        panic!("strict unthemed rejection must retain target evidence: {error}");
-    };
-    assert_eq!(
-        error.receipt().artifact_kind(),
-        merman::RenderArtifactKind::Png
-    );
-    assert_eq!(
-        error.receipt().status(),
-        merman::TargetAdmissionStatus::Rejected
-    );
+    assert!(output.admission().status().is_portable());
+    assert!(output.evidence().output_mutated());
+    assert!(output.svg().contains("#111827"));
 }
 
-#[cfg(feature = "svg")]
+#[cfg(all(feature = "svg", feature = "diagram-state"))]
 #[test]
 fn strict_document_completion_allows_an_explicit_standalone_svg_evaluation() {
-    let theme = portable_state_theme();
+    let theme = studio_dark();
     let request = merman::SvgRequest {
         environment: merman::SvgEnvironment::deterministic().with_theme_portability_requirement(
             merman::svg::ThemePortabilityRequirement::RequirePortable,
@@ -1841,7 +1509,7 @@ fn strict_document_completion_allows_an_explicit_standalone_svg_evaluation() {
                 OperationControl::new(),
                 request,
             )
-            .with_theme(theme),
+            .with_native_theme(theme),
         )
         .expect("document completion must not be preempted by one target's admission");
     let RenderOutput::Document(Some(document)) = output else {
@@ -1858,10 +1526,10 @@ fn strict_document_completion_allows_an_explicit_standalone_svg_evaluation() {
     assert!(!document.standalone_svg_admission().reasons().is_empty());
 }
 
-#[cfg(feature = "png")]
+#[cfg(all(feature = "png", feature = "diagram-state"))]
 #[test]
 fn strict_document_png_projection_is_evaluated_by_the_png_target() {
-    let theme = portable_state_theme();
+    let theme = studio_dark();
     let svg = merman::SvgRequest {
         environment: merman::SvgEnvironment::deterministic().with_theme_portability_requirement(
             merman::svg::ThemePortabilityRequirement::RequirePortable,
@@ -1876,7 +1544,7 @@ fn strict_document_png_projection_is_evaluated_by_the_png_target() {
                 OperationControl::new(),
                 svg,
             )
-            .with_theme(theme),
+            .with_native_theme(theme),
         )
         .expect("one target's admission must not preempt document completion");
     let RenderOutput::Document(Some(document)) = output else {
@@ -2003,12 +1671,9 @@ fn rendered_document_prepares_each_native_target_before_encoding() {
     }
 }
 
-#[cfg(feature = "png")]
+#[cfg(all(feature = "png", feature = "diagram-info"))]
 #[test]
-fn png_output_retains_the_same_coarse_render_evidence() {
-    let theme = merman::svg::DiagramThemeCompiler::new()
-        .compile_preset(merman::svg::ThemePreset::OneDark)
-        .expect("one-dark theme should compile");
+fn png_output_retains_render_evidence_and_native_theme_outcome() {
     let svg = merman::SvgRequest::default();
 
     let output = Renderer::new()
@@ -2021,7 +1686,7 @@ fn png_output_retains_the_same_coarse_render_evidence() {
                     options: merman::svg::export::RasterOptions::default(),
                 },
             )
-            .with_theme(theme.clone()),
+            .with_native_theme(studio_dark()),
         )
         .expect("themed PNG should render");
     let RenderOutput::Png(Some(output)) = output else {
@@ -2038,10 +1703,10 @@ fn png_output_retains_the_same_coarse_render_evidence() {
         output.evidence().family_id(),
         merman::model::family::DiagramFamilyId::INFO
     );
-    assert_eq!(
-        output.evidence().theme_recipe_fingerprint(),
-        Some(theme.recipe_fingerprint())
-    );
+    let outcome = output.theme_outcome();
+    assert_eq!(outcome.mode, ThemeMode::MermanNative);
+    assert_eq!(outcome.preset_id, Some(BuiltinPreset::Studio));
+    assert_eq!(outcome.appearance, Some(Appearance::Dark));
 }
 
 #[cfg(all(feature = "svg", feature = "math"))]

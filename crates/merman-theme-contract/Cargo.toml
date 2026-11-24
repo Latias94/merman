@@ -25,6 +25,3 @@ serde_json_canonicalizer.workspace = true
 serde_path_to_error.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
-
-[dev-dependencies]
-merman-theme-authoring-fixtures = { path = "../merman-theme-authoring-fixtures" }

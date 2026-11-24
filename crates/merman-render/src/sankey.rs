@@ -62,8 +62,7 @@ mod theme;
 pub(crate) use config::SankeyConfigView;
 use config::{NodeAlign, SankeyLayoutSettings};
 pub(crate) use theme::{
-    SankeyLabelSurface, SankeyLinkPaint, SankeyNodePalettePlan, SankeyNodePaletteReceipt,
-    SankeyTypographyCssEmission, SankeyTypographyThemePlan,
+    SankeyLabelSurface, SankeyLinkPaint, SankeyNodePalette, SankeyStyle, SankeyThemeAdapter,
 };
 
 #[derive(Debug, Clone)]

@@ -12,6 +12,7 @@ import {
   resolveMermaidCanvasTone,
   type MermaidCanvasTone,
 } from "../lib/mermaid-canvas-tone.ts";
+import { isMermaidThemeSelection } from "../lib/mermaid-theme-name.ts";
 
 export function useRenderCoordinator<T>(
   selector: (state: RenderCoordinatorState) => T
@@ -38,13 +39,12 @@ export function selectVisibleCanvasTone(
   const batch = selectVisibleRenderBatch(state);
   if (batch?.merman.status === "success") {
     const operation = batch.snapshot.operation;
-    const appearance = operation.resolvedThemeAppearance;
-    if (appearance && operation.unavailableThemePresetId === null &&
-      (operation.themePresetId !== null || operation.themeRecipeJson !== null)) return appearance;
-    const evidence = batch.merman.metadata?.theme_execution_evidence;
-    return resolveMermaidCanvasTone(
-      evidence?.version === 2 ? evidence.materialized_theme : null,
-    );
+    const outcome = batch.merman.metadata?.theme_outcome;
+    if (outcome?.appearance) return outcome.appearance;
+    const authored = batch.detection.appearance;
+    const selection = authored?.state === "known" ? authored.theme?.value : null;
+    return resolveMermaidCanvasTone(isMermaidThemeSelection(selection) && selection !== "auto"
+      ? selection : operation.bindingOptions.site_config?.theme ?? operation.mermaidTheme);
   }
   return resolveMermaidCanvasTone(
     batch?.mermaid?.status === "success" ? batch.mermaid.materializedTheme : null,

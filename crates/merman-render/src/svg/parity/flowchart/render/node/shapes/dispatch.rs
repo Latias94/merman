@@ -1,6 +1,5 @@
 //! Flowchart node shape dispatch.
 
-use super::super::emission::FlowchartNodeShapeRenderOutcome;
 use crate::flowchart::FlowchartShape;
 use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::fmt;
@@ -12,7 +11,7 @@ pub(in super::super) fn render_flowchart_shape(
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &mut super::super::FlowchartNodeLabelState<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-) -> Result<super::super::emission::FlowchartNodeShapeRenderOutcome> {
+) -> Result<bool> {
     let resolved_shape = FlowchartShape::resolve(common.shape)?;
 
     match resolved_shape {
@@ -35,8 +34,7 @@ pub(in super::super) fn render_flowchart_shape(
             super::render_bang(out, ctx, common, label, details);
         }
         FlowchartShape::Bpmn(shape) => {
-            let receipt = super::render_bpmn(out, ctx, common, label, shape)?;
-            return Ok(FlowchartNodeShapeRenderOutcome::new(false, receipt));
+            super::render_bpmn(out, ctx, common, label, shape)?;
         }
         FlowchartShape::Browser => {
             super::render_browser(out, ctx, common, label, details);
@@ -52,10 +50,7 @@ pub(in super::super) fn render_flowchart_shape(
             super::render_bucket(out, ctx, common, label, details);
         }
         FlowchartShape::Circle => {
-            let receipt = super::render_circle(out, ctx, common, details)?;
-            return Ok(
-                super::super::emission::FlowchartNodeShapeRenderOutcome::new(false, receipt),
-            );
+            super::render_circle(out, ctx, common, details)?;
         }
         FlowchartShape::Cloud => {
             super::render_cloud(out, ctx, common, label, details);
@@ -81,10 +76,7 @@ pub(in super::super) fn render_flowchart_shape(
             super::render_delay(out, ctx, common, label, details);
         }
         FlowchartShape::Diamond => {
-            let receipt = super::render_diamond(out, common, details);
-            return Ok(
-                super::super::emission::FlowchartNodeShapeRenderOutcome::new(false, receipt),
-            );
+            super::render_diamond(out, common, details);
         }
         FlowchartShape::DividedRectangle => {
             super::render_divided_rect(out, ctx, common, label, details);
@@ -96,10 +88,7 @@ pub(in super::super) fn render_flowchart_shape(
             super::render_wave_document(out, ctx, common, label, details);
         }
         FlowchartShape::DoubleCircle => {
-            let receipt = super::render_double_circle(out, ctx, common, details)?;
-            return Ok(
-                super::super::emission::FlowchartNodeShapeRenderOutcome::new(false, receipt),
-            );
+            super::render_double_circle(out, ctx, common, details)?;
         }
         FlowchartShape::Ellipse => {
             return Err(Error::InvalidModel {
@@ -120,68 +109,35 @@ pub(in super::super) fn render_flowchart_shape(
             super::render_hourglass_collate(out, common, details);
         }
         FlowchartShape::Icon => {
-            let label = super::render_icon(out, ctx, common, label, details)?;
-            return Ok(
-                super::super::emission::FlowchartNodeShapeRenderOutcome::new(
-                    true,
-                    super::super::emission::FlowchartNodeShapeEmissionReceipt::unverified(),
-                )
-                .with_label(label),
-            );
+            super::render_icon(out, ctx, common, label, details)?;
+            return Ok(true);
         }
         FlowchartShape::IconCircle => {
-            let label = super::render_icon_circle(out, ctx, common, label, details)?;
-            return Ok(
-                super::super::emission::FlowchartNodeShapeRenderOutcome::new(
-                    true,
-                    super::super::emission::FlowchartNodeShapeEmissionReceipt::unverified(),
-                )
-                .with_label(label),
-            );
+            super::render_icon_circle(out, ctx, common, label, details)?;
+            return Ok(true);
         }
         FlowchartShape::IconRounded => {
-            let label = super::render_icon_rounded(out, ctx, common, label, details)?;
-            return Ok(
-                super::super::emission::FlowchartNodeShapeRenderOutcome::new(
-                    true,
-                    super::super::emission::FlowchartNodeShapeEmissionReceipt::unverified(),
-                )
-                .with_label(label),
-            );
+            super::render_icon_rounded(out, ctx, common, label, details)?;
+            return Ok(true);
         }
         FlowchartShape::IconSquare => {
-            let label = super::render_icon_square(out, ctx, common, label, details)?;
-            return Ok(
-                super::super::emission::FlowchartNodeShapeRenderOutcome::new(
-                    true,
-                    super::super::emission::FlowchartNodeShapeEmissionReceipt::unverified(),
-                )
-                .with_label(label),
-            );
+            super::render_icon_square(out, ctx, common, label, details)?;
+            return Ok(true);
         }
         FlowchartShape::ImageSquare => {
-            if let Some(label) = super::try_render_image_square(out, ctx, common, label, details)? {
-                return Ok(
-                    super::super::emission::FlowchartNodeShapeRenderOutcome::new(
-                        true,
-                        super::super::emission::FlowchartNodeShapeEmissionReceipt::unverified(),
-                    )
-                    .with_label(label),
-                );
+            if super::try_render_image_square(out, ctx, common, label, details)? {
+                return Ok(true);
             }
             return missing_asset_error(common.shape, "image");
         }
         FlowchartShape::InvertedTrapezoid => {
-            let receipt = super::render_inv_trapezoid(out, common, details);
-            return Ok(FlowchartNodeShapeRenderOutcome::new(false, receipt));
+            super::render_inv_trapezoid(out, common, details);
         }
         FlowchartShape::LeanLeft => {
-            let receipt = super::render_lean_left(out, common, details);
-            return Ok(FlowchartNodeShapeRenderOutcome::new(false, receipt));
+            super::render_lean_left(out, common, details);
         }
         FlowchartShape::LeanRight => {
-            let receipt = super::render_lean_right(out, common, details);
-            return Ok(FlowchartNodeShapeRenderOutcome::new(false, receipt));
+            super::render_lean_right(out, common, details);
         }
         FlowchartShape::LinedCylinder => {
             super::render_lined_cylinder(out, ctx, common, label);
@@ -214,14 +170,10 @@ pub(in super::super) fn render_flowchart_shape(
             super::render_person(out, ctx, common, label, details);
         }
         FlowchartShape::Process => {
-            let paint = super::render_process_rectangle(out, ctx, common, details);
-            return Ok(super::super::emission::FlowchartNodeShapeRenderOutcome::new(false, paint));
+            super::render_process_rectangle(out, ctx, common, details);
         }
         FlowchartShape::RoundedRectangle => {
-            let receipt = super::render_rounded_rect(out, ctx, common, details);
-            return Ok(
-                super::super::emission::FlowchartNodeShapeRenderOutcome::new(false, receipt),
-            );
+            super::render_rounded_rect(out, ctx, common, details);
         }
         FlowchartShape::ShadedProcess => {
             super::render_shaded_process(out, common, label, details);
@@ -236,8 +188,7 @@ pub(in super::super) fn render_flowchart_shape(
             super::render_stadium(out, ctx, common, label, details);
         }
         FlowchartShape::Subroutine => {
-            let receipt = super::render_subroutine(out, common, details);
-            return Ok(FlowchartNodeShapeRenderOutcome::new(false, receipt));
+            super::render_subroutine(out, common, details);
         }
         FlowchartShape::TaggedDocument => {
             super::render_tagged_wave_document(out, ctx, common, label, details);
@@ -259,8 +210,7 @@ pub(in super::super) fn render_flowchart_shape(
             );
         }
         FlowchartShape::Trapezoid => {
-            let receipt = super::render_trapezoid(out, common, details);
-            return Ok(FlowchartNodeShapeRenderOutcome::new(false, receipt));
+            super::render_trapezoid(out, common, details);
         }
         FlowchartShape::Triangle => {
             super::render_triangle_extract(out, ctx, common, label, details);
@@ -270,12 +220,7 @@ pub(in super::super) fn render_flowchart_shape(
         }
     }
 
-    Ok(
-        super::super::emission::FlowchartNodeShapeRenderOutcome::new(
-            false,
-            super::super::emission::FlowchartNodeShapeEmissionReceipt::unverified(),
-        ),
-    )
+    Ok(false)
 }
 
 fn missing_asset_error<T>(shape: &str, asset: &str) -> Result<T> {

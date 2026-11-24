@@ -105,7 +105,7 @@ native-runtime = [
 ]
 analysis = ["dep:merman-analysis"]
 ascii = ["merman/ascii"]
-svg = ["dep:merman-theme-contract", "dep:quick-xml", "merman/svg"]
+svg = ["dep:quick-xml", "merman/svg"]
 native-fonts = ["svg", "merman/native-fonts"]
 system-fonts = ["native-fonts", "merman/system-fonts"]
 png = ["svg", "merman/png"]
@@ -119,7 +119,6 @@ math = ["svg", "merman/math"]
 [dependencies]
 merman-analysis = { workspace = true, optional = true }
 merman = { workspace = true, features = ["compat-json"] }
-merman-theme-contract = { workspace = true, optional = true }
 quick-xml = { workspace = true, optional = true }
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order", "raw_value"] }
@@ -130,7 +129,6 @@ criterion = "0.8.2"
 merman-ascii-test-contracts = { path = "../merman-ascii-test-contracts" }
 merman-core = { workspace = true, features = ["presentation", "compat-json", "editor-facts", "test-support"] }
 merman-render.workspace = true
-merman-theme-authoring-fixtures = { path = "../merman-theme-authoring-fixtures" }
 roxmltree.workspace = true
 sha2.workspace = true
 

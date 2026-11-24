@@ -2,10 +2,9 @@ use super::super::*;
 
 const BASELINE_LINE_STROKE_WIDTH_PX: f64 = 2.0;
 
-pub(super) fn lifeline_effective_stroke_width(typed_width: Option<f32>) -> f64 {
-    // Mermaid's broad line rule overrides the 0.5px presentation attribute. Clear omits the
-    // typed class declaration and therefore restores this CSS baseline as well.
-    typed_width
+pub(super) fn lifeline_effective_stroke_width(native_width: Option<f32>) -> f64 {
+    // Mermaid's broad line rule overrides the 0.5px presentation attribute.
+    native_width
         .map(|width| crate::number_format::canonicalize_number(f64::from(width)))
         .unwrap_or(BASELINE_LINE_STROKE_WIDTH_PX)
 }
@@ -21,23 +20,11 @@ pub(super) fn write_sequence_css(
     let id = diagram_id;
     let typography = prepared.typography();
     let theme = typography.compat_binding();
-    let terminal = prepared.terminal_theme();
-    let activation = prepared.activation_theme().activation_paint(theme);
+    let native = prepared.native();
     let css = prepared.css();
-    let font = if css.typed_font {
-        typography.base_font_family_css()
-    } else {
-        &theme.font_family
-    };
-    let root_font = if css.typed_font {
-        typography.base_font_family_css()
-    } else {
-        &theme.root_font_family
-    };
-    let font_size_css = css
-        .font_size_override
-        .as_deref()
-        .unwrap_or(&theme.font_size_css);
+    let font = &theme.font_family;
+    let root_font = &theme.root_font_family;
+    let font_size_css = &theme.font_size_css;
     let text_color = theme.text_color.as_str();
     let error_bkg = theme.error_bkg.as_str();
     let error_text = theme.error_text.as_str();
@@ -86,51 +73,19 @@ pub(super) fn write_sequence_css(
     let activation_border = theme.activation_border.as_str();
     let node_border = theme.node_border.as_str();
     let label_box_filter = scoped_drop_shadow(id, theme.label_box_filter.as_str());
-    let final_actor_fill = terminal
-        .actor
-        .typed_fill
-        .as_deref()
-        .unwrap_or(&theme.actor_fill);
-    let final_actor_stroke = terminal
-        .actor
-        .typed_stroke
-        .as_deref()
-        .unwrap_or(&theme.actor_border);
-    let final_lifeline_stroke = terminal
-        .lifeline
-        .typed_stroke
-        .as_deref()
-        .unwrap_or(&theme.actor_line);
-    let final_message_stroke = terminal
-        .message
-        .typed_stroke
-        .as_deref()
-        .unwrap_or(&theme.signal_color);
-    let message_width = css.message_width_override.as_deref().unwrap_or("1.5");
-    let final_sequence_number_fill = terminal
-        .number
-        .typed_fill()
-        .unwrap_or(&theme.sequence_number);
-    let final_keyword_fill = terminal
-        .keyword
-        .typed_fill
-        .as_deref()
-        .unwrap_or(&theme.label_box_fill);
-    let final_keyword_stroke = terminal
-        .keyword
-        .typed_stroke
-        .as_deref()
-        .unwrap_or(&theme.label_box_border);
-    let final_note_fill = terminal
-        .note
-        .typed_fill
-        .as_deref()
-        .unwrap_or(&theme.note_fill);
-    let final_note_stroke = terminal
-        .note
-        .typed_stroke
-        .as_deref()
-        .unwrap_or(&theme.note_border);
+    let final_actor_fill = &theme.actor_fill;
+    let final_actor_stroke = &theme.actor_border;
+    let final_lifeline_stroke = &theme.actor_line;
+    let final_message_stroke = &theme.signal_color;
+    let native_width = native.map(|theme| theme.form.stroke_width as f32);
+    let message_width =
+        native.map(|theme| format!("{}px", fmt(f64::from(theme.form.connector_width as f32))));
+    let message_width = message_width.as_deref().unwrap_or("1.5");
+    let final_sequence_number_fill = &theme.sequence_number;
+    let final_keyword_fill = &theme.label_box_fill;
+    let final_keyword_stroke = &theme.label_box_border;
+    let final_note_fill = &theme.note_fill;
+    let final_note_stroke = &theme.note_border;
     let _ = write!(
         &mut out,
         r#"#{} .actor{{stroke:{};fill:{};stroke-width:{};}}"#,
@@ -147,11 +102,13 @@ pub(super) fn write_sequence_css(
         r#"#{} text.actor>tspan{{{}stroke:none;}}"#,
         id, actor_text_fill
     );
-    if let Some(width) = &css.lifeline_width {
+    if let Some(width) = native_width {
         let _ = write!(
             &mut out,
             r#"#{} .actor-line{{stroke:{};stroke-width:{}px;}}"#,
-            id, final_lifeline_stroke, width
+            id,
+            final_lifeline_stroke,
+            fmt(f64::from(width))
         );
     } else {
         let _ = write!(
@@ -190,6 +147,12 @@ pub(super) fn write_sequence_css(
         &mut out,
         r#"#{id} [id="{id}-stickTopArrowHead"] path,#{id} [id="{id}-stickBottomArrowHead"] path{{stroke:{final_message_stroke};}}#{id} [id="{id}-sequencenumber"]{{fill:{final_message_stroke};}}"#,
     );
+    if prepared.native().is_some() {
+        let _ = write!(
+            &mut out,
+            r#"#{id} [id="{id}-arrowhead"] path.merman-sequence-open-arrow{{fill:none;}}"#,
+        );
+    }
     let _ = write!(
         &mut out,
         r#"#{} .sequenceNumber,#{} .sequenceNumber>tspan{{fill:{};}}"#,
@@ -227,13 +190,7 @@ pub(super) fn write_sequence_css(
     let _ = write!(
         &mut out,
         r#"#{} .loopLine{{stroke-width:2px;stroke-dasharray:2,2;stroke:{};fill:{};}}"#,
-        id,
-        terminal
-            .frame
-            .typed_stroke
-            .as_deref()
-            .unwrap_or(&theme.label_box_border),
-        label_box_border
+        id, label_box_border, label_box_border
     );
     let _ = write!(
         &mut out,
@@ -274,32 +231,16 @@ pub(super) fn write_sequence_css(
         actor_fill,
         fmt(BASELINE_LINE_STROKE_WIDTH_PX)
     );
-    if let Some(typed_actor_fill) = &terminal.actor.typed_fill {
+    if native.is_some() {
         let _ = write!(
             &mut out,
             r#"#{} .actor-man line,#{} .actor-man circle,#{} .actor line,#{} .actor circle{{fill:{};}}"#,
-            id, id, id, id, typed_actor_fill
+            id, id, id, id, final_actor_fill
         );
-    }
-    if let Some(typed_actor_stroke) = &terminal.actor.typed_stroke {
         let _ = write!(
             &mut out,
             r#"#{} .actor-man line,#{} .actor-man circle,#{} .actor line,#{} .actor circle{{stroke:{};}}"#,
-            id, id, id, id, typed_actor_stroke
-        );
-    }
-    if let Some(typed_activation_fill) = &activation.typed_fill {
-        let _ = write!(
-            &mut out,
-            r#"#{} .activation0,#{} .activation1,#{} .activation2{{fill:{};}}"#,
-            id, id, id, typed_activation_fill
-        );
-    }
-    if let Some(typed_activation_stroke) = &activation.typed_stroke {
-        let _ = write!(
-            &mut out,
-            r#"#{} .activation0,#{} .activation1,#{} .activation2{{stroke:{};}}"#,
-            id, id, id, typed_activation_stroke
+            id, id, id, id, final_actor_stroke
         );
     }
     for group in &css.text_groups {
@@ -333,31 +274,11 @@ fn write_sequence_text_surface_css_group(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::diagram_theme::{
-        CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
-        ThemeStylePatch, ThemeTarget,
-    };
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
     use serde_json::json;
     use std::cell::Cell;
 
-    fn prepared_css(
-        config: &serde_json::Value,
-        rules: &[(ThemeTarget, ThemeStylePatch)],
-    ) -> crate::sequence::SequencePreparedArtifact {
-        let theme = (!rules.is_empty()).then(|| {
-            let styles = rules
-                .iter()
-                .fold(ThemeRuleSet::default(), |styles, (target, patch)| {
-                    styles.with_rule(ThemeRule::new(*target, patch.clone()))
-                });
-            DiagramThemeCompiler::new()
-                .compile(DiagramThemeSpec::new().with_styles(styles))
-                .unwrap()
-        });
-        let resolved = theme
-            .as_ref()
-            .map(|theme| theme.resolve(crate::DiagramFamilyId::SEQUENCE));
+    fn prepared_css(config: &serde_json::Value) -> crate::sequence::SequencePreparedArtifact {
         let parsed = merman_core::MermaidEngine::new().parse_diagram_for_render_model_sync(
             "sequenceDiagram\nautonumber\nA->>+B: Hello\nnote over B: Note\nloop control\nB-->>A: Reply\nend\nB-->>-A: Done",
             merman_core::ParseOptions::strict(),
@@ -388,7 +309,7 @@ mod tests {
             model,
             None,
             &config,
-            resolved.as_ref(),
+            None,
             &crate::text::DeterministicTextMeasurer::default(),
             None,
             meter,
@@ -396,12 +317,8 @@ mod tests {
         .unwrap()
     }
 
-    fn sequence_css_with_rules(
-        id: &str,
-        config: &serde_json::Value,
-        rules: &[(ThemeTarget, ThemeStylePatch)],
-    ) -> String {
-        let binding = prepared_css(config, rules);
+    fn sequence_css(id: &str, config: &serde_json::Value) -> String {
+        let binding = prepared_css(config);
         let mut out = String::new();
         write_sequence_css(
             &mut out,
@@ -410,10 +327,6 @@ mod tests {
         )
         .unwrap();
         out
-    }
-
-    fn sequence_css(id: &str, config: &serde_json::Value) -> String {
-        sequence_css_with_rules(id, config, &[])
     }
 
     #[derive(Clone, Copy)]
@@ -431,7 +344,7 @@ mod tests {
     #[test]
     fn sequence_css_streams_with_exact_svg_budget_and_rejects_one_byte_short() {
         let config = json!({});
-        let binding = prepared_css(&config, &[]);
+        let binding = prepared_css(&config);
         let expected = sequence_css("sequence-budget", &config);
 
         let exact_policy = RenderResourcePolicy::unbounded_for_trusted_input()
@@ -469,7 +382,7 @@ mod tests {
         let result = write_sequence_css(
             &mut out,
             TrackedDiagramId { writes: &writes },
-            &prepared_css(&json!({}), &[]),
+            &prepared_css(&json!({})),
         );
 
         assert!(matches!(
@@ -478,48 +391,6 @@ mod tests {
         ));
         assert_eq!(writes.get(), 0);
         assert!(out.as_str().is_empty());
-    }
-
-    #[test]
-    fn prepared_text_groups_emit_all_seven_final_surfaces() {
-        let rules = [
-            (ThemeTarget::ActorLabel, "#123456"),
-            (ThemeTarget::MessageLabel, "#234567"),
-            (ThemeTarget::NoteLabel, "#345678"),
-            (ThemeTarget::LoopLabel, "#456789"),
-        ]
-        .map(|(target, fill)| {
-            (
-                target,
-                ThemeStylePatch::default().with_fill(CanvasPaint::solid(fill).unwrap()),
-            )
-        });
-        let binding = prepared_css(&json!({}), &rules);
-        assert_eq!(binding.css().text_groups.len(), 4);
-        assert_eq!(
-            binding.css().text_groups[0].surfaces,
-            vec![
-                crate::sequence::SequenceTextSurface::ParticipantLabel,
-                crate::sequence::SequenceTextSurface::BoxTitle,
-            ]
-        );
-        let mut first = String::new();
-        write_sequence_css(&mut first, "seq", &binding).unwrap();
-        let mut second = String::new();
-        write_sequence_css(&mut second, "seq", &binding).unwrap();
-        assert_eq!(first, second);
-        for surface in crate::sequence::SequenceTextSurface::ALL {
-            let expected = match surface.role() {
-                crate::sequence::SequenceTypographyRole::Actor => "#123456",
-                crate::sequence::SequenceTypographyRole::Message => "#234567",
-                crate::sequence::SequenceTypographyRole::Note => "#345678",
-                crate::sequence::SequenceTypographyRole::Loop => "#456789",
-            };
-            for selector in surface.terminal_selectors().split(',') {
-                assert!(first.contains(&format!("#seq {selector}")));
-                assert!(first.contains(&format!("fill:{expected}")));
-            }
-        }
     }
 
     #[test]
@@ -670,219 +541,5 @@ mod tests {
         assert!(css.contains(
             r#"#seq g rect.rect{filter:drop-shadow(1px 2px 3px rgba(0,0,0,.4));stroke:#070809;}"#
         ));
-    }
-
-    #[test]
-    fn sequence_actor_stroke_css_is_scoped_to_actor_owned_dom() {
-        let css = sequence_css_with_rules(
-            "seq",
-            &json!({"themeVariables": {"actorBorder": "#220000"}}),
-            &[(
-                ThemeTarget::Actor,
-                ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
-            )],
-        );
-
-        assert!(css.contains(r#"#seq .actor{stroke:#2563eb;"#));
-        assert!(css.contains(
-            r#"#seq .actor-man line,#seq .actor-man circle,#seq .actor line,#seq .actor circle{stroke:#2563eb;}"#
-        ));
-        assert_eq!(css.matches("#seq .actor{").count(), 1);
-        assert!(!css.contains(r#"#seq .actor-man circle,#seq line{stroke:#2563eb;"#));
-        assert!(!css.contains(r#"#seq line{stroke:#2563eb;"#));
-        assert!(!css.contains(r#"#seq .messageLine0{stroke:#2563eb;"#));
-        assert!(!css.contains(r#"#seq [id="seq-sequencenumber"]{stroke:#2563eb;"#));
-    }
-
-    #[test]
-    fn sequence_actor_fill_css_is_scoped_to_actor_owned_dom() {
-        let css = sequence_css_with_rules(
-            "seq",
-            &json!({"themeVariables": {"actorBkg": "#330000"}}),
-            &[(
-                ThemeTarget::Actor,
-                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#dc2626").unwrap()),
-            )],
-        );
-
-        assert!(css.contains(r#"#seq .actor{stroke:#9370DB;fill:#dc2626;"#));
-        assert!(css.contains(
-            r#"#seq .actor-man line,#seq .actor-man circle,#seq .actor line,#seq .actor circle{fill:#dc2626;}"#
-        ));
-        assert_eq!(css.matches("#seq .actor{").count(), 1);
-        assert!(!css.contains(r#"#seq .actor-man circle,#seq line{stroke:#9370DB;fill:#dc2626;"#));
-        assert!(!css.contains(r#"#seq line{fill:#dc2626;"#));
-        assert!(!css.contains(r#"#seq .messageLine0{fill:#dc2626;"#));
-        assert!(!css.contains(r#"#seq [id="seq-sequencenumber"]{fill:#dc2626;"#));
-    }
-
-    #[test]
-    fn sequence_message_stroke_css_covers_lines_and_their_marker_table() {
-        let css = sequence_css_with_rules(
-            "seq",
-            &json!({"themeVariables": {"signalColor": "#555555"}}),
-            &[(
-                ThemeTarget::Message,
-                ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
-            )],
-        );
-
-        assert!(css.contains(r#"#seq .messageLine0,#seq .messageLine1{stroke:#2563eb;}"#));
-        assert!(css.contains(
-            r#"#seq [id="seq-arrowhead"] path,#seq [id="seq-crosshead"] path,#seq [id="seq-filled-head"] path,#seq [id="seq-solidTopArrowHead"] path,#seq [id="seq-solidBottomArrowHead"] path{fill:#2563eb;stroke:#2563eb;}"#
-        ));
-        assert!(css.contains(
-            r#"#seq [id="seq-stickTopArrowHead"] path,#seq [id="seq-stickBottomArrowHead"] path{stroke:#2563eb;}#seq [id="seq-sequencenumber"]{fill:#2563eb;}"#
-        ));
-        assert_eq!(css.matches(r#"#seq [id="seq-sequencenumber"]{"#).count(), 1);
-        assert!(!css.contains(r#"#seq .note{stroke:#2563eb;}"#));
-        assert!(!css.contains(r#"#seq .activation0{stroke:#2563eb;}"#));
-    }
-
-    #[test]
-    fn sequence_number_label_css_has_one_final_writer_owner() {
-        let mut css = String::new();
-        let binding = prepared_css(
-            &json!({"themeVariables": {"sequenceNumberColor": "#fedcba"}}),
-            &[(
-                ThemeTarget::SequenceNumberLabel,
-                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
-            )],
-        );
-        write_sequence_css(
-            &mut css,
-            crate::svg::escape_css_identifier("seq:prod").as_ref(),
-            &binding,
-        )
-        .expect("write Sequence number CSS");
-
-        let owner = r#"#seq\:prod .sequenceNumber,#seq\:prod .sequenceNumber>tspan{fill:#123456;}"#;
-        assert!(css.contains(owner));
-        assert_eq!(css.matches(owner).count(), 1);
-        assert!(!css.contains(r#"#seq\:prod .sequenceNumber{fill:#fedcba;}"#));
-    }
-
-    #[test]
-    fn sequence_lifeline_paint_css_is_scoped_to_actor_lines() {
-        let css = sequence_css_with_rules(
-            "seq",
-            &json!({"themeVariables": {"actorLineColor": "#444444"}}),
-            &[(
-                ThemeTarget::Lifeline,
-                ThemeStylePatch::default()
-                    .with_stroke(CanvasPaint::solid("#2563eb").unwrap())
-                    .with_stroke_width(2.0)
-                    .unwrap(),
-            )],
-        );
-
-        assert!(css.contains(r#"#seq .actor-line{stroke:#2563eb;stroke-width:2px;}"#));
-        assert_eq!(css.matches("#seq .actor-line{").count(), 1);
-        assert!(!css.contains(r#"#seq .actor-line{stroke:#444444;"#));
-        assert!(!css.contains(r#"#seq .actor{stroke:#2563eb;}"#));
-        assert!(!css.contains(r#"#seq .messageLine0{stroke:#2563eb;}"#));
-        assert!(!css.contains(r#"#seq .note{stroke:#2563eb;}"#));
-    }
-
-    #[test]
-    fn sequence_note_paint_css_is_scoped_to_note_rects() {
-        let css = sequence_css_with_rules(
-            "seq",
-            &json!({
-                "themeVariables": {
-                    "noteBkgColor": "#dddddd",
-                    "noteBorderColor": "#cccccc"
-                }
-            }),
-            &[(
-                ThemeTarget::Note,
-                ThemeStylePatch::default()
-                    .with_fill(CanvasPaint::solid("#dc2626").unwrap())
-                    .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
-            )],
-        );
-
-        assert!(css.contains(r#"#seq .note{stroke:#2563eb;fill:#dc2626;}"#));
-        assert_eq!(css.matches("#seq .note{").count(), 1);
-        assert!(!css.contains(r#"#seq .note{stroke:#cccccc;fill:#dddddd;}"#));
-        assert!(!css.contains(r#"#seq .noteText{fill:#dc2626;"#));
-        assert!(!css.contains(r#"#seq .messageText{stroke:#2563eb;"#));
-        assert!(!css.contains(r#"#seq .activation0{fill:#dc2626;"#));
-    }
-
-    #[test]
-    fn sequence_activation_paint_css_is_scoped_to_activation_rects() {
-        let css = sequence_css_with_rules(
-            "seq",
-            &json!({
-                "themeVariables": {
-                    "activationBkgColor": "#dddddd",
-                    "activationBorderColor": "#cccccc"
-                }
-            }),
-            &[(
-                ThemeTarget::Activation,
-                ThemeStylePatch::default()
-                    .with_fill(CanvasPaint::solid("#dc2626").unwrap())
-                    .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
-            )],
-        );
-
-        assert!(css.contains(r#"#seq .activation0{fill:#dddddd;stroke:#cccccc;}"#));
-        assert!(css.contains(
-            r#"#seq .activation0,#seq .activation1,#seq .activation2{fill:#dc2626;}#seq .activation0,#seq .activation1,#seq .activation2{stroke:#2563eb;}"#
-        ));
-        let baseline = css
-            .find("#seq .activation2{fill:#dddddd;stroke:#cccccc;}")
-            .unwrap();
-        let fill_override = css
-            .find("#seq .activation0,#seq .activation1,#seq .activation2{fill:#dc2626;}")
-            .unwrap();
-        let stroke_override = css
-            .find("#seq .activation0,#seq .activation1,#seq .activation2{stroke:#2563eb;}")
-            .unwrap();
-        assert!(baseline < fill_override && fill_override < stroke_override);
-        assert!(!css.contains(r#"#seq .note{fill:#dc2626;"#));
-        assert!(!css.contains(r#"#seq .messageLine0{stroke:#2563eb;"#));
-    }
-
-    #[test]
-    fn sequence_loop_typed_stroke_keeps_the_raw_border_fill() {
-        let css = sequence_css_with_rules(
-            "seq",
-            &json!({"themeVariables": {"labelBoxBorderColor": "#cccccc"}}),
-            &[(
-                ThemeTarget::Loop,
-                ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
-            )],
-        );
-
-        assert!(css.contains(
-            "#seq .loopLine{stroke-width:2px;stroke-dasharray:2,2;stroke:#2563eb;fill:#cccccc;}"
-        ));
-        assert!(css.contains("#seq .labelBox{stroke:#cccccc;"));
-    }
-
-    #[test]
-    fn sequence_loop_box_paint_has_one_terminal_writer_owner() {
-        let css = sequence_css_with_rules(
-            "seq",
-            &json!({
-                "themeVariables": {
-                    "labelBoxBkgColor": "#dddddd",
-                    "labelBoxBorderColor": "#cccccc"
-                }
-            }),
-            &[(
-                ThemeTarget::LoopLabelBackground,
-                ThemeStylePatch::default()
-                    .with_fill(CanvasPaint::solid("#dc2626").unwrap())
-                    .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
-            )],
-        );
-
-        assert!(css.contains(r#"#seq .labelBox{stroke:#2563eb;fill:#dc2626;"#));
-        assert_eq!(css.matches("#seq .labelBox{").count(), 1);
-        assert!(!css.contains(r#"#seq .labelBox{stroke:#cccccc;fill:#dddddd;"#));
     }
 }

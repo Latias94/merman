@@ -7,6 +7,8 @@
 use crate::operation_runner::Operation;
 #[cfg(feature = "svg")]
 use crate::operation_runner::OperationExecution;
+#[cfg(feature = "svg")]
+use crate::theme::{ThemeOutcome, ThemeOutcomeNotice};
 use crate::{TerminalDiagnostic, TerminalRuntimePolicyError};
 use merman_core::{ParseOptions, SemanticParser};
 #[cfg(any(feature = "ascii", feature = "svg"))]
@@ -48,7 +50,7 @@ pub use environment::SvgEnvironment;
 #[cfg(feature = "native-fonts")]
 pub use evidence::NativeFontDiagnostics;
 #[cfg(feature = "svg")]
-pub use evidence::{RenderEvidence, ThemeDiagnostic, ThemeEvidenceStatus, ThemeEvidenceSummary};
+pub use evidence::RenderEvidence;
 
 /// Identifies the canonical facade path that produced a completed render artifact.
 #[cfg(feature = "svg")]
@@ -69,8 +71,8 @@ impl OperationExecutionPath {
 #[cfg(feature = "svg")]
 use merman_render::{
     LayoutOptions, ResourceLimitExceeded as SvgResourceLimitExceeded,
-    diagram_theme::DiagramTheme,
     svg::{SvgDebugOptions, SvgPipeline, SvgRenderOptions},
+    theme::ThemePortabilityRequirement,
 };
 #[cfg(feature = "svg")]
 pub use target_admission::{
@@ -134,6 +136,9 @@ impl SvgLayoutOutput {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum RenderError {
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    #[error(transparent)]
+    Theme(#[from] crate::theme::ThemeError),
     #[cfg(feature = "native-fonts")]
     #[error(transparent)]
     NativeFont(#[from] merman_export::NativeFontError),
@@ -209,9 +214,6 @@ impl From<merman_render::Error> for RenderError {
             }
             merman_render::Error::OperationResourceTerminal(error) => {
                 crate::operation_runner::operation_terminal_error(error)
-            }
-            merman_render::Error::ThemeResourceLimitExceeded(resource) => {
-                Self::from(ResourceLimitExceeded::from_theme(resource))
             }
             other => Self::Svg(other),
         }
@@ -340,18 +342,6 @@ impl ResourceLimitExceeded {
         }
     }
 
-    #[cfg(feature = "svg")]
-    fn from_theme(error: merman_render::diagram_theme::ThemeResourceLimitExceeded) -> Self {
-        Self {
-            id: error.limit,
-            phase: error.phase.as_str(),
-            actual: u64::try_from(error.actual).unwrap_or(u64::MAX),
-            maximum: u64::try_from(error.max).unwrap_or(u64::MAX),
-            cause: ResourceLimitCause::Ceiling,
-            provenance: None,
-        }
-    }
-
     #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
     fn from_export(
         details: merman_export::ExportResourceLimitDetails,
@@ -406,9 +396,6 @@ impl From<merman_render::environment::RenderEnvironmentError> for RenderError {
             }
             merman_render::environment::RenderEnvironmentError::Runtime(runtime) => {
                 Self::RuntimePolicy(TerminalRuntimePolicyError::from(runtime))
-            }
-            merman_render::environment::RenderEnvironmentError::ThemeResource(resource) => {
-                Self::ResourceLimitExceeded(ResourceLimitExceeded::from_theme(resource))
             }
             other => Self::SvgEnvironment(other),
         }
@@ -485,6 +472,25 @@ pub enum RenderTarget {
 }
 
 impl RenderTarget {
+    #[cfg(feature = "svg")]
+    fn svg_request_mut(&mut self) -> Option<&mut SvgRequest> {
+        match self {
+            Self::Svg(request)
+            | Self::Document(request)
+            | Self::LayoutJson(request)
+            | Self::LayoutSnapshot(request)
+            | Self::EdgeGeometryJson(request)
+            | Self::SvgPlan(request) => Some(request),
+            #[cfg(feature = "png")]
+            Self::Png(request) => Some(&mut request.svg),
+            #[cfg(feature = "jpeg")]
+            Self::Jpeg(request) => Some(&mut request.svg),
+            #[cfg(feature = "pdf")]
+            Self::Pdf(request) => Some(&mut request.svg),
+            _ => None,
+        }
+    }
+
     #[cfg(feature = "native-fonts")]
     fn normalize_native_font_context(self) -> Result<Self, RenderError> {
         match self {
@@ -692,6 +698,21 @@ impl Default for SvgRequest {
     }
 }
 
+#[cfg(feature = "svg")]
+impl SvgRequest {
+    /// Selects a native theme for this graphical target, including prepared-source renders.
+    pub fn with_native_theme(mut self, theme: crate::theme::ThemeSelection) -> Self {
+        self.environment.native_theme = Some(theme);
+        self
+    }
+
+    /// Replaces the canvas base in both native and Mermaid rendering.
+    pub fn with_background(mut self, color: crate::theme::Color) -> Self {
+        self.environment.background = Some(color);
+        self
+    }
+}
+
 #[cfg(feature = "ascii")]
 /// Target-local configuration for one ASCII render operation.
 ///
@@ -702,6 +723,31 @@ pub struct AsciiRequest {
     pub options: AsciiRenderOptions,
     pub resources: AsciiResourcePolicy,
     pub viewport: AsciiViewportPolicy,
+    /// Native palette selection for colored output.
+    pub native_theme: Option<crate::theme::ThemeSelection>,
+}
+
+#[cfg(feature = "ascii")]
+impl AsciiRequest {
+    /// Projects the native theme into the terminal palette when color is enabled.
+    pub fn with_native_theme(mut self, theme: crate::theme::ThemeSelection) -> Self {
+        self.native_theme = Some(theme);
+        self
+    }
+
+    fn apply_native_palette(
+        &mut self,
+        config: &merman_model::MermaidConfig,
+        diagram_type: &str,
+    ) -> Result<(), RenderError> {
+        if self.options.color_mode != merman_ascii::AsciiColorMode::Plain
+            && let Some(selection) = &self.native_theme
+            && let Some(theme) = selection.resolve(config, diagram_type)?
+        {
+            self.options.color_theme = merman_ascii::AsciiColorTheme::from_resolved_v2(&theme);
+        }
+        Ok(())
+    }
 }
 
 #[cfg(feature = "png")]
@@ -734,8 +780,6 @@ pub struct RenderRequest<'a> {
     control: OperationControl,
     parse_options: Option<ParseOptions>,
     resources: Option<InputResourcePolicy>,
-    #[cfg(feature = "svg")]
-    theme: Option<DiagramTheme>,
 }
 
 impl<'a> RenderRequest<'a> {
@@ -750,8 +794,6 @@ impl<'a> RenderRequest<'a> {
             control,
             parse_options: None,
             resources: None,
-            #[cfg(feature = "svg")]
-            theme: None,
         }
     }
 
@@ -838,14 +880,18 @@ impl<'a> RenderRequest<'a> {
         self
     }
 
-    /// Binds one compiled theme to the whole parse-to-artifact operation.
-    ///
-    /// The same recipe supplies parse compatibility and family rendering evidence. Keeping the
-    /// theme on the operation prevents a semantic artifact parsed under one recipe from being
-    /// rendered under another.
-    #[cfg(feature = "svg")]
-    pub fn with_theme(mut self, theme: DiagramTheme) -> Self {
-        self.theme = Some(theme);
+    /// Selects a native theme for the graphical or terminal target.
+    #[cfg(any(feature = "svg", feature = "ascii"))]
+    pub fn with_native_theme(mut self, theme: crate::theme::ThemeSelection) -> Self {
+        #[cfg(feature = "svg")]
+        if let Some(request) = self.target.svg_request_mut() {
+            request.environment.native_theme = Some(theme);
+            return self;
+        }
+        #[cfg(feature = "ascii")]
+        if let RenderTarget::Ascii(request) = &mut self.target {
+            request.native_theme = Some(theme);
+        }
         self
     }
 }
@@ -887,9 +933,6 @@ pub struct Renderer {
     parser: SemanticParser,
     #[cfg(feature = "presentation")]
     presentation_engine: PresentationEngineSource,
-    #[cfg(feature = "svg")]
-    theme_plan:
-        std::sync::Arc<std::sync::Mutex<Option<merman_core::presentation::ThemeCompatibilityPlan>>>,
     parse_options: ParseOptions,
     resources: InputResourcePolicy,
     resources_explicit: bool,
@@ -908,8 +951,6 @@ impl Default for Renderer {
             parser: SemanticParser::new(),
             #[cfg(feature = "presentation")]
             presentation_engine: PresentationEngineSource::Inherited(OnceLock::new()),
-            #[cfg(feature = "svg")]
-            theme_plan: Default::default(),
             parse_options: ParseOptions::default(),
             resources: InputResourcePolicy::default(),
             resources_explicit: false,
@@ -1107,8 +1148,6 @@ impl Renderer {
             control,
             parse_options,
             resources,
-            #[cfg(feature = "svg")]
-            theme,
         } = request;
         let resources = resources.unwrap_or_else(|| {
             if self.resources_explicit {
@@ -1117,41 +1156,12 @@ impl Renderer {
                 target.svg_input_resource_policy().unwrap_or(self.resources)
             }
         });
-        #[cfg(feature = "svg")]
-        let themed_engine = theme.as_ref().map(|theme| {
-            let recipe = theme.compatibility_recipe();
-            // Retain one source installation plan per facade. Changing themes replaces the
-            // cached recipe without accumulating an unbounded catalog of host theme inputs.
-            let plan = {
-                let mut cached = self
-                    .theme_plan
-                    .lock()
-                    .unwrap_or_else(|error| error.into_inner());
-                let plan = cached.get_or_insert_with(|| {
-                    merman_core::presentation::ThemeCompatibilityPlan::from_recipe(recipe.clone())
-                });
-                if plan.recipe() != recipe {
-                    *plan = merman_core::presentation::ThemeCompatibilityPlan::from_recipe(
-                        recipe.clone(),
-                    );
-                }
-                plan.clone()
-            };
-            self.presentation_engine().clone().with_theme_plan(&plan)
-        });
-        #[cfg(feature = "svg")]
-        let operation_engine = themed_engine
-            .as_ref()
-            .unwrap_or_else(|| self.presentation_engine());
-        #[cfg(not(feature = "svg"))]
         let operation_engine = self.presentation_engine();
         let operation = Operation::begin(
             operation_engine.runtime_policy(),
             source,
             control,
             resources,
-            #[cfg(feature = "svg")]
-            theme,
         )?;
         let semantic = operation.parse_presentation(
             operation_engine,
@@ -1171,8 +1181,6 @@ impl Renderer {
             request.source,
             request.control,
             resources,
-            #[cfg(feature = "svg")]
-            None,
         )?;
         let artifact = operation.parse_semantic(
             &self.parser,
@@ -1290,10 +1298,12 @@ impl SemanticArtifact {
 #[cfg(feature = "ascii")]
 fn render_ascii_target(
     semantic: SemanticArtifact,
-    request: AsciiRequest,
+    mut request: AsciiRequest,
 ) -> Result<Option<AsciiOutput>, RenderError> {
     let (parsed, operation) = semantic.into_parts();
     crate::operation_runner::checkpoint(&operation.control, OperationPhase::Admission)?;
+    let metadata = &parsed.metadata;
+    request.apply_native_palette(&metadata.config, &metadata.diagram_type)?;
     let renderer = merman_ascii::AsciiRenderer::new(request.options).map_err(map_ascii_error)?;
     crate::operation_runner::checkpoint(&operation.control, OperationPhase::Admission)?;
     let result = renderer.render_parsed_report(
@@ -1472,15 +1482,11 @@ fn render_svg_target(
 ) -> Result<Option<SvgOutput>, RenderError> {
     #[cfg(feature = "native-fonts")]
     request.environment.check_native_fonts()?;
-    let (rendered, operation) =
-        prepare_rendered_family_svg(semantic, &request, crate::svg::SvgGeneration::Full)?;
+    let (rendered, operation, theme_outcome) =
+        prepare_rendered_family_svg(semantic, &request, crate::svg::SvgGeneration::Full, true)?;
     let required_capabilities = rendered.required_capabilities().to_vec();
     let shoal_layout_frame = rendered.shoal_layout_frame();
-    let finalized = merman_render::__private::finalize_standalone_for_target_admission(
-        rendered,
-        request.pipeline.as_ref(),
-    )
-    .map_err(RenderError::from)?;
+    let finalized = rendered.finalize_standalone(request.pipeline.as_ref())?;
     let completion = finalized.into_completion();
     let layout_adaptation = completion.layout_adaptation();
     let (svg, family) = completion.into_output_and_report();
@@ -1491,6 +1497,7 @@ fn render_svg_target(
         &operation.control,
         layout_adaptation,
         shoal_layout_frame,
+        theme_outcome,
     );
     #[cfg(feature = "native-fonts")]
     request.environment.check_native_fonts()?;
@@ -1507,13 +1514,9 @@ fn render_svg_data_target(
 ) -> Result<String, RenderError> {
     #[cfg(feature = "native-fonts")]
     request.environment.check_native_fonts()?;
-    let (rendered, operation) =
-        prepare_rendered_family_svg(semantic, &request, crate::svg::SvgGeneration::Full)?;
-    let finalized = merman_render::__private::finalize_standalone_for_target_admission(
-        rendered,
-        request.pipeline.as_ref(),
-    )
-    .map_err(RenderError::from)?;
+    let (rendered, operation, _) =
+        prepare_rendered_family_svg(semantic, &request, crate::svg::SvgGeneration::Full, false)?;
+    let finalized = rendered.finalize_standalone(request.pipeline.as_ref())?;
     let result = finish_standalone_svg_data(
         finalized,
         request.environment.theme_portability_requirement(),
@@ -1527,21 +1530,15 @@ fn render_svg_data_target(
 #[cfg(feature = "svg")]
 fn finish_standalone_svg_data(
     finalized: merman_render::family::RenderedStandaloneSvg,
-    requirement: merman_render::diagram_theme::ThemePortabilityRequirement,
+    requirement: ThemePortabilityRequirement,
     control: &OperationControl,
 ) -> Result<String, RenderError> {
     crate::operation_runner::checkpoint(control, OperationPhase::Postprocess)?;
-    let admission = if requirement
-        == merman_render::diagram_theme::ThemePortabilityRequirement::RequirePortable
-    {
-        let (root, family, host_measurements) =
-            merman_render::__private::standalone_admission_summary(&finalized);
-        let theme_evidence = evidence::theme_evidence_from_summaries(root, family);
+    let admission = if requirement == ThemePortabilityRequirement::RequirePortable {
         Some(target_admission::standalone_svg_admission_from_summary(
             finalized.artifact(),
             finalized.family_id(),
-            theme_evidence,
-            host_measurements,
+            finalized.has_host_measurements(),
         ))
     } else {
         None
@@ -1583,7 +1580,7 @@ fn with_prepared_layout_json<T>(
     // be masked by a later target-admission error.
     crate::operation_runner::checkpoint(semantic.control(), OperationPhase::Layout)?;
     if request.environment.theme_portability_requirement()
-        == merman_render::diagram_theme::ThemePortabilityRequirement::RequirePortable
+        == ThemePortabilityRequirement::RequirePortable
     {
         return Err(RenderError::PortabilityUnavailableForTarget {
             target: "layout-json",
@@ -1591,7 +1588,7 @@ fn with_prepared_layout_json<T>(
     }
     let (parsed, operation) = semantic.into_parts();
     let session = request.environment.begin_session_in_context(
-        operation.theme.as_ref(),
+        parsed.metadata(),
         operation.context,
         operation.control,
     )?;
@@ -1607,7 +1604,7 @@ fn render_edge_geometry_json_target(
 ) -> Result<Option<merman_render::model::EdgePaintGeometryOutput>, RenderError> {
     crate::operation_runner::checkpoint(semantic.control(), OperationPhase::Layout)?;
     if request.environment.theme_portability_requirement()
-        == merman_render::diagram_theme::ThemePortabilityRequirement::RequirePortable
+        == ThemePortabilityRequirement::RequirePortable
     {
         return Err(RenderError::PortabilityUnavailableForTarget {
             target: "edge-geometry-json",
@@ -1623,7 +1620,7 @@ fn render_edge_geometry_json_target(
     }
     let (parsed, operation) = semantic.into_parts();
     let session = request.environment.begin_session_in_context(
-        operation.theme.as_ref(),
+        parsed.metadata(),
         operation.context,
         operation.control,
     )?;
@@ -1646,7 +1643,7 @@ fn render_svg_plan_target(
 ) -> Result<Option<merman_render::family::RenderCapabilityPlan>, RenderError> {
     let (parsed, operation) = semantic.into_parts();
     let session = request.environment.begin_session_in_context(
-        operation.theme.as_ref(),
+        parsed.metadata(),
         operation.context,
         operation.control,
     )?;
@@ -1670,20 +1667,30 @@ fn prepare_resvg_target(
         merman_render::family::FamilyRenderCompletion<merman_render::svg::ResvgCompatibleSvg>,
         Vec<merman_render::RenderCapability>,
         OperationExecution,
+        ThemeOutcome,
     ),
     RenderError,
 > {
     #[cfg(feature = "native-fonts")]
     request.environment.check_native_fonts()?;
-    let (rendered, operation) = prepare_rendered_family_svg(semantic, request, default_generation)?;
+    let (rendered, operation, theme_outcome) =
+        prepare_rendered_family_svg(semantic, request, default_generation, true)?;
     let required_capabilities = rendered.required_capabilities().to_vec();
     let pipeline = request
         .pipeline
         .clone()
         .unwrap_or_else(SvgPipeline::resvg_safe)
         .into_resvg_safe();
-    let result = merman_render::__private::finalize_resvg_for_target_admission(rendered, &pipeline)
-        .map(|sealed| (sealed.into_completion(), required_capabilities, operation))
+    let result = rendered
+        .finalize_resvg(&pipeline)
+        .map(|sealed| {
+            (
+                sealed.into_completion(),
+                required_capabilities,
+                operation,
+                theme_outcome,
+            )
+        })
         .map_err(RenderError::from);
     #[cfg(feature = "native-fonts")]
     request.environment.check_native_fonts()?;
@@ -1695,13 +1702,35 @@ fn prepare_rendered_family_svg(
     semantic: PresentationArtifact,
     request: &SvgRequest,
     default_generation: crate::svg::SvgGeneration,
-) -> Result<(merman_render::family::RenderedFamilySvg, OperationExecution), RenderError> {
+    include_theme_outcome: bool,
+) -> Result<
+    (
+        merman_render::family::RenderedFamilySvg,
+        OperationExecution,
+        ThemeOutcome,
+    ),
+    RenderError,
+> {
     let (parsed, operation) = semantic.into_parts();
     let session = request.environment.begin_session_in_context(
-        operation.theme.as_ref(),
+        parsed.metadata(),
         operation.context.clone(),
         operation.control.clone(),
     )?;
+    let theme_outcome = match &request.environment.native_theme {
+        Some(selection) if include_theme_outcome => {
+            let resolved = session.native_theme().map(|theme| theme.resolved());
+            let mut outcome = selection.outcome(resolved);
+            if let (Some(resolved), Some(family_id)) = (resolved, parsed.family_id()) {
+                outcome.notices.extend(
+                    merman_render::theme::unsupported_features(resolved, family_id)
+                        .map(ThemeOutcomeNotice::Rendering),
+                );
+            }
+            outcome
+        }
+        _ => ThemeOutcome::default(),
+    };
     let artifact = merman_render::family::prepare(parsed.parsed(), &request.layout, session)
         .map_err(RenderError::from)?;
     let rendered = artifact
@@ -1712,7 +1741,7 @@ fn prepare_rendered_family_svg(
             default_generation,
         )
         .map_err(RenderError::from)?;
-    Ok((rendered, operation))
+    Ok((rendered, operation, theme_outcome))
 }
 
 #[cfg(feature = "svg")]
@@ -1720,12 +1749,13 @@ fn render_document_target(
     semantic: PresentationArtifact,
     request: SvgRequest,
 ) -> Result<Option<RenderedDocument>, RenderError> {
-    let (completion, required_capabilities, operation) =
+    let (completion, required_capabilities, operation, theme_outcome) =
         prepare_resvg_target(semantic, &request, crate::svg::SvgGeneration::Full)?;
     crate::operation_runner::checkpoint(&operation.control, OperationPhase::Postprocess)?;
     let document = RenderedDocument::new(
         completion,
         required_capabilities,
+        theme_outcome,
         #[cfg(feature = "native-fonts")]
         request.environment.native_fonts,
         #[cfg(all(
@@ -1808,16 +1838,17 @@ fn ascii_diagram_from_full(
 #[cfg(all(feature = "ascii", feature = "presentation"))]
 fn render_presentation_ascii_target(
     semantic: PresentationArtifact,
-    request: AsciiRequest,
+    mut request: AsciiRequest,
 ) -> Result<Option<AsciiOutput>, RenderError> {
     let (parsed, operation) = semantic.into_parts();
     crate::operation_runner::checkpoint(&operation.control, OperationPhase::Admission)?;
+    let parsed = parsed.parsed();
+    let metadata = parsed.metadata();
+    request.apply_native_palette(&metadata.config, &metadata.diagram_type)?;
     let renderer = merman_ascii::AsciiRenderer::new(request.options);
     crate::operation_runner::checkpoint(&operation.control, OperationPhase::Admission)?;
     let renderer = renderer.map_err(map_ascii_error)?;
-    let parsed = parsed.parsed();
     let view = ascii_diagram_from_full(parsed.model());
-    let metadata = parsed.metadata();
     let source = merman_ascii::AsciiSourceContext {
         diagram_type: &metadata.diagram_type,
         config: &metadata.config,
@@ -1852,11 +1883,12 @@ fn render_png_target(
     semantic: PresentationArtifact,
     request: PngRequest,
 ) -> Result<Option<RasterOutput>, RenderError> {
-    let (completion, required_capabilities, operation) =
+    let (completion, required_capabilities, operation, theme_outcome) =
         prepare_resvg_target(semantic, &request.svg, crate::svg::SvgGeneration::Static)?;
     RenderedDocument::new(
         completion,
         required_capabilities,
+        theme_outcome,
         #[cfg(feature = "native-fonts")]
         request.svg.environment.native_fonts,
         #[cfg(all(
@@ -1874,11 +1906,12 @@ fn render_jpeg_target(
     semantic: PresentationArtifact,
     request: JpegRequest,
 ) -> Result<Option<RasterOutput>, RenderError> {
-    let (completion, required_capabilities, operation) =
+    let (completion, required_capabilities, operation, theme_outcome) =
         prepare_resvg_target(semantic, &request.svg, crate::svg::SvgGeneration::Static)?;
     RenderedDocument::new(
         completion,
         required_capabilities,
+        theme_outcome,
         #[cfg(feature = "native-fonts")]
         request.svg.environment.native_fonts,
         #[cfg(all(
@@ -1896,11 +1929,12 @@ fn render_pdf_target(
     semantic: PresentationArtifact,
     request: PdfRequest,
 ) -> Result<Option<PdfOutput>, RenderError> {
-    let (completion, required_capabilities, operation) =
+    let (completion, required_capabilities, operation, theme_outcome) =
         prepare_resvg_target(semantic, &request.svg, crate::svg::SvgGeneration::Static)?;
     RenderedDocument::new(
         completion,
         required_capabilities,
+        theme_outcome,
         #[cfg(feature = "native-fonts")]
         request.svg.environment.native_fonts,
         #[cfg(all(
@@ -1915,7 +1949,7 @@ fn render_pdf_target(
 
 #[cfg(all(test, feature = "svg"))]
 mod tests {
-    use super::{RenderError, ResourceLimitCause};
+    use super::RenderError;
 
     #[cfg(feature = "diagram-flowchart")]
     #[test]
@@ -1945,18 +1979,14 @@ mod tests {
     #[test]
     fn themed_document_input_admission_preserves_request_renderer_environment_precedence() {
         use super::{RenderRequest, Renderer, SvgEnvironment, SvgRequest};
+        use crate::theme::{BuiltinPreset, ThemeSelection};
         use merman_model::{
             OperationControl,
             resources::{InputResourceLimitId, InputResourcePolicy},
         };
-        use merman_render::{
-            diagram_theme::{DiagramThemeCompiler, DiagramThemeSpec},
-            resources::{RenderResourcePolicy, ResourceLimitId},
-        };
+        use merman_render::resources::{RenderResourcePolicy, ResourceLimitId};
 
-        let theme = DiagramThemeCompiler::new()
-            .compile(DiagramThemeSpec::new())
-            .expect("empty theme should compile");
+        let theme = ThemeSelection::preset(BuiltinPreset::Studio, None);
         let environment = SvgEnvironment::default().with_resource_policy(
             RenderResourcePolicy::default()
                 .with_limit(ResourceLimitId::MaxSourceBytes, 4)
@@ -1971,7 +2001,7 @@ mod tests {
                     ..Default::default()
                 },
             )
-            .with_theme(theme.clone())
+            .with_native_theme(theme.clone())
         };
         let input_policy = |limit| {
             InputResourcePolicy::default()
@@ -1996,29 +2026,6 @@ mod tests {
     }
 
     #[test]
-    fn theme_resource_environment_error_maps_to_resource_limit_exceeded() {
-        let policy = merman_render::diagram_theme::ThemeResourcePolicy::constrained();
-        let maximum = policy
-            .value(merman_render::diagram_theme::ThemeResourceLimitId::MaxThemeEncodedBytes)
-            .expect("constrained theme input ceiling");
-        let resource = policy
-            .check_theme_encoded_bytes(maximum + 1)
-            .expect_err("fixture must exceed the constrained theme input ceiling");
-
-        let error = RenderError::from(
-            merman_render::environment::RenderEnvironmentError::ThemeResource(resource),
-        );
-        let RenderError::ResourceLimitExceeded(resource) = error else {
-            panic!("theme resource environment errors must use the common resource variant");
-        };
-        assert_eq!(resource.id, "max_theme_encoded_bytes");
-        assert_eq!(resource.phase, "theme_input");
-        assert_eq!(resource.actual, (maximum + 1) as u64);
-        assert_eq!(resource.maximum, maximum as u64);
-        assert_eq!(resource.cause, ResourceLimitCause::Ceiling);
-    }
-
-    #[test]
     fn render_environment_cancellation_maps_to_the_common_cancelled_variant() {
         let cancelled = merman_model::OperationCancelled {
             phase: merman_model::OperationPhase::Layout,
@@ -2032,26 +2039,5 @@ mod tests {
             panic!("render-environment cancellation must use the common cancelled variant");
         };
         assert_eq!(mapped, cancelled);
-    }
-
-    #[test]
-    fn terminal_theme_resource_render_error_maps_to_resource_limit_exceeded() {
-        let policy = merman_render::diagram_theme::ThemeResourcePolicy::constrained();
-        let maximum = policy
-            .value(merman_render::diagram_theme::ThemeResourceLimitId::MaxThemeEncodedBytes)
-            .expect("constrained theme input ceiling");
-        let resource = policy
-            .check_theme_encoded_bytes(maximum + 1)
-            .expect_err("fixture must exceed the constrained theme input ceiling");
-
-        let error = RenderError::from(merman_render::Error::ThemeResourceLimitExceeded(resource));
-        let RenderError::ResourceLimitExceeded(resource) = error else {
-            panic!("terminal theme resource errors must use the common resource variant");
-        };
-        assert_eq!(resource.id, "max_theme_encoded_bytes");
-        assert_eq!(resource.phase, "theme_input");
-        assert_eq!(resource.actual, (maximum + 1) as u64);
-        assert_eq!(resource.maximum, maximum as u64);
-        assert_eq!(resource.cause, ResourceLimitCause::Ceiling);
     }
 }

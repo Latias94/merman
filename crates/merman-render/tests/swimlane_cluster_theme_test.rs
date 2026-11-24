@@ -1,195 +1,63 @@
+#![cfg(feature = "diagram-swimlane")]
+
+use merman_core::presentation::SourcePresentationConfig;
 use merman_core::{MermaidEngine, ParseOptions};
-use merman_model::presentation::PresentationConfig;
-use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, MermaidThemeCompatibility,
-    OrdinalSelector, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
-    ThemeTarget,
-};
 use merman_render::environment::RenderEnvironment;
-use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
-use merman_render::{DiagramFamilyId, LayoutOptions};
-use serde_json::json;
+use merman_render::theme::{NativeTheme, ThemeCompiler};
+use merman_render::{LayoutOptions, family};
+use roxmltree::{Document, Node};
+use serde_json::{Value, json};
 
-const SWIMLANE_SOURCE: &str = "flowchart TD\nsubgraph Lane[Lane]\nA\nend\n";
+const SOURCE: &str = "swimlane-beta TD\nsubgraph Lane[Lane]\nA\nend\n";
 
-fn swimlane_cluster_theme(fill: CanvasPaint, stroke: CanvasPaint) -> DiagramTheme {
-    compile_swimlane_cluster_theme(
-        ThemeStylePatch::default()
-            .with_fill(fill)
-            .with_stroke(stroke),
-    )
-}
-
-fn swimlane_cluster_stroke_theme(stroke: CanvasPaint) -> DiagramTheme {
-    compile_swimlane_cluster_theme(ThemeStylePatch::default().with_stroke(stroke))
-}
-
-fn compile_swimlane_cluster_theme(style: ThemeStylePatch) -> DiagramTheme {
-    compile_swimlane_cluster_theme_with_variant(None, style)
-}
-
-fn compile_swimlane_cluster_theme_with_variant(
-    variant: Option<merman_render::diagram_theme::ThemeVariant>,
-    style: ThemeStylePatch,
-) -> DiagramTheme {
-    let mut rule =
-        ThemeRule::new(ThemeTarget::Cluster, style).for_family(DiagramFamilyId::SWIMLANE);
-    if let Some(variant) = variant {
-        rule = rule.with_variant(variant);
+fn render(source: &str, config: Value, theme: Option<NativeTheme>) -> String {
+    let parsed = MermaidEngine::new()
+        .with_site_config(SourcePresentationConfig::from_value(config))
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let environment = RenderEnvironment::deterministic();
+    let session = match theme {
+        Some(theme) => environment.begin_session_with_native_theme(theme),
+        None => environment.begin_session(),
     }
-    DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
-        .expect("compile Swimlane Cluster theme")
-}
-
-fn swimlane_cluster_ordinal_theme(ordinal: usize) -> DiagramTheme {
-    DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(
-                ThemeRuleSet::default().with_rule(
-                    ThemeRule::new(
-                        ThemeTarget::Cluster,
-                        ThemeStylePatch::default().with_fill(
-                            CanvasPaint::solid("#a855f7").expect("valid ordinal Cluster fill"),
-                        ),
-                    )
-                    .for_family(DiagramFamilyId::SWIMLANE)
-                    .with_ordinal(OrdinalSelector::exact(ordinal).expect("valid Cluster ordinal")),
-                ),
-            ),
-        )
-        .expect("compile ordinal Swimlane Cluster theme")
-}
-
-fn try_render_swimlane_cluster(
-    source: &str,
-    theme: &DiagramTheme,
-    site_config: PresentationConfig,
-    requirement: ThemePortabilityRequirement,
-) -> merman_render::Result<family::RenderedFamilySvg> {
-    let parsed = common::install_parse_compatibility(
-        theme,
-        MermaidEngine::new().with_site_config(
-            merman_core::presentation::SourcePresentationConfig::from_config(
-                site_config.as_config().clone(),
-            ),
-        ),
-    )
-    .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
-    .expect("parse themed Swimlane")
-    .expect("detect themed Swimlane")
-    .into_presentation();
-    let session = RenderEnvironment::deterministic()
-        .with_theme_portability_requirement(requirement)
-        .begin_session_with_theme(theme)
-        .expect("begin themed Swimlane session");
-
+    .unwrap();
     family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
-        .expect("prepare themed Swimlane")
-        .render_svg(
-            &SvgRenderOptions {
-                diagram_id: Some("swimlane-cluster-theme".to_string()),
-                ..SvgRenderOptions::default()
-            },
-            &SvgDebugOptions::default(),
-        )
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap()
+        .svg()
+        .to_owned()
 }
 
-fn render_swimlane_cluster(
-    source: &str,
-    theme: &DiagramTheme,
-    site_config: PresentationConfig,
-) -> family::RenderedFamilySvg {
-    try_render_swimlane_cluster(
-        source,
-        theme,
-        site_config,
-        ThemePortabilityRequirement::RequirePortable,
-    )
-    .expect("render themed Swimlane")
-}
-
-#[test]
-fn swimlane_cluster_ordinal_routes_follow_visible_lane_occurrences() {
-    let matching = swimlane_cluster_ordinal_theme(1);
-    let rendered = try_render_swimlane_cluster(
-        SWIMLANE_SOURCE,
-        &matching,
-        common::presentation_config(json!({"layout": "swimlane"})),
-        ThemePortabilityRequirement::BestEffort,
-    )
-    .expect("render matching lane ordinal in best-effort mode");
-    let completion = rendered.into_completion();
-    let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 1);
-    assert_eq!(evidence.not_applicable_count(), 0);
-    assert!(
-        try_render_swimlane_cluster(
-            SWIMLANE_SOURCE,
-            &matching,
-            common::presentation_config(json!({"layout": "swimlane"})),
-            ThemePortabilityRequirement::RequirePortable,
-        )
-        .is_err(),
-        "a visible unsupported lane ordinal must fail closed"
-    );
-
-    let out_of_range = swimlane_cluster_ordinal_theme(2);
-    let rendered = try_render_swimlane_cluster(
-        SWIMLANE_SOURCE,
-        &out_of_range,
-        common::presentation_config(json!({"layout": "swimlane"})),
-        ThemePortabilityRequirement::RequirePortable,
-    )
-    .expect("an out-of-range lane ordinal is not applicable");
-    let completion = rendered.into_completion();
-    let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.not_applicable_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 0);
-}
-
-fn lane_rect_style(
-    document: &roxmltree::Document<'_>,
-    class_name: &str,
-) -> (String, String, String) {
-    let lane = document
+fn lane<'a, 'input>(document: &'a Document<'input>) -> Node<'a, 'input> {
+    document
         .descendants()
         .find(|node| {
-            node.has_tag_name("g")
-                && node.attribute("data-id") == Some("Lane")
-                && node.attribute("class").is_some_and(|classes| {
-                    classes.split_whitespace().any(|class| class == "swimlane")
-                })
+            node.attribute("data-id") == Some("Lane")
+                && node.attribute("data-et") == Some("cluster")
         })
-        .expect("Lane terminal group");
-    let rect = lane
-        .children()
-        .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some(class_name))
-        .unwrap_or_else(|| panic!("Lane {class_name} terminal rect"));
-    (
-        rect.attribute("style").unwrap_or_default().to_string(),
-        rect.attribute("fill").unwrap_or_default().to_string(),
-        rect.attribute("stroke").unwrap_or_default().to_string(),
-    )
+        .expect("Lane terminal group")
 }
 
-fn stylesheet_text(document: &roxmltree::Document<'_>) -> String {
+fn lane_rect<'a, 'input>(lane: Node<'a, 'input>, class: &str) -> Node<'a, 'input> {
+    lane.children()
+        .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some(class))
+        .expect("Lane terminal rectangle")
+}
+
+fn stylesheet<'a>(document: &'a Document<'_>) -> &'a str {
     document
         .descendants()
         .find(|node| node.has_tag_name("style"))
         .and_then(|node| node.text())
         .expect("Swimlane stylesheet")
-        .to_string()
 }
 
 #[test]
 fn swimlane_neo_non_palette_lane_stroke_has_the_matching_cluster_css_owner() {
-    let theme = DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new())
-        .unwrap();
     for (variables, expected) in [
         (json!({}), "#aaaa33"),
         (
@@ -197,533 +65,82 @@ fn swimlane_neo_non_palette_lane_stroke_has_the_matching_cluster_css_owner() {
             "#112233",
         ),
     ] {
-        let rendered = render_swimlane_cluster(
-            SWIMLANE_SOURCE,
-            &theme,
-            common::presentation_config(json!({
-                "layout": "swimlane", "theme": "default", "look": "neo",
-                "themeVariables": variables
-            })),
+        let svg = render(
+            SOURCE,
+            json!({"theme":"default", "look":"neo", "themeVariables":variables}),
+            None,
         );
-        let document = roxmltree::Document::parse(rendered.svg()).expect("Swimlane SVG");
-        let lane = document
-            .descendants()
-            .find(|node| node.attribute("data-id") == Some("Lane"))
-            .expect("Lane group");
+        let document = Document::parse(&svg).unwrap();
+        let lane = lane(&document);
         assert_eq!(lane.attribute("data-look"), Some("neo"));
-        assert!(lane.attribute("data-color-id").is_none());
-        let css = stylesheet_text(&document);
-        let selector = "#swimlane-cluster-theme .swimlane.cluster:not([data-color-id]) rect";
-        let (_, declarations) = css
-            .split('}')
-            .filter_map(|rule| rule.split_once('{'))
-            .find(|(selectors, _)| selectors.split(',').any(|part| part.trim() == selector))
-            .expect("non-palette lane CSS rule matching both real rectangle terminals");
-        assert!(
-            declarations.split(';').any(|declaration| {
-                declaration
-                    .split_once(':')
-                    .is_some_and(|(property, value)| {
-                        property.trim() == "stroke"
-                            && value.trim() == format!("{expected}!important")
-                    })
-            }),
-            "non-palette lane rule must override the shared Neo node border: {declarations}"
-        );
-        for class_name in ["swimlane-body", "swimlane-title"] {
-            assert_eq!(lane_rect_style(&document, class_name).2, expected);
+        assert_eq!(lane.attribute("data-color-id"), None);
+        assert!(stylesheet(&document).contains(&format!(
+            ".swimlane.cluster:not([data-color-id]) rect{{stroke:{expected}!important;}}"
+        )));
+        for class in ["swimlane-body", "swimlane-title"] {
+            assert_eq!(lane_rect(lane, class).attribute("stroke"), Some(expected));
         }
     }
 }
 
 #[test]
-fn swimlane_non_palette_border_rule_preserves_palette_and_typed_stroke_owners() {
-    for selected in ["default", "redux-color"] {
-        let theme = DiagramThemeCompiler::new()
-            .compile(
-                DiagramThemeSpec::new()
-                    .with_mermaid_compatibility(
-                        MermaidThemeCompatibility::default()
-                            .with_theme(selected)
-                            .unwrap(),
-                    )
-                    .with_styles(
-                        ThemeRuleSet::default().with_rule(
-                            ThemeRule::new(
-                                ThemeTarget::Cluster,
-                                ThemeStylePatch::default()
-                                    .with_stroke(CanvasPaint::solid("#654321").unwrap()),
-                            )
-                            .for_family(DiagramFamilyId::SWIMLANE),
-                        ),
-                    ),
-            )
-            .unwrap();
-        let rendered = try_render_swimlane_cluster(
-            SWIMLANE_SOURCE,
-            &theme,
-            common::presentation_config(json!({
-                "layout": "swimlane", "look": "neo"
-            })),
-            ThemePortabilityRequirement::BestEffort,
-        )
-        .unwrap();
-        let document = roxmltree::Document::parse(rendered.svg()).expect("Swimlane SVG");
-        let lane = document
-            .descendants()
-            .find(|node| node.attribute("data-id") == Some("Lane"))
-            .expect("Lane group");
-        assert_eq!(
-            lane.attribute("data-color-id").is_some(),
-            selected == "redux-color"
-        );
-        let css = stylesheet_text(&document);
-        assert!(!css.contains(".swimlane.cluster rect{stroke:"));
-        for class_name in ["swimlane-body", "swimlane-title"] {
-            let (style, _, _) = lane_rect_style(&document, class_name);
-            assert!(
-                style.contains("stroke:#654321 !important"),
-                "{class_name}: {style}"
-            );
-        }
-        drop(document);
-        let evidence =
-            merman_render::__private::family_evidence(rendered.into_completion().report());
-        assert_eq!(evidence.required_count(), 1);
-        assert_eq!(evidence.accounted_count(), 1);
-        assert_eq!(evidence.applied_count(), 1);
-        assert_eq!(evidence.not_applicable_count(), 0);
-        assert_eq!(evidence.theme_residual_count(), 0);
-        assert_eq!(evidence.source_residual_count(), 0);
-        assert_eq!(evidence.mermaid_compatibility_residual_count(), 1);
-    }
-}
-
-#[test]
-fn swimlane_source_palette_wins_while_site_palette_yields_to_lane_stroke() {
-    let theme = swimlane_cluster_stroke_theme(CanvasPaint::solid("#654321").unwrap());
-    let baseline = DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new())
-        .unwrap();
-    for selected in ["default", "redux-color"] {
-        for origin in ["site", "source"] {
-            let mut config = json!({"layout": "swimlane", "look": "neo", "secure": []});
-            let source = if origin == "site" {
-                config["theme"] = json!(selected);
-                SWIMLANE_SOURCE.to_owned()
-            } else {
-                format!("---\nconfig:\n  theme: {selected}\n---\n{SWIMLANE_SOURCE}")
-            };
-            let unstyled = render_swimlane_cluster(
-                &source,
-                &baseline,
-                common::presentation_config(config.clone()),
-            );
-            let rendered =
-                render_swimlane_cluster(&source, &theme, common::presentation_config(config));
-            if origin == "source" {
-                assert_eq!(rendered.svg(), unstyled.svg(), "{selected}/{origin}");
-            }
-            assert_eq!(rendered.svg().contains("#654321"), origin == "site");
-            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-            let lane = document
-                .descendants()
-                .find(|node| node.attribute("data-id") == Some("Lane"))
-                .unwrap();
-            assert_eq!(
-                lane.attribute("data-color-id").is_some(),
-                selected == "redux-color"
-            );
-            if origin == "site" {
-                for class_name in ["swimlane-body", "swimlane-title"] {
-                    assert!(
-                        lane_rect_style(&document, class_name)
-                            .0
-                            .contains("stroke:#654321 !important"),
-                        "{selected}/{origin}/{class_name}"
-                    );
-                }
-            } else if selected == "default" {
-                for class_name in ["swimlane-body", "swimlane-title"] {
-                    assert_eq!(lane_rect_style(&document, class_name).2, "#aaaa33");
-                }
-            }
-            drop(document);
-            let evidence =
-                merman_render::__private::family_evidence(rendered.into_completion().report());
-            assert_eq!(evidence.required_count(), 1);
-            assert_eq!(evidence.accounted_count(), 1);
-            assert_eq!(evidence.applied_count(), usize::from(origin == "site"));
-            assert_eq!(
-                evidence.not_applicable_count(),
-                usize::from(origin == "source")
-            );
-            assert_eq!(evidence.theme_residual_count(), 0);
-            assert_eq!(evidence.source_residual_count(), 0);
-            assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
-        }
-    }
-}
-
-#[test]
-fn swimlane_non_palette_border_rule_preserves_authored_inline_and_class_stroke() {
-    let theme = swimlane_cluster_stroke_theme(CanvasPaint::solid("#654321").unwrap());
+fn swimlane_neo_palette_rules_and_authored_strokes_target_both_lane_rectangles() {
     for authored in [
         "style Lane stroke:#22c55e\n",
         "classDef source stroke:#22c55e\nclass Lane source\n",
     ] {
-        let rendered = render_swimlane_cluster(
-            &format!("{SWIMLANE_SOURCE}{authored}"),
-            &theme,
-            common::presentation_config(json!({
-                "layout": "swimlane", "look": "neo", "theme": "default"
-            })),
-        );
-        let document = roxmltree::Document::parse(rendered.svg()).expect("Swimlane SVG");
-        for class_name in ["swimlane-body", "swimlane-title"] {
-            let (style, _, _) = lane_rect_style(&document, class_name);
-            assert!(
-                style.contains("stroke:#22c55e !important"),
-                "{class_name}: {style}"
+        for selected in ["default", "redux-color"] {
+            let svg = render(
+                &format!("{SOURCE}{authored}"),
+                json!({"theme":selected, "look":"neo"}),
+                None,
             );
-            assert!(
-                !style.contains("#654321"),
-                "authored stroke must own {class_name}"
-            );
+            let document = Document::parse(&svg).unwrap();
+            let lane = lane(&document);
+            let color_slot = (selected == "redux-color").then_some("color-0");
+            assert_eq!(lane.attribute("data-color-id"), color_slot);
+            for class in ["swimlane-body", "swimlane-title"] {
+                if let Some(slot) = color_slot {
+                    assert!(stylesheet(&document).contains(&format!(
+                        r#"[data-look="neo"][data-color-id="{slot}"].swimlane.cluster rect.{class}"#
+                    )));
+                }
+                let style = lane_rect(lane, class).attribute("style").unwrap();
+                assert!(
+                    style.contains("stroke:#22c55e !important"),
+                    "{selected}/{class}: {style}"
+                );
+            }
         }
     }
 }
 
-fn lane_hand_drawn_shell_strokes(document: &roxmltree::Document<'_>) -> Vec<Vec<String>> {
-    let lane = document
-        .descendants()
-        .find(|node| {
-            node.has_tag_name("g")
-                && node.attribute("data-id") == Some("Lane")
-                && node.attribute("class").is_some_and(|classes| {
-                    classes.split_whitespace().any(|class| class == "swimlane")
-                })
-        })
-        .expect("Lane terminal group");
-
-    ["swimlane-body", "swimlane-title"]
-        .into_iter()
-        .map(|class_name| {
-            let shell = lane
-                .children()
-                .find(|node| {
-                    node.has_tag_name("g")
-                        && node.attribute("class").is_some_and(|classes| {
-                            classes.split_whitespace().any(|class| class == class_name)
-                        })
-                })
-                .unwrap_or_else(|| panic!("Lane {class_name} hand-drawn shell"));
-            shell
-                .children()
-                .filter(|node| node.has_tag_name("path"))
-                .map(|path| path.attribute("stroke").unwrap_or_default().to_string())
-                .collect()
-        })
-        .collect()
-}
-
 #[test]
-fn swimlane_cluster_paint_reaches_lane_shell_and_terminal_receipt() {
-    let theme = swimlane_cluster_theme(
-        CanvasPaint::solid("#123456").expect("valid lane fill"),
-        CanvasPaint::solid("#654321").expect("valid lane stroke"),
+fn native_theme_v2_swimlane_layers_container_and_title_paints_beneath_authored_stroke() {
+    let theme = ThemeCompiler::new()
+        .compile_json(
+            br##"{
+                "schema_version":2,"extends":"paper",
+                "roles":{"surface.container":"#ABCDEF","surface.emphasis":"#234567",
+                         "stroke.guide":"#56789A","stroke.border":"#56789A"}
+            }"##,
+            None,
+        )
+        .unwrap();
+    let svg = render(
+        &format!("{SOURCE}classDef source stroke:#22c55e\nclass Lane source\n"),
+        json!({"theme":"default", "look":"neo"}),
+        Some(NativeTheme::new(theme)),
     );
-    let rendered = render_swimlane_cluster(
-        SWIMLANE_SOURCE,
-        &theme,
-        common::presentation_config(json!({"layout": "swimlane"})),
-    );
-    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Swimlane SVG");
-
-    for class_name in ["swimlane-body", "swimlane-title"] {
-        let (style, fill, stroke) = lane_rect_style(&document, class_name);
+    let document = Document::parse(&svg).unwrap();
+    let lane = lane(&document);
+    let css = stylesheet(&document);
+    for (class, fill) in [("swimlane-body", "#ABCDEF"), ("swimlane-title", "#234567")] {
+        assert!(css.contains(&format!("rect.{class}{{fill:{fill};stroke:#56789A}}")));
+        let style = lane_rect(lane, class).attribute("style").unwrap();
         assert!(
-            style.contains("fill:#123456 !important"),
-            "{class_name}: {style}"
+            style.contains("stroke:#22c55e !important"),
+            "{class}: {style}"
         );
-        assert!(
-            style.contains("stroke:#654321 !important"),
-            "{class_name}: {style}"
-        );
-        assert_eq!(fill, "#123456", "{class_name}");
-        assert_eq!(stroke, "#654321", "{class_name}");
-    }
-
-    drop(document);
-    let completion = rendered.into_completion();
-    let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.applied_count(), 1);
-    assert_eq!(evidence.not_applicable_count(), 0);
-    assert_eq!(evidence.theme_residual_count(), 0);
-}
-
-#[test]
-fn swimlane_cluster_paint_reaches_both_hand_drawn_lane_surfaces() {
-    let theme = swimlane_cluster_theme(
-        CanvasPaint::solid("#123456").expect("valid lane fill"),
-        CanvasPaint::solid("#654321").expect("valid lane stroke"),
-    );
-    let rendered = render_swimlane_cluster(
-        SWIMLANE_SOURCE,
-        &theme,
-        common::presentation_config(json!({
-            "layout": "swimlane",
-            "look": "handDrawn",
-            "handDrawnSeed": 7
-        })),
-    );
-
-    assert_eq!(
-        rendered
-            .svg()
-            .matches("style=\"stroke:#123456 !important\"")
-            .count(),
-        2,
-        "body and title hachure paths must consume the typed fill"
-    );
-    assert_eq!(
-        rendered
-            .svg()
-            .matches("style=\"stroke:#654321 !important\"")
-            .count(),
-        2,
-        "body and title outline paths must consume the typed stroke"
-    );
-
-    let completion = rendered.into_completion();
-    let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.applied_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 0);
-}
-
-#[test]
-fn swimlane_cluster_stroke_only_preserves_the_compatibility_lane_fill() {
-    let theme =
-        swimlane_cluster_stroke_theme(CanvasPaint::solid("#654321").expect("valid lane stroke"));
-    let rendered = render_swimlane_cluster(
-        SWIMLANE_SOURCE,
-        &theme,
-        common::presentation_config(json!({"layout": "swimlane"})),
-    );
-    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Swimlane SVG");
-    let stylesheet = stylesheet_text(&document);
-    let (_, body_fill, _) = lane_rect_style(&document, "swimlane-body");
-    let (_, title_fill, _) = lane_rect_style(&document, "swimlane-title");
-
-    assert_eq!(body_fill, "none", "typed stroke must not claim body fill");
-    assert_ne!(title_fill, "none", "compatibility fill must remain visible");
-    assert!(
-        stylesheet.contains(&format!(".cluster rect{{fill:{title_fill};")),
-        "stroke-only typed paint must not remove the shared compatibility fill rule: {stylesheet}"
-    );
-    for class_name in ["swimlane-body", "swimlane-title"] {
-        let (style, _, stroke) = lane_rect_style(&document, class_name);
-        assert!(
-            style.contains("stroke:#654321 !important"),
-            "{class_name}: {style}"
-        );
-        assert_eq!(stroke, "#654321", "{class_name}");
-    }
-
-    drop(document);
-    let completion = rendered.into_completion();
-    let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.applied_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 0);
-}
-
-#[test]
-fn swimlane_hand_drawn_cluster_stroke_does_not_claim_or_change_fill() {
-    let theme =
-        swimlane_cluster_stroke_theme(CanvasPaint::solid("#654321").expect("valid lane stroke"));
-    let rendered = render_swimlane_cluster(
-        SWIMLANE_SOURCE,
-        &theme,
-        common::presentation_config(json!({
-            "layout": "swimlane",
-            "look": "handDrawn",
-            "handDrawnSeed": 7,
-            "themeVariables": {"clusterBkg": "#fef3c7"}
-        })),
-    );
-    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Swimlane SVG");
-
-    assert_eq!(
-        lane_hand_drawn_shell_strokes(&document),
-        vec![
-            vec!["#654321".to_string()],
-            vec!["#fef3c7".to_string(), "#654321".to_string()],
-        ],
-        "stroke-only typed paint must leave the body unfilled and preserve the title fill"
-    );
-
-    drop(document);
-    let completion = rendered.into_completion();
-    let evidence = merman_render::__private::family_evidence(completion.report());
-    assert_eq!(evidence.required_count(), 1, "only stroke was requested");
-    assert_eq!(evidence.applied_count(), 1, "only stroke may be attributed");
-    assert_eq!(evidence.not_applicable_count(), 0);
-    assert_eq!(evidence.theme_residual_count(), 0);
-}
-
-#[test]
-fn swimlane_cluster_source_and_config_owners_outrank_typed_paint_per_facet() {
-    let theme = swimlane_cluster_theme(
-        CanvasPaint::solid("#123456").expect("valid lane fill"),
-        CanvasPaint::solid("#654321").expect("valid lane stroke"),
-    );
-    let source_owned = render_swimlane_cluster(
-        "flowchart TD\nsubgraph Lane[Lane]\nA\nend\nclassDef source fill:#22c55e\nclass Lane source\n",
-        &theme,
-        common::presentation_config(json!({"layout": "swimlane"})),
-    );
-    let source_document =
-        roxmltree::Document::parse(source_owned.svg()).expect("valid source-owned Swimlane SVG");
-    for class_name in ["swimlane-body", "swimlane-title"] {
-        let (style, _, stroke) = lane_rect_style(&source_document, class_name);
-        assert!(
-            style.contains("fill:#22c55e !important"),
-            "{class_name}: {style}"
-        );
-        assert!(!style.contains("#123456"), "{class_name}: {style}");
-        assert!(
-            style.contains("stroke:#654321 !important"),
-            "{class_name}: {style}"
-        );
-        assert_eq!(stroke, "#654321", "{class_name}");
-    }
-
-    let config_owned = render_swimlane_cluster(
-        SWIMLANE_SOURCE,
-        &theme,
-        common::presentation_config(json!({
-            "layout": "swimlane",
-            "themeVariables": {"clusterBorder": "#334155"}
-        })),
-    );
-    let config_document =
-        roxmltree::Document::parse(config_owned.svg()).expect("valid config-owned Swimlane SVG");
-    for class_name in ["swimlane-body", "swimlane-title"] {
-        let (style, fill, stroke) = lane_rect_style(&config_document, class_name);
-        assert!(
-            style.contains("fill:#123456 !important"),
-            "{class_name}: {style}"
-        );
-        assert!(!style.contains("#654321"), "{class_name}: {style}");
-        assert_eq!(fill, "#123456", "{class_name}");
-        assert_eq!(stroke, "#334155", "{class_name}");
-    }
-
-    let config_fill_owned = render_swimlane_cluster(
-        SWIMLANE_SOURCE,
-        &theme,
-        common::presentation_config(json!({
-            "layout": "swimlane",
-            "themeVariables": {"clusterBkg": "#fef3c7"}
-        })),
-    );
-    let config_fill_document = roxmltree::Document::parse(config_fill_owned.svg())
-        .expect("valid config-owned Swimlane SVG");
-    let config_fill_stylesheet = stylesheet_text(&config_fill_document);
-    assert!(
-        config_fill_stylesheet.contains(".cluster rect{fill:#fef3c7;"),
-        "config-owned fill must keep the compatibility rule when typed stroke owns only stroke: {config_fill_stylesheet}"
-    );
-    for class_name in ["swimlane-body", "swimlane-title"] {
-        let (style, _, stroke) = lane_rect_style(&config_fill_document, class_name);
-        assert!(!style.contains("#123456"), "{class_name}: {style}");
-        assert!(
-            style.contains("stroke:#654321 !important"),
-            "{class_name}: {style}"
-        );
-        assert_eq!(stroke, "#654321", "{class_name}");
     }
 }
-
-#[test]
-fn swimlane_cluster_transparent_paint_reaches_classic_lane_terminals() {
-    let theme = swimlane_cluster_theme(CanvasPaint::Transparent, CanvasPaint::Transparent);
-    let rendered = render_swimlane_cluster(
-        SWIMLANE_SOURCE,
-        &theme,
-        common::presentation_config(json!({"layout": "swimlane"})),
-    );
-    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Swimlane SVG");
-
-    for class_name in ["swimlane-body", "swimlane-title"] {
-        let (style, fill, stroke) = lane_rect_style(&document, class_name);
-        assert!(
-            style.contains("fill:none !important"),
-            "{class_name}: {style}"
-        );
-        assert!(
-            style.contains("stroke:none !important"),
-            "{class_name}: {style}"
-        );
-        assert_eq!(fill, "none", "{class_name}");
-        assert_eq!(stroke, "none", "{class_name}");
-    }
-}
-
-#[test]
-fn swimlane_cluster_explicit_default_paint_reaches_terminal_writers_and_evidence() {
-    for (fill, stroke, expected_fill, expected_stroke) in [
-        (
-            CanvasPaint::solid("#ef4444").expect("valid explicit-Default fill"),
-            CanvasPaint::solid("#2563eb").expect("valid explicit-Default stroke"),
-            "#ef4444",
-            "#2563eb",
-        ),
-        (
-            CanvasPaint::Transparent,
-            CanvasPaint::Transparent,
-            "none",
-            "none",
-        ),
-    ] {
-        let theme = compile_swimlane_cluster_theme_with_variant(
-            Some(merman_render::diagram_theme::ThemeVariant::Default),
-            ThemeStylePatch::default()
-                .with_fill(fill)
-                .with_stroke(stroke),
-        );
-        let rendered = render_swimlane_cluster(
-            SWIMLANE_SOURCE,
-            &theme,
-            common::presentation_config(json!({"layout": "swimlane"})),
-        );
-        let document = roxmltree::Document::parse(rendered.svg())
-            .expect("valid explicitly default-themed Swimlane SVG");
-        for class_name in ["swimlane-body", "swimlane-title"] {
-            let (style, fill, stroke) = lane_rect_style(&document, class_name);
-            assert!(
-                style.contains(&format!("fill:{expected_fill} !important")),
-                "{class_name}: {style}"
-            );
-            assert!(
-                style.contains(&format!("stroke:{expected_stroke} !important")),
-                "{class_name}: {style}"
-            );
-            assert_eq!(fill, expected_fill, "{class_name}");
-            assert_eq!(stroke, expected_stroke, "{class_name}");
-        }
-        drop(document);
-        let evidence =
-            merman_render::__private::family_evidence(rendered.into_completion().report());
-        assert_eq!(evidence.required_count(), 1);
-        assert_eq!(evidence.applied_count(), 1);
-        assert_eq!(evidence.not_applicable_count(), 0);
-        assert_eq!(evidence.theme_residual_count(), 0);
-    }
-}
-
-#[allow(dead_code)]
-mod common;

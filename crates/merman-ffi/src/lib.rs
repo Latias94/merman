@@ -3067,111 +3067,6 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "svg")]
-    #[test]
-    fn materialize_theme_operation_preserves_authoring_error_envelope() {
-        let api = api_table();
-        let mut result = native_result();
-        let mut engine = 0;
-        assert_eq!(
-            unsafe { api.engine_new.unwrap()(&native_config(), &mut engine, &mut result) },
-            MERMAN_NATIVE_STATUS_OK
-        );
-        unsafe { api.result_free.unwrap()(&mut result) };
-        let vectors: serde_json::Value = serde_json::from_str(include_str!(
-            "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/errors.json"
-        ))
-        .unwrap();
-        for vector in vectors.as_array().unwrap() {
-            let source = vector["source"].as_str().unwrap().as_bytes();
-            let options = vector["options_json"].as_str().unwrap_or("").as_bytes();
-            let request = native_request_with_options(
-                MERMAN_NATIVE_OPERATION_MATERIALIZE_THEME_JSON,
-                source,
-                options,
-            );
-            let expected_status = match vector["native_status_name"].as_str().unwrap() {
-                "invalid-argument" => MERMAN_NATIVE_STATUS_INVALID_ARGUMENT,
-                "resource-limit-exceeded" => MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED,
-                other => panic!("unknown golden status: {other}"),
-            };
-            assert_eq!(
-                unsafe { api.execute_collect.unwrap()(engine, &request, &mut result) },
-                expected_status
-            );
-            let payload: serde_json::Value = serde_json::from_slice(unsafe {
-                std::slice::from_raw_parts(
-                    result.metadata_or_error_json.data,
-                    result.metadata_or_error_json.len,
-                )
-            })
-            .unwrap();
-            assert_eq!(payload["status_name"], vector["native_status_name"]);
-            assert_eq!(payload["status"], expected_status);
-            assert_eq!(payload["details"]["resource"], vector["resource"]);
-            let mut authoring = payload["details"]["theme_authoring"].clone();
-            for diagnostic in authoring["diagnostics"]
-                .as_array_mut()
-                .expect("diagnostics array")
-            {
-                let message = diagnostic
-                    .as_object_mut()
-                    .unwrap()
-                    .remove("message")
-                    .expect("diagnostic message");
-                assert!(!message.as_str().expect("string message").trim().is_empty());
-            }
-            assert_eq!(authoring, vector["theme_authoring"], "{}", vector["id"]);
-            unsafe { api.result_free.unwrap()(&mut result) };
-        }
-        assert_eq!(
-            unsafe { api.engine_try_close.unwrap()(engine) },
-            MERMAN_NATIVE_STATUS_OK
-        );
-    }
-
-    #[cfg(feature = "svg")]
-    #[test]
-    fn theme_support_matches_shared_golden() {
-        let vectors: serde_json::Value = serde_json::from_str(include_str!(
-            "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/support.json"
-        ))
-        .unwrap();
-        let api = api_table();
-        let mut result = native_result();
-        let mut engine = 0;
-        assert_eq!(
-            unsafe { api.engine_new.unwrap()(&native_config(), &mut engine, &mut result) },
-            MERMAN_NATIVE_STATUS_OK
-        );
-        unsafe { api.result_free.unwrap()(&mut result) };
-        for vector in vectors.as_array().unwrap() {
-            let source = vector["query"].to_string();
-            let request = native_request(
-                MERMAN_NATIVE_OPERATION_DESCRIBE_THEME_SUPPORT_JSON,
-                source.as_bytes(),
-            );
-            assert_eq!(
-                unsafe { api.execute_collect.unwrap()(engine, &request, &mut result) },
-                MERMAN_NATIVE_STATUS_OK
-            );
-            assert_eq!(
-                result.operation,
-                MERMAN_NATIVE_OPERATION_DESCRIBE_THEME_SUPPORT_JSON
-            );
-            let actual: serde_json::Value = serde_json::from_slice(unsafe {
-                std::slice::from_raw_parts(result.data.data, result.data.len)
-            })
-            .unwrap();
-            assert_eq!(actual, vector["expected"], "{}", vector["id"]);
-            unsafe { api.result_free.unwrap()(&mut result) };
-        }
-        assert_eq!(
-            unsafe { api.engine_try_close.unwrap()(engine) },
-            MERMAN_NATIVE_STATUS_OK
-        );
-    }
-
     fn native_config() -> MermanNativeEngineConfig {
         MermanNativeEngineConfig {
             struct_size: native_struct_size::<MermanNativeEngineConfig>(),
@@ -5019,9 +4914,8 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
         for (operation_id, expected) in [
             ("analysis-json", cfg!(feature = "analysis")),
             ("ascii", cfg!(feature = "ascii")),
-            ("describe-theme-support-json", cfg!(feature = "svg")),
-            ("export-theme-preset-json", cfg!(feature = "svg")),
-            ("materialize-theme-json", cfg!(feature = "svg")),
+            ("export-theme-preset", cfg!(feature = "svg")),
+            ("resolve-theme", cfg!(feature = "svg")),
             ("jpeg", cfg!(feature = "jpeg")),
             ("pdf", cfg!(feature = "pdf")),
             ("png", cfg!(feature = "png")),
@@ -5206,10 +5100,8 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
                     assert_eq!(actual, expected, "{metadata_id}");
                     if metadata_id == "theme-catalog" && cfg!(feature = "svg") {
                         let catalog: serde_json::Value = serde_json::from_slice(actual).unwrap();
-                        let presets: serde_json::Value = serde_json::from_str(include_str!(
-                            "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/preset-catalog.json"
-                        )).unwrap();
-                        assert_eq!(catalog["presets"], presets);
+                        assert_eq!(catalog["schema_version"], 2);
+                        assert_eq!(catalog["presets"].as_array().unwrap().len(), 13);
                     }
                 }
                 Err(expected) => {

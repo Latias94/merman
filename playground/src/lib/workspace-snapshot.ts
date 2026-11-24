@@ -9,7 +9,7 @@ import type {
 } from "../runtime/merman-core.ts";
 
 /** Display provenance only; availability and support always come from the runtime. */
-export interface ThemeRecipeLabel {
+export interface ThemeDocumentLabel {
   readonly name: string;
   readonly source: "exploration" | "imported";
   readonly derivedFrom?: string;
@@ -20,8 +20,8 @@ export interface WorkspaceSnapshot {
   readonly mermaidConfig: string;
   readonly diagramTheme: MermaidThemeSelection;
   readonly themePresetId: string | null;
-  readonly themeRecipeJson: string | null;
-  readonly themeRecipeLabel?: ThemeRecipeLabel | null;
+  readonly themeDocumentJson: string | null;
+  readonly themeDocumentLabel?: ThemeDocumentLabel | null;
   readonly themeAppearance?: ThemeAppearancePreference;
   readonly svgPipeline: MermanSvgPipeline;
   readonly textMeasurementMode: MermanTextMeasurementMode;
@@ -38,7 +38,7 @@ export const DEFAULT_WORKSPACE_SNAPSHOT: Readonly<WorkspaceSnapshot> =
     mermaidConfig: DEFAULT_MERMAID_CONFIG,
     diagramTheme: "auto",
     themePresetId: null,
-    themeRecipeJson: null,
+    themeDocumentJson: null,
     svgPipeline: "parity",
     textMeasurementMode: "browser",
     diagramFont: "inherit",

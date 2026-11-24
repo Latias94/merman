@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:8957a869ae1112ea4a82880dd70d9e4aac90b86000872fd00566890b3a624aa8";
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:ece23386718c7ab5761aa12ceb2d415298082601a129b92aa9b3a97477be2ffa";
 
 export const NODE_BINDING_OPERATIONS = [
   {
@@ -24,12 +24,6 @@ export const NODE_BINDING_OPERATIONS = [
     "input_kind": "mermaid-source"
   },
   {
-    "id": "describe-theme-support-json",
-    "maturity": "alpha",
-    "compiled_prerequisites": [],
-    "input_kind": "theme-support-query-json"
-  },
-  {
     "id": "document-analysis-facts-json",
     "maturity": "stable",
     "compiled_prerequisites": [],
@@ -48,8 +42,8 @@ export const NODE_BINDING_OPERATIONS = [
     "input_kind": "mermaid-source"
   },
   {
-    "id": "export-theme-preset-json",
-    "maturity": "alpha",
+    "id": "export-theme-preset",
+    "maturity": "stable",
     "compiled_prerequisites": [],
     "input_kind": "theme-preset-id"
   },
@@ -68,12 +62,6 @@ export const NODE_BINDING_OPERATIONS = [
     "input_kind": "mermaid-source"
   },
   {
-    "id": "materialize-theme-json",
-    "maturity": "alpha",
-    "compiled_prerequisites": [],
-    "input_kind": "theme-design-json"
-  },
-  {
     "id": "pdf",
     "maturity": "stable",
     "compiled_prerequisites": [
@@ -88,6 +76,12 @@ export const NODE_BINDING_OPERATIONS = [
       "svg"
     ],
     "input_kind": "mermaid-source"
+  },
+  {
+    "id": "resolve-theme",
+    "maturity": "stable",
+    "compiled_prerequisites": [],
+    "input_kind": "theme-resolve-request-json"
   },
   {
     "id": "semantic-json",

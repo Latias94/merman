@@ -149,6 +149,7 @@ fn bench_ascii_end_to_end(c: &mut Criterion) {
             options: AsciiRenderOptions::ascii(),
             resources: AsciiResourcePolicy::for_profile(profile),
             viewport: Default::default(),
+            native_theme: None,
         },
     };
     let mut group = c.benchmark_group(GROUP);

@@ -7,6 +7,7 @@ pub(super) fn write_sequence_svg_root_open(
     layout: &SequenceDiagramLayout,
     model: &SequenceSvgModel,
     diagram_id: SvgDiagramId<'_>,
+    context: &root_svg::RootViewportContext<'_>,
     stroke_outset: f64,
     paint_bounds: &[Option<&Bounds>],
     defer_bounds: bool,
@@ -23,7 +24,6 @@ pub(super) fn write_sequence_svg_root_open(
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
     root_chrome.dom.trailing_newline = false;
-    let context = root_svg::RootViewportContext::new(crate::DiagramFamilyId::SEQUENCE, diagram_id);
     let document = if defer_bounds {
         context.begin_document(out, root_svg::DeferredRootSpec::responsive(), root_chrome)?
     } else {

@@ -9,7 +9,6 @@ use crate::mermaid_style::{
 pub(super) struct C4ElementFontSize {
     pub(super) css: Option<String>,
     pub(super) used_px: Option<f64>,
-    pub(super) inherits_root: bool,
 }
 
 impl C4ElementFontSize {
@@ -17,7 +16,6 @@ impl C4ElementFontSize {
         let inherited = || Self {
             css: None,
             used_px: root_px,
-            inherits_root: true,
         };
         // The initialized per-type default is 14px. Explicit falsy/rejected values instead
         // remove the CSSOM property and expose the inherited root; they do not restore 14px.
@@ -25,7 +23,6 @@ impl C4ElementFontSize {
             return Self {
                 css: Some("14px".to_owned()),
                 used_px: Some(14.0),
-                inherits_root: false,
             };
         };
         if !crate::config::json_value_is_truthy(value) {
@@ -44,11 +41,10 @@ impl C4ElementFontSize {
         };
         let declaration = format!("font-size:{css}");
         let Some(parsed) = parse_style_declaration(&declaration) else {
-            // Unsafe/unmeasurable host syntax cannot authorize inherited theme evidence.
+            // Leave host expressions unresolved when they cannot be admitted as a CSS declaration.
             return Self {
                 css: None,
                 used_px: None,
-                inherits_root: false,
             };
         };
         // CSSOM setProperty receives a value, without a priority argument or a declaration list.
@@ -76,7 +72,6 @@ impl C4ElementFontSize {
         Self {
             css: Some(css),
             used_px,
-            inherits_root,
         }
     }
 }

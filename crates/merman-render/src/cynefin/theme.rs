@@ -1,18 +1,53 @@
-use std::sync::OnceLock;
-
 use merman_model::presentation::PresentationConfig;
 
-use crate::diagram_theme::{
-    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
-    ThemeCapability, ThemeTarget, ThemeTypographyProperty, ThemeVariant,
-};
-use crate::family::{
-    DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
-    FamilyThemeResidualReason, InheritedFontStackOutcome, InheritedFontStackPlan,
-    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
-    unsupported_residual_for_facet,
-};
-use crate::resources::{OperationWorkError, OperationWorkMeter};
+use crate::theme::{Color, FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags, font_family_css};
+
+pub(crate) struct CynefinThemeAdapter;
+
+impl FamilyThemeAdapter for CynefinThemeAdapter {
+    const FAMILY: crate::DiagramFamilyId = crate::DiagramFamilyId::CYNEFIN;
+    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
+        .union(ThemeCapabilityFlags::NODE_SURFACE)
+        .union(ThemeCapabilityFlags::CONTAINER)
+        .union(ThemeCapabilityFlags::DATA_FILL)
+        .union(ThemeCapabilityFlags::CONNECTOR)
+        .union(ThemeCapabilityFlags::TYPOGRAPHY);
+}
+
+#[derive(Debug)]
+pub(crate) struct CynefinNativeStyle {
+    domain_accents: [String; 5],
+    source_domains: [bool; 5],
+    item_fill: String,
+    pub(crate) item_border_color: String,
+    pub(crate) title_family: Option<String>,
+    pub(crate) title_weight: u16,
+    pub(crate) label_weight: u16,
+}
+
+impl CynefinNativeStyle {
+    fn domain_slot(domain: &str) -> usize {
+        match domain {
+            super::DOMAIN_CLEAR => 0,
+            super::DOMAIN_COMPLICATED => 1,
+            super::DOMAIN_COMPLEX => 2,
+            super::DOMAIN_CHAOTIC => 3,
+            _ => 4,
+        }
+    }
+
+    pub(crate) fn domain_accent(&self, domain: &str) -> &str {
+        &self.domain_accents[Self::domain_slot(domain)]
+    }
+
+    pub(crate) fn item_fill<'a>(&'a self, domain: &str, domain_fill: &'a str) -> &'a str {
+        if self.source_domains[Self::domain_slot(domain)] {
+            domain_fill
+        } else {
+            &self.item_fill
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CynefinTextRole {
@@ -23,190 +58,117 @@ pub(crate) enum CynefinTextRole {
     Title,
 }
 
-/// Text visibility is observed during emission, without a separate layout coverage pass.
-#[derive(Debug, Default)]
-pub(crate) struct CynefinSurfaceReceipt {
-    requested: bool,
-    font_sizes: [Option<f64>; 5],
-    visible_text: bool,
-    unverified_text: bool,
-    visible_text_fill: usize,
-    unverified_text_fill: usize,
-    overridden_text_fill: usize,
-    pub(crate) paint_evidence: FamilyThemeOutcomes,
-}
-
-impl CynefinSurfaceReceipt {
-    pub(crate) fn text_font_size(&self, role: CynefinTextRole, text: &str) -> Option<f64> {
-        if text.trim().is_empty() {
-            Some(0.0)
-        } else {
-            self.font_sizes[role as usize]
-        }
-    }
-
-    pub(crate) fn record_text(&mut self, role: CynefinTextRole, _emitted_class: &str, text: &str) {
-        if !self.requested {
-            return;
-        }
-        let text_fill = matches!(
-            role,
-            CynefinTextRole::Subtitle | CynefinTextRole::Item | CynefinTextRole::TransitionLabel
-        );
-        match self.text_font_size(role, text) {
-            Some(0.0) => {}
-            Some(_) => {
-                self.visible_text = true;
-                self.visible_text_fill += usize::from(text_fill);
-            }
-            None => {
-                self.unverified_text = true;
-                self.unverified_text_fill += usize::from(text_fill);
-            }
-        }
-    }
-
-    pub(crate) fn record_text_fill_override(&mut self) {
-        self.overridden_text_fill += 1;
-    }
-
-    fn has_visible_text(&self) -> bool {
-        self.visible_text || self.unverified_text
-    }
-
-    fn has_visible_text_fill_surface(&self) -> bool {
-        self.visible_text_fill > self.overridden_text_fill || self.unverified_text_fill != 0
-    }
-}
-
-/// Final inherited Cynefin font shared by layout measurement, terminal CSS, and evidence.
+/// Style shared by Cynefin layout measurement and SVG emission.
 #[derive(Debug)]
-pub(crate) struct CynefinTypographyThemePlan {
+pub(crate) struct CynefinStyle {
     common_css: crate::svg::PreparedCommonCss,
     colors: super::CynefinTheme,
-    base_colors: super::CynefinTheme,
-    config: PresentationConfig,
-    inherited_font_stack: InheritedFontStackPlan,
-    evidence: FamilyThemeOutcomes,
-    unsupported_routes: Box<[CynefinUnsupportedRoute]>,
-    text_fill: Option<DirectStaticPaint>,
-    text_fill_routes: Box<[(FamilyThemeMechanismKey, usize)]>,
-    config_owns_text_fill: bool,
-    terminal_receipt: OnceLock<CynefinSurfaceReceipt>,
 }
 
-#[derive(Debug)]
-struct CynefinUnsupportedRoute {
-    key: FamilyThemeMechanismKey,
-    reason: FamilyThemeResidualReason,
-}
+impl CynefinStyle {
+    pub(crate) fn resolve(config: &PresentationConfig, native: Option<&FamilyTheme>) -> Self {
+        let values = config.as_value();
+        let mut colors = super::cynefin_theme(values);
+        let common_css = match native {
+            Some(theme) => Self::apply_native(&mut colors, theme, config),
+            None => {
+                let font_family = crate::config::config_font_family_css(values);
+                // Match layout measurement and both stylesheet font declarations.
+                crate::svg::PreparedCommonCss::new(values, Some(&font_family))
+            }
+        };
+        Self { common_css, colors }
+    }
 
-impl CynefinTypographyThemePlan {
-    pub(crate) fn resolve(
-        theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &PresentationConfig,
-        work_meter: &OperationWorkMeter,
-    ) -> Result<Self, OperationWorkError> {
-        let text_fill = theme.and_then(|theme| {
-            let style = theme.style(ThemeTarget::Text, ThemeVariant::Default, None);
-            resolve_direct_static_fill(
-                theme,
-                &style,
-                &[ThemeTarget::Text],
-                DirectStaticSelectorDomain::Default,
-            )
-        });
-        let text_fill_routes = theme
-            .map(|theme| {
-                theme
-                    .family_mechanism_routes()
-                    .iter()
-                    .copied()
-                    .filter_map(|route| match route.mechanism() {
-                        FamilyThemeMechanism::RuleFacet {
-                            rule_index,
-                            target: ThemeTarget::Text,
-                            facet: crate::diagram_theme::FamilyThemeRuleFacet::Fill(_),
-                            selector,
-                            ..
-                        } if route.disposition() == FamilyThemeDisposition::TypedAdapter
-                            && matches!(
-                                selector,
-                                crate::diagram_theme::FamilyThemeSelectorShape::Static {
-                                    variant: None | Some(ThemeVariant::Default)
-                                }
-                            ) =>
-                        {
-                            Some((theme.family_mechanism_key(route), rule_index))
-                        }
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-                    .into_boxed_slice()
-            })
-            .unwrap_or_default();
-        let mut colors = super::cynefin_theme(effective_config.as_value());
-        let config_owns_text_fill = theme.is_some()
-            && effective_config.config_paint_overrides_typed_default(colors.text_color_source);
-        let mut evidence = FamilyThemeOutcomes::default();
-        let mut unsupported_routes = cynefin_unsupported_routes(theme, &mut evidence).into_vec();
-        if let Some(theme) = theme
-            && theme.ordinal_palette_disposition(ThemeTarget::Text)
-                == Some(FamilyThemeDisposition::Unsupported)
+    fn apply_native(
+        colors: &mut super::CynefinTheme,
+        theme: &FamilyTheme,
+        config: &PresentationConfig,
+    ) -> crate::svg::PreparedCommonCss {
+        let values = config.as_value();
+        let variables = &values["themeVariables"];
+        let owns = |path: &str| config.explicit_config_owns_path(path);
+        let authored_local = |key: &str| {
+            owns(&format!("themeVariables.cynefin.{key}"))
+                .then(|| variables["cynefin"][key].as_str())
+                .flatten()
+        };
+        let authored_root = |key: &str| {
+            owns(&format!("themeVariables.{key}"))
+                .then(|| variables[key].as_str())
+                .flatten()
+        };
+        let paint = |key, root: Option<&str>, color: Color| {
+            authored_local(key)
+                .or_else(|| root.and_then(authored_root))
+                .map_or_else(|| color.to_string(), str::to_owned)
+        };
+        let roles = &theme.roles;
+        let mut source_domains = [false; 5];
+        let mut domain_accents = std::array::from_fn(|slot| theme.data.fill(slot).to_string());
+        let container_color = roles.surface_container.first_color().to_string();
+        for (slot, (key, fill)) in [
+            ("clearBg", &mut colors.clear_bg),
+            ("complicatedBg", &mut colors.complicated_bg),
+            ("complexBg", &mut colors.complex_bg),
+            ("chaoticBg", &mut colors.chaotic_bg),
+            ("confusionBg", &mut colors.confusion_bg),
+        ]
+        .into_iter()
+        .enumerate()
         {
-            // Cynefin writes one shared text fill. Resolve its fallback without assigning
-            // ordinal identities to CSS selectors; ordinal rules retain their own residuals.
-            let mut fallbacks = FamilyThemeOutcomes::default();
-            reconcile_unsupported_terminal_domains(
-                theme,
-                &mut fallbacks,
-                &[UnsupportedTerminalDomain::static_fallbacks_only(
-                    ThemeTarget::Text,
-                    ThemeVariant::Default,
-                )
-                .with_source_owned_fill(&[config_owns_text_fill])],
-                work_meter,
-            )?;
-            let palette_key = FamilyThemeMechanismKey::OrdinalPalette {
-                target: ThemeTarget::Text,
-            };
-            if fallbacks.not_applicable_mechanisms().contains(&palette_key) {
-                evidence.mark_not_applicable(palette_key.clone());
-            }
-            for residual in fallbacks
-                .residuals()
-                .iter()
-                .filter(|item| item.key() == &palette_key)
-            {
-                unsupported_routes.push(CynefinUnsupportedRoute {
-                    key: residual.key().clone(),
-                    reason: residual.reason(),
-                });
+            if let Some(color) = authored_local(key) {
+                color.clone_into(fill);
+                color.clone_into(&mut domain_accents[slot]);
+                source_domains[slot] = true;
+            } else {
+                fill.clone_from(&container_color);
             }
         }
-        let inherited_font_stack =
-            InheritedFontStackPlan::resolve_property_local(theme, effective_config);
-        let base_colors = colors.clone();
-        if !config_owns_text_fill && let Some(fill) = &text_fill {
-            colors.text_color = fill.css().to_owned();
+        let line = Some("lineColor");
+        let connector = roles.stroke_connector.first_color();
+        colors.boundary_color = paint("boundaryColor", line, roles.stroke_guide.first_color());
+        colors.cliff_color = paint("cliffColor", None, connector);
+        colors.arrow_color = paint("arrowColor", line, connector);
+        if !owns("themeVariables.cynefin.arrowWidth") {
+            colors.arrow_width = theme.form.connector_width;
         }
-        let common_css = crate::svg::PreparedCommonCss::new(
-            effective_config.as_value(),
-            Some(inherited_font_stack.font_family_css()),
-        );
-        Ok(Self {
-            common_css,
-            colors,
-            base_colors,
-            config: effective_config.clone(),
-            inherited_font_stack,
-            evidence,
-            unsupported_routes: unsupported_routes.into_boxed_slice(),
-            text_fill,
-            text_fill_routes,
-            config_owns_text_fill,
-            terminal_receipt: OnceLock::new(),
-        })
+        colors.text_color = paint("textColor", Some("textColor"), roles.text_primary);
+        colors.label_color = paint("labelColor", Some("primaryTextColor"), roles.text_title);
+
+        let typography = &theme.typography;
+        let native_family = !owns("fontFamily") && !owns("themeVariables.fontFamily");
+        let family = if native_family {
+            font_family_css(typography.stack(typography.body_family))
+        } else {
+            crate::config::config_font_family_css(values)
+        };
+        let base_size = [
+            (
+                "themeVariables.fontSize",
+                crate::config::config_f64_css_absolute_px(values, &["themeVariables", "fontSize"]),
+            ),
+            ("fontSize", crate::config::config_f64(values, &["fontSize"])),
+        ]
+        .into_iter()
+        .find_map(|(path, size)| size.filter(|size| owns(path) && size.is_finite() && *size >= 0.0))
+        .unwrap_or(typography.base_size_px);
+        colors.font_binding = super::font_binding::CynefinFontBinding::native(config, base_size);
+        colors.native = Some(Box::new(CynefinNativeStyle {
+            domain_accents,
+            source_domains,
+            item_fill: roles.surface_node.first_color().to_string(),
+            item_border_color: paint("boundaryColor", line, roles.stroke_border.first_color()),
+            title_family: native_family
+                .then(|| font_family_css(typography.stack(typography.title_family))),
+            title_weight: typography.title_weight,
+            label_weight: typography.label_weight,
+        }));
+        crate::svg::PreparedCommonCss::with_resolved_typography(
+            values,
+            family,
+            format!("{}px", crate::number_format::canonical_number(base_size)),
+        )
     }
 
     pub(crate) fn font_family_css(&self) -> &str {
@@ -220,180 +182,6 @@ impl CynefinTypographyThemePlan {
     pub(crate) fn colors(&self) -> &super::CynefinTheme {
         &self.colors
     }
-
-    pub(crate) fn base_colors(&self) -> &super::CynefinTheme {
-        &self.base_colors
-    }
-
-    pub(crate) fn config(&self) -> &PresentationConfig {
-        &self.config
-    }
-
-    pub(crate) fn begin_terminal_receipt(&self) -> CynefinSurfaceReceipt {
-        CynefinSurfaceReceipt {
-            requested: self.inherited_font_stack.typography_requested()
-                || !self.unsupported_routes.is_empty()
-                || !self.text_fill_routes.is_empty(),
-            font_sizes: [
-                CynefinTextRole::DomainLabel,
-                CynefinTextRole::Subtitle,
-                CynefinTextRole::Item,
-                CynefinTextRole::TransitionLabel,
-                CynefinTextRole::Title,
-            ]
-            .map(|role| self.colors.font_binding.used_px(role)),
-            ..CynefinSurfaceReceipt::default()
-        }
-    }
-
-    pub(crate) fn record_terminal(&self, receipt: CynefinSurfaceReceipt) -> bool {
-        self.terminal_receipt.set(receipt).is_ok()
-    }
-
-    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
-        evidence.merge_borrowed(&self.evidence);
-        if let Some(receipt) = self.terminal_receipt.get() {
-            evidence.merge_borrowed(&receipt.paint_evidence);
-        }
-        for route in &self.unsupported_routes {
-            let absent_text_fallback = matches!(
-                route.key,
-                FamilyThemeMechanismKey::OrdinalPalette {
-                    target: ThemeTarget::Text
-                }
-            ) && self
-                .terminal_receipt
-                .get()
-                .is_some_and(|receipt| !receipt.has_visible_text_fill_surface());
-            if absent_text_fallback {
-                evidence.mark_not_applicable(route.key.clone());
-            } else {
-                evidence.mark_residual(route.key.clone(), route.reason);
-            }
-        }
-        let Some(receipt) = self.terminal_receipt.get() else {
-            for (key, _) in &self.text_fill_routes {
-                if self.config_owns_text_fill {
-                    evidence.mark_not_applicable(key.clone());
-                } else {
-                    evidence
-                        .mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
-                }
-            }
-            return;
-        };
-        self.inherited_font_stack
-            .record_unsupported_typography_evidence(evidence, receipt.has_visible_text());
-        let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
-        if !receipt.has_visible_text() {
-            evidence.mark_not_applicable(key);
-        } else if self.inherited_font_stack.typed_font_stack_active() {
-            if receipt.unverified_text {
-                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-            } else {
-                evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
-            }
-        } else {
-            match self.inherited_font_stack.outcome() {
-                InheritedFontStackOutcome::ConfigOwned => {
-                    evidence.mark_not_applicable(key);
-                }
-                InheritedFontStackOutcome::Typed | InheritedFontStackOutcome::Unsupported => {
-                    evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-                }
-                InheritedFontStackOutcome::Inactive => {}
-            }
-        }
-        for (key, rule_index) in &self.text_fill_routes {
-            if self.config_owns_text_fill || !receipt.has_visible_text_fill_surface() {
-                evidence.mark_not_applicable(key.clone());
-            } else if self
-                .text_fill
-                .as_ref()
-                .is_some_and(|fill| fill.rule_index() == *rule_index)
-            {
-                if let Some(fill) = self.text_fill.as_ref() {
-                    if receipt.unverified_text_fill != 0 {
-                        evidence.mark_residual(
-                            key.clone(),
-                            FamilyThemeResidualReason::UnsupportedTypography,
-                        );
-                    } else {
-                        evidence.mark_applied_with_capabilities(key.clone(), [fill.capability()]);
-                    }
-                } else {
-                    evidence
-                        .mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
-                }
-            } else {
-                evidence.mark_not_applicable(key.clone());
-            }
-        }
-    }
-}
-
-fn cynefin_unsupported_routes(
-    theme: Option<&ResolvedDiagramTheme>,
-    evidence: &mut FamilyThemeOutcomes,
-) -> Box<[CynefinUnsupportedRoute]> {
-    let Some(theme) = theme else {
-        return Box::new([]);
-    };
-    theme
-        .family_mechanism_routes()
-        .iter()
-        .copied()
-        .filter_map(|route| {
-            if matches!(route.mechanism(),
-                FamilyThemeMechanism::RuleFacet { target, .. }
-                | FamilyThemeMechanism::OrdinalPalette { target }
-                | FamilyThemeMechanism::EffectBinding { target, .. }
-                if super::owns_target(target))
-            {
-                return None;
-            }
-            if route.disposition() != FamilyThemeDisposition::Unsupported {
-                return None;
-            }
-            if let FamilyThemeMechanism::RuleFacet {
-                target: ThemeTarget::Text,
-                selector:
-                    crate::diagram_theme::FamilyThemeSelectorShape::Static {
-                        variant: Some(variant),
-                    }
-                    | crate::diagram_theme::FamilyThemeSelectorShape::Ordinal {
-                        variant: Some(variant),
-                        ..
-                    },
-                ..
-            } = route.mechanism()
-                && variant != ThemeVariant::Default
-            {
-                evidence.mark_not_applicable(theme.family_mechanism_key(route));
-                return None;
-            }
-            let reason = match route.mechanism() {
-                FamilyThemeMechanism::RuleFacet { facet, .. } => {
-                    unsupported_residual_for_facet(facet)
-                }
-                FamilyThemeMechanism::OrdinalPalette {
-                    target: ThemeTarget::Text,
-                } => return None,
-                FamilyThemeMechanism::OrdinalPalette { .. } => {
-                    FamilyThemeResidualReason::UnsupportedOrdinalPalette
-                }
-                FamilyThemeMechanism::EffectBinding { .. } => {
-                    FamilyThemeResidualReason::UnsupportedEffect
-                }
-                FamilyThemeMechanism::BaseTypography(_) => return None,
-            };
-            Some(CynefinUnsupportedRoute {
-                key: theme.family_mechanism_key(route),
-                reason,
-            })
-        })
-        .collect::<Vec<_>>()
-        .into_boxed_slice()
 }
 
 #[cfg(test)]
@@ -413,14 +201,7 @@ mod tests {
                 }
             }
         }));
-        let plan = CynefinTypographyThemePlan::resolve(
-            None,
-            &config,
-            &OperationWorkMeter::new(
-                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-            ),
-        )
-        .unwrap();
+        let plan = CynefinStyle::resolve(&config, None);
         assert_eq!(plan.colors().text_color, "var(--text)");
         assert_eq!(plan.colors().boundary_color, "currentColor");
         assert_eq!(plan.colors().arrow_color, "root-line");

@@ -1,5 +1,4 @@
 use super::super::*;
-pub(super) use crate::class::node_binding::{class_node_label_style, class_node_paint_style};
 
 pub(super) fn class_math_html_label(
     text: &str,
@@ -27,10 +26,7 @@ pub(super) struct ClassHtmlLabelSpec<'a> {
     pub math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
 }
 
-pub(super) fn render_class_html_label<'a>(
-    out: &mut impl SvgOutput,
-    spec: &ClassHtmlLabelSpec<'a>,
-) -> Option<&'a str> {
+pub(super) fn render_class_html_label(out: &mut impl SvgOutput, spec: &ClassHtmlLabelSpec<'_>) {
     out.push_str(r#"<span class=""#);
     escape_xml_into(out, spec.span_class);
     if let Some(extra) = spec
@@ -43,7 +39,7 @@ pub(super) fn render_class_html_label<'a>(
     }
     let span_style = spec.span_style.map(str::trim).unwrap_or("");
     out.push('"');
-    let emitted_style = super::super::util::write_style_attribute(
+    super::super::util::write_style_attribute(
         out,
         (spec.span_class == "nodeLabel" || !span_style.is_empty()).then_some(span_style),
     );
@@ -70,14 +66,9 @@ pub(super) fn render_class_html_label<'a>(
         out.push_str(inner);
     }
     out.push_str("</span>");
-    emitted_style
 }
 
-pub(super) fn write_class_svg_plain_node_text<'a>(
-    out: &mut impl SvgOutput,
-    text: &str,
-    terminal_style: &'a str,
-) -> &'a str {
+pub(super) fn write_class_svg_plain_node_text(out: &mut impl SvgOutput, text: &str) {
     let lines = crate::text::DeterministicTextMeasurer::normalized_text_lines(text)
         .into_iter()
         .map(|line| {
@@ -88,14 +79,9 @@ pub(super) fn write_class_svg_plain_node_text<'a>(
         .collect::<Vec<_>>();
     out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
     crate::svg::parity::label::write_svg_text_source_word_lines_with_style(
-        out,
-        &lines,
-        terminal_style,
-        false,
-        None,
+        out, &lines, "", false, None,
     );
     out.push_str("</g>");
-    terminal_style
 }
 
 pub(super) fn write_class_svg_edge_text(out: &mut impl SvgOutput, text: &str, include_style: bool) {
@@ -114,77 +100,33 @@ pub(super) fn write_class_svg_empty_markdown_fallback(
     out.push_str("</tspan></text>");
 }
 
-pub(super) fn write_class_svg_text_markdown_with_style<'a>(
+pub(super) fn write_class_svg_text_markdown_with_style(
     out: &mut impl SvgOutput,
     markdown: &str,
-    terminal_style: &'a str,
-) -> Option<&'a str> {
+    style: &str,
+) {
     crate::svg::parity::label::write_svg_text_markdown_with_style(
         out,
         markdown,
-        Some(if terminal_style.trim().is_empty() {
-            ""
-        } else {
-            terminal_style
-        }),
-    )
-    .filter(|style| !style.is_empty())
+        Some(if style.trim().is_empty() { "" } else { style }),
+    );
 }
 
-pub(super) fn write_class_svg_edge_text_with_style<'a>(
-    out: &mut impl SvgOutput,
-    text: &str,
-    style: Option<&'a str>,
-) -> Option<&'a str> {
-    match style {
-        Some(style) => {
-            crate::svg::parity::label::write_svg_text_centered_with_style(out, text, style)
-        }
-        None => {
-            write_class_svg_edge_text(out, text, false);
-            None
-        }
-    }
-}
-
-pub(super) fn write_class_diagram_title<'a>(
-    out: &mut impl SvgOutput,
-    x: f64,
-    y: f64,
-    text: &str,
-    style: Option<&'a str>,
-) -> Option<&'a str> {
+pub(super) fn write_class_diagram_title(out: &mut impl SvgOutput, x: f64, y: f64, text: &str) {
     let _ = write!(
         out,
-        r#"<text text-anchor="middle" x="{}" y="{}" class="classDiagramTitleText""#,
+        r#"<text text-anchor="middle" x="{}" y="{}" class="classDiagramTitleText">"#,
         fmt(x),
         fmt(y)
     );
-    let emitted_style = super::super::util::write_style_attribute(out, style);
-    out.push('>');
     escape_xml_into(out, text);
     out.push_str("</text>");
-    emitted_style
 }
 
-pub(super) fn open_class_cardinality_label<'a>(
-    out: &mut impl SvgOutput,
-    style: Option<&'a str>,
-) -> Option<&'a str> {
-    out.push_str(r#"<span class="edgeLabel""#);
-    let emitted_style = super::super::util::write_style_attribute(out, style);
-    out.push('>');
-    emitted_style
-}
-
-pub(super) fn open_class_note_label<'a>(
-    out: &mut impl SvgOutput,
-    style: Option<&'a str>,
-) -> Option<&'a str> {
+pub(super) fn open_class_note_label(out: &mut impl SvgOutput, style: &str) {
     out.push_str("<span");
-    let emitted_style = super::super::util::write_style_attribute(out, style);
+    super::super::util::write_style_attribute(out, Some(style));
     out.push_str(r#" class="nodeLabel markdown-node-label">"#);
-    emitted_style
 }
 
 pub(super) fn class_html_div_style(width: f64, max_width_px: i64) -> String {
@@ -463,31 +405,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod edge_text_tests {
-    use super::*;
-
-    #[test]
-    fn fallback_edge_text_preserves_literal_markdown_with_optional_paint() {
-        let text = "**literal** & <value>";
-        let mut original = String::new();
-        write_class_svg_edge_text(&mut original, text, false);
-        let mut unstyled = String::new();
-        write_class_svg_edge_text_with_style(&mut unstyled, text, None);
-        assert_eq!(unstyled, original);
-
-        let style = "color:#123456 !important;fill:#123456 !important;";
-        let mut styled = String::new();
-        write_class_svg_edge_text_with_style(&mut styled, text, Some(style));
-        assert_eq!(
-            styled.replace(&format!(r#" style="{style}""#), ""),
-            original
-        );
-        assert!(styled.contains("**literal**"));
-    }
-}
-
-#[cfg(test)]
-mod paint_emission_tests {
+mod svg_label_tests {
     use super::*;
 
     #[test]
@@ -508,13 +426,10 @@ mod paint_emission_tests {
         ] {
             for style in ["", " \t", "color:#123456;fill:#123456"] {
                 let mut output = String::new();
-                let receipt =
-                    write_class_svg_text_markdown_with_style(&mut output, markdown, style);
+                write_class_svg_text_markdown_with_style(&mut output, markdown, style);
                 if style.trim().is_empty() {
-                    assert_eq!(receipt, None);
                     assert_eq!(output, expected);
                 } else {
-                    assert_eq!(receipt, Some(style));
                     assert_eq!(output.replacen(style, "", 1), expected);
                     let document = crate::xml_dom::Document::parse(&output).unwrap();
                     assert_eq!(document.root_element().attribute("style"), Some(style));
@@ -535,41 +450,32 @@ mod paint_emission_tests {
             );
             let mut styled = String::new();
             let style = "color:#123456;fill:#123456";
-            assert_eq!(
-                write_class_svg_text_markdown_with_style(&mut styled, markdown, style),
-                Some(style)
-            );
+            write_class_svg_text_markdown_with_style(&mut styled, markdown, style);
             assert_eq!(styled.replacen(style, "", 1), plain, "{markdown:?}");
             for empty in ["", " \t"] {
                 let mut empty_style = String::new();
-                assert_eq!(
-                    write_class_svg_text_markdown_with_style(&mut empty_style, markdown, empty),
-                    None
-                );
+                write_class_svg_text_markdown_with_style(&mut empty_style, markdown, empty);
                 assert_eq!(empty_style, plain, "{markdown:?}");
             }
         }
     }
 
     #[test]
-    fn failed_attribute_write_has_no_emission() {
+    fn note_label_writes_respect_the_svg_byte_limit() {
         use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
         let style = "color:#123456;fill:#123456";
         let mut prefix = String::new();
-        let emitted = open_class_cardinality_label(&mut prefix, Some(style));
-        assert_eq!(emitted, Some(style));
+        open_class_note_label(&mut prefix, style);
+        assert!(prefix.contains(style));
         // Fail before the attribute, inside its value, and before its closing quote.
-        for budget in [1, r#"<span class="edgeLabel""#.len() + 10, prefix.len() - 2] {
+        for budget in [1, "<span".len() + 10, prefix.len() - 2] {
             let policy = RenderResourcePolicy::unbounded_for_trusted_input()
                 .with_limit(ResourceLimitId::MaxSvgBytes, budget)
                 .unwrap();
             let meter = OperationWorkMeter::new(policy);
             let mut out = crate::svg::parity::BoundedSvgOutput::new(&meter);
-            assert!(
-                open_class_cardinality_label(&mut out, Some(style)).is_none(),
-                "budget={budget}"
-            );
-            assert!(out.checkpoint().is_err());
+            open_class_note_label(&mut out, style);
+            assert!(out.checkpoint().is_err(), "budget={budget}");
             assert!(out.finish().is_err());
         }
         let policy = RenderResourcePolicy::unbounded_for_trusted_input()
@@ -577,16 +483,10 @@ mod paint_emission_tests {
             .unwrap();
         let meter = OperationWorkMeter::new(policy);
         let mut out = crate::svg::parity::BoundedSvgOutput::new(&meter);
-        assert_eq!(
-            open_class_cardinality_label(&mut out, Some(style)),
-            Some(style)
-        );
+        open_class_note_label(&mut out, style);
         out.checkpoint().unwrap();
         out.push_str("<p>Label</p></span>");
         assert!(out.checkpoint().is_err());
-        assert!(
-            out.finish().is_err(),
-            "an accepted style cannot certify a failed body write"
-        );
+        assert!(out.finish().is_err());
     }
 }

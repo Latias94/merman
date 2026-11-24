@@ -9,6 +9,7 @@ struct InstalledConsumer {
         let engine = try MermanEngine(
             optionsJson: resourceOptionsJson(profile: .interactive, overrides: []), services: nil
         )
+        try verifyInstalledTheme(engine: engine)
         let basicSource = "---\nconfig:\n  layout: elk\n---\nflowchart TD\nA[Hello] --> B[World]"
         let mathSource = "flowchart TD\nA[\"$$x^2$$\"] --> B[Done]"
         func render(_ source: String) throws -> [String: Any] {
@@ -59,6 +60,43 @@ struct InstalledConsumer {
         let data = try JSONSerialization.data(withJSONObject: output, options: [.sortedKeys])
         FileHandle.standardOutput.write(data)
         FileHandle.standardOutput.write(Data([10]))
+    }
+}
+
+private func verifyInstalledTheme(engine: MermanEngine) throws {
+    let catalog = try JSONSerialization.jsonObject(with: Data(engine.themeCatalogJson().utf8)) as? [String: Any]
+    guard catalog?["schema_version"] as? Int == 2,
+          (catalog?["presets"] as? [[String: Any]])?.contains(where: { $0["id"] as? String == "studio" }) == true else {
+        throw ConsumerError.failed("installed package lost the Theme v2 catalog")
+    }
+    let exported = try engine.execute(request: MermanOperationRequestV4(
+        operationId: "export-theme-preset", source: "studio", uri: nil, optionsJson: nil, control: nil
+    ))
+    let envelope = try JSONSerialization.data(withJSONObject: [
+        "document": String(decoding: exported.data, as: UTF8.self), "appearance": "dark",
+    ])
+    let resolution = try engine.execute(request: MermanOperationRequestV4(
+        operationId: "resolve-theme", source: String(decoding: envelope, as: UTF8.self),
+        uri: nil, optionsJson: nil, control: nil
+    ))
+    let resolved = try JSONSerialization.jsonObject(with: resolution.data) as? [String: Any]
+    guard resolved?["ok"] as? Bool == true,
+          (resolved?["resolved"] as? [String: Any])?["appearance"] as? String == "dark" else {
+        throw ConsumerError.failed("installed package could not resolve Studio Dark")
+    }
+
+    let source = "---\nconfig:\n  layout: dagre\n---\nflowchart LR\nA --> B"
+    let rendered = try engine.execute(request: MermanOperationRequestV4(
+        operationId: "svg", source: source, uri: nil,
+        optionsJson: #"{"theme":{"preset":"studio","appearance":"dark"}}"#,
+        control: nil
+    ))
+    let metadata = try JSONSerialization.jsonObject(with: Data(rendered.metadata.rawJson.utf8)) as? [String: Any]
+    guard let outcome = metadata?["theme_outcome"] as? [String: Any],
+          outcome["mode"] as? String == "merman_native",
+          outcome["preset_id"] as? String == "studio",
+          outcome["appearance"] as? String == "dark" else {
+        throw ConsumerError.failed("installed package lost the native SVG theme outcome")
     }
 }
 

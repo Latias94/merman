@@ -618,22 +618,14 @@ mod tests {
         )
         .unwrap();
         let sidecar = crate::flowchart::FlowchartSvgLabelSidecar::default();
-        let prepared_theme = crate::flowchart::FlowchartPreparedTheme::resolve(
-            None,
-            &metadata.effective_config,
-            super::render_config::flowchart_node_label_fill_config_override(
-                &metadata.effective_config,
-            ),
-            execution.work_meter(),
-        )
-        .expect("prepared theme");
+        let prepared_theme =
+            crate::flowchart::FlowchartPreparedTheme::resolve(&metadata.effective_config);
         let render_config = super::render_config::prepare_flowchart_render_config(
             &model,
             &metadata.effective_config,
             &prepared_theme.compatibility,
             layout.uses_elk_adapter_dom,
             sidecar.base_typography(),
-            sidecar.edge_label_padding(),
         );
         let edge_style_plan = FlowchartEdgeStylePlan::prepare_for_model(
             &model,
@@ -644,8 +636,6 @@ mod tests {
         .expect("edge style plan")
         .with_resolved_stroke_widths(
             &model,
-            &Default::default(),
-            &metadata.effective_config,
             &prepared_theme.compatibility,
             execution.work_meter(),
         )
@@ -660,7 +650,6 @@ mod tests {
             &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
             super::node_inventory::FlowchartNodeLayoutView::Flowchart(&layout),
             &sidecar,
-            None,
             &metadata.effective_config,
             &prepared_theme,
             &render_config,
@@ -680,10 +669,7 @@ mod tests {
                 effective_config: &metadata.effective_config,
                 diagram_type: metadata.diagram_type.as_str(),
                 diagram_title: None,
-                theme_evidence: &Default::default(),
-                effect_evidence: &Default::default(),
-                expected_effect_applications: &Default::default(),
-                edge_theme: &Default::default(),
+
                 edge_style_plan: &edge_style_plan,
                 svg_label_sidecar: &sidecar,
             },

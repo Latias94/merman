@@ -2,7 +2,7 @@
 
 # Capability Surface v1
 
-Semantic digest: `sha256:8957a869ae1112ea4a82880dd70d9e4aac90b86000872fd00566890b3a624aa8`
+Semantic digest: `sha256:ece23386718c7ab5761aa12ceb2d415298082601a129b92aa9b3a97477be2ffa`
 
 ## Public Leaves
 
@@ -49,16 +49,15 @@ Semantic digest: `sha256:8957a869ae1112ea4a82880dd70d9e4aac90b86000872fd00566890
 | `analysis-facts-json` | `stable` | `analysis` | none | none | `mermaid-source` | `application/json` | no | `native`, `web` |
 | `analysis-json` | `stable` | `analysis` | none | none | `mermaid-source` | `application/json` | no | `native`, `web`, `typst` |
 | `ascii` | `stable` | `ascii` | `ascii` | none | `mermaid-source` | `text/plain; charset=utf-8` | no | `native`, `web` |
-| `describe-theme-support-json` | `alpha` | `svg` | none | none | `theme-support-query-json` | `application/json` | no | `native`, `web`, `typst` |
 | `document-analysis-facts-json` | `stable` | `analysis` | none | none | `mermaid-source` | `application/json` | yes | `native`, `web` |
 | `document-analysis-json` | `stable` | `analysis` | none | none | `mermaid-source` | `application/json` | yes | `native`, `web` |
 | `edge-geometry-json` | `stable` | `svg` | none | none | `mermaid-source` | `application/json` | no | `native`, `web` |
-| `export-theme-preset-json` | `alpha` | `svg` | none | none | `theme-preset-id` | `application/json` | no | `native`, `web`, `typst` |
+| `export-theme-preset` | `stable` | `svg` | none | none | `theme-preset-id` | `application/json` | no | `native`, `web`, `typst` |
 | `jpeg` | `stable` | `jpeg` | `jpeg` | `svg` | `mermaid-source` | `image/jpeg` | no | `native` |
 | `layout-json` | `stable` | `svg` | none | none | `mermaid-source` | `application/json` | no | `native`, `web` |
-| `materialize-theme-json` | `alpha` | `svg` | none | none | `theme-design-json` | `application/json` | no | `native`, `web`, `typst` |
 | `pdf` | `stable` | `pdf` | `pdf` | `svg` | `mermaid-source` | `application/pdf` | no | `native` |
 | `png` | `stable` | `png` | `png` | `svg` | `mermaid-source` | `image/png` | no | `native` |
+| `resolve-theme` | `stable` | `svg` | none | none | `theme-resolve-request-json` | `application/json` | no | `native`, `web`, `typst` |
 | `semantic-json` | `stable` | none | none | none | `mermaid-source` | `application/json` | no | `native`, `web` |
 | `svg` | `stable` | `svg` | `svg` | none | `mermaid-source` | `image/svg+xml` | no | `native`, `web`, `typst` |
 | `svg-plan-json` | `stable` | `svg` | none | none | `mermaid-source` | `application/json` | no | `native`, `web` |

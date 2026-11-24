@@ -31,13 +31,13 @@ Failed render result: `#failed-result.code_name`
   id: "typst-options-demo",
   scale: 1.05,
   background: "#f8fafc",
-  theme-name: "base",
-  theme-variables: (
-    primaryColor: "#0f172a",
-    primaryTextColor: "#f8fafc",
-    primaryBorderColor: "#38bdf8",
-    lineColor: "#475569",
-  ),
+  theme: "base",
+  site-config: (themeVariables: (
+      primaryColor: "#0f172a",
+      primaryTextColor: "#f8fafc",
+      primaryBorderColor: "#38bdf8",
+      lineColor: "#475569",
+  )),
 )
 
 #let svg = mermaid-svg(source, pipeline: "readable")

@@ -255,19 +255,16 @@ test("automatic and explicit default themes remain distinct in the presentation 
 
   await page.getByRole("button", { name: "Appearance", exact: true }).click();
   const panel = page.locator("#theme-panel");
-  await panel.getByTestId("theme-advanced").locator("summary").first().click();
-  const compatibility = panel.getByLabel("Mermaid base theme", { exact: true });
-  const status = page.locator("footer");
-  await expect(compatibility).toHaveValue("auto");
-  await compatibility.selectOption("default");
-  await waitForPreviewSvg(page);
-  await expect(compatibility).toHaveValue("default");
-  await expect(status).toContainText("Theme: Default");
-  await expect(panel.getByRole("button", { name: "Apply", exact: true })).toHaveCount(0);
-
-  await compatibility.selectOption("auto");
-  await expect(compatibility).toHaveValue("auto");
-  await expect(status).toContainText("Theme: Source / default");
+  await panel.getByRole("tab", { name: "Themes", exact: true }).click();
+  const classic = panel.getByTestId("mermaid-classic-themes");
+  await classic.locator("summary").click();
+  const automatic = classic.locator('[data-mermaid-theme="auto"]');
+  const defaultTheme = classic.locator('[data-mermaid-theme="default"]');
+  await expect(automatic).toHaveAttribute("aria-pressed", "true");
+  await defaultTheme.click();
+  await expect(page.locator("footer")).toContainText("Theme: Default");
+  await automatic.click();
+  await expect(page.locator("footer")).toContainText("Theme: Source / default");
   errors.assertNone();
 });
 

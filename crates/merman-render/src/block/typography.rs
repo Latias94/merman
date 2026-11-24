@@ -1,55 +1,16 @@
 use indexmap::IndexMap;
 use merman_model::families::block::BlockClassDef;
-use std::sync::Arc;
 
 use crate::mermaid_style::{self, CssFontSizeContext, TextStyleCascade};
 use crate::resources::{OperationWorkError, OperationWorkMeter, PreparedTextRetainedReservation};
 use crate::text::TextStyle;
 
-/// Visible text, rather than retained DOM nodes, consumes base typography and label paint.
-#[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct BlockTextParticipation {
-    pub(crate) visible: bool,
-    pub(crate) font_stack: bool,
-    pub(crate) font_size: bool,
-    pub(crate) unverified: bool,
-}
-
-impl BlockTextParticipation {
-    pub(crate) fn merge(&mut self, other: Self) {
-        self.visible |= other.visible;
-        self.font_stack |= other.font_stack;
-        self.font_size |= other.font_size;
-        self.unverified |= other.unverified;
-    }
-
-    fn observe(&mut self, font: &FontState) {
-        if !font.host_css && font.known[1] && font.style.font_size == 0.0 {
-            return;
-        }
-        self.visible = true;
-        self.font_stack |= font.inherits_family;
-        self.font_size |= font.inherits_size;
-        self.unverified |= font.host_css || font.known.iter().any(|known| !known);
-    }
-}
-
 #[derive(Debug)]
 pub(crate) struct BlockLabelTypography {
-    pub(crate) style: Arc<TextStyle>,
-    pub(crate) participation: BlockTextParticipation,
+    pub(crate) style: TextStyle,
     pub(crate) measurement_xhtml: Option<String>,
     _retained_reservation: PreparedTextRetainedReservation,
     _projection_reservation: Option<PreparedTextRetainedReservation>,
-}
-
-#[derive(Clone)]
-struct FontState {
-    style: Arc<TextStyle>,
-    known: [bool; 4],
-    inherits_family: bool,
-    inherits_size: bool,
-    host_css: bool,
 }
 
 fn retained_font_string_bytes(style: &TextStyle) -> usize {
@@ -60,83 +21,14 @@ fn retained_font_string_bytes(style: &TextStyle) -> usize {
         .sum()
 }
 
-impl FontState {
-    fn new(style: &TextStyle) -> Self {
-        Self {
-            style: Arc::new(style.clone()),
-            known: [true; 4],
-            inherits_family: true,
-            inherits_size: true,
-            host_css: false,
-        }
+fn apply_font_declarations(style: &mut TextStyle, declarations: &[String], root_size: f64) {
+    let context = CssFontSizeContext::new(style.font_size, root_size);
+    let mut cascade = TextStyleCascade::new(style, context);
+    for (_, declaration) in super::node_binding::source_style_winners(declarations) {
+        cascade.observe_declaration(&declaration);
     }
-
-    fn element(&self, declarations: &[String], root_size: f64) -> Self {
-        let mut next = self.clone();
-        let context = CssFontSizeContext::new(self.style.font_size, root_size);
-        let mut cascade = TextStyleCascade::new(&self.style, context);
-        for (raw, declaration) in super::node_binding::source_style_winners(declarations) {
-            cascade.observe_declaration(&declaration);
-            let value = declaration.value();
-            if declaration.inherits_property_value() {
-                continue;
-            }
-            match declaration.property() {
-                "font-family" => {
-                    next.known[0] = mermaid_style::is_static_css_font_family_list(value);
-                    next.inherits_family = false;
-                }
-                "font-size" => {
-                    // Invalid CSS numbers do not win a browser declaration. Unknown host
-                    // functions do win, but must not inherit a fallback zero as proof.
-                    let owner = mermaid_style::css_font_size_declaration_ownership([raw]);
-                    if owner == mermaid_style::CssFontSizeOwnership::Inherited {
-                        continue;
-                    }
-                    let absolute = mermaid_style::resolve_mermaid_absolute_font_size_px(value)
-                        .is_some()
-                        || matches!(
-                            value,
-                            "initial"
-                                | "medium"
-                                | "small"
-                                | "large"
-                                | "x-small"
-                                | "xx-small"
-                                | "x-large"
-                                | "xx-large"
-                        );
-                    next.known[1] = declaration.resolve_font_size_px(context).is_some()
-                        && !declaration.analysis().depends_on_root_font_size()
-                        && (absolute || self.known[1]);
-                    if absolute {
-                        next.inherits_size = false;
-                    }
-                }
-                "font-weight" => {
-                    next.known[2] = mermaid_style::is_supported_css_font_weight_value(value)
-                        || value.eq_ignore_ascii_case("initial");
-                }
-                "font-style" => {
-                    next.known[3] = mermaid_style::is_supported_css_font_style_value(value)
-                        || value.eq_ignore_ascii_case("initial");
-                }
-                _ => {}
-            }
-        }
-        next.style = match cascade.finish() {
-            std::borrow::Cow::Borrowed(_) => Arc::clone(&self.style),
-            std::borrow::Cow::Owned(style) => Arc::new(style),
-        };
-        // These are emitted by class CSS, outside Block's supported font longhands.
-        // Retain uncertainty instead of treating a measurement fallback as a zero font.
-        if declarations.iter().any(|raw| {
-            mermaid_style::parse_style_declaration(raw)
-                .is_some_and(|declaration| matches!(declaration.property(), "font" | "all"))
-        }) {
-            next.known = [false; 4];
-        }
-        next
+    if let std::borrow::Cow::Owned(resolved) = cascade.finish() {
+        *style = resolved;
     }
 }
 
@@ -174,17 +66,12 @@ fn stylesheet_fonts(
 }
 
 impl BlockLabelTypography {
-    #[allow(
-        clippy::too_many_arguments,
-        reason = "Block typography consumes one label's source, prepared XHTML, and operation budget."
-    )]
     pub(crate) fn resolve(
         styles: &[String],
         classes: Option<&[String]>,
         definitions: &IndexMap<String, BlockClassDef>,
         base: &TextStyle,
         xhtml: Option<&str>,
-        text: &str,
         key_bytes: usize,
         work: &std::sync::Arc<OperationWorkMeter>,
     ) -> Result<Self, OperationWorkError> {
@@ -245,10 +132,8 @@ impl BlockLabelTypography {
         }
         // XHTML already reserves the shared label/map slot. SVG-only labels reserve
         // that owner here; both forms account for only the font strings actually kept.
-        let owner_bytes = std::mem::size_of::<Self>()
-            + std::mem::size_of::<TextStyle>()
-            + 2 * std::mem::size_of::<usize>()
-            + if xhtml.is_some() { 0 } else { 192 + key_bytes };
+        let owner_bytes =
+            std::mem::size_of::<Self>() + if xhtml.is_some() { 0 } else { 192 + key_bytes };
         let retained = string_bytes
             .into_iter()
             .try_fold(owner_bytes, |bytes, length| bytes.checked_add(length))
@@ -262,46 +147,49 @@ impl BlockLabelTypography {
         } else {
             base.font_size
         };
-        let mut font = FontState::new(base)
-            .element(&stylesheet_fonts(definitions, &["block"], work)?, root_size);
+        let mut font = base.clone();
+        apply_font_declarations(
+            &mut font,
+            &stylesheet_fonts(definitions, &["block"], work)?,
+            root_size,
+        );
         // Block's .label rule sets the base family directly on the label g.
-        Arc::make_mut(&mut font.style)
-            .font_family
-            .clone_from(&base.font_family);
-        font.known[0] = true;
-        font.inherits_family = true;
+        font.font_family.clone_from(&base.font_family);
         let mut declarations = stylesheet_fonts(definitions, &node_classes, work)?;
         declarations.extend(inline.iter().cloned());
-        font = font.element(&declarations, root_size);
+        apply_font_declarations(&mut font, &declarations, root_size);
         if xhtml.is_some() {
-            font = font.element(&stylesheet_fonts(definitions, &["label"], work)?, root_size);
-            font = font.element(&inline, root_size);
+            apply_font_declarations(
+                &mut font,
+                &stylesheet_fonts(definitions, &["label"], work)?,
+                root_size,
+            );
+            apply_font_declarations(&mut font, &inline, root_size);
             node_classes.extend(["block", "label"]);
             if classes.is_none() {
                 node_classes.push("labelBkg");
             }
             let mut declarations = stylesheet_fonts(definitions, &node_classes, work)?;
             declarations.extend(inline.iter().cloned());
-            font = font.element(&declarations, root_size);
+            apply_font_declarations(&mut font, &declarations, root_size);
         } else {
             let mut declarations = stylesheet_fonts(definitions, &["label"], work)?;
             declarations.extend(inline.iter().cloned());
-            font = font.element(&declarations, root_size);
+            apply_font_declarations(&mut font, &declarations, root_size);
             if let std::borrow::Cow::Owned(style) = crate::text::svg_markdown_word_style(
-                &font.style,
+                &font,
                 crate::text::MermaidMarkdownWordType::Normal,
             ) {
-                font.style = Arc::new(style);
+                font = style;
             }
-            font.known[2..].fill(true);
             // The fixed outer row tspan owns its inner word's declarations. The
             // word's presentation weight/style reset is below important class CSS.
-            font = font.element(
+            apply_font_declarations(
+                &mut font,
                 &stylesheet_fonts(definitions, &["row", "text-outer-tspan"], work)?,
                 root_size,
             );
         }
-        let mut participation = BlockTextParticipation::default();
         let mut measurement_xhtml = None;
         let mut projection_reservation = None;
         if let Some(xhtml) = xhtml {
@@ -312,14 +200,9 @@ impl BlockLabelTypography {
                 && !xhtml[3..xhtml.len() - 4].contains('<')
                 && terminal_fonts.is_empty()
             {
-                if !text.trim().is_empty() {
-                    participation.observe(&font);
-                }
-                let style = font.style;
-                reservation.reconcile_downward(owner_bytes + retained_font_string_bytes(&style));
+                reservation.reconcile_downward(owner_bytes + retained_font_string_bytes(&font));
                 return Ok(Self {
-                    style,
-                    participation,
+                    style: font,
                     measurement_xhtml: None,
                     _retained_reservation: reservation,
                     _projection_reservation: None,
@@ -328,10 +211,6 @@ impl BlockLabelTypography {
             let wrapped = format!("<block-label>{xhtml}</block-label>");
             if let Ok(document) = crate::xml_dom::Document::parse(&wrapped) {
                 let root = document.root_element();
-                let mut root_font = font.clone();
-                root_font.host_css = root.descendants().any(|node| node.has_tag_name("style"));
-                let mut parents = vec![(root.id(), root_font)];
-                let mut observed_text = false;
                 let mut edits = Vec::new();
                 let mut projected_bytes = xhtml.len();
                 // .nodeLabel/.edgeLabel are ancestors of retained spans as well as
@@ -341,14 +220,6 @@ impl BlockLabelTypography {
                 let span_fonts = stylesheet_fonts(definitions, &node_classes, work)?;
                 for node in root.descendants().skip(1) {
                     work.charge(1)?;
-                    while parents.last().is_some_and(|(id, _)| {
-                        node.parent().is_some_and(|parent| parent.id() != *id)
-                    }) {
-                        parents.pop();
-                    }
-                    let Some((_, parent_font)) = parents.last() else {
-                        break;
-                    };
                     if node.is_element() {
                         let class_fonts = if node.has_tag_name("span") {
                             span_fonts.as_slice()
@@ -359,24 +230,6 @@ impl BlockLabelTypography {
                         };
                         for raw in class_fonts {
                             work.charge(raw.len().saturating_add(1))?;
-                        }
-                        let mut declarations = Vec::new();
-                        for property in ["font-family", "font-size", "font-weight", "font-style"] {
-                            if let Some(value) =
-                                crate::text::xhtml_font_default(node.tag_name().name(), property)
-                            {
-                                declarations.push(format!("{property}:{value}"));
-                            }
-                        }
-                        declarations.extend(class_fonts.iter().cloned());
-                        if let Some(style) = node.attribute("style") {
-                            mermaid_style::visit_parsed_style_declarations(style, |declaration| {
-                                declarations.push(format!(
-                                    "{}:{}",
-                                    declaration.property(),
-                                    declaration.source_value()
-                                ));
-                            });
                         }
                         if !class_fonts.is_empty() {
                             let original = node.attribute("style").unwrap_or_default();
@@ -416,29 +269,6 @@ impl BlockLabelTypography {
                                 .ok_or_else(|| work.arithmetic_overflow())?;
                             edits.push((range, replacement));
                         }
-                        let mut child = parent_font.element(&declarations, root_size);
-                        child.host_css |= node
-                            .attribute("class")
-                            .is_some_and(|class| !class.trim().is_empty())
-                            || (node.has_tag_name("font")
-                                && (node.has_attribute("face") || node.has_attribute("size")));
-                        parents.push((node.id(), child));
-                    } else if !node
-                        .parent()
-                        .is_some_and(|parent| parent.has_tag_name("style"))
-                        && node.text().is_some_and(|text| !text.trim().is_empty())
-                    {
-                        observed_text = true;
-                        participation.observe(parent_font);
-                    }
-                }
-                if !observed_text {
-                    let facts = crate::text::VisibleTextStyleFacts::from_xhtml_fragment(xhtml);
-                    if facts.has_visible_runs() {
-                        // Icon and replaced-content hosts may paint without a text node.
-                        // They cannot certify a fallback zero or a measured font here.
-                        participation.visible = true;
-                        participation.unverified = true;
                     }
                 }
                 if !edits.is_empty() {
@@ -457,17 +287,11 @@ impl BlockLabelTypography {
                     measurement_xhtml = Some(projected);
                     projection_reservation = Some(reserved);
                 }
-            } else {
-                participation.visible = !text.trim().is_empty();
-                participation.unverified = participation.visible;
             }
-        } else if !text.trim().is_empty() {
-            participation.observe(&font);
         }
-        reservation.reconcile_downward(owner_bytes + retained_font_string_bytes(&font.style));
+        reservation.reconcile_downward(owner_bytes + retained_font_string_bytes(&font));
         Ok(Self {
-            style: font.style,
-            participation,
+            style: font,
             measurement_xhtml,
             _retained_reservation: reservation,
             _projection_reservation: projection_reservation,
@@ -482,7 +306,7 @@ mod tests {
     use std::sync::Arc;
 
     #[test]
-    fn prepared_html_rem_fonts_use_document_root_and_keep_portability_unverified() {
+    fn prepared_html_rem_fonts_use_document_root() {
         for font_size in [14.0, 24.0] {
             for html in [false, true] {
                 for node in [false, true] {
@@ -509,7 +333,6 @@ mod tests {
                         &definitions,
                         &base,
                         html.then_some("<p>Alpha</p>"),
-                        "Alpha",
                         1,
                         &work,
                     )
@@ -519,29 +342,9 @@ mod tests {
                         if html { 32.0 } else { font_size * 2.0 },
                         "diagram font {font_size}, HTML {html}, node {node}"
                     );
-                    assert!(prepared.participation.visible);
-                    assert!(prepared.participation.unverified);
                 }
             }
         }
-    }
-
-    #[test]
-    fn unchanged_deep_font_states_share_the_retained_long_family() {
-        let base = TextStyle {
-            font_family: Some("x".repeat(64 * 1024)),
-            font_size: 16.0,
-            font_weight: None,
-            font_style: None,
-        };
-        let root = FontState::new(&base);
-        let mut parents = vec![root.clone()];
-        for _ in 0..2048 {
-            let child = parents.last().unwrap().element(&[], base.font_size);
-            assert!(Arc::ptr_eq(&child.style, &root.style));
-            parents.push(child);
-        }
-        assert_eq!(Arc::strong_count(&root.style), parents.len() + 1);
     }
 
     #[test]
@@ -562,7 +365,6 @@ mod tests {
                 definitions,
                 &base,
                 Some("<p>Alpha</p>"),
-                "Alpha",
                 1,
                 &work,
             )

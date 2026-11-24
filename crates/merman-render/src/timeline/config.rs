@@ -7,7 +7,6 @@ const DEFAULT_VIEWBOX_PADDING: f64 = 50.0;
 const DEFAULT_USE_MAX_WIDTH: bool = false;
 const DEFAULT_FONT_SIZE: f64 = 16.0;
 pub(crate) const DEFAULT_THEME_COLOR_LIMIT: usize = 12;
-pub(crate) const MAX_THEME_COLOR_LIMIT: usize = 64;
 
 #[derive(Debug)]
 pub(super) struct TimelineFontSize {
@@ -67,6 +66,7 @@ impl<'a> TimelineConfigView<'a> {
         TimelineLayoutSettings {
             text_style: text_style.clone(),
             node_text_style,
+            title_style: None,
             layout_font_size: config_f64_css_px(self.effective_config, &["fontSize"])
                 .unwrap_or(text_style.font_size)
                 .max(0.0),
@@ -165,6 +165,7 @@ pub(crate) struct TimelineLayoutSettings {
     // getVirtualNodeHeight() has no section class; drawNode() attaches it before wrap()/getBBox().
     pub(crate) text_style: TextStyle,
     pub(crate) node_text_style: TextStyle,
+    pub(crate) title_style: Option<TextStyle>,
     pub(crate) layout_font_size: f64,
     pub(crate) theme_color_limit: usize,
     pub(crate) is_neo: bool,
@@ -172,6 +173,17 @@ pub(crate) struct TimelineLayoutSettings {
     pub(crate) disable_multicolor: bool,
     pub(crate) viewbox_padding: f64,
     pub(crate) use_max_width: bool,
+}
+
+impl TimelineLayoutSettings {
+    pub(crate) fn title_text_style(&self) -> TextStyle {
+        self.title_style.clone().unwrap_or_else(|| TextStyle {
+            font_family: self.text_style.font_family.clone(),
+            font_size: self.text_style.font_size * 1.9375,
+            font_weight: Some("bold".into()),
+            font_style: None,
+        })
+    }
 }
 
 #[cfg(test)]

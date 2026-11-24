@@ -1,8 +1,7 @@
 use super::{PresentationMetadata, SourcePresentationMetadata};
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 use crate::EditorSemanticFacts;
-use crate::config::presentation::DetectorConfigCheckpoint;
-use crate::config::presentation::SourcePresentationConfig;
+use crate::config::presentation::{DetectionBaseline, SourcePresentationConfig};
 use crate::config::{AppearanceDecision, MaterializationPlan};
 #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 use crate::diagram::{
@@ -32,6 +31,7 @@ use merman_model::presentation::CustomJsonRenderModel;
 use serde::Deserialize;
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
+use std::sync::Arc;
 use {
     crate::diagram::{ParsedDiagramRender, RenderSemanticParseOutput, ResolvedRenderParser},
     merman_model::presentation::RenderSemanticModel,
@@ -66,12 +66,11 @@ pub(crate) struct ParsePipeline<'a> {
     source: ParseSource<'a>,
 }
 
-/// Owns the configuration through detection, appearance selection, and paint input freezing.
-/// Snapshots remain local to the phases that need their values or mutation provenance.
+/// Owns the configuration through detection and classic Mermaid appearance selection.
 struct OperationConfigBuilder {
     effective: SourcePresentationConfig,
     source: MermaidConfig,
-    detector_checkpoint: Option<DetectorConfigCheckpoint>,
+    before_detection: Option<Arc<DetectionBaseline>>,
 }
 
 impl OperationConfigBuilder {
@@ -92,14 +91,14 @@ impl OperationConfigBuilder {
         Ok(Ok(Self {
             effective,
             source,
-            detector_checkpoint: None,
+            before_detection: None,
         }))
     }
 
     fn effective_for_detection(&mut self) -> &mut SourcePresentationConfig {
-        if self.detector_checkpoint.is_none() {
-            self.effective.deep_merge_explicit(self.source.as_value());
-            self.detector_checkpoint = Some(DetectorConfigCheckpoint::new(&self.effective));
+        if self.before_detection.is_none() {
+            self.effective.deep_merge(self.source.as_value());
+            self.before_detection = Some(self.effective.begin_detection());
         }
         &mut self.effective
     }
@@ -113,27 +112,19 @@ impl OperationConfigBuilder {
         let Self {
             mut effective,
             source,
-            detector_checkpoint,
+            before_detection,
         } = self;
-        let mut source_merged = detector_checkpoint.is_some();
-        let detector_changes = match detector_checkpoint {
-            Some(checkpoint) => checkpoint.finish(&mut effective, control)?,
-            None => None,
-        };
+        let mut source_merged = before_detection.is_some();
         control.checkpoint()?;
         let defaults = crate::generated::upstream_default_config();
         let decision = AppearanceDecision::resolve(
             diagram_type,
             &source,
             engine.site_config_overrides.as_config(),
-            engine
-                .theme_compatibility_config
-                .as_ref()
-                .map(SourcePresentationConfig::as_config),
             &defaults,
         );
         if !source_merged && decision.selected_theme().is_none() {
-            effective.deep_merge_explicit(source.as_value());
+            effective.deep_merge(source.as_value());
             source_merged = true;
         }
         match decision.materialization_plan(
@@ -142,8 +133,9 @@ impl OperationConfigBuilder {
         ) {
             MaterializationPlan::InheritInitialized => {
                 if !source_merged {
-                    effective.deep_merge_explicit(source.as_value());
+                    effective.deep_merge(source.as_value());
                 }
+                effective.finish_detection();
                 decision.apply_to_presentation(&mut effective);
             }
             MaterializationPlan::Materialize { selected } => {
@@ -155,11 +147,10 @@ impl OperationConfigBuilder {
                 let projected = if let Some(section) =
                     family::config_namespace_for_diagram_type(diagram_type)
                     && (source_is_empty
-                        || (engine.theme_compatibility_config.is_none()
-                            && decision.can_merge_after_site_appearance(
-                                &source,
-                                engine.initialization.site_config.as_config(),
-                            ))) {
+                        || decision.can_merge_after_site_appearance(
+                            &source,
+                            engine.initialization.site_config.as_config(),
+                        )) {
                     engine
                         .initialization
                         .materialize_appearance(section, selected, || {
@@ -175,39 +166,29 @@ impl OperationConfigBuilder {
                                 return config;
                             }
                             let mut config = config.with_shared_sections();
-                            config.deep_merge_explicit(source.as_value());
+                            config.deep_merge(source.as_value());
                             config
                         })
                 } else {
                     Self::materialize_operation_theme(engine, &decision, &source, selected)
                 };
-                effective = match projected {
+                let mut projected = match projected {
                     Ok(config) => config,
                     Err(error) => return Ok(Err(error.into())),
                 };
-                if let Some(changes) = &detector_changes {
-                    changes.replay(&mut effective, control)?;
+                if let Some(before) = &before_detection {
+                    projected.replay_detection(before, &effective, control)?;
                 }
                 // Detector writes cannot replace authored appearance. Scoped-key presence is
                 // checked again because replay can create or remove a scoped setting.
-                decision.apply_to_presentation(&mut effective);
+                decision.apply_to_presentation(&mut projected);
+                effective = projected;
             }
         }
         // The explicit keyword is the only detector-level layout selection retained in Mermaid 12.
         if diagram_type == "flowchart-elk" {
-            effective.set_value_explicit("layout", serde_json::Value::String("elk".to_owned()));
+            effective.set_value("layout", serde_json::Value::String("elk".to_owned()));
         }
-        if let Some(family) = family::operation_family_id(diagram_type, effective.as_config()) {
-            effective.freeze_family_paint_inputs(
-                family.as_str(),
-                engine.initialization.initialization_inputs.as_config(),
-                &source,
-                detector_changes.as_ref(),
-                control,
-            )?;
-        }
-        effective.freeze_theme_compatibility();
-        effective.seal_detector_mutations();
         Ok(Ok(effective))
     }
 
@@ -224,14 +205,13 @@ impl OperationConfigBuilder {
         // Every actual theme recalculation consumes raw initialization and allowed source inputs.
         // The inherited path instead keeps ordinary updates to initialized derivations.
         let initial_variables = engine
-            .initialization
-            .initialization_inputs
+            .site_config_overrides
             .get("themeVariables")
             .filter(|value| theme::is_js_truthy(value))
             .map(crate::json_value::clone_value_nonrecursive)
             .unwrap_or_else(|| serde_json::json!({}));
-        raw_config.set_value_preserving_theme_compatibility("themeVariables", initial_variables);
-        raw_config.deep_merge_explicit(source_config.as_value());
+        raw_config.set_computed_value("themeVariables", initial_variables);
+        raw_config.deep_merge(source_config.as_value());
         decision.apply_to_presentation(&mut raw_config);
         theme::materialize_selected_theme(raw_config, selected)
     }
@@ -1197,15 +1177,8 @@ impl<'a> ParsePipeline<'a> {
         // Public parse metadata follows upstream source authority. Rendering separately retains
         // Merman's hardened secure keys and presentation-value admission.
         let upstream_defaults = crate::generated::upstream_default_config();
-        let authored_authority = if self
-            .engine
-            .initialization
-            .initialization_inputs
-            .as_value()
-            .get("secure")
-            .is_some()
-        {
-            self.engine.initialization.initialization_inputs.as_config()
+        let authored_authority = if self.engine.site_config_overrides.get("secure").is_some() {
+            self.engine.site_config_overrides.as_config()
         } else {
             &upstream_defaults
         };
@@ -1801,7 +1774,6 @@ mod editor_parse_source_map_tests {
                 "flowchart-v2",
                 &overrides,
                 engine.site_config_overrides.as_config(),
-                None,
                 &defaults,
             );
             let mut reference = OperationConfigBuilder::materialize_operation_theme(

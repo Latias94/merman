@@ -13,11 +13,10 @@ use serde_json::{Map, Value};
 mod appearance;
 mod appearance_selection;
 mod source_presentation;
-#[cfg(all(test, feature = "presentation"))]
-pub(crate) use appearance::resolve_appearance;
 #[cfg(feature = "presentation")]
 pub(crate) use appearance::{AppearanceDecision, MaterializationPlan};
 pub(crate) use appearance_selection::resolve_semantic_appearance;
+pub use appearance_selection::source_declares_theme;
 pub(crate) use source_presentation::is_presentation_field;
 
 /// Test-only observations of actual JSON copy-on-write and operation appearance work.
@@ -27,10 +26,6 @@ pub(crate) struct ConfigWork {
     pub(crate) json_cow_copies: usize,
     pub(crate) appearance_selections: usize,
     pub(crate) selected_theme_materializations: usize,
-    pub(crate) detector_replay_steps: usize,
-    pub(crate) detector_replay_peak_frames: usize,
-    pub(crate) detector_replay_peak_path_segments: usize,
-    pub(crate) explicit_path_candidates: usize,
 }
 
 #[cfg(test)]

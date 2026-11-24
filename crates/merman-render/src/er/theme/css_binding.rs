@@ -1,13 +1,13 @@
 use crate::config::{
     config_bool, config_diagram_look, config_f64_css_px, config_string, config_string_vec,
 };
-use crate::family::InheritedFontStackPlan;
 use crate::svg::PreparedCommonCss;
 use merman_markup::theme_color::{ColorChannel, ColorError, ThemeColor, rgba};
 
 #[derive(Debug)]
 pub(crate) struct ErCssBinding {
     pub(crate) render_settings: super::super::config::ErRenderSettings,
+    pub(crate) native: Option<crate::er::ErNativeStyle>,
     pub(crate) common: PreparedCommonCss,
     pub(crate) font_family: String,
     pub(crate) theme_name: String,
@@ -34,6 +34,70 @@ pub(crate) struct ErCssBinding {
 }
 
 impl ErCssBinding {
+    pub(super) fn apply_native(
+        &mut self,
+        theme: &crate::theme::FamilyTheme,
+        native: crate::er::ErNativeStyle,
+        config: &merman_model::presentation::PresentationConfig,
+    ) {
+        let roles = &theme.roles;
+        let owns = |key: &str| config.explicit_config_owns_path(key);
+        let cfg = config.as_value();
+        self.render_settings = super::super::ErConfigView::new(cfg)
+            .render_settings_with_resolved_typography(
+                native.body_family.as_deref(),
+                native.font_size,
+            );
+        if let Some(family) = &native.body_family {
+            self.font_family.clone_from(family);
+        }
+        let size = format!("{}px", self.render_settings.font_size);
+        self.common =
+            PreparedCommonCss::bind(cfg, &self.font_family, &size, native.body_family.is_some());
+        if !owns("themeVariables.mainBkg") {
+            self.main_bkg = roles.surface_emphasis.first_color().to_string();
+        }
+        if !owns("themeVariables.nodeBorder") {
+            self.node_border = roles.stroke_border.first_color().to_string();
+        }
+        if !owns("themeVariables.clusterBkg") {
+            self.cluster_bkg = roles.surface_container.first_color().to_string();
+        }
+        if !owns("themeVariables.clusterBorder") {
+            self.cluster_border.clone_from(&self.node_border);
+        }
+        if !owns("themeVariables.rowOdd") {
+            self.row_odd = Some(roles.surface_node.first_color().to_string());
+        }
+        if !owns("themeVariables.rowEven") {
+            self.row_even = Some(roles.surface_container.first_color().to_string());
+        }
+        if !owns("themeVariables.lineColor") {
+            self.line_color = roles.stroke_connector.first_color().to_string();
+        }
+        if !owns("themeVariables.textColor") {
+            self.text_color = roles.text_primary.to_string();
+        }
+        if !owns("themeVariables.nodeTextColor") {
+            self.node_text_color.clone_from(&self.text_color);
+        }
+        if !owns("themeVariables.titleColor") && !owns("themeVariables.textColor") {
+            self.title_color = roles.text_title.to_string();
+        }
+        if let Some(width) = native.connector_width {
+            self.stroke_width = format!("{width}px");
+        } else if let Some(width) =
+            crate::config::config_css_number_or_string(cfg, &["themeVariables", "strokeWidth"])
+        {
+            self.stroke_width = width;
+        }
+        self.edge_label_background
+            .clone_from(&native.label_background);
+        self.label_background = Ok(native.label_background.clone());
+        self.neo_label_background = Ok(native.label_background.clone());
+        self.native = Some(native);
+    }
+
     pub(super) fn title_color_source(config: &serde_json::Value) -> (Option<&'static str>, &str) {
         crate::config::selected_config_string(
             config,
@@ -42,23 +106,11 @@ impl ErCssBinding {
         .map_or((None, "#333"), |(path, color)| (Some(path), color))
     }
 
-    pub(super) fn node_text_color_source(
-        config: &serde_json::Value,
-    ) -> (merman_model::presentation::ErPaintInput, Option<&str>) {
-        if let Some(color) = config["themeVariables"]["nodeTextColor"]
+    fn node_text_color_source(config: &serde_json::Value) -> Option<&str> {
+        config["themeVariables"]["nodeTextColor"]
             .as_str()
             .filter(|color| !color.is_empty())
-        {
-            (
-                merman_model::presentation::ErPaintInput::NodeText,
-                Some(color),
-            )
-        } else {
-            (
-                merman_model::presentation::ErPaintInput::Text,
-                config["themeVariables"]["textColor"].as_str(),
-            )
-        }
+            .or_else(|| config["themeVariables"]["textColor"].as_str())
     }
 
     pub(super) fn source_fill_owns_odd_rows(&self) -> bool {
@@ -68,18 +120,13 @@ impl ErCssBinding {
         )
     }
 
-    pub(crate) fn resolve(
-        config: &serde_json::Value,
-        fonts: &InheritedFontStackPlan,
-        size: &super::ErBaseFontSizePlan,
-    ) -> Self {
+    pub(crate) fn resolve(config: &serde_json::Value) -> Self {
         let option = |key: &str| config_string(config, &["themeVariables", key]);
         let color = |key: &str, fallback: &str| option(key).unwrap_or_else(|| fallback.to_owned());
         let theme_name = config_string(config, &["theme"]).unwrap_or_else(|| "default".into());
         let redux_color_theme = matches!(theme_name.as_str(), "redux-color" | "redux-dark-color");
         let text_color = color("textColor", "#333");
         let node_text_color = Self::node_text_color_source(config)
-            .1
             .unwrap_or(&text_color)
             .to_owned();
         let main_bkg = color("mainBkg", "#ECECFF");
@@ -101,21 +148,16 @@ impl ErCssBinding {
                     .unwrap_or_else(|| start.clone());
                 (start, stop)
             });
-        let font_family = fonts.font_family_css().to_owned();
+        let font_family = crate::config::config_font_family_css(config);
+        let font_size = crate::config::configured_theme_or_root_font_size_px(config)
+            .map(|(size, _)| size)
+            .or_else(|| config_f64_css_px(config, &["er", "fontSize"]).filter(|size| *size >= 0.0))
+            .unwrap_or(16.0);
         Self {
+            native: None,
             render_settings: super::super::ErConfigView::new(config)
-                .render_settings_with_resolved_typography(
-                    fonts
-                        .typed_font_stack_active()
-                        .then(|| fonts.font_family_css()),
-                    size.layout_override_px(),
-                ),
-            common: PreparedCommonCss::bind(
-                config,
-                &font_family,
-                size.font_size_css(),
-                fonts.typed_font_stack_active(),
-            ),
+                .render_settings_with_resolved_typography(None, None),
+            common: PreparedCommonCss::bind(config, &font_family, &format!("{font_size}px"), false),
             font_family,
             redux_border_colors: if redux_color_theme {
                 config_string_vec(config, &["themeVariables", "borderColorArray"])
@@ -182,12 +224,7 @@ mod tests {
     use serde_json::json;
 
     fn resolve(config: serde_json::Value) -> ErCssBinding {
-        let config = crate::test_support::presentation_config(config);
-        ErCssBinding::resolve(
-            config.as_value(),
-            &InheritedFontStackPlan::resolve_property_local(None, &config),
-            &super::super::ErBaseFontSizePlan::resolve(None, &config),
-        )
+        ErCssBinding::resolve(&config)
     }
 
     #[test]

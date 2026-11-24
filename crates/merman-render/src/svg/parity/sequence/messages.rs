@@ -1,13 +1,7 @@
 use super::super::*;
 use super::SequenceEmitCheckpoints;
-use super::math_label::{
-    record_sequence_katex_terminal_emission, sequence_katex_label,
-    write_sequence_katex_foreign_object,
-};
+use super::math_label::{sequence_katex_label, write_sequence_katex_foreign_object};
 use super::model::{SequenceSvgMessagePayload, SequenceSvgModel};
-use crate::diagram_theme::{
-    EffectOutsets, SvgFilterRegion, SvgShadowEffect, SvgShadowEvidenceRecorder,
-};
 use crate::sequence::{
     SEQUENCE_MESSAGE_WRAP_PADDING_SIDES, SequenceDrawnTextNode, SequenceMathHeightMode,
     measure_sequence_drawn_line_height, sequence_activation_stack_bounds,
@@ -25,8 +19,6 @@ const CENTRAL_CONNECTION_CIRCLE_OFFSET: f64 = 16.5;
 /// Family-owned message geometry includes the line and its endpoint markers.
 #[derive(Default)]
 pub(super) struct SequenceMessagePaintPlan {
-    effect: Option<SvgShadowEffect>,
-    shadows: BTreeMap<String, (String, SvgFilterRegion)>,
     pub(super) bounds: Option<Bounds>,
 }
 
@@ -37,22 +29,14 @@ impl SequenceMessagePaintPlan {
         nodes: &FxHashMap<&str, &LayoutNode>,
         edges: &FxHashMap<&str, &crate::model::LayoutEdge>,
         width: Option<f32>,
-        effect: Option<SvgShadowEffect>,
-        receipt: &mut crate::sequence::SequenceMessageThemeReceipt,
-        options: &SvgExecution<'_>,
         right_angles: bool,
         actor_height: f64,
         checkpoints: SequenceEmitCheckpoints<'_>,
     ) -> Result<Self> {
-        let mut plan = Self {
-            effect,
-            ..Self::default()
-        };
-        if width.is_none() && plan.effect.is_none() {
+        let mut plan = Self::default();
+        let Some(width) = width.map(f64::from) else {
             return Ok(plan);
-        }
-        // Message CSS owns a 1.5px baseline independent of signalColor configuration.
-        let width = f64::from(width.unwrap_or(1.5));
+        };
         for (index, message) in model.messages.iter().enumerate() {
             checkpoints.checkpoint_loop(index)?;
             let Some(semantics) = message.signal_semantics() else {
@@ -100,41 +84,6 @@ impl SequenceMessagePaintPlan {
                 bounds.max_x = bounds.max_x.max(x + radius);
                 bounds.max_y = bounds.max_y.max(y + radius);
             }
-            if let Some(effect) = &plan.effect {
-                options
-                    .work_meter()
-                    .charge(effect.stages().len().saturating_mul(3))?;
-                if let Some(shadow) = effect.materialize_user_space(
-                    &options.theme_resource_policy(),
-                    bounds.min_x,
-                    bounds.min_y,
-                    bounds.max_x,
-                    bounds.max_y,
-                    EffectOutsets::default(),
-                )? {
-                    let region = shadow.region();
-                    let [x, y, w, h] = region.as_array().map(f64::from);
-                    bounds = Bounds {
-                        min_x: x,
-                        min_y: y,
-                        max_x: x + w,
-                        max_y: y + h,
-                    };
-                    plan.shadows.insert(
-                        message.id.clone(),
-                        (
-                            format!(
-                                "{}-message-{index}-theme-effect-{}",
-                                options.diagram_id_or("merman"),
-                                effect.id()
-                            ),
-                            region,
-                        ),
-                    );
-                } else {
-                    receipt.effect_unhandled = true;
-                }
-            }
             if let Some(total) = &mut plan.bounds {
                 total.min_x = total.min_x.min(bounds.min_x);
                 total.min_y = total.min_y.min(bounds.min_y);
@@ -145,29 +94,6 @@ impl SequenceMessagePaintPlan {
             }
         }
         Ok(plan)
-    }
-
-    pub(super) fn len(&self) -> usize {
-        self.shadows.len()
-    }
-
-    fn write_definition(&self, out: &mut impl SvgOutput, message_id: &str) -> Option<String> {
-        let (id, region) = self.shadows.get(message_id)?;
-        Some(super::super::shadow::write_theme_shadow_application(
-            out,
-            id,
-            self.effect.as_ref()?,
-            *region,
-        ))
-    }
-
-    fn record_emission(&self, message_id: &str, recorder: &SvgShadowEvidenceRecorder) -> bool {
-        let (Some(effect), Some((id, region))) = (&self.effect, self.shadows.get(message_id))
-        else {
-            return false;
-        };
-        recorder.record_application(effect, id, *region);
-        true
     }
 }
 
@@ -205,8 +131,6 @@ fn self_message_points(
 
 pub(super) struct SequenceMessageRenderContext<'a> {
     pub(super) model: &'a SequenceSvgModel,
-    pub(super) paint_plan: &'a SequenceMessagePaintPlan,
-    pub(super) shadow_evidence: &'a SvgShadowEvidenceRecorder,
     pub(super) nodes_by_id: &'a FxHashMap<&'a str, &'a LayoutNode>,
     pub(super) edges_by_id: &'a FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
     pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
@@ -221,7 +145,6 @@ pub(super) struct SequenceMessageRenderContext<'a> {
     pub(super) right_angles: bool,
     pub(super) message_text_style: &'a TextStyle,
     pub(super) message_typography: &'a crate::sequence::SequenceResolvedTypography,
-    pub(super) typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
     pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
 }
 
@@ -444,8 +367,6 @@ fn write_central_connection_circles(
 pub(super) fn render_sequence_messages(
     out: &mut impl SvgOutput,
     ctx: &SequenceMessageRenderContext<'_>,
-    theme_receipt: &mut crate::sequence::SequenceMessageThemeReceipt,
-    sequence_number_receipt: &mut crate::sequence::SequenceNumberLabelThemeReceipt,
 ) -> crate::Result<()> {
     let show_sequence_numbers = ctx
         .sanitize_config
@@ -508,7 +429,6 @@ pub(super) fn render_sequence_messages(
         let (Some(from), Some(to)) = (msg.from.as_deref(), msg.to.as_deref()) else {
             continue;
         };
-        theme_receipt.record_line_candidate();
         let edge_id = format!("msg-{}", msg.id);
         let Some(edge) = ctx.edges_by_id.get(edge_id.as_str()).copied() else {
             continue;
@@ -551,11 +471,6 @@ pub(super) fn render_sequence_messages(
                     (center_x - katex.width / 2.0).round(),
                     (p0.y - katex.height).round(),
                 );
-                record_sequence_katex_terminal_emission(
-                    ctx.typography_receipt,
-                    crate::sequence::SequenceTextSurface::MessageLabel,
-                    &katex,
-                );
             } else if msg.wrap && !text.is_empty() {
                 // Mermaid wraps message labels to
                 // `max(boundedWidth + 2*wrapPadding, conf.width)`.
@@ -583,7 +498,6 @@ pub(super) fn render_sequence_messages(
                         config: ctx.sanitize_config,
                     },
                     ctx.message_typography,
-                    ctx.typography_receipt,
                     ctx.checkpoints,
                 )?;
             } else {
@@ -600,7 +514,6 @@ pub(super) fn render_sequence_messages(
                         config: ctx.sanitize_config,
                     },
                     ctx.message_typography,
-                    ctx.typography_receipt,
                     ctx.checkpoints,
                 )?;
             }
@@ -621,11 +534,6 @@ pub(super) fn render_sequence_messages(
         ctx.checkpoints.checkpoint()?;
         let data_attrs = message_data_attrs(&msg.id, from, to);
 
-        let filter = ctx
-            .paint_plan
-            .write_definition(out, &msg.id)
-            .map(|reference| format!(r#" filter="{}""#, escape_attr(&reference)))
-            .unwrap_or_default();
         // Mermaid uses `stroke="none"` and assigns actual stroke via CSS.
         if from == to {
             let [(x, y), (x2, y2), (x3, y3), (x4, y4)] = self_message_points(
@@ -669,7 +577,7 @@ pub(super) fn render_sequence_messages(
             };
             let _ = write!(
                 out,
-                r#"<path d="{d}" class="{class}"{data_attrs} stroke-width="2" stroke="none"{marker_start}{marker_end}{x1}{style}{filter}/>"#,
+                r#"<path d="{d}" class="{class}"{data_attrs} stroke-width="2" stroke="none"{marker_start}{marker_end}{x1}{style}/>"#,
                 d = d,
                 class = class,
                 data_attrs = data_attrs,
@@ -684,7 +592,7 @@ pub(super) fn render_sequence_messages(
         } else {
             let _ = write!(
                 out,
-                r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" class="{class}"{data_attrs} stroke-width="2" stroke="none"{marker_start}{marker_end}{style}{filter}/>"#,
+                r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" class="{class}"{data_attrs} stroke-width="2" stroke="none"{marker_start}{marker_end}{style}/>"#,
                 x1 = fmt(p0.x),
                 y1 = fmt(p0.y),
                 x2 = fmt(p1.x),
@@ -699,7 +607,6 @@ pub(super) fn render_sequence_messages(
         }
 
         if sequence_number_visible {
-            sequence_number_receipt.record_text_candidate();
             let sequence_number_text = format_sequence_number(current_sequence_number);
             let font_size = if sequence_number_text.len() > 5 {
                 "7px"
@@ -734,17 +641,10 @@ pub(super) fn render_sequence_messages(
                 style = sequence_number_style,
                 n = sequence_number_text,
             );
-            sequence_number_receipt.record_text_emission();
         }
 
         let _ = (from, to);
         out.checkpoint()?;
-        theme_receipt.record_line_emission();
-        if ctx.paint_plan.record_emission(&msg.id, ctx.shadow_evidence)
-            || theme_receipt.effect_cleared
-        {
-            theme_receipt.record_effect_emission();
-        }
     }
 
     ctx.checkpoints.checkpoint()
@@ -774,7 +674,6 @@ fn render_sequence_message_text_lines<'a>(
     raw_lines: impl IntoIterator<Item = &'a str>,
     layout: SequenceMessageTextLayout<'_>,
     typography: &crate::sequence::SequenceResolvedTypography,
-    typography_receipt: &crate::sequence::SequenceTypographyThemeReceipt,
     checkpoints: SequenceEmitCheckpoints<'_>,
 ) -> Result<()> {
     let drawn_style = sequence_drawn_text_style(layout.style, layout.config);
@@ -800,7 +699,6 @@ fn render_sequence_message_text_lines<'a>(
             text = super::escape_prepared_text(line)
         );
         out.checkpoint()?;
-        typography_receipt.record_terminal_text(crate::sequence::SequenceTextSurface::MessageLabel);
         if layout.margin > 0.0 {
             preceding_height += measure_sequence_drawn_line_height(
                 layout.measurer,
@@ -818,27 +716,13 @@ fn render_sequence_message_text_lines<'a>(
 #[cfg(test)]
 fn default_sequence_typography(
     config: &merman_model::presentation::PresentationConfig,
-) -> (
-    crate::sequence::SequenceTypographyPlan,
-    crate::sequence::SequenceTypographyThemeReceipt,
-) {
-    let meter = crate::resources::OperationWorkMeter::new(
-        crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-    );
-    let plan = crate::sequence::SequenceTypographyPlan::resolve(config, None, &meter)
-        .expect("resolve default Sequence typography");
-    let receipt = crate::sequence::SequenceTypographyThemeReceipt::from_plan(&plan);
-    (plan, receipt)
+) -> crate::sequence::SequenceTypographyPlan {
+    crate::sequence::SequenceTypographyPlan::resolve(config)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::DiagramFamilyId;
-    use crate::diagram_theme::{
-        CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
-        ThemeStylePatch, ThemeTarget, ThemeVariant,
-    };
     use crate::model::{LayoutEdge, LayoutPoint};
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
     use std::cell::{Cell, RefCell};
@@ -1019,7 +903,7 @@ mod tests {
         let measurer = crate::text::DeterministicTextMeasurer::default();
         let message_text_style = TextStyle::default();
         let math_sidecar = crate::sequence::SequenceMathSidecar::default();
-        let (typography, typography_receipt) = default_sequence_typography(&sanitize_config);
+        let typography = default_sequence_typography(&sanitize_config);
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
         let projection = SvgDiagramIdProjection {
             work_meter: &meter,
@@ -1027,8 +911,6 @@ mod tests {
             error: RefCell::new(None),
         };
         let ctx = SequenceMessageRenderContext {
-            paint_plan: &Default::default(),
-            shadow_evidence: &Default::default(),
             model: &model,
             nodes_by_id: &nodes_by_id,
             edges_by_id: &edges_by_id,
@@ -1047,160 +929,18 @@ mod tests {
             right_angles: false,
             message_text_style: &message_text_style,
             message_typography: typography.message(),
-            typography_receipt: &typography_receipt,
             checkpoints: SequenceEmitCheckpoints::for_emit(&meter),
         };
         let mut out = RejectAfterFirstWrite::default();
 
-        let error = render_sequence_messages(
-            &mut out,
-            &ctx,
-            &mut crate::sequence::SequenceMessageThemeReceipt::default(),
-            &mut crate::sequence::SequenceNumberLabelThemeReceipt::default(),
-        )
-        .expect_err("the rejecting sink must stop message rendering");
+        let error = render_sequence_messages(&mut out, &ctx)
+            .expect_err("the rejecting sink must stop message rendering");
 
         assert!(matches!(error, crate::Error::InvalidModel { .. }));
         assert_eq!(
             out.write_attempts, 1,
             "message rendering must stop at the first failed sink checkpoint"
         );
-    }
-
-    #[test]
-    fn semantic_message_without_complete_layout_line_remains_incomplete() {
-        let theme = DiagramThemeCompiler::new()
-            .compile(
-                DiagramThemeSpec::new().with_styles(
-                    ThemeRuleSet::default().with_rule(
-                        ThemeRule::new(
-                            ThemeTarget::Message,
-                            ThemeStylePatch::default()
-                                .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
-                        )
-                        .for_family(DiagramFamilyId::SEQUENCE),
-                    ),
-                ),
-            )
-            .expect("compile Sequence Message theme");
-        let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
-
-        for edge_points in [None, Some(vec![LayoutPoint { x: 10.0, y: 20.0 }])] {
-            let model = SequenceSvgModel {
-                acc_title: None,
-                acc_descr: None,
-                title: None,
-                actor_order: Vec::new(),
-                actors: BTreeMap::new(),
-                boxes: Vec::new(),
-                messages: vec![merman_model::families::sequence::SequenceMessage {
-                    id: "0".to_string(),
-                    from: Some("Alice".to_string()),
-                    to: Some("Bob".to_string()),
-                    message_type: 0,
-                    message: SequenceSvgMessagePayload::Text("Hello".to_string()),
-                    wrap: false,
-                    activate: false,
-                    placement: None,
-                    central_connection: 0,
-                }],
-                notes: Vec::new(),
-                created_actors: BTreeMap::new(),
-                destroyed_actors: BTreeMap::new(),
-                actor_lifecycles: None,
-            };
-            let edges = edge_points
-                .into_iter()
-                .map(|points| LayoutEdge {
-                    id: "msg-0".to_string(),
-                    from: "Alice".to_string(),
-                    to: "Bob".to_string(),
-                    from_cluster: None,
-                    to_cluster: None,
-                    points,
-                    label: None,
-                    start_label_left: None,
-                    start_label_right: None,
-                    end_label_left: None,
-                    end_label_right: None,
-                    start_marker: None,
-                    end_marker: None,
-                    stroke_dasharray: None,
-                })
-                .collect::<Vec<_>>();
-            let edges_by_id = edges
-                .iter()
-                .map(|edge| (edge.id.as_str(), edge))
-                .collect::<FxHashMap<_, _>>();
-            let nodes_by_id = FxHashMap::default();
-            let sanitize_config = merman_model::presentation::PresentationConfig::default();
-            let measurer = crate::text::DeterministicTextMeasurer::default();
-            let message_text_style = TextStyle::default();
-            let math_sidecar = crate::sequence::SequenceMathSidecar::default();
-            let (typography, typography_receipt) = default_sequence_typography(&sanitize_config);
-            let meter =
-                OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-            let projection = SvgDiagramIdProjection {
-                work_meter: &meter,
-                projected_bytes: Cell::new(0),
-                error: RefCell::new(None),
-            };
-            let ctx = SequenceMessageRenderContext {
-                paint_plan: &Default::default(),
-                shadow_evidence: &Default::default(),
-                model: &model,
-                nodes_by_id: &nodes_by_id,
-                edges_by_id: &edges_by_id,
-                math_sidecar: &math_sidecar,
-                sanitize_config: &sanitize_config,
-                measurer: &measurer,
-                message_align: "center",
-                diagram_id: SvgDiagramId {
-                    value: "sequence-incomplete-layout",
-                    projection: &projection,
-                },
-                actor_height: 65.0,
-                sequence_width: 150.0,
-                activation_width: 10.0,
-                wrap_padding: 10.0,
-                right_angles: false,
-                message_text_style: &message_text_style,
-                message_typography: typography.message(),
-                typography_receipt: &typography_receipt,
-                checkpoints: SequenceEmitCheckpoints::for_emit(&meter),
-            };
-            let mut receipt = crate::sequence::SequenceMessageThemeReceipt::default();
-            receipt.record_static_style(&resolved.style(
-                ThemeTarget::Message,
-                ThemeVariant::Default,
-                None,
-            ));
-
-            render_sequence_messages(
-                &mut String::new(),
-                &ctx,
-                &mut receipt,
-                &mut crate::sequence::SequenceNumberLabelThemeReceipt::default(),
-            )
-            .expect("incomplete layout should remain a renderable best-effort case");
-
-            let recorder = crate::sequence::SequenceThemeEvidenceRecorder::new(true);
-            recorder.record_message_emission(
-                crate::sequence::SequenceMessageThemeEmission::from_terminal_writer(
-                    Some("#2563eb"),
-                    false,
-                    false,
-                    Some(crate::diagram_theme::ResolvedStyleProperty::Stroke),
-                    receipt,
-                ),
-            );
-            let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(&resolved));
-            recorder.record_into(Some(&resolved), &mut evidence);
-
-            assert!(evidence.applied().is_empty());
-            assert!(evidence.not_applicable_mechanisms().is_empty());
-            assert!(evidence.residuals().is_empty());
-        }
     }
 }
 
@@ -1246,15 +986,7 @@ mod cancellation_tests {
             len: 130,
         };
         let mut out = String::new();
-        let typography_meter =
-            OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-        let typography = crate::sequence::SequenceTypographyPlan::resolve(
-            &merman_model::presentation::PresentationConfig::default(),
-            None,
-            &typography_meter,
-        )
-        .unwrap();
-        let receipt = crate::sequence::SequenceTypographyThemeReceipt::from_plan(&typography);
+        let typography = default_sequence_typography(&Default::default());
 
         let error = render_sequence_message_text_lines(
             &mut out,
@@ -1269,7 +1001,6 @@ mod cancellation_tests {
                 config: &merman_model::presentation::PresentationConfig::default(),
             },
             typography.message(),
-            &receipt,
             checkpoints,
         )
         .unwrap_err();
@@ -1317,7 +1048,7 @@ mod cancellation_tests {
         let config = crate::test_support::presentation_config(serde_json::json!({
             "themeVariables": {"fontFamily": "ThemeFont"}
         }));
-        let (typography, typography_receipt) = default_sequence_typography(&config);
+        let typography = default_sequence_typography(&config);
         for margin in [5.0, 0.0, -5.0] {
             let probe = RowProbe::default();
             let first_y = crate::sequence::sequence_drawn_text_first_y(10.25, margin);
@@ -1335,7 +1066,6 @@ mod cancellation_tests {
                     config: &config,
                 },
                 typography.message(),
-                &typography_receipt,
                 super::SequenceEmitCheckpoints::for_emit(&meter),
             )
             .unwrap();
@@ -1378,7 +1108,7 @@ mod cancellation_tests {
         let config = crate::test_support::presentation_config(serde_json::json!({
             "themeVariables": {"fontFamily": "ThemeFont"}
         }));
-        let (typography, typography_receipt) = default_sequence_typography(&config);
+        let typography = default_sequence_typography(&config);
         let mut out = String::new();
         let error = render_sequence_message_text_lines(
             &mut out,
@@ -1393,7 +1123,6 @@ mod cancellation_tests {
                 config: &config,
             },
             typography.message(),
-            &typography_receipt,
             super::SequenceEmitCheckpoints::for_emit(&meter),
         )
         .unwrap_err();

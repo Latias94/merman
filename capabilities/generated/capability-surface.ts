@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:8957a869ae1112ea4a82880dd70d9e4aac90b86000872fd00566890b3a624aa8" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:ece23386718c7ab5761aa12ceb2d415298082601a129b92aa9b3a97477be2ffa" as const;
 
 export const TARGETS = [
   {
@@ -354,22 +354,6 @@ export const BINDING_OPERATIONS = [
     ]
   },
   {
-    "id": "describe-theme-support-json",
-    "maturity": "alpha",
-    "capability": "svg",
-    "output": null,
-    "compiled_prerequisites": [],
-    "description": "Describe the static support bound for a versioned theme query.",
-    "input_kind": "theme-support-query-json",
-    "media_type": "application/json",
-    "requires_uri": false,
-    "targets": [
-      "native",
-      "typst",
-      "web"
-    ]
-  },
-  {
     "id": "document-analysis-facts-json",
     "maturity": "stable",
     "capability": "analysis",
@@ -415,12 +399,12 @@ export const BINDING_OPERATIONS = [
     ]
   },
   {
-    "id": "export-theme-preset-json",
-    "maturity": "alpha",
+    "id": "export-theme-preset",
+    "maturity": "stable",
     "capability": "svg",
     "output": null,
     "compiled_prerequisites": [],
-    "description": "Export a built-in theme preset as a self-contained editable recipe.",
+    "description": "Export a built-in native preset as an editable v2 theme document.",
     "input_kind": "theme-preset-id",
     "media_type": "application/json",
     "requires_uri": false,
@@ -462,22 +446,6 @@ export const BINDING_OPERATIONS = [
     ]
   },
   {
-    "id": "materialize-theme-json",
-    "maturity": "alpha",
-    "capability": "svg",
-    "output": null,
-    "compiled_prerequisites": [],
-    "description": "Materialize an editable theme design into a complete specification with declared reference bindings.",
-    "input_kind": "theme-design-json",
-    "media_type": "application/json",
-    "requires_uri": false,
-    "targets": [
-      "native",
-      "typst",
-      "web"
-    ]
-  },
-  {
     "id": "pdf",
     "maturity": "stable",
     "capability": "pdf",
@@ -507,6 +475,22 @@ export const BINDING_OPERATIONS = [
     "requires_uri": false,
     "targets": [
       "native"
+    ]
+  },
+  {
+    "id": "resolve-theme",
+    "maturity": "stable",
+    "capability": "svg",
+    "output": null,
+    "compiled_prerequisites": [],
+    "description": "Resolve a native theme document and report contrast notices or a JSON error location.",
+    "input_kind": "theme-resolve-request-json",
+    "media_type": "application/json",
+    "requires_uri": false,
+    "targets": [
+      "native",
+      "typst",
+      "web"
     ]
   },
   {
@@ -622,16 +606,15 @@ export const BINDING_OPERATION_IDS = [
   "analysis-facts-json",
   "analysis-json",
   "ascii",
-  "describe-theme-support-json",
   "document-analysis-facts-json",
   "document-analysis-json",
   "edge-geometry-json",
-  "export-theme-preset-json",
+  "export-theme-preset",
   "jpeg",
   "layout-json",
-  "materialize-theme-json",
   "pdf",
   "png",
+  "resolve-theme",
   "semantic-json",
   "svg",
   "svg-plan-json",

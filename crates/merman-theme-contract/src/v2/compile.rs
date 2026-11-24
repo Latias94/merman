@@ -97,6 +97,11 @@ impl ThemeCompiler {
         self
     }
 
+    /// Byte limit for the JSON document supplied to this compiler.
+    pub const fn max_bytes(&self) -> usize {
+        self.max_bytes
+    }
+
     /// Rejects a custom theme when one of the checked contrast pairs falls below its target.
     pub const fn with_strict_contrast(mut self, strict: bool) -> Self {
         self.strict_contrast = strict;

@@ -1,7 +1,8 @@
 import type {
   HostTextMeasurer,
   SvgRenderResult,
-  ThemeCapabilityDescriptor,
+  ThemeResolution,
+  ThemeResolveOptions,
 } from "@mermanjs/web";
 
 export * from "@mermanjs/web";
@@ -13,6 +14,7 @@ export const browserRenderFixture = {
     optionsJson: string | null | undefined;
     measurer?: HostTextMeasurer;
   }[],
+  themeCalls: [] as { document: string; options?: ThemeResolveOptions }[],
   failure: null as unknown,
   result: {
     svg: '<svg xmlns="http://www.w3.org/2000/svg" />',
@@ -22,20 +24,18 @@ export const browserRenderFixture = {
       media_type: "image/svg+xml",
       runtime_policy: "default",
       byte_length: 0,
-      theme_execution_evidence: { version: 99, future_status: "unknown" },
+      theme_outcome: { mode: "mermaid_parity", notices: [] },
     },
   } as SvgRenderResult,
-  support: { version: 99, outcome: "unknown" } as unknown as ThemeCapabilityDescriptor,
-  supportCalls: [] as (string | null | undefined)[][],
 };
 
 export function packageVersion(): string {
   return "test-runtime";
 }
 
-export function describeThemeSupport(queryJson: string, optionsJson?: string | null): ThemeCapabilityDescriptor {
-  browserRenderFixture.supportCalls.push([queryJson, optionsJson]);
-  return browserRenderFixture.support;
+export function resolveTheme(document: string, options?: ThemeResolveOptions): ThemeResolution {
+  browserRenderFixture.themeCalls.push({ document, options });
+  return { ok: false, line: 3, column: 8, path: "seed.accent", message: "A color is required." };
 }
 
 export function renderSvg(source: string, optionsJson?: string | null): string {

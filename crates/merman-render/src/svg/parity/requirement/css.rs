@@ -1,36 +1,7 @@
 use super::super::*;
 use crate::requirement::RequirementCssBinding;
 
-/// Values emitted by the Requirement stylesheet writer for terminal evidence.
-#[derive(Debug)]
-pub(super) struct RequirementCssEmission {
-    pub(super) css: String,
-    font_family: Box<str>,
-    font_size: Box<str>,
-    typed_relation_color: Option<(usize, Box<str>)>,
-}
-
-impl RequirementCssEmission {
-    pub(super) fn font_family(&self) -> &str {
-        &self.font_family
-    }
-
-    pub(super) fn font_size(&self) -> &str {
-        &self.font_size
-    }
-
-    pub(super) fn typed_relation_color(&self) -> Option<(usize, &str)> {
-        self.typed_relation_color
-            .as_ref()
-            .map(|(index, color)| (*index, color.as_ref()))
-    }
-}
-
-pub(super) fn write_requirement_css<I>(
-    diagram_id: I,
-    binding: &RequirementCssBinding,
-    mut text_receipt: Option<&mut crate::requirement::RequirementTextPaintReceipt<'_>>,
-) -> RequirementCssEmission
+pub(super) fn write_requirement_css<I>(diagram_id: I, binding: &RequirementCssBinding) -> String
 where
     I: SvgDiagramIdValue,
 {
@@ -38,7 +9,7 @@ where
     let mut out = String::new();
     binding
         .common
-        .write_prefix_with_font_emission(&mut out, id)
+        .write_prefix(&mut out, id)
         .expect("String-backed Requirement base CSS emission cannot fail");
     let font = binding.common.font_family();
     let font_size = binding.common.font_size_css();
@@ -69,42 +40,23 @@ where
         &mut out,
         r#"}}#{id} .edgeLabel{{background-color:{edge_label_background};}}#{id} .edgeLabel .label rect{{fill:{edge_label_background};}}#{id} .edgeLabel .label text{{"#,
     );
-    if let Some(receipt) = text_receipt.as_deref_mut() {
-        let _ = receipt.write_relation_css(&mut out, relation_label_color);
-    } else {
-        let _ = write!(&mut out, "fill:{relation_label_color};");
-    }
+    let _ = write!(&mut out, "fill:{relation_label_color};");
     let _ = write!(
         &mut out,
         r#"}}#{id} .divider{{stroke:{node_border};stroke-width:1;}}#{id} .label{{font-family:{font};"#,
     );
-    if let Some(receipt) = text_receipt.as_deref_mut() {
-        let _ = receipt.write_node_css(&mut out, node_text_color, false);
-    } else {
-        let _ = write!(&mut out, "color:{node_text_color};");
-    }
+    let _ = write!(&mut out, "color:{node_text_color};");
     let _ = write!(&mut out, "}}#{id} .label text,#{id} span{{");
-    if let Some(receipt) = text_receipt {
-        let _ = receipt.write_node_css(&mut out, node_text_color, true);
-    } else {
-        let _ = write!(&mut out, "fill:{node_text_color};color:{node_text_color};");
-    }
+    let _ = write!(&mut out, "fill:{node_text_color};color:{node_text_color};");
     let _ = write!(
         &mut out,
         "}}#{id} .labelBkg{{background-color:{requirement_edge_label_background};}}"
     );
     binding
         .common
-        .write_root_with_font_emission(&mut out, id, diagram_id)
+        .write_root(&mut out, id, diagram_id)
         .expect("String-backed Requirement root CSS emission cannot fail");
-    RequirementCssEmission {
-        css: out,
-        font_family: font.into(),
-        font_size: font_size.into(),
-        typed_relation_color: binding
-            .typed_relation_rule
-            .map(|index| (index, binding.relation_color.clone().into_boxed_str())),
-    }
+    out
 }
 
 #[cfg(test)]
@@ -138,7 +90,7 @@ mod tests {
         let meter = crate::resources::OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
-        let plan = crate::requirement::RequirementPaintThemePlan::resolve_with_title(
+        let plan = crate::requirement::RequirementPaintThemePlan::resolve(
             None,
             &config,
             &merman_model::families::requirement::RequirementDiagramModel {
@@ -150,11 +102,10 @@ mod tests {
                 relationships: Vec::new(),
                 classes: std::collections::BTreeMap::new(),
             },
-            None,
             &meter,
         )
         .unwrap();
-        let css = write_requirement_css("req", plan.css(), None).css;
+        let css = write_requirement_css("req", plan.css());
 
         assert!(css.contains(r#"#req marker{fill:#222222;stroke:#222222;}"#));
         assert!(css.contains(r#"#req marker.cross{stroke:#333333;}"#));

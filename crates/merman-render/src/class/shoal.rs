@@ -1,6 +1,6 @@
 use super::{
     ClassDiagramModel, ClassLayoutSettings, ClassPreparedLabels, ClassRenderConfig,
-    ClassTextThemePlan, MeasuredClassDiagram, class_namespace_label, measure_class_diagram,
+    MeasuredClassDiagram, class_namespace_label, measure_class_diagram,
 };
 use crate::graph_layout::canonical::CanonicalRoutes;
 use crate::graph_layout::contour::ShapePortProfile;
@@ -26,7 +26,6 @@ pub(crate) fn layout(
     config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-    typography: &ClassTextThemePlan,
     render: &ClassRenderConfig,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<(ClassDiagramLayout, ClassPreparedLabels)> {
@@ -38,7 +37,6 @@ pub(crate) fn layout(
         math_renderer,
         render,
         false,
-        typography,
         Some(work),
     )?;
     let (graph, profiles) =

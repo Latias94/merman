@@ -1,5 +1,48 @@
 use super::super::*;
 
+pub(super) fn write_class_native_css(
+    out: &mut impl SvgOutput,
+    diagram_id: &str,
+    native: &crate::class::ClassNativeStyle,
+    relation: &crate::class::ClassRelationThemePlan,
+    theme: &crate::class::ClassCssThemeBinding,
+) -> Result<()> {
+    let id = crate::svg::escape_css_identifier(diagram_id);
+    let code = native
+        .code_style
+        .font_family
+        .as_deref()
+        .unwrap_or("monospace");
+    let title = native
+        .title_style
+        .font_family
+        .as_deref()
+        .unwrap_or("sans-serif");
+    let weight = native.title_style.font_weight.as_deref().unwrap_or("600");
+    let title_color = relation.diagram_title_css_default();
+    let guide = &native.guide;
+    let note = &theme.note_text;
+    let connector = relation.relation_css_default();
+    let width = relation.relation_width().css();
+    let _ = write!(
+        out,
+        "#{id} .members-group,#{id} .methods-group{{font-family:{code};}}\
+         #{id} .label-group,#{id} .classDiagramTitleText{{font-family:{title};font-weight:{weight};}}\
+         #{id} .classDiagramTitleText{{fill:{title_color};}}\
+         #{id} .node .divider path{{stroke:{guide};fill:none;}}\
+         #{id} .noteLabel text{{fill:{note};}}\
+         #{id} path.relation[data-edge='true']{{stroke:{connector};stroke-width:{width};}}"
+    );
+    if let Some(color) = &native.on_emphasis {
+        let _ = write!(
+            out,
+            "#{id} .class-native-heading .label text{{fill:{color};}}\
+             #{id} .class-native-heading .nodeLabel{{color:{color};}}"
+        );
+    }
+    out.checkpoint()
+}
+
 fn write_class_marker_css(
     out: &mut impl SvgOutput,
     id: &str,
@@ -26,6 +69,7 @@ fn write_class_palette_css(
     out: &mut impl SvgOutput,
     id: &str,
     theme: &crate::class::ClassCssThemeBinding,
+    divider_guide: Option<&str>,
 ) -> Result<()> {
     if theme.palette.is_empty() {
         return out.checkpoint();
@@ -40,9 +84,10 @@ fn write_class_palette_css(
             let _ = write!(out, "fill:{background};");
         }
         out.push('}');
+        let divider = divider_guide.unwrap_or(border);
         let _ = write!(
             out,
-            r#"#{id} [data-look="{look}"][data-color-id="color-{index}"].node .divider path{{stroke:{border};}}"#
+            r#"#{id} [data-look="{look}"][data-color-id="color-{index}"].node .divider path{{stroke:{divider};}}"#
         );
         out.checkpoint()?;
     }
@@ -54,6 +99,7 @@ pub(super) fn write_class_css(
     diagram_id: &str,
     typography_theme: &crate::class::ClassTextThemePlan,
     relation_theme: &crate::class::ClassRelationThemePlan,
+    divider_guide: Option<&str>,
 ) -> Result<()> {
     let theme = typography_theme.css_binding();
     let id = crate::svg::escape_css_identifier(diagram_id);
@@ -68,11 +114,11 @@ pub(super) fn write_class_css(
     let (cluster_bkg, cluster_border) = relation_theme.cluster_css_defaults();
     let title_color = relation_theme.namespace_title_css_default();
     let text_color = theme.text_color.as_str();
-    let stroke_width = relation_theme.relation_width().compatibility_css();
+    let relation_width = relation_theme.relation_width();
     let edge_label_background = theme.edge_label_background.as_str();
 
-    let _base_font_emission = info_css.write_prefix_with_font_emission(out, diagram_id)?;
-    write_class_palette_css(out, &id, theme)?;
+    info_css.write_prefix(out, diagram_id)?;
+    write_class_palette_css(out, &id, theme, divider_guide)?;
 
     let _ = write!(
         out,
@@ -120,7 +166,7 @@ pub(super) fn write_class_css(
         id.as_ref(),
         main_bkg,
         node_border,
-        stroke_width,
+        relation_width.configured_css(),
         id.as_ref(),
         node_border,
         id.as_ref(),
@@ -135,7 +181,7 @@ pub(super) fn write_class_css(
         node_border,
         id.as_ref(),
         line_color,
-        stroke_width,
+        relation_width.css(),
         id.as_ref(),
         id.as_ref()
     );
@@ -176,10 +222,7 @@ pub(super) fn write_class_css(
 
     write_class_icon_css(out, &id);
     out.checkpoint()?;
-    let _root_font_emission =
-        info_css.write_root_with_font_emission(out, diagram_id, diagram_id)?;
-
-    Ok(())
+    info_css.write_root(out, diagram_id, diagram_id)
 }
 
 #[cfg(test)]
@@ -248,20 +291,15 @@ mod tests {
     fn class_css_propagates_writer_checkpoint_failure() {
         let mermaid_config = merman_model::presentation::PresentationConfig::default();
         let typography_theme = crate::class::ClassTextThemePlan::resolve(None, &mermaid_config);
-        let meter = crate::resources::OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-        );
         let relation_theme =
-            crate::class::ClassRelationThemePlan::resolve(None, &mermaid_config, 0, 0, &meter)
-                .unwrap()
-                .with_cluster_domain(None, &mermaid_config, 0, &meter)
-                .unwrap();
+            crate::class::ClassRelationThemePlan::resolve(None, &mermaid_config, None);
         let mut successful = CheckpointSink::default();
         write_class_css(
             &mut successful,
-            "class-css-receipt",
+            "class-css-checkpoint",
             &typography_theme,
             &relation_theme,
+            None,
         )
         .expect("write complete Class CSS");
 
@@ -269,9 +307,10 @@ mod tests {
             let mut rejecting = CheckpointSink::rejecting(checkpoint);
             let error = write_class_css(
                 &mut rejecting,
-                "class-css-receipt",
+                "class-css-checkpoint",
                 &typography_theme,
                 &relation_theme,
+                None,
             )
             .expect_err("a failed Class CSS checkpoint must prevent successful CSS output");
             assert!(matches!(error, crate::Error::InvalidModel { .. }));

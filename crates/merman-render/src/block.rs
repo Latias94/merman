@@ -9,13 +9,13 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 mod config;
-mod edge_paint;
-mod marker_paint;
+mod css_binding;
+mod native_theme;
 mod node_binding;
 mod typography;
-pub(crate) use edge_paint::BlockEdgePaintPlan;
-pub(crate) use marker_paint::BlockMarkerPaintPlan;
-pub(crate) use typography::BlockTextParticipation;
+pub(crate) use css_binding::BlockCssThemeBinding;
+pub(crate) use native_theme::{BlockNativeStyle, BlockThemeAdapter};
+pub(crate) use node_binding::BlockNodeBindings;
 mod source;
 mod theme;
 
@@ -24,10 +24,7 @@ pub(crate) use source::resolve_block_node_sources;
 
 #[cfg(test)]
 use config::{BlockConfigView, BlockLayoutSettings};
-pub(crate) use theme::{
-    BlockCssThemeBinding, BlockLabelBackgroundPlan, BlockNodeLabelPaintPlan,
-    BlockNodePaintThemePlan, BlockTypographyThemePlan,
-};
+pub(crate) use theme::BlockTypographyThemePlan;
 
 mod geometry;
 
@@ -127,7 +124,6 @@ impl BlockPreparedLabels {
                 &model.class_defs,
                 text_style,
                 html.as_ref().map(|html| html.xhtml.as_str()),
-                text,
                 node.id.len(),
                 work_meter,
             )?;
@@ -152,7 +148,6 @@ impl BlockPreparedLabels {
                 &model.class_defs,
                 text_style,
                 label.as_ref().map(|label| label.xhtml.as_str()),
-                &edge.label,
                 0,
                 work_meter,
             )?;

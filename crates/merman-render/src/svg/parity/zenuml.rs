@@ -1,9 +1,13 @@
 use super::*;
+use kurbo::{Rect, Shape};
+use merman_theme_contract::v2::Elevation;
+
 use crate::zenuml::{
     ZENUML_FRAME_TITLE_CLASS, ZenumlArrowStyle, ZenumlCommentLayout, ZenumlCreationLayout,
     ZenumlDiagramLayout, ZenumlFragmentLayout, ZenumlLayoutFragmentKind, ZenumlMessageLayout,
-    ZenumlParticipantLayout, ZenumlReturnLayout, ZenumlSelfCallLayout, ZenumlSourceStyle,
-    ZenumlThemePlan, resolve_zenuml_emojis_in_text, resolve_zenuml_title, zenuml_emoji_unicode,
+    ZenumlNativeStyle, ZenumlParticipantLayout, ZenumlReturnLayout, ZenumlSelfCallLayout,
+    ZenumlSourceStyle, ZenumlTypography, resolve_zenuml_emojis_in_text, resolve_zenuml_title,
+    zenuml_emoji_unicode,
 };
 use merman_model::families::zenuml::ZenumlDiagramModel;
 
@@ -15,13 +19,12 @@ pub(super) fn render_zenuml_diagram_svg_model(
     model: &ZenumlDiagramModel,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
-    theme_plan: &ZenumlThemePlan,
+    theme: &ZenumlSourceStyle,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("zenuml");
     let title = resolve_zenuml_title(model, diagram_title);
-    let mut theme_receipt = theme_plan.begin_terminal_receipt();
-    let theme = theme_plan.source_style();
+    let native = theme.native.as_deref();
     let vertical_scale = theme.typography.vertical_scale();
     let content_left = 1.0 + CONTENT_PADDING + layout.frame_border_left;
     let view_width =
@@ -33,39 +36,74 @@ pub(super) fn render_zenuml_diagram_svg_model(
         .and_then(|sequence| sequence.get("useMaxWidth"))
         .and_then(serde_json::Value::as_bool)
         .unwrap_or(true);
-    let bounds = root_svg::DiagramBounds::from_view_box(0.0, 0.0, view_width, view_height);
+    let mut viewport = Rect::new(0.0, 0.0, view_width, view_height);
+    let header_y = (FRAME_HEADER_HEIGHT + 6.0) * vertical_scale;
+    if let Some(native) = native {
+        viewport = viewport.inflate(
+            native.form.stroke_width / 2.0,
+            native.form.stroke_width / 2.0,
+        );
+        if !matches!(native.elevation, Elevation::Flat) {
+            let offset = kurbo::Vec2::new(content_left, header_y);
+            for participant in layout.participants.iter().chain(
+                layout
+                    .creations
+                    .iter()
+                    .map(|creation| &creation.participant),
+            ) {
+                let surface = participant_rect(participant) + offset;
+                viewport = viewport.union(crate::theme::elevation_svg::bounds(
+                    &native.elevation,
+                    surface,
+                ));
+            }
+        }
+    }
+    let bounds = root_svg::DiagramBounds::from_view_box(
+        viewport.x0,
+        viewport.y0,
+        viewport.width(),
+        viewport.height(),
+    );
     let root_spec = root_svg::RootViewportSpec::mermaid(bounds, use_max_width);
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let mut chrome = root_svg::RootChrome::new(diagram_id, "zenuml");
     chrome.dom.trailing_newline = false;
-    let root_document =
-        root_svg::RootViewportContext::new(crate::DiagramFamilyId::ZENUML, diagram_id)
-            .write_open(&mut out, root_spec, chrome)?;
+    let root_document = options
+        .root_viewport(crate::DiagramFamilyId::ZENUML, diagram_id)
+        .write_open(&mut out, root_spec, chrome)?;
     options.checkpoint_emit()?;
 
     out.push_str("<defs><style>");
-    write_zenuml_css(
-        &mut super::output::XmlTextOutput::new(&mut out),
-        diagram_id,
-        theme.color(
-            "titleTextColor",
-            theme.color("textColor", ZENUML_DEFAULT_TITLE_FILL),
-        ),
-        theme,
-    );
+    {
+        let mut css = super::output::XmlTextOutput::new(&mut out);
+        if let Some(native) = native {
+            write_zenuml_native_css(&mut css, diagram_id, native, &theme.typography);
+        } else {
+            write_zenuml_css(
+                &mut css,
+                diagram_id,
+                theme.color(
+                    "titleTextColor",
+                    theme.color("textColor", ZENUML_DEFAULT_TITLE_FILL),
+                ),
+                theme,
+            );
+        }
+    }
     out.push_str("</style></defs>");
     out.checkpoint()?;
-    theme_receipt.record_stylesheet();
     let _ = write!(
         &mut out,
-        r#"<rect class="frame-border-outer" x="0" y="0" width="{}" height="{}" rx="4"/><rect class="frame-border-inner" x="1" y="1" width="{}" height="{}" rx="3"/>"#,
+        r#"<rect class="frame-border-outer" x="0" y="0" width="{}" height="{}" rx="{}"/><rect class="frame-border-inner" x="1" y="1" width="{}" height="{}" rx="{}"/>"#,
         fmt(view_width),
         fmt(view_height),
+        fmt(native.map_or(4.0, |style| style.form.container_radius)),
         fmt(view_width - 2.0),
         fmt(view_height - 2.0),
+        fmt(native.map_or(3.0, |style| (style.form.container_radius - 1.0).max(0.0))),
     );
     out.checkpoint()?;
-    let header_y = (FRAME_HEADER_HEIGHT + 6.0) * vertical_scale;
     let _ = write!(
         &mut out,
         r#"<line class="frame-header-line" x1="1" y1="{}" x2="{}" y2="{}"/>"#,
@@ -83,8 +121,6 @@ pub(super) fn render_zenuml_diagram_svg_model(
             escape_xml(&resolve_emoji_in_text(title)),
         );
         out.checkpoint()?;
-        theme_receipt.record_colors(&["titleTextColor"]);
-        theme_receipt.record_text(title);
     }
     let _ = write!(
         &mut out,
@@ -99,17 +135,38 @@ pub(super) fn render_zenuml_diagram_svg_model(
         .map(|creation| creation.participant.name.as_str())
         .collect::<std::collections::HashSet<_>>();
 
+    if let Some(native) = native {
+        // Outer fragments must be painted before the nested frames and their contents.
+        let mut fragments = layout.fragments.iter().collect::<Vec<_>>();
+        fragments.sort_by_key(|fragment| fragment.depth);
+        for fragment in fragments {
+            let _ = write!(
+                &mut out,
+                r#"<rect class="fragment-surface" x="{}" y="{}" width="{}" height="{}" rx="{}"/>"#,
+                fmt(fragment.x + 0.5),
+                fmt(fragment.y + 0.5),
+                fmt(fragment.width - 1.0),
+                fmt(fragment.height - 1.0),
+                fmt(native.form.container_radius),
+            );
+            out.checkpoint()?;
+        }
+    }
+
     for group in &layout.groups {
         let rect_x = group.x - 0.5;
         let rect_y = group.y - 2.0 * vertical_scale;
         let title = (!group.name.is_empty()).then(|| escape_xml(&group.name));
         let _ = write!(
             &mut out,
-            r#"<g class="participant-group"><rect x="{}" y="{}" width="{}" height="{}" class="group-outline" stroke-width="1" stroke-dasharray="4 3"/>"#,
+            r#"<g class="participant-group"><rect x="{}" y="{}" width="{}" height="{}"{} class="group-outline" stroke-width="1" stroke-dasharray="4 3"/>"#,
             fmt(rect_x),
             fmt(rect_y),
             fmt(group.width + 1.0),
             fmt(group.height + 1.5 * vertical_scale),
+            native
+                .map(|style| format!(r#" rx="{}""#, fmt(style.form.container_radius)))
+                .unwrap_or_default(),
         );
         if let Some(title) = title {
             let _ = write!(
@@ -126,10 +183,33 @@ pub(super) fn render_zenuml_diagram_svg_model(
         }
         out.push_str("</g>");
         out.checkpoint()?;
-        theme_receipt.record_colors(&["groupBorderColor"]);
-        if !group.name.is_empty() {
-            theme_receipt.record_colors(&["groupBackgroundColor", "groupTextColor"]);
-            theme_receipt.record_text(&group.name);
+    }
+    if let Some(native) = native
+        && !matches!(native.elevation, Elevation::Flat)
+    {
+        for (index, participant) in layout
+            .participants
+            .iter()
+            .filter(|participant| !creation_names.contains(participant.name.as_str()))
+            .chain(
+                layout
+                    .creations
+                    .iter()
+                    .map(|creation| &creation.participant),
+            )
+            .enumerate()
+        {
+            let surface = participant_rect(participant);
+            let silhouette = surface.to_rounded_rect(native.form.radius).to_path(0.1);
+            let scope = format!("{}-participant-{index}", diagram_id.semantic_str());
+            let _ = crate::theme::elevation_svg::write_depth(
+                &mut out,
+                &native.elevation,
+                &scope,
+                &silhouette,
+                (0.0, 0.0),
+            );
+            out.checkpoint()?;
         }
     }
     for lifeline in &layout.lifelines {
@@ -144,23 +224,12 @@ pub(super) fn render_zenuml_diagram_svg_model(
         );
         out.checkpoint()?;
     }
-    if !layout.lifelines.is_empty() {
-        theme_receipt.record_colors(&["lifelineColor"]);
-    }
     for participant in layout
         .participants
         .iter()
         .filter(|participant| !creation_names.contains(participant.name.as_str()))
     {
         render_participant(&mut out, participant, theme)?;
-        theme_receipt.record_colors(&["actorBorderColor"]);
-        if participant.color.is_none() {
-            theme_receipt.record_colors(&["actorBackgroundColor"]);
-        }
-        if !participant.is_starter {
-            theme_receipt.record_colors(&["actorTextColor"]);
-            theme_receipt.record_text(&participant.label);
-        }
     }
     for occurrence in &layout.occurrences {
         let _ = write!(
@@ -175,61 +244,23 @@ pub(super) fn render_zenuml_diagram_svg_model(
         );
         out.checkpoint()?;
     }
-    if !layout.occurrences.is_empty() {
-        theme_receipt.record_colors(&["activationBackgroundColor", "activationBorderColor"]);
-    }
     for creation in &layout.creations {
         render_participant(&mut out, &creation.participant, theme)?;
-        theme_receipt.record_colors(&["actorBorderColor", "actorTextColor"]);
-        if creation.participant.color.is_none() {
-            theme_receipt.record_colors(&["actorBackgroundColor"]);
-        }
-        theme_receipt.record_text(&creation.participant.label);
     }
     for message in &layout.messages {
         render_message(&mut out, message, theme)?;
-        theme_receipt.record_colors(&["messageLineColor", "sequenceNumberTextColor"]);
-        if !message.style.contains_key("fill") {
-            theme_receipt.record_colors(&["messageTextColor"]);
-        }
-        theme_receipt.record_text(&message.label);
     }
     for self_call in &layout.self_calls {
         render_self_call(&mut out, self_call, theme)?;
-        theme_receipt.record_colors(&["messageLineColor", "sequenceNumberTextColor"]);
-        if !self_call.style.contains_key("fill") {
-            theme_receipt.record_colors(&["messageTextColor"]);
-        }
-        theme_receipt.record_text(&self_call.label);
     }
     for creation in &layout.creations {
         render_creation(&mut out, creation, theme)?;
-        theme_receipt.record_colors(&["messageLineColor", "sequenceNumberTextColor"]);
-        if !creation.message.style.contains_key("fill") {
-            theme_receipt.record_colors(&["messageTextColor"]);
-        }
-        theme_receipt.record_text(&creation.message.label);
     }
     for returned in &layout.returns {
         render_return(&mut out, returned, theme)?;
-        theme_receipt.record_colors(&["messageTextColor"]);
-        if !returned.is_self {
-            theme_receipt.record_colors(&["messageLineColor", "sequenceNumberTextColor"]);
-        }
-        theme_receipt.record_text(&returned.label);
     }
     for fragment in &layout.fragments {
         render_fragment(&mut out, fragment, theme)?;
-        theme_receipt.record_colors(&[
-            "fragmentBorderColor",
-            "mutedSurfaceColor",
-            "fragmentTextColor",
-        ]);
-        if !fragment.number.is_empty() {
-            theme_receipt.record_colors(&["sequenceNumberTextColor"]);
-            theme_receipt.record_text(&fragment.number);
-        }
-        theme_receipt.record_text(&fragment.label);
     }
     for divider in &layout.dividers {
         let center_x = divider.width / 2.0;
@@ -267,28 +298,22 @@ pub(super) fn render_zenuml_diagram_svg_model(
         );
         out.checkpoint()?;
     }
-    if !layout.dividers.is_empty() {
-        theme_receipt.record_colors(&["noteBackgroundColor", "noteBorderColor", "noteTextColor"]);
-    }
-    for divider in &layout.dividers {
-        theme_receipt.record_text(&divider.label);
-    }
     for comment in &layout.comments {
         render_comment(&mut out, comment, theme)?;
-        if !comment.style.contains_key("fill") {
-            theme_receipt.record_colors(&["subtleTextColor"]);
-        }
-        theme_receipt.record_text(&comment.text);
     }
     out.push_str("</g></svg>");
     out.checkpoint()?;
-    let rooted_svg = root_document.complete(out.finish()?)?;
-    if !theme_plan.record_terminal(theme_receipt) {
-        return Err(crate::Error::InvalidModel {
-            message: "ZenUML family theme receipt was already completed".to_string(),
-        });
-    }
-    Ok(rooted_svg)
+    root_document.complete(out.finish()?)
+}
+
+fn participant_rect(participant: &ZenumlParticipantLayout) -> Rect {
+    Rect::from_origin_size(
+        (
+            participant.x - participant.width / 2.0 + 1.0,
+            participant.y + 1.0,
+        ),
+        (participant.width - 2.0, participant.height - 2.0),
+    )
 }
 
 fn render_participant(
@@ -313,12 +338,13 @@ fn render_participant(
         .unwrap_or_default();
     let _ = write!(
         out,
-        r#"<g class="participant" data-participant="{}"><rect class="participant-box" x="{}" y="{}" width="{}" height="{}" rx="3"{}/>"#,
+        r#"<g class="participant" data-participant="{}"><rect class="participant-box" x="{}" y="{}" width="{}" height="{}" rx="{}"{}/>"#,
         escape_attr(&participant.name),
         fmt(x),
         fmt(y + 1.0),
         fmt(participant.width - 2.0),
         fmt(participant.height - 2.0),
+        fmt(theme.native.as_ref().map_or(3.0, |style| style.form.radius)),
         fill,
     );
     out.checkpoint()?;
@@ -397,7 +423,14 @@ fn render_participant(
             fmt(stereotype_x),
             fmt(text_y - 8.0 * vertical_scale),
             fmt(theme.typography.size(16.0)),
-            escape_attr(theme.color("actorTextColor", "#222")),
+            escape_attr_display(
+                theme
+                    .native
+                    .as_ref()
+                    .map(|style| style.primary.to_string())
+                    .as_deref()
+                    .unwrap_or_else(|| theme.color("actorTextColor", "#222"))
+            ),
             escape_xml(stereotype),
         );
         out.checkpoint()?;
@@ -587,16 +620,83 @@ fn render_message(
     )?;
     let _ = write!(
         out,
-        r#"<text class="message-label" x="{}" y="{}" text-anchor="middle"{}>{}</text><text class="seq-number" x="{}" y="{}" text-anchor="end">{}</text></g>"#,
+        r#"<text class="message-label" x="{}" y="{}" text-anchor="middle"{}>{}</text>"#,
         fmt(label_x),
         fmt(label_y),
         style_attr(&message.style),
         escape_xml(&resolve_emoji_in_text(&message.label)),
-        fmt(from_x.min(to_x) - 4.0),
-        fmt(label_y),
-        escape_xml(&message.number),
     );
+    write_number_badge(
+        out,
+        theme,
+        &message.number,
+        from_x.min(to_x) - 4.0,
+        label_y,
+        false,
+    );
+    out.push_str("</g>");
     out.checkpoint()
+}
+
+fn write_number_badge(
+    out: &mut impl SvgOutput,
+    theme: &ZenumlSourceStyle,
+    number: &str,
+    x: f64,
+    y: f64,
+    centered: bool,
+) {
+    let baseline = if centered {
+        r#" dominant-baseline="central""#
+    } else {
+        ""
+    };
+    if let Some(width) = theme
+        .native
+        .as_ref()
+        .and_then(|style| style.number_widths.get(number))
+    {
+        let font_size = theme.typography.size(12.0);
+        let height = font_size * 1.4;
+        let y = if centered { y } else { y - font_size * 0.35 };
+        let _ = write!(
+            out,
+            r#"<rect class="seq-number-badge" x="{}" y="{}" width="{}" height="{}" rx="{}"/><text class="seq-number" x="{}" y="{}" text-anchor="middle" dominant-baseline="central">{}</text>"#,
+            fmt(x - width),
+            fmt(y - height / 2.0),
+            fmt(*width),
+            fmt(height),
+            fmt(height / 2.0),
+            fmt(x - width / 2.0),
+            fmt(y),
+            escape_xml(number)
+        );
+    } else if centered {
+        let _ = write!(
+            out,
+            r#"<text x="{}" y="{}" text-anchor="end"{baseline} class="seq-number">{}</text>"#,
+            fmt(x),
+            fmt(y),
+            escape_xml(number)
+        );
+    } else {
+        let _ = write!(
+            out,
+            r#"<text class="seq-number" x="{}" y="{}" text-anchor="end">{}</text>"#,
+            fmt(x),
+            fmt(y),
+            escape_xml(number)
+        );
+    }
+}
+
+fn connector_color(theme: &ZenumlSourceStyle) -> std::borrow::Cow<'_, str> {
+    match theme.native.as_deref() {
+        Some(native) => std::borrow::Cow::Owned(native.connector.to_string()),
+        None => std::borrow::Cow::Borrowed(
+            theme.color("messageLineColor", theme.color("lineColor", "#000")),
+        ),
+    }
 }
 
 fn render_self_call(
@@ -610,13 +710,21 @@ fn render_self_call(
     let svg_y = call.y + (if asynchronous { 20.0 } else { 14.0 }) * vertical_scale;
     let path_end = if asynchronous { "L1,15" } else { "L14,15" };
     let arrow_tx = if asynchronous { 0.0 } else { 7.0 };
-    let arrow_path = if asynchronous {
-        "M1 1.25 L6.15 4.5 L1 7.75"
+    let filled_arrow = if asynchronous {
+        None
     } else {
-        "M1 1.25 L6.15 4.5 L1 7.75 Z"
+        theme.native.as_deref().map_or(
+            Some("M1 1.25 L6.15 4.5 L1 7.75 Z"),
+            ZenumlNativeStyle::filled_arrow,
+        )
     };
-    let line_color = theme.color("messageLineColor", theme.color("lineColor", "#000"));
-    let arrow_fill = if asynchronous { "none" } else { line_color };
+    let arrow_path = filled_arrow.unwrap_or("M1 1.25 L6.15 4.5 L1 7.75");
+    let line_color = connector_color(theme);
+    let arrow_fill = filled_arrow.map_or("none", |_| line_color.as_ref());
+    let stroke_width = theme
+        .native
+        .as_ref()
+        .map_or(2.0, |style| style.form.connector_width);
     let view_box = if vertical_scale == 1.0 {
         ""
     } else {
@@ -624,7 +732,7 @@ fn render_self_call(
     };
     let _ = write!(
         out,
-        r##"<g class="message self-call" data-statement="{}"><svg x="{}" y="{}" width="{}" height="{}"{}><path d="M0,2 L26,2 Q28,2 28,4 L28,13 Q28,15 26,15 {}" fill="none" stroke="{}" stroke-width="2"/><g transform="translate({}, 10)"><svg height="10" width="7" viewBox="0 0 7 9"><g transform="scale(-1, 1) translate(-7, 0)"><path d="{}" stroke="{}" stroke-linecap="round" fill="{}" stroke-width="2"/></g></svg></g></svg><text x="{}" y="{}" text-anchor="start" class="message-label"{}>{}</text><text x="{}" y="{}" text-anchor="end" class="seq-number">{}</text></g>"##,
+        r##"<g class="message self-call" data-statement="{}"><svg x="{}" y="{}" width="{}" height="{}"{}><path d="M0,2 L26,2 Q28,2 28,4 L28,13 Q28,15 26,15 {}" fill="none" stroke="{}" stroke-width="{stroke_width}"/><g transform="translate({}, 10)"><svg height="10" width="7" viewBox="0 0 7 9"><g transform="scale(-1, 1) translate(-7, 0)"><path d="{}" stroke="{}" stroke-linecap="round" fill="{}" stroke-width="{stroke_width}"/></g></svg></g></svg><text x="{}" y="{}" text-anchor="start" class="message-label"{}>{}</text>"##,
         escape_attr(&call.statement_id),
         fmt(call.x + 1.0),
         fmt(svg_y),
@@ -632,19 +740,37 @@ fn render_self_call(
         fmt(24.0 * vertical_scale),
         view_box,
         path_end,
-        escape_attr(line_color),
+        escape_attr(&line_color),
         fmt(arrow_tx),
         arrow_path,
-        escape_attr(line_color),
+        escape_attr(&line_color),
         escape_attr(arrow_fill),
         fmt(call.x + 6.0),
         fmt(label_y),
         style_attr(&call.style),
         escape_xml(&resolve_emoji_in_text(call.label.trim())),
-        fmt(call.x - 3.0),
-        fmt(call.y + 12.0 * vertical_scale),
-        escape_xml(&call.number),
+        stroke_width = fmt(stroke_width),
     );
+    // Self-call sequence numbers use a different attribute order in the companion SVG.
+    if theme.native.is_some() {
+        write_number_badge(
+            out,
+            theme,
+            &call.number,
+            call.x - 3.0,
+            call.y + 12.0 * vertical_scale,
+            false,
+        );
+    } else {
+        let _ = write!(
+            out,
+            r#"<text x="{}" y="{}" text-anchor="end" class="seq-number">{}</text>"#,
+            fmt(call.x - 3.0),
+            fmt(call.y + 12.0 * vertical_scale),
+            escape_xml(&call.number)
+        );
+    }
+    out.push_str("</g>");
     out.checkpoint()
 }
 
@@ -682,14 +808,30 @@ fn render_creation(
     let rendered_label = render_creation_label(&message.label, &message.style);
     let _ = write!(
         out,
-        r#"<text x="{}" y="{}" text-anchor="middle" class="message-label">{}</text><text x="{}" y="{}" text-anchor="end" class="seq-number">{}</text></g>"#,
+        r#"<text x="{}" y="{}" text-anchor="middle" class="message-label">{}</text>"#,
         fmt(label_x),
         fmt(label_y),
         rendered_label,
-        fmt(from_x.min(to_x) - 4.0),
-        fmt(label_y),
-        escape_xml(&message.number),
     );
+    if theme.native.is_some() {
+        write_number_badge(
+            out,
+            theme,
+            &message.number,
+            from_x.min(to_x) - 4.0,
+            label_y,
+            false,
+        );
+    } else {
+        let _ = write!(
+            out,
+            r#"<text x="{}" y="{}" text-anchor="end" class="seq-number">{}</text>"#,
+            fmt(from_x.min(to_x) - 4.0),
+            fmt(label_y),
+            escape_xml(&message.number)
+        );
+    }
+    out.push_str("</g>");
     out.checkpoint()
 }
 
@@ -737,14 +879,24 @@ fn render_return(
     )?;
     let _ = write!(
         out,
-        r#"<text x="{}" y="{}" text-anchor="middle" class="return-label">{}</text><text x="{}" y="{}" text-anchor="end" class="seq-number">{}</text></g>"#,
+        r#"<text x="{}" y="{}" text-anchor="middle" class="return-label">{}</text>"#,
         fmt(label_x),
         fmt(label_y),
         escape_xml(&resolve_emoji_in_text(&returned.label)),
-        fmt(returned.from_x.min(returned.to_x) - 4.0),
-        fmt(label_y),
-        escape_xml(&returned.number),
     );
+    let number_x = returned.from_x.min(returned.to_x) - 4.0;
+    if theme.native.is_some() {
+        write_number_badge(out, theme, &returned.number, number_x, label_y, false);
+    } else {
+        let _ = write!(
+            out,
+            r#"<text x="{}" y="{}" text-anchor="end" class="seq-number">{}</text>"#,
+            fmt(number_x),
+            fmt(label_y),
+            escape_xml(&returned.number)
+        );
+    }
+    out.push_str("</g>");
     out.checkpoint()
 }
 
@@ -756,28 +908,40 @@ fn render_arrow_head(
     style: ZenumlArrowStyle,
     theme: &ZenumlSourceStyle,
 ) -> Result<()> {
-    let filled = style == ZenumlArrowStyle::Solid;
+    let filled_arrow = (style == ZenumlArrowStyle::Solid)
+        .then(|| {
+            theme.native.as_deref().map_or(
+                Some("M1 1.25 L6.15 4.5 L1 7.75 Z"),
+                ZenumlNativeStyle::filled_arrow,
+            )
+        })
+        .flatten();
+    let arrow_path = filled_arrow.unwrap_or("M1 1.25 L6.15 4.5 L1 7.75");
     let x = if points_left { tip_x } else { tip_x - 7.0 };
     let transform = if points_left {
         r#" transform="scale(-1, 1) translate(-7, 0)""#
     } else {
         ""
     };
-    let close = if filled { " Z" } else { "" };
+    let line_color = connector_color(theme);
+    let stroke_width = theme
+        .native
+        .as_ref()
+        .map_or(2.0, |style| style.form.connector_width);
     let _ = write!(
         out,
-        r##"<svg x="{}" y="{}" width="7" height="10" viewBox="0 0 7 9" overflow="visible" class="arrow-head{}"><g{}><path d="M1 1.25 L6.15 4.5 L1 7.75{}" stroke="{}" stroke-linecap="round" stroke-width="2" fill="{}"/></g></svg>"##,
+        r##"<svg x="{}" y="{}" width="7" height="10" viewBox="0 0 7 9" overflow="visible" class="arrow-head{}"><g{}><path d="{arrow_path}" stroke="{}" stroke-linecap="round" stroke-width="{}" fill="{}"/></g></svg>"##,
         fmt(x),
         fmt(tip_y - 5.0),
-        if filled { "" } else { " arrow-open" },
-        transform,
-        close,
-        escape_attr(theme.color("messageLineColor", theme.color("lineColor", "#000"))),
-        escape_attr(if filled {
-            theme.color("messageLineColor", theme.color("lineColor", "#000"))
+        if filled_arrow.is_some() {
+            ""
         } else {
-            "none"
-        }),
+            " arrow-open"
+        },
+        transform,
+        escape_attr(&line_color),
+        fmt(stroke_width),
+        escape_attr(filled_arrow.map_or("none", |_| line_color.as_ref())),
     );
     out.checkpoint()
 }
@@ -843,15 +1007,17 @@ fn render_fragment(
     };
     let header_x = fragment.x + 1.0;
     let header_y = fragment.header_y;
+    let native = theme.native.as_deref();
     let _ = write!(
         out,
-        r#"<g class="fragment fragment-{}" data-statement="{}"><rect class="fragment-border" x="{}" y="{}" width="{}" height="{}" rx="4"/><rect class="fragment-header" x="{}" y="{}" width="{}" height="{}"/>"#,
+        r#"<g class="fragment fragment-{}" data-statement="{}"><rect class="fragment-border" x="{}" y="{}" width="{}" height="{}" rx="{}"/><rect class="fragment-header" x="{}" y="{}" width="{}" height="{}"/>"#,
         class,
         escape_attr(&fragment.statement_id),
         fmt(fragment.x + 0.5),
         fmt(fragment.y + 0.5),
         fmt(fragment.width - 1.0),
         fmt(fragment.height - 1.0),
+        fmt(native.map_or(4.0, |style| style.form.container_radius)),
         fmt(header_x),
         fmt(header_y),
         fmt(fragment.width - 2.0),
@@ -866,13 +1032,18 @@ fn render_fragment(
     )?;
     let _ = write!(
         out,
-        r#"<text x="{}" y="{}" dominant-baseline="central" class="fragment-label">{}</text><text x="{}" y="{}" text-anchor="end" dominant-baseline="central" class="seq-number">{}</text>"#,
+        r#"<text x="{}" y="{}" dominant-baseline="central" class="fragment-label">{}</text>"#,
         fmt(header_x + 26.0 * vertical_scale),
         fmt(header_y + 12.0 * vertical_scale),
         kind_label,
-        fmt(fragment.x - 3.0),
-        fmt(header_y + 8.0 * vertical_scale),
-        escape_xml(&fragment.number),
+    );
+    write_number_badge(
+        out,
+        theme,
+        &fragment.number,
+        fragment.x - 3.0,
+        header_y + 8.0 * vertical_scale,
+        true,
     );
     out.checkpoint()?;
     if !fragment.label.is_empty() {
@@ -908,6 +1079,14 @@ fn render_fragment(
         } else if let (Some(keyword), Some(detail)) = (&section.keyword, &section.detail) {
             let keyword_width = section.keyword_width.unwrap_or(0.0);
             let background_width = keyword_width + section.detail_width.unwrap_or(0.0) + 16.0;
+            let background = native.map_or_else(
+                || std::borrow::Cow::Borrowed(theme.color("backgroundColor", "#fff")),
+                |style| std::borrow::Cow::Owned(style.container.to_string()),
+            );
+            let text_color = native.map_or_else(
+                || std::borrow::Cow::Borrowed(theme.color("textColor", "#222")),
+                |style| std::borrow::Cow::Owned(style.primary.to_string()),
+            );
             let _ = write!(
                 out,
                 r##"<g opacity="0.65"><rect x="{}" y="{}" width="{}" height="{}" fill="{}"/><text x="{}" y="{}" class="fragment-section-label" fill="{}">{}</text><text x="{}" y="{}" class="fragment-section-label" fill="{}">{}</text></g>"##,
@@ -915,18 +1094,22 @@ fn render_fragment(
                 fmt(section.y + 1.0),
                 fmt(background_width),
                 fmt(20.0 * vertical_scale),
-                escape_attr(theme.color("backgroundColor", "#fff")),
+                escape_attr(&background),
                 fmt(fragment.x + 5.0),
                 fmt(section.y + 16.0 * vertical_scale),
-                escape_attr(theme.color("textColor", "#222")),
+                escape_attr(&text_color),
                 escape_xml(keyword),
                 fmt(fragment.x + 13.0 + keyword_width),
                 fmt(section.y + 16.0 * vertical_scale),
-                escape_attr(theme.color("textColor", "#222")),
+                escape_attr(&text_color),
                 escape_xml(detail),
             );
             out.checkpoint()?;
         } else if !section.label.is_empty() {
+            let background = native.map_or_else(
+                || std::borrow::Cow::Borrowed(theme.color("backgroundColor", "#fff")),
+                |style| std::borrow::Cow::Owned(style.container.to_string()),
+            );
             let _ = write!(
                 out,
                 r##"<g opacity="0.65"><rect x="{}" y="{}" width="{}" height="{}" fill="{}"/><text x="{}" y="{}" class="fragment-section-label">{}</text></g>"##,
@@ -934,7 +1117,7 @@ fn render_fragment(
                 fmt(section.y + 1.0),
                 fmt(section.label_width.unwrap_or(0.0) + 8.0),
                 fmt(20.0 * vertical_scale),
-                escape_attr(theme.color("backgroundColor", "#fff")),
+                escape_attr(&background),
                 fmt(fragment.x + 5.0),
                 fmt(section.y + 16.0 * vertical_scale),
                 escape_xml(&section.label),
@@ -1200,12 +1383,73 @@ fn resolve_emoji_in_text(text: &str) -> String {
     resolve_zenuml_emojis_in_text(text)
 }
 
-fn default_zenuml_css(diagram_id: impl std::fmt::Display) -> String {
-    format!(
+fn write_zenuml_native_css(
+    out: &mut impl SvgOutput,
+    id: impl std::fmt::Display,
+    native: &ZenumlNativeStyle,
+    typography: &ZenumlTypography,
+) {
+    let (title_font, title_weight) = typography.native_title_font();
+    let _ = write!(
+        out,
+        r#"#{id}{{font-family:{font};font-weight:{weight};fill:{text}}}
+#{id} .frame-border-outer{{fill:none;stroke:{border};stroke-width:{width}}}
+#{id} .frame-border-inner,#{id} .frame-header-bg{{fill:none}}
+#{id} .frame-header-line,#{id} .fragment-border{{fill:none;stroke:{border};stroke-width:{width}}}
+#{id} .frame-title{{font-family:{title_font};font-size:{base}px;font-weight:{title_weight};fill:{title}}}
+#{id} .participant-box{{fill:{actor};stroke:{border};stroke-width:{width}}}
+#{id} .participant-label,#{id} .stereotype-label,#{id} .participant-emoji{{font-size:{base}px}}
+#{id} .participant-icon{{color:{text}}}
+#{id} .participant-icon [fill="currentColor"]:not([stroke]){{stroke:{border};stroke-width:1}}
+#{id} .lifeline,#{id} .fragment-separator{{stroke:{guide};stroke-width:1}}
+#{id} .message-line,#{id} .return-line,#{id} .return-arrow,#{id} .arrow-head{{stroke:{connector};stroke-width:{connector_width}}}
+#{id} .arrow-head{{fill:{connector}}}
+#{id} .arrow-open,#{id} .return-arrow{{fill:none}}
+#{id} .return-line{{stroke-dasharray:6,4}}
+#{id} .occurrence{{fill:{emphasis};stroke:{connector};stroke-width:{width}}}
+#{id} .fragment-surface,#{id} .group-outline,#{id} .group-title-bg{{fill:{container}}}
+#{id} .group-outline,#{id} .divider-line,#{id} .divider-bg{{stroke:{border};stroke-width:{width}}}
+#{id} .fragment-header{{fill:{emphasis}}}
+#{id} .fragment-label{{fill:{on_emphasis}}}
+#{id} .fragment-icon{{color:{on_emphasis}}}
+#{id} .message-label,#{id} .return-label,#{id} .fragment-label,#{id} .fragment-condition,#{id} .fragment-section-label,#{id} .divider-label,#{id} .comment-text{{font-size:{label_size}px}}
+#{id} .divider-bg{{fill:{callout}}}
+#{id} .divider-label{{fill:{callout_text}}}
+#{id} .comment-text{{fill:{muted}}}
+#{id} .seq-number-badge{{fill:{connector}}}
+#{id} .seq-number{{font-size:{number_size}px;fill:{number_text}}}
+#{id} .group-title-text{{font-size:{group_size}px}}"#,
+        font = typography.css_family(),
+        weight = typography.native_label_weight(),
+        base = fmt(typography.size(16.0)),
+        label_size = fmt(typography.size(14.0)),
+        number_size = fmt(typography.size(12.0)),
+        group_size = fmt(typography.size(13.0)),
+        width = fmt(native.form.stroke_width),
+        connector_width = fmt(native.form.connector_width),
+        actor = native.actor,
+        container = native.container,
+        callout = native.callout,
+        emphasis = native.emphasis,
+        border = native.border,
+        connector = native.connector,
+        guide = native.guide,
+        text = native.primary,
+        muted = native.muted,
+        title = native.title,
+        callout_text = native.callout_text,
+        on_emphasis = native.emphasis_text,
+        number_text = native.number_text,
+    );
+}
+
+fn write_default_zenuml_css(out: &mut impl SvgOutput, diagram_id: impl std::fmt::Display) {
+    let _ = write!(
+        out,
         r#"
 #{diagram_id} .frame-border-outer{{fill:#666}}#{diagram_id} .frame-border-inner,#{diagram_id} .frame-header-bg{{fill:#fff}}#{diagram_id} .frame-header-line{{stroke:#666;stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .frame-title{{font-family:Helvetica,Verdana,serif;font-size:16px;font-weight:600;fill:#222}}#{diagram_id} .participant-box{{fill:#fff;stroke:#666;stroke-width:2}}#{diagram_id} .participant-label{{font-family:Helvetica,Verdana,serif;font-size:16px;fill:#222}}#{diagram_id} .participant-icon{{color:#222}}#{diagram_id} .participant-icon [fill="currentColor"]:not([stroke]){{stroke:#666;stroke-width:1}}#{diagram_id} .participant-emoji{{font-size:16px}}#{diagram_id} .stereotype-label{{font-family:Helvetica,Verdana,serif;font-size:16px;fill:#222}}#{diagram_id} .lifeline{{stroke:#666;stroke-width:1}}#{diagram_id} .message-line{{stroke:#000;stroke-width:2;shape-rendering:crispEdges}}#{diagram_id} .message-label{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#222}}#{diagram_id} .arrow-head{{fill:#000;stroke:#000;stroke-width:2}}#{diagram_id} .arrow-open{{fill:none}}#{diagram_id} .occurrence{{fill:#dedede;stroke:#666;stroke-width:2;shape-rendering:crispEdges}}#{diagram_id} .fragment-border{{fill:none;stroke:#666;stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .fragment-header{{fill:#dedede;fill-opacity:.498;stroke:none;shape-rendering:crispEdges}}#{diagram_id} .fragment-label{{font-family:Helvetica,Verdana,serif;font-size:14px;font-weight:600;fill:#000}}#{diagram_id} .fragment-condition{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#000}}#{diagram_id} .fragment-separator{{stroke:#e5e7eb;stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .fragment-section-label{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#000}}#{diagram_id} .return-line{{stroke:#000;stroke-width:2;stroke-dasharray:6,4;shape-rendering:crispEdges}}#{diagram_id} .return-arrow{{stroke:#000;stroke-width:2;fill:none}}#{diagram_id} .return-label{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#222}}#{diagram_id} .return-icon{{fill:#222}}#{diagram_id} .divider-line{{stroke:#aa3;stroke-width:1}}#{diagram_id} .divider-bg{{fill:#fff5ad;stroke:#aa3;stroke-width:1}}#{diagram_id} .divider-label{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#333}}#{diagram_id} .comment-text{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#333;opacity:.5}}#{diagram_id} .seq-number{{font-family:Helvetica,Verdana,serif;font-size:12px;font-weight:100;fill:#6b7280}}#{diagram_id} .group-outline{{fill:none;stroke:#666}}#{diagram_id} .group-title-bg{{fill:#fff;stroke:none}}#{diagram_id} .group-title-text{{font-family:Helvetica,Verdana,serif;font-size:13px;font-weight:400;fill:#222}}
 "#
-    )
+    );
 }
 
 fn themed_zenuml_css(
@@ -1231,7 +1475,11 @@ fn themed_zenuml_css(
             theme.color("borderColor", "#666").to_owned()
         },
         border = theme.color("borderColor", "#666"),
-        background = theme.color("backgroundColor", "#fff"),
+        background = if theme.transparent_frame() {
+            "none"
+        } else {
+            theme.color("backgroundColor", "#fff")
+        },
         text = theme.color("messageTextColor", theme.color("textColor", "#222")),
         actor_background = theme.color("actorBackgroundColor", "#fff"),
         actor_border = theme.color("actorBorderColor", "#666"),
@@ -1266,16 +1514,15 @@ fn themed_zenuml_css(
     css
 }
 
+#[cfg(test)]
 fn zenuml_css(
     diagram_id: impl std::fmt::Display,
     theme: &ZenumlSourceStyle,
     title_fill: &str,
 ) -> String {
-    if theme.uses_default_css() && title_fill == ZENUML_DEFAULT_TITLE_FILL {
-        default_zenuml_css(diagram_id)
-    } else {
-        themed_zenuml_css(diagram_id, theme, title_fill)
-    }
+    let mut out = String::new();
+    write_zenuml_css(&mut out, diagram_id, title_fill, theme);
+    out
 }
 
 const ZENUML_DEFAULT_TITLE_FILL: &str = "#222";
@@ -1286,7 +1533,11 @@ fn write_zenuml_css(
     title_fill: &str,
     theme: &ZenumlSourceStyle,
 ) {
-    out.push_str(&zenuml_css(diagram_id, theme, title_fill));
+    if theme.uses_default_css() && title_fill == ZENUML_DEFAULT_TITLE_FILL {
+        write_default_zenuml_css(out, diagram_id);
+    } else {
+        out.push_str(&themed_zenuml_css(diagram_id, theme, title_fill));
+    }
 }
 
 #[cfg(test)]
@@ -1299,7 +1550,7 @@ mod tests {
         let theme = ZenumlSourceStyle::new(&serde_json::Value::Null);
 
         assert_eq!(
-            default_zenuml_css("test"),
+            zenuml_css("test", &theme, ZENUML_DEFAULT_TITLE_FILL),
             themed_zenuml_css("test", &theme, ZENUML_DEFAULT_TITLE_FILL)
         );
     }

@@ -1,24 +1,11 @@
-use merman_model::presentation::PresentationConfig;
 use serde_json::Value;
-
-pub(super) struct XyChartColorBinding<'a> {
-    pub(super) color: &'a str,
-    source: Option<String>,
-}
-
-impl XyChartColorBinding<'_> {
-    pub(super) fn source_owned(&self, config: &PresentationConfig) -> bool {
-        self.source
-            .as_ref()
-            .is_some_and(|path| config.config_paint_overrides_typed_default(path))
-    }
-}
 
 #[derive(Debug)]
 pub(super) struct XyChartCssBinding {
     pub(super) background_color: String,
     pub(super) title_color: String,
     pub(super) legend_text_color: String,
+    pub(super) data_label_color: String,
     pub(super) x_axis_title_color: String,
     pub(super) x_axis_label_color: String,
     pub(super) x_axis_tick_color: String,
@@ -28,38 +15,46 @@ pub(super) struct XyChartCssBinding {
     pub(super) y_axis_tick_color: String,
     pub(super) y_axis_line_color: String,
     pub(super) plot_color_palette: Vec<String>,
-    plot_color_palette_source: Option<&'static str>,
 }
 
 impl XyChartCssBinding {
-    pub(super) fn color<'a>(config: &'a Value, channel: &str) -> XyChartColorBinding<'a> {
+    pub(super) fn native(roles: &merman_theme_contract::v2::Roles) -> Self {
+        let title = roles.text_title.to_string();
+        let label = roles.text_muted.to_string();
+        let tick = roles.stroke_guide.first_color().to_string();
+        let axis = roles.stroke_connector.first_color().to_string();
+        Self {
+            background_color: "none".to_owned(),
+            title_color: title.clone(),
+            legend_text_color: roles.text_primary.to_string(),
+            data_label_color: roles.text_primary.to_string(),
+            x_axis_title_color: title.clone(),
+            x_axis_label_color: label.clone(),
+            x_axis_tick_color: tick.clone(),
+            x_axis_line_color: axis.clone(),
+            y_axis_title_color: title,
+            y_axis_label_color: label,
+            y_axis_tick_color: tick,
+            y_axis_line_color: axis,
+            plot_color_palette: Vec::new(),
+        }
+    }
+
+    fn color<'a>(config: &'a Value, channel: &str) -> &'a str {
         let variables = &config["themeVariables"];
         if let Some(color) = variables["xyChart"][channel].as_str() {
-            return XyChartColorBinding {
-                color,
-                source: Some(format!("themeVariables.xyChart.{channel}")),
-            };
+            return color;
         }
         let (root, fallback) = match channel {
             "backgroundColor" => ("background", "white"),
             "dataLabelColor" => ("primaryTextColor", "black"),
             _ => ("primaryTextColor", "#131300"),
         };
-        if let Some(color) = variables[root].as_str() {
-            XyChartColorBinding {
-                color,
-                source: Some(format!("themeVariables.{root}")),
-            }
-        } else {
-            XyChartColorBinding {
-                color: fallback,
-                source: None,
-            }
-        }
+        variables[root].as_str().unwrap_or(fallback)
     }
 
     pub(super) fn resolve(config: &Value) -> Self {
-        let role = |key| Self::color(config, key).color.to_owned();
+        let role = |key| Self::color(config, key).to_owned();
         let palette = crate::config::selected_config_string(
             config,
             &["themeVariables.xyChart.plotColorPalette"],
@@ -68,6 +63,7 @@ impl XyChartCssBinding {
             background_color: role("backgroundColor"),
             title_color: role("titleColor"),
             legend_text_color: role("legendTextColor"),
+            data_label_color: role("dataLabelColor"),
             x_axis_title_color: role("xAxisTitleColor"),
             x_axis_label_color: role("xAxisLabelColor"),
             x_axis_tick_color: role("xAxisTickColor"),
@@ -83,13 +79,7 @@ impl XyChartCssBinding {
                     .unwrap_or("default"),
                 palette.map(|(_, value)| value),
             ),
-            plot_color_palette_source: palette.map(|(path, _)| path),
         }
-    }
-
-    pub(super) fn config_owns_plot_palette(&self, config: &PresentationConfig) -> bool {
-        self.plot_color_palette_source
-            .is_some_and(|path| config.config_paint_overrides_typed_default(path))
     }
 }
 

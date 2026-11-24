@@ -178,7 +178,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
       "open_value": true
     },
     {
-      "name": "theme_execution_evidence",
+      "name": "theme_outcome",
       "json_type": "object",
       "required": false,
       "nullable": false,
@@ -515,94 +515,38 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
       ]
     }
   ],
-  "theme_execution_evidence_versions": [
+  "theme_outcome_fields": [
     {
-      "version": 2,
-      "fields": [
-        {
-          "name": "version",
-          "json_type": "unsigned-integer",
-          "required": true,
-          "nullable": false,
-          "integer_width_bits": 32,
-          "open_value": false
-        },
-        {
-          "name": "family_id",
-          "json_type": "string",
-          "required": true,
-          "nullable": false,
-          "integer_width_bits": null,
-          "open_value": true
-        },
-        {
-          "name": "theme_status",
-          "json_type": "string",
-          "required": true,
-          "nullable": false,
-          "integer_width_bits": null,
-          "open_value": true
-        },
-        {
-          "name": "output_mutated",
-          "json_type": "boolean",
-          "required": true,
-          "nullable": false,
-          "integer_width_bits": null,
-          "open_value": false
-        },
-        {
-          "name": "target_kind",
-          "json_type": "string",
-          "required": true,
-          "nullable": false,
-          "integer_width_bits": null,
-          "open_value": true
-        },
-        {
-          "name": "target_status",
-          "json_type": "string",
-          "required": true,
-          "nullable": false,
-          "integer_width_bits": null,
-          "open_value": true
-        },
-        {
-          "name": "target_reason_ids",
-          "json_type": "array",
-          "required": true,
-          "nullable": false,
-          "integer_width_bits": null,
-          "open_value": true
-        },
-        {
-          "name": "font_source",
-          "json_type": "string",
-          "required": true,
-          "nullable": false,
-          "integer_width_bits": null,
-          "open_value": true
-        },
-        {
-          "name": "materialized_theme",
-          "json_type": "string-or-null",
-          "required": true,
-          "nullable": false,
-          "integer_width_bits": null,
-          "open_value": false
-        },
-        {
-          "name": "diagnostics",
-          "json_type": "array",
-          "required": false,
-          "nullable": false,
-          "integer_width_bits": null,
-          "open_value": true
-        }
-      ],
-      "max_id_utf8_bytes": 128,
-      "max_target_reason_ids": 32,
-      "target_reason_ids_unique": true
+      "name": "mode",
+      "json_type": "string",
+      "required": true,
+      "nullable": false,
+      "integer_width_bits": null,
+      "open_value": true
+    },
+    {
+      "name": "preset_id",
+      "json_type": "string",
+      "required": false,
+      "nullable": false,
+      "integer_width_bits": null,
+      "open_value": true
+    },
+    {
+      "name": "appearance",
+      "json_type": "string",
+      "required": false,
+      "nullable": false,
+      "integer_width_bits": null,
+      "open_value": false
+    },
+    {
+      "name": "notices",
+      "json_type": "array",
+      "required": true,
+      "nullable": false,
+      "integer_width_bits": null,
+      "open_value": true
     }
   ],
   "layout_adaptation_fields": [
@@ -641,7 +585,6 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
   ],
   "additional_fields_policy": "preserve",
   "unknown_output_plan_policy": "preserve",
-  "unknown_theme_execution_evidence_policy": "preserve",
   "original_json_policy": "preserve-exact-bytes"
 };
 
@@ -695,22 +638,6 @@ export const BINDING_OPERATION_EXPECTATIONS = [
     }
   },
   {
-    "operation_id": "describe-theme-support-json",
-    "maturity": "alpha",
-    "output_id": null,
-    "media_type": "application/json",
-    "metadata_schema_version": 1,
-    "requires_uri": false,
-    "availability_capability_id": "svg",
-    "compiled_prerequisite_ids": [],
-    "unavailable": {
-      "status_code": 7,
-      "status_name": "MERMAN_UNSUPPORTED_OPERATION",
-      "error_kind": "missing-capability",
-      "capability_id": "svg"
-    }
-  },
-  {
     "operation_id": "document-analysis-facts-json",
     "maturity": "stable",
     "output_id": null,
@@ -759,8 +686,8 @@ export const BINDING_OPERATION_EXPECTATIONS = [
     }
   },
   {
-    "operation_id": "export-theme-preset-json",
-    "maturity": "alpha",
+    "operation_id": "export-theme-preset",
+    "maturity": "stable",
     "output_id": null,
     "media_type": "application/json",
     "metadata_schema_version": 1,
@@ -809,22 +736,6 @@ export const BINDING_OPERATION_EXPECTATIONS = [
     }
   },
   {
-    "operation_id": "materialize-theme-json",
-    "maturity": "alpha",
-    "output_id": null,
-    "media_type": "application/json",
-    "metadata_schema_version": 1,
-    "requires_uri": false,
-    "availability_capability_id": "svg",
-    "compiled_prerequisite_ids": [],
-    "unavailable": {
-      "status_code": 7,
-      "status_name": "MERMAN_UNSUPPORTED_OPERATION",
-      "error_kind": "missing-capability",
-      "capability_id": "svg"
-    }
-  },
-  {
     "operation_id": "pdf",
     "maturity": "stable",
     "output_id": "pdf",
@@ -858,6 +769,22 @@ export const BINDING_OPERATION_EXPECTATIONS = [
       "status_name": "MERMAN_UNSUPPORTED_OPERATION",
       "error_kind": "missing-capability",
       "capability_id": "png"
+    }
+  },
+  {
+    "operation_id": "resolve-theme",
+    "maturity": "stable",
+    "output_id": null,
+    "media_type": "application/json",
+    "metadata_schema_version": 1,
+    "requires_uri": false,
+    "availability_capability_id": "svg",
+    "compiled_prerequisite_ids": [],
+    "unavailable": {
+      "status_code": 7,
+      "status_name": "MERMAN_UNSUPPORTED_OPERATION",
+      "error_kind": "missing-capability",
+      "capability_id": "svg"
     }
   },
   {
@@ -969,6 +896,12 @@ export const BINDING_OPTION_GROUP_SPECS = [
     "requires_svg_pipeline": false
   },
   {
+    "id": "background",
+    "always_available": false,
+    "any_capability_ids": [],
+    "requires_svg_pipeline": true
+  },
+  {
     "id": "environment",
     "always_available": false,
     "any_capability_ids": [],
@@ -1064,7 +997,9 @@ export const BINDING_OPTION_GROUP_SPECS = [
   {
     "id": "theme",
     "always_available": false,
-    "any_capability_ids": [],
+    "any_capability_ids": [
+      "ascii"
+    ],
     "requires_svg_pipeline": true
   },
   {

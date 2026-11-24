@@ -350,3 +350,47 @@ mod tests {
         }
     }
 }
+
+pub(crate) fn source_font_size_after_style(parent: Option<f64>, style: &str) -> Option<f64> {
+    use crate::mermaid_style::{self, CssFontSizeContext, CssFontSizeOwnership};
+
+    let mut winner = None;
+    mermaid_style::visit_style_declaration_boundaries(style, |boundary| {
+        let Some(owner) = mermaid_style::css_font_size_override(boundary.raw()) else {
+            return;
+        };
+        if winner.is_some_and(|(important, _)| important && !owner.important()) {
+            return;
+        }
+        let size = match owner.ownership() {
+            CssFontSizeOwnership::Inherited => parent,
+            CssFontSizeOwnership::SourceOwned | CssFontSizeOwnership::Unverified => {
+                mermaid_style::parse_style_declaration(boundary.raw()).and_then(|declaration| {
+                    if declaration.property() != "font-size" {
+                        return None;
+                    }
+                    if declaration.font_size_is_literal_zero() {
+                        return Some(0.0);
+                    }
+                    declaration
+                        .analysis()
+                        .context_free_font_size_px()
+                        .or_else(|| {
+                            if declaration.analysis().depends_on_root_font_size()
+                                || owner.ownership() == CssFontSizeOwnership::Unverified
+                            {
+                                None
+                            } else {
+                                parent.and_then(|size| {
+                                    declaration
+                                        .resolve_font_size_px(CssFontSizeContext::uniform(size))
+                                })
+                            }
+                        })
+                })
+            }
+        };
+        winner = Some((owner.important(), size));
+    });
+    winner.map_or(parent, |(_, size)| size)
+}

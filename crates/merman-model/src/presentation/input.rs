@@ -6,20 +6,16 @@ use crate::{MermaidConfig, OperationControl, OperationControlResult};
 
 use super::{
     PresentationConfig, PresentationConfigError, PresentationContext, PresentationMetadata,
-    RenderSemanticModel, ThemeCompatibilityRecipe,
+    RenderSemanticModel,
 };
 
-/// Caller-authored configuration and identity for an ordinary model-to-output operation.
-///
-/// All provided values are caller-owned. This route declares no source-derived compatibility
-/// residuals or palette authority, including when values equal a selected theme recipe.
+/// Caller-authored configuration and identity for a model-to-output operation.
 #[derive(Debug, Clone)]
 pub struct AuthoredPresentationMetadata {
     pub diagram_type: String,
     pub config: MermaidConfig,
     pub effective_config: MermaidConfig,
     pub title: Option<String>,
-    pub theme_recipe: Option<ThemeCompatibilityRecipe>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -42,11 +38,6 @@ pub enum PresentationDataError {
     FamilyContext {
         family: &'static str,
         message: &'static str,
-    },
-    #[error("{paint_family} paint facts cannot be paired with a {model_kind} model")]
-    PaintFamily {
-        paint_family: &'static str,
-        model_kind: &'static str,
     },
 }
 
@@ -73,28 +64,13 @@ impl PresentationDiagram {
         control: &OperationControl,
     ) -> OperationControlResult<Result<Self, PresentationDataError>> {
         control.checkpoint()?;
-        let config = match PresentationConfig::from_config_controlled(
+        let effective_config = match PresentationConfig::from_config_controlled(
             metadata.effective_config,
             construction_policy,
             control,
         )? {
             Ok(config) => config,
             Err(error) => return Ok(Err(error.into())),
-        };
-        let effective_config = if let Some(recipe) = metadata.theme_recipe {
-            let parts = config
-                .frozen_parts()
-                .with_theme_compatibility(Some(recipe), std::sync::Arc::from([]));
-            match PresentationConfig::try_from_frozen_parts_controlled(
-                parts,
-                construction_policy,
-                control,
-            )? {
-                Ok(config) => config,
-                Err(error) => return Ok(Err(error.into())),
-            }
-        } else {
-            config
         };
         Self::try_from_frozen(
             PresentationMetadata {
@@ -135,14 +111,6 @@ impl PresentationDiagram {
         {
             return Ok(Err(PresentationDataError::ContextKind {
                 context_kind,
-                model_kind: model.kind(),
-            }));
-        }
-        if let Some(inputs) = metadata.effective_config.family_paint_inputs()
-            && inputs.render_model_kind() != model.kind()
-        {
-            return Ok(Err(PresentationDataError::PaintFamily {
-                paint_family: inputs.family_id().as_str(),
                 model_kind: model.kind(),
             }));
         }

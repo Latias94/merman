@@ -3,10 +3,10 @@
 use super::config::{FlowchartConfigView, FlowchartLayoutSettings};
 use super::node::NodeLayoutDimensionsRequest;
 use super::{
-    FlowEdge, FlowNode, FlowchartClassDefinitions, FlowchartEdgeKey, FlowchartEdgeLabelPadding,
-    FlowchartLabelMetricsRequest, FlowchartLabelTypography, FlowchartRenderModelRef,
-    FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder, FlowchartSvgWidthMode,
-    flowchart_apply_html_node_class_box_metrics, flowchart_node_svg_width_mode,
+    FlowEdge, FlowNode, FlowchartClassDefinitions, FlowchartEdgeKey, FlowchartLabelMetricsRequest,
+    FlowchartRenderModelRef, FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder,
+    FlowchartSvgWidthMode, flowchart_apply_html_node_class_box_metrics,
+    flowchart_node_svg_width_mode,
     measure_flowchart_svg_label_for_layout_with_metrics_and_source_style,
     measure_flowchart_svg_label_for_layout_with_source_style,
 };
@@ -36,8 +36,6 @@ pub(super) struct FlowchartMeasurement<'a> {
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
     svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
     edge_style_plan: &'a crate::svg::FlowchartEdgeStylePlan,
-    typography: FlowchartLabelTypography,
-    edge_label_padding: FlowchartEdgeLabelPadding,
     pub settings: FlowchartLayoutSettings,
 }
 
@@ -63,14 +61,6 @@ impl<'a> FlowchartMeasurement<'a> {
             math_renderer,
             svg_label_sidecar,
             edge_style_plan,
-            typography: svg_label_sidecar.map_or_else(
-                FlowchartLabelTypography::default,
-                FlowchartSvgLabelSidecarBuilder::label_typography,
-            ),
-            edge_label_padding: svg_label_sidecar.map_or_else(
-                FlowchartEdgeLabelPadding::default,
-                FlowchartSvgLabelSidecarBuilder::edge_label_padding,
-            ),
             settings,
         }
     }
@@ -119,12 +109,7 @@ impl<'a> FlowchartMeasurement<'a> {
         let parent = structural
             .as_ref()
             .map_or(std::borrow::Cow::Borrowed(base), |structural| {
-                self.typography.node_source_parent_style(
-                    base,
-                    &self.model.class_defs,
-                    (classes, styles, false),
-                    structural,
-                )
+                structural.apply_to_parent(std::borrow::Cow::Borrowed(base))
             });
         let mut style = super::flowchart_effective_text_style_for_classes_with_provenance(
             parent.as_ref(),
@@ -195,12 +180,8 @@ impl<'a> FlowchartMeasurement<'a> {
             label_dom,
             &mut charge,
         )?;
-        let node_parent = self.typography.node_source_parent_style(
-            self.label_base_style(self.settings.node_wrap_mode),
-            &self.model.class_defs,
-            (&node.classes, &node.styles, true),
-            &structural,
-        );
+        let node_base = self.label_base_style(self.settings.node_wrap_mode);
+        let node_parent = structural.apply_to_parent(std::borrow::Cow::Borrowed(node_base));
         let (mut node_text_style, rectangle_size) = super::style::flowchart_node_layout_style(
             node_parent.as_ref(),
             &self.model.class_defs,
@@ -302,14 +283,10 @@ impl<'a> FlowchartMeasurement<'a> {
             return Ok(None);
         }
 
-        let edge_parent = self.edge_style_plan.label_parent_style_for(
-            key,
-            self.label_base_style(self.settings.edge_wrap_mode),
-            &self.typography,
-        )?;
+        let edge_parent = self.label_base_style(self.settings.edge_wrap_mode);
         let edge_text_style = self
             .edge_style_plan
-            .edge_label_text_style_for(key, edge_parent.as_ref())?;
+            .edge_label_text_style_for(key, edge_parent)?;
         let metrics =
             if label_type == "markdown" && self.settings.edge_wrap_mode != WrapMode::HtmlLike {
                 crate::text::measure_wrapped_markdown_with_inline_styles(
@@ -329,7 +306,7 @@ impl<'a> FlowchartMeasurement<'a> {
                         raw_label: label_text,
                         label_type,
                         // Mermaid wraps the temporary SVG text before applying `labelStyle`.
-                        style: edge_parent.as_ref(),
+                        style: edge_parent,
                         max_width_px: Some(self.settings.edge_label_wrapping_width),
                         wrap_mode: self.settings.edge_wrap_mode,
                         config: self.effective_config,
@@ -367,7 +344,6 @@ impl<'a> FlowchartMeasurement<'a> {
                 (metrics.height + 4.0).max(1.0),
             )
         };
-        let (width, height) = self.edge_label_padding.padded_size(width, height);
 
         Ok(Some(MeasuredLabel { width, height }))
     }

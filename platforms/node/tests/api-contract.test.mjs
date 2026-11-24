@@ -1156,109 +1156,87 @@ test("named metadata and SVG-plan helpers preserve text JSON payloads", async ()
   );
 });
 
-test("theme catalog metadata preserves the shared open qualification IDs verbatim", async () => {
-  const vectors = JSON.parse(readFileSync(path.join(
-    repositoryRoot,
-    "crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/qualified-cells.json",
-  ), "utf8"));
-  const presets = JSON.parse(readFileSync(path.join(
-    repositoryRoot,
-    "crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/preset-catalog.json",
-  ), "utf8"));
-  for (const { id, cell } of vectors) {
-    const entries = structuredClone(presets);
-    entries[0].appearances[0].qualified_cells = [cell];
-    const payload = JSON.stringify({ schema_version: 1, presets: entries });
-    const calls = [];
-    const factory = transportFactory({
-      metadataJson(metadataId) {
-        calls.push(metadataId);
-        return payload;
-      },
-    });
-    const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
-    try {
-      const result = engine.metadataJson("theme-catalog");
-      assert.equal(result, payload, id);
-      assert.deepEqual(JSON.parse(result).presets[0].appearances[0].qualified_cells, [cell], id);
-      assert.deepEqual(calls, ["theme-catalog"], id);
-    } finally {
-      await engine.dispose();
-    }
+test("themeCatalog returns schema 2 from the shared metadata route", async () => {
+  const catalog = {
+    schema_version: 2,
+    presets: [{
+      id: "studio", name: "Studio", description: "A reading theme", category: "reading",
+      appearances: ["light", "dark"], default_appearance: "light",
+      swatches: ["#f8fafc", "#ffffff", "#eff4fa", "#2563eb", "#0f172a", "#bfdbfe"],
+    }],
+    mermaid_themes: ["dark"],
+    families: [{ id: "flowchart", capabilities: 17 }],
+  };
+  const calls = [];
+  const factory = transportFactory({
+    metadataJson(id) {
+      calls.push(id);
+      return JSON.stringify(catalog);
+    },
+  });
+  const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+  try {
+    assert.deepEqual(engine.themeCatalog(), catalog);
+    assert.deepEqual(calls, ["theme-catalog"]);
+    catalog.schema_version = 1;
+    assert.throws(() => engine.themeCatalog(), /unsupported theme catalog schema/i);
+  } finally {
+    await engine.dispose();
   }
+  assert.throws(() => engine.themeCatalog(), MermanDisposedError);
 });
 
-test("theme authoring facades use the shared queued operations and preserve raw input", async () => {
-  const factory = transportFactory();
-  const output = {
-    schema_version: 1, recipe_schema_version: 1,
-    supported_appearances: ["light", "dark"], default_appearance: "light", appearances: [],
+test("theme helpers queue generic operations and preserve raw document diagnostics", async () => {
+  const document = {
+    schema_version: 2, id: "my-theme", extends: "studio", seed: { accent: "#0052cc" },
   };
+  const preset = { schema_version: 2, id: "studio", default_appearance: "light" };
+  const notice = { kind: "contrast_adjusted", foreground: "text.primary", color: "#cccccc" };
+  const resolution = { ok: true, resolved: { appearance: "dark" }, notices: [notice] };
+  const diagnostic = {
+    ok: false, path: ".", line: 3, column: 18, message: "duplicate key `schema_version`",
+  };
+  const raw = '{\n  "schema_version": 2,\n  "schema_version": 2\n}';
+  const factory = transportFactory();
   factory.transport.execute = async (requestJson) => {
     const request = JSON.parse(requestJson);
     factory.calls.push(request);
-    return jsonSuccess(request.operation_id, output, request.include_metadata !== false);
+    const { operation_id, source, include_metadata } = request;
+    if (operation_id === "export-theme-preset") {
+      return jsonSuccess(operation_id, preset, include_metadata !== false);
+    }
+    const result = typeof JSON.parse(source).document === "string" ? diagnostic : resolution;
+    return jsonSuccess(operation_id, result, include_metadata !== false);
   };
   const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
-  const raw = '{"schema_version":1,"action":"inspect","recipe":{"kind":"design","kind":"complete_spec"}}';
-  const input = { schema_version: 1, action: "materialize", recipe: {
-    schema_version: 1, kind: "design", design: {},
-  }, appearance: "dark" };
   try {
-    assert.deepEqual(await engine.materializeTheme(raw), output);
-    assert.equal(factory.calls.at(-1).source, raw);
-    assert.deepEqual(await engine.materializeTheme(input, { optionsJson: '{"resources":{"profile":"constrained"}}' }), output);
-    assert.deepEqual(JSON.parse(factory.calls.at(-1).source), input);
-    assert.equal(factory.calls.at(-1).options_json, '{"resources":{"profile":"constrained"}}');
-    assert.deepEqual(await engine.exportThemePreset("editor"), output);
-    assert.equal(factory.calls.at(-1).operation_id, "export-theme-preset-json");
-    assert.equal(factory.calls.at(-1).source, "editor");
-    assert.deepEqual(await engine.describeThemeSupport({ schema_version: 1 }), output);
-    assert.equal(factory.calls.at(-1).operation_id, "describe-theme-support-json");
+    assert.deepEqual(await engine.exportThemePreset("studio"), preset);
+    assert.deepEqual(factory.calls.at(-1), {
+      operation_id: "export-theme-preset", source: "studio", uri: null, include_metadata: false,
+    });
+
+    assert.deepEqual(await engine.resolveTheme(document, {
+      appearance: "dark", auto_fix_contrast: true, timeoutMs: 42,
+    }), resolution);
+    const request = factory.calls.at(-1);
+    assert.equal(request.operation_id, "resolve-theme");
+    assert.equal(request.include_metadata, false);
+    assert.deepEqual(request.operation_control, { timeout_ms: 42 });
+    assert.deepEqual(JSON.parse(request.source), { document, appearance: "dark", auto_fix_contrast: true });
+
+    assert.deepEqual(await engine.resolveTheme(raw), diagnostic);
+    assert.deepEqual(JSON.parse(factory.calls.at(-1).source), { document: raw });
+
     const callsBeforeRejection = factory.calls.length;
-    await assert.rejects(engine.materializeTheme({ canvas: { bleed: NaN } }), /JSON|finite/i);
-    await assert.rejects(engine.exportThemePreset({ preset: "editor" }), TypeError);
-    await assert.rejects(engine.materializeTheme(input, { signal: AbortSignal.abort() }), { name: "AbortError" });
+    await assert.rejects(engine.resolveTheme({ ...document, form: { radius: NaN } }), /JSON|finite/i);
+    await assert.rejects(engine.resolveTheme(null), TypeError);
+    await assert.rejects(engine.exportThemePreset({ preset: "studio" }), TypeError);
+    await assert.rejects(engine.resolveTheme(document, { signal: AbortSignal.abort() }), { name: "AbortError" });
     assert.equal(factory.calls.length, callsBeforeRejection);
   } finally {
     await engine.dispose();
   }
-  await assert.rejects(engine.materializeTheme(input), MermanDisposedError);
-});
-
-test("theme authoring bounds nested payloads independently from transport envelopes", async () => {
-  const fixtureRoot = path.join(
-    repositoryRoot,
-    "crates/merman-theme-authoring-fixtures/fixtures/authoring-v1",
-  );
-  const recipe = JSON.parse(readFileSync(path.join(fixtureRoot, "paired.recipe.json"), "utf8"));
-  const spec = JSON.parse(readFileSync(path.join(fixtureRoot, "light.spec.canonical.json"), "utf8"));
-  const input = {
-    schema_version: 1, action: "materialize", recipe, appearance: "light",
-  };
-  const original = structuredClone(input);
-  const output = {
-    schema_version: 1, recipe_schema_version: 1,
-    supported_appearances: ["light", "dark"], default_appearance: "light",
-    effective_appearance: "light", spec, references: [],
-  };
-  const factory = transportFactory();
-  factory.transport.execute = async (requestJson) => {
-    const request = JSON.parse(requestJson);
-    factory.calls.push(request);
-    return jsonSuccess(request.operation_id, output, request.include_metadata !== false);
-  };
-  const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
-  try {
-    const encoded = JSON.stringify(input);
-    assert.deepEqual(await engine.materializeTheme(encoded), output);
-    assert.equal(factory.calls.at(-1).source, encoded);
-    assert.deepEqual(await engine.materializeTheme(input), output);
-    assert.deepEqual(JSON.parse(factory.calls.at(-1).source), input);
-    assert.deepEqual(input, original);
-  } finally {
-    await engine.dispose();
-  }
+  await assert.rejects(engine.resolveTheme(document), MermanDisposedError);
 });
 
 test("metadata helper rejects non-text, oversized, unadvertised, and typed-error responses", async () => {

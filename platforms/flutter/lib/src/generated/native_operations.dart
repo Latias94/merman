@@ -101,22 +101,16 @@ final class MermanOperation {
     native.MERMAN_NATIVE_OPERATION_MATURITY_EDGE_GEOMETRY_JSON,
     false,
   );
-  static const describeThemeSupportJson = MermanOperation._(
-    native.MERMAN_NATIVE_OPERATION_DESCRIBE_THEME_SUPPORT_JSON,
-    native.MERMAN_NATIVE_OPERATION_ID_DESCRIBE_THEME_SUPPORT_JSON,
-    native.MERMAN_NATIVE_OPERATION_MATURITY_DESCRIBE_THEME_SUPPORT_JSON,
+  static const resolveTheme = MermanOperation._(
+    native.MERMAN_NATIVE_OPERATION_RESOLVE_THEME,
+    native.MERMAN_NATIVE_OPERATION_ID_RESOLVE_THEME,
+    native.MERMAN_NATIVE_OPERATION_MATURITY_RESOLVE_THEME,
     false,
   );
-  static const exportThemePresetJson = MermanOperation._(
-    native.MERMAN_NATIVE_OPERATION_EXPORT_THEME_PRESET_JSON,
-    native.MERMAN_NATIVE_OPERATION_ID_EXPORT_THEME_PRESET_JSON,
-    native.MERMAN_NATIVE_OPERATION_MATURITY_EXPORT_THEME_PRESET_JSON,
-    false,
-  );
-  static const materializeThemeJson = MermanOperation._(
-    native.MERMAN_NATIVE_OPERATION_MATERIALIZE_THEME_JSON,
-    native.MERMAN_NATIVE_OPERATION_ID_MATERIALIZE_THEME_JSON,
-    native.MERMAN_NATIVE_OPERATION_MATURITY_MATERIALIZE_THEME_JSON,
+  static const exportThemePreset = MermanOperation._(
+    native.MERMAN_NATIVE_OPERATION_EXPORT_THEME_PRESET,
+    native.MERMAN_NATIVE_OPERATION_ID_EXPORT_THEME_PRESET,
+    native.MERMAN_NATIVE_OPERATION_MATURITY_EXPORT_THEME_PRESET,
     false,
   );
 
@@ -135,9 +129,8 @@ final class MermanOperation {
     documentAnalysisFactsJson,
     svgPlanJson,
     edgeGeometryJson,
-    describeThemeSupportJson,
-    exportThemePresetJson,
-    materializeThemeJson,
+    resolveTheme,
+    exportThemePreset,
   ];
 
   factory MermanOperation.fromNativeCode(int nativeCode) {

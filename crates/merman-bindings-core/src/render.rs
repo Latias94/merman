@@ -155,8 +155,7 @@ impl RenderOperationConfig {
         options: &BindingOptions,
         runtime_policy: merman::model::runtime::RuntimePolicy,
         capability_policy: merman::svg::RenderCapabilityPolicy,
-        theme: Option<merman::svg::DiagramTheme>,
-        theme_resources: merman::svg::ThemeResourcePolicy,
+        theme: Option<merman::theme::ThemeSelection>,
     ) -> Result<Self, BindingError> {
         Ok(Self {
             plan: request::RenderOperationConfig::compile(
@@ -164,7 +163,6 @@ impl RenderOperationConfig {
                 runtime_policy,
                 capability_policy,
                 theme,
-                theme_resources,
             )?,
         })
     }
@@ -211,22 +209,6 @@ mod tests {
         merman_render::environment::RenderEnvironment::deterministic()
             .begin_session()
             .expect("render session")
-    }
-
-    fn root_style_property_is(svg: &str, property: &str, expected: &str) -> bool {
-        let Ok(document) = roxmltree::Document::parse(svg) else {
-            return false;
-        };
-        document
-            .root_element()
-            .attribute("style")
-            .is_some_and(|style| {
-                style.split(';').map(str::trim).any(|declaration| {
-                    declaration.split_once(':').is_some_and(|(name, value)| {
-                        name.trim() == property && value.trim() == expected
-                    })
-                })
-            })
     }
 
     fn task_by_id<'a>(model: &'a Value, id: &str) -> &'a Value {
@@ -495,203 +477,6 @@ A[Plain source]"##,
     }
 
     #[test]
-    fn render_svg_accepts_typed_theme_and_independent_svg_output() {
-        let options = br##"{
-            "theme": {
-                "spec": {
-                    "typography": {
-                        "default": {
-                            "font_stack": ["system-ui", "sans-serif"],
-                            "font_size_px": 17.0
-                        }
-                    },
-                    "styles": [
-                        {
-                            "kind": "rule",
-                            "target": "node",
-                            "family": "flowchart",
-                            "style": {
-                                "fill": "#111827",
-                                "stroke": { "paint": "#475569", "width": 2.0 },
-                                "radius": 6.0
-                            }
-                        },
-                        {
-                            "kind": "rule",
-                            "target": "node-label",
-                            "family": "flowchart",
-                            "style": {
-                                "typography": { "font_size_px": 17.0 }
-                            }
-                        },
-                        {
-                            "kind": "rule",
-                            "target": "edge",
-                            "family": "flowchart",
-                            "style": { "stroke": { "paint": "#94a3b8" } }
-                        }
-                    ],
-                    "canvas": { "base": "#0f172a" }
-                }
-            },
-            "svg": {
-                "diagram_id": "bindings typed theme",
-                "pipeline": "resvg-safe",
-                "root_background_color": "#0f172a",
-                "drop_native_duplicate_fallbacks": true
-            }
-        }"##;
-        let svg =
-            String::from_utf8(render_svg(b"flowchart TD\nA[Typed] --> B[Theme]", options).unwrap())
-                .unwrap();
-
-        assert!(svg.contains(r#"id="bindings-typed-theme""#), "{svg}");
-        assert!(svg.contains("#111827"), "{svg}");
-        assert!(svg.contains("#475569"), "{svg}");
-        assert!(svg.contains("#94a3b8"), "{svg}");
-        assert!(
-            root_style_property_is(&svg, "background-color", "#0f172a"),
-            "{svg}"
-        );
-        assert!(!svg.contains("<foreignObject"), "{svg}");
-    }
-
-    #[test]
-    fn explicit_site_config_overrides_compiled_theme_variables() {
-        let options = br##"{
-            "theme": {
-                "spec": {
-                    "styles": [{
-                        "kind": "rule",
-                        "target": "node",
-                        "family": "flowchart",
-                        "style": {
-                            "fill": "#111111",
-                            "stroke": { "paint": "#222222" }
-                        }
-                    }]
-                }
-            },
-            "site_config": {
-                "themeVariables": {
-                    "nodeBorder": "#abcdef"
-                }
-            },
-            "svg": { "diagram_id": "bindings host override" }
-        }"##;
-        let svg =
-            String::from_utf8(render_svg(b"flowchart TD\nA[Host]", options).unwrap()).unwrap();
-
-        assert!(svg.contains("#abcdef"), "{svg}");
-    }
-
-    #[test]
-    fn theme_preset_applies_common_editor_theme() {
-        let svg = String::from_utf8(
-            render_svg(
-                b"flowchart TD\nA[One Dark] --> B[Readable]",
-                br##"{
-                    "theme": { "preset": "one-dark" },
-                    "svg": {
-                        "diagram_id": "bindings one dark",
-                        "root_background_color": "#282c34"
-                    }
-                }"##,
-            )
-            .unwrap(),
-        )
-        .unwrap();
-
-        assert!(svg.contains("#282c34"), "{svg}");
-        assert!(svg.contains("#abb2bf"), "{svg}");
-        assert!(svg.contains("#61afef"), "{svg}");
-        assert!(
-            root_style_property_is(&svg, "background-color", "#282c34"),
-            "{svg}"
-        );
-    }
-
-    #[test]
-    fn json_theme_matches_the_equivalent_rust_theme() {
-        let source = "flowchart TD\nA[One Dark] --> B[Typed]";
-        let options = br##"{
-            "theme": { "preset": "one-dark" },
-            "site_config": {
-                "layout": "dagre"
-            },
-            "svg": { "diagram_id": "theme equivalence" }
-        }"##;
-        let binding_svg = String::from_utf8(render_svg(source.as_bytes(), options).unwrap())
-            .expect("binding SVG should be UTF-8");
-
-        let theme = merman::svg::DiagramThemeCompiler::new()
-            .compile_preset(merman::svg::ThemePreset::OneDark)
-            .unwrap();
-        let environment = merman::SvgEnvironment::deterministic();
-        let renderer = merman::Renderer::new().with_presentation_engine(
-            merman::MermaidEngine::new().with_site_config(
-                merman::SourcePresentationConfig::from_value(serde_json::json!({
-                    "layout": "dagre",
-                })),
-            ),
-        );
-        let svg_request = merman::SvgRequest {
-            environment,
-            options: merman::svg::SvgRenderOptions {
-                diagram_id: Some("theme equivalence".to_string()),
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        let rust_svg = renderer
-            .render(
-                merman::RenderRequest::svg(
-                    source,
-                    merman::OperationControl::new(),
-                    svg_request.clone(),
-                )
-                .with_theme(theme.clone()),
-            )
-            .expect("Rust rendering should succeed");
-        let merman::RenderOutput::Svg(Some(rust_svg)) = rust_svg else {
-            panic!("typed SVG request should produce SVG output");
-        };
-        assert_eq!(binding_svg, rust_svg.svg());
-
-        let binding_plan: Value = serde_json::from_slice(
-            &crate::svg_plan_json(source.as_bytes(), options).expect("binding plan should succeed"),
-        )
-        .expect("binding plan should be JSON");
-        let rust_plan = renderer
-            .render(
-                merman::RenderRequest::svg_plan(
-                    source,
-                    merman::OperationControl::new(),
-                    svg_request,
-                )
-                .with_theme(theme),
-            )
-            .expect("Rust planning should succeed");
-        let merman::RenderOutput::SvgPlan(Some(rust_plan)) = rust_plan else {
-            panic!("typed SVG-plan request should produce a capability plan");
-        };
-        let mut required = rust_plan.required_capability_ids().collect::<Vec<_>>();
-        required.sort_unstable();
-        let mut missing = rust_plan.missing_capability_ids().collect::<Vec<_>>();
-        missing.sort_unstable();
-        assert_eq!(binding_plan["diagram_type"], rust_plan.diagram_type());
-        assert_eq!(
-            binding_plan["required_capability_ids"],
-            serde_json::json!(required)
-        );
-        assert_eq!(
-            binding_plan["missing_capability_ids"],
-            serde_json::json!(missing)
-        );
-        assert_eq!(binding_plan["ready"], rust_plan.is_ready());
-    }
-
-    #[test]
     fn invalid_theme_preset_returns_invalid_argument() {
         let err = render_svg(
             b"flowchart TD\nA[Host]",
@@ -701,23 +486,6 @@ A[Plain source]"##,
 
         assert_eq!(err.status(), BindingStatus::InvalidArgument);
         assert!(err.message().contains("theme.preset"));
-    }
-
-    #[test]
-    fn theme_union_rejects_empty_mixed_and_null_payloads() {
-        for (options, field) in [
-            (r#"{ "theme": {} }"#, "exactly one"),
-            (
-                r#"{ "theme": { "preset": "editor-dark", "spec": {} } }"#,
-                "both",
-            ),
-            (r#"{ "theme": { "preset": null } }"#, "must not be null"),
-            (r#"{ "theme": { "spec": null } }"#, "must not be null"),
-        ] {
-            let err = render_svg(b"flowchart TD\nA[Host]", options.as_bytes()).unwrap_err();
-            assert_eq!(err.status(), BindingStatus::OptionsJsonError);
-            assert!(err.message().contains(field), "{err:?}");
-        }
     }
 
     #[test]
@@ -753,24 +521,6 @@ A[Plain source]"##,
             "{error:?}"
         );
         assert!(error.message().contains("trusted Rust or native CLI host"));
-    }
-
-    #[test]
-    fn invalid_typed_theme_color_returns_invalid_argument() {
-        let err = render_svg(
-            b"flowchart TD\nA[Host]",
-            br##"{
-                "theme": {
-                    "spec": {
-                        "canvas": { "base": "white; color: red" }
-                    }
-                }
-            }"##,
-        )
-        .unwrap_err();
-
-        assert_eq!(err.status(), BindingStatus::InvalidArgument);
-        assert!(err.message().contains("theme.spec.paint"));
     }
 
     #[test]
@@ -1439,20 +1189,6 @@ Missing ref: id2,after missing,1d
                 "theme.preset",
             ),
             (r#"{ "theme": { "preset": "onedark" } }"#, "theme.preset"),
-            (
-                r##"{
-                    "theme": {
-                        "spec": {
-                            "styles": [{
-                                "kind": "rule",
-                                "target": "node_label",
-                                "style": { "fill": "#fff" }
-                            }]
-                        }
-                    }
-                }"##,
-                "theme.spec.styles.target",
-            ),
         ];
 
         for (options, field) in cases {

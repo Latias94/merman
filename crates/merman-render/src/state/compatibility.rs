@@ -1,13 +1,30 @@
 use std::borrow::Cow;
-use std::collections::BTreeSet;
 
 use merman_model::families::state::StateDiagramRenderNode;
 use merman_model::presentation::PresentationConfig;
 use serde_json::Value;
 
-use crate::diagram_theme::{ThemeTarget, ThemeTypographyProperty};
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum StateNodeKind {
+    Ordinary,
+    Note,
+    Composite,
+    Special,
+}
 
-/// Concrete State terminal whose Mermaid compatibility value can outrank typed paint.
+impl StateNodeKind {
+    pub(crate) fn from_node(node: &StateDiagramRenderNode) -> Self {
+        match node.shape.as_str() {
+            "note" | "noteGroup" => Self::Note,
+            "roundedWithTitle" => Self::Composite,
+            "stateStart" | "stateEnd" | "choice" | "fork" | "join" => Self::Special,
+            _ if node.is_group || node.node_type.as_deref() == Some("group") => Self::Composite,
+            _ => Self::Ordinary,
+        }
+    }
+}
+
+/// State surfaces whose paint follows the selected Mermaid look.
 ///
 /// These are writer surfaces rather than authoring targets. Native and HTML transition-label
 /// backgrounds, for example, deliberately remain distinct because their terminal owners differ.
@@ -16,16 +33,10 @@ pub(crate) enum StateTerminalSurface {
     StateClassic,
     StateHandDrawn,
     StateNeo,
-    StateLabel,
     Transition,
-    TransitionMarker,
-    TransitionLabel,
-    TransitionLabelBackgroundNative,
-    TransitionLabelBackgroundHtml,
     NoteClassic,
     NoteHandDrawn,
     NoteNeo,
-    NoteLabel,
     CompositeBodyClassic,
     CompositeBodyClassicAlt,
     CompositeDividerClassic,
@@ -38,7 +49,6 @@ pub(crate) enum StateTerminalSurface {
     CompositeHeaderClassic,
     CompositeHeaderHandDrawn,
     CompositeHeaderNeo,
-    CompositeLabel,
     SpecialStartClassic,
     SpecialStartHandDrawn,
     SpecialStartNeo,
@@ -52,9 +62,6 @@ pub(crate) enum StateTerminalSurface {
     SpecialChoiceHandDrawn,
     SpecialChoiceNeo,
     SpecialEndInnerClassic,
-    SpecialEndInnerHandDrawn,
-    SpecialEndInnerNeo,
-    Title,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -95,60 +102,21 @@ impl StateCompatibilityLook {
 #[derive(Debug, Clone)]
 struct StateResolvedValue<T> {
     value: T,
-    source_owned: bool,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum StateTerminalPaintSource {
-    StateBkg,
-    StateBorder,
-    MainBkg,
-    NodeBorder,
-    StateLabelColor,
-    TransitionColor,
-    StrokeWidth,
-    TransitionLabelColor,
-    LabelBackground,
-    EdgeLabelBackground,
-    NoteBkg,
-    NoteBorder,
-    NeoStrokeWidth,
-    NoteText,
-    CompositeBackground,
-    AltBackground,
-    CompositeTitleBackground,
-    SpecialStateColor,
-    LineColor,
-    EndInnerFill,
-    TextColor,
-    Gradient,
 }
 
 enum StateTerminalPaintRef<'a> {
-    Css(&'a str, bool),
-    ScopedGradient(bool),
-}
-
-impl StateTerminalPaintRef<'_> {
-    fn source_owned(&self) -> bool {
-        match self {
-            Self::Css(_, source_owned) | Self::ScopedGradient(source_owned) => *source_owned,
-        }
-    }
+    Css(&'a str),
+    ScopedGradient,
 }
 
 impl<T> StateResolvedValue<T> {
     fn constant(value: T) -> Self {
-        Self {
-            value,
-            source_owned: false,
-        }
+        Self { value }
     }
 
     fn map<U>(self, map: impl FnOnce(T) -> U) -> StateResolvedValue<U> {
         StateResolvedValue {
             value: map(self.value),
-            source_owned: self.source_owned,
         }
     }
 }
@@ -174,7 +142,6 @@ impl<'a> StateCompatibilityResolver<'a> {
             };
             return StateResolvedValue {
                 value: value.to_string(),
-                source_owned: self.paint_path_is_owned(path),
             };
         }
         fallback()
@@ -195,7 +162,6 @@ impl<'a> StateCompatibilityResolver<'a> {
             }
             return StateResolvedValue {
                 value: value.to_string(),
-                source_owned: self.paint_path_is_owned(path),
             };
         }
         fallback()
@@ -218,7 +184,6 @@ impl<'a> StateCompatibilityResolver<'a> {
             };
             return StateResolvedValue {
                 value: value.to_string(),
-                source_owned: self.paint_path_is_owned(path),
             };
         }
         fallback()
@@ -235,10 +200,7 @@ impl<'a> StateCompatibilityResolver<'a> {
             else {
                 continue;
             };
-            return StateResolvedValue {
-                value,
-                source_owned: self.path_is_owned(path),
-            };
+            return StateResolvedValue { value };
         }
         fallback()
     }
@@ -258,10 +220,7 @@ impl<'a> StateCompatibilityResolver<'a> {
             let Some(value) = state_js_css_interpolation_value(raw) else {
                 continue;
             };
-            return StateResolvedValue {
-                value,
-                source_owned: self.path_is_owned(path),
-            };
+            return StateResolvedValue { value };
         }
         fallback()
     }
@@ -281,10 +240,7 @@ impl<'a> StateCompatibilityResolver<'a> {
             let Some(value) = state_js_css_interpolation_value(raw) else {
                 continue;
             };
-            return StateResolvedValue {
-                value,
-                source_owned: self.path_is_owned(path),
-            };
+            return StateResolvedValue { value };
         }
         fallback()
     }
@@ -296,7 +252,6 @@ impl<'a> StateCompatibilityResolver<'a> {
             };
             return StateResolvedValue {
                 value: state_js_truthy(value),
-                source_owned: self.path_is_owned(path),
             };
         }
         StateResolvedValue::constant(fallback)
@@ -309,22 +264,14 @@ impl<'a> StateCompatibilityResolver<'a> {
             else {
                 continue;
             };
-            return StateResolvedValue {
-                value,
-                source_owned: self.path_is_owned(path),
-            };
+            return StateResolvedValue { value };
         }
         StateResolvedValue::constant(fallback)
     }
 
-    fn paint_path_is_owned(&self, path: &str) -> bool {
-        self.config
-            .is_some_and(|config| config.config_paint_overrides_typed_default(path))
-    }
-
     fn path_is_owned(&self, path: &str) -> bool {
         self.config
-            .is_some_and(|config| config.config_path_overrides_typed_default(path))
+            .is_some_and(|config| config.explicit_config_owns_path(path))
     }
 }
 
@@ -345,15 +292,10 @@ fn state_js_truthy(value: &Value) -> bool {
     }
 }
 
-/// State's single compatibility decision for both the typed adapter and terminal SVG writer.
-///
-/// Each fallback is resolved once. The same selected value supplies emitted compatibility CSS,
-/// while its surviving source ownership decides whether typed paint must yield.
+/// State look, paint and typography shared by layout and SVG emission.
 #[derive(Debug, Clone)]
 pub(crate) struct StateCompatibilityPlan {
     pub(crate) redux_palette: Vec<(String, Option<String>)>,
-    palette_fill_owned: bool,
-    palette_stroke_owned: bool,
     pub(crate) palette_look: String,
     pub(crate) serialized_look: String,
     pub(crate) root_font_family_css: String,
@@ -363,8 +305,8 @@ pub(crate) struct StateCompatibilityPlan {
     html_labels: bool,
     pub(crate) font_family_css: String,
     pub(crate) font_size_px: f64,
-    pub(crate) typography_config_owned: BTreeSet<ThemeTypographyProperty>,
-    pub(crate) configured_font_stack: Option<crate::text::ParsedCssFontStack>,
+    font_family_owned: bool,
+    font_size_owned: bool,
     pub(crate) text_color: String,
     pub(crate) line_color: String,
     pub(crate) error_bkg: String,
@@ -398,10 +340,12 @@ pub(crate) struct StateCompatibilityPlan {
     pub(crate) gradient_start: String,
     pub(crate) gradient_stop: String,
     pub(crate) neo_radius: f64,
-    pub(crate) neo_radius_config_owned: bool,
     pub(crate) rect_radius: f64,
     pub(crate) node_shadow: bool,
-    terminal_source_owned: u32,
+    pub(crate) native_title: Option<crate::text::TextStyle>,
+    pub(crate) native_label_weight: Option<String>,
+    pub(crate) native_layout_scale: [f64; 3],
+    pub(crate) native_marker: merman_theme_contract::v2::MarkerStyle,
 }
 
 impl StateCompatibilityPlan {
@@ -414,6 +358,106 @@ impl StateCompatibilityPlan {
         ))
     }
 
+    pub(crate) fn with_native(
+        mut self,
+        theme: &crate::theme::FamilyTheme,
+        config: &PresentationConfig,
+        background: Option<crate::theme::Color>,
+    ) -> Self {
+        use merman_theme_contract::v2::{Density, EdgeLabelBackground};
+
+        let roles = &theme.roles;
+        let canvas = background.unwrap_or_else(|| roles.canvas.first_color());
+        let surface = roles.surface_node.first_color();
+        let container = roles.surface_container.first_color();
+        let emphasis = roles.surface_emphasis.first_color();
+        let border = roles.stroke_border.first_color();
+        let connector = roles.stroke_connector.first_color();
+        let callout = roles.surface_callout.first_color();
+        let primary = roles.text_primary;
+        let label_bg = match theme.form.edge_label_bg {
+            EdgeLabelBackground::Auto | EdgeLabelBackground::Canvas => canvas,
+            EdgeLabelBackground::Pill => surface,
+            EdgeLabelBackground::Transparent => crate::theme::Color::TRANSPARENT,
+        };
+        for (slot, color) in [
+            (&mut self.text_color, primary),
+            (&mut self.line_color, connector),
+            (&mut self.error_bkg, roles.status_danger),
+            (&mut self.error_text, roles.text_callout),
+            (&mut self.transition_color, connector),
+            (&mut self.node_border, border),
+            (&mut self.background, canvas),
+            (&mut self.main_bkg, surface),
+            (&mut self.alt_background, container),
+            (&mut self.note_border, border),
+            (&mut self.note_bkg, callout),
+            (&mut self.note_text, roles.text_callout),
+            (&mut self.label_background, label_bg),
+            (&mut self.edge_label_background, label_bg),
+            (&mut self.transition_label_color, primary),
+            (&mut self.special_state_color, connector),
+            (&mut self.inner_end_background, canvas),
+            (&mut self.composite_background, container),
+            (&mut self.state_bkg, surface),
+            (&mut self.state_border, border),
+            (&mut self.end_inner_fill, connector),
+            (&mut self.composite_title_background, emphasis),
+            (&mut self.state_label_color, primary),
+        ] {
+            *slot = color.to_string();
+        }
+        self.redux_palette.clear();
+        self.use_gradient = false;
+        self.node_shadow = false;
+        self.drop_shadow = "none".to_owned();
+        let width = crate::number_format::canonical_number(theme.form.stroke_width).to_string();
+        self.stroke_width_px = format!("{width}px");
+        self.neo_stroke_width_px.clone_from(&self.stroke_width_px);
+        self.stroke_width.clone_from(&width);
+        self.neo_stroke_width.clone_from(&width);
+        self.neo_rough_stroke_width = width;
+        self.rect_radius = theme.form.radius;
+        self.neo_radius = theme.form.radius;
+        self.native_marker = theme.form.marker_style;
+        let (padding, spacing) = match theme.form.density {
+            Density::Compact => (0.85, 0.85),
+            Density::Balanced => (1.0, 1.0),
+            Density::Airy => (1.25, 1.2),
+        };
+        self.native_layout_scale = [
+            ("state.padding", padding),
+            ("state.nodeSpacing", spacing),
+            ("state.rankSpacing", spacing),
+        ]
+        .map(|(path, scale)| {
+            if config.explicit_config_owns_path(path) {
+                1.0
+            } else {
+                scale
+            }
+        });
+
+        let typography = &theme.typography;
+        let body = crate::theme::font_family_css(typography.stack(typography.body_family));
+        if !self.font_family_owned {
+            self.root_font_family_css.clone_from(&body);
+            self.font_family_css = body;
+        }
+        if !self.font_size_owned {
+            self.font_size_px = typography.base_size_px;
+        }
+        self.native_label_weight = Some(typography.label_weight.to_string());
+        let title = crate::theme::font_family_css(typography.stack(typography.title_family));
+        self.native_title = Some(crate::text::TextStyle {
+            font_family: Some(title),
+            font_size: typography.base_size_px * 1.2,
+            font_weight: Some(typography.title_weight.to_string()),
+            ..Default::default()
+        });
+        self
+    }
+
     pub(crate) fn from_value(value: &Value) -> Self {
         Self::resolve(StateCompatibilityResolver::new(value, None))
     }
@@ -422,7 +466,8 @@ impl StateCompatibilityPlan {
         let theme_name = resolver.direct_string(&["theme"], || {
             StateResolvedValue::constant("default".to_string())
         });
-        let dark_mode = theme_name.value.contains("dark");
+        let dark_mode = merman_model::config::MermaidThemeId::parse(&theme_name.value)
+            .is_ok_and(merman_model::config::MermaidThemeId::is_dark);
         let look = StateCompatibilityLook::from_value(
             crate::config::config_diagram_look(resolver.value).as_str(),
         );
@@ -453,19 +498,10 @@ impl StateCompatibilityPlan {
         .into_iter()
         .filter(|(path, _)| resolver.path_is_owned(path))
         .find_map(|(_, size)| size.filter(|size| *size >= 0.0));
-        let mut typography_config_owned = BTreeSet::new();
-        if owned_font_family.is_some() {
-            typography_config_owned.insert(ThemeTypographyProperty::FontStack);
-        }
-        if owned_font_size.is_some() {
-            typography_config_owned.insert(ThemeTypographyProperty::FontSize);
-        }
+        let font_family_owned = owned_font_family.is_some();
+        let font_size_owned = owned_font_size.is_some();
         let font_family_css = owned_font_family
             .unwrap_or_else(|| crate::config::config_font_family_css(resolver.value));
-        let configured_font_stack = typography_config_owned
-            .contains(&ThemeTypographyProperty::FontStack)
-            .then(|| crate::text::parse_css_font_stack(&font_family_css))
-            .flatten();
         let font_size_px = owned_font_size.unwrap_or_else(|| {
             crate::config::config_theme_or_root_font_size_px(resolver.value, 16.0)
         });
@@ -585,7 +621,6 @@ impl StateCompatibilityPlan {
             })
         });
         let neo_radius = resolver.direct_css_px(&["themeVariables.radius"], 5.0);
-        let neo_radius_config_owned = neo_radius.source_owned;
         let neo_radius = neo_radius.map(|value| value.max(0.0));
         let rect_radius = if resolver
             .value
@@ -601,86 +636,6 @@ impl StateCompatibilityPlan {
             .value
             .pointer("/themeVariables/nodeShadow")
             .is_some_and(crate::config::json_value_is_truthy);
-
-        let neo_gradient_stroke_owned =
-            use_gradient.source_owned || gradient_start.source_owned || gradient_stop.source_owned;
-        let mut terminal_source_owned = 0;
-        for (source, owned) in [
-            (StateTerminalPaintSource::StateBkg, state_bkg.source_owned),
-            (
-                StateTerminalPaintSource::StateBorder,
-                state_border.source_owned,
-            ),
-            (StateTerminalPaintSource::MainBkg, main_bkg.source_owned),
-            (
-                StateTerminalPaintSource::NodeBorder,
-                node_border.source_owned,
-            ),
-            (
-                StateTerminalPaintSource::StateLabelColor,
-                state_label_color.source_owned,
-            ),
-            (
-                StateTerminalPaintSource::TransitionColor,
-                transition_color.source_owned,
-            ),
-            (
-                StateTerminalPaintSource::StrokeWidth,
-                stroke_width.source_owned,
-            ),
-            (
-                StateTerminalPaintSource::TransitionLabelColor,
-                transition_label_color.source_owned,
-            ),
-            (
-                StateTerminalPaintSource::LabelBackground,
-                label_background.source_owned,
-            ),
-            (
-                StateTerminalPaintSource::EdgeLabelBackground,
-                edge_label_background.source_owned,
-            ),
-            (StateTerminalPaintSource::NoteBkg, note_bkg.source_owned),
-            (
-                StateTerminalPaintSource::NoteBorder,
-                note_border.source_owned,
-            ),
-            (
-                StateTerminalPaintSource::NeoStrokeWidth,
-                neo_stroke_width.source_owned,
-            ),
-            (StateTerminalPaintSource::NoteText, note_text.source_owned),
-            (
-                StateTerminalPaintSource::CompositeBackground,
-                composite_background.source_owned,
-            ),
-            (
-                StateTerminalPaintSource::AltBackground,
-                alt_background.source_owned,
-            ),
-            (
-                StateTerminalPaintSource::CompositeTitleBackground,
-                composite_title_background.source_owned,
-            ),
-            (
-                StateTerminalPaintSource::SpecialStateColor,
-                special_state_color.source_owned,
-            ),
-            (StateTerminalPaintSource::LineColor, line_color.source_owned),
-            (
-                StateTerminalPaintSource::EndInnerFill,
-                end_inner_fill.source_owned,
-            ),
-            (StateTerminalPaintSource::TextColor, text_color.source_owned),
-            (
-                StateTerminalPaintSource::Gradient,
-                neo_gradient_stroke_owned,
-            ),
-        ] {
-            if owned {
-                terminal_source_owned |= 1 << source as u32;
-            }
-        }
 
         let redux_palette = if matches!(
             resolver
@@ -737,8 +692,6 @@ impl StateCompatibilityPlan {
             .unwrap_or_else(|| "classic".to_owned());
         Self {
             redux_palette,
-            palette_fill_owned: resolver.paint_path_is_owned("themeVariables.bkgColorArray"),
-            palette_stroke_owned: resolver.paint_path_is_owned("themeVariables.borderColorArray"),
             palette_look,
             serialized_look: crate::config::config_diagram_look(resolver.value)
                 .serialized()
@@ -754,8 +707,8 @@ impl StateCompatibilityPlan {
             html_labels,
             font_family_css,
             font_size_px,
-            typography_config_owned,
-            configured_font_stack,
+            font_family_owned,
+            font_size_owned,
             text_color: text_color.value,
             line_color: line_color.value,
             error_bkg: error_bkg.value,
@@ -789,10 +742,12 @@ impl StateCompatibilityPlan {
             gradient_start: gradient_start.value,
             gradient_stop: gradient_stop.value,
             neo_radius: neo_radius.value,
-            neo_radius_config_owned,
             rect_radius,
             node_shadow,
-            terminal_source_owned,
+            native_title: None,
+            native_label_weight: None,
+            native_layout_scale: [1.0; 3],
+            native_marker: merman_theme_contract::v2::MarkerStyle::Classic,
         }
     }
 
@@ -822,13 +777,10 @@ impl StateCompatibilityPlan {
         property: StateTerminalPaintProperty,
     ) -> Option<StateTerminalPaintRef<'_>> {
         use StateTerminalPaintProperty::{Fill, Stroke, StrokeWidth};
-        use StateTerminalPaintSource as Source;
         use StateTerminalSurface::*;
 
-        let owned = |source: Source| self.terminal_source_owned & (1 << source as u32) != 0;
-        let css = |value, source| StateTerminalPaintRef::Css(value, owned(source));
         Some(match (surface, property) {
-            (StateClassic | StateNeo, Fill) => css(&self.state_bkg, Source::StateBkg),
+            (StateClassic | StateNeo, Fill) => StateTerminalPaintRef::Css(&self.state_bkg),
             (
                 StateClassic
                 | CompositeBodyClassic
@@ -836,7 +788,7 @@ impl StateCompatibilityPlan {
                 | CompositeDividerClassic
                 | CompositeHeaderClassic,
                 Stroke,
-            ) => css(&self.state_border, Source::StateBorder),
+            ) => StateTerminalPaintRef::Css(&self.state_border),
             (
                 StateClassic
                 | StateNeo
@@ -845,7 +797,7 @@ impl StateCompatibilityPlan {
                 | CompositeDividerClassic
                 | CompositeHeaderClassic,
                 StrokeWidth,
-            ) => css(&self.stroke_width_px, Source::StrokeWidth),
+            ) => StateTerminalPaintRef::Css(&self.stroke_width_px),
             (
                 StateHandDrawn
                 | CompositeDividerNeo
@@ -857,7 +809,7 @@ impl StateCompatibilityPlan {
                 | SpecialChoiceHandDrawn
                 | SpecialChoiceNeo,
                 Fill,
-            ) => css(&self.main_bkg, Source::MainBkg),
+            ) => StateTerminalPaintRef::Css(&self.main_bkg),
             (
                 StateHandDrawn
                 | CompositeBodyHandDrawn
@@ -867,7 +819,7 @@ impl StateCompatibilityPlan {
                 | SpecialChoiceClassic
                 | SpecialChoiceHandDrawn,
                 Stroke,
-            ) => css(&self.node_border, Source::NodeBorder),
+            ) => StateTerminalPaintRef::Css(&self.node_border),
             (
                 StateHandDrawn
                 | NoteClassic
@@ -877,47 +829,28 @@ impl StateCompatibilityPlan {
                 | SpecialChoiceClassic
                 | SpecialChoiceHandDrawn,
                 StrokeWidth,
-            ) => StateTerminalPaintRef::Css("1.3", false),
+            ) => StateTerminalPaintRef::Css("1.3"),
             (
                 StateNeo | NoteNeo | SpecialStartNeo | SpecialEndOuterNeo | SpecialForkJoinNeo
-                | SpecialChoiceNeo | SpecialEndInnerNeo,
+                | SpecialChoiceNeo,
                 Stroke,
-            ) if self.use_gradient => {
-                StateTerminalPaintRef::ScopedGradient(owned(Source::Gradient))
-            }
+            ) if self.use_gradient => StateTerminalPaintRef::ScopedGradient,
             (
                 StateNeo | NoteNeo | SpecialStartNeo | SpecialEndOuterNeo | SpecialForkJoinNeo
-                | SpecialChoiceNeo | SpecialEndInnerNeo,
+                | SpecialChoiceNeo,
                 Stroke,
-            ) => css(&self.node_border, Source::NodeBorder),
-            (StateLabel | CompositeLabel, Fill) => {
-                css(&self.state_label_color, Source::StateLabelColor)
+            ) => StateTerminalPaintRef::Css(&self.node_border),
+            (Transition, StrokeWidth) => StateTerminalPaintRef::Css(&self.stroke_width),
+            (NoteClassic | NoteHandDrawn | NoteNeo, Fill) => {
+                StateTerminalPaintRef::Css(&self.note_bkg)
             }
-            (Transition | TransitionMarker, Stroke) => {
-                css(&self.transition_color, Source::TransitionColor)
+            (NoteClassic | NoteHandDrawn, Stroke) => StateTerminalPaintRef::Css(&self.note_border),
+            (NoteNeo | SpecialEndOuterNeo | SpecialForkJoinNeo | SpecialChoiceNeo, StrokeWidth) => {
+                StateTerminalPaintRef::Css(&self.neo_rough_stroke_width)
             }
-            (Transition, StrokeWidth) => css(&self.stroke_width, Source::StrokeWidth),
-            (TransitionMarker, Fill) => css(&self.transition_color, Source::TransitionColor),
-            (TransitionLabel, Fill) => {
-                css(&self.transition_label_color, Source::TransitionLabelColor)
-            }
-            (TransitionLabelBackgroundNative, Fill) => {
-                css(&self.label_background, Source::LabelBackground)
-            }
-            (TransitionLabelBackgroundHtml, Fill) => {
-                css(&self.edge_label_background, Source::EdgeLabelBackground)
-            }
-            (NoteClassic | NoteHandDrawn | NoteNeo, Fill) => css(&self.note_bkg, Source::NoteBkg),
-            (NoteClassic | NoteHandDrawn, Stroke) => css(&self.note_border, Source::NoteBorder),
-            (
-                NoteNeo | SpecialEndOuterNeo | SpecialForkJoinNeo | SpecialChoiceNeo
-                | SpecialEndInnerNeo,
-                StrokeWidth,
-            ) => css(&self.neo_rough_stroke_width, Source::NeoStrokeWidth),
-            (NoteLabel, Fill) => css(&self.note_text, Source::NoteText),
             // The `.inner` rules outrank the generic Neo fill on both ordinary and alt bodies.
             (CompositeBodyClassic | CompositeBodyHandDrawn | CompositeBodyNeo, Fill) => {
-                css(&self.composite_background, Source::CompositeBackground)
+                StateTerminalPaintRef::Css(&self.composite_background)
             }
             (
                 CompositeBodyClassicAlt
@@ -925,11 +858,10 @@ impl StateCompatibilityPlan {
                 | CompositeBodyHandDrawnAlt
                 | CompositeBodyNeoAlt,
                 Fill,
-            ) => css(&self.alt_background, Source::AltBackground),
-            (CompositeHeaderClassic | CompositeHeaderHandDrawn, Fill) => css(
-                &self.composite_title_background,
-                Source::CompositeTitleBackground,
-            ),
+            ) => StateTerminalPaintRef::Css(&self.alt_background),
+            (CompositeHeaderClassic | CompositeHeaderHandDrawn, Fill) => {
+                StateTerminalPaintRef::Css(&self.composite_title_background)
+            }
             (
                 CompositeBodyHandDrawn
                 | CompositeBodyHandDrawnAlt
@@ -939,35 +871,31 @@ impl StateCompatibilityPlan {
                 | SpecialStartHandDrawn
                 | SpecialStartNeo,
                 StrokeWidth,
-            ) => StateTerminalPaintRef::Css("1", false),
-            (CompositeDividerHandDrawn, Fill) => StateTerminalPaintRef::Css("lightgrey", false),
+            ) => StateTerminalPaintRef::Css("1"),
+            (CompositeDividerHandDrawn, Fill) => StateTerminalPaintRef::Css("lightgrey"),
             (
                 CompositeBodyNeo | CompositeBodyNeoAlt | CompositeDividerNeo | CompositeHeaderNeo,
                 Stroke,
-            ) if self.use_gradient => {
-                StateTerminalPaintRef::ScopedGradient(owned(Source::Gradient))
-            }
+            ) if self.use_gradient => StateTerminalPaintRef::ScopedGradient,
             (
                 CompositeBodyNeo | CompositeBodyNeoAlt | CompositeDividerNeo | CompositeHeaderNeo,
                 Stroke,
-            ) => css(&self.state_border, Source::StateBorder),
+            ) => StateTerminalPaintRef::Css(&self.state_border),
             (
                 CompositeBodyNeo | CompositeBodyNeoAlt | CompositeDividerNeo | CompositeHeaderNeo,
                 StrokeWidth,
-            ) => css(&self.neo_stroke_width, Source::NeoStrokeWidth),
+            ) => StateTerminalPaintRef::Css(&self.neo_stroke_width),
             (SpecialStartClassic | SpecialStartNeo, Fill) => {
-                css(&self.special_state_color, Source::SpecialStateColor)
+                StateTerminalPaintRef::Css(&self.special_state_color)
             }
-            (SpecialStartClassic, Stroke) => {
-                css(&self.special_state_color, Source::SpecialStateColor)
-            }
+            (SpecialStartClassic, Stroke) => StateTerminalPaintRef::Css(&self.special_state_color),
             (
                 SpecialStartHandDrawn
                 | SpecialForkJoinClassic
                 | SpecialForkJoinHandDrawn
                 | SpecialForkJoinNeo,
                 Fill,
-            ) => css(&self.line_color, Source::LineColor),
+            ) => StateTerminalPaintRef::Css(&self.line_color),
             (
                 SpecialStartHandDrawn
                 | SpecialEndOuterClassic
@@ -975,21 +903,14 @@ impl StateCompatibilityPlan {
                 | SpecialForkJoinClassic
                 | SpecialForkJoinHandDrawn,
                 Stroke,
-            ) => css(&self.line_color, Source::LineColor),
+            ) => StateTerminalPaintRef::Css(&self.line_color),
             (
-                SpecialEndOuterClassic
-                | SpecialEndOuterHandDrawn
-                | SpecialEndInnerClassic
-                | SpecialEndInnerHandDrawn,
+                SpecialEndOuterClassic | SpecialEndOuterHandDrawn | SpecialEndInnerClassic,
                 StrokeWidth,
-            ) => StateTerminalPaintRef::Css("2", false),
-            (SpecialEndInnerClassic | SpecialEndInnerHandDrawn | SpecialEndInnerNeo, Fill) => {
-                css(&self.end_inner_fill, Source::EndInnerFill)
+            ) => StateTerminalPaintRef::Css("2"),
+            (SpecialEndInnerClassic, Fill | Stroke) => {
+                StateTerminalPaintRef::Css(&self.end_inner_fill)
             }
-            (SpecialEndInnerClassic | SpecialEndInnerHandDrawn, Stroke) => {
-                css(&self.end_inner_fill, Source::EndInnerFill)
-            }
-            (Title, Fill) => css(&self.text_color, Source::TextColor),
             _ => return None,
         })
     }
@@ -1004,64 +925,11 @@ impl StateCompatibilityPlan {
             .terminal_paint(surface, property)
             .unwrap_or_else(|| panic!("missing State terminal paint for {surface:?}.{property:?}"))
         {
-            StateTerminalPaintRef::Css(value, _) => Cow::Borrowed(value),
-            StateTerminalPaintRef::ScopedGradient(_) => {
+            StateTerminalPaintRef::Css(value) => Cow::Borrowed(value),
+            StateTerminalPaintRef::ScopedGradient => {
                 Cow::Owned(format!("url(#{diagram_id}-gradient)"))
             }
         }
-    }
-
-    pub(crate) fn owns(
-        &self,
-        surface: StateTerminalSurface,
-        property: StateTerminalPaintProperty,
-    ) -> bool {
-        self.terminal_paint(surface, property)
-            .is_some_and(|selection| selection.source_owned())
-    }
-
-    pub(crate) fn node_paint_owned(
-        &self,
-        node: &StateDiagramRenderNode,
-        surface: StateTerminalSurface,
-        property: StateTerminalPaintProperty,
-    ) -> bool {
-        use StateTerminalPaintProperty::{Fill, Stroke};
-        use StateTerminalSurface::*;
-
-        // Hand-drawn paths retain scalar paint inline, above the palette stylesheet.
-        let palette_slot = node
-            .color_index
-            .filter(|_| {
-                !self.is_hand_drawn()
-                    && !self.redux_palette.is_empty()
-                    && self.serialized_look.trim() == self.palette_look
-            })
-            .and_then(|index| self.redux_palette.get(index % self.redux_palette.len()));
-        if let Some((_, fill)) = palette_slot {
-            match (surface, property) {
-                (
-                    CompositeBodyClassic
-                    | CompositeBodyClassicAlt
-                    | CompositeBodyNeo
-                    | CompositeBodyNeoAlt
-                    | CompositeDividerClassic
-                    | CompositeDividerNeo
-                    | CompositeHeaderClassic
-                    | CompositeHeaderNeo,
-                    Stroke,
-                ) => return self.palette_stroke_owned,
-                (
-                    CompositeHeaderClassic
-                    | CompositeHeaderNeo
-                    | CompositeDividerClassic
-                    | CompositeDividerNeo,
-                    Fill,
-                ) if fill.is_some() => return self.palette_fill_owned,
-                _ => {}
-            }
-        }
-        self.owns(surface, property)
     }
 
     pub(crate) fn source_shape_property_reaches(
@@ -1095,21 +963,23 @@ impl StateCompatibilityPlan {
     pub(crate) fn node_shape_surface(
         &self,
         node: &StateDiagramRenderNode,
-        target: ThemeTarget,
+        target: StateNodeKind,
     ) -> Option<StateTerminalSurface> {
         match target {
-            ThemeTarget::State if self.is_neo() => Some(StateTerminalSurface::StateNeo),
-            ThemeTarget::State if self.is_hand_drawn() => {
+            StateNodeKind::Ordinary if self.is_neo() => Some(StateTerminalSurface::StateNeo),
+            StateNodeKind::Ordinary if self.is_hand_drawn() => {
                 Some(StateTerminalSurface::StateHandDrawn)
             }
-            ThemeTarget::State => Some(StateTerminalSurface::StateClassic),
-            ThemeTarget::Note if self.is_neo() => Some(StateTerminalSurface::NoteNeo),
-            ThemeTarget::Note if self.is_hand_drawn() => Some(StateTerminalSurface::NoteHandDrawn),
-            ThemeTarget::Note => Some(StateTerminalSurface::NoteClassic),
-            ThemeTarget::Composite if self.is_neo() && node.shape == "divider" => {
+            StateNodeKind::Ordinary => Some(StateTerminalSurface::StateClassic),
+            StateNodeKind::Note if self.is_neo() => Some(StateTerminalSurface::NoteNeo),
+            StateNodeKind::Note if self.is_hand_drawn() => {
+                Some(StateTerminalSurface::NoteHandDrawn)
+            }
+            StateNodeKind::Note => Some(StateTerminalSurface::NoteClassic),
+            StateNodeKind::Composite if self.is_neo() && node.shape == "divider" => {
                 Some(StateTerminalSurface::CompositeDividerNeo)
             }
-            ThemeTarget::Composite
+            StateNodeKind::Composite
                 if self.is_neo()
                     && node
                         .css_classes
@@ -1118,11 +988,13 @@ impl StateCompatibilityPlan {
             {
                 Some(StateTerminalSurface::CompositeBodyNeoAlt)
             }
-            ThemeTarget::Composite if self.is_neo() => Some(StateTerminalSurface::CompositeBodyNeo),
-            ThemeTarget::Composite if self.is_hand_drawn() && node.shape == "divider" => {
+            StateNodeKind::Composite if self.is_neo() => {
+                Some(StateTerminalSurface::CompositeBodyNeo)
+            }
+            StateNodeKind::Composite if self.is_hand_drawn() && node.shape == "divider" => {
                 Some(StateTerminalSurface::CompositeDividerHandDrawn)
             }
-            ThemeTarget::Composite
+            StateNodeKind::Composite
                 if self.is_hand_drawn()
                     && node
                         .css_classes
@@ -1131,13 +1003,13 @@ impl StateCompatibilityPlan {
             {
                 Some(StateTerminalSurface::CompositeBodyHandDrawnAlt)
             }
-            ThemeTarget::Composite if self.is_hand_drawn() => {
+            StateNodeKind::Composite if self.is_hand_drawn() => {
                 Some(StateTerminalSurface::CompositeBodyHandDrawn)
             }
-            ThemeTarget::Composite if node.shape == "divider" => {
+            StateNodeKind::Composite if node.shape == "divider" => {
                 Some(StateTerminalSurface::CompositeDividerClassic)
             }
-            ThemeTarget::Composite
+            StateNodeKind::Composite
                 if node
                     .css_classes
                     .split_whitespace()
@@ -1145,8 +1017,8 @@ impl StateCompatibilityPlan {
             {
                 Some(StateTerminalSurface::CompositeBodyClassicAlt)
             }
-            ThemeTarget::Composite => Some(StateTerminalSurface::CompositeBodyClassic),
-            ThemeTarget::SpecialState => match node.shape.as_str() {
+            StateNodeKind::Composite => Some(StateTerminalSurface::CompositeBodyClassic),
+            StateNodeKind::Special => match node.shape.as_str() {
                 "stateStart" if self.is_neo() => Some(StateTerminalSurface::SpecialStartNeo),
                 "stateStart" if self.is_hand_drawn() => {
                     Some(StateTerminalSurface::SpecialStartHandDrawn)
@@ -1169,16 +1041,6 @@ impl StateCompatibilityPlan {
                 "choice" => Some(StateTerminalSurface::SpecialChoiceClassic),
                 _ => None,
             },
-            _ => None,
-        }
-    }
-
-    pub(crate) fn node_label_surface(target: ThemeTarget) -> Option<StateTerminalSurface> {
-        match target {
-            ThemeTarget::StateLabel => Some(StateTerminalSurface::StateLabel),
-            ThemeTarget::NoteLabel => Some(StateTerminalSurface::NoteLabel),
-            ThemeTarget::CompositeLabel => Some(StateTerminalSurface::CompositeLabel),
-            _ => None,
         }
     }
 
@@ -1190,28 +1052,6 @@ impl StateCompatibilityPlan {
         } else {
             StateTerminalSurface::CompositeHeaderClassic
         }
-    }
-
-    pub(crate) const fn special_state_inner_surface(&self) -> StateTerminalSurface {
-        if self.is_neo() {
-            StateTerminalSurface::SpecialEndInnerNeo
-        } else if self.is_hand_drawn() {
-            StateTerminalSurface::SpecialEndInnerHandDrawn
-        } else {
-            StateTerminalSurface::SpecialEndInnerClassic
-        }
-    }
-
-    pub(crate) fn classic_stroke_width_value(&self) -> f64 {
-        self.stroke_width_px
-            .trim()
-            .strip_suffix("px")
-            .unwrap_or(self.stroke_width_px.trim())
-            .trim()
-            .parse::<f64>()
-            .ok()
-            .filter(|value| value.is_finite() && *value >= 0.0)
-            .unwrap_or(1.0)
     }
 }
 
@@ -1309,15 +1149,7 @@ mod tests {
 
         assert_eq!(empty.text_color, "");
         assert_eq!(empty.state_border, "#123456");
-        let empty_inner = empty.special_state_inner_surface();
-        assert_eq!(
-            empty.terminal_paint_css(empty_inner, StateTerminalPaintProperty::Fill, "diagram"),
-            ""
-        );
-        assert_eq!(
-            empty.terminal_paint_css(empty_inner, StateTerminalPaintProperty::Stroke, "diagram"),
-            ""
-        );
+        assert_eq!(empty.end_inner_fill, "");
 
         let whitespace = StateCompatibilityPlan::from_value(&json!({
             "themeVariables": {
@@ -1327,23 +1159,7 @@ mod tests {
         }));
 
         assert_eq!(whitespace.state_border, "   ");
-        let whitespace_inner = whitespace.special_state_inner_surface();
-        assert_eq!(
-            whitespace.terminal_paint_css(
-                whitespace_inner,
-                StateTerminalPaintProperty::Fill,
-                "diagram",
-            ),
-            "   "
-        );
-        assert_eq!(
-            whitespace.terminal_paint_css(
-                whitespace_inner,
-                StateTerminalPaintProperty::Stroke,
-                "diagram",
-            ),
-            "   "
-        );
+        assert_eq!(whitespace.end_inner_fill, "   ");
     }
 
     #[test]
@@ -1421,21 +1237,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "missing State terminal paint for StateLabel.Stroke")]
-    fn missing_terminal_paint_is_unowned_and_retains_its_error() {
-        let plan = StateCompatibilityPlan::from_value(&json!({}));
-        assert!(!plan.owns(
-            StateTerminalSurface::StateLabel,
-            StateTerminalPaintProperty::Stroke,
-        ));
-        let _ = plan.terminal_paint_css(
-            StateTerminalSurface::StateLabel,
-            StateTerminalPaintProperty::Stroke,
-            "diagram",
-        );
-    }
-
-    #[test]
     fn gradient_scoping_formats_each_id_only_when_its_terminal_uses_a_gradient() {
         struct DiagramId<'a>(&'a std::cell::Cell<usize>, &'static str);
 
@@ -1475,60 +1276,11 @@ mod tests {
     }
 
     #[test]
-    fn gradient_source_ownership_only_reaches_enabled_gradient_terminals() {
-        let mut config = merman_core::MermaidEngine::new()
-            .with_site_config(
-                merman_core::presentation::SourcePresentationConfig::from_value(json!({
-                    "themeVariables": { "gradientStart": "#123456" },
-                })),
-            )
-            .parse_metadata_sync("stateDiagram-v2\nReady --> Done\n")
-            .unwrap()
-            .effective_config;
-        assert!(config.config_path_overrides_typed_default("themeVariables.gradientStart"));
-        assert!(!config.config_path_overrides_typed_default("themeVariables.useGradient"));
-
-        config = crate::test_support::set_config_value(
-            config,
-            "themeVariables.useGradient",
-            json!(false),
-        );
-        let disabled = StateCompatibilityPlan::from_config(&config);
-        assert!(!disabled.owns(
-            StateTerminalSurface::StateNeo,
-            StateTerminalPaintProperty::Stroke,
-        ));
-        assert!(!disabled.owns(
-            StateTerminalSurface::CompositeBodyNeo,
-            StateTerminalPaintProperty::Stroke,
-        ));
-
-        config = crate::test_support::set_config_value(
-            config,
-            "themeVariables.useGradient",
-            json!(true),
-        );
-        let enabled = StateCompatibilityPlan::from_config(&config);
-        assert!(enabled.owns(
-            StateTerminalSurface::StateNeo,
-            StateTerminalPaintProperty::Stroke,
-        ));
-        assert!(enabled.owns(
-            StateTerminalSurface::CompositeBodyNeo,
-            StateTerminalPaintProperty::Stroke,
-        ));
-        assert!(!enabled.owns(
-            StateTerminalSurface::StateClassic,
-            StateTerminalPaintProperty::Stroke,
-        ));
-    }
-
-    #[test]
     fn state_hand_drawn_terminal_is_not_classified_as_classic() {
         let plan = StateCompatibilityPlan::from_value(&json!({ "look": "handDrawn" }));
 
         assert_eq!(
-            plan.node_shape_surface(&ordinary_state_node(), ThemeTarget::State),
+            plan.node_shape_surface(&ordinary_state_node(), StateNodeKind::Ordinary),
             Some(StateTerminalSurface::StateHandDrawn)
         );
     }

@@ -17,10 +17,12 @@ use std::sync::Arc;
 
 mod config;
 mod css_binding;
+mod native_theme;
 mod theme;
 
 pub(crate) use css_binding::EventModelingCssBinding;
-pub(crate) use theme::EventModelingTextThemePlan;
+pub(crate) use native_theme::{EventModelingNativeStyle, EventModelingThemeAdapter};
+pub(crate) use theme::EventModelingStyle;
 
 const SWIMLANE_MIN_HEIGHT: f64 = 70.0;
 const SWIMLANE_PADDING: f64 = 15.0;
@@ -64,6 +66,7 @@ impl EventModelingPreparedLabels {
 pub(crate) fn prepare_eventmodeling_diagram_typed_with_binding(
     model: &EventModelingDiagramModel,
     theme: &EventModelingCssBinding,
+    native: Option<&EventModelingNativeStyle>,
     effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     work_meter: &Arc<OperationWorkMeter>,
@@ -99,6 +102,7 @@ pub(crate) fn prepare_eventmodeling_diagram_typed_with_binding(
             &data_entities,
             &label_config,
             &fragment_config,
+            native,
             measurer,
             work_meter,
         )?;
@@ -120,6 +124,13 @@ pub(crate) fn prepare_eventmodeling_diagram_typed_with_binding(
                 y: 0.0,
                 height: SWIMLANE_MIN_HEIGHT,
                 max_height: SWIMLANE_MIN_HEIGHT,
+                content_start_x: native.map_or(CONTENT_START_X, |style| {
+                    (measurer
+                        .measure(&swimlane_props.label, &style.heading)
+                        .width
+                        + 45.0)
+                        .max(CONTENT_START_X)
+                }),
             });
 
         let x = calculate_x(swimlane, previous_swimlane_index, boxes.last());
@@ -129,7 +140,7 @@ pub(crate) fn prepare_eventmodeling_diagram_typed_with_binding(
         swimlane.height = swimlane.max_height.max(SWIMLANE_MIN_HEIGHT) + 2.0 * SWIMLANE_PADDING;
         max_r = max_r.max(swimlane.r).max(r);
 
-        let visual = entity_visual_props(theme, &frame.model_entity_type);
+        let visual = entity_visual_props(theme, native, &frame.model_entity_type);
         let box_state = BoxState {
             index,
             frame_name: frame.name.clone(),
@@ -301,6 +312,7 @@ struct SwimlaneState {
     y: f64,
     height: f64,
     max_height: f64,
+    content_start_x: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -447,15 +459,15 @@ fn calculate_x(
     last_box: Option<&BoxState>,
 ) -> f64 {
     if previous_swimlane_index.is_none() {
-        return CONTENT_START_X;
+        return swimlane.content_start_x;
     }
     if previous_swimlane_index == Some(swimlane.index) && swimlane.r > 0.0 {
         return swimlane.r + BOX_PADDING;
     }
     if let Some(last_box) = last_box {
-        return last_box.r - BOX_OVERLAP + BOX_PADDING;
+        return (last_box.r - BOX_OVERLAP + BOX_PADDING).max(swimlane.content_start_x);
     }
-    CONTENT_START_X
+    swimlane.content_start_x
 }
 
 fn find_previous_cross_swimlane_box(
@@ -521,9 +533,18 @@ fn measure_eventmodeling_label_html(
         font_weight: style.font_weight.clone(),
         font_style: None,
     };
-    let sans = measure_eventmodeling_label_html_with_style(html, measurer, &sans_style);
-    let default_font =
-        measure_eventmodeling_label_html_with_style(html, measurer, &default_font_style);
+    let sans = measure_eventmodeling_label_html_with_style(
+        html,
+        measurer,
+        &sans_style,
+        HTML_LABEL_BBOX_LINE_HEIGHT,
+    );
+    let default_font = measure_eventmodeling_label_html_with_style(
+        html,
+        measurer,
+        &default_font_style,
+        HTML_LABEL_BBOX_LINE_HEIGHT,
+    );
 
     if sans.height > default_font.height
         && sans.width > default_font.width
@@ -555,6 +576,7 @@ fn measure_eventmodeling_label_html_with_style(
     html: &str,
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
+    min_line_height: f64,
 ) -> EventModelingHtmlTextDimension {
     let mut width: f64 = 0.0;
     let mut height: f64 = 0.0;
@@ -569,7 +591,7 @@ fn measure_eventmodeling_label_html_with_style(
         let current_height = measurer
             .measure_svg_simple_text_bbox_height_px(&line, style)
             .round()
-            .max(HTML_LABEL_BBOX_LINE_HEIGHT);
+            .max(min_line_height);
         height += current_height;
         line_height = line_height.max(current_height);
     }
@@ -586,6 +608,7 @@ impl EventModelingPreparedHtmlLabel {
         data_entities: &HashMap<&str, &EventModelingDataEntity>,
         label_config: &merman_model::MermaidConfig,
         fragment_config: &merman_model::MermaidConfig,
+        native: Option<&EventModelingNativeStyle>,
         measurer: &dyn TextMeasurer,
         work_meter: &Arc<OperationWorkMeter>,
     ) -> Result<Self> {
@@ -622,18 +645,33 @@ impl EventModelingPreparedHtmlLabel {
                 work_meter,
             )
         };
-        let style = eventmodeling_label_style();
-        let wrap = |text: &str| {
+        let baseline = eventmodeling_label_style();
+        let (title_style, code_style) =
+            native.map_or((&baseline, &baseline), |style| (&style.label, &style.code));
+        let wrap = |text: &str, style: &TextStyle| {
             wrap_label_like_mermaid_lines_with_checkpoint(
                 text,
                 measurer,
-                &style,
+                style,
                 TEXT_MAX_WIDTH,
                 || Ok(work_meter.checkpoint(merman_model::OperationPhase::Layout)?),
             )
             .map(|lines| lines.join("<br/>"))
         };
-        let title = wrap(&sanitize_author(extract_name(&frame.entity_identifier))?)?;
+        let title = wrap(
+            &sanitize_author(extract_name(&frame.entity_identifier))?,
+            title_style,
+        )?;
+        let native_measure = |text: &str, style: &TextStyle| {
+            measure_eventmodeling_label_html_with_style(
+                text,
+                measurer,
+                style,
+                style.font_size * 1.2,
+            )
+            .into_dimension()
+        };
+        let mut native_dimension = native.map(|_| native_measure(&title, title_style));
         let mut html = format!("<b>{title}</b>");
         let data = frame.data_inline_value.as_deref().or_else(|| {
             frame
@@ -644,22 +682,33 @@ impl EventModelingPreparedHtmlLabel {
         });
         if let Some(data) = data {
             let data = sanitize_author(&normalize_eventmodeling_data(data))?;
-            let wrapped_data = wrap(&data)?.replace(' ', "&nbsp;");
+            let wrapped_data = wrap(&data, code_style)?;
+            if let Some(dimension) = native_dimension.as_mut() {
+                let code = native_measure(&wrapped_data, code_style);
+                dimension.width = dimension.width.max(code.width);
+                dimension.height += code.height + title_style.font_size * 1.2;
+            }
             html.push_str(
                 r#"<br/><br/><code style="text-align: left; display: block;max-width:430px">"#,
             );
-            html.push_str(&wrapped_data);
+            html.push_str(&wrapped_data.replace(' ', "&nbsp;"));
             if frame.data_reference.is_some() {
                 html.push_str("<br/>");
+                if let Some(dimension) = native_dimension.as_mut() {
+                    dimension.height += code_style.font_size * 1.2;
+                }
             }
             html.push_str("</code>");
         }
         // Pinned calculateTextDimensions probes generated HTML source with SVG text APIs.
         // Preserve entity spellings here; XHTML serialization is a separate terminal projection.
-        let mut dimension = measure_eventmodeling_label_html(&html, measurer, &style);
-        if data.is_some() {
-            dimension.width /= 3.0;
-        }
+        let mut dimension = native_dimension.unwrap_or_else(|| {
+            let mut dimension = measure_eventmodeling_label_html(&html, measurer, &baseline);
+            if data.is_some() {
+                dimension.width /= 3.0;
+            }
+            dimension
+        });
         dimension.width = dimension.width.min(TEXT_MAX_WIDTH);
         // Keep entity-authored angle brackets encoded until this HTML parse consumes them.
         // Only this sanitized, XML-serialized terminal may be written beneath the XHTML span.
@@ -713,7 +762,18 @@ fn normalize_eventmodeling_data(raw: &str) -> String {
     without_outer_braces.trim().to_string()
 }
 
-fn entity_visual_props(theme: &EventModelingCssBinding, entity_type: &str) -> VisualProps {
+fn entity_visual_props(
+    theme: &EventModelingCssBinding,
+    native: Option<&EventModelingNativeStyle>,
+    entity_type: &str,
+) -> VisualProps {
+    if let Some(native) = native {
+        let (fill, stroke) = native.box_paint(entity_type);
+        return VisualProps {
+            fill: fill.to_string(),
+            stroke: stroke.to_string(),
+        };
+    }
     match entity_type {
         "ui" => VisualProps {
             fill: theme.ui_fill.clone(),

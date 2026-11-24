@@ -1,11 +1,12 @@
 use super::super::*;
+use crate::info::{INFO_BASELINE_HEIGHT_PX, InfoClassicStyle, InfoNativeStyle};
 
 pub(crate) fn render_native_info_svg(
     layout: &InfoDiagramLayout,
-    style: &crate::info::InfoNativeStyle,
+    style: &InfoNativeStyle,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    let version = style.version();
+    let version = &style.version;
     let diagram_id = options.diagram_id_or("merman");
     let bounds = layout
         .bounds
@@ -21,7 +22,8 @@ pub(crate) fn render_native_info_svg(
         0.0,
     ));
     let mut out = BoundedSvgOutput::new(options.work_meter());
-    let root = root_svg::RootViewportContext::new(crate::DiagramFamilyId::INFO, diagram_id)
+    let root = options
+        .root_viewport(crate::DiagramFamilyId::INFO, diagram_id)
         .write_open(
             &mut out,
             viewport,
@@ -30,28 +32,26 @@ pub(crate) fn render_native_info_svg(
     let _ = write!(
         &mut out,
         r#"<g><text x="{}" y="{}" class="version" font-size="{}" font-family="{}" "#,
-        fmt(version.x()),
-        fmt(version.y()),
-        fmt(version.font_size_px()),
+        fmt(version.x),
+        fmt(version.y),
+        fmt(version.font_size_px),
         escape_attr(&style.font_family),
     );
     let _ = crate::theme::canvas_svg::write_color(&mut out, "fill", style.text_color, 1.0);
     let _ = write!(
         &mut out,
         r#" text-anchor="middle">{}</text></g></svg>"#,
-        escape_xml(version.text())
+        escape_xml(&layout.version)
     );
     root.complete(out.finish()?)
 }
 
 pub(crate) fn render_info_diagram_svg(
     layout: &InfoDiagramLayout,
-    typography_theme: &crate::info::InfoTypographyThemePlan,
+    style: &InfoClassicStyle,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("merman");
-    let mut surface_receipt = typography_theme.begin_terminal_receipt();
-
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let bounds = layout
         .bounds
@@ -62,71 +62,37 @@ pub(crate) fn render_info_diagram_svg(
     let mut root_spec = root_svg::RootViewportSpec::responsive_without_view_box(
         (bounds.max_x - bounds.min_x).max(0.0),
     );
-    if typography_theme.requires_explicit_viewport_height() {
-        root_spec =
-            root_spec.with_mermaid_responsive_height(true, (bounds.max_y - bounds.min_y).max(0.0));
+    let height = (bounds.max_y - bounds.min_y).max(0.0);
+    if height > INFO_BASELINE_HEIGHT_PX {
+        root_spec = root_spec.with_mermaid_responsive_height(true, height);
     }
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "info");
     root_chrome.dom.trailing_newline = false;
-    let root_document = root_svg::RootViewportContext::new(
-        crate::DiagramFamilyId::INFO,
-        diagram_id,
-    )
-    .write_open(&mut out, root_spec, root_chrome)?;
+    let root_document = options
+        .root_viewport(crate::DiagramFamilyId::INFO, diagram_id)
+        .write_open(&mut out, root_spec, root_chrome)?;
     out.push_str("<style>");
-    let css_write = write_prepared_info_css(
-        &mut super::super::output::XmlTextOutput::new(&mut out),
-        diagram_id.semantic_str(),
-        typography_theme.css_binding(),
-    )?;
+    let selector = super::super::util::css_selector_diagram_id(diagram_id.semantic_str());
+    let fragment = super::super::css::FragmentDiagramId(diagram_id.semantic_str());
+    let mut css = super::super::output::XmlTextOutput::new(&mut out);
+    style.css.write_prefix(&mut css, selector)?;
+    style.css.write_root(&mut css, selector, fragment)?;
     out.push_str("</style>");
     out.checkpoint()?;
-    surface_receipt.record_css_emission(
-        css_write.root_font_family_css(),
-        css_write.inherited_font_family_css(),
-        css_write.root_variable_font_family_css(),
-    );
     out.push_str(r#"<g/>"#);
     out.checkpoint()?;
-    let version = typography_theme.version_geometry();
-    if layout.version != version.text() {
-        return Err(crate::Error::InvalidModel {
-            message: "Info layout version diverged from prepared terminal geometry".to_string(),
-        });
-    }
+    let version = &style.version;
     let _ = write!(
         &mut out,
-        r#"<g><text x="{}" y="{}" class="version" font-size="{}""#,
-        fmt(version.x()),
-        fmt(version.y()),
-        fmt(version.font_size_px()),
-    );
-    let version_fill_css = typography_theme.version_fill_css();
-    if let Some(fill_css) = version_fill_css {
-        let _ = write!(&mut out, r#" fill="{}""#, escape_xml(fill_css));
-    }
-    let _ = write!(
-        &mut out,
-        r#" style="text-anchor: middle;">{}</text></g>"#,
-        escape_xml(version.text())
+        r#"<g><text x="{}" y="{}" class="version" font-size="{}" style="text-anchor: middle;">{}</text></g>"#,
+        fmt(version.x),
+        fmt(version.y),
+        fmt(version.font_size_px),
+        escape_xml(&layout.version)
     );
     out.checkpoint()?;
-    surface_receipt.record_version_text(
-        "version",
-        version.text(),
-        version.font_size_px(),
-        version.x(),
-        version.y(),
-        version_fill_css,
-    );
     out.push_str("</svg>\n");
-    let rooted_svg = root_document.complete(out.finish()?)?;
-    if !typography_theme.record_terminal(surface_receipt) {
-        return Err(crate::Error::InvalidModel {
-            message: "Info typography receipt was recorded more than once".to_string(),
-        });
-    }
-    Ok(rooted_svg)
+    root_document.complete(out.finish()?)
 }
 
 #[cfg(test)]
@@ -145,13 +111,7 @@ mod tests {
         let debug = SvgDebugOptions::default();
         let effective_config = merman_model::presentation::PresentationConfig::default();
         let measurer = crate::text::DeterministicTextMeasurer::default();
-        let typography_theme = crate::info::InfoTypographyThemePlan::resolve(
-            None,
-            &effective_config,
-            &measurer,
-            session.work_meter(),
-        )
-        .expect("resolve Info theme");
+        let (layout, style) = InfoClassicStyle::resolve(&effective_config, &measurer);
         let execution = SvgExecution::unthemed_for_test(
             &request,
             &debug,
@@ -159,12 +119,7 @@ mod tests {
             crate::DiagramFamilyId::INFO,
         )
         .expect("SVG execution");
-        let layout = crate::info::layout_info_diagram_typed(
-            &merman_model::families::info::InfoDiagramModel::default(),
-            &typography_theme,
-        )
-        .expect("Info layout");
-        render_info_diagram_svg(&layout, &typography_theme, &execution)
+        render_info_diagram_svg(&layout, &style, &execution)
     }
 
     #[test]

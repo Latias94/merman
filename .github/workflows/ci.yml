@@ -482,16 +482,16 @@ jobs:
           du -sh target
           df -h .
 
-      - name: Test theme authoring and font resource boundaries
+      - name: Test native theme rendering and export boundaries
         shell: bash
         run: |
           cargo nextest run --locked -p merman-ffi --no-default-features \
             --features svg,diagram-flowchart --test c_consumer_smoke
           cargo nextest run --locked -p merman-render --no-default-features \
-            --features diagram-flowchart,diagram-swimlane \
-            --test theme_font_capability --test flowchart_node_effects --cargo-quiet
+            --features diagram-pie,diagram-info \
+            --test native_theme_canvas --cargo-quiet
           cargo nextest run --locked -p merman-bindings-core --no-default-features \
-            --features svg,diagram-flowchart --lib -E 'test(embedded_fonts_are_rejected_before_decoding) | test(resource_free_font_stack)' --cargo-quiet
+            --features svg,diagram-flowchart --lib -E 'test(theme)' --cargo-quiet
           cargo nextest run --locked -p merman --no-default-features --features svg,diagram-flowchart \
             --test theme_font_capability --test flowchart_edge_label_theme --cargo-quiet
           cargo nextest run --locked -p merman-export --no-default-features \
@@ -754,16 +754,11 @@ jobs:
           python3 scripts/verify_v2_presets.py --check-colors crates/merman-theme-contract/tests/fixtures/preset-colors-v2.json
           cargo nextest run --locked -p merman-theme-contract --test theme_v2 --cargo-quiet
 
-      - name: Test theme support discovery
-        run: cargo nextest run --locked -p merman-render --no-default-features --features all-diagrams --test theme_support_discovery_test --cargo-quiet
-
-      - name: Test theme authoring and Flowchart paint across SVG and PNG
+      - name: Test native theme consumers
         run: |
           cargo nextest run --locked -p merman \
-            --no-default-features --features all-diagrams,svg,png,pdf,layout-cytoscape,system-fonts,compat-json --test theme_authoring \
-            --test theme_flowchart_markers --test theme_flowchart_geometry \
-            --test theme_flowchart_edge_effects --test flowchart_edge_label_theme \
-            --test render_operation --test theme_composed_effects --cargo-quiet
+            --no-default-features --features all-diagrams,svg,ascii,png,pdf,layout-cytoscape,system-fonts,compat-json \
+            --test native_theme --test render_operation --test prepared_source --cargo-quiet
 
   svg-parity:
     name: svg-parity

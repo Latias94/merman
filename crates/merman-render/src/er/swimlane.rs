@@ -16,7 +16,7 @@ use dugong::RankDir;
 use merman_model::families::er::ErDiagramModel;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 /// The selected provider creates a fresh plain labelRect node. Its frozen terminal supplies
 /// layout metrics, painted content, HTML mode and visible-style facts to every consumer.
@@ -24,8 +24,6 @@ use std::sync::{Arc, OnceLock};
 pub(crate) struct ErSwimlaneRelationshipLabel {
     metrics: TextMetrics,
     content: ErSwimlaneLabelContent,
-    font_size_px: f64,
-    visible_style_facts: OnceLock<super::text_facts::ErTextFacts>,
 }
 
 #[derive(Debug, Clone)]
@@ -134,12 +132,7 @@ impl ErSwimlaneRelationshipLabel {
             );
             (metrics, ErSwimlaneLabelContent::Svg { lines })
         };
-        Self {
-            metrics,
-            content,
-            font_size_px: style.font_size,
-            visible_style_facts: OnceLock::new(),
-        }
+        Self { metrics, content }
     }
 
     pub(super) fn metrics(&self) -> TextMetrics {
@@ -165,20 +158,6 @@ impl ErSwimlaneRelationshipLabel {
             ErSwimlaneLabelContent::Svg { lines } => Some(lines),
             ErSwimlaneLabelContent::Html { .. } => None,
         }
-    }
-
-    pub(super) fn text_facts(&self) -> &super::text_facts::ErTextFacts {
-        self.visible_style_facts
-            .get_or_init(|| match &self.content {
-                ErSwimlaneLabelContent::Html { fragment, .. } => {
-                    super::text_facts::ErTextFacts::html(fragment, Some(self.font_size_px))
-                }
-                ErSwimlaneLabelContent::Svg { lines } => {
-                    let plain =
-                        crate::graph_label::flowchart_svg_source_word_lines_plain_text(lines);
-                    super::text_facts::ErTextFacts::plain(&plain, Some(self.font_size_px))
-                }
-            })
     }
 }
 
@@ -564,7 +543,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn swimlane_plain_terminal_owns_literal_text_metrics_and_style_facts() {
+    fn swimlane_plain_terminal_owns_literal_text_and_metrics() {
         let measurer = DeterministicTextMeasurer::default();
         let model = ErDiagramModel {
             direction: "TB".into(),
@@ -587,11 +566,6 @@ mod tests {
             assert_eq!(
                 relationship.dimensions(),
                 (terminal.metrics.width, terminal.metrics.height)
-            );
-            assert_eq!(
-                relationship.visible_style_facts(),
-                &crate::text::VisibleTextStyleFacts::plain_text("**owns**"),
-                "Markdown punctuation cannot acquire emphasis or style ownership"
             );
             if html {
                 let fragment = terminal.xhtml_fragment().unwrap();

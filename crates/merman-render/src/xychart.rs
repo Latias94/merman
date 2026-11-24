@@ -12,16 +12,28 @@ use serde_json::Value;
 use std::fmt::Write as _;
 
 mod css_binding;
-mod paint;
 mod series;
 mod theme;
 
-pub(crate) use paint::{
-    XyChartPaintPlan, XyChartPaintReceipt, XyChartPaintTerminalId, text_is_visible,
-};
-
-pub(crate) use series::{XyChartSeriesPaintPlan, XyChartSeriesPaintReceipt};
+pub(crate) use series::XyChartSeriesPaintPlan;
 pub(crate) use theme::{XyChartTextRole, XyChartTypographyThemePlan};
+
+use crate::theme::{FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags};
+
+pub(crate) struct XyChartThemeAdapter;
+
+impl FamilyThemeAdapter for XyChartThemeAdapter {
+    const FAMILY: crate::DiagramFamilyId = crate::DiagramFamilyId::XY_CHART;
+    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
+        .union(ThemeCapabilityFlags::CONNECTOR)
+        .union(ThemeCapabilityFlags::DATA_INK)
+        .union(ThemeCapabilityFlags::DATA_FILL)
+        .union(ThemeCapabilityFlags::CHART_POLISH)
+        .union(ThemeCapabilityFlags::ELEVATION)
+        .union(ThemeCapabilityFlags::RADIUS)
+        .union(ThemeCapabilityFlags::PATTERN_ENCODING)
+        .union(ThemeCapabilityFlags::TYPOGRAPHY);
+}
 
 #[derive(Debug, Clone)]
 struct AxisThemeConfig {
@@ -1229,8 +1241,9 @@ pub(crate) fn layout_xychart_diagram_typed(
     diagram_title: Option<&str>,
     series_paint: &XyChartSeriesPaintPlan,
     typography_theme: &theme::XyChartTypographyThemePlan,
+    native: Option<&FamilyTheme>,
     text_measurer: &dyn TextMeasurer,
-) -> Result<XyChartDiagramLayout> {
+) -> Result<(XyChartDiagramLayout, Vec<usize>)> {
     if series_paint.plot_count() != model.plots.len() {
         return Err(Error::InvalidModel {
             message: "XY Chart series paint plan does not match the semantic model".to_string(),
@@ -1302,7 +1315,7 @@ pub(crate) fn layout_xychart_diagram_typed(
     let title_dimension = max_text_dimension(
         std::slice::from_ref(&title),
         chart_cfg.title_font_size,
-        typography_theme.font_family_css(),
+        typography_theme.title_family_css(),
         chart_cfg.title_font_weight.as_deref(),
         text_measurer,
     );
@@ -1554,6 +1567,36 @@ pub(crate) fn layout_xychart_diagram_typed(
         x_axis.recalculate_outer_padding_to_draw_bar();
     }
 
+    if let Some(theme) = native.filter(|theme| theme.form.chart.gridlines) {
+        let horizontal = chart_cfg.chart_orientation == "horizontal";
+        let guide = theme.roles.stroke_guide.first_color().to_string();
+        let paths = y_axis
+            .tick_values()
+            .iter()
+            .filter_map(|tick| {
+                let position = y_axis.get_scale_value(tick);
+                if !position.is_finite() {
+                    return None;
+                }
+                let path = if horizontal {
+                    format!("M{position},{}v{}", plot_rect.y, plot_rect.height)
+                } else {
+                    format!("M{},{position}h{}", plot_rect.x, plot_rect.width)
+                };
+                Some(XyChartPathData {
+                    path,
+                    fill: None,
+                    stroke_fill: guide.clone(),
+                    stroke_width: 1.0,
+                })
+            })
+            .collect();
+        drawables.push(XyChartDrawableElem::Path {
+            group_texts: vec!["gridlines".to_owned()],
+            data: paths,
+        });
+    }
+
     for (plot_index, plot) in model.plots.iter().enumerate() {
         let fill_color = series_paint
             .fill_css(plot_index)
@@ -1644,6 +1687,28 @@ pub(crate) fn layout_xychart_diagram_typed(
                                 .expect("resolved series width"),
                         }],
                     });
+                    if native.is_some_and(|theme| theme.form.chart.line_markers) {
+                        let markers = points
+                            .iter()
+                            .zip(&plot.data)
+                            .filter(|((x, y), (_, value))| {
+                                value.is_some() && x.is_finite() && y.is_finite()
+                            })
+                            .map(|((x, y), _)| XyChartPathData {
+                                path: format!("M{},{y}a3,3 0 1 0 6,0a3,3 0 1 0 -6,0Z", x - 3.0),
+                                fill: Some(stroke_color.to_owned()),
+                                stroke_fill: "none".to_owned(),
+                                stroke_width: 0.0,
+                            })
+                            .collect();
+                        drawables.push(XyChartDrawableElem::Path {
+                            group_texts: vec![
+                                "plot".to_owned(),
+                                format!("line-markers-{plot_index}"),
+                            ],
+                            data: markers,
+                        });
+                    }
                     if !plot.point_labels.is_empty() {
                         let label_offset = 10.0;
                         let font_size = 12.0;
@@ -1702,11 +1767,11 @@ pub(crate) fn layout_xychart_diagram_typed(
         }
     }
 
-    if !series_paint.record_legend_layout(legend_plots.iter().map(|(index, _)| *index)) {
-        return Err(Error::InvalidModel {
-            message: "XY Chart legend plan was already finalized".to_owned(),
-        });
-    }
+    let bar_legend_plots = legend_plots
+        .iter()
+        .filter(|(_, plot)| plot.plot_type == XyChartPlotType::Bar)
+        .map(|(index, _)| *index)
+        .collect();
     drawables.extend(legend_drawable_elements(
         &legend_plots,
         legend_origin,
@@ -1736,20 +1801,22 @@ pub(crate) fn layout_xychart_diagram_typed(
         Vec::new()
     };
 
-    Ok(XyChartDiagramLayout {
-        width: chart_cfg.width,
-        height: chart_cfg.height,
-        chart_orientation: chart_cfg.chart_orientation,
-        show_data_label: chart_cfg.show_data_label,
-        show_data_label_outside_bar: chart_cfg.show_data_label_outside_bar,
-        background_color: theme_cfg.background_color.clone(),
-        label_data,
-        drawables,
-    })
+    Ok((
+        XyChartDiagramLayout {
+            width: chart_cfg.width,
+            height: chart_cfg.height,
+            chart_orientation: chart_cfg.chart_orientation,
+            show_data_label: chart_cfg.show_data_label,
+            show_data_label_outside_bar: chart_cfg.show_data_label_outside_bar,
+            background_color: theme_cfg.background_color.clone(),
+            label_data,
+            drawables,
+        },
+        bar_legend_plots,
+    ))
 }
 
 /// Shared rectangle-label selection and sizing, including Mermaid's legend-marker labels.
-/// Labels with a zero font size remain serialized but are not visible theme occurrences.
 pub(crate) struct XyChartRectDataLabels<'a> {
     pub(crate) items: Vec<XyChartRectDataLabel<'a>>,
     pub(crate) font_size: f64,
@@ -1757,7 +1824,6 @@ pub(crate) struct XyChartRectDataLabels<'a> {
 
 pub(crate) struct XyChartRectDataLabel<'a> {
     pub(crate) rect: &'a XyChartRectData,
-    pub(crate) item: usize,
     pub(crate) label: &'a str,
 }
 
@@ -1770,14 +1836,9 @@ pub(crate) fn rect_data_labels<'a>(
 ) -> XyChartRectDataLabels<'a> {
     let items = data
         .iter()
-        .enumerate()
-        .filter_map(|(item, rect)| {
-            let label = labels.get(item)?;
-            (rect.width > 0.0 && rect.height > 0.0).then_some(XyChartRectDataLabel {
-                rect,
-                item,
-                label,
-            })
+        .zip(labels)
+        .filter_map(|(rect, label)| {
+            (rect.width > 0.0 && rect.height > 0.0).then_some(XyChartRectDataLabel { rect, label })
         })
         .collect::<Vec<_>>();
     let mut min_font = f64::INFINITY;
@@ -2058,14 +2119,18 @@ mod tests {
         let config = crate::test_support::presentation_config(json!({ "xyChart": {
             "width": 700, "height": height, "showLegend": legend
         }}));
-        let work_meter = crate::resources::OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::interactive(),
-        );
-        let series_paint =
-            XyChartSeriesPaintPlan::resolve(None, &config, &model, &work_meter).unwrap();
-        let typography = XyChartTypographyThemePlan::resolve(None, &config, &work_meter).unwrap();
-        layout_xychart_diagram_typed(&model, None, &series_paint, &typography, &UserUnitMeasurer)
-            .unwrap()
+        let series_paint = XyChartSeriesPaintPlan::new(config.as_value(), &model, None);
+        let typography = XyChartTypographyThemePlan::resolve(&config);
+        layout_xychart_diagram_typed(
+            &model,
+            None,
+            &series_paint,
+            &typography,
+            None,
+            &UserUnitMeasurer,
+        )
+        .unwrap()
+        .0
     }
 
     fn title(layout: &XyChartDiagramLayout) -> Option<&XyChartTextData> {
@@ -2214,12 +2279,9 @@ mod tests {
         let config = crate::test_support::presentation_config(json!({
             "fontFamily":"Inter, sans-serif", "xyChart":{"showLegend":true},
         }));
-        let work_meter = crate::resources::OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::interactive(),
-        );
-        let series = XyChartSeriesPaintPlan::resolve(None, &config, model, &work_meter).unwrap();
-        let typography = XyChartTypographyThemePlan::resolve(None, &config, &work_meter).unwrap();
-        layout_xychart_diagram_typed(model, None, &series, &typography, &measurer).unwrap();
+        let series = XyChartSeriesPaintPlan::new(config.as_value(), model, None);
+        let typography = XyChartTypographyThemePlan::resolve(&config);
+        layout_xychart_diagram_typed(model, None, &series, &typography, None, &measurer).unwrap();
         let text = measurer.0.lock().unwrap();
         for expected in ["Chart", "Categories", "Amount", "One", "Series"] {
             assert!(

@@ -364,82 +364,6 @@ fn gitgraph_commit_label_dynamic_or_unknown_weight_is_not_replaced_by_normal() {
 }
 
 #[test]
-fn gitgraph_commit_label_unmeasurable_weight_cannot_certify_typed_typography() {
-    use merman_model::family::DiagramFamilyId;
-    use merman_render::diagram_theme::{
-        DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemePortabilityRequirement,
-        ThemeTextStyle, TypographySpec,
-    };
-
-    let typography = ThemeTextStyle::default()
-        .with_font_stack(FontStack::single("GitGraphWeight").unwrap())
-        .with_font_size_px(23.0)
-        .unwrap();
-    let theme = DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_typography(
-            TypographySpec::default().with_family_style(DiagramFamilyId::GIT_GRAPH, typography),
-        ))
-        .unwrap();
-    for show_commit_label in [true, false] {
-        for weight in ["var(--commit-weight)", "calc(400 + 300)", "unknown-weight"] {
-            for requirement in [
-                ThemePortabilityRequirement::RequirePortable,
-                ThemePortabilityRequirement::BestEffort,
-            ] {
-                let engine = MermaidEngine::new().with_site_config(
-                    merman_core::presentation::SourcePresentationConfig::from_value(json!({
-                        "theme": "redux",
-                        "gitGraph": { "showCommitLabel": show_commit_label },
-                        "themeVariables": { "noteFontWeight": weight }
-                    })),
-                );
-                let parsed = common::install_parse_compatibility(&theme, engine)
-                    .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::strict())
-                    .unwrap()
-                    .unwrap()
-                    .into_presentation();
-                let session = RenderEnvironment::deterministic()
-                    .with_theme_portability_requirement(requirement)
-                    .begin_session_with_theme(&theme)
-                    .unwrap();
-                let result =
-                    family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
-                        .and_then(|artifact| {
-                            artifact.render_svg(
-                                &SvgRenderOptions {
-                                    diagram_id: Some("git-weight".to_owned()),
-                                    ..Default::default()
-                                },
-                                &SvgDebugOptions::default(),
-                            )
-                        });
-                if requirement == ThemePortabilityRequirement::RequirePortable {
-                    let error = result
-                        .err()
-                        .expect("unresolved commit weight must fail closed");
-                    assert_eq!(
-                        error.unverified_family_theme(),
-                        Some((DiagramFamilyId::GIT_GRAPH, 2)),
-                        "{weight}: {error:?}"
-                    );
-                } else {
-                    let rendered = result.expect("best effort preserves unresolved Mermaid CSS");
-                    assert!(
-                        rule(rendered.svg(), ".commit-label")
-                            .contains(&format!("font-weight:{weight};"))
-                    );
-                    let evidence = merman_render::__private::family_evidence(
-                        rendered.into_completion().report(),
-                    );
-                    assert_eq!(evidence.theme_residual_count(), 2);
-                    assert_eq!(evidence.applied_count(), 0);
-                }
-            }
-        }
-    }
-}
-
-#[test]
 fn gitgraph_measurement_uses_the_css_bound_font_family() {
     for host in [true, false] {
         let (svg, measurer) = render_config(
@@ -548,6 +472,3 @@ fn gitgraph_branch_rows_use_tspan_height_without_changing_prelayout_weight() {
         }
     }
 }
-
-#[allow(dead_code)]
-mod common;

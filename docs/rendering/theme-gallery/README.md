@@ -1,6 +1,10 @@
-# Theme gallery
+# Merman 0.10.0 theme gallery
 
-Six examples from the current catalog of 11 designs and 14 concrete preset IDs show different
+These images and reproduction instructions document the `0.10.0` release. Use the
+[tagged source](https://github.com/Latias94/merman/tree/v0.10.0) to reproduce the examples below.
+For current presets and commands, see the [Theme v2 guide](../custom-diagram-themes.md).
+
+Six examples from that release's catalog of 11 designs and 14 concrete preset IDs show different
 visual designs, light and dark palettes, and five diagram families. The catalog also includes
 Paper Cut (`paper-cut`), Carbon Copy (`carbon-copy`), and Pop Art (`pop-art`). Use the built-in
 recipes in a matching `0.10.0` runtime; see the [host guide](../../release/PREBUILT_PRODUCTS.md)
@@ -67,11 +71,11 @@ evaluating the examples; inspect `--theme-report` before requiring portable outp
 ## Changelog preview cards
 
 The [release changelog](../../../CHANGELOG.md#designed-themes-ready-to-customize) compares Riso,
-Pop Art, Carbon Copy and Paper Cut in equal-size cards. Each combines the maintained Playground
+Pop Art, Carbon Copy and Paper Cut in equal-size cards. Each combines the release's Playground
 Flowchart, Sequence and Pie SVG previews without changing their aspect ratios or theme settings.
 Riso is a gallery recipe; the other three also have built-in preset IDs.
 
-After refreshing those Playground previews, regenerate the composed cards from the repository root:
+In the `v0.10.0` checkout, regenerate the composed cards from the repository root:
 
 ```text
 python scripts/generate_theme_showcase.py
@@ -107,7 +111,7 @@ The images above come from Merman, and do not establish complete Modern Mermaid 
 pixel parity. One Dark and Gruvbox Light are separate editor-style palette examples; they are
 not presented as Modern Mermaid designs. Fonts are resolved independently on the host.
 
-## Playground
+## Playground in 0.10.0
 
 Paste one of the included sources into the editor and open **Appearance**. The unified collection
 includes Mermaid themes, built-in Merman presets, and standalone explorations. Choosing a theme
@@ -125,7 +129,7 @@ project** provides adoption code and source/theme files; downloading a theme alo
 reusable recipe. A workspace link restores the current source, settings, and theme. Check the
 frozen image's output compatibility in **Export**, separately from the design's family scope.
 
-## Native CLI
+## Native CLI in 0.10.0
 
 From this directory, with a CLI built with PNG, native-fonts, and system-fonts capabilities,
 reproduce all six images:
@@ -157,7 +161,7 @@ Font stacks name host fonts and do not embed or download them. Open Sans and Not
 are Ghibli's preferred fonts, with a generic sans-serif fallback. Text measurements and font
 rendering can differ across hosts. Source/configuration can override individual recipe values.
 
-## Reuse from a SDK
+## SDKs in 0.10.0
 
 Select a built-in preset with `theme: { preset: "ghibli" }`, or export its editable recipe:
 
@@ -200,4 +204,5 @@ with an existing target element. For Rust, run the maintained example from the r
 cargo run --locked -p merman --features svg --example theme_preset > themed.svg
 ```
 
-The complete workflow and precedence rules are in [the theme guide](../custom-diagram-themes.md).
+See the [tagged theme guide](https://github.com/Latias94/merman/blob/v0.10.0/docs/rendering/custom-diagram-themes.md)
+for the release's configuration and precedence rules.

@@ -53,6 +53,7 @@ use merman_model::time;
 use merman_model::{baseline, json as json_value, operation, text as entities};
 mod common_db;
 mod config;
+pub use config::source_declares_theme;
 pub mod detect;
 pub mod diagram;
 mod diagrams;
@@ -142,9 +143,7 @@ pub use semantic::{SemanticDiagramSnapshot, SemanticParseOutcome, SemanticSnapsh
 #[cfg(all(test, feature = "presentation"))]
 pub(crate) use presentation::engine::parse_pipeline;
 #[cfg(feature = "presentation")]
-pub use presentation::{
-    MermaidEngine, SourcePresentationMetadata, ThemeCompatibilityPlan, ThemeCompatibilityPlanError,
-};
+pub use presentation::{MermaidEngine, SourcePresentationMetadata};
 
 use merman_model::MAX_DIAGRAM_NESTING_DEPTH;
 

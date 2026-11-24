@@ -5,11 +5,28 @@
 type StateDiagramModel = merman_model::families::state::StateDiagramRenderModel;
 type StateNode = merman_model::families::state::StateDiagramRenderNode;
 
+use crate::theme::{FamilyThemeAdapter, ThemeCapabilityFlags};
+
+pub(crate) struct StateThemeAdapter;
+
+impl FamilyThemeAdapter for StateThemeAdapter {
+    const FAMILY: crate::DiagramFamilyId = crate::DiagramFamilyId::STATE;
+    const CAPS: ThemeCapabilityFlags = ThemeCapabilityFlags::CANVAS
+        .union(ThemeCapabilityFlags::NODE_SURFACE)
+        .union(ThemeCapabilityFlags::CONTAINER)
+        .union(ThemeCapabilityFlags::CALLOUT)
+        .union(ThemeCapabilityFlags::EMPHASIS)
+        .union(ThemeCapabilityFlags::CONNECTOR)
+        .union(ThemeCapabilityFlags::ELEVATION)
+        .union(ThemeCapabilityFlags::RADIUS)
+        .union(ThemeCapabilityFlags::MARKER_STYLE)
+        .union(ThemeCapabilityFlags::TYPOGRAPHY);
+}
+
 mod label;
 pub(crate) use label::{
     StateLabelMeasurement, measure_state_markdown_label, state_edge_label_xhtml,
-    state_label_source_style_facts, state_markdown_label_plain_text, state_node_label_xhtml,
-    state_value_to_label_text,
+    state_markdown_label_plain_text, state_node_label_xhtml, state_value_to_label_text,
 };
 
 mod edge_label_geometry;
@@ -66,24 +83,20 @@ impl RectWithTitleGeometry {
 
 mod compatibility;
 mod config;
-mod effect_plan;
 #[cfg(feature = "layout-elk")]
 mod elk;
 mod layout;
 #[cfg(feature = "layout-shoal")]
 mod shoal;
 mod style_plan;
-mod theme_evidence;
 
 pub(crate) use compatibility::{
-    StateCompatibilityPlan, StateTerminalPaintProperty, StateTerminalSurface,
+    StateCompatibilityPlan, StateNodeKind, StateTerminalPaintProperty, StateTerminalSurface,
 };
 pub(crate) use config::StateConfigView;
-pub(crate) use effect_plan::{StateEffectPlan, StateNodeEffectPlan};
 pub(crate) use style_plan::{
-    ResolvedLabelTypography, StateEdgeStylePlan, StateNodeStylePlan, StateStylePlan,
+    ResolvedLabelTypography, StateCssDeclaration, StateNodeStylePlan, StateStylePlan,
 };
-pub(crate) use theme_evidence::{StateAppliedThemeOutcome, StateThemeOutcomes, StateThemeSurface};
 
 pub(crate) use layout::layout_state_diagram_typed_with_work_meter;
 pub use layout::{

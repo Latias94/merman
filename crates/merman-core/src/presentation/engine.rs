@@ -12,16 +12,10 @@ use crate::{
 #[cfg(feature = "compat-json")]
 use crate::{DiagramRegistry, ParsedDiagram};
 use merman_model::presentation::PresentationMetadata;
-#[cfg(test)]
-use merman_model::presentation::ThemeCompatibilityRecipe;
 use std::sync::{Arc, Mutex, OnceLock};
 
 #[path = "parse_pipeline.rs"]
 pub(crate) mod parse_pipeline;
-
-#[path = "theme_plan.rs"]
-mod theme_plan;
-pub use theme_plan::{ThemeCompatibilityPlan, ThemeCompatibilityPlanError};
 
 type ResolvedSiteConfig =
     std::result::Result<SourcePresentationConfig, theme::ThemeResolutionError>;
@@ -29,7 +23,6 @@ type ResolvedSiteConfig =
 #[derive(Clone, Debug)]
 struct SiteConfigInitialization {
     site_config: SourcePresentationConfig,
-    initialization_inputs: SourcePresentationConfig,
     default_effective_config: ResolvedSiteConfig,
     materialized_appearance: Arc<Mutex<Option<SiteAppearance>>>,
 }
@@ -42,37 +35,12 @@ struct SiteAppearance {
 }
 
 impl SiteConfigInitialization {
-    fn for_pristine_install(&self, overrides: &SourcePresentationConfig) -> Self {
-        let mut initialized = self.clone();
-        initialized
-            .initialization_inputs
-            .refresh_initialization_mutations_after(overrides);
-        initialized
-            .site_config
-            .refresh_initialization_mutations_after(&generated::default_presentation_config());
-        if let Ok(effective) = &mut initialized.default_effective_config {
-            effective.inherit_initialization_mutation_epochs(&initialized.site_config);
-        }
-        initialized.materialized_appearance = Arc::default();
-        initialized
-    }
-
-    fn new(
-        theme_config: Option<SourcePresentationConfig>,
-        overrides: &SourcePresentationConfig,
-    ) -> Self {
+    fn new(overrides: &SourcePresentationConfig) -> Self {
         let mut site_config = generated::default_presentation_config();
-        let mut initialization_inputs = SourcePresentationConfig::empty_object();
-        if let Some(theme_config) = theme_config {
-            initialization_inputs.deep_merge(theme_config.as_value());
-            merge_theme_compatibility_config(&mut site_config, theme_config);
-        }
-        initialization_inputs.deep_merge(overrides.as_value());
         merge_site_config_override(&mut site_config, overrides.clone());
         let default_effective_config = build_default_effective_config(&site_config);
         Self {
             site_config,
-            initialization_inputs,
             default_effective_config,
             materialized_appearance: Arc::default(),
         }
@@ -86,7 +54,6 @@ impl SiteConfigInitialization {
                 let default_effective_config = build_default_effective_config(&site_config);
                 Self {
                     site_config,
-                    initialization_inputs: SourcePresentationConfig::empty_object(),
                     default_effective_config,
                     materialized_appearance: Arc::default(),
                 }
@@ -148,25 +115,14 @@ fn merge_site_config_override(
         .get("secure")
         .filter(|value| value.is_array())
         .map(crate::json_value::clone_value_nonrecursive);
-    target.deep_merge_explicit(site_config.as_value());
+    target.deep_merge(site_config.as_value());
 
     // Merman adds host-level hardening beyond Mermaid's upstream defaults. An explicit site
     // policy is host authority, so it replaces that added list after the source-compatible array
     // merge instead of making the hardening impossible to opt out of.
     if let Some(secure) = explicit_secure_policy {
-        target.set_value_explicit("secure", secure);
+        target.set_value("secure", secure);
     }
-}
-
-fn merge_theme_compatibility_config(
-    target: &mut SourcePresentationConfig,
-    mut theme_config: SourcePresentationConfig,
-) {
-    theme_config.mirror_legacy_font_family();
-    let before = target.clone();
-    target.deep_merge(theme_config.as_value());
-    theme_config.retain_theme_compatibility_paths_applied_after(target, &before);
-    target.adopt_tracking_theme_compatibility_from(&mut theme_config);
 }
 
 pub use crate::ParseOptions;
@@ -233,7 +189,6 @@ pub struct MermaidEngine {
     render_diagram_registry: RenderDiagramRegistry,
     initialization: SiteConfigInitialization,
     site_config_overrides: SourcePresentationConfig,
-    theme_compatibility_config: Option<SourcePresentationConfig>,
     runtime_policy: merman_model::runtime::RuntimePolicy,
 }
 
@@ -246,7 +201,6 @@ impl Default for MermaidEngine {
             render_diagram_registry: RenderDiagramRegistry::pinned_mermaid_baseline(),
             initialization: SiteConfigInitialization::pinned_defaults(),
             site_config_overrides: SourcePresentationConfig::empty_object(),
-            theme_compatibility_config: None,
             runtime_policy: merman_model::runtime::RuntimePolicy::deterministic(),
         }
     }
@@ -333,30 +287,10 @@ impl MermaidEngine {
 
     /// Applies site-level Mermaid config defaults.
     pub fn with_site_config(mut self, site_config: SourcePresentationConfig) -> Self {
-        if site_config.is_empty_object() && !site_config.has_tracking_theme_compatibility() {
+        if site_config.is_empty_object() {
             return self;
         }
         merge_site_config_override(&mut self.site_config_overrides, site_config);
-        self.rebuild_site_config();
-        self
-    }
-
-    /// Installs a normalized theme recipe through the source owner's initialization cache.
-    /// Host site configuration retains precedence over the recipe's compatibility inputs.
-    pub fn with_theme_plan(self, plan: &ThemeCompatibilityPlan) -> Self {
-        plan.install(self)
-    }
-
-    /// Installs the lower-priority Mermaid compatibility layer for one compiled theme.
-    ///
-    /// Existing and future host site config remains authoritative over this layer. The metadata
-    /// binding is frozen into parsed artifacts so render sessions cannot consume a parse created
-    /// by another theme recipe.
-    #[cfg(test)]
-    pub(crate) fn with_theme_compatibility(mut self, binding: ThemeCompatibilityRecipe) -> Self {
-        self.theme_compatibility_config = Some(
-            SourcePresentationConfig::from_theme_compatibility_recipe(binding),
-        );
         self.rebuild_site_config();
         self
     }
@@ -375,10 +309,7 @@ impl MermaidEngine {
     }
 
     fn rebuild_site_config(&mut self) {
-        self.initialization = SiteConfigInitialization::new(
-            self.theme_compatibility_config.clone(),
-            &self.site_config_overrides,
-        );
+        self.initialization = SiteConfigInitialization::new(&self.site_config_overrides);
     }
 
     /// Returns the detector registry used for automatic diagram type detection.

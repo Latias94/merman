@@ -14,9 +14,9 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
     common: &FlowchartNodeRenderCommon<'_>,
     label: &FlowchartNodeLabelState<'_>,
     details: &mut FlowchartRenderDetails,
-) -> crate::Result<Option<super::super::emission::FlowchartNodeLabelEmissionReceipt>> {
+) -> crate::Result<bool> {
     let Some(href) = common.node_img.filter(|href| !href.trim().is_empty()) else {
-        return Ok(None);
+        return Ok(false);
     };
     let geometry = image_geometry(ctx, common, label, href, OperationPhase::Emit)?;
     let image = geometry.image;
@@ -59,7 +59,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
     } else {
         image.height / 2.0 - geometry.label.height / 2.0 + geometry.label_padding / 2.0
     };
-    let label_receipt = common.label_emission.write_special_html_label(
+    common.label_emission.write_special_html_label(
         out,
         ctx,
         common,
@@ -100,7 +100,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
     if common.wrapped_in_a {
         out.push_str("</a>");
     }
-    Ok(Some(label_receipt))
+    Ok(true)
 }
 
 fn image_geometry(

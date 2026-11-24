@@ -57,9 +57,8 @@ const mountRuntimeExportNames = ["mountDiagram"];
 const renderRuntimeExportNames = [
   "createRenderSession",
   "prepareSource",
-  "materializeTheme",
-  "describeThemeSupport",
   "exportThemePreset",
+  "resolveTheme",
   "renderSvg",
   "renderSvgResult",
   "renderSvgResultWithTextMeasurer",
@@ -80,9 +79,8 @@ const renderRuntimeExportNames = [
 const renderWasmExportNames = [
   "RenderSession",
   "PreparedSource",
-  "materializeTheme",
-  "describeThemeSupport",
   "exportThemePreset",
+  "resolveTheme",
   "renderSvg",
   "renderSvgResult",
   "renderSvgResultWithTextMeasurer",

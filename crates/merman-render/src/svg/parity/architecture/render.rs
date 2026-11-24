@@ -8,12 +8,9 @@ use merman_model::families::architecture::{
 use super::ArchitectureEmitCheckpoints;
 use super::edges::{ArchitectureEdgeRenderContext, push_architecture_edges};
 use super::geometry::{GroupRect, GroupRectComputer, bounds_from_rect, extend_bounds};
-use super::labels::{
-    svg_service_title_bounds, svg_source_has_visible_text, wrap_svg_words_to_lines,
-};
+use super::labels::{svg_service_title_bounds, wrap_svg_words_to_lines};
 use super::nodes::{
-    ArchitectureNodeRenderContext, architecture_service_has_icon_text,
-    push_architecture_group_surfaces, push_architecture_groups,
+    ArchitectureNodeRenderContext, push_architecture_group_surfaces, push_architecture_groups,
     push_architecture_services_and_junctions,
 };
 use super::root::{architecture_a11y_nodes, begin_architecture_document};
@@ -53,10 +50,7 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
     effective_config: &merman_model::presentation::PresentationConfig,
     group_theme: &crate::architecture::ArchitectureGroupThemePlan,
     options: &SvgExecution<'_>,
-) -> Result<(
-    root_svg::RootedSvg,
-    crate::architecture::ArchitectureThemeOutcome,
-)> {
+) -> Result<root_svg::RootedSvg> {
     let timing = options.timing();
     let mut timings = super::super::timing::RenderTimings::default();
     let total_timer = timing.start();
@@ -65,8 +59,16 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
     let diagram_id = options.diagram_id_or("architecture");
     let checkpoints = ArchitectureEmitCheckpoints::new(options.work_meter());
     checkpoints.checkpoint()?;
-    let settings =
+    let mut settings =
         ArchitectureRenderSettings::from_prepared(diagram_id, group_theme.typography_theme());
+    let native = group_theme.native_style();
+    if let Some(native) = native {
+        settings.apply_native(
+            diagram_id,
+            native,
+            group_theme.typography_theme().css_binding(),
+        );
+    }
     checkpoints.checkpoint()?;
     let css = settings.css.as_str();
     let icon_size_px = settings.icon_size_px;
@@ -76,7 +78,6 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
     let use_max_width = settings.use_max_width;
     let text_style = &settings.text_style;
     let compound_text_style = &settings.compound_text_style;
-    let mut typography_emission = group_theme.typography_theme().begin_emission();
 
     let a11y = architecture_a11y_nodes(
         diagram_id,
@@ -262,8 +263,7 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
     let is_empty = model.nodes.is_empty() && model.groups.is_empty() && model.edges.is_empty();
 
     let mut out = BoundedSvgOutput::new(options.work_meter());
-    let root_viewport =
-        root_svg::RootViewportContext::new(crate::DiagramFamilyId::ARCHITECTURE, diagram_id);
+    let root_viewport = options.root_viewport(crate::DiagramFamilyId::ARCHITECTURE, diagram_id);
     let root_document = begin_architecture_document(
         &mut out,
         &root_viewport,
@@ -273,57 +273,55 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
         use_max_width,
     )?;
     checkpoints.checkpoint()?;
-    let edge_stroke = group_theme.edge_stroke();
-    let edge_inline_style = edge_stroke.map(|stroke| format!("stroke:{stroke};"));
-    let mut surface_styles = group_theme.prepare_surface_styles(
-        model
-            .nodes
-            .iter()
-            .filter(|node| node.node_type == ArchitectureNodeKind::Service)
-            .enumerate()
-            .map(
-                |(index, service)| crate::architecture::ArchitectureServiceTerminal {
-                    index,
-                    has_background: service.icon.is_none()
-                        && !architecture_service_has_icon_text(service),
-                    has_title: svg_source_has_visible_text(
-                        service.title.as_deref(),
-                        text_style.font_size,
-                    ),
-                },
-            ),
-        model.groups.iter().enumerate().map(|(index, group)| {
-            crate::architecture::ArchitectureGroupTerminal {
-                index,
-                has_title: svg_source_has_visible_text(
-                    group.title.as_deref(),
-                    text_style.font_size,
-                ),
-            }
-        }),
-        model.edges.iter().enumerate().map(|(index, edge)| {
-            crate::architecture::ArchitectureEdgeTerminal {
-                index,
-                has_label: svg_source_has_visible_text(edge.title.as_deref(), text_style.font_size),
-                has_lhs_arrow: edge.lhs_into == Some(true),
-                has_rhs_arrow: edge.rhs_into == Some(true),
-            }
-        }),
-        options.work_meter(),
-    )?;
-    let mut edge_style_emitted = false;
-    let separate_group_surfaces = options.resolved_theme().is_some();
-    let group_emitted = if separate_group_surfaces {
+    if let Some(native) = native {
+        let group_style = format!("fill:{};stroke-dasharray:none;", native.group_fill);
         push_architecture_group_surfaces(
             &mut out,
             diagram_id,
             &group_rects,
-            group_theme.inline_style(),
+            Some(&group_style),
+            Some(native.group_radius),
             checkpoints,
-        )?
-    } else {
-        !group_rects.is_empty()
-    };
+        )?;
+    }
+    if let Some(native) = native
+        && !matches!(native.elevation, merman_theme_contract::v2::Elevation::Flat)
+    {
+        use kurbo::Shape;
+
+        let card = kurbo::Rect::new(0.0, 0.0, icon_size_px, icon_size_px);
+        let silhouette = kurbo::RoundedRect::from_rect(card, native.radius).to_path(0.1);
+        let depth = crate::theme::elevation_svg::bounds(&native.elevation, card);
+        for (index, service) in model
+            .nodes
+            .iter()
+            .enumerate()
+            .filter(|(_, node)| node.node_type == ArchitectureNodeKind::Service)
+        {
+            checkpoints.checkpoint()?;
+            let (x, y) = node_xy
+                .get(service.id.as_str())
+                .copied()
+                .unwrap_or((0.0, 0.0));
+            let _ = crate::theme::elevation_svg::write_depth(
+                &mut out,
+                &native.elevation,
+                &format!("{}-architecture-service-{index}", diagram_id.semantic_str()),
+                &silhouette,
+                (x, y),
+            );
+            extend_bounds(
+                &mut content_bounds,
+                Bounds {
+                    min_x: x + depth.x0,
+                    min_y: y + depth.y0,
+                    max_x: x + depth.x1,
+                    max_y: y + depth.y1,
+                },
+            );
+            out.checkpoint()?;
+        }
+    }
     out.push_str(r#"<g class="architecture-edges">"#);
     out.checkpoint()?;
     // Edge bounds and DOM emission live in `architecture/edges.rs`.
@@ -335,13 +333,10 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
             model,
             node_xy: &node_xy,
             settings: &settings,
+            native,
             text_measurer,
             content_bounds: &mut content_bounds,
             junction_bounds: &junction_bounds,
-            edge_inline_style: edge_inline_style.as_deref(),
-            edge_style_emitted: &mut edge_style_emitted,
-            surface_styles: surface_styles.as_mut(),
-            typography_emission: typography_emission.as_mut(),
             checkpoints,
         };
         push_architecture_edges(&mut edge_render_ctx)?;
@@ -356,6 +351,7 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
             model,
             node_xy: &node_xy,
             settings: &settings,
+            native,
             text_measurer,
             sanitize_config: effective_config,
             icon_registry: options.icon_registry(),
@@ -364,12 +360,10 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
             service_icon_scope_prefix: None,
             group_icon_scope_prefix: None,
             content_bounds: &mut content_bounds,
-            surface_styles: surface_styles.as_mut(),
-            typography_emission: typography_emission.as_mut(),
             checkpoints,
         };
         push_architecture_services_and_junctions(&mut node_render_ctx)?;
-        push_architecture_groups(&mut node_render_ctx, &group_rects, !separate_group_surfaces)?;
+        push_architecture_groups(&mut node_render_ctx, &group_rects, native.is_none())?;
     }
 
     checkpoints.checkpoint()?;
@@ -389,14 +383,6 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
         trust_content_bounds: options.icon_registry().is_none(),
     })?;
     let rooted_svg = root_document.complete(out.finish()?)?;
-    let theme_outcome = crate::architecture::ArchitectureThemeOutcome {
-        evidence: group_theme.finish_evidence(
-            typography_emission,
-            group_emitted,
-            edge_style_emitted,
-            surface_styles.as_ref(),
-        ),
-    };
 
     drop(_g_render_svg);
 
@@ -415,5 +401,5 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
         );
     }
 
-    Ok((rooted_svg, theme_outcome))
+    Ok(rooted_svg)
 }

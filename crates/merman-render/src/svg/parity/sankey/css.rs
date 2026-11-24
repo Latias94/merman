@@ -1,39 +1,40 @@
 use super::super::*;
 
-pub(super) fn write_sankey_css<'a, I>(
+pub(super) fn write_sankey_css<I>(
     out: &mut impl SvgOutput,
     diagram_id: I,
-    theme: &'a crate::sankey::SankeyTypographyThemePlan,
-    link_blend_mode_css: &str,
-) -> Result<crate::sankey::SankeyTypographyCssEmission<'a>>
+    style: &crate::sankey::SankeyStyle,
+) -> Result<()>
 where
     I: SvgDiagramIdValue,
 {
     write_sankey_css_values(
         out,
         diagram_id,
-        theme.common_css(),
-        theme.label_background(),
-        link_blend_mode_css,
+        &style.common_css,
+        &style.label_background,
+        style.palette.link_blend_mode_css(),
+        style.palette.link_stroke_opacity(),
     )
 }
 
-fn write_sankey_css_values<'a, I>(
+fn write_sankey_css_values<I>(
     out: &mut impl SvgOutput,
     diagram_id: I,
-    values: &'a crate::svg::PreparedCommonCss,
+    values: &crate::svg::PreparedCommonCss,
     label_background: &str,
     link_blend_mode_css: &str,
-) -> Result<crate::sankey::SankeyTypographyCssEmission<'a>>
+    link_stroke_opacity: &str,
+) -> Result<()>
 where
     I: SvgDiagramIdValue,
 {
     let id = util::css_selector_diagram_id(diagram_id);
-    let base_font_emission = values.write_prefix_with_font_emission(out, diagram_id)?;
+    values.write_prefix(out, diagram_id)?;
     let label_font_family_css = values.font_family();
     let _ = write!(
         out,
-        r#"#{} .label{{font-family:{};}}#{} .node-labels{{font-family:{};}}#{} .sankey-label-bg{{stroke:{};stroke-width:4px;stroke-linejoin:round;paint-order:stroke;}}#{} .sankey-label-fg{{fill:{};}}#{} .node rect{{shape-rendering:crispEdges;}}#{} .link{{fill:none;stroke-opacity:0.5;mix-blend-mode:{};}}"#,
+        r#"#{} .label{{font-family:{};}}#{} .node-labels{{font-family:{};}}#{} .sankey-label-bg{{stroke:{};stroke-width:4px;stroke-linejoin:round;paint-order:stroke;}}#{} .sankey-label-fg{{fill:{};}}#{} .node rect{{shape-rendering:crispEdges;}}#{} .link{{fill:none;stroke-opacity:{link_stroke_opacity};mix-blend-mode:{};}}"#,
         id,
         label_font_family_css,
         id,
@@ -47,24 +48,7 @@ where
         link_blend_mode_css
     );
     out.checkpoint()?;
-    let root_font_emission = values.write_root_with_font_emission(out, diagram_id, diagram_id)?;
-    let all_font_surfaces_match = [
-        base_font_emission.diagram_root_font_family_css(),
-        base_font_emission.nested_svg_font_family_css(),
-        label_font_family_css,
-        label_font_family_css,
-        root_font_emission.font_family_css(),
-    ]
-    .into_iter()
-    .all(|family| family == values.font_family());
-    Ok(
-        crate::sankey::SankeyTypographyCssEmission::from_successful_writes(
-            values.font_family(),
-            all_font_surfaces_match,
-            values.text_color(),
-            values.text_color(),
-        ),
-    )
+    values.write_root(out, diagram_id, diagram_id)
 }
 
 #[cfg(test)]
@@ -85,7 +69,15 @@ mod tests {
         let label_background =
             crate::config::config_string(&cfg, &["themeVariables", "mainBkg"]).unwrap();
         let mut css = String::new();
-        write_sankey_css_values(&mut css, "sk", &values, &label_background, "multiply").unwrap();
+        write_sankey_css_values(
+            &mut css,
+            "sk",
+            &values,
+            &label_background,
+            "multiply",
+            "0.5",
+        )
+        .unwrap();
 
         assert!(css.contains(r#"#sk .label{font-family:"ibm plex sans",arial,sans-serif;}"#));
         assert!(css.contains(r#"#sk .node-labels{font-family:"ibm plex sans",arial,sans-serif;}"#));

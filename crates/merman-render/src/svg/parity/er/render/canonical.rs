@@ -19,13 +19,23 @@ pub(super) fn paint_edge(
     translation: Vec2,
     look: &str,
     neo_stroke_width: f64,
+    native: Option<&crate::er::ErNativeStyle>,
     work_meter: &OperationWorkMeter,
     randomness: &RoughRandomness,
 ) -> Result<PaintedEdge> {
     let neo = look == "neo";
-    let stroke_outset = if neo { neo_stroke_width } else { 1.0 } / 2.0;
+    let stroke_outset = native
+        .and_then(|style| style.connector_width)
+        .unwrap_or(if neo { neo_stroke_width } else { 1.0 })
+        / 2.0;
     work_meter.charge(edge.points.len())?;
-    let geometry = routes.paint(edge, translation, stroke_outset, RouteStyle::Curved)?;
+    use merman_theme_contract::v2::EdgeStyle;
+    let style = match native.map(|style| style.edge_style) {
+        Some(EdgeStyle::Orthogonal) => RouteStyle::Step,
+        Some(EdgeStyle::Straight | EdgeStyle::Sketch) => RouteStyle::Linear,
+        _ => RouteStyle::Curved,
+    };
+    let geometry = routes.paint(edge, translation, stroke_outset, style)?;
     let path = geometry.path;
     let (d, path_bounds) = if look == "handDrawn" {
         work_meter.charge(path.d.len().max(1))?;

@@ -17,7 +17,8 @@ test("ASCII result facade preserves canonical metadata and encodes options once"
   const { api, calls } = await asciiRuntime({ result: expected });
   const options = {
     version: 3,
-    ascii: { graph_presentation: "strict", max_width: 80 },
+    theme: { preset: "studio", appearance: "dark" },
+    ascii: { color_mode: "truecolor", graph_presentation: "strict", max_width: 80 },
     timeout_ms: 125,
   };
 

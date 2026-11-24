@@ -1,87 +1,11 @@
 mod capability;
-mod direct_static_paint;
-mod evidence_support;
-mod inherited_font_stack;
-#[cfg(any(
-    feature = "diagram-block",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow"
-))]
-mod label_background;
 pub(crate) mod native_typography;
 mod preparation;
-#[cfg(any(feature = "diagram-er", feature = "diagram-requirement"))]
-mod relationship_background;
-#[cfg(any(
-    feature = "diagram-treemap",
-    feature = "diagram-venn",
-    feature = "diagram-zenuml",
-    feature = "diagram-sequence",
-    feature = "diagram-git-graph"
-))]
-mod single_title_fill;
-#[cfg(any(
-    feature = "diagram-venn",
-    feature = "diagram-ishikawa",
-    feature = "diagram-railroad",
-    feature = "diagram-event-modeling"
-))]
-mod static_surface_paint;
-#[cfg(any(feature = "diagram-cynefin", feature = "diagram-wardley"))]
-mod terminal_paint;
-mod theme_diagnostics;
-
-#[cfg(any(feature = "diagram-er", feature = "diagram-requirement"))]
-pub(crate) use relationship_background::RelationshipLabelBackgroundPlan;
-#[cfg(any(
-    feature = "diagram-treemap",
-    feature = "diagram-venn",
-    feature = "diagram-zenuml",
-    feature = "diagram-sequence",
-    feature = "diagram-git-graph"
-))]
-pub(crate) use single_title_fill::SingleTitleFillPlan;
-#[cfg(any(
-    feature = "diagram-venn",
-    feature = "diagram-ishikawa",
-    feature = "diagram-railroad",
-    feature = "diagram-event-modeling"
-))]
-pub(crate) use static_surface_paint::StaticSurfacePaint;
-#[cfg(any(feature = "diagram-cynefin", feature = "diagram-wardley"))]
-pub(crate) use terminal_paint::{TerminalPaint, TerminalPaintPlan};
-pub use theme_diagnostics::ThemeDiagnostic;
 
 pub use capability::{RenderCapabilityPlan, plan_render, supports_diagram_type};
 #[doc(hidden)]
 pub use capability::{has_edge_geometry, validate_layout_options};
-pub(crate) use direct_static_paint::{
-    DirectStaticPaint, DirectStaticSelectorDomain, resolve_direct_static_fill,
-    resolve_direct_static_stroke,
-};
-pub(crate) use evidence_support::{
-    DirectPaintExpectation, DirectPaintTerminalLedger, TerminalVariantDomain,
-    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
-    resolved_style_property_for_facet, unsupported_residual_for_facet,
-};
-pub(crate) use inherited_font_stack::{
-    InheritedFontStackOutcome, InheritedFontStackPlan, InheritedTextRunFacts, InheritedTextRunSpec,
-    InheritedTextViewportFacts,
-};
-#[cfg(any(
-    feature = "diagram-block",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow"
-))]
-pub(crate) use label_background::EdgeLabelBackgroundPlan;
 
-use crate::diagram_theme::{
-    FamilyThemeMechanismKey, ResolvedDiagramTheme, RootThemePlan, RootThemeReport,
-    SourceStyleChannel, SourceStyleOrigin, SourceStyleResidual, SourceStyleResidualReason,
-    ThemeCapability, ThemePortabilityRequirement, ThemeRecipeFingerprint,
-};
 use crate::environment::{RenderSession, RenderSessionReport};
 use crate::math::PreparedMathEvidenceLease;
 use crate::model::*;
@@ -91,6 +15,7 @@ use crate::svg::{
     SvgPipeline, SvgPipelinePreset, SvgPostprocessExecution, SvgPostprocessMetadata,
     SvgRenderOptions,
 };
+use crate::theme::ThemePortabilityRequirement;
 #[cfg(feature = "diagram-wardley")]
 use crate::wardley::WardleyDiagramLayout;
 use crate::{Error, LayoutExecution, LayoutOptions, RenderCapability, Result};
@@ -104,7 +29,6 @@ use merman_model::presentation::PresentationContext;
 use merman_model::presentation::{
     BuiltinRenderSemantic, PresentationDiagram, PresentationMetadata, RenderSemanticModel,
 };
-use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 /// Stable identity for a built-in typed render family.
@@ -236,1301 +160,57 @@ impl std::fmt::Display for RenderFamilyKind {
     }
 }
 
-/// Evaluation state of a family-local style plan.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum FamilyStyleEvaluation {
-    /// The selected theme has no structured styles that apply to this family.
-    NotApplicable,
-    /// The family adapter evaluated every applicable structured style input.
-    Evaluated,
-    /// Structured style inputs apply, but this family has no complete adapter yet.
-    Unadapted,
-}
-
-/// Verification state derived from family evaluation and its retained residuals.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum FamilyStyleVerification {
-    NotApplicable,
-    Verified,
-    Unverified,
-    Unadapted,
-    Incomplete,
-}
-
-/// Source channel that produced an unverified family style residual.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum FamilyStyleChannel {
-    Shape,
-    Label,
-    Stylesheet,
-}
-
-impl FamilyStyleChannel {
-    pub const fn id(self) -> &'static str {
-        match self {
-            Self::Shape => "shape",
-            Self::Label => "label",
-            Self::Stylesheet => "stylesheet",
-        }
-    }
-}
-
-impl std::fmt::Display for FamilyStyleChannel {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(self.id())
-    }
-}
-
-/// Source origin that produced an unverified family style residual.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum FamilyStyleOrigin {
-    AssignedClass,
-    InlineStyle,
-    LabelStyle,
-    GeneratedClassCss,
-}
-
-impl FamilyStyleOrigin {
-    pub const fn id(self) -> &'static str {
-        match self {
-            Self::AssignedClass => "assigned-class",
-            Self::InlineStyle => "inline-style",
-            Self::LabelStyle => "label-style",
-            Self::GeneratedClassCss => "generated-class-css",
-        }
-    }
-}
-
-impl std::fmt::Display for FamilyStyleOrigin {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(self.id())
-    }
-}
-
-/// Reason a family adapter could not prove one typed semantic mechanism.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum FamilyThemeResidualReason {
-    UnsupportedPaint,
-    UnsupportedTypography,
-    UnsupportedGeometry,
-    UnsupportedEffect,
-    UnsupportedOrdinalPalette,
-    OutputVisibilityFiltered,
-    OutputMutation,
-}
-
-impl FamilyThemeResidualReason {
-    pub const fn id(self) -> &'static str {
-        match self {
-            Self::UnsupportedPaint => "unsupported-paint",
-            Self::UnsupportedTypography => "unsupported-typography",
-            Self::UnsupportedGeometry => "unsupported-geometry",
-            Self::UnsupportedEffect => "unsupported-effect",
-            Self::UnsupportedOrdinalPalette => "unsupported-ordinal-palette",
-            Self::OutputVisibilityFiltered => "output-visibility-filtered",
-            Self::OutputMutation => "output-mutation",
-        }
-    }
-}
-
-impl std::fmt::Display for FamilyThemeResidualReason {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(self.id())
-    }
-}
-
-/// Frozen evidence for one typed semantic mechanism not proven by the selected family adapter.
+/// Family identity and operation report frozen after SVG work completes.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct FamilyThemeResidual {
-    key: FamilyThemeMechanismKey,
-    reason: FamilyThemeResidualReason,
-}
-
-impl FamilyThemeResidual {
-    pub(crate) const fn key(&self) -> &FamilyThemeMechanismKey {
-        &self.key
-    }
-
-    pub(crate) const fn reason(&self) -> FamilyThemeResidualReason {
-        self.reason
-    }
-}
-
-impl std::fmt::Display for FamilyThemeResidual {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(formatter, "{} ({})", self.key, self.reason)
-    }
-}
-
-/// Reason a source style could not be verified by the family adapter.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum FamilyStyleResidualReason {
-    InvalidDeclaration,
-    UnsupportedProperty,
-    InvalidValue,
-    UnsupportedSurface,
-}
-
-impl FamilyStyleResidualReason {
-    pub const fn id(self) -> &'static str {
-        match self {
-            Self::InvalidDeclaration => "invalid-declaration",
-            Self::UnsupportedProperty => "unsupported-property",
-            Self::InvalidValue => "invalid-value",
-            Self::UnsupportedSurface => "unsupported-surface",
-        }
-    }
-}
-
-impl std::fmt::Display for FamilyStyleResidualReason {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(self.id())
-    }
-}
-
-/// Frozen evidence for one source style the family adapter could not verify as portable.
-///
-/// Fields are intentionally private: callers can inspect the stable evidence but cannot forge a
-/// renderer report.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct FamilyStyleResidual {
-    raw: std::sync::Arc<str>,
-    property: Option<std::sync::Arc<str>>,
-    owner_id: std::sync::Arc<str>,
-    class_id: Option<std::sync::Arc<str>>,
-    origin: FamilyStyleOrigin,
-    channel: FamilyStyleChannel,
-    assignment_ordinal: Option<usize>,
-    declaration_ordinal: usize,
-    reason: FamilyStyleResidualReason,
-}
-
-impl FamilyStyleResidual {
-    fn freeze(residual: &SourceStyleResidual) -> Self {
-        let provenance = residual.provenance();
-        Self {
-            raw: residual.raw_arc(),
-            property: residual.property_arc(),
-            owner_id: provenance.owner_id_arc(),
-            class_id: provenance.class_id_arc(),
-            origin: provenance.origin().into(),
-            channel: provenance.channel().into(),
-            assignment_ordinal: provenance.assignment_ordinal(),
-            declaration_ordinal: provenance.declaration_ordinal(),
-            reason: residual.reason().into(),
-        }
-    }
-
-    #[cfg(test)]
-    pub fn raw(&self) -> &str {
-        &self.raw
-    }
-
-    pub fn property(&self) -> Option<&str> {
-        self.property.as_deref()
-    }
-
-    #[cfg(test)]
-    pub fn owner_id(&self) -> &str {
-        &self.owner_id
-    }
-
-    #[cfg(test)]
-    pub fn class_id(&self) -> Option<&str> {
-        self.class_id.as_deref()
-    }
-
-    #[cfg(test)]
-    pub const fn origin(&self) -> FamilyStyleOrigin {
-        self.origin
-    }
-
-    #[cfg(test)]
-    pub const fn channel(&self) -> FamilyStyleChannel {
-        self.channel
-    }
-
-    #[cfg(test)]
-    pub const fn assignment_ordinal(&self) -> Option<usize> {
-        self.assignment_ordinal
-    }
-
-    #[cfg(test)]
-    pub const fn declaration_ordinal(&self) -> usize {
-        self.declaration_ordinal
-    }
-
-    #[cfg(test)]
-    pub const fn reason(&self) -> FamilyStyleResidualReason {
-        self.reason
-    }
-}
-
-impl std::fmt::Display for FamilyStyleResidual {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            formatter,
-            "{} {} style on `{}`",
-            self.reason, self.channel, self.owner_id
-        )?;
-        if let Some(property) = self.property() {
-            write!(formatter, " for property `{property}`")?;
-        }
-        Ok(())
-    }
-}
-
-impl From<SourceStyleChannel> for FamilyStyleChannel {
-    fn from(channel: SourceStyleChannel) -> Self {
-        match channel {
-            SourceStyleChannel::Shape => Self::Shape,
-            SourceStyleChannel::Label => Self::Label,
-            SourceStyleChannel::Stylesheet => Self::Stylesheet,
-        }
-    }
-}
-
-impl From<SourceStyleOrigin> for FamilyStyleOrigin {
-    fn from(origin: SourceStyleOrigin) -> Self {
-        match origin {
-            SourceStyleOrigin::AssignedClass => Self::AssignedClass,
-            SourceStyleOrigin::InlineStyle => Self::InlineStyle,
-            SourceStyleOrigin::LabelStyle => Self::LabelStyle,
-            SourceStyleOrigin::GeneratedClassCss => Self::GeneratedClassCss,
-        }
-    }
-}
-
-impl From<SourceStyleResidualReason> for FamilyStyleResidualReason {
-    fn from(reason: SourceStyleResidualReason) -> Self {
-        match reason {
-            SourceStyleResidualReason::InvalidDeclaration => Self::InvalidDeclaration,
-            SourceStyleResidualReason::UnsupportedProperty => Self::UnsupportedProperty,
-            SourceStyleResidualReason::InvalidValue => Self::InvalidValue,
-            SourceStyleResidualReason::UnsupportedSurface => Self::UnsupportedSurface,
-        }
-    }
-}
-
-/// Frozen family-local style evidence retained through SVG postprocessing and completion.
-#[derive(Clone, PartialEq, Eq)]
-pub(crate) struct FamilyStyleReport {
+pub struct FamilyRenderReport {
     family_id: DiagramFamilyId,
-    evaluation: FamilyStyleEvaluation,
+    session: RenderSessionReport,
     output_mutated: bool,
-    theme_required: Option<Arc<[FamilyThemeMechanismKey]>>,
-    theme_coverage_complete: bool,
-    theme_applied: Vec<FamilyThemeMechanismKey>,
-    native_filter_receipt: Option<crate::__private::NativeSvgFilterReceipt>,
-    theme_not_applicable: Vec<FamilyThemeMechanismKey>,
-    theme_residuals: Vec<FamilyThemeResidual>,
-    mermaid_compatibility_residual_count: usize,
-    residuals: Vec<FamilyStyleResidual>,
 }
 
-impl std::fmt::Debug for FamilyStyleReport {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("FamilyStyleReport")
-            .field("family_id", &self.family_id)
-            .field("evaluation", &self.evaluation)
-            .field("output_mutated", &self.output_mutated)
-            .field(
-                "theme_required",
-                &self.theme_required.as_deref().unwrap_or(&[]),
-            )
-            .field("theme_applied", &self.theme_applied)
-            .field("native_filter_receipt", &self.native_filter_receipt)
-            .field("theme_not_applicable", &self.theme_not_applicable)
-            .field("theme_residuals", &self.theme_residuals)
-            .field(
-                "mermaid_compatibility_residual_count",
-                &self.mermaid_compatibility_residual_count,
-            )
-            .field("residuals", &self.residuals)
-            .finish()
-    }
-}
-
-/// Borrowed classification shared by temporary admission and the frozen family report.
-struct FamilyStyleView<'a> {
-    family_id: DiagramFamilyId,
-    evaluation: FamilyStyleEvaluation,
-    output_mutated: bool,
-    theme_required: &'a [FamilyThemeMechanismKey],
-    theme_coverage_complete: bool,
-    theme_applied: &'a [FamilyThemeMechanismKey],
-    theme_not_applicable: &'a [FamilyThemeMechanismKey],
-    theme_residuals: &'a [FamilyThemeResidual],
-    mermaid_compatibility_residual_count: usize,
-    source_residual_count: usize,
-}
-
-impl FamilyStyleView<'_> {
-    pub fn theme_coverage_complete(&self) -> bool {
-        self.theme_coverage_complete
-    }
-
-    pub fn verification(&self) -> FamilyStyleVerification {
-        if self.output_mutated {
-            return FamilyStyleVerification::Unverified;
-        }
-        if self.mermaid_compatibility_residual_count != 0 {
-            return FamilyStyleVerification::Unverified;
-        }
-        if self.source_residual_count != 0 {
-            return FamilyStyleVerification::Unverified;
-        }
-        match self.evaluation {
-            FamilyStyleEvaluation::NotApplicable => FamilyStyleVerification::NotApplicable,
-            FamilyStyleEvaluation::Unadapted => FamilyStyleVerification::Unadapted,
-            FamilyStyleEvaluation::Evaluated if !self.theme_coverage_complete() => {
-                FamilyStyleVerification::Incomplete
-            }
-            FamilyStyleEvaluation::Evaluated
-                if self.theme_residuals.is_empty() && self.source_residual_count == 0 =>
-            {
-                FamilyStyleVerification::Verified
-            }
-            FamilyStyleEvaluation::Evaluated => FamilyStyleVerification::Unverified,
-        }
-    }
-
-    fn ensure_portable(&self) -> Result<()> {
-        if self.output_mutated {
-            return Err(Error::UnverifiedFamilyOutputMutation {
-                family_id: self.family_id,
-            });
-        }
-        self.ensure_compatibility_portable()?;
-        match self.verification() {
-            FamilyStyleVerification::NotApplicable | FamilyStyleVerification::Verified => Ok(()),
-            FamilyStyleVerification::Unadapted => Err(Error::UnadaptedFamilyTheme {
-                family_id: self.family_id,
-            }),
-            FamilyStyleVerification::Incomplete => Err(Error::IncompleteFamilyTheme {
-                family_id: self.family_id,
-                required_count: self.theme_required.len(),
-                accounted_count: self.theme_applied.len()
-                    + self.theme_not_applicable.len()
-                    + self.theme_residuals.len(),
-            }),
-            FamilyStyleVerification::Unverified => {
-                if !self.theme_residuals.is_empty() {
-                    return Err(Error::UnverifiedFamilyTheme {
-                        family_id: self.family_id,
-                        residual_count: self.theme_residuals.len(),
-                    });
-                }
-                debug_assert!(self.source_residual_count != 0);
-                Err(Error::UnverifiedFamilyStyle {
-                    family_id: self.family_id,
-                    residual_count: self.source_residual_count,
-                })
-            }
-        }
-    }
-
-    fn ensure_portable_before_terminal_evidence(&self) -> Result<()> {
-        if self.output_mutated {
-            return Err(Error::UnverifiedFamilyOutputMutation {
-                family_id: self.family_id,
-            });
-        }
-        self.ensure_compatibility_portable()?;
-        match self.verification() {
-            FamilyStyleVerification::NotApplicable
-            | FamilyStyleVerification::Verified
-            | FamilyStyleVerification::Incomplete
-            | FamilyStyleVerification::Unadapted => Ok(()),
-            FamilyStyleVerification::Unverified => {
-                if !self.theme_residuals.is_empty() {
-                    return Err(Error::UnverifiedFamilyTheme {
-                        family_id: self.family_id,
-                        residual_count: self.theme_residuals.len(),
-                    });
-                }
-                debug_assert!(self.source_residual_count != 0);
-                Err(Error::UnverifiedFamilyStyle {
-                    family_id: self.family_id,
-                    residual_count: self.source_residual_count,
-                })
-            }
-        }
-    }
-
-    fn ensure_compatibility_portable(&self) -> Result<()> {
-        if self.mermaid_compatibility_residual_count != 0 {
-            return Err(Error::MermaidThemeCompatibility {
-                family_id: self.family_id,
-                residual_count: self.mermaid_compatibility_residual_count,
-            });
-        }
-        Ok(())
-    }
-}
-
-impl FamilyStyleReport {
-    pub(crate) fn evidence_summary(&self) -> crate::__private::FamilyEvidenceSummary {
-        let accounted_count =
-            self.theme_applied.len() + self.theme_not_applicable.len() + self.theme_residuals.len();
-        crate::__private::FamilyEvidenceSummary::new(
-            crate::__private::FamilyEvidenceStatus::from_verification(self.verification()),
-            self.theme_required.as_deref().unwrap_or(&[]).len(),
-            accounted_count,
-            self.theme_applied.len(),
-            self.theme_not_applicable.len(),
-            self.theme_residuals.len(),
-            self.residuals.len(),
-            self.mermaid_compatibility_residual_count,
-            self.output_mutated,
-        )
-    }
-
-    fn from_plan(plan: ResolvedFamilyStylePlan) -> Self {
-        let mut residuals = Vec::new();
-        let evaluation = match &plan.payload {
-            FamilyStylePayload::NotApplicable => FamilyStyleEvaluation::NotApplicable,
-            FamilyStylePayload::Unadapted => FamilyStyleEvaluation::Unadapted,
-            FamilyStylePayload::Evaluated => FamilyStyleEvaluation::Evaluated,
-            #[cfg(feature = "diagram-state")]
-            FamilyStylePayload::State(state) => {
-                for residual in state.residuals() {
-                    let residual = FamilyStyleResidual::freeze(residual);
-                    if !residuals.contains(&residual) {
-                        residuals.push(residual);
-                    }
-                }
-                FamilyStyleEvaluation::Evaluated
-            }
-        };
-        for residual in &plan.source_style_residuals {
-            let residual = FamilyStyleResidual::freeze(residual);
-            if !residuals.contains(&residual) {
-                residuals.push(residual);
-            }
-        }
+impl FamilyRenderReport {
+    fn freeze(family_id: DiagramFamilyId, session: RenderSession, output_mutated: bool) -> Self {
         Self {
-            family_id: plan.family_id,
-            evaluation,
-            output_mutated: plan.output_mutated,
-            theme_required: plan.theme_evidence.shared_required_mechanisms(),
-            theme_coverage_complete: plan.theme_evidence.coverage_complete(),
-            theme_applied: plan.theme_evidence.outcomes.applied,
-            native_filter_receipt: plan.native_filter_receipt,
-            theme_not_applicable: plan.theme_evidence.outcomes.not_applicable,
-            theme_residuals: plan.theme_evidence.outcomes.residuals,
-            mermaid_compatibility_residual_count: plan.mermaid_compatibility_residual_count,
-            residuals,
+            family_id,
+            session: session.report(),
+            output_mutated,
         }
     }
 
-    fn invalidate_for_output_mutation(mut self) -> Self {
-        self.output_mutated = true;
-        for key in std::mem::take(&mut self.theme_applied) {
-            if !self
-                .theme_residuals
-                .iter()
-                .any(|residual| residual.key == key)
-            {
-                self.theme_residuals.push(FamilyThemeResidual {
-                    key,
-                    reason: FamilyThemeResidualReason::OutputMutation,
-                });
-            }
-        }
-        self.native_filter_receipt = None;
-        self
+    pub fn family_kind(&self) -> RenderFamilyKind {
+        RenderFamilyKind::from_family_id(self.family_id)
     }
 
     pub const fn family_id(&self) -> DiagramFamilyId {
         self.family_id
     }
 
-    #[cfg(test)]
-    pub const fn evaluation(&self) -> FamilyStyleEvaluation {
-        self.evaluation
-    }
-
-    #[cfg(test)]
-    pub(crate) const fn output_mutated(&self) -> bool {
+    /// Whether document CSS or a custom postprocessor changed the generated output.
+    pub const fn output_mutated(&self) -> bool {
         self.output_mutated
-    }
-
-    #[cfg(test)]
-    pub fn residuals(&self) -> &[FamilyStyleResidual] {
-        &self.residuals
-    }
-
-    /// Returns typed mechanisms the family adapter explicitly emitted or consumed.
-    #[cfg(test)]
-    pub fn theme_applied_mechanisms(&self) -> &[FamilyThemeMechanismKey] {
-        &self.theme_applied
-    }
-
-    pub(crate) const fn native_filter_receipt(
-        &self,
-    ) -> Option<crate::__private::NativeSvgFilterReceipt> {
-        self.native_filter_receipt
-    }
-
-    /// Returns recipe mechanisms evaluated against this document but not selected by any rendered
-    /// target, variant, or ordinal.
-    #[cfg(test)]
-    pub fn theme_not_applicable_mechanisms(&self) -> &[FamilyThemeMechanismKey] {
-        &self.theme_not_applicable
-    }
-
-    /// Returns typed semantic mechanisms that remain outside this adapter's proof boundary.
-    #[cfg(test)]
-    pub fn theme_residuals(&self) -> &[FamilyThemeResidual] {
-        &self.theme_residuals
-    }
-
-    fn view(&self) -> FamilyStyleView<'_> {
-        FamilyStyleView {
-            family_id: self.family_id,
-            evaluation: self.evaluation,
-            output_mutated: self.output_mutated,
-            theme_required: self.theme_required.as_deref().unwrap_or(&[]),
-            theme_coverage_complete: self.theme_coverage_complete,
-            theme_applied: &self.theme_applied,
-            theme_not_applicable: &self.theme_not_applicable,
-            theme_residuals: &self.theme_residuals,
-            mermaid_compatibility_residual_count: self.mermaid_compatibility_residual_count,
-            source_residual_count: self.residuals.len(),
-        }
-    }
-
-    pub fn theme_coverage_complete(&self) -> bool {
-        self.view().theme_coverage_complete()
-    }
-
-    pub fn verification(&self) -> FamilyStyleVerification {
-        self.view().verification()
-    }
-
-    #[cfg(test)]
-    pub fn is_verified(&self) -> bool {
-        self.verification() == FamilyStyleVerification::Verified
-    }
-
-    fn ensure_portable(&self) -> Result<()> {
-        self.view().ensure_portable()
-    }
-}
-
-/// Frozen family identity and operation evidence captured after SVG work completes.
-///
-/// The recipe fingerprint identifies selected visual intent and retained resources only. Host
-/// admission and family evaluation remain separate structured reports; the fingerprint does not
-/// claim that any semantic target was applied or emitted.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FamilyRenderReport {
-    theme_diagnostics: Box<[ThemeDiagnostic]>,
-    root_theme: RootThemeReport,
-    style: FamilyStyleReport,
-    session: RenderSessionReport,
-    materialized_theme: Option<merman_model::config::MermaidThemeId>,
-}
-
-impl FamilyRenderReport {
-    fn freeze(
-        root_theme: RootThemeReport,
-        style: FamilyStyleReport,
-        session: RenderSession,
-        materialized_theme: Option<merman_model::config::MermaidThemeId>,
-    ) -> Self {
-        let theme_diagnostics = theme_diagnostics::project(&root_theme, &style, session.theme());
-        Self {
-            theme_diagnostics,
-            root_theme,
-            style,
-            session: session.report(),
-            materialized_theme,
-        }
-    }
-
-    /// User explanations captured after rendering and postprocessing, separate from admission.
-    pub fn theme_diagnostics(&self) -> &[ThemeDiagnostic] {
-        &self.theme_diagnostics
-    }
-
-    pub const fn materialized_theme(&self) -> Option<merman_model::config::MermaidThemeId> {
-        self.materialized_theme
-    }
-
-    pub(crate) fn into_session_and_theme_diagnostics(
-        self,
-    ) -> (RenderSessionReport, Box<[ThemeDiagnostic]>) {
-        (self.session, self.theme_diagnostics)
-    }
-
-    pub fn family_kind(&self) -> RenderFamilyKind {
-        RenderFamilyKind::from_family_id(self.family_id())
-    }
-
-    pub const fn family_id(&self) -> DiagramFamilyId {
-        self.style.family_id()
-    }
-
-    #[cfg(test)]
-    pub(crate) const fn style_report(&self) -> &FamilyStyleReport {
-        &self.style
-    }
-
-    pub(crate) const fn root_theme_report(&self) -> &RootThemeReport {
-        &self.root_theme
-    }
-
-    pub(crate) const fn native_filter_receipt(
-        &self,
-    ) -> Option<crate::__private::NativeSvgFilterReceipt> {
-        self.style.native_filter_receipt()
-    }
-
-    pub(crate) fn evidence_summary(&self) -> crate::__private::FamilyEvidenceSummary {
-        self.style.evidence_summary()
-    }
-
-    pub fn theme_recipe_fingerprint(&self) -> Option<ThemeRecipeFingerprint> {
-        self.session.theme_recipe_fingerprint()
     }
 
     pub const fn session_report(&self) -> &RenderSessionReport {
         &self.session
     }
+
+    pub fn into_session_report(self) -> RenderSessionReport {
+        self.session
+    }
 }
 
 struct FamilyRenderContext {
-    root_theme: Arc<RootThemePlan>,
-    style_plan: ResolvedFamilyStylePlan,
-    session: RenderSession,
-}
-
-/// The operation's checked owner of actual family outcomes.
-#[derive(Debug, Default)]
-pub(crate) struct FamilyThemeEvidence {
-    program: Option<Arc<crate::diagram_theme::FamilyThemeProgram>>,
-    outcomes: FamilyThemeOutcomes,
-}
-
-impl FamilyThemeEvidence {
-    pub(crate) fn from_theme(theme: Option<&ResolvedDiagramTheme>) -> Self {
-        Self {
-            program: theme.map(ResolvedDiagramTheme::family_program_owner),
-            outcomes: FamilyThemeOutcomes::default(),
-        }
-    }
-
-    fn not_applicable(theme: Option<&ResolvedDiagramTheme>) -> bool {
-        theme.is_none_or(|theme| !theme.has_family_mechanism_routes())
-    }
-
-    pub(crate) fn required_mechanisms(&self) -> &[FamilyThemeMechanismKey] {
-        self.program
-            .as_ref()
-            .map_or(&[], |program| program.requested_mechanisms())
-    }
-
-    fn shared_required_mechanisms(&self) -> Option<Arc<[FamilyThemeMechanismKey]>> {
-        self.program
-            .as_ref()
-            .and_then(|program| program.shared_requested_mechanisms())
-    }
-
-    fn accepts(&self, key: &FamilyThemeMechanismKey) -> bool {
-        self.program
-            .as_ref()
-            .is_some_and(|program| program.contains_requested_mechanism(key))
-            && !self.outcomes.accounted_index.contains(key)
-    }
-
-    pub(crate) fn mark_applied_with_capabilities(
-        &mut self,
-        key: FamilyThemeMechanismKey,
-        capabilities: impl IntoIterator<Item = ThemeCapability>,
-    ) {
-        if self.accepts(&key) {
-            self.outcomes
-                .mark_applied_with_capabilities(key, capabilities);
-        }
-    }
-
-    pub(crate) fn mark_not_applicable(&mut self, key: FamilyThemeMechanismKey) {
-        if self.accepts(&key) {
-            self.outcomes.mark_not_applicable(key);
-        }
-    }
-
-    pub(crate) fn mark_residual(
-        &mut self,
-        key: FamilyThemeMechanismKey,
-        reason: FamilyThemeResidualReason,
-    ) {
-        if self.accepts(&key) {
-            self.outcomes.mark_residual(key, reason);
-        }
-    }
-
-    pub(crate) fn merge_borrowed(&mut self, other: &FamilyThemeOutcomes) {
-        for key in &other.applied {
-            if self.accepts(key) {
-                self.outcomes.mark_applied_with_capabilities(
-                    key.clone(),
-                    other
-                        .applied_capabilities
-                        .get(key)
-                        .into_iter()
-                        .flatten()
-                        .copied(),
-                );
-            }
-        }
-        for key in &other.not_applicable {
-            if self.accepts(key) {
-                self.outcomes.mark_not_applicable(key.clone());
-            }
-        }
-        for residual in &other.residuals {
-            if self.accepts(&residual.key) {
-                self.outcomes
-                    .mark_residual(residual.key.clone(), residual.reason);
-            }
-        }
-    }
-
-    pub(crate) fn merge_accounted_from(&mut self, mut other: FamilyThemeOutcomes) {
-        for key in other.applied {
-            let capabilities = other.applied_capabilities.remove(&key).unwrap_or_default();
-            self.mark_applied_with_capabilities(key, capabilities);
-        }
-        for key in other.not_applicable {
-            self.mark_not_applicable(key);
-        }
-        for residual in other.residuals {
-            self.mark_residual(residual.key, residual.reason);
-        }
-    }
-
-    fn clear_outcomes(&mut self) {
-        self.outcomes = FamilyThemeOutcomes::default();
-    }
-
-    fn coverage_complete(&self) -> bool {
-        self.outcomes.accounted_index.len() == self.required_mechanisms().len()
-    }
-
-    fn mark_state_output_visibility_filtered(&mut self, debug: &SvgDebugOptions) {
-        self.outcomes.mark_state_output_visibility_filtered(debug);
-    }
-    fn mark_output_mutated(&mut self) {
-        self.outcomes.mark_output_mutated();
-    }
-    fn mark_effect_emission_unverified(&mut self) {
-        self.outcomes.mark_effect_emission_unverified();
-    }
-
-    #[cfg(test)]
-    pub(crate) fn applied(&self) -> &[FamilyThemeMechanismKey] {
-        &self.outcomes.applied
-    }
-    #[cfg(test)]
-    pub(crate) fn not_applicable_mechanisms(&self) -> &[FamilyThemeMechanismKey] {
-        &self.outcomes.not_applicable
-    }
-    #[cfg(test)]
-    pub(crate) fn residuals(&self) -> &[FamilyThemeResidual] {
-        &self.outcomes.residuals
-    }
-    #[cfg(test)]
-    pub(crate) fn applied_capabilities(&self) -> BTreeSet<ThemeCapability> {
-        self.outcomes.applied_capabilities()
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-pub(crate) struct FamilyThemeOutcomes {
-    accounted_index: BTreeSet<FamilyThemeMechanismKey>,
-    applied: Vec<FamilyThemeMechanismKey>,
-    applied_capabilities: BTreeMap<FamilyThemeMechanismKey, BTreeSet<ThemeCapability>>,
-    not_applicable: Vec<FamilyThemeMechanismKey>,
-    residuals: Vec<FamilyThemeResidual>,
-}
-
-impl FamilyThemeOutcomes {
-    pub(crate) fn mark_applied_with_capabilities(
-        &mut self,
-        key: FamilyThemeMechanismKey,
-        capabilities: impl IntoIterator<Item = ThemeCapability>,
-    ) {
-        if self.accounted_index.insert(key.clone()) {
-            let capabilities = capabilities.into_iter().collect::<BTreeSet<_>>();
-            if !capabilities.is_empty() {
-                self.applied_capabilities.insert(key.clone(), capabilities);
-            }
-            self.applied.push(key);
-        }
-    }
-
-    pub(crate) fn mark_not_applicable(&mut self, key: FamilyThemeMechanismKey) {
-        if self.accounted_index.insert(key.clone()) {
-            self.not_applicable.push(key);
-        }
-    }
-
-    pub(crate) fn mark_residual(
-        &mut self,
-        key: FamilyThemeMechanismKey,
-        reason: FamilyThemeResidualReason,
-    ) {
-        if self.accounted_index.insert(key.clone()) {
-            self.residuals.push(FamilyThemeResidual { key, reason });
-        }
-    }
-
-    fn mark_output_visibility_filtered(&mut self) {
-        self.move_applied_to_residual(FamilyThemeResidualReason::OutputVisibilityFiltered);
-    }
-
-    fn mark_state_output_visibility_filtered(&mut self, debug: &SvgDebugOptions) {
-        if !debug.include_nodes {
-            self.mark_output_visibility_filtered();
-            return;
-        }
-        if debug.include_edges {
-            return;
-        }
-        self.move_applied_to_residual_where(
-            FamilyThemeResidualReason::OutputVisibilityFiltered,
-            |key| {
-                matches!(
-                    key,
-                    FamilyThemeMechanismKey::Rule {
-                        target: crate::diagram_theme::ThemeTarget::Transition
-                            | crate::diagram_theme::ThemeTarget::TransitionLabel
-                            | crate::diagram_theme::ThemeTarget::TransitionMarker
-                            | crate::diagram_theme::ThemeTarget::TransitionLabelBackground,
-                        ..
-                    } | FamilyThemeMechanismKey::OrdinalPalette {
-                        target: crate::diagram_theme::ThemeTarget::Transition
-                            | crate::diagram_theme::ThemeTarget::TransitionLabel
-                            | crate::diagram_theme::ThemeTarget::TransitionMarker
-                            | crate::diagram_theme::ThemeTarget::TransitionLabelBackground,
-                    } | FamilyThemeMechanismKey::EffectBinding {
-                        target: crate::diagram_theme::ThemeTarget::Transition
-                            | crate::diagram_theme::ThemeTarget::TransitionLabel
-                            | crate::diagram_theme::ThemeTarget::TransitionMarker
-                            | crate::diagram_theme::ThemeTarget::TransitionLabelBackground,
-                        ..
-                    }
-                )
-            },
-        );
-    }
-
-    fn mark_output_mutated(&mut self) {
-        self.move_applied_to_residual(FamilyThemeResidualReason::OutputMutation);
-    }
-
-    fn mark_effect_emission_unverified(&mut self) {
-        let effect_keys = self
-            .applied_capabilities
-            .iter()
-            .filter(|(_, capabilities)| {
-                capabilities.contains(&ThemeCapability::Shadow)
-                    || capabilities.contains(&ThemeCapability::SvgFilter)
-            })
-            .map(|(key, _)| key.clone())
-            .collect::<BTreeSet<_>>();
-        self.move_applied_to_residual_where(FamilyThemeResidualReason::UnsupportedEffect, |key| {
-            effect_keys.contains(key)
-        });
-    }
-
-    fn move_applied_to_residual(&mut self, reason: FamilyThemeResidualReason) {
-        self.move_applied_to_residual_where(reason, |_| true);
-    }
-
-    fn move_applied_to_residual_where(
-        &mut self,
-        reason: FamilyThemeResidualReason,
-        mut should_move: impl FnMut(&FamilyThemeMechanismKey) -> bool,
-    ) {
-        for key in std::mem::take(&mut self.applied) {
-            if !should_move(&key) {
-                self.applied.push(key);
-                continue;
-            }
-            self.applied_capabilities.remove(&key);
-            if !self.residuals.iter().any(|residual| residual.key == key) {
-                self.residuals.push(FamilyThemeResidual { key, reason });
-            }
-        }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn applied_capabilities(&self) -> BTreeSet<ThemeCapability> {
-        self.applied_capabilities
-            .values()
-            .flat_map(|capabilities| capabilities.iter().copied())
-            .collect()
-    }
-
-    pub(crate) fn merge_accounted_from(&mut self, mut other: Self) {
-        for key in other.applied {
-            let capabilities = other.applied_capabilities.remove(&key).unwrap_or_default();
-            self.mark_applied_with_capabilities(key, capabilities);
-        }
-        for key in other.not_applicable {
-            self.mark_not_applicable(key);
-        }
-        for residual in other.residuals {
-            self.mark_residual(residual.key, residual.reason);
-        }
-    }
-    #[cfg(test)]
-    pub(crate) fn applied(&self) -> &[FamilyThemeMechanismKey] {
-        &self.applied
-    }
-
-    pub(crate) fn not_applicable_mechanisms(&self) -> &[FamilyThemeMechanismKey] {
-        &self.not_applicable
-    }
-
-    pub(crate) fn residuals(&self) -> &[FamilyThemeResidual] {
-        &self.residuals
-    }
-}
-
-#[derive(Debug)]
-enum FamilyStylePayload {
-    NotApplicable,
-    Unadapted,
-    Evaluated,
-    #[cfg(feature = "diagram-state")]
-    State(Box<crate::state::StateStylePlan>),
-}
-
-#[derive(Debug)]
-pub(crate) struct ResolvedFamilyStylePlan {
     family_id: DiagramFamilyId,
-    resolved_theme: Option<Box<ResolvedDiagramTheme>>,
-    theme_evidence: FamilyThemeEvidence,
-    source_style_residuals: Vec<SourceStyleResidual>,
-    native_filter_receipt: Option<crate::__private::NativeSvgFilterReceipt>,
-    output_mutated: bool,
-    mermaid_compatibility_residual_count: usize,
-    payload: FamilyStylePayload,
-}
-
-impl ResolvedFamilyStylePlan {
-    fn new(session: &RenderSession, family_id: DiagramFamilyId) -> Self {
-        let resolved_theme = session
-            .theme()
-            .map(|theme| Box::new(theme.resolve(family_id)));
-        let theme_evidence = FamilyThemeEvidence::from_theme(resolved_theme.as_deref());
-        let payload = if !FamilyThemeEvidence::not_applicable(resolved_theme.as_deref()) {
-            FamilyStylePayload::Unadapted
-        } else {
-            FamilyStylePayload::NotApplicable
-        };
-        Self {
-            family_id,
-            resolved_theme,
-            theme_evidence,
-            source_style_residuals: Vec::new(),
-            native_filter_receipt: None,
-            output_mutated: false,
-            mermaid_compatibility_residual_count: 0,
-            payload,
-        }
-    }
-
-    #[cfg(feature = "diagram-state")]
-    fn adapt_state(
-        &mut self,
-        model: &merman_model::families::state::StateDiagramRenderModel,
-        effective_config: &merman_model::presentation::PresentationConfig,
-        title: Option<&str>,
-        effective_theme_resource_policy: Arc<crate::diagram_theme::ThemeResourcePolicy>,
-        work_meter: &crate::resources::OperationWorkMeter,
-    ) -> Result<()> {
-        debug_assert_eq!(self.family_id, DiagramFamilyId::STATE);
-        let plan = crate::state::StateStylePlan::resolve_with_config(
-            model,
-            effective_config,
-            self.resolved_theme.as_deref(),
-            effective_theme_resource_policy,
-            title,
-            work_meter,
-        )?;
-        self.theme_evidence.clear_outcomes();
-        self.theme_evidence
-            .merge_borrowed(plan.planned_theme_outcomes());
-        self.payload = FamilyStylePayload::State(Box::new(plan));
-        Ok(())
-    }
-
-    fn observe_compatibility(
-        &mut self,
-        metadata: &merman_model::presentation::PresentationMetadata,
-    ) {
-        self.mermaid_compatibility_residual_count = metadata
-            .effective_config
-            .theme_compatibility()
-            .mermaid_residual_count();
-        #[cfg(feature = "diagram-packet")]
-        if self.family_id == DiagramFamilyId::PACKET
-            && self.mermaid_compatibility_residual_count != 0
-            && self.resolved_theme.is_some()
-        {
-            let evidence = metadata.effective_config.theme_compatibility().clone();
-            let deferred = crate::packet::deferred_mermaid_compatibility_consumptions(
-                self.resolved_theme.as_deref(),
-                &metadata.effective_config,
-                &evidence,
-            );
-            self.mermaid_compatibility_residual_count = evidence
-                .reconcile_mermaid_consumptions(deferred.iter())
-                .remaining_field_count();
-        }
-    }
-
-    fn reconcile_packet_mermaid_compatibility(
-        &mut self,
-        evidence: &merman_model::presentation::ThemeCompatibilityEvidence,
-        consumptions: &[merman_model::presentation::ThemeCompatibilityFieldConsumption],
-    ) {
-        debug_assert_eq!(self.family_id, DiagramFamilyId::PACKET);
-        self.mermaid_compatibility_residual_count = evidence
-            .reconcile_mermaid_consumptions(consumptions.iter())
-            .remaining_field_count();
-    }
-
-    fn merge_accounted_terminal_evidence(
-        &mut self,
-        expected_family: DiagramFamilyId,
-        evidence: FamilyThemeOutcomes,
-    ) {
-        debug_assert_eq!(self.family_id, expected_family);
-        self.theme_evidence.merge_accounted_from(evidence);
-        self.payload = if FamilyThemeEvidence::not_applicable(self.resolved_theme.as_deref()) {
-            FamilyStylePayload::NotApplicable
-        } else {
-            FamilyStylePayload::Evaluated
-        };
-    }
-
-    fn reconcile_effect_evidence(
-        &mut self,
-        emitted: Option<crate::__private::NativeSvgFilterReceipt>,
-        expected_application_count: usize,
-    ) {
-        let effect_capabilities_applied = self
-            .theme_evidence
-            .outcomes
-            .applied_capabilities
-            .values()
-            .flatten()
-            .any(|capability| {
-                matches!(
-                    capability,
-                    ThemeCapability::Shadow | ThemeCapability::SvgFilter
-                )
-            });
-        if !effect_capabilities_applied {
-            self.native_filter_receipt = None;
-            return;
-        }
-
-        if emitted.is_some_and(|receipt| {
-            usize::try_from(receipt.filter_count()).ok() == Some(expected_application_count)
-                && receipt.filter_count() == receipt.reference_count()
-        }) {
-            self.native_filter_receipt = emitted;
-            return;
-        }
-
-        self.native_filter_receipt = None;
-        self.theme_evidence.mark_effect_emission_unverified();
-    }
-
-    #[cfg(feature = "diagram-state")]
-    fn reconcile_state_terminal_evidence(&mut self) {
-        debug_assert_eq!(self.family_id, DiagramFamilyId::STATE);
-        if let FamilyStylePayload::State(state) = &self.payload {
-            self.theme_evidence.clear_outcomes();
-            state.record_theme_evidence(&mut self.theme_evidence);
-        }
-    }
-
-    fn observe_output_visibility(&mut self, debug: &SvgDebugOptions) {
-        if self.family_id == DiagramFamilyId::STATE {
-            self.theme_evidence
-                .mark_state_output_visibility_filtered(debug);
-        }
-    }
-
-    fn invalidate_for_output_mutation(&mut self) {
-        self.output_mutated = true;
-        self.native_filter_receipt = None;
-        self.theme_evidence.mark_output_mutated();
-    }
-
-    fn view(&self) -> FamilyStyleView<'_> {
-        let (evaluation, state_residuals): (FamilyStyleEvaluation, &[SourceStyleResidual]) =
-            match &self.payload {
-                FamilyStylePayload::NotApplicable => (FamilyStyleEvaluation::NotApplicable, &[]),
-                FamilyStylePayload::Unadapted => (FamilyStyleEvaluation::Unadapted, &[]),
-                FamilyStylePayload::Evaluated => (FamilyStyleEvaluation::Evaluated, &[]),
-                #[cfg(feature = "diagram-state")]
-                FamilyStylePayload::State(state) => {
-                    (FamilyStyleEvaluation::Evaluated, state.residuals())
-                }
-            };
-        let residuals = state_residuals.iter().chain(&self.source_style_residuals);
-        let source_residual_count = residuals
-            .clone()
-            .enumerate()
-            .filter(|(index, residual)| {
-                !residuals
-                    .clone()
-                    .take(*index)
-                    .any(|earlier| earlier == *residual)
-            })
-            .count();
-        FamilyStyleView {
-            family_id: self.family_id,
-            evaluation,
-            output_mutated: self.output_mutated,
-            theme_required: self.theme_evidence.required_mechanisms(),
-            theme_coverage_complete: self.theme_evidence.coverage_complete(),
-            theme_applied: &self.theme_evidence.outcomes.applied,
-            theme_not_applicable: &self.theme_evidence.outcomes.not_applicable,
-            theme_residuals: &self.theme_evidence.outcomes.residuals,
-            mermaid_compatibility_residual_count: self.mermaid_compatibility_residual_count,
-            source_residual_count,
-        }
-    }
-
-    fn ensure_portable(&self, portability: ThemePortabilityRequirement) -> Result<()> {
-        if portability != ThemePortabilityRequirement::RequirePortable {
-            return Ok(());
-        }
-
-        self.view().ensure_portable()
-    }
-
-    fn ensure_portable_before_svg(&self, portability: ThemePortabilityRequirement) -> Result<()> {
-        if portability != ThemePortabilityRequirement::RequirePortable {
-            return Ok(());
-        }
-        let waits_for_svg_evidence = matches!(
-            self.family_id,
-            DiagramFamilyId::STATE
-                | DiagramFamilyId::AGENTFLOW
-                | DiagramFamilyId::USECASE
-                | DiagramFamilyId::FLOWCHART
-                | DiagramFamilyId::SWIMLANE
-                | DiagramFamilyId::MINDMAP
-                | DiagramFamilyId::SEQUENCE
-                | DiagramFamilyId::CLASS
-                | DiagramFamilyId::KANBAN
-                | DiagramFamilyId::GANTT
-                | DiagramFamilyId::PIE
-                | DiagramFamilyId::TIMELINE
-                | DiagramFamilyId::TREE_VIEW
-                | DiagramFamilyId::JOURNEY
-                | DiagramFamilyId::QUADRANT_CHART
-                | DiagramFamilyId::XY_CHART
-                | DiagramFamilyId::RADAR
-                | DiagramFamilyId::TREEMAP
-                | DiagramFamilyId::REQUIREMENT
-                | DiagramFamilyId::PACKET
-                | DiagramFamilyId::SANKEY
-                | DiagramFamilyId::BLOCK
-                | DiagramFamilyId::RAILROAD
-                | DiagramFamilyId::INFO
-                | DiagramFamilyId::ERROR
-                | DiagramFamilyId::CYNEFIN
-                | DiagramFamilyId::WARDLEY
-                | DiagramFamilyId::GIT_GRAPH
-                | DiagramFamilyId::C4
-                | DiagramFamilyId::ER
-                | DiagramFamilyId::VENN
-                | DiagramFamilyId::ZENUML
-                | DiagramFamilyId::EVENT_MODELING
-                | DiagramFamilyId::ISHIKAWA
-                | DiagramFamilyId::ARCHITECTURE
-        ) && self
-            .resolved_theme
-            .as_deref()
-            .is_some_and(ResolvedDiagramTheme::has_family_mechanism_routes);
-        let report = self.view();
-        if waits_for_svg_evidence {
-            report.ensure_portable_before_terminal_evidence()
-        } else {
-            report.ensure_portable()
-        }
-    }
-
-    pub(crate) const fn family_id(&self) -> DiagramFamilyId {
-        self.family_id
-    }
-
-    pub(crate) fn resolved_theme(&self) -> Option<&ResolvedDiagramTheme> {
-        self.resolved_theme.as_deref()
-    }
-
-    #[cfg(feature = "diagram-state")]
-    pub(crate) fn state(&self) -> Option<&crate::state::StateStylePlan> {
-        match &self.payload {
-            #[cfg(feature = "diagram-state")]
-            FamilyStylePayload::State(plan) => Some(plan),
-            FamilyStylePayload::NotApplicable
-            | FamilyStylePayload::Unadapted
-            | FamilyStylePayload::Evaluated => None,
-        }
-    }
+    session: RenderSession,
 }
 
 #[derive(Clone, Copy)]
 pub(crate) struct FamilyExecutionView<'a> {
     family_id: DiagramFamilyId,
     session: &'a RenderSession,
-    root_theme: Option<&'a RootThemePlan>,
-    style_plan: Option<&'a ResolvedFamilyStylePlan>,
 }
 
 impl<'a> FamilyExecutionView<'a> {
-    fn new(
-        session: &'a RenderSession,
-        root_theme: &'a RootThemePlan,
-        style_plan: &'a ResolvedFamilyStylePlan,
-    ) -> Self {
-        let execution = Self {
-            family_id: style_plan.family_id(),
-            session,
-            root_theme: Some(root_theme),
-            style_plan: Some(style_plan),
-        };
-        debug_assert_eq!(
-            execution.resolved_theme().is_some(),
-            session.theme_recipe_fingerprint().is_some(),
-            "family theme plan presence must match the render session"
-        );
-        debug_assert_eq!(
-            execution
-                .resolved_theme()
-                .map(ResolvedDiagramTheme::family_id),
-            session
-                .theme_recipe_fingerprint()
-                .map(|_| style_plan.family_id()),
-            "family theme plan must match the planned render family"
-        );
-        execution
-    }
-
     pub(crate) const fn family_id(self) -> DiagramFamilyId {
         self.family_id
     }
@@ -1539,123 +219,38 @@ impl<'a> FamilyExecutionView<'a> {
         self.session
     }
 
-    pub(crate) const fn root_theme_plan(self) -> Option<&'a RootThemePlan> {
-        self.root_theme
-    }
-
-    pub(crate) fn resolved_theme(self) -> Option<&'a ResolvedDiagramTheme> {
-        match self.style_plan {
-            Some(plan) => plan.resolved_theme(),
-            None => None,
-        }
-    }
-
-    pub(crate) const fn style_plan(self) -> Option<&'a ResolvedFamilyStylePlan> {
-        self.style_plan
+    pub(crate) fn native_theme<A: crate::theme::FamilyThemeAdapter>(
+        self,
+    ) -> Option<&'a crate::theme::FamilyTheme> {
+        self.session
+            .native_theme()
+            .map(|theme| A::resolve(theme.resolved()))
     }
 
     #[cfg(test)]
-    pub(crate) fn for_test(session: &'a RenderSession, family_id: DiagramFamilyId) -> Self {
-        Self {
-            family_id,
-            session,
-            root_theme: None,
-            style_plan: None,
-        }
+    pub(crate) const fn for_test(session: &'a RenderSession, family_id: DiagramFamilyId) -> Self {
+        Self { family_id, session }
     }
 }
 
 impl FamilyRenderContext {
-    fn resolve(session: RenderSession, family_id: DiagramFamilyId) -> Self {
-        let root_theme = RootThemePlan::from_theme(session.theme());
-        let style_plan = ResolvedFamilyStylePlan::new(&session, family_id);
-        Self {
-            root_theme,
-            style_plan,
-            session,
-        }
+    const fn resolve(session: RenderSession, family_id: DiagramFamilyId) -> Self {
+        Self { family_id, session }
     }
 
     const fn family_id(&self) -> DiagramFamilyId {
-        self.style_plan.family_id()
+        self.family_id
     }
 
     const fn session(&self) -> &RenderSession {
         &self.session
     }
 
-    fn execution(&self) -> FamilyExecutionView<'_> {
-        FamilyExecutionView::new(&self.session, &self.root_theme, &self.style_plan)
-    }
-
-    #[cfg(feature = "diagram-state")]
-    fn adapt_state(
-        &mut self,
-        model: &merman_model::families::state::StateDiagramRenderModel,
-        effective_config: &merman_model::presentation::PresentationConfig,
-        title: Option<&str>,
-    ) -> Result<()> {
-        let effective_theme_resource_policy = self.session.effective_theme_resource_policy();
-        self.style_plan.adapt_state(
-            model,
-            effective_config,
-            title,
-            effective_theme_resource_policy,
-            self.session.work_meter().as_ref(),
-        )
-    }
-
-    fn observe_compatibility(
-        &mut self,
-        metadata: &merman_model::presentation::PresentationMetadata,
-    ) {
-        self.style_plan.observe_compatibility(metadata);
-    }
-
-    fn observe_output_visibility(&mut self, debug: &SvgDebugOptions) {
-        self.style_plan.observe_output_visibility(debug);
-    }
-
-    #[cfg(feature = "diagram-state")]
-    fn reconcile_state_terminal_evidence(&mut self) {
-        self.style_plan.reconcile_state_terminal_evidence();
-    }
-
-    fn invalidate_for_output_mutation(&mut self) {
-        self.style_plan.invalidate_for_output_mutation();
-    }
-
-    fn merge_accounted_terminal_evidence(
-        &mut self,
-        expected_family: DiagramFamilyId,
-        evidence: FamilyThemeOutcomes,
-    ) {
-        self.style_plan
-            .merge_accounted_terminal_evidence(expected_family, evidence);
-    }
-
-    fn reconcile_packet_mermaid_compatibility(
-        &mut self,
-        evidence: &merman_model::presentation::ThemeCompatibilityEvidence,
-        consumptions: &[merman_model::presentation::ThemeCompatibilityFieldConsumption],
-    ) {
-        self.style_plan
-            .reconcile_packet_mermaid_compatibility(evidence, consumptions);
-    }
-
-    fn ensure_portable(&self) -> Result<()> {
-        let portability = self.session.portability_requirement();
-        self.style_plan.ensure_portable(portability)
-    }
-
-    fn ensure_portable_before_svg(&self) -> Result<()> {
-        let portability = self.session.portability_requirement();
-        self.style_plan.ensure_portable_before_svg(portability)
-    }
-
-    fn into_session_and_style_report(self) -> (RenderSession, FamilyStyleReport) {
-        let style_report = FamilyStyleReport::from_plan(self.style_plan);
-        (self.session, style_report)
+    const fn execution(&self) -> FamilyExecutionView<'_> {
+        FamilyExecutionView {
+            family_id: self.family_id,
+            session: &self.session,
+        }
     }
 }
 
@@ -1705,14 +300,10 @@ pub(crate) struct FlowchartFamilyArtifact<'parsed, L> {
     pair: FamilyPair<std::borrow::Cow<'parsed, diagrams::flowchart::FlowchartModel>, L>,
     render_context: std::borrow::Cow<'parsed, diagrams::flowchart::FlowchartRenderContext>,
     edge_style_plan: crate::svg::FlowchartEdgeStylePlan,
-    edge_theme: crate::flowchart::FlowchartEdgeThemeStyle,
     prepared_theme: crate::flowchart::FlowchartPreparedTheme,
     prepared_nodes: Option<crate::svg::FlowchartPreparedNodes>,
     render_config: crate::svg::FlowchartRenderConfig,
     svg_label_sidecar: crate::flowchart::FlowchartSvgLabelSidecar,
-    theme_evidence: crate::flowchart::FlowchartThemeEvidenceRecorder,
-    effect_evidence: crate::diagram_theme::SvgShadowEvidenceRecorder,
-    expected_effect_applications: std::cell::Cell<usize>,
 }
 
 #[cfg(any(
@@ -1737,14 +328,6 @@ impl<'parsed, L> FlowchartFamilyArtifact<'parsed, L> {
         &self.prepared_theme
     }
 
-    pub(crate) const fn effect_evidence(&self) -> &crate::diagram_theme::SvgShadowEvidenceRecorder {
-        &self.effect_evidence
-    }
-
-    pub(crate) const fn expected_effect_applications(&self) -> &std::cell::Cell<usize> {
-        &self.expected_effect_applications
-    }
-
     pub(crate) fn pair(
         &self,
     ) -> &FamilyPair<std::borrow::Cow<'parsed, diagrams::flowchart::FlowchartModel>, L> {
@@ -1759,38 +342,9 @@ impl<'parsed, L> FlowchartFamilyArtifact<'parsed, L> {
         &self.edge_style_plan
     }
 
-    pub(crate) const fn edge_theme(&self) -> &crate::flowchart::FlowchartEdgeThemeStyle {
-        &self.edge_theme
-    }
-
     pub(crate) fn svg_label_sidecar(&self) -> &crate::flowchart::FlowchartSvgLabelSidecar {
         &self.svg_label_sidecar
     }
-
-    pub(crate) const fn theme_evidence(&self) -> &crate::flowchart::FlowchartThemeEvidenceRecorder {
-        &self.theme_evidence
-    }
-}
-
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow"
-))]
-fn flowchart_artifact_theme_evidence<L>(
-    artifact: &FlowchartFamilyArtifact<'_, L>,
-    theme: Option<&ResolvedDiagramTheme>,
-    evidence: &mut FamilyThemeEvidence,
-) -> Vec<SourceStyleResidual> {
-    artifact
-        .prepared_theme()
-        .text_surface
-        .record_evidence(evidence);
-    let source_residuals = artifact.theme_evidence().record_into(theme, evidence);
-    if let Some(base_typography) = artifact.svg_label_sidecar().base_typography() {
-        base_typography.record_evidence(theme, evidence);
-    }
-    source_residuals
 }
 
 #[derive(Debug)]
@@ -1802,7 +356,6 @@ pub(crate) struct ClassFamilyArtifact<'parsed> {
     typography_theme: crate::class::ClassTextThemePlan,
     render_config: crate::class::ClassRenderConfig,
     node_visual_plan: crate::class::ClassNodeVisualPlan,
-    theme_evidence: crate::class::ClassThemeEvidenceRecorder,
 }
 
 #[derive(Debug)]
@@ -1859,62 +412,47 @@ impl<'parsed> ClassFamilyArtifact<'parsed> {
     pub(crate) const fn typography_theme(&self) -> &crate::class::ClassTextThemePlan {
         &self.typography_theme
     }
-
-    pub(crate) const fn theme_evidence(&self) -> &crate::class::ClassThemeEvidenceRecorder {
-        &self.theme_evidence
-    }
 }
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-gantt")]
 pub(crate) struct GanttFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::gantt::GanttDiagramRenderModel, GanttDiagramLayout>,
-    task_theme: crate::gantt::GanttTaskTheme,
+    style: crate::gantt::GanttStyle,
+    task_source_indices: Vec<usize>,
 }
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-pie")]
 pub(crate) struct PieFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::pie::PieDiagramModel, PieDiagramLayout>,
-    theme: crate::pie::PieThemePlan,
+    appearance: crate::pie::PieAppearance,
 }
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-timeline")]
 pub(crate) struct TimelineFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::timeline::TimelineDiagramModel, TimelineDiagramLayout>,
-    event_theme: crate::timeline::TimelineEventTheme,
-    typography_theme: crate::timeline::TimelineTypographyThemePlan,
-    text_paint: crate::timeline::TimelineTextPaintPlan,
+    style: crate::timeline::TimelineStyle,
 }
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-journey")]
 pub(crate) struct JourneyFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::journey::JourneyDiagramModel, JourneyDiagramLayout>,
-    task_theme: crate::journey::JourneyTaskTheme,
-    text_paint: crate::journey::JourneyTextPaintPlan,
-    typography_theme: crate::journey::JourneyTypographyThemePlan,
+    style: crate::journey::JourneyStyle,
 }
 
 #[cfg(feature = "diagram-journey")]
 impl<'parsed> JourneyFamilyArtifact<'parsed> {
-    pub(crate) const fn text_paint(&self) -> &crate::journey::JourneyTextPaintPlan {
-        &self.text_paint
-    }
-
     pub(crate) const fn pair(
         &self,
     ) -> &FamilyPair<&'parsed diagrams::journey::JourneyDiagramModel, JourneyDiagramLayout> {
         &self.pair
     }
 
-    pub(crate) const fn task_theme(&self) -> &crate::journey::JourneyTaskTheme {
-        &self.task_theme
-    }
-
-    pub(crate) const fn typography_theme(&self) -> &crate::journey::JourneyTypographyThemePlan {
-        &self.typography_theme
+    pub(crate) const fn style(&self) -> &crate::journey::JourneyStyle {
+        &self.style
     }
 }
 
@@ -1926,15 +464,10 @@ pub(crate) struct QuadrantChartFamilyArtifact<'parsed> {
         QuadrantChartDiagramLayout,
     >,
     point_theme: crate::quadrantchart::QuadrantChartPointThemePlan,
-    text_paint: crate::quadrantchart::QuadrantChartPaintPlan,
 }
 
 #[cfg(feature = "diagram-quadrant-chart")]
 impl<'parsed> QuadrantChartFamilyArtifact<'parsed> {
-    pub(crate) const fn text_paint(&self) -> &crate::quadrantchart::QuadrantChartPaintPlan {
-        &self.text_paint
-    }
-
     pub(crate) const fn pair(
         &self,
     ) -> &FamilyPair<
@@ -1953,11 +486,9 @@ impl<'parsed> QuadrantChartFamilyArtifact<'parsed> {
 #[cfg(feature = "diagram-xychart")]
 pub(crate) struct XyChartFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::xy_chart::XyChartDiagramRenderModel, XyChartDiagramLayout>,
-    series_paint: crate::xychart::XyChartSeriesPaintPlan,
     typography_theme: crate::xychart::XyChartTypographyThemePlan,
-    paint_theme: crate::xychart::XyChartPaintPlan,
-    effect_evidence: crate::diagram_theme::SvgShadowEvidenceRecorder,
-    expected_effect_applications: std::sync::OnceLock<usize>,
+    bar_legend_plots: Vec<usize>,
+    data_label_color: String,
 }
 
 #[derive(Debug)]
@@ -1965,9 +496,6 @@ pub(crate) struct XyChartFamilyArtifact<'parsed> {
 pub(crate) struct RadarFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::radar::RadarDiagramModel, RadarDiagramLayout>,
     series_paint: crate::radar::RadarSeriesPaintPlan,
-    title_theme: crate::radar::RadarTitleThemePlan,
-    axis_paint: crate::radar::RadarAxisPaintPlan,
-    text_paint: crate::radar::RadarTextPaintPlan,
     typography_theme: crate::radar::RadarTypographyThemePlan,
 }
 
@@ -1975,15 +503,13 @@ pub(crate) struct RadarFamilyArtifact<'parsed> {
 #[cfg(feature = "diagram-sankey")]
 pub(crate) struct SankeyFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::sankey::SankeyDiagramModel, SankeyDiagramLayout>,
-    node_palette: crate::sankey::SankeyNodePalettePlan,
-    typography_theme: crate::sankey::SankeyTypographyThemePlan,
+    style: crate::sankey::SankeyStyle,
 }
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-venn")]
 pub(crate) struct VennFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::venn::VennDiagramModel, VennDiagramLayout>,
-    title_theme: crate::venn::VennTitleThemePlan,
     typography_theme: crate::venn::VennTypographyThemePlan,
 }
 
@@ -1994,7 +520,7 @@ pub(crate) struct ZenumlFamilyArtifact<'parsed> {
         &'parsed diagrams::zenuml::ZenumlDiagramModel,
         crate::zenuml::ZenumlDiagramLayout,
     >,
-    theme_plan: crate::zenuml::ZenumlThemePlan,
+    style: crate::zenuml::ZenumlSourceStyle,
 }
 
 #[cfg(feature = "diagram-zenuml")]
@@ -2008,8 +534,8 @@ impl<'parsed> ZenumlFamilyArtifact<'parsed> {
         &self.pair
     }
 
-    pub(crate) const fn theme_plan(&self) -> &crate::zenuml::ZenumlThemePlan {
-        &self.theme_plan
+    pub(crate) const fn style(&self) -> &crate::zenuml::ZenumlSourceStyle {
+        &self.style
     }
 }
 
@@ -2020,7 +546,7 @@ pub(crate) struct EventModelingFamilyArtifact<'parsed> {
         &'parsed diagrams::event_modeling::EventModelingDiagramModel,
         EventModelingDiagramLayout,
     >,
-    text_theme: crate::eventmodeling::EventModelingTextThemePlan,
+    style: crate::eventmodeling::EventModelingStyle,
     prepared_labels: crate::eventmodeling::EventModelingPreparedLabels,
 }
 
@@ -2061,8 +587,8 @@ impl<'parsed> EventModelingFamilyArtifact<'parsed> {
         &self.prepared_labels
     }
 
-    pub(crate) const fn text_theme(&self) -> &crate::eventmodeling::EventModelingTextThemePlan {
-        &self.text_theme
+    pub(crate) const fn style(&self) -> &crate::eventmodeling::EventModelingStyle {
+        &self.style
     }
 }
 
@@ -2074,17 +600,8 @@ impl<'parsed> VennFamilyArtifact<'parsed> {
         &self.pair
     }
 
-    pub(crate) const fn title_theme(&self) -> &crate::venn::VennTitleThemePlan {
-        &self.title_theme
-    }
-
     pub(crate) const fn typography_theme(&self) -> &crate::venn::VennTypographyThemePlan {
         &self.typography_theme
-    }
-
-    fn record_theme_evidence(&self, evidence: &mut FamilyThemeEvidence) {
-        self.title_theme.record_evidence(evidence);
-        self.typography_theme.record_evidence(evidence);
     }
 }
 
@@ -2093,11 +610,7 @@ impl<'parsed> VennFamilyArtifact<'parsed> {
 pub(crate) struct BlockFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::block::BlockDiagramRenderModel, BlockDiagramLayout>,
     prepared_labels: crate::block::BlockPreparedLabels,
-    node_paint_theme: crate::block::BlockNodePaintThemePlan,
-    node_label_paint_theme: crate::block::BlockNodeLabelPaintPlan,
-    edge_paint_theme: crate::block::BlockEdgePaintPlan,
-    marker_paint_theme: crate::block::BlockMarkerPaintPlan,
-    label_background_theme: crate::block::BlockLabelBackgroundPlan,
+    node_bindings: crate::block::BlockNodeBindings,
     typography_theme: crate::block::BlockTypographyThemePlan,
 }
 
@@ -2113,39 +626,12 @@ impl<'parsed> BlockFamilyArtifact<'parsed> {
         &self.pair
     }
 
-    pub(crate) const fn node_paint_theme(&self) -> &crate::block::BlockNodePaintThemePlan {
-        &self.node_paint_theme
-    }
-
-    pub(crate) const fn node_label_paint_theme(&self) -> &crate::block::BlockNodeLabelPaintPlan {
-        &self.node_label_paint_theme
-    }
-
-    pub(crate) const fn edge_paint_theme(&self) -> &crate::block::BlockEdgePaintPlan {
-        &self.edge_paint_theme
-    }
-
-    pub(crate) const fn marker_paint_theme(&self) -> &crate::block::BlockMarkerPaintPlan {
-        &self.marker_paint_theme
-    }
-
-    pub(crate) const fn label_background_theme(&self) -> &crate::block::BlockLabelBackgroundPlan {
-        &self.label_background_theme
-    }
-
     pub(crate) const fn typography_theme(&self) -> &crate::block::BlockTypographyThemePlan {
         &self.typography_theme
     }
 
-    fn record_theme_evidence(&self, evidence: &mut FamilyThemeEvidence) {
-        self.node_paint_theme.record_evidence(evidence);
-        self.node_label_paint_theme.record_evidence(evidence);
-        self.edge_paint_theme.record_evidence(evidence);
-        self.marker_paint_theme.record_evidence(evidence);
-        if self.label_background_theme.requested() {
-            self.label_background_theme.record_evidence(evidence);
-        }
-        self.typography_theme.record_evidence(evidence);
+    pub(crate) const fn node_bindings(&self) -> &crate::block::BlockNodeBindings {
+        &self.node_bindings
     }
 }
 
@@ -2153,7 +639,7 @@ impl<'parsed> BlockFamilyArtifact<'parsed> {
 #[cfg(feature = "diagram-railroad")]
 pub(crate) struct RailroadFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::railroad::RailroadDiagramModel, RailroadDiagramLayout>,
-    typography_theme: crate::railroad::RailroadTypographyThemePlan,
+    style: crate::railroad::RailroadStyle,
 }
 
 #[cfg(feature = "diagram-railroad")]
@@ -2164,8 +650,8 @@ impl<'parsed> RailroadFamilyArtifact<'parsed> {
         &self.pair
     }
 
-    pub(crate) const fn typography_theme(&self) -> &crate::railroad::RailroadTypographyThemePlan {
-        &self.typography_theme
+    pub(crate) const fn style(&self) -> &crate::railroad::RailroadStyle {
+        &self.style
     }
 }
 
@@ -2211,7 +697,7 @@ impl<'parsed> InfoFamilyArtifact<'parsed> {
 #[cfg(feature = "diagram-cynefin")]
 pub(crate) struct CynefinFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::cynefin::CynefinDiagramModel, CynefinDiagramLayout>,
-    typography_theme: crate::cynefin::CynefinTypographyThemePlan,
+    style: crate::cynefin::CynefinStyle,
 }
 
 #[cfg(feature = "diagram-cynefin")]
@@ -2222,8 +708,8 @@ impl<'parsed> CynefinFamilyArtifact<'parsed> {
         &self.pair
     }
 
-    pub(crate) const fn typography_theme(&self) -> &crate::cynefin::CynefinTypographyThemePlan {
-        &self.typography_theme
+    pub(crate) const fn style(&self) -> &crate::cynefin::CynefinStyle {
+        &self.style
     }
 }
 
@@ -2231,7 +717,7 @@ impl<'parsed> CynefinFamilyArtifact<'parsed> {
 #[cfg(feature = "diagram-wardley")]
 pub(crate) struct WardleyFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::wardley::WardleyDiagramModel, WardleyDiagramLayout>,
-    typography_theme: crate::wardley::WardleyTypographyThemePlan,
+    style: crate::wardley::WardleyStyle,
 }
 
 #[cfg(feature = "diagram-wardley")]
@@ -2242,8 +728,8 @@ impl<'parsed> WardleyFamilyArtifact<'parsed> {
         &self.pair
     }
 
-    pub(crate) const fn typography_theme(&self) -> &crate::wardley::WardleyTypographyThemePlan {
-        &self.typography_theme
+    pub(crate) const fn style(&self) -> &crate::wardley::WardleyStyle {
+        &self.style
     }
 }
 
@@ -2255,17 +741,8 @@ impl<'parsed> SankeyFamilyArtifact<'parsed> {
         &self.pair
     }
 
-    pub(crate) const fn node_palette(&self) -> &crate::sankey::SankeyNodePalettePlan {
-        &self.node_palette
-    }
-
-    pub(crate) const fn typography_theme(&self) -> &crate::sankey::SankeyTypographyThemePlan {
-        &self.typography_theme
-    }
-
-    fn record_theme_evidence(&self, evidence: &mut FamilyThemeEvidence) {
-        self.node_palette.record_evidence(evidence);
-        self.typography_theme.record_evidence(evidence);
+    pub(crate) const fn style(&self) -> &crate::sankey::SankeyStyle {
+        &self.style
     }
 }
 
@@ -2273,8 +750,6 @@ impl<'parsed> SankeyFamilyArtifact<'parsed> {
 #[cfg(feature = "diagram-git-graph")]
 pub(crate) struct GitGraphFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::git_graph::GitGraphDiagramModel, GitGraphDiagramLayout>,
-    node_palette: crate::gitgraph::GitGraphNodePalettePlan,
-    static_paint: crate::gitgraph::GitGraphStaticPaintPlan,
     typography_theme: crate::gitgraph::GitGraphTypographyThemePlan,
 }
 
@@ -2287,23 +762,8 @@ impl<'parsed> GitGraphFamilyArtifact<'parsed> {
         &self.pair
     }
 
-    pub(crate) const fn node_palette(&self) -> &crate::gitgraph::GitGraphNodePalettePlan {
-        &self.node_palette
-    }
-
     pub(crate) const fn typography_theme(&self) -> &crate::gitgraph::GitGraphTypographyThemePlan {
         &self.typography_theme
-    }
-
-    pub(crate) const fn static_paint(&self) -> &crate::gitgraph::GitGraphStaticPaintPlan {
-        &self.static_paint
-    }
-
-    fn record_theme_evidence(&self, evidence: &mut FamilyThemeEvidence) {
-        self.node_palette.record_evidence(evidence);
-        self.node_palette.text_paint().record_evidence(evidence);
-        self.static_paint.record_evidence(evidence);
-        self.typography_theme.record_evidence(evidence);
     }
 }
 
@@ -2311,8 +771,7 @@ impl<'parsed> GitGraphFamilyArtifact<'parsed> {
 #[cfg(feature = "diagram-treemap")]
 pub(crate) struct TreemapFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::treemap::TreemapDiagramRenderModel, TreemapDiagramLayout>,
-    title_theme: crate::treemap::TreemapTitleThemePlan,
-    typography_theme: crate::treemap::TreemapTypographyThemePlan,
+    style: crate::treemap::TreemapStyle,
 }
 
 #[derive(Debug)]
@@ -2370,12 +829,8 @@ impl<'parsed> TreemapFamilyArtifact<'parsed> {
         &self.pair
     }
 
-    pub(crate) const fn title_theme(&self) -> &crate::treemap::TreemapTitleThemePlan {
-        &self.title_theme
-    }
-
-    pub(crate) const fn typography_theme(&self) -> &crate::treemap::TreemapTypographyThemePlan {
-        &self.typography_theme
+    pub(crate) const fn style(&self) -> &crate::treemap::TreemapStyle {
+        &self.style
     }
 }
 
@@ -2391,40 +846,13 @@ impl<'parsed> RadarFamilyArtifact<'parsed> {
         &self.series_paint
     }
 
-    pub(crate) const fn text_paint(&self) -> &crate::radar::RadarTextPaintPlan {
-        &self.text_paint
-    }
-
-    pub(crate) const fn axis_paint(&self) -> &crate::radar::RadarAxisPaintPlan {
-        &self.axis_paint
-    }
-
-    pub(crate) const fn title_theme(&self) -> &crate::radar::RadarTitleThemePlan {
-        &self.title_theme
-    }
-
     pub(crate) const fn typography_theme(&self) -> &crate::radar::RadarTypographyThemePlan {
         &self.typography_theme
-    }
-
-    fn record_theme_evidence(&self, evidence: &mut FamilyThemeEvidence) {
-        self.series_paint.record_evidence(evidence);
-        self.title_theme.record_evidence(&self.text_paint, evidence);
-        self.axis_paint.record_evidence(evidence);
-        self.text_paint.record_evidence(evidence);
-        self.typography_theme.record_evidence(evidence);
     }
 }
 
 #[cfg(feature = "diagram-xychart")]
 impl<'parsed> XyChartFamilyArtifact<'parsed> {
-    pub(crate) fn effect_evidence(&self) -> &crate::diagram_theme::SvgShadowEvidenceRecorder {
-        &self.effect_evidence
-    }
-    pub(crate) fn expected_effect_applications(&self) -> &std::sync::OnceLock<usize> {
-        &self.expected_effect_applications
-    }
-
     pub(crate) const fn pair(
         &self,
     ) -> &FamilyPair<&'parsed diagrams::xy_chart::XyChartDiagramRenderModel, XyChartDiagramLayout>
@@ -2432,16 +860,16 @@ impl<'parsed> XyChartFamilyArtifact<'parsed> {
         &self.pair
     }
 
-    pub(crate) const fn series_paint(&self) -> &crate::xychart::XyChartSeriesPaintPlan {
-        &self.series_paint
-    }
-
-    pub(crate) const fn paint_theme(&self) -> &crate::xychart::XyChartPaintPlan {
-        &self.paint_theme
-    }
-
     pub(crate) const fn typography_theme(&self) -> &crate::xychart::XyChartTypographyThemePlan {
         &self.typography_theme
+    }
+
+    pub(crate) fn bar_legend_plots(&self) -> &[usize] {
+        &self.bar_legend_plots
+    }
+
+    pub(crate) fn data_label_color(&self) -> &str {
+        &self.data_label_color
     }
 }
 
@@ -2449,14 +877,14 @@ impl<'parsed> XyChartFamilyArtifact<'parsed> {
 #[cfg(feature = "diagram-tree-view")]
 pub(crate) struct TreeViewFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::tree_view::TreeViewDiagramModel, TreeViewDiagramLayout>,
-    theme: crate::tree_view::TreeViewThemePlan,
+    theme: crate::tree_view::TreeViewCssBinding,
 }
 
 #[derive(Debug)]
 #[cfg(feature = "diagram-mindmap")]
 pub(crate) struct MindmapFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::mindmap::MindmapDiagramRenderModel, MindmapDiagramLayout>,
-    node_palette: crate::mindmap::MindmapNodePalettePlan,
+    appearance: crate::mindmap::MindmapAppearance,
     prepared_labels: crate::mindmap::MindmapPreparedLabels,
 }
 
@@ -2469,8 +897,8 @@ impl<'parsed> MindmapFamilyArtifact<'parsed> {
         &self.pair
     }
 
-    pub(crate) const fn node_palette(&self) -> &crate::mindmap::MindmapNodePalettePlan {
-        &self.node_palette
+    pub(crate) const fn appearance(&self) -> &crate::mindmap::MindmapAppearance {
+        &self.appearance
     }
 
     pub(crate) const fn prepared_labels(&self) -> &crate::mindmap::MindmapPreparedLabels {
@@ -2515,29 +943,21 @@ impl<'parsed> PieFamilyArtifact<'parsed> {
         &self.pair
     }
 
-    pub(crate) const fn theme(&self) -> &crate::pie::PieThemePlan {
-        &self.theme
+    pub(crate) const fn appearance(&self) -> &crate::pie::PieAppearance {
+        &self.appearance
     }
 }
 
 #[cfg(feature = "diagram-timeline")]
 impl<'parsed> TimelineFamilyArtifact<'parsed> {
-    pub(crate) const fn text_paint(&self) -> &crate::timeline::TimelineTextPaintPlan {
-        &self.text_paint
-    }
-
     pub(crate) const fn pair(
         &self,
     ) -> &FamilyPair<&'parsed diagrams::timeline::TimelineDiagramModel, TimelineDiagramLayout> {
         &self.pair
     }
 
-    pub(crate) const fn event_theme(&self) -> &crate::timeline::TimelineEventTheme {
-        &self.event_theme
-    }
-
-    pub(crate) const fn typography_theme(&self) -> &crate::timeline::TimelineTypographyThemePlan {
-        &self.typography_theme
+    pub(crate) const fn style(&self) -> &crate::timeline::TimelineStyle {
+        &self.style
     }
 }
 
@@ -2550,7 +970,7 @@ impl<'parsed> TreeViewFamilyArtifact<'parsed> {
         &self.pair
     }
 
-    pub(crate) const fn theme(&self) -> &crate::tree_view::TreeViewThemePlan {
+    pub(crate) const fn theme(&self) -> &crate::tree_view::TreeViewCssBinding {
         &self.theme
     }
 }
@@ -2563,8 +983,12 @@ impl<'parsed> GanttFamilyArtifact<'parsed> {
         &self.pair
     }
 
-    pub(crate) const fn task_theme(&self) -> &crate::gantt::GanttTaskTheme {
-        &self.task_theme
+    pub(crate) const fn style(&self) -> &crate::gantt::GanttStyle {
+        &self.style
+    }
+
+    pub(crate) fn task_source_indices(&self) -> &[usize] {
+        &self.task_source_indices
     }
 }
 
@@ -2575,7 +999,7 @@ pub(crate) struct StateFamilyArtifact<'parsed> {
     label_sidecar: crate::state::StateLabelSidecar,
     #[cfg(feature = "layout-shoal")]
     canonical_routes: Option<crate::graph_layout::canonical::CanonicalRoutes>,
-    effect_evidence: crate::diagram_theme::SvgShadowEvidenceRecorder,
+    style: crate::state::StateStylePlan,
 }
 
 #[cfg(feature = "diagram-state")]
@@ -2597,8 +1021,8 @@ impl<'parsed> StateFamilyArtifact<'parsed> {
         self.canonical_routes.as_ref()
     }
 
-    pub(crate) const fn effect_evidence(&self) -> &crate::diagram_theme::SvgShadowEvidenceRecorder {
-        &self.effect_evidence
+    pub(crate) const fn style(&self) -> &crate::state::StateStylePlan {
+        &self.style
     }
 }
 
@@ -2905,180 +1329,6 @@ impl BuiltinFamilyArtifact<'_> {
             Self::Sequence(artifact) => artifact.layout.math_sidecar().prepared_math_evidence(),
             _ => PreparedMathEvidenceLease::default(),
         }
-    }
-
-    fn merge_theme_evidence(&self, context: &mut FamilyRenderContext) -> Result<()> {
-        let session = &context.session;
-        let style_plan = &mut context.style_plan;
-        let theme = style_plan.resolved_theme.as_deref();
-        let evidence = &mut style_plan.theme_evidence;
-        match self {
-            #[cfg(feature = "diagram-agentflow")]
-            Self::Agentflow { flow, .. } => {
-                evidence.clear_outcomes();
-                style_plan.source_style_residuals =
-                    flowchart_artifact_theme_evidence(flow, theme, evidence);
-                style_plan.payload = if FamilyThemeEvidence::not_applicable(theme)
-                    && style_plan.source_style_residuals.is_empty()
-                {
-                    FamilyStylePayload::NotApplicable
-                } else {
-                    FamilyStylePayload::Evaluated
-                };
-                return Ok(());
-            }
-            #[cfg(feature = "diagram-usecase")]
-            Self::Usecase(pair) => pair.layout().record_theme_evidence(evidence),
-            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-            Self::Flowchart(artifact) => {
-                evidence.clear_outcomes();
-                style_plan.source_style_residuals =
-                    flowchart_artifact_theme_evidence(artifact, theme, evidence);
-                style_plan.payload = if FamilyThemeEvidence::not_applicable(theme)
-                    && style_plan.source_style_residuals.is_empty()
-                {
-                    FamilyStylePayload::NotApplicable
-                } else {
-                    FamilyStylePayload::Evaluated
-                };
-                return Ok(());
-            }
-            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-            Self::Swimlane(artifact) => {
-                evidence.clear_outcomes();
-                style_plan.source_style_residuals =
-                    flowchart_artifact_theme_evidence(artifact, theme, evidence);
-                style_plan.payload = if FamilyThemeEvidence::not_applicable(theme)
-                    && style_plan.source_style_residuals.is_empty()
-                {
-                    FamilyStylePayload::NotApplicable
-                } else {
-                    FamilyStylePayload::Evaluated
-                };
-                return Ok(());
-            }
-            #[cfg(feature = "diagram-sequence")]
-            Self::Sequence(pair) => {
-                let prepared = pair.layout();
-                let theme_evidence = prepared.theme_evidence();
-                theme_evidence.record_unsupported_text_emission(
-                    theme,
-                    prepared.layout().title.is_some(),
-                    session.work_meter().as_ref(),
-                )?;
-                evidence.clear_outcomes();
-                theme_evidence.record_into(theme, evidence);
-            }
-            // State reconciles its terminal and filter receipts in the output finalizer.
-            #[cfg(feature = "diagram-state")]
-            Self::State(_) => return Ok(()),
-            #[cfg(feature = "diagram-class")]
-            Self::Class(artifact) => {
-                style_plan.source_style_residuals =
-                    crate::class::ClassTextThemePlan::root_dependent_source_residuals(
-                        artifact.pair().semantic(),
-                        artifact.render_config().diagram_use_html_labels,
-                        session.work_meter().control(),
-                    )?;
-                let outcomes = artifact.theme_evidence().finish(
-                    theme,
-                    artifact.relation_theme(),
-                    session.work_meter().as_ref(),
-                )?;
-                evidence.merge_accounted_from(outcomes);
-                artifact.typography_theme().record_evidence(evidence);
-            }
-            #[cfg(feature = "diagram-gantt")]
-            Self::Gantt(artifact) => artifact.task_theme().record_evidence(evidence),
-            #[cfg(feature = "diagram-kanban")]
-            Self::Kanban(pair) => {
-                pair.layout().task_theme().record_evidence(evidence);
-                pair.layout().text_paint().record_evidence(evidence);
-            }
-            #[cfg(feature = "diagram-pie")]
-            Self::Pie(artifact) => artifact.theme().record_evidence(evidence),
-            #[cfg(feature = "diagram-timeline")]
-            Self::Timeline(artifact) => {
-                artifact.event_theme().record_evidence(evidence);
-                artifact.typography_theme().record_evidence(evidence);
-                artifact.text_paint().record_evidence(evidence);
-            }
-            #[cfg(feature = "diagram-journey")]
-            Self::Journey(artifact) => {
-                artifact.task_theme().record_evidence(evidence);
-                artifact.text_paint().record_evidence(evidence);
-                artifact.typography_theme().record_evidence(evidence);
-            }
-            #[cfg(feature = "diagram-quadrant-chart")]
-            Self::QuadrantChart(artifact) => {
-                artifact.point_theme().record_evidence(evidence);
-                artifact.text_paint().record_evidence(evidence);
-            }
-            #[cfg(feature = "diagram-xychart")]
-            Self::XyChart(artifact) => {
-                artifact.series_paint().record_evidence(evidence);
-                artifact.typography_theme().record_evidence(evidence);
-                artifact.paint_theme().record_evidence(evidence);
-            }
-            #[cfg(feature = "diagram-radar")]
-            Self::Radar(artifact) => artifact.record_theme_evidence(evidence),
-            #[cfg(feature = "diagram-sankey")]
-            Self::Sankey(artifact) => artifact.record_theme_evidence(evidence),
-            #[cfg(feature = "diagram-block")]
-            Self::Block(artifact) => artifact.record_theme_evidence(evidence),
-            #[cfg(feature = "diagram-railroad")]
-            Self::Railroad(artifact) => artifact.typography_theme().record_evidence(evidence),
-            Self::Error(artifact) => artifact.typography_theme().record_evidence(evidence),
-            #[cfg(feature = "diagram-info")]
-            Self::Info(artifact) => {
-                if let crate::info::InfoAppearance::Mermaid(theme) = artifact.typography_theme() {
-                    theme.record_evidence(evidence);
-                }
-            }
-            #[cfg(feature = "diagram-cynefin")]
-            Self::Cynefin(artifact) => artifact.typography_theme().record_evidence(evidence),
-            #[cfg(feature = "diagram-wardley")]
-            Self::Wardley(artifact) => artifact.typography_theme().record_evidence(evidence),
-            #[cfg(feature = "diagram-treemap")]
-            Self::Treemap(artifact) => {
-                artifact.title_theme().record_evidence(evidence);
-                artifact.typography_theme().record_evidence(evidence);
-            }
-            #[cfg(feature = "diagram-requirement")]
-            Self::Requirement(artifact) => artifact.paint_theme().record_evidence(evidence),
-            #[cfg(feature = "diagram-packet")]
-            Self::Packet(_) => return Ok(()),
-            #[cfg(feature = "diagram-c4")]
-            Self::C4(artifact) => {
-                artifact.cluster_theme().record_evidence(evidence);
-                artifact.typography_theme().record_evidence(evidence);
-                artifact.text_paint().record_evidence(evidence);
-            }
-            #[cfg(feature = "diagram-er")]
-            Self::Er(artifact) => artifact.entity_theme().record_evidence(evidence),
-            #[cfg(feature = "diagram-git-graph")]
-            Self::GitGraph(artifact) => artifact.record_theme_evidence(evidence),
-            #[cfg(feature = "diagram-mindmap")]
-            Self::Mindmap(artifact) => artifact.node_palette().record_evidence(evidence),
-            #[cfg(feature = "diagram-tree-view")]
-            Self::TreeView(artifact) => artifact.theme().record_evidence(evidence),
-            #[cfg(feature = "diagram-venn")]
-            Self::Venn(artifact) => artifact.record_theme_evidence(evidence),
-            #[cfg(feature = "diagram-zenuml")]
-            Self::Zenuml(artifact) => artifact.theme_plan().record_evidence(evidence),
-            #[cfg(feature = "diagram-event-modeling")]
-            Self::EventModeling(artifact) => artifact.text_theme().record_evidence(evidence),
-            #[cfg(feature = "diagram-ishikawa")]
-            Self::Ishikawa(artifact) => artifact.text_theme().record_evidence(evidence),
-            #[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
-            Self::Architecture(_) => {}
-        }
-        style_plan.payload = if FamilyThemeEvidence::not_applicable(theme) {
-            FamilyStylePayload::NotApplicable
-        } else {
-            FamilyStylePayload::Evaluated
-        };
-        Ok(())
     }
 
     fn compatibility_json(
@@ -3504,8 +1754,8 @@ pub struct RenderedFamilySvg {
     svg: String,
     prepared_math_evidence: PreparedMathEvidenceLease,
     prepared_math_evidence_valid: bool,
-    root_theme: RootThemeReport,
-    style_report: FamilyStyleReport,
+    family_id: DiagramFamilyId,
+    output_mutated: bool,
     metadata: PresentationMetadata,
     required_capabilities: Vec<RenderCapability>,
     session: RenderSession,
@@ -3580,7 +1830,7 @@ impl RenderedFamilySvg {
     }
 
     pub fn family_id(&self) -> DiagramFamilyId {
-        self.style_report.family_id()
+        self.family_id
     }
 
     /// Returns the optional capabilities admitted during this artifact's preparation.
@@ -3588,26 +1838,8 @@ impl RenderedFamilySvg {
         &self.required_capabilities
     }
 
-    #[cfg(test)]
-    pub(crate) const fn style_report(&self) -> &FamilyStyleReport {
-        &self.style_report
-    }
-
-    #[cfg(test)]
-    pub(crate) const fn root_theme_report(&self) -> &RootThemeReport {
-        &self.root_theme
-    }
-
     /// Applies an output pipeline while retaining the renderer-owned family capability.
-    pub fn apply_pipeline(self, pipeline: &SvgPipeline) -> Result<Self> {
-        self.apply_pipeline_with_portability(pipeline, true)
-    }
-
-    fn apply_pipeline_with_portability(
-        mut self,
-        pipeline: &SvgPipeline,
-        enforce_portability: bool,
-    ) -> Result<Self> {
+    pub fn apply_pipeline(mut self, pipeline: &SvgPipeline) -> Result<Self> {
         self.session.checkpoint(OperationPhase::Postprocess)?;
         let output_metadata = self.output_metadata()?;
         let requires_prepared_math_projection = pipeline.requires_prepared_math_projection();
@@ -3631,41 +1863,14 @@ impl RenderedFamilySvg {
             ResourceLimitPhase::SvgPostprocess,
             OperationPhase::Postprocess,
         )?;
-        if !pipeline.preserves_typed_theme_evidence(output_metadata.family_id()) {
-            self.root_theme = self.root_theme.invalidate_for_output_mutation();
-            self.style_report = self.style_report.invalidate_for_output_mutation();
-        }
-        if enforce_portability {
-            ensure_root_theme_portable(&self.root_theme, self.session.portability_requirement())?;
-            if self.session.portability_requirement()
-                == ThemePortabilityRequirement::RequirePortable
-            {
-                self.style_report.ensure_portable()?;
-            }
-        }
+        self.output_mutated |= pipeline.has_custom_postprocessors(output_metadata.family_id());
         self.session.checkpoint(OperationPhase::Postprocess)?;
         Ok(self)
     }
 
     /// Finalizes the typed family output for resvg/raster consumption.
     pub fn finalize_resvg(self, pipeline: &SvgPipeline) -> Result<RenderedResvgCompatibleSvg> {
-        self.finalize_resvg_with_portability(pipeline, true)
-    }
-
-    pub(crate) fn finalize_resvg_for_target_admission(
-        self,
-        pipeline: &SvgPipeline,
-    ) -> Result<RenderedResvgCompatibleSvg> {
-        self.finalize_resvg_with_portability(pipeline, false)
-    }
-
-    fn finalize_resvg_with_portability(
-        self,
-        pipeline: &SvgPipeline,
-        enforce_portability: bool,
-    ) -> Result<RenderedResvgCompatibleSvg> {
         self.session.checkpoint(OperationPhase::Export)?;
-        let portability = self.session.portability_requirement();
         let output_metadata = self.output_metadata()?;
         let prepared_math_evidence_valid = self.prepared_math_evidence_valid
             && pipeline.preserves_prepared_math_evidence(output_metadata.family_id());
@@ -3692,72 +1897,31 @@ impl RenderedFamilySvg {
             ResourceLimitPhase::SvgPostprocess,
             OperationPhase::Export,
         )?;
-        let preserves_typed_theme_evidence =
-            pipeline.preserves_typed_theme_evidence(output_metadata.family_id());
-        let root_theme = if preserves_typed_theme_evidence {
-            self.root_theme
-        } else {
-            self.root_theme.invalidate_for_output_mutation()
-        };
-        let style_report = if preserves_typed_theme_evidence {
-            self.style_report
-        } else {
-            self.style_report.invalidate_for_output_mutation()
-        };
-        if enforce_portability {
-            ensure_root_theme_portable(&root_theme, portability)?;
-            if portability == ThemePortabilityRequirement::RequirePortable {
-                style_report.ensure_portable()?;
-            }
-        }
+        let output_mutated =
+            self.output_mutated || pipeline.has_custom_postprocessors(output_metadata.family_id());
         self.session.checkpoint(OperationPhase::Export)?;
         Ok(RenderedResvgCompatibleSvg {
             layout_adaptation: self.layout_adaptation,
             svg,
-            root_theme,
-            style_report,
+            family_id: self.family_id,
+            output_mutated,
             session: self.session,
-            materialized_theme: self.metadata.effective_config.materialized_theme(),
         })
     }
 
     /// Completes the exact artifact selected for the standalone SVG target.
-    ///
-    /// Resvg-safe output retains the full renderer-owned terminal capability. Other pipelines
-    /// preserve their exact bytes; native compatibility is observed only when portability is
-    /// required. Best-effort output still enforces resource budgets and cancellation.
     pub fn finalize_standalone(
         self,
         pipeline: Option<&SvgPipeline>,
     ) -> Result<RenderedStandaloneSvg> {
-        self.finalize_standalone_with_portability(pipeline, true)
-    }
-
-    pub(crate) fn finalize_standalone_for_target_admission(
-        self,
-        pipeline: Option<&SvgPipeline>,
-    ) -> Result<RenderedStandaloneSvg> {
-        self.finalize_standalone_with_portability(pipeline, false)
-    }
-
-    fn finalize_standalone_with_portability(
-        self,
-        pipeline: Option<&SvgPipeline>,
-        enforce_portability: bool,
-    ) -> Result<RenderedStandaloneSvg> {
         match pipeline {
-            Some(pipeline) if pipeline.preset() == SvgPipelinePreset::ResvgSafe => {
-                let finalized =
-                    self.finalize_resvg_with_portability(pipeline, enforce_portability)?;
-                Ok(finalized.into_standalone())
-            }
+            Some(pipeline) if pipeline.preset() == SvgPipelinePreset::ResvgSafe => self
+                .finalize_resvg(pipeline)
+                .map(RenderedResvgCompatibleSvg::into_standalone),
             Some(pipeline) => self
-                .apply_pipeline_with_portability(pipeline, enforce_portability)?
+                .apply_pipeline(pipeline)?
                 .finalize_exact_standalone(pipeline),
-            None => {
-                let pipeline = SvgPipeline::parity();
-                self.finalize_exact_standalone(&pipeline)
-            }
+            None => self.finalize_exact_standalone(&SvgPipeline::parity()),
         }
     }
 
@@ -3768,10 +1932,9 @@ impl RenderedFamilySvg {
         Ok(RenderedStandaloneSvg {
             layout_adaptation: self.layout_adaptation,
             artifact,
-            root_theme: self.root_theme,
-            style_report: self.style_report,
+            family_id: self.family_id,
+            output_mutated: self.output_mutated,
             session: self.session,
-            materialized_theme: self.metadata.effective_config.materialized_theme(),
         })
     }
 
@@ -3787,27 +1950,10 @@ impl RenderedFamilySvg {
     }
 
     pub fn into_completion(self) -> FamilyRenderCompletion<String> {
-        let Self {
-            svg,
-            prepared_math_evidence: _,
-            prepared_math_evidence_valid: _,
-            root_theme,
-            style_report,
-            session,
-            metadata,
-            required_capabilities: _,
-            layout_adaptation,
-            shoal_layout_frame: _,
-        } = self;
         FamilyRenderCompletion {
-            layout_adaptation,
-            output: svg,
-            report: FamilyRenderReport::freeze(
-                root_theme,
-                style_report,
-                session,
-                metadata.effective_config.materialized_theme(),
-            ),
+            layout_adaptation: self.layout_adaptation,
+            output: self.svg,
+            report: FamilyRenderReport::freeze(self.family_id, self.session, self.output_mutated),
         }
     }
 }
@@ -3816,10 +1962,9 @@ impl RenderedFamilySvg {
 pub struct RenderedResvgCompatibleSvg {
     layout_adaptation: Option<crate::LayoutAdaptationObservation>,
     svg: ResvgCompatibleSvg,
-    root_theme: RootThemeReport,
-    style_report: FamilyStyleReport,
+    family_id: DiagramFamilyId,
+    output_mutated: bool,
     session: RenderSession,
-    materialized_theme: Option<merman_model::config::MermaidThemeId>,
 }
 
 impl RenderedResvgCompatibleSvg {
@@ -3832,24 +1977,14 @@ impl RenderedResvgCompatibleSvg {
     }
 
     pub const fn family_id(&self) -> DiagramFamilyId {
-        self.style_report.family_id()
-    }
-
-    #[cfg(test)]
-    pub(crate) const fn style_report(&self) -> &FamilyStyleReport {
-        &self.style_report
+        self.family_id
     }
 
     pub fn into_completion(self) -> FamilyRenderCompletion<ResvgCompatibleSvg> {
         FamilyRenderCompletion {
             layout_adaptation: self.layout_adaptation,
             output: self.svg,
-            report: FamilyRenderReport::freeze(
-                self.root_theme,
-                self.style_report,
-                self.session,
-                self.materialized_theme,
-            ),
+            report: FamilyRenderReport::freeze(self.family_id, self.session, self.output_mutated),
         }
     }
 
@@ -3857,10 +1992,9 @@ impl RenderedResvgCompatibleSvg {
         RenderedStandaloneSvg {
             layout_adaptation: self.layout_adaptation,
             artifact: StandaloneSvgArtifact::from_resvg_compatible(self.svg),
-            root_theme: self.root_theme,
-            style_report: self.style_report,
+            family_id: self.family_id,
+            output_mutated: self.output_mutated,
             session: self.session,
-            materialized_theme: self.materialized_theme,
         }
     }
 }
@@ -3869,25 +2003,15 @@ impl RenderedResvgCompatibleSvg {
 pub struct RenderedStandaloneSvg {
     layout_adaptation: Option<crate::LayoutAdaptationObservation>,
     artifact: StandaloneSvgArtifact,
-    root_theme: RootThemeReport,
-    style_report: FamilyStyleReport,
+    family_id: DiagramFamilyId,
+    output_mutated: bool,
     session: RenderSession,
-    materialized_theme: Option<merman_model::config::MermaidThemeId>,
 }
 
 impl RenderedStandaloneSvg {
-    pub(crate) fn admission_summary(
-        &self,
-    ) -> (
-        crate::__private::RootEvidenceSummary,
-        crate::__private::FamilyEvidenceSummary,
-        bool,
-    ) {
-        (
-            crate::__private::RootEvidenceSummary::from_root(&self.root_theme),
-            self.style_report.evidence_summary(),
-            self.session.has_host_measurements(),
-        )
+    /// Whether the operation used host-provided text metrics.
+    pub fn has_host_measurements(&self) -> bool {
+        self.session.has_host_measurements()
     }
 
     pub fn artifact(&self) -> &StandaloneSvgArtifact {
@@ -3899,7 +2023,7 @@ impl RenderedStandaloneSvg {
     }
 
     pub const fn family_id(&self) -> DiagramFamilyId {
-        self.style_report.family_id()
+        self.family_id
     }
 
     /// Returns the SVG bytes without materializing a completion report.
@@ -3911,12 +2035,7 @@ impl RenderedStandaloneSvg {
         FamilyRenderCompletion {
             layout_adaptation: self.layout_adaptation,
             output: self.artifact,
-            report: FamilyRenderReport::freeze(
-                self.root_theme,
-                self.style_report,
-                self.session,
-                self.materialized_theme,
-            ),
+            report: FamilyRenderReport::freeze(self.family_id, self.session, self.output_mutated),
         }
     }
 }
@@ -4179,55 +2298,20 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
         let render_debug = trace_stage
             .as_ref()
             .map_or(debug, |(_, _, staged_debug)| staged_debug);
-        let mut rendered = render_family_artifact_svg(&self, options, render_debug, generation)?;
-        admit_rendered_svg_output(self.context.session(), rendered.as_str())?;
-        self.context.session().checkpoint(OperationPhase::Emit)?;
-        let filter_receipt = match &self.family {
-            #[cfg(feature = "diagram-usecase")]
-            BuiltinFamilyArtifact::Usecase(pair) => Some((
-                pair.layout().effect_evidence().finish(),
-                pair.layout().expected_effect_applications(),
-            )),
-            #[cfg(feature = "diagram-agentflow")]
-            BuiltinFamilyArtifact::Agentflow { flow, .. } => Some((
-                flow.effect_evidence().finish(),
-                flow.expected_effect_applications().get(),
-            )),
-            #[cfg(feature = "diagram-sequence")]
-            BuiltinFamilyArtifact::Sequence(artifact) => Some((
-                artifact.layout.effect_evidence().finish(),
-                artifact.layout.expected_effect_applications().get(),
-            )),
-            #[cfg(feature = "diagram-state")]
-            BuiltinFamilyArtifact::State(artifact) => Some((
-                artifact.effect_evidence().finish(),
-                self.context
-                    .style_plan
-                    .state()
-                    .map(crate::state::StateStylePlan::expected_native_filter_application_count)
-                    .unwrap_or(0),
-            )),
-            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-            BuiltinFamilyArtifact::Flowchart(artifact) => Some((
-                artifact.effect_evidence().finish(),
-                artifact.expected_effect_applications().get(),
-            )),
-            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-            BuiltinFamilyArtifact::Swimlane(artifact) => Some((
-                artifact.effect_evidence().finish(),
-                artifact.expected_effect_applications().get(),
-            )),
-            #[cfg(feature = "diagram-xychart")]
-            BuiltinFamilyArtifact::XyChart(artifact) => Some((
-                artifact.effect_evidence().finish(),
-                artifact
-                    .expected_effect_applications()
-                    .get()
-                    .copied()
-                    .unwrap_or(0),
-            )),
-            _ => None,
-        };
+        if self.context.session().portability_requirement()
+            == ThemePortabilityRequirement::RequirePortable
+            && let Some(theme) = self.context.session().native_theme()
+            && let Some(message) =
+                crate::theme::unsupported_features(theme.resolved(), self.family_id()).next()
+        {
+            return Err(Error::UnsupportedNativeThemeFeature {
+                family_id: self.family_id(),
+                message,
+            });
+        }
+        let (svg, output_mutated) =
+            render_family_artifact_svg(&self, options, render_debug, generation)?;
+        admit_rendered_svg_output(self.context.session(), &svg)?;
         let layout_adaptation = self.layout_adaptation();
         #[cfg(any(
             feature = "diagram-flowchart",
@@ -4244,50 +2328,8 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
         )))]
         let shoal_layout_frame = None;
         let prepared_math_evidence = self.family.prepared_math_evidence();
-        let Self {
-            metadata,
-            family,
-            required_capabilities,
-            mut context,
-            output_context: _,
-        } = self;
-        family.merge_theme_evidence(&mut context)?;
-        if let Some(evidence) = rendered.take_family_theme_evidence() {
-            context.merge_accounted_terminal_evidence(context.family_id(), evidence);
-        }
-        #[cfg(feature = "diagram-packet")]
-        if let Some(outcome) = rendered.take_packet_theme_outcome() {
-            if metadata
-                .effective_config
-                .theme_compatibility()
-                .mermaid_residual_count()
-                != 0
-            {
-                let evidence = metadata.effective_config.theme_compatibility().clone();
-                let consumptions = outcome.compatibility_consumptions(&evidence);
-                context.reconcile_packet_mermaid_compatibility(&evidence, &consumptions);
-            }
-            context.merge_accounted_terminal_evidence(DiagramFamilyId::PACKET, outcome.evidence);
-        }
-
-        #[cfg(feature = "diagram-state")]
-        if context.family_id() == DiagramFamilyId::STATE {
-            context.reconcile_state_terminal_evidence();
-        }
-        context.observe_output_visibility(debug);
-        if let Some((emitted, expected)) = filter_receipt {
-            context
-                .style_plan
-                .reconcile_effect_evidence(emitted, expected);
-        }
-        let (svg, root_theme, preserves_typed_theme_evidence) = rendered.into_parts();
-        if !preserves_typed_theme_evidence {
-            context.invalidate_for_output_mutation();
-        }
-        context.ensure_portable()?;
-        let (session, style_report) = context.into_session_and_style_report();
-        ensure_root_theme_portable(&root_theme, session.portability_requirement())?;
-        session.checkpoint(OperationPhase::Emit)?;
+        self.context.session().checkpoint(OperationPhase::Emit)?;
+        let family_id = self.family_id();
 
         if let Some((destination, staging, _)) = trace_stage {
             for trace in staging.drain() {
@@ -4301,11 +2343,11 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
             svg,
             prepared_math_evidence,
             prepared_math_evidence_valid: true,
-            root_theme,
-            style_report,
-            metadata: metadata.clone(),
-            required_capabilities,
-            session,
+            family_id,
+            output_mutated,
+            metadata: self.metadata.clone(),
+            required_capabilities: self.required_capabilities,
+            session: self.context.session,
         })
     }
 }
@@ -4327,7 +2369,7 @@ fn render_family_artifact_svg(
     request: &SvgRenderOptions,
     debug: &SvgDebugOptions,
     generation: crate::svg::SvgGeneration,
-) -> Result<crate::svg::RootThemeAppliedSvg> {
+) -> Result<(String, bool)> {
     let options = crate::svg::normalize_svg_render_options(request, artifact.context.session())?;
     let execution = artifact.context.execution();
     #[cfg(feature = "diagram-agentflow")]
@@ -4435,15 +2477,8 @@ fn project_agentflow_flowchart_config(
             );
         }
     }
-    let evidence = config.theme_compatibility();
     let parts = merman_model::presentation::FrozenPresentationConfigParts::new(projected)
-        .with_explicit_config_paths(Arc::clone(config.shared_explicit_config_paths()))
-        .with_theme_compatibility(
-            evidence.recipe().cloned(),
-            Arc::clone(evidence.shared_fields()),
-        )
-        .with_palette_paint_authority(config.palette_paint_authority())
-        .with_family_paint_inputs(config.family_paint_inputs());
+        .with_explicit_config_paths(Arc::clone(config.shared_explicit_config_paths()));
     // Existing render admission excludes config. This construction policy validates derived data
     // without recharging the request's model limits or declaring source authority.
     let construction_policy = merman_model::resources::InputResourcePolicy::for_profile(
@@ -4455,27 +2490,6 @@ fn project_agentflow_flowchart_config(
         control,
     )?
     .map_err(Error::from)
-}
-
-fn ensure_root_theme_portable(
-    report: &RootThemeReport,
-    portability: ThemePortabilityRequirement,
-) -> Result<()> {
-    if portability != ThemePortabilityRequirement::RequirePortable {
-        return Ok(());
-    }
-    let verification = report.verification();
-    if matches!(
-        verification,
-        crate::diagram_theme::RootThemeVerification::NotApplicable
-            | crate::diagram_theme::RootThemeVerification::Verified
-    ) {
-        return Ok(());
-    }
-    Err(Error::RejectedRootTheme {
-        verification,
-        residual_count: report.residual_count(),
-    })
 }
 
 /// Prepares one family-owned typed semantic model for layout and SVG rendering.

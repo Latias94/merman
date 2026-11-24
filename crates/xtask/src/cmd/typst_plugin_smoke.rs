@@ -81,46 +81,6 @@ pub(crate) fn validate_typst_plugin_with_input(
     let capabilities = call_json(&mut instance, "capabilities_json", Vec::new())?;
     assert_capability_catalog(&capabilities, &artifact_profile)?;
 
-    let catalog_payload = call_json(&mut instance, "theme_catalog_json", Vec::new())?;
-    let theme_catalog = assert_theme_operation_payload(&catalog_payload, "theme-catalog")?;
-    let mut expected_presets: JsonValue = serde_json::from_str(include_str!(
-        "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/preset-catalog.json"
-    ))
-    .map_err(|error| smoke_error(format!("invalid preset catalog fixture: {error}")))?;
-    let cyberpunk = expected_presets
-        .as_array_mut()
-        .and_then(|presets| {
-            presets
-                .iter_mut()
-                .find(|preset| preset["id"] == "cyberpunk")
-        })
-        .ok_or_else(|| smoke_error("Cyberpunk preset fixture is missing"))?;
-    cyberpunk["available"] = false.into();
-    cyberpunk["availability_reason_ids"] =
-        serde_json::json!(["theme-preset.resource-policy-rejected"]);
-    for appearance in cyberpunk["appearances"]
-        .as_array_mut()
-        .ok_or_else(|| smoke_error("Cyberpunk appearance metadata is missing"))?
-    {
-        appearance["available"] = false.into();
-        appearance["availability_reason_ids"] =
-            serde_json::json!(["theme-preset.resource-policy-rejected"]);
-    }
-    if theme_catalog
-        .get("schema_version")
-        .and_then(JsonValue::as_u64)
-        != Some(1)
-        || theme_catalog
-            .get("structured_spec_available")
-            .and_then(JsonValue::as_bool)
-            != Some(true)
-        || theme_catalog.get("presets") != Some(&expected_presets)
-    {
-        return Err(smoke_error(
-            "Typst theme catalog differs from the shared preset catalog",
-        ));
-    }
-
     let render_output = instance.call(
         "render_svg_json",
         vec![source.to_vec(), options_json.to_vec()],
@@ -156,112 +116,7 @@ pub(crate) fn validate_typst_plugin_with_input(
         "MERMAN_OPTIONS_JSON_ERROR",
     )?;
 
-    let materialized_theme = instance.call(
-        "theme_operation_json",
-        vec![
-            b"materialize-theme-json".to_vec(),
-            br##"{
-                "tokens": {"text": {"type":"color","value":"#123456"}},
-                "styles": {"text": {"fill":{"kind":"solid","color":{"ref":"text"}}}}
-            }"##
-            .to_vec(),
-            options_json.to_vec(),
-        ],
-    )?;
-    let materialized_theme = parse_json("materialize-theme-json", &materialized_theme)?;
-    let materialized_theme =
-        assert_theme_operation_payload(&materialized_theme, "materialize-theme-json")?;
-    if serde_json::from_value::<merman::diagram_theme::MaterializedThemeWireV1>(
-        materialized_theme.clone(),
-    )
-    .is_err()
-        || materialized_theme
-            .pointer("/spec/styles")
-            .and_then(JsonValue::as_array)
-            .is_none_or(|styles| styles.is_empty())
-    {
-        return Err(smoke_error(format!(
-            "materialize-theme-json returned an invalid materialized theme: {materialized_theme}"
-        )));
-    }
-
-    validate_theme_authoring_vectors(&mut instance, options_json)?;
-
-    let paired_recipe: JsonValue = serde_json::from_str(include_str!(
-        "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/paired.recipe.json"
-    ))
-    .map_err(|error| smoke_error(format!("invalid paired recipe fixture: {error}")))?;
-    let paired_inspection = call_json(
-        &mut instance,
-        "theme_operation_json",
-        vec![
-            b"materialize-theme-json".to_vec(),
-            serde_json::to_vec(&serde_json::json!({
-                "schema_version": 1, "action": "inspect", "recipe": paired_recipe,
-            }))
-            .map_err(|error| smoke_error(format!("invalid theme inspection request: {error}")))?,
-            options_json.to_vec(),
-        ],
-    )?;
-    let inspection = assert_theme_operation_payload(&paired_inspection, "materialize-theme-json")?;
-    if inspection["supported_appearances"] != serde_json::json!(["light", "dark"])
-        || inspection["default_appearance"] != "light"
-    {
-        return Err(smoke_error(
-            "Typst paired recipe inspection lost its appearances",
-        ));
-    }
-    let mut paired_specs = Vec::new();
-    for appearance in ["light", "dark", "light"] {
-        let envelope = call_json(
-            &mut instance,
-            "theme_operation_json",
-            vec![
-                b"materialize-theme-json".to_vec(),
-                serde_json::to_vec(&serde_json::json!({
-                    "schema_version": 1, "action": "materialize",
-                    "recipe": paired_recipe, "appearance": appearance,
-                }))
-                .map_err(|error| {
-                    smoke_error(format!("invalid theme materialization request: {error}"))
-                })?,
-                options_json.to_vec(),
-            ],
-        )?;
-        let selected = assert_theme_operation_payload(&envelope, "materialize-theme-json")?;
-        if selected["effective_appearance"] != appearance || !selected["spec"].is_object() {
-            return Err(smoke_error(
-                "Typst paired recipe selected an unexpected appearance",
-            ));
-        }
-        paired_specs.push(selected["spec"].clone());
-    }
-    if paired_specs[0] == paired_specs[1] || paired_specs[0] != paired_specs[2] {
-        return Err(smoke_error(
-            "Typst paired materialization lost appearance isolation",
-        ));
-    }
-
-    let preset_export = instance.call(
-        "theme_operation_json",
-        vec![
-            b"export-theme-preset-json".to_vec(),
-            b"editor".to_vec(),
-            options_json.to_vec(),
-        ],
-    )?;
-    let preset_export = parse_json("export-theme-preset-json", &preset_export)?;
-    let preset_export = assert_theme_operation_payload(&preset_export, "export-theme-preset-json")?;
-    if serde_json::from_value::<merman::diagram_theme::ThemeRecipeV1>(preset_export.clone())
-        .is_err()
-        || preset_export.get("kind").and_then(JsonValue::as_str) != Some("design")
-        || preset_export.pointer("/design/appearances/light").is_none()
-        || preset_export.pointer("/design/appearances/dark").is_none()
-    {
-        return Err(smoke_error(format!(
-            "export-theme-preset-json returned an invalid preset export: {preset_export}"
-        )));
-    }
+    validate_theme_operations(&mut instance)?;
 
     let rejected_theme_operation = instance.call(
         "theme_operation_json",
@@ -1114,154 +969,58 @@ fn assert_analysis_payload(
     Ok(())
 }
 
-fn validate_theme_authoring_vectors(
-    instance: &mut PluginInstance,
-    options_json: &[u8],
-) -> Result<(), XtaskError> {
-    let support: Vec<JsonValue> = serde_json::from_str(include_str!(
-        "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/support.json"
-    ))
-    .map_err(|error| smoke_error(format!("invalid support vectors: {error}")))?;
-    for vector in &support {
-        let payload = call_json(
-            instance,
-            "theme_operation_json",
-            vec![
-                b"describe-theme-support-json".to_vec(),
-                vector["query"].to_string().into_bytes(),
-                options_json.to_vec(),
-            ],
-        )?;
-        let actual = assert_theme_operation_payload(&payload, "describe-theme-support-json")?;
-        if actual != &vector["expected"] {
-            return Err(smoke_error(format!(
-                "Typst support differs from shared vector {}: {actual}",
-                vector["id"]
-            )));
-        }
+fn validate_theme_operations(instance: &mut PluginInstance) -> Result<(), XtaskError> {
+    let catalog_payload = call_json(instance, "theme_catalog_json", Vec::new())?;
+    let catalog = assert_theme_operation_payload(&catalog_payload, "theme-catalog")?;
+    if catalog["schema_version"] != 2
+        || catalog["presets"]
+            .as_array()
+            .is_none_or(|presets| presets.len() != 13)
+        || !catalog["mermaid_themes"].is_array()
+        || !catalog["families"].is_array()
+    {
+        return Err(smoke_error(
+            "Typst theme catalog must expose the shared schema 2",
+        ));
     }
 
-    for (name, definition, expected_spec) in [
-        (
-            "light",
-            include_str!(
-                "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/light.design.json"
-            ),
-            include_str!(
-                "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/light.spec.canonical.json"
-            ),
-        ),
-        (
-            "dark",
-            include_str!(
-                "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/dark.design.json"
-            ),
-            include_str!(
-                "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/dark.spec.canonical.json"
-            ),
-        ),
-    ] {
-        let payload = call_json(
-            instance,
-            "theme_operation_json",
-            vec![
-                b"materialize-theme-json".to_vec(),
-                definition.as_bytes().to_vec(),
-                options_json.to_vec(),
-            ],
-        )?;
-        assert_theme_materialization(&payload, name, expected_spec)?;
-    }
-
-    let errors: Vec<JsonValue> = serde_json::from_str(include_str!(
-        "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/errors.json"
-    ))
-    .map_err(|error| smoke_error(format!("invalid authoring error vectors: {error}")))?;
-    for vector in &errors {
-        let source = vector["source"]
-            .as_str()
-            .ok_or_else(|| smoke_error("authoring error vector has no source string"))?;
-        let options = vector["options_json"].as_str().unwrap_or("");
-        let payload = call_json(
-            instance,
-            "theme_operation_json",
-            vec![
-                b"materialize-theme-json".to_vec(),
-                source.as_bytes().to_vec(),
-                options.as_bytes().to_vec(),
-            ],
-        )?;
-        assert_theme_authoring_error(&payload, vector)?;
-    }
-    println!(
-        "Typst WASM shared theme vectors passed: support={}, materialization=2, errors={}",
-        support.len(),
-        errors.len(),
-    );
-    Ok(())
-}
-
-fn assert_theme_materialization(
-    payload: &JsonValue,
-    name: &str,
-    expected_spec: &str,
-) -> Result<(), XtaskError> {
-    let actual = assert_theme_operation_payload(payload, "materialize-theme-json")?;
-    let materialized: merman::diagram_theme::MaterializedThemeWireV1 =
-        serde_json::from_value(actual.clone())
-            .map_err(|error| smoke_error(format!("invalid {name} materialized wire: {error}")))?;
-    let canonical = materialized
-        .spec()
-        .canonical_json_bytes()
-        .map_err(|error| smoke_error(format!("invalid {name} complete theme spec: {error}")))?;
-    if canonical != expected_spec.trim_ascii_end().as_bytes() {
+    let export = call_json(
+        instance,
+        "theme_operation_json",
+        vec![
+            b"export-theme-preset".to_vec(),
+            b"studio".to_vec(),
+            Vec::new(),
+        ],
+    )?;
+    let document = assert_theme_operation_payload(&export, "export-theme-preset")?;
+    if document["schema_version"] != 2 || document["id"] != "studio" {
         return Err(smoke_error(format!(
-            "Typst materialization differs from shared {name} vector: {actual}"
+            "Typst returned an invalid v2 preset: {document}"
         )));
     }
-    Ok(())
-}
 
-fn assert_theme_authoring_error(payload: &JsonValue, vector: &JsonValue) -> Result<(), XtaskError> {
-    let mut envelope = payload.clone();
-    let details = envelope
-        .as_object_mut()
-        .and_then(|object| object.remove("details"))
-        .ok_or_else(|| smoke_error("Typst authoring error has no details"))?;
-    let code_name = vector["code_name"]
-        .as_str()
-        .ok_or_else(|| smoke_error("authoring error vector has no code_name"))?;
-    assert_error_payload(&envelope, "materialize-theme-json", code_name)?;
-    if envelope["code"] != vector["typst_status_code"]
-        || envelope["kind"] != vector["typst_error_kind"]
+    let request = serde_json::json!({
+        "document": document,
+        "appearance": "dark",
+        "auto_fix_contrast": true,
+    });
+    let resolved = call_json(
+        instance,
+        "theme_operation_json",
+        vec![
+            b"resolve-theme".to_vec(),
+            request.to_string().into_bytes(),
+            Vec::new(),
+        ],
+    )?;
+    let resolved = assert_theme_operation_payload(&resolved, "resolve-theme")?;
+    if resolved["ok"] != true
+        || resolved["resolved"]["appearance"] != "dark"
+        || !resolved["notices"].is_array()
     {
         return Err(smoke_error(format!(
-            "Typst authoring status differs from shared vector {}: {envelope}",
-            vector["id"]
-        )));
-    }
-    let mut authoring = details["theme_authoring"].clone();
-    let diagnostics = authoring["diagnostics"]
-        .as_array_mut()
-        .ok_or_else(|| smoke_error("Typst authoring error has no diagnostic array"))?;
-    for diagnostic in diagnostics {
-        let message = diagnostic
-            .as_object_mut()
-            .and_then(|object| object.remove("message"));
-        if message
-            .as_ref()
-            .and_then(JsonValue::as_str)
-            .is_none_or(|message| message.trim().is_empty())
-        {
-            return Err(smoke_error(
-                "Typst authoring diagnostic has no nonempty message",
-            ));
-        }
-    }
-    if authoring != vector["theme_authoring"] || details["resource"] != vector["resource"] {
-        return Err(smoke_error(format!(
-            "Typst authoring error differs from shared vector {}: {details}",
-            vector["id"]
+            "Typst could not resolve the dark preset: {resolved}"
         )));
     }
     Ok(())
@@ -1614,9 +1373,8 @@ mod tests {
             expected_typst_operation_ids(&artifact),
             [
                 OperationKey::AnalysisJson.id(),
-                OperationKey::DescribeThemeSupportJson.id(),
-                OperationKey::ExportThemePresetJson.id(),
-                OperationKey::MaterializeThemeJson.id(),
+                OperationKey::ExportThemePreset.id(),
+                OperationKey::ResolveTheme.id(),
                 OperationKey::Svg.id(),
             ]
         );
@@ -1641,9 +1399,8 @@ mod tests {
         assert_eq!(
             expected_typst_operation_ids(&svg_only),
             [
-                OperationKey::DescribeThemeSupportJson.id(),
-                OperationKey::ExportThemePresetJson.id(),
-                OperationKey::MaterializeThemeJson.id(),
+                OperationKey::ExportThemePreset.id(),
+                OperationKey::ResolveTheme.id(),
                 OperationKey::Svg.id(),
             ]
         );
@@ -1657,9 +1414,8 @@ mod tests {
         assert_eq!(
             expected_typst_operation_ids(&svg_with_layouts),
             [
-                OperationKey::DescribeThemeSupportJson.id(),
-                OperationKey::ExportThemePresetJson.id(),
-                OperationKey::MaterializeThemeJson.id(),
+                OperationKey::ExportThemePreset.id(),
+                OperationKey::ResolveTheme.id(),
                 OperationKey::Svg.id(),
             ],
             "supplemental capabilities must not expand the closed Typst transport"
@@ -1771,112 +1527,6 @@ mod tests {
                 .to_string()
                 .contains("missing required fields: [profiles]")
         );
-    }
-
-    #[test]
-    fn materialization_golden_uses_contract_numbers_and_rejects_wire_drift() {
-        let expected = r#"{"typography":{"default":{"font_size_px":17}}}"#;
-        let payload = json!({
-            "version": 1,
-            "operation": "materialize-theme-json",
-            "ok": true,
-            "code": 0,
-            "code_name": "MERMAN_OK",
-            "kind": null,
-            "capability_id": null,
-            "message": null,
-            "data": {"result": {
-                "schema_version": 1,
-                "authoring_schema_version": 1,
-                "expansion_version": 1,
-                "spec_schema_version": 1,
-                "spec": {"typography": {"default": {"font_size_px": 17.0}}},
-            }},
-        });
-        assert!(assert_theme_materialization(&payload, "number", expected).is_ok());
-        for (pointer, value) in [
-            ("/data/result/schema_version", json!(2)),
-            ("/data/result/authoring_schema_version", json!(2)),
-            ("/data/result/expansion_version", json!(2)),
-            ("/data/result/spec_schema_version", json!(2)),
-            (
-                "/data/result/spec/typography/default/font_size_px",
-                json!(18),
-            ),
-        ] {
-            let mut changed = payload.clone();
-            *changed.pointer_mut(pointer).unwrap() = value;
-            assert!(
-                assert_theme_materialization(&changed, "number", expected).is_err(),
-                "{pointer}"
-            );
-        }
-        let mut changed = payload.clone();
-        changed["data"]["result"]["extra"] = json!(true);
-        assert!(assert_theme_materialization(&changed, "number", expected).is_err());
-        let mut changed = payload;
-        changed["data"]["result"]["spec"]["extra"] = json!(true);
-        assert!(assert_theme_materialization(&changed, "number", expected).is_err());
-    }
-
-    #[test]
-    fn authoring_golden_rejects_diagnostic_resource_and_status_drift() {
-        let vectors: Vec<JsonValue> = serde_json::from_str(include_str!(
-            "../../../merman-theme-authoring-fixtures/fixtures/authoring-v1/errors.json"
-        ))
-        .unwrap();
-        for vector in vectors {
-            let mut payload = json!({
-                "version": 1,
-                "operation": "materialize-theme-json",
-                "ok": false,
-                "code": vector["typst_status_code"],
-                "code_name": vector["code_name"],
-                "kind": vector["typst_error_kind"],
-                "capability_id": null,
-                "message": "Theme authoring failed",
-                "data": null,
-                "details": {"theme_authoring": vector["theme_authoring"]},
-            });
-            if let Some(resource) = vector.get("resource") {
-                payload["details"]["resource"] = resource.clone();
-            }
-            for diagnostic in payload["details"]["theme_authoring"]["diagnostics"]
-                .as_array_mut()
-                .unwrap()
-            {
-                diagnostic["message"] = json!("A useful diagnostic");
-            }
-            assert!(assert_theme_authoring_error(&payload, &vector).is_ok());
-            for (pointer, replacement) in [
-                ("/code", JsonValue::Null),
-                ("/code", json!(0)),
-                ("/code", json!("1")),
-                ("/code", json!(99)),
-                ("/kind", json!("wrong")),
-                ("/code_name", json!("MERMAN_OK")),
-                ("/ok", json!(true)),
-                (
-                    "/details/theme_authoring/diagnostics/0/path",
-                    json!("/wrong"),
-                ),
-                (
-                    "/details/theme_authoring/diagnostics/0/code",
-                    json!("wrong"),
-                ),
-                ("/details/theme_authoring/diagnostics/0/message", json!(" ")),
-            ] {
-                let mut changed = payload.clone();
-                *changed.pointer_mut(pointer).unwrap() = replacement;
-                assert!(
-                    assert_theme_authoring_error(&changed, &vector).is_err(),
-                    "{pointer}"
-                );
-            }
-            let mut changed = payload;
-            changed["details"]["resource"] = json!({"profile": "wrong"});
-            assert!(assert_theme_authoring_error(&changed, &vector).is_err());
-        }
     }
 
     #[test]

@@ -245,7 +245,6 @@ fn state_presentation_from_nodes(nodes: serde_json::Value) -> PresentationDiagra
             config: config.clone(),
             effective_config: config,
             title: None,
-            theme_recipe: None,
         },
         RenderSemanticModel::State(StateDiagramRenderModel {
             direction: "TB".to_string(),

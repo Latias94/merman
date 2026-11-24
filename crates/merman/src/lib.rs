@@ -104,7 +104,7 @@ pub use merman_model as model;
 
 pub use merman_core::generated::default_site_config;
 #[cfg(feature = "presentation")]
-pub use merman_core::presentation::{SourcePresentationConfig, ThemeCompatibilityPlan};
+pub use merman_core::presentation::SourcePresentationConfig;
 #[cfg(feature = "presentation")]
 pub use merman_core::{
     ConfigDetectorFn, CustomJsonRenderParser, Detector, DetectorConfig, DetectorRegistry,
@@ -157,7 +157,6 @@ pub use render::{
     DocumentPortabilityReport, OperationExecutionPath, RenderArtifactKind, RenderEvidence,
     RenderedDocument, SvgEnvironment, SvgLayoutOutput, SvgOutput, SvgRequest, TargetAdmissionError,
     TargetAdmissionReason, TargetAdmissionReceipt, TargetAdmissionStatus, TargetFontSource,
-    ThemeDiagnostic, ThemeEvidenceStatus, ThemeEvidenceSummary,
 };
 #[cfg(feature = "jpeg")]
 pub use render::{JpegRequest, PreparedJpegExport};
@@ -184,9 +183,9 @@ pub use merman_editor_core as editor;
 #[cfg(feature = "svg")]
 pub mod svg;
 
-/// Versioned visual diagram-theme authoring and compilation.
-#[cfg(feature = "svg")]
-pub mod diagram_theme;
+/// Native theme documents and render selection.
+#[cfg(any(feature = "svg", feature = "ascii"))]
+pub mod theme;
 
 /// ASCII target-local types and model-level backend interface.
 #[cfg(feature = "ascii")]

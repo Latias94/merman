@@ -1,225 +1,68 @@
 use std::fmt::Write as _;
-use std::sync::OnceLock;
 
 use merman_model::presentation::PresentationConfig;
 
-use crate::diagram_theme::{
-    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
-    FamilyThemeSelectorShape, ResolvedDiagramTheme, ThemeCapability, ThemeTarget,
-    ThemeTypographyProperty, ThemeVariant,
-};
-use crate::family::{
-    DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeOutcomes,
-    FamilyThemeResidualReason, InheritedFontStackOutcome, InheritedFontStackPlan,
-    SingleTitleFillPlan, StaticSurfacePaint, resolve_direct_static_fill,
-};
 use crate::model::VennDiagramLayout;
 use crate::resources::OperationWorkMeter;
+use crate::theme::{Color, FamilyTheme};
 
 mod css_binding;
 pub(crate) use css_binding::{VennAreaPaintBinding, VennCssBinding};
 
-/// Final Venn inherited font stack shared by its four local stylesheet selectors and evidence.
+/// Final Venn inherited font stack shared by its four local stylesheet selectors.
 #[derive(Debug)]
 pub(crate) struct VennTypographyThemePlan {
     css_binding: VennCssBinding,
-    inherited_font_stack: InheritedFontStackPlan,
-    text_fill: Option<crate::family::DirectStaticPaint>,
-    text_fill_routes: Box<[(FamilyThemeMechanismKey, usize)]>,
-    core_paints: [StaticSurfacePaint; 2],
-    terminal_receipt: OnceLock<VennTypographyThemeReceipt>,
+    native: Option<super::native_theme::VennNativeTypography>,
+    font_family_css: String,
 }
 
 impl VennTypographyThemePlan {
     pub(crate) fn resolve(
-        theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &PresentationConfig,
-        _title: Option<&str>,
+        theme: Option<&FamilyTheme>,
+        config: &PresentationConfig,
         layout: &VennDiagramLayout,
         model: &merman_model::families::venn::VennDiagramModel,
-        title_theme: &VennTitleThemePlan,
-        work_meter: &OperationWorkMeter,
+        canvas: Option<Color>,
+        work: &OperationWorkMeter,
     ) -> crate::Result<Self> {
-        let text_fill = theme.and_then(|theme| {
-            let style = theme.style(ThemeTarget::Text, ThemeVariant::Default, None);
-            resolve_direct_static_fill(
+        let mut css_binding = VennCssBinding::resolve(config.as_value(), model, layout, work)?;
+        let native = if let Some(theme) = theme {
+            super::native_theme::apply_paints(
+                &mut css_binding,
                 theme,
-                &style,
-                &[ThemeTarget::Text],
-                DirectStaticSelectorDomain::Default,
-            )
-        });
-        let text_fill_routes = theme
-            .map(|theme| {
-                theme
-                    .family_mechanism_routes()
-                    .iter()
-                    .copied()
-                    .filter_map(|route| match route.mechanism() {
-                        FamilyThemeMechanism::RuleFacet {
-                            rule_index,
-                            target: ThemeTarget::Text,
-                            selector:
-                                FamilyThemeSelectorShape::Static {
-                                    variant: None | Some(ThemeVariant::Default),
-                                },
-                            facet: FamilyThemeRuleFacet::Fill(_),
-                        } if route.disposition() == FamilyThemeDisposition::TypedAdapter => {
-                            Some((theme.family_mechanism_key(route), rule_index))
-                        }
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-                    .into_boxed_slice()
-            })
-            .unwrap_or_default();
-        let mut css_binding = VennCssBinding::resolve(
-            effective_config.as_value(),
-            model,
-            layout,
-            title_theme.fill_css(),
-            work_meter,
-        )?;
-        if let Some(fill) = &text_fill {
-            let mut intersection_fill_applied = false;
-            for area in &mut css_binding.areas {
-                if let VennAreaPaintBinding::Intersection {
-                    text,
-                    source_text_owned,
-                    config_text_role,
-                    typed_text_fill,
-                    ..
-                } = area
-                    && !*source_text_owned
-                    && !config_text_role.is_some_and(|path| {
-                        effective_config.config_paint_overrides_typed_default(path)
-                    })
-                {
-                    *text = Some(fill.css().to_owned());
-                    *typed_text_fill = true;
-                    intersection_fill_applied = true;
-                }
-            }
-            // A cleared label can inherit a separately owned root fill. Do not let a shared
-            // stylesheet declaration recolor it while another intersection uses the typed fill.
-            if intersection_fill_applied
-                && css_binding.areas.iter().all(|area| {
-                    !matches!(area, VennAreaPaintBinding::Intersection { text: None, .. })
-                })
-            {
-                css_binding.set_text_color = Some(fill.css().to_owned());
-            }
-            if !css_binding
-                .text_node_config_role
-                .is_some_and(|path| effective_config.config_paint_overrides_typed_default(path))
-            {
-                css_binding.text_node_color = Some(fill.css().to_owned());
-                css_binding.typed_text_node_fill = true;
-            }
-        }
-        let core_paints = if theme.is_some() {
-            let circles = css_binding
-                .areas
-                .iter()
-                .filter_map(|area| match area {
-                    VennAreaPaintBinding::Circle(circle) => Some(circle),
-                    VennAreaPaintBinding::Intersection { .. } => None,
-                })
-                .collect::<Vec<_>>();
-            let config_owned = circles
-                .iter()
-                .map(|circle| {
-                    let path = circle
-                        .fill_config_role
-                        .map(|role| format!("themeVariables.venn{role}"))
-                        .unwrap_or_else(|| "themeVariables.primaryColor".into());
-                    effective_config.config_paint_overrides_typed_default(&path)
-                })
-                .collect::<Vec<_>>();
-            let source_fill = circles
-                .iter()
-                .zip(&config_owned)
-                .map(|(circle, &owned)| circle.source_fill_owned || owned)
-                .collect::<Vec<_>>();
-            let source_stroke = circles
-                .iter()
-                .zip(&config_owned)
-                .map(|(circle, &owned)| {
-                    circle.source_stroke_owned || (!circle.source_fill_owned && owned)
-                })
-                .collect::<Vec<_>>();
-            let source_label = circles
-                .iter()
-                .zip(&config_owned)
-                .zip(layout.areas.iter().filter(|area| area.sets.len() == 1))
-                .map(|((circle, &owned), area)| {
-                    circle.source_text_owned
-                        || (!circle.source_fill_owned && owned)
-                        || super::rendered_area_label(area).trim().is_empty()
-                })
-                .collect::<Vec<_>>();
-            let visible_label_sources = source_label
-                .iter()
-                .copied()
-                .zip(layout.areas.iter().filter(|area| area.sets.len() == 1))
-                .filter(|(_, area)| !super::rendered_area_label(area).trim().is_empty())
-                .map(|(owned, _)| owned)
-                .collect::<Vec<_>>();
-            let node = StaticSurfacePaint::resolve(
-                theme,
-                ThemeTarget::Node,
-                &source_fill,
-                &source_stroke,
-                work_meter,
+                config,
+                layout,
+                canvas,
+                work,
             )?;
-            let label = StaticSurfacePaint::resolve(
-                theme,
-                ThemeTarget::NodeLabel,
-                &visible_label_sources,
-                &vec![false; visible_label_sources.len()],
-                work_meter,
-            )?;
-            let dark_background = css_binding.dark_background;
-            for (index, circle) in css_binding
-                .areas
-                .iter_mut()
-                .filter_map(|area| match area {
-                    VennAreaPaintBinding::Circle(circle) => Some(circle),
-                    VennAreaPaintBinding::Intersection { .. } => None,
-                })
-                .enumerate()
-            {
-                if !source_fill[index]
-                    && let Some(fill) = &node.fill
-                {
-                    circle.apply_theme_fill(fill.css(), dark_background)?;
-                }
-                if !source_stroke[index]
-                    && let Some(stroke) = &node.stroke
-                {
-                    circle.stroke = stroke.css().to_owned();
-                }
-                if !source_label[index]
-                    && let Some(fill) = &label.fill
-                {
-                    circle.text = fill.css().to_owned();
-                }
-            }
-            [node, label]
+            Some(super::native_theme::VennNativeTypography::resolve(
+                theme, config,
+            ))
         } else {
-            Default::default()
+            None
         };
         Ok(Self {
             css_binding,
-            inherited_font_stack: InheritedFontStackPlan::resolve_property_local(
-                theme,
-                effective_config,
-            ),
-            text_fill,
-            text_fill_routes,
-            core_paints,
-            terminal_receipt: OnceLock::new(),
+            native,
+            font_family_css: crate::config::config_font_family_css(config),
         })
+    }
+
+    pub(crate) fn title_font_size(&self, scale: f64) -> f64 {
+        super::native_theme::VennFontSizes::new(
+            self.native.as_ref().and_then(|native| native.base_size),
+            scale,
+        )
+        .title
+    }
+
+    pub(crate) fn area_font_size(&self, scale: f64) -> f64 {
+        super::native_theme::VennFontSizes::new(
+            self.native.as_ref().and_then(|native| native.base_size),
+            scale,
+        )
+        .area
     }
 
     pub(crate) fn css_binding(&self) -> &VennCssBinding {
@@ -227,15 +70,10 @@ impl VennTypographyThemePlan {
     }
 
     pub(crate) fn font_family_css(&self) -> &str {
-        self.inherited_font_stack.font_family_css()
-    }
-
-    pub(crate) fn begin_terminal_receipt(&self) -> VennTypographyThemeReceipt {
-        VennTypographyThemeReceipt {
-            requested: self.inherited_font_stack.typography_requested()
-                || !self.text_fill_routes.is_empty(),
-            ..VennTypographyThemeReceipt::default()
-        }
+        self.native
+            .as_ref()
+            .and_then(|native| native.body_family.as_deref())
+            .unwrap_or(&self.font_family_css)
     }
 
     pub(crate) fn stylesheet(&self, diagram_id: &str) -> String {
@@ -257,6 +95,24 @@ impl VennTypographyThemePlan {
             .map(|color| format!("color:{color};"))
             .unwrap_or_default();
         let title_fill = &self.css_binding.title_color;
+        if let Some(native) = &self.native {
+            let body = self.font_family_css();
+            let title = native.title_family.as_deref().unwrap_or(body);
+            let title_weight = native.title_weight;
+            let body_weight = native.label_weight;
+            let _ = write!(
+                css,
+                "#{id} .{}{{fill:{title_fill};font-family:{title};font-weight:{title_weight};}}\
+                 #{id} .{} text{{font-family:{body};font-weight:{body_weight};}}\
+                 #{id} .{} text{{{set_text_fill}font-family:{body};font-weight:{body_weight};}}\
+                 #{id} .{}{{font-family:{body};font-weight:{body_weight};{text_node_color}}}",
+                super::VENN_TITLE_CLASS,
+                super::VENN_CIRCLE_CLASS,
+                super::VENN_INTERSECTION_CLASS,
+                super::VENN_TEXT_NODE_CLASS,
+            );
+            return css;
+        }
         let _ = write!(
             css,
             "#{id} .{title_class}{{font-size:32px;fill:{title_fill};font-family:{font_family};}}\
@@ -270,206 +126,5 @@ impl VennTypographyThemePlan {
             font_family = self.font_family_css(),
         );
         css
-    }
-
-    pub(crate) fn record_terminal(&self, receipt: VennTypographyThemeReceipt) -> bool {
-        self.terminal_receipt.set(receipt).is_ok()
-    }
-
-    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
-        let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
-        let Some(receipt) = self.terminal_receipt.get() else {
-            self.inherited_font_stack
-                .record_unsupported_typography_evidence(evidence, true);
-            if self.inherited_font_stack.typed_font_stack_requested() {
-                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-            }
-            for (key, _) in &self.text_fill_routes {
-                evidence.mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
-            }
-            return;
-        };
-        for paint in &self.core_paints {
-            paint.record_evidence(evidence);
-        }
-        self.inherited_font_stack
-            .record_unsupported_typography_evidence(evidence, receipt.visible_text);
-        if !receipt.visible_text {
-            evidence.mark_not_applicable(key);
-            for (key, _) in &self.text_fill_routes {
-                evidence.mark_not_applicable(key.clone());
-            }
-            return;
-        }
-        if self.inherited_font_stack.typed_font_stack_active() {
-            evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
-        } else if self.inherited_font_stack.outcome() == InheritedFontStackOutcome::ConfigOwned {
-            evidence.mark_not_applicable(key);
-        } else if self.inherited_font_stack.typed_font_stack_requested() {
-            evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-        }
-        for (key, rule_index) in &self.text_fill_routes {
-            let Some(fill) = self
-                .text_fill
-                .as_ref()
-                .filter(|fill| fill.rule_index() == *rule_index)
-            else {
-                evidence.mark_not_applicable(key.clone());
-                continue;
-            };
-            if receipt.text_fill_terminal {
-                evidence.mark_applied_with_capabilities(key.clone(), [fill.capability()]);
-            } else {
-                evidence.mark_not_applicable(key.clone());
-            }
-        }
-    }
-}
-
-/// Visible text outcomes collected during normal Venn emission.
-#[derive(Debug, Default)]
-pub(crate) struct VennTypographyThemeReceipt {
-    requested: bool,
-    visible_text: bool,
-    text_fill_terminal: bool,
-}
-
-impl VennTypographyThemeReceipt {
-    pub(crate) fn record_title_text(&mut self, _class: &str, text: &str) {
-        if self.requested {
-            self.visible_text |= !text.trim().is_empty();
-        }
-    }
-
-    pub(crate) fn record_circle_label(&mut self, _parent: &str, _class: &str, text: &str) {
-        self.record_title_text("", text);
-    }
-
-    pub(crate) fn record_intersection_label(
-        &mut self,
-        _parent: &str,
-        _class: &str,
-        text: &str,
-        typed_fill: bool,
-        _fill: &str,
-    ) {
-        self.record_text_node("", text, typed_fill, "");
-    }
-
-    pub(crate) fn record_text_node(
-        &mut self,
-        _class: &str,
-        text: &str,
-        typed_fill: bool,
-        _fill: &str,
-    ) {
-        if !self.requested || text.trim().is_empty() {
-            return;
-        }
-        self.visible_text = true;
-        self.text_fill_terminal |= typed_fill;
-    }
-}
-
-/// Final Venn title fill shared by stylesheet emission, the title terminal, and evidence.
-#[derive(Debug)]
-pub(crate) struct VennTitleThemePlan {
-    fill: SingleTitleFillPlan,
-}
-
-impl VennTitleThemePlan {
-    pub(crate) fn resolve(
-        theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &PresentationConfig,
-        title: Option<&str>,
-        work_meter: &OperationWorkMeter,
-    ) -> crate::Result<Self> {
-        let Some(theme) = theme else {
-            return Ok(Self {
-                fill: SingleTitleFillPlan::default(),
-            });
-        };
-        let title_present = title.is_some_and(|title| !title.trim().is_empty());
-        let config_owns_fill = VennCssBinding::title_color_source(effective_config.as_value())
-            .is_some_and(|(path, _)| effective_config.config_paint_overrides_typed_default(path));
-        let fill = SingleTitleFillPlan::resolve(
-            theme,
-            title_present,
-            config_owns_fill,
-            FamilyThemeOutcomes::default(),
-            work_meter,
-        )?;
-        Ok(Self { fill })
-    }
-
-    pub(crate) fn fill_css(&self) -> Option<&str> {
-        self.fill.fill_css()
-    }
-
-    pub(crate) fn record_title(&self) {
-        if self.fill.fill_css().is_some() {
-            self.fill.record_proven_terminal();
-        }
-    }
-
-    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
-        self.fill.record_evidence(evidence);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    fn collect_evidence(
-        theme: &crate::diagram_theme::ResolvedDiagramTheme,
-        record: impl FnOnce(&mut crate::family::FamilyThemeEvidence),
-    ) -> crate::family::FamilyThemeEvidence {
-        let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(theme));
-        record(&mut evidence);
-        evidence
-    }
-
-    use super::VennTitleThemePlan;
-    use crate::DiagramFamilyId;
-    use crate::diagram_theme::{
-        CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette, ThemeColorValue,
-        ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget,
-    };
-    use crate::resources::RenderResourcePolicy;
-    use serde_json::json;
-
-    #[test]
-    fn typed_title_fill_shadows_unsupported_ordinal_palette() {
-        let palette = OrdinalPalette::new([
-            ThemeColorValue::parse("#abcdef").expect("valid Venn ordinal palette color")
-        ])
-        .expect("non-empty Venn ordinal palette");
-        let resolved = DiagramThemeCompiler::new()
-            .compile(
-                DiagramThemeSpec::new().with_styles(
-                    ThemeRuleSet::default()
-                        .with_rule(ThemeRule::new(
-                            ThemeTarget::Title,
-                            ThemeStylePatch::default().with_fill(
-                                CanvasPaint::solid("#123456").expect("valid Venn title fill"),
-                            ),
-                        ))
-                        .with_ordinal_palette(ThemeTarget::Title, palette),
-                ),
-            )
-            .expect("compile Venn title fill and palette theme")
-            .resolve(DiagramFamilyId::VENN);
-        let meter = crate::resources::OperationWorkMeter::new(
-            RenderResourcePolicy::unbounded_for_trusted_input(),
-        );
-        let config = crate::test_support::presentation_config(json!({}));
-        let plan = VennTitleThemePlan::resolve(Some(&resolved), &config, Some("Title"), &meter)
-            .expect("resolve Venn title theme");
-        plan.record_title();
-
-        let evidence = collect_evidence(&resolved, |evidence| plan.record_evidence(evidence));
-        assert_eq!(evidence.required_mechanisms().len(), 2);
-        assert_eq!(evidence.applied().len(), 1);
-        assert_eq!(evidence.not_applicable_mechanisms().len(), 1);
-        assert!(evidence.residuals().is_empty());
     }
 }

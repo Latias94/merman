@@ -12,7 +12,8 @@ const workspace: WorkspaceSnapshot = {
   mermaidConfig: '{ "theme":"forest", "flowchart":{"htmlLabels":false,"look":"neo"} }',
   diagramTheme: "default",
   diagramFont: "trebuchet",
-  themePresetId: "one-dark",
+  themePresetId: "studio",
+  themeAppearance: "dark",
 };
 
 async function open(page: Page, value = workspace): Promise<Locator> {
@@ -43,7 +44,7 @@ test("project use offers Rust, CLI and local Web consumers with complete config 
   const errors = monitorBrowserErrors(page);
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   const dialog = await open(page);
-  await expect(dialog.getByTestId("project-use-code")).toContainText('compile_preset_selection("one-dark", Some(ThemeAppearance::Dark))');
+  await expect(dialog.getByTestId("project-use-code")).toContainText('ThemeSelection::preset(preset, Some(Appearance::Dark))');
   const rustFiles = await downloadFiles(page, dialog);
   expect(rustFiles["Cargo.toml"]).toContain('../merman/crates/merman');
   expect(rustFiles["src/main.rs"]).toContain("RenderRequest::svg");
@@ -52,7 +53,7 @@ test("project use offers Rust, CLI and local Web consumers with complete config 
   expect(rustFiles["diagram.mmd"]).toContain('---\n%%{init: {"theme":"forest"');
   expect(JSON.parse(rustFiles["site-config.json"]).flowchart).toBeUndefined();
   await dialog.getByRole("tab", { name: "CLI", exact: true }).click();
-  await expect(dialog.getByTestId("project-use-code")).toContainText("--theme-preset one-dark");
+  await expect(dialog.getByTestId("project-use-code")).toContainText("--theme studio --appearance dark");
   await expect(dialog.getByTestId("project-use-code")).toContainText("--config-file site-config.json");
   await expect(dialog.getByTestId("project-use-code")).toContainText("--font-measurement deterministic --font-system off");
   await expect(dialog.getByTestId("project-use-host-notices")).toContainText("deterministic measurement");
@@ -65,7 +66,7 @@ test("project use offers Rust, CLI and local Web consumers with complete config 
   await dialog.getByRole("button", { name: "Copy options.json", exact: true }).click();
   const copied = await page.evaluate(() => navigator.clipboard.readText());
   const options = JSON.parse(copied);
-  expect(options.theme).toEqual({ preset: "one-dark", appearance: "dark" });
+  expect(options.theme).toEqual({ preset: "studio", appearance: "dark" });
   expect(options.site_config.theme).toBe("forest");
   expect(options.site_config.flowchart).toBeUndefined();
   const webFiles = await downloadFiles(page, dialog);
@@ -82,19 +83,19 @@ test("project use offers Rust, CLI and local Web consumers with complete config 
   errors.assertNone();
 });
 
-test("standalone exploration recipes retain their raw text and theme-only is a separate example", async ({ page }) => {
+test("editable theme documents retain their raw text and theme-only is a separate example", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
-  const recipe = await readFile(new URL("../src/themes/recipes/atlas.theme.json", import.meta.url), "utf8");
-  const dialog = await open(page, { ...workspace, themePresetId: null, themeRecipeJson: recipe });
+  const document = ' {"schema_version":2, "extends":"studio", "name":"Custom Studio"}\n';
+  const dialog = await open(page, { ...workspace, themePresetId: null, themeDocumentJson: document });
   const current = await downloadFiles(page, dialog);
-  expect(current["theme.json"]).toBe(recipe);
-  expect(current["options.json"]).toContain(`"theme":${recipe}`);
-  expect(current["src/main.rs"]).toContain("compile_document");
-  expect(current["src/main.rs"]).not.toContain('from_id("atlas")');
+  expect(current["theme.json"]).toBe(document);
+  expect(current["options.json"]).toContain(`"document":${document}`);
+  expect(current["src/main.rs"]).toContain("compile_json");
+  expect(current["src/main.rs"]).not.toContain('from_id("studio")');
   await dialog.getByRole("radio", { name: /^Theme only/ }).check();
   await dialog.getByRole("tab", { name: "Web", exact: true }).click();
   const theme = await downloadFiles(page, dialog);
-  expect(theme["theme.json"]).toBe(recipe);
+  expect(theme["theme.json"]).toBe(document);
   expect(theme["source.mmd"]).toBeUndefined();
   expect(theme["playground-config.json"]).toBeUndefined();
   expect(theme["diagram.mmd"]).not.toContain("Captured source");
@@ -110,20 +111,20 @@ test("unknown preset fallback blocks code and download in both scopes", async ({
   const dialog = await open(page, { ...workspace, themePresetId: "atlas" });
   for (const scope of ["Reproduce current diagram", "Theme only"]) {
     await dialog.getByRole("radio", { name: new RegExp(`^${scope}`) }).check();
-    await expect(dialog.getByTestId("project-use-generation-error")).toContainText("not confirmed available");
+    await expect(dialog.getByTestId("project-use-generation-error")).toContainText("unavailable");
     await expect(dialog.getByTestId("project-use-code")).toHaveCount(0);
     await expect(dialog.getByRole("button", { name: "Download all files (.zip)", exact: true })).toBeDisabled();
   }
   errors.assertNone();
 });
 
-test("invalid recipes cannot be adopted in theme-only code while valid recipes survive diagram errors", async ({ page }) => {
+test("invalid themes cannot be adopted while valid themes survive diagram errors", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await page.addInitScript(() => {
     if (window === window.top && (location.protocol === "http:" || location.protocol === "https:")) localStorage.setItem("merman-language", "en");
   });
-  const invalid = '{"schema_version":1,"kind":"complete_spec","complete_spec":{"not_a_theme_field":true}}';
-  await page.goto(`./${encodeShareHash({ ...workspace, themePresetId: null, themeRecipeJson: invalid })}`, { waitUntil: "domcontentloaded" });
+  const invalid = '{"schema_version":2,"extends":"studio","not_a_theme_field":true}';
+  await page.goto(`./${encodeShareHash({ ...workspace, themePresetId: null, themeDocumentJson: invalid })}`, { waitUntil: "domcontentloaded" });
   await expect(page.locator("footer")).toContainText("Ready");
   await page.getByTestId("project-use-launcher").click();
   const dialog = page.getByTestId("project-use-dialog");
@@ -134,15 +135,15 @@ test("invalid recipes cannot be adopted in theme-only code while valid recipes s
     await expect(dialog.getByRole("button", { name: "Download all files (.zip)", exact: true })).toBeDisabled();
   }
   await page.keyboard.press("Escape");
-  const recipe = await readFile(new URL("../src/themes/recipes/atlas.theme.json", import.meta.url), "utf8");
+  const document = ' {"schema_version":2, "extends":"studio", "name":"Custom Studio"}\n';
   // Share hydration is a startup operation; a hash-only navigation retains the live workspace.
   await page.goto("about:blank");
-  await page.goto(`./${encodeShareHash({ ...workspace, code: "flowchart LR\nA -->", themePresetId: null, themeRecipeJson: recipe })}`, { waitUntil: "domcontentloaded" });
+  await page.goto(`./${encodeShareHash({ ...workspace, code: "flowchart LR\nA -->", themePresetId: null, themeDocumentJson: document })}`, { waitUntil: "domcontentloaded" });
   await expect(page.locator("footer")).toContainText("Ready");
   await page.getByTestId("project-use-launcher").click();
   await dialog.getByRole("radio", { name: /^Theme only/ }).check();
   await expect(dialog.getByRole("button", { name: "Download all files (.zip)", exact: true })).toBeEnabled();
-  expect((await downloadFiles(page, dialog))["theme.json"]).toBe(recipe);
+  expect((await downloadFiles(page, dialog))["theme.json"]).toBe(document);
   errors.assertNone();
 });
 

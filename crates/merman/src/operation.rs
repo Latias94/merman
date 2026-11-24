@@ -16,16 +16,11 @@ use merman_model::{
     resources::{InputResourceLimitExceeded, InputResourcePolicy, ModelComplexity},
     runtime::{OperationContext, RuntimePolicy},
 };
-#[cfg(feature = "svg")]
-use merman_render::diagram_theme::DiagramTheme;
-
 #[derive(Debug)]
 pub(crate) struct Operation {
     pub(crate) control: OperationControl,
     pub(crate) context: OperationContext,
     resources: InputResourcePolicy,
-    #[cfg(feature = "svg")]
-    theme: Option<DiagramTheme>,
 }
 
 impl Operation {
@@ -34,16 +29,8 @@ impl Operation {
         source: &str,
         control: OperationControl,
         resources: InputResourcePolicy,
-        #[cfg(feature = "svg")] theme: Option<DiagramTheme>,
     ) -> Result<Self, RenderError> {
-        Self::begin_source_bytes(
-            runtime,
-            source.len(),
-            control,
-            resources,
-            #[cfg(feature = "svg")]
-            theme,
-        )
+        Self::begin_source_bytes(runtime, source.len(), control, resources)
     }
 
     fn begin_source_bytes(
@@ -51,7 +38,6 @@ impl Operation {
         source_bytes: usize,
         control: OperationControl,
         resources: InputResourcePolicy,
-        #[cfg(feature = "svg")] theme: Option<DiagramTheme>,
     ) -> Result<Self, RenderError> {
         checkpoint(&control, OperationPhase::Admission)?;
         if let Err(error) = resources.check_source_byte_count(source_bytes) {
@@ -67,8 +53,6 @@ impl Operation {
             control,
             context,
             resources,
-            #[cfg(feature = "svg")]
-            theme,
         })
     }
 
@@ -107,14 +91,8 @@ impl Operation {
         control: OperationControl,
         resources: InputResourcePolicy,
     ) -> Result<PresentationArtifact, RenderError> {
-        let operation = Self::begin_source_bytes(
-            runtime,
-            prepared.source_bytes(),
-            control,
-            resources,
-            #[cfg(feature = "svg")]
-            prepared.theme().cloned(),
-        )?;
+        let operation =
+            Self::begin_source_bytes(runtime, prepared.source_bytes(), control, resources)?;
         operation.admit_model(prepared.model_complexity())?;
         Ok(PresentationArtifact::from_prepared(
             prepared.clone(),
@@ -151,8 +129,6 @@ impl Operation {
             parse_options,
             source.len(),
             complexity,
-            #[cfg(feature = "svg")]
-            self.theme.clone(),
         );
         Ok(Some(PresentationArtifact::from_prepared(
             prepared,
@@ -178,8 +154,6 @@ impl Operation {
             control: self.control,
             #[cfg(any(feature = "svg", feature = "ascii"))]
             context: self.context,
-            #[cfg(feature = "svg")]
-            theme: self.theme,
         }
     }
 }
@@ -266,8 +240,6 @@ pub(crate) struct OperationExecution {
     pub(crate) control: OperationControl,
     #[cfg(any(feature = "svg", feature = "ascii"))]
     pub(crate) context: OperationContext,
-    #[cfg(feature = "svg")]
-    pub(crate) theme: Option<DiagramTheme>,
 }
 
 /// Canonical diagram meaning paired with the operation that admitted it.
@@ -309,7 +281,7 @@ impl SemanticArtifact {
 
 /// A full Mermaid presentation artifact paired with its original operation.
 ///
-/// This artifact retains the admitted theme/configuration and can be handed off to a reusable
+/// This artifact retains the admitted configuration and can be handed off to a reusable
 /// full source. It cannot be created by promoting an already parsed semantic artifact.
 #[derive(Debug)]
 #[cfg(feature = "presentation")]

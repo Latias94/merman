@@ -253,7 +253,6 @@ pub(super) struct ErMarkerDefs<'a> {
 pub(super) fn write_er_marker_definitions(
     out: &mut impl SvgOutput,
     defs: ErMarkerDefs<'_>,
-    typed_strokes: &std::collections::BTreeMap<String, (usize, &str)>,
 ) -> Result<()> {
     let ErMarkerDefs {
         diagram_id,
@@ -276,7 +275,7 @@ pub(super) fn write_er_marker_definitions(
             ),
         ] {
             let id = format!("{diagram_id}_{diagram_type}-mdParent{end}");
-            write_marker_start(out, &id, "mdParent", &glyph, false, typed_strokes);
+            write_marker_start(out, &id, "mdParent", &glyph, false);
             glyph.write_content(out, None);
             out.push_str("</marker></defs>\n");
             out.checkpoint()?;
@@ -289,7 +288,7 @@ pub(super) fn write_er_marker_definitions(
         for (end, glyph) in ["Start", "End"].into_iter().zip(&entry.ends) {
             let name = entry.name;
             let id = format!("{diagram_id}_{diagram_type}-{name}{end}");
-            write_marker_start(out, &id, name, glyph, neo || canonical, typed_strokes);
+            write_marker_start(out, &id, name, glyph, neo || canonical);
             glyph.write_content(
                 out,
                 neo.then_some((neo_width.as_str(), neo_background.as_str())),
@@ -307,7 +306,6 @@ fn write_marker_start(
     name: &str,
     glyph: &MarkerGlyph,
     absolute_units: bool,
-    typed_strokes: &std::collections::BTreeMap<String, (usize, &str)>,
 ) {
     let _ = write!(
         out,
@@ -320,9 +318,6 @@ fn write_marker_start(
     );
     if absolute_units {
         out.push_str(r#" markerUnits="userSpaceOnUse""#);
-    }
-    if let Some((_, css)) = typed_strokes.get(id) {
-        let _ = write!(out, r#" style="stroke:{} !important""#, escape_attr(css));
     }
     out.push('>');
 }

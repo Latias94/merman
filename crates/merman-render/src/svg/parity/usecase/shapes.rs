@@ -70,26 +70,21 @@ pub(super) fn rect(
 pub(super) struct UsecaseNodeRenderContext<'a> {
     pub(super) source: Option<&'a UsecaseNode>,
     pub(super) note: bool,
-    pub(super) style: &'a str,
-    pub(super) typed_style: Option<&'a UsecaseThemeStyle>,
-    pub(super) receipt: &'a UsecaseThemeReceipt,
     pub(super) css_binding: &'a crate::usecase::UsecaseCssBinding,
-    pub(super) config: &'a merman_model::presentation::PresentationConfig,
-    pub(super) measurer: &'a dyn TextMeasurer,
+    pub(super) labels: UsecaseLabelRenderContext<'a>,
     pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) options: &'a SvgExecution<'a>,
     #[cfg(feature = "layout-shoal")]
     pub(super) canonical: bool,
 }
 
-/// The same body silhouette supplies the depth pass and the single foreground surface.
-pub(super) fn write_usecase_body(
+fn write_usecase_body(
     out: &mut String,
     node: &LayoutNode,
     plan: &UsecaseNodePlan,
     source: Option<&UsecaseNode>,
-    style: &str,
 ) {
+    let style = &plan.source_style;
     if plan.ellipse {
         let business = source.is_some_and(|node| node.business);
         let _ = write!(
@@ -171,12 +166,7 @@ pub(super) fn write_node(
                 UsecaseLabelKind::PositionedNode("label usecase-stereotype"),
                 0.0,
                 y + stereotype.metrics.height / 2.0,
-                UsecaseLabelRenderContext {
-                    config: context.config,
-                    measurer: context.measurer,
-                    receipt: context.receipt,
-                    background: None,
-                },
+                context.labels,
             );
             y += stereotype.metrics.height + 2.0;
         }
@@ -186,12 +176,7 @@ pub(super) fn write_node(
             UsecaseLabelKind::PositionedNode("label actor-label usecase-actor-label"),
             0.0,
             y + plan.label.metrics.height / 2.0,
-            UsecaseLabelRenderContext {
-                config: context.config,
-                measurer: context.measurer,
-                receipt: context.receipt,
-                background: None,
-            },
+            context.labels,
         );
         let variant = match actor.actor_type {
             UsecaseActorType::Normal => "shape usecase-actor-normal",
@@ -203,25 +188,20 @@ pub(super) fn write_node(
             out,
             r#"<g class="usecase-actor-glyph usecase-actor-{variant}" transform="translate(0,{})" style="{}">"#,
             fmt(glyph_y),
-            escape_attr(context.style)
+            escape_attr(&plan.source_style)
         );
-        let paint_attr = context
-            .typed_style
-            .filter(|style| !style.css(false).is_empty())
-            .map(|_| format!(r#" style="{}""#, escape_attr(context.style)))
-            .unwrap_or_default();
         match actor.actor_type {
             UsecaseActorType::Normal => {
                 let _ = write!(
                     out,
-                    r#"<path class="usecase-actor-stick" d="{}"{paint_attr}/>"#,
+                    r#"<path class="usecase-actor-stick" d="{}"/>"#,
                     actor::NORMAL
                 );
             }
             UsecaseActorType::Hollow => {
                 let _ = write!(
                     out,
-                    r#"<circle class="usecase-actor-hollow-head" cx="0" cy="{}" r="{}" fill="none"{paint_attr}/><path class="usecase-actor-hollow-body" d="{}" fill="none"{paint_attr}/>"#,
+                    r#"<circle class="usecase-actor-hollow-head" cx="0" cy="{}" r="{}" fill="none"/><path class="usecase-actor-hollow-body" d="{}" fill="none"/>"#,
                     actor::HOLLOW_HEAD_Y,
                     actor::HOLLOW_HEAD_RADIUS,
                     actor::HOLLOW_BODY
@@ -230,14 +210,14 @@ pub(super) fn write_node(
             UsecaseActorType::Awesome => {
                 let _ = write!(
                     out,
-                    r#"<path class="usecase-actor-awesome-silhouette" d="{}"{paint_attr}/>"#,
+                    r#"<path class="usecase-actor-awesome-silhouette" d="{}"/>"#,
                     actor::AWESOME
                 );
             }
             UsecaseActorType::Icon => {
                 let _ = write!(
                     out,
-                    r#"<rect class="usecase-actor-icon-frame" x="{}" y="{}" width="{}" height="{}" rx="{}" ry="{}"{paint_attr}/>"#,
+                    r#"<rect class="usecase-actor-icon-frame" x="{}" y="{}" width="{}" height="{}" rx="{}" ry="{}"/>"#,
                     -actor::ICON_WIDTH / 2.0,
                     actor::ICON_Y,
                     actor::ICON_WIDTH,
@@ -258,7 +238,7 @@ pub(super) fn write_node(
                         fallback_prefix: Some("fa"),
                         extra_class: None,
                         id_scope: prefix.scope_parts(&[&actor.id], work)?,
-                        effective_config: context.config,
+                        effective_config: context.labels.config,
                         work_meter: work,
                     })?
                 } else {
@@ -314,7 +294,7 @@ pub(super) fn write_node(
             -node.height / 2.0,
             node.width,
             node.height,
-            context.style,
+            &plan.source_style,
         );
         let inner_width = node.width - 2.0 * table.border_width;
         let left = -inner_width / 2.0;
@@ -327,7 +307,7 @@ pub(super) fn write_node(
             top,
             inner_width,
             table.title_height,
-            context.style,
+            &plan.source_style,
         );
         write_label(
             out,
@@ -335,12 +315,7 @@ pub(super) fn write_node(
             UsecaseLabelKind::PositionedNode("label usecase-json-title"),
             0.0,
             top + table.title_height / 2.0,
-            UsecaseLabelRenderContext {
-                config: context.config,
-                measurer: context.measurer,
-                receipt: context.receipt,
-                background: None,
-            },
+            context.labels,
         );
         let mut row_top = top + table.title_height;
         for (index, row) in table.rows.iter().enumerate() {
@@ -357,7 +332,7 @@ pub(super) fn write_node(
                 0.0,
                 table.key_width,
                 row.height,
-                context.style,
+                &plan.source_style,
             );
             rect(
                 out,
@@ -366,7 +341,7 @@ pub(super) fn write_node(
                 0.0,
                 table.value_width,
                 row.height,
-                context.style,
+                &plan.source_style,
             );
             write_label(
                 out,
@@ -374,12 +349,7 @@ pub(super) fn write_node(
                 UsecaseLabelKind::PositionedNode("label usecase-json-key"),
                 left + table.key_width / 2.0,
                 row.height / 2.0,
-                UsecaseLabelRenderContext {
-                    config: context.config,
-                    measurer: context.measurer,
-                    receipt: context.receipt,
-                    background: None,
-                },
+                context.labels,
             );
             write_label(
                 out,
@@ -387,12 +357,7 @@ pub(super) fn write_node(
                 UsecaseLabelKind::PositionedNode("label usecase-json-value"),
                 left + table.key_width + table.value_width / 2.0,
                 row.height / 2.0,
-                UsecaseLabelRenderContext {
-                    config: context.config,
-                    measurer: context.measurer,
-                    receipt: context.receipt,
-                    background: None,
-                },
+                context.labels,
             );
             out.push_str("</g>");
             row_top += row.height;
@@ -400,31 +365,16 @@ pub(super) fn write_node(
         out.push_str("</g>");
     } else {
         if plan.ellipse {
-            write_usecase_body(out, node, plan, context.source, context.style);
+            write_usecase_body(out, node, plan, context.source);
         } else if context.note {
             // note.ts uses a RoughJS rectangle even for classic/neo. At zero
             // roughness its fill and outline still remain separate SVG paths.
             let randomness = context
                 .options
                 .rough_randomness(context.css_binding.hand_drawn_seed, "usecase-note");
-            let note_fill = context
-                .typed_style
-                .and_then(|style| style.fill.as_deref())
-                .unwrap_or(context.css_binding.note.css());
-            let note_stroke = context
-                .typed_style
-                .and_then(|style| style.stroke.as_deref())
-                .unwrap_or(context.css_binding.note_border.css());
-            let mut fill_style = context
-                .typed_style
-                .map(|style| style.note_path_css(false))
-                .unwrap_or_default();
-            let mut stroke_style = context
-                .typed_style
-                .map(|style| style.note_path_css(true))
-                .unwrap_or_default();
-            fill_style.push_str(&plan.source_style);
-            stroke_style.push_str(&plan.source_style);
+            let note_fill = context.css_binding.note.css();
+            let note_stroke = context.css_binding.note_border.css();
+            let style = escape_attr(&plan.source_style);
             let paths = roughjs_common::roughjs_paths_for_rect(roughjs_common::RoughRectSpec {
                 x: -node.width / 2.0,
                 y: -node.height / 2.0,
@@ -441,14 +391,12 @@ pub(super) fn write_node(
             })?;
             let _ = write!(
                 out,
-                r#"<g class="basic label-container outer-path"><path d="{fill}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{stroke}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="{}"/></g>"#,
+                r#"<g class="basic label-container outer-path"><path d="{fill}" stroke="none" stroke-width="0" fill="{}" style="{style}"/><path d="{stroke}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0" style="{style}"/></g>"#,
                 escape_attr(note_fill),
-                escape_attr(&fill_style),
-                escape_attr(note_stroke),
-                escape_attr(&stroke_style)
+                escape_attr(note_stroke)
             );
         } else {
-            write_usecase_body(out, node, plan, context.source, context.style);
+            write_usecase_body(out, node, plan, context.source);
         }
         let stereo_height = plan
             .stereotype
@@ -467,12 +415,7 @@ pub(super) fn write_node(
                 UsecaseLabelKind::PositionedNode("label usecase-stereotype"),
                 0.0,
                 -height / 2.0 + stereo_height / 2.0,
-                UsecaseLabelRenderContext {
-                    config: context.config,
-                    measurer: context.measurer,
-                    receipt: context.receipt,
-                    background: None,
-                },
+                context.labels,
             );
         }
         let label_start = out.len();
@@ -491,12 +434,7 @@ pub(super) fn write_node(
             },
             0.0,
             height / 2.0 - plan.label.metrics.height / 2.0,
-            UsecaseLabelRenderContext {
-                config: context.config,
-                measurer: context.measurer,
-                receipt: context.receipt,
-                background: None,
-            },
+            context.labels,
         );
         if plan.folded_stereotype {
             annotate_folded_stereotype(out, label_start)?;

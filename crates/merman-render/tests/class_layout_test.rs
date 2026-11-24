@@ -215,7 +215,6 @@ fn independent_class_presentation(
             config: config.clone(),
             effective_config: config,
             title: None,
-            theme_recipe: None,
         },
         RenderSemanticModel::Class(model),
         PresentationContext::None,

@@ -15,6 +15,7 @@ owners rather than being duplicated across Markdown files.
 | Develop or release the Tree-sitter grammar | [Tree-sitter development guide](development/TREE_SITTER_MERMAID.md) and [release guide](release/TREE_SITTER_MERMAID.md) |
 | Check the selected upstream, diagram coverage, or parity evidence | [Alignment authority map](alignment/README.md) and [dashboard](alignment/STATUS.md) |
 | Embed or export SVG safely | [SVG output pipeline](rendering/SVG_OUTPUT_PIPELINE.md) and [rendering security](security/RENDERING_SECURITY.md) |
+| Select or author a native theme | [Theme v2 guide](rendering/custom-diagram-themes.md) and [family support](rendering/diagram-theme-coverage.md) |
 | Render terminal diagrams or inspect ASCII support and tradeoffs | [ASCII and Unicode rendering](rendering/ascii/README.md) and [support matrix](rendering/ASCII_SUPPORT_MATRIX.md) |
 | Understand current architecture | [Repository context](../CONTEXT.md), [model/source ownership](adr/0099-model-and-source-boundaries.md), and [family/operation contract](adr/0073-family-owned-diagram-architecture.md) |
 | Contribute or understand CI ownership | [CI guide](development/CI.md) |

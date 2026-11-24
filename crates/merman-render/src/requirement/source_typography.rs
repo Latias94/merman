@@ -1,11 +1,10 @@
-//! Requirement node typography shared by measurement and terminal evidence.
+//! Authored Requirement typography used by measurement and SVG label preparation.
 
 use super::RequirementMeasurementStyles;
 use crate::Result;
 use crate::mermaid_style::{
-    CssFontFamilyOwnership, CssFontSizeOwnership, ParsedStyleDeclaration,
-    is_static_css_font_family_list, is_supported_css_font_style_value,
-    is_supported_css_font_weight_value, parse_style_declaration, visit_parsed_style_declarations,
+    ParsedStyleDeclaration, is_static_css_font_family_list, is_supported_css_font_style_value,
+    is_supported_css_font_weight_value, parse_style_declaration,
 };
 use crate::resources::{OperationWorkMeter, PreparedTextRetainedReservation};
 use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
@@ -22,12 +21,8 @@ pub(crate) struct RequirementNodeTypography {
 #[derive(Debug)]
 struct SourceTypography {
     font_family: Option<String>,
-    font_size: Option<String>,
     font_weight: Option<String>,
     font_style: Option<String>,
-    font_faces_verified: bool,
-    font_family_ownership: CssFontFamilyOwnership,
-    font_size_ownership: CssFontSizeOwnership,
     font_size_px: Option<f64>,
     _retained: PreparedTextRetainedReservation,
 }
@@ -101,16 +96,10 @@ impl RequirementNodeTypography {
     ) -> RequirementNodeMeasurer<'a> {
         RequirementNodeMeasurer {
             inner: measurer,
-            source: self.source.as_deref().filter(|source| {
-                source
-                    .font_weight
-                    .as_deref()
-                    .is_some_and(static_font_weight)
-                    || source
-                        .font_style
-                        .as_deref()
-                        .is_some_and(is_supported_css_font_style_value)
-            }),
+            source: self
+                .source
+                .as_deref()
+                .filter(|source| source.font_weight.is_some() || source.font_style.is_some()),
             bold,
         }
     }
@@ -126,98 +115,44 @@ impl RequirementNodeTypography {
                 source.observe(declaration);
             }
         }
-        if source.font_family.is_none()
-            && source.font_size.is_none()
-            && source.font_weight.is_none()
-            && source.font_style.is_none()
+        let font_family = source
+            .font_family
+            .filter(|value| !source.font_family_inherits && is_static_css_font_family_list(value));
+        let font_size_px = source.font_size.and_then(static_font_size_px);
+        let font_weight = source.font_weight.filter(|value| static_font_weight(value));
+        let font_style = source
+            .font_style
+            .filter(|value| is_supported_css_font_style_value(value));
+        if font_family.is_none()
+            && font_size_px.is_none()
+            && font_weight.is_none()
+            && font_style.is_none()
         {
             return Ok(Self::default());
         }
         let retained_bytes = std::mem::size_of::<SourceTypography>()
             .checked_add(2 * std::mem::size_of::<usize>())
-            .and_then(|bytes| bytes.checked_add(source.font_family.map_or(0, str::len)))
-            .and_then(|bytes| bytes.checked_add(source.font_size.map_or(0, str::len)))
-            .and_then(|bytes| bytes.checked_add(source.font_weight.map_or(0, str::len)))
-            .and_then(|bytes| bytes.checked_add(source.font_style.map_or(0, str::len)))
+            .and_then(|bytes| bytes.checked_add(font_family.map_or(0, str::len)))
+            .and_then(|bytes| bytes.checked_add(font_weight.map_or(0, str::len)))
+            .and_then(|bytes| bytes.checked_add(font_style.map_or(0, str::len)))
             .ok_or_else(|| work_meter.arithmetic_overflow())?;
         let retained = work_meter.reserve_prepared_text_retained_bytes(retained_bytes)?;
-        let font_family_ownership = match source.font_family {
-            None => CssFontFamilyOwnership::Inherited,
-            Some(_) if source.font_family_inherits => CssFontFamilyOwnership::Inherited,
-            Some(value) if is_static_css_font_family_list(value) => {
-                CssFontFamilyOwnership::SourceOwned
-            }
-            Some(_) => CssFontFamilyOwnership::Unverified,
-        };
-        let font_size_px = source.font_size.and_then(static_font_size_px);
-        let font_size_ownership = match source.font_size {
-            None => CssFontSizeOwnership::Inherited,
-            Some(_) if source.font_size_inherits => CssFontSizeOwnership::Inherited,
-            Some(_) if font_size_px.is_some() => CssFontSizeOwnership::SourceOwned,
-            Some(_) => CssFontSizeOwnership::Unverified,
-        };
         Ok(Self {
             source: Some(Arc::new(SourceTypography {
-                font_family: source.font_family.map(str::to_owned),
-                font_size: source.font_size.map(str::to_owned),
-                font_weight: source.font_weight.map(str::to_owned),
-                font_style: source.font_style.map(str::to_owned),
-                font_faces_verified: source.font_weight.is_none_or(static_font_weight)
-                    && source
-                        .font_style
-                        .is_none_or(is_supported_css_font_style_value),
-                font_family_ownership,
-                font_size_ownership,
+                font_family: font_family.map(str::to_owned),
+                font_weight: font_weight.map(str::to_ascii_lowercase),
+                font_style: font_style.map(str::to_ascii_lowercase),
                 font_size_px,
                 _retained: retained,
             })),
         })
     }
 
-    pub(crate) fn font_family_ownership(&self) -> CssFontFamilyOwnership {
-        self.source
-            .as_ref()
-            .map_or(CssFontFamilyOwnership::Inherited, |source| {
-                source.font_family_ownership
-            })
-    }
-
-    pub(crate) fn font_size_ownership(&self) -> CssFontSizeOwnership {
-        self.source
-            .as_ref()
-            .map_or(CssFontSizeOwnership::Inherited, |source| {
-                source.font_size_ownership
-            })
-    }
-
-    pub(crate) fn font_size_px(&self, inherited: f64) -> Option<f64> {
-        if self.font_size_ownership() == CssFontSizeOwnership::Unverified {
-            return None;
-        }
-        Some(
-            self.source
-                .as_ref()
-                .and_then(|source| source.font_size_px)
-                .unwrap_or(inherited),
-        )
-    }
-
     pub(super) fn apply_to<'a>(
         &self,
         base: &'a RequirementMeasurementStyles,
     ) -> Cow<'a, RequirementMeasurementStyles> {
-        if !self.source.as_ref().is_some_and(|source| {
-            source.font_family_ownership == CssFontFamilyOwnership::SourceOwned
-                || source.font_size_px.is_some()
-                || source
-                    .font_weight
-                    .as_deref()
-                    .is_some_and(static_font_weight)
-                || source
-                    .font_style
-                    .as_deref()
-                    .is_some_and(is_supported_css_font_style_value)
-        }) {
+        if self.source.is_none() {
             return Cow::Borrowed(base);
         }
         Cow::Owned(RequirementMeasurementStyles {
@@ -231,38 +166,24 @@ impl RequirementNodeTypography {
     }
 
     pub(crate) fn resolve_text_style(&self, base: &TextStyle) -> TextStyle {
-        let source = self.source.as_ref();
-        let font_family = source
-            .filter(|source| source.font_family_ownership == CssFontFamilyOwnership::SourceOwned)
-            .map_or(&base.font_family, |source| &source.font_family);
+        let Some(source) = &self.source else {
+            return base.clone();
+        };
         TextStyle {
-            font_family: font_family.clone(),
-            font_size: source
-                .and_then(|source| source.font_size_px)
-                .unwrap_or(base.font_size),
+            font_family: source
+                .font_family
+                .clone()
+                .or_else(|| base.font_family.clone()),
+            font_size: source.font_size_px.unwrap_or(base.font_size),
             font_weight: source
-                .and_then(|source| source.font_weight.as_deref())
-                .filter(|value| static_font_weight(value))
-                .map(|value| value.to_ascii_lowercase())
+                .font_weight
+                .clone()
                 .or_else(|| base.font_weight.clone()),
             font_style: source
-                .and_then(|source| source.font_style.as_deref())
-                .filter(|value| is_supported_css_font_style_value(value))
-                .map(|value| value.to_ascii_lowercase())
+                .font_style
+                .clone()
                 .or_else(|| base.font_style.clone()),
         }
-    }
-
-    pub(crate) fn matches_emitted_style(&self, label_styles: &str) -> bool {
-        let mut emitted = SourceDeclarations::default();
-        visit_parsed_style_declarations(label_styles, |declaration| emitted.observe(declaration));
-        let expected = self.source.as_ref();
-        // Unmodeled faces affect both family selection and measured font-size geometry.
-        expected.is_none_or(|source| source.font_faces_verified)
-            && emitted.font_weight == expected.and_then(|source| source.font_weight.as_deref())
-            && emitted.font_style == expected.and_then(|source| source.font_style.as_deref())
-            && emitted.font_family == expected.and_then(|source| source.font_family.as_deref())
-            && emitted.font_size == expected.and_then(|source| source.font_size.as_deref())
     }
 }
 
@@ -289,19 +210,11 @@ impl RequirementNodeMeasurer<'_> {
             style.font_weight = Some("bold".to_owned());
         }
         if let Some(source) = self.source {
-            if let Some(weight) = source
-                .font_weight
-                .as_deref()
-                .filter(|value| static_font_weight(value))
-            {
-                style.font_weight = Some(weight.to_ascii_lowercase());
+            if let Some(weight) = &source.font_weight {
+                style.font_weight = Some(weight.clone());
             }
-            if let Some(face) = source
-                .font_style
-                .as_deref()
-                .filter(|value| is_supported_css_font_style_value(value))
-            {
-                style.font_style = Some(face.to_ascii_lowercase());
+            if let Some(face) = &source.font_style {
+                style.font_style = Some(face.clone());
             }
         }
         style
@@ -376,26 +289,14 @@ mod tests {
             "FONT-FAMILY:'a;b',serif",
             "font-size:24px",
         ]);
-        assert_eq!(
-            source.font_family_ownership(),
-            CssFontFamilyOwnership::SourceOwned
-        );
-        assert_eq!(
-            source.font_size_ownership(),
-            CssFontSizeOwnership::SourceOwned
-        );
-        assert!(
-            source.matches_emitted_style(
-                "font-family:'a;b',serif!important;font-size:24px!important"
-            )
-        );
-        assert!(
-            !source.matches_emitted_style("font-family:First!important;font-size:24px!important")
-        );
+        let style = source.resolve_text_style(&TextStyle::default());
+        assert_eq!(style.font_family.as_deref(), Some("'a;b',serif"));
+        assert_eq!(style.font_size, 24.0);
     }
 
     #[test]
-    fn requirement_source_typography_does_not_certify_relative_or_dynamic_values() {
+    fn requirement_source_typography_keeps_the_fallback_for_relative_or_dynamic_values() {
+        let base = TextStyle::default();
         for value in [
             "2em",
             "125%",
@@ -407,8 +308,8 @@ mod tests {
         ] {
             let source = resolve(&[&format!("font-size:{value}")]);
             assert_eq!(
-                source.font_size_ownership(),
-                CssFontSizeOwnership::Unverified,
+                source.resolve_text_style(&base).font_size,
+                base.font_size,
                 "{value}"
             );
         }
@@ -418,22 +319,19 @@ mod tests {
             "font-size:24px",
             "font-size:inherit",
         ]);
+        let style = source.resolve_text_style(&base);
+        assert_eq!(style.font_family, base.font_family);
+        assert_eq!(style.font_size, base.font_size);
         assert_eq!(
-            source.font_family_ownership(),
-            CssFontFamilyOwnership::Inherited
-        );
-        assert_eq!(
-            source.font_size_ownership(),
-            CssFontSizeOwnership::Inherited
-        );
-        assert_eq!(
-            resolve(&["font:bold 48px serif"]).font_size_ownership(),
-            CssFontSizeOwnership::Inherited
+            resolve(&["font:bold 48px serif"])
+                .resolve_text_style(&base)
+                .font_size,
+            base.font_size,
         );
     }
 
     #[test]
-    fn requirement_source_absolute_sizes_share_measurement_and_ownership() {
+    fn requirement_source_absolute_sizes_reach_measurement() {
         for (value, expected) in [
             ("24pt", 32.0),
             ("2PC", 32.0),
@@ -446,17 +344,11 @@ mod tests {
             ("-0pt", 0.0),
         ] {
             let source = resolve(&[&format!("font-size:{value}")]);
-            assert_eq!(
-                source.font_size_ownership(),
-                CssFontSizeOwnership::SourceOwned,
-                "{value}"
-            );
             let style = source.resolve_text_style(&TextStyle::default());
             assert!(
                 (style.font_size - expected).abs() < 1e-5,
                 "{value}: {style:?}"
             );
-            assert_eq!(source.font_size_px(16.0), Some(expected));
         }
     }
 
@@ -504,7 +396,11 @@ mod tests {
         )
         .unwrap();
         let retained = meter.prepared_text_retained_bytes();
-        assert!(retained >= "SourceFont,serif".len() + "24px".len());
+        assert!(retained >= "SourceFont,serif".len());
+        assert_eq!(
+            source.resolve_text_style(&TextStyle::default()).font_size,
+            24.0
+        );
         let replay = source.clone();
         assert_eq!(meter.prepared_text_retained_bytes(), retained);
         drop(source);

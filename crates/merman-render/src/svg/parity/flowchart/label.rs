@@ -2,7 +2,7 @@
 
 use std::fmt::Write as _;
 
-pub(in crate::svg::parity::flowchart) fn append_typed_label_fill(style: &mut String, fill: &str) {
+pub(in crate::svg::parity::flowchart) fn append_native_label_color(style: &mut String, fill: &str) {
     if !style.is_empty() {
         style.push(';');
     }
@@ -97,39 +97,17 @@ pub(crate) fn write_flowchart_svg_label_plan_with_style(
     extra_style: Option<&str>,
 ) {
     let lines = plan.wrapped_lines();
-    let style = plan
-        .merge_emission_font_style(include_style.then_some(""))
-        .map(|style| append_svg_label_style(style, extra_style));
-    if let Some(style) = style.as_deref() {
-        crate::svg::parity::label::write_svg_text_source_word_lines_with_style(
-            out,
-            &lines,
-            style,
-            false,
-            plan.font_weight(),
-        );
-    } else if let Some(extra_style) = extra_style.filter(|style| !style.is_empty()) {
+    if let Some(extra_style) = extra_style.filter(|style| !style.is_empty()) {
         crate::svg::parity::label::write_svg_text_source_word_lines_with_style(
             out,
             &lines,
             extra_style,
             false,
-            plan.font_weight(),
+            None,
         );
     } else {
         write_flowchart_svg_source_word_lines(out, &lines, include_style);
     }
-}
-
-fn append_svg_label_style(mut style: String, extra_style: Option<&str>) -> String {
-    let Some(extra_style) = extra_style.filter(|style| !style.is_empty()) else {
-        return style;
-    };
-    if !style.trim_end().ends_with(';') {
-        style.push(';');
-    }
-    style.push_str(extra_style);
-    style
 }
 
 pub(crate) fn write_flowchart_svg_label_plan_centered_with_style(
@@ -138,15 +116,8 @@ pub(crate) fn write_flowchart_svg_label_plan_centered_with_style(
     style: &str,
 ) {
     let lines = plan.wrapped_lines();
-    let style = plan
-        .merge_emission_font_style(Some(style))
-        .unwrap_or_else(|| style.to_string());
     crate::svg::parity::label::write_svg_text_source_word_lines_with_style(
-        out,
-        &lines,
-        &style,
-        true,
-        plan.font_weight(),
+        out, &lines, style, true, None,
     );
 }
 

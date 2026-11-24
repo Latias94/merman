@@ -1,7 +1,7 @@
 use crate::graph_layout::Marker;
 use crate::model::LayoutPoint;
-use crate::usecase::{UsecaseEdgePlan, UsecaseThemePlan};
-use kurbo::{BezPath, Cap, Join, Point, Rect, Shape, Stroke, StrokeOpts, Vec2};
+use crate::usecase::UsecaseEdgePlan;
+use kurbo::{BezPath, Point, Rect, Vec2};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Kind {
@@ -22,12 +22,7 @@ pub(crate) struct UsecaseMarker {
 }
 
 impl UsecaseMarker {
-    pub(crate) fn for_edge(
-        plan: &UsecaseEdgePlan,
-        start: bool,
-        neo: bool,
-        theme: &UsecaseThemePlan,
-    ) -> Option<Self> {
+    pub(crate) fn for_edge(plan: &UsecaseEdgePlan, start: bool, neo: bool) -> Option<Self> {
         let name = if start {
             plan.start_marker.as_deref()
         } else {
@@ -46,27 +41,8 @@ impl UsecaseMarker {
             ("extension", true, _) => (Kind::Extension, 8.0, 12.0, 2.0),
             _ => return None,
         };
-        let style = theme.marker(&plan.id, start);
-        let stroke_width = style
-            .and_then(|style| style.stroke_width)
-            .unwrap_or(stroke_width);
-        let painted_stroke = if style.and_then(|style| style.stroke.as_deref()) == Some("none") {
-            0.0
-        } else {
-            stroke_width
-        };
-        let cap = match style.and_then(|style| style.linecap) {
-            Some("butt") => Cap::Butt,
-            Some("square") => Cap::Square,
-            _ => Cap::Round,
-        };
-        let join = match style.and_then(|style| style.linejoin) {
-            Some("bevel") => Join::Bevel,
-            Some("miter") => Join::Miter,
-            _ => Join::Round,
-        };
-        let footprint = Rect::new(0.0, 0.0, width, height);
-        let mut marker = Self {
+        let stroke_radius = stroke_width / 2.0;
+        Some(Self {
             kind,
             start,
             width,
@@ -77,19 +53,8 @@ impl UsecaseMarker {
             } else {
                 width / 2.0
             },
-            footprint,
-        };
-        marker.footprint = if painted_stroke == 0.0 {
-            footprint
-        } else if kind == Kind::Circle || (cap == Cap::Round && join == Join::Round) {
-            footprint.inflate(painted_stroke / 2.0, painted_stroke / 2.0)
-        } else {
-            let stroke = Stroke::new(painted_stroke).with_caps(cap).with_join(join);
-            footprint.union(
-                kurbo::stroke(marker.path(), &stroke, &StrokeOpts::default(), 0.01).bounding_box(),
-            )
-        };
-        Some(marker)
+            footprint: Rect::new(0.0, 0.0, width, height).inflate(stroke_radius, stroke_radius),
+        })
     }
 
     pub(crate) fn name(&self) -> &'static str {

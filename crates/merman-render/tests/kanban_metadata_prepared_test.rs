@@ -188,7 +188,6 @@ fn authored_board(
             config: Default::default(),
             effective_config: Default::default(),
             title: None,
-            theme_recipe: None,
         },
         RenderSemanticModel::Kanban(merman_model::families::kanban::KanbanDiagramRenderModel {
             nodes,

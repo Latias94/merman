@@ -11,18 +11,16 @@ use std::borrow::Cow;
 
 mod config;
 mod css_binding;
+mod native_theme;
 mod task_index;
-mod text_paint;
-mod theme;
 mod typography;
 
 use task_index::TimelineTaskIndex;
 
 pub(crate) use config::{TimelineConfigView, timeline_theme_color_limit};
 pub(crate) use css_binding::TimelineCssBinding;
-pub(crate) use text_paint::{TimelineTextPaintOutcome, TimelineTextPaintPlan};
-pub(crate) use theme::{TimelineEventTheme, TimelineEventThemeOutcome};
-pub(crate) use typography::{TimelineTypographyOutcome, TimelineTypographyThemePlan};
+pub(crate) use native_theme::{TimelineNativeStyle, TimelineThemeAdapter};
+pub(crate) use typography::TimelineStyle;
 
 pub(crate) const MERMAID_EVENT_RADIUS_PX: f64 = 5.0;
 pub(crate) const MERMAID_EVENT_RADIUS_TOKEN: &str = "5";
@@ -720,13 +718,7 @@ fn layout_timeline_horizontal(
         //
         // Note: `ex` depends on the font x-height; for Mermaid's default theme at 16px, `4ex`
         // resolves to ~31px in upstream fixtures.
-        let title_font_size = render_font_size * 1.9375;
-        let title_style = TextStyle {
-            font_family: text_style.font_family.clone(),
-            font_size: title_font_size,
-            font_weight: Some("bold".to_string()),
-            font_style: None,
-        };
+        let title_style = settings.title_text_style();
         let metrics = measurer.measure(t, &title_style);
         all_nodes_full.push(TimelineNodeLayout {
             x: title_x,
@@ -1063,19 +1055,13 @@ fn layout_timeline_vertical(
 
     let mut all_nodes_full = all_nodes_pre_title.clone();
     if let Some(title) = title.as_deref().filter(|_| render_font_size > 0.0) {
-        let title_font_size = render_font_size * 1.9375;
-        let title_style = TextStyle {
-            font_family: text_style.font_family.clone(),
-            font_size: title_font_size,
-            font_weight: Some("bold".to_string()),
-            font_style: None,
-        };
+        let title_style = settings.title_text_style();
         let metrics = measurer.measure(title, &title_style);
         all_nodes_full.push(TimelineNodeLayout {
             x: title_x,
-            y: TITLE_Y - title_font_size,
+            y: TITLE_Y - title_style.font_size,
             width: metrics.width.max(1.0),
-            height: title_font_size.max(1.0),
+            height: title_style.font_size.max(1.0),
             content_width: metrics.width.max(1.0),
             padding: 0.0,
             section_class: "section-root".to_string(),

@@ -4,23 +4,20 @@ import {
   asciiSupportedDiagrams,
   createBrowserTextMeasurementSession,
   detectDiagramFacts,
-  describeThemeSupport,
-  diagramFamilyCapabilities,
   initMerman,
   isMermanInitialized,
   layoutJson,
   layoutJsonWithTextMeasurer,
   loadMermanWasmModule,
-  materializeTheme,
   MERMAN_WASM_URL,
   packageVersion,
   parseJson,
   renderAscii,
   renderSvgResult,
   renderSvgResultWithTextMeasurer,
+  resolveTheme,
   runtimeCatalog,
   supportedDiagrams,
-  supportedThemes,
   themeCatalog,
   exportThemePreset,
   UNAVAILABLE_DIAGRAM_DETECTION,
@@ -31,6 +28,7 @@ import {
 } from "@mermanjs/web";
 
 import { projectError } from "./error-projection.ts";
+import { encodeMermanOptions } from "./merman-operation-input.ts";
 import { projectNavigableInlineSvg } from "./render-artifact.ts";
 import type {
   MermanDomainFacade,
@@ -72,19 +70,12 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
     runtimeCatalog,
     themeCatalog,
     exportThemePreset,
-    describeThemeSupport,
-    materializeTheme,
-    validateThemeRecipe(recipeJson) {
-      JSON.parse(recipeJson);
-      materializeTheme(`{"schema_version":1,"action":"inspect","recipe":${recipeJson}}`);
-      return recipeJson;
-    },
-    diagramFamilyCapabilities,
+    resolveTheme,
 
     detectDiagram(input) {
       if (input.configurationError) return UNAVAILABLE_DIAGRAM_DETECTION;
       try {
-        return detectDiagramFacts(input.configuredSource, input.bindingOptionsJson ?? input.bindingOptions);
+        return detectDiagramFacts(input.configuredSource, input.bindingOptionsJson);
       } catch {
         return UNAVAILABLE_DIAGRAM_DETECTION;
       }
@@ -93,7 +84,6 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
     getAsciiCapabilities: asciiCapabilities,
     getAsciiSupportedDiagrams: asciiSupportedDiagrams,
     getSupportedDiagrams: supportedDiagrams,
-    getThemes: supportedThemes,
 
     layoutJson(input) {
       assertConfiguredOperation(input);
@@ -101,14 +91,14 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
         ? layoutJsonWithTextMeasurer(
             input.configuredSource,
             measureText,
-            input.bindingOptionsJson ?? input.bindingOptions,
+            input.bindingOptionsJson,
           )
-        : layoutJson(input.configuredSource, input.bindingOptionsJson ?? input.bindingOptions);
+        : layoutJson(input.configuredSource, input.bindingOptionsJson);
     },
 
     parseJson(input) {
       assertConfiguredOperation(input);
-      return parseJson(input.configuredSource, input.bindingOptionsJson ?? input.bindingOptions);
+      return parseJson(input.configuredSource, input.bindingOptionsJson);
     },
 
     render(input) {
@@ -129,9 +119,9 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
             ? renderSvgResultWithTextMeasurer(
                 input.configuredSource,
                 measureText,
-                input.bindingOptionsJson ?? input.bindingOptions,
+                input.bindingOptionsJson,
               )
-            : renderSvgResult(input.configuredSource, input.bindingOptionsJson ?? input.bindingOptions);
+            : renderSvgResult(input.configuredSource, input.bindingOptionsJson);
       } catch (error) {
         return {
           artifact: null,
@@ -170,12 +160,13 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
       }
       try {
         return {
-          ascii: renderAscii(input.configuredSource, {
+          ascii: renderAscii(input.configuredSource, encodeMermanOptions({
             version: BINDING_OPTIONS_SCHEMA_VERSION,
             site_config: input.bindingOptions.site_config,
             fixed_unix_millis: input.bindingOptions.fixed_unix_millis,
             fixed_local_offset_minutes: input.bindingOptions.fixed_local_offset_minutes,
-          }),
+            theme: input.bindingOptions.theme,
+          }, input.themeDocumentJson)),
           error: null,
           status: "success",
         };

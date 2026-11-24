@@ -3,10 +3,10 @@ use merman_model::families::event_modeling::EventModelingDiagramModel;
 
 const BOX_TEXT_PADDING: f64 = 10.0;
 
-pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
+pub(crate) fn render_eventmodeling_diagram_svg(
     layout: &EventModelingDiagramLayout,
     model: &EventModelingDiagramModel,
-    text_theme: &crate::eventmodeling::EventModelingTextThemePlan,
+    style: &crate::eventmodeling::EventModelingStyle,
     prepared_labels: &crate::eventmodeling::EventModelingPreparedLabels,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
@@ -18,7 +18,15 @@ pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
         .filter(|description| !description.is_empty());
     let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
-    let theme = text_theme.css_binding();
+    let theme = style.css_binding();
+    let native = style.native();
+    let radius = native.map_or(3.0, |style| style.form.radius);
+    let lane_radius = native.map_or(3.0, |style| style.form.container_radius);
+    let connector_width = native.map_or(1.0, |style| style.form.connector_width);
+    let heading_baseline = native.map_or(30.0, |style| (style.heading.font_size + 15.0).max(30.0));
+    let stroke_width = native.map_or_else(String::new, |style| {
+        format!(r#" stroke-width="{}""#, fmt(style.form.stroke_width))
+    });
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_bounds = root_svg::DiagramBounds::from_view_box(
         layout.viewbox_x,
@@ -32,9 +40,9 @@ pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
     root_chrome.dom.trailing_newline = false;
-    let root_document =
-        root_svg::RootViewportContext::new(crate::DiagramFamilyId::EVENT_MODELING, diagram_id)
-            .write_open(&mut out, root_spec, root_chrome)?;
+    let root_document = options
+        .root_viewport(crate::DiagramFamilyId::EVENT_MODELING, diagram_id)
+        .write_open(&mut out, root_spec, root_chrome)?;
 
     if let Some(title) = acc_title {
         let _ = write!(
@@ -53,7 +61,7 @@ pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
     out.checkpoint()?;
 
     out.push_str("<style>");
-    text_theme.write_stylesheet(
+    style.write_stylesheet(
         &mut super::super::output::XmlTextOutput::new(&mut out),
         super::super::util::css_selector_diagram_id(diagram_id),
     );
@@ -63,9 +71,10 @@ pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
     for swimlane in &layout.swimlanes {
         let _ = write!(
             &mut out,
-            r#"<g class="em-swimlane"><rect x="{}" y="{}" rx="3" width="{}" height="{}" fill="{}" stroke="{}"></rect>"#,
+            r#"<g class="em-swimlane"><rect x="{}" y="{}" rx="{}" width="{}" height="{}" fill="{}" stroke="{}"{stroke_width}></rect>"#,
             fmt(swimlane.x),
             fmt(swimlane.y),
+            fmt(lane_radius),
             fmt(swimlane.width),
             fmt(swimlane.height),
             escape_attr_display(&theme.swimlane_background_fill),
@@ -75,7 +84,7 @@ pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
             &mut out,
             r#"<text font-weight="bold" x="{}" y="{}">"#,
             fmt(swimlane.x + 30.0),
-            fmt(swimlane.y + 30.0),
+            fmt(swimlane.y + heading_baseline),
         );
         out.checkpoint()?;
         escape_xml_into(&mut out, &swimlane.label);
@@ -83,22 +92,31 @@ pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
         out.checkpoint()?;
     }
 
-    for (ordinal, box_layout) in layout.boxes.iter().enumerate() {
+    for box_layout in &layout.boxes {
         let _ = write!(
             &mut out,
-            r#"<g class="em-box"><rect x="{}" y="{}" rx="3" width="{}" height="{}" stroke="{}" fill="{}"></rect><foreignObject x="{}" y="{}" width="{}" height="{}">"#,
+            r#"<g class="em-box"><rect x="{}" y="{}" rx="{}" width="{}" height="{}" stroke="{}" fill="{}"{stroke_width}></rect><foreignObject x="{}" y="{}" width="{}" height="{}">"#,
             fmt(box_layout.x),
             fmt(box_layout.y),
+            fmt(radius),
             fmt(box_layout.width),
             fmt(box_layout.height),
-            escape_attr_display(text_theme.box_stroke(ordinal, &box_layout.stroke)),
-            escape_attr_display(text_theme.box_fill(ordinal, &box_layout.fill)),
+            escape_attr_display(&box_layout.stroke),
+            escape_attr_display(&box_layout.fill),
             fmt(box_layout.x + BOX_TEXT_PADDING),
             fmt(box_layout.y + BOX_TEXT_PADDING),
             fmt((box_layout.width - 2.0 * BOX_TEXT_PADDING).max(1.0)),
             fmt((box_layout.height - 2.0 * BOX_TEXT_PADDING).max(1.0)),
         );
-        out.push_str(r#"<div xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><span style="display: table-cell; text-align: center; vertical-align: middle;">"#);
+        out.push_str(r#"<div xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><span style="display: table-cell; text-align: center; vertical-align: middle;"#);
+        if let Some(style) = native {
+            let _ = write!(
+                out,
+                " color: {};",
+                style.box_ink(&box_layout.model_entity_type)
+            );
+        }
+        out.push_str(r#"">"#);
         out.checkpoint()?;
         push_box_html_label(&mut out, prepared_labels, box_layout.index)?;
         out.push_str("</span></div></foreignObject></g>");
@@ -108,8 +126,9 @@ pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
     for relation in &layout.relations {
         let _ = write!(
             &mut out,
-            r#"<path class="em-relation" fill="none" stroke="{}" stroke-width="1" marker-end="url(#em-arrowhead-{diagram_id})" d="M{} {} L{} {}"></path>"#,
-            escape_attr_display(text_theme.relation_stroke(&relation.stroke)),
+            r#"<path class="em-relation" fill="none" stroke="{}" stroke-width="{}" marker-end="url(#em-arrowhead-{diagram_id})" d="M{} {} L{} {}"></path>"#,
+            escape_attr_display(&relation.stroke),
+            fmt(connector_width),
             fmt(relation.x1),
             fmt(relation.y1),
             fmt(relation.x2),
@@ -126,9 +145,7 @@ pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
     escape_xml_into(&mut out, marker_fill);
     out.push_str(r#""></polygon></marker></defs></svg>"#);
     out.push('\n');
-    let rooted_svg = root_document.complete(out.finish()?)?;
-    text_theme.record_terminal();
-    Ok(rooted_svg)
+    root_document.complete(out.finish()?)
 }
 
 fn push_box_html_label(

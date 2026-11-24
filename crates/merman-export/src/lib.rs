@@ -58,8 +58,6 @@ pub const fn system_font_discovery_available() -> bool {
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 mod font_environment;
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-mod native_filter_receipt;
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 pub use font_environment::{ExportFontMode, ExportFontPlan};
@@ -107,8 +105,6 @@ pub enum ExportError {
     InvalidPdfPagePaint,
     #[error("retained font catalog and host font-source policy have no usable source")]
     FontSourceUnavailable,
-    #[error("failed to load the retained font catalog into the native exporter")]
-    FontCatalogLoad,
     #[error("embedded image resource limit exceeded: {limit_name} is {actual}, maximum is {max}")]
     EmbeddedImageLimit {
         limit_name: &'static str,
@@ -1378,7 +1374,6 @@ pub enum RasterOutputKind {
 #[cfg(any(feature = "png", feature = "jpeg"))]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RasterExportReport {
-    native_filter_receipt: Option<merman_render::__private::NativeSvgFilterReceipt>,
     directional_filter_transform_residual: bool,
     fallback_css_residual: bool,
     output: RasterOutputKind,
@@ -1392,13 +1387,6 @@ pub struct RasterExportReport {
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
 impl RasterExportReport {
-    #[doc(hidden)]
-    pub const fn native_filter_receipt(
-        self,
-    ) -> Option<merman_render::__private::NativeSvgFilterReceipt> {
-        self.native_filter_receipt
-    }
-
     /// Returns whether directional filter offsets may differ from their SVG transform.
     ///
     /// The native raster backend renders these effects with scale magnitudes and can lose
@@ -1450,7 +1438,6 @@ impl RasterExportReport {
 #[cfg(any(feature = "png", feature = "jpeg"))]
 #[derive(Debug, Clone, Copy)]
 struct RasterReportSeed {
-    native_filter_receipt: Option<merman_render::__private::NativeSvgFilterReceipt>,
     directional_filter_transform_residual: bool,
     fallback_css_residual: bool,
     raster: RasterPlan,
@@ -1502,8 +1489,6 @@ impl PdfPagePlan {
 #[cfg(feature = "pdf")]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PdfExportReport {
-    native_filter_receipt: Option<merman_render::__private::NativeSvgFilterReceipt>,
-    native_filter_fully_localized: bool,
     directional_filter_transform_residual: bool,
     implicit_viewport_clipping_residual: bool,
     fallback_css_residual: bool,
@@ -1517,18 +1502,6 @@ pub struct PdfExportReport {
 
 #[cfg(feature = "pdf")]
 impl PdfExportReport {
-    #[doc(hidden)]
-    pub const fn native_filter_receipt(
-        self,
-    ) -> Option<merman_render::__private::NativeSvgFilterReceipt> {
-        self.native_filter_receipt
-    }
-
-    #[doc(hidden)]
-    pub const fn native_filter_fully_localized(self) -> bool {
-        self.native_filter_fully_localized
-    }
-
     /// Returns whether offsets inside a localized filter image may paint in a different direction.
     ///
     /// Vector ancestor transforms remain supported. A transform on the rasterized group or its
@@ -1632,7 +1605,6 @@ impl PreparedRaster {
         matte_defaulted: bool,
     ) -> RasterExportReport {
         RasterExportReport {
-            native_filter_receipt: self.report.native_filter_receipt,
             directional_filter_transform_residual: self
                 .report
                 .directional_filter_transform_residual,
@@ -1938,17 +1910,6 @@ fn prepare_raster_source_on_backend_stack(
     }
     let tree = tree?;
     let (geometry, translate_min_to_origin) = raster_geometry_for_svg(root_metadata, &tree);
-    let native_filter_receipt = match usvg::Rect::from_xywh(
-        geometry.min_x,
-        geometry.min_y,
-        geometry.width,
-        geometry.height,
-    ) {
-        Some(viewport) => native_filter_receipt::preflight_native_filter_receipt(
-            source, &tree, viewport, control,
-        )?,
-        None => None,
-    };
     let font_plan = font_plan.finish_with_tree(&tree, control)?;
     #[cfg(feature = "native-fonts")]
     if let Some(context) = &options.font_context {
@@ -1968,7 +1929,6 @@ fn prepare_raster_source_on_backend_stack(
         geometry,
         translate_min_to_origin,
         report: RasterReportSeed {
-            native_filter_receipt,
             directional_filter_transform_residual,
             fallback_css_residual,
             raster: plan,
@@ -2043,12 +2003,6 @@ fn prepare_pdf_on_backend_stack(
         } else {
             false
         };
-    let native_filter_receipt = match tree.size().to_rect(0.0, 0.0) {
-        Some(viewport) => native_filter_receipt::preflight_native_filter_receipt(
-            source, &tree, viewport, control,
-        )?,
-        None => None,
-    };
     let conversion_plan = plan_svg_conversion(&tree, options.conversion_limits, control)?;
     let embedded_image_plan =
         plan_embedded_images(&tree, options.embedded_image_limit, data_plan, control)?;
@@ -2061,17 +2015,7 @@ fn prepare_pdf_on_backend_stack(
         options.filter_image_limit,
         control,
     )?;
-    let native_filter_fully_localized = pdf_native_filter_fully_localized(
-        &tree,
-        layout.drawing_size.width() / svg_size.width(),
-        options.filter_scale,
-        filter_plan,
-        native_filter_receipt,
-        control,
-    )?;
     let report = PdfExportReport {
-        native_filter_receipt,
-        native_filter_fully_localized,
         directional_filter_transform_residual,
         implicit_viewport_clipping_residual,
         fallback_css_residual,
@@ -2877,60 +2821,6 @@ fn pdf_clip_path_uses_mask(clip: &usvg::ClipPath, control: &OperationControl) ->
         }
     }
     Ok(nonzero != rules && !(nonzero == 0 && rules == 1))
-}
-
-#[cfg(feature = "pdf")]
-fn pdf_native_filter_fully_localized(
-    tree: &usvg::Tree,
-    page_scale: f32,
-    requested_scale: f32,
-    filter_plan: PdfFilterImagePlan,
-    receipt: Option<merman_render::__private::NativeSvgFilterReceipt>,
-    control: &OperationControl,
-) -> Result<bool> {
-    let Some(receipt) = receipt else {
-        return Ok(false);
-    };
-    let Ok(reference_count) = usize::try_from(receipt.reference_count()) else {
-        return Ok(false);
-    };
-    if filter_plan.limited
-        || !page_scale.is_finite()
-        || page_scale <= 0.0
-        || !requested_scale.is_finite()
-        || requested_scale <= 0.0
-        || filter_plan.requested_scale != requested_scale
-        || filter_plan.effective_scale != requested_scale
-    {
-        return Ok(false);
-    }
-
-    // The receipt certifies typed applications, while krilla also localizes independent
-    // default-look filters. Match the plan against every actual PDF group, not only typed ones.
-    let bounds = pdf_filtered_group_bounds(tree, page_scale, control)?;
-    if bounds.len() != filter_plan.filtered_groups || bounds.len() < reference_count {
-        return Ok(false);
-    }
-    if !bounds.iter().all(|geometry| {
-        let scale = f64::from(geometry.scale) * f64::from(requested_scale);
-        let width = f64::from(geometry.width) * scale;
-        let height = f64::from(geometry.height) * scale;
-        width.is_finite()
-            && height.is_finite()
-            && width > 0.0
-            && height > 0.0
-            && width <= KRILLA_MAX_FILTER_SIDE_PX
-            && height <= KRILLA_MAX_FILTER_SIDE_PX
-    }) {
-        return Ok(false);
-    }
-    let Some(pixels) = pdf_filter_pixels(&bounds, requested_scale, control)? else {
-        return Ok(false);
-    };
-    Ok(
-        filter_plan.requested_image_pixels == pixels
-            && filter_plan.effective_image_pixels == pixels,
-    )
 }
 
 #[cfg(feature = "pdf")]
@@ -4072,22 +3962,15 @@ mod png_feature_tests {
         .expect("sealed SVG")
     }
 
-    fn assert_typed_color_png_pixel(input: &str, expected: [u8; 4]) {
-        let merman_render::diagram_theme::CanvasPaint::Solid(color) =
-            merman_render::diagram_theme::CanvasPaint::solid(input).expect("valid typed color")
-        else {
-            panic!("a solid typed color must remain solid");
-        };
-        let source = format!(
-            r#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><rect width="16" height="16" fill="{}"/></svg>"#,
-            color.as_css(),
-        );
+    #[test]
+    fn translucent_svg_paint_keeps_native_png_channels() {
+        let source = r##"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><rect width="16" height="16" fill="#FF0000" fill-opacity="0.5"/></svg>"##;
         let session = merman_render::environment::RenderEnvironment::deterministic()
             .begin_session()
             .expect("deterministic color render session");
-        let svg = merman_render::svg::finalize_resvg_svg(&source, &session)
-            .expect("seal typed color SVG");
-        let bytes = svg_to_png(&svg, &fixture_raster_options()).expect("export typed color PNG");
+        let svg = merman_render::svg::finalize_resvg_svg(source, &session)
+            .expect("seal SVG with translucent fill");
+        let bytes = svg_to_png(&svg, &fixture_raster_options()).expect("export SVG as PNG");
         let decoder = png::Decoder::new(std::io::Cursor::new(bytes));
         let mut reader = decoder.read_info().expect("read color PNG");
         let mut pixels = vec![0; reader.output_buffer_size().expect("PNG output size")];
@@ -4096,59 +3979,7 @@ mod png_feature_tests {
         assert_eq!(info.color_type, png::ColorType::Rgba);
         assert_eq!(info.bit_depth, png::BitDepth::Eight);
         let center = ((8 * info.width + 8) * 4) as usize;
-        assert_eq!(
-            &pixels[center..center + 4],
-            &expected,
-            "typed color {input}"
-        );
-    }
-
-    #[test]
-    fn typed_rgb_slash_alpha_keeps_native_png_channels() {
-        assert_typed_color_png_pixel("rgba(255, 0, 0, .5)", [255, 0, 0, 128]);
-        assert_typed_color_png_pixel("rgb(255 0 0 / .5)", [255, 0, 0, 128]);
-    }
-
-    #[test]
-    fn typed_percentage_alpha_keeps_native_png_channels() {
-        for input in ["rgb(100% 0% 0% / 50%)", "rgba(255, 0, 0, 50%)"] {
-            assert_typed_color_png_pixel(input, [255, 0, 0, 128]);
-        }
-    }
-
-    #[test]
-    fn typed_hsl_angle_units_keep_native_png_channels() {
-        assert_typed_color_png_pixel("hsl(120deg 100% 50%)", [0, 255, 0, 255]);
-        for input in [
-            "hsl(.5turn 100% 50%)",
-            "hsl(200grad 100% 50%)",
-            "hsl(3.141592653589793rad 100% 50%)",
-            "hsl(.5TURN 100% 50%)",
-            "hsl(200GRAD 100% 50%)",
-        ] {
-            assert_typed_color_png_pixel(input, [0, 255, 255, 255]);
-        }
-        assert_typed_color_png_pixel("hsl(.5turn 100% 50% / 25%)", [0, 255, 255, 64]);
-    }
-
-    #[test]
-    fn typed_negative_hue_keeps_native_png_channels() {
-        assert_typed_color_png_pixel("hsl(-300deg 50% 50%)", [191, 191, 64, 255]);
-    }
-
-    #[test]
-    fn typed_percentage_first_mixed_rgb_keeps_native_png_channels() {
-        assert_typed_color_png_pixel("rgb(100% 128 0)", [255, 128, 0, 255]);
-    }
-
-    #[test]
-    fn typed_number_first_mixed_rgb_keeps_native_png_channels() {
-        assert_typed_color_png_pixel("rgb(128 100% 0)", [128, 255, 0, 255]);
-    }
-
-    #[test]
-    fn typed_half_percentage_keeps_native_png_rounding() {
-        assert_typed_color_png_pixel("rgb(50% 0% 0% / 1)", [128, 0, 0, 255]);
+        assert_eq!(&pixels[center..center + 4], &[255, 0, 0, 128]);
     }
 
     #[test]

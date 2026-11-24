@@ -8,7 +8,6 @@ pub(crate) fn render_error_diagram_svg_model(
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("merman");
-    let mut surface_receipt = typography_theme.begin_terminal_receipt();
 
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_bounds = root_svg::DiagramBounds::from_view_box(
@@ -22,24 +21,18 @@ pub(crate) fn render_error_diagram_svg_model(
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "error");
     root_chrome.dom.style_viewbox_order = root_svg::SvgRootStyleViewBoxOrder::ViewBoxThenStyle;
     root_chrome.dom.trailing_newline = false;
-    let root_document = root_svg::RootViewportContext::new(
-        crate::DiagramFamilyId::ERROR,
-        diagram_id.semantic_str(),
-    )
-    .write_open(&mut out, root_spec, root_chrome)?;
+    let root_document = options
+        .root_viewport(crate::DiagramFamilyId::ERROR, diagram_id)
+        .write_open(&mut out, root_spec, root_chrome)?;
     out.push_str(r#"<style>"#);
-    let css_write = write_prepared_info_css(
+    write_prepared_info_css(
         &mut super::super::output::XmlTextOutput::new(&mut out),
         diagram_id,
         typography_theme.css_binding(),
     )?;
     out.push_str("</style>");
     out.checkpoint()?;
-    surface_receipt.record_css_emission(
-        css_write.root_font_family_css(),
-        css_write.inherited_font_family_css(),
-        css_write.root_variable_font_family_css(),
-    );
+
     out.push_str(r#"<g/>"#);
     options.checkpoint_emit()?;
     out.push_str(r#"<g>"#);
@@ -62,14 +55,7 @@ pub(crate) fn render_error_diagram_svg_model(
         escape_xml(message.text())
     );
     out.checkpoint()?;
-    surface_receipt.record_error_text(
-        crate::error::ErrorTextRole::Message,
-        "error-text",
-        message.text(),
-        message.font_size_px(),
-        message.x(),
-        message.y(),
-    );
+
     let version = typography_theme.version_geometry();
     let _ = write!(
         &mut out,
@@ -80,15 +66,8 @@ pub(crate) fn render_error_diagram_svg_model(
         escape_xml(version.text())
     );
     out.checkpoint()?;
-    surface_receipt.record_error_text(
-        crate::error::ErrorTextRole::Version,
-        "error-text",
-        version.text(),
-        version.font_size_px(),
-        version.x(),
-        version.y(),
-    );
-    for (index, detail) in typography_theme.detail_geometry().iter().enumerate() {
+
+    for detail in typography_theme.detail_geometry() {
         let _ = write!(
             &mut out,
             r#"<text class="error-text" x="{}" y="{}" font-size="{}px" style="text-anchor: middle;">"#,
@@ -99,23 +78,9 @@ pub(crate) fn render_error_diagram_svg_model(
         util::escape_xml_serialized_text_into(&mut out, detail.text());
         out.push_str("</text>");
         out.checkpoint()?;
-        surface_receipt.record_error_text(
-            crate::error::ErrorTextRole::Detail(index),
-            "error-text",
-            detail.text(),
-            detail.font_size_px(),
-            detail.x(),
-            detail.y(),
-        );
     }
     out.push_str("</g></svg>\n");
-    let rooted_svg = root_document.complete(out.finish()?)?;
-    if !typography_theme.record_terminal(surface_receipt) {
-        return Err(crate::Error::InvalidModel {
-            message: "Error typography receipt was recorded more than once".to_string(),
-        });
-    }
-    Ok(rooted_svg)
+    root_document.complete(out.finish()?)
 }
 
 #[cfg(test)]
@@ -142,7 +107,6 @@ mod tests {
         .unwrap();
         let config = serde_json::json!({});
         let typography = crate::error::ErrorTypographyThemePlan::resolve_with_message(
-            None,
             &crate::test_support::presentation_config(config.clone()),
             execution.text_measurer(),
             model.error_message.as_deref(),

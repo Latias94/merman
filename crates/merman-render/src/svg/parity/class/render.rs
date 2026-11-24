@@ -11,7 +11,7 @@ use super::*;
 
 #[allow(
     clippy::too_many_arguments,
-    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+    reason = "The SVG writer receives prepared geometry, styles, and operation inputs."
 )]
 pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     layout: &ClassDiagramLayout,
@@ -21,7 +21,6 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     typography_theme: &crate::class::ClassTextThemePlan,
     node_visual_plan: &crate::class::ClassNodeVisualPlan,
     render_config: &crate::class::ClassRenderConfig,
-    theme_evidence: &crate::class::ClassThemeEvidenceRecorder,
     effective_config: &merman_model::presentation::PresentationConfig,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
@@ -47,29 +46,6 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         "render.class.roughjs",
     );
     let settings = render_config;
-    let mut typography_receipt = typography_theme.begin_text_outcomes();
-    if let Some(receipt) = typography_receipt.as_mut() {
-        typography_theme.bind_text_paints(
-            receipt,
-            node_visual_plan.label_paints(),
-            relation_theme.namespace_title_terminal(),
-            relation_theme.diagram_title_terminal(),
-            model.notes().map(|note| {
-                (
-                    note.id,
-                    settings.diagram_use_html_labels
-                        || crate::math::contains_delimited_math(&note.text),
-                )
-            }),
-        );
-    }
-    let marker_expectations = if relation_theme.typed_stroke().is_some() {
-        class_marker_paint_bindings(model.relations(), settings.look == "neo")
-    } else {
-        Vec::new()
-    };
-    let mut relation_theme_receipt = relation_theme.begin_outcomes(marker_expectations);
-
     #[cfg(feature = "layout-shoal")]
     let canonical_routes = prepared_labels.canonical_routes.as_ref();
     #[cfg(feature = "layout-shoal")]
@@ -93,10 +69,14 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
 
     let render_guard = timing.section(&mut timings.render_svg);
     let mut out = BoundedSvgOutput::new(options.work_meter());
-    let root_context =
-        root_svg::RootViewportContext::new(crate::DiagramFamilyId::CLASS, diagram_id);
+    let root_context = options.root_viewport(crate::DiagramFamilyId::CLASS, diagram_id);
     emit.checkpoint()?;
 
+    let divider_guide = settings
+        .native_style
+        .as_ref()
+        .filter(|_| !mermaid_config.explicit_config_owns_path("themeVariables.borderColorArray"))
+        .map(|native| native.guide.as_str());
     // Mermaid emits a single `<style>` element with diagram-scoped CSS.
     out.push_str("<style>");
     write_class_css(
@@ -104,9 +84,16 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         diagram_id.semantic_str(),
         typography_theme,
         relation_theme,
+        divider_guide,
     )?;
-    if let Some(outcomes) = typography_receipt.as_mut() {
-        outcomes.record_stylesheet();
+    if let Some(native) = &settings.native_style {
+        super::css::write_class_native_css(
+            &mut super::super::output::XmlTextOutput::new(&mut out),
+            diagram_id.semantic_str(),
+            native,
+            relation_theme,
+            typography_theme.css_binding(),
+        )?;
     }
     out.push_str("</style>");
     out.checkpoint()?;
@@ -116,14 +103,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     out.push_str("<g>");
     out.checkpoint()?;
     // Mermaid 12 shares host markers across registered layouts.
-    class_markers(
-        &mut out,
-        diagram_id,
-        aria_roledescription,
-        true,
-        relation_theme,
-        &mut relation_theme_receipt,
-    )?;
+    class_markers(&mut out, diagram_id, aria_roledescription, true)?;
     emit.checkpoint()?;
 
     let ClassRenderLookups {
@@ -228,8 +208,6 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
             "edgePaths"
         },
         relation_theme,
-        text_paint: typography_theme.edge_paint(),
-        capture_text_facts: typography_theme.requires_text_outcomes(),
         emit,
     };
 
@@ -270,8 +248,6 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
             },
             &nodes_ctx,
             &group_ctx,
-            &mut relation_theme_receipt,
-            &mut typography_receipt,
         )?;
         out.push_str("</g>"); // root
         out.push_str("</g>"); // wrapper
@@ -286,8 +262,6 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
             },
             &nodes_ctx,
             &group_ctx,
-            &mut relation_theme_receipt,
-            &mut typography_receipt,
         )?;
         out.push_str("</g>"); // root
         out.push_str("</g>"); // wrapper
@@ -320,6 +294,9 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
             .map(str::trim)
             .filter(|title| !title.is_empty())
             .map(|title| {
+                if let Some(native) = &settings.native_style {
+                    return measurer.measure_svg_title_bbox_x(title, &native.title_style);
+                }
                 let title_style = TextStyle {
                     font_family: settings.text_style().font_family.clone(),
                     // Mermaid emits `classDiagramTitleText`, while the Class stylesheet's 18px
@@ -335,39 +312,9 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
 
     // Mermaid renders the diagram title as a direct child of `<svg>` (outside the wrapper `<g>`),
     // centered in the root viewport.
-    let mut title_emission = None;
     if let Some(title) = view_box.title.as_ref() {
-        title_emission = super::label::write_class_diagram_title(
-            &mut out,
-            title.x,
-            title.y,
-            title.text,
-            relation_theme
-                .diagram_title_terminal()
-                .map(|(_, style)| style),
-        );
+        super::label::write_class_diagram_title(&mut out, title.x, title.y, title.text);
         out.checkpoint()?;
-    }
-    relation_theme_receipt.record_diagram_title(
-        view_box.title.is_some(),
-        relation_theme.diagram_title_terminal(),
-        title_emission,
-    );
-
-    if let Some(receipt) = typography_receipt.as_mut() {
-        let facts = view_box
-            .title
-            .as_ref()
-            .map_or_else(crate::class::ClassTextTerminalFacts::default, |title| {
-                crate::class::ClassTextTerminalFacts::inherited_text(title.text)
-            });
-        let facts = facts.with_paint(
-            relation_theme
-                .diagram_title_terminal()
-                .filter(|(_, style)| title_emission == Some(*style)),
-            title_emission.unwrap_or(""),
-        );
-        receipt.record_diagram_title(facts);
     }
 
     drop(viewbox_guard);
@@ -404,8 +351,5 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         timings.total = s.elapsed();
         emit_class_render_timing(&timings, &detail, layout);
     }
-    let rooted_svg = root_document.complete(out)?;
-    theme_evidence.record_outcomes(relation_theme_receipt);
-    typography_theme.record_outcomes(typography_receipt);
-    Ok(rooted_svg)
+    root_document.complete(out)
 }

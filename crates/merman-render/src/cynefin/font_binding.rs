@@ -1,3 +1,4 @@
+use merman_model::presentation::PresentationConfig;
 use serde_json::Value;
 
 use super::CynefinTextRole;
@@ -7,7 +8,7 @@ use crate::mermaid_style::{
 };
 
 /// The four expressions in Cynefin's stylesheet keep their JSON operand types until binding.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct CynefinFontBinding {
     domain: CynefinFontSize,
     item: CynefinFontSize,
@@ -16,7 +17,7 @@ pub(crate) struct CynefinFontBinding {
     inherited_px: f64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct CynefinFontSize {
     css: String,
     used_px: Option<f64>,
@@ -25,8 +26,7 @@ struct CynefinFontSize {
 impl CynefinFontSize {
     fn new(css: Option<String>, inherited_px: f64) -> Self {
         let Some(css) = css.filter(|css| is_resource_free_css_value(css)) else {
-            // Unadmitted source is never interpolated into the stylesheet or certified as
-            // applied. The safe invalid token preserves best-effort inherited rendering.
+            // A safe invalid token preserves inherited rendering when interpolation is unsafe.
             return Self {
                 css: "NaNpx".to_owned(),
                 used_px: None,
@@ -46,8 +46,8 @@ impl CynefinFontSize {
     }
 }
 
-/// Retain zero, but certify positive text only inside binary32's normal range for both the
-/// authored CSS coefficient and the final pixel value. Subnormal/overflowed values stay unknown.
+/// Measure positive sizes only when the CSS coefficient and pixel value fit binary32's normal range.
+/// Zero remains a valid size.
 fn admit_painter_font_size_px(css: &str, size: f64) -> Option<f64> {
     if size == 0.0 {
         return Some(0.0);
@@ -70,6 +70,27 @@ impl CynefinFontBinding {
         let values = &config["themeVariables"]["cynefin"];
         let domain = FontOperand::new(values.get("domainFontSize"), 16.0);
         let item = FontOperand::new(values.get("itemFontSize"), 12.0);
+        Self::from_operands(domain, item, inherited_px)
+    }
+
+    pub(super) fn native(config: &PresentationConfig, base_size: f64) -> Self {
+        let values = &config.as_value()["themeVariables"]["cynefin"];
+        let domain = config
+            .explicit_config_owns_path("themeVariables.cynefin.domainFontSize")
+            .then(|| values.get("domainFontSize"))
+            .flatten();
+        let item = config
+            .explicit_config_owns_path("themeVariables.cynefin.itemFontSize")
+            .then(|| values.get("itemFontSize"))
+            .flatten();
+        Self::from_operands(
+            FontOperand::new(domain, base_size + 4.0),
+            FontOperand::new(item, base_size),
+            base_size,
+        )
+    }
+
+    fn from_operands(domain: FontOperand<'_>, item: FontOperand<'_>, inherited_px: f64) -> Self {
         Self {
             domain: CynefinFontSize::new(domain.interpolate_px(), inherited_px),
             item: CynefinFontSize::new(item.interpolate_px(), inherited_px),
@@ -156,7 +177,7 @@ fn number_px(number: f64) -> String {
 
 /// Only the stylesheet's numeric subtraction needs a string-to-number conversion.
 /// Decimal strings use binary64 parsing; bounded radix integers retain their exact conversion.
-/// Unsupported integer magnitudes stay unverified rather than growing a JavaScript evaluator.
+/// Radix integers outside `u64` have no computed size.
 fn subtraction_operand(raw: &str) -> Option<f64> {
     let raw = crate::text::trim_ecmascript_whitespace(raw);
     if raw.is_empty() {
@@ -220,7 +241,7 @@ mod tests {
     }
 
     #[test]
-    fn unsafe_and_unrepresentable_final_sizes_remain_unverified() {
+    fn unsafe_and_unrepresentable_final_sizes_have_no_used_size() {
         for value in [
             "1e-50",
             "1e-39",

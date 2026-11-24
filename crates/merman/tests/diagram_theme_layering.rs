@@ -1,33 +1,46 @@
-#![cfg(feature = "svg")]
+#![cfg(all(
+    feature = "svg",
+    feature = "compat-json",
+    any(
+        feature = "diagram-flowchart",
+        feature = "diagram-sequence",
+        feature = "diagram-mindmap"
+    )
+))]
 
-use merman::svg::{DiagramTheme, DiagramThemeCompiler, SvgPipeline, ThemePreset};
-use merman::{
-    MermaidEngine, OperationControl, RenderOutput, RenderRequest, Renderer,
-    SourcePresentationConfig, SvgRequest,
-};
+#[cfg(feature = "diagram-sequence")]
+use merman::svg::SvgPipeline;
+#[cfg(feature = "diagram-sequence")]
+use merman::theme::ThemeMode;
+use merman::theme::{Appearance, BuiltinPreset, ThemeSelection};
+#[cfg(feature = "diagram-sequence")]
+use merman::{MermaidEngine, SourcePresentationConfig};
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
+#[cfg(feature = "diagram-sequence")]
 use serde_json::{Value, json};
 
+#[cfg(feature = "diagram-sequence")]
 const SOURCE: &str = "sequenceDiagram\nAlice->>Bob: Hello";
 
+#[cfg(feature = "diagram-sequence")]
 fn config(value: Value) -> SourcePresentationConfig {
     SourcePresentationConfig::from_value(value)
 }
 
-fn one_dark() -> DiagramTheme {
-    DiagramThemeCompiler::new()
-        .compile_preset(ThemePreset::OneDark)
-        .expect("one-dark preset should compile")
+fn studio_dark() -> ThemeSelection {
+    ThemeSelection::preset(BuiltinPreset::Studio, Some(Appearance::Dark))
 }
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-sequence"))]
 fn effective_config(
     renderer: &Renderer,
     source: &str,
     request: SvgRequest,
-    theme: Option<DiagramTheme>,
+    theme: Option<ThemeSelection>,
 ) -> merman::model::ManagedJson {
     let request = RenderRequest::layout_snapshot(source, OperationControl::new(), request);
     let request = match theme {
-        Some(theme) => request.with_theme(theme),
+        Some(theme) => request.with_native_theme(theme),
         None => request,
     };
     let output = renderer
@@ -39,15 +52,16 @@ fn effective_config(
     merman::model::ManagedJson::from(&output.layout()["meta"]["effective_config"])
 }
 
+#[cfg(feature = "diagram-mindmap")]
 fn capability_plan(
     renderer: &Renderer,
     source: &str,
     request: SvgRequest,
-    theme: Option<DiagramTheme>,
+    theme: Option<ThemeSelection>,
 ) -> merman::svg::RenderCapabilityPlan {
     let request = RenderRequest::svg_plan(source, OperationControl::new(), request);
     let request = match theme {
-        Some(theme) => request.with_theme(theme),
+        Some(theme) => request.with_native_theme(theme),
         None => request,
     };
     let output = renderer
@@ -59,8 +73,9 @@ fn capability_plan(
     plan
 }
 
+#[cfg(feature = "diagram-sequence")]
 #[test]
-fn site_config_overrides_theme_mermaid_compatibility() {
+fn native_theme_preserves_site_mermaid_config() {
     let renderer = Renderer::new().with_presentation_engine(MermaidEngine::new().with_site_config(
         config(json!({
             "theme": "forest",
@@ -74,7 +89,12 @@ fn site_config_overrides_theme_mermaid_compatibility() {
         })),
     ));
 
-    let effective = effective_config(&renderer, SOURCE, SvgRequest::default(), Some(one_dark()));
+    let effective = effective_config(
+        &renderer,
+        SOURCE,
+        SvgRequest::default(),
+        Some(studio_dark()),
+    );
     assert_eq!(effective["theme"], "forest");
     assert_eq!(effective["darkMode"], false);
     assert_eq!(effective["look"], "handDrawn");
@@ -83,12 +103,18 @@ fn site_config_overrides_theme_mermaid_compatibility() {
     assert_eq!(effective["flowchart"]["defaultRenderer"], "dagre");
 }
 
+#[cfg(feature = "diagram-flowchart")]
 #[test]
-fn typed_theme_does_not_select_mermaid_layout_or_look() {
+fn native_theme_does_not_select_mermaid_layout_or_look() {
     let source = "flowchart TD\nA --> B";
     let renderer = Renderer::new();
     let baseline = effective_config(&renderer, source, SvgRequest::default(), None);
-    let themed = effective_config(&renderer, source, SvgRequest::default(), Some(one_dark()));
+    let themed = effective_config(
+        &renderer,
+        source,
+        SvgRequest::default(),
+        Some(studio_dark()),
+    );
 
     assert_eq!(themed.get("look"), baseline.get("look"));
     assert_eq!(
@@ -97,6 +123,7 @@ fn typed_theme_does_not_select_mermaid_layout_or_look() {
     );
 }
 
+#[cfg(feature = "diagram-sequence")]
 #[test]
 fn source_config_remains_the_final_nonsecure_mermaid_layer() {
     let source = r##"%%{init: {"theme": "neutral", "sequence": {"actorMargin": 88}}}%%
@@ -109,11 +136,17 @@ Alice->>Bob: Hello"##;
         })),
     ));
 
-    let effective = effective_config(&renderer, source, SvgRequest::default(), Some(one_dark()));
+    let effective = effective_config(
+        &renderer,
+        source,
+        SvgRequest::default(),
+        Some(studio_dark()),
+    );
     assert_eq!(effective["theme"], "neutral");
     assert_eq!(effective["sequence"]["actorMargin"], 88);
 }
 
+#[cfg(feature = "diagram-sequence")]
 #[test]
 fn layout_projection_materializes_scoped_theme_with_source_variables() {
     let source = r##"%%{init: {"themeVariables": {"primaryColor": "#123456"}}}%%
@@ -132,6 +165,7 @@ Alice->>Bob: Hello"##;
     assert_eq!(effective["themeVariables"]["actorBkg"], "#123456");
 }
 
+#[cfg(feature = "diagram-sequence")]
 #[test]
 fn source_config_cannot_override_secure_site_values() {
     let source = r##"%%{init: {"themeVariables": {"lineColor": "#abcdef"}}}%%
@@ -144,75 +178,80 @@ Alice->>Bob: Hello"##;
         })),
     ));
 
-    let effective = effective_config(&renderer, source, SvgRequest::default(), Some(one_dark()));
+    let effective = effective_config(
+        &renderer,
+        source,
+        SvgRequest::default(),
+        Some(studio_dark()),
+    );
     assert_eq!(effective["themeVariables"]["lineColor"], "#123456");
 }
 
+#[cfg(feature = "diagram-sequence")]
 #[test]
 fn request_theme_does_not_leak_after_success_or_cancellation() {
     let renderer = Renderer::new();
-    let baseline = effective_config(&renderer, SOURCE, SvgRequest::default(), None);
-
-    let themed = effective_config(&renderer, SOURCE, SvgRequest::default(), Some(one_dark()));
+    let request = |control| RenderRequest::svg(SOURCE, control, SvgRequest::default());
+    let baseline = renderer
+        .render_svg_data(request(OperationControl::new()))
+        .unwrap()
+        .unwrap();
+    let themed = renderer
+        .render_svg_data(request(OperationControl::new()).with_native_theme(studio_dark()))
+        .unwrap()
+        .unwrap();
     assert_ne!(themed, baseline, "the request theme must take effect");
     assert_eq!(
-        effective_config(&renderer, SOURCE, SvgRequest::default(), None),
-        baseline,
-        "a successful request-scoped theme must not alter the renderer"
+        renderer
+            .render_svg_data(request(OperationControl::new()))
+            .unwrap()
+            .unwrap(),
+        baseline
     );
 
     let control = OperationControl::new();
     control.cancel();
-    let cancelled = renderer.render(
-        RenderRequest::layout_json(SOURCE, control, SvgRequest::default()).with_theme(one_dark()),
-    );
+    let cancelled = renderer.render(request(control).with_native_theme(studio_dark()));
     assert!(matches!(cancelled, Err(merman::RenderError::Cancelled(_))));
-
     assert_eq!(
-        baseline,
-        effective_config(&renderer, SOURCE, SvgRequest::default(), None),
-        "a request-scoped theme must not alter the renderer after cancellation"
+        renderer
+            .render_svg_data(request(OperationControl::new()))
+            .unwrap()
+            .unwrap(),
+        baseline
     );
 }
 
+#[cfg(feature = "diagram-sequence")]
 #[test]
-fn svg_pipeline_selection_does_not_change_theme_identity() {
-    let theme = one_dark();
+fn svg_pipeline_selection_preserves_the_native_theme_outcome() {
     let renderer = Renderer::new();
-    let plain = renderer
-        .render(
-            RenderRequest::svg(SOURCE, OperationControl::new(), SvgRequest::default())
-                .with_theme(theme.clone()),
-        )
-        .expect("themed SVG should render");
-    let RenderOutput::Svg(Some(plain)) = plain else {
-        panic!("expected a themed SVG");
+    let render = |pipeline| {
+        let request = SvgRequest {
+            pipeline,
+            ..SvgRequest::default()
+        }
+        .with_native_theme(studio_dark());
+        let RenderOutput::Svg(Some(output)) = renderer
+            .render(RenderRequest::svg(SOURCE, OperationControl::new(), request))
+            .unwrap()
+        else {
+            panic!("expected a themed SVG");
+        };
+        output
     };
-
-    let readable_request = SvgRequest {
-        pipeline: Some(SvgPipeline::readable()),
-        ..SvgRequest::default()
-    };
-    let readable = renderer
-        .render(
-            RenderRequest::svg(SOURCE, OperationControl::new(), readable_request)
-                .with_theme(theme.clone()),
-        )
-        .expect("themed readable SVG should render");
-    let RenderOutput::Svg(Some(readable)) = readable else {
-        panic!("expected a themed readable SVG");
-    };
-
+    let parity = render(None);
+    let readable = render(Some(SvgPipeline::readable()));
+    assert_eq!(parity.theme_outcome().mode, ThemeMode::MermanNative);
     assert_eq!(
-        plain.evidence().theme_recipe_fingerprint(),
-        Some(theme.recipe_fingerprint())
+        parity.theme_outcome().preset_id,
+        Some(BuiltinPreset::Studio)
     );
-    assert_eq!(
-        readable.evidence().theme_recipe_fingerprint(),
-        Some(theme.recipe_fingerprint())
-    );
+    assert_eq!(parity.theme_outcome().appearance, Some(Appearance::Dark));
+    assert_eq!(readable.theme_outcome(), parity.theme_outcome());
 }
 
+#[cfg(feature = "diagram-mindmap")]
 #[test]
 fn render_plan_reports_renderer_capabilities_only() {
     const PLAN_SOURCE: &str = "mindmap\n  root((Root))\n    Child";
@@ -222,10 +261,13 @@ fn render_plan_reports_renderer_capabilities_only() {
         &renderer,
         PLAN_SOURCE,
         SvgRequest::default(),
-        Some(one_dark()),
+        Some(studio_dark()),
     );
 
-    assert!(!plain.required_capabilities().is_empty());
+    assert_eq!(
+        plain.required_capabilities().is_empty(),
+        !cfg!(any(feature = "layout-cytoscape", feature = "layout-elk"))
+    );
     assert_eq!(
         plain.required_capabilities(),
         themed.required_capabilities()

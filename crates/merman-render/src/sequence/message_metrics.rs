@@ -53,14 +53,6 @@ impl SequenceMessageMeasurementBinding {
                 .builtin_operation_carrier(TextMeasurementOperation::MermaidCalculateTextDimensions)
                 == Some(self.carrier)
     }
-
-    pub(super) fn retained_heap_bytes(&self) -> Option<usize> {
-        self.font_family
-            .as_ref()
-            .map_or(0, String::capacity)
-            .checked_add(self.font_weight.as_ref().map_or(0, String::capacity))?
-            .checked_add(self.font_style.as_ref().map_or(0, String::capacity))
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

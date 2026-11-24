@@ -1,7 +1,8 @@
 //! The bounded classDef projection shared by source measurement and SVG class selectors.
 
+#[cfg(test)]
 use super::FlowchartSourceFacetStatus;
-use crate::diagram_theme::PreparedSourceStyleDeclaration;
+use super::FlowchartStyleDeclaration;
 use crate::text::TextStyle;
 use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
@@ -34,10 +35,7 @@ impl<'a> FlowchartClassDefinitions<'a> {
         };
         Ok(Some(RefMut::map(self.shells.borrow_mut(), |shells| {
             shells.entry(class).or_insert_with(|| {
-                FlowchartPreparedClassShell::new(
-                    class,
-                    &FlowchartClassDefStyles::prepare(declarations),
-                )
+                FlowchartPreparedClassShell::new(&FlowchartClassDefStyles::prepare(declarations))
             })
         })))
     }
@@ -56,7 +54,7 @@ impl<'a> FlowchartClassDefinitions<'a> {
         self.shells
             .borrow_mut()
             .entry(class)
-            .or_insert_with(|| FlowchartPreparedClassShell::new(class, &styles));
+            .or_insert_with(|| FlowchartPreparedClassShell::new(&styles));
         Ok(Some(styles))
     }
 
@@ -77,24 +75,20 @@ impl<'a> FlowchartClassDefinitions<'a> {
 
 #[derive(Debug)]
 pub(crate) struct FlowchartPreparedClassShell {
-    class_id: Arc<str>,
     shape_labels: FlowchartShellLabelStyles,
     text_labels: FlowchartShellLabelStyles,
     pub(crate) paint: FlowchartShellPaint,
 }
 
 impl FlowchartPreparedClassShell {
-    fn new(class: &str, styles: &FlowchartClassDefStyles) -> Self {
+    fn new(styles: &FlowchartClassDefStyles) -> Self {
         let shape = &styles.shape;
         Self {
-            class_id: Arc::from(class),
             shape_labels: FlowchartShellLabelStyles::project(shape, "color"),
             text_labels: FlowchartShellLabelStyles::project(&styles.text, "fill"),
             paint: FlowchartShellPaint {
                 fill: shape.contains_key("fill"),
-                stroke: shape.contains_key("stroke"),
                 stroke_width: shape.contains_key("stroke-width"),
-                stroke_dasharray: shape.contains_key("stroke-dasharray"),
                 radius: shape.contains_key("rx") || shape.contains_key("ry"),
             },
         }
@@ -104,34 +98,28 @@ impl FlowchartPreparedClassShell {
 #[derive(Debug)]
 pub(crate) struct FlowchartShellPaint {
     pub(crate) fill: bool,
-    pub(crate) stroke: bool,
     pub(crate) stroke_width: bool,
-    pub(crate) stroke_dasharray: bool,
     pub(crate) radius: bool,
 }
 
 #[derive(Debug, Default)]
 struct FlowchartShellLabelStyles {
-    foreground: Option<Arc<PreparedSourceStyleDeclaration>>,
+    foreground: Option<Arc<FlowchartStyleDeclaration>>,
     fonts: [Option<FlowchartShellFont>; 2],
 }
 
 #[derive(Debug)]
 struct FlowchartShellFont {
-    ordinal: usize,
-    declaration: Arc<PreparedSourceStyleDeclaration>,
+    declaration: Arc<FlowchartStyleDeclaration>,
 }
 
 impl FlowchartShellLabelStyles {
-    fn project(
-        cssom: &IndexMap<String, Arc<PreparedSourceStyleDeclaration>>,
-        foreground: &str,
-    ) -> Self {
+    fn project(cssom: &IndexMap<String, Arc<FlowchartStyleDeclaration>>, foreground: &str) -> Self {
         let mut labels = Self {
             foreground: cssom.get(foreground).cloned(),
             ..Self::default()
         };
-        for (ordinal, (property, declaration)) in cssom.iter().enumerate() {
+        for (property, declaration) in cssom {
             let affected = match property.as_str() {
                 "font-family" => [true, false],
                 "font-size" => [false, true],
@@ -154,7 +142,6 @@ impl FlowchartShellLabelStyles {
             for (owned, winner) in affected.into_iter().zip(&mut labels.fonts) {
                 if owned {
                     *winner = Some(FlowchartShellFont {
-                        ordinal,
                         declaration: Arc::clone(declaration),
                     });
                 }
@@ -166,8 +153,8 @@ impl FlowchartShellLabelStyles {
 
 #[derive(Debug, Default)]
 pub(crate) struct FlowchartClassDefStyles {
-    pub(crate) shape: IndexMap<String, Arc<PreparedSourceStyleDeclaration>>,
-    pub(crate) text: IndexMap<String, Arc<PreparedSourceStyleDeclaration>>,
+    pub(crate) shape: IndexMap<String, Arc<FlowchartStyleDeclaration>>,
+    pub(crate) text: IndexMap<String, Arc<FlowchartStyleDeclaration>>,
 }
 
 impl FlowchartClassDefStyles {
@@ -186,8 +173,8 @@ impl FlowchartClassDefStyles {
         styles
     }
 
-    fn set(styles: &mut IndexMap<String, Arc<PreparedSourceStyleDeclaration>>, raw: &str) {
-        let Some(declaration) = PreparedSourceStyleDeclaration::parse(raw) else {
+    fn set(styles: &mut IndexMap<String, Arc<FlowchartStyleDeclaration>>, raw: &str) {
+        let Some(declaration) = FlowchartStyleDeclaration::parse(raw) else {
             return;
         };
         let property = declaration.property().to_owned();
@@ -286,18 +273,12 @@ impl<'a> FlowchartLabelDom<'a> {
 
 #[derive(Debug, Clone)]
 pub(crate) struct FlowchartStructuralFontSource {
-    pub(crate) declaration: Arc<PreparedSourceStyleDeclaration>,
-    pub(crate) class_id: Arc<str>,
-    pub(crate) ordinal: usize,
+    pub(crate) declaration: Arc<FlowchartStyleDeclaration>,
     depth: u8,
     content_owned: bool,
 }
 
 impl FlowchartStructuralFontSource {
-    pub(crate) const fn owns_content(&self) -> bool {
-        self.content_owned
-    }
-
     pub(crate) fn measurable(&self) -> bool {
         match self.declaration.property() {
             "font-family" => crate::text::parse_css_font_stack(self.declaration.value()).is_some(),
@@ -318,6 +299,7 @@ impl FlowchartStructuralFontSource {
         }
     }
 
+    #[cfg(test)]
     fn status(&self) -> FlowchartSourceFacetStatus {
         FlowchartSourceFacetStatus::from_parts(true, self.measurable())
     }
@@ -375,8 +357,6 @@ impl FlowchartStructuralLabelTypography {
             {
                 result.foreground = Some(FlowchartStructuralFontSource {
                     declaration: Arc::clone(declaration),
-                    class_id: Arc::clone(&shell.class_id),
-                    ordinal: 0,
                     depth: foreground_depth,
                     content_owned: false,
                 });
@@ -413,8 +393,6 @@ impl FlowchartStructuralLabelTypography {
                 {
                     *slot = Some(FlowchartStructuralFontSource {
                         declaration: Arc::clone(&winner.declaration),
-                        class_id: Arc::clone(&shell.class_id),
-                        ordinal: winner.ordinal,
                         depth,
                         content_owned,
                     });
@@ -424,27 +402,11 @@ impl FlowchartStructuralLabelTypography {
         Ok(result)
     }
 
-    pub(crate) fn font_stack_status(&self) -> FlowchartSourceFacetStatus {
-        self.font_stack
-            .as_ref()
-            .map_or(FlowchartSourceFacetStatus::Absent, |source| source.status())
-    }
-
-    pub(crate) fn font_size_status(&self) -> FlowchartSourceFacetStatus {
+    #[cfg(test)]
+    fn font_size_status(&self) -> FlowchartSourceFacetStatus {
         self.font_size
             .as_ref()
             .map_or(FlowchartSourceFacetStatus::Absent, |source| source.status())
-    }
-
-    pub(crate) fn foreground_status(&self) -> FlowchartSourceFacetStatus {
-        self.foreground
-            .as_ref()
-            .map_or(FlowchartSourceFacetStatus::Absent, |source| {
-                FlowchartSourceFacetStatus::from_parts(
-                    true,
-                    crate::mermaid_style::is_supported_css_color_value(source.declaration.value()),
-                )
-            })
     }
 
     pub(crate) fn apply_to_parent<'a>(&self, parent: Cow<'a, TextStyle>) -> Cow<'a, TextStyle> {

@@ -43,13 +43,11 @@ import {
 import { copyWorkspaceShareUrl } from "@/src/lib/share";
 import { copyIssueShareUrl } from "@/src/lib/share-view";
 import { resolveThemeSelection } from "@/src/lib/theme-appearance";
-import { mermanRuntimeStore } from "@/src/runtime/merman";
-import { currentThemeRender } from "@/src/lib/theme-discovery";
+import { currentWorkspaceRender } from "@/src/runtime/render-coordinator";
 import { executeArtifactAction } from "@/src/runtime/artifact-actions-browser";
 import { isMermanSvgPipeline, MERMAN_SVG_PIPELINES } from "@/src/runtime/merman-core";
 import { isAsciiExportAvailable } from "@/src/components/toolbar-artifact-availability";
 import {
-  selectCompletedRenderBatch,
   selectCurrentDiagramType,
   useRenderCoordinator,
 } from "@/src/runtime/use-render-coordinator";
@@ -65,8 +63,7 @@ export function useToolbarArtifactActions() {
   const diagramType = useRenderCoordinator(selectCurrentDiagramType);
   const renderState = useRenderCoordinator((state) => state);
   const hostAppearance = useAppStore((state) => state.resolvedTheme);
-  const render = currentThemeRender(renderState, workspace, hostAppearance);
-  const currentBatch = render.status === "waiting" ? null : selectCompletedRenderBatch(renderState);
+  const currentBatch = currentWorkspaceRender(renderState, workspace, hostAppearance);
   const asciiSupport = useAsciiSupport();
   const { openExport } = useExportWorkbench();
   const asciiCapability = asciiSupport.capabilityFor(diagramType);
@@ -205,12 +202,7 @@ export function useToolbarArtifactActions() {
 function currentNativeTheme() {
   const state = useAppStore.getState();
   const workspace = selectWorkspaceSnapshot(state);
-  if (workspace.themePresetId !== null || workspace.themeRecipeJson !== null || (workspace.themeAppearance ?? "default") === "default") return workspace.diagramTheme;
-  const runtime = mermanRuntimeStore.getState();
-  if (runtime.status !== "ready") throw new Error("Wait for theme discovery before exporting the native Mermaid choice.");
-  const selection = resolveThemeSelection(workspace, state.resolvedTheme, runtime.facade.themeCatalog());
-  if (selection.error) throw new Error(selection.error);
-  return selection.mermaidTheme;
+  return resolveThemeSelection(workspace, state.resolvedTheme).mermaidTheme;
 }
 
 type ToolbarArtifactActionsOwner = ReturnType<

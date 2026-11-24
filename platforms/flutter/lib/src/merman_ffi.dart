@@ -1101,735 +1101,150 @@ class MermanLintRuleCatalogEntry {
   );
 }
 
-/// Artifact-owned typed theme metadata.
+/// The loaded artifact's v2 theme catalog.
 class MermanThemeCatalog {
   const MermanThemeCatalog({
     required this.schemaVersion,
-    required this.structuredSpecAvailable,
-    required this.recipeSchemaVersion,
-    required this.authoringRequestSchemaVersion,
-    required this.authoringResultSchemaVersion,
-    required this.supportedOutputIds,
     required this.presets,
-    required this.mermaidThemeDesigns,
-    required this.knownCapabilityIds,
-    required this.knownTextCapabilityIds,
-    required this.knownFontContainerIds,
-    required this.knownFontSourceIds,
-    required this.knownSemanticTargetIds,
-    required this.knownVariantIds,
-    required this.resourceLimits,
+    required this.mermaidThemes,
+    required this.families,
     required this.jsonObject,
   });
 
   final int schemaVersion;
-  final bool structuredSpecAvailable;
-  final int? recipeSchemaVersion;
-  final int? authoringRequestSchemaVersion;
-  final int? authoringResultSchemaVersion;
-  final List<String> supportedOutputIds;
   final List<MermanThemePreset> presets;
-  final List<MermanMermaidThemeDesign> mermaidThemeDesigns;
-  final List<String> knownCapabilityIds;
-  final List<String> knownTextCapabilityIds;
-  final List<String> knownFontContainerIds;
-  final List<String> knownFontSourceIds;
-  final List<String> knownSemanticTargetIds;
-  final List<String> knownVariantIds;
-  final List<MermanThemeResourceLimit> resourceLimits;
+  final List<String> mermaidThemes;
+  final List<MermanThemeFamilyCapabilities> families;
   final Map<String, Object?> jsonObject;
 
   factory MermanThemeCatalog.fromJson(Map<String, Object?> json) {
+    const label = 'theme catalog';
     final schemaVersion = _requiredInt(json, 'schema_version');
-    if (schemaVersion != 1) {
+    if (schemaVersion != 2) {
       throw MermanException.contract(
         'unsupported theme catalog schema $schemaVersion',
       );
     }
-    final available = _requiredBool(
+    final presets = _jsonObjectListFromField(
       json,
-      'structured_spec_available',
-      'theme catalog',
+      label,
+      'presets',
+      MermanThemePreset.fromJson,
     );
-    int? schema(String field) {
-      if (!json.containsKey(field)) {
-        throw MermanException.contract('theme catalog is missing $field');
-      }
-      if (!available && json[field] == null) return null;
-      if (!available) {
-        throw MermanException.contract(
-          'unavailable theme catalog must not advertise $field',
-        );
-      }
-      final version = _requiredInt(json, field);
-      if (version <= 0 || version > _maxSafeJsonInteger) {
-        throw MermanException.contract('invalid theme catalog.$field');
-      }
-      return version;
+    final families = _jsonObjectListFromField(
+      json,
+      label,
+      'families',
+      MermanThemeFamilyCapabilities.fromJson,
+    );
+    final mermaidThemes = _requiredStringList(
+      json,
+      'mermaid_themes',
+      '$label.mermaid_themes',
+    );
+    if (presets.map((preset) => preset.id).toSet().length != presets.length) {
+      throw MermanException.contract('$label preset IDs must be unique');
     }
-
-    final rawPresets = json['presets'];
-    if (rawPresets is! List) {
-      throw MermanException.contract('theme catalog.presets must be an array');
+    if (families.map((family) => family.id).toSet().length != families.length) {
+      throw MermanException.contract('$label family IDs must be unique');
     }
-    final presets = rawPresets.indexed
-        .map(
-          (entry) => MermanThemePreset.fromJson(
-            _asObject(entry.$2, 'theme catalog.presets[${entry.$1}]'),
-          ),
-        )
-        .toList();
-    final presetIds = <String>{};
-    final concreteIds = <String>{};
-    for (final preset in presets) {
-      if (!presetIds.add(preset.id) ||
-          preset.appearances.any(
-            (appearance) => !concreteIds.add(appearance.concretePresetId),
-          )) {
-        throw MermanException.contract('theme preset IDs must be unique');
-      }
-    }
-    final rawMermaidDesigns = json['mermaid_theme_designs'];
-    if (rawMermaidDesigns is! List) {
+    if (!mermaidThemes.every(_isRuntimeIdentifier) ||
+        mermaidThemes.toSet().length != mermaidThemes.length) {
       throw MermanException.contract(
-        'theme catalog.mermaid_theme_designs must be an array',
+        '$label Mermaid theme IDs must be unique runtime identifiers',
       );
-    }
-    final mermaidDesigns = rawMermaidDesigns.indexed
-        .map(
-          (entry) => MermanMermaidThemeDesign.fromJson(
-            _asObject(
-              entry.$2,
-              'theme catalog.mermaid_theme_designs[${entry.$1}]',
-            ),
-          ),
-        )
-        .toList();
-    final mermaidIds = <String>{};
-    final mermaidThemeIds = <String>{};
-    for (final design in mermaidDesigns) {
-      if (!mermaidIds.add(design.id) ||
-          design.appearances.any(
-            (appearance) => !mermaidThemeIds.add(appearance.themeId),
-          )) {
-        throw MermanException.contract('Mermaid theme IDs must be unique');
-      }
-    }
-    final rawResourceLimits = json['resource_limits'];
-    if (rawResourceLimits is! List) {
-      throw MermanException.contract(
-        'theme catalog.resource_limits must be an array',
-      );
-    }
-    final resourceLimits = <MermanThemeResourceLimit>[];
-    String? previousResourceLimitId;
-    for (final entry in rawResourceLimits.indexed) {
-      final limit = MermanThemeResourceLimit.fromJson(
-        _asObject(entry.$2, 'theme catalog.resource_limits[${entry.$1}]'),
-      );
-      if (previousResourceLimitId != null &&
-          previousResourceLimitId.compareTo(limit.id) >= 0) {
-        throw MermanException.contract(
-          'theme catalog.resource_limits must be sorted and unique by ID',
-        );
-      }
-      previousResourceLimitId = limit.id;
-      resourceLimits.add(limit);
     }
     return MermanThemeCatalog(
       schemaVersion: schemaVersion,
-      structuredSpecAvailable: available,
-      recipeSchemaVersion: schema('recipe_schema_version'),
-      authoringRequestSchemaVersion: schema('authoring_request_schema_version'),
-      authoringResultSchemaVersion: schema('authoring_result_schema_version'),
-      supportedOutputIds: List.unmodifiable(
-        _requiredSortedUniqueStrings(
-          json,
-          'supported_output_ids',
-          'theme catalog.supported_output_ids',
-        ),
-      ),
       presets: List.unmodifiable(presets),
-      mermaidThemeDesigns: List.unmodifiable(mermaidDesigns),
-      knownCapabilityIds: List.unmodifiable(
-        _requiredSortedUniqueStrings(
-          json,
-          'known_capability_ids',
-          'theme catalog.known_capability_ids',
-        ),
-      ),
-      knownTextCapabilityIds: List.unmodifiable(
-        _requiredSortedUniqueStrings(
-          json,
-          'known_text_capability_ids',
-          'theme catalog.known_text_capability_ids',
-        ),
-      ),
-      knownFontContainerIds: List.unmodifiable(
-        _requiredSortedUniqueStrings(
-          json,
-          'known_font_container_ids',
-          'theme catalog.known_font_container_ids',
-        ),
-      ),
-      knownFontSourceIds: List.unmodifiable(
-        _requiredSortedUniqueStrings(
-          json,
-          'known_font_source_ids',
-          'theme catalog.known_font_source_ids',
-        ),
-      ),
-      knownSemanticTargetIds: List.unmodifiable(
-        _requiredSortedUniqueStrings(
-          json,
-          'known_semantic_target_ids',
-          'theme catalog.known_semantic_target_ids',
-        ),
-      ),
-      knownVariantIds: List.unmodifiable(
-        _requiredSortedUniqueStrings(
-          json,
-          'known_variant_ids',
-          'theme catalog.known_variant_ids',
-        ),
-      ),
-      resourceLimits: List.unmodifiable(resourceLimits),
-      jsonObject: _deeplyUnmodifiableJsonObject(json, 'theme catalog'),
+      mermaidThemes: List.unmodifiable(mermaidThemes),
+      families: List.unmodifiable(families),
+      jsonObject: _deeplyUnmodifiableJsonObject(json, label),
     );
   }
 }
 
-/// One design identity with its declared appearances and complete-document availability.
+/// A built-in native theme and its default appearance's six swatches.
 class MermanThemePreset {
   const MermanThemePreset({
     required this.id,
-    required this.displayName,
-    required this.supportedAppearances,
-    required this.defaultAppearance,
+    required this.name,
+    required this.description,
+    required this.category,
     required this.appearances,
-    required this.maturity,
-    required this.available,
-    required this.availabilityReasonIds,
-    required this.licenseExpression,
-    required this.requiredAttribution,
-    required this.exportKind,
+    required this.defaultAppearance,
+    required this.swatches,
     required this.jsonObject,
   });
 
   final String id;
-  final String displayName;
-  final List<String> supportedAppearances;
+  final String name;
+  final String description;
+  final String category;
+  final List<String> appearances;
   final String defaultAppearance;
-  final List<MermanThemePresetAppearance> appearances;
-  final String maturity;
-  final bool available;
-  final List<String> availabilityReasonIds;
-  final String licenseExpression;
-  final String? requiredAttribution;
-  final String exportKind;
+  final List<String> swatches;
   final Map<String, Object?> jsonObject;
 
   factory MermanThemePreset.fromJson(Map<String, Object?> json) {
     final id = _requiredRuntimeIdentifier(json, 'id', 'theme preset');
     final label = 'theme preset $id';
-    final available = _requiredBool(json, 'available', label);
-    final reasons = _themeAvailabilityReasons(json, label);
-    final rawSupported = json['supported_appearances'];
-    if (rawSupported is! List || rawSupported.isEmpty) {
-      throw MermanException.contract(
-        '$label.supported_appearances must be a nonempty array',
-      );
-    }
-    final supported = rawSupported
-        .map((value) => _themeAppearance(value, '$label.supported_appearances'))
-        .toList();
-    final defaultAppearance = _themeAppearance(
-      json['default_appearance'],
-      '$label.default_appearance',
+    final appearances = _requiredStringList(
+      json,
+      'appearances',
+      '$label.appearances',
     );
-    if (supported.toSet().length != supported.length ||
-        !supported.contains(defaultAppearance)) {
-      throw MermanException.contract('$label has inconsistent appearances');
-    }
-    final rawAppearances = json['appearances'];
-    if (rawAppearances is! List) {
-      throw MermanException.contract('$label.appearances must be an array');
-    }
-    final appearances = rawAppearances.indexed
-        .map(
-          (entry) => MermanThemePresetAppearance.fromJson(
-            _asObject(entry.$2, '$label.appearances[${entry.$1}]'),
-          ),
-        )
-        .toList();
-    if (appearances.length != supported.length) {
-      throw MermanException.contract('$label has inconsistent appearances');
-    }
-    final concreteIds = <String>{};
-    for (final entry in appearances.indexed) {
-      final appearance = entry.$2;
-      if (appearance.appearance != supported[entry.$1] ||
-          appearance.available != available ||
-          appearance.availabilityReasonIds.join('\u0000') !=
-              reasons.join('\u0000') ||
-          !concreteIds.add(appearance.concretePresetId)) {
-        throw MermanException.contract(
-          '$label has inconsistent appearance availability or IDs',
-        );
-      }
-    }
-    if (!json.containsKey('required_attribution')) {
-      throw MermanException.contract('$label is missing required_attribution');
-    }
-    final attribution = json['required_attribution'];
-    if (attribution != null &&
-        (attribution is! String || attribution.isEmpty)) {
+    final defaultAppearance = _requiredString(
+      json,
+      'default_appearance',
+      label,
+    );
+    if (!appearances.every((value) => value == 'light' || value == 'dark') ||
+        appearances.toSet().length != appearances.length ||
+        !appearances.contains(defaultAppearance)) {
       throw MermanException.contract(
-        '$label.required_attribution must be a nonempty string or null',
+        '$label must declare unique light or dark appearances and a matching default',
       );
     }
-    final exportKind = _requiredString(json, 'export_kind', label);
-    if (exportKind != 'design') {
-      throw MermanException.contract('$label.export_kind is unsupported');
+    final swatches = _requiredStringList(json, 'swatches', '$label.swatches');
+    if (swatches.length != 6 || !swatches.every(_themeSwatchPattern.hasMatch)) {
+      throw MermanException.contract(
+        '$label.swatches must contain six hex colors',
+      );
     }
     return MermanThemePreset(
       id: id,
-      displayName: _requiredNonEmptyString(json, 'display_name', label),
-      supportedAppearances: List.unmodifiable(supported),
-      defaultAppearance: defaultAppearance,
+      name: _requiredNonEmptyString(json, 'name', label),
+      description: _requiredString(json, 'description', label),
+      category: _requiredRuntimeIdentifier(json, 'category', label),
       appearances: List.unmodifiable(appearances),
-      maturity: _requiredRuntimeIdentifier(json, 'maturity', label),
-      available: available,
-      availabilityReasonIds: List.unmodifiable(reasons),
-      licenseExpression: _requiredNonEmptyString(
-        json,
-        'license_expression',
-        label,
-      ),
-      requiredAttribution: attribution as String?,
-      exportKind: exportKind,
+      defaultAppearance: defaultAppearance,
+      swatches: List.unmodifiable(swatches),
       jsonObject: _deeplyUnmodifiableJsonObject(json, label),
     );
   }
 }
 
-/// Appearance-specific discovery facts; availability admits the complete design.
-class MermanThemePresetAppearance {
-  const MermanThemePresetAppearance({
-    required this.appearance,
-    required this.concretePresetId,
-    required this.available,
-    required this.availabilityReasonIds,
-    required this.qualifiedCells,
-    required this.familyDesigns,
-    required this.previewColors,
-    required this.applicationNotes,
-    required this.jsonObject,
-  });
+final _themeSwatchPattern = RegExp(r'^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$');
 
-  final String appearance;
-  final String concretePresetId;
-  final bool available;
-  final List<String> availabilityReasonIds;
-  final List<MermanThemePresetQualifiedCell> qualifiedCells;
-
-  /// Design intent by family, independent of target qualification.
-  /// Missing families and unknown treatments remain unevaluated.
-  final List<MermanThemePresetFamilyDesign> familyDesigns;
-
-  /// Ordered discovery swatches, not a rendered palette or support claim.
-  final List<String> previewColors;
-
-  /// Curated guidance. Applying recommendations requires a host/user decision.
-  final List<MermanThemePresetApplicationNote> applicationNotes;
-  final Map<String, Object?> jsonObject;
-
-  factory MermanThemePresetAppearance.fromJson(Map<String, Object?> json) {
-    final id = _requiredRuntimeIdentifier(
-      json,
-      'concrete_preset_id',
-      'theme preset appearance',
-    );
-    final appearance = _themeAppearance(
-      json['appearance'],
-      'theme preset $id appearance',
-    );
-    final available = _requiredBool(json, 'available', 'theme preset $id');
-    final availabilityReasonIds = _themeAvailabilityReasons(
-      json,
-      'theme preset $id',
-    );
-    final rawPreviewColors = json['preview_colors'];
-    if (rawPreviewColors is! List ||
-        rawPreviewColors.any((color) => color is! String || color.isEmpty)) {
-      throw MermanException.contract(
-        'theme preset $id.preview_colors must be an array of non-empty strings',
-      );
-    }
-    final rawApplicationNotes = json['application_notes'];
-    if (rawApplicationNotes is! List) {
-      throw MermanException.contract(
-        'theme preset $id.application_notes must be an array',
-      );
-    }
-    final applicationNotes = rawApplicationNotes.indexed.map(
-      (entry) => MermanThemePresetApplicationNote.fromJson(
-        _asObject(entry.$2, 'theme preset $id.application_notes[${entry.$1}]'),
-      ),
-    );
-    final rawFamilyDesigns = json['family_designs'];
-    if (rawFamilyDesigns is! List) {
-      throw MermanException.contract(
-        'theme preset $id.family_designs must be an array',
-      );
-    }
-    final familyDesigns = <MermanThemePresetFamilyDesign>[];
-    String? previousFamily;
-    for (final entry in rawFamilyDesigns.indexed) {
-      final design = MermanThemePresetFamilyDesign.fromJson(
-        _asObject(entry.$2, 'theme preset $id.family_designs[${entry.$1}]'),
-      );
-      if (previousFamily != null &&
-          previousFamily.compareTo(design.familyId) >= 0) {
-        throw MermanException.contract(
-          'theme preset $id.family_designs must be sorted and unique',
-        );
-      }
-      previousFamily = design.familyId;
-      familyDesigns.add(design);
-    }
-    final rawQualifiedCells = json['qualified_cells'];
-    if (rawQualifiedCells is! List) {
-      throw MermanException.contract(
-        'theme preset $id.qualified_cells must be an array',
-      );
-    }
-    final qualifiedCells = <MermanThemePresetQualifiedCell>[];
-    String? previousCell;
-    for (final entry in rawQualifiedCells.indexed) {
-      final cell = MermanThemePresetQualifiedCell.fromJson(
-        _asObject(entry.$2, 'theme preset $id.qualified_cells[${entry.$1}]'),
-      );
-      final key =
-          '${cell.familyId}\u0000${cell.outputId}\u0000${cell.profileId}';
-      if (previousCell != null && previousCell.compareTo(key) >= 0) {
-        throw MermanException.contract(
-          'theme preset $id.qualified_cells must be sorted and unique',
-        );
-      }
-      previousCell = key;
-      qualifiedCells.add(cell);
-    }
-    return MermanThemePresetAppearance(
-      appearance: appearance,
-      concretePresetId: id,
-      available: available,
-      availabilityReasonIds: List.unmodifiable(availabilityReasonIds),
-      qualifiedCells: List.unmodifiable(qualifiedCells),
-      familyDesigns: List.unmodifiable(familyDesigns),
-      previewColors: List<String>.unmodifiable(rawPreviewColors.cast<String>()),
-      applicationNotes: List.unmodifiable(applicationNotes),
-      jsonObject: _deeplyUnmodifiableJsonObject(
-        json,
-        'theme preset $id appearance',
-      ),
-    );
-  }
-}
-
-String _themeAppearance(Object? value, String label) {
-  if (value != 'light' && value != 'dark') {
-    throw MermanException.contract('$label must be light or dark');
-  }
-  return value as String;
-}
-
-List<String> _themeAvailabilityReasons(
-  Map<String, Object?> json,
-  String label,
-) {
-  final rawReasons = json['availability_reason_ids'];
-  if (rawReasons is! List) {
-    throw MermanException.contract(
-      '$label.availability_reason_ids must be an array',
-    );
-  }
-  final reasons = <String>[];
-  String? previous;
-  for (final reason in rawReasons) {
-    if (reason is! String ||
-        !RegExp(r'^[a-z0-9][a-z0-9_.-]*$').hasMatch(reason) ||
-        (previous != null && previous.compareTo(reason) >= 0)) {
-      throw MermanException.contract(
-        '$label availability reasons must be sorted and unique IDs',
-      );
-    }
-    reasons.add(reason);
-    previous = reason;
-  }
-  if (_requiredBool(json, 'available', label) != reasons.isEmpty) {
-    throw MermanException.contract(
-      '$label availability contradicts its reason IDs',
-    );
-  }
-  return reasons;
-}
-
-/// Explicit presentation groups for the upstream Mermaid theme IDs.
-class MermanMermaidThemeDesign {
-  const MermanMermaidThemeDesign({
+/// The native theme capability flags for a logical diagram family.
+class MermanThemeFamilyCapabilities {
+  const MermanThemeFamilyCapabilities({
     required this.id,
-    required this.displayName,
-    required this.defaultAppearance,
-    required this.appearances,
+    required this.capabilities,
     required this.jsonObject,
   });
 
   final String id;
-  final String displayName;
-  final String defaultAppearance;
-  final List<MermanMermaidThemeAppearance> appearances;
+  final int capabilities;
   final Map<String, Object?> jsonObject;
 
-  factory MermanMermaidThemeDesign.fromJson(Map<String, Object?> json) {
-    final id = _requiredRuntimeIdentifier(json, 'id', 'Mermaid theme design');
-    final label = 'Mermaid theme $id';
-    final defaultAppearance = _themeAppearance(
-      json['default_appearance'],
-      '$label.default_appearance',
-    );
-    final rawAppearances = json['appearances'];
-    if (rawAppearances is! List || rawAppearances.isEmpty) {
-      throw MermanException.contract(
-        '$label.appearances must be a nonempty array',
-      );
-    }
-    final appearances = rawAppearances.indexed
-        .map(
-          (entry) => MermanMermaidThemeAppearance.fromJson(
-            _asObject(entry.$2, '$label.appearances[${entry.$1}]'),
-          ),
-        )
-        .toList();
-    final modes = appearances
-        .map((appearance) => appearance.appearance)
-        .toSet();
-    final ids = appearances.map((appearance) => appearance.themeId).toSet();
-    if (!appearances.any(
-          (appearance) =>
-              appearance.appearance == defaultAppearance &&
-              appearance.themeId == id,
-        ) ||
-        modes.length != appearances.length ||
-        ids.length != appearances.length) {
-      throw MermanException.contract(
-        '$label has inconsistent appearances or IDs',
-      );
-    }
-    return MermanMermaidThemeDesign(
-      id: id,
-      displayName: _requiredNonEmptyString(json, 'display_name', label),
-      defaultAppearance: defaultAppearance,
-      appearances: List.unmodifiable(appearances),
+  factory MermanThemeFamilyCapabilities.fromJson(Map<String, Object?> json) {
+    const label = 'theme family';
+    return MermanThemeFamilyCapabilities(
+      id: _requiredNonEmptyString(json, 'id', label),
+      capabilities: _requiredNonNegativeInt(json, 'capabilities', label),
       jsonObject: _deeplyUnmodifiableJsonObject(json, label),
-    );
-  }
-}
-
-class MermanMermaidThemeAppearance {
-  const MermanMermaidThemeAppearance({
-    required this.appearance,
-    required this.themeId,
-    required this.jsonObject,
-  });
-
-  final String appearance;
-  final String themeId;
-  final Map<String, Object?> jsonObject;
-
-  factory MermanMermaidThemeAppearance.fromJson(Map<String, Object?> json) {
-    return MermanMermaidThemeAppearance(
-      appearance: _themeAppearance(
-        json['appearance'],
-        'Mermaid theme appearance',
-      ),
-      themeId: _requiredRuntimeIdentifier(
-        json,
-        'theme_id',
-        'Mermaid theme appearance',
-      ),
-      jsonObject: _deeplyUnmodifiableJsonObject(
-        json,
-        'Mermaid theme appearance',
-      ),
-    );
-  }
-}
-
-/// Preset design intent for one family; this does not certify rendered output.
-class MermanThemePresetFamilyDesign {
-  const MermanThemePresetFamilyDesign({
-    required this.familyId,
-    required this.treatment,
-  });
-
-  final String familyId;
-
-  /// Open design ID: `dedicated`, `base_only`, `unreviewed`, or a future value.
-  /// `base_only` includes necessary family color and semantic adaptations to the
-  /// shared base appearance. Unknown IDs remain unevaluated, not portable.
-  final String treatment;
-
-  factory MermanThemePresetFamilyDesign.fromJson(Map<String, Object?> json) {
-    final treatment = _requiredString(
-      json,
-      'treatment',
-      'theme preset family design',
-    );
-    if (!_isRuntimeFieldIdentifier(treatment)) {
-      throw MermanException.contract(
-        'theme preset family design has invalid treatment',
-      );
-    }
-    return MermanThemePresetFamilyDesign(
-      familyId: _requiredRuntimeIdentifier(
-        json,
-        'family_id',
-        'theme preset family design',
-      ),
-      treatment: treatment,
-    );
-  }
-}
-
-/// Open discovery guidance for one family, without support or qualification grants.
-class MermanThemePresetApplicationNote {
-  const MermanThemePresetApplicationNote({
-    required this.id,
-    required this.familyId,
-    required this.message,
-    this.recommendedConfig,
-  });
-
-  final String id;
-  final String familyId;
-  final String message;
-
-  /// Suggested Mermaid site configuration; selecting a preset does not apply it.
-  final Map<String, Object?>? recommendedConfig;
-
-  factory MermanThemePresetApplicationNote.fromJson(Map<String, Object?> json) {
-    const label = 'theme preset application note';
-    final rawConfig = json['recommended_config'];
-    Map<String, Object?>? config;
-    if (rawConfig != null) {
-      config = _asObject(rawConfig, '$label.recommended_config');
-      _encodePreservedJsonObject(config, '$label.recommended_config');
-      config = _deeplyUnmodifiableJsonObject(
-        config,
-        '$label.recommended_config',
-      );
-    }
-    return MermanThemePresetApplicationNote(
-      id: _requiredRuntimeIdentifier(json, 'id', label),
-      familyId: _requiredRuntimeIdentifier(json, 'family_id', label),
-      message: _requiredNonEmptyString(json, 'message', label),
-      recommendedConfig: config,
-    );
-  }
-}
-
-/// Scoped qualification metadata; presence alone does not imply portability.
-class MermanThemePresetQualifiedCell {
-  const MermanThemePresetQualifiedCell({
-    required this.familyId,
-    required this.outputId,
-    required this.profileId,
-    required this.admissionStatus,
-  });
-
-  final String familyId;
-  final String outputId;
-
-  /// Tested scenario and resource conditions; unknown profiles grant no usable support.
-  final String profileId;
-
-  /// Open admission ID, such as `portable` or `host_dependent`.
-  final String admissionStatus;
-
-  factory MermanThemePresetQualifiedCell.fromJson(Map<String, Object?> json) {
-    final admission = _requiredString(
-      json,
-      'admission_status',
-      'theme preset qualified cell',
-    );
-    if (!_isRuntimeFieldIdentifier(admission)) {
-      throw MermanException.contract(
-        'theme preset qualified cell has invalid admission_status',
-      );
-    }
-    return MermanThemePresetQualifiedCell(
-      familyId: _requiredRuntimeIdentifier(
-        json,
-        'family_id',
-        'theme preset qualified cell',
-      ),
-      outputId: _requiredRuntimeIdentifier(
-        json,
-        'output_id',
-        'theme preset qualified cell',
-      ),
-      profileId: _requiredRuntimeIdentifier(
-        json,
-        'profile_id',
-        'theme preset qualified cell',
-      ),
-      admissionStatus: admission,
-    );
-  }
-}
-
-/// One effective compiler-owned theme resource ceiling.
-class MermanThemeResourceLimit {
-  const MermanThemeResourceLimit({
-    required this.id,
-    required this.phase,
-    required this.description,
-    required this.effectiveValue,
-    required this.hardCap,
-  });
-
-  final String id;
-  final String phase;
-  final String description;
-  final int? effectiveValue;
-  final bool hardCap;
-
-  factory MermanThemeResourceLimit.fromJson(Map<String, Object?> json) {
-    final id = _requiredString(json, 'id', 'theme resource limit');
-    final phase = _requiredString(json, 'phase', 'theme resource limit');
-    if (!_isRuntimeFieldIdentifier(id) || !_isRuntimeFieldIdentifier(phase)) {
-      throw MermanException.contract(
-        'theme resource limit ID and phase must be stable field identifiers',
-      );
-    }
-    final effectiveValue = json['effective_value'];
-    if (effectiveValue != null &&
-        (effectiveValue is! int || effectiveValue < 0)) {
-      throw MermanException.contract(
-        'theme resource limit.effective_value must be a non-negative integer or null',
-      );
-    }
-    return MermanThemeResourceLimit(
-      id: id,
-      phase: phase,
-      description: _requiredNonEmptyString(
-        json,
-        'description',
-        'theme resource limit',
-      ),
-      effectiveValue: effectiveValue as int?,
-      hardCap: _requiredBool(json, 'hard_cap', 'theme resource limit'),
     );
   }
 }
@@ -2719,9 +2134,8 @@ final _LoadedNativeLibrary _packageNativeLibrary = _loadNativeEntry(
 );
 
 bool _isThemeAuthoringOperation(MermanOperation operation) =>
-    operation == MermanOperation.describeThemeSupportJson ||
-    operation == MermanOperation.exportThemePresetJson ||
-    operation == MermanOperation.materializeThemeJson;
+    operation == MermanOperation.exportThemePreset ||
+    operation == MermanOperation.resolveTheme;
 
 // dart:convert validates syntax; this scanner only locates raw object members.
 // Nested values are scanned iteratively and never decoded or reconstructed here.
@@ -2769,84 +2183,29 @@ Iterable<({String key, String prefix, String value})> _rawOptionsMembers(
   }
 }
 
-({String? request, String? constructor}) _oneShotOptionsJson(
-  String? optionsJson, {
-  MermanRuntimeCatalog? runtimeCatalog,
-  bool projectResourceProfile = false,
-}) {
-  if (optionsJson == null || optionsJson.trim().isEmpty) {
-    return (request: null, constructor: null);
-  }
+String? _oneShotRequestOptionsJson(String? optionsJson) {
+  if (optionsJson == null) return null;
   _asObject(jsonDecode(optionsJson), 'options_json');
-  String? policy;
-  final profileValues = <String>[];
-
-  void collectResourceProfiles(String object) {
-    for (final member in _rawOptionsMembers(object)) {
-      if (member.key == 'profile') profileValues.add(member.value);
-    }
-  }
-
-  void collect(String object, {required bool wrappers}) {
-    for (final member in _rawOptionsMembers(object)) {
-      final value = member.value;
-      if (member.key == 'resources' && value.trimLeft().startsWith('{')) {
-        collectResourceProfiles(value);
-      }
-      if (wrappers &&
-          (member.key == 'analysis' || member.key == 'merman') &&
-          value.trimLeft().startsWith('{')) {
-        collect(value, wrappers: false);
-      }
-    }
-  }
-
-  if (projectResourceProfile) collect(optionsJson, wrappers: true);
-  final profile = profileValues.length == 1
-      ? jsonDecode(profileValues.single)
-      : null;
-  // Ambiguous or unknown profiles stay entirely in the request for Rust admission.
-  final projectProfile =
-      profile is String &&
-      runtimeCatalog?.resourceProfilesById.containsKey(profile) == true;
-
-  String projectResources(String object) {
-    if (!projectProfile) return object;
-    final members = <String>[];
-    var changed = false;
-    for (final member in _rawOptionsMembers(object)) {
-      if (member.key == 'profile') {
-        changed = true;
-        continue;
-      }
-      members.add('${member.prefix}${member.value}');
-    }
-    return changed ? '{${members.join(',')}}' : object;
-  }
+  var hasPolicy = false;
 
   String project(String object, {required bool wrappers}) {
     final members = <String>[];
     var changed = false;
     for (final member in _rawOptionsMembers(object)) {
       if (member.key == 'runtime_policy') {
-        if (policy != null) {
+        if (hasPolicy) {
           throw const FormatException(
             'duplicate runtime_policy in options_json',
           );
         }
-        policy = member.value;
+        hasPolicy = true;
         changed = true;
         continue;
       }
       var value = member.value;
-      if (member.key == 'resources' && value.trimLeft().startsWith('{')) {
-        value = projectResources(value);
-        changed |= value != member.value;
-      }
       if (wrappers &&
           (member.key == 'analysis' || member.key == 'merman') &&
           value.trimLeft().startsWith('{')) {
-        // Only the two existing wrapper objects are projected, with no deeper recursion.
         value = project(value, wrappers: false);
         changed |= value != member.value;
       }
@@ -2855,25 +2214,16 @@ Iterable<({String key, String prefix, String value})> _rawOptionsMembers(
     return changed ? '{${members.join(',')}}' : object;
   }
 
-  var request = project(optionsJson, wrappers: true);
-  if (policy == null && !projectProfile) {
-    return (request: optionsJson, constructor: null);
-  }
-  // Keep the original byte charge: removing constructor fields must not let the
-  // authoring request bypass the shared max_options_json_bytes preflight.
+  final request = project(optionsJson, wrappers: true);
+  if (!hasPolicy) return optionsJson;
+  // Retain the original byte charge when the constructor owns runtime_policy.
   final removedBytes =
       _boundedUtf8Length(
         optionsJson,
         byteCeiling: optionsJson.length * 3,
       ).byteLength -
       _boundedUtf8Length(request, byteCeiling: request.length * 3).byteLength;
-  if (removedBytes > 0) request += ' ' * removedBytes;
-  final constructorFields = <String>[];
-  if (policy != null) constructorFields.add('"runtime_policy":$policy');
-  if (projectProfile) {
-    constructorFields.add('"resources":{"profile":${profileValues.single}}');
-  }
-  return (request: request, constructor: '{${constructorFields.join(',')}}');
+  return removedBytes > 0 ? request + ' ' * removedBytes : request;
 }
 
 /// Discovery and one-shot facade for Flutter and standalone Dart hosts.
@@ -2928,25 +2278,13 @@ class Merman {
     String? optionsJson,
     MermanOperationControl? control,
   }) {
-    // Preserve the original JSON until native admission has checked duplicate fields.
-    // Authoring requests need their own resource scope rather than engine limits.
     final authoring = _isThemeAuthoringOperation(operation);
-    if (authoring && optionsJson != null) {
-      _preflightOptionsJson(optionsJson, runtimeCatalog);
-    }
     final rawOptionsJson = optionsJson == null || optionsJson.trim().isEmpty
         ? null
         : optionsJson;
-    final authoringOptions = authoring
-        ? _oneShotOptionsJson(
-            rawOptionsJson,
-            runtimeCatalog: runtimeCatalog,
-            projectResourceProfile: true,
-          )
-        : null;
     final engine = _native.createEngine(
       runtimeCatalog: runtimeCatalog,
-      optionsJson: authoring ? authoringOptions!.constructor : rawOptionsJson,
+      optionsJson: authoring ? null : rawOptionsJson,
       services: const MermanEngineServices(),
     );
     try {
@@ -2954,9 +2292,11 @@ class Merman {
         operation,
         source,
         uri: uri,
+        // Theme operations validate their own request options. Keep the source
+        // and options intact so the native compiler can report duplicate keys.
         optionsJson: authoring
-            ? authoringOptions!.request
-            : _oneShotOptionsJson(rawOptionsJson).request,
+            ? optionsJson
+            : _oneShotRequestOptionsJson(rawOptionsJson),
         control: control,
       );
     } finally {
@@ -4791,7 +4131,20 @@ List<T> _decodeJsonObjectListFromField<T>(
   String field,
   T Function(Map<String, Object?> json) decode,
 ) {
-  final object = _decodeJsonObject(bytes, label);
+  return _jsonObjectListFromField(
+    _decodeJsonObject(bytes, label),
+    label,
+    field,
+    decode,
+  );
+}
+
+List<T> _jsonObjectListFromField<T>(
+  Map<String, Object?> object,
+  String label,
+  String field,
+  T Function(Map<String, Object?> json) decode,
+) {
   final values = object[field];
   if (values is! List) {
     throw MermanException.contract('$label.$field must be a JSON array');
@@ -5227,47 +4580,6 @@ Never _throwIconRegistryResourceLimit(
       packIndex: packIndex,
       registrationName: registrationName,
     ),
-  );
-}
-
-void _preflightOptionsJson(String value, MermanRuntimeCatalog catalog) {
-  final id = MermanResourceLimitId.maxOptionsJsonBytes;
-  final maximum = catalog.generalBindingDefaultResourceProfile.limits[id]!;
-  final actual = _boundedUtf8Length(value, byteCeiling: maximum).byteLength;
-  if (actual <= maximum) return;
-  final descriptor = catalog.resourceLimits.firstWhere(
-    (limit) => limit.id == id,
-  );
-  throw MermanException(
-    code: native.MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED,
-    codeName: 'resource-limit-exceeded',
-    message: 'options_json exceeds the preflight byte limit of $maximum bytes',
-    exactResourceDetails: MermanExactResourceErrorDetails(
-      cause: 'ceiling',
-      limitId: id,
-      phase: descriptor.phase,
-      actual: '$actual',
-      max: '$maximum',
-      profile: 'binding-json',
-    ),
-    resourceDetails: MermanResourceErrorDetails(
-      cause: 'ceiling',
-      limitId: id,
-      phase: descriptor.phase,
-      actual: actual,
-      max: maximum,
-      profile: 'binding-json',
-    ),
-    details: Map.unmodifiable({
-      'resource': Map.unmodifiable({
-        'cause': 'ceiling',
-        'limit_id': id.id,
-        'phase': descriptor.phase,
-        'actual': actual,
-        'max': maximum,
-        'profile': 'binding-json',
-      }),
-    }),
   );
 }
 

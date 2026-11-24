@@ -1695,88 +1695,6 @@ mod tests {
         Merman::new()
     }
 
-    #[cfg(feature = "svg")]
-    #[test]
-    fn materialize_theme_operation_preserves_authoring_error_envelope() {
-        let vectors: serde_json::Value = serde_json::from_str(include_str!(
-            "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/errors.json"
-        ))
-        .unwrap();
-        let api = engine();
-        let reusable = reusable_engine(None);
-        for vector in vectors.as_array().unwrap() {
-            let request = || MermanOperationRequestV4 {
-                operation_id: "materialize-theme-json".to_owned(),
-                source: vector["source"].as_str().unwrap().to_owned(),
-                uri: None,
-                options_json: vector["options_json"].as_str().map(str::to_owned),
-                control: None,
-            };
-            for error in [
-                api.execute(request()).expect_err("invalid definition"),
-                reusable.execute(request()).expect_err("invalid definition"),
-            ] {
-                let MermanError::Binding {
-                    code,
-                    code_name,
-                    details_json,
-                    ..
-                } = error;
-                let expected_status = match vector["code_name"].as_str().unwrap() {
-                    "MERMAN_INVALID_ARGUMENT" => BindingStatus::InvalidArgument,
-                    "MERMAN_RESOURCE_LIMIT_EXCEEDED" => BindingStatus::ResourceLimitExceeded,
-                    other => panic!("unknown golden status: {other}"),
-                };
-                assert_eq!(code, expected_status.code());
-                assert_eq!(code_name, vector["code_name"].as_str().unwrap());
-                let details: Value =
-                    serde_json::from_str(&details_json.expect("complete error details")).unwrap();
-                let payload = serde_json::json!({"details": details});
-                assert_eq!(payload["details"]["resource"], vector["resource"]);
-                let mut authoring = payload["details"]["theme_authoring"].clone();
-                for diagnostic in authoring["diagnostics"]
-                    .as_array_mut()
-                    .expect("diagnostics array")
-                {
-                    let message = diagnostic
-                        .as_object_mut()
-                        .unwrap()
-                        .remove("message")
-                        .expect("diagnostic message");
-                    assert!(!message.as_str().expect("string message").trim().is_empty());
-                }
-                assert_eq!(authoring, vector["theme_authoring"], "{}", vector["id"]);
-            }
-        }
-    }
-
-    #[cfg(feature = "svg")]
-    #[test]
-    fn theme_support_matches_shared_golden() {
-        let vectors: Value = serde_json::from_str(include_str!(
-            "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/support.json"
-        ))
-        .unwrap();
-        let api = engine();
-        let reusable = reusable_engine(None);
-        for vector in vectors.as_array().unwrap() {
-            let request = || MermanOperationRequestV4 {
-                operation_id: "describe-theme-support-json".to_owned(),
-                source: vector["query"].to_string(),
-                uri: None,
-                options_json: None,
-                control: None,
-            };
-            for response in [api.execute(request()), reusable.execute(request())] {
-                let response = response.expect("support query succeeds even when unverified");
-                assert_eq!(response.operation_id, "describe-theme-support-json");
-                assert_eq!(response.media_type, "application/json");
-                let actual: Value = serde_json::from_slice(&response.data).unwrap();
-                assert_eq!(actual, vector["expected"], "{}", vector["id"]);
-            }
-        }
-    }
-
     #[test]
     fn operation_control_can_be_cancelled_from_another_thread() {
         let control = MermanOperationControl::new(None);
@@ -3851,31 +3769,8 @@ mod tests {
         assert!(engine.supported_themes().contains(&"default".to_string()));
         let theme_catalog: serde_json::Value =
             serde_json::from_str(&engine.theme_catalog_json().unwrap()).unwrap();
-        assert_eq!(theme_catalog["schema_version"], 1);
-        if has_svg {
-            assert_eq!(theme_catalog["structured_spec_available"], true);
-            let presets: serde_json::Value = serde_json::from_str(include_str!(
-                "../../merman-theme-authoring-fixtures/fixtures/authoring-v1/preset-catalog.json"
-            ))
-            .unwrap();
-            assert_eq!(theme_catalog["presets"], presets);
-            assert!(
-                theme_catalog["known_semantic_target_ids"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .any(|target| target == "state-label")
-            );
-        } else {
-            assert_eq!(theme_catalog["structured_spec_available"], false);
-            assert!(theme_catalog["presets"].as_array().unwrap().is_empty());
-            assert!(
-                theme_catalog["known_semantic_target_ids"]
-                    .as_array()
-                    .unwrap()
-                    .is_empty()
-            );
-        }
+        assert_eq!(theme_catalog["schema_version"], 2);
+        assert_eq!(theme_catalog["presets"].as_array().unwrap().len(), if has_svg { 13 } else { 0 });
         let capabilities = engine.diagram_family_capabilities();
         assert!(capabilities.iter().any(|capability| {
             capability.diagram_type == "flowchart"

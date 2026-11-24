@@ -28,8 +28,8 @@ export function StatusBar() {
     textMeasurementMode,
     diagramFont,
     themePresetId,
-    themeRecipeJson,
-    themeRecipeLabel,
+    themeDocumentJson,
+    themeDocumentLabel,
     themeAppearance,
   } = useAppStore(
     useShallow((state) => ({
@@ -39,8 +39,8 @@ export function StatusBar() {
       svgPipeline: state.svgPipeline,
       textMeasurementMode: state.textMeasurementMode,
       themePresetId: state.themePresetId,
-      themeRecipeJson: state.themeRecipeJson,
-      themeRecipeLabel: state.themeRecipeLabel,
+      themeDocumentJson: state.themeDocumentJson,
+      themeDocumentLabel: state.themeDocumentLabel,
       themeAppearance: state.themeAppearance,
     })),
   );
@@ -152,10 +152,10 @@ export function StatusBar() {
           </span>
         )}
         <span className="hidden shrink-0 lg:inline" data-testid="status-appearance">
-          {t("status.theme")}: {themeRecipeJson
-            ? themeRecipeLabel?.name ?? t("themePanel.custom")
+          {t("status.theme")}: {themeDocumentJson
+            ? themeDocumentLabel?.name ?? t("themeWorkshop.custom")
             : themePresetId
-              ? t(`themePresets.${themePresetId}`, { defaultValue: themePresetId })
+              ? themePresetId
               : t(`themes.${diagramTheme}`, { defaultValue: diagramTheme })}
           {themeAppearance !== "default" && ` · ${t(`appearanceMode.${themeAppearance}`)}`}
         </span>

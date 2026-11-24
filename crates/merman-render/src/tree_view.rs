@@ -7,9 +7,11 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 mod config;
+mod native_theme;
 mod theme;
 
-pub(crate) use theme::{TreeViewThemePlan, TreeViewThemeReceipt};
+pub(crate) use native_theme::TreeViewThemeAdapter;
+pub(crate) use theme::TreeViewCssBinding;
 
 use config::{TreeViewConfigView, TreeViewLayoutSettings};
 
@@ -30,18 +32,25 @@ pub(crate) const TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH: f64 =
 pub(crate) fn layout_tree_view_diagram_typed(
     model: &TreeViewDiagramModel,
     effective_config: &Value,
-    theme: &TreeViewThemePlan,
+    theme: &TreeViewCssBinding,
     measurer: &dyn TextMeasurer,
 ) -> Result<TreeViewDiagramLayout> {
-    let cfg = TreeViewConfigView::new(effective_config).layout_settings(theme.css());
+    let cfg = TreeViewConfigView::new(effective_config).layout_settings(theme);
     validate_tree_view_render_depth(&model.root)?;
     let label_style = TextStyle {
         font_family: Some(cfg.font_family.clone()),
         font_size: cfg.label_font_size,
+        font_weight: theme
+            .native
+            .as_ref()
+            .map(|style| style.label_weight.clone()),
         ..Default::default()
     };
     let mut directory_label_style = label_style.clone();
-    directory_label_style.font_weight = Some(TREE_VIEW_DIRECTORY_FONT_WEIGHT.to_string());
+    directory_label_style.font_weight = Some(theme.native.as_ref().map_or_else(
+        || TREE_VIEW_DIRECTORY_FONT_WEIGHT.to_owned(),
+        |style| style.directory_weight.clone(),
+    ));
     let mut description_style = label_style.clone();
     description_style.font_style = Some(TREE_VIEW_DESCRIPTION_FONT_STYLE.to_string());
     let mut ctx = LayoutCtx {
@@ -68,8 +77,7 @@ pub(crate) fn layout_tree_view_diagram_typed(
     let total_width =
         ctx.total_width.max(1.0) + highlighted_node_count as f64 * TREE_VIEW_HIGHLIGHT_WIDTH_GROWTH;
     let total_height = ctx.total_height.max(1.0);
-    let additional_paint_outset = theme.additional_paint_outset_px();
-    let bounds = if additional_paint_outset > 0.0 {
+    let bounds = if theme.includes_guide_outset() {
         widened_tree_view_line_paint_bounds(
             &ctx.lines,
             total_width,
@@ -412,7 +420,7 @@ mod tests {
         let error = layout_tree_view_diagram_typed(
             &model,
             &Value::Object(Default::default()),
-            &TreeViewThemePlan::baseline(0),
+            &TreeViewCssBinding::from_config(&serde_json::Value::Null),
             &measurer,
         )
         .unwrap_err();

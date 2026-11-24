@@ -202,7 +202,13 @@ const requiredTypeProperties = new Map([
       "emitted_overflowed", "requested_graph_presentation"],
   ],
   ["CommonBindingOptions", ["analysis", "merman", "parse"]],
+  ["AsciiBindingOptions", ["theme"]],
   ["AnalysisBindingOptions", ["resources"]],
+  ["ThemeCatalog", ["schema_version", "presets", "mermaid_themes", "families"]],
+  ["ThemeDocumentV2", ["schema_version", "extends", "seed", "roles", "appearances"]],
+  ["ThemeOutcome", ["mode", "preset_id", "appearance", "notices"]],
+  ["SvgBindingOptions", ["theme", "background"]],
+  ["SvgRenderMetadata", ["theme_outcome"]],
   [
     "AnalysisDiagramSyntaxFacts",
     ["source_mapped_spans", "effective_layout"],
@@ -244,9 +250,10 @@ const requiredTypePropertyTypes = [
   ["AnalysisResult", "version", "1"],
   ["AnalysisFactsResult", "version", "3"],
   ["AsciiOutputPlan", "schema_version", "4"],
+  ["ThemeCatalog", "schema_version", "2"],
+  ["ThemeDocumentV2", "schema_version", "2"],
 ];
 const requiredTypePropertyAnnotations = [
-  ["MermaidThemeCompatibility", "theme", "ThemeName"],
   ["MermaidSiteConfig", "themeCSS", "never"],
   ["MermaidSiteConfig", "secure", "never"],
 ];
@@ -272,6 +279,10 @@ failed ||= reportMissing(
 failed ||= reportMissing(
   "check-contracts: root public API is missing public option/result types",
   difference(declaredPublicTypes, publicTypeExports),
+);
+failed ||= reportMissing(
+  "check-contracts: wasm-bindgen is missing a Theme v2 export",
+  ["themeCatalog", "exportThemePreset", "resolveTheme"].filter((name) => !rawWasmExports.has(name)),
 );
 failed ||= reportMissing(
   "check-contracts: wasm-bindgen exports without public TypeScript wrappers",

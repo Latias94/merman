@@ -112,35 +112,11 @@ With `svg` enabled, pass the following JSON through `render_svg()`'s `options_js
 {"version":3,"theme":{"preset":"paper-cut"}}
 ```
 
-The catalog also includes Carbon Copy (`carbon-copy`) and Pop Art (`pop-art`).
-For paired designs, use `{"theme":{"preset":"editor","appearance":"dark"}}`.
+Use `theme_catalog_json()` to read the schema-2 catalog. Paired designs accept an explicit appearance, for example `{"theme":{"preset":"studio","appearance":"dark"}}`.
 
-Theme authoring operations (`materialize-theme-json`, `describe-theme-support-json`, and
-`export-theme-preset-json`) use the same generic `execute()` path for one-shot and reusable
-consumers. Read the schema-1 theme catalog through `theme_catalog_json()`; the old
-`presentation_catalog_json()` method is removed. `MermanError.Binding.details_json` preserves
-the shared `theme_authoring` envelope with diagnostic code, path, and details.
+The one-shot and reusable `execute()` methods expose `export-theme-preset` and `resolve-theme`. For preset export, set `MermanOperationRequestV4.operation_id` to `export-theme-preset` and `source` to the plain ID `paper-cut`. Decode the result data as an editable JSON document. For resolution, set the operation to `resolve-theme` and pass a JSON object with `document` and optional `appearance` or `auto_fix_contrast`. Send the original JSON text in `document` to retain line and column diagnostics. Graphical results report `metadata.theme_outcome`.
 
-The catalog groups one design's supported/default appearances; family guidance, swatches,
-qualification, and `concrete_preset_id` live in each `appearances` entry. Preset export takes a
-plain ID such as `paper-cut` and returns the complete schema-1 `ThemeRecipeV1`. Shared values and
-appearance exceptions live inside `design`, not separate versioned recipes.
-To export it, construct `MermanOperationRequestV4` with `operation_id` set to
-`export-theme-preset-json` and `source` set to the raw string `paper-cut`. Set `uri`, `options_json`,
-and `control` to the host language's null value. Pass it to `execute()` and decode the returned
-`data` bytes as UTF-8 JSON.
-Change `design.tokens.surface.value` to customize Paper Cut, then save the complete recipe and
-supply it as `options_json.theme` in a render call.
-
-`materialize-theme-json` accepts a schema-1 request with `action: "inspect"` and `recipe` to
-validate all modes, or `action: "materialize"` with an optional concrete `appearance`.
-For a paired recipe, put the saved document in `theme.recipe` and choose `theme.appearance`.
-Hosts resolve Follow-app/editor before calling the library.
-The API 8 records, methods, and generated foreign bindings carry these JSON payloads.
-Catalog availability, family design scope, and output qualification are separate facts. Inspect
-the selected appearance and actual render metadata before requiring portable output.
-See the [theme guide](../../docs/rendering/custom-diagram-themes.md) for editable JSON, shared
-tokens, appearance overrides, import/export, and separate Mermaid `site_config` configuration.
+The API 8 records continue to carry these JSON payloads. [Options JSON](../../docs/bindings/OPTIONS_JSON.md#diagram-theme) · [Theme guide](../../docs/rendering/custom-diagram-themes.md)
 
 ## Text Measurement Ownership
 

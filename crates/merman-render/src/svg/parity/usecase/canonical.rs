@@ -11,20 +11,12 @@ pub(super) struct PaintedEdge {
     pub(super) markers: [Option<UsecaseMarker>; 2],
 }
 
-fn stroke_width(prepared: &UsecasePreparedArtifact, plan: &UsecaseEdgePlan) -> f64 {
-    let source_width = plan
-        .source_style
+fn stroke_width(plan: &UsecaseEdgePlan) -> f64 {
+    plan.source_style
         .split(';')
         .filter_map(crate::mermaid_style::parse_style_declaration)
         .rfind(|declaration| declaration.property() == "stroke-width")
-        .and_then(|declaration| declaration.svg_number_or_px());
-    source_width
-        .or_else(|| {
-            prepared
-                .theme_plan
-                .edge(&plan.id)
-                .and_then(|style| style.stroke_width)
-        })
+        .and_then(|declaration| declaration.svg_number_or_px())
         .unwrap_or(1.0)
         .max(0.0)
 }
@@ -53,7 +45,7 @@ pub(super) fn prepare_edges(
     options.work_meter().charge(prepared.edges.len())?;
     let mut painted = Vec::with_capacity(prepared.edges.len());
     for (edge, plan) in prepared.layout.edges.iter().zip(&prepared.edges) {
-        let width = stroke_width(prepared, plan);
+        let width = stroke_width(plan);
         options.checkpoint_emit()?;
         options.work_meter().charge(edge.points.len())?;
         let geometry = routes.paint(edge, Vec2::ZERO, width / 2.0, style)?;
@@ -81,8 +73,7 @@ pub(super) fn prepare_edges(
         };
         let outset = 2.0 * width;
         let mut paint_bounds = path_bounds.inflate(outset, outset);
-        let markers = [true, false]
-            .map(|start| UsecaseMarker::for_edge(plan, start, neo, &prepared.theme_plan));
+        let markers = [true, false].map(|start| UsecaseMarker::for_edge(plan, start, neo));
         let [start_ref, start_lead, end_lead, end_ref] = &geometry.marker_points;
         for (marker, reference, lead) in [
             (markers[0].as_ref(), start_ref, start_lead),
@@ -111,8 +102,6 @@ pub(super) fn write_marker(
     marker: &UsecaseMarker,
     start: bool,
     index: usize,
-    style: Option<&UsecaseThemeStyle>,
-    receipt: &UsecaseThemeReceipt,
 ) -> String {
     let name = marker.name();
     let side = if start { "Start" } else { "End" };
@@ -137,15 +126,10 @@ pub(super) fn write_marker(
     } else {
         let _ = write!(out, r#"<path d="{}""#, marker.path().to_svg());
     }
-    let css = style.map(|style| style.css(false)).unwrap_or_default();
     let _ = write!(
         out,
-        r#" style="stroke-width:{};stroke-dasharray:0;stroke-linecap:round;stroke-linejoin:round;{}"/></marker></defs>"#,
-        fmt(marker.stroke_width),
-        escape_attr(&css)
+        r#" style="stroke-width:{};stroke-dasharray:0;stroke-linecap:round;stroke-linejoin:round;"/></marker></defs>"#,
+        fmt(marker.stroke_width)
     );
-    if let Some(style) = style {
-        style.record_emitted(receipt);
-    }
     format!("url(#{id})")
 }

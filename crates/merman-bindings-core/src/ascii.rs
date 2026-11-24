@@ -12,6 +12,7 @@ pub fn render_ascii(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, Bindi
 pub(crate) struct CachedAsciiEngine {
     renderer: merman::Renderer,
     request: merman::AsciiRequest,
+    theme: Option<merman::theme::ThemeSelection>,
     resource_profile: merman::model::resources::ResourceProfile,
 }
 
@@ -23,6 +24,7 @@ pub(crate) struct AsciiOperationConfig {
     ascii_resources: merman::ascii::AsciiResourcePolicy,
     resources: merman::model::resources::InputResourcePolicy,
     site_config: Option<merman::MermaidConfig>,
+    theme: Option<merman::theme::ThemeSelection>,
 }
 
 impl CachedAsciiEngine {
@@ -32,13 +34,13 @@ impl CachedAsciiEngine {
         control: merman::OperationControl,
     ) -> Result<merman::ascii::AsciiOutput, BindingError> {
         let source = source_text(source)?;
+        let mut request = merman::RenderRequest::ascii(source, control, self.request.clone());
+        if let Some(theme) = &self.theme {
+            request = request.with_native_theme(theme.clone());
+        }
         let output = self
             .renderer
-            .render(merman::RenderRequest::ascii(
-                source,
-                control,
-                self.request.clone(),
-            ))
+            .render(request)
             .map_err(|error| classify_render_error(error, self.resource_profile))?;
         let merman::RenderOutput::Ascii(rendered) = output else {
             return Err(BindingError::internal(
@@ -69,6 +71,15 @@ impl AsciiOperationConfig {
         let ascii_resources = binding_ascii_resource_policy(options.analysis.resources.as_ref())?;
         let resources = binding_input_resource_policy(options.analysis.resources.as_ref())?;
         let site_config = binding_site_config(options)?;
+        let has_explicit_palette = options
+            .ascii
+            .as_ref()
+            .is_some_and(|ascii| ascii.theme.is_some());
+        let theme = if has_explicit_palette {
+            None
+        } else {
+            options.theme.clone()
+        };
         Ok(Self {
             runtime_policy,
             parse_options,
@@ -77,6 +88,7 @@ impl AsciiOperationConfig {
             ascii_resources,
             resources,
             site_config,
+            theme,
         })
     }
 
@@ -86,6 +98,7 @@ impl AsciiOperationConfig {
             options: self.render_options,
             resources: self.ascii_resources,
             viewport: self.viewport,
+            native_theme: None,
         };
         let mut parser = merman::SemanticParser::new().with_runtime_policy(self.runtime_policy);
         if let Some(site_config) = self.site_config {
@@ -98,6 +111,7 @@ impl AsciiOperationConfig {
         CachedAsciiEngine {
             renderer,
             request,
+            theme: self.theme,
             resource_profile,
         }
     }
@@ -380,6 +394,7 @@ fn classify_render_error(
         merman::RenderError::Cancelled(err) => BindingError::cancelled(err),
         merman::RenderError::RuntimePolicy(err) => runtime_policy_error(err),
         merman::RenderError::Parse(err) => crate::common::parse_error(err),
+        merman::RenderError::Theme(err) => crate::native_theme::compile_error("theme", err),
         merman::RenderError::ResourceLimitExceeded(err) => BindingError::resource_limit_with_cause(
             match err.cause {
                 merman::render::ResourceLimitCause::Ceiling => BindingResourceLimitCause::Ceiling,
@@ -1687,19 +1702,43 @@ mod tests {
 
     #[test]
     fn render_ascii_accepts_terminal_palette_theme_options() {
-        let text = String::from_utf8(
-            render_ascii(
-                b"flowchart LR\nA -- yes --> B",
-                br##"{ "ascii": { "color_mode": "truecolor", "theme": { "foreground": "#010101", "background": "#ffffff", "line": "#020202", "accent": "#030303", "border": "#040404" } } }"##,
-            )
-            .unwrap(),
-        )
-        .unwrap();
+        let source = b"flowchart LR\nA -- yes --> B";
+        let mut options = serde_json::json!({
+            "ascii": {
+                "color_mode": "truecolor",
+                "theme": {
+                    "foreground": "#010101",
+                    "background": "#ffffff",
+                    "line": "#020202",
+                    "accent": "#030303",
+                    "border": "#040404"
+                }
+            }
+        });
+        let bytes = render_ascii(source, &serde_json::to_vec(&options).unwrap()).unwrap();
+        options["theme"] = serde_json::json!("studio");
+        assert_eq!(
+            render_ascii(source, &serde_json::to_vec(&options).unwrap()).unwrap(),
+            bytes
+        );
+        let text = String::from_utf8(bytes).unwrap();
 
         assert!(text.contains("\u{1b}[38;2;1;1;1m"), "{text:?}");
         assert!(text.contains("\u{1b}[38;2;2;2;2m"), "{text:?}");
         assert!(text.contains("\u{1b}[38;2;3;3;3m"), "{text:?}");
         assert!(text.contains("\u{1b}[38;2;4;4;4m"), "{text:?}");
+    }
+
+    #[cfg(feature = "diagram-flowchart")]
+    #[test]
+    fn native_theme_only_changes_colored_ascii() {
+        let source = b"flowchart LR\nA --> B";
+        let render = |options| render_ascii(source, options).unwrap();
+        assert_eq!(render(b""), render(br#"{"theme":"studio"}"#));
+        let plain_color = render(br#"{"ascii":{"color_mode":"truecolor"}}"#);
+        let native_color = render(br#"{"theme":{"preset":"studio","appearance":"dark"},"ascii":{"color_mode":"truecolor"}}"#);
+        assert_ne!(plain_color, native_color);
+        assert!(native_color.windows(5).any(|bytes| bytes == b"\x1b[38;"));
     }
 
     #[test]

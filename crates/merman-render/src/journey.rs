@@ -10,15 +10,13 @@ use std::collections::{BTreeMap, BTreeSet};
 
 mod config;
 mod css_binding;
-mod text_paint;
-mod theme;
+mod native_theme;
 mod typography;
 
 pub(crate) use config::{JourneyTextPlacement, default_use_max_width};
 pub(crate) use css_binding::JourneyCssBinding;
-pub(crate) use text_paint::{JourneyTextPaintPlan, JourneyTextPaintReceipt, JourneyTextPaintRole};
-pub(crate) use theme::{JourneyTaskTheme, JourneyTaskThemeReceipt};
-pub(crate) use typography::JourneyTypographyThemePlan;
+pub(crate) use native_theme::{JourneyNativeStyle, JourneyThemeAdapter};
+pub(crate) use typography::JourneyStyle;
 
 const JOURNEY_LEGEND_CIRCLE_R_PX: f64 = 7.0;
 pub(crate) const JOURNEY_VIEWBOX_TOP_PAD_PX: f64 = 25.0;
@@ -146,16 +144,17 @@ pub(crate) fn layout_journey_diagram_typed(
     effective_config: &serde_json::Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<JourneyDiagramLayout> {
-    let typography = JourneyTypographyThemePlan::resolve(
-        None,
+    let typography = JourneyStyle::resolve(
         &crate::test_support::presentation_config(effective_config.clone()),
+        None,
     );
-    layout_journey_diagram_typed_with_resolved_typography(model, &typography, measurer)
+    layout_journey_diagram_typed_with_resolved_typography(model, None, &typography, measurer)
 }
 
 pub(crate) fn layout_journey_diagram_typed_with_resolved_typography(
     model: &JourneyDiagramModel,
-    typography: &JourneyTypographyThemePlan,
+    diagram_title: Option<&str>,
+    typography: &JourneyStyle,
     measurer: &dyn TextMeasurer,
 ) -> Result<JourneyDiagramLayout> {
     let _ = (
@@ -175,23 +174,31 @@ pub(crate) fn layout_journey_diagram_typed_with_resolved_typography(
     let mut actor_map: BTreeMap<String, (i64, String)> = BTreeMap::new();
     for (i, actor) in actors.iter().enumerate() {
         let pos = i as i64;
-        let color = cfg
+        let source = cfg
             .actor_colours
             .get(i % cfg.actor_colours.len().max(1))
-            .cloned()
-            .unwrap_or_else(|| "#8FBC8F".to_string());
+            .map_or("#8FBC8F", String::as_str);
+        let color = typography
+            .native()
+            .map_or_else(|| source.to_owned(), |native| native.actor_fill(i, source));
         actor_map.insert(actor.clone(), (pos, color));
     }
 
-    let legend_style = typography
+    let mut legend_style = typography
         .css_binding()
         .legend_text_style(typography.font_size_px());
+    if let Some(native) = typography.native() {
+        legend_style.font_weight = Some(native.label_weight.to_string());
+    }
     let mut max_actor_label_width: f64 = 0.0;
     let mut actor_legend: Vec<JourneyActorLegendItemLayout> = Vec::new();
 
     let legend_circle_r = JOURNEY_LEGEND_CIRCLE_R_PX;
-    let legend_line_step_y = 20.0;
+    let legend_line_step_y = typography
+        .native()
+        .map_or(20.0_f64, |_| legend_style.font_size.max(20.0));
     let mut y_pos = 60.0;
+    let mut legend_bottom: f64 = 0.0;
     let mut legend_actors: Vec<_> = actors.iter().collect();
     legend_actors.sort_by_key(|actor| actor_legend_array_index(actor).unwrap_or(u32::MAX));
     for actor in legend_actors {
@@ -205,6 +212,7 @@ pub(crate) fn layout_journey_diagram_typed_with_resolved_typography(
         for (index, line) in lines.iter().enumerate() {
             let x = 40.0;
             let y = y_pos + legend_circle_r + (index as f64) * legend_line_step_y;
+            legend_bottom = legend_bottom.max(y + legend_style.font_size);
             let tspan_x = x + cfg.box_text_margin * 2.0;
             label_lines.push(JourneyActorLegendLineLayout {
                 text: line.to_string(),
@@ -254,11 +262,11 @@ pub(crate) fn layout_journey_diagram_typed_with_resolved_typography(
         if is_new_section {
             let fills_len = cfg.section_fills.len().max(1) as i64;
             current_num = section_number % fills_len;
-            current_fill = cfg
+            let source = cfg
                 .section_fills
                 .get(current_num as usize)
-                .cloned()
-                .unwrap_or_else(|| "#CCC".to_string());
+                .map_or("#CCC", String::as_str);
+            current_fill = source.to_owned();
 
             let mut count: i64 = 0;
             for t in model.tasks.iter().skip(i) {
@@ -278,7 +286,12 @@ pub(crate) fn layout_journey_diagram_typed_with_resolved_typography(
                 y: 50.0,
                 width: section_width,
                 height: cfg.cell_height,
-                fill: current_fill.clone(),
+                fill: typography.native().map_or_else(
+                    || current_fill.clone(),
+                    |native| {
+                        native.section_fill(section_number as usize, current_num as usize, source)
+                    },
+                ),
                 task_count: count,
             });
 
@@ -331,7 +344,10 @@ pub(crate) fn layout_journey_diagram_typed_with_resolved_typography(
             y: task_y,
             width: cfg.cell_width,
             height: cfg.cell_height,
-            fill: current_fill.clone(),
+            fill: typography.native().map_or_else(
+                || current_fill.clone(),
+                |native| native.task_fill(current_num as usize, &current_fill, section_number != 0),
+            ),
             num: current_num,
             people: task.people.clone(),
             actor_circles,
@@ -348,20 +364,30 @@ pub(crate) fn layout_journey_diagram_typed_with_resolved_typography(
         stopx = stopx.max(x + cfg.diagram_margin_x + cfg.task_margin);
     }
 
-    let stopy = (actors.len() as f64 * 50.0).max(if tasks.is_empty() {
+    let mut stopy = (actors.len() as f64 * 50.0).max(if tasks.is_empty() {
         0.0
     } else {
         JOURNEY_FACE_BASE_Y_PX + 5.0 * JOURNEY_FACE_SCORE_STEP_Y_PX
     });
+    if typography.native().is_some() {
+        stopy = stopy.max(legend_bottom);
+    }
 
     let height = (stopy - 0.0 + 2.0 * cfg.diagram_margin_y).max(1.0);
-    let width = (left_margin + stopx + 2.0 * cfg.diagram_margin_x).max(1.0);
+    let chart_width = (left_margin + stopx + 2.0 * cfg.diagram_margin_x).max(1.0);
 
     let title = model
         .title
         .as_deref()
         .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            typography.native()?;
+            diagram_title
+                .map(str::trim)
+                .filter(|title| !title.is_empty())
+                .map(str::to_owned)
+        });
     let extra_vert_for_title = if title.is_some() {
         JOURNEY_TITLE_EXTRA_HEIGHT_PX
     } else {
@@ -369,6 +395,14 @@ pub(crate) fn layout_journey_diagram_typed_with_resolved_typography(
     };
 
     let viewbox_top_pad = JOURNEY_VIEWBOX_TOP_PAD_PX;
+    let title_style = typography.native_title_style();
+    let width = title
+        .as_deref()
+        .zip(title_style)
+        .map_or(chart_width, |(title, style)| {
+            chart_width
+                .max(left_margin + measurer.measure(title, &style).width + cfg.diagram_margin_x)
+        });
     let bounds = Bounds {
         min_x: 0.0,
         min_y: -viewbox_top_pad,
@@ -381,7 +415,7 @@ pub(crate) fn layout_journey_diagram_typed_with_resolved_typography(
     let activity_line = JourneyLineLayout {
         x1: left_margin,
         y1: cfg.cell_height * 4.0,
-        x2: width - left_margin - 4.0,
+        x2: chart_width - left_margin - 4.0,
         y2: cfg.cell_height * 4.0,
     };
 
@@ -669,9 +703,9 @@ mod tests {
     #[test]
     fn journey_actor_legend_width_preserves_profile_bounding_client_rect_result() {
         let measurer = DeterministicTextMeasurer::default();
-        let typography = super::JourneyTypographyThemePlan::resolve(
-            None,
+        let typography = super::JourneyStyle::resolve(
             &merman_model::presentation::PresentationConfig::empty_object(),
+            None,
         );
         let style = typography
             .css_binding()
@@ -710,9 +744,9 @@ mod tests {
 
     #[test]
     fn journey_actor_legend_width_uses_exact_bounding_client_rect_result() {
-        let typography = super::JourneyTypographyThemePlan::resolve(
-            None,
+        let typography = super::JourneyStyle::resolve(
             &merman_model::presentation::PresentationConfig::empty_object(),
+            None,
         );
         let style = typography
             .css_binding()
@@ -727,9 +761,9 @@ mod tests {
     #[test]
     fn journey_actor_legend_wraps_with_the_configured_width() {
         let measurer = DeterministicTextMeasurer::default();
-        let typography = super::JourneyTypographyThemePlan::resolve(
-            None,
+        let typography = super::JourneyStyle::resolve(
             &merman_model::presentation::PresentationConfig::empty_object(),
+            None,
         );
         let style = typography
             .css_binding()

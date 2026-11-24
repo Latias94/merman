@@ -16,39 +16,6 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     model: &StateSvgModel,
     label_sidecar: &crate::state::StateLabelSidecar,
     #[cfg(feature = "layout-shoal")] canonical_routes: Option<&CanonicalRoutes>,
-    effect_evidence: &crate::diagram_theme::SvgShadowEvidenceRecorder,
-    effective_config: &serde_json::Value,
-    diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    options: &SvgExecution<'_>,
-) -> Result<root_svg::RootedSvg> {
-    let style_plan = options
-        .state_style_plan()
-        .ok_or_else(|| Error::InvalidModel {
-            message: "state SVG rendering requires the pre-layout family style plan".to_string(),
-        })?;
-    render_state_diagram_svg_with_plan(
-        layout,
-        model,
-        label_sidecar,
-        #[cfg(feature = "layout-shoal")]
-        canonical_routes,
-        effect_evidence,
-        style_plan,
-        effective_config,
-        diagram_title,
-        measurer,
-        options,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-fn render_state_diagram_svg_with_plan(
-    layout: &StateDiagramLayout,
-    model: &StateSvgModel,
-    label_sidecar: &crate::state::StateLabelSidecar,
-    #[cfg(feature = "layout-shoal")] canonical_routes: Option<&CanonicalRoutes>,
-    effect_evidence: &crate::diagram_theme::SvgShadowEvidenceRecorder,
     style_plan: &crate::state::StateStylePlan,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
@@ -139,6 +106,10 @@ fn render_state_diagram_svg_with_plan(
     // `nodes` already preserves that first-seen insertion order, so use it directly.
     let node_order: Vec<&str> = model.nodes.iter().map(|n| n.id.as_str()).collect();
 
+    let native_elevation = options
+        .native_family_theme::<crate::state::StateThemeAdapter>()
+        .map(|theme| &theme.elevation)
+        .filter(|elevation| **elevation != merman_theme_contract::v2::Elevation::Flat);
     let mut ctx = StateRenderCtx {
         work_meter: options.work_meter(),
         diagram_id,
@@ -169,11 +140,10 @@ fn render_state_diagram_svg_with_plan(
         edges: &model.edges,
         include_edges: options.debug.include_edges,
         include_nodes: options.debug.include_nodes,
-        has_node_shadows: options.debug.include_nodes
-            && style_plan.expected_native_filter_application_count() != 0,
+        has_node_shadows: options.debug.include_nodes && native_elevation.is_some(),
+        native_elevation,
         measurer,
         label_sidecar,
-        effect_evidence,
         style_plan,
         rough_cache,
     };
@@ -327,8 +297,7 @@ fn render_state_diagram_svg_with_plan(
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id}"));
     let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{diagram_id}"));
-    let root_context =
-        root_svg::RootViewportContext::new(crate::DiagramFamilyId::STATE, diagram_id);
+    let root_context = options.root_viewport(crate::DiagramFamilyId::STATE, diagram_id);
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "stateDiagram");
     root_chrome.class = Some("statediagram");
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
@@ -386,7 +355,7 @@ fn render_state_diagram_svg_with_plan(
     // in our SVG bounds approximation.
     let bounds_scan_start = out.len();
     let mut detail = StateRenderDetails::default();
-    let mut effect_outsets = crate::diagram_theme::EffectOutsets::default();
+    let mut effect_outsets = EffectOutsets::default();
     // Unthemed/Clear output keeps Mermaid's single hierarchy. Body effects split the entire
     // hierarchy, rather than just each local root, to keep nested depth behind outer labels.
     let passes: &[_] = if ctx.has_node_shadows {
@@ -505,8 +474,6 @@ fn render_state_diagram_svg_with_plan(
     }
     out.push_str("</svg>\n");
     let out = out.finish()?;
-
-    style_plan.record_output_visibility(options.debug.include_nodes, options.debug.include_edges);
 
     drop(_g_finalize);
     timings.total = total_timer
@@ -636,7 +603,7 @@ fn render_state_root(
     options: &SvgExecution<'_>,
     timing: super::timing::RenderTiming,
     details: &mut StateRenderDetails,
-    effect_outsets: &mut crate::diagram_theme::EffectOutsets,
+    effect_outsets: &mut EffectOutsets,
     pass: StateRenderPass,
 ) -> Result<()> {
     details.root_calls += 1;
@@ -1065,47 +1032,23 @@ fn render_state_cluster(
     let body_style = node_style
         .map(crate::state::StateNodeStylePlan::shape_style_attr)
         .unwrap_or_default();
-    let header_style = node_style
-        .map(crate::state::StateNodeStylePlan::composite_header_style_attr)
-        .unwrap_or_default();
+    let header_style = "";
     let body_fill_path_style = node_style
         .map(crate::state::StateNodeStylePlan::fill_path_style_attr)
         .unwrap_or_default();
     let body_stroke_path_style = node_style
         .map(crate::state::StateNodeStylePlan::stroke_path_style_attr)
         .unwrap_or_default();
-    let header_fill_path_style = node_style
-        .map(crate::state::StateNodeStylePlan::composite_header_fill_path_style_attr)
-        .unwrap_or_default();
-    let header_stroke_path_style = node_style
-        .map(crate::state::StateNodeStylePlan::composite_header_stroke_path_style_attr)
-        .unwrap_or_default();
+    let header_fill_path_style = "";
+    let header_stroke_path_style = "";
     let label_style = node_style
         .map(crate::state::StateNodeStylePlan::label_style_attr)
         .unwrap_or_default();
     let label_div_prefix = node_style
         .map(crate::state::StateNodeStylePlan::div_style_prefix)
         .unwrap_or_default();
-    let title_style = node_style
-        .map(|style| {
-            let header_text_style = style.composite_header_text_style_attr();
-            if header_text_style.is_empty() {
-                style.label_style_attr()
-            } else {
-                header_text_style
-            }
-        })
-        .unwrap_or(label_style);
-    let title_div_prefix = node_style
-        .map(|style| {
-            let header_text_prefix = style.composite_header_text_div_style_prefix();
-            if header_text_prefix.is_empty() {
-                style.div_style_prefix()
-            } else {
-                header_text_prefix
-            }
-        })
-        .unwrap_or(label_div_prefix);
+    let title_style = label_style;
+    let title_div_prefix = label_div_prefix;
     let radius_override = node_style.and_then(crate::state::StateNodeStylePlan::radius_override);
     let body_rect_style = state_rect_style(body_style, radius_override);
     let outer_radius_override =
@@ -1164,8 +1107,7 @@ fn render_state_cluster(
             let compatibility = ctx.style_plan.compatibility();
             let surface = cluster_node
                 .and_then(|node| {
-                    compatibility
-                        .node_shape_surface(node, crate::diagram_theme::ThemeTarget::Composite)
+                    compatibility.node_shape_surface(node, crate::state::StateNodeKind::Composite)
                 })
                 .expect("State divider cluster must have a compatibility surface");
             let fill = compatibility.terminal_paint_css(
@@ -1257,7 +1199,7 @@ fn render_state_cluster(
         let compatibility = ctx.style_plan.compatibility();
         let body_surface = cluster_node
             .and_then(|node| {
-                compatibility.node_shape_surface(node, crate::diagram_theme::ThemeTarget::Composite)
+                compatibility.node_shape_surface(node, crate::state::StateNodeKind::Composite)
             })
             .expect("State composite body must have a compatibility surface");
         let header_surface = compatibility.composite_header_surface();
@@ -1479,18 +1421,16 @@ mod tests {
                 serde_json::json!({"look":"neo", "htmlLabels":false, "elk":{"lineHops":hops}});
             let plan = crate::state::StateStylePlan::resolve_unthemed(model, &config);
             let labels = crate::state::StateLabelSidecarBuilder::default().finish();
-            let effects = crate::diagram_theme::SvgShadowEvidenceRecorder::default();
             crate::svg::with_test_svg_execution(
                 crate::DiagramFamilyId::STATE,
                 &SvgRenderOptions::default(),
                 |execution| {
-                    render_state_diagram_svg_with_plan(
+                    render_state_diagram_svg_model(
                         &layout,
                         model,
                         &labels,
                         #[cfg(feature = "layout-shoal")]
                         None,
-                        &effects,
                         &plan,
                         &config,
                         None,

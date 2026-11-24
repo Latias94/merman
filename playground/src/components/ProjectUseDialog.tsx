@@ -44,8 +44,8 @@ export default function ProjectUseDialog({ input, onClose, onRefresh, restoreFoc
   const { bundle, error } = result;
   const filename = bundle && selectedFile && Object.hasOwn(bundle.files, selectedFile) ? selectedFile : bundle?.codeFilename;
   const content = bundle && filename ? bundle.files[filename] : "";
-  const label = snapshot.workspace.themeRecipeLabel;
-  const themeName = label?.name ?? snapshot.workspace.themePresetId ?? t(snapshot.workspace.themeRecipeJson !== null ? "projectUse.unnamedRecipe" : "projectUse.noMermanTheme");
+  const label = snapshot.workspace.themeDocumentLabel;
+  const themeName = label?.name ?? snapshot.workspace.themePresetId ?? t(snapshot.workspace.themeDocumentJson !== null ? "themeWorkshop.custom" : "projectUse.noMermanTheme");
 
   function resetActions() { setActionStatus(null); setSelectedFile(null); }
   async function copy() {
@@ -99,7 +99,7 @@ export default function ProjectUseDialog({ input, onClose, onRefresh, restoreFoc
         </fieldset>
 
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 break-words text-xs" data-testid="project-use-inputs">
-          <dt className="text-muted-foreground">{t("projectUse.theme")}</dt><dd>{themeName} · {t(label ? `projectUse.origin_${label.source}` : snapshot.workspace.themePresetId ? "projectUse.origin_builtin" : snapshot.workspace.themeRecipeJson !== null ? "projectUse.origin_recipe" : "projectUse.origin_none")}</dd>
+          <dt className="text-muted-foreground">{t("projectUse.theme")}</dt><dd>{themeName}</dd>
           <dt className="text-muted-foreground">{t("projectUse.baseTheme")}</dt><dd>{snapshot.workspace.diagramTheme}</dd>
           {snapshot.selection.appearance && <>
             <dt className="text-muted-foreground">{t("appearanceMode.title")}</dt>

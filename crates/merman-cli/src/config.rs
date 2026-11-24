@@ -21,8 +21,7 @@ use crate::invocation::{ResolvedParseOptions, ResolvedRuntimeOptions};
 use merman::SvgEnvironment;
 #[cfg(feature = "svg")]
 use merman::svg::{
-    LayoutOptions, SvgRenderOptions, ThemeAdmissionPolicy, ThemeResourcePolicy, TrustedThemeLane,
-    TrustedThemeLanes,
+    LayoutOptions, SvgRenderOptions,
 };
 #[cfg(any(feature = "svg", feature = "ascii"))]
 use merman::theme::ThemePrecedence;
@@ -299,10 +298,7 @@ fn renderer_from_config(
     let runtime = ResolvedCliRuntimePolicy::from_resolved(&parse.runtime);
     let mut environment = SvgEnvironment::deterministic()
         .with_resource_policy(resources.render_policy())
-        .with_theme_resource_ceiling(ThemeResourcePolicy::for_profile(resources.profile()))
-        .with_theme_admission_policy(ThemeAdmissionPolicy::permissive().with_trusted_lanes(
-            TrustedThemeLanes::from_allowed([TrustedThemeLane::RawThemeCss]),
-        ));
+        .with_trusted_theme_css(true);
     #[cfg(not(feature = "layout-shoal"))]
     {
         use merman::svg::{RenderCapability, RenderCapabilityPolicy};

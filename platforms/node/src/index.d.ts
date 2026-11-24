@@ -35,7 +35,6 @@ export interface MermanBindingOptions {
   fixed_unix_millis?: number | null;
   fixed_local_offset_minutes?: number | null;
   environment?: {
-    theme_portability?: "best-effort" | "require-portable";
     text_measurement?: "deterministic" | null;
     [key: string]: unknown;
   };
@@ -43,125 +42,276 @@ export interface MermanBindingOptions {
     profile?: MermanResourceProfile;
     limits?: Record<string, number>;
   };
-  /** A supplied selection replaces the complete constructor theme; null clears it. */
-  theme?: DiagramThemeSelection | null;
+  /** A supplied selection replaces the constructor theme. Use `"none"` to clear it. */
+  theme?: DiagramThemeSelection;
+  /** Overrides the SVG canvas base with a hex color or `"transparent"`. */
+  background?: string;
   ascii?: MermanAsciiRenderOptions;
   [key: string]: unknown;
 }
 
+/** A concrete appearance selected by the host. */
 export type ThemeAppearance = "light" | "dark";
-export type ThemeJsonValue =
-  | string | number | boolean | null
-  | ThemeJsonValue[]
-  | { [key: string]: ThemeJsonValue };
-export type ThemeJsonObject = { [key: string]: ThemeJsonValue };
+export type ThemeCategory = "reading" | "editor" | "art" | "custom";
+export type ThemePrecedence = "host" | "source";
 
-/** Editable JSON sections are validated by the shared Rust theme compiler. */
-export interface ThemeDesignV1 {
-  tokens?: Record<string, ThemeJsonValue>;
-  styles?: Record<string, ThemeJsonValue>;
-  rules?: ThemeJsonObject[];
-  palettes?: Record<string, ThemeJsonValue>;
-  canvas?: ThemeJsonObject;
-  typography?: ThemeJsonObject;
-  mermaid?: ThemeJsonObject;
-  assets?: ThemeJsonObject;
-  requirements?: ThemeJsonObject;
-  appearances?: Partial<Record<ThemeAppearance, ThemeAppearanceOverridesV1>>;
-  default_appearance?: ThemeAppearance;
+export interface ThemeCatalog {
+  readonly schema_version: 2;
+  readonly presets: readonly ThemePresetCatalogEntry[];
+  readonly mermaid_themes: readonly string[];
+  readonly families: readonly { id: string; capabilities: number }[];
 }
 
-export type ThemeAppearanceOverridesV1 =
-  Omit<ThemeDesignV1, "appearances" | "default_appearance" | "assets" | "requirements">;
+export interface ThemePresetCatalogEntry {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+  readonly category: ThemeCategory;
+  readonly appearances: readonly ThemeAppearance[];
+  readonly default_appearance: ThemeAppearance;
+  /** Semantic colors for the preset's default appearance. */
+  readonly swatches: readonly [
+    canvas: string, node: string, container: string,
+    title: string, primaryText: string, firstDataFill: string,
+  ];
+}
 
-export type ThemeRecipeV1 = {
-  schema_version: 1;
-  preset?: never;
-  spec?: never;
-  recipe?: never;
-  appearance?: never;
-} & (
-  | { kind: "design"; design: ThemeDesignV1; complete_spec?: never }
-  | { kind: "complete_spec"; complete_spec: ThemeJsonObject; design?: never }
-);
+export interface ThemeDocumentV2 {
+  readonly $schema?: string;
+  readonly schema_version: 2;
+  readonly id?: string;
+  readonly name?: string;
+  readonly description?: string;
+  readonly category?: ThemeCategory;
+  readonly extends?: string;
+  readonly default_appearance?: ThemeAppearance;
+  readonly seed?: ThemeSeed;
+  readonly roles?: Partial<ThemeRoles>;
+  readonly typography?: Partial<ThemeTypography>;
+  readonly form?: ThemeFormPatch;
+  readonly appearances?: Readonly<Partial<Record<ThemeAppearance, ThemeAppearanceLayer>>>;
+  readonly overrides?: readonly ThemeFamilyOverride[];
+}
 
+/** A preset ID, `none` to clear the selection, or an editable v2 document. */
 export type DiagramThemeSelection =
-  | ThemeRecipeV1
-  | ({ kind?: never; schema_version?: never; design?: never; complete_spec?: never } & (
-      | { preset: string; appearance?: ThemeAppearance; recipe?: never; spec?: never }
-      | { recipe: ThemeRecipeV1; appearance?: ThemeAppearance; preset?: never; spec?: never }
-      | { spec: ThemeJsonObject; preset?: never; recipe?: never; appearance?: never }
+  | string
+  | (ThemeDocumentV2 & {
+      readonly preset?: never;
+      readonly document?: never;
+      readonly appearance?: never;
+      readonly precedence?: never;
+    })
+  | ({
+      readonly schema_version?: never;
+      readonly appearance?: ThemeAppearance;
+      readonly precedence?: ThemePrecedence;
+    } & (
+      | { readonly preset: string; readonly document?: never }
+      | { readonly document: ThemeDocumentV2; readonly preset?: never }
     ));
 
-export type ThemeAuthoringRequestV1 =
-  | { schema_version: 1; action: "inspect"; recipe: ThemeRecipeV1; appearance?: never }
-  | { schema_version: 1; action: "materialize"; recipe: ThemeRecipeV1; appearance?: ThemeAppearance };
-export type ThemeAuthoringInput = ThemeDesignV1 | ThemeAuthoringRequestV1 | string;
+export type ThemeSeed = Readonly<Partial<Record<
+  "canvas" | "ink" | "accent" | "surface" | "callout" | "info" | "success" | "warn" | "danger",
+  string
+>>>;
 
-export interface ThemeDesignReferenceUse {
-  token: string;
-  path: string;
-  domain: ThemeJsonObject;
+export type ThemePaint = string | {
+  readonly kind: "linear_gradient";
+  readonly angle_deg?: number;
+  readonly stops: readonly { offset: number; color: string; opacity?: number }[];
+};
+
+export interface ThemeRoles {
+  readonly canvas: ThemePaint;
+  readonly "surface.node": ThemePaint;
+  readonly "surface.container": ThemePaint;
+  readonly "surface.callout": ThemePaint;
+  readonly "surface.emphasis": ThemePaint;
+  readonly "stroke.border": ThemePaint;
+  readonly "stroke.connector": ThemePaint;
+  readonly "stroke.guide": ThemePaint;
+  readonly "text.primary": string;
+  readonly "text.muted": string;
+  readonly "text.title": string;
+  readonly "text.callout": string;
+  readonly "text.on_emphasis": string;
+  readonly "status.info": string;
+  readonly "status.success": string;
+  readonly "status.warn": string;
+  readonly "status.danger": string;
 }
 
-export interface ThemeRecipeReferenceUseV1 extends ThemeDesignReferenceUse {
-  token_path: string;
+type ThemeTextureColor = { readonly color?: string; readonly opacity?: number };
+
+export type ThemeTexture =
+  | { readonly kind: "none" }
+  | (ThemeTextureColor & {
+      readonly kind: "grid";
+      readonly step_px: number;
+      readonly major_every?: number;
+      readonly major_opacity?: number;
+    })
+  | (ThemeTextureColor & { readonly kind: "dots"; readonly step_px: number; readonly radius_px?: number })
+  | (ThemeTextureColor & {
+      readonly kind: "ruled";
+      readonly line_height_px: number;
+      readonly margin_rule_color?: string;
+      readonly margin_rule_x_px?: number;
+    })
+  | (ThemeTextureColor & { readonly kind: "fibers"; readonly angle_deg?: number; readonly cross?: boolean })
+  | (ThemeTextureColor & { readonly kind: "scanlines"; readonly step_px: number })
+  | {
+      readonly kind: "radial_wash";
+      readonly color: string;
+      readonly opacity?: number;
+      readonly cx?: number;
+      readonly cy?: number;
+      readonly radius?: number;
+    };
+
+interface ThemeShadowLayer {
+  readonly dx: number;
+  readonly dy: number;
+  readonly blur?: number;
+  readonly color: string;
+  readonly opacity?: number;
 }
 
-export interface MaterializedThemeWireV1 {
-  schema_version: 1;
-  authoring_schema_version: 1;
-  expansion_version: 1;
-  spec_schema_version: 1;
-  spec: ThemeJsonObject;
-  references?: ThemeDesignReferenceUse[];
+interface ThemeGlow {
+  readonly kind: "glow";
+  readonly color: string;
+  readonly blur: number;
+  readonly opacity?: number;
 }
 
-export interface ThemeRecipeInspectionV1 {
-  schema_version: 1;
-  recipe_schema_version: 1;
-  supported_appearances: ThemeAppearance[];
-  default_appearance: ThemeAppearance | null;
-  appearances: {
-    appearance: ThemeAppearance | null;
-    references: ThemeRecipeReferenceUseV1[];
-  }[];
+export type ThemeElevationSpec =
+  | "flat" | "soft" | "crisp"
+  | { readonly kind: "layered_stack"; readonly layers: readonly ThemeShadowLayer[] }
+  | ThemeGlow;
+
+export type ThemeElevation =
+  | { readonly kind: "flat" }
+  | { readonly kind: "shadows"; readonly layers: readonly Required<ThemeShadowLayer>[] }
+  | Required<ThemeGlow>;
+
+type ThemeFontRole = "sans" | "serif" | "mono";
+
+export interface ThemeTypography {
+  readonly sans: readonly string[];
+  readonly mono: readonly string[];
+  readonly serif: readonly string[];
+  readonly body_family: ThemeFontRole;
+  readonly title_family: ThemeFontRole;
+  readonly code_family: ThemeFontRole;
+  readonly base_size_px: number;
+  readonly title_weight: number;
+  readonly label_weight: number;
 }
 
-export interface MaterializedThemeRecipeV1 {
-  schema_version: 1;
-  recipe_schema_version: 1;
-  supported_appearances: ThemeAppearance[];
-  default_appearance: ThemeAppearance | null;
-  effective_appearance: ThemeAppearance | null;
-  spec: ThemeJsonObject;
-  references: ThemeRecipeReferenceUseV1[];
+export interface ThemeForm {
+  readonly density: "compact" | "balanced" | "airy";
+  readonly radius: number;
+  readonly container_radius: number;
+  readonly stroke_width: number;
+  readonly connector_width: number;
+  readonly edge_style: "curved" | "orthogonal" | "straight" | "sketch";
+  readonly marker_style: "stealth" | "filled" | "open" | "classic";
+  readonly edge_label_bg: "auto" | "canvas" | "pill" | "transparent";
+  readonly chart: {
+    readonly gridlines: boolean;
+    readonly bar_radius: number;
+    readonly bar_wireframe: boolean;
+    readonly line_markers: boolean;
+    readonly pie_gap_px: number;
+    readonly pie_opacity: number;
+  };
 }
 
-export type ThemeAuthoringResult =
-  | MaterializedThemeWireV1 | ThemeRecipeInspectionV1 | MaterializedThemeRecipeV1;
-export type ThemeAuthoringResultFor<Input extends ThemeAuthoringInput> =
-  Input extends { action: "inspect" } ? ThemeRecipeInspectionV1
-    : Input extends { action: "materialize" } ? MaterializedThemeRecipeV1
-      : Input extends string ? ThemeAuthoringResult : MaterializedThemeWireV1;
-
-export interface ThemeSupportQueryV1 {
-  schema_version: 1;
-  family: string;
-  output: string;
-  subject:
-    | { kind: "rule"; target: string; facet: string }
-    | { kind: "ordinal-palette"; target: string }
-    | { kind: "base-typography"; property: string };
+export interface ThemeFormPatch extends Partial<Omit<ThemeForm, "chart">> {
+  readonly elevation?: ThemeElevationSpec;
+  readonly chart?: Partial<ThemeForm["chart"]>;
 }
 
-export interface ThemeCapabilityDescriptorV1 {
-  schema_version: 1;
-  claim_revision: number;
-  query: ThemeSupportQueryV1;
-  state: "unconditional" | "conditional" | "not-applicable" | "unsupported" | "unverified" | (string & {});
-  reason_ids: string[];
+interface ThemeCanvas {
+  readonly textures: readonly ThemeTexture[];
+  readonly padding_px: number;
 }
+
+interface ThemeDataPalette {
+  readonly ink: readonly string[];
+  readonly fill: readonly string[];
+  readonly fill_ink: readonly string[];
+  readonly pattern_encoding: boolean;
+}
+
+export interface ThemeAppearanceLayer {
+  readonly seed?: ThemeSeed;
+  readonly roles?: Partial<ThemeRoles>;
+  readonly data?: Partial<Omit<ThemeDataPalette, "fill_ink">> & { readonly fill_ink?: string };
+  readonly canvas?: Partial<ThemeCanvas>;
+  readonly elevation?: ThemeElevationSpec;
+}
+
+export interface ThemeFamilyOverride {
+  readonly families: readonly string[];
+  readonly appearance?: ThemeAppearance;
+  readonly roles?: Partial<ThemeRoles>;
+  readonly form?: ThemeFormPatch;
+  readonly elevation?: ThemeElevationSpec;
+  readonly typography?: Partial<ThemeTypography>;
+  readonly node_ordinal_palette?: boolean;
+}
+
+interface ResolvedFamilyTheme {
+  readonly roles: ThemeRoles;
+  readonly data: ThemeDataPalette;
+  readonly typography: ThemeTypography;
+  readonly form: ThemeForm;
+  readonly elevation: ThemeElevation;
+  readonly node_ordinal_palette: boolean;
+}
+
+export interface ResolvedThemeV2 extends ResolvedFamilyTheme {
+  readonly id: string | null;
+  readonly appearance: ThemeAppearance;
+  readonly canvas: ThemeCanvas;
+  readonly family_overrides?: Readonly<Record<string, ResolvedFamilyTheme>>;
+}
+
+export type ThemeNotice =
+  | {
+      readonly kind: "low_contrast";
+      readonly foreground: string;
+      readonly background: string;
+      readonly ratio: number;
+      readonly minimum: number;
+    }
+  | { readonly kind: "contrast_adjusted"; readonly foreground: string; readonly color: string };
+
+export interface ThemeOutcome {
+  readonly mode: "mermaid_parity" | "merman_native";
+  readonly preset_id?: string;
+  readonly appearance?: ThemeAppearance;
+  readonly notices: readonly (ThemeNotice | string)[];
+}
+
+export interface ThemeResolveOptions extends Pick<RenderSvgOptions, "signal" | "timeoutMs"> {
+  readonly appearance?: ThemeAppearance;
+  readonly auto_fix_contrast?: boolean;
+}
+
+export interface ThemeResolveError {
+  readonly ok: false;
+  readonly line: number | null;
+  readonly column: number | null;
+  readonly path: string | null;
+  readonly message: string;
+}
+
+export type ThemeResolution =
+  | { readonly ok: true; readonly resolved: ResolvedThemeV2; readonly notices: readonly ThemeNotice[] }
+  | ThemeResolveError;
 
 /** One host-loaded Iconify pack, admitted once into an immutable engine-local registry. */
 export interface MermanIconPack {
@@ -209,8 +359,18 @@ export interface MermanOperationResult {
   operation_id: string;
   media_type: string;
   data: string;
-  /** Canonical metadata JSON; ASCII output_plan uses report schema 4 within metadata version 1. */
+  /** Canonical JSON for `MermanOperationMetadata`. */
   metadata_json: string;
+}
+
+export interface MermanOperationMetadata {
+  readonly version: 1;
+  readonly operation_id: string;
+  readonly media_type: string;
+  readonly runtime_policy: "deterministic";
+  readonly byte_length: number;
+  readonly theme_outcome?: ThemeOutcome;
+  readonly [key: string]: unknown;
 }
 
 export interface MermanTextMeasurementCatalog {
@@ -350,17 +510,17 @@ export declare class MermanEngine {
     source: string,
     options?: Omit<RenderSvgOptions, "signal">,
   ): string;
-  /** Raw strings preserve duplicate-field admission and source paths in Rust. */
-  materializeTheme<Input extends ThemeAuthoringInput>(
-    input: Input,
-    options?: RenderSvgOptions,
-  ): Promise<ThemeAuthoringResultFor<Input>>;
-  describeThemeSupport(
-    query: ThemeSupportQueryV1 | string,
-    options?: RenderSvgOptions,
-  ): Promise<ThemeCapabilityDescriptorV1>;
-  /** Exports the complete editable design, including every declared appearance. */
-  exportThemePreset(presetId: string, options?: RenderSvgOptions): Promise<ThemeRecipeV1>;
+  themeCatalog(): ThemeCatalog;
+  /** Exports the editable v2 document, including every declared appearance. */
+  exportThemePreset(
+    presetId: string,
+    options?: Pick<RenderSvgOptions, "signal" | "timeoutMs">,
+  ): Promise<ThemeDocumentV2>;
+  /** Pass raw JSON text to preserve document-relative syntax and duplicate-key diagnostics. */
+  resolveTheme(
+    document: ThemeDocumentV2 | string,
+    options?: ThemeResolveOptions,
+  ): Promise<ThemeResolution>;
   metadataJson(id: string): string;
   executeOperation(
     request: MermanOperationRequest,
@@ -431,7 +591,7 @@ export declare class MermanOperationError extends MermanError {
   readonly codeName: string | null;
   readonly kind: "generic" | "unknown-operation" | "missing-capability" | string;
   readonly capabilityId: string | null;
-  /** Complete core-owned details, including versioned theme_authoring diagnostics. */
+  /** Complete core-owned details. */
   readonly details: Readonly<Record<string, unknown>> | null;
   readonly resourceDetails: MermanResourceErrorDetails | null;
   readonly iconRegistryDetails: MermanIconRegistryErrorDetails | null;

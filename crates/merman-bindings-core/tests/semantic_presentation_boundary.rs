@@ -31,9 +31,9 @@ fn binding_options_remain_eagerly_validated_before_source_work() {
         ),
         #[cfg(feature = "svg")]
         (
-            br#"{"theme":{"spec":{"canvas":{"base":"white; color: red"}}}}"#,
+            br#"{"theme":{"schema_version":2,"extends":"studio","seed":{"canvas":"white; color: red"}}}"#,
             BindingStatus::InvalidArgument,
-            "theme.spec.paint",
+            "theme.document.seed.canvas",
         ),
         #[cfg(feature = "svg")]
         (

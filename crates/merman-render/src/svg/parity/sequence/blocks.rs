@@ -12,8 +12,6 @@ use rustc_hash::FxHashMap;
 
 pub(super) struct SequenceBlockRenderContext<'a> {
     pub(super) is_neo: bool,
-    pub(super) text_shadow: &'a super::text_effect::SequenceTextShadow<'a>,
-    pub(super) shadow_evidence: &'a crate::diagram_theme::SvgShadowEvidenceRecorder,
     pub(super) block_widths_by_id: &'a FxHashMap<String, f64>,
     pub(super) label_box_width: f64,
     pub(super) label_box_drawn_width: f64,
@@ -24,9 +22,8 @@ pub(super) struct SequenceBlockRenderContext<'a> {
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) loop_text_style: &'a TextStyle,
     pub(super) loop_typography: &'a crate::sequence::SequenceResolvedTypography,
-    pub(super) typography_receipt: &'a crate::sequence::SequenceTypographyThemeReceipt,
-    pub(super) frame_paint: &'a super::control_paint::SequenceControlPaint<'a>,
-    pub(super) keyword_paint: &'a super::control_paint::SequenceControlPaint<'a>,
+    pub(super) frame_paint: &'a super::control_paint::SequenceControlPaint,
+    pub(super) keyword_paint: &'a super::control_paint::SequenceControlPaint,
     pub(super) math_sidecar: &'a crate::sequence::SequenceMathSidecar,
     pub(super) sanitize_config: &'a merman_model::presentation::PresentationConfig,
     pub(super) checkpoints: SequenceEmitCheckpoints<'a>,
@@ -40,11 +37,8 @@ impl<'a> SequenceBlockRenderContext<'a> {
             config: self.sanitize_config,
             margin: self.box_text_margin,
             typography: self.loop_typography,
-            typography_receipt: self.typography_receipt,
             math_sidecar: self.math_sidecar,
             checkpoints: self.checkpoints,
-            text_shadow: self.text_shadow,
-            shadow_evidence: self.shadow_evidence,
         }
     }
 
@@ -70,7 +64,7 @@ fn write_control_line(
     separator: bool,
     ctx: &SequenceBlockRenderContext<'_>,
 ) -> Result<()> {
-    let application = ctx.frame_paint.begin_terminal(out, coordinates)?;
+    ctx.frame_paint.include_bounds(out, coordinates)?;
     let [x1, y1, x2, y2] = coordinates;
     let _ = write!(
         out,
@@ -80,12 +74,9 @@ fn write_control_line(
         fmt(x2),
         fmt(y2)
     );
-    ctx.frame_paint
-        .write_attributes(out, application.as_ref(), separator);
+    ctx.frame_paint.write_attributes(out, separator);
     out.push_str("/>");
     out.checkpoint()?;
-    ctx.frame_paint
-        .finish_terminal(application.as_ref(), ctx.shadow_evidence);
     Ok(())
 }
 
@@ -124,14 +115,13 @@ pub(super) fn write_block_label_box(
         label_box_height
     };
     let typography = ctx.loop_typography;
-    let typography_receipt = ctx.typography_receipt;
     let x1 = frame_x1;
     let y1 = frame_y1;
     let x2 = x1 + label_box_width;
     let y3 = y1 + label_box_height;
     let y2 = y3 - 7.0;
     let x3 = x2 - 8.4;
-    let application = ctx.keyword_paint.begin_terminal(
+    ctx.keyword_paint.include_bounds(
         out,
         [
             x1.min(x2).min(x3),
@@ -150,12 +140,9 @@ pub(super) fn write_block_label_box(
         x3 = fmt(x3),
         y3 = fmt(y3)
     );
-    ctx.keyword_paint
-        .write_attributes(out, application.as_ref(), false);
+    ctx.keyword_paint.write_attributes(out, false);
     out.push_str("/>");
     out.checkpoint()?;
-    ctx.keyword_paint
-        .finish_terminal(application.as_ref(), ctx.shadow_evidence);
     let label_cx = (x1 + label_box_width / 2.0).round();
     let label_cy = sequence_drawn_text_y(
         sequence_drawn_text_first_y(y1 + label_box_height / 2.0, ctx.box_text_margin),
@@ -166,44 +153,15 @@ pub(super) fn write_block_label_box(
         "",
         super::settings::sequence_text_style_attribute(ctx.loop_text_style),
     );
-    let shadow = if ctx.text_shadow.needs_bounds() {
-        let mut terminal_style = typography.terminal_text_style().clone();
-        if !typography.requires_resolved_emission() {
-            terminal_style.font_size = ctx.loop_text_style.font_size;
-        }
-        ctx.text_shadow.write_definition(
-            out,
-            label,
-            label_cx,
-            label_cy,
-            super::text_effect::TextShadowBaseline::Middle,
-            &terminal_style,
-            ctx.measurer,
-        )?
-    } else {
-        None
-    };
-    let filter = shadow
-        .as_ref()
-        .map(|s| format!(" filter=\"{}\"", escape_attr(&s.filter)))
-        .unwrap_or_default();
     let _ = write!(
         out,
-        r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="labelText" style="{style}"{filter}>{label}</text>"#,
+        r#"<text x="{x}" y="{y}" text-anchor="middle" dominant-baseline="middle" alignment-baseline="middle" class="labelText" style="{style}">{label}</text>"#,
         x = fmt(label_cx),
         y = fmt(label_cy),
         style = escape_attr_display(&style),
         label = escape_xml(label)
     );
-    typography_receipt.record_terminal_text(crate::sequence::SequenceTextSurface::ControlKeyword);
     out.checkpoint()?;
-    ctx.text_shadow.record_terminal(
-        shadow.as_ref(),
-        false,
-        ctx.shadow_evidence,
-        typography_receipt,
-        crate::sequence::SequenceTextSurface::ControlKeyword,
-    );
     Ok(())
 }
 

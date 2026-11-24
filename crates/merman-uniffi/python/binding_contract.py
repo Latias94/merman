@@ -129,13 +129,6 @@ BINDING_OPERATION_RELATION_SPECS = (
         "compiled_prerequisite_ids": (),
     },
     {
-        "operation_id": "describe-theme-support-json",
-        "maturity": "alpha",
-        "availability_capability_id": "svg",
-        "output_id": None,
-        "compiled_prerequisite_ids": (),
-    },
-    {
         "operation_id": "document-analysis-facts-json",
         "maturity": "stable",
         "availability_capability_id": "analysis",
@@ -157,8 +150,8 @@ BINDING_OPERATION_RELATION_SPECS = (
         "compiled_prerequisite_ids": (),
     },
     {
-        "operation_id": "export-theme-preset-json",
-        "maturity": "alpha",
+        "operation_id": "export-theme-preset",
+        "maturity": "stable",
         "availability_capability_id": "svg",
         "output_id": None,
         "compiled_prerequisite_ids": (),
@@ -178,13 +171,6 @@ BINDING_OPERATION_RELATION_SPECS = (
         "compiled_prerequisite_ids": (),
     },
     {
-        "operation_id": "materialize-theme-json",
-        "maturity": "alpha",
-        "availability_capability_id": "svg",
-        "output_id": None,
-        "compiled_prerequisite_ids": (),
-    },
-    {
         "operation_id": "pdf",
         "maturity": "stable",
         "availability_capability_id": "pdf",
@@ -197,6 +183,13 @@ BINDING_OPERATION_RELATION_SPECS = (
         "availability_capability_id": "png",
         "output_id": "png",
         "compiled_prerequisite_ids": ("svg",),
+    },
+    {
+        "operation_id": "resolve-theme",
+        "maturity": "stable",
+        "availability_capability_id": "svg",
+        "output_id": None,
+        "compiled_prerequisite_ids": (),
     },
     {
         "operation_id": "semantic-json",
@@ -261,6 +254,12 @@ BINDING_OPTION_GROUP_SPECS = (
         "always_available": False,
         "any_capability_ids": ("ascii",),
         "requires_svg_pipeline": False,
+    },
+    {
+        "id": "background",
+        "always_available": False,
+        "any_capability_ids": (),
+        "requires_svg_pipeline": True,
     },
     {
         "id": "environment",
@@ -349,7 +348,7 @@ BINDING_OPTION_GROUP_SPECS = (
     {
         "id": "theme",
         "always_available": False,
-        "any_capability_ids": (),
+        "any_capability_ids": ("ascii",),
         "requires_svg_pipeline": True,
     },
     {

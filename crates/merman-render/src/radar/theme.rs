@@ -1,119 +1,80 @@
-use std::collections::{BTreeMap, BTreeSet};
-use std::sync::OnceLock;
-
 use merman_model::families::radar::RadarDiagramModel;
 use merman_model::presentation::PresentationConfig;
 
-use super::paint::{PaintRules, PendingPaintRules, record_pending, static_paint};
-use crate::config::{config_css_number_or_string, config_string, value_at};
-use crate::diagram_theme::{
-    FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemeRuleFacet,
-    FamilyThemeSelectorShape, ResolvedDiagramTheme, ResolvedStyleProperty, ThemeCapability,
-    ThemeTarget, ThemeTypographyProperty, ThemeVariant,
-};
-use crate::family::{
-    DirectPaintExpectation, DirectStaticSelectorDomain, FamilyThemeEvidence, TerminalVariantDomain,
-    UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains, resolve_direct_static_fill,
-    resolved_style_property_for_facet, unsupported_residual_for_facet,
-};
-use crate::family::{FamilyThemeOutcomes, FamilyThemeResidualReason, InheritedFontStackPlan};
-use crate::resources::{OperationWorkError, OperationWorkMeter};
+use crate::config::config_css_number_or_string;
+use crate::theme::FamilyTheme;
 
-const RADAR_PALETTE_SLOT_COUNT: usize = 12;
-
-const RADAR_COLOR_SCALE_KEYS: [&str; RADAR_PALETTE_SLOT_COUNT] = [
+const RADAR_COLOR_SCALE_KEYS: [&str; 12] = [
     "cScale0", "cScale1", "cScale2", "cScale3", "cScale4", "cScale5", "cScale6", "cScale7",
     "cScale8", "cScale9", "cScale10", "cScale11",
 ];
 
-/// Final Radar base typography shared by stylesheet emission and terminal evidence.
 #[derive(Debug)]
 pub(crate) struct RadarTypographyThemePlan {
     css_binding: super::RadarCssBinding,
-    inherited_font_stack: InheritedFontStackPlan,
-    font_size: RadarFontSizeBinding,
-    terminal_receipt: OnceLock<RadarTypographyTerminalSeal>,
-}
-
-#[derive(Debug)]
-struct RadarFontSizeBinding {
-    css: Box<str>,
-    typed_requested: bool,
-    typed_active: bool,
-}
-
-impl RadarFontSizeBinding {
-    fn resolve(
-        theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &PresentationConfig,
-    ) -> Self {
-        let typed_font_size_requested = theme.is_some_and(|theme| {
-            theme.family_mechanism_routes().iter().any(|route| {
-                route.mechanism()
-                    == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
-                    && route.disposition() == FamilyThemeDisposition::TypedAdapter
-            })
-        });
-        let configured_font_size = config_css_number_or_string(
-            effective_config.as_value(),
-            &["themeVariables", "fontSize"],
-        );
-        let config_owns_font_size = typed_font_size_requested
-            && configured_font_size.as_ref().is_some_and(|css| {
-                // Drop known-invalid static CSS sizes without displacing valid author lengths
-                // or expressions whose computed value belongs to the receiving host.
-                crate::mermaid_style::css_font_size_override(&format!("font-size:{css}")).is_some()
-            })
-            && effective_config.config_path_overrides_typed_default("themeVariables.fontSize");
-        let typed_font_size_active = typed_font_size_requested && !config_owns_font_size;
-        let font_size_css = match theme {
-            Some(theme) if typed_font_size_active => {
-                format!("{}px", theme.typography().font_size_px())
-            }
-            _ => super::RadarCssBinding::font_size_css_or_default(configured_font_size),
-        }
-        .into_boxed_str();
-
-        Self {
-            css: font_size_css,
-            typed_requested: typed_font_size_requested,
-            typed_active: typed_font_size_active,
-        }
-    }
-
-    fn has_visible_size(&self) -> bool {
-        super::css_binding::RadarTextVisibility::root(&self.css)
-            == super::css_binding::RadarTextVisibility::Visible
-    }
-
-    fn has_unknown_size(&self) -> bool {
-        super::css_binding::RadarTextVisibility::root(&self.css)
-            == super::css_binding::RadarTextVisibility::Unknown
-    }
+    native: Option<super::native_theme::RadarNativeStyle>,
+    font_family_css: String,
+    font_size_css: String,
 }
 
 impl RadarTypographyThemePlan {
-    pub(crate) fn resolve(
-        theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &PresentationConfig,
-    ) -> Self {
-        let font_size = RadarFontSizeBinding::resolve(theme, effective_config);
-        Self {
-            css_binding: super::RadarCssBinding::resolve_with_font_size(
-                effective_config.as_value(),
-                &font_size.css,
-            ),
-            inherited_font_stack: InheritedFontStackPlan::resolve_property_local(
+    pub(crate) fn resolve(theme: Option<&FamilyTheme>, config: &PresentationConfig) -> Self {
+        let configured_size =
+            config_css_number_or_string(config.as_value(), &["themeVariables", "fontSize"]);
+        let font_size_css = match theme {
+            Some(theme) if !config.explicit_config_owns_path("themeVariables.fontSize") => {
+                let size = if config.explicit_config_owns_path("fontSize") {
+                    crate::config::config_f64_css_px(config.as_value(), &["fontSize"])
+                        .unwrap_or(theme.typography.base_size_px)
+                } else {
+                    theme.typography.base_size_px
+                };
+                format!("{size}px")
+            }
+            _ => super::RadarCssBinding::font_size_css_or_default(configured_size),
+        };
+        let mut css_binding = super::RadarCssBinding::resolve_styles(config.as_value());
+        let native = theme.map(|theme| {
+            super::native_theme::RadarNativeStyle::bind(
                 theme,
-                effective_config,
-            ),
-            font_size,
-            terminal_receipt: OnceLock::new(),
+                config,
+                &font_size_css,
+                &mut css_binding,
+            )
+        });
+        let font_family_css = native
+            .as_ref()
+            .and_then(|native| native.body_family.as_deref())
+            .map_or_else(
+                || crate::config::config_font_family_css(config),
+                str::to_owned,
+            );
+        Self {
+            css_binding,
+            native,
+            font_family_css,
+            font_size_css,
         }
     }
 
+    pub(crate) fn native_text_style(&self) -> Option<(&str, u16, u16)> {
+        let native = self.native.as_ref()?;
+        Some((
+            native
+                .title_family
+                .as_deref()
+                .unwrap_or(self.font_family_css()),
+            native.title_weight,
+            native.label_weight,
+        ))
+    }
+
+    pub(crate) fn show_grid(&self) -> bool {
+        self.native.as_ref().is_none_or(|native| native.show_grid)
+    }
+
     pub(crate) fn font_family_css(&self) -> &str {
-        self.inherited_font_stack.font_family_css()
+        &self.font_family_css
     }
 
     pub(crate) fn css_binding(&self) -> &super::RadarCssBinding {
@@ -121,705 +82,45 @@ impl RadarTypographyThemePlan {
     }
 
     pub(crate) fn font_size_css(&self) -> &str {
-        &self.font_size.css
-    }
-
-    pub(crate) fn begin_terminal_receipt(
-        &self,
-        axis_count: usize,
-        legend_count: usize,
-    ) -> Option<RadarTypographyThemeReceipt<'_>> {
-        self.typography_requested()
-            .then(|| RadarTypographyThemeReceipt::new(self, axis_count, legend_count))
-    }
-
-    pub(crate) fn record_terminal(&self, receipt: RadarTypographyThemeReceipt<'_>) -> bool {
-        receipt
-            .seal()
-            .is_some_and(|seal| self.terminal_receipt.set(seal).is_ok())
-    }
-
-    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
-        if !self.typography_requested() {
-            return;
-        }
-
-        let Some(receipt) = self.terminal_receipt.get() else {
-            for (property, requested) in [
-                (
-                    ThemeTypographyProperty::FontStack,
-                    self.inherited_font_stack.typed_font_stack_requested(),
-                ),
-                (
-                    ThemeTypographyProperty::FontSize,
-                    self.font_size.typed_requested,
-                ),
-            ] {
-                if requested {
-                    evidence.mark_residual(
-                        FamilyThemeMechanismKey::Typography(property),
-                        FamilyThemeResidualReason::UnsupportedTypography,
-                    );
-                }
-            }
-            return;
-        };
-        self.inherited_font_stack
-            .record_unsupported_typography_evidence(
-                evidence,
-                receipt.has_visible_title
-                    || receipt.has_visible_axis_label
-                    || receipt.has_visible_legend_label
-                    || receipt.has_unknown_text,
-            );
-        let has_visible_typography = receipt.has_visible_title
-            || receipt.has_visible_axis_label
-            || receipt.has_visible_legend_label;
-        if !has_visible_typography && !receipt.has_unknown_text {
-            for (property, requested) in [
-                (
-                    ThemeTypographyProperty::FontStack,
-                    self.inherited_font_stack.typed_font_stack_requested(),
-                ),
-                (
-                    ThemeTypographyProperty::FontSize,
-                    self.font_size.typed_requested,
-                ),
-            ] {
-                if requested {
-                    evidence.mark_not_applicable(FamilyThemeMechanismKey::Typography(property));
-                }
-            }
-            return;
-        }
-        let font_stack_applied =
-            self.inherited_font_stack.typed_font_stack_active() && has_visible_typography;
-        let font_size_applied = self.font_size.typed_active
-            && (receipt.has_visible_title
-                || (receipt.has_visible_axis_label
-                    && self.css_binding.axis_label_font_size.inherits_root())
-                || (receipt.has_visible_legend_label
-                    && self.css_binding.legend_font_size.inherits_root()));
-        for (property, requested, applied) in [
-            (
-                ThemeTypographyProperty::FontStack,
-                self.inherited_font_stack.typed_font_stack_requested(),
-                font_stack_applied,
-            ),
-            (
-                ThemeTypographyProperty::FontSize,
-                self.font_size.typed_requested,
-                font_size_applied,
-            ),
-        ] {
-            if !requested {
-                continue;
-            }
-            let key = FamilyThemeMechanismKey::Typography(property);
-            if applied {
-                evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
-            } else if receipt.has_unknown_text
-                && property == ThemeTypographyProperty::FontStack
-                && self.inherited_font_stack.typed_font_stack_active()
-            {
-                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-            } else {
-                evidence.mark_not_applicable(key);
-            }
-        }
-    }
-
-    fn typography_requested(&self) -> bool {
-        self.inherited_font_stack.typography_requested() || self.font_size.typed_requested
+        &self.font_size_css
     }
 }
 
-/// Final Radar title paint shared by stylesheet emission and terminal evidence.
-#[derive(Debug)]
-pub(crate) struct RadarTitleThemePlan {
-    title_has_visible_size: bool,
-    title_size_unknown: bool,
-    fill_css: Option<Box<str>>,
-    typed_fill_capability: Option<ThemeCapability>,
-    evidence: FamilyThemeOutcomes,
-    fallback_evidence: FamilyThemeOutcomes,
-    pending_fill_key: Option<FamilyThemeMechanismKey>,
-    terminal_receipt: OnceLock<()>,
-}
-
-impl RadarTitleThemePlan {
-    pub(crate) fn resolve(
-        theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &PresentationConfig,
-        title: Option<&str>,
-        work_meter: &OperationWorkMeter,
-    ) -> crate::Result<Self> {
-        let Some(theme) = theme else {
-            return Ok(Self::baseline());
-        };
-        let title_size = RadarFontSizeBinding::resolve(Some(theme), effective_config);
-        let title_has_visible_size = title_size.has_visible_size();
-        let title_size_unknown = title_size.has_unknown_size();
-        let title_present = (title_has_visible_size || title_size_unknown)
-            && title.is_some_and(|title| !title.trim().is_empty());
-
-        let title_count = usize::from(title_present);
-        let config_owns_fill =
-            super::RadarCssBinding::config_owns_color(effective_config, "titleColor");
-        let style = title_present
-            .then(|| {
-                theme.style_with_work_meter(
-                    ThemeTarget::Title,
-                    ThemeVariant::Default,
-                    Some(1),
-                    work_meter,
-                )
-            })
-            .transpose()?;
-        let winner_properties = style
-            .as_ref()
-            .into_iter()
-            .flat_map(|style| style.winner_rule_properties())
-            .map(|(property, origin)| (origin.rule_index(), property))
-            .collect::<BTreeSet<_>>();
-        let typed_fill = (!config_owns_fill)
-            .then(|| {
-                style.as_ref().and_then(|style| {
-                    resolve_direct_static_fill(
-                        theme,
-                        style,
-                        &[ThemeTarget::Title],
-                        DirectStaticSelectorDomain::Default,
-                    )
-                })
-            })
-            .flatten();
-        let (fill_css, typed_fill_rule, typed_fill_capability) =
-            typed_fill.map_or((None, None, None), |fill| {
-                let (css, rule_index, capability) = fill.into_parts();
-                (Some(css), Some(rule_index), Some(capability))
-            });
-
-        let mut evidence = FamilyThemeOutcomes::default();
-        let mut observations = BTreeMap::<usize, RadarTitleRuleObservation>::new();
-        for route in theme.family_mechanism_routes().iter().copied() {
-            let FamilyThemeMechanism::RuleFacet {
-                rule_index,
-                target: ThemeTarget::Title,
-                selector,
-                facet,
-            } = route.mechanism()
-            else {
-                continue;
-            };
-            let observation = observations.entry(rule_index).or_default();
-            if !selector.ordinal_domain_intersects_occurrence_count(title_count) {
-                continue;
-            }
-            let route_won =
-                winner_properties.contains(&(rule_index, resolved_style_property_for_facet(facet)));
-            if !route_won {
-                continue;
-            }
-            observation.applicable = true;
-            if config_owns_fill && matches!(facet, FamilyThemeRuleFacet::Fill(_)) {
-                continue;
-            }
-            if title_size_unknown {
-                observation.residual = Some(FamilyThemeResidualReason::UnsupportedTypography);
-                continue;
-            }
-            match (route.disposition(), selector, facet) {
-                (
-                    FamilyThemeDisposition::TypedAdapter,
-                    FamilyThemeSelectorShape::Static {
-                        variant: None | Some(ThemeVariant::Default),
-                    },
-                    FamilyThemeRuleFacet::Fill(_),
-                ) if typed_fill_rule == Some(rule_index) => observation.fill_pending = true,
-                (FamilyThemeDisposition::Unsupported, _, facet) => {
-                    observation
-                        .residual
-                        .get_or_insert(unsupported_residual_for_facet(facet));
-                }
-                (FamilyThemeDisposition::TypedAdapter, _, _) => {
-                    observation.incomplete = true;
-                }
-            }
-        }
-
-        let mut fallback_evidence = FamilyThemeOutcomes::default();
-        let source_owned_fill = [config_owns_fill];
-        reconcile_unsupported_terminal_domains(
-            theme,
-            &mut fallback_evidence,
-            &[UnsupportedTerminalDomain::fallbacks_only(
-                ThemeTarget::Title,
-                TerminalVariantDomain::uniform(title_count, ThemeVariant::Default),
-            )
-            .with_source_owned_fill(&source_owned_fill)],
-            work_meter,
-        )?;
-
-        let mut pending_fill_key = None;
-        for (rule_index, observation) in observations {
-            let key = FamilyThemeMechanismKey::Rule {
-                index: rule_index,
-                target: ThemeTarget::Title,
-            };
-            if !observation.applicable {
-                evidence.mark_not_applicable(key);
-            } else if let Some(reason) = observation.residual {
-                evidence.mark_residual(key, reason);
-            } else if observation.incomplete {
-                // Mixed rules remain pending until every winning facet has an owner.
-            } else if observation.fill_pending {
-                pending_fill_key = Some(key);
-            } else {
-                evidence.mark_not_applicable(key);
-            }
-        }
-
-        Ok(Self {
-            title_has_visible_size,
-            title_size_unknown,
-            fill_css,
-            typed_fill_capability,
-            evidence,
-            fallback_evidence,
-            pending_fill_key,
-            terminal_receipt: OnceLock::new(),
-        })
-    }
-
-    pub(crate) fn baseline() -> Self {
-        Self {
-            title_has_visible_size: true,
-            title_size_unknown: false,
-            fill_css: None,
-            typed_fill_capability: None,
-            evidence: FamilyThemeOutcomes::default(),
-            fallback_evidence: FamilyThemeOutcomes::default(),
-            pending_fill_key: None,
-            terminal_receipt: OnceLock::new(),
-        }
-    }
-
-    pub(crate) fn fill_css(&self) -> Option<&str> {
-        self.fill_css.as_deref()
-    }
-
-    pub(super) fn title_has_visible_size(&self) -> bool {
-        self.title_has_visible_size
-    }
-
-    pub(super) fn title_size_unknown(&self) -> bool {
-        self.title_size_unknown
-    }
-
-    pub(crate) fn begin_terminal_receipt(&self) -> Option<RadarTitleThemeReceipt> {
-        self.fill_css
-            .as_ref()
-            .map(|fill_css| RadarTitleThemeReceipt::new(fill_css.clone()))
-    }
-
-    pub(crate) fn record_terminal(&self, receipt: RadarTitleThemeReceipt) -> bool {
-        self.fill_css.as_deref().is_some_and(|fill_css| {
-            receipt.proves(fill_css) && self.terminal_receipt.set(()).is_ok()
-        })
-    }
-
-    pub(crate) fn record_evidence(
-        &self,
-        text_paint: &super::RadarTextPaintPlan,
-        evidence: &mut FamilyThemeEvidence,
-    ) {
-        evidence.merge_borrowed(&self.evidence);
-        if text_paint.has_verified_title_fallback() {
-            // Generic Text paint is a real higher-priority title fill. Override only the
-            // palette fallback, after its writer has finalized; title rules/effects retain
-            // their independently reconciled outcomes.
-            evidence.mark_not_applicable(FamilyThemeMechanismKey::OrdinalPalette {
-                target: ThemeTarget::Title,
-            });
-        }
-        evidence.merge_borrowed(&self.fallback_evidence);
-        if let Some(key) = self.pending_fill_key.clone()
-            && self.terminal_receipt.get().is_some()
-            && let Some(capability) = self.typed_fill_capability
-        {
-            evidence.mark_applied_with_capabilities(key, [capability]);
-        }
-    }
-}
-
-#[derive(Debug, Default)]
-struct RadarTitleRuleObservation {
-    applicable: bool,
-    incomplete: bool,
-    residual: Option<FamilyThemeResidualReason>,
-    fill_pending: bool,
-}
-
-#[derive(Debug)]
-pub(crate) struct RadarTitleThemeReceipt {
-    expected_fill: Box<str>,
-    stylesheet_fill: Option<Box<str>>,
-    stylesheet_class: Option<Box<str>>,
-    title_text_count: usize,
-    terminal_matches: bool,
-}
-
-impl RadarTitleThemeReceipt {
-    fn new(expected_fill: Box<str>) -> Self {
-        Self {
-            expected_fill,
-            stylesheet_fill: None,
-            stylesheet_class: None,
-            title_text_count: 0,
-            terminal_matches: true,
-        }
-    }
-
-    pub(crate) fn record_stylesheet(&mut self, emitted_class: &str, emitted_fill: &str) {
-        if self.stylesheet_fill.is_some() || self.stylesheet_class.is_some() {
-            self.terminal_matches = false;
-            return;
-        }
-        self.terminal_matches &= emitted_class == "radarTitle";
-        self.terminal_matches &= emitted_fill == self.expected_fill.as_ref();
-        self.stylesheet_class = Some(emitted_class.into());
-        self.stylesheet_fill = Some(emitted_fill.into());
-    }
-
-    pub(crate) fn record_title_text(&mut self, emitted_class: &str) {
-        self.title_text_count = self.title_text_count.saturating_add(1);
-        self.terminal_matches &= emitted_class == "radarTitle";
-    }
-
-    fn proves(&self, expected_fill: &str) -> bool {
-        self.expected_fill.as_ref() == expected_fill
-            && self.stylesheet_fill.as_deref() == Some(expected_fill)
-            && self.stylesheet_class.as_deref() == Some("radarTitle")
-            && self.title_text_count == 1
-            && self.terminal_matches
-    }
-}
-
-/// Milestone issued only after the final Radar stylesheet writer completes successfully.
-#[derive(Debug)]
-pub(crate) struct RadarTypographyCssEmission<'a> {
-    diagram_root_font_family_css: &'a str,
-    nested_svg_font_family_css: &'a str,
-    root_variable_font_family_css: &'a str,
-    diagram_root_font_size_css: &'a str,
-    nested_svg_font_size_css: &'a str,
-    title_font_size_css: &'a str,
-}
-
-impl<'a> RadarTypographyCssEmission<'a> {
-    pub(crate) const fn from_successful_writes(
-        diagram_root_font_family_css: &'a str,
-        nested_svg_font_family_css: &'a str,
-        root_variable_font_family_css: &'a str,
-        diagram_root_font_size_css: &'a str,
-        nested_svg_font_size_css: &'a str,
-        title_font_size_css: &'a str,
-    ) -> Self {
-        Self {
-            diagram_root_font_family_css,
-            nested_svg_font_family_css,
-            root_variable_font_family_css,
-            diagram_root_font_size_css,
-            nested_svg_font_size_css,
-            title_font_size_css,
-        }
-    }
-}
-
-/// Writer-owned proof that the stylesheet and visible Radar text passes reached the SVG sink.
-#[derive(Debug)]
-pub(crate) struct RadarTypographyThemeReceipt<'a> {
-    expected_axis_count: usize,
-    expected_legend_count: usize,
-    expected_font_family_css: &'a str,
-    expected_font_size_css: &'a str,
-    title_has_visible_size: bool,
-    axis_has_visible_size: bool,
-    legend_has_visible_size: bool,
-    title_size_unknown: bool,
-    axis_size_unknown: bool,
-    legend_size_unknown: bool,
-    css_emitted: bool,
-    next_axis_index: usize,
-    next_legend_index: usize,
-    title_emitted: bool,
-    has_visible_title: bool,
-    has_visible_axis_label: bool,
-    has_visible_legend_label: bool,
-    has_unknown_text: bool,
-    valid: bool,
-}
-
-#[derive(Debug)]
-struct RadarTypographyTerminalSeal {
-    has_visible_title: bool,
-    has_visible_axis_label: bool,
-    has_visible_legend_label: bool,
-    has_unknown_text: bool,
-}
-
-impl<'a> RadarTypographyThemeReceipt<'a> {
-    fn new(
-        plan: &'a RadarTypographyThemePlan,
-        expected_axis_count: usize,
-        expected_legend_count: usize,
-    ) -> Self {
-        Self {
-            expected_axis_count,
-            expected_legend_count,
-            expected_font_family_css: plan.font_family_css(),
-            expected_font_size_css: plan.font_size_css(),
-            title_has_visible_size: plan.font_size.has_visible_size(),
-            axis_has_visible_size: plan.css_binding.axis_label_font_size.has_visible_ink(),
-            legend_has_visible_size: plan.css_binding.legend_font_size.has_visible_ink(),
-            title_size_unknown: plan.font_size.has_unknown_size(),
-            axis_size_unknown: plan.css_binding.axis_label_font_size.is_unknown(),
-            legend_size_unknown: plan.css_binding.legend_font_size.is_unknown(),
-            css_emitted: false,
-            next_axis_index: 0,
-            next_legend_index: 0,
-            title_emitted: false,
-            has_visible_title: false,
-            has_visible_axis_label: false,
-            has_visible_legend_label: false,
-            has_unknown_text: false,
-            valid: true,
-        }
-    }
-
-    pub(crate) fn record_css_emission(&mut self, emission: RadarTypographyCssEmission<'_>) {
-        self.valid &= !self.css_emitted
-            && self.next_axis_index == 0
-            && self.next_legend_index == 0
-            && !self.title_emitted
-            && emission.diagram_root_font_family_css == self.expected_font_family_css
-            && emission.nested_svg_font_family_css == self.expected_font_family_css
-            && emission.root_variable_font_family_css == self.expected_font_family_css
-            && emission.diagram_root_font_size_css == self.expected_font_size_css
-            && emission.nested_svg_font_size_css == self.expected_font_size_css
-            && emission.title_font_size_css == self.expected_font_size_css;
-        self.css_emitted = true;
-    }
-
-    pub(crate) fn record_axis_label(&mut self, axis_index: usize, label: &str) {
-        self.valid &= self.css_emitted
-            && !self.title_emitted
-            && self.next_legend_index == 0
-            && axis_index == self.next_axis_index
-            && axis_index < self.expected_axis_count;
-        self.next_axis_index = self.next_axis_index.saturating_add(1);
-        self.has_visible_axis_label |= self.axis_has_visible_size && !label.trim().is_empty();
-        self.has_unknown_text |= self.axis_size_unknown && !label.trim().is_empty();
-    }
-
-    pub(crate) fn record_legend_label(&mut self, legend_index: usize, label: &str) {
-        self.valid &= self.css_emitted
-            && !self.title_emitted
-            && self.next_axis_index == self.expected_axis_count
-            && legend_index == self.next_legend_index
-            && legend_index < self.expected_legend_count;
-        self.next_legend_index = self.next_legend_index.saturating_add(1);
-        self.has_visible_legend_label |= self.legend_has_visible_size && !label.trim().is_empty();
-        self.has_unknown_text |= self.legend_size_unknown && !label.trim().is_empty();
-    }
-
-    pub(crate) fn record_title(&mut self, nonempty: bool) {
-        self.valid &= self.css_emitted
-            && !self.title_emitted
-            && self.next_axis_index == self.expected_axis_count
-            && self.next_legend_index == self.expected_legend_count;
-        self.title_emitted = true;
-        self.has_visible_title = self.title_has_visible_size && nonempty;
-        self.has_unknown_text |= self.title_size_unknown && nonempty;
-    }
-
-    fn seal(self) -> Option<RadarTypographyTerminalSeal> {
-        (self.valid
-            && self.css_emitted
-            && self.next_axis_index == self.expected_axis_count
-            && self.next_legend_index == self.expected_legend_count
-            && self.title_emitted)
-            .then_some(RadarTypographyTerminalSeal {
-                has_visible_title: self.has_visible_title,
-                has_visible_axis_label: self.has_visible_axis_label,
-                has_visible_legend_label: self.has_visible_legend_label,
-                has_unknown_text: self.has_unknown_text,
-            })
-    }
-}
-
-/// Resolves Radar curve and legend paint once for terminal CSS and family evidence.
 #[derive(Debug)]
 pub(crate) struct RadarSeriesPaintPlan {
-    colors: [String; RADAR_PALETTE_SLOT_COUNT],
-    typed_capabilities: [Option<ThemeCapability>; RADAR_PALETTE_SLOT_COUNT],
-    curve_count: usize,
-    drawable_curve_indices: Vec<usize>,
-    show_legend: bool,
-    evidence: FamilyThemeOutcomes,
-    palette_key: Option<FamilyThemeMechanismKey>,
-    paints: Vec<RadarSeriesScalarPaint>,
-    pending_rules: PendingPaintRules,
-    terminal_receipt: OnceLock<()>,
-}
-
-#[derive(Debug, Clone, Default)]
-struct RadarSeriesScalarPaint {
-    fill: Option<DirectPaintExpectation>,
-    stroke: Option<DirectPaintExpectation>,
+    colors: [String; RADAR_COLOR_SCALE_KEYS.len()],
+    native_palette: Option<(Box<[String]>, Box<[String]>)>,
 }
 
 impl RadarSeriesPaintPlan {
     pub(crate) fn resolve(
-        theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &PresentationConfig,
+        theme: Option<&FamilyTheme>,
+        config: &PresentationConfig,
         model: &RadarDiagramModel,
-        work_meter: &OperationWorkMeter,
-    ) -> Result<Self, OperationWorkError> {
-        work_meter.charge(model.curves.len())?;
-        let mut plan = Self::baseline(effective_config.as_value(), model);
-        let Some(theme) = theme else {
-            return Ok(plan);
-        };
-
-        plan.evidence = FamilyThemeOutcomes::default();
-        let terminal_variants: Vec<_> = if model.options.show_legend {
-            (1..=model.curves.len())
-                .map(|ordinal| (ordinal, ThemeVariant::Default))
-                .collect()
-        } else {
-            plan.drawable_curve_indices
-                .iter()
-                .filter(|_| !model.axes.is_empty())
-                .map(|index| (index + 1, ThemeVariant::Default))
-                .collect()
-        };
-        work_meter.charge(terminal_variants.len())?;
-        plan.paints = vec![RadarSeriesScalarPaint::default(); model.curves.len()];
-        let mut rules = PaintRules::new(theme, ThemeTarget::ChartSeries);
-        let mut source_owned = vec![false; model.curves.len()];
-        let mut palette_fallback = vec![false; model.curves.len()];
-        let baseline_text = config_string(
-            effective_config.as_value(),
-            &["themeVariables", "textColor"],
-        )
-        .unwrap_or_else(|| "#333".to_owned());
-        for &(ordinal, _) in &terminal_variants {
-            let index = ordinal - 1;
-            let paint = &mut plan.paints[index];
-            let style = theme.style_with_work_meter(
-                ThemeTarget::ChartSeries,
-                ThemeVariant::Default,
-                Some(ordinal),
-                work_meter,
-            )?;
-            // A cScale slot supplies both curve and swatch fill/stroke. Other source
-            // properties, including opacity and stroke width, do not own these paints.
-            let owned = RADAR_COLOR_SCALE_KEYS.get(index).is_some_and(|key| {
-                super::RadarCssBinding::config_owns_color(effective_config, key)
-            });
-            source_owned[index] = owned;
-            if !owned {
-                let baseline = plan.colors.get(index).map(String::as_str);
-                paint.fill = static_paint(
-                    theme,
-                    style.fill_resolution(),
-                    ThemeTarget::ChartSeries,
-                    ResolvedStyleProperty::Fill,
-                    baseline.unwrap_or(&baseline_text),
-                );
-                paint.stroke = static_paint(
-                    theme,
-                    style.stroke_resolution(),
-                    ThemeTarget::ChartSeries,
-                    ResolvedStyleProperty::Stroke,
-                    baseline.unwrap_or("none"),
-                );
-            }
-            rules.observe(
-                &style,
-                [owned, owned],
-                [paint.fill.as_ref(), paint.stroke.as_ref()],
-                true,
-                work_meter,
-            )?;
-            palette_fallback[index] = !owned
-                && (style.fill_resolution().specified().is_unspecified()
-                    || style.stroke_resolution().specified().is_unspecified());
-        }
-        plan.pending_rules = rules.finish(&mut plan.evidence);
-        reconcile_unsupported_terminal_domains(
-            theme,
-            &mut plan.evidence,
-            &[UnsupportedTerminalDomain::fallbacks_only(
-                ThemeTarget::ChartSeries,
-                TerminalVariantDomain::indexed(&terminal_variants),
-            )
-            .with_source_owned_fill(&source_owned)
-            .with_source_owned_stroke(&source_owned)],
-            work_meter,
-        )?;
-        let Some(disposition) = theme.ordinal_palette_disposition(ThemeTarget::ChartSeries) else {
-            return Ok(plan);
-        };
-        let key = FamilyThemeMechanismKey::OrdinalPalette {
-            target: ThemeTarget::ChartSeries,
-        };
-        if !palette_fallback.iter().any(|fallback| *fallback) {
-            plan.evidence.mark_not_applicable(key);
-            return Ok(plan);
-        }
-
-        match disposition {
-            FamilyThemeDisposition::TypedAdapter => {
-                if palette_fallback
-                    .iter()
-                    .skip(RADAR_PALETTE_SLOT_COUNT)
-                    .any(|fallback| *fallback)
-                    || !uses_fixed_mermaid_palette_surface(effective_config)
-                {
-                    plan.evidence
-                        .mark_residual(key, FamilyThemeResidualReason::UnsupportedOrdinalPalette);
-                    return Ok(plan);
-                }
-
-                for (curve_index, fallback) in palette_fallback.iter().copied().enumerate() {
-                    if !fallback {
-                        continue;
-                    }
-
-                    let color = theme
-                        .series_color(ThemeTarget::ChartSeries, curve_index + 1)
-                        .expect("compiled ordinal palettes are non-empty and one-based");
-                    plan.colors[curve_index] = color.as_css();
-                    plan.typed_capabilities[curve_index] = Some(if color.is_transparent() {
-                        ThemeCapability::TransparentPaint
+    ) -> Self {
+        let mut plan = Self::baseline(config.as_value(), model);
+        if let Some(theme) = theme {
+            let (ink, fill): (Vec<_>, Vec<_>) = (0..model.curves.len())
+                .map(|index| {
+                    if RADAR_COLOR_SCALE_KEYS.get(index).is_some_and(|key| {
+                        config.explicit_config_owns_path(&format!("themeVariables.{key}"))
+                    }) {
+                        let color = plan.colors[index].clone();
+                        (color.clone(), color)
                     } else {
-                        ThemeCapability::SolidPaint
-                    });
-                }
-                plan.palette_key = Some(key);
-            }
-            FamilyThemeDisposition::Unsupported => plan
-                .evidence
-                .mark_residual(key, FamilyThemeResidualReason::UnsupportedOrdinalPalette),
+                        (
+                            theme.data.ink(index).to_string(),
+                            theme.data.fill(index).to_string(),
+                        )
+                    }
+                })
+                .unzip();
+            plan.native_palette = Some((ink.into_boxed_slice(), fill.into_boxed_slice()));
         }
-
-        Ok(plan)
+        plan
     }
 
-    pub(crate) fn baseline(config: &serde_json::Value, model: &RadarDiagramModel) -> Self {
+    pub(crate) fn baseline(config: &serde_json::Value, _model: &RadarDiagramModel) -> Self {
         Self {
             colors: std::array::from_fn(|index| {
                 super::RadarCssBinding::configured_color(config, RADAR_COLOR_SCALE_KEYS[index])
@@ -828,536 +129,20 @@ impl RadarSeriesPaintPlan {
                         crate::svg::render_theme::radar_default_series_color(index).to_string()
                     })
             }),
-            typed_capabilities: [None; RADAR_PALETTE_SLOT_COUNT],
-            curve_count: model.curves.len(),
-            drawable_curve_indices: super::drawable_curves(model)
-                .map(|(index, _)| index)
-                .collect(),
-            show_legend: model.options.show_legend,
-            evidence: FamilyThemeOutcomes::default(),
-            palette_key: None,
-            paints: Vec::new(),
-            pending_rules: PendingPaintRules::new(),
-            terminal_receipt: OnceLock::new(),
+            native_palette: None,
         }
     }
 
     pub(crate) fn colors(&self) -> &[String] {
-        &self.colors
+        self.native_palette
+            .as_ref()
+            .map_or(&self.colors, |(ink, _)| ink)
     }
 
-    pub(crate) fn fill_css(&self, index: usize) -> Option<&str> {
-        self.paints
-            .get(index)
-            .and_then(|paint| paint.fill.as_ref())
-            .map(DirectPaintExpectation::css)
-            .or_else(|| self.colors.get(index).map(String::as_str))
-    }
-
-    pub(crate) fn stroke_css(&self, index: usize) -> Option<&str> {
-        self.paints
-            .get(index)
-            .and_then(|paint| paint.stroke.as_ref())
-            .map(DirectPaintExpectation::css)
-            .or_else(|| self.colors.get(index).map(String::as_str))
-    }
-
-    fn needs_receipt(&self) -> bool {
-        self.palette_key.is_some() || !self.pending_rules.is_empty()
-    }
-
-    pub(crate) const fn curve_count(&self) -> usize {
-        self.curve_count
-    }
-
-    pub(crate) fn begin_terminal_receipt(&self) -> Option<RadarSeriesPaintReceipt> {
-        self.needs_receipt().then(RadarSeriesPaintReceipt::new)
-    }
-
-    pub(crate) fn record_terminal(&self, receipt: RadarSeriesPaintReceipt) -> bool {
-        self.needs_receipt() && receipt.proves(self) && self.terminal_receipt.set(()).is_ok()
-    }
-
-    pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
-        evidence.merge_borrowed(&self.evidence);
-        record_pending(
-            &self.pending_rules,
-            self.terminal_receipt.get().is_some(),
-            evidence,
-        );
-        let Some(key) = self.palette_key.clone() else {
-            return;
-        };
-        match self.terminal_receipt.get() {
-            Some(()) => {
-                let capabilities = self
-                    .typed_capabilities
-                    .iter()
-                    .take(self.curve_count)
-                    .flatten()
-                    .copied()
-                    .collect::<BTreeSet<_>>();
-                if capabilities.is_empty() {
-                    evidence.mark_not_applicable(key);
-                } else {
-                    evidence.mark_applied_with_capabilities(key, capabilities);
-                }
-            }
-            None => {
-                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedOrdinalPalette)
-            }
-        }
-    }
-}
-
-fn uses_fixed_mermaid_palette_surface(effective_config: &PresentationConfig) -> bool {
-    value_at(
-        effective_config.as_value(),
-        &["themeVariables", "THEME_COLOR_LIMIT"],
-    )
-    .is_none_or(|value| value.as_f64() == Some(RADAR_PALETTE_SLOT_COUNT as f64))
-}
-
-/// Writer-owned proof that the complete visible Radar series surface reached terminal SVG.
-#[derive(Debug)]
-pub(crate) struct RadarSeriesPaintReceipt {
-    next_rule_index: usize,
-    next_curve_index: usize,
-    next_legend_index: usize,
-    values_match: bool,
-}
-
-impl RadarSeriesPaintReceipt {
-    fn new() -> Self {
-        Self {
-            next_rule_index: 0,
-            next_curve_index: 0,
-            next_legend_index: 0,
-            values_match: true,
-        }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn record_series_rule(
-        &mut self,
-        plan: &RadarSeriesPaintPlan,
-        rule_index: usize,
-        emitted_color: &str,
-    ) {
-        self.record_series_paints(plan, rule_index, Some(emitted_color), Some(emitted_color));
-    }
-
-    pub(crate) fn record_series_paints(
-        &mut self,
-        plan: &RadarSeriesPaintPlan,
-        rule_index: usize,
-        fill: Option<&str>,
-        stroke: Option<&str>,
-    ) {
-        if rule_index != self.next_rule_index || rule_index >= plan.curve_count {
-            self.values_match = false;
-            return;
-        }
-        self.next_rule_index += 1;
-        self.values_match &=
-            plan.fill_css(rule_index) == fill && plan.stroke_css(rule_index) == stroke;
-    }
-
-    pub(crate) fn record_curve(
-        &mut self,
-        plan: &RadarSeriesPaintPlan,
-        curve_index: usize,
-        emitted_class_index: i64,
-    ) {
-        if curve_index != self.next_curve_index || curve_index >= plan.drawable_curve_indices.len()
-        {
-            self.values_match = false;
-            return;
-        }
-        self.next_curve_index += 1;
-        self.values_match &= usize::try_from(emitted_class_index).ok()
-            == plan.drawable_curve_indices.get(curve_index).copied();
-    }
-
-    pub(crate) fn record_legend(
-        &mut self,
-        plan: &RadarSeriesPaintPlan,
-        legend_index: usize,
-        emitted_class_index: i64,
-    ) {
-        let expected_legend_count = if plan.show_legend {
-            plan.curve_count
-        } else {
-            0
-        };
-        if legend_index != self.next_legend_index || legend_index >= expected_legend_count {
-            self.values_match = false;
-            return;
-        }
-        self.next_legend_index += 1;
-        self.values_match &= usize::try_from(emitted_class_index).ok() == Some(legend_index);
-    }
-
-    fn proves(&self, plan: &RadarSeriesPaintPlan) -> bool {
-        self.values_match
-            && self.next_rule_index == plan.curve_count
-            && self.next_curve_index == plan.drawable_curve_indices.len()
-            && self.next_legend_index
-                == if plan.show_legend {
-                    plan.curve_count
-                } else {
-                    0
-                }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    fn collect_evidence(
-        theme: &crate::diagram_theme::ResolvedDiagramTheme,
-        record: impl FnOnce(&mut crate::family::FamilyThemeEvidence),
-    ) -> crate::family::FamilyThemeEvidence {
-        let mut evidence = crate::family::FamilyThemeEvidence::from_theme(Some(theme));
-        record(&mut evidence);
-        evidence
-    }
-
-    use super::*;
-
-    #[test]
-    fn series_palette_preserves_raw_slots_and_string_only_fallback() {
-        let config = serde_json::json!({
-            "radar": {"cScale0": "ignored"},
-            "themeVariables": {
-                "cScale0": "var(--series)", "cScale1": "", "cScale2": null,
-                "cScale3": false, "cScale4": 42, "cScale5": {}, "cScale6": [],
-                "cScale11": " &<]]>色 ", "radar": {"cScale0": "also ignored"}
-            }
-        });
-        let plan = RadarSeriesPaintPlan::baseline(&config, &RadarDiagramModel::default());
-        assert_eq!(plan.colors().len(), 12);
-        assert_eq!(plan.colors()[0], "var(--series)");
-        assert_eq!(plan.colors()[1], "");
-        for index in 2..=6 {
-            assert_eq!(
-                plan.colors()[index],
-                crate::svg::render_theme::radar_default_series_color(index)
-            );
-        }
-        assert_eq!(plan.colors()[11], " &<]]>色 ");
-    }
-
-    fn resolved_typography() -> ResolvedDiagramTheme {
-        let typography = crate::diagram_theme::ThemeTextStyle::default()
-            .with_font_stack(
-                crate::diagram_theme::FontStack::single("RadarReceipt")
-                    .expect("valid Radar receipt font stack"),
-            )
-            .with_font_size_px(24.0)
-            .expect("valid Radar receipt font size");
-        crate::diagram_theme::DiagramThemeCompiler::new()
-            .compile(
-                crate::diagram_theme::DiagramThemeSpec::new().with_typography(
-                    crate::diagram_theme::TypographySpec::default()
-                        .with_family_style(crate::DiagramFamilyId::RADAR, typography),
-                ),
-            )
-            .expect("compile Radar receipt typography")
-            .resolve(crate::DiagramFamilyId::RADAR)
-    }
-
-    fn one_curve_plan() -> RadarSeriesPaintPlan {
-        RadarSeriesPaintPlan {
-            colors: std::array::from_fn(|_| "#123456".to_string()),
-            typed_capabilities: [Some(ThemeCapability::SolidPaint); RADAR_PALETTE_SLOT_COUNT],
-            curve_count: 1,
-            drawable_curve_indices: vec![0],
-            show_legend: true,
-            evidence: FamilyThemeOutcomes::default(),
-            palette_key: Some(FamilyThemeMechanismKey::OrdinalPalette {
-                target: ThemeTarget::ChartSeries,
-            }),
-            paints: Vec::new(),
-            pending_rules: PendingPaintRules::new(),
-            terminal_receipt: OnceLock::new(),
-        }
-    }
-
-    #[test]
-    fn scalar_series_receipt_checks_fill_and_stroke_independently() {
-        let mut plan = one_curve_plan();
-        plan.paints = vec![RadarSeriesScalarPaint {
-            fill: Some(DirectPaintExpectation::new(
-                0,
-                "#abcdef",
-                ThemeCapability::SolidPaint,
-            )),
-            stroke: None,
-        }];
-        for stroke in [None, Some("#badbad")] {
-            let mut receipt = RadarSeriesPaintReceipt::new();
-            receipt.record_series_paints(&plan, 0, Some("#abcdef"), stroke);
-            receipt.record_curve(&plan, 0, 0);
-            receipt.record_legend(&plan, 0, 0);
-            assert!(!plan.record_terminal(receipt));
-        }
-        let mut receipt = RadarSeriesPaintReceipt::new();
-        receipt.record_series_paints(&plan, 0, Some("#abcdef"), Some("#123456"));
-        receipt.record_curve(&plan, 0, 0);
-        receipt.record_legend(&plan, 0, 0);
-        assert!(plan.record_terminal(receipt));
-    }
-
-    fn assert_rejected_typography_receipt(
-        plan: &RadarTypographyThemePlan,
-        record: impl FnOnce(&mut RadarTypographyThemeReceipt<'_>),
-    ) {
-        let mut receipt = plan
-            .begin_terminal_receipt(1, 1)
-            .expect("typed Radar typography receipt");
-        record(&mut receipt);
-        assert!(!plan.record_terminal(receipt));
-    }
-
-    fn typography_css_emission<'a>(
-        font_family_css: &'a str,
-        font_size_css: &'a str,
-    ) -> RadarTypographyCssEmission<'a> {
-        RadarTypographyCssEmission::from_successful_writes(
-            font_family_css,
-            font_family_css,
-            font_family_css,
-            font_size_css,
-            font_size_css,
-            font_size_css,
-        )
-    }
-
-    fn expected_typography_css_emission(
-        plan: &RadarTypographyThemePlan,
-    ) -> RadarTypographyCssEmission<'_> {
-        typography_css_emission(plan.font_family_css(), plan.font_size_css())
-    }
-
-    #[test]
-    fn series_paint_receipt_rejects_missing_or_mismatched_terminal_checkpoints() {
-        let plan = one_curve_plan();
-        let mut incomplete = RadarSeriesPaintReceipt::new();
-        incomplete.record_series_rule(&plan, 0, "#123456");
-        incomplete.record_curve(&plan, 0, 0);
-        assert!(!incomplete.proves(&plan));
-
-        let mut mismatch = RadarSeriesPaintReceipt::new();
-        mismatch.record_series_rule(&plan, 0, "#abcdef");
-        mismatch.record_curve(&plan, 0, 0);
-        mismatch.record_legend(&plan, 0, 0);
-        assert!(!mismatch.proves(&plan));
-    }
-
-    #[test]
-    fn series_paint_receipt_requires_the_exact_sparse_curves_and_complete_legend() {
-        for show_legend in [false, true] {
-            let mut plan = one_curve_plan();
-            plan.curve_count = 3;
-            plan.drawable_curve_indices = vec![1, 2];
-            plan.show_legend = show_legend;
-            for (emitted_indices, valid) in [
-                (vec![1, 2], true),
-                (Vec::new(), false),
-                (vec![1], false),
-                (vec![2], false),
-                (vec![0, 1, 2], false),
-                (vec![1, 1], false),
-                (vec![2, 1], false),
-                (vec![1, 2, 2], false),
-            ] {
-                let mut receipt = RadarSeriesPaintReceipt::new();
-                for index in 0..plan.curve_count {
-                    receipt.record_series_rule(&plan, index, "#123456");
-                }
-                for (position, class_index) in emitted_indices.into_iter().enumerate() {
-                    receipt.record_curve(&plan, position, class_index);
-                }
-                if show_legend {
-                    for index in 0..plan.curve_count {
-                        receipt.record_legend(&plan, index, index as i64);
-                    }
-                }
-                assert_eq!(receipt.proves(&plan), valid);
-            }
-
-            let mut incomplete = RadarSeriesPaintReceipt::new();
-            for index in 0..plan.curve_count {
-                incomplete.record_series_rule(&plan, index, "#123456");
-            }
-            incomplete.record_curve(&plan, 0, 1);
-            incomplete.record_curve(&plan, 1, 2);
-            if show_legend {
-                incomplete.record_legend(&plan, 0, 0);
-                incomplete.record_legend(&plan, 1, 1);
-            } else {
-                incomplete.record_legend(&plan, 0, 0);
-            }
-            assert!(!incomplete.proves(&plan));
-        }
-    }
-
-    #[test]
-    fn typography_receipt_requires_the_complete_ordered_writer_pass() {
-        let config = PresentationConfig::empty_object();
-        assert!(
-            RadarTypographyThemePlan::resolve(None, &config)
-                .begin_terminal_receipt(0, 0)
-                .is_none()
-        );
-
-        let theme = resolved_typography();
-        let complete = RadarTypographyThemePlan::resolve(Some(&theme), &config);
-        let mut receipt = complete
-            .begin_terminal_receipt(1, 1)
-            .expect("typed Radar typography receipt");
-        receipt.record_css_emission(expected_typography_css_emission(&complete));
-        receipt.record_axis_label(0, "Axis");
-        receipt.record_legend_label(0, "Legend");
-        receipt.record_title(true);
-        assert!(complete.record_terminal(receipt));
-        let complete_evidence =
-            collect_evidence(&theme, |evidence| complete.record_evidence(evidence));
-        let applied = complete_evidence.applied();
-        assert!(applied.contains(&FamilyThemeMechanismKey::Typography(
-            ThemeTypographyProperty::FontStack,
-        )));
-        assert!(applied.contains(&FamilyThemeMechanismKey::Typography(
-            ThemeTypographyProperty::FontSize,
-        )));
-
-        let missing_title = RadarTypographyThemePlan::resolve(Some(&theme), &config);
-        let mut receipt = missing_title
-            .begin_terminal_receipt(1, 1)
-            .expect("typed Radar typography receipt");
-        receipt.record_css_emission(expected_typography_css_emission(&missing_title));
-        receipt.record_axis_label(0, "Axis");
-        receipt.record_legend_label(0, "Legend");
-        assert!(!missing_title.record_terminal(receipt));
-        let missing_title_evidence =
-            collect_evidence(&theme, |evidence| missing_title.record_evidence(evidence));
-        let residuals = missing_title_evidence.residuals();
-        assert_eq!(residuals.len(), 2);
-        assert!(residuals.iter().all(|residual| {
-            matches!(
-                residual.key(),
-                FamilyThemeMechanismKey::Typography(
-                    ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize
-                )
-            )
-        }));
-    }
-
-    #[test]
-    fn zero_size_text_still_requires_the_complete_ordered_typography_receipt() {
-        let theme = resolved_typography();
-        for axis_recorded in [false, true] {
-            let mut plan = RadarTypographyThemePlan::resolve(
-                Some(&theme),
-                &PresentationConfig::empty_object(),
-            );
-            plan.font_size.css = "0px".into();
-            plan.css_binding.axis_label_font_size =
-                super::super::css_binding::RadarRoleFontSize::resolve(0.0, "0px");
-            plan.css_binding.legend_font_size =
-                super::super::css_binding::RadarRoleFontSize::resolve(0.0, "0px");
-            let mut receipt = plan.begin_terminal_receipt(1, 1).unwrap();
-            receipt.record_css_emission(expected_typography_css_emission(&plan));
-            if axis_recorded {
-                receipt.record_axis_label(0, "Axis");
-            }
-            receipt.record_legend_label(0, "Legend");
-            receipt.record_title(true);
-            assert_eq!(plan.record_terminal(receipt), axis_recorded);
-            let evidence = collect_evidence(&theme, |evidence| plan.record_evidence(evidence));
-            assert!(evidence.applied().is_empty());
-            assert_eq!(
-                evidence.residuals().len(),
-                if axis_recorded { 0 } else { 2 }
-            );
-        }
-    }
-
-    #[test]
-    fn typography_receipt_rejects_duplicate_incomplete_and_misordered_passes() {
-        let config = PresentationConfig::empty_object();
-        let theme = resolved_typography();
-        let plan = RadarTypographyThemePlan::resolve(Some(&theme), &config);
-
-        assert_rejected_typography_receipt(&plan, |receipt| {
-            receipt.record_axis_label(0, "Axis");
-            receipt.record_legend_label(0, "Legend");
-            receipt.record_title(true);
-        });
-        assert_rejected_typography_receipt(&plan, |receipt| {
-            receipt.record_css_emission(expected_typography_css_emission(&plan));
-            receipt.record_css_emission(expected_typography_css_emission(&plan));
-            receipt.record_axis_label(0, "Axis");
-            receipt.record_legend_label(0, "Legend");
-            receipt.record_title(true);
-        });
-        assert_rejected_typography_receipt(&plan, |receipt| {
-            receipt.record_css_emission(expected_typography_css_emission(&plan));
-            receipt.record_legend_label(0, "Legend");
-            receipt.record_axis_label(0, "Axis");
-            receipt.record_title(true);
-        });
-        assert_rejected_typography_receipt(&plan, |receipt| {
-            receipt.record_css_emission(expected_typography_css_emission(&plan));
-            receipt.record_axis_label(0, "Axis");
-            receipt.record_axis_label(1, "Overflow");
-            receipt.record_legend_label(0, "Legend");
-            receipt.record_title(true);
-        });
-        assert_rejected_typography_receipt(&plan, |receipt| {
-            receipt.record_css_emission(expected_typography_css_emission(&plan));
-            receipt.record_axis_label(0, "Axis");
-            receipt.record_title(true);
-        });
-
-        let evidence = collect_evidence(&theme, |evidence| plan.record_evidence(evidence));
-        let residuals = evidence.residuals();
-        assert_eq!(residuals.len(), 2);
-        assert!(residuals.iter().all(|residual| {
-            matches!(
-                residual.key(),
-                FamilyThemeMechanismKey::Typography(
-                    ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize
-                )
-            )
-        }));
-    }
-
-    #[test]
-    fn typography_receipt_rejects_mismatched_css_values() {
-        let config = PresentationConfig::empty_object();
-        let theme = resolved_typography();
-
-        for emission in [
-            typography_css_emission("WrongRadarFamily", "24px"),
-            typography_css_emission("RadarReceipt", "99px"),
-        ] {
-            let plan = RadarTypographyThemePlan::resolve(Some(&theme), &config);
-            let mut receipt = plan
-                .begin_terminal_receipt(1, 1)
-                .expect("typed Radar typography receipt");
-            receipt.record_css_emission(emission);
-            receipt.record_axis_label(0, "Axis");
-            receipt.record_legend_label(0, "Legend");
-            receipt.record_title(true);
-
-            assert!(!plan.record_terminal(receipt));
-            assert_eq!(
-                collect_evidence(&theme, |evidence| plan.record_evidence(evidence))
-                    .residuals()
-                    .len(),
-                2
-            );
-        }
+    pub(crate) fn fill_css(&self, index: usize) -> &str {
+        self.native_palette
+            .as_ref()
+            .map_or(self.colors.as_slice(), |(_, fill)| fill)[index]
+            .as_str()
     }
 }

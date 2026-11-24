@@ -144,9 +144,8 @@ Query the loaded resource catalog instead of copying numerical profile defaults 
       "max_width_px": 1200
     }
   },
-  "theme": {
-    "preset": "one-dark"
-  }
+  "theme": "studio",
+  "background": "transparent"
 }
 ```
 
@@ -161,7 +160,9 @@ Every field is optional.
 | `fixed_today` | string | selected policy date | Overrides the selected policy's local "today" date with a canonical signed-32-bit civil date. Years `0000` through `9999` use `YYYY-MM-DD`; later years use `+YEAR-MM-DD`, and negative years use `-YEAR-MM-DD`. The deterministic policy otherwise uses `1970-01-01`; the native policy reads the system date. |
 | `fixed_unix_millis` | integer or null | selected policy instant | Exact Unix milliseconds in JavaScript Date's inclusive range `[-8640000000000000, 8640000000000000]`. Derives the local date through the selected time zone and preserves time of day. Cannot be combined with a non-null `fixed_today`. |
 | `fixed_local_offset_minutes` | integer | selected policy time zone | Replaces the selected policy's time-zone rules with one fixed offset in minutes. The deterministic policy otherwise uses UTC; the native policy uses discovered system time-zone rules. |
-| `theme` | object or null | none | Complete Merman theme selection: `preset` or `recipe` with optional concrete `appearance`, a complete `spec`, or a direct `ThemeRecipeV1`. Null clears it. |
+| `theme` | string, object, or null | none | Native preset ID, Theme v2 document, or a selection object. `none` or null clears it. |
+| `background` | string or null | none | Graphical canvas base color in hex or `transparent`. |
+| `export_matte` | string or null | target default | Opaque matte for PNG, JPEG, or PDF. |
 | `site_config` | object | defaults | Mermaid site configuration merged onto the pinned Mermaid defaults before diagram directives are applied. |
 | `parse` | object | defaults | Parse behavior. |
 | `ascii` | object | defaults | ASCII/Unicode text rendering behavior. |
@@ -344,255 +345,32 @@ support do not trigger fallback.
 
 ## Diagram Theme
 
-The top-level `theme` field selects one complete compiled Merman theme. The current alpha contract
-uses one `ThemeRecipeV1`; optional appearances live inside its `design`. Use an artifact with the
-matching authoring and grouped-catalog interfaces.
-
-| `theme` input | Meaning |
-| --- | --- |
-| Omitted | Inherit the engine's compiled theme. |
-| `null` | Clear the compiled Merman theme for this operation. |
-| `{"preset":"editor","appearance":"dark"}` | Select a built-in design and one declared appearance. Omission of `appearance` uses its default. |
-| `{"recipe": DOCUMENT, "appearance":"dark"}` | Select a complete portable recipe and one declared appearance. `DOCUMENT` denotes the recipe object; it is not a string or field name. |
-| Direct `ThemeRecipeV1` | Compile the document using its declared default, or its unclassified concrete values. |
-| `{"spec": COMPLETE_SPEC}` | Compile a complete concrete specification. This form has no appearance selector. |
-
-Preset/recipe/spec wrappers have no outer `schema_version` or `kind`; only the nested recipe
-owns those fields. A direct recipe requires `schema_version: 1`, `kind: "design"` or
-`"complete_spec"`, and the corresponding payload. A raw `ThemeDesignV1` is a creation input,
-not a complete render selection; wrap it in a `design` recipe.
-
-`{}`, appearance-only objects, multiple selection forms, null payloads, unknown keys,
-`appearance: null`, unknown appearance strings, and `auto` are rejected. An appearance belongs
-in the preset/recipe wrapper, not beside a direct recipe's root version. It cannot be attached to
-a `spec` selection or a `complete_spec` recipe.
-
-Select a pair with a deterministic default:
+The `theme` option selects a Merman preset or an editable [Theme v2 document](../../schemas/theme-v2.schema.json). Use `site_config.theme` to select a classic Mermaid theme. Use `theme: null` or `theme: "none"` to clear an engine's native selection for one request.
 
 ```json
 {
   "version": 3,
-  "theme": {
-    "appearance": "dark",
-    "recipe": {
-      "schema_version": 1,
-      "kind": "design",
-      "design": {
-        "appearances": {
-          "light": { "canvas": { "base": "#f8fafc" } },
-          "dark": { "canvas": { "base": "#0f172a" } }
-        },
-        "default_appearance": "light"
-      }
-    }
-  }
+  "theme": {"preset": "studio", "appearance": "dark", "precedence": "source"},
+  "background": "transparent"
 }
 ```
 
-The document's appearance collection, when present, is nonempty and contains only `light` and/or
-`dark`; `default_appearance` is required and names an existing entry. A one-entry design supports
-only its declared appearance. With neither field, a design is unclassified and accepts only an
-omitted selector. Complete-spec snapshots are also unclassified. Names and colors never classify
-an import.
+The short form `"theme": "studio"` uses the preset's default appearance. You can also pass the document object directly, or pass `{"document": DOCUMENT, "appearance": "dark"}` to select a concrete appearance. `DOCUMENT` stands for a JSON object. An explicit appearance must exist in the document or preset. The host can choose an appearance based on its application settings.
 
-Rust admits the whole document, including inactive appearances, under one caller policy before
-rendering, inspection, selected materialization, or export succeeds. A malformed inactive branch
-cannot be hidden by selecting the other one. An explicit request for an undeclared appearance
-fails instead of silently selecting a default. Compilation validity does not qualify every
-diagram family, scene, or export target.
+Native themes supply global visual defaults. With `precedence: "source"`, an explicitly selected Mermaid theme in frontmatter or a directive selects the classic rendering path. Local diagram styles can override native defaults on the elements they style. Graphical results report `metadata.theme_outcome` with `mode`, the optional `preset_id` and `appearance`, and `notices`. Prepared source can be rendered under multiple theme selections without reparsing.
 
-Follow app/editor is host policy. A browser or editor resolves it to a supported concrete appearance,
-or the declared default if the host appearance is absent, before calling the headless interface.
-Admission failures do not trigger this fallback. CLI and low-level JSON accept only a concrete
-choice or deterministic omission, and never read an OS appearance.
-
-See [Create, Customize, and Share Diagram Themes](../rendering/custom-diagram-themes.md)
-for shared/local composition, full-pair exchange, and runnable adoption patterns.
-
-Discover canonical IDs through `theme-catalog.presets`, rather than maintaining a fixed ID list.
-`editor`, `gruvbox`, and `ayu` provide pairs; single-appearance art retains its actual support.
-Each `presets[].appearances[]` entry supplies `concrete_preset_id` for an exact fixed choice such
-as `editor-dark`. A conflicting explicit appearance on that ID fails. Both canonical and concrete
-IDs use the same document compiler; no separate compatibility interpreter or mapping catalog is
-required. Selection does not choose `look`, a layout engine, an SVG pipeline, or a product profile.
-
-Theme appearance does not replace Mermaid configuration. All eleven literal Mermaid IDs remain
-configuration inputs. `mermaid_theme_designs` groups only Neo (`neo`/`neo-dark`), Redux
-(`redux`/`redux-dark`), and Redux Color (`redux-color`/`redux-dark-color`). `default`, `dark`,
-`base`, `forest`, and `neutral` remain independent choices. The Mermaid `null` sentinel remains
-separate from registered theme IDs. `darkMode` and recipe compatibility `dark_mode` retain their
-existing color-derivation meaning; neither selects a Merman appearance.
-
-The [theme ownership table](../rendering/custom-diagram-themes.md#family-configuration-and-compiled-rules)
-defines precedence. A site Mermaid theme supplies a fallback palette and does not disable
-compiled recipe rules. An admitted source theme owns the materialized source palette for
-present roles. Explicit variables retain property-specific precedence. Typography, geometry,
-effects and canvas decoration retain their independent owners. Preserve configuration location
-as well as value when reproducing a themed diagram.
-
-`theme.spec` compiles one complete `DiagramThemeSpec`. Its supported top-level fields are:
-
-| Field | Purpose |
-| --- | --- |
-| `mermaid` | Bounded Mermaid compatibility: `theme` (`default`, `forest`, `dark`, `neutral`, `base`, `neo`, `neo-dark`, `redux`, `redux-dark`, `redux-color`, or `redux-dark-color`), `dark_mode`, and scalar `variables`. |
-| `typography` | Default and family-specific text styles. |
-| `styles` | Tagged semantic rules and ordinal palettes. `null` inside a style patch explicitly clears that property. |
-| `canvas` | Base paint, bounded layers, and bleed. |
-| `effects` | Tagged bounded filter graphs and semantic bindings. |
-| `requirements` | Required theme and text-layout capability IDs. |
-| `assets` | Retained exchange schema for font catalogs, aliases, generic-family mappings, sources, and embedding requirements. Caller font resources are unsupported during compilation. |
-
-The `assets` wire shape is preserved so complete recipes can be exchanged without losing fields.
-Compilation rejects caller-provided font resources after ordinary validation and resource limits;
-it does not decode font formats, decompress WOFF2, or shape embedded fonts. Use typography
-`font_stack` names to select fonts supplied by the host.
-
-An effect graph contains its recipe-local `id`, ordered `primitives`, and optional `color_space`
-(`"linear-rgb"`, the default, or `"srgb"`). A semantic binding selects the graph for a target. Callers do not author an SVG filter region. The consuming family derives a
-safe region from final paint geometry and admits it against the effective session resource policy.
-Because the schema is closed, the removed `region` member is rejected rather than ignored.
-Unknown or null color spaces are rejected. State currently consumes ordered zero-spread drop
-shadows: `source-graphic` restarts from the painted object and `previous` uses the preceding
-stage. The first stage must use the source graphic. This does not imply effect support in every
-diagram family. Native sRGB export uses a fixed standard five-primitive expansion per shadow
-to preserve colors in the pinned backend; resource limits count those actual primitives.
-
-```json
-{
-  "effects": [
-    {
-      "kind": "graph",
-      "id": "state-shadow",
-      "primitives": [{
-        "kind": "drop-shadow",
-        "offset_x": 5,
-        "offset_y": 6,
-        "blur_radius": 0,
-        "spread": 0,
-        "color": "#111827"
-      }]
-    },
-    { "kind": "binding", "target": "state", "effect_id": "state-shadow" }
-  ]
-}
-```
-
-The binding schema rejects unknown nested fields. Raw admission rejects duplicate JSON keys
-throughout the selected wrapper and nested recipe/specification before normalization, including
-keys in maps such as `mermaid.variables` and `typography.families`. Do not parse and reserialize
-an untrusted input before passing it to this owner. Mermaid compatibility variables accept only
-strings, finite numbers, or booleans. Raw `themeCSS`, `look`, renderer choice, layout, and SVG
-output policy do not belong in `theme.spec.mermaid`; use their explicit owners instead.
-
-```json
-{
-  "theme": {
-    "spec": {
-      "mermaid": {
-        "theme": "base",
-        "dark_mode": true,
-        "variables": {
-          "primaryColor": "#2563eb"
-        }
-      },
-      "typography": {
-        "default": {
-          "font_stack": ["Inter", "system-ui", "sans-serif"],
-          "font_size_px": 14,
-          "line_height": 1.4
-        }
-      },
-      "styles": [
-        {
-          "kind": "rule",
-          "target": "node",
-          "family": "flowchart",
-          "style": {
-            "fill": "#111827",
-            "stroke": { "paint": "#60a5fa", "width": 2 }
-          }
-        },
-        {
-          "kind": "ordinal-palette",
-          "target": "chart-series",
-          "colors": ["#60a5fa", "#34d399", "#f59e0b"]
-        }
-      ],
-      "canvas": { "base": "#0f172a", "bleed": 8 },
-      "effects": [],
-      "requirements": { "capabilities": ["semantic-rules"] }
-    }
-  }
-}
-```
-
-Theme selection is not part of the generic request deep merge. For a reusable engine, omitted
-`theme` inherits the constructor's compiled value, `theme: null` clears it, and a request
-selection or recipe replaces it as one complete value. Requests cannot raise the constructor's
-theme admission or resource policies. A request such as `{"theme":{"appearance":"dark"}}`
-cannot retrieve a discarded preset or recipe from constructor state. Resubmit the complete
-selection when changing appearances. A prepared source freezes its theme and must be prepared
-again after that change.
-
-Bounded Mermaid behavior overrides belong at top-level `site_config`; output choices belong under
-`svg`. Raw CSS is not part of either general-binding surface.
-`presentation` and `host_theme` are removed groups and return migration-oriented errors. Use
-top-level `theme`, `site_config`, explicit layout configuration, and `svg` as independent owners.
-
-Mermaid configuration precedence is the base engine config, the compiled theme's explicit
-Mermaid compatibility values, top-level `site_config`, then diagram frontmatter and directives
-subject to hardened secure keys. Typed semantic rules, typography, canvas, effects, and assets are
-resolved by the consuming family/document/output stages rather than being flattened into a second
-Mermaid JSON cascade.
-
-Use the artifact's `theme-catalog` metadata entry to discover preset IDs, semantic targets,
-capabilities, font IDs, and resource limits. This is particularly important for artifacts that do
-not compile every SVG capability.
-
-The grouped catalog keeps `schema_version: 1`. Its single `recipe_schema_version`,
-`authoring_request_schema_version`, and `authoring_result_schema_version` describe the loaded
-interfaces; capability-reduced artifacts can report them as null. Preset parents declare
-`supported_appearances`, `default_appearance`, and whole-document availability. Appearance children
-carry `concrete_preset_id`, swatches, family scope, guidance, and qualification declarations;
-their availability shares the parent's whole-document gate. These facts do not certify every
-scene or output. `mermaid_theme_designs` provides the explicit upstream presentation groups.
+The top-level `background` replaces the graphical canvas base and keeps any theme textures. It accepts `#RRGGBB`, `#RRGGBBAA`, or `transparent`. The top-level `export_matte` accepts an opaque hex color and selects the raster matte or PDF page paint. For terminal output, `ascii.theme` takes precedence over colors projected from the native theme. Color projection takes effect in `truecolor` and `ansi256` modes.
 
 ### Theme authoring operations
 
-These existing operations reuse the same Rust admission and compiler:
-
-| Operation | Input | Output |
+| Operation | Source payload | Result |
 | --- | --- | --- |
-| `materialize-theme-json` | Raw `ThemeDesignV1`, or the schema-1 action request below | Raw-design materialization, full document inspection, or selected materialization |
-| `export-theme-preset-json` | Plain UTF-8 preset ID, such as `editor` | Complete editable `ThemeRecipeV1`; a canonical pair retains both appearances |
-| `describe-theme-support-json` | Schema-1 family/output/tagged-subject query | Mechanism-support descriptor, independent of declared appearance support |
+| `export-theme-preset` | UTF-8 preset ID, such as `studio` | Editable schema-2 document, including its declared appearances |
+| `resolve-theme` | JSON object with `document` and optional `appearance` and `auto_fix_contrast` | Resolved settings and notices, or a document diagnostic |
 
-The document action request is a closed object with `schema_version: 1`, `action`, and `recipe`.
-`action: "inspect"` accepts no appearance selector and returns `ThemeRecipeInspectionV1`:
-supported/default appearances and each composition's declared references.
-`action: "materialize"` additionally permits `appearance: "light"` or `"dark"` and returns
-`MaterializedThemeRecipeV1`: a concrete `spec`, supported/default/effective appearance facts,
-and selected reference provenance. Both results have `schema_version: 1` and
-`recipe_schema_version: 1`. References identify their consumer `path` and supplying `token_path`.
-They are not a winning-rule trace or output qualification.
+Read the `theme-catalog` metadata document for the current presets, classic Mermaid names, and native capability flags by family. SDKs may expose the metadata and operations as `themeCatalog`, `exportThemePreset`, and `resolveTheme`.
 
-The raw-design route returns `MaterializedThemeWireV1` for its default concrete result; it is
-a creation convenience within the same version-1 contract. Use the document actions to inspect
-the complete pair or explicitly select an appearance. A standalone recipe is nested in the
-action request, rather than submitted as though it were a raw design.
-
-Authoring dispatch removes render `options.theme`; it cannot supply the operation's recipe or
-appearance. Put those in the action input. Preset export takes the plain ID directly, with no
-JSON export-request wrapper. Exporting `editor-dark` produces that declared single appearance;
-exporting `editor` produces the complete pair. Ordinary theme sharing saves the authored recipe.
-An intentional current-appearance snapshot wraps the materialized `spec` in a schema-1
-`complete_spec` recipe and is fixed and unclassified on reimport.
-
-CLI `render` and `batch` select the same concrete choice with `--theme-preset` or `--theme-file`
-plus `--theme-appearance light|dark`. A selector already in a theme file must agree with that flag.
-`theme inspect <INPUT|->` checks a standalone portable recipe and emits schema-1 inspection JSON;
-its input is narrower than the render-selection grammar accepted by `--theme-file`.
-Mermaid `--theme` and the mmdc dialect retain their own meanings.
+The `resolve-theme` request accepts the document either as a JSON object or as a string containing the original JSON text. Use the string form in an editor to preserve line and column locations, including malformed JSON and duplicate keys. Compilation returns `{"ok":true,"resolved":...,"notices":[...]}` or `{"ok":false,"line":3,"column":5,"path":"seed.accent","message":"..."}`. Set `auto_fix_contrast` to `true` to preview foreground adjustments.
 
 ## Parse Options
 

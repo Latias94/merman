@@ -1,29 +1,16 @@
 mod font_binding;
 mod theme;
 
-pub(crate) use theme::{CynefinSurfaceReceipt, CynefinTextRole, CynefinTypographyThemePlan};
+use theme::CynefinNativeStyle;
+pub(crate) use theme::{CynefinStyle, CynefinTextRole, CynefinThemeAdapter};
 
 use crate::Result;
 use crate::config::{config_bool, config_f64, config_string};
-use crate::diagram_theme::ThemeTarget;
 use crate::model::{
     Bounds, CynefinDiagramLayout, CynefinDomainLayout, CynefinItemLayout, CynefinTransitionLayout,
 };
 use crate::text::{TextMeasurer, TextStyle};
 use merman_model::families::cynefin::CynefinDiagramModel;
-
-pub(crate) const PAINT_TARGETS: &[ThemeTarget] = &[
-    ThemeTarget::Node,
-    ThemeTarget::NodeLabel,
-    ThemeTarget::Edge,
-    ThemeTarget::EdgeLabel,
-    ThemeTarget::Marker,
-    ThemeTarget::Title,
-];
-
-fn owns_target(target: ThemeTarget) -> bool {
-    PAINT_TARGETS.contains(&target)
-}
 
 const DOMAIN_COMPLEX: &str = "complex";
 const DOMAIN_COMPLICATED: &str = "complicated";
@@ -59,7 +46,7 @@ pub(crate) struct CynefinLayoutSettings {
     pub use_max_width: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct CynefinTheme {
     pub complex_bg: String,
     pub complicated_bg: String,
@@ -75,10 +62,7 @@ pub(crate) struct CynefinTheme {
     pub arrow_width: f64,
     pub text_color: String,
     pub label_color: String,
-    pub text_color_source: &'static str,
-    pub label_color_source: &'static str,
-    pub boundary_color_source: &'static str,
-    pub arrow_color_source: &'static str,
+    pub(crate) native: Option<Box<CynefinNativeStyle>>,
 }
 
 pub(crate) fn cynefin_layout_settings(
@@ -115,81 +99,36 @@ pub(crate) fn cynefin_layout_settings(
     }
 }
 
-pub(crate) fn cynefin_theme(effective_config: &serde_json::Value) -> CynefinTheme {
-    fn color(cfg: &serde_json::Value, key: &str, fallback: &str) -> String {
-        cfg.get("themeVariables")
-            .and_then(|value| value.get("cynefin"))
-            .and_then(|value| value.get(key))
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or(fallback)
-            .to_string()
-    }
-    fn themed_color(
-        cfg: &serde_json::Value,
-        key: &'static str,
-        fallback: &str,
-    ) -> (String, &'static str) {
-        let (nested_path, root_key, root_path) = match key {
-            "textColor" => (
-                "themeVariables.cynefin.textColor",
-                "textColor",
-                "themeVariables.textColor",
-            ),
-            "labelColor" => (
-                "themeVariables.cynefin.labelColor",
-                "primaryTextColor",
-                "themeVariables.primaryTextColor",
-            ),
-            "boundaryColor" => (
-                "themeVariables.cynefin.boundaryColor",
-                "lineColor",
-                "themeVariables.lineColor",
-            ),
-            "arrowColor" => (
-                "themeVariables.cynefin.arrowColor",
-                "lineColor",
-                "themeVariables.lineColor",
-            ),
-            _ => unreachable!("Cynefin inherited color role"),
-        };
-        if let Some(color) = cfg["themeVariables"]["cynefin"][key].as_str() {
-            (color.to_owned(), nested_path)
-        } else {
-            (
-                config_string(cfg, &["themeVariables", root_key])
-                    .unwrap_or_else(|| fallback.to_owned()),
-                root_path,
-            )
-        }
-    }
-    fn number(cfg: &serde_json::Value, key: &str, fallback: f64) -> f64 {
-        config_f64(cfg, &["themeVariables", "cynefin", key]).unwrap_or(fallback)
-    }
+fn cynefin_theme(effective_config: &serde_json::Value) -> CynefinTheme {
+    let color = |key, fallback: &str| {
+        config_string(effective_config, &["themeVariables", "cynefin", key])
+            .unwrap_or_else(|| fallback.to_owned())
+    };
+    let inherited_color = |key, root_key, fallback: &str| {
+        config_string(effective_config, &["themeVariables", "cynefin", key])
+            .or_else(|| config_string(effective_config, &["themeVariables", root_key]))
+            .unwrap_or_else(|| fallback.to_owned())
+    };
+    let number = |key, fallback| {
+        config_f64(effective_config, &["themeVariables", "cynefin", key]).unwrap_or(fallback)
+    };
 
-    let (text_color, text_color_source) = themed_color(effective_config, "textColor", "#333");
-    let (label_color, label_color_source) = themed_color(effective_config, "labelColor", "#131300");
-    let (boundary_color, boundary_color_source) =
-        themed_color(effective_config, "boundaryColor", "#333333");
-    let (arrow_color, arrow_color_source) = themed_color(effective_config, "arrowColor", "#333333");
     CynefinTheme {
-        complex_bg: color(effective_config, "complexBg", "#E8F5E9"),
-        complicated_bg: color(effective_config, "complicatedBg", "#E3F2FD"),
-        chaotic_bg: color(effective_config, "chaoticBg", "#FBE9E7"),
-        clear_bg: color(effective_config, "clearBg", "#FFF8E1"),
-        confusion_bg: color(effective_config, "confusionBg", "#F3E5F5"),
+        complex_bg: color("complexBg", "#E8F5E9"),
+        complicated_bg: color("complicatedBg", "#E3F2FD"),
+        chaotic_bg: color("chaoticBg", "#FBE9E7"),
+        clear_bg: color("clearBg", "#FFF8E1"),
+        confusion_bg: color("confusionBg", "#F3E5F5"),
         font_binding: font_binding::CynefinFontBinding::new(effective_config),
-        boundary_color,
-        boundary_width: number(effective_config, "boundaryWidth", 2.0),
-        cliff_color: color(effective_config, "cliffColor", "#8B0000"),
-        cliff_width: number(effective_config, "cliffWidth", 4.0),
-        arrow_color,
-        arrow_width: number(effective_config, "arrowWidth", 2.0),
-        text_color,
-        label_color,
-        text_color_source,
-        label_color_source,
-        boundary_color_source,
-        arrow_color_source,
+        boundary_color: inherited_color("boundaryColor", "lineColor", "#333333"),
+        boundary_width: number("boundaryWidth", 2.0),
+        cliff_color: color("cliffColor", "#8B0000"),
+        cliff_width: number("cliffWidth", 4.0),
+        arrow_color: inherited_color("arrowColor", "lineColor", "#333333"),
+        arrow_width: number("arrowWidth", 2.0),
+        text_color: inherited_color("textColor", "textColor", "#333"),
+        label_color: inherited_color("labelColor", "primaryTextColor", "#131300"),
+        native: None,
     }
 }
 
@@ -210,17 +149,17 @@ pub(crate) fn layout_cynefin_diagram_typed(
     )
 }
 
-pub(crate) fn layout_cynefin_diagram_typed_with_theme(
+pub(crate) fn layout_cynefin_diagram_typed_with_style(
     model: &CynefinDiagramModel,
     effective_config: &serde_json::Value,
-    typography_theme: &CynefinTypographyThemePlan,
+    style: &CynefinStyle,
     measurer: &dyn TextMeasurer,
 ) -> Result<CynefinDiagramLayout> {
     layout_cynefin_diagram_with_font_family(
         model,
         effective_config,
-        typography_theme.font_family_css(),
-        typography_theme.colors(),
+        style.font_family_css(),
+        style.colors(),
         measurer,
     )
 }
@@ -488,6 +427,10 @@ fn layout_items(
     let style = TextStyle {
         font_family: Some(font_family_css.to_string()),
         font_size: theme.font_binding.measurement_px(CynefinTextRole::Item),
+        font_weight: theme
+            .native
+            .as_ref()
+            .map(|native| native.label_weight.to_string()),
         ..Default::default()
     };
     let mut out = Vec::new();
@@ -692,7 +635,7 @@ mod tests {
     use crate::text::{DeterministicTextMeasurer, TextMetrics};
 
     #[test]
-    fn inherited_colors_retain_the_selected_configuration_source() {
+    fn inherited_colors_fall_back_for_absent_and_non_string_values() {
         for nested in [
             serde_json::Value::Null,
             serde_json::json!(7),
@@ -702,8 +645,8 @@ mod tests {
             let colors = cynefin_theme(&serde_json::json!({
                 "themeVariables": {
                     "textColor": "#125634",
-                    "primaryTextColor": "#125634",
-                    "lineColor": "#125634",
+                    "primaryTextColor": "#735310",
+                    "lineColor": "#1C5674",
                     "cynefin": {
                         "textColor": nested,
                         "labelColor": nested,
@@ -712,41 +655,13 @@ mod tests {
                     }
                 }
             }));
-            for (color, source, family_key, root_key) in [
-                (
-                    &colors.text_color,
-                    colors.text_color_source,
-                    "textColor",
-                    "textColor",
-                ),
-                (
-                    &colors.label_color,
-                    colors.label_color_source,
-                    "labelColor",
-                    "primaryTextColor",
-                ),
-                (
-                    &colors.boundary_color,
-                    colors.boundary_color_source,
-                    "boundaryColor",
-                    "lineColor",
-                ),
-                (
-                    &colors.arrow_color,
-                    colors.arrow_color_source,
-                    "arrowColor",
-                    "lineColor",
-                ),
+            for (color, fallback) in [
+                (&colors.text_color, "#125634"),
+                (&colors.label_color, "#735310"),
+                (&colors.boundary_color, "#1C5674"),
+                (&colors.arrow_color, "#1C5674"),
             ] {
-                assert_eq!(color, nested.as_str().unwrap_or("#125634"));
-                assert_eq!(
-                    source,
-                    if nested.is_string() {
-                        format!("themeVariables.cynefin.{family_key}")
-                    } else {
-                        format!("themeVariables.{root_key}")
-                    }
-                );
+                assert_eq!(color, nested.as_str().unwrap_or(fallback));
             }
         }
     }

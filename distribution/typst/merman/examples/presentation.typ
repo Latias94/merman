@@ -4,8 +4,8 @@
 #set text(fill: rgb("#e5e7eb"))
 
 #let slide-profile = mermaid-profile(
-  theme-preset: "ayu",
-  theme-appearance: "dark",
+  theme: "studio",
+  appearance: "dark",
   background: "#111827",
 )
 

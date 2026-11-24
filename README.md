@@ -100,44 +100,16 @@ and terminal output. Start with the [capability guide] for feature selection or 
 
 ## Optional themes
 
-**Built-in presets** such as Brutalist, Ghibli, Paper Cut, Carbon Copy, and Pop Art are selected by
-their runtime preset IDs. The [Playground theme designs] include editable recipes and coordinated
-light/dark designs. Browse by diagram type and style, then use a preset or copy a recipe through
-Rust, CLI, Web, Node, or Typst.
+Theme v2 in the current source offers 13 native presets, including Studio, Paper Cut, and Pop Art.
+Use `merman-cli theme list` to find presets and appearances. Export a preset as editable JSON with
+`merman-cli theme export studio -o studio.theme.json`. [Theme guide][theme guide]
 
-<details>
-<summary>Explore custom themes</summary>
+```sh
+merman-cli render diagram.mmd --theme studio --appearance dark -o diagram.svg
+```
 
-<table>
-  <tr>
-    <td width="36%" rowspan="2" align="center" valign="middle">
-      <a href="https://frankorz.com/merman/?theme-design=riso"><img src="https://raw.githubusercontent.com/Latias94/merman/main/playground/src/themes/previews/riso-flowchart.svg" width="100%" alt="Riso Flowchart: a review workflow in blue and red ink on a cream canvas"></a><br>
-      <a href="https://frankorz.com/merman/?theme-design=riso"><strong>Riso · Flowchart</strong></a>
-    </td>
-    <td colspan="2" align="center">
-      <a href="https://frankorz.com/merman/?theme-design=carbon-copy"><img src="https://raw.githubusercontent.com/Latias94/merman/main/playground/src/themes/previews/carbon-copy-sequence.svg" width="100%" alt="Carbon Copy Sequence: typewritten exchanges on ruled paper with violet offset impressions and red review notes"></a><br>
-      <a href="https://frankorz.com/merman/?theme-design=carbon-copy"><strong>Carbon Copy · Sequence</strong></a>
-    </td>
-  </tr>
-  <tr>
-    <td width="32%" align="center" valign="middle">
-      <a href="https://frankorz.com/merman/?theme-design=pop-art"><img src="https://raw.githubusercontent.com/Latias94/merman/main/playground/src/themes/previews/pop-art-xychart.svg" width="100%" alt="Pop Art XY Chart: quarterly deliveries shown with yellow bars, a pink line, and black outlines"></a><br>
-      <a href="https://frankorz.com/merman/?theme-design=pop-art"><strong>Pop Art · XY Chart</strong></a>
-    </td>
-    <td width="32%" align="center" valign="middle">
-      <a href="https://frankorz.com/merman/?theme-design=atlas"><img src="https://raw.githubusercontent.com/Latias94/merman/main/playground/src/themes/previews/atlas-pie.svg" width="100%" alt="Atlas Pie: work by stage, with percentage labels and a legend in a restrained pastel palette"></a><br>
-      <a href="https://frankorz.com/merman/?theme-design=atlas"><strong>Atlas · Pie</strong></a>
-    </td>
-  </tr>
-</table>
-
-Actual Merman SVG exports from the Playground's standalone JSON theme library.
-Open a design for its diagram gallery, sources, editable recipe, and integration examples.
-
-</details>
-
-The [theme guide] covers adopting and customizing recipes, family scope, and output support.
-The [preset gallery] shows more real renders and includes [design credits][theme credits].
+Open **Appearance** in the [Playground] to preview a preset and customize its colors, typography,
+and form. The [0.10.0 theme gallery] preserves the earlier renders and [design credits][theme credits].
 
 ## Rendering quality and performance
 
@@ -168,7 +140,6 @@ project or its maintainers.
 
 [Mermaid]: https://mermaid.js.org/
 [Playground]: https://frankorz.com/merman/
-[Playground theme designs]: https://frankorz.com/merman/?theme-design=riso
 [host guide]: https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md
 [Rust API]: https://docs.rs/merman
 [Rust embedding guide]: https://github.com/Latias94/merman/blob/main/docs/rendering/RUST_EMBEDDING.md
@@ -177,7 +148,7 @@ project or its maintainers.
 [capability guide]: https://github.com/Latias94/merman/blob/main/docs/FEATURES.md
 [package surface guide]: https://github.com/Latias94/merman/blob/main/docs/release/PACKAGE_SURFACES.md
 [theme guide]: https://github.com/Latias94/merman/blob/main/docs/rendering/custom-diagram-themes.md
-[preset gallery]: https://github.com/Latias94/merman/blob/main/docs/rendering/theme-gallery/README.md
+[0.10.0 theme gallery]: https://github.com/Latias94/merman/blob/main/docs/rendering/theme-gallery/README.md
 [theme credits]: https://github.com/Latias94/merman/blob/main/docs/rendering/theme-gallery/README.md#design-references-and-license
 [alignment dashboard]: https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md
 [SVG output guide]: https://github.com/Latias94/merman/blob/main/docs/rendering/SVG_OUTPUT_PIPELINE.md

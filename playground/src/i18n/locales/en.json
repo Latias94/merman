@@ -5,31 +5,12 @@
     "light": "Light",
     "dark": "Dark",
     "documentDefault": "Saved theme default",
-    "paired": "Light + dark",
     "only": "{{appearance}} only",
     "unclassified": "Fixed design · no declared light/dark variants",
     "following": "Following app · {{appearance}}",
     "selected": "Selected appearance · {{appearance}}",
     "frozen": "Captured appearance · {{appearance}}",
-    "exportSnapshotChanged": "The workspace has changed or is updating. This export keeps the captured diagram and appearance.",
-    "adoption": "These examples explicitly render {{appearance}}. The theme file keeps every appearance; change only the appearance selector to use the other one.",
-    "composition": "Advanced composition: {{theme}} + Mermaid {{base}}",
-    "shareFollow": "This workspace follows the receiving app's appearance. Choose Light or Dark to share a fixed appearance."
-  },
-  "themeDraft": {
-    "customize": "Customize",
-    "title": "Editable theme copy",
-    "hint": "Edit the complete theme JSON. Shared values and each appearance's overrides stay in this document. Validate all appearances, then Apply to update the diagram. Source and layout settings are separate.",
-    "editor": "Editable theme JSON",
-    "navigate": "Navigate the complete theme document",
-    "shared": "Shared design",
-    "light": "Light overrides",
-    "dark": "Dark overrides",
-    "validate": "Validate theme",
-    "valid": "The runtime accepted the complete document, including every declared appearance.",
-    "chooseAppearance": "The previous appearance is no longer supported. Choose an appearance before applying.",
-    "apply": "Apply changes",
-    "cancel": "Discard draft"
+    "exportSnapshotChanged": "The workspace has changed or is updating. This export keeps the captured diagram and appearance."
   },
   "app": {
     "title": "Merman Playground",
@@ -404,23 +385,6 @@
     "redux-dark-color": "Redux Dark Color",
     "system": "System"
   },
-  "themePresets": {
-    "editor": "Editor",
-    "gruvbox": "Gruvbox",
-    "ayu": "Ayu",
-    "none": "None",
-    "editor-light": "Editor Light",
-    "editor-dark": "Editor Dark",
-    "one-dark": "One Dark",
-    "gruvbox-light": "Gruvbox Light",
-    "gruvbox-dark": "Gruvbox Dark",
-    "ayu-light": "Ayu Light",
-    "ayu-dark": "Ayu Dark",
-    "brutalist": "Brutalist",
-    "spotless": "Spotless",
-    "cyberpunk": "Cyberpunk",
-    "ghibli": "Ghibli"
-  },
   "svgPipelines": {
     "parity": "Mermaid SVG (default)",
     "readable": "Text fallback SVG",
@@ -476,74 +440,9 @@
     "requirement": "Requirement",
     "unknown": "Unknown"
   },
-  "customTheme": {
-    "download": "Download JSON",
-    "tooLarge": "Theme JSON must be {{limit}} KiB or smaller."
-  },
-  "themeGallery": {
-    "samples": {
-      "flowchart": "Flowchart",
-      "sequence": "Sequence",
-      "class": "Class",
-      "xychart": "XY Chart",
-      "pie": "Pie",
-      "state": "State",
-      "er": "Entity relationship",
-      "mindmap": "Mindmap",
-      "gitGraph": "Git Graph",
-      "gantt": "Gantt",
-      "kanban": "Kanban",
-      "timeline": "Timeline",
-      "architecture": "Architecture",
-      "radar": "Radar",
-      "quadrantChart": "Quadrant Chart",
-      "sankey": "Sankey",
-      "treemap": "Treemap",
-      "requirement": "Requirement",
-      "treeView": "Tree View"
-    },
-    "themes": {
-      "brutalist": "Bold color blocks, hard black outlines, and offset shadows give diagrams the direct weight of a printed sign.",
-      "cyberpunk": "Warning-yellow lettering and contours define dark panels, with cyan signals and hard red/cyan registration offsets against a dark technical canvas.",
-      "ghibli": "Botanical colors, warm painted-paper surfaces, and soft ink contours bring the feel of an illustrated field journal.",
-      "spotless": "Cream paper, fine ruled lines, and measured dark ink recall a carefully drafted technical manual.",
-      "editor": "A restrained reading pair with neutral surfaces and focused color accents for light and dark editor workspaces.",
-      "one-dark": "A restrained dark editor palette with charcoal surfaces, soft text, and measured color accents.",
-      "gruvbox": "Warm cream and charcoal surfaces with earthy accents form a restrained light/dark pair for document reading.",
-      "ayu": "Calm neutral surfaces, clear text, and warm amber accents form a restrained light/dark reading pair.",
-      "prism": "A paired analytical design with distinct category colors, quiet axes, and coordinated light and dark data surfaces.",
-      "monograph": "Black ink, white paper, and measured gray layers for technical documents, requirements, and monochrome diagrams.",
-      "porcelain": "Warm porcelain surfaces, fine cobalt contours, and restrained terracotta annotations for clear reports and presentations.",
-      "chalk": "A matte slate board with crisp cream lettering and pastel category colors for teaching and explaining ideas.",
-      "reading": "A paired reading design with shared typography and roles, adapted surfaces, and matching category colors for light and dark.",
-      "atlas": "Blue-gray precision for technical notes and system diagrams.",
-      "nightfall": "Quiet slate, soft color and clear labels for dark canvases.",
-      "letterpress": "Warm paper, serif titles and rust accents for editorial diagrams.",
-      "grove": "Ivory, moss green and mineral colors for a warmer view.",
-      "riso": "A small-run print in blue and red: slight registration offsets, crisp single-pass text, and editorial titles.",
-      "phosphor": "A control-room display with solid dark panels, monospaced readouts, and luminous signals.",
-      "field-notes": "A field ledger with forest-ink record cards, ruled paper, and warm observation slips.",
-      "blueprint": "A drafting sheet with blue grid paper, precise cyan lines, and measured monospaced annotations.",
-      "pop-art": "A printed poster with bright color blocks, bold outlines, and hard offset shadows.",
-      "lacquer": "Deep lacquer panels, fine gold edges, and quiet serif titles on a warm black ground.",
-      "paper-cut": "Layered mint cards, coral and teal paper edges, and soft contact shadows on warm cotton stock.",
-      "aurora": "Mint and violet light ribbons over an indigo night, with suspended panels and clear starlight text.",
-      "metro": "Station-yellow signs, cyan routes, and flat information panels on a midnight concourse.",
-      "carbon-copy": "Typewritten records on warm paper, with violet carbon edges and vermilion review marks.",
-      "signal": "Charcoal equipment plates, safety-yellow edges, and restrained perimeter warning tape."
-    }
-  },
   "themePanel": {
-    "custom": "Imported theme",
-    "copiedJson": "Theme JSON copied",
     "unavailablePresetPreview": "Preset {{id}} is unavailable. This preview uses the Mermaid base theme and source styles; your selection is preserved.",
     "unavailablePresetExport": "Preset {{id}} was not applied. This export uses the Mermaid base theme and source styles shown in the preview.",
-    "mermaidTheme": "Mermaid base theme",
-    "fontPrecedenceHint": "Inherit lets the theme and source choose fonts. An explicit font is passed to both engines and may override a preset font. Config and source settings can take precedence.",
-    "copyJson": "Copy JSON",
-    "renderOutcome": "Current preview",
-    "executionMetadata": "Execution metadata",
-    "evidenceUnavailable": "No execution evidence is available for this SVG.",
     "previewBacking": "Preview backing",
     "previewBackingHint": "Display only; excluded from image exports. A transparency grid reveals transparent regions without removing theme paint.",
     "backing": {
@@ -553,147 +452,12 @@
       "transparency": "Transparency grid"
     },
     "resize": "Resize theme panel",
-    "advanced": "Advanced",
-    "json": "Theme JSON",
-    "jsonHint": "Read-only Merman styling. This JSON does not include the Mermaid base theme, diagram font, source or Mermaid config.",
-    "layeringHint": "Merman styling layers over the Mermaid base theme. Authored configuration, frontmatter, directives and source styles may override the result. Selecting a preset keeps your source, look and layout settings.",
-    "catalogDetails": "Preset runtime details",
-    "currentFamily": "Current diagram: {{family}}",
-    "familyWaiting": "Current diagram: waiting for this render's detection…",
-    "familyUnknown": "The current diagram family could not be detected.",
-    "treatmentWaiting": "Waiting for current diagram",
-    "treatments": {
-      "dedicated": "Designed for this diagram",
-      "base_only": "Shared styling",
-      "unreviewed": "Not yet reviewed for this diagram"
-    },
-    "reviewedFamilies": "Reviewed diagram families",
-    "noReviewedFamilies": "No diagram families are listed as reviewed for this preset.",
-    "reviewedFamiliesHint": "Designed for this diagram means it has specific styling. Shared styling uses the common appearance. Unlisted families are unreviewed; this does not mean unsupported. Check the current preview for the actual result.",
-    "applicationNotes": "Application notes",
-    "showRecommendedConfig": "View recommended configuration",
-    "waiting": {
-      "render": "Updating the preview…"
-    },
-    "outcome": {
-      "applied": "Theme applied to this preview.",
-      "residual": "Some requested styling is conditional or unverified.",
-      "incomplete": "Some requested styling could not be applied.",
-      "not_present": "No Merman theme styling was applied to this preview.",
-      "failed": "The preview could not be rendered. Check the diagram and config.",
-      "unavailable": "The renderer could not confirm the styling for this preview."
-    },
-    "diagnosticReasonsTitle": "Styling observations",
-    "diagnosticReasonsUnknown": "Renderer diagnostic: {{code}}. See Advanced for the original details.",
-    "diagnosticReasons": {
-      "family-unadapted": "This diagram type does not yet support Merman's diagram and text styling. Canvas styling and Mermaid theme settings may still apply.",
-      "evidence-incomplete": "The renderer could not fully account for the requested theme styles. Check the current preview before relying on the result.",
-      "unsupported-effect": "A requested effect, such as a shadow or glow, could not be applied to this diagram, look or shape. Review Application notes for any listed requirements.",
-      "unsupported-typography": "Some requested font or text styling could not be applied in this render.",
-      "unsupported-paint": "Some requested colors or paint styles could not be applied to this diagram's current look or shape.",
-      "unsupported-geometry": "Some requested shape or border settings could not be applied to this diagram's current look or shape.",
-      "unsupported-fill": "Some requested fill paint could not be applied in this render.",
-      "unsupported-stroke": "Some requested line or border styling could not be applied in this render.",
-      "compatibility-unverified": "Some styling could not be verified for this diagram. Check the SVG in the host where you intend to use it."
-    },
-    "moreReasons_one": "{{count}} more distinct reason is available in Advanced.",
-    "moreReasons_other": "{{count}} more distinct reasons are available in Advanced.",
-    "diagramFont": "Diagram font",
-    "inheritFontHint": "Let the theme and source choose the font.",
-    "catalogError": "Could not load presets. {{error}}",
-    "retryCatalog": "Retry loading presets",
-    "maturity": {
-      "alpha": "Alpha",
-      "beta": "Beta",
-      "stable": "Stable"
-    },
-    "maturityLabel": "{{maturity}} preset",
-    "authoringTitle": "Creating a theme (optional)",
-    "authoringHint": "Edit the downloaded JSON with your own tools and import it again. If your agent has the $design-merman-theme skill installed, you can also use it to create a theme; the skill is optional.",
-    "detectedOverrides": "Config and source declarations",
-    "detectedOverridesHint": "These are declarations found in config or source. They do not confirm renderer support or the final appearance.",
-    "overrideKeys": {
-      "theme": "Base theme",
-      "font": "Font",
-      "look": "Look"
-    },
-    "overrideOrigins": {
-      "config": "Config declaration",
-      "source": "Source declaration"
-    },
-    "editOverride": {
-      "config": "Edit config",
-      "source": "Edit source"
-    },
-    "explicitFontHint": "Use this font in both engines. Config and source font settings may take precedence."
-  },
-  "themeApplicationNotes": {
-    "flowchart-basic-shadows": "Hard node shadows work with supported basic shapes (rectangles, rounded rectangles, diamonds, circles and double circles) in Classic and Neo. Hand-drawn and other shapes may leave effects unapplied. Source styles take precedence.",
-    "flowchart-basic-signal-depth": "Hard cyan/red panel offsets work with supported basic shapes (rectangles, rounded rectangles, diamonds, circles and double circles) in Classic and Neo. Hand-drawn and other shapes may leave effects unapplied. Source styles take precedence."
+    "diagramFont": "Diagram font"
   },
   "appearance": {
     "title": "Appearance",
     "close": "Close appearance panel",
-    "undo": "Undo appearance change",
-    "immediateHint": "Choose a theme to update your current diagram immediately. You can undo changes; closing this panel keeps them.",
-    "themeCatalog": "Themes",
-    "searchThemes": "Search themes",
-    "noThemes": "No themes match. Try another name or source.",
-    "catalogHint": "Theme colors are a guide. Check your current diagram for the result. Presets and recipes style the Merman rendering.",
-    "catalogPending": "Waiting for the runtime theme catalog…",
-    "sources": {
-      "automatic": "Source / default",
-      "mermaid": "Mermaid.js official",
-      "builtin": "Merman preset",
-      "exploration": "Merman example · JSON",
-      "imported": "Imported"
-    },
-    "groups": {
-      "automatic": {
-        "title": "Source / default",
-        "description": "Use the diagram's default theme. Source and configuration settings still take precedence."
-      },
-      "mermaid": {
-        "title": "Mermaid.js official",
-        "description": "Official themes supported by both Mermaid.js and Merman. Use theme in Mermaid config; these affect both engines in Compare."
-      },
-      "builtin": {
-        "title": "Merman built-in presets",
-        "description": "Merman-only designs included in the runtime. Use Web theme: { preset: \"…\" } or CLI --theme-preset. Use in project provides integration code."
-      },
-      "exploration": {
-        "title": "Merman theme examples",
-        "description": "Editable JSON designs, separate from the built-in presets. Download their JSON to use in Merman; they have no preset ID."
-      },
-      "imported": {
-        "title": "Your imported theme",
-        "description": "The JSON recipe imported into this workspace. Keep its file to reuse it in Merman."
-      }
-    },
-    "unavailableChoice": "Unavailable in this runtime",
-    "unavailablePresetChoice": "Selection preserved; the preview uses the Mermaid base theme and source styles.",
-    "currentRecipe": "Current workspace recipe",
-    "importedTheme": "Imported theme",
-    "alphaHint": "Alpha · The design may change. Check your current diagram for the result.",
-    "importJson": "Import JSON",
-    "importCandidate": "Theme import",
-    "readingImport": "Reading and checking the theme file…",
-    "importReady": "The runtime validated this recipe. Use it to replace the current theme, or discard this import.",
-    "useImportedTheme": "Use imported theme",
-    "discardImport": "Discard import",
-    "invalidImportHint": "Your current theme is unchanged. You can still export the current diagram or choose another theme.",
-    "combination": "Theme layers",
-    "extension": "Merman extension",
-    "noExtension": "None · Mermaid and source styles",
-    "combinationHint": "Change the base theme here to keep the current Merman extension. Choosing a Mermaid theme in the catalog removes the extension.",
-    "noRecipe": "Mermaid themes have no Merman recipe. Select a preset or recipe to view its JSON.",
-    "exchangeHint": "Theme JSON keeps the complete design and all appearances. A workspace link also keeps your appearance preference, diagram and settings.",
-    "evidenceHint": "These are the runtime observations for the current SVG. Output compatibility is checked in Export.",
-    "applyRecommendedConfig": "Use recommended configuration",
-    "recommendedConfigHint": "Merge these keys into the current JSON config, keeping unrelated settings. This change takes effect immediately and can be undone. Source settings can still take precedence.",
-    "recommendedConfigError": "Could not update Mermaid config. Fix its JSON object and try again. {{error}}",
-    "recommendationInConfig": "Already in the current config",
-    "exampleAlt": "Example {{sample}} rendered with {{name}}"
+    "undo": "Undo appearance change"
   },
   "projectUse": {
     "projectFiles": "Project files",
@@ -713,7 +477,6 @@
     "refresh": "Capture again",
     "theme": "Merman theme",
     "noMermanTheme": "None selected",
-    "unnamedRecipe": "Custom theme",
     "baseTheme": "Mermaid base selection",
     "environment": "Font · measurement · SVG pipeline · size",
     "versions": "Captured versions",
@@ -721,11 +484,6 @@
     "dirtyCheckout": "Local changes present",
     "cleanCheckout": "Clean checkout",
     "unknownVersion": "Runtime version unavailable",
-    "origin_exploration": "Exploration recipe",
-    "origin_imported": "Imported recipe",
-    "origin_recipe": "Standalone recipe",
-    "origin_builtin": "Builtin preset",
-    "origin_none": "Mermaid configuration only",
     "target": "Project platform",
     "file": "File",
     "copy": "Copy",
@@ -747,11 +505,11 @@
     "notice_cli-screen-width": "CLI has no screen-available-width flag and falls back to container width for C4. The captured screen width remains in options.json and handoff.json for Rust/Web.",
     "notice_local-source": "The Playground checkout identity records source provenance, not a WASM or binary hash. A dirty checkout includes uncommitted changes. Matching artifacts still require compatible versions and facade/glue/WASM from the same revision; package version alone does not pin a runtime or preset catalog.",
     "error_render-not-current": "There is no completed successful Merman render matching this snapshot. Wait for the current render, then capture again, or choose Theme only.",
-    "error_invalid-configuration": "The captured configuration or theme recipe cannot form a valid request. Fix the workspace inputs and capture again.",
-    "error_preset-unavailable": "Preset “{{id}}” is not confirmed available. The preview may have fallen back. Choose an available builtin preset or import a standalone recipe before generating project code.",
+    "error_invalid-configuration": "Fix the captured configuration or theme document and capture again.",
+    "error_preset-unavailable": "Preset “{{id}}” is unavailable. Choose a listed preset or import a Theme v2 document before generating project code.",
     "error_no-theme": "No Merman theme or explicit Mermaid base is selected. Choose a theme, or use Reproduce current diagram to take the configured diagram.",
-    "error_theme-conflict": "Both a preset and a custom recipe are selected. Choose one theme source and capture again.",
-    "error_recipe-unverified": "This recipe has not been validated by the current runtime. Wait for the renderer, then capture again."
+    "error_theme-conflict": "Choose a single preset or custom theme document and capture again.",
+    "error_document-unverified": "The current runtime needs to validate this theme document. Wait for the renderer, then capture again."
   },
   "workbench": {
     "appearance": "Appearance",
@@ -762,222 +520,106 @@
       "benchmark": "Benchmark",
       "advancedRendering": "Advanced rendering",
       "compareInput": "Both panes render the same Mermaid source and configuration. Compare shows each engine’s output; it does not certify pixel parity.",
-      "compareStyled": "Both panes use the same Mermaid source and configuration. Merman appearance extensions apply only to the left pane. This styled comparison does not certify pixel parity."
+      "compareStyled": "Both panes use the same Mermaid source and configuration. The left pane renders with the selected Merman theme."
     },
     "export": {
       "currentArtifact": "Current diagram output",
       "copySource": "Copy Mermaid source",
       "sourceDescription": "Copies the source text. Appearance selected in this workspace is not included.",
       "externalRendering": "Render again with Mermaid",
-      "externalDescription": "Mermaid.ink and Mermaid Live render the source again. Merman appearance extensions are not included.",
+      "externalDescription": "Mermaid.ink and Mermaid Live render with Mermaid settings from the source and configuration.",
       "resvgBoundary": "The resvg-compatible pipeline adapts SVG for resvg/usvg. It does not establish portability to every host."
     },
     "output": {
       "title": "Output compatibility",
       "sourceTitle": "Source SVG compatibility",
-      "status": {
-        "portable": "The runtime’s target checks passed for this SVG and these inputs. Compatibility with every host is not established.",
-        "host_dependent": "This SVG depends on the host’s fonts, text measurement or rendering.",
-        "rejected": "The runtime’s output compatibility checks failed, although an SVG was returned. Review its evidence before use.",
-        "unverified": "The runtime did not verify compatibility for this SVG’s target.",
-        "unknown": "No recognized runtime compatibility evidence is available for this SVG."
-      },
-      "unknownStatus": "The runtime reported an unrecognized target status: {{status}}. Compatibility remains unknown.",
       "pipeline": "SVG pipeline: {{pipeline}}",
-      "evidence": "Runtime evidence",
-      "target": "Observed target",
-      "runtimeStatus": "Target status",
-      "fontSource": "Font source",
-      "mermanRaster": "These checks describe the frozen source SVG. The raster image is prepared from the same snapshot using resvg-compatible SVG; source checks do not verify that conversion.",
-      "mermaidRaster": "These checks describe the frozen source SVG, which is rasterized for this image. They do not verify raster conversion.",
-      "unknownReason": "Runtime reason: {{code}}.",
-      "moreReasons": "Show {{count}} more runtime reasons",
-      "reasons": {
-        "theme_evidence_incomplete": "Theme execution evidence is incomplete for these target checks.",
-        "svg_terminal_unverified": "The final SVG has not been verified for the requested target.",
-        "svg_terminal_validation_failed": "The final SVG did not pass target validation.",
-        "host_dependent_text_layout": "Text layout depends on the host’s measurement or rendering.",
-        "svg_fonts_not_self_contained": "The SVG does not contain all required fonts; the host may supply them.",
-        "font_resolution_incomplete": "Some requested fonts could not be resolved.",
-        "system_or_host_font_dependency": "The output depends on fonts supplied by the system or host."
-      }
+      "mermanRaster": "The raster export uses the resvg-compatible SVG pipeline with the captured diagram settings.",
+      "mermaidRaster": "The raster export uses the captured Mermaid SVG."
     }
   },
-  "themeShowcase": {
-    "title": "Theme designs",
-    "recipeBadge": "BUILT-IN PRESETS & EDITABLE RECIPES",
-    "description": "Explore complete visual designs across diagrams. Copy an editable theme or take the code to your project.",
-    "close": "Close theme designs",
-    "search": "Search designs",
-    "appearance": "Filter designs by appearance",
-    "filters": {
-      "all": "All designs",
-      "light": "Light",
-      "dark": "Dark"
+  "themeWorkshop": {
+    "customize": "Customize",
+    "gallery": "Themes",
+    "json": "JSON",
+    "jsonEditor": "Theme JSON editor",
+    "loading": "Loading themes…",
+    "import": "Import JSON",
+    "download": "Download JSON",
+    "expand": "Expand to standalone JSON",
+    "discard": "Discard invalid edits",
+    "classic": "Mermaid Classic",
+    "custom": "Custom theme",
+    "standalone": "Standalone document",
+    "customValue": "Custom setting",
+    "base": "Base preset",
+    "font": "Font combination",
+    "fontSize": "Font size",
+    "radius": "Corner radius",
+    "shadow": "Shadow",
+    "pattern": "Texture",
+    "tooLarge": "Theme documents are limited to 256 KiB.",
+    "groups": {
+      "base": "Base & Accent",
+      "typography": "Typography",
+      "form": "Form & Craft",
+      "texture": "Canvas Texture"
     },
-    "count": "{{count}} designs",
-    "collectionTitle": "Find a visual language.",
-    "collectionHint": "Each design previews several diagrams. A diagram filter brings that type forward while keeping other examples in view.",
-    "mechanisms": {
-      "brutalist": "Hard outlines · bold color blocks · offset shadows",
-      "cyberpunk": "Yellow lettering and contours · dark panels · hard red/cyan registration",
-      "ghibli": "Botanical palette · painted-paper warmth · soft ink contours",
-      "spotless": "Cream paper · ruled lines · technical lettering",
-      "editor": "Neutral reading surfaces · restrained accents · paired light/dark",
-      "one-dark": "Charcoal surfaces · muted accents · dark editor palette",
-      "gruvbox": "Warm neutrals · earthy accents · paired light/dark",
-      "ayu": "Calm surfaces · amber accents · paired light/dark",
-      "prism": "Distinct data series · quiet structure · coordinated light/dark categories",
-      "monograph": "Black ink · white paper · grayscale hierarchy",
-      "porcelain": "Cobalt contours · warm porcelain · restrained glaze highlights",
-      "chalk": "Matte slate · crisp chalk lines · pastel categories",
-      "reading": "Shared semantic roles · coordinated light/dark surfaces · consistent category meaning",
-      "riso": "Two inks · offset color edges · condensed titles",
-      "phosphor": "Equipment panels · scanlines · focused signal glow",
-      "field-notes": "Forest-ink cards · ruled paper · lifted note slips",
-      "atlas": "Cool surfaces · precise outlines · clear hierarchy",
-      "nightfall": "Slate panels · soft contrast · quiet accents",
-      "letterpress": "Warm paper · serif typography · editorial contrast",
-      "grove": "Ivory surfaces · soft corners · mineral colors",
-      "blueprint": "Drafting grid · technical annotations · precise cyan outlines",
-      "pop-art": "Poster colors · bold contours · hard ink offsets",
-      "lacquer": "Lacquer panels · fine gold edges · serif titles",
-      "paper-cut": "Layered paper · coral and teal cut edges · soft depth",
-      "aurora": "Gradient night · curved light ribbons · suspended panels",
-      "metro": "Station signs · flat panels · clear route colors",
-      "carbon-copy": "Violet carbon edges · typewritten records · review marks",
-      "signal": "Equipment plates · hard mounted edges · warning stripes"
+    "colors": {
+      "accent": "Accent",
+      "canvas": "Canvas",
+      "surface": "Surface"
     },
-    "back": "All designs",
-    "apply": "Apply to my diagram",
-    "applyHint": "Applies this theme and appearance. The separate Mermaid fallback returns to Source / default. Your source, configuration, font override and diagram look stay as you set them.",
-    "downloadJson": "Download theme JSON",
-    "acrossDiagrams": "One design, across diagrams",
-    "fixedExamples": "Browse {{count}} saved examples together, or preview your current diagram. Open a sample in a new tab to edit it separately.",
-    "openSample": "Open sample",
-    "openSampleNamed": "Open {{name}} {{sample}} sample in a new tab",
-    "explore": "Explore design",
-    "exploreNamed": "Explore {{name}}",
-    "fiveDiagrams": "{{count}} diagram examples",
-    "current": "Current theme",
-    "useTitle": "Make it yours.",
-    "useHint": "Choose one integration below, or view, copy and edit the complete JSON. Rust, CLI, and Web are alternative ways to apply the same design.",
-    "themePurposeTitle": "Theme JSON · the visual design",
-    "themePurpose": "Colors, typography, canvas, and effects. Import this one theme into Playground, or load it from your application. It works with your own diagram source and options.",
-    "optionsPurposeTitle": "Example layout options · optional",
-    "optionsPurpose": "These Mermaid settings arrange the gallery samples, such as the look, label mode, and chart size. They are separate from the theme. Generated example projects already include them; you do not need to add them again.",
-    "themeFileHint": "For a file-based integration, save this JSON as theme.json. Downloaded example projects already contain it. You do not need the gallery's layout options to reuse the theme.",
-    "integrationExample": "Example diagram for this code",
-    "rustFormat": "Rust example format",
-    "rust_inline": "Single file · copy into main.rs",
-    "rust_files": "Project files · include_str!",
-    "rustHint_inline": "The theme, diagram, and example options are embedded in this one source file. No companion JSON or Mermaid files are needed by this code.",
-    "rustDependencies": "Add merman with the math feature and serde_json to Cargo.toml. Paste this code into src/main.rs, then run cargo run. Choose Project files for the complete example project.",
-    "rustHint_files": "Keep Cargo.toml, theme.json, diagram.mmd, and site-config.json at the project root, beside src/. include_str! paths are relative to src/main.rs. The diagram already includes the example options. Download the project to get this structure.",
-    "codeTarget": "Theme and integration code",
-    "tabs": {
-      "theme": "Theme JSON",
-      "rust": "Rust",
-      "cli": "CLI",
-      "web": "Web"
+    "fonts": {
+      "sans": "Sans serif",
+      "serif": "Serif",
+      "mono": "Monospace"
     },
-    "copy": "Copy",
-    "code": "Theme adoption code",
-    "companionFiles": "Choose a file in the project tree to inspect the dependencies and inputs. Download the example project for the full file structure and run instructions; its configuration is already wired together.",
-    "customRecipeHint": "This is a standalone custom theme, not a preset ID.",
-    "downloadProject": "Download example project",
-    "downloadRust": "Download main.rs",
-    "action_copied": "Copied.",
-    "action_downloaded": "Downloaded.",
-    "action_failed": "Could not copy or download. Try again.",
-    "downloadFile": "Download file",
-    "sampleAndFonts": "Example source, optional layout settings, and fonts",
-    "exampleSource": "Example Mermaid source",
-    "exampleOptions": "Example layout options · optional",
-    "exampleOptionsHint": "These inputs reproduce the selected gallery example. The JSON here is Mermaid diagram configuration, not the theme recipe. Generated code already applies it through the example's source directive. Keep your own source and layout settings when adopting only the theme.",
-    "coverageHint": "This design has dedicated styling for {{count}} diagram families. Other families are unreviewed unless listed as shared styling. Previewing a diagram does not verify every effect or export format.",
-    "runtimeFailed": "Code examples need the rendering runtime. You can still copy the theme JSON and optional example settings.",
-    "catalogRuntimeFailed": "The rendering runtime could not load. Built-in designs are unavailable; standalone recipes remain available."
-  },
-  "themeLibrary": {
-    "setup": {
-      "rust": "Keep the generated Cargo.toml and input files together, then run cargo run. The downloaded README explains the project layout.",
-      "cli": "Save the theme and diagram files, then run the displayed command. Download the example project for all inputs and run instructions.",
-      "web": "Install the dependencies in the generated package.json, then run npm run dev. The downloaded README explains the setup and input files."
+    "form": {
+      "density": "Density",
+      "edge_style": "Edge style",
+      "marker_style": "Arrow style"
     },
-    "currentFamily": "Use current diagram type",
-    "familyPrefix": "Diagram:",
-    "familyFilter": "Diagram family filter",
-    "allFamilies": "All diagram families",
-    "removeFamily": "Remove {{family}} filter",
-    "clearSearch": "Clear search",
-    "clearFilters": "Clear filters",
-    "styleFilter": "Design style filter",
-    "allStyles": "All styles",
-    "appearances": {
-      "all": "All designs",
-      "light": "Light",
-      "dark": "Dark",
-      "paired": "Light + dark"
+    "values": {
+      "compact": "Compact",
+      "balanced": "Balanced",
+      "airy": "Airy",
+      "curved": "Curved",
+      "orthogonal": "Orthogonal",
+      "straight": "Straight",
+      "sketch": "Sketch",
+      "stealth": "Stealth",
+      "filled": "Filled",
+      "open": "Open",
+      "classic": "Classic",
+      "flat": "Flat",
+      "soft": "Soft",
+      "crisp": "Crisp"
     },
-    "styles": {
+    "textures": {
+      "none": "None",
+      "grid": "Grid",
+      "dots": "Dots",
+      "ruled": "Ruled",
+      "fibers": "Fibers"
+    },
+    "categories": {
       "reading": "Reading",
-      "print": "Print",
-      "technical": "Technical",
-      "expressive": "Expressive",
-      "material": "Material"
+      "editor": "Editor",
+      "art": "Art",
+      "custom": "Custom"
     },
-    "coverage": {
-      "dedicated": "Dedicated design",
-      "base_only": "Reviewed shared styling",
-      "unreviewed": "Not yet reviewed"
+    "modes": {
+      "mermaid_parity": "Mermaid Classic",
+      "merman_native": "Merman Theme"
     },
-    "designedFor": "Designed for {{family}}",
-    "familyCount": "{{count}} diagram families",
-    "empty": {
-      "title": "No matching designs",
-      "family": "No reviewed designs match these filters for {{family}} yet. Clear the filters to explore other designs and try one with your diagram.",
-      "hint": "Try another appearance or style to find a design for your diagram.",
-      "searchHint": "Clearing filters keeps your search text. You can clear the search separately."
-    },
-    "customTheme": "Editable custom theme",
-    "useInProject": "Use in my project",
-    "requiresVersion": "Requires v{{version}} or newer",
-    "requiresMatchingSource": "New preset: use the matching Merman source build",
-    "adoptionSelection": "Example: {{family}} · {{appearance}}",
-    "preview": "Design preview",
-    "previewInput": "Preview diagram",
-    "sampleDiagram": "Diagram gallery",
-    "currentDiagram": "My current diagram",
-    "previewFamily": "Example diagram family",
-    "sampleGallery": "Diagram gallery",
-    "galleryHint": "Select a diagram to enlarge it, or use its example code.",
-    "sampleNotes": {
-      "radarDark": "The dark grid is bright in this example. Expand the chart to compare its outlines, or choose Light for a quieter grid."
-    },
-    "inspectSample": "Inspect {{family}} example",
-    "selectedExample": "Selected example",
-    "useExample": "Use this example",
-    "previousSample": "Previous example",
-    "nextSample": "Next example",
-    "currentPreviewHint": "This preview uses your source and configuration with the candidate theme. Your diagram stays unchanged until you apply it; project examples use the selected example family.",
-    "currentPreviewAlt": "Your current diagram with the {{name}} theme",
-    "previewFailed": "This preview could not be rendered. Try another example or check the source.",
-    "previewControls": "Preview controls",
-    "previewCanvas": "Interactive diagram preview",
-    "embeddedCanvasHint": "Drag to pan. Ctrl/⌘ + scroll to zoom; ordinary scrolling browses the page. On touch screens, expand the preview to pan and pinch.",
-    "expandedCanvasHint": "Drag to pan. Scroll or pinch to zoom. Fit brings the whole diagram back into view.",
-    "zoomIn": "Zoom in on design",
-    "zoomOut": "Zoom out of design",
-    "zoomLevel": "Preview zoom",
-    "fit": "Fit",
-    "expand": "Expand preview",
-    "collapse": "Return to detail",
-    "closeExpanded": "Close expanded preview",
-    "expandedTitle": "{{name}} design preview",
-    "showSource": "Show diagram source",
-    "hideSource": "Show diagram preview",
-    "currentSource": "Current Mermaid source",
-    "diagramConfiguration": "Diagram configuration"
+    "contrastWarning": "WCAG contrast warnings",
+    "contrastPass": "WCAG {{grade}} · theme colors",
+    "autoFix": "Auto-fix contrast",
+    "noContrastFix": "The resolver could not adjust the remaining colors automatically.",
+    "lowContrast": "{{foreground}} on {{background}} has {{ratio}}:1 contrast and needs {{minimum}}:1.",
+    "adjusted": "{{foreground}} was adjusted to {{color}}.",
+    "notices_one": "{{count}} theme notice",
+    "notices_other": "{{count}} theme notices"
   }
 }

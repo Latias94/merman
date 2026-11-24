@@ -10,7 +10,6 @@ mod static_validation;
 mod step_animation;
 mod text_tracking;
 
-pub(crate) use builtin::set_root_background_color;
 pub(crate) use builtin::util::{
     SvgTagScanner, checkpoint_loop, decode_xml_style_text_with_checkpoints, end_tag_name,
     escape_xml_attr_with_checkpoints, escape_xml_text_with_checkpoints,
@@ -148,8 +147,8 @@ pub struct ResvgCompatibleSvg {
     prepared_math_terminal_receipt: Option<PreparedMathTerminalReceipt>,
     prepared_math_evidence_valid: bool,
     finalization_report: SvgFinalizationReport,
-    font_catalog: crate::diagram_theme::FontCatalog,
-    font_source_policy: crate::diagram_theme::FontSourcePolicy,
+    font_catalog: crate::text::FontCatalog,
+    font_source_policy: crate::text::FontSourcePolicy,
 }
 
 /// Reference-expansion work retained by a sealed resvg-compatible SVG.
@@ -339,12 +338,12 @@ impl ResvgCompatibleSvg {
     }
 
     /// Returns the exact font catalog authorized by the render session.
-    pub const fn font_catalog(&self) -> &crate::diagram_theme::FontCatalog {
+    pub const fn font_catalog(&self) -> &crate::text::FontCatalog {
         &self.font_catalog
     }
 
     /// Returns the host-authorized source priority retained for native font resolution.
-    pub const fn font_source_policy(&self) -> &crate::diagram_theme::FontSourcePolicy {
+    pub const fn font_source_policy(&self) -> &crate::text::FontSourcePolicy {
         &self.font_source_policy
     }
 
@@ -510,18 +509,9 @@ impl SvgPipeline {
         }
     }
 
-    /// Returns whether the configured draft pipeline has no untrusted transformation that could
-    /// rewrite typed root or family output after the renderer emitted it.
-    ///
-    /// The terminal preset itself is renderer-owned and does not invalidate root evidence. A
-    /// custom postprocessor is conservatively treated as a mutation boundary until it provides a
-    /// dedicated preservation contract.
-    pub(crate) fn preserves_typed_theme_evidence(
-        &self,
-        family: Option<crate::DiagramFamilyId>,
-    ) -> bool {
-        !self
-            .postprocessors
+    /// Returns whether a host-provided postprocessor applies to this output.
+    pub(crate) fn has_custom_postprocessors(&self, family: Option<crate::DiagramFamilyId>) -> bool {
+        self.postprocessors
             .iter()
             .any(|entry| entry.applies_to(family))
     }
@@ -1137,9 +1127,7 @@ mod tests {
             let pipeline =
                 SvgPipeline::parity().with_postprocessor(ScopedCssPostprocessor::new(css));
             assert_eq!(pipeline.has_scoped_css(), !css.trim().is_empty());
-            assert!(
-                !pipeline.preserves_typed_theme_evidence(Some(crate::DiagramFamilyId::FLOWCHART))
-            );
+            assert!(pipeline.has_custom_postprocessors(Some(crate::DiagramFamilyId::FLOWCHART)));
         }
     }
 
@@ -1315,7 +1303,7 @@ mod tests {
     fn strict_parity_artifact_is_compatible_when_its_bytes_satisfy_the_terminal_contract() {
         let session = crate::environment::RenderEnvironment::deterministic()
             .with_theme_portability_requirement(
-                crate::diagram_theme::ThemePortabilityRequirement::RequirePortable,
+                crate::theme::ThemePortabilityRequirement::RequirePortable,
             )
             .begin_session()
             .unwrap();

@@ -5,7 +5,7 @@ use merman_model::families::railroad::RailroadDiagramModel;
 pub(crate) fn render_railroad_diagram_svg_model(
     layout: &RailroadDiagramLayout,
     model: &RailroadDiagramModel,
-    typography_theme: &crate::railroad::RailroadTypographyThemePlan,
+    style: &crate::railroad::RailroadStyle,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
@@ -16,18 +16,15 @@ pub(crate) fn render_railroad_diagram_svg_model(
     let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
     let root_bounds = root_svg::DiagramBounds::from_view_box(0.0, 0.0, layout.width, layout.height);
     let root_spec = root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width);
-    let style = typography_theme.style();
-
     let mut out = BoundedSvgOutput::new(options.work_meter());
-    let mut surface_receipt = typography_theme.begin_terminal_receipt();
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, &layout.diagram_type);
     root_chrome.class = Some("railroad-diagram");
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
     root_chrome.aria_describedby = aria_describedby.as_deref();
     root_chrome.dom.trailing_newline = false;
-    let root_document =
-        root_svg::RootViewportContext::new(crate::DiagramFamilyId::RAILROAD, diagram_id)
-            .write_open(&mut out, root_spec, root_chrome)?;
+    let root_document = options
+        .root_viewport(crate::DiagramFamilyId::RAILROAD, diagram_id)
+        .write_open(&mut out, root_spec, root_chrome)?;
 
     if let Some(title) = acc_title {
         let _ = write!(
@@ -90,7 +87,7 @@ pub(crate) fn render_railroad_diagram_svg_model(
             fmt(rule.baseline_y - definition_up)
         );
         out.checkpoint()?;
-        push_render_node(&mut out, &render_node, &mut surface_receipt)?;
+        push_render_node(&mut out, &render_node, style.terminal_radius)?;
         out.push_str("</g>");
         out.checkpoint()?;
         let _ = write!(
@@ -100,7 +97,6 @@ pub(crate) fn render_railroad_diagram_svg_model(
             escape_xml_display(&rule.name)
         );
         out.checkpoint()?;
-        surface_receipt.record_rule_name_occurrence(&style.rule_name_color);
         let _ = write!(
             &mut out,
             r#"<g class="railroad-start"><circle cx="{}" cy="{}" r="{}"></circle></g><g class="railroad-end"><circle cx="{}" cy="{}" r="{}"></circle></g>"#,
@@ -120,19 +116,13 @@ pub(crate) fn render_railroad_diagram_svg_model(
     }
 
     out.push_str("</svg>\n");
-    let rooted_svg = root_document.complete(out.finish()?)?;
-    if !typography_theme.record_terminal(surface_receipt) {
-        return Err(crate::Error::InvalidModel {
-            message: "Railroad typography receipt was recorded more than once".to_string(),
-        });
-    }
-    Ok(rooted_svg)
+    root_document.complete(out.finish()?)
 }
 
 fn push_render_node(
     out: &mut impl SvgOutput,
     node: &crate::railroad::RailroadRenderNode,
-    surface_receipt: &mut crate::railroad::RailroadSurfaceReceipt,
+    terminal_radius: f64,
 ) -> Result<()> {
     match node {
         crate::railroad::RailroadRenderNode::Group {
@@ -145,13 +135,13 @@ fn push_render_node(
             out.push('>');
             out.checkpoint()?;
             for child in children {
-                push_render_node(out, child, surface_receipt)?;
+                push_render_node(out, child, terminal_radius)?;
             }
             out.push_str("</g>");
             out.checkpoint()
         }
         crate::railroad::RailroadRenderNode::Element { layout, transform } => {
-            push_element(out, layout, *transform, surface_receipt)
+            push_element(out, layout, *transform, terminal_radius)
         }
         crate::railroad::RailroadRenderNode::Path(path) => push_path(out, path),
     }
@@ -181,7 +171,7 @@ fn push_element(
     out: &mut impl SvgOutput,
     element: &RailroadElementLayout,
     transform: Option<(f64, f64)>,
-    surface_receipt: &mut crate::railroad::RailroadSurfaceReceipt,
+    terminal_radius: f64,
 ) -> Result<()> {
     let class = match element.kind.as_str() {
         "terminal" => "railroad-terminal",
@@ -196,9 +186,10 @@ fn push_element(
         "terminal" => {
             let _ = write!(
                 out,
-                r#"<rect x="0" y="0" width="{}" height="{}" rx="10" ry="10"></rect>"#,
+                r#"<rect x="0" y="0" width="{}" height="{}" rx="{radius}" ry="{radius}"></rect>"#,
                 fmt(element.width),
-                fmt(element.height)
+                fmt(element.height),
+                radius = fmt(terminal_radius),
             );
         }
         _ => {
@@ -217,15 +208,7 @@ fn push_element(
         fmt(element.text_y),
         escape_xml_display(&element.label)
     );
-    out.checkpoint()?;
-    match element.kind.as_str() {
-        "terminal" => surface_receipt.record_terminal_text(&element.label),
-        "nonterminal" => surface_receipt.record_nonterminal_text(&element.label),
-        "comment" => surface_receipt.record_comment_text(&element.label),
-        "special" => surface_receipt.record_special_text(&element.label),
-        _ => {}
-    }
-    Ok(())
+    out.checkpoint()
 }
 
 fn write_railroad_css_scope(out: &mut impl SvgOutput, diagram_id_css: &str) -> Result<()> {
@@ -242,6 +225,10 @@ fn write_railroad_css(
 ) -> Result<()> {
     let diagram_id_css = crate::svg::escape_css_identifier(diagram_id);
     let font_size_css = fmt_string(style.font_size);
+    let title_weight = style
+        .native_typography
+        .as_ref()
+        .map(|typography| typography.title_weight.to_string());
 
     let _ = write!(
         out,
@@ -264,7 +251,9 @@ fn write_railroad_css(
     let _ = write!(
         out,
         " .railroad-terminal text{{fill:{};font-family:{};font-size:{}px;text-anchor:middle;dominant-baseline:middle;}}",
-        style.terminal_text_color, style.font_family, font_size_css
+        style.terminal_text_color,
+        style.terminal_font_family(),
+        font_size_css
     );
     out.checkpoint()?;
 
@@ -291,7 +280,7 @@ fn write_railroad_css(
         out,
         " .railroad-line{{stroke:{};stroke-width:{}px;fill:none;}}",
         style.line_color,
-        fmt(style.stroke_width)
+        fmt(style.connector_width.unwrap_or(style.stroke_width))
     );
     out.checkpoint()?;
 
@@ -340,8 +329,11 @@ fn write_railroad_css(
     write_railroad_css_scope(out, &diagram_id_css)?;
     let _ = write!(
         out,
-        " .railroad-rule-name{{font-weight:bold;fill:{};font-family:{};font-size:{}px;}}",
-        style.rule_name_color, style.font_family, font_size_css
+        " .railroad-rule-name{{font-weight:{};fill:{};font-family:{};font-size:{}px;}}",
+        title_weight.as_deref().unwrap_or("bold"),
+        style.rule_name_color,
+        style.rule_name_font_family(),
+        font_size_css
     );
     out.checkpoint()?;
 

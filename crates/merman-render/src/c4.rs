@@ -9,12 +9,14 @@ use serde_json::Value;
 use unicode_segmentation::UnicodeSegmentation;
 
 mod config;
+mod native_theme;
 mod theme;
 
 pub(crate) use config::{
     C4_DEFAULT_FONT_FAMILY, C4_ELEMENT_TYPES, C4ConfigView, C4LayoutSettings, C4Look,
     default_use_max_width,
 };
+pub(crate) use native_theme::{C4NativeStyle, C4ThemeAdapter};
 pub(crate) use theme::C4ClusterThemePlan;
 
 type C4Model = C4DiagramModel;

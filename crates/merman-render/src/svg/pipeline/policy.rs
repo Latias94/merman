@@ -85,7 +85,14 @@ mod tests {
         }
         .pipeline();
 
-        assert!(pipeline.preserves_prepared_math_evidence(None));
+        for family in crate::DiagramFamilyId::all()
+            .iter()
+            .copied()
+            .map(Some)
+            .chain([None])
+        {
+            assert!(pipeline.preserves_prepared_math_evidence(family));
+        }
     }
 
     #[test]
@@ -101,38 +108,9 @@ mod tests {
     }
 
     #[test]
-    fn canonical_gitgraph_pass_only_invalidates_its_own_family() {
-        use crate::DiagramFamilyId;
-        let pipeline = SvgOutputPolicy {
-            preset: SvgPipelinePreset::ResvgSafe,
-            ..SvgOutputPolicy::default()
-        }
-        .pipeline();
-        for family in DiagramFamilyId::all()
-            .iter()
-            .copied()
-            .map(Some)
-            .chain([None])
-        {
-            let preserves = family.is_some_and(|family| family != DiagramFamilyId::GIT_GRAPH);
-            assert_eq!(pipeline.preserves_typed_theme_evidence(family), preserves);
-            assert!(pipeline.preserves_prepared_math_evidence(family));
-        }
-    }
-
-    #[test]
-    fn family_scoping_does_not_exempt_global_or_public_postprocessors() {
-        let background = SvgOutputPolicy {
-            preset: SvgPipelinePreset::ResvgSafe,
-            root_background_color: Some("#111827".to_owned()),
-            ..SvgOutputPolicy::default()
-        }
-        .pipeline();
-        let family = Some(crate::DiagramFamilyId::SEQUENCE);
-        assert!(!background.preserves_typed_theme_evidence(family));
+    fn public_postprocessors_invalidate_renderer_owned_math_evidence() {
         let custom =
             SvgPipeline::resvg_safe().with_postprocessor(GitGraphBranchLabelBaselinePostprocessor);
-        assert!(!custom.preserves_typed_theme_evidence(family));
-        assert!(!custom.preserves_prepared_math_evidence(family));
+        assert!(!custom.preserves_prepared_math_evidence(Some(crate::DiagramFamilyId::SEQUENCE)));
     }
 }
