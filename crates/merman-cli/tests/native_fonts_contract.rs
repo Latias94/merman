@@ -2245,6 +2245,18 @@ fn raw_svg_fonts_are_conversion_only_and_each_compiled_codec_works() {
         let blank = raw_conversion(format, blank_svg, &["--font-system=off"]);
         assert!(blank.status.success(), "{format}: {blank:?}");
         assert!(blank.stdout.starts_with(magic), "{format}");
+        for target in [
+            r#"<g id="label"/>"#,
+            r#"<rect id="label" width="20" height="20"/>"#,
+        ] {
+            let input = RAW_PATH_SVG.replace(
+                "</svg>",
+                &format!(r##"<defs>{target}</defs><text><tref href="#label"/></text></svg>"##),
+            );
+            let output = raw_conversion(format, &input, &["--font-system=off"]);
+            assert!(output.status.success(), "{format}: {output:?}");
+            assert_eq!(output.stdout, paths.stdout, "{format}: {target}");
+        }
 
         for input in [RAW_FONT_SVG, RAW_NESTED_FONT_SVG, RAW_TREF_FONT_SVG] {
             let no_fonts = raw_conversion(format, input, &["--font-system=off"]);
@@ -2335,6 +2347,61 @@ fn raw_svg_fonts_are_conversion_only_and_each_compiled_codec_works() {
         );
         assert_eq!(rejected.status.code(), Some(2));
         assert!(rejected.stdout.is_empty());
+    }
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[test]
+fn raw_svg_resource_links_use_the_effective_href() {
+    let font = font();
+    let cases = [
+        (
+            "linearGradient",
+            r##"<defs><linearGradient id="current"><stop stop-color="black"/></linearGradient><linearGradient id="paint" HREF/></defs><rect width="30" height="30" fill="url(#paint)"/>"##,
+            &[][..],
+        ),
+        (
+            "feImage",
+            r##"<defs><rect id="current" width="30" height="30"/><filter id="effect"><feImage HREF/></filter></defs><rect width="30" height="30" filter="url(#effect)"/>"##,
+            &[][..],
+        ),
+        (
+            "textPath",
+            r##"<defs><path id="current" d="M10 40 H190"/></defs><text font-family="Cousine"><textPath HREF>Native font</textPath></text>"##,
+            &["--font-file", font.as_str()][..],
+        ),
+    ];
+    let formats = [
+        #[cfg(feature = "png")]
+        "png",
+        #[cfg(feature = "jpeg")]
+        "jpeg",
+        #[cfg(feature = "pdf")]
+        "pdf",
+    ];
+    for (element, template, font_options) in cases {
+        let svg = |href| {
+            let content = template.replace("HREF", href);
+            format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:x="http://www.w3.org/1999/xlink" width="200" height="80">{content}</svg>"#
+            )
+        };
+        let options = [&["--font-system=off"][..], font_options].concat();
+        for format in formats {
+            let baseline = raw_conversion(format, &svg(r##"href="#current""##), &options);
+            assert!(
+                baseline.status.success(),
+                "{element}/{format}: {baseline:?}"
+            );
+            for href in [
+                r##"href="#current" x:href="#old""##,
+                r##"x:href="#old" href="#current""##,
+            ] {
+                let output = raw_conversion(format, &svg(href), &options);
+                assert!(output.status.success(), "{element}/{format}: {output:?}");
+                assert_eq!(output.stdout, baseline.stdout, "{element}/{format}: {href}");
+            }
+        }
     }
 }
 

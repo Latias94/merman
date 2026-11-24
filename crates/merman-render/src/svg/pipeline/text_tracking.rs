@@ -1,7 +1,6 @@
-use quick_xml::events::BytesStart;
-use quick_xml::name::{NamespaceResolver, ResolveResult};
-
-const SVG_NAMESPACE: &str = "http://www.w3.org/2000/svg";
+use super::checkpoint_loop;
+use crate::Result;
+use std::ops::Range;
 
 /// An asset-free SVG is font-independent only when it contains no rendered text.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,70 +22,89 @@ impl SvgFontSeal {
     }
 }
 
-/// Counts SVG text elements with character content or local text references.
+/// Counts SVG text elements with character data, including data copied by a `tref`.
 /// Empty Mermaid parity text and tspan nodes do not select or paint a font face.
 #[derive(Debug, Default)]
 pub(super) struct SvgTextContentTracker {
-    element_stack: Vec<bool>,
-    open_text_stack: Vec<bool>,
-    text_element_count: usize,
+    open_text: Vec<OpenText>,
+    references: Vec<String>,
+    pending_text: Vec<Range<usize>>,
+    count: usize,
+}
+
+#[derive(Debug)]
+struct OpenText {
+    depth: usize,
+    first_reference: usize,
+    has_content: bool,
 }
 
 impl SvgTextContentTracker {
-    pub(super) fn observe_start(
-        &mut self,
-        element: &BytesStart<'_>,
-        resolver: &NamespaceResolver,
-    ) -> Option<()> {
-        let (namespace, local_name) = resolver.resolve_element(element.name());
-        let is_svg_element = match namespace {
-            ResolveResult::Unknown(_) => return None,
-            ResolveResult::Unbound => true,
-            ResolveResult::Bound(namespace) => namespace.as_ref() == SVG_NAMESPACE,
-        };
-        let is_text = is_svg_element && local_name.as_ref().eq_ignore_ascii_case("text");
-        self.element_stack.push(is_text);
-        if is_text {
-            self.open_text_stack.push(false);
-        }
-        Some(())
+    pub(super) fn observe_start(&mut self, depth: usize) {
+        self.open_text.push(OpenText {
+            depth,
+            first_reference: self.references.len(),
+            has_content: false,
+        });
     }
 
-    pub(super) fn observe_end(&mut self) -> Option<()> {
-        if !self.element_stack.pop()? {
-            return Some(());
+    pub(super) fn observe_end(&mut self, depth: usize) {
+        let Some(text) = self.open_text.pop_if(|text| text.depth == depth) else {
+            return;
+        };
+        if text.has_content {
+            self.count += 1;
+            self.observe_character();
+        } else if text.first_reference < self.references.len() {
+            self.pending_text
+                .push(text.first_reference..self.references.len());
         }
-        if self.open_text_stack.pop()? {
-            self.text_element_count = self.text_element_count.checked_add(1)?;
-            if let Some(parent) = self.open_text_stack.last_mut() {
-                *parent = true;
-            }
-        }
-        Some(())
     }
 
     pub(super) fn observe_content(&mut self, content: &str) {
-        if !content.is_empty()
-            && let Some(text) = self.open_text_stack.last_mut()
-        {
-            *text = true;
+        if !content.is_empty() {
+            self.observe_character();
         }
     }
 
-    pub(super) fn observe_reference(&mut self, local_text_reference: bool) {
-        if local_text_reference && let Some(text) = self.open_text_stack.last_mut() {
-            *text = true;
+    pub(super) fn observe_reference(&mut self, target: String) {
+        if !self.open_text.is_empty() {
+            self.references.push(target);
         }
     }
 
-    pub(super) fn observe_character(&mut self, _character: char) {
-        if let Some(text) = self.open_text_stack.last_mut() {
-            *text = true;
+    pub(super) fn observe_character(&mut self) {
+        if let Some(text) = self.open_text.last_mut() {
+            text.has_content = true;
         }
     }
 
-    pub(super) fn text_element_count(&self) -> usize {
-        self.text_element_count
+    pub(super) fn has_pending_text(&self) -> bool {
+        !self.pending_text.is_empty()
+    }
+
+    pub(super) fn text_element_count(
+        self,
+        target_has_text: impl Fn(&str) -> bool,
+        mut checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<usize> {
+        let mut count = self.count;
+        let mut examined = 0;
+        let mut last_match = None;
+        // Text closes in order of range end. Resolve each reference at most once,
+        // even when a forward reference contributes to nested text elements.
+        for (iteration, range) in self.pending_text.into_iter().enumerate() {
+            checkpoint_loop(iteration, &mut checkpoint)?;
+            for index in examined..range.end {
+                checkpoint_loop(index, &mut checkpoint)?;
+                if target_has_text(&self.references[index]) {
+                    last_match = Some(index);
+                }
+            }
+            examined = range.end;
+            count += usize::from(last_match.is_some_and(|index| index >= range.start));
+        }
+        Ok(count)
     }
 }
 
@@ -99,22 +117,27 @@ mod tests {
     fn text_count(svg: &str) -> usize {
         let mut reader = NsReader::from_str(svg);
         let mut tracker = SvgTextContentTracker::default();
+        let mut depth = 0;
         loop {
             match reader.read_event().unwrap() {
                 Event::Start(element) => {
-                    tracker.observe_start(&element, reader.resolver()).unwrap();
+                    if element.local_name().as_ref() == "text" {
+                        tracker.observe_start(depth);
+                    }
+                    depth += 1;
                 }
-                Event::End(_) => tracker.observe_end().unwrap(),
+                Event::End(_) => {
+                    depth -= 1;
+                    tracker.observe_end(depth);
+                }
                 Event::Text(text) => tracker.observe_content(&text.xml10_content()),
                 Event::CData(text) => tracker.observe_content(&text.xml10_content()),
-                Event::GeneralRef(reference) => {
-                    tracker.observe_character(reference.resolve_char_ref().unwrap().unwrap());
-                }
+                Event::GeneralRef(_) => tracker.observe_character(),
                 Event::Eof => break,
                 _ => {}
             }
         }
-        tracker.text_element_count()
+        tracker.text_element_count(|_| false, || Ok(())).unwrap()
     }
 
     #[test]
