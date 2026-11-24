@@ -685,7 +685,7 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
     if path.startswith("capabilities/"):
         return _ALL_OWNERS, f"shared capability schema changed: {path}", True
     if path == "schemas/theme-v2.schema.json":
-        return _CORE_OWNERS, f"native theme schema changed: {path}", False
+        return _CORE_OWNERS | {"web"}, f"native theme schema changed: {path}", False
     if path == "crates/merman/Cargo.toml":
         return (
             frozenset({"core", "fuzz", "hygiene", "performance"}),

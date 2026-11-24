@@ -247,6 +247,20 @@ class PlannerTests(unittest.TestCase):
         )
         self.assertTrue(plan["svg_parity"])
 
+    def test_theme_schema_change_selects_compiler_and_playground_owners(self) -> None:
+        plan = plan_changes(
+            parse_name_status_z(b"M\0schemas/theme-v2.schema.json\0"),
+            base="a" * 40,
+            head="b" * 40,
+        )
+
+        self.assertFalse(plan["fallback"])
+        self.assertEqual(
+            {name for name, enabled in plan["owners"].items() if enabled},
+            {"core", "hygiene", "web"},
+        )
+        self.assertFalse(plan["svg_parity"])
+
     def test_svg_parity_selector_uses_explicit_input_boundaries(self) -> None:
         fixtures = {
             "scripts/verify_v2_presets.py": False,
