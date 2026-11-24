@@ -9,10 +9,11 @@ The extension has not yet been published. These entries remain `Unreleased` for 
 - Added the initial Merman VS Code preview extension with local Mermaid diagnostics, completion, hover, symbols, references, rename, code actions, Tree-sitter-backed syntax highlighting, preview, SVG/PNG export, and copy actions.
 - Added bundled `merman-lsp` and `merman-cli` runtime binaries per platform through `bin/<platform>-<arch>/`.
 - Added standard LSP semantic-token highlighting produced from the canonical Tree-sitter Mermaid query.
+- Added the v2 Merman theme catalog and custom theme documents, with editor-aware appearance and shared colors across SVG, Unicode, and ASCII previews.
 
 ### Compatibility
 
 - The first release targets the Mermaid `12.3.0` parser-backed language stack and requires VS Code `1.145.0` or later. Use `merman.diagnostics.enabled` to control Problems without disabling language intelligence.
-- Prepared runtime binaries follow the Merman `0.10.0-alpha.2` candidate; the extension keeps its independent `0.1.0` version. Native CLI preview/export uses deterministic text measurement by default and transparent SVG backgrounds. Set an explicit background when opaque SVG is required.
+- Prepared runtime binaries follow the Merman `0.10.0-alpha.2` candidate. The extension keeps its independent `0.1.0` version. Native CLI preview and export use deterministic text measurement. The canvas setting overrides the theme background when set explicitly.
 - Custom `merman-lsp` binaries must provide the standard LSP capabilities used by the extension and the compatible Merman analysis-config contract.
 - Packaged VSIX artifacts now include the project license, source-provenance notice, and exact third-party license texts; preview SVG follows the shared DOM safety policy.

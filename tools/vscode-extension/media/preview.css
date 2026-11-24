@@ -166,6 +166,19 @@ summary {
   pointer-events: auto;
 }
 
+.text-preview[data-appearance="light"] {
+  color-scheme: light;
+}
+
+.text-preview[data-appearance="dark"] {
+  color-scheme: dark;
+}
+
+.text-preview[data-appearance] {
+  color: CanvasText;
+  background: Canvas;
+}
+
 .toolbar,
 .preview-sourcebar,
 .preview-status,

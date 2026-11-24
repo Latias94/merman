@@ -4,7 +4,6 @@ export type RenderFormat = "svg" | "ascii" | "unicode" | "png" | "pdf";
 
 export interface DiagramRenderSettings {
   theme?: string;
-  themePreset?: string;
   themeFileContent?: string;
   themeAppearance?: ThemeAppearance;
   background?: string;
@@ -16,11 +15,8 @@ export function resolvedRenderSettings(
 ): DiagramRenderSettings {
   return {
     theme: theme?.theme,
-    themePreset: theme?.themePreset,
     themeFileContent: theme?.themeFileContent,
-    themeAppearance: theme?.themePreset || theme?.themeFileContent
-      ? theme.effectiveAppearance
-      : undefined,
+    themeAppearance: theme?.effectiveAppearance,
     background,
   };
 }
@@ -40,25 +36,22 @@ export function renderMermanArgs(request: DiagramRenderSettings & {
     request.format,
     "--quiet",
   ];
-  if (request.theme && request.theme !== "source") {
-    args.push("--theme", request.theme);
+  const theme = request.themeFilePath ?? request.theme;
+  if (theme && theme !== "source") {
+    args.push("--theme", theme);
+    if (request.themeAppearance) {
+      args.push("--appearance", request.themeAppearance);
+    }
+    args.push("--theme-precedence", "host");
   }
   if (request.inputKind) {
     args.push("--input-kind", request.inputKind);
   }
-  const graphical = request.format !== "ascii" && request.format !== "unicode";
-  if (graphical && request.themePreset) {
-    args.push("--theme-preset", request.themePreset);
-  }
-  if (graphical && request.themeFilePath) {
-    args.push("--theme-file", request.themeFilePath);
-  }
-  if (graphical && request.themeAppearance) {
-    args.push("--theme-appearance", request.themeAppearance);
-  }
-  if (
-    request.background && graphical
-  ) {
+  if (request.format === "ascii" || request.format === "unicode") {
+    if (theme && theme !== "source") {
+      args.push("--ascii-color", "truecolor");
+    }
+  } else if (request.background) {
     args.push("--background", request.background);
   }
   return args;

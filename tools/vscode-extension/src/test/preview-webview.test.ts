@@ -4,6 +4,9 @@ import * as path from "node:path";
 import * as vm from "node:vm";
 import { describe, it } from "node:test";
 
+import type { ThemeChoice } from "../theme-selection.js";
+import { v2ThemeDiscovery } from "./theme-fixtures.js";
+
 describe("preview webview app", () => {
   it("keeps the displayed SVG and its backing together while a new appearance is pending", () => {
     const app = loadPreviewApp();
@@ -35,33 +38,45 @@ describe("preview webview app", () => {
     assert.equal(app.document.frame.dataset.background, "dark");
   });
 
-  it("shows one runtime-owned theme selector and an appearance selector only for pairs", () => {
+  it("groups the v2 catalog and shows an appearance selector only for two-mode themes", () => {
     const app = loadPreviewApp();
+    const { choices } = v2ThemeDiscovery();
     app.dispatch({
       type: "settingsUpdated",
       snapshot: snapshot({
-        diagramTheme: "preset:editor",
+        diagramTheme: "studio",
         appearancePreference: "follow-editor",
         effectiveAppearance: "dark",
         supportedAppearances: ["light", "dark"],
-        themeChoices: [
-          { id: "preset:editor", label: "Merman · Editor", available: true },
-          { id: "preset:future", label: "Unavailable future theme", available: false },
-        ],
+        themeChoices: choices,
       }),
     });
     assert.equal(app.document.appearanceLabel.hidden, false);
-    assert.equal(app.document.theme.children[1]?.disabled, true);
-    assert.equal(app.document.theme.value, "preset:editor");
+    const [source, merman, mermaid, file] = app.document.theme.children;
+    assert.equal(source?.value, "source");
+    assert.equal(merman?.tagName, "optgroup");
+    assert.equal(merman?.label, "Merman Themes");
+    assert.deepEqual(merman?.children.map((option) => option.textContent), ["Studio (Light / Dark)", "Paper Cut (Light only)"]);
+    assert.equal(mermaid?.label, "Mermaid Classic (Parity)");
+    assert.ok(mermaid?.children.some((option) => option.value === "neo"));
+    assert.equal(file?.textContent, "Custom File");
+    assert.equal(app.document.importTheme.hidden, false);
+    assert.equal(app.document.theme.value, "studio");
     assert.match(app.document.themeSummary.textContent, /Following editor · dark/);
-    app.dispatch({
-      type: "settingsUpdated",
-      snapshot: snapshot({ effectiveAppearance: "light", supportedAppearances: ["light"] }),
-    });
-    assert.equal(app.document.appearanceLabel.hidden, true);
-    assert.match(app.document.themeSummary.textContent, /light only/);
     app.document.appearance.value = "dark";
     app.dispatchDocument("change", { target: app.document.appearance });
+    app.dispatch({
+      type: "settingsUpdated",
+      snapshot: snapshot({
+        diagramTheme: "paper-cut",
+        effectiveAppearance: "light",
+        supportedAppearances: ["light"],
+        themeNotice: "This theme does not provide dark. Using light.",
+        themeChoices: choices,
+      }),
+    });
+    assert.equal(app.document.appearanceLabel.hidden, true);
+    assert.match(app.document.themeSummary.textContent, /Using light/);
     app.document.viewerBackground.value = "paper";
     app.dispatchDocument("change", { target: app.document.viewerBackground });
     app.click(app.document.importTheme);
@@ -520,6 +535,27 @@ describe("preview webview app", () => {
     assert.equal(app.document.outputControls.hidden, true);
   });
 
+  it("paints truecolor text runs and preserves the diagram's literal labels and whitespace", () => {
+    const app = loadPreviewApp();
+    const label = "A ─▶ <B>";
+    app.dispatch({
+      type: "renderSucceeded",
+      requestId: 1,
+      snapshot: snapshot({ displayMode: "unicode", effectiveAppearance: "dark" }),
+      content: `  \x1b[38;2;1;2;3m\x1b[48;2;4;5;6m${label}\x1b[0m\n`,
+    });
+
+    const textPreview = app.document.canvas.querySelector(".text-preview");
+    assert.equal(textPreview?.dataset.appearance, "dark");
+    assert.equal(textPreview?.textContentTree(), `  ${label}\n`);
+    const [, colored, reset] = textPreview?.children ?? [];
+    assert.equal(colored?.tagName, "span");
+    assert.equal(colored?.textContent, label);
+    assert.equal(colored?.style.getPropertyValue("color"), "rgb(1, 2, 3)");
+    assert.equal(colored?.style.getPropertyValue("background-color"), "rgb(4, 5, 6)");
+    assert.equal(reset?.style.getPropertyValue("color"), "");
+  });
+
   it("discards shadow-hosted SVG before text and empty renders", () => {
     const app = loadPreviewApp();
 
@@ -873,7 +909,8 @@ function snapshot(options: {
   supportedAppearances?: string[];
   appearancePreference?: string;
   viewerBackground?: string;
-  themeChoices?: Array<{ id: string; label: string; available: boolean }>;
+  themeChoices?: ThemeChoice[];
+  themeNotice?: string;
   themeSelection?: string;
   locked?: boolean;
   sources?: Array<{
@@ -905,6 +942,7 @@ function snapshot(options: {
     appearancePreference: options.appearancePreference,
     viewerBackground: options.viewerBackground,
     themeChoices: options.themeChoices,
+    themeNotice: options.themeNotice,
     locked,
     sourceKey: {
       documentUri,
@@ -1024,6 +1062,8 @@ class FakeDocument {
         return this.appearance;
       case "[data-preview-appearance]":
         return this.appearanceLabel;
+      case '[data-action="import-theme"]':
+        return this.importTheme;
       case "[data-preview-theme-summary]":
         return this.themeSummary;
       case '[data-action="viewer-background"]':
@@ -1087,6 +1127,7 @@ class FakeElement {
   className = "";
   textContent = "";
   title = "";
+  label = "";
   type = "";
   value = "";
   selected = false;
@@ -1311,6 +1352,10 @@ class FakeStyleDeclaration {
 
   setProperty(name: string, value: string): void {
     this.properties.set(name, value);
+  }
+
+  getPropertyValue(name: string): string {
+    return this.properties.get(name) ?? "";
   }
 }
 

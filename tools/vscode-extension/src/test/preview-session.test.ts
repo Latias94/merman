@@ -3,7 +3,7 @@ import type * as vscode from "vscode";
 import { describe, it } from "node:test";
 
 import { PreviewSession } from "../preview-session.js";
-import { pairedThemeDiscovery } from "./theme-fixtures.js";
+import { v2ThemeDiscovery } from "./theme-fixtures.js";
 
 describe("preview session", () => {
   it("keeps configured and panel-owned theme files distinct across selection changes and reset", () => {
@@ -15,7 +15,7 @@ describe("preview session", () => {
       defaultAppearance: "light" as const,
     };
     const imported = { ...configured, content: "panel-recipe", label: "panel.theme.json" };
-    session.configureThemes(pairedThemeDiscovery(), "light");
+    session.configureThemes(v2ThemeDiscovery(), "light");
     assert.equal(session.usesConfiguredThemeFile, true);
     assert.equal(session.setConfiguredThemeFile("workspace-key", configured), true);
     assert.equal(session.configuredThemeFileKey, "workspace-key");
@@ -67,8 +67,8 @@ describe("preview session", () => {
   it("remembers editor appearance changes before a configured file has completed admission", () => {
     const session = new PreviewSession({ diagramTheme: "file" });
     const editor = textEditor("file:///workspace/example.mmd", "example.mmd", "flowchart TD\nA --> B\n");
-    session.configureThemes(pairedThemeDiscovery(), "light");
-    assert.equal(session.setHostAppearance("dark"), false);
+    session.configureThemes(v2ThemeDiscovery(), "light");
+    session.setHostAppearance("dark");
     session.setConfiguredThemeFile("workspace-key", {
       content: "configured-recipe",
       label: "configured.theme.json",
@@ -81,8 +81,8 @@ describe("preview session", () => {
   it("retains a pinned appearance while Source/default temporarily owns the diagram appearance", () => {
     const session = new PreviewSession();
     const editor = textEditor("file:///workspace/example.mmd", "example.mmd", "flowchart TD\nA --> B\n");
-    session.configureThemes(pairedThemeDiscovery(), "light");
-    session.setDiagramTheme("preset:editor");
+    session.configureThemes(v2ThemeDiscovery(), "light");
+    session.setDiagramTheme("studio");
     session.setAppearance("dark");
 
     session.setDiagramTheme("source");
@@ -90,37 +90,37 @@ describe("preview session", () => {
     assert.equal(snapshot.appearancePreference, "dark");
     assert.equal(snapshot.resolvedTheme?.effectiveAppearance, undefined);
     assert.equal(snapshot.resolvedTheme?.theme, undefined);
-    assert.equal(session.setHostAppearance("dark"), false);
-    assert.equal(session.setHostAppearance("light"), false);
+    session.setHostAppearance("dark");
+    session.setHostAppearance("light");
 
-    session.setDiagramTheme("preset:editor");
+    session.setDiagramTheme("studio");
     snapshot = assertDefined(session.createSnapshot(editor, [editor], emptyDiagnostics));
     assert.equal(snapshot.appearancePreference, "dark");
     assert.equal(snapshot.resolvedTheme?.effectiveAppearance, "dark");
   });
 
-  it("retains a pinned appearance across an imported unclassified recipe and source changes", () => {
+  it("retains a pinned appearance across a single-mode import and source changes", () => {
     const session = new PreviewSession();
     const first = textEditor("file:///workspace/one.mmd", "one.mmd", "flowchart TD\nA --> B\n");
     const second = textEditor("file:///other-workspace/two.mmd", "two.mmd", "sequenceDiagram\nA->>B: hi\n");
-    const content = '{"schema_version":1,"kind":"design","design":{"canvas":{"base":"#fff"}}}';
-    session.configureThemes(pairedThemeDiscovery(), "dark");
-    session.setDiagramTheme("preset:editor");
+    const content = '{"schema_version":2,"extends":"blueprint"}';
+    session.configureThemes(v2ThemeDiscovery(), "dark");
+    session.setDiagramTheme("studio");
     session.setAppearance("light");
-    session.importTheme({ content, label: "unclassified.theme.json", supportedAppearances: [] });
+    session.importTheme({ content, label: "blueprint.theme.json", supportedAppearances: ["dark"], defaultAppearance: "dark" });
 
     let snapshot = assertDefined(session.createSnapshot(first, [first], emptyDiagnostics));
     assert.equal(snapshot.appearancePreference, "light");
-    assert.equal(snapshot.resolvedTheme?.effectiveAppearance, undefined);
+    assert.equal(snapshot.resolvedTheme?.effectiveAppearance, "dark");
     assert.equal(snapshot.resolvedTheme?.themeFileContent, content);
     session.rememberSnapshot(snapshot);
     snapshot = assertDefined(session.createSnapshot(second, [first, second], emptyDiagnostics));
     assert.equal(snapshot.documentUri, second.document.uri.toString());
     assert.equal(snapshot.resolvedTheme?.themeFileContent, content);
-    assert.equal(session.setHostAppearance("light"), false);
-    assert.equal(session.setHostAppearance("dark"), false);
+    session.setHostAppearance("light");
+    session.setHostAppearance("dark");
 
-    session.setDiagramTheme("preset:editor");
+    session.setDiagramTheme("studio");
     snapshot = assertDefined(session.createSnapshot(second, [second], emptyDiagnostics));
     assert.equal(snapshot.appearancePreference, "light");
     assert.equal(snapshot.resolvedTheme?.effectiveAppearance, "light");
@@ -149,6 +149,7 @@ describe("preview session", () => {
       displayMode: "unicode",
       background: "transparent",
     });
+    session.configureThemes(v2ThemeDiscovery(), "light");
     const editor = textEditor("file:///workspace/example.mmd", "example.mmd", "flowchart TD\nA --> B\n");
 
     session.rememberResource(editor.document.uri);
@@ -259,6 +260,7 @@ describe("preview session", () => {
   it("shares document facts across sessions without sharing panel state", () => {
     const lockedSession = new PreviewSession();
     const followSession = new PreviewSession();
+    lockedSession.configureThemes(v2ThemeDiscovery(), "light");
     const reads = { lineAt: 0 };
     const editor = textEditor(
       "file:///workspace/notes.md",
@@ -356,6 +358,7 @@ describe("preview session", () => {
 
   it("keeps a locked preview on the last snapshot when the source editor is no longer visible", () => {
     const session = new PreviewSession();
+    session.configureThemes(v2ThemeDiscovery(), "light");
     const first = textEditor("file:///workspace/one.mmd", "one.mmd", "flowchart TD\nA --> B\n");
     const second = textEditor("file:///workspace/two.mmd", "two.mmd", "sequenceDiagram\nA->>B: hi\n");
 

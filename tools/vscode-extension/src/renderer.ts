@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { resolveMermanBinary, type BinaryInvocation } from "./binaries.js";
-import { previewLayoutFrameLimit, readCliCapabilities } from "./cli-capabilities.js";
+import { previewLayoutFrameLimit, readCliMetadata } from "./cli-capabilities.js";
 import { getCliSettings } from "./config.js";
 import { runRenderProcess } from "./render-process.js";
 import { renderMermanArgs, type DiagramRenderSettings, type RenderFormat } from "./render-options.js";
@@ -53,21 +53,21 @@ export async function renderMermanSource(request: RenderRequest): Promise<Render
   const base = resolveCliInvocation(request.context, []);
   const withArgs = (args: readonly string[]): BinaryInvocation =>
     ({ ...base, args: [...base.args, ...args] });
-  const writeTheme = request.themeFileContent !== undefined &&
-    request.format !== "ascii" && request.format !== "unicode";
+  const { themeFileContent } = request;
   const frameLimit = request.previewLayoutFrame && request.format === "svg" &&
     request.outputPath === undefined && request.inputKind === undefined
-    ? await readCliCapabilities(withArgs(["capabilities", "--json"]))
+    ? await readCliMetadata(withArgs(["capabilities", "--json"]))
       .then(previewLayoutFrameLimit, () => undefined)
     : undefined;
   request.signal?.throwIfAborted();
-  const directory = writeTheme || frameLimit
+  const directory = themeFileContent !== undefined || frameLimit
     ? await fs.mkdtemp(path.join(os.tmpdir(), "merman-render-"))
     : undefined;
   try {
-    const themeFilePath = writeTheme && directory ? path.join(directory, "theme.json") : undefined;
-    if (themeFilePath) {
-      await fs.writeFile(themeFilePath, request.themeFileContent!, { encoding: "utf8", mode: 0o600 });
+    let themeFilePath: string | undefined;
+    if (directory && themeFileContent !== undefined) {
+      themeFilePath = path.join(directory, "theme.json");
+      await fs.writeFile(themeFilePath, themeFileContent, { encoding: "utf8", mode: 0o600 });
     }
     const args = renderMermanArgs({ ...request, themeFilePath });
     let frameOutput: string | undefined;

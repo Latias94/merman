@@ -16,10 +16,11 @@ describe("preview message validation", () => {
     background: "paper",
   };
 
-  it("accepts only known diagram themes", () => {
+  it("accepts theme IDs and excludes paths from the webview protocol", () => {
     assert.equal(isPreviewDiagramTheme("forest"), true);
     assert.equal(isPreviewDiagramTheme("source"), true);
-    assert.equal(isPreviewDiagramTheme("solarized"), false);
+    assert.equal(isPreviewDiagramTheme("studio"), true);
+    assert.equal(isPreviewDiagramTheme("/private/theme.json"), false);
     assert.equal(isPreviewDiagramTheme(undefined), false);
   });
 
@@ -32,7 +33,7 @@ describe("preview message validation", () => {
     assert.equal(isPreviewFromWebviewMessage({ type: "exportRendered", format: "png", sourceKey }), true);
     assert.equal(isPreviewFromWebviewMessage({ type: "revealDiagnostic" }), true);
     assert.equal(isPreviewFromWebviewMessage({ type: "selectSource", sourceId: "fence-2" }), true);
-    assert.equal(isPreviewFromWebviewMessage({ type: "setDiagramTheme", theme: "dark" }), true);
+    assert.equal(isPreviewFromWebviewMessage({ type: "setDiagramTheme", theme: "studio" }), true);
     assert.equal(isPreviewFromWebviewMessage({ type: "setDisplayMode", mode: "ascii" }), true);
     assert.equal(isPreviewFromWebviewMessage({ type: "setDisplayMode", mode: "unicode" }), true);
     assert.equal(isPreviewFromWebviewMessage({ type: "setBackground", background: "paper" }), true);
@@ -50,14 +51,13 @@ describe("preview message validation", () => {
     assert.equal(isPreviewFromWebviewMessage({ type: "exportRendered", format: "pdf" }), false);
     assert.equal(isPreviewFromWebviewMessage({ type: "revealDiagnostic", target: "{}" }), false);
     assert.equal(isPreviewFromWebviewMessage({ type: "selectSource" }), false);
-    assert.equal(isPreviewFromWebviewMessage({ type: "setDiagramTheme", theme: "solarized" }), false);
     assert.equal(isPreviewFromWebviewMessage({ type: "setDisplayMode", mode: "png" }), false);
     assert.equal(isPreviewFromWebviewMessage({ type: "setBackground", background: "blue" }), false);
     assert.equal(isPreviewFromWebviewMessage({ type: "setLocked", locked: "true" }), false);
     assert.equal(isPreviewFromWebviewMessage({ type: "unknownPreviewCommand" }), false);
     assert.equal(isPreviewFromWebviewMessage({ type: "deleteEverything" }), false);
     assert.equal(isPreviewFromWebviewMessage({ type: "importTheme", path: "/private/theme.json" }), false);
-    assert.equal(isPreviewFromWebviewMessage({ type: "setDiagramTheme", theme: "preset:../../secret" }), false);
+    assert.equal(isPreviewFromWebviewMessage({ type: "setDiagramTheme", theme: "../../secret" }), false);
     assert.equal(isPreviewFromWebviewMessage({ type: "setAppearance", appearance: "auto" }), false);
   });
 });

@@ -4,8 +4,8 @@ import type * as vscode from "vscode";
 import { describe, it } from "node:test";
 
 import type { PreviewSnapshotMessagePayload } from "../preview-messages.js";
-import { legacyThemeDiscovery, type ImportedTheme, type ThemeDiscovery } from "../theme-selection.js";
-import { pairedThemeDiscovery } from "./theme-fixtures.js";
+import { SOURCE_THEME, type ImportedTheme, type ThemeDiscovery } from "../theme-selection.js";
+import { v2ThemeDiscovery } from "./theme-fixtures.js";
 
 type CommandHandler = (target?: unknown) => Promise<void> | void;
 
@@ -51,7 +51,7 @@ interface DeferredRender {
 class FakePreviewHost {
   readonly commands = new Map<string, CommandHandler>();
   readonly panels: FakePanel[] = [];
-  readonly renderCalls: Array<{ source: string; format?: string; outputPath?: string; background?: string; theme?: string; themePreset?: string; themeAppearance?: string; themeFileContent?: string }> = [];
+  readonly renderCalls: Array<{ source: string; format?: string; outputPath?: string; background?: string; theme?: string; themeAppearance?: string; themeFileContent?: string }> = [];
   readonly renderSignals: AbortSignal[] = [];
   readonly clipboardWrites: string[] = [];
   readonly writtenFiles: Array<{ path: string; data: string }> = [];
@@ -96,13 +96,13 @@ class FakePreviewHost {
   private readonly configurationListeners = new Set<(event: vscode.ConfigurationChangeEvent) => void>();
   readonly previewSettings = new Map<string, unknown>();
   activeColorThemeKind = 1;
-  themeDiscovery: ThemeDiscovery = legacyThemeDiscovery();
+  themeDiscovery: ThemeDiscovery = { choices: [SOURCE_THEME] };
   themeDiscoveryCalls = 0;
   saveDialogDelay: Promise<void> | undefined;
   importDelay: Promise<void> | undefined;
   importError: Error | undefined;
   imported: ImportedTheme = {
-    content: '{"schema_version":1,"kind":"design","design":{"tokens":{"private":{"type":"paint","value":"#123456","description":"raw-content"}},"canvas":{"base":{"ref":"private"}},"appearances":{"light":{},"dark":{}},"default_appearance":"light"}}',
+    content: '{"schema_version":2,"name":"Custom Reading","extends":"studio","seed":{"accent":"#123456"}}',
     label: "reading.theme.json",
     supportedAppearances: ["light", "dark"],
     defaultAppearance: "light",
@@ -480,7 +480,7 @@ class FakePreviewHost {
 describe("preview manager", () => {
   it("reloads configured themes for the followed workspace without rediscovering themes on appearance changes", async () => {
     const host = new FakePreviewHost();
-    host.themeDiscovery = pairedThemeDiscovery();
+    host.themeDiscovery = v2ThemeDiscovery();
     host.previewSettings.set("preview.diagramTheme", "file");
     host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
     const first = textDocument("file:///workspace-one/one.mmd", "/workspace-one/one.mmd", "flowchart TD\nOne-->Two");
@@ -513,7 +513,7 @@ describe("preview manager", () => {
 
   it("reads modified configured theme files again on manual refresh", async () => {
     const host = new FakePreviewHost();
-    host.themeDiscovery = pairedThemeDiscovery();
+    host.themeDiscovery = v2ThemeDiscovery();
     host.previewSettings.set("preview.diagramTheme", "file");
     host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
     const panel = await openPreviewPanel(host);
@@ -533,7 +533,7 @@ describe("preview manager", () => {
 
   it("readmits changed configured theme paths while keeping the current explicit appearance", async () => {
     const host = new FakePreviewHost();
-    host.themeDiscovery = pairedThemeDiscovery();
+    host.themeDiscovery = v2ThemeDiscovery();
     host.previewSettings.set("preview.diagramTheme", "file");
     host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
     const panel = await openPreviewPanel(host);
@@ -556,7 +556,7 @@ describe("preview manager", () => {
 
   it("keeps a panel import snapshot across workspace switches, configured path changes, and manual refresh", async () => {
     const host = new FakePreviewHost();
-    host.themeDiscovery = pairedThemeDiscovery();
+    host.themeDiscovery = v2ThemeDiscovery();
     host.previewSettings.set("preview.diagramTheme", "file");
     host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
     const panel = await openPreviewPanel(host);
@@ -590,7 +590,7 @@ describe("preview manager", () => {
 
   it("does not adopt an older configured file revision after a newer manual reload completes", async () => {
     const host = new FakePreviewHost();
-    host.themeDiscovery = pairedThemeDiscovery();
+    host.themeDiscovery = v2ThemeDiscovery();
     host.previewSettings.set("preview.diagramTheme", "file");
     host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
     const panel = await openPreviewPanel(host);
@@ -619,7 +619,7 @@ describe("preview manager", () => {
 
   it("follows an active source into another workspace and keeps hidden locked file themes on their own workspace", async () => {
     const host = new FakePreviewHost();
-    host.themeDiscovery = pairedThemeDiscovery();
+    host.themeDiscovery = v2ThemeDiscovery();
     host.previewSettings.set("preview.diagramTheme", "file");
     host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
     const first = textDocument("file:///workspace-one/one.mmd", "/workspace-one/one.mmd", "flowchart TD\nOne-->Two");
@@ -662,7 +662,7 @@ describe("preview manager", () => {
 
   it("rejects a superseded workspace reload after a later workspace has rendered", async () => {
     const host = new FakePreviewHost();
-    host.themeDiscovery = pairedThemeDiscovery();
+    host.themeDiscovery = v2ThemeDiscovery();
     host.previewSettings.set("preview.diagramTheme", "file");
     host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
     const panel = await openPreviewPanel(host);
@@ -696,7 +696,7 @@ describe("preview manager", () => {
   for (const outcome of ["success", "rejection"] as const) {
     it(`ignores an obsolete configured ${outcome} after leaving and returning to the same workspace`, async () => {
       const host = new FakePreviewHost();
-      host.themeDiscovery = pairedThemeDiscovery();
+      host.themeDiscovery = v2ThemeDiscovery();
       host.previewSettings.set("preview.diagramTheme", "file");
       host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
       const panel = await openPreviewPanel(host);
@@ -742,7 +742,7 @@ describe("preview manager", () => {
 
   it("adopts the latest configured path without surfacing a rejected older path", async () => {
     const host = new FakePreviewHost();
-    host.themeDiscovery = pairedThemeDiscovery();
+    host.themeDiscovery = v2ThemeDiscovery();
     host.previewSettings.set("preview.diagramTheme", "file");
     host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
     const panel = await openPreviewPanel(host);
@@ -772,7 +772,7 @@ describe("preview manager", () => {
 
   it("does not start an obsolete configured-theme render after a delayed settings update finishes", async () => {
     const host = new FakePreviewHost();
-    host.themeDiscovery = pairedThemeDiscovery();
+    host.themeDiscovery = v2ThemeDiscovery();
     host.previewSettings.set("preview.diagramTheme", "file");
     host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
     const panel = await openPreviewPanel(host);
@@ -811,7 +811,7 @@ describe("preview manager", () => {
   it("keeps a later panel import when a configured reload completes or rejects afterwards", async () => {
     for (const failure of [undefined, new Error("obsolete configured recipe rejection")]) {
       const host = new FakePreviewHost();
-      host.themeDiscovery = pairedThemeDiscovery();
+      host.themeDiscovery = v2ThemeDiscovery();
       host.previewSettings.set("preview.diagramTheme", "file");
       host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
       const panel = await openPreviewPanel(host);
@@ -844,7 +844,7 @@ describe("preview manager", () => {
   it("keeps a later preset selection when a configured reload completes or rejects afterwards", async () => {
     for (const failure of [undefined, new Error("obsolete configured recipe rejection")]) {
       const host = new FakePreviewHost();
-      host.themeDiscovery = pairedThemeDiscovery();
+      host.themeDiscovery = v2ThemeDiscovery();
       host.previewSettings.set("preview.diagramTheme", "file");
       host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
       const panel = await openPreviewPanel(host);
@@ -856,12 +856,12 @@ describe("preview manager", () => {
         await panel.receive({ type: "refresh" });
         await flushPreviewWork();
         assert.equal(host.themeFiles.length, 2);
-        await panel.receive({ type: "setDiagramTheme", theme: "preset:editor" });
+        await panel.receive({ type: "setDiagramTheme", theme: "studio" });
         await flushPreviewWork();
         releaseOlder();
         await flushPreviewWork();
-        assert.equal(lastRenderedSnapshot(panel).diagramTheme, "preset:editor");
-        assert.equal(host.renderCalls.at(-1)?.themePreset, "editor");
+        assert.equal(lastRenderedSnapshot(panel).diagramTheme, "studio");
+        assert.equal(host.renderCalls.at(-1)?.theme, "studio");
         assert.equal(host.renderCalls.at(-1)?.themeFileContent, undefined);
         assert.equal(host.renderCalls.some((call) => call.themeFileContent === "obsolete-configured-recipe"), false);
         assert.deepEqual(host.errors, []);
@@ -883,7 +883,7 @@ describe("preview manager", () => {
 
   it("shares a configured reload while applying later appearance and viewer choices", async () => {
     const host = new FakePreviewHost();
-    host.themeDiscovery = pairedThemeDiscovery();
+    host.themeDiscovery = v2ThemeDiscovery();
     host.previewSettings.set("preview.diagramTheme", "file");
     host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
     const panel = await openPreviewPanel(host);
@@ -914,7 +914,7 @@ describe("preview manager", () => {
 
   it("reports a shared configured failure once for the later appearance selection and retries it", async () => {
     const host = new FakePreviewHost();
-    host.themeDiscovery = pairedThemeDiscovery();
+    host.themeDiscovery = v2ThemeDiscovery();
     host.previewSettings.set("preview.diagramTheme", "file");
     host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
     const panel = await openPreviewPanel(host);
@@ -950,7 +950,7 @@ describe("preview manager", () => {
 
   it("blocks stale configured exports after a rejected reload and recovers when the file is repaired", async () => {
     const host = new FakePreviewHost();
-    host.themeDiscovery = pairedThemeDiscovery();
+    host.themeDiscovery = v2ThemeDiscovery();
     host.previewSettings.set("preview.diagramTheme", "file");
     host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
     const panel = await openPreviewPanel(host);
@@ -981,7 +981,7 @@ describe("preview manager", () => {
 
   it("does not let an unavailable explicit target reclaim a panel after an appearance refresh renders the fallback", async () => {
     const host = new FakePreviewHost();
-    host.themeDiscovery = pairedThemeDiscovery();
+    host.themeDiscovery = v2ThemeDiscovery();
     host.previewSettings.set("preview.diagramTheme", "file");
     host.previewSettings.set("preview.themeFile", "themes/reading.theme.json");
     const panel = await openPreviewPanel(host);
@@ -1009,7 +1009,7 @@ describe("preview manager", () => {
 
   it("keeps a user-imported recipe when slower configured-file initialization finishes later", async () => {
     const host = new FakePreviewHost();
-    host.themeDiscovery = pairedThemeDiscovery();
+    host.themeDiscovery = v2ThemeDiscovery();
     host.vscode.workspace.getConfiguration = () => ({
       get: (key: string, fallback: unknown) => key === "preview.diagramTheme" ? "file"
         : key === "preview.themeFile" ? "themes/reading.theme.json" : fallback,
@@ -1037,7 +1037,7 @@ describe("preview manager", () => {
 
   it("resolves configured recipe paths from an explicit open target in another workspace", async () => {
     const host = new FakePreviewHost();
-    host.themeDiscovery = pairedThemeDiscovery();
+    host.themeDiscovery = v2ThemeDiscovery();
     const active = textDocument("file:///workspace-one/active.mmd", "/workspace-one/active.mmd", "flowchart TD\nA-->B");
     const target = textDocument("file:///workspace-two/target.mmd", "/workspace-two/target.mmd", "sequenceDiagram\nA->>B: hi");
     host.setActiveDocument(target);
@@ -1056,28 +1056,36 @@ describe("preview manager", () => {
     for (const subscription of host.subscriptions) subscription.dispose();
   });
 
-  it("updates Follow fallback guidance without repainting a single-appearance theme", async () => {
+  it("passes the same Follow fallback to SVG, Unicode, and ASCII without repainting for a mismatched editor", async () => {
     const host = new FakePreviewHost();
-    host.themeDiscovery = pairedThemeDiscovery();
+    host.themeDiscovery = v2ThemeDiscovery();
     const { registerPreview } = loadPreviewModule(host);
     registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
     await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
     const panel = host.panels[0]!;
     await panel.receive({ type: "ready" });
-    await panel.receive({ type: "setDiagramTheme", theme: "preset:ghibli" });
+    await panel.receive({ type: "setDiagramTheme", theme: "paper-cut" });
     await flushPreviewWork();
+    const svg = host.renderCalls.at(-1);
+    assert.deepEqual([svg?.format, svg?.theme, svg?.themeAppearance], ["svg", "paper-cut", "light"]);
     const count = host.renderCalls.length;
     host.changeColorTheme(2);
     await flushPreviewWork();
     const settings = panel.postedMessages.filter((message) => (message as { type: string }).type === "settingsUpdated").at(-1) as { snapshot: PreviewSnapshotMessagePayload };
     assert.match(settings.snapshot.themeNotice!, /does not provide dark/);
     assert.equal(host.renderCalls.length, count);
+    for (const mode of ["unicode", "ascii"]) {
+      await panel.receive({ type: "setDisplayMode", mode });
+      await flushPreviewWork();
+      const rendered = host.renderCalls.at(-1);
+      assert.deepEqual([rendered?.format, rendered?.theme, rendered?.themeAppearance], [mode, "paper-cut", "light"]);
+    }
     for (const subscription of host.subscriptions) subscription.dispose();
   });
 
   it("does not surface a rejected import after a newer selection superseded it", async () => {
     const host = new FakePreviewHost();
-    host.themeDiscovery = pairedThemeDiscovery();
+    host.themeDiscovery = v2ThemeDiscovery();
     const { registerPreview } = loadPreviewModule(host);
     registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
     await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
@@ -1088,17 +1096,17 @@ describe("preview manager", () => {
     host.importError = new Error("obsolete import rejection");
     await panel.receive({ type: "importTheme" });
     await flushPreviewWork();
-    await panel.receive({ type: "setDiagramTheme", theme: "preset:editor" });
+    await panel.receive({ type: "setDiagramTheme", theme: "studio" });
     releaseImport();
     await flushPreviewWork();
-    assert.equal(lastRenderedSnapshot(panel).diagramTheme, "preset:editor");
+    assert.equal(lastRenderedSnapshot(panel).diagramTheme, "studio");
     assert.equal(host.errors.length, 0);
     for (const subscription of host.subscriptions) subscription.dispose();
   });
 
   it("admits imports atomically, rejects delayed adoption, and never sends recipe content or paths to the webview", async () => {
     const host = new FakePreviewHost();
-    host.themeDiscovery = pairedThemeDiscovery();
+    host.themeDiscovery = v2ThemeDiscovery();
     const { registerPreview } = loadPreviewModule(host);
     registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
     await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
@@ -1116,10 +1124,10 @@ describe("preview manager", () => {
     host.importDelay = new Promise<void>((resolve) => { releaseImport = resolve; });
     await panel.receive({ type: "importTheme" });
     await flushPreviewWork();
-    await panel.receive({ type: "setDiagramTheme", theme: "preset:editor" });
+    await panel.receive({ type: "setDiagramTheme", theme: "studio" });
     releaseImport();
     await flushPreviewWork();
-    assert.equal(lastRenderedSnapshot(panel).diagramTheme, "preset:editor");
+    assert.equal(lastRenderedSnapshot(panel).diagramTheme, "studio");
 
     host.importDelay = undefined;
     await panel.receive({ type: "importTheme" });
@@ -1128,14 +1136,14 @@ describe("preview manager", () => {
     assert.equal(host.renderCalls.at(-1)?.themeFileContent, host.imported.content);
     const wire = JSON.stringify(panel.postedMessages);
     assert.equal(wire.includes("/private/reading.theme.json"), false);
-    assert.equal(wire.includes("raw-content"), false);
+    assert.equal(wire.includes("#123456"), false);
     assert.equal(wire.includes("reading.theme.json"), true);
     for (const subscription of host.subscriptions) subscription.dispose();
   });
 
   it("keeps identical theme reimports ready for copy and SVG/PNG export", async () => {
     const host = new FakePreviewHost();
-    host.themeDiscovery = pairedThemeDiscovery();
+    host.themeDiscovery = v2ThemeDiscovery();
     host.activeColorThemeKind = 2;
     const { registerPreview } = loadPreviewModule(host);
     registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
@@ -1178,7 +1186,7 @@ describe("preview manager", () => {
 
   it("updates a reimported theme name without discarding its ready output or replay cache", async () => {
     const host = new FakePreviewHost();
-    host.themeDiscovery = pairedThemeDiscovery();
+    host.themeDiscovery = v2ThemeDiscovery();
     const { registerPreview } = loadPreviewModule(host);
     registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
     await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
@@ -1198,7 +1206,7 @@ describe("preview manager", () => {
     assert.deepEqual(panel.postedMessages.map((message) => (message as { type: string }).type), ["settingsUpdated"]);
     const settings = panel.postedMessages[0] as { snapshot: PreviewSnapshotMessagePayload };
     assert.equal(settings.snapshot.themeLabel, host.imported.label);
-    assert.equal(settings.snapshot.themeChoices?.find((choice) => choice.id === "file")?.label, host.imported.label);
+    assert.equal(settings.snapshot.themeChoices?.find((choice) => choice.id === "file")?.label, "Custom File");
     assert.deepEqual(settings.snapshot.sourceKey, sourceKey);
     await panel.receive({ type: "ready" });
     await flushPreviewWork();
@@ -1215,7 +1223,7 @@ describe("preview manager", () => {
 
   it("recovers an invalidated theme reimport when an edit outside the active fence leaves render inputs unchanged", async () => {
     const host = new FakePreviewHost();
-    host.themeDiscovery = pairedThemeDiscovery();
+    host.themeDiscovery = v2ThemeDiscovery();
     const original = textDocument(
       "file:///workspace/notes.md", "notes.md", "Before\n```mermaid\nflowchart LR\nA --> B\n```\n", "markdown", 1,
     );
@@ -1253,7 +1261,7 @@ describe("preview manager", () => {
 
   it("invalidates changed recipe output and keeps the applied recipe usable after a rejected import", async () => {
     const host = new FakePreviewHost();
-    host.themeDiscovery = pairedThemeDiscovery();
+    host.themeDiscovery = v2ThemeDiscovery();
     const { registerPreview } = loadPreviewModule(host);
     registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
     await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
@@ -1265,7 +1273,7 @@ describe("preview manager", () => {
     const renderCount = host.renderCalls.length;
     host.imported = {
       ...host.imported,
-      content: '{"schema_version":1,"kind":"design","design":{"canvas":{"base":"#654321"},"appearances":{"light":{},"dark":{}},"default_appearance":"light"}}',
+      content: '{"schema_version":2,"extends":"studio","seed":{"accent":"#654321"}}',
     };
     const applied = host.imported.content;
     const releaseRender = host.deferNextRender();
@@ -1307,13 +1315,13 @@ describe("preview manager", () => {
 
   it("follows editor appearances across hidden locked panels without retargeting their sources", async () => {
     const host = new FakePreviewHost();
-    host.themeDiscovery = pairedThemeDiscovery();
+    host.themeDiscovery = v2ThemeDiscovery();
     const { registerPreview } = loadPreviewModule(host);
     registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
     await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
     const lockedPanel = host.panels[0]!;
     await lockedPanel.receive({ type: "ready" });
-    await lockedPanel.receive({ type: "setDiagramTheme", theme: "preset:editor" });
+    await lockedPanel.receive({ type: "setDiagramTheme", theme: "studio" });
     await flushPreviewWork();
     await host.commands.get("merman.togglePreviewLock")?.();
     lockedPanel.setActive(false);
@@ -1324,8 +1332,8 @@ describe("preview manager", () => {
 
     host.changeColorTheme(2);
     await flushPreviewWork();
-    assert.deepEqual(host.renderCalls.map((call) => [call.source, call.themePreset, call.themeAppearance]), [
-      ["flowchart TD\nA --> B\n", "editor", "dark"],
+    assert.deepEqual(host.renderCalls.map((call) => [call.source, call.theme, call.themeAppearance]), [
+      ["flowchart TD\nA --> B\n", "studio", "dark"],
     ]);
     const darkKey = lastRenderedSourceKey(lockedPanel);
     host.changeColorTheme(3);
@@ -1341,13 +1349,13 @@ describe("preview manager", () => {
 
   it("keeps explicit and single appearances stable while Follow cancels stale output", async () => {
     const host = new FakePreviewHost();
-    host.themeDiscovery = pairedThemeDiscovery();
+    host.themeDiscovery = v2ThemeDiscovery();
     const { registerPreview } = loadPreviewModule(host);
     registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
     await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
     const panel = host.panels[0]!;
     await panel.receive({ type: "ready" });
-    await panel.receive({ type: "setDiagramTheme", theme: "preset:editor" });
+    await panel.receive({ type: "setDiagramTheme", theme: "studio" });
     await panel.receive({ type: "setAppearance", appearance: "light" });
     await flushPreviewWork();
     const count = host.renderCalls.length;
@@ -1373,7 +1381,7 @@ describe("preview manager", () => {
     const currentKey = lastRenderedSourceKey(panel);
     assert.equal(currentKey.themeSelection, darkKey.themeSelection);
 
-    await panel.receive({ type: "setDiagramTheme", theme: "preset:ghibli" });
+    await panel.receive({ type: "setDiagramTheme", theme: "paper-cut" });
     await flushPreviewWork();
     const singleCount = host.renderCalls.length;
     host.changeColorTheme(1);
@@ -1413,6 +1421,29 @@ describe("preview manager", () => {
       releaseRender();
       for (const subscription of host.subscriptions) subscription.dispose();
     }
+  });
+
+  it("applies live canvas settings to the SVG render with its selected theme", async () => {
+    const host = new FakePreviewHost();
+    host.themeDiscovery = v2ThemeDiscovery();
+    host.previewSettings.set("preview.diagramTheme", "studio");
+    host.previewSettings.set("preview.background", "theme");
+    const { registerPreview } = loadPreviewModule(host);
+    registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    const panel = host.panels[0]!;
+    await panel.receive({ type: "ready" });
+    await flushPreviewWork();
+    const initialCount = host.renderCalls.length;
+    assert.equal(host.renderCalls.at(-1)?.background, undefined);
+
+    host.changePreviewSetting("preview.background", "transparent");
+    await flushPreviewWork();
+    assert.equal(host.renderCalls.length, initialCount + 1);
+    assert.equal(host.renderCalls.at(-1)?.theme, "studio");
+    assert.equal(host.renderCalls.at(-1)?.background, "transparent");
+    assert.equal(lastRenderedSnapshot(panel).background, "transparent");
+    for (const subscription of host.subscriptions) subscription.dispose();
   });
 
   it("keeps a matching render queued while its settings update is still posting", async () => {
@@ -1499,13 +1530,13 @@ describe("preview manager", () => {
 
   it("freezes preview export before a delayed save dialog and keeps viewer backing out of image settings", async () => {
     const host = new FakePreviewHost();
-    host.themeDiscovery = pairedThemeDiscovery();
+    host.themeDiscovery = v2ThemeDiscovery();
     const { registerPreview } = loadPreviewModule(host);
     registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
     await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
     const panel = host.panels[0]!;
     await panel.receive({ type: "ready" });
-    await panel.receive({ type: "setDiagramTheme", theme: "preset:editor" });
+    await panel.receive({ type: "setDiagramTheme", theme: "studio" });
     await panel.receive({ type: "setBackground", background: "theme" });
     await flushPreviewWork();
     const count = host.renderCalls.length;
@@ -1528,6 +1559,7 @@ describe("preview manager", () => {
 
   it("shares extraction across CodeLens and independently configured panels with language intelligence disabled", async () => {
     const host = new FakePreviewHost();
+    host.themeDiscovery = v2ThemeDiscovery();
     const { registerPreview, registerSourceCodeLens } = loadPreviewModule(host);
     const reads = { lineAt: 0 };
     const document = textDocument(
@@ -2255,7 +2287,7 @@ function loadPreviewModule(
     if (request === "./theme-runtime.js") {
       return {
         discoverThemes: async () => { host.themeDiscoveryCalls += 1; return host.themeDiscovery; },
-        inspectThemeFile: async (_context: unknown, resource: { toString(): string }) => {
+        checkThemeFile: async (_context: unknown, resource: { toString(): string }) => {
           host.themeFiles.push(resource.toString());
           const candidate = host.themeRecipes.get(resource.toString()) ?? host.imported;
           const failure = host.importError;
@@ -2273,7 +2305,6 @@ function loadPreviewModule(
           outputPath?: string;
           background?: string;
           theme?: string;
-          themePreset?: string;
           themeAppearance?: string;
           themeFileContent?: string;
           signal?: AbortSignal;
@@ -2284,7 +2315,6 @@ function loadPreviewModule(
             outputPath: renderRequest.outputPath,
             background: renderRequest.background,
             ...(renderRequest.theme ? { theme: renderRequest.theme } : {}),
-            ...(renderRequest.themePreset ? { themePreset: renderRequest.themePreset } : {}),
             ...(renderRequest.themeAppearance ? { themeAppearance: renderRequest.themeAppearance } : {}),
             ...(renderRequest.themeFileContent ? { themeFileContent: renderRequest.themeFileContent } : {}),
           });

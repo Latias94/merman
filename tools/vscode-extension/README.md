@@ -149,17 +149,17 @@ through temporary files. Text previews and exports run independently.
 
 ### Themes and appearance
 
-Choose a design in the preview's single **Theme** selector. The connected CLI supplies the Mermaid designs and Merman presets; the extension does not infer pairs from names. A paired design offers **Follow editor**, **Light**, and **Dark**. Single-appearance designs show their supported appearance without inventing another version. Follow uses VS Code's active appearance, including the light/dark interpretation of high-contrast editor themes; this does not certify a diagram as high-contrast accessible.
+The **Theme** selector groups the CLI catalog into **Merman Themes** and **Mermaid Classic (Parity)**. Merman presets show their supported light and dark appearances. Themes with both appearances offer **Follow editor**, **Light**, and **Dark**. Follow editor maps VS Code's light and dark themes, including high-contrast variants, to the corresponding diagram appearance. A single-appearance theme uses its default and remembers your preference for themes that support both.
 
-**Source / default** leaves the Mermaid initialization theme unspecified and preserves source frontmatter, directives, and styles. It does not mean Follow editor. Switching through Source or a recipe without declared appearances retains the panel's explicit Light/Dark preference for the next paired theme. Original Mermaid IDs remain valid settings. Neo, Redux, and Redux Color have metadata-declared pairs; Default and Dark remain separate Mermaid designs.
+**Source / default** preserves the source's authored theme or uses the Mermaid default. Mermaid Classic entries use literal IDs such as `forest` or `neo-dark`. Choosing a preset, classic theme, or custom file applies that theme in the preview without editing the diagram source.
 
-Use **Import theme…** to select a portable theme recipe JSON. The CLI admits the entire original document, including inactive appearances, before the preview adopts it. Invalid or superseded imports leave the current selection intact. The panel retains a complete in-memory snapshot; editing the file later requires importing it again. The webview receives the display name and appearance metadata, not the file path or recipe contents. Render-selection wrappers accepted by CLI `render --theme-file` are not portable recipe files and should be used through the CLI instead.
+Choose **Custom File** to load the Merman v2 document at `merman.preview.themeFile`. To try a file in the current panel, use **Import theme…**. The extension runs `merman-cli theme check - --json` before adopting the file and shows the CLI's validation diagnostics on failure.
 
 For persistent settings, use one of these alternatives:
 
 ```json
 {
-  "merman.preview.diagramTheme": "preset:editor",
+  "merman.preview.diagramTheme": "studio",
   "merman.preview.appearance": "follow-editor"
 }
 ```
@@ -172,21 +172,19 @@ For persistent settings, use one of these alternatives:
 }
 ```
 
-Relative recipe paths resolve from the source document's workspace folder. A configured file theme follows the preview's current source, including when a following panel moves to another workspace; a locked panel continues using its own source's workspace. Changing `merman.preview.themeFile` admits the new file before adopting it. **Refresh Preview** rereads a configured file even when its path is unchanged, so saved recipe edits become visible. A rejected reload keeps the previous diagram visible and blocks copying/exporting stale output until a valid render completes.
+Relative paths resolve from the source document's workspace folder. A configured file follows that source as a preview moves between workspaces. A locked preview keeps its own source. Changing `merman.preview.themeFile` checks the new file before adopting it. **Refresh Preview** rereads the configured file to pick up saved edits. A rejected reload keeps the previous diagram visible and pauses copy and export until a valid render completes.
 
-An explicitly imported theme remains the panel's in-memory snapshot across source/workspace switches, changes to `merman.preview.themeFile`, and manual refreshes. Import it again to pick up edits to that file. Close the panel and open a new preview to restore configured defaults. A pending configured reload cannot replace a later theme selection or import.
+An imported theme stays in memory for the panel across source changes and refreshes. Import the file again to apply edits. New panels load the configured defaults.
 
-For a native Mermaid pair, use a discovered design such as `mermaid:neo`; a literal ID such as `neo-dark` remains fixed. Source configuration and styles keep their existing property-specific precedence. Selecting a theme does not rewrite the source.
+SVG, Unicode, and ASCII use the same selected theme and appearance. Copy and export from the preview use the appearance and file contents captured for the displayed diagram. Document commands from the command palette, editor title, and CodeLens use the settings for that document.
 
-Preview toolbar overrides belong to that panel. Its Copy/Export controls use the concrete appearance and complete imported recipe captured for the displayed publication, even if the editor changes appearance while a save dialog is open. Command-palette, editor-title, and CodeLens document exports use the configured settings for that document; they never borrow an arbitrary preview panel's overrides. Follow updates locked and hidden previews without changing their source attachment. ASCII/Unicode retain their separate terminal styling.
+The extension reads the catalog with `merman-cli theme list --json`. Preset and custom file selection require a CLI with v2 theme support.
 
-Paired selection and recipe inspection require CLI contract 7 or later with the corresponding grouped catalog and `theme inspect` command. An older or unavailable runtime reports the limitation and retains the original Source/default choices; it does not simulate missing appearances.
+### Background
 
-### Background migration
+`merman.preview.background` defaults to **`theme`**, which uses the selected theme or source canvas. `paper`, `transparent`, and `dark` use the CLI's `--background` option for SVG preview and image export.
 
-The new `merman.preview.background` default is **`theme`**, which sends no canvas override and lets the theme/source own its background. Existing explicit `paper`, `transparent`, and `dark` settings keep their previous rendered-image and export meanings. Choose `paper` explicitly to retain the old white-canvas default.
-
-**Viewer backing** (`merman.preview.viewerBackground`) changes only the surface around/behind the preview and never image-export bytes. **Canvas override** (`merman.preview.background`) changes the rendered image and exports. Automatic backing follows the displayed publication's concrete appearance where available; it does not recolor an old SVG while a replacement is rendering.
+**Viewer backing** (`merman.preview.viewerBackground`) controls the surface behind the diagram. Its automatic setting follows the appearance of the currently displayed output.
 
 ## Settings
 
@@ -204,8 +202,8 @@ Merman contributes native VS Code settings grouped under Runtime, Language Intel
 - `merman.diagnostics.enabled`: publish Merman diagnostics to VS Code Problems
 - `merman.sourceActions.enabled`: show source-scoped Merman CodeLens actions
 - `merman.preview.diagramTheme`: default theme for new preview panels
-- `merman.preview.appearance`: `follow-editor`, `light`, or `dark` for paired themes
-- `merman.preview.themeFile`: portable recipe path when the theme is `file`
+- `merman.preview.appearance`: `follow-editor`, `light`, or `dark` for Merman themes
+- `merman.preview.themeFile`: Merman v2 document path when the theme is `file`
 - `merman.preview.displayMode`: default `svg`, `ascii`, or `unicode` preview mode
 - `merman.preview.background`: rendered canvas override, `theme` (default), `paper`, `transparent`, or `dark`
 - `merman.preview.viewerBackground`: viewer-only backing, `auto` (default), `paper`, `transparent`, or `dark`

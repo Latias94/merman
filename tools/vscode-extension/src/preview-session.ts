@@ -10,11 +10,8 @@ import {
   type PreviewViewerBackground,
 } from "./preview-model.js";
 import {
-  legacyThemeDiscovery,
-  preferenceForTheme,
   resolveThemeSelection,
-  sameResolvedTheme,
-  themeChoice,
+  SOURCE_THEME,
   type ImportedTheme,
   type ThemeAppearance,
   type ThemeAppearancePreference,
@@ -74,7 +71,7 @@ export class PreviewSession {
   private displayMode: PreviewDisplayMode;
   private background: PreviewBackground;
   private locked = false;
-  private discovery = legacyThemeDiscovery();
+  private discovery: ThemeDiscovery = { choices: [SOURCE_THEME] };
   private hostAppearance: ThemeAppearance = "light";
   private fileTheme: PreviewFileTheme | undefined;
   private appearance: ThemeAppearancePreference;
@@ -333,7 +330,6 @@ export class PreviewSession {
     }
     this.theme = theme;
     this.themeRevision += 1;
-    this.appearance = preferenceForTheme(themeChoice(this.discovery, theme, this.fileTheme?.theme), this.appearance);
     return true;
   }
 
@@ -354,16 +350,13 @@ export class PreviewSession {
     this.fileTheme = { owner: "panel", theme: imported };
     this.theme = "file";
     this.themeRevision += 1;
-    this.appearance = preferenceForTheme(themeChoice(this.discovery, "file", imported), this.appearance);
   }
 
   setAppearance(preference: ThemeAppearancePreference): boolean {
-    const choice = themeChoice(this.discovery, this.theme, this.fileTheme?.theme);
-    if (!choice || choice.supportedAppearances.length === 0 ||
-      (preference !== "follow-editor" && !choice.supportedAppearances.includes(preference))) {
-      return false;
-    }
-    if (this.appearance === preference) {
+    const appearances = this.theme === "file"
+      ? this.fileTheme?.theme
+      : this.discovery.choices.find((entry) => entry.id === this.theme)?.appearances;
+    if (appearances?.supportedAppearances.length !== 2 || this.appearance === preference) {
       return false;
     }
     this.appearance = preference;
@@ -371,18 +364,8 @@ export class PreviewSession {
     return true;
   }
 
-  setHostAppearance(host: ThemeAppearance): boolean {
-    if (this.hostAppearance === host) {
-      return false;
-    }
-    if (!themeChoice(this.discovery, this.theme, this.fileTheme?.theme)?.available) {
-      this.hostAppearance = host;
-      return false;
-    }
-    const previous = resolveThemeSelection(this.discovery, this.theme, this.appearance, this.hostAppearance, this.fileTheme?.theme);
+  setHostAppearance(host: ThemeAppearance): void {
     this.hostAppearance = host;
-    const next = resolveThemeSelection(this.discovery, this.theme, this.appearance, host, this.fileTheme?.theme);
-    return !sameResolvedTheme(previous, next);
   }
 
   setViewerBackground(background: PreviewViewerBackground): boolean {
@@ -395,18 +378,10 @@ export class PreviewSession {
 
   private themeSnapshotSettings() {
     const resolvedTheme = resolveThemeSelection(this.discovery, this.theme, this.appearance, this.hostAppearance, this.fileTheme?.theme);
-    const choices = [...this.discovery.choices];
-    if (this.fileTheme) {
-      choices.push(themeChoice(this.discovery, "file", this.fileTheme.theme)!);
-    }
-    const current = themeChoice(this.discovery, this.theme, this.fileTheme?.theme);
-    if (current && !choices.some((choice) => choice.id === current.id)) {
-      choices.push(current);
-    }
     return {
       appearancePreference: this.appearance,
       resolvedTheme,
-      themeChoices: choices,
+      themeChoices: this.discovery.choices,
       themeNotice: resolvedTheme.notice ?? this.discovery.notice,
       viewerBackground: this.viewerBackground,
     };

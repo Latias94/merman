@@ -50,7 +50,8 @@ describe("preview html", () => {
     assert.match(html, /data-preview-lock/);
     assert.match(html, /data-preview-lock[^>]*disabled/);
     assert.match(html, /data-action="diagram-theme"/);
-    assert.match(html, /value="forest"/);
+    assert.match(html, /value="source"/);
+    assert.doesNotMatch(html, /value="forest"/);
     assert.doesNotMatch(html, /<svg viewBox/);
   });
 

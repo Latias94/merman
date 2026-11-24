@@ -86,7 +86,6 @@ export function createPreviewSnapshot(request: CreatePreviewSnapshotRequest): Pr
         preference: request.appearancePreference,
         effective: request.resolvedTheme.effectiveAppearance,
         theme: request.resolvedTheme.theme,
-        preset: request.resolvedTheme.themePreset,
         file: request.resolvedTheme.themeFileContent,
       })).digest("hex") : undefined,
     },
