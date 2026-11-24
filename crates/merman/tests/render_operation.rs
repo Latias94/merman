@@ -1394,6 +1394,7 @@ fn ordinary_svg_reports_postprocessing_without_native_observation() {
     };
 
     let baseline = render(merman::svg::SvgPipeline::parity());
+    assert!(baseline.theme_outcome().notices.is_empty());
     let output =
         render(merman::svg::SvgPipeline::parity().with_postprocessor(MissingFragmentPostprocessor));
     assert!(output.svg().contains("data-test-missing-fragment"));

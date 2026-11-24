@@ -363,9 +363,19 @@ pub fn unsupported_features(
     theme: &ResolvedThemeV2,
     family: crate::DiagramFamilyId,
 ) -> impl Iterator<Item = &'static str> {
+    use crate::DiagramFamilyId;
     use merman_theme_contract::v2::{Elevation, Form};
 
     let caps = family_capabilities(family);
+    let uses_chart_settings = matches!(
+        family,
+        DiagramFamilyId::GANTT
+            | DiagramFamilyId::PIE
+            | DiagramFamilyId::QUADRANT_CHART
+            | DiagramFamilyId::RADAR
+            | DiagramFamilyId::WARDLEY
+            | DiagramFamilyId::XY_CHART
+    );
     let theme = theme.family(family.as_str());
     let defaults = Form::default();
     [
@@ -384,8 +394,10 @@ pub fn unsupported_features(
         (theme.form.marker_style != defaults.marker_style
             && !caps.contains(ThemeCapabilityFlags::MARKER_STYLE))
         .then_some("This diagram family does not support theme marker styles."),
-        (theme.form.chart != defaults.chart && !caps.contains(ThemeCapabilityFlags::CHART_POLISH))
-            .then_some("This diagram family does not support theme chart styling."),
+        (uses_chart_settings
+            && theme.form.chart != defaults.chart
+            && !caps.contains(ThemeCapabilityFlags::CHART_POLISH))
+        .then_some("This diagram family does not support theme chart styling."),
     ]
     .into_iter()
     .flatten()

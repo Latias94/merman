@@ -6,7 +6,7 @@ Each renderer family maps semantic settings to visible objects. A connector colo
 
 For charts, inspect the plotted series, labels, and legend together. XY Chart consumes gridlines, bar radius and wireframe, line point markers, and categorical patterns. Pie uses a canvas-colored gap and the series' paired text color. Sankey and Treemap draw categorical fills in their own layers. Tree View and Railroad use the code font slot for their notation.
 
-The native capability mask describes the implemented settings for the family. Elements such as a note, title, or legend still depend on the source. Test each output format with the intended fonts, background, and export options. The ASCII palette projects shared roles into a terminal's color encoding.
+The native capability mask describes the implemented settings for the family. `form.chart` applies to chart families and the Wardley grid. Elements such as a note, title, or legend still depend on the source. Test each output format with the intended fonts, background, and export options. The ASCII palette projects shared roles into a terminal's color encoding.
 
 With Shoal, Flowchart and Agentflow use native density and share the default connector style between placement and SVG. An explicit Mermaid curve or source edge default takes precedence. Swimlane uses native density with orthogonal lanes. Architecture passes native marker dimensions and shape contours to canonical routing. Across other adapters, marker clearance, endpoint stubs, and outline clipping still follow each family's existing geometry.
 
