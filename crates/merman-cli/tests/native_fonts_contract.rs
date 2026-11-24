@@ -18,6 +18,9 @@ const RAW_PATH_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 const RAW_NESTED_FONT_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="80"><svg x="5" y="5" width="190" height="70"><text x="10" y="40" font-family="Cousine">Native font</text></svg></svg>"#;
 
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+const RAW_TREF_FONT_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="80"><defs><g id="label">Native font</g></defs><text x="10" y="40" font-family="Cousine"><tref href="#label"/></text></svg>"##;
+
 fn font() -> String {
     repo_root()
         .join("crates/merman-export/tests/fonts/Cousine-Regular.ttf")
@@ -2243,7 +2246,7 @@ fn raw_svg_fonts_are_conversion_only_and_each_compiled_codec_works() {
         assert!(blank.status.success(), "{format}: {blank:?}");
         assert!(blank.stdout.starts_with(magic), "{format}");
 
-        for input in [RAW_FONT_SVG, RAW_NESTED_FONT_SVG] {
+        for input in [RAW_FONT_SVG, RAW_NESTED_FONT_SVG, RAW_TREF_FONT_SVG] {
             let no_fonts = raw_conversion(format, input, &["--font-system=off"]);
             let stderr = String::from_utf8_lossy(&no_fonts.stderr);
             assert_eq!(no_fonts.status.code(), Some(2), "{format}: {stderr}");
@@ -2276,6 +2279,18 @@ fn raw_svg_fonts_are_conversion_only_and_each_compiled_codec_works() {
             }
             assert_eq!(automatic.stdout, closed.stdout, "{format}");
             assert_ne!(closed.stdout, blank.stdout, "{format}: text must paint");
+            if input == RAW_TREF_FONT_SVG {
+                let direct = raw_conversion(
+                    format,
+                    RAW_FONT_SVG,
+                    &["--font-file", &font, "--font-system=off"],
+                );
+                assert!(direct.status.success(), "{format}: {direct:?}");
+                assert!(
+                    direct.stdout == closed.stdout,
+                    "{format}: href text must paint identically"
+                );
+            }
         }
 
         #[cfg(all(
@@ -2286,20 +2301,31 @@ fn raw_svg_fonts_are_conversion_only_and_each_compiled_codec_works() {
             )
         ))]
         {
-            let system_svg = RAW_NESTED_FONT_SVG.replace("Cousine", "sans-serif");
-            let default = raw_conversion(format, &system_svg, &[]);
-            let platform = raw_conversion(format, &system_svg, &["--font-system=platform"]);
-            for output in [&default, &platform] {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                assert!(output.status.success(), "{format}: {stderr}");
-                assert!(output.stdout.starts_with(magic), "{format}");
-                assert!(
-                    measurement_notices(&stderr).is_empty(),
-                    "{format}: {stderr}"
-                );
+            let direct = RAW_FONT_SVG.replace("Cousine", "sans-serif");
+            let direct = raw_conversion(format, &direct, &[]);
+            assert!(direct.status.success(), "{format}: {direct:?}");
+            for input in [RAW_NESTED_FONT_SVG, RAW_TREF_FONT_SVG] {
+                let system_svg = input.replace("Cousine", "sans-serif");
+                let default = raw_conversion(format, &system_svg, &[]);
+                let platform = raw_conversion(format, &system_svg, &["--font-system=platform"]);
+                for output in [&default, &platform] {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    assert!(output.status.success(), "{format}: {stderr}");
+                    assert!(output.stdout.starts_with(magic), "{format}");
+                    assert!(
+                        measurement_notices(&stderr).is_empty(),
+                        "{format}: {stderr}"
+                    );
+                }
+                assert_eq!(default.stdout, platform.stdout, "{format}");
+                assert_ne!(default.stdout, blank.stdout, "{format}: text must paint");
+                if input == RAW_TREF_FONT_SVG {
+                    assert!(
+                        default.stdout == direct.stdout,
+                        "{format}: href text must paint identically"
+                    );
+                }
             }
-            assert_eq!(default.stdout, platform.stdout, "{format}");
-            assert_ne!(default.stdout, blank.stdout, "{format}: text must paint");
         }
 
         let rejected = raw_conversion(
@@ -2472,7 +2498,7 @@ fn quiet_missing_glyph_exports_suppress_font_resolution_notices() {
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 #[test]
 fn best_effort_native_quality_residuals_warn_without_disabling_output_and_respect_quiet() {
-    let directional = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><filter id="effect" filterUnits="userSpaceOnUse" x="-20" y="-20" width="80" height="80"><feDropShadow dx="15" dy="0" stdDeviation="0" flood-color="blue"/></filter></defs><g transform="translate(60 20) rotate(90)" filter="url(#effect)"><rect width="20" height="10" fill="red"/></g></svg>"##;
+    let directional = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><filter id="effect" filterUnits="userSpaceOnUse" x="-20" y="-20" width="80" height="80"><feDropShadow dx="15" dy="0" stdDeviation="0" flood-color="blue"/></filter></defs><g transform="translate(60 20) skewX(30)" filter="url(#effect)"><rect width="20" height="10" fill="red"/></g></svg>"##;
     let fallback_css = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><style>tspan{font-size:64px!important}</style><foreignObject x="10" y="10" width="180" height="60"><div xmlns="http://www.w3.org/1999/xhtml"><p>Alpha <b>Beta</b></p></div></foreignObject></svg>"#;
     let formats = [
         #[cfg(feature = "png")]

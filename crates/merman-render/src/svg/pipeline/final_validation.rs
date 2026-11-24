@@ -847,6 +847,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
                     .ok_or_else(|| {
                         validation_error("terminal SVG text elements cannot be tracked")
                     })?;
+                text_content.observe_reference(validated.local_text_reference);
                 let opens_style = validated.is_style;
                 fallback_css_residual |= validated.fallback_css_residual;
                 references.append(reference_stack.last().copied(), validated);
@@ -875,6 +876,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
                     checkpoint,
                     check_coordinate,
                 )?;
+                text_content.observe_reference(validated.local_text_reference);
                 let empty_style = validated.is_style;
                 fallback_css_residual |= validated.fallback_css_residual;
                 references.append(reference_stack.last().copied(), validated);
@@ -1050,6 +1052,7 @@ struct ValidatedElement {
     is_style: bool,
     is_marker: bool,
     may_repeat_per_element: bool,
+    local_text_reference: bool,
     ids: ElementIds,
     references: [Option<ElementReference>; 4],
 }
@@ -1247,6 +1250,7 @@ fn validate_element_after_xml(
     let mut root_width_seen = false;
     let mut root_height_seen = false;
     let mut fallback_css_residual = false;
+    let is_tref = is_svg_element && element_name == "tref";
     // The caller already validated this immutable element, including lexical and expanded
     // attribute-name uniqueness. Keep parsing and all target checks without rebuilding that set.
     for attribute in element.attributes().with_checks(false) {
@@ -1348,6 +1352,7 @@ fn validate_element_after_xml(
             checkpoint,
         )?;
         if (semantic_name == "href"
+            && !is_tref
             && !element_name.eq_ignore_ascii_case("a")
             && !(is_svg_element && element_name.eq_ignore_ascii_case("use")))
             || semantic_name == "src"
@@ -1358,6 +1363,9 @@ fn validate_element_after_xml(
     if let Some(error) = reference_attributes.marker_error.take() {
         return Err(error);
     }
+    if is_tref && let Some(target) = reference_attributes.raw_link_target() {
+        resource_closure.observe_raw_use_fragment_reference(target);
+    }
     let mut validated = reference_attributes.finish();
     validated.fallback_css_residual = fallback_css_residual;
     if let Some(id) = &validated.ids.parsed {
@@ -1366,8 +1374,8 @@ fn validate_element_after_xml(
     if let Some(id) = validated.ids.raw_value() {
         resource_closure.observe_raw_use_fragment_id(id);
     }
-    // Only the effective raw <use> target is a closure obligation. Presentation resources
-    // resolve against parsed IDs, which may differ from the first local-name XML ID.
+    // Raw links use the effective href. Presentation resources resolve against parsed IDs,
+    // which may differ from the first local-name XML ID.
     for reference in validated.references.iter().flatten() {
         if matches!(reference.target_kind, ReferenceTargetKind::UseElement) {
             resource_closure.observe_raw_use_fragment_reference(&reference.target);
@@ -1418,11 +1426,15 @@ impl<'a> ReferenceAttributes<'a> {
 
     #[inline]
     fn observe_raw_attribute(&mut self, name: &str, is_xlink: bool, value: &str) {
-        // usvg resolves raw XML use links before presentation attributes are projected. The
+        // usvg resolves use and tref links in the raw XML. The
         // fallback selects the first local name in any namespace, just like roxmltree::attribute.
         match name {
             "id" => self.ids.observe_raw(value),
-            "href" if self.is_svg_element && self.element_name.eq_ignore_ascii_case("use") => {
+            "href"
+                if self.is_svg_element
+                    && (self.element_name.eq_ignore_ascii_case("use")
+                        || self.element_name == "tref") =>
+            {
                 self.use_href.get_or_insert_with(|| value.to_owned());
                 if is_xlink {
                     self.use_xlink_href.get_or_insert_with(|| value.to_owned());
@@ -1513,17 +1525,21 @@ impl<'a> ReferenceAttributes<'a> {
         Ok(())
     }
 
+    fn raw_link_target(&self) -> Option<&str> {
+        self.use_xlink_href
+            .as_deref()
+            .or(self.use_href.as_deref())
+            .and_then(same_document_use_target)
+    }
+
     fn finish(self) -> ValidatedElement {
+        let local_text_reference = self.element_name == "tref" && self.raw_link_target().is_some();
         let href = if self.element_name.eq_ignore_ascii_case("use") {
-            self.use_xlink_href
-                .as_deref()
-                .or(self.use_href.as_deref())
-                .and_then(same_document_use_target)
-                .map(|target| ElementReference {
-                    target: target.to_owned(),
-                    multiplicity: 1,
-                    target_kind: ReferenceTargetKind::UseElement,
-                })
+            self.raw_link_target().map(|target| ElementReference {
+                target: target.to_owned(),
+                multiplicity: 1,
+                target_kind: ReferenceTargetKind::UseElement,
+            })
         } else {
             self.fe_image_href
                 .as_deref()
@@ -1545,6 +1561,7 @@ impl<'a> ReferenceAttributes<'a> {
             is_marker: self.is_svg_element && self.element_name.eq_ignore_ascii_case("marker"),
             may_repeat_per_element: self.is_svg_element
                 && matches!(self.element_name, "filter" | "mask" | "clipPath"),
+            local_text_reference,
             ids: self.ids,
             references: [
                 href,
@@ -3117,6 +3134,19 @@ mod tests {
             &["clip", "filter-source", "paint"]
         );
         assert_eq!(validated.resource_closure.inline_data_resource_count(), 2);
+    }
+
+    #[test]
+    fn effective_tref_targets_inside_text_require_fonts() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" xmlns:x="http://www.w3.org/1999/xlink"><text><tref href="#label"/></text><text><tspan><tref href="#ignored" x:href="#label"></tref></tspan></text><tref href="#label"/><defs><g id="label"><g>Some text</g></g></defs></svg>"##;
+        let validated =
+            validate_resvg_compatible_svg(svg, RenderResourcePolicy::trusted_native()).unwrap();
+        assert_eq!(validated.text_elements, 2);
+        assert!(!validated.font_seal.is_complete());
+        assert_eq!(
+            validated.resource_closure.referenced_fragment_ids(),
+            &["label"]
+        );
     }
 
     #[test]

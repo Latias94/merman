@@ -23,7 +23,7 @@ impl SvgFontSeal {
     }
 }
 
-/// Counts SVG text elements with character content, including preserved whitespace.
+/// Counts SVG text elements with character content or local text references.
 /// Empty Mermaid parity text and tspan nodes do not select or paint a font face.
 #[derive(Debug, Default)]
 pub(super) struct SvgTextContentTracker {
@@ -69,6 +69,12 @@ impl SvgTextContentTracker {
         if !content.is_empty()
             && let Some(text) = self.open_text_stack.last_mut()
         {
+            *text = true;
+        }
+    }
+
+    pub(super) fn observe_reference(&mut self, local_text_reference: bool) {
+        if local_text_reference && let Some(text) = self.open_text_stack.last_mut() {
             *text = true;
         }
     }

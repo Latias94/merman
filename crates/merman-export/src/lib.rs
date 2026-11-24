@@ -1411,9 +1411,8 @@ impl RasterExportReport {
 
     /// Returns whether directional filter offsets may differ from their SVG transform.
     ///
-    /// The native raster backend renders these effects with scale magnitudes and can lose
-    /// rotation, shear or reflection. Best-effort export still produces the diagram; callers
-    /// should disclose this paint-quality limitation or reject it under an exactness policy.
+    /// Raster export supports transforms that preserve or swap the coordinate axes. Best-effort
+    /// export reports the residual for other transforms that can resample the filtered layer.
     pub const fn directional_filter_transform_residual(self) -> bool {
         self.directional_filter_transform_residual
     }
@@ -1967,7 +1966,7 @@ fn prepare_raster_source_on_backend_stack(
     let fallback_css_residual = svg.finalization_report().fallback_css_residual();
     let conversion_plan = plan_svg_conversion(&tree, options.conversion_limits, control)?;
     let directional_filter_transform_residual =
-        !raster_filter_transforms_supported(tree.root(), control)?;
+        !directional_filter_transforms_supported(tree.root(), true, control)?;
     let embedded_image_plan =
         plan_embedded_images(&tree, options.embedded_image_limit, data_plan, control)?;
     let plan = raster_plan_for_geometry(geometry, options, control)?;
@@ -2588,16 +2587,30 @@ fn check_svg_conversion_limit(
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn raster_filter_transforms_supported(
+fn directional_filter_transforms_supported(
     root: &usvg::Group,
+    allow_axis_permutations: bool,
     control: &OperationControl,
 ) -> Result<bool> {
     let mut stack = vec![(root, usvg::Transform::identity())];
     while let Some((group, parent_transform)) = stack.pop() {
         export_checkpoint(control)?;
         let transform = parent_transform.pre_concat(group.transform());
-        let preserves_offset_axes =
+        let mut preserves_offset_axes =
             transform.kx == 0.0 && transform.ky == 0.0 && transform.sx > 0.0 && transform.sy > 0.0;
+        if allow_axis_permutations && !preserves_offset_axes {
+            // resvg factors rotation and reflection out of the filter layer and restores them
+            // during compositing. Allow roundoff in quarter-turn SVG transform matrices.
+            let keeps_axes = transform.sx != 0.0
+                && transform.sy != 0.0
+                && transform.ky.abs() <= transform.sx.abs() * f32::EPSILON
+                && transform.kx.abs() <= transform.sy.abs() * f32::EPSILON;
+            let swaps_axes = transform.ky != 0.0
+                && transform.kx != 0.0
+                && transform.sx.abs() <= transform.ky.abs() * f32::EPSILON
+                && transform.sy.abs() <= transform.kx.abs() * f32::EPSILON;
+            preserves_offset_axes = keeps_axes || swaps_axes;
+        }
         if !preserves_offset_axes {
             for primitive in group
                 .filters()
@@ -2605,8 +2618,6 @@ fn raster_filter_transforms_supported(
                 .flat_map(|filter| filter.primitives())
             {
                 export_checkpoint(control)?;
-                // Report directional filters outside the supported axis-aligned transforms.
-                // PDF applies vector ancestor transforms outside the localized raster render.
                 let directional = match primitive.kind() {
                     usvg::filter::Kind::Offset(offset) => offset.dx() != 0.0 || offset.dy() != 0.0,
                     usvg::filter::Kind::DropShadow(shadow) => {
@@ -2774,7 +2785,7 @@ fn pdf_filtered_group_bounds(
                 continue;
             }
             let directional_transform_residual =
-                !raster_filter_transforms_supported(group, control)?;
+                !directional_filter_transforms_supported(group, false, control)?;
             // Match krilla-svg's composed transform before its f32 side cap and pixel rounding.
             // Absolute bounds are insufficient: isolated PDF streams reset their current CTM.
             let local = bbox
@@ -5071,7 +5082,7 @@ mod tests {
 
     #[test]
     fn raster_directional_filters_report_transform_residual_and_encode() {
-        for transform in ["rotate(90)", "skewX(30)", "scale(-1 1)"] {
+        for transform in ["rotate(30)", "skewX(30)"] {
             for primitive in [
                 r#"<feDropShadow dx="7" dy="4" stdDeviation="0" flood-color="blue"/>"#,
                 r#"<feOffset dx="7" dy="4"/>"#,
@@ -5100,6 +5111,35 @@ mod tests {
                 assert!(report.directional_filter_transform_residual());
                 assert!(jpeg.starts_with(&[0xff, 0xd8]));
             }
+        }
+    }
+
+    #[test]
+    fn raster_filter_offsets_follow_rotated_and_reflected_axes() {
+        for (transform, x, y, width, height) in [
+            ("rotate(90)", 65, 35, 10, 20),
+            ("scale(-1 1)", 40, 20, 20, 10),
+        ] {
+            let filtered = format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg" width="120" height="110"><defs><filter id="effect" filterUnits="userSpaceOnUse" x="-20" y="-20" width="100" height="100"><feOffset dx="15" dy="0"/></filter></defs><g transform="translate(75 20) {transform}" filter="url(#effect)"><rect width="20" height="10" fill="red"/></g></svg>"##
+            );
+            let reference = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="120" height="110"><rect x="{x}" y="{y}" width="{width}" height="{height}" fill="red"/></svg>"#
+            );
+            let options = fixture_raster_options();
+            let (png, report) = svg_to_png_with_report(&filtered, &options).unwrap();
+            assert!(
+                !report.directional_filter_transform_residual(),
+                "{transform}"
+            );
+            let reference = svg_to_png(&reference, &options).unwrap();
+            assert!(png == reference, "{transform} must paint at the SVG offset");
+            assert_eq!(rgba_pixel(&png, x, y), [255, 0, 0, 255]);
+            let (_, report) = svg_to_jpeg_with_report(&filtered, &options).unwrap();
+            assert!(
+                !report.directional_filter_transform_residual(),
+                "{transform}"
+            );
         }
     }
 
