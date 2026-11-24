@@ -51,6 +51,8 @@ def master(path, location):
         "Z": 600,
         "B": 420,
         "C": 420,
+        "D": 420,
+        "W": 500,
         "alef_hebrew": 500,
         "bet": 500,
         "gimel": 500,
@@ -71,7 +73,7 @@ def master(path, location):
     font = FontBuilder(1000, isTTF=True)
     font.setupGlyphOrder(list(advances))
     font.setupCharacterMap({
-        **{ord(name): name for name in "ABCVXZfi"},
+        **{ord(name): name for name in "ABCDVWXZfi"},
         0x0020: "space",
         0x05D0: "alef_hebrew",
         0x05D1: "bet",

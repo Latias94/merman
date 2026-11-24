@@ -331,34 +331,58 @@ fn normal_weight_preserves_lam_alef_when_the_primary_instances_match() {
 }
 
 #[test]
-fn arabic_decoration_boundary_keeps_joining_forms_and_inner_underline() {
+fn arabic_decoration_boundary_paints_only_the_decorated_part_of_the_ligature() {
     let mut options = Options::default();
     let id = static_face(options.fontdb_mut());
+    let variable = variable_face(options.fontdb_mut());
     options.font_resolver.select_font = Box::new(move |_, _| Some(id));
 
-    let tree = render(
-        &options,
-        "font-size='20'",
-        "ل<tspan text-decoration='underline'>ا</tspan>",
-    );
-    let [lam, alef] = text(&tree).layouted() else {
-        panic!("expected one glyph span on each side of the decoration boundary");
-    };
-    for (span, letter) in [(lam, "ل"), (alef, "ا")] {
-        let [glyph] = span.positioned_glyphs.as_slice() else {
-            panic!("expected one glyph for {letter}");
-        };
-        assert_eq!(glyph.text, letter);
-        let isolated = render(&options, "font-size='20'", letter);
-        assert_ne!(glyph.id, glyphs(&isolated).next().unwrap().id);
+    let reference = render(&options, "font-size='20'", "لا");
+    let expected = glyphs(&reference).next().unwrap();
+    assert_eq!(expected.text, "لا");
+    assert_ne!(expected.id.0, 0);
+    for primary in [id, variable] {
+        options.set_font_instances(
+            Some(Box::new(move |_, _| Some(weight(primary, 1.0, 100.0)))),
+            Some(Box::new(move |_, _, _, _, _, _| {
+                Some((id, 1.0, Vec::new()))
+            })),
+        );
+        for (content, left, right, owner) in [
+            (
+                "ل<tspan text-decoration='underline'>ا</tspan>",
+                20.0,
+                26.2,
+                1,
+            ),
+            (
+                "<tspan text-decoration='underline'>ل</tspan>ا",
+                26.2,
+                32.4,
+                0,
+            ),
+            (
+                "ل<tspan text-decoration='underline' letter-spacing='8'>ا</tspan>",
+                20.0,
+                26.2,
+                1,
+            ),
+        ] {
+            let tree = render(&options, "font-size='20'", content);
+            let actual: Vec<_> = glyphs(&tree).collect();
+            assert_eq!(actual.len(), 1, "{content}");
+            assert_eq!(actual[0].font, id);
+            assert_eq!(actual[0].id, expected.id);
+            assert_eq!(actual[0].transform(), expected.transform());
+            let spans = text(&tree).layouted();
+            assert!(spans[1 - owner].underline.is_none());
+            let underline = spans[owner].underline.as_ref().expect("visible underline");
+            let bounds = underline.bounding_box().expect("underline bounds");
+            assert!(underline.is_visible() && underline.fill().is_some());
+            assert_near(bounds.left(), left);
+            assert_near(bounds.right(), right);
+        }
     }
-
-    assert!(lam.underline.is_none());
-    let underline = alef.underline.as_ref().expect("visible underline on alef");
-    let bounds = underline.bounding_box().expect("underline bounds");
-    assert!(underline.is_visible() && underline.fill().is_some());
-    assert_near(bounds.left(), alef.positioned_glyphs[0].transform().tx);
-    assert_near(bounds.right(), lam.positioned_glyphs[0].transform().tx);
 }
 
 #[test]
@@ -443,20 +467,37 @@ fn assert_ligature_decoration_and_offsets(options: &Options) {
     );
     let spans = text(&decorated).layouted();
     assert_eq!(spans.len(), 3);
-    assert_eq!(spans[1].positioned_glyphs[0].text, "i");
     assert!(spans[0].underline.is_none());
     assert!(spans[2].underline.is_none());
     let underline = spans[1].underline.as_ref().expect("visible underline on i");
     let bounds = underline.bounding_box().expect("underline bounds");
     assert!(bounds.width() > 0.0 && bounds.height() > 0.0);
     assert!(underline.is_visible() && underline.fill().is_some());
-    assert_near(bounds.left(), spans[1].positioned_glyphs[0].transform().tx);
-    assert_near(bounds.right(), spans[2].positioned_glyphs[0].transform().tx);
+    let first = spans[0].positioned_glyphs[0].transform().tx;
+    let last = spans[2].positioned_glyphs[0].transform().tx;
+    assert_near(bounds.left(), (first + last) / 2.0);
+    assert_near(bounds.right(), last);
 
     let plain = render(options, "font-size='40'", "fiX");
     let plain: Vec<_> = glyphs(&plain).collect();
     assert_eq!(plain.len(), 2);
     assert_eq!(plain[0].text, "fi");
+
+    let tracked = render(options, "font-size='40' letter-spacing='8'", "fiX");
+    let tracked: Vec<_> = glyphs(&tracked).collect();
+    assert_eq!(
+        tracked.iter().map(|g| g.text.as_str()).collect::<Vec<_>>(),
+        ["f", "i", "X"]
+    );
+    for (letter, index) in [("f", 1), ("i", 2)] {
+        let pair = render(options, "font-size='40'", &format!("{letter}X"));
+        let pair: Vec<_> = glyphs(&pair).collect();
+        assert_eq!(pair.len(), 2);
+        assert_near(
+            tracked[index].transform().tx - tracked[index - 1].transform().tx,
+            pair[1].transform().tx - pair[0].transform().tx + 8.0,
+        );
+    }
 
     let shifted = render(
         options,
@@ -710,56 +751,164 @@ fn spacing_and_glyphs_scales_existing_spacing_and_rotates_the_scaled_glyph() {
             20.0 + (62.0 + relative_gap) * scale,
         );
         let rotated = glyphs[1].transform();
-        assert_near(rotated.ky.atan2(rotated.sx).to_degrees(), 30.0);
-        assert_near(rotated.sx.hypot(rotated.ky), 0.05 * scale);
-        assert_near(rotated.kx.hypot(rotated.sy), 0.05);
+        let (sine, cosine) = 30.0_f32.to_radians().sin_cos();
+        assert_near(rotated.sx, 0.05 * cosine * scale);
+        assert_near(rotated.kx, -0.05 * sine * scale);
+        assert_near(rotated.ky, 0.05 * sine);
+        assert_near(rotated.sy, 0.05 * cosine);
     }
 }
 
 #[test]
-fn nested_text_lengths_resolve_once_and_in_child_first_order() {
+fn rotated_spacing_and_glyphs_scales_ink_along_the_svg_inline_axis() {
     let mut options = Options::default();
     let id = static_face(options.fontdb_mut());
     options.font_resolver.select_font = Box::new(move |_, _| Some(id));
-    for (mode, expected) in [
-        ("spacing", [20.0, 63.0, 78.0, 115.0, 140.0]),
-        (
-            "spacingAndGlyphs",
-            [
-                20.0,
-                20.0 + 21.0 * (120.0 / 76.0),
-                20.0 + 36.0 * (120.0 / 76.0),
-                20.0 + 51.0 * (120.0 / 76.0),
-                140.0,
-            ],
-        ),
-    ] {
-        let tree = render(
-            &options,
-            "font-size='50'",
-            &format!(
-                "<tspan textLength='120' lengthAdjust='{mode}'>A<tspan textLength='30' lengthAdjust='spacingAndGlyphs'>B<tspan fill='red'>C</tspan></tspan>X</tspan><tspan y='110'>X</tspan>"
-            ),
-        );
-        let actual: Vec<_> = glyphs(&tree).map(|g| g.transform()).collect();
-        assert_eq!(actual.len(), expected.len());
-        for (transform, expected_x) in actual.iter().zip(expected) {
-            assert_near(transform.tx, expected_x);
-        }
-        let parent_scale = if mode == "spacing" { 1.0 } else { 120.0 / 76.0 };
-        assert_near(actual[1].sx, 0.05 * (30.0 / 42.0) * parent_scale);
-        assert_near(actual[2].sx, actual[1].sx);
+    let plain = render(&options, "font-size='50' rotate='90'", "W");
+    let scaled = render(
+        &options,
+        "font-size='50' rotate='90' textLength='100' lengthAdjust='spacingAndGlyphs'",
+        "W",
+    );
+    let plain = text(&plain).stroke_bounding_box();
+    let scaled = text(&scaled).stroke_bounding_box();
+    assert_near(scaled.width(), plain.width() * 4.0);
+    assert_near(scaled.height(), plain.height());
+    assert_near(scaled.top(), plain.top());
+}
 
-        let svg = tree.to_string(&usvg::WriteOptions {
-            preserve_text: true,
-            ..usvg::WriteOptions::default()
-        });
-        let reparsed = Tree::from_str(&svg, &options).unwrap();
-        assert_eq!(
-            glyphs(&reparsed).map(|g| g.transform()).collect::<Vec<_>>(),
-            actual
-        );
+fn assert_preserved_text_geometry(tree: &Tree, options: &Options) -> String {
+    let svg = tree.to_string(&usvg::WriteOptions {
+        preserve_text: true,
+        ..usvg::WriteOptions::default()
+    });
+    let reparsed = Tree::from_str(&svg, options).unwrap();
+    let geometry = |tree: &Tree| {
+        glyphs(tree)
+            .map(|glyph| (glyph.id, glyph.text.clone(), glyph.transform()))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(geometry(&reparsed), geometry(tree), "{svg}");
+    svg
+}
+
+#[test]
+fn one_text_length_is_shared_across_y_positioned_chunks() {
+    let mut options = Options::default();
+    let id = static_face(options.fontdb_mut());
+    options.font_resolver.select_font = Box::new(move |_, _| Some(id));
+    for (mode, step) in [("spacing", 33.0), ("spacingAndGlyphs", 30.0)] {
+        for (trailing, trailing_y) in [("X", 140.0), ("<tspan y='110'>X</tspan>", 110.0)] {
+            let tree = render(
+                &options,
+                "font-size='50'",
+                &format!(
+                    "<tspan x='40' y='70' textLength='120' lengthAdjust='{mode}'>AB<tspan y='140'>CD</tspan></tspan>{trailing}"
+                ),
+            );
+            let actual: Vec<_> = glyphs(&tree).collect();
+            assert_eq!(actual.len(), 5);
+            for (i, glyph) in actual[..4].iter().enumerate() {
+                assert_ne!(glyph.id.0, 0);
+                assert_near(glyph.transform().tx, 40.0 + i as f32 * step);
+                assert_near(glyph.transform().ty, if i < 2 { 70.0 } else { 140.0 });
+            }
+            assert_eq!(actual[4].text, "X");
+            assert_near(actual[4].transform().tx, 160.0);
+            assert_near(actual[4].transform().ty, trailing_y);
+            assert_preserved_text_geometry(&tree, &options);
+        }
     }
+}
+
+#[test]
+fn preserve_text_keeps_one_path_and_length_declaration_across_chunks() {
+    let mut options = Options::default();
+    let id = static_face(options.fontdb_mut());
+    options.font_resolver.select_font = Box::new(move |_, _| Some(id));
+    let tree = render_on_path(
+        &options,
+        "M10 96 H250",
+        4.0,
+        "x='0 70 140' font-size='50' textLength='120' lengthAdjust='spacingAndGlyphs'",
+        "A<tspan fill='red'>B</tspan>C",
+    );
+    let actual: Vec<_> = glyphs(&tree).map(|g| g.transform()).collect();
+    assert_eq!(actual.len(), 3);
+    for (index, transform) in actual.iter().enumerate() {
+        assert_near(transform.tx, 14.0 + 70.0 * index as f32);
+        assert_near(transform.ty, 96.0);
+    }
+    let svg = assert_preserved_text_geometry(&tree, &options);
+    assert_eq!(svg.matches("<textPath").count(), 1);
+    assert_eq!(svg.matches("textLength=").count(), 1);
+}
+
+#[test]
+fn nested_text_lengths_keep_the_child_extent_and_outer_continuation() {
+    let mut options = Options::default();
+    let id = static_face(options.fontdb_mut());
+    options.font_resolver.select_font = Box::new(move |_, _| Some(id));
+    for (outer_mode, expected_b, expected_d, outer_scale) in [
+        ("spacing", 85.0, 139.0, 1.0),
+        ("spacingAndGlyphs", 75.0, 125.0, 120.0 / 72.0),
+    ] {
+        for (inner_mode, inner_step, inner_scale) in [
+            ("spacing", 9.0, 1.0),
+            ("spacingAndGlyphs", 15.0, 30.0 / 42.0),
+        ] {
+            let tree = render(
+                &options,
+                "font-size='50'",
+                &format!(
+                    "<tspan x='40' textLength='120' lengthAdjust='{outer_mode}'>A<tspan textLength='30' lengthAdjust='{inner_mode}' text-decoration='underline'>B<tspan fill='red'>C</tspan></tspan>D</tspan><tspan y='140'>X</tspan>"
+                ),
+            );
+            let actual: Vec<_> = glyphs(&tree).map(|g| g.transform()).collect();
+            assert_eq!(actual.len(), 5);
+            for (transform, x) in
+                actual
+                    .iter()
+                    .zip([40.0, expected_b, expected_b + inner_step, expected_d, 160.0])
+            {
+                assert_near(transform.tx, x);
+            }
+            assert_near(actual[0].sx, 0.05 * outer_scale);
+            assert_near(actual[3].sx, 0.05 * outer_scale);
+            assert_near(actual[1].sx, 0.05 * inner_scale);
+            assert_near(actual[2].sx, actual[1].sx);
+            assert_near(actual[2].tx + 420.0 * actual[2].sx - actual[1].tx, 30.0);
+            let inner_spans = &text(&tree).layouted()[1..3];
+            let [b, c] = [0, 1].map(|i| {
+                inner_spans[i]
+                    .underline
+                    .as_ref()
+                    .unwrap()
+                    .bounding_box()
+                    .unwrap()
+            });
+            assert_near(b.left(), expected_b);
+            assert_near(c.right(), expected_b + 30.0);
+
+            let svg = assert_preserved_text_geometry(&tree, &options);
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let inner = document
+                .descendants()
+                .find(|node| node.attribute("textLength") == Some("30"))
+                .unwrap();
+            assert_eq!(inner.attribute("lengthAdjust"), Some(inner_mode));
+        }
+    }
+
+    let tree = render(
+        &options,
+        "font-size='50'",
+        "<tspan x='40' textLength='120' lengthAdjust='spacingAndGlyphs'>A<tspan textLength='30' lengthAdjust='spacingAndGlyphs'>BC</tspan></tspan>X",
+    );
+    let actual: Vec<_> = glyphs(&tree).map(|g| g.transform()).collect();
+    assert_eq!(actual.len(), 4);
+    assert_near(actual[2].tx + 420.0 * actual[2].sx - actual[1].tx, 30.0);
+    assert_near(actual[3].tx, 160.0);
 }
 
 #[test]

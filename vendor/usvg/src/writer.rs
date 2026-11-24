@@ -713,111 +713,106 @@ fn write_element(node: &Node, is_clip_path: bool, opt: &WriteOptions, xml: &mut 
                     xml.write_numbers(AId::Dy, &text.dy);
                 }
 
-                xml.set_preserve_whitespaces(true);
-
-                for chunk in &text.chunks {
-                    if let TextFlow::Path(text_path) = &chunk.text_flow {
-                        xml.start_svg_element(EId::TextPath);
-
-                        let prefix = opt.id_prefix.as_deref().unwrap_or_default();
-                        xml.write_attribute_fmt(
-                            "xlink:href",
-                            format_args!("#{}{}", prefix, text_path.id()),
-                        );
-
-                        if text_path.start_offset != 0.0 {
-                            xml.write_svg_attribute(AId::StartOffset, &text_path.start_offset);
-                        }
-                    }
-
-                    xml.start_svg_element(EId::Tspan);
-
-                    if let Some(x) = chunk.x {
-                        xml.write_svg_attribute(AId::X, &x);
-                    }
-
-                    if let Some(y) = chunk.y {
-                        xml.write_svg_attribute(AId::Y, &y);
-                    }
-
-                    match chunk.anchor {
-                        TextAnchor::Start => {}
-                        TextAnchor::Middle => xml.write_svg_attribute(AId::TextAnchor, "middle"),
-                        TextAnchor::End => xml.write_svg_attribute(AId::TextAnchor, "end"),
-                    }
-
-                    // Rebuild the element ranges around their flattened paint spans.
-                    let mut adjustments: Vec<_> = chunk.length_adjustments.iter().rev().collect();
-                    adjustments.sort_by_key(|adjustment| {
-                        (
-                            adjustment.bytes.start,
-                            std::cmp::Reverse(adjustment.bytes.end),
-                        )
-                    });
-                    let mut adjustments = adjustments.into_iter().peekable();
-                    let mut adjustment_ends = Vec::new();
-                    for span in &chunk.spans {
-                        while adjustment_ends.last().is_some_and(|&end| end <= span.start) {
-                            adjustment_ends.pop();
-                            xml.end_element();
-                        }
-                        while let Some(adjustment) =
-                            adjustments.next_if(|adjustment| adjustment.bytes.start == span.start)
-                        {
-                            xml.start_svg_element(EId::Tspan);
-                            xml.write_svg_attribute(AId::TextLength, &adjustment.length);
-                            if adjustment.mode == LengthAdjust::SpacingAndGlyphs {
-                                xml.write_svg_attribute(AId::LengthAdjust, "spacingAndGlyphs");
-                            }
-                            adjustment_ends.push(adjustment.bytes.end);
-                        }
-
-                        let decorations: Vec<_> = [
-                            ("underline", &span.decoration.underline),
-                            ("line-through", &span.decoration.line_through),
-                            ("overline", &span.decoration.overline),
-                        ]
-                        .iter()
-                        .filter_map(|&(key, option_value)| {
-                            option_value.as_ref().map(|value| (key, value))
-                        })
-                        .collect();
-
-                        // Decorations need to be dumped BEFORE we write the actual span data
-                        // (so that for example stroke color of span doesn't affect the text
-                        // itself while baseline shifts need to be written after (since they are
-                        // affected by the font size)
-                        for (deco_name, deco) in &decorations {
-                            xml.start_svg_element(EId::Tspan);
-                            xml.write_svg_attribute(AId::TextDecoration, deco_name);
-                            write_fill(&deco.fill, false, opt, xml);
-                            write_stroke(&deco.stroke, opt, xml);
-                        }
-
-                        write_span(is_clip_path, opt, xml, chunk, span);
-
-                        // End for each tspan we needed to create for decorations
-                        for _ in &decorations {
-                            xml.end_element();
-                        }
-                    }
-                    for _ in adjustment_ends {
-                        xml.end_element();
-                    }
-                    xml.end_element();
-
-                    // End textPath element
-                    if matches!(&chunk.text_flow, TextFlow::Path(_)) {
-                        xml.end_element();
-                    }
+                if let Some(adjustment) = text.length_adjustments.last().filter(|a| a.at_text_root)
+                {
+                    write_text_length(adjustment, xml);
                 }
 
+                xml.set_preserve_whitespaces(true);
+                write_text_chunks(text, is_clip_path, opt, xml);
                 xml.end_element();
                 xml.set_preserve_whitespaces(false);
             } else {
                 write_group_element(text.flattened(), is_clip_path, opt, xml);
             }
         }
+    }
+}
+
+fn write_text_length(adjustment: &TextLengthAdjustment, xml: &mut XmlWriter) {
+    xml.write_svg_attribute(AId::TextLength, &adjustment.length);
+    let mode = match adjustment.mode {
+        LengthAdjust::Spacing => "spacing",
+        LengthAdjust::SpacingAndGlyphs => "spacingAndGlyphs",
+    };
+    xml.write_svg_attribute(AId::LengthAdjust, mode);
+}
+
+fn write_text_chunks(text: &Text, is_clip_path: bool, opt: &WriteOptions, xml: &mut XmlWriter) {
+    let mut adjustments: Vec<_> = text
+        .length_adjustments
+        .iter()
+        .rev()
+        .filter(|adjustment| !adjustment.at_text_root)
+        .collect();
+    adjustments.sort_by_key(|a| (a.bytes.start, std::cmp::Reverse(a.bytes.end)));
+    let mut adjustments = adjustments.into_iter().peekable();
+    let mut adjustment_ends = Vec::new();
+    let mut chunk_start = 0;
+    let mut open_path = None;
+
+    for chunk in &text.chunks {
+        let path = match &chunk.text_flow {
+            TextFlow::Linear => None,
+            TextFlow::Path(path) => Some(path),
+        };
+        for (index, span) in chunk.spans.iter().enumerate() {
+            let start = chunk_start + span.start;
+            while adjustment_ends.last().is_some_and(|&end| end <= start) {
+                adjustment_ends.pop();
+                xml.end_element();
+            }
+
+            if index == 0
+                && !matches!((open_path, path), (Some(a), Some(b)) if std::sync::Arc::ptr_eq(a, b))
+            {
+                if open_path.is_some() {
+                    xml.end_element();
+                }
+                if let Some(path) = path {
+                    xml.start_svg_element(EId::TextPath);
+                    let prefix = opt.id_prefix.as_deref().unwrap_or_default();
+                    xml.write_attribute_fmt("xlink:href", format_args!("#{}{}", prefix, path.id()));
+                    if path.start_offset != 0.0 {
+                        xml.write_svg_attribute(AId::StartOffset, &path.start_offset);
+                    }
+                }
+                open_path = path;
+            }
+
+            // Open declarations around their flattened spans, including any positioning chunks.
+            while let Some(adjustment) = adjustments.next_if(|a| a.bytes.start == start) {
+                xml.start_svg_element(EId::Tspan);
+                write_text_length(adjustment, xml);
+                adjustment_ends.push(adjustment.bytes.end);
+            }
+
+            let decorations = [
+                ("underline", &span.decoration.underline),
+                ("line-through", &span.decoration.line_through),
+                ("overline", &span.decoration.overline),
+            ];
+            // Decoration paint precedes the span paint, which may use different colors.
+            for (name, decoration) in decorations {
+                if let Some(decoration) = decoration {
+                    xml.start_svg_element(EId::Tspan);
+                    xml.write_svg_attribute(AId::TextDecoration, name);
+                    write_fill(&decoration.fill, false, opt, xml);
+                    write_stroke(&decoration.stroke, opt, xml);
+                }
+            }
+            write_span(is_clip_path, opt, xml, chunk, span, index == 0);
+            for _ in decorations.iter().filter(|(_, d)| d.is_some()) {
+                xml.end_element();
+            }
+        }
+        chunk_start += chunk.text.len();
+    }
+    for _ in adjustment_ends {
+        xml.end_element();
+    }
+    if open_path.is_some() {
+        xml.end_element();
     }
 }
 
@@ -1445,8 +1440,23 @@ fn write_span(
     xml: &mut XmlWriter,
     chunk: &TextChunk,
     span: &TextSpan,
+    first_in_chunk: bool,
 ) {
     xml.start_svg_element(EId::Tspan);
+
+    if first_in_chunk {
+        if let Some(x) = chunk.x {
+            xml.write_svg_attribute(AId::X, &x);
+        }
+        if let Some(y) = chunk.y {
+            xml.write_svg_attribute(AId::Y, &y);
+        }
+        match chunk.anchor {
+            TextAnchor::Start => {}
+            TextAnchor::Middle => xml.write_svg_attribute(AId::TextAnchor, "middle"),
+            TextAnchor::End => xml.write_svg_attribute(AId::TextAnchor, "end"),
+        }
+    }
 
     let font_family_to_str = |font_family: &FontFamily| match font_family {
         FontFamily::Monospace => "monospace".to_string(),

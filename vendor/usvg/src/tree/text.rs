@@ -548,9 +548,11 @@ pub enum TextFlow {
 #[cfg(feature = "writer")]
 #[derive(Clone, Debug)]
 pub(crate) struct TextLengthAdjustment {
+    // Offsets into the concatenated chunk text.
     pub(crate) bytes: std::ops::Range<usize>,
     pub(crate) length: f32,
     pub(crate) mode: LengthAdjust,
+    pub(crate) at_text_root: bool,
 }
 
 /// A text chunk.
@@ -562,8 +564,6 @@ pub struct TextChunk {
     pub(crate) y: Option<f32>,
     pub(crate) anchor: TextAnchor,
     pub(crate) spans: Vec<TextSpan>,
-    #[cfg(feature = "writer")]
-    pub(crate) length_adjustments: Vec<TextLengthAdjustment>,
     pub(crate) text_flow: TextFlow,
     pub(crate) text: String,
 }
@@ -620,6 +620,8 @@ pub struct Text {
     pub(crate) rotate: Vec<f32>,
     pub(crate) writing_mode: WritingMode,
     pub(crate) chunks: Vec<TextChunk>,
+    #[cfg(feature = "writer")]
+    pub(crate) length_adjustments: Vec<TextLengthAdjustment>,
     pub(crate) abs_transform: Transform,
     pub(crate) bounding_box: Rect,
     pub(crate) abs_bounding_box: Rect,

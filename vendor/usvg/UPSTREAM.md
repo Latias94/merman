@@ -11,9 +11,11 @@ The change in `src/text/layout.rs` shapes missing text in its original direction
 surrounding context. Consecutive missing clusters with equivalent physical faces, effective
 coordinates, sizes and scripts are shaped together, preserving ligatures and joining. Glyphs
 already supplied by the primary face keep their original positions within their cluster.
-Adjacent spans with equivalent resolved fonts, shaping options, language tags and decoration
-coverage share a run within the same script and direction. Shaping keeps the surrounding script
-context across span boundaries. Fallback uses each missing cluster's authored font request.
+Adjacent spans with equivalent resolved fonts, shaping options and language tags share a run
+within the same script and direction. Effective letter spacing disables discretionary ligatures.
+Decorations use the source ranges inside shared clusters so required ligatures retain their shape.
+Shaping keeps the surrounding script context across span boundaries. Fallback uses each missing
+cluster's authored font request.
 `Font::selection_language` supplies the effective language to primary family matching.
 `Options::set_text_fallback` lets the font host consider the authored family stack,
 inherited `xml:lang`, and complete cluster text. `Options::set_font_instances` also
@@ -42,8 +44,9 @@ It retains the normal positioning and outline-conversion checks for both bounds.
 Relative positions accumulate in source order, including offsets inside ligatures. Text on a path
 anchors the positioned chunk before sampling nonmonotonic distances and uses the limiting tangent
 at repeated curve endpoints.
-`textLength` adjusts nested ranges from the inside out. `spacingAndGlyphs` scales current spacing
-and glyph advances along the text axis, and scales each glyph outline before rotation.
+`textLength` adjusts each element once across its positioning chunks and resolves nested ranges
+from the inside out. Resolved descendant ranges retain their rendered extents.
+`spacingAndGlyphs` scales along the SVG inline axis, including for rotated characters.
 
 Text conversion records visible spans without a usable primary face and missing glyphs in
 text nodes that are dropped during conversion. The exporter combines these omissions with

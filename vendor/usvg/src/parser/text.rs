@@ -107,7 +107,7 @@ pub(crate) fn convert(
     let rotate_list = resolve_rotate_list(text_node);
     let writing_mode = convert_writing_mode(text_node);
 
-    let chunks = collect_text_chunks(
+    let (chunks, length_adjustments) = collect_text_chunks(
         text_node,
         &pos_list,
         state,
@@ -136,6 +136,7 @@ pub(crate) fn convert(
         rotate: rotate_list,
         writing_mode,
         chunks,
+        length_adjustments,
         abs_transform: parent.abs_transform,
         // All fields below will be reset by `text_to_paths`.
         bounding_box: dummy,
@@ -178,9 +179,11 @@ pub(crate) fn convert(
 struct IterState {
     chars_count: usize,
     chunk_bytes_count: usize,
+    text_bytes_count: usize,
     split_chunk: bool,
     text_flow: TextFlow,
     chunks: Vec<TextChunk>,
+    length_adjustments: Vec<TextLengthAdjustment>,
 }
 
 fn collect_text_chunks(
@@ -189,13 +192,15 @@ fn collect_text_chunks(
     state: &converter::State,
     cache: &mut converter::Cache,
     omissions: &mut TextFontOmissions,
-) -> Vec<TextChunk> {
+) -> (Vec<TextChunk>, Vec<TextLengthAdjustment>) {
     let mut iter_state = IterState {
         chars_count: 0,
         chunk_bytes_count: 0,
+        text_bytes_count: 0,
         split_chunk: false,
         text_flow: TextFlow::Linear,
         chunks: Vec::new(),
+        length_adjustments: Vec::new(),
     };
 
     collect_text_chunks_impl(
@@ -207,7 +212,7 @@ fn collect_text_chunks(
         omissions,
     );
 
-    iter_state.chunks
+    (iter_state.chunks, iter_state.length_adjustments)
 }
 
 fn collect_text_chunks_impl(
@@ -221,9 +226,8 @@ fn collect_text_chunks_impl(
     let text_length = parent
         .try_convert_length(AId::TextLength, Units::UserSpaceOnUse, state)
         .filter(|length| length.is_finite() && *length >= 0.0);
-    let length_adjust = parent.find_attribute(AId::LengthAdjust).unwrap_or_default();
-    let first_chunk = iter_state.chunks.len().saturating_sub(1);
-    let first_byte = iter_state.chunk_bytes_count;
+    let length_adjust = parent.attribute(AId::LengthAdjust).unwrap_or_default();
+    let first_byte = iter_state.text_bytes_count;
 
     for child in parent.children() {
         if child.is_element() {
@@ -252,10 +256,9 @@ fn collect_text_chunks_impl(
 
             collect_text_chunks_impl(child, pos_list, state, cache, iter_state, omissions);
 
-            iter_state.text_flow = TextFlow::Linear;
-
             // Next char after `textPath` should be split too.
             if child.tag_name() == Some(EId::TextPath) {
+                iter_state.text_flow = TextFlow::Linear;
                 iter_state.split_chunk = true;
             }
 
@@ -373,7 +376,6 @@ fn collect_text_chunks_impl(
                     y: pos_list[iter_state.chars_count].y,
                     anchor,
                     spans: vec![span2],
-                    length_adjustments: Vec::new(),
                     text_flow: iter_state.text_flow.clone(),
                     text: c.to_string(),
                 });
@@ -401,22 +403,19 @@ fn collect_text_chunks_impl(
             is_new_span = false;
             iter_state.chars_count += 1;
             iter_state.chunk_bytes_count += char_len;
+            iter_state.text_bytes_count += char_len;
         }
     }
 
-    if let Some(length) = text_length {
-        // Record the element's full range after its children, independently of paint spans.
-        for (index, chunk) in iter_state.chunks[first_chunk..].iter_mut().enumerate() {
-            let start = if index == 0 { first_byte } else { 0 };
-            let end = chunk.text.len();
-            if start < end {
-                chunk.length_adjustments.push(TextLengthAdjustment {
-                    bytes: start..end,
-                    length,
-                    mode: length_adjust,
-                });
-            }
-        }
+    let bytes = first_byte..iter_state.text_bytes_count;
+    if let Some(length) = text_length.filter(|_| !bytes.is_empty()) {
+        // Record each element once, after its descendants and across positioning chunks.
+        iter_state.length_adjustments.push(TextLengthAdjustment {
+            bytes,
+            length,
+            mode: length_adjust,
+            at_text_root: parent.tag_name() == Some(EId::Text),
+        });
     }
 }
 

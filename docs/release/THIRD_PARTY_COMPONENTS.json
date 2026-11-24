@@ -1716,7 +1716,7 @@
         {
           "type": "pinned-file",
           "path": "vendor/usvg/UPSTREAM.md",
-          "sha256": "85fd02a446d46757b082cfb70781bf590b4946242f695c56aa09671167b6c9ed"
+          "sha256": "ffb310a4d695ffda2336f4ca43808c0c092b63aff00a192910b74d7224910dbe"
         }
       ],
       "notice": "The Merman SVG parser retains the selected native font instance in shaping, outlines, and export evidence."
