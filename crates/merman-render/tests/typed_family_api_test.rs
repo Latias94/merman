@@ -126,7 +126,7 @@ fn mindmap_tidy_tree_renders_without_cytoscape_layout() {
             br##"{
                 "schema_version": 2,
                 "extends": "monograph",
-                "form": {"elevation": "flat"},
+                "form": {"elevation": "flat", "edge_style": "curved"},
                 "appearances": {"light": {"data": {
                     "fill": ["#123456", "#AFD5ED", "#F1D2CD", "#EFE8C2"],
                     "fill_ink": "auto",
