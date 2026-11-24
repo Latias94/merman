@@ -1196,7 +1196,7 @@ pub(crate) fn render_builtin_family_artifact(
     execution.finish_diagram_id_projection()?;
     let rooted_svg = rooted_svg?;
     let (rooted_svg, root_theme) =
-        rooted_svg.apply_root_theme(family_execution.root_theme_plan(), execution.work_meter())?;
+        apply_root_paint(rooted_svg, family_execution, execution.work_meter())?;
     let svg = rooted_svg.into_string_for(execution.family_id())?;
     let (svg, theme_css_applied) =
         apply_theme_css(svg, &metadata.effective_config, family_execution.session())?;
@@ -1237,7 +1237,7 @@ pub(crate) fn render_architecture_family_artifact(
     execution.finish_diagram_id_projection()?;
     let (rooted_svg, outcome) = rooted_svg?;
     let (rooted_svg, root_theme) =
-        rooted_svg.apply_root_theme(family_execution.root_theme_plan(), execution.work_meter())?;
+        apply_root_paint(rooted_svg, family_execution, execution.work_meter())?;
     let svg = rooted_svg.into_string_for(execution.family_id())?;
     let (svg, theme_css_applied) =
         apply_theme_css(svg, effective_config, family_execution.session())?;
@@ -1254,6 +1254,19 @@ pub(crate) fn render_architecture_family_artifact(
         #[cfg(feature = "diagram-packet")]
         packet_theme_outcome: None,
     })
+}
+
+fn apply_root_paint(
+    rooted_svg: root_svg::RootedSvg,
+    family: FamilyExecutionView<'_>,
+    meter: &crate::resources::OperationWorkMeter,
+) -> Result<(root_svg::RootedSvg, crate::diagram_theme::RootThemeReport)> {
+    if let Some(theme) = family.session().native_theme() {
+        return rooted_svg
+            .apply_native_canvas(theme, meter)?
+            .apply_root_theme(None, meter);
+    }
+    rooted_svg.apply_root_theme(family.root_theme_plan(), meter)
 }
 
 #[allow(

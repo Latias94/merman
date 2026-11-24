@@ -270,6 +270,7 @@ pub mod swimlane;
     )
 )]
 pub mod text;
+pub mod theme;
 #[cfg(feature = "diagram-timeline")]
 pub mod timeline;
 #[cfg(feature = "diagram-tree-view")]

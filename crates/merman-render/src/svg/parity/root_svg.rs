@@ -841,6 +841,36 @@ impl RootedSvg {
         &self.svg
     }
 
+    pub(super) fn apply_native_canvas(
+        mut self,
+        theme: &crate::theme::NativeTheme,
+        work_meter: &OperationWorkMeter,
+    ) -> Result<Self> {
+        use merman_theme_contract::v2::Paint;
+
+        let resolved = theme.resolved();
+        let roles = &resolved.family(self.family.as_str()).roles;
+        let background = theme.background().map(Paint::Solid);
+        let paint = background.as_ref().unwrap_or(&roles.canvas);
+        let viewport = self
+            .view_box
+            .map(|bounds| [bounds.min_x, bounds.min_y, bounds.width, bounds.height]);
+        let mut out = BoundedSvgOutput::resume(self.svg, work_meter);
+        out.write_deferred_at(self.root_open_end, |out| {
+            let _ = crate::theme::canvas_svg::write_canvas(
+                out,
+                &self.diagram_id,
+                viewport,
+                paint,
+                &resolved.canvas().textures,
+                &roles.stroke_guide,
+            );
+            out.checkpoint()
+        })?;
+        self.svg = out.finish()?;
+        Ok(self)
+    }
+
     pub(super) fn apply_root_theme(
         mut self,
         plan: Option<&RootThemePlan>,

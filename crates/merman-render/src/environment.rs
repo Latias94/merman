@@ -1932,6 +1932,16 @@ impl RenderEnvironment {
         )
     }
 
+    /// Begins a render session with a compiled native theme.
+    pub fn begin_session_with_native_theme(
+        &self,
+        theme: crate::theme::NativeTheme,
+    ) -> Result<RenderSession, RenderEnvironmentError> {
+        let mut session = self.begin_session()?;
+        session.native_theme = Some(theme);
+        Ok(session)
+    }
+
     /// Captures one operation while atomically binding the selected compiled theme.
     ///
     /// The environment owns the runtime ceiling. Theme-declared requirements and compiler-time
@@ -2065,6 +2075,7 @@ impl RenderEnvironment {
             theme_compatibility_recipe,
             portability_requirement,
             resolved_theme_resources: resolved_resources,
+            native_theme: None,
         })
     }
 }
@@ -2197,9 +2208,15 @@ pub struct RenderSession {
     theme_compatibility_recipe: Option<ThemeCompatibilityRecipe>,
     portability_requirement: ThemePortabilityRequirement,
     resolved_theme_resources: ResolvedSessionThemeResources,
+    native_theme: Option<crate::theme::NativeTheme>,
 }
 
 impl RenderSession {
+    /// Native settings selected for this operation.
+    pub fn native_theme(&self) -> Option<&crate::theme::NativeTheme> {
+        self.native_theme.as_ref()
+    }
+
     pub fn text_measurer(&self, default_phase: TextMeasurementPhase) -> RoutedTextMeasurer<'_> {
         self.routed_text_measurer(default_phase, None)
     }
