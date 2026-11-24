@@ -24,15 +24,15 @@ pub(crate) mod validate;
 #[cfg(any(feature = "layout-shoal", test))]
 pub(crate) use ir::Marker;
 #[cfg(any(feature = "layout-shoal", test))]
-use ir::{Axis, BorderStitch, Endpoint, Side};
+use ir::{Axis, BorderStitch, Endpoint, KnotKind, Side};
 
 /// Render-only metadata. Compatibility JSON already carries the coordinates in occurrence order.
 #[cfg(any(feature = "layout-shoal", test))]
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct RouteAxes {
+pub(crate) struct RouteTopology {
     pub(crate) endpoints: (Endpoint, Endpoint),
     pub(crate) ports: (Side, Side),
-    pub(crate) axes: Vec<Axis>,
+    pub(crate) knots: Vec<(Axis, KnotKind)>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -49,7 +49,7 @@ pub(crate) enum RouteContract {
         group_parents: Vec<Option<u32>>,
         border_stitches: Vec<BorderStitch>,
         clearance: route_paint::Clearance,
-        routes: Vec<Option<RouteAxes>>,
+        routes: Vec<Option<RouteTopology>>,
     },
 }
 

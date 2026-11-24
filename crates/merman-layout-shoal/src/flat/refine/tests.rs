@@ -415,7 +415,7 @@ fn straightening_keeps_symmetric_lenses_and_omits_only_clear_label_corridors() {
     let mut control = NoopWorkControl;
     let mut work = Work::new(&mut control);
     let mut s = c.geom(&[50., 50., 40., 62., 42., 60.], &mut work);
-    straighten(&mut s, 4., &mut work).unwrap();
+    straighten(&mut s, &c.options, &mut work).unwrap();
     assert_eq!(s.x, [50., 50., 48., 52., 48., 52.]);
     assert!(s.keep.iter().all(|&v| v));
     let mut c = Case::new(
@@ -425,12 +425,13 @@ fn straightening_keeps_symmetric_lenses_and_omits_only_clear_label_corridors() {
     );
     c.g.kind[6] = Kind::Label;
     c.g.width[6] = 12.;
+    c.options.routing = RoutingStyle::Polyline;
     for (label, want) in [(70., false), (18., true)] {
         let mut s = c.geom(
             &[10., 10., 70., 70., 8., 0., label, 8., 70., 70.],
             &mut work,
         );
-        straighten(&mut s, 4., &mut work).unwrap();
+        straighten(&mut s, &c.options, &mut work).unwrap();
         assert_eq!(s.keep[5], want);
         assert!(s.keep[6]);
         assert!(s.x[5] + 2. <= s.x[6] - 8.);
@@ -448,9 +449,43 @@ fn independent_lenses_keep_their_own_axes_when_edge_spacing_is_zero() {
     let mut control = NoopWorkControl;
     let mut work = Work::new(&mut control);
     let mut s = case.geom(&[0., 100., 0., 100., 1., 4., 96., 99.], &mut work);
-    straighten(&mut s, 0., &mut work).unwrap();
+    straighten(&mut s, &case.options, &mut work).unwrap();
     assert_eq!(&s.x[4..], &[0., 0., 100., 100.]);
     assert!(s.keep.iter().all(|&keep| keep));
+}
+
+#[test]
+fn near_vertical_dummies_snap_to_the_attachment_with_clearance_and_keep_held_geometry() {
+    let mut case = Case::new(4, &[&[0], &[4, 2], &[5, 3], &[1]], &[&[0, 4, 5, 1]]);
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let x = [10., 50.6, 120., 120., 50.42, 50.23];
+    let mut geometry = case.geom(&x, &mut work);
+    let offsets = geometry.dx.clone();
+    de_jitter(&mut geometry, &case.options, &mut work).unwrap();
+    assert_eq!(&geometry.x[..4], &x[..4]);
+    assert_eq!(&geometry.x[4..], &[50.6, 50.6]);
+    assert_eq!(geometry.dx, offsets);
+
+    let mut geometry = case.geom(&x, &mut work);
+    geometry.protected[4] = true;
+    geometry.twin[5] = 0;
+    de_jitter(&mut geometry, &case.options, &mut work).unwrap();
+    assert_eq!(geometry.x, x);
+
+    let x = [10., 50.6, 120., 67.4, 50.42, 50.23];
+    let mut geometry = case.geom(&x, &mut work);
+    assert!(geometry.movable(5).hi < x[1]);
+    de_jitter(&mut geometry, &case.options, &mut work).unwrap();
+    assert_eq!(&geometry.x[4..], &[x[1], x[1]]);
+
+    case.options.spacing.node = case.options.spacing.edge;
+    let x = [10., 50.6, 120., 64.4, 50.42, 50.23];
+    let mut geometry = case.geom(&x, &mut work);
+    let before = geometry.movable(5);
+    de_jitter(&mut geometry, &case.options, &mut work).unwrap();
+    assert!(before.hi < x[1]);
+    assert_eq!(&geometry.x[4..], &[before.hi, before.hi]);
 }
 
 #[test]

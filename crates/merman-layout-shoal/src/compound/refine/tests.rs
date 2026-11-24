@@ -20,7 +20,7 @@ fn route(points: &[(f64, f64)], axis: Axis) -> EdgeGeometry {
     geometry(
         points
             .iter()
-            .map(|&(x, y)| RoutePoint { x, y, axis })
+            .map(|&(x, y)| RoutePoint::new(x, y, axis))
             .collect(),
     )
 }
@@ -74,7 +74,9 @@ fn offset_legs_follow_the_arrival_axis_and_distinguish_all_three_styles() {
             }
             edge
         };
-        let quarter = probe_at_cubic_quarter([(0., 0.), (0., 50.), (100., 50.), (100., 100.)]);
+        let handle = 100. * sweep_handle_fraction(100., 100.);
+        let quarter =
+            probe_at_cubic_quarter([(0., 0.), (0., handle), (100., 100. - handle), (100., 100.)]);
         for (probe, expected) in [
             (quarter, [1, 0, 0]),
             ([(98., 75.), (102., 75.)], [0, 1, 0]),
@@ -473,11 +475,7 @@ fn suggested(
                 Side::Left => (-depth, cross),
                 Side::Right => (100. + depth, cross),
             };
-            RoutePoint {
-                x: x + rect.x,
-                y: y + rect.y,
-                axis: side.axis(),
-            }
+            RoutePoint::new(x + rect.x, y + rect.y, side.axis())
         };
         let port = at(cross, 0.);
         frames[border.level].as_mut().unwrap().ports[border.slot] = Point {

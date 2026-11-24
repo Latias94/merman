@@ -77,11 +77,7 @@ fn point(p: RoutePoint) -> Point {
     Point { x: p.x, y: p.y }
 }
 fn route_point(p: Point, axis: Axis) -> RoutePoint {
-    RoutePoint {
-        x: p.x,
-        y: p.y,
-        axis,
-    }
+    RoutePoint::new(p.x, p.y, axis)
 }
 
 #[derive(Clone, Copy, PartialEq)]

@@ -36,11 +36,7 @@ fn snap(edge: &mut EdgeGeometry, end: usize, contact: Contact) {
             near.y = contact.at.y;
         }
     }
-    edge.points[index] = RoutePoint {
-        x: contact.at.x,
-        y: contact.at.y,
-        axis: contact.side.axis(),
-    };
+    edge.points[index] = RoutePoint::new(contact.at.x, contact.at.y, contact.side.axis());
     if end == 0 {
         edge.ports.0 = contact.side;
     } else {
@@ -525,11 +521,7 @@ fn knots(
         } else {
             Axis::Vertical
         };
-        points.push(RoutePoint {
-            x: at.x,
-            y: at.y,
-            axis,
-        });
+        points.push(RoutePoint::new(at.x, at.y, axis));
         previous = at;
     }
     Ok(points)
@@ -664,11 +656,9 @@ fn through_title(
         .ok_or(WorkError::ArithmeticOverflow)?;
     work.charge(capacity)?;
     let mut points = reserved(capacity)?;
-    let sweep = sweep.points.map(|at| RoutePoint {
-        x: at.x,
-        y: at.y,
-        axis: Axis::Vertical,
-    });
+    let sweep = sweep
+        .points
+        .map(|at| RoutePoint::new(at.x, at.y, Axis::Vertical));
     if border == 0 {
         points.extend(sweep);
         points.extend_from_slice(&edge.points[remaining..]);

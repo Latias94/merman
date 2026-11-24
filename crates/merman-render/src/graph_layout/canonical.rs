@@ -1,6 +1,8 @@
 use super::Marker;
 use super::contour::ShapePortProfile;
-use super::ir::{Axis, BorderStitch, Endpoint, MeasuredGraph, Rect, RoutePoint, Side, SolvedGraph};
+use super::ir::{
+    Axis, BorderStitch, Endpoint, KnotKind, MeasuredGraph, Rect, RoutePoint, Side, SolvedGraph,
+};
 use super::route_paint::{self, Clearance, ObstacleOwner, PaintedRoute, RouteStyle};
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{LayoutEdge, LayoutLabel, LayoutPoint};
@@ -16,7 +18,7 @@ struct AxisPath {
     contacts: (RoutePoint, RoutePoint),
     sides: (Side, Side),
     markers: (Marker, Marker),
-    axes: Vec<Axis>,
+    knots: Vec<(Axis, KnotKind)>,
     stitches: Range<usize>,
 }
 
@@ -128,7 +130,7 @@ impl CanonicalRoutes {
                 contacts: (from, to),
                 sides: (start_side, end_side),
                 markers: (measured.start_marker, measured.end_marker),
-                axes: edge.points.iter().map(|p| p.axis).collect(),
+                knots: edge.points.iter().map(|p| (p.axis, p.kind)).collect(),
                 stitches: start_stitch..next_stitch,
             };
             if paths.insert(id.to_owned(), path).is_some() {
@@ -156,7 +158,7 @@ impl CanonicalRoutes {
         let route = self
             .paths
             .get(&edge.id)
-            .filter(|route| route.axes.len() == edge.points.len())
+            .filter(|route| route.knots.len() == edge.points.len())
             .ok_or_else(missing)?;
         let translated = |p: RoutePoint| RoutePoint {
             x: p.x + translation.x,
@@ -166,12 +168,13 @@ impl CanonicalRoutes {
         let mut points: Vec<_> = edge
             .points
             .iter()
-            .zip(&route.axes)
-            .map(|(p, &axis)| {
+            .zip(&route.knots)
+            .map(|(p, &(axis, kind))| {
                 translated(RoutePoint {
                     x: p.x,
                     y: p.y,
                     axis,
+                    kind,
                 })
             })
             .collect();
@@ -196,6 +199,7 @@ impl CanonicalRoutes {
             route.sides,
             style,
             route.markers,
+            route_paint::CurveTerminals::Fixed,
             stitches,
             Some(self.clearance.for_edge(
                 route.occurrence,

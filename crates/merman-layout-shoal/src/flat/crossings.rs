@@ -161,11 +161,7 @@ mod tests {
         EdgeGeometry {
             points: points
                 .iter()
-                .map(|&(x, y)| RoutePoint {
-                    x,
-                    y,
-                    axis: Axis::Vertical,
-                })
+                .map(|&(x, y)| RoutePoint::new(x, y, Axis::Vertical))
                 .collect(),
             ports: (Side::Bottom, Side::Top),
             label_center: None,

@@ -985,9 +985,9 @@ mod tests {
     #[test]
     fn canonical_route_failure_is_returned_by_the_svg_renderer() {
         use crate::graph_layout::{
-            RouteAxes, RouteContract,
+            RouteContract, RouteTopology,
             contour::ShapePortProfile,
-            ir::{Axis, Endpoint, Side},
+            ir::{Axis, Endpoint, KnotKind, Side},
             route_paint::{Clearance, ObstacleOwner},
         };
         let mut layout: FlowchartLayout = serde_json::from_value(serde_json::json!({
@@ -1012,10 +1012,10 @@ mod tests {
             group_parents: Vec::new(),
             border_stitches: Vec::new(),
             nodes: vec![ShapePortProfile::rectangle(40., 20.); 2],
-            routes: vec![Some(RouteAxes {
+            routes: vec![Some(RouteTopology {
                 endpoints: (Endpoint::Node(0), Endpoint::Node(1)),
                 ports: (Side::Right, Side::Left),
-                axes: vec![Axis::Horizontal; 4],
+                knots: vec![(Axis::Horizontal, KnotKind::Free); 4],
             })],
         };
         with_layout(
@@ -1061,8 +1061,8 @@ mod tests {
 
         use crate::graph_layout::contour::ShapePortProfile;
         use crate::graph_layout::{
-            RouteAxes, RouteContract,
-            ir::{Axis, Endpoint, Side},
+            RouteContract, RouteTopology,
+            ir::{Axis, Endpoint, KnotKind, Side},
         };
         layout.route_contract = RouteContract::CanonicalAxis {
             clearance: Default::default(),
@@ -1073,20 +1073,22 @@ mod tests {
                 ShapePortProfile::rectangle(40.0, 30.0),
             ],
             routes: vec![
-                Some(RouteAxes {
+                Some(RouteTopology {
                     endpoints: (Endpoint::Node(0), Endpoint::Node(1)),
                     ports: (Side::Right, Side::Left),
-                    axes: vec![Axis::Horizontal; 4],
+                    knots: vec![(Axis::Horizontal, KnotKind::Free); 4],
                 }),
-                Some(RouteAxes {
+                Some(RouteTopology {
                     endpoints: (Endpoint::Node(0), Endpoint::Node(1)),
                     ports: (Side::Top, Side::Top),
-                    axes: vec![
+                    knots: [
                         Axis::Vertical,
                         Axis::Vertical,
                         Axis::Horizontal,
                         Axis::Vertical,
-                    ],
+                    ]
+                    .map(|axis| (axis, KnotKind::Free))
+                    .to_vec(),
                 }),
             ],
         };

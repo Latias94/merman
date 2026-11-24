@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::graph_layout::{
-    RouteAxes, contour,
+    RouteTopology, contour,
     ir::{BorderStitch, Endpoint, RoutePoint},
     route_paint,
 };
@@ -11,7 +11,7 @@ use std::borrow::Cow;
 pub(super) fn paint(
     request: FlowchartEdgePathGeomRequest<'_>,
     profiles: &[contour::ShapePortProfile],
-    axes: &RouteAxes,
+    route: &RouteTopology,
     stitches: &[BorderStitch],
     clearance: &route_paint::Clearance,
 ) -> Result<FlowchartEdgePathGeom> {
@@ -25,19 +25,21 @@ pub(super) fn paint(
     } = request;
     let invalid = || route_paint::RoutePaintError::InvalidGeometry.for_edge(&edge.id);
     let solved = ctx.layout_edges_by_key.get(&key).ok_or_else(invalid)?;
-    if axes.axes.len() != solved.points.len() || solved.points.len() < 2 {
+    if route.knots.len() != solved.points.len() || solved.points.len() < 2 {
         return Err(invalid());
     }
     let mut points: Vec<_> = solved
         .points
         .iter()
-        .zip(&axes.axes)
-        .map(|(p, &axis)| RoutePoint {
+        .zip(&route.knots)
+        .map(|(p, &(axis, kind))| RoutePoint {
             x: p.x + ctx.tx - origin_x,
             y: p.y + ctx.ty - origin_y,
             axis,
+            kind,
         })
         .collect();
+    let box_contacts = (points[0], points[points.len() - 1]);
     let center = |x, y| crate::model::LayoutPoint {
         x: x + ctx.tx - origin_x,
         y: y + ctx.ty - origin_y,
@@ -76,18 +78,18 @@ pub(super) fn paint(
     };
     let last = points.len() - 1;
     let (source_profile, source_center, source_lead) =
-        terminal(axes.endpoints.0, axes.ports.0, points[0], points[1]).ok_or_else(invalid)?;
+        terminal(route.endpoints.0, route.ports.0, points[0], points[1]).ok_or_else(invalid)?;
     let (target_profile, target_center, target_lead) = terminal(
-        axes.endpoints.1,
-        axes.ports.1,
+        route.endpoints.1,
+        route.ports.1,
         points[last],
         points[last - 1],
     )
     .ok_or_else(invalid)?;
     contour::inset_endpoints(
         &mut points,
-        (&source_profile, &source_center, axes.ports.0),
-        (&target_profile, &target_center, axes.ports.1),
+        (&source_profile, &source_center, route.ports.0),
+        (&target_profile, &target_center, route.ports.1),
     );
     for stitch in stitches {
         let (profile, center) = group_contour(stitch.group).ok_or_else(invalid)?;
@@ -100,16 +102,39 @@ pub(super) fn paint(
             .unwrap_or(ctx.default_edge_interpolate),
         ctx.edge_corner_radius,
     );
+    let curve_terminals = if ctx.compatibility.look.is_hand_drawn() {
+        route_paint::CurveTerminals::Fixed
+    } else {
+        let inset = |side, original: RoutePoint, contact: RoutePoint| match side {
+            crate::graph_layout::ir::Side::Top => contact.y - original.y,
+            crate::graph_layout::ir::Side::Right => original.x - contact.x,
+            crate::graph_layout::ir::Side::Bottom => original.y - contact.y,
+            crate::graph_layout::ir::Side::Left => contact.x - original.x,
+        };
+        route_paint::CurveTerminals::Smooth {
+            inset: (
+                inset(source_lead, box_contacts.0, points[0]),
+                inset(target_lead, box_contacts.1, points[last]),
+            ),
+            departure_across: match route.endpoints.0 {
+                Endpoint::Node(_) => {
+                    source_profile.departure_across(&source_center, source_lead, points[0])
+                }
+                Endpoint::Group(_) => None,
+            },
+        }
+    };
     let painted = route_paint::build_svg_path(
         &points,
         (source_lead, target_lead),
         style,
         super::super::flowchart_marker_metrics(edge),
+        curve_terminals,
         stitches,
         Some(
             clearance.for_edge(
                 key.semantic_index(),
-                axes.endpoints,
+                route.endpoints,
                 kurbo::Vec2::new(origin_x - ctx.tx, origin_y - ctx.ty),
                 ctx.edge_style_plan
                     .stroke_width_for(key)

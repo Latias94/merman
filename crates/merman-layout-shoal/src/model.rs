@@ -111,13 +111,47 @@ pub struct Insets {
     pub left: f64,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum KnotKind {
+    #[default]
+    Free,
+    /// A curve turning onto a track must stay inside this end of the available gap.
+    GapBoundary,
+}
+
 /// `axis` is the travel axis of the incoming leg, or of the departing leg at the first
 /// point. A curved leg can move along both coordinates while its endpoint tangents share an axis.
+/// Group contacts are recorded separately by `BorderStitch`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RoutePoint {
     pub x: f64,
     pub y: f64,
     pub axis: Axis,
+    pub kind: KnotKind,
+}
+
+impl RoutePoint {
+    pub const fn new(x: f64, y: f64, axis: Axis) -> Self {
+        Self {
+            x,
+            y,
+            axis,
+            kind: KnotKind::Free,
+        }
+    }
+
+    pub const fn gap_boundary(x: f64, y: f64, axis: Axis) -> Self {
+        Self {
+            kind: KnotKind::GapBoundary,
+            ..Self::new(x, y, axis)
+        }
+    }
+}
+
+/// The fraction of each along-axis leg used by the two handles of an offset cubic.
+pub fn sweep_handle_fraction(across: f64, along: f64) -> f64 {
+    let (across, along) = (across.abs(), along.abs());
+    (0.45 + 0.12 * across.min(along) / across.max(along).max(1.0)).clamp(0.42, 0.56)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

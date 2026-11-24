@@ -13,7 +13,7 @@ use crate::graph_layout::ir::{
     SolvedGraph,
 };
 use crate::graph_layout::route_paint::{Clearance, ObstacleOwner};
-use crate::graph_layout::{RouteAxes, RouteContract, shoal_bridge};
+use crate::graph_layout::{RouteContract, RouteTopology, shoal_bridge};
 use crate::layout_frame::{FrameDirection, ShoalFrameNode};
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{
@@ -525,16 +525,16 @@ impl FlowchartBindings {
         let mut edges = Vec::with_capacity(solved.edges.len());
         for ((key, projected), route) in model.projected_edges().zip(solved.edges) {
             work.charge_adapter(route.points.len())?;
-            let (points, axes) = route
+            let (points, knots) = route
                 .points
                 .into_iter()
-                .map(|p| (LayoutPoint { x: p.x, y: p.y }, p.axis))
+                .map(|p| (LayoutPoint { x: p.x, y: p.y }, (p.axis, p.kind)))
                 .unzip();
             let index = key.semantic_index();
-            routes[index] = Some(RouteAxes {
+            routes[index] = Some(RouteTopology {
                 endpoints: (route.source, route.target),
                 ports: route.ports,
-                axes,
+                knots,
             });
             edges.push(LayoutEdge {
                 id: projected.semantic.id.clone(),

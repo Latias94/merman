@@ -51,6 +51,8 @@ impl Scene {
             c.ids.push(id as u32);
         }
         c.nodes = graph.nodes.clone();
+        c.margin_left = vec![0.0; heights.len()];
+        c.margin_right = vec![0.0; heights.len()];
         for (id, &chain) in chains.iter().enumerate() {
             let (from, to) = (chain[0], *chain.last().unwrap());
             graph
@@ -351,10 +353,14 @@ fn gap(spans: &[(f64, f64)]) -> Gap {
         height: 50.,
         pieces: spans
             .iter()
-            .map(|&(from, to)| Piece {
-                span: Span { from, to },
-                lower: 0,
-                track: None,
+            .map(|&(from, to)| {
+                let span = Span { from, to };
+                Piece {
+                    span,
+                    occupied: span,
+                    lower: 0,
+                    track: None,
+                }
             })
             .collect(),
         ..Gap::default()
@@ -517,9 +523,21 @@ fn overlapping_nearby_s_curves_get_shelves_and_crossed_wide_curves_get_one_tall_
                 assert_eq!(diagonals.len(), 1);
                 assert_eq!(bottom - top, 150.);
                 assert!(edge.points.iter().all(|p| p.axis == Axis::Vertical));
+                assert!(edge.points.iter().all(|p| p.kind == KnotKind::Free));
             } else {
-                assert_eq!(diagonals.len(), 2);
+                assert!(diagonals.is_empty());
                 assert!(top < level(&edge.points) && level(&edge.points) < bottom);
+                assert_eq!(
+                    edge.points.iter().map(|p| p.kind).collect::<Vec<_>>(),
+                    [
+                        KnotKind::Free,
+                        KnotKind::GapBoundary,
+                        KnotKind::Free,
+                        KnotKind::Free,
+                        KnotKind::GapBoundary,
+                        KnotKind::Free,
+                    ]
+                );
             }
         }
         if !tall {
@@ -535,6 +553,77 @@ fn overlapping_nearby_s_curves_get_shelves_and_crossed_wide_curves_get_one_tall_
         .unwrap();
     assert_eq!(isolated.tracks, 0);
     assert_eq!(isolated.height, 50.);
+}
+
+#[test]
+fn an_isolated_sweep_uses_the_unmarked_face_and_only_the_marked_shaft() {
+    let mut scene = Scene::new(&[10.; 2], &[&[0], &[1]], &[&[0, 1]], &[0., 80.]);
+    scene.graph.edges[0].start_marker.length = 6.;
+    scene.graph.edges[0].end_marker = MarkerMetrics {
+        length: 10.,
+        width: 12.,
+    };
+    let drawing = scene.draw();
+    let points = &drawing.edges[0].1.points;
+    let [start, shaft, target] = points.as_slice() else {
+        panic!("expected one sweep and one straight shaft, got {points:?}");
+    };
+    assert_eq!(start.y, drawing.nodes[0].y + drawing.nodes[0].height);
+    assert_eq!(shaft.x, target.x);
+    assert_eq!(target.y - shaft.y, 10.);
+    assert!(shaft.y - start.y >= 0.75 * (target.y - start.y));
+    assert!(points.iter().all(|point| point.kind == KnotKind::Free));
+
+    scene.graph.edges[0].start_label = Some(Size {
+        width: 30.,
+        height: 8.,
+    });
+    let drawing = scene.draw();
+    let points = &drawing.edges[0].1.points;
+    assert!(points[1].y - points[0].y >= 6. + 8. + scene.options.spacing.end_label_along);
+}
+
+#[test]
+fn occupied_band_clearance_uses_the_local_sweep_and_falls_back_at_an_obstacle() {
+    let mut scene = Scene::new(
+        &[10., 10., 20., 20.],
+        &[&[0], &[2, 4], &[5, 3], &[1]],
+        &[&[0, 4, 5, 1]],
+        &[0., 160., 0., 163., 55., 105.],
+    );
+    scene.options.spacing.node = 12.;
+    scene.g.keep[4..].fill(false);
+    let offsets = |drawing: &Drawing| {
+        drawing.edges[0]
+            .1
+            .points
+            .windows(2)
+            .filter(|pair| pair[0].x != pair[1].x)
+            .count()
+    };
+    let clear = scene.draw();
+    assert_eq!(offsets(&clear), 1);
+    assert_eq!(
+        clear.edges[0]
+            .1
+            .points
+            .iter()
+            .filter(|p| p.kind == KnotKind::GapBoundary)
+            .count(),
+        2
+    );
+
+    scene.x[2] = 30.;
+    let blocked = scene.draw();
+    assert!(offsets(&blocked) > 1);
+    assert!(
+        blocked.edges[0]
+            .1
+            .points
+            .iter()
+            .any(|p| p.x == 55. && p.y == blocked.nodes[2].y)
+    );
+    assert_eq!(clear.edges[0].1.ports, blocked.edges[0].1.ports);
 }
 
 #[derive(Default)]

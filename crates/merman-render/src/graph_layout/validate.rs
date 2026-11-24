@@ -152,10 +152,18 @@ pub(crate) struct Endpoint {
     /// Declared port normal in drawing coordinates, pointing from the body into the shaft at
     /// either end. Its magnitude is immaterial. Leave absent when the port has no declaration.
     pub outward_normal: Option<Vec2>,
+    pub max_deviation_deg: f64,
     /// Distance removed from the shaft at this end by the painter, in drawing units.
     pub setback: f64,
     /// Only point markers have the gallery's angular-opening check. Setback applies to any end.
     pub marker: Option<PointMarker>,
+    #[cfg(all(
+        test,
+        feature = "diagram-agentflow",
+        feature = "diagram-flowchart",
+        feature = "layout-shoal"
+    ))]
+    marker_width: Option<f64>,
 }
 
 impl Endpoint {
@@ -163,8 +171,16 @@ impl Endpoint {
         Self {
             body,
             outward_normal: None,
+            max_deviation_deg: NORMAL_TOLERANCE_DEG,
             setback: 0.0,
             marker: None,
+            #[cfg(all(
+                test,
+                feature = "diagram-agentflow",
+                feature = "diagram-flowchart",
+                feature = "layout-shoal"
+            ))]
+            marker_width: None,
         }
     }
 }
@@ -734,7 +750,7 @@ fn check_endpoint(
                 .abs()
                 .atan2(tangent.dot(normal))
                 .to_degrees();
-            if !deviation_deg.is_finite() || deviation_deg > NORMAL_TOLERANCE_DEG {
+            if !deviation_deg.is_finite() || deviation_deg > endpoint.max_deviation_deg {
                 report.hard.push(Violation::EndpointNormal {
                     edge,
                     end,
@@ -1058,6 +1074,14 @@ fn assert_same_bounds(actual: Rect, expected: Rect) {
         );
     }
 }
+
+#[cfg(all(
+    test,
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "layout-shoal"
+))]
+mod aesthetic;
 
 #[cfg(test)]
 mod gallery;

@@ -260,7 +260,7 @@ fn stitch(
             output.points.push(RoutePoint {
                 x: moved.x,
                 y: moved.y,
-                axis: point.axis,
+                ..point
             });
         }
         output.ports.1 = part.ports.1;

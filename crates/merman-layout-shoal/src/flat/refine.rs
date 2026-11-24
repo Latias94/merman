@@ -5,12 +5,13 @@ use super::{
     Component, Expanded, Kind, acyclic::Orientation, position::extents, to_canonical_port,
 };
 use crate::work::{LayoutResult, Work, filled, reserved};
-use crate::{Direction, Graph, Options, PortSideHint, Side, WorkError};
+use crate::{Direction, Graph, LayoutError, Options, PortSideHint, RoutingStyle, Side, WorkError};
 
 const INLINE: f64 = 0.5;
 const COLLINEAR: f64 = 0.01;
 const NODE_SNAP: f64 = 12.;
 const BEND_SNAP: f64 = 24.;
+const MICRO_DRIFT: f64 = 2.;
 const LEAN_CLEAR: f64 = 40.;
 const MIN_BOUNDARY_PITCH: f64 = 1.;
 const TOP: usize = 0;
@@ -243,21 +244,32 @@ impl<'a> Geometry<'a> {
     }
 
     fn room(&self, v: usize, same: impl Fn(usize) -> bool) -> Interval {
+        self.room_with_slack(v, same, 0.0)
+    }
+
+    fn room_with_slack(&self, v: usize, same: impl Fn(usize) -> bool, node_slack: f64) -> Interval {
         let row = &self.g.layers[self.g.rank[v] as usize];
         let i = self.pos[v];
         let (l, r) = self.extent[v];
+        let slack = |neighbor| {
+            if self.g.kind[neighbor] == Kind::Node {
+                node_slack
+            } else {
+                0.0
+            }
+        };
         let mut lo = self.envelope.lo + l;
         let mut hi = self.envelope.hi - r;
         if i > 0 {
             let p = row[i - 1] as usize;
             if !same(p) {
-                lo = lo.max(self.x[p] + self.extent[p].1 + l);
+                lo = lo.max(self.x[p] + (self.extent[p].1 - slack(p)) + l);
             }
         }
         if i + 1 < row.len() {
             let q = row[i + 1] as usize;
             if !same(q) {
-                hi = hi.min(self.x[q] - self.extent[q].0 - r);
+                hi = hi.min(self.x[q] - (self.extent[q].0 - slack(q)) - r);
             }
         }
         Interval { lo, hi }
@@ -272,6 +284,10 @@ impl<'a> Geometry<'a> {
         } else {
             self.room(v, |_| false)
         }
+    }
+
+    fn free_bend(&self, v: usize) -> bool {
+        self.g.kind[v] == Kind::Dummy && !self.protected[v] && self.twin[v] == END
     }
 }
 
@@ -943,8 +959,81 @@ fn align_ports(s: &mut Geometry<'_>, work: &mut Work<'_>) -> LayoutResult<()> {
     Ok(())
 }
 
-fn straighten(s: &mut Geometry<'_>, sep: f64, work: &mut Work<'_>) -> LayoutResult<()> {
+fn de_jitter(s: &mut Geometry<'_>, options: &Options, work: &mut Work<'_>) -> LayoutResult<()> {
     let g = s.g;
+    let node_slack = ((options.spacing.node - options.spacing.edge) * 0.5).clamp(0., MICRO_DRIFT);
+    let mut coordinates = Vec::new();
+    for chain in &g.chains {
+        let mut first = 1;
+        while first + 1 < chain.len() {
+            work.visit(1)?;
+            let vertex = chain[first] as usize;
+            if !s.free_bend(vertex) {
+                first += 1;
+                continue;
+            }
+            let mut low = s.x[vertex];
+            let mut high = low;
+            let mut room = s.room_with_slack(vertex, |_| false, node_slack);
+            let mut end = first + 1;
+            while end + 1 < chain.len() && s.free_bend(chain[end] as usize) {
+                work.visit(1)?;
+                let next = chain[end] as usize;
+                let (lo, hi) = (low.min(s.x[next]), high.max(s.x[next]));
+                let common = room.intersect(s.room_with_slack(next, |_| false, node_slack));
+                if hi - lo > MICRO_DRIFT
+                    || common.lo > hi
+                    || common.hi < lo
+                    || common.lo > common.hi
+                {
+                    break;
+                }
+                (low, high, room) = (lo, hi, common);
+                end += 1;
+            }
+
+            let run = &chain[first..end];
+            let (before, after) = chord(s, chain, first - 1, end);
+            let anchor = [(chain[first - 1], before), (chain[end], after)]
+                .into_iter()
+                .filter(|&(v, _)| !s.free_bend(v as usize))
+                .map(|(_, x)| x)
+                .find(|&x| room.contains(x) && high - x <= MICRO_DRIFT && x - low <= MICRO_DRIFT);
+            let target = if let Some(anchor) = anchor {
+                Some(anchor)
+            } else if run.len() > 1 {
+                work.charge(
+                    run.len()
+                        .checked_mul(3)
+                        .ok_or(WorkError::ArithmeticOverflow)?,
+                )?;
+                coordinates.clear();
+                coordinates
+                    .try_reserve(run.len())
+                    .map_err(|_| LayoutError::AllocationLimit)?;
+                coordinates.extend(run.iter().map(|&v| s.x[v as usize]));
+                let (_, middle, _) =
+                    coordinates.select_nth_unstable_by(run.len() / 2, f64::total_cmp);
+                room.closest(*middle)
+            } else {
+                None
+            };
+            if let Some(x) = target {
+                work.visit(run.len())?;
+                for &v in run {
+                    s.x[v as usize] = x;
+                }
+            }
+            first = end;
+        }
+    }
+    Ok(())
+}
+
+fn straighten(s: &mut Geometry<'_>, options: &Options, work: &mut Work<'_>) -> LayoutResult<()> {
+    let g = s.g;
+    let sep = options.spacing.edge;
+    let curved = options.routing == RoutingStyle::Curved;
     let mut want = copy(&s.x)?;
     for chain in &g.chains {
         let mut i = 1;
@@ -1023,40 +1112,49 @@ fn straighten(s: &mut Geometry<'_>, sep: f64, work: &mut Work<'_>) -> LayoutResu
         }
     }
 
-    // A retained bend also anchors its neighboring runs. Recompute their chords before
-    // omitting anything, since interpolation through the old endpoints is no longer valid.
-    let mut clear = filled(s.x.len(), Interval::ALL)?;
-    for (r, row) in g.layers.iter().enumerate() {
-        if !s.labels_only[r] {
-            continue;
-        }
-        let mut left = f64::NEG_INFINITY;
-        let mut right = f64::INFINITY;
-        for (&a, &b) in row.iter().zip(row.iter().rev()) {
-            let (a, b) = (a as usize, b as usize);
-            clear[a].lo = left;
-            clear[b].hi = right;
-            if g.kind[a] == Kind::Label {
-                left = s.x[a] + g.width[a] * 0.5 + sep;
+    let mut clear = Vec::new();
+    if curved {
+        de_jitter(s, options, work)?;
+    } else {
+        clear = filled(s.x.len(), Interval::ALL)?;
+        for (r, row) in g.layers.iter().enumerate() {
+            if !s.labels_only[r] {
+                continue;
             }
-            if g.kind[b] == Kind::Label {
-                right = s.x[b] - g.width[b] * 0.5 - sep;
+            let mut left = f64::NEG_INFINITY;
+            let mut right = f64::INFINITY;
+            for (&a, &b) in row.iter().zip(row.iter().rev()) {
+                let (a, b) = (a as usize, b as usize);
+                clear[a].lo = left;
+                clear[b].hi = right;
+                if g.kind[a] == Kind::Label {
+                    left = s.x[a] + g.width[a] * 0.5 + sep;
+                }
+                if g.kind[b] == Kind::Label {
+                    right = s.x[b] - g.width[b] * 0.5 - sep;
+                }
             }
         }
     }
+    // A retained bend also anchors its neighboring runs. Recompute their chords before
+    // omitting anything, since interpolation through the old endpoints is no longer valid.
     let mut ranges = Vec::new();
     for chain in &g.chains {
         let can_skip = |v: u32| {
             let v = v as usize;
             let r = g.rank[v] as usize;
             g.kind[v] == Kind::Dummy
-                && (s.bare[r] || s.labels_only[r])
+                && (s.bare[r] || !curved && s.labels_only[r])
                 && !s.protected[v]
                 && s.twin[v] == END
         };
         let mut i = 1;
         while i + 1 < chain.len() {
             if !can_skip(chain[i]) {
+                let v = chain[i] as usize;
+                if curved && s.free_bend(v) && !s.bare[g.rank[v] as usize] {
+                    s.keep[v] = false;
+                }
                 i += 1;
                 continue;
             }
@@ -1076,8 +1174,9 @@ fn straighten(s: &mut Geometry<'_>, sep: f64, work: &mut Work<'_>) -> LayoutResu
                 for k in lo + 1..hi {
                     let v = chain[k] as usize;
                     let desired = lerp(s, chain[lo], chain[hi], chain[k], a, b);
-                    if (!clear[v].contains(a.min(b))
-                        || !clear[v].contains(a.max(b))
+                    if (clear
+                        .get(v)
+                        .is_some_and(|room| !room.contains(a.min(b)) || !room.contains(a.max(b)))
                         || !s.movable(v).contains(desired))
                         && blocker.is_none_or(|old: usize| k.abs_diff(mid) < old.abs_diff(mid))
                     {
@@ -1117,7 +1216,7 @@ pub(super) fn refine(
     if c.boundaries {
         align_ports(&mut s, work)?;
     }
-    straighten(&mut s, options.spacing.edge, work)?;
+    straighten(&mut s, options, work)?;
     if s.x
         .iter()
         .chain(&s.dx[TOP])

@@ -5,7 +5,7 @@ pub(crate) use clearance::{Clearance, EdgeClearance, ObstacleOwner};
 
 use super::{
     Marker,
-    ir::{Axis, BorderStitch, RoutePoint, Side},
+    ir::{Axis, BorderStitch, KnotKind, RoutePoint, Side, sweep_handle_fraction},
 };
 use crate::model::Bounds;
 use kurbo::{CubicBez, Point, Shape, Vec2};
@@ -24,6 +24,16 @@ pub(crate) enum RouteStyle {
     StepBefore,
     StepAfter,
     Linear,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) enum CurveTerminals {
+    #[default]
+    Fixed,
+    Smooth {
+        inset: (f64, f64),
+        departure_across: Option<f64>,
+    },
 }
 
 impl RouteStyle {
@@ -109,11 +119,7 @@ fn position(p: RoutePoint) -> Point {
 }
 
 fn at(p: Point, axis: Axis) -> RoutePoint {
-    RoutePoint {
-        x: p.x,
-        y: p.y,
-        axis,
-    }
+    RoutePoint::new(p.x, p.y, axis)
 }
 
 fn aligned(a: Point, b: Point) -> bool {
@@ -135,9 +141,14 @@ fn push_knot(knots: &mut Vec<RoutePoint>, p: RoutePoint) {
     };
     let (b, c) = (position(last), position(p));
     if b == c {
+        if p.kind == KnotKind::GapBoundary {
+            knots.last_mut().unwrap().kind = p.kind;
+        }
         return;
     }
-    if let [.., a, _] = knots.as_slice() {
+    if last.kind == KnotKind::Free
+        && let [.., a, _] = knots.as_slice()
+    {
         let a = position(*a);
         if ((a.x == b.x && b.x == c.x) || (a.y == b.y && b.y == c.y)) && (b - a).dot(c - b) > 0.0 {
             knots.pop();
@@ -240,16 +251,47 @@ fn steps(
     out
 }
 
+fn sweep_curve(
+    from: Point,
+    end: RoutePoint,
+    departure_across: Option<f64>,
+    scale: f64,
+) -> CubicBez {
+    let to = position(end);
+    let delta = to - from;
+    let (run, across) = match end.axis {
+        Axis::Vertical => (delta.y, delta.x),
+        Axis::Horizontal => (delta.x, delta.y),
+    };
+    let along = run * sweep_handle_fraction(across, run);
+    let departure = if departure_across
+        .is_some_and(|sign| across.abs() > 0.5 * run.abs() && across * sign >= 0.0)
+    {
+        (0.35 * along.abs())
+            .min(0.25 * across.abs())
+            .copysign(across)
+    } else {
+        0.0
+    };
+    let (first, second) = match end.axis {
+        Axis::Vertical => (Vec2::new(departure, along), Vec2::new(0.0, along)),
+        Axis::Horizontal => (Vec2::new(along, departure), Vec2::new(along, 0.0)),
+    };
+    CubicBez::new(from, from + first * scale, to - second * scale, to)
+}
+
 struct Pen {
     d: String,
     bounds: Bounds,
     at: Point,
     finite: bool,
+    compact_lines: bool,
+    line_start: Option<Point>,
     detour_budget: clearance::DetourBudget,
 }
 
 impl Pen {
-    fn new(p: Point) -> Self {
+    fn new(p: Point, compact_lines: bool) -> Self {
         Self {
             d: format!("M{},{}", p.x, p.y),
             bounds: Bounds {
@@ -260,6 +302,8 @@ impl Pen {
             },
             at: p,
             finite: p.is_finite(),
+            compact_lines,
+            line_start: None,
             detour_budget: clearance::DetourBudget::default(),
         }
     }
@@ -274,9 +318,24 @@ impl Pen {
 
     fn line(&mut self, p: Point) {
         if p != self.at {
-            let _ = write!(self.d, "L{},{}", p.x, p.y);
+            if let Some(start) = self.line_start {
+                let (previous, next) = (self.at - start, p - self.at);
+                if previous.cross(next) != 0.0 || previous.dot(next) <= 0.0 {
+                    self.flush_line();
+                }
+            }
+            self.line_start.get_or_insert(self.at);
             self.include(p);
             self.at = p;
+            if !self.compact_lines {
+                self.flush_line();
+            }
+        }
+    }
+
+    fn flush_line(&mut self) {
+        if self.line_start.take().is_some() {
+            let _ = write!(self.d, "L{},{}", self.at.x, self.at.y);
         }
     }
 
@@ -285,6 +344,7 @@ impl Pen {
             self.finite = false;
             return;
         }
+        self.flush_line();
         let _ = write!(
             self.d,
             "C{},{} {},{} {},{}",
@@ -299,27 +359,11 @@ impl Pen {
     fn sweep(
         &mut self,
         end: RoutePoint,
+        departure_across: Option<f64>,
         clearance: Option<EdgeClearance<'_>>,
     ) -> Result<(), RoutePaintError> {
-        let delta = position(end) - self.at;
-        let (run, across) = match end.axis {
-            Axis::Vertical => (delta.y, delta.x),
-            Axis::Horizontal => (delta.x, delta.y),
-        };
-        let ease = (4.0 * run.abs() / across.abs().max(1.0)).clamp(0.25, 0.5);
-        let handle = match end.axis {
-            Axis::Vertical => Vec2::new(0.0, run * ease),
-            Axis::Horizontal => Vec2::new(run * ease, 0.0),
-        };
         let target = position(end);
-        let curve = |scale| {
-            CubicBez::new(
-                self.at,
-                self.at + handle * scale,
-                target - handle * scale,
-                target,
-            )
-        };
+        let curve = |scale| sweep_curve(self.at, end, departure_across, scale);
         let scale = if let Some(guard) = clearance {
             let Some(scale) = smoothing_scale(|scale| {
                 if scale == 0. {
@@ -347,6 +391,7 @@ impl Pen {
     }
 
     fn quarter_arc(&mut self, radius: f64, clockwise: bool, end: Point) {
+        self.flush_line();
         let _ = write!(
             self.d,
             "A{radius},{radius} 0 0,{} {},{}",
@@ -398,6 +443,7 @@ fn draw_body(
     pen: &mut Pen,
     body: &[RoutePoint],
     style: RouteStyle,
+    departure_across: Option<f64>,
     clearance: Option<EdgeClearance<'_>>,
 ) -> Result<(), RoutePaintError> {
     for i in 1..body.len() {
@@ -454,7 +500,11 @@ fn draw_body(
                 pen.cubic(safe.p1, safe.p2, safe.p3);
             }
         } else if style == RouteStyle::Curved && !aligned(position(body[i - 1]), p) {
-            pen.sweep(body[i], clearance)?;
+            pen.sweep(
+                body[i],
+                if i == 1 { departure_across } else { None },
+                clearance,
+            )?;
         } else {
             pen.line(p);
         }
@@ -466,6 +516,9 @@ struct Terminal {
     tip: Point,
     normal: Vec2,
     marker: Marker,
+    smooth: bool,
+    inset: f64,
+    departure_across: Option<f64>,
 }
 
 impl Terminal {
@@ -474,14 +527,34 @@ impl Terminal {
     }
 
     fn lead_end(&self) -> Point {
-        self.shaft_end() + self.normal * LEAD.max(self.marker.depth)
+        self.shaft_end() + self.normal * self.lead()
+    }
+
+    fn lead(&self) -> f64 {
+        if self.smooth && self.marker.width == 0.0 {
+            0.0
+        } else {
+            LEAD.max(self.marker.depth)
+        }
     }
 
     fn covers(&self, knot: RoutePoint) -> bool {
         let delta = position(knot) - self.tip;
         delta.cross(self.normal) == 0.0
-            && (0.0..=self.marker.trim + LEAD.max(self.marker.depth))
-                .contains(&delta.dot(self.normal))
+            && (0.0..=self.marker.trim + self.lead()).contains(&delta.dot(self.normal))
+    }
+
+    fn can_start_sweep(&self, toward: RoutePoint) -> bool {
+        self.marker.trim + self.lead() >= self.inset
+            || self.departure_across.is_some_and(|sign| {
+                let delta = position(toward) - self.tip;
+                let across = if self.normal.x == 0.0 {
+                    delta.x
+                } else {
+                    delta.y
+                };
+                across * sign >= 0.0
+            })
     }
 }
 
@@ -504,6 +577,9 @@ pub(super) fn marker_lead(
         tip: position(port),
         normal: outward(side),
         marker,
+        smooth: false,
+        inset: 0.0,
+        departure_across: None,
     };
     let point = |p: Point| crate::model::LayoutPoint { x: p.x, y: p.y };
     (point(terminal.shaft_end()), point(terminal.lead_end()))
@@ -517,6 +593,7 @@ pub(crate) fn build_svg_path(
     sides: (Side, Side),
     style: RouteStyle,
     markers: (Marker, Marker),
+    curve_terminals: CurveTerminals,
     stitches: &[BorderStitch],
     clearance: Option<EdgeClearance<'_>>,
 ) -> Result<PaintedRoute, RoutePaintError> {
@@ -529,17 +606,32 @@ pub(crate) fn build_svg_path(
         return Err(RoutePaintError::InvalidGeometry);
     }
     let last = points.len() - 1;
+    let smooth =
+        style == RouteStyle::Curved && matches!(curve_terminals, CurveTerminals::Smooth { .. });
+    let (inset, departure_across) = match curve_terminals {
+        CurveTerminals::Smooth {
+            inset,
+            departure_across,
+        } if smooth => (inset, departure_across.filter(|_| markers.0.width == 0.0)),
+        _ => ((0.0, 0.0), None),
+    };
     let start = Terminal {
         tip: position(points[0]),
         normal: outward(sides.0),
         marker: markers.0,
+        smooth,
+        inset: inset.0,
+        departure_across,
     };
     let end = Terminal {
         tip: position(points[last]),
         normal: outward(sides.1),
         marker: markers.1,
+        smooth,
+        inset: inset.1,
+        departure_across: None,
     };
-    let mut pen = Pen::new(start.shaft_end());
+    let mut pen = Pen::new(start.shaft_end(), smooth);
     let mut knots = Vec::with_capacity(points.len());
     let mut body = Vec::with_capacity(points.len());
     let mut begin = 0;
@@ -565,6 +657,7 @@ pub(crate) fn build_svg_path(
             &mut body,
             clearance,
         )?;
+        pen.flush_line();
         begin = finish;
     }
     pen.finish().ok_or(RoutePaintError::InvalidGeometry)
@@ -619,7 +712,7 @@ fn draw_section(
         }
         if aligned(start.tip, end.tip) && (end.tip - start.tip).dot(start.normal) > 0.0 {
             // Opposed markers can share this one straight segment up to its full length.
-            if gap < start.marker.depth.max(end.marker.depth).max(LEAD) {
+            if gap < start.lead().max(end.lead()) {
                 return Err(RoutePaintError::InvalidGeometry);
             }
             pen.line(end.shaft_end());
@@ -654,11 +747,76 @@ fn draw_section(
     if style.stepped() && has_offset_leg(body) {
         *body = steps(style, body, (None, None));
     }
-    draw_body(pen, body, style, clearance)?;
+    let departure = if style == RouteStyle::Curved {
+        expand_terminal_sweeps(body, terminals, clearance)
+    } else {
+        None
+    };
+    draw_body(pen, body, style, departure, clearance)?;
     if let Some(end) = terminals.1 {
         pen.line(end.shaft_end());
     }
     Ok(())
+}
+
+fn free_terminal_guard(
+    terminal: &Terminal,
+    first: RoutePoint,
+    guard: RoutePoint,
+    next: RoutePoint,
+) -> bool {
+    let outward = position(guard) - position(first);
+    let depth = outward.dot(terminal.normal);
+    let inside_box = (terminal.inset - terminal.marker.trim - terminal.lead()).max(0.0);
+    guard.kind == KnotKind::Free
+        && terminal.can_start_sweep(next)
+        && (first.axis == Axis::Vertical) == (terminal.normal.x == 0.0)
+        && outward.cross(terminal.normal) == 0.0
+        && depth > 0.0
+        && depth <= inside_box + 2.0 * LEAD + 1e-9
+        && (position(next) - position(guard)).dot(terminal.normal) > 0.0
+        && !aligned(position(guard), position(next))
+}
+
+fn expand_terminal_sweeps(
+    body: &mut Vec<RoutePoint>,
+    terminals: (Option<&Terminal>, Option<&Terminal>),
+    clearance: Option<EdgeClearance<'_>>,
+) -> Option<f64> {
+    let clear = |first, next, departure| {
+        clearance.is_none_or(|guard| !guard.blocks_cubic(sweep_curve(first, next, departure, 1.0)))
+    };
+    let start = terminals.0.filter(|terminal| terminal.smooth);
+    let end = terminals.1.filter(|terminal| terminal.smooth);
+    if let Some(terminal) = start
+        && let &[first, guard, next, ..] = body.as_slice()
+        && free_terminal_guard(terminal, first, guard, next)
+        && first.axis == next.axis
+        && clear(position(first), next, None)
+    {
+        body.remove(1);
+    }
+    if let Some(terminal) = end
+        && let &[.., previous, guard, last] = body.as_slice()
+        && free_terminal_guard(terminal, last, guard, previous)
+        && guard.axis == last.axis
+        && clear(position(previous), last, None)
+    {
+        body.remove(body.len() - 2);
+    }
+    if let Some(terminal) = start
+        && let Some(across) = terminal.departure_across
+        && let &[first, next, ..] = body.as_slice()
+        && position(first) == terminal.tip
+        && first.kind == KnotKind::Free
+        && next.kind == KnotKind::Free
+        && first.axis == next.axis
+        && !aligned(position(first), position(next))
+        && clear(position(first), next, Some(across))
+    {
+        return Some(across);
+    }
+    None
 }
 
 #[cfg(test)]
@@ -667,18 +825,10 @@ mod tests {
     use kurbo::{BezPath, ParamCurve, ParamCurveArclen, PathEl, PathSeg};
 
     fn v(x: f64, y: f64) -> RoutePoint {
-        RoutePoint {
-            x,
-            y,
-            axis: Axis::Vertical,
-        }
+        RoutePoint::new(x, y, Axis::Vertical)
     }
     fn h(x: f64, y: f64) -> RoutePoint {
-        RoutePoint {
-            x,
-            y,
-            axis: Axis::Horizontal,
-        }
+        RoutePoint::new(x, y, Axis::Horizontal)
     }
     fn marker(trim: f64, depth: f64) -> Marker {
         Marker {
@@ -722,6 +872,101 @@ mod tests {
     }
 
     #[test]
+    fn track_curves_stay_between_pinned_gap_boundaries() {
+        let pinned = |mut point: RoutePoint| {
+            point.kind = KnotKind::GapBoundary;
+            point
+        };
+        let route = [
+            v(0., 0.),
+            pinned(v(0., 24.)),
+            v(0., 50.),
+            h(100., 50.),
+            pinned(v(100., 72.)),
+            v(100., 140.),
+        ];
+        let path = build_svg_path(
+            &route,
+            (Side::Bottom, Side::Top),
+            RouteStyle::Curved,
+            (Marker::default(), marker(4., 10.)),
+            CurveTerminals::Smooth {
+                inset: (0., 0.),
+                departure_across: None,
+            },
+            &[],
+            None,
+        )
+        .unwrap();
+        let segments = segments(&path);
+        let curves: Vec<_> = segments
+            .iter()
+            .filter_map(|segment| match segment {
+                PathSeg::Cubic(curve) => Some(*curve),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(curves.len(), 2);
+        assert_eq!(curves[0].p0, Point::new(0., 24.));
+        assert_eq!(curves[0].p3, curves[1].p0);
+        assert_eq!(curves[1].p3, Point::new(100., 72.));
+        assert!(segments.last().unwrap().arclen(1e-8) >= 10.);
+    }
+
+    #[test]
+    fn smooth_departure_frees_the_guard_and_keeps_the_marked_shaft() {
+        let route = [v(0., 0.), v(0., 12.), v(90., 30.), v(90., 50.)];
+        for (side, expected_sign) in [(None, 0.), (Some(1.), 1.), (Some(-1.), 0.)] {
+            let path = build_svg_path(
+                &route,
+                (Side::Bottom, Side::Top),
+                RouteStyle::Curved,
+                (Marker::default(), marker(4., 10.)),
+                CurveTerminals::Smooth {
+                    inset: (0., 0.),
+                    departure_across: side,
+                },
+                &[],
+                None,
+            )
+            .unwrap();
+            let [PathSeg::Cubic(curve), PathSeg::Line(shaft)] = segments(&path)[..] else {
+                panic!("{}", path.d);
+            };
+            assert_eq!(curve.p0, Point::ZERO);
+            assert_eq!(curve.p3, Point::new(90., 36.));
+            if expected_sign == 0. {
+                assert_eq!(curve.p1.x, 0.);
+            } else {
+                assert!(curve.p1.x > 0. && curve.p1.x < curve.p1.y * 0.36);
+            }
+            assert_eq!((shaft.p0, shaft.p1), (curve.p3, Point::new(90., 46.)));
+        }
+    }
+
+    #[test]
+    fn a_long_straight_approach_stays_outside_the_terminal_curve() {
+        let path = build_svg_path(
+            &[v(100., 0.), v(100., 12.), v(0., 54.), v(0., 450.)],
+            (Side::Bottom, Side::Top),
+            RouteStyle::Curved,
+            (Marker::default(), marker(4., 10.)),
+            CurveTerminals::Smooth {
+                inset: (0., 0.),
+                departure_across: None,
+            },
+            &[],
+            None,
+        )
+        .unwrap();
+        let [PathSeg::Cubic(curve), PathSeg::Line(shaft)] = segments(&path)[..] else {
+            panic!("{}", path.d);
+        };
+        assert_eq!(curve.p3, Point::new(0., 54.));
+        assert_eq!(shaft.p1, Point::new(0., 446.));
+    }
+
+    #[test]
     fn wide_corners_clear_foreign_labels_without_changing_the_other_turn_or_stitches() {
         use super::super::ir::Endpoint;
         let points = [
@@ -758,6 +1003,7 @@ mod tests {
                     (Side::Right, Side::Left),
                     style,
                     markers,
+                    CurveTerminals::Fixed,
                     &stitches,
                     guard,
                 )
@@ -804,6 +1050,7 @@ mod tests {
                 (Side::Right, Side::Left),
                 RouteStyle::Curved,
                 (Marker::default(), Marker::default()),
+                CurveTerminals::Fixed,
                 &[],
                 guard,
             )
@@ -865,6 +1112,7 @@ mod tests {
             (Side::Right, Side::Left),
             RouteStyle::Curved,
             markers,
+            CurveTerminals::Fixed,
             &stitches,
             Some(tree.for_edge(0, (Endpoint::Node(0), Endpoint::Node(1)), Vec2::ZERO, 1.)),
         )
@@ -905,6 +1153,7 @@ mod tests {
             (Side::Right, Side::Left),
             RouteStyle::Curved,
             (marker(3., 8.), marker(2., 9.)),
+            CurveTerminals::Fixed,
             &[],
             Some(tree.for_edge(0, (Endpoint::Node(0), Endpoint::Node(1)), Vec2::ZERO, 1.)),
         );
@@ -941,6 +1190,7 @@ mod tests {
                     (s, t),
                     style,
                     markers,
+                    CurveTerminals::Fixed,
                     &[],
                     None,
                 )
@@ -965,21 +1215,43 @@ mod tests {
     #[test]
     fn vertical_and_horizontal_sweeps_use_the_arrival_axis_and_adaptive_handles() {
         let m = Marker::default();
-        for (pts, sides, expected) in [
+        for (pts, sides, along, across) in [
             (
                 [v(0.0, 0.0), v(2000.0, 60.0)],
                 (Side::Bottom, Side::Top),
-                "M0,0L0,6C0,18 2000,42 2000,54L2000,60",
+                Vec2::new(0., 48.),
+                2000.,
             ),
             (
                 [h(0.0, 0.0), h(80.0, 40.0)],
                 (Side::Right, Side::Left),
-                "M0,0L6,0C40,0 40,40 74,40L80,40",
+                Vec2::new(68., 0.),
+                40.,
             ),
         ] {
-            let path = build_svg_path(&pts, sides, RouteStyle::Curved, (m, m), &[], None).unwrap();
-            assert_eq!(path.d, expected);
-            segments(&path);
+            let path = build_svg_path(
+                &pts,
+                sides,
+                RouteStyle::Curved,
+                (m, m),
+                CurveTerminals::Fixed,
+                &[],
+                None,
+            )
+            .unwrap();
+            let [
+                PathSeg::Line(start),
+                PathSeg::Cubic(curve),
+                PathSeg::Line(end),
+            ] = segments(&path)[..]
+            else {
+                panic!("{}", path.d);
+            };
+            let handle = along * sweep_handle_fraction(across, along.hypot());
+            assert_eq!(curve.p0, start.p1);
+            assert_eq!(curve.p3, end.p0);
+            assert_eq!(curve.p1, curve.p0 + handle);
+            assert_eq!(curve.p2, curve.p3 - handle);
         }
     }
 
@@ -987,8 +1259,18 @@ mod tests {
     fn rounded_quarters_share_short_legs_and_wide_turns_use_both_handles() {
         let points = [v(0.0, 0.0), v(0.0, 30.0), h(16.0, 30.0), v(16.0, 90.0)];
         let m = Marker::default();
-        let paint =
-            |s| build_svg_path(&points, (Side::Bottom, Side::Top), s, (m, m), &[], None).unwrap();
+        let paint = |style| {
+            build_svg_path(
+                &points,
+                (Side::Bottom, Side::Top),
+                style,
+                (m, m),
+                CurveTerminals::Fixed,
+                &[],
+                None,
+            )
+            .unwrap()
+        };
         let rounded = paint(RouteStyle::Rounded(50.0));
         assert!(
             rounded.d.contains("L0,22A8,8 0 0,0 8,30A8,8 0 0,1 16,38"),
@@ -1020,7 +1302,7 @@ mod tests {
     fn steps_move_only_the_internal_crossbar_and_keep_u_turns_outside() {
         let m = marker(4.0, 10.0);
         let paint = |p: &[RoutePoint], sides, style| {
-            build_svg_path(p, sides, style, (m, m), &[], None).unwrap()
+            build_svg_path(p, sides, style, (m, m), CurveTerminals::Fixed, &[], None).unwrap()
         };
         let sides = (Side::Bottom, Side::Top);
         let z = [v(0.0, 0.0), v(0.0, 50.0), h(100.0, 50.0), v(100.0, 100.0)];
@@ -1062,6 +1344,7 @@ mod tests {
             (Side::Bottom, Side::Left),
             RouteStyle::Linear,
             (marker(4.0, 12.0), marker(2.0, 8.0)),
+            CurveTerminals::Fixed,
             &[],
             None,
         )
@@ -1088,6 +1371,7 @@ mod tests {
                 (Side::Right, Side::Left),
                 RouteStyle::Curved,
                 (m, m),
+                CurveTerminals::Fixed,
                 &[],
                 None,
             )
@@ -1131,6 +1415,7 @@ mod tests {
                 (Side::Right, Side::Left),
                 style,
                 markers,
+                CurveTerminals::Fixed,
                 &[stitch],
                 None,
             )
@@ -1149,7 +1434,7 @@ mod tests {
 
     #[test]
     fn tight_bounds_use_bezier_extrema_not_control_points() {
-        let mut p = Pen::new(Point::new(-1.0, 0.0));
+        let mut p = Pen::new(Point::new(-1.0, 0.0), false);
         p.cubic(
             Point::new(-1.0, 10.0),
             Point::new(3.0, 10.0),

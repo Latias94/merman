@@ -300,7 +300,7 @@ impl Fan {
                 rect.y
             };
             let tip_x = rect.center().x + seat.leaf.offset;
-            let point = |x, y, axis| RoutePoint { x, y, axis };
+            let point = RoutePoint::new;
             let shoulder_x = (bus_x + self.lane).min(guide_x);
             let shelf_x = if curved { shoulder_x } else { bus_x };
             let release = if curved { self.lane } else { 0.0 };

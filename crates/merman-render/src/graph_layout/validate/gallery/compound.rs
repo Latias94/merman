@@ -22,6 +22,9 @@ mod stitches;
 const EMPTY_OWN: &str = include_str!("../../../../tests/fixtures/shoal-compound/empty-own.mmd");
 const AGENT_REFERENCE: &str =
     include_str!("../../../../tests/fixtures/shoal-compound/collapsed-reference.mmd");
+const SIBLING_CROSS_EDGES: &str = include_str!(
+    "../../../../../../fixtures/flowchart/stress_flowchart_subgraph_cross_edges_between_siblings_048.mmd"
+);
 
 struct Drawing {
     model: FlowchartModel,
@@ -96,7 +99,11 @@ fn prepare(diagram: &PresentationDiagram) -> Result<Drawing, String> {
 }
 
 fn draw(source: &str) -> Drawing {
-    let parsed = MermaidEngine::new()
+    draw_with(&MermaidEngine::new(), source)
+}
+
+fn draw_with(engine: &MermaidEngine, source: &str) -> Drawing {
+    let parsed = engine
         .parse_diagram_for_render_model_sync(&shoal_source(source), ParseOptions::strict())
         .unwrap()
         .unwrap()
@@ -452,9 +459,7 @@ fn own_member_empty_group_and_duplicate_public_edge_ids_keep_their_occurrences()
 #[test]
 fn sibling_crossings_stay_in_their_separate_aligned_lanes_between_faces() {
     use kurbo::{Line, ParamCurveExtrema};
-    let drawing = draw(include_str!(
-        "../../../../../../fixtures/flowchart/stress_flowchart_subgraph_cross_edges_between_siblings_048.mmd"
-    ));
+    let drawing = draw(SIBLING_CROSS_EDGES);
     let doc = Document::parse(&drawing.svg).unwrap();
     let capture = drawing.capture(&doc);
     let body = |name| {
@@ -539,6 +544,99 @@ fn sibling_crossings_stay_in_their_separate_aligned_lanes_between_faces() {
         (lanes[0] - lanes[1]).abs() > FLATNESS,
         "shared lane: {lanes:?}"
     );
+}
+
+pub(super) fn aesthetic_witnesses() {
+    use super::super::aesthetic::{Landmark, Seam, emit};
+
+    let engine = super::engine();
+    for (name, source) in [
+        (
+            "flowchart-stress_flowchart_subgraph_cross_edges_between_siblings_048",
+            SIBLING_CROSS_EDGES,
+        ),
+        (
+            "flowchart-stress_flowchart_nested_subgraphs_titles_001",
+            include_str!(
+                "../../../../../../fixtures/flowchart/stress_flowchart_nested_subgraphs_titles_001.mmd"
+            ),
+        ),
+        (
+            "agentflow-local_nested_collapse_routes",
+            include_str!("../../../../../../fixtures/agentflow/local_nested_collapse_routes.mmd"),
+        ),
+    ] {
+        let drawing = draw_with(&engine, source);
+        let doc = Document::parse(&drawing.svg).expect("well-formed rendered SVG");
+        let capture = drawing.capture(&doc);
+        let body = |name: &str| {
+            capture
+                .body_names
+                .iter()
+                .position(|id| id == name)
+                .unwrap_or_else(|| panic!("missing aesthetic witness body {name}"))
+        };
+        let bounds = |name| capture.scene.bodies[body(name)].bounds;
+        let edge = |from, to| {
+            let (start, end) = (body(from), body(to));
+            capture
+                .scene
+                .edges
+                .iter()
+                .position(|edge| edge.start.body == start && edge.end.body == end)
+                .unwrap_or_else(|| panic!("missing aesthetic witness edge {from} → {to}"))
+        };
+        let seams = if name.ends_with("_048") {
+            vec![Seam {
+                edge: edge("r2", "l1"),
+                landmarks: vec![
+                    Landmark::Plane("r1.right", bounds("r1").x1),
+                    Landmark::Plane("right.left", bounds("right").x0),
+                    Landmark::Plane("left.right", bounds("left").x1),
+                    Landmark::Plane("l2.left", bounds("l2").x0),
+                ],
+            }]
+        } else if name.ends_with("_001") {
+            ["b1", "c1"]
+                .into_iter()
+                .map(|from| Seam {
+                    edge: edge(from, "d1"),
+                    landmarks: vec![
+                        Landmark::Plane("A1.bottom", bounds("A1").y1),
+                        Landmark::Plane("A2.top", bounds("A2").y0),
+                        Landmark::ShaftEndpoint("d1.marker_end", End::End),
+                    ],
+                })
+                .collect()
+        } else {
+            vec![Seam {
+                edge: edge("inner", "api"),
+                landmarks: vec![
+                    Landmark::ShaftEndpoint("inner.shaft_start", End::Start),
+                    Landmark::Plane("outer.right", bounds("outer").x1),
+                    Landmark::ShaftEndpoint("api.marker_end", End::End),
+                ],
+            }]
+        };
+        let metrics = emit(
+            name,
+            drawing
+                .model
+                .direction
+                .as_deref()
+                .expect("witness direction"),
+            &capture.scene,
+            &capture.body_names,
+            &capture.edge_names,
+            &seams,
+        );
+        if name.ends_with("_048") {
+            assert!(
+                metrics.border_seam_bump.is_some(),
+                "missing seam measurement"
+            );
+        }
+    }
 }
 
 #[test]
@@ -1092,6 +1190,14 @@ impl Drawing {
                 ));
                 read_marker(path, &markers, end, marker, trim, edge.transform, side);
             }
+            super::check_unmarked_departure(
+                &mut edge.start,
+                nodes
+                    .get(projected.from)
+                    .and_then(|node| node.layout_shape.as_deref()),
+                path,
+                semantic.start_marker,
+            );
             let edge_id = capture.scene.edges.len();
             use base64::Engine as _;
             let bytes = base64::engine::general_purpose::STANDARD

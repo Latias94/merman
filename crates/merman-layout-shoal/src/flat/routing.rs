@@ -3,8 +3,8 @@
 use super::{Component, Drawing, Expanded, Kind, acyclic::Orientation, canonical_size};
 use crate::work::{LayoutResult, Work, filled, push, reserved};
 use crate::{
-    Axis, Direction, EdgeGeometry, Graph, LayoutError, Options, Point, PortSideHint, Rect,
-    RoutePoint, RoutingStyle, Side, Size, WorkError,
+    Axis, Direction, EdgeGeometry, Graph, KnotKind, LayoutError, MarkerMetrics, Options, Point,
+    PortSideHint, Rect, RoutePoint, RoutingStyle, Side, Size, WorkError, sweep_handle_fraction,
 };
 use std::{cmp::Reverse, collections::BinaryHeap};
 
@@ -12,6 +12,10 @@ const LEAD: f64 = 6.0;
 const LEVEL_CLEAR: f64 = 8.0;
 const LEVEL_TOUCH: f64 = 4.0;
 const SAMPLES: usize = 16;
+const MAX_SWEEP_GAPS: usize = 12;
+const MAX_SWEEP_PEERS: usize = 32;
+const MAX_SWEEP_TRIALS: usize = 3;
+const SWEEP_INVERSE_STEPS: usize = 12;
 const PRECISION: LayoutError = LayoutError::InvalidInput("route exceeds coordinate precision");
 
 fn finite(value: f64) -> LayoutResult<f64> {
@@ -51,25 +55,41 @@ struct Band {
 #[derive(Clone, Copy, Default)]
 struct EndRoom {
     marker: f64,
+    marked: f64,
+    marker_half_width: f64,
     labels: f64,
+    has_label: bool,
 }
 
 impl EndRoom {
     fn include(
         &mut self,
-        marker: f64,
+        marker: MarkerMetrics,
         label: Option<Size>,
         dir: Direction,
         along: f64,
     ) -> LayoutResult<()> {
-        self.marker = self.marker.max(marker);
+        self.marker = self.marker.max(marker.length);
+        if marker.width > 0.0 {
+            self.marked = self.marked.max(marker.length);
+            self.marker_half_width = self.marker_half_width.max(marker.width * 0.5);
+        }
         if let Some(size) = label {
+            self.has_label = true;
             self.labels = advance(
                 self.labels,
                 finite(along + canonical_size(dir, size).height)?,
             )?;
         }
         Ok(())
+    }
+
+    fn guard(self, relaxed: bool) -> LayoutResult<f64> {
+        finite(if relaxed && !self.has_label {
+            self.marked
+        } else {
+            self.marker + self.labels
+        })
     }
 }
 
@@ -101,10 +121,17 @@ impl Span {
     fn crossings_above(self, other: Self) -> u8 {
         u8::from(other.contains(self.to)) + u8::from(self.contains(other.from))
     }
+    fn hull(self, other: Self) -> Self {
+        Self {
+            from: self.lo().min(other.lo()),
+            to: self.hi().max(other.hi()),
+        }
+    }
 }
 
 struct Piece {
     span: Span,
+    occupied: Span,
     lower: usize,
     track: Option<usize>,
 }
@@ -115,6 +142,9 @@ struct Gap {
     cursor: usize,
     upper_guard: f64,
     lower_guard: f64,
+    curved_guards: [f64; 2],
+    marker_half_width: f64,
+    has_end_labels: bool,
     minimum: f64,
     height: f64,
     tracks: usize,
@@ -224,8 +254,8 @@ fn collect_pieces(
         let spec = &graph.edges[link.edge as usize];
         let reversed = ranked.orientation.reversed[edge];
         let mut terminals = [
-            (spec.start_marker.length, spec.start_label),
-            (spec.end_marker.length, spec.end_label),
+            (spec.start_marker, spec.start_label),
+            (spec.end_marker, spec.end_label),
         ];
         if reversed {
             terminals.swap(0, 1);
@@ -243,7 +273,7 @@ fn collect_pieces(
             let band = &mut bands[row(label as usize)];
             band.label_directions |= if reversed { 2 } else { 1 };
             band.label_count += 1;
-            let bias = (terminals[0].0 - terminals[1].0) * 0.5;
+            let bias = (terminals[0].0.length - terminals[1].0.length) * 0.5;
             band.optical_shift += (bias - band.optical_shift) / band.label_count as f64;
         }
         if g.direct[edge] {
@@ -261,6 +291,7 @@ fn collect_pieces(
                 finite(span.width())?;
                 gaps[upper].pieces.push(Piece {
                     span,
+                    occupied: span,
                     lower,
                     track: None,
                 });
@@ -276,15 +307,15 @@ fn collect_pieces(
         work.visit(1)?;
         let row = row(vertex);
         if let Some(gap) = gaps.get_mut(row) {
-            gap.upper_guard = gap
-                .upper_guard
-                .max(finite(outgoing.marker + outgoing.labels)?);
+            gap.upper_guard = gap.upper_guard.max(outgoing.guard(false)?);
+            gap.curved_guards[0] = gap.curved_guards[0].max(outgoing.guard(true)?);
+            gap.include_terminals(outgoing);
         }
         if row > 0 {
             let gap = &mut gaps[row - 1];
-            gap.lower_guard = gap
-                .lower_guard
-                .max(finite(incoming.marker + incoming.labels)?);
+            gap.lower_guard = gap.lower_guard.max(incoming.guard(false)?);
+            gap.curved_guards[1] = gap.curved_guards[1].max(incoming.guard(true)?);
+            gap.include_terminals(incoming);
         }
     }
     Ok(gaps)
@@ -312,14 +343,22 @@ fn meetings(
     Ok(())
 }
 
+fn sweep_x(t: f64) -> f64 {
+    t * t * (3.0 - 2.0 * t)
+}
+
+fn sweep_y(t: f64, ease: f64) -> f64 {
+    let u = 1.0 - t;
+    3.0 * ease * t * u * u + 3.0 * (1.0 - ease) * t * t * u + t * t * t
+}
+
 fn sample(span: Span, height: f64) -> [Point; SAMPLES + 1] {
-    let ease = (height / span.width().max(1.0) * 4.0).clamp(0.25, 0.5);
+    let ease = sweep_handle_fraction(span.width(), height);
     std::array::from_fn(|i| {
         let t = i as f64 / SAMPLES as f64;
-        let u = 1.0 - t;
         Point {
-            x: span.from + (span.to - span.from) * (t * t * (3.0 - 2.0 * t)),
-            y: height * (3.0 * ease * t * u * u + 3.0 * (1.0 - ease) * t * t * u + t * t * t),
+            x: span.from + (span.to - span.from) * sweep_x(t),
+            y: height * sweep_y(t, ease),
         }
     })
 }
@@ -697,6 +736,15 @@ fn greedy_tracks(
 }
 
 impl Gap {
+    fn include_terminals(&mut self, room: EndRoom) {
+        self.marker_half_width = self.marker_half_width.max(room.marker_half_width);
+        self.has_end_labels |= room.has_label;
+    }
+
+    fn next_piece(&self) -> &Piece {
+        &self.pieces[self.cursor]
+    }
+
     fn grade(&mut self, options: &Options, work: &mut Work<'_>) -> LayoutResult<()> {
         work.charge(self.pieces.len())?;
         let mut ids = reserved(self.pieces.len())?;
@@ -706,7 +754,9 @@ impl Gap {
                 .enumerate()
                 .filter_map(|(i, p)| (p.span.from != p.span.to).then_some(i)),
         );
-        if !ids.is_empty() {
+        let curved = options.routing == RoutingStyle::Curved;
+        let isolated_curve = curved && self.pieces.len() == 1 && ids.len() == 1;
+        if !ids.is_empty() && !isolated_curve {
             let lead = LEAD.max(options.spacing.edge * 0.5);
             self.upper_guard = advance(self.upper_guard, lead)?;
             self.lower_guard = advance(self.lower_guard, lead)?;
@@ -714,10 +764,13 @@ impl Gap {
         let guard = finite(self.upper_guard + self.lower_guard)?;
         self.minimum = finite(guard + if ids.is_empty() { 0.0 } else { 2.0 * LEAD })?;
         self.height = self.height.max(self.minimum);
+        if isolated_curve {
+            [self.upper_guard, self.lower_guard] = self.curved_guards;
+            return Ok(());
+        }
         if ids.is_empty() || options.routing == RoutingStyle::Polyline {
             return Ok(());
         }
-        let curved = options.routing == RoutingStyle::Curved;
         if curved && ids.len() == 1 {
             return Ok(());
         }
@@ -803,14 +856,220 @@ fn place_bands(
     Ok(())
 }
 
-fn knot(points: &mut Vec<RoutePoint>, x: f64, y: f64, axis: Axis) {
-    if !points.last().is_some_and(|p| p.x == x && p.y == y) {
-        points.push(RoutePoint { x, y, axis });
+fn sweep_clearance(
+    g: &Expanded,
+    c: &Component,
+    options: &Options,
+    x: &[f64],
+    index: &[usize],
+    work: &mut Work<'_>,
+) -> LayoutResult<Vec<Option<(f64, f64)>>> {
+    let mut rooms = Vec::new();
+    let half_sep = options.spacing.edge * 0.5;
+    for (layer, &physical) in g.layers.iter().zip(index) {
+        work.visit(1)?;
+        if physical == usize::MAX {
+            continue;
+        }
+        for (slot, &vertex) in layer.iter().enumerate() {
+            work.visit(1)?;
+            let v = vertex as usize;
+            if g.kind[v] != Kind::Dummy || g.keep[v] {
+                continue;
+            }
+            if rooms.is_empty() {
+                work.charge(x.len())?;
+                rooms = filled(x.len(), None)?;
+            }
+            let neighbor = |peer: u32, direction: f64| {
+                let u = peer as usize;
+                if g.kind[u] == Kind::Dummy {
+                    let midpoint = x[u].midpoint(x[v]);
+                    let pad = (x[u] - midpoint).abs().min(half_sep);
+                    midpoint + direction * pad
+                } else {
+                    let (left, right) = super::position::extents(g, c, options, peer);
+                    x[u] + direction * (if direction > 0.0 { right } else { left } + half_sep)
+                }
+            };
+            let lo = slot
+                .checked_sub(1)
+                .map_or(f64::NEG_INFINITY, |left| neighbor(layer[left], 1.0));
+            let hi = layer
+                .get(slot + 1)
+                .map_or(f64::INFINITY, |&right| neighbor(right, -1.0));
+            rooms[v] = Some((lo, hi));
+        }
+    }
+    Ok(rooms)
+}
+
+#[derive(Clone, Copy)]
+struct Sweep {
+    span: Span,
+    start: f64,
+    end: f64,
+    ease: f64,
+}
+
+impl Sweep {
+    fn at(self, y: f64, work: &mut Work<'_>) -> LayoutResult<Span> {
+        let py = ((y - self.start) / (self.end - self.start)).clamp(0.0, 1.0);
+        let x = |unit| self.span.from + (self.span.to - self.span.from) * unit;
+        if py == 0.0 || py == 1.0 {
+            return Ok(Span {
+                from: x(py),
+                to: x(py),
+            });
+        }
+        work.visit(SWEEP_INVERSE_STEPS)?;
+        let (mut low, mut high) = (0.0_f64, 1.0_f64);
+        for _ in 0..SWEEP_INVERSE_STEPS {
+            let mid = low.midpoint(high);
+            if sweep_y(mid, self.ease) < py {
+                low = mid;
+            } else {
+                high = mid;
+            }
+        }
+        let curved = Span {
+            from: x(sweep_x(low)),
+            to: x(sweep_x(high)),
+        };
+        Ok(curved.hull(Span {
+            from: x(py),
+            to: x(py),
+        }))
     }
 }
 
-/// For a curved shelf the short S at either end pins the following rounded elbow inside
-/// this gap, even when a painter coalesces collinear knots across the adjacent band.
+struct SuperGap {
+    sweep: Sweep,
+    occupied: [Span; MAX_SWEEP_GAPS],
+    steps: usize,
+}
+
+fn prove_sweep(
+    gaps: &[Gap],
+    bands: &[Band],
+    rooms: &[Option<(f64, f64)>],
+    sep: f64,
+    work: &mut Work<'_>,
+) -> LayoutResult<Option<SuperGap>> {
+    let first = &gaps[0];
+    let last = &gaps[gaps.len() - 1];
+    let span = Span {
+        from: first.next_piece().span.from,
+        to: last.next_piece().span.to,
+    };
+    if span.from == span.to || !span.width().is_finite() {
+        return Ok(None);
+    }
+    let start = advance(bands[0].bottom, first.upper_guard)?;
+    let end = -advance(-bands[gaps.len()].top, last.lower_guard)?;
+    if end <= start {
+        return Ok(None);
+    }
+    let sweep = Sweep {
+        span,
+        start,
+        end,
+        ease: sweep_handle_fraction(span.width(), end - start),
+    };
+    let mut occupied = [span; MAX_SWEEP_GAPS];
+    let mut above = sweep.at(bands[0].bottom, work)?;
+    for (step, (gap, lower)) in gaps.iter().zip(&bands[1..]).enumerate() {
+        work.visit(1)?;
+        let top = sweep.at(lower.top, work)?;
+        let aisle = above.hull(top);
+        let margin = sep.max(gap.marker_half_width);
+        for (id, peer) in gap.pieces.iter().enumerate() {
+            work.visit(1)?;
+            if id != gap.cursor
+                && aisle.from - peer.occupied.hi() < margin
+                && peer.occupied.lo() - aisle.to < margin
+            {
+                return Ok(None);
+            }
+        }
+        occupied[step] = aisle;
+        if step + 1 < gaps.len() {
+            let (lo, hi) = rooms[gap.next_piece().lower].unwrap();
+            let bottom = sweep.at(lower.bottom, work)?;
+            let through = top.hull(bottom);
+            if through.from < lo || through.to > hi {
+                return Ok(None);
+            }
+            above = bottom;
+        }
+    }
+    Ok(Some(SuperGap {
+        sweep,
+        occupied,
+        steps: gaps.len(),
+    }))
+}
+
+fn super_gap(
+    gaps: &[Gap],
+    bands: &[Band],
+    rooms: &[Option<(f64, f64)>],
+    sep: f64,
+    work: &mut Work<'_>,
+) -> LayoutResult<Option<SuperGap>> {
+    let usable = |gap: &Gap| {
+        gap.pieces.len() <= MAX_SWEEP_PEERS
+            && !gap.has_end_labels
+            && gap.next_piece().track.is_none()
+    };
+    if gaps.len() < 2 || rooms.is_empty() || !usable(&gaps[0]) {
+        return Ok(None);
+    }
+    let mut current = gaps[0].next_piece();
+    if rooms[current.lower].is_none() {
+        return Ok(None);
+    }
+    let start_x = current.span.from;
+    let mut steps = 1;
+    for gap in gaps.iter().take(MAX_SWEEP_GAPS).skip(1) {
+        work.visit(1)?;
+        let next = gap.next_piece();
+        let previous = current.span.to - start_x;
+        let forward = next.span.to - next.span.from;
+        if !usable(gap)
+            || current.span.to != next.span.from
+            || (previous < 0.0 && forward > 0.0)
+            || (previous > 0.0 && forward < 0.0)
+        {
+            break;
+        }
+        steps += 1;
+        current = next;
+        if rooms[current.lower].is_none() {
+            break;
+        }
+    }
+    for count in (2..=steps).rev().take(MAX_SWEEP_TRIALS) {
+        if let Some(merge) = prove_sweep(&gaps[..count], bands, rooms, sep, work)? {
+            return Ok(Some(merge));
+        }
+    }
+    Ok(None)
+}
+
+fn knot(points: &mut Vec<RoutePoint>, point: RoutePoint) {
+    if let Some(previous) = points.last_mut()
+        && previous.x == point.x
+        && previous.y == point.y
+    {
+        if point.kind == KnotKind::GapBoundary {
+            previous.kind = point.kind;
+        }
+    } else {
+        points.push(point);
+    }
+}
+
 fn draw_piece(
     points: &mut Vec<RoutePoint>,
     piece: &Piece,
@@ -828,7 +1087,6 @@ fn draw_piece(
     if end <= start {
         return Err(PRECISION);
     }
-    knot(points, from, start, Axis::Vertical);
     if let Some(track) = piece.track {
         let (margin, _, spread) = track_metrics(options.routing, options.spacing.edge);
         let steps = (gap.tracks - 1) as f64;
@@ -843,26 +1101,17 @@ fn draw_piece(
         if shelf <= start || shelf >= end || track > 0 && level(track - 1) >= shelf {
             return Err(PRECISION);
         }
-        if options.routing == RoutingStyle::Curved {
-            let shoulder = (shelf - start)
-                .min(end - shelf)
-                .min(piece.span.width() * 0.25)
-                * 0.5;
-            let across = shoulder.copysign(to - from);
-            let left = from + across;
-            let right = to - across;
-            if left != from && right != to && start + shoulder > start && end - shoulder < end {
-                knot(points, left, start + shoulder, Axis::Vertical);
-                knot(points, left, shelf, Axis::Vertical);
-                knot(points, right, shelf, Axis::Horizontal);
-                knot(points, right, end - shoulder, Axis::Vertical);
-            }
-        } else {
-            knot(points, from, shelf, Axis::Vertical);
-            knot(points, to, shelf, Axis::Horizontal);
-        }
+        knot(
+            points,
+            RoutePoint::gap_boundary(from, start, Axis::Vertical),
+        );
+        knot(points, RoutePoint::new(from, shelf, Axis::Vertical));
+        knot(points, RoutePoint::new(to, shelf, Axis::Horizontal));
+        knot(points, RoutePoint::gap_boundary(to, end, Axis::Vertical));
+    } else {
+        knot(points, RoutePoint::new(from, start, Axis::Vertical));
+        knot(points, RoutePoint::new(to, end, Axis::Vertical));
     }
-    knot(points, to, end, Axis::Vertical);
     Ok(())
 }
 
@@ -906,6 +1155,11 @@ pub(super) fn route(
     };
     let mut gaps = collect_pieces(ranked, graph, options, x, &mut bands, &index, work)?;
     place_bands(&mut bands, &mut gaps, options, work)?;
+    let clearance = if options.routing == RoutingStyle::Curved && !g.direct.contains(&true) {
+        sweep_clearance(g, c, options, x, &index, work)?
+    } else {
+        Vec::new()
+    };
     work.charge(c.nodes.len())?;
     let mut nodes = reserved(c.nodes.len())?;
     let row = |vertex: usize| index[g.rank[vertex] as usize];
@@ -956,8 +1210,6 @@ pub(super) fn route(
                     0
                 } else if piece.track.is_none() {
                     2
-                } else if options.routing == RoutingStyle::Curved {
-                    6
                 } else {
                     4
                 };
@@ -991,45 +1243,86 @@ pub(super) fn route(
                 gaps[b - 1].pieces[gaps[b - 1].cursor].span.to,
             )
         };
-        points.push(RoutePoint {
-            x: source_x,
-            y: nodes[first].y + nodes[first].height,
-            axis: Axis::Vertical,
-        });
+        points.push(RoutePoint::new(
+            source_x,
+            nodes[first].y + nodes[first].height,
+            Axis::Vertical,
+        ));
         if !direct {
-            for level in a..b {
+            let mut level = a;
+            while level < b {
                 work.visit(1)?;
-                let gap = &mut gaps[level];
-                let piece = &gap.pieces[gap.cursor];
-                draw_piece(
-                    &mut points,
-                    piece,
-                    &bands[level],
-                    &bands[level + 1],
-                    gap,
-                    options,
+                let merged = super_gap(
+                    &gaps[level..b],
+                    &bands[level..],
+                    &clearance,
+                    options.spacing.edge,
+                    work,
                 )?;
-                if level + 1 < b {
-                    let lower = &bands[level + 1];
-                    knot(&mut points, piece.span.to, lower.top, Axis::Vertical);
+                let next = if let Some(merge) = merged {
+                    let sweep = merge.sweep;
+                    knot(
+                        &mut points,
+                        RoutePoint::gap_boundary(sweep.span.from, sweep.start, Axis::Vertical),
+                    );
+                    knot(
+                        &mut points,
+                        RoutePoint::gap_boundary(sweep.span.to, sweep.end, Axis::Vertical),
+                    );
+                    work.visit(merge.steps)?;
+                    for (gap, occupied) in gaps[level..level + merge.steps]
+                        .iter_mut()
+                        .zip(merge.occupied)
+                    {
+                        gap.pieces[gap.cursor].occupied = occupied;
+                    }
+                    level + merge.steps
+                } else {
+                    let gap = &gaps[level];
+                    draw_piece(
+                        &mut points,
+                        gap.next_piece(),
+                        &bands[level],
+                        &bands[level + 1],
+                        gap,
+                        options,
+                    )?;
+                    level + 1
+                };
+                if next < b {
+                    let piece = gaps[next - 1].next_piece();
+                    let lower = &bands[next];
+                    knot(
+                        &mut points,
+                        RoutePoint::new(piece.span.to, lower.top, Axis::Vertical),
+                    );
                     if g.keep[piece.lower] {
                         knot(
                             &mut points,
-                            piece.span.to,
-                            lower.top.midpoint(lower.bottom),
-                            Axis::Vertical,
+                            RoutePoint::new(
+                                piece.span.to,
+                                lower.top.midpoint(lower.bottom),
+                                Axis::Vertical,
+                            ),
                         );
                     }
-                    knot(&mut points, piece.span.to, lower.bottom, Axis::Vertical);
+                    knot(
+                        &mut points,
+                        RoutePoint::new(piece.span.to, lower.bottom, Axis::Vertical),
+                    );
                 }
-                gap.cursor += 1;
+                for gap in &mut gaps[level..next] {
+                    gap.cursor += 1;
+                }
+                level = next;
             }
         }
-        points.push(RoutePoint {
-            x: target_x,
-            y: nodes[last].y,
-            axis: Axis::Vertical,
-        });
+        let target = RoutePoint::new(target_x, nodes[last].y, Axis::Vertical);
+        if points.len() == 1 {
+            points.push(target);
+        } else {
+            knot(&mut points, target);
+        }
         let label_center = g.label_vertex[edge].map(|label| {
             let band = &bands[row(label as usize)];
             Point {

@@ -4,8 +4,8 @@
 use super::{Pass, sides::flow_sides, solve::Frame};
 use crate::work::{LayoutResult, Work, filled, push, reserved};
 use crate::{
-    Axis, Endpoint, Graph, LayoutError, LayoutOutput, Point, Rect, RoutePoint, RoutingStyle,
-    WorkError,
+    Axis, Endpoint, Graph, KnotKind, LayoutError, LayoutOutput, Point, Rect, RoutePoint,
+    RoutingStyle, WorkError, sweep_handle_fraction,
 };
 
 const FAN: f64 = 24.0;
@@ -130,7 +130,7 @@ impl Pen<'_> {
             Axis::Vertical => (dy, dx),
             Axis::Horizontal => (dx, dy),
         };
-        let ease = (4.0 * (along.abs() / across.abs().max(1.0))).clamp(0.25, 0.5);
+        let ease = sweep_handle_fraction(across, along);
         let (first, second) = match axis {
             Axis::Vertical => (
                 Point {
@@ -187,10 +187,16 @@ fn flatten_section(
         if !knot.x.is_finite() || !knot.y.is_finite() {
             return Err(WorkError::ArithmeticOverflow.into());
         }
-        if knots.last().is_some_and(|&last| point(last) == point(knot)) {
+        if let Some(last) = knots.last_mut()
+            && point(*last) == point(knot)
+        {
+            if knot.kind == KnotKind::GapBoundary {
+                last.kind = knot.kind;
+            }
             continue;
         }
         if let [.., before, last] = knots.as_slice()
+            && last.kind == KnotKind::Free
             && ((before.x == last.x
                 && last.x == knot.x
                 && (before.y.min(knot.y)..=before.y.max(knot.y)).contains(&last.y))

@@ -319,19 +319,51 @@ fn read_marker(
     // A scalar marker setback/opening is valid for the similarity transforms used on shafts.
     assert!(scale > 0. && (c.hypot(d) - scale).abs() < 1e-8 && (a * c + b * d).abs() < 1e-8);
     endpoint.setback = trim * scale;
+    let bounds = view_box(marker);
+    let size = Size::new(
+        number(marker, "markerWidth") * scale,
+        number(marker, "markerHeight") * scale,
+    );
+    #[cfg(feature = "diagram-agentflow")]
+    {
+        endpoint.marker_width = Some(
+            bounds.height() * (size.width / bounds.width()).min(size.height / bounds.height()),
+        );
+    }
     if expected == FlowEdgeMarker::Point {
         endpoint.marker = Some(
-            PointMarker::from_view_box(
-                end,
-                view_box(marker),
-                Size::new(
-                    number(marker, "markerWidth") * scale,
-                    number(marker, "markerHeight") * scale,
-                ),
-                number(marker, "refX"),
-            )
-            .expect("positive point-marker opening"),
+            PointMarker::from_view_box(end, bounds, size, number(marker, "refX"))
+                .expect("positive point-marker opening"),
         );
+    }
+}
+
+fn check_unmarked_departure(
+    endpoint: &mut Endpoint,
+    shape: Option<&str>,
+    path: Node<'_, '_>,
+    marker: FlowEdgeMarker,
+) {
+    use crate::flowchart::FlowchartShape as Shape;
+    if marker == FlowEdgeMarker::None
+        && path.attribute("data-look") != Some("handDrawn")
+        && matches!(
+            shape.and_then(|name| Shape::resolve(name).ok()),
+            Some(
+                Shape::Diamond
+                    | Shape::Choice
+                    | Shape::Ellipse
+                    | Shape::Circle
+                    | Shape::DoubleCircle
+                    | Shape::CrossedCircle
+                    | Shape::FilledCircle
+                    | Shape::SmallCircle
+                    | Shape::FramedCircle
+                    | Shape::Anchor
+            )
+        )
+    {
+        endpoint.max_deviation_deg = 20.0;
     }
 }
 
@@ -477,6 +509,12 @@ impl Drawing {
                 end.trim,
                 edge.transform,
                 &mut edge.end,
+            );
+            check_unmarked_departure(
+                &mut edge.start,
+                self.model.nodes[from].layout_shape.as_deref(),
+                path,
+                semantic.start_marker,
             );
             scene.edges.push(edge);
             let bounds = label_box(label, frame);
@@ -1182,6 +1220,37 @@ fn for_each_visual_fixture(mut check: impl FnMut(&str, &str, &str, &str, (usize,
             (nodes, nodes - 1, 0),
         );
     }
+}
+
+#[cfg(feature = "diagram-agentflow")]
+#[test]
+fn replay_aesthetic_witnesses() {
+    for_each_visual_fixture(|name, id, source, direction, _| {
+        if matches!(
+            name,
+            "release" | "release-lr" | "release-bt" | "release-rl" | "ports-heavy" | "cycle"
+        ) {
+            let drawing = render(source, id).unwrap_or_else(|error| panic!("{name}: {error}"));
+            let doc = Document::parse(&drawing.svg).expect("well-formed rendered SVG");
+            let scene = drawing.scene(&doc, view_box(doc.root_element()).size());
+            let body_names: Vec<_> = drawing.layout.nodes.iter().map(|n| n.id.as_str()).collect();
+            let edge_names: Vec<_> = drawing.layout.edges.iter().map(|e| e.id.as_str()).collect();
+            let metrics =
+                super::aesthetic::emit(name, direction, &scene, &body_names, &edge_names, &[]);
+            if name == "ports-heavy" {
+                assert!(metrics.cubic_count <= 78, "{} cubics", metrics.cubic_count);
+                assert!(
+                    metrics.max_commands_per_edge <= 6,
+                    "{} path commands",
+                    metrics.max_commands_per_edge
+                );
+            }
+            if name == "cycle" {
+                assert_eq!(metrics.micro_kink_count, 0, "{name}: micro kinks");
+            }
+        }
+    });
+    compound::aesthetic_witnesses();
 }
 
 #[test]

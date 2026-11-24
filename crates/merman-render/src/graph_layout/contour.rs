@@ -98,6 +98,44 @@ impl ShapePortProfile {
     pub(crate) fn contact(&self, center: &LayoutPoint, side: Side, port: RoutePoint) -> RoutePoint {
         self.try_contact(center, side, port).unwrap_or(port)
     }
+
+    pub(crate) fn departure_across(
+        &self,
+        center: &LayoutPoint,
+        side: Side,
+        port: RoutePoint,
+    ) -> Option<f64> {
+        let (x, y) = match &self.outline {
+            Outline::Box {
+                cx,
+                cy,
+                hw,
+                hh,
+                rx,
+                ry,
+            } if hw == rx && hh == ry && *hw > 0.0 && *hh > 0.0 => (*cx, *cy),
+            Outline::Polygon(points) => {
+                let &[north, east, south, west] = points.as_slice() else {
+                    return None;
+                };
+                if north.0 != south.0 || east.1 != west.1 || north.1 >= east.1 || west.0 >= north.0
+                {
+                    return None;
+                }
+                (north.0, east.1)
+            }
+            _ => return None,
+        };
+        let offset = match side {
+            Side::Top | Side::Bottom => port.x - center.x - x,
+            Side::Left | Side::Right => port.y - center.y - y,
+        };
+        Some(if offset.abs() <= 1e-8 {
+            0.0
+        } else {
+            offset.signum()
+        })
+    }
 }
 
 pub(crate) fn inset_endpoints(
@@ -319,18 +357,10 @@ mod tests {
         LayoutPoint { x, y }
     }
     fn v(x: f64, y: f64) -> RoutePoint {
-        RoutePoint {
-            x,
-            y,
-            axis: Axis::Vertical,
-        }
+        RoutePoint::new(x, y, Axis::Vertical)
     }
     fn h(x: f64, y: f64) -> RoutePoint {
-        RoutePoint {
-            x,
-            y,
-            axis: Axis::Horizontal,
-        }
+        RoutePoint::new(x, y, Axis::Horizontal)
     }
     fn profile(name: &str, w: f64, h: f64, lw: f64, lh: f64, neo: bool) -> ShapePortProfile {
         let node: FlowNode =
