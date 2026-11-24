@@ -895,18 +895,22 @@ fn prepare_er_family<'parsed>(
     );
     let base_font_size =
         crate::er::ErBaseFontSizePlan::resolve(execution.resolved_theme(), &meta.effective_config);
-    let font_size_override = base_font_size.layout_override_px();
+    let config = crate::er::ErConfigView::new(meta.effective_config.as_value());
+    let settings = config.layout_settings_with_resolved_typography(
+        &model.direction,
+        Some(inherited_font_stack.font_family_css()),
+        base_font_size.layout_override_px(),
+    );
     let crate::er::ErPreparedLayout {
         layout,
         route_contract,
-    } = crate::er::layout_er_diagram_typed_with_resolved_typography(
+    } = crate::er::layout_er_diagram_typed(
         model,
         meta.effective_config.as_value(),
         execution.text_measurer(),
         #[cfg(feature = "layout-elk")]
         execution.elk_operation_seed(),
-        Some(inherited_font_stack.font_family_css()),
-        font_size_override,
+        settings,
         #[cfg(feature = "layout-shoal")]
         Some(execution),
         execution.work_meter(),
@@ -916,7 +920,7 @@ fn prepare_er_family<'parsed>(
         &meta.effective_config,
         inherited_font_stack,
         base_font_size,
-        crate::er::ErConfigView::new(meta.effective_config.as_value()).relationship_html_labels(),
+        config.relationship_html_labels(),
         meta.title.as_deref(),
         model,
         &layout,

@@ -38,7 +38,7 @@ impl<'a> ErConfigView<'a> {
         self.layout_settings_with_resolved_typography(direction, font_family_override, None)
     }
 
-    pub(super) fn layout_settings_with_resolved_typography(
+    pub(crate) fn layout_settings_with_resolved_typography(
         &self,
         direction: &str,
         font_family_override: Option<&str>,
@@ -315,7 +315,7 @@ impl<'a> ErConfigView<'a> {
     }
 }
 
-pub(super) struct ErLayoutSettings {
+pub(crate) struct ErLayoutSettings {
     pub(super) graph: GraphLabel,
     pub(super) label_style: TextStyle,
     pub(super) attr_style: TextStyle,

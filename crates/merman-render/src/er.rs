@@ -24,8 +24,7 @@ mod text_facts;
 mod theme;
 
 use crate::layout_backend::GraphLayoutBackend;
-use config::ErLayoutSettings;
-pub(crate) use config::{ErConfigView, ErEntityMeasurementSettings};
+pub(crate) use config::{ErConfigView, ErEntityMeasurementSettings, ErLayoutSettings};
 pub(crate) use swimlane::ErSwimlanePaintLayout;
 pub(crate) use swimlane::relationship_html_source as swimlane_relationship_html_source;
 pub(crate) use theme::{
@@ -1740,25 +1739,19 @@ pub(crate) struct ErPreparedLayout {
     pub(crate) route_contract: crate::graph_layout::RouteContract,
 }
 
-/// Lays out an ER model with an optional renderer-owned inherited typography override.
-pub(crate) fn layout_er_diagram_typed_with_resolved_typography(
+/// Lays out an ER model with the family's resolved layout and typography settings.
+pub(crate) fn layout_er_diagram_typed(
     model: &merman_model::families::er::ErDiagramModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
     #[cfg(feature = "layout-elk")] operation_seed: elk::ElkOperationSeed,
-    font_family_css: Option<&str>,
-    font_size_px: Option<f64>,
+    settings: ErLayoutSettings,
     #[cfg(feature = "layout-shoal")] execution: Option<&crate::LayoutExecution<'_>>,
     work_meter: Arc<crate::resources::OperationWorkMeter>,
 ) -> Result<ErPreparedLayout> {
     use crate::graph_layout::RouteContract;
 
     let mut work_control = OperationLayoutWorkControl::new(Arc::clone(&work_meter));
-    let settings = ErConfigView::new(effective_config).layout_settings_with_resolved_typography(
-        &model.direction,
-        font_family_css,
-        font_size_px,
-    );
     let adapter_work = er_layout_adapter_work(model, &work_control)?;
     work_control.charge_adapter(adapter_work)?;
     validate_er_relationship_endpoints(model)?;
@@ -3778,14 +3771,15 @@ mod tests {
         });
         let config = serde_json::json!({"layout": "shoal", "htmlLabels": false});
         let prepare = |measurer: &dyn TextMeasurer, meter| {
-            super::layout_er_diagram_typed_with_resolved_typography(
+            let settings = super::ErConfigView::new(&config)
+                .layout_settings_with_font_family(&model.direction, None);
+            super::layout_er_diagram_typed(
                 &model,
                 &config,
                 measurer,
                 #[cfg(feature = "layout-elk")]
                 merman_layout_elk::ElkOperationSeed::from_operation_seed(std::num::NonZeroU64::MIN),
-                None,
-                None,
+                settings,
                 None,
                 meter,
             )
