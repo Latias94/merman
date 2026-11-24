@@ -1222,8 +1222,6 @@ fn family_render_report_freezes_after_pipeline_and_terminal_svg() {
             theme_coverage_complete: true,
             theme_applied: Vec::new(),
             native_filter_receipt: None,
-            #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-            architecture_text_receipt: None,
             theme_not_applicable: Vec::new(),
             theme_residuals: Vec::new(),
             mermaid_compatibility_residual_count: 0,

@@ -541,10 +541,6 @@ jobs:
           cargo nextest run --locked -p merman-cli --no-default-features --features all-diagrams,rustdoc \
             --test rustdoc_cli --cargo-quiet
 
-      - name: Verify published theme acceptance boundary
-        if: matrix.parity
-        run: python3 scripts/verify_theme_acceptance_boundary.py
-
       - name: Report macOS build disk usage
         if: always() && runner.os == 'macOS'
         shell: bash
@@ -753,30 +749,17 @@ jobs:
           sudo apt-get update --error-on=any
           sudo apt-get install --no-install-recommends --yes libfontconfig1-dev pkg-config fonts-dejavu-core fonts-noto-cjk
 
-      - name: Test preset qualification and family terminal behavior
+      - name: Verify native theme preset colors
         run: |
-          python3 scripts/run_theme_acceptance.py nextest run --locked \
-            -p merman-theme-acceptance -p merman-render -p merman-export -p merman \
-            --lib --cargo-quiet
-          python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-theme-acceptance \
-            --no-default-features --features png,all-diagrams \
-              --test preset_qualification \
-            --test block_title_legacy_projection --test class_edge_label_background_legacy_projection --test flowchart_marker_legacy_projection \
-            --cargo-quiet
-          python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-render \
-            --no-default-features --features all-diagrams --test theme_support_discovery_test --cargo-quiet
+          python3 scripts/verify_v2_presets.py --check-colors crates/merman-theme-contract/tests/fixtures/preset-colors-v2.json
+          cargo nextest run --locked -p merman-theme-contract --test theme_v2 --cargo-quiet
 
-      - name: Test optimized theme evidence and qualification rejection
-        run: |
-          cargo test --release --locked -p merman-render --no-default-features \
-            --lib family::evidence_support::tests
-          python3 scripts/run_theme_acceptance.py test --release --locked \
-            -p merman-theme-acceptance --no-default-features --features png,all-diagrams,layout-cytoscape \
-            --lib preset_qualification::
+      - name: Test theme support discovery
+        run: cargo nextest run --locked -p merman-render --no-default-features --features all-diagrams --test theme_support_discovery_test --cargo-quiet
 
       - name: Test theme authoring and Flowchart paint across SVG and PNG
         run: |
-          python3 scripts/run_theme_acceptance.py nextest run --locked -p merman \
+          cargo nextest run --locked -p merman \
             --no-default-features --features all-diagrams,svg,png,pdf,layout-cytoscape,system-fonts,compat-json --test theme_authoring \
             --test theme_flowchart_markers --test theme_flowchart_geometry \
             --test theme_flowchart_edge_effects --test flowchart_edge_label_theme \

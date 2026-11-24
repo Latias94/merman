@@ -17,8 +17,6 @@
 pub mod architecture;
 #[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
 pub(crate) mod architecture_metrics;
-#[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-mod architecture_text_receipt;
 #[cfg(feature = "diagram-block")]
 pub mod block;
 #[cfg(feature = "diagram-c4")]
@@ -332,19 +330,6 @@ pub mod __private {
     pub const MAX_NATIVE_SHADOW_STAGES: usize =
         crate::diagram_theme::MAX_EFFECT_PRIMITIVES_PER_GRAPH_HARD_CAP;
 
-    #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-    pub use crate::architecture_text_receipt::{
-        ArchitectureTextReceipt, ArchitectureTextRole, ArchitectureTextTerminal,
-    };
-
-    /// Returns the renderer-owned Architecture Text terminal facts sealed by the final writer.
-    #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-    pub fn architecture_text_receipt(
-        report: &FamilyRenderReport,
-    ) -> Option<&ArchitectureTextReceipt> {
-        report.architecture_text_receipt()
-    }
-
     /// Coarse family-evidence state used by the workspace facade.
     ///
     /// This type is intentionally isolated from the stable renderer surface. It carries only the
@@ -544,13 +529,6 @@ pub mod __private {
         report: &FamilyRenderReport,
     ) -> Option<NativeSvgFilterReceipt> {
         report.native_filter_receipt()
-    }
-
-    /// Returns the exact host/theme resource-policy intersection captured by the session.
-    pub fn effective_theme_resource_policy(
-        report: &crate::environment::RenderSessionReport,
-    ) -> &crate::diagram_theme::ThemeResourcePolicy {
-        report.effective_theme_resource_policy()
     }
 
     /// Bounded prepared-math projection used by document and target admission.

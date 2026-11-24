@@ -836,7 +836,7 @@ impl<'a> RootViewportContext<'a> {
 }
 
 impl RootedSvg {
-    #[cfg(any(test, merman_internal_theme_acceptance))]
+    #[cfg(test)]
     pub(super) fn as_str(&self) -> &str {
         &self.svg
     }

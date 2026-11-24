@@ -29,8 +29,6 @@ for provenance, licensing and production font boundaries.
 
 `public-cyberpunk/` contains byte-preserved Flowchart, Sequence, and XY Chart Mermaid inputs
 plus their original source/provenance README. They are shared by renderer/facade tests,
-native qualification and benchmarks, browser and language smoke tests, and debug tooling.
-Selecting a preset or successfully parsing a scene does not qualify its visual output.
+benchmarks, browser and language smoke tests, and debug tooling.
 
-See [preset qualification](../../docs/rendering/preset-qualification.md) and
-[theme coverage](../../docs/rendering/diagram-theme-coverage.md) for current product claims.
+See [theme coverage](../../docs/rendering/diagram-theme-coverage.md) for current product claims.

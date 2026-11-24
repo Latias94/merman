@@ -188,15 +188,6 @@ pub mod svg;
 #[cfg(feature = "svg")]
 pub mod diagram_theme;
 
-/// Workspace-only evidence seams used by the non-published theme acceptance harness.
-///
-/// These helpers require the workspace acceptance cfg and are excluded from published packages.
-/// They may change or disappear without a compatibility promise.
-#[cfg(all(feature = "svg", merman_internal_theme_acceptance))]
-#[doc(hidden)]
-#[path = "theme_acceptance.rs"]
-pub mod __theme_acceptance;
-
 /// ASCII target-local types and model-level backend interface.
 #[cfg(feature = "ascii")]
 pub mod ascii;

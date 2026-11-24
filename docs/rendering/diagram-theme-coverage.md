@@ -1,9 +1,8 @@
 # Diagram Theme Coverage
 
 Use the loaded runtime's discovery and the result of the actual render to assess theme support.
-The [authoring guide](custom-diagram-themes.md) explains recipes and source precedence;
-[preset qualification](preset-qualification.md) defines the bounded visual checks. This page
-explains those evidence boundaries. Machine contracts and runtime source own the capability inventory.
+The [authoring guide](custom-diagram-themes.md) explains recipes and source precedence.
+Machine contracts and runtime source own the capability inventory.
 
 ## Coverage across diagram families
 
@@ -160,7 +159,6 @@ The current schemas have separate owners:
 | Editable recipe | `schema_version: 1`, tagged `design` or `complete_spec`; [recipe contract](../../crates/merman-theme-contract/src/theme_recipe.rs). |
 | Support query/result and preset catalog | Schema 1; [support contract](../../crates/merman-theme-contract/src/support.rs) and [catalog metadata](../../crates/merman-theme-contract/src/preset_catalog.rs). |
 | Binding execution evidence | `version: 2`; [binding projection](../../crates/merman-bindings-core/src/theme_execution_evidence.rs). |
-| Qualification record/archive companion | Schema 2; [qualification guide](preset-qualification.md). Production catalog schema stays independent. |
 
 Execution evidence keeps `theme_status` separate from `target_status`, target reasons, font source
 and `output_mutated`. Theme `verified` means required root/family work was accounted for in this
@@ -235,22 +233,6 @@ occurrences retain a source residual and fail strict portability; an independent
 theme font family does not certify that source size. Absolute typed role sizes use the prepared
 label measurement and its matching writer evidence.
 
-## Qualification covers named scenarios
-
-The built-in production catalog currently leaves all `qualified_cells` empty. Availability,
-dedicated design scope, a successful admission inventory and a constructed metadata cell cannot
-issue qualification. Fresh runner-owned evidence may project artifact-local cells bound to
-`family_id`, `output_id`, `profile_id` and `admission_status`, with matching source, recipe, artifact
-and host identities. A downloaded companion needs trusted provenance and matching artifact identity.
-
-The declared native profiles cover Brutalist/Spotless Flowchart, State and Sequence, and Cyberpunk
-Flowchart, Sequence and XY Chart, as SVG and PNG. They use system fonts, native SVG labels and
-explicit Dagre/Classic conditions where specified; successful observations remain HostDependent.
-They do not qualify default Neo, HTML labels, PDF, arbitrary diagrams or other installations.
-Use the [qualification runbook](preset-qualification.md) for exact scenes, pixel checks, archive
-replay and freshness requirements. Neither private acceptance nor installed-consumer smoke widens
-that scope or populates the production catalog automatically.
-
 ## Current implementation and verification owners
 
 - [Mechanism classification](../../crates/merman-render/src/diagram_theme/family_mechanism_matrix.rs)
@@ -270,6 +252,3 @@ that scope or populates the production catalog automatically.
   [target admission](../../crates/merman/src/render/target_admission/mod.rs) classifies concrete
   artifacts. [Bindings](../../crates/merman-bindings-core/src/theme_execution_evidence.rs) project
   those outcomes and diagnostics without creating a second certification authority.
-- The non-published [qualification runner](../../crates/merman-theme-acceptance/src/preset_qualification.rs)
-  owns scoped SVG/PNG semantic and visual checks. Production generation does not run that observer.
-  Platform/package owners separately verify installed consumers and artifact identity.

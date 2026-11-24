@@ -396,10 +396,6 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
             edge_style_emitted,
             surface_styles.as_ref(),
         ),
-        #[cfg(merman_internal_theme_acceptance)]
-        text_receipt: surface_styles
-            .as_ref()
-            .and_then(|styles| styles.architecture_text_receipt()),
     };
 
     drop(_g_render_svg);

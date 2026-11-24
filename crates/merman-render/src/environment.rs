@@ -1823,7 +1823,7 @@ impl RenderEnvironment {
         self
     }
 
-    #[cfg(any(test, merman_internal_theme_acceptance))]
+    #[cfg(test)]
     pub(crate) fn with_math_renderer(
         mut self,
         renderer: Arc<dyn MathRenderer + Send + Sync>,
@@ -2458,10 +2458,6 @@ impl RenderSessionReport {
 
     pub const fn resource_policy(&self) -> RenderResourcePolicy {
         self.resource_policy
-    }
-
-    pub(crate) fn effective_theme_resource_policy(&self) -> &ThemeResourcePolicy {
-        &self.effective_theme_resource_policy
     }
 
     pub fn theme_recipe_fingerprint(&self) -> Option<ThemeRecipeFingerprint> {

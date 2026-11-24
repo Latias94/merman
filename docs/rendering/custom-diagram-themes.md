@@ -350,10 +350,7 @@ Separators and labels help preserve boundaries, but do not create an unlimited s
 category identities. Inspect long legends, small values, and both appearances before choosing a
 recipe for more categories. Source-owned colors and opacity remain deliberate user overrides.
 
-These custom-preset changes leave official Mermaid palette behavior intact. Alpha presets remain
-subject to their declared family scope and [qualification](preset-qualification.md); attractive
-samples, successful compilation, and shared fallback styling do not grant additional qualified
-cells or automatically promote a saved recipe into the native catalog.
+The [coverage guide](diagram-theme-coverage.md) describes how families use alpha presets.
 
 ## Family configuration and compiled rules
 

@@ -839,36 +839,24 @@ jobs:
         self.assertNotIn("flutter-v", text.split("  workflow_dispatch:", 1)[0])
         self.assertNotIn("tree-sitter-mermaid-v", text.split("  workflow_dispatch:", 1)[0])
 
-    def test_optimized_theme_rejection_tests_run_in_pr_and_preflight(self) -> None:
-        for name in ("ci.yml", "release-preflight.yml"):
-            with self.subTest(workflow=name):
-                text = read(WORKFLOW_ROOT / name)
-                step = text.split(
-                    "      - name: Test optimized theme evidence and qualification rejection\n", 1,
-                )[1].split("\n      - name:", 1)[0]
-                self.assertNotIn("continue-on-error", step)
-                command = " ".join(step.split("        run: |\n", 1)[1]
-                                   .replace("\\\n", " ").split())
-                self.assertIn(
-                    "cargo test --release --locked -p merman-render --no-default-features "
-                    "--lib family::evidence_support::tests", command,
-                )
-                self.assertIn(
-                    "python3 scripts/run_theme_acceptance.py test --release --locked "
-                    "-p merman-theme-acceptance --no-default-features --features png,all-diagrams,layout-cytoscape "
-                    "--lib preset_qualification::", command,
-                )
+    def test_optimized_renderer_theme_evidence_runs_in_preflight(self) -> None:
+        versions = workflow_job(read(WORKFLOW_ROOT / "release-preflight.yml"), "versions-and-packages")
+        step = versions.split(
+            "      - name: Test optimized renderer theme evidence\n", 1,
+        )[1].split("\n      - name:", 1)[0]
+        self.assertNotIn("continue-on-error", step)
+        command = " ".join(step.replace("\\\n", " ").split())
+        self.assertIn(
+            "cargo test --release --locked -p merman-render --no-default-features "
+            "--lib family::evidence_support::tests", command,
+        )
 
-    def test_host_theme_profiles_explicitly_request_system_fonts(self) -> None:
-        harness = tomllib.loads(read(ROOT / "crates/merman-theme-acceptance/Cargo.toml"))
-        with self.subTest(consumer="private qualification harness"):
-            self.assertIn("merman/system-fonts", harness["features"]["png"])
+    def test_public_theme_pixel_tests_use_system_fonts(self) -> None:
         step = read(CI_WORKFLOW).split(
             "      - name: Test theme authoring and Flowchart paint across SVG and PNG\n", 1,
         )[1].split("\n      - name:", 1)[0]
         features = step.split("--features ", 1)[1].split()[0].split(",")
-        with self.subTest(consumer="public facade pixel tests"):
-            self.assertIn("system-fonts", features)
+        self.assertIn("system-fonts", features)
 
     def test_theme_authoring_and_font_resource_boundaries_run_in_ci_and_preflight(self) -> None:
         for name, runner, binding_features in (
@@ -899,13 +887,15 @@ jobs:
                 )
                 self.assertNotIn("embedded-fonts", command)
 
-    def test_retired_portable_font_gates_are_not_release_requirements(self) -> None:
-        for name in ("ci.yml", "release-preflight.yml"):
+    def test_v2_presets_run_in_ci_and_preflight(self) -> None:
+        for name, job in (("ci.yml", "theme-contracts"), ("release-preflight.yml", "versions-and-packages")):
             with self.subTest(workflow=name):
-                text = read(WORKFLOW_ROOT / name)
-                for retired in ("c6_runtime", "route_cutover_runtime", "native_export_smoke"):
-                    self.assertNotIn(f"--test {retired}", text)
-                self.assertIn("--test preset_qualification", text)
+                commands = " ".join(workflow_job(read(WORKFLOW_ROOT / name), job).replace("\\\n", " ").split())
+                self.assertIn(
+                    "python3 scripts/verify_v2_presets.py --check-colors "
+                    "crates/merman-theme-contract/tests/fixtures/preset-colors-v2.json", commands,
+                )
+                self.assertIn("cargo nextest run --locked -p merman-theme-contract", commands)
 
     def test_render_operation_recipes_enable_required_features_explicitly(self) -> None:
         manifest = tomllib.loads(read(ROOT / "crates/merman/Cargo.toml"))
@@ -926,67 +916,43 @@ jobs:
                     features = set(command.split("--features ", 1)[1].split()[0].split(","))
                     self.assertLessEqual(required_features, features)
 
-    def test_projection_retirement_runs_with_png_and_internal_cfg(self) -> None:
-        for name in ("ci.yml", "release-preflight.yml"):
-            commands = read(WORKFLOW_ROOT / name).replace("\\\n", " ").splitlines()
-            for test in ("block_title_legacy_projection",
-                         "class_edge_label_background_legacy_projection",
-                         "flowchart_marker_legacy_projection"):
-                with self.subTest(workflow=name, test=test):
-                    selected = [command for command in commands
-                                if f"--test {test}" in command]
-                    self.assertTrue(selected, f"{test} must be selected explicitly")
-                    for command in selected:
-                        self.assertIn("python3 scripts/run_theme_acceptance.py", command)
-                        self.assertIn("-p merman-theme-acceptance", command)
-                        features = command.split("--features ", 1)[1].split()[0].split(",")
-                        self.assertIn("png", features)
-
     def test_support_discovery_runs_explicitly_in_ci_and_preflight(self) -> None:
         for name in ("ci.yml", "release-preflight.yml"):
             with self.subTest(workflow=name):
-                text = " ".join(read(WORKFLOW_ROOT / name).split())
-                self.assertIn("python3 scripts/run_theme_acceptance.py", text)
-                self.assertIn("nextest run --locked -p merman-render", text)
-                self.assertIn("--test theme_support_discovery_test", text)
+                commands = " ".join(read(WORKFLOW_ROOT / name).replace("\\\n", " ").split())
+                self.assertIn(
+                    "cargo nextest run --locked -p merman-render --no-default-features "
+                    "--features all-diagrams --test theme_support_discovery_test", commands,
+                )
 
-    def test_release_qualifies_final_linux_cli_before_publication(self) -> None:
+    def test_release_gates_attestation_and_publication_on_verified_archives(self) -> None:
         text = read(WORKFLOW_ROOT / "release.yml")
+        central = workflow_job(text, "verify-release-archives")
         native = workflow_job(text, "verify-release-archives-native")
         gate = workflow_job(text, "release-verification-gate")
-        self.assertIn(
-            "QUALIFY_PRESETS: ${{ matrix.package == 'merman-cli' && matrix.target == 'x86_64-unknown-linux-gnu' }}",
-            native,
-        )
+        self.assertIn("name: verified-release-assets", central)
+        self.assertIn("if-no-files-found: error", central)
         self.assertIn("ref: ${{ needs.plan.outputs.source_sha }}", native)
-        self.assertIn("path: target/verified-release-assets", native)
-        self.assertNotIn("path: verified-release-assets\n", native)
-        self.assertIn("fonts-dejavu-core", native)
+        self.assertIn("name: verified-release-assets\n          path: target/verified-release-assets", native)
         self.assertIn("--execute", native)
-        self.assertIn("--preset-qualification-output", native)
-        self.assertIn("--preset-qualification-check", native)
-        self.assertIn("target/preset-qualification.json", native)
-        self.assertIn("target/preset-qualification.catalog.json", native)
-        self.assertIn("if-no-files-found: error", native)
         self.assertNotIn("continue-on-error:", native)
-        self.assertIn("- verify-release-archives-native", gate)
-        self.assertIn("needs.verify-release-archives-native.result", gate)
-        self.assertIn('"$NATIVE_RESULT" != success', gate)
-        self.assertIn("name: preset-qualification-${{ needs.plan.outputs.source_sha }}-x86_64-unknown-linux-gnu", gate)
-        self.assertIn('scripts/release_artifact_bundle.py" finalize', gate)
-        self.assertIn("native-qualification/preset-qualification.json", gate)
-        self.assertIn("name: publication-release-assets", gate)
-        self.assertIn("if-no-files-found: error", gate)
-        self.assertLess(gate.index('"$NATIVE_RESULT" != success'), gate.index('scripts/release_artifact_bundle.py" finalize'))
-        for job in ("attest-release-assets", "host"):
+        verify_bundle = "scripts/release_artifact_bundle.py verify-bundle"
+        for job, result in (("verify-release-archives", "CENTRAL_RESULT"),
+                            ("verify-release-archives-native", "NATIVE_RESULT")):
+            self.assertIn(f"      - {job}\n", gate)
+            self.assertIn(f"{result}: ${{{{ needs.{job}.result }}}}", gate)
+            self.assertLess(gate.index(f'"${result}" != success'), gate.index(verify_bundle))
+        self.assertIn("name: verified-release-assets", gate)
+        for job, action in (("attest-release-assets", "uses: actions/attest@"),
+                            ("host", "gh release create")):
             consumer = workflow_job(text, job)
-            self.assertIn("release-verification-gate", consumer)
-            self.assertIn("name: publication-release-assets", consumer)
-            self.assertNotIn("name: verified-release-assets", consumer)
-            self.assertIn("--require-preset-catalog", consumer)
+            self.assertIn("needs.release-verification-gate.result == 'success'", consumer)
+            self.assertIn("name: verified-release-assets", consumer)
+            self.assertIn('--version "$RELEASE_VERSION" --source-sha "$SOURCE_SHA"', consumer)
+            self.assertLess(consumer.index(verify_bundle), consumer.index(action))
 
     @unittest.skipUnless(BASH, "workflow command requires Bash")
-    def test_native_archive_command_routes_qualification_and_stops_on_failure(self) -> None:
+    def test_native_archive_command_executes_the_verified_archive_and_propagates_failure(self) -> None:
         native = workflow_job(read(WORKFLOW_ROOT / "release.yml"), "verify-release-archives-native")
         step = native.split("      - name: Execute final product archive\n", 1)[1]
         command = textwrap.dedent(step.split("        run: |\n", 1)[1].split("\n      - ", 1)[0])
@@ -1000,18 +966,17 @@ jobs:
                 "sys.exit(int(os.environ['VERIFY_EXIT']))\n",
                 encoding="utf-8",
             )
-            for qualify, package, target, exit_code in (
-                ("true", "merman-cli", "x86_64-unknown-linux-gnu", 0),
-                ("false", "merman-cli", "aarch64-apple-darwin", 0),
-                ("false", "merman-lsp", "x86_64-pc-windows-msvc", 0),
-                ("true", "merman-cli", "x86_64-unknown-linux-gnu", 7),
+            for package, target, exit_code in (
+                ("merman-cli", "x86_64-unknown-linux-gnu", 0),
+                ("merman-cli", "aarch64-apple-darwin", 0),
+                ("merman-lsp", "x86_64-pc-windows-msvc", 0),
+                ("merman-cli", "x86_64-unknown-linux-gnu", 7),
             ):
-                with self.subTest(qualify=qualify, package=package, target=target, exit_code=exit_code):
-                    log = root / f"{qualify}-{package}-{target}-{exit_code}.jsonl"
+                with self.subTest(package=package, target=target, exit_code=exit_code):
+                    log = root / f"{package}-{target}-{exit_code}.jsonl"
                     result = subprocess.run(
                         [BASH, "-c", command], cwd=root, capture_output=True, text=True,
-                        env={**os.environ, "PACKAGE": package, "TARGET": target,
-                             "QUALIFY_PRESETS": qualify, "VERIFIER": str(verifier),
+                        env={**os.environ, "PACKAGE": package, "TARGET": target, "VERIFIER": str(verifier),
                              "GITHUB_WORKSPACE": str(root), "RELEASE_VERSION": "1.2.3",
                              "ARGUMENT_LOG": str(log), "VERIFY_EXIT": str(exit_code)},
                     )
@@ -1019,14 +984,10 @@ jobs:
                     calls = [json.loads(line) for line in log.read_text().splitlines()]
                     extension = "zip" if "windows" in target else "tar.xz"
                     archive = f"target/verified-release-assets/{package}-{target}.{extension}"
-                    common = [archive, "--checksum", archive + ".sha256", "--target", target,
-                              "--version", "1.2.3", "--repo-root", str(root), "--execute"]
-                    expected = [common]
-                    if qualify == "true":
-                        expected = [common + ["--preset-qualification-output", "target/preset-qualification.json"]]
-                        if exit_code == 0:
-                            expected.append(common + ["--preset-qualification-check", "target/preset-qualification.json"])
-                    self.assertEqual(calls, expected)
+                    self.assertEqual(calls, [
+                        [archive, "--checksum", archive + ".sha256", "--target", target,
+                         "--version", "1.2.3", "--repo-root", str(root), "--execute"],
+                    ])
 
     def test_crates_publish_uses_trusted_receipt_operator_and_immutable_source(self) -> None:
         text = read(WORKFLOW_ROOT / "release-crates.yml")
@@ -1166,11 +1127,10 @@ jobs:
         self.assertLess(native.index("verify-plan"), native.index("dist build"))
         self.assertIn("scripts/verify_cli_release_archive.py", native)
         self.assertIn("scripts/verify_lsp_release_archive.py", native)
-        for name, target in (
-            ("Install native qualification fonts", "x86_64-unknown-linux-gnu"),
-            ("Prepare ARM64 system resource probes", "aarch64-unknown-linux-gnu"),
-        ):
-            self.assertIn(f"- name: {name}\n        if: matrix.target == '{target}'", native)
+        self.assertIn(
+            "- name: Prepare ARM64 system resource probes\n        if: matrix.target == 'aarch64-unknown-linux-gnu'",
+            native,
+        )
         self.assertIn('openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt', native)
         self.assertEqual(native.count("--execute"), 2)
         self.assertIn("if-no-files-found: error", native)
@@ -1178,17 +1138,11 @@ jobs:
         self.assertNotIn("dist build", workflow_job(text, "versions-and-packages"))
 
     @unittest.skipUnless(BASH, "workflow execution requires bash")
-    def test_preflight_native_qualification_replays_and_propagates_failures(self) -> None:
+    def test_preflight_executes_native_archive_verifiers_and_propagates_failures(self) -> None:
         native = workflow_job(read(WORKFLOW_ROOT / "release-preflight.yml"), "cli-and-lsp-archives")
         step = native.split("      - name: Execute final native archives\n", 1)[1]
         command = textwrap.dedent(step.split("        run: |\n", 1)[1].split("\n      - ", 1)[0])
-        upload = native.split("      - name: Upload scoped native preset qualification\n", 1)[1].split("\n      - ", 1)[0]
-        self.assertIn("if: matrix.target == 'x86_64-unknown-linux-gnu'", upload)
-        self.assertIn("target/preset-qualification.json", upload)
-        self.assertIn("target/preset-qualification.catalog.json", upload)
-        self.assertIn("if-no-files-found: error", upload)
-        self.assertIn("fonts-dejavu-core", native)
-        with tempfile.TemporaryDirectory(prefix="merman preflight qualification ") as temporary:
+        with tempfile.TemporaryDirectory(prefix="merman preflight archives ") as temporary:
             root = Path(temporary)
             scripts = root / "scripts"
             scripts.mkdir()
@@ -1206,11 +1160,7 @@ jobs:
                 ("aarch64-unknown-linux-gnu", ""),
                 ("x86_64-apple-darwin", ""),
                 ("aarch64-apple-darwin", ""),
-                ("aarch64-apple-darwin", "scripts/verify_cli_release_archive.py"),
-                ("x86_64-unknown-linux-gnu", "--preset-qualification-output"),
-                ("x86_64-unknown-linux-gnu", "--preset-qualification-check"),
-                ("aarch64-unknown-linux-gnu", "--resource-certificate"),
-                ("aarch64-unknown-linux-gnu", "--resource-key"),
+                ("x86_64-unknown-linux-gnu", "scripts/verify_cli_release_archive.py"),
                 ("aarch64-unknown-linux-gnu", "scripts/verify_lsp_release_archive.py"),
             ):
                 with self.subTest(target=target, failure=failure):
@@ -1228,16 +1178,11 @@ jobs:
                         return [f"scripts/verify_{product}_release_archive.py", archive,
                                 "--checksum", archive + ".sha256", "--target", target,
                                 "--version", "1.2.3", "--repo-root", ".", "--execute", *extra]
-                    if target == "x86_64-unknown-linux-gnu":
-                        expected = [expected_call("cli", ["--preset-qualification-output", "target/preset-qualification.json"])]
-                        if failure != "--preset-qualification-output":
-                            expected.append(expected_call("cli", ["--preset-qualification-check", "target/preset-qualification.json"]))
-                    elif target == "aarch64-unknown-linux-gnu":
+                    resource_args = []
+                    if target == "aarch64-unknown-linux-gnu":
                         resource_args = ["--resource-certificate", f"{root}/merman-resource.crt",
                                          "--resource-key", f"{root}/merman-resource.key"]
-                        expected = [expected_call("cli", resource_args)]
-                    else:
-                        expected = [expected_call("cli", [])]
+                    expected = [expected_call("cli", resource_args)]
                     if not failure or failure == "scripts/verify_lsp_release_archive.py":
                         expected.append(expected_call("lsp", []))
                     self.assertEqual(calls, expected)

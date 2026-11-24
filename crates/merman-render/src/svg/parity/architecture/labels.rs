@@ -1,8 +1,5 @@
 use std::collections::VecDeque;
 
-#[cfg(merman_internal_theme_acceptance)]
-use sha2::{Digest as _, Sha256};
-
 use crate::architecture_metrics::ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX;
 use crate::model::Bounds;
 
@@ -25,36 +22,6 @@ pub(super) struct SvgWord {
 }
 
 pub(super) type SvgLine = Vec<SvgWord>;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct ArchitectureTextWriterFacts {
-    pub(super) has_visible_words: bool,
-    #[cfg(merman_internal_theme_acceptance)]
-    pub(super) fragment_digest: [u8; 32],
-    #[cfg(merman_internal_theme_acceptance)]
-    pub(super) run_count: usize,
-}
-
-#[derive(Debug, Clone)]
-pub(super) struct ArchitectureTextWriterEmission {
-    #[cfg(merman_internal_theme_acceptance)]
-    pub(super) bounds: Option<Bounds>,
-    pub(super) facts: ArchitectureTextWriterFacts,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum ArchitectureTextAnchor {
-    Start,
-    #[cfg(merman_internal_theme_acceptance)]
-    Middle,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum ArchitectureTextBaseline {
-    Start,
-    #[cfg(merman_internal_theme_acceptance)]
-    Middle,
-}
 
 pub(super) fn svg_line_plain_text(line: &[SvgWord]) -> String {
     let mut out = String::new();
@@ -208,8 +175,6 @@ pub(super) fn architecture_svg_text_terminal_bounds(
     lines: &[SvgLine],
     anchor_x: f64,
     anchor_y: f64,
-    anchor: ArchitectureTextAnchor,
-    baseline: ArchitectureTextBaseline,
     measurer: &dyn crate::text::TextMeasurer,
     style: &crate::text::TextStyle,
 ) -> Bounds {
@@ -221,35 +186,9 @@ pub(super) fn architecture_svg_text_terminal_bounds(
             max_y: anchor_y,
         };
     }
-    #[cfg(merman_internal_theme_acceptance)]
-    if matches!(anchor, ArchitectureTextAnchor::Middle)
-        && matches!(baseline, ArchitectureTextBaseline::Middle)
-    {
-        let label = svg_service_title_bounds(lines, measurer, style).unwrap_or(Bounds {
-            min_x: 0.0,
-            min_y: 0.0,
-            max_x: 0.0,
-            max_y: 0.0,
-        });
-        return Bounds {
-            min_x: anchor_x + label.min_x,
-            min_y: anchor_y + label.min_y,
-            max_x: anchor_x + label.max_x,
-            max_y: anchor_y + label.max_y,
-        };
-    }
-    #[cfg(merman_internal_theme_acceptance)]
-    let mut left = 0.0_f64;
-    #[cfg(merman_internal_theme_acceptance)]
-    let mut right = 0.0_f64;
     let mut width = 0.0_f64;
     for line in lines {
         let (line_left, line_right) = svg_line_formatted_bbox_x_px(line, measurer, style);
-        #[cfg(merman_internal_theme_acceptance)]
-        {
-            left = left.max(line_left.max(0.0));
-            right = right.max(line_right.max(0.0));
-        }
         width = width.max((line_left + line_right).max(0.0));
     }
 
@@ -262,24 +201,11 @@ pub(super) fn architecture_svg_text_terminal_bounds(
         .max(0.0);
     let extra_lines = lines.len().max(1).saturating_sub(1) as f64;
     let height = first_line_height + style.font_size * extra_lines * 1.1;
-    let y_offset = match baseline {
-        ArchitectureTextBaseline::Start => {
-            measurer.measure_svg_create_text_bbox_y_offset_px(&first_line, style)
-        }
-        #[cfg(merman_internal_theme_acceptance)]
-        ArchitectureTextBaseline::Middle => {
-            measurer.measure_svg_create_text_middle_bbox_y_offset_px(&first_line, style)
-        }
-    };
-    let (min_x, max_x) = match anchor {
-        ArchitectureTextAnchor::Start => (anchor_x, anchor_x + width),
-        #[cfg(merman_internal_theme_acceptance)]
-        ArchitectureTextAnchor::Middle => (anchor_x - left, anchor_x + right),
-    };
+    let y_offset = measurer.measure_svg_create_text_bbox_y_offset_px(&first_line, style);
     Bounds {
-        min_x,
+        min_x: anchor_x,
         min_y: anchor_y + y_offset,
-        max_x,
+        max_x: anchor_x + width,
         max_y: anchor_y + y_offset + height,
     }
 }
@@ -589,10 +515,8 @@ pub(super) fn write_svg_text_lines(
     out: &mut impl SvgOutput,
     lines: &[SvgLine],
     inline_style: Option<&str>,
-) -> ArchitectureTextWriterFacts {
+) -> bool {
     let has_visible_words = svg_lines_have_visible_words(lines);
-    #[cfg(merman_internal_theme_acceptance)]
-    let start = out.len();
     out.push_str(r#"<text y="-10.1""#);
     out.push_str(r#" style=""#);
     if let Some(style) = inline_style {
@@ -602,10 +526,7 @@ pub(super) fn write_svg_text_lines(
     if lines.is_empty() || (lines.len() == 1 && lines[0].is_empty()) {
         out.push_str(r#"<tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"/>"#);
         out.push_str("</text>");
-        #[cfg(merman_internal_theme_acceptance)]
-        return architecture_text_writer_facts(out, start, 0, has_visible_words);
-        #[cfg(not(merman_internal_theme_acceptance))]
-        return ArchitectureTextWriterFacts { has_visible_words };
+        return has_visible_words;
     }
     for (idx, line) in lines.iter().enumerate() {
         if idx == 0 {
@@ -644,80 +565,28 @@ pub(super) fn write_svg_text_lines(
         out.push_str("</tspan>");
     }
     out.push_str("</text>");
-    #[cfg(merman_internal_theme_acceptance)]
-    {
-        architecture_text_writer_facts(
-            out,
-            start,
-            lines
-                .len()
-                .saturating_add(lines.iter().map(Vec::len).sum::<usize>()),
-            has_visible_words,
-        )
-    }
-    #[cfg(not(merman_internal_theme_acceptance))]
-    {
-        ArchitectureTextWriterFacts { has_visible_words }
-    }
+    has_visible_words
 }
 
-#[cfg(merman_internal_theme_acceptance)]
-fn architecture_text_writer_facts(
-    out: &impl SvgOutput,
-    start: usize,
-    run_count: usize,
-    has_visible_words: bool,
-) -> ArchitectureTextWriterFacts {
-    let fragment = out.as_str().get(start..).unwrap_or_default();
-    ArchitectureTextWriterFacts {
-        has_visible_words,
-        fragment_digest: Sha256::digest(fragment.as_bytes()).into(),
-        run_count: if has_visible_words { run_count } else { 0 },
-    }
-}
-
-#[allow(
-    clippy::too_many_arguments,
-    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
-)]
 pub(super) fn write_architecture_service_title(
     out: &mut impl SvgOutput,
     title: &str,
-    #[cfg(merman_internal_theme_acceptance)] service_x: f64,
-    #[cfg(merman_internal_theme_acceptance)] service_y: f64,
     icon_size_px: f64,
     title_width_px: f64,
     measurer: &dyn crate::text::TextMeasurer,
     style: &crate::text::TextStyle,
     inline_style: Option<&str>,
-    #[cfg(merman_internal_theme_acceptance)] observe_bounds: bool,
-) -> ArchitectureTextWriterEmission {
+) -> bool {
     let lines = wrap_svg_words_to_lines(title, title_width_px, measurer, style);
-    #[cfg(merman_internal_theme_acceptance)]
-    let terminal_bounds = observe_bounds.then(|| {
-        architecture_svg_text_terminal_bounds(
-            &lines,
-            service_x + icon_size_px / 2.0,
-            service_y + icon_size_px,
-            ArchitectureTextAnchor::Middle,
-            ArchitectureTextBaseline::Middle,
-            measurer,
-            style,
-        )
-    });
     let _ = write!(
         out,
         r#"<g dy="1em" alignment-baseline="middle" dominant-baseline="middle" text-anchor="middle" transform="translate({x}, {y})"><g><rect class="background" style="stroke: none"/>"#,
         x = fmt(icon_size_px / 2.0),
         y = fmt(icon_size_px)
     );
-    let facts = write_svg_text_lines(out, &lines, inline_style);
+    let has_visible_words = write_svg_text_lines(out, &lines, inline_style);
     out.push_str("</g></g>");
-    ArchitectureTextWriterEmission {
-        #[cfg(merman_internal_theme_acceptance)]
-        bounds: terminal_bounds,
-        facts,
-    }
+    has_visible_words
 }
 
 #[cfg(test)]
@@ -814,68 +683,12 @@ mod tests {
         let style = text_style();
         let mut out = String::new();
 
-        let emission = write_architecture_service_title(
-            &mut out,
-            "s1",
-            #[cfg(merman_internal_theme_acceptance)]
-            0.0,
-            #[cfg(merman_internal_theme_acceptance)]
-            0.0,
-            80.0,
-            120.0,
-            &measurer,
-            &style,
-            None,
-            #[cfg(merman_internal_theme_acceptance)]
-            true,
-        );
+        write_architecture_service_title(&mut out, "s1", 80.0, 120.0, &measurer, &style, None);
 
-        #[cfg(merman_internal_theme_acceptance)]
-        {
-            let bounds = emission.bounds.expect("requested service region");
-            assert!(bounds.max_x > bounds.min_x && bounds.max_y > bounds.min_y);
-        }
-        #[cfg(not(merman_internal_theme_acceptance))]
-        let _ = emission;
         assert_eq!(
             out,
             r#"<g dy="1em" alignment-baseline="middle" dominant-baseline="middle" text-anchor="middle" transform="translate(40, 80)"><g><rect class="background" style="stroke: none"/><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">s1</tspan></tspan></text></g></g>"#
         );
-    }
-
-    #[test]
-    #[cfg(merman_internal_theme_acceptance)]
-    fn optional_service_region_preserves_the_emitted_dom() {
-        let measurer = crate::text::DeterministicTextMeasurer::default();
-        let mut observed = String::new();
-        let mut unobserved = String::new();
-        let observed_emission = write_architecture_service_title(
-            &mut observed,
-            "Service **title**",
-            0.0,
-            0.0,
-            80.0,
-            120.0,
-            &measurer,
-            &text_style(),
-            None,
-            true,
-        );
-        let unobserved_emission = write_architecture_service_title(
-            &mut unobserved,
-            "Service **title**",
-            0.0,
-            0.0,
-            80.0,
-            120.0,
-            &measurer,
-            &text_style(),
-            None,
-            false,
-        );
-        assert!(observed_emission.bounds.is_some());
-        assert!(unobserved_emission.bounds.is_none());
-        assert_eq!(observed, unobserved);
     }
 
     #[test]

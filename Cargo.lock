@@ -2649,23 +2649,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "merman-theme-acceptance"
-version = "0.11.0"
-dependencies = [
- "image",
- "merman",
- "merman-export",
- "merman-render",
- "png",
- "quick-xml",
- "roxmltree 0.21.2",
- "serde_json",
- "sha2",
- "svgtypes 0.16.2",
- "thiserror 2.0.21",
-]
-
-[[package]]
 name = "merman-theme-authoring-fixtures"
 version = "0.11.0"
 

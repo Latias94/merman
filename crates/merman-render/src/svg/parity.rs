@@ -923,12 +923,6 @@ pub(crate) struct RootThemeAppliedSvg {
     family_theme_evidence: Option<crate::family::FamilyThemeOutcomes>,
     #[cfg(feature = "diagram-packet")]
     packet_theme_outcome: Option<crate::packet::PacketThemeOutcome>,
-    #[cfg(all(
-        merman_internal_theme_acceptance,
-        feature = "diagram-architecture",
-        feature = "layout-cytoscape"
-    ))]
-    architecture_text_receipt: Option<crate::__private::ArchitectureTextReceipt>,
 }
 
 impl RootThemeAppliedSvg {
@@ -947,17 +941,6 @@ impl RootThemeAppliedSvg {
         &mut self,
     ) -> Option<crate::packet::PacketThemeOutcome> {
         self.packet_theme_outcome.take()
-    }
-
-    #[cfg(all(
-        merman_internal_theme_acceptance,
-        feature = "diagram-architecture",
-        feature = "layout-cytoscape"
-    ))]
-    pub(crate) fn take_architecture_text_receipt(
-        &mut self,
-    ) -> Option<crate::__private::ArchitectureTextReceipt> {
-        self.architecture_text_receipt.take()
     }
 
     pub(crate) fn into_parts(self) -> (String, crate::diagram_theme::RootThemeReport, bool) {
@@ -1229,12 +1212,6 @@ pub(crate) fn render_builtin_family_artifact(
         family_theme_evidence,
         #[cfg(feature = "diagram-packet")]
         packet_theme_outcome,
-        #[cfg(all(
-            merman_internal_theme_acceptance,
-            feature = "diagram-architecture",
-            feature = "layout-cytoscape"
-        ))]
-        architecture_text_receipt: None,
     })
 }
 
@@ -1276,12 +1253,6 @@ pub(crate) fn render_architecture_family_artifact(
         family_theme_evidence: Some(outcome.evidence),
         #[cfg(feature = "diagram-packet")]
         packet_theme_outcome: None,
-        #[cfg(all(
-            merman_internal_theme_acceptance,
-            feature = "diagram-architecture",
-            feature = "layout-cytoscape"
-        ))]
-        architecture_text_receipt: outcome.text_receipt,
     })
 }
 

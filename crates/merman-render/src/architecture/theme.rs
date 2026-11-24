@@ -283,8 +283,6 @@ impl ArchitectureGroupThemePlan {
 /// Theme evidence returned with the completed Architecture SVG.
 pub(crate) struct ArchitectureThemeOutcome {
     pub(crate) evidence: FamilyThemeOutcomes,
-    #[cfg(merman_internal_theme_acceptance)]
-    pub(crate) text_receipt: Option<crate::__private::ArchitectureTextReceipt>,
 }
 
 fn mermaid_owns_group_stroke(

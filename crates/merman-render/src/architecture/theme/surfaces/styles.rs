@@ -10,8 +10,6 @@ use crate::family::{
     resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
-#[cfg(merman_internal_theme_acceptance)]
-use crate::model::Bounds;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 #[derive(Debug, Clone, Copy)]
@@ -49,19 +47,11 @@ pub(crate) struct ArchitecturePaintTerminalEmission {
 #[derive(Debug)]
 pub(crate) struct ArchitectureTextTerminalEmission {
     pub(crate) emitted: bool,
-    #[cfg(merman_internal_theme_acceptance)]
-    pub(crate) bounds: Option<Bounds>,
-    #[cfg(merman_internal_theme_acceptance)]
-    pub(crate) fragment_digest: Option<[u8; 32]>,
-    #[cfg(merman_internal_theme_acceptance)]
-    pub(crate) run_count: usize,
 }
 
 #[derive(Debug)]
 pub(crate) struct ArchitectureServiceTerminalEmission {
     pub(crate) index: usize,
-    #[cfg(merman_internal_theme_acceptance)]
-    pub(crate) id: Box<str>,
     pub(crate) background: ArchitecturePaintTerminalEmission,
     pub(crate) title: ArchitectureTextTerminalEmission,
 }
@@ -69,18 +59,12 @@ pub(crate) struct ArchitectureServiceTerminalEmission {
 #[derive(Debug)]
 pub(crate) struct ArchitectureGroupTerminalEmission {
     pub(crate) index: usize,
-    #[cfg(merman_internal_theme_acceptance)]
-    pub(crate) id: Box<str>,
     pub(crate) title: ArchitectureTextTerminalEmission,
 }
 
 #[derive(Debug)]
 pub(crate) struct ArchitectureEdgeTerminalEmission {
     pub(crate) index: usize,
-    #[cfg(merman_internal_theme_acceptance)]
-    pub(crate) lhs_id: Box<str>,
-    #[cfg(merman_internal_theme_acceptance)]
-    pub(crate) rhs_id: Box<str>,
     pub(crate) label: ArchitectureTextTerminalEmission,
     pub(crate) lhs_arrow: ArchitecturePaintTerminalEmission,
     pub(crate) rhs_arrow: ArchitecturePaintTerminalEmission,
@@ -110,59 +94,27 @@ struct ArchitectureTerminalMechanisms {
 
 #[derive(Debug, Clone)]
 struct ArchitectureServiceSurfaceStyle {
-    #[cfg(merman_internal_theme_acceptance)]
-    id: Box<str>,
     background_style: Option<Box<str>>,
     background_fill: Option<FamilyThemeMechanismKey>,
     background_stroke: Option<FamilyThemeMechanismKey>,
     title_style: Option<Box<str>>,
     title_fill: Option<FamilyThemeMechanismKey>,
-    #[cfg(merman_internal_theme_acceptance)]
-    title_fill_css: Option<Box<str>>,
-    #[cfg(merman_internal_theme_acceptance)]
-    title_bounds: Option<Bounds>,
-    #[cfg(merman_internal_theme_acceptance)]
-    title_fragment_digest: Option<[u8; 32]>,
-    #[cfg(merman_internal_theme_acceptance)]
-    title_run_count: usize,
 }
 
 #[derive(Debug, Clone)]
 struct ArchitectureGroupTextStyle {
-    #[cfg(merman_internal_theme_acceptance)]
-    id: Box<str>,
     title_style: Option<Box<str>>,
     title_fill: Option<FamilyThemeMechanismKey>,
-    #[cfg(merman_internal_theme_acceptance)]
-    title_fill_css: Option<Box<str>>,
-    #[cfg(merman_internal_theme_acceptance)]
-    title_bounds: Option<Bounds>,
-    #[cfg(merman_internal_theme_acceptance)]
-    title_fragment_digest: Option<[u8; 32]>,
-    #[cfg(merman_internal_theme_acceptance)]
-    title_run_count: usize,
 }
 
 #[derive(Debug, Clone)]
 struct ArchitectureEdgeSurfaceStyle {
-    #[cfg(merman_internal_theme_acceptance)]
-    lhs_id: Box<str>,
-    #[cfg(merman_internal_theme_acceptance)]
-    rhs_id: Box<str>,
     label_style: Option<Box<str>>,
     label_fill: Option<FamilyThemeMechanismKey>,
-    #[cfg(merman_internal_theme_acceptance)]
-    label_fill_css: Option<Box<str>>,
     lhs_arrow_style: Option<Box<str>>,
     lhs_arrow_fill: Option<FamilyThemeMechanismKey>,
     rhs_arrow_style: Option<Box<str>>,
     rhs_arrow_fill: Option<FamilyThemeMechanismKey>,
-    #[cfg(merman_internal_theme_acceptance)]
-    label_bounds: Option<Bounds>,
-    #[cfg(merman_internal_theme_acceptance)]
-    label_fragment_digest: Option<[u8; 32]>,
-    #[cfg(merman_internal_theme_acceptance)]
-    label_run_count: usize,
 }
 
 #[derive(Debug, Default)]
@@ -260,8 +212,6 @@ impl ArchitectureSurfaceRenderState {
             let title_style = compose_paint_style(title_fill.as_ref(), None);
 
             service_styles.push(ArchitectureServiceSurfaceStyle {
-                #[cfg(merman_internal_theme_acceptance)]
-                id: Box::default(),
                 background_style,
                 background_fill: background_fill
                     .as_ref()
@@ -273,14 +223,6 @@ impl ArchitectureSurfaceRenderState {
                 title_fill: title_fill
                     .as_ref()
                     .map(|paint| paint_key(paint, ThemeTarget::Text)),
-                #[cfg(merman_internal_theme_acceptance)]
-                title_fill_css: title_fill.map(|paint| paint.into_parts().0),
-                #[cfg(merman_internal_theme_acceptance)]
-                title_bounds: None,
-                #[cfg(merman_internal_theme_acceptance)]
-                title_fragment_digest: None,
-                #[cfg(merman_internal_theme_acceptance)]
-                title_run_count: 0,
             });
         }
 
@@ -299,20 +241,10 @@ impl ArchitectureSurfaceRenderState {
             )?;
             let title_style = compose_paint_style(title_fill.as_ref(), None);
             group_styles.push(ArchitectureGroupTextStyle {
-                #[cfg(merman_internal_theme_acceptance)]
-                id: Box::default(),
                 title_style,
                 title_fill: title_fill
                     .as_ref()
                     .map(|paint| paint_key(paint, ThemeTarget::Text)),
-                #[cfg(merman_internal_theme_acceptance)]
-                title_fill_css: title_fill.map(|paint| paint.into_parts().0),
-                #[cfg(merman_internal_theme_acceptance)]
-                title_bounds: None,
-                #[cfg(merman_internal_theme_acceptance)]
-                title_fragment_digest: None,
-                #[cfg(merman_internal_theme_acceptance)]
-                title_run_count: 0,
             });
         }
 
@@ -368,16 +300,10 @@ impl ArchitectureSurfaceRenderState {
             let rhs_arrow_style = compose_paint_style(rhs_arrow_fill.as_ref(), None);
 
             edge_styles.push(ArchitectureEdgeSurfaceStyle {
-                #[cfg(merman_internal_theme_acceptance)]
-                lhs_id: Box::default(),
-                #[cfg(merman_internal_theme_acceptance)]
-                rhs_id: Box::default(),
                 label_style,
                 label_fill: label_fill
                     .as_ref()
                     .map(|paint| paint_key(paint, ThemeTarget::Text)),
-                #[cfg(merman_internal_theme_acceptance)]
-                label_fill_css: label_fill.map(|paint| paint.into_parts().0),
                 lhs_arrow_style,
                 lhs_arrow_fill: lhs_arrow_fill
                     .as_ref()
@@ -386,12 +312,6 @@ impl ArchitectureSurfaceRenderState {
                 rhs_arrow_fill: rhs_arrow_fill
                     .as_ref()
                     .map(|paint| paint_key(paint, ThemeTarget::Marker)),
-                #[cfg(merman_internal_theme_acceptance)]
-                label_bounds: None,
-                #[cfg(merman_internal_theme_acceptance)]
-                label_fragment_digest: None,
-                #[cfg(merman_internal_theme_acceptance)]
-                label_run_count: 0,
             });
         }
 
@@ -454,13 +374,6 @@ impl ArchitectureSurfaceRenderState {
         if emission.title.emitted {
             record_paint(style.title_fill.as_ref(), &mut self.emitted_rules);
         }
-        #[cfg(merman_internal_theme_acceptance)]
-        {
-            style.id = emission.id.into();
-            style.title_bounds = emission.title.bounds;
-            style.title_fragment_digest = emission.title.fragment_digest;
-            style.title_run_count = emission.title.run_count;
-        }
     }
 
     pub(crate) fn record_checkpointed_group(
@@ -470,13 +383,6 @@ impl ArchitectureSurfaceRenderState {
         let style = &mut self.groups[emission.index];
         if emission.title.emitted {
             record_paint(style.title_fill.as_ref(), &mut self.emitted_rules);
-        }
-        #[cfg(merman_internal_theme_acceptance)]
-        {
-            style.id = emission.id.into();
-            style.title_bounds = emission.title.bounds;
-            style.title_fragment_digest = emission.title.fragment_digest;
-            style.title_run_count = emission.title.run_count;
         }
     }
 
@@ -490,14 +396,6 @@ impl ArchitectureSurfaceRenderState {
         }
         if emission.rhs_arrow.emitted {
             record_paint(style.rhs_arrow_fill.as_ref(), &mut self.emitted_rules);
-        }
-        #[cfg(merman_internal_theme_acceptance)]
-        {
-            style.lhs_id = emission.lhs_id.into();
-            style.rhs_id = emission.rhs_id.into();
-            style.label_bounds = emission.label.bounds;
-            style.label_fragment_digest = emission.label.fragment_digest;
-            style.label_run_count = emission.label.run_count;
         }
     }
 
@@ -545,79 +443,6 @@ impl ArchitectureSurfaceRenderState {
             }
         }
     }
-
-    #[cfg(merman_internal_theme_acceptance)]
-    pub(crate) fn architecture_text_receipt(
-        &self,
-    ) -> Option<crate::__private::ArchitectureTextReceipt> {
-        let mut terminals = Vec::new();
-        for service in &self.services {
-            append_text_receipt_terminal(
-                &mut terminals,
-                crate::__private::ArchitectureTextRole::Service,
-                service.id.as_ref(),
-                service.title_fill_css.as_deref(),
-                service.title_bounds.as_ref(),
-                service.title_fragment_digest,
-                service.title_run_count,
-            )?;
-        }
-        for group in &self.groups {
-            append_text_receipt_terminal(
-                &mut terminals,
-                crate::__private::ArchitectureTextRole::GroupTitle,
-                group.id.as_ref(),
-                group.title_fill_css.as_deref(),
-                group.title_bounds.as_ref(),
-                group.title_fragment_digest,
-                group.title_run_count,
-            )?;
-        }
-        for (index, edge) in self.edges.iter().enumerate() {
-            let identity = format!("{}->{}#{index}", edge.lhs_id, edge.rhs_id);
-            append_text_receipt_terminal(
-                &mut terminals,
-                crate::__private::ArchitectureTextRole::EdgeLabel,
-                &identity,
-                edge.label_fill_css.as_deref(),
-                edge.label_bounds.as_ref(),
-                edge.label_fragment_digest,
-                edge.label_run_count,
-            )?;
-        }
-        crate::__private::ArchitectureTextReceipt::seal(terminals)
-    }
-}
-
-#[cfg(merman_internal_theme_acceptance)]
-fn append_text_receipt_terminal(
-    terminals: &mut Vec<crate::__private::ArchitectureTextTerminal>,
-    role: crate::__private::ArchitectureTextRole,
-    identity: &str,
-    fill_css: Option<&str>,
-    bounds: Option<&Bounds>,
-    fragment_digest: Option<[u8; 32]>,
-    run_count: usize,
-) -> Option<()> {
-    let fill_css = fill_css?;
-    let bounds = bounds?;
-    let fragment_digest = fragment_digest?;
-    terminals.push(
-        crate::__private::ArchitectureTextTerminal::with_writer_facts(
-            role,
-            identity,
-            fill_css,
-            [
-                bounds.min_x,
-                bounds.min_y,
-                bounds.max_x - bounds.min_x,
-                bounds.max_y - bounds.min_y,
-            ],
-            fragment_digest,
-            run_count,
-        )?,
-    );
-    Some(())
 }
 
 impl ArchitectureTerminalMechanisms {

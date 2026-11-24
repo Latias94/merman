@@ -522,8 +522,6 @@ pub(crate) struct FamilyStyleReport {
     theme_coverage_complete: bool,
     theme_applied: Vec<FamilyThemeMechanismKey>,
     native_filter_receipt: Option<crate::__private::NativeSvgFilterReceipt>,
-    #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-    architecture_text_receipt: Option<crate::__private::ArchitectureTextReceipt>,
     theme_not_applicable: Vec<FamilyThemeMechanismKey>,
     theme_residuals: Vec<FamilyThemeResidual>,
     mermaid_compatibility_residual_count: usize,
@@ -532,8 +530,7 @@ pub(crate) struct FamilyStyleReport {
 
 impl std::fmt::Debug for FamilyStyleReport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut report = f.debug_struct("FamilyStyleReport");
-        report
+        f.debug_struct("FamilyStyleReport")
             .field("family_id", &self.family_id)
             .field("evaluation", &self.evaluation)
             .field("output_mutated", &self.output_mutated)
@@ -542,10 +539,7 @@ impl std::fmt::Debug for FamilyStyleReport {
                 &self.theme_required.as_deref().unwrap_or(&[]),
             )
             .field("theme_applied", &self.theme_applied)
-            .field("native_filter_receipt", &self.native_filter_receipt);
-        #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-        report.field("architecture_text_receipt", &self.architecture_text_receipt);
-        report
+            .field("native_filter_receipt", &self.native_filter_receipt)
             .field("theme_not_applicable", &self.theme_not_applicable)
             .field("theme_residuals", &self.theme_residuals)
             .field(
@@ -723,8 +717,6 @@ impl FamilyStyleReport {
             theme_coverage_complete: plan.theme_evidence.coverage_complete(),
             theme_applied: plan.theme_evidence.outcomes.applied,
             native_filter_receipt: plan.native_filter_receipt,
-            #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-            architecture_text_receipt: plan.architecture_text_receipt,
             theme_not_applicable: plan.theme_evidence.outcomes.not_applicable,
             theme_residuals: plan.theme_evidence.outcomes.residuals,
             mermaid_compatibility_residual_count: plan.mermaid_compatibility_residual_count,
@@ -747,14 +739,6 @@ impl FamilyStyleReport {
             }
         }
         self.native_filter_receipt = None;
-        #[cfg(all(
-            merman_internal_theme_acceptance,
-            feature = "layout-cytoscape",
-            feature = "diagram-architecture"
-        ))]
-        {
-            self.architecture_text_receipt = None;
-        }
         self
     }
 
@@ -787,13 +771,6 @@ impl FamilyStyleReport {
         &self,
     ) -> Option<crate::__private::NativeSvgFilterReceipt> {
         self.native_filter_receipt
-    }
-
-    #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-    pub(crate) fn architecture_text_receipt(
-        &self,
-    ) -> Option<&crate::__private::ArchitectureTextReceipt> {
-        self.architecture_text_receipt.as_ref()
     }
 
     /// Returns recipe mechanisms evaluated against this document but not selected by any rendered
@@ -832,7 +809,7 @@ impl FamilyStyleReport {
         self.view().verification()
     }
 
-    #[cfg(any(test, merman_internal_theme_acceptance))]
+    #[cfg(test)]
     pub fn is_verified(&self) -> bool {
         self.verification() == FamilyStyleVerification::Verified
     }
@@ -896,7 +873,7 @@ impl FamilyRenderReport {
         self.style.family_id()
     }
 
-    #[cfg(any(test, merman_internal_theme_acceptance))]
+    #[cfg(test)]
     pub(crate) const fn style_report(&self) -> &FamilyStyleReport {
         &self.style
     }
@@ -909,13 +886,6 @@ impl FamilyRenderReport {
         &self,
     ) -> Option<crate::__private::NativeSvgFilterReceipt> {
         self.style.native_filter_receipt()
-    }
-
-    #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-    pub(crate) fn architecture_text_receipt(
-        &self,
-    ) -> Option<&crate::__private::ArchitectureTextReceipt> {
-        self.style.architecture_text_receipt()
     }
 
     pub(crate) fn evidence_summary(&self) -> crate::__private::FamilyEvidenceSummary {
@@ -1248,8 +1218,6 @@ pub(crate) struct ResolvedFamilyStylePlan {
     theme_evidence: FamilyThemeEvidence,
     source_style_residuals: Vec<SourceStyleResidual>,
     native_filter_receipt: Option<crate::__private::NativeSvgFilterReceipt>,
-    #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-    architecture_text_receipt: Option<crate::__private::ArchitectureTextReceipt>,
     output_mutated: bool,
     mermaid_compatibility_residual_count: usize,
     payload: FamilyStylePayload,
@@ -1272,8 +1240,6 @@ impl ResolvedFamilyStylePlan {
             theme_evidence,
             source_style_residuals: Vec::new(),
             native_filter_receipt: None,
-            #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-            architecture_text_receipt: None,
             output_mutated: false,
             mermaid_compatibility_residual_count: 0,
             payload,
@@ -1355,15 +1321,6 @@ impl ResolvedFamilyStylePlan {
         };
     }
 
-    #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-    fn record_architecture_text_receipt(
-        &mut self,
-        receipt: Option<crate::__private::ArchitectureTextReceipt>,
-    ) {
-        debug_assert_eq!(self.family_id, DiagramFamilyId::ARCHITECTURE);
-        self.architecture_text_receipt = receipt;
-    }
-
     fn reconcile_effect_evidence(
         &mut self,
         emitted: Option<crate::__private::NativeSvgFilterReceipt>,
@@ -1417,14 +1374,6 @@ impl ResolvedFamilyStylePlan {
     fn invalidate_for_output_mutation(&mut self) {
         self.output_mutated = true;
         self.native_filter_receipt = None;
-        #[cfg(all(
-            merman_internal_theme_acceptance,
-            feature = "layout-cytoscape",
-            feature = "diagram-architecture"
-        ))]
-        {
-            self.architecture_text_receipt = None;
-        }
         self.theme_evidence.mark_output_mutated();
     }
 
@@ -4315,16 +4264,6 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
                 context.reconcile_packet_mermaid_compatibility(&evidence, &consumptions);
             }
             context.merge_accounted_terminal_evidence(DiagramFamilyId::PACKET, outcome.evidence);
-        }
-        #[cfg(all(
-            merman_internal_theme_acceptance,
-            feature = "diagram-architecture",
-            feature = "layout-cytoscape"
-        ))]
-        if context.family_id() == DiagramFamilyId::ARCHITECTURE {
-            context
-                .style_plan
-                .record_architecture_text_receipt(rendered.take_architecture_text_receipt());
         }
 
         #[cfg(feature = "diagram-state")]

@@ -49,8 +49,8 @@ The core, native Node, and SVG/browser owners publish separate same-run results 
   configuration, and an unloadable Fontconfig library.
 - `feature-contracts` owns Linux representative feature builds, isolated consumers, compile-fail
   examples, Rustdoc subsets/math, feature unification, runtime adapters, FFI and ASCII contracts;
-- `theme-contracts` groups the workspace-only theme acceptance cfg, preset and family terminal
-  tests, optimized rejection tests, and SVG/PNG authoring contracts;
+- `theme-contracts` verifies the embedded native preset colors and runs theme discovery and
+  SVG/PNG authoring tests;
 - `svg-parity` owns the complete DOM comparison and Chromium containment oracle;
 - `node-contracts` runs Node-WASM and N-API as parallel matrix members on PRs and main;
 - Pages builds its Web package once while compiling the optimized size tool independently;
@@ -486,63 +486,19 @@ under `distribution/tree-sitter-mermaid/`. Each ecosystem permits one open versi
 The npm group keeps related tooling such as `tree-sitter-cli` and `web-tree-sitter` in the same
 review. Other npm workspaces are outside this configuration.
 
-## Workspace Theme Acceptance
+## Native theme checks
 
-Production crates expose no `internal-theme-acceptance` Cargo feature. The non-published
-`merman-theme-acceptance` harness and producer receipt seams use the explicit
-`merman_internal_theme_acceptance` cfg. Ordinary workspace builds omit that harness; its dedicated
-CI steps run both the library proofs and the target integration gates through:
-
-```text
-python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-theme-acceptance
-```
-
-The launcher preserves caller Rust flags and enables the cfg for dependencies and doctests.
-Do not enable this cfg globally or use it for release builds. Public Cargo features, including
-feature unification, cannot enable it. Producer manifests exclude the independent acceptance
-modules from Cargo packages, so forcing the cfg cannot reconstruct those modules from a published
-crate. The private harness itself has `publish = false`.
-
-With the cfg disabled, Cargo 1.100 can report the harness's `merman` dependency as unused.
-That dependency supplies the public render operations exercised by the enabled harness. Validate
-it through the launcher above; its presence is intentional even when ordinary workspace checks
-compile an empty harness.
+The preset verifier checks contrast, font stack portability, and perceptual differences across the
+embedded appearances. The Rust contract tests compare each resolved paint and data color with the
+same reference values.
 
 ```text
-python3 scripts/verify_theme_acceptance_boundary.py
+python3 scripts/verify_v2_presets.py --check-colors crates/merman-theme-contract/tests/fixtures/preset-colors-v2.json
+cargo nextest run --locked -p merman-theme-contract --test theme_v2
 ```
 
-This gate checks Cargo's package file lists and the absence of the retired feature, then compiles
-an independent Cargo consumer with every public feature of the three producer crates enabled.
-The consumer resolves published dependencies without workspace patches. Its first check can fetch
-registry dependencies, and the private-import checks use the same lockfile offline.
-Production types must resolve; acceptance imports and the explicitly listed former Rust theme
-facade imports must fail with unresolved-import diagnostics. The latter checks catch aliases and
-re-exports at their former public paths. Platform SDK removals remain owned by their respective
-consumer tests; this gate does not scan Swift, Dart, or JavaScript for visibility keywords.
-It uses compiler results rather than attempting to infer Rust visibility from source text. Both PR
-parity CI and release preflight own this gate. It is separate from native C6a and preset qualification.
-
-The `preset_qualification` integration target currently runs the admission stage over the exact
-catalog recipes (the installed presets, three representative families, Standalone SVG plus PNG). Both the
-PR C6 step and release preflight include it. The test keeps current rejection reasons and recipe
-identities explicit; successful test execution means those observations were reproduced, not that
-the presets became qualified. The separate opaque qualification runner checks Flowchart/State/Sequence
-SVG/PNG output for the three exact native candidate recipes under a declared HostDependent
-system-font profile. Release Preflight and the formal Release's final Linux CLI archive job bind
-those checks to the extracted binary and archive, then replay the record before their gates pass.
-The ordinary push-only Node contract job intentionally stops at source-level contract tests; installed
-package smoke runs on pull requests and release preflight after a real candidate package is built,
-so the expensive artifact-bound check remains attached to an artifact-producing gate.
-See [scoped preset qualification](../rendering/preset-qualification.md) for the commands and evidence
-limits. Public catalog promotion remains open.
-
-PR parity CI and release preflight also run the evidence reconciliation and preset qualification
-library tests in Release mode. The reconciliation suite guards against behavior hidden inside
-`debug_assert!`; the preset suite includes missing text, paint, marker, and background rejection
-and receipt freshness checks. These negative tests complement the production runner's positive
-artifact checks. Both suites use explicit test namespaces and the qualification suite enables the
-workspace-only acceptance configuration plus PNG and Cytoscape layout features.
+The SVG parity job compares Mermaid-compatible output against the pinned upstream fixtures.
+Family and export tests cover the emitted SVG and raster output.
 
 ## Playground build identity
 

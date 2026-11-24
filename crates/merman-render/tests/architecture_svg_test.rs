@@ -2630,7 +2630,6 @@ fn architecture_without_theme_measures_service_titles_only_for_the_viewport() {
 }
 
 #[test]
-#[cfg(not(merman_internal_theme_acceptance))]
 fn architecture_requested_text_style_does_not_repeat_viewport_measurements() {
     let source = "architecture-beta\nservice api(server)[API]";
     let themes = [

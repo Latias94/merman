@@ -12,8 +12,8 @@ use super::icons::{
     arch_icon_needs_id_scope, write_arch_icon_svg, write_arch_icon_svg_with_registry,
 };
 use super::labels::{
-    ArchitectureTextAnchor, ArchitectureTextBaseline, architecture_svg_text_terminal_bounds,
-    wrap_svg_words_to_lines, write_architecture_service_title, write_svg_text_lines,
+    architecture_svg_text_terminal_bounds, wrap_svg_words_to_lines,
+    write_architecture_service_title, write_svg_text_lines,
 };
 use super::settings::ArchitectureRenderSettings;
 
@@ -139,37 +139,24 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
             let service_background_style = surface_styles
                 .as_deref()
                 .and_then(|styles| styles.service_background_style(service_index));
-            let service_title_emission = svc
+            let title_has_visible_words = svc
                 .title
                 .as_deref()
                 .map(str::trim)
                 .filter(|t| !t.is_empty())
-                .map(|title| {
+                .is_some_and(|title| {
                     // Mermaid uses `width = iconSize * 1.5` for service titles.
                     write_architecture_service_title(
                         out,
                         title,
-                        #[cfg(merman_internal_theme_acceptance)]
-                        x,
-                        #[cfg(merman_internal_theme_acceptance)]
-                        y,
                         settings.icon_size_px,
                         settings.icon_size_px * 1.5,
                         text_measurer,
                         &settings.text_style,
                         service_title_style,
-                        #[cfg(merman_internal_theme_acceptance)]
-                        surface_styles.is_some(),
                     )
                 });
-            let has_visible_title = settings.text_style.font_size > 0.0
-                && service_title_emission
-                    .as_ref()
-                    .is_some_and(|emission| emission.facts.has_visible_words);
-            #[cfg(merman_internal_theme_acceptance)]
-            let service_title_bounds = service_title_emission
-                .as_ref()
-                .and_then(|emission| emission.bounds.as_ref());
+            let has_visible_title = settings.text_style.font_size > 0.0 && title_has_visible_words;
 
             let mut icon_text_facts = None;
             out.push_str("<g>");
@@ -294,23 +281,11 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
                 styles.record_checkpointed_service(
                     crate::architecture::ArchitectureServiceTerminalEmission {
                         index: service_index,
-                        #[cfg(merman_internal_theme_acceptance)]
-                        id: svc.id.as_str().into(),
                         background: crate::architecture::ArchitecturePaintTerminalEmission {
                             emitted: has_background,
                         },
                         title: crate::architecture::ArchitectureTextTerminalEmission {
                             emitted: has_visible_title,
-                            #[cfg(merman_internal_theme_acceptance)]
-                            bounds: service_title_bounds.cloned(),
-                            #[cfg(merman_internal_theme_acceptance)]
-                            fragment_digest: service_title_emission
-                                .as_ref()
-                                .map(|emission| emission.facts.fragment_digest),
-                            #[cfg(merman_internal_theme_acceptance)]
-                            run_count: service_title_emission
-                                .as_ref()
-                                .map_or(0, |emission| emission.facts.run_count),
                         },
                     },
                 );
@@ -487,7 +462,7 @@ pub(super) fn push_architecture_groups<'a, O: SvgOutput>(
             let group_title_style = surface_styles
                 .as_deref()
                 .and_then(|styles| styles.group_title_style(group_index));
-            let (group_title_bounds, group_writer_facts) = if let Some(title) =
+            let title_has_visible_words = if let Some(title) =
                 grp.title.map(str::trim).filter(|t| !t.is_empty())
             {
                 let lines = wrap_svg_words_to_lines(title, w, text_measurer, &settings.text_style);
@@ -497,8 +472,6 @@ pub(super) fn push_architecture_groups<'a, O: SvgOutput>(
                     &lines,
                     title_x,
                     title_y,
-                    ArchitectureTextAnchor::Start,
-                    ArchitectureTextBaseline::Start,
                     text_measurer,
                     &settings.text_style,
                 );
@@ -522,16 +495,13 @@ pub(super) fn push_architecture_groups<'a, O: SvgOutput>(
                     x = fmt(title_x),
                     y = fmt(title_y)
                 );
-                let writer_facts = write_svg_text_lines(out, &lines, group_title_style);
+                let has_visible_words = write_svg_text_lines(out, &lines, group_title_style);
                 out.push_str("</g></g>");
-                (Some(terminal_bounds), Some(writer_facts))
+                has_visible_words
             } else {
-                (None, None)
+                false
             };
-            let has_visible_title = settings.text_style.font_size > 0.0
-                && group_writer_facts.is_some_and(|facts| facts.has_visible_words);
-            #[cfg(not(merman_internal_theme_acceptance))]
-            let _ = group_title_bounds;
+            let has_visible_title = settings.text_style.font_size > 0.0 && title_has_visible_words;
 
             out.push_str("</g>");
             out.checkpoint()?;
@@ -542,16 +512,8 @@ pub(super) fn push_architecture_groups<'a, O: SvgOutput>(
                 styles.record_checkpointed_group(
                     crate::architecture::ArchitectureGroupTerminalEmission {
                         index: group_index,
-                        #[cfg(merman_internal_theme_acceptance)]
-                        id: grp.id.into(),
                         title: crate::architecture::ArchitectureTextTerminalEmission {
                             emitted: has_visible_title,
-                            #[cfg(merman_internal_theme_acceptance)]
-                            bounds: group_title_bounds,
-                            #[cfg(merman_internal_theme_acceptance)]
-                            fragment_digest: group_writer_facts.map(|facts| facts.fragment_digest),
-                            #[cfg(merman_internal_theme_acceptance)]
-                            run_count: group_writer_facts.map_or(0, |facts| facts.run_count),
                         },
                     },
                 );

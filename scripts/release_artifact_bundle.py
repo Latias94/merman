@@ -11,7 +11,6 @@ import shutil
 import sys
 
 if __package__:
-    from .qualify_theme_presets import archive_catalog, verify_record
     from .release_archive import (
         ArchiveVerificationError,
         DEFAULT_LIMITS,
@@ -21,7 +20,6 @@ if __package__:
         sha256_file,
     )
 else:
-    from qualify_theme_presets import archive_catalog, verify_record
     from release_archive import (
         ArchiveVerificationError,
         DEFAULT_LIMITS,
@@ -35,7 +33,6 @@ else:
 __all__ = (
     "ReleaseArtifactError",
     "assemble_bundle",
-    "finalize_bundle",
     "harden_installers",
     "prepare_global_inputs",
     "verify_plan",
@@ -51,8 +48,6 @@ PACKAGES = {
 }
 DIST_INPUT_MANIFEST = "verified-local-dist-manifest.json"
 DIST_OUTPUT_MANIFEST = "dist-manifest.json"
-PRESET_CATALOG_TARGET = "x86_64-unknown-linux-gnu"
-PRESET_CATALOG_NAME = f"merman-cli-{PRESET_CATALOG_TARGET}.preset-catalog.json"
 
 JSON_MAX_BYTES = 4 * 1024 * 1024
 INSTALLER_MAX_BYTES = 4 * 1024 * 1024
@@ -183,10 +178,6 @@ def _root_directories(root: Path) -> set[str]:
 
 
 def _asset_identity(name: str) -> tuple[str, dict[str, str]]:
-    if name == PRESET_CATALOG_NAME:
-        return "preset-catalog", {
-            "package": "merman-cli", "profile": "cli-release", "target": PRESET_CATALOG_TARGET,
-        }
     archive = _ARCHIVE_RE.fullmatch(name)
     if archive is not None:
         package, target, _extension = archive.groups()
@@ -234,10 +225,6 @@ def _validate_asset_contract(names: set[str]) -> None:
     for name in archives:
         _, identity = identities[name]
         targets_by_package[identity["package"]].add(identity["target"])
-    if PRESET_CATALOG_NAME in names and release_archive_name_for(
-        "merman-cli", PRESET_CATALOG_TARGET,
-    ) not in archives:
-        raise ReleaseArtifactError("preset catalog has no matching CLI archive")
     target_sets = tuple(targets_by_package.values())
     if not target_sets[0] or any(targets != target_sets[0] for targets in target_sets[1:]):
         raise ReleaseArtifactError("CLI and LSP release target sets differ")
@@ -729,7 +716,6 @@ def _asset_size_budget(kind: str) -> int:
         "adjacent-checksum": 4096,
         "installer": INSTALLER_MAX_BYTES,
         "checksum-index": CHECKSUM_INDEX_MAX_BYTES,
-        "preset-catalog": JSON_MAX_BYTES,
     }[kind]
 
 
@@ -779,17 +765,17 @@ def _validated_manifest(root: Path) -> dict[str, object]:
     return manifest
 
 
-def _verified_bundle(
+def verify_bundle(
     root: Path,
     *,
-    version: str | None,
+    version: str,
     source_sha: str,
-) -> dict[str, object]:
+) -> None:
+    """Verify the manifest, every asset, and installer checksums before release."""
     root = Path(root)
     manifest = _validated_manifest(root)
-    manifest_version = manifest["version"]
-    assert isinstance(manifest_version, str)
-    if version is not None and manifest_version != _require_version(version):
+    version = _require_version(version)
+    if manifest["version"] != version:
         raise ReleaseArtifactError("release verification manifest has the wrong version")
     if manifest["source_sha"] != _require_source_sha(source_sha):
         raise ReleaseArtifactError("release verification manifest has the wrong source identity")
@@ -809,80 +795,7 @@ def _verified_bundle(
             raise ReleaseArtifactError(f"asset digest mismatch: {path.name}")
     names = tuple(sorted(expected))
     _verify_checksums(root, names, observed_digests=observed_digests)
-    _validate_installers(root, names, version=manifest_version)
-    if PRESET_CATALOG_NAME in expected:
-        _validate_catalog_binding(_read_json_object(root / PRESET_CATALOG_NAME), manifest)
-    return manifest
-
-
-def _validate_catalog_binding(catalog: dict, manifest: dict) -> None:
-    """Bind native-job output to release identity; semantic qualification stays in Rust."""
-    archive_name = release_archive_name_for("merman-cli", PRESET_CATALOG_TARGET)
-    archive = next((entry for entry in manifest["assets"] if entry["name"] == archive_name), None)
-    artifact = catalog.get("artifact")
-    if (type(catalog.get("schema_version")) is not int or catalog["schema_version"] != 2
-            or catalog.get("source_commit") != manifest["source_sha"]
-            or not isinstance(artifact, dict) or archive is None
-            or artifact.get("target") != PRESET_CATALOG_TARGET
-            or artifact.get("version") != manifest["version"]
-            or artifact.get("sha256") != archive["sha256"]
-            or not isinstance(artifact.get("executable_sha256"), str)
-            or _SHA256_RE.fullmatch(artifact["executable_sha256"]) is None):
-        raise ReleaseArtifactError("preset catalog differs from the verified CLI archive identity")
-
-
-def finalize_bundle(
-    root: Path, qualification_record: Path, destination: Path, *, version: str, source_sha: str,
-) -> Path:
-    """Attach a replayed native-job catalog to a new immutable publication bundle.
-
-    The native job is the trusted producer, not the caller of this function: an arbitrary JSON
-    file is not qualification evidence. The workflow must require successful native replay before
-    invoking this assembly step. The private execution record is never published.
-    """
-    root = Path(root)
-    manifest = _verified_bundle(root, version=version, source_sha=source_sha)
-    if any(entry["kind"] == "preset-catalog" for entry in manifest["assets"]):
-        raise ReleaseArtifactError("publication bundle already contains a preset catalog")
-    record = _read_json_object(qualification_record)
-    supplied = _read_json_object(Path(qualification_record).with_suffix(".catalog.json"))
-    try:
-        projected = archive_catalog(record)
-        verify_record(supplied, projected)
-    except (KeyError, TypeError, ValueError, RuntimeError) as error:
-        raise ReleaseArtifactError("native qualification record and public catalog differ") from error
-    _validate_catalog_binding(projected, manifest)
-    payload = (json.dumps(projected, indent=2, sort_keys=True, allow_nan=False) + "\n").encode()
-    if len(payload) > JSON_MAX_BYTES:
-        raise ReleaseArtifactError("preset catalog exceeds verification budget")
-    destination = Path(destination)
-    destination.mkdir(parents=True, exist_ok=False)
-    try:
-        for entry in manifest["assets"]:
-            shutil.copyfile(root / entry["name"], destination / entry["name"])
-        catalog_path = destination / PRESET_CATALOG_NAME
-        catalog_path.write_bytes(payload)
-        kind, identity = _asset_identity(PRESET_CATALOG_NAME)
-        manifest["assets"].append({
-            "name": PRESET_CATALOG_NAME, "kind": kind, **identity,
-            "sha256": sha256_file(catalog_path), "size": len(payload),
-        })
-        manifest["assets"].sort(key=lambda entry: entry["name"])
-        manifest_path = destination / MANIFEST_NAME
-        manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        verify_bundle(destination, version=version, source_sha=source_sha, require_preset_catalog=True)
-        return manifest_path
-    except BaseException:
-        shutil.rmtree(destination, ignore_errors=True)
-        raise
-
-
-def verify_bundle(
-    root: Path, *, version: str, source_sha: str, require_preset_catalog: bool = False,
-) -> None:
-    manifest = _verified_bundle(root, version=version, source_sha=source_sha)
-    if require_preset_catalog and not any(entry["name"] == PRESET_CATALOG_NAME for entry in manifest["assets"]):
-        raise ReleaseArtifactError("final publication bundle is missing its preset catalog")
+    _validate_installers(root, names, version=version)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -911,13 +824,6 @@ def _build_parser() -> argparse.ArgumentParser:
     assemble.add_argument("--version", required=True)
     assemble.add_argument("--source-sha", required=True)
 
-    finalize = commands.add_parser("finalize")
-    finalize.add_argument("root", type=Path)
-    finalize.add_argument("qualification_record", type=Path)
-    finalize.add_argument("destination", type=Path)
-    finalize.add_argument("--version", required=True)
-    finalize.add_argument("--source-sha", required=True)
-
     harden = commands.add_parser("harden-installers")
     harden.add_argument("generated_root", type=Path)
     harden.add_argument("--version", required=True)
@@ -926,7 +832,6 @@ def _build_parser() -> argparse.ArgumentParser:
     verify.add_argument("root", type=Path)
     verify.add_argument("--version", required=True)
     verify.add_argument("--source-sha", required=True)
-    verify.add_argument("--require-preset-catalog", action="store_true")
     return parser
 
 
@@ -957,17 +862,13 @@ def main(argv: list[str] | None = None) -> int:
             version=args.version,
             source_sha=args.source_sha,
         )
-    elif args.command == "finalize":
-        finalize_bundle(args.root, args.qualification_record, args.destination,
-                        version=args.version, source_sha=args.source_sha)
     elif args.command == "harden-installers":
         harden_installers(
             args.generated_root,
             version=args.version,
         )
     elif args.command == "verify-bundle":
-        verify_bundle(args.root, version=args.version, source_sha=args.source_sha,
-                      require_preset_catalog=args.require_preset_catalog)
+        verify_bundle(args.root, version=args.version, source_sha=args.source_sha)
     else:
         raise AssertionError(f"unhandled command: {args.command}")
     return 0

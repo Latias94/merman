@@ -47,6 +47,7 @@ _SVG_PARITY_CRATE_PREFIXES = (
     "crates/merman-fixture-render-context/",
     "crates/merman-layout-elk/",
     "crates/merman-render/",
+    "crates/merman-theme-contract/",
     "crates/roughr/",
 )
 _SVG_PARITY_PREFIXES = (
@@ -56,9 +57,6 @@ _SVG_PARITY_PREFIXES = (
 )
 _SVG_PARITY_EXACT_PATHS = frozenset(
     {
-        "scripts/run_theme_acceptance.py",
-        "scripts/test_run_theme_acceptance.py",
-        "scripts/verify_theme_acceptance_boundary.py",
         "crates/merman/Cargo.toml",
         "crates/merman/src/operation.rs",
         "crates/merman/src/render.rs",
@@ -136,6 +134,7 @@ _CRATE_OWNER_RULES = (
     ("crates/merman-layout-elk/", _CORE_OWNERS),
     ("crates/merman-layout-shoal/", _CORE_OWNERS),
     ("crates/merman-render/", {"core", "fuzz", "hygiene"}),
+    ("crates/merman-theme-contract/", _CORE_OWNERS),
     ("crates/merman-rustdoc/", _CORE_OWNERS),
     ("crates/roughr/", _CORE_OWNERS),
     ("crates/xtask/src/cmd/typst_", {"core", "hygiene", "typst"}),
@@ -160,9 +159,7 @@ _SCRIPT_EXACT_OWNER_RULES = {
     "scripts/test_release_workflow_security.py": frozenset({"hygiene", "workflow"}),
     "scripts/release_preflight_evidence.py": frozenset({"hygiene", "workflow"}),
     "scripts/test_release_preflight_evidence.py": frozenset({"hygiene", "workflow"}),
-    "scripts/run_theme_acceptance.py": frozenset({"core", "hygiene"}),
-    "scripts/test_run_theme_acceptance.py": frozenset({"core", "hygiene"}),
-    "scripts/verify_theme_acceptance_boundary.py": frozenset({"core", "hygiene"}),
+    "scripts/verify_v2_presets.py": _CORE_OWNERS,
     "scripts/linux_binary_compatibility.py": frozenset({"cli", "hygiene"}),
     "scripts/test_linux_binary_compatibility.py": frozenset({"cli", "hygiene"}),
 
@@ -687,6 +684,8 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
 
     if path.startswith("capabilities/"):
         return _ALL_OWNERS, f"shared capability schema changed: {path}", True
+    if path == "schemas/theme-v2.schema.json":
+        return _CORE_OWNERS, f"native theme schema changed: {path}", False
     if path == "crates/merman/Cargo.toml":
         return (
             frozenset({"core", "fuzz", "hygiene", "performance"}),

@@ -66,8 +66,6 @@ impl OperationExecutionPath {
         }
     }
 }
-#[cfg(all(feature = "svg", merman_internal_theme_acceptance))]
-pub(crate) use evidence::{ThemeAcceptanceEvidenceProjection, ThemeEvidenceScopeProjection};
 #[cfg(feature = "svg")]
 use merman_render::{
     LayoutOptions, ResourceLimitExceeded as SvgResourceLimitExceeded,

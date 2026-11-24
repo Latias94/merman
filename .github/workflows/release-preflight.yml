@@ -167,7 +167,7 @@ jobs:
         with:
           tool: nextest@0.9.151
 
-      - name: Install CLI validators and native qualification fonts
+      - name: Install CLI validators and native font dependencies
         timeout-minutes: 10
         run: |
           sudo apt-get update --error-on=any
@@ -256,23 +256,19 @@ jobs:
             --test theme_flowchart_edge_effects --test flowchart_edge_label_theme --test render_operation \
             --test theme_composed_effects
 
-      - name: Test optimized theme evidence and qualification rejection
+      - name: Test optimized renderer theme evidence
         run: |
           cargo test --release --locked -p merman-render --no-default-features \
             --lib family::evidence_support::tests
-          python3 scripts/run_theme_acceptance.py test --release --locked \
-            -p merman-theme-acceptance --no-default-features --features png,all-diagrams,layout-cytoscape \
-            --lib preset_qualification::
 
-      - name: Verify published theme acceptance boundary
-        run: python3 scripts/verify_theme_acceptance_boundary.py
-
-      - name: Test preset qualification and family terminal behavior
+      - name: Verify native theme preset colors
         run: |
-          python3 scripts/run_theme_acceptance.py test --locked -p merman-theme-acceptance \
-            --no-default-features --features png,all-diagrams,layout-cytoscape \
-            --test preset_qualification --test block_title_legacy_projection --test class_edge_label_background_legacy_projection --test flowchart_marker_legacy_projection
-          python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-render \
+          python3 scripts/verify_v2_presets.py --check-colors crates/merman-theme-contract/tests/fixtures/preset-colors-v2.json
+          cargo nextest run --locked -p merman-theme-contract --test theme_v2 --cargo-quiet
+
+      - name: Test theme support discovery
+        run: |
+          cargo nextest run --locked -p merman-render \
             --no-default-features --features all-diagrams --test theme_support_discovery_test --cargo-quiet
 
       - name: Verify generated CLI distribution assets
@@ -486,12 +482,6 @@ jobs:
             --target "$TARGET" \
             --runner "$NATIVE_RUNNER"
 
-      - name: Install native qualification fonts
-        if: matrix.target == 'x86_64-unknown-linux-gnu'
-        run: |
-          sudo apt-get update --error-on=any
-          sudo apt-get install --no-install-recommends --yes fonts-dejavu-core
-
       - name: Prepare ARM64 system resource probes
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
@@ -545,14 +535,7 @@ jobs:
               --resource-key "$RUNNER_TEMP/merman-resource.key"
             )
           fi
-          if [[ "$TARGET" == x86_64-unknown-linux-gnu ]]; then
-            python3 scripts/verify_cli_release_archive.py "${verification_args[@]}" \
-              --preset-qualification-output target/preset-qualification.json
-            python3 scripts/verify_cli_release_archive.py "${verification_args[@]}" \
-              --preset-qualification-check target/preset-qualification.json
-          else
-            python3 scripts/verify_cli_release_archive.py "${verification_args[@]}"
-          fi
+          python3 scripts/verify_cli_release_archive.py "${verification_args[@]}"
           python3 scripts/verify_lsp_release_archive.py \
             "target/distrib/merman-lsp-$TARGET.tar.xz" \
             --checksum "target/distrib/merman-lsp-$TARGET.tar.xz.sha256" \
@@ -560,16 +543,6 @@ jobs:
             --version "$VERSION" \
             --repo-root . \
             --execute
-
-      - name: Upload scoped native preset qualification
-        if: matrix.target == 'x86_64-unknown-linux-gnu'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: preset-qualification-${{ needs.validate-inputs.outputs.source_sha }}-${{ matrix.target }}
-          path: |
-            target/preset-qualification.json
-            target/preset-qualification.catalog.json
-          if-no-files-found: error
 
       - name: Upload native archive evidence
         uses: actions/upload-artifact@v7.0.2

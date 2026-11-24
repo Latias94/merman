@@ -249,9 +249,9 @@ class PlannerTests(unittest.TestCase):
 
     def test_svg_parity_selector_uses_explicit_input_boundaries(self) -> None:
         fixtures = {
-            "scripts/run_theme_acceptance.py": True,
-            "scripts/test_run_theme_acceptance.py": True,
-            "scripts/verify_theme_acceptance_boundary.py": True,
+            "scripts/verify_v2_presets.py": False,
+            "schemas/theme-v2.schema.json": False,
+            "crates/merman-theme-contract/src/v2/compile.rs": True,
             "crates/dugong/src/lib.rs": True,
             "crates/merman/Cargo.toml": True,
             "crates/merman/src/operation.rs": True,
@@ -1132,8 +1132,7 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
                     gate,
                 )
 
-        # Generated checks retain their materialized DOMPurify/Node bootstrap. The
-        # The offline all-feature consumer follows the release font policy check.
+        # Generated checks retain their materialized DOMPurify/Node bootstrap.
         self.assertIn("verify-generated", core)
         self.assertNotIn("verify-feature-matrix", core)
         self.assertIn("verify-feature-matrix", feature)
@@ -1141,11 +1140,6 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
         self.assertIn("--test rustdoc_cli", core)
         self.assertIn("Test Rustdoc family subsets", feature)
         self.assertIn("Test representative ASCII public contracts", feature)
-        self.assertIn("verify_theme_acceptance_boundary.py", core)
-        self.assertLess(
-            core.index("Test release platform font CLI policy on every host"),
-            core.index("verify_theme_acceptance_boundary.py"),
-        )
         self.assertIn(
             "--features diagram-flowchart,png,platform-system-font-default --test native_fonts_contract",
             core,
@@ -1160,12 +1154,9 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
         self.assertIn("test(=fontconfig_availability_controls_automatic_fallback)", fontconfig)
         self.assertIn("--test linux_fontconfig", fontconfig)
         self.assertIn("binary(linux_fontconfig)", fontconfig)
-        self.assertNotIn("verify_theme_acceptance_boundary.py", feature)
-        self.assertNotIn("verify_theme_acceptance_boundary.py", theme)
-        self.assertIn("Test preset qualification and family terminal behavior", theme)
-        self.assertIn("Test optimized theme evidence and qualification rejection", theme)
+        self.assertIn("verify_v2_presets.py --check-colors", theme)
+        self.assertIn("-p merman-theme-contract --test theme_v2", theme)
         self.assertIn("Test theme authoring and Flowchart paint across SVG and PNG", theme)
-        self.assertNotIn("run_theme_acceptance.py", core)
         for job in (core, feature, theme):
             self.assertNotIn("      RUSTFLAGS:", job)
             self.assertNotIn("      CARGO_ENCODED_RUSTFLAGS:", job)
@@ -1349,7 +1340,7 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
                 "theme-contracts",
                 "svg-parity",
                 "Install Linux font dependencies and test fonts",
-                "python3 scripts/run_theme_acceptance.py nextest run",
+                "cargo nextest run --locked -p merman \\",
             ),
         ):
             with self.subTest(owner=owner):

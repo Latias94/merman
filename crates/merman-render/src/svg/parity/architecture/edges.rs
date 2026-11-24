@@ -642,8 +642,6 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
             let has_visible_label = label_plan.as_ref().is_some_and(|plan| {
                 svg_lines_have_visible_text(&plan.lines, settings.text_style.font_size)
             });
-            #[cfg(merman_internal_theme_acceptance)]
-            let label_bounds = label_plan.as_ref().map(|plan| plan.bounds.clone());
             if let Some(label_plan) = label_plan.as_ref() {
                 extend_bounds(content_bounds, label_plan.bounds.clone());
             }
@@ -670,10 +668,6 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
                 write_architecture_arrow_polygon(out, arrow, rhs_arrow_style);
             }
 
-            #[cfg(merman_internal_theme_acceptance)]
-            let mut label_fragment_digest = None;
-            #[cfg(merman_internal_theme_acceptance)]
-            let mut label_run_count = 0;
             if let Some(label_plan) = label_plan {
                 let _ = write!(
                     out,
@@ -682,15 +676,8 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
                     transform = label_plan.transform.as_str()
                 );
                 out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
-                let writer_facts = write_svg_text_lines(out, &label_plan.lines, label_style);
+                write_svg_text_lines(out, &label_plan.lines, label_style);
                 out.push_str("</g></g>");
-                #[cfg(merman_internal_theme_acceptance)]
-                {
-                    label_fragment_digest = Some(writer_facts.fragment_digest);
-                    label_run_count = writer_facts.run_count;
-                }
-                #[cfg(not(merman_internal_theme_acceptance))]
-                let _ = writer_facts;
             }
 
             out.push_str("</g>");
@@ -703,18 +690,8 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
                 styles.record_checkpointed_edge(
                     crate::architecture::ArchitectureEdgeTerminalEmission {
                         index: edge_idx,
-                        #[cfg(merman_internal_theme_acceptance)]
-                        lhs_id: edge.lhs_id.as_str().into(),
-                        #[cfg(merman_internal_theme_acceptance)]
-                        rhs_id: edge.rhs_id.as_str().into(),
                         label: crate::architecture::ArchitectureTextTerminalEmission {
                             emitted: has_visible_label,
-                            #[cfg(merman_internal_theme_acceptance)]
-                            bounds: label_bounds,
-                            #[cfg(merman_internal_theme_acceptance)]
-                            fragment_digest: label_fragment_digest,
-                            #[cfg(merman_internal_theme_acceptance)]
-                            run_count: label_run_count,
                         },
                         lhs_arrow: crate::architecture::ArchitecturePaintTerminalEmission {
                             emitted: lhs_arrow.is_some(),

@@ -12,7 +12,6 @@ readme = "../../README.md"
 keywords = ["mermaid", "diagrams", "svg", "parser", "headless"]
 categories = ["parser-implementations", "visualization"]
 exclude = [
-    "src/theme_acceptance.rs",
     "tests/mindmap_br_variants_031.rs",
     "tests/resvg_safe_fixture_smoke.rs",
     "tests/zed_mermaid_issue_fixtures.rs",
@@ -618,6 +617,3 @@ required-features = ["svg"]
 [[example]]
 name = "layout_work_calibration"
 required-features = ["svg", "compat-json", "layout-cytoscape", "layout-elk", "math"]
-
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(merman_internal_theme_acceptance)'] }

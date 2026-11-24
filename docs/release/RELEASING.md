@@ -755,16 +755,12 @@ is overwritten. Python verifies the complete public wheel set before its PyPI jo
 Tree-sitter native
 prebuild recovery stays within the same workflow run.
 
-The formal Release's final Linux CLI archive must also pass
-[scoped preset qualification](../rendering/preset-qualification.md) and fresh replay before the
-release verification gate passes. Its Flowchart/State/Sequence system-font observations remain
-in a private workflow artifact. The gate attaches only the public
-`merman-cli-x86_64-unknown-linux-gnu.preset-catalog.json` companion to a new publication bundle,
-binding it to the source and final archive and recording its digest and size in
-`release-verification.json`. Registry candidate, attestation and publishing jobs verify that this
-companion is present before consuming the final bundle. The original archives are not repacked.
-Shared Rust/SDK catalogs remain alpha with empty qualification scope; this archive observation
-does not qualify other targets, font installations or arbitrary source text.
+Release preflight checks the built-in v2 preset colors against the committed fixture and runs the
+`merman-theme-contract` `theme_v2` tests. The release workflow executes the final CLI and LSP
+archives on their native targets, including the CLI's installed capability and output checks. After
+the central and native jobs pass, the release gate validates the exact asset inventory, checksums,
+and source identity in `release-verification.json`. Attestation and publication consume the same
+verified bundle.
 
 Release-archive smoke tests should verify user-observable contracts rather than incidental representation choices. Accept legal binary token and whitespace forms, and allow valid asynchronous notification ordering while still requiring bounded output, the expected protocol responses, successful exit, and exact archive contents. Reproduce failures against the final archive before changing product code.
 
