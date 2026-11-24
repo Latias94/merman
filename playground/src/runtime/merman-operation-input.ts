@@ -248,6 +248,28 @@ export function previewRenderWithShoalFrame(
   return operation;
 }
 
+export function previewRenderWithShoalFitWidth(
+  operation: FrozenRenderOperation,
+  width: number,
+): FrozenRenderOperation {
+  const bindingOptions = Object.freeze({
+    ...operation.bindingOptions,
+    layout: Object.freeze({
+      ...operation.bindingOptions.layout,
+      adaptation: "fit-width" as const,
+      container_width: width,
+      fold_wide_ranks: true,
+    }),
+  });
+  return Object.freeze({
+    ...operation,
+    bindingOptions,
+    bindingOptionsJson: operation.themeRecipeJson !== null && operation.bindingOptionsJson !== null
+      ? themeRecipeOptionsJson(bindingOptions, operation.themeRecipeJson, operation.resolvedThemeAppearance)
+      : null,
+  });
+}
+
 export function sameRenderOperation(
   left: FrozenRenderOperation,
   right: FrozenRenderOperation,

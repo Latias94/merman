@@ -128,7 +128,10 @@ pub(super) enum RootSizing {
     Mermaid {
         use_max_width: bool,
     },
-    #[cfg(feature = "layout-cytoscape")]
+    #[cfg(all(
+        feature = "diagram-architecture",
+        any(feature = "layout-cytoscape", feature = "layout-shoal")
+    ))]
     MermaidOrIntrinsic {
         use_max_width: bool,
     },
@@ -172,7 +175,10 @@ impl RootViewportSpec {
         }
     }
 
-    #[cfg(feature = "layout-cytoscape")]
+    #[cfg(all(
+        feature = "diagram-architecture",
+        any(feature = "layout-cytoscape", feature = "layout-shoal")
+    ))]
     pub(super) fn mermaid_or_intrinsic(bounds: DiagramBounds, use_max_width: bool) -> Self {
         Self {
             sizing: RootSizing::MermaidOrIntrinsic { use_max_width },
@@ -351,7 +357,10 @@ impl DeferredRootSpec {
         }
     }
 
-    #[cfg(feature = "layout-cytoscape")]
+    #[cfg(all(
+        feature = "diagram-architecture",
+        any(feature = "layout-cytoscape", feature = "layout-shoal")
+    ))]
     pub(super) fn mermaid_or_intrinsic(use_max_width: bool) -> Self {
         Self {
             sizing: RootSizing::MermaidOrIntrinsic { use_max_width },
@@ -426,11 +435,17 @@ impl<'a> RootViewportContext<'a> {
             | RootSizing::Mermaid {
                 use_max_width: true,
             } => true,
-            #[cfg(feature = "layout-cytoscape")]
+            #[cfg(all(
+                feature = "diagram-architecture",
+                any(feature = "layout-cytoscape", feature = "layout-shoal")
+            ))]
             RootSizing::MermaidOrIntrinsic {
                 use_max_width: true,
             } => true,
-            #[cfg(feature = "layout-cytoscape")]
+            #[cfg(all(
+                feature = "diagram-architecture",
+                any(feature = "layout-cytoscape", feature = "layout-shoal")
+            ))]
             RootSizing::MermaidOrIntrinsic {
                 use_max_width: false,
             } => false,
@@ -787,7 +802,10 @@ impl<'a> RootViewportContext<'a> {
             RootSizing::Mermaid {
                 use_max_width: true,
             } => (true, Some("100%".to_string()), None),
-            #[cfg(feature = "layout-cytoscape")]
+            #[cfg(all(
+                feature = "diagram-architecture",
+                any(feature = "layout-cytoscape", feature = "layout-shoal")
+            ))]
             RootSizing::MermaidOrIntrinsic {
                 use_max_width: true,
             } => (true, Some("100%".to_string()), None),
@@ -815,7 +833,10 @@ impl<'a> RootViewportContext<'a> {
                 let (width, height) = fixed_dimensions()?;
                 (false, Some(width), Some(height))
             }
-            #[cfg(feature = "layout-cytoscape")]
+            #[cfg(all(
+                feature = "diagram-architecture",
+                any(feature = "layout-cytoscape", feature = "layout-shoal")
+            ))]
             RootSizing::MermaidOrIntrinsic {
                 use_max_width: false,
             } => (false, None, None),

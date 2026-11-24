@@ -703,7 +703,7 @@
     "scope_theme": "仅主题",
     "scope_diagram": "复现当前图",
     "scopeDescription_theme": "采用选中的 Merman 主题和 Mermaid 基础主题，另附独立示例；不携带当前源码、手写配置、字体及布局。",
-    "scopeDescription_diagram": "使用已完成渲染的配置后源码、绑定选项、布局和版本；仍需满足宿主字体与测量条件。",
+    "scopeDescription_diagram": "使用配置后的源码、原布局和运行时版本。预览宽度适配作用于 SVG 产物。字体和测量仍取决于宿主环境。",
     "unrenderedSnapshot": "工作区快照 · 尚无匹配的已完成 Merman 渲染",
     "renderSnapshot": "已完成的 Merman 渲染 · 快照 #{{publication}}",
     "capturedAt": "捕获于 {{time}}",
@@ -762,6 +762,16 @@
       "advancedRendering": "高级渲染配置",
       "compareInput": "两列渲染相同的 Mermaid 源码与配置。此视图用于查看两个引擎的输出，不能作为像素一致性核验。",
       "compareStyled": "两列使用相同的 Mermaid 源码与配置，Merman 外观扩展只作用于左列。此带外观扩展的比较不能作为像素一致性核验。"
+    },
+    "fitWidth": {
+      "title": "适配预览宽度",
+      "activeWidth": "{{width}} px",
+      "description": "Shoal 会重新排列 SVG 预览以接近目标宽度，图表仍可能更宽。下载的 SVG 使用预览布局，PNG 和项目导出使用原布局。",
+      "enable": "启用宽度适配（实验性）",
+      "width": "目标宽度（CSS px）",
+      "invalidWidth": "请输入大于 0 的宽度。",
+      "cancel": "取消",
+      "apply": "应用"
     },
     "export": {
       "currentArtifact": "当前图表产物",

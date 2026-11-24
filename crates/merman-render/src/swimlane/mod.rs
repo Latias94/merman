@@ -13,23 +13,31 @@ pub(crate) use flat::{MeasuredNode, layout_compound};
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 mod prepare;
 mod routing;
+#[cfg(all(
+    feature = "layout-shoal",
+    any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+))]
+mod shoal;
+#[cfg(all(
+    feature = "layout-shoal",
+    any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+))]
+pub(crate) use shoal::SwimlaneShoal;
 mod sugiyama;
 #[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
 mod tests;
 mod work_budget;
 mod working;
 
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+use crate::LayoutExecution;
 use crate::Result;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use crate::flowchart::{FlowchartConfigView, FlowchartEdgeTransportPlan, FlowchartRenderModelRef};
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use crate::math::MathRenderer;
 use crate::model::{
     Bounds, SwimlaneEdgeLayout, SwimlaneLaneLayout, SwimlaneLayout, SwimlaneNodeLayout,
 };
 use crate::resources::OperationWorkMeter;
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use crate::text::TextMeasurer;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use merman_model::families::flowchart::{FlowchartModel, FlowchartRenderContext};
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -74,26 +82,30 @@ fn output_bounds(layout: &working::WorkingLayout) -> Option<Bounds> {
 
 /// Lays out a Swimlane model under the resource policy owned by the render operation.
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-#[allow(
-    clippy::too_many_arguments,
-    reason = "Swimlane preparation requires the admitted flowchart artifacts and layout inputs."
-)]
 pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
     effective_config: &PresentationConfig,
-    measurer: &dyn TextMeasurer,
-    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    execution: &LayoutExecution<'_>,
     svg_label_sidecar: Option<&crate::flowchart::FlowchartSvgLabelSidecarBuilder>,
     edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
-    work_meter: Arc<OperationWorkMeter>,
 ) -> Result<SwimlaneLayout> {
+    let work_meter = execution.work_meter();
     let source_nodes = model.nodes.len().saturating_add(model.subgraphs.len());
     let source_work = source_layout_work_units(source_nodes, model.edges.len());
     work_meter.preflight(source_work)?;
     let render_model = FlowchartRenderModelRef::new(model, render_label_sources);
     let visible_edges = render_model.projected_edges().collect::<Vec<_>>();
-    admit_layout_work(&work_meter, source_work, visible_edges.len())?;
+    #[cfg(feature = "layout-shoal")]
+    let canonical = crate::layout_backend::resolve_graph_layout(effective_config).backend
+        == crate::layout_backend::GraphLayoutBackend::Shoal;
+    #[cfg(not(feature = "layout-shoal"))]
+    let canonical = false;
+    if canonical {
+        work_meter.charge(source_work)?;
+    } else {
+        admit_layout_work(&work_meter, source_work, visible_edges.len())?;
+    }
     let transport_plan = FlowchartEdgeTransportPlan::for_keyed_edges(
         visible_edges
             .iter()
@@ -104,20 +116,36 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         &render_model,
         (&visible_edges, &transport_plan),
         effective_config,
-        (measurer, math_renderer),
+        (execution.text_measurer(), execution.math_renderer()),
         svg_label_sidecar,
         edge_style_plan,
         &work_meter,
     )?;
-    run_layout_core(&mut working, config, work_meter)?;
-    prepare::measure_zero_width_lane_titles(
-        &mut working,
-        model,
-        render_label_sources,
-        effective_config,
-        measurer,
-        svg_label_sidecar,
-    );
+    #[cfg(feature = "layout-shoal")]
+    let shoal = if canonical {
+        Some(shoal::solve(
+            &mut working,
+            &render_model,
+            &visible_edges,
+            effective_config,
+            config,
+            execution,
+            svg_label_sidecar,
+        )?)
+    } else {
+        None
+    };
+    if !canonical {
+        run_layout_core(&mut working, config, work_meter)?;
+        prepare::measure_zero_width_lane_titles(
+            &mut working,
+            model,
+            render_label_sources,
+            effective_config,
+            execution.text_measurer(),
+            svg_label_sidecar,
+        );
+    }
 
     // Mermaid's swimlane core only normalizes the implicit `basis` curve to
     // `rounded`; an explicit edge/default/config curve remains authoritative.
@@ -165,6 +193,10 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         curve_by_id.insert(edge.id.as_str(), curve);
     }
     let mut layout = project_layout(&working, &curve_by_id);
+    #[cfg(feature = "layout-shoal")]
+    {
+        layout.shoal = shoal;
+    }
     for (edge, (_, source)) in layout.edges.iter_mut().zip(&visible_edges) {
         if edge.id != source.semantic.id {
             edge.id.clone_from(&source.semantic.id);
@@ -278,6 +310,11 @@ fn project_layout(
             feature = "diagram-agentflow"
         ))]
         edge_owners: crate::flowchart::FlowchartEdgeOwners::default(),
+        #[cfg(all(
+            feature = "layout-shoal",
+            any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+        ))]
+        shoal: None,
         bounds,
     }
 }

@@ -41,7 +41,13 @@ pub(super) struct XmlAdmissionUsage {
 }
 
 impl ValidatedIconBody {
-    #[cfg(any(test, feature = "layout-cytoscape"))]
+    #[cfg(any(
+        test,
+        all(
+            feature = "diagram-architecture",
+            any(feature = "layout-cytoscape", feature = "layout-shoal")
+        )
+    ))]
     pub(super) fn parse(
         body: String,
         pack_index: usize,

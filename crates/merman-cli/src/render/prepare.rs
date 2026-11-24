@@ -968,6 +968,7 @@ fn prepare_rustdoc_renderer(
         math_renderer: Some(crate::cli::MathRendererKind::Ratex),
         #[cfg(not(feature = "math"))]
         math_renderer: Some(crate::cli::MathRendererKind::None),
+        adaptation: merman::svg::LayoutAdaptation::None,
         container_width: None,
         container_height: None,
         svg_id: Some("merman-rustdoc".to_string()),

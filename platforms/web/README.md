@@ -166,7 +166,7 @@ object. Pass it back as `layout.previous_shoal_frame` for the same document to r
 and capture a new frame. Keep the last successful result for that document while editing, and
 discard it when its layout backend or document changes.
 
-See [Try Shoal in Playground](#try-shoal-in-playground) for the local browser build.
+See [Try Shoal in Playground](#try-shoal-in-playground) for the hosted preview and local browser build.
 
 Measurement remains deterministic unless `textMeasurement: "browser"` or a host callback is
 selected. Browser measurement uses the target Document's probes and refreshes after font loading.
@@ -526,7 +526,12 @@ second feature matrix. Use `npm run verify:wasm-inputs --prefix platforms/web` a
 
 ### Try Shoal in Playground
 
-Run these commands from the repository root after installing the Web and Playground dependencies.
+The hosted Playground includes experimental Shoal for its Merman SVG preview. Set `layout: shoal`
+in a diagram's frontmatter, or set `{"layout":"shoal"}` in **Config** for the workspace.
+A `layout` value in **Config** takes precedence over frontmatter. [Open Playground](https://frankorz.com/merman/)
+
+For local development, run these commands from the repository root after installing the Web and
+Playground dependencies.
 
 ```sh
 npm --prefix platforms/web run build:wasm:full -- --local-shoal
@@ -534,7 +539,10 @@ npm --prefix playground run assemble:shoal
 npm --prefix playground run dev:shoal
 ```
 
-The local recipe adds `layout-shoal` to `web-full` and writes the raw build to
+When the preview uses Shoal, choose **Tools → Fit preview width** to fit the SVG layout to a
+width in CSS pixels. Turn the setting off to return to the solver's natural width.
+
+The Playground build adds `layout-shoal` to `web-full` and writes the raw build to
 `platforms/web/pkg/full-local-shoal`. Assembly sets the existing `@mermanjs/web` package to use
 that build for the Playground's file dependency after checking its wasm-bindgen declarations.
 `dev:shoal` and `build:shoal` verify the exact

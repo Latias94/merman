@@ -7,6 +7,8 @@ mod refine;
 mod seam_relax;
 mod sides;
 mod solve;
+
+pub(super) use refine::crossings;
 #[cfg(test)]
 mod tests;
 
@@ -77,6 +79,8 @@ impl Frames {
             if !reusable {
                 let mut options = *ctx.options;
                 options.caps.max_dummies = remaining;
+                // The local frame is measured before sibling titles and cross-group legs exist.
+                options.inline_labels = false;
                 let local = Pass {
                     options: &options,
                     ..*ctx
@@ -108,7 +112,11 @@ pub(super) fn run(
 ) -> LayoutResult<LayoutOutput> {
     let hierarchy = hierarchy::build(graph, options, work)?;
     let sides = sides::assign(graph, &hierarchy, options, work)?;
-    let ordered = pre_order::ordered(graph, &hierarchy, options, &sides, expanded, work)?;
+    let ordered = if hierarchy.lanes.is_none() {
+        pre_order::ordered(graph, &hierarchy, options, &sides, expanded, work)?
+    } else {
+        None
+    };
     let item_count = graph
         .nodes
         .len()
@@ -138,7 +146,8 @@ pub(super) fn run(
     let mut output = 'selected: {
         let first_output = frames.draw(&first, None, expanded, work)?;
         let crossings = first_output.stats.routed_crossings;
-        if crossings == 0
+        if hierarchy.lanes.is_some()
+            || crossings == 0
             || hierarchy.borders.len() < 2
             || hierarchy.borders.len() > options.caps.max_ordered_compound_ports
             || graph.edges.len() > options.caps.max_ordered_compound_edges
@@ -171,6 +180,8 @@ pub(super) fn run(
         }
         first_output
     };
-    seam_relax::relax(&first, &mut output, work)?;
+    if hierarchy.lanes.is_none() {
+        seam_relax::relax(&first, &mut output, work)?;
+    }
     Ok(output)
 }

@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:8957a869ae1112ea4a82880dd70d9e4aac90b86000872fd00566890b3a624aa8" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:e133cab82e0ce4916729079d0c673e8d871165dd89384e7d441caef276d0caad" as const;
 
 export const TARGETS = [
   {
@@ -110,7 +110,7 @@ export const CAPABILITIES = [
   {
     "id": "layout-shoal",
     "kind": "engine",
-    "description": "Select the experimental Shoal layout for Flowchart, Agentflow, Class, State, ER, Requirement, and Usecase diagrams.",
+    "description": "Select the experimental Shoal layout for Flowchart, Agentflow, Architecture, C4, Class, State, ER, Requirement, Swimlane, and Usecase diagrams, or route Block edges on the existing grid.",
     "targets": [
       "native",
       "web"

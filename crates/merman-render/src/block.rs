@@ -9,10 +9,14 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 mod config;
+mod edge_geometry;
 mod edge_paint;
 mod marker_paint;
 mod node_binding;
+#[cfg(feature = "layout-shoal")]
+mod orthogonal;
 mod typography;
+pub(crate) use edge_geometry::block_render_edge_points;
 pub(crate) use edge_paint::BlockEdgePaintPlan;
 pub(crate) use marker_paint::BlockMarkerPaintPlan;
 pub(crate) use typography::BlockTextParticipation;

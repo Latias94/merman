@@ -103,6 +103,21 @@ pub(crate) fn resolve_graph_layout(
     GraphLayoutSelection { backend }
 }
 
+#[cfg(feature = "diagram-architecture")]
+pub(crate) fn resolve_architecture_layout(
+    config: &(impl crate::config::ConfigLookup + ?Sized),
+) -> GraphLayoutSelection {
+    if resolve_graph_layout(config).backend == GraphLayoutBackend::Shoal {
+        GraphLayoutSelection {
+            backend: GraphLayoutBackend::Shoal,
+        }
+    } else {
+        GraphLayoutSelection {
+            backend: GraphLayoutBackend::CoseBilkent,
+        }
+    }
+}
+
 /// ER supplies measured compound data to Swimlane. Other rootless graph families still use
 /// their existing provider admission until they have a family-specific measured adapter.
 #[cfg(feature = "diagram-er")]

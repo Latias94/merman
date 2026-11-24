@@ -2,7 +2,7 @@ use super::super::*;
 use crate::block::{
     BlockLabelBackgroundPlan, BlockNodeLabelPaintPlan, BlockNodePaintThemePlan, BlockRectangleKind,
     BlockShapeBoundary, BlockShapeGeometry, BlockTypographyThemePlan,
-    block_label_is_effectively_empty,
+    block_label_is_effectively_empty, block_render_edge_points,
 };
 use crate::model::{LayoutEdge, LayoutPoint};
 use crate::svg::parity::roughjs_common::closed_path_d_from_points;
@@ -184,43 +184,6 @@ fn union_block_bounds(bounds: &mut (f64, f64, f64, f64), candidate: (f64, f64, f
     bounds.3 = bounds.3.max(candidate.3);
 }
 
-fn block_edge_start_marker_inset(arrow: Option<&str>) -> f64 {
-    match arrow.unwrap_or("").trim() {
-        "arrow_point" => 4.5,
-        _ => 0.0,
-    }
-}
-
-fn block_edge_end_marker_inset(arrow: Option<&str>) -> f64 {
-    match arrow.unwrap_or("").trim() {
-        "arrow_point" => 4.0,
-        _ => 0.0,
-    }
-}
-
-fn move_point_towards(point: &LayoutPoint, target: &LayoutPoint, distance: f64) -> LayoutPoint {
-    if distance.abs() <= 1e-12 {
-        return point.clone();
-    }
-    let dx = target.x - point.x;
-    let dy = target.y - point.y;
-    let len = (dx * dx + dy * dy).sqrt();
-    if len <= 1e-12 {
-        return point.clone();
-    }
-    LayoutPoint {
-        x: point.x + dx / len * distance,
-        y: point.y + dy / len * distance,
-    }
-}
-
-struct BlockEdgePoints {
-    /// Points before marker insets, matching Mermaid's `data-points` payload.
-    data_points: Vec<LayoutPoint>,
-    /// Points after marker insets, matching the emitted path and marker anchors.
-    rendered_points: Vec<LayoutPoint>,
-}
-
 /// Determine visible edge paint from the same geometry consumed by the SVG writer.
 pub(crate) fn block_edge_is_visible(
     edge: &merman_model::families::block::BlockEdge,
@@ -242,49 +205,6 @@ pub(crate) fn block_edge_is_visible(
             .windows(2)
             .any(|pair| pair[0].x != pair[1].x || pair[0].y != pair[1].y),
     )
-}
-
-fn block_render_edge_points(
-    edge: &merman_model::families::block::BlockEdge,
-    layout_edge: &LayoutEdge,
-    shape_geometries_by_id: &std::collections::HashMap<&str, &BlockShapeGeometry>,
-) -> BlockEdgePoints {
-    let data_points = match (
-        shape_geometries_by_id.get(edge.start.as_str()),
-        shape_geometries_by_id.get(edge.end.as_str()),
-    ) {
-        (Some(from), Some(to)) => {
-            let mid = layout_edge.points.get(1).cloned().unwrap_or(LayoutPoint {
-                x: from.allocated.x + (to.allocated.x - from.allocated.x) / 2.0,
-                y: from.allocated.y + (to.allocated.y - from.allocated.y) / 2.0,
-            });
-            vec![from.intersect(&mid), mid.clone(), to.intersect(&mid)]
-        }
-        _ => layout_edge.points.clone(),
-    };
-    let mut rendered_points = data_points.clone();
-
-    if rendered_points.len() >= 2 {
-        let start_inset = block_edge_start_marker_inset(edge.arrow_type_start.as_deref());
-        if start_inset > 0.0 {
-            rendered_points[0] =
-                move_point_towards(&rendered_points[0], &rendered_points[1], start_inset);
-        }
-        let end_inset = block_edge_end_marker_inset(edge.arrow_type_end.as_deref());
-        if end_inset > 0.0 {
-            let last = rendered_points.len() - 1;
-            rendered_points[last] = move_point_towards(
-                &rendered_points[last],
-                &rendered_points[last - 1],
-                end_inset,
-            );
-        }
-    }
-
-    BlockEdgePoints {
-        data_points,
-        rendered_points,
-    }
 }
 
 fn write_important_declaration(out: &mut impl SvgOutput, key: &str, value: &str) -> Result<()> {
@@ -959,14 +879,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         } else {
             let label_w = n.label_width.unwrap_or(0.0).max(0.0);
             let label_h = n.label_height.unwrap_or(0.0).max(0.0);
-            let label_dx = if matches!(node.block_type, "odd" | "rect_left_inv_arrow") {
-                match &geometry.boundary {
-                    BlockShapeBoundary::Polygon { translation, .. } => translation.x,
-                    _ => 0.0,
-                }
-            } else {
-                0.0
-            };
+            let label_dx = geometry.label_offset_x(node.block_type);
             (label_dx - label_w / 2.0, -label_h / 2.0, label_w, label_h)
         };
         if label_w > 0.0 && label_h > 0.0 {
@@ -1049,25 +962,38 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         let Some(le) = layout_edges_by_id.get(&e.id) else {
             continue;
         };
-        let edge_points = block_render_edge_points(e, le, &shape_geometries_by_id);
-        let data_points = base64::engine::general_purpose::STANDARD
-            .encode(json_stringify_points(&edge_points.data_points));
-        let (d, path_bounds) =
-            super::super::curve::curve_basis_path_d_and_bounds(&edge_points.rendered_points);
-        if let Some(path_bounds) = path_bounds {
-            union_block_bounds(
-                &mut content_bounds,
-                (
-                    path_bounds.min_x,
-                    path_bounds.min_y,
-                    path_bounds.max_x,
-                    path_bounds.max_y,
-                ),
+        let legacy_points;
+        let legacy_d;
+        let (d, points, marker_refs) = 'geometry: {
+            #[cfg(feature = "layout-shoal")]
+            if let Some(route) = edge_paint_theme.orthogonal_route(edge_index) {
+                let b = &route.path.bounds;
+                union_block_bounds(&mut content_bounds, (b.min_x, b.min_y, b.max_x, b.max_y));
+                break 'geometry (
+                    route.path.d.as_str(),
+                    le.points.as_slice(),
+                    [Some(&route.marker_refs[0]), Some(&route.marker_refs[1])],
+                );
+            }
+            legacy_points = block_render_edge_points(e, le, &shape_geometries_by_id);
+            let (d, bounds) =
+                super::super::curve::curve_basis_path_d_and_bounds(&legacy_points.rendered_points);
+            legacy_d = d;
+            if let Some(b) = bounds {
+                union_block_bounds(&mut content_bounds, (b.min_x, b.min_y, b.max_x, b.max_y));
+            }
+            break 'geometry (
+                legacy_d.as_str(),
+                legacy_points.data_points.as_slice(),
+                [
+                    legacy_points.rendered_points.first(),
+                    legacy_points.rendered_points.last(),
+                ],
             );
-        }
-        if !edge_points.rendered_points.is_empty() {
-            has_rendered_edge = true;
-        }
+        };
+        has_rendered_edge |= !points.is_empty();
+        let data_points =
+            base64::engine::general_purpose::STANDARD.encode(json_stringify_points(points));
         let thickness = e.thickness.as_str();
         let pattern = e.pattern.as_str();
         let class_attr = format!(
@@ -1084,7 +1010,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         let _ = write!(
             &mut out,
             r#"<path d="{}" id="{}" class="{}" style="{}" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
-            escape_attr(&d),
+            escape_attr(d),
             escape_attr(&path_id),
             escape_attr(&class_attr),
             escape_attr(edge_style),
@@ -1093,7 +1019,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         );
 
         if let Some((kind, suffix)) = marker_paint_theme.final_reference(edge_index, true) {
-            if let Some(point) = edge_points.rendered_points.first() {
+            if let Some(point) = marker_refs[0] {
                 include_block_marker_bounds(&mut marker_bounds, point, kind.suffix());
             }
             let _ = write!(
@@ -1103,7 +1029,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             );
         }
         if let Some((kind, suffix)) = marker_paint_theme.final_reference(edge_index, false) {
-            if let Some(point) = edge_points.rendered_points.last() {
+            if let Some(point) = marker_refs[1] {
                 include_block_marker_bounds(&mut marker_bounds, point, kind.suffix());
             }
             let _ = write!(

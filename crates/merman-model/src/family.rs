@@ -146,6 +146,22 @@ pub fn diagram_type_family_id(diagram_type: &str) -> Option<DiagramFamilyId> {
     find_variant(diagram_type).map(|(family, _)| family.id)
 }
 
+/// Returns the presentation owner after layout selection.
+/// Flowchart and Swimlane share a model and can enter either family's renderer.
+#[doc(hidden)]
+pub fn diagram_type_presentation_family_id(
+    diagram_type: &str,
+    layout: Option<&str>,
+) -> Option<DiagramFamilyId> {
+    let family = diagram_type_family_id(diagram_type)?;
+    Some(match (family, layout) {
+        (DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE, Some("swimlane"))
+        | (DiagramFamilyId::SWIMLANE, Some("shoal")) => DiagramFamilyId::SWIMLANE,
+        (DiagramFamilyId::SWIMLANE, _) => DiagramFamilyId::FLOWCHART,
+        _ => family,
+    })
+}
+
 /// Returns the stable logical family spelling independently of payload availability.
 pub fn diagram_type_family_kind(diagram_type: &str) -> Option<&'static str> {
     diagram_type_family_id(diagram_type).map(DiagramFamilyId::as_str)

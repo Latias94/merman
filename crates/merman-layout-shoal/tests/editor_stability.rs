@@ -1,7 +1,7 @@
 use merman_layout_shoal::{
-    Direction, EdgeSpec, Graph, GroupId, GroupSpec, LayoutOutput, LayoutScratch, NodeId, NodeSpec,
-    Options, OrderHint, Rect, RoutingStyle, Size, WidthPolicy, WorkControl, WorkError, layout,
-    layout_with_control,
+    Direction, EdgeSpec, Endpoint, Graph, GroupId, GroupSpec, LayoutOutput, LayoutScratch, NodeId,
+    NodeSpec, Options, OrderHint, Point, PositionHint, Rect, RoutePoint, RoutingStyle, Side, Size,
+    WidthPolicy, WorkControl, WorkError, layout, layout_with_control,
 };
 
 struct Sequence {
@@ -79,6 +79,18 @@ fn edge(source: u32, target: u32) -> EdgeSpec {
     EdgeSpec::new(NodeId(source).into(), NodeId(target).into())
 }
 
+fn sequence_graph(sequence: &Sequence, direction: Direction) -> Graph {
+    let mut graph = Graph::default();
+    graph.direction = direction;
+    graph.nodes = (0..9).map(|index| node(index, direction)).collect();
+    graph.edges = sequence
+        .edges
+        .iter()
+        .map(|&(source, target)| edge(source, target))
+        .collect();
+    graph
+}
+
 impl Edit {
     fn apply(self, graph: &mut Graph, options: &mut Options) {
         match self {
@@ -123,6 +135,60 @@ fn with_previous_hints(graph: &Graph, previous: &LayoutOutput) -> Graph {
             cross_key: cross_center(rect, previous.direction),
         });
         node.order_hint_direction = Some(previous.direction);
+    }
+    hinted
+}
+
+fn node_index(endpoint: Endpoint) -> usize {
+    let Endpoint::Node(NodeId(index)) = endpoint else {
+        panic!("expected a leaf endpoint");
+    };
+    index as usize
+}
+
+fn incident_signatures(graph: &Graph) -> Vec<u64> {
+    // The fixture's NodeIds survive every edit. Include direction and multiplicity.
+    let mut signatures = vec![0_u64; graph.nodes.len()];
+    for edge in &graph.edges {
+        let from = node_index(edge.source);
+        let to = node_index(edge.target);
+        for (node, peer, outgoing) in [(from, to, true), (to, from, false)] {
+            signatures[node] = signatures[node]
+                .wrapping_mul(1_099_511_628_211)
+                .wrapping_add(2 * peer as u64 + u64::from(outgoing) + 1);
+        }
+    }
+    signatures
+}
+
+fn with_previous_positions(
+    graph: &Graph,
+    previous: &LayoutOutput,
+    old_signatures: &[u64],
+    new_signatures: &[u64],
+) -> Graph {
+    let mut hinted = with_previous_hints(graph, previous);
+    let (mut min_x, mut min_y) = (f64::INFINITY, f64::INFINITY);
+    for rect in &previous.nodes {
+        min_x = min_x.min(rect.x);
+        min_y = min_y.min(rect.y);
+    }
+    for (index, rect) in previous.nodes.iter().enumerate() {
+        let center = rect.center();
+        hinted.nodes[index].set_position_hint(
+            PositionHint {
+                center: Point {
+                    x: center.x - min_x,
+                    y: center.y - min_y,
+                },
+                size: Size {
+                    width: rect.width,
+                    height: rect.height,
+                },
+                incident_signature: Some(old_signatures[index]),
+            },
+            Some(new_signatures[index]),
+        );
     }
     hinted
 }
@@ -430,9 +496,129 @@ fn unchanged_hints_skip_a_second_solve_for_an_unavoidable_crossing() {
     }
 }
 
+fn relabelled_graph() -> (Graph, Graph, Options) {
+    let mut graph = sequence_graph(&SEQUENCES[1], Direction::Down);
+    let mut options = Options::default();
+    options.capture_node_ranks = true;
+    let previous = layout(&graph, &options).unwrap();
+    let signatures = incident_signatures(&graph);
+    Edit::Relabel.apply(&mut graph, &mut options);
+    let ordered = with_previous_hints(&graph, &previous);
+    let positioned = with_previous_positions(&graph, &previous, &signatures, &signatures);
+    (ordered, positioned, options)
+}
+
+#[test]
+fn a_projection_can_be_declined_before_or_during_optional_work() {
+    #[derive(Default)]
+    struct ProjectionBudget {
+        mandatory: usize,
+        trials: usize,
+        charges: usize,
+        decline_at: Option<usize>,
+    }
+
+    impl WorkControl for ProjectionBudget {
+        fn check(&mut self) -> Result<(), WorkError> {
+            Ok(())
+        }
+
+        fn charge(&mut self, units: usize) -> Result<(), WorkError> {
+            self.mandatory += units;
+            Ok(())
+        }
+
+        fn try_charge_optional(
+            &mut self,
+            units: usize,
+            _headroom: usize,
+        ) -> Result<bool, WorkError> {
+            if units == 0 {
+                self.trials += 1;
+                // Allow only the coordinate projection, leaving the graph-wide comparison out.
+                return Ok(self.trials == 1);
+            }
+            self.charges += 1;
+            Ok(self.decline_at != Some(self.charges))
+        }
+    }
+
+    let (ordered, positioned, options) = relabelled_graph();
+    let mut scratch = LayoutScratch::default();
+    let mut required = Meter::new(usize::MAX);
+    let baseline = layout_with_control(
+        &ordered,
+        &options,
+        &mut scratch,
+        &mut PrimaryOnly(&mut required),
+    )
+    .unwrap();
+    let mut exact = Meter::new(required.used);
+    assert_eq!(
+        layout_with_control(&positioned, &options, &mut scratch, &mut exact).unwrap(),
+        baseline
+    );
+    assert_eq!(exact.used, required.used);
+    assert_eq!(exact.comparisons, 1);
+
+    let mut full = ProjectionBudget::default();
+    let projected = layout_with_control(&positioned, &options, &mut scratch, &mut full).unwrap();
+    assert_ne!(projected.nodes, baseline.nodes);
+    assert!(full.charges > 2);
+    let mut late = ProjectionBudget {
+        decline_at: Some(full.charges),
+        ..ProjectionBudget::default()
+    };
+    assert_eq!(
+        layout_with_control(&positioned, &options, &mut scratch, &mut late).unwrap(),
+        baseline
+    );
+    assert_eq!(late.charges, full.charges);
+    assert_eq!(late.mandatory, required.used);
+    assert_eq!(
+        layout_with_control(
+            &positioned,
+            &options,
+            &mut scratch,
+            &mut ProjectionBudget::default()
+        )
+        .unwrap(),
+        projected
+    );
+}
+
+#[test]
+fn absent_stale_and_invalid_position_frames_use_the_order_only_geometry_and_work() {
+    let (_, positioned, options) = relabelled_graph();
+    let mut scratch = LayoutScratch::default();
+    for invalidate in [
+        |node: &mut NodeSpec| node.order_hint_direction = None,
+        |node: &mut NodeSpec| node.order_hint_direction = Some(Direction::Right),
+        |node: &mut NodeSpec| node.order_hint.as_mut().unwrap().rank += 1000,
+        |node: &mut NodeSpec| node.position_hint.as_mut().unwrap().center.x = f64::NAN,
+        |node: &mut NodeSpec| node.position_hint.as_mut().unwrap().size.height = -1.,
+    ] {
+        let mut graph = positioned.clone();
+        for node in &mut graph.nodes {
+            invalidate(node);
+        }
+        let mut hinted = Meter::new(usize::MAX);
+        let output = layout_with_control(&graph, &options, &mut scratch, &mut hinted).unwrap();
+        for node in &mut graph.nodes {
+            node.position_hint = None;
+        }
+        let mut cleared = Meter::new(usize::MAX);
+        let baseline = layout_with_control(&graph, &options, &mut scratch, &mut cleared).unwrap();
+        assert_eq!(output, baseline);
+        assert_eq!(hinted.used, cleared.used);
+        assert_eq!(hinted.comparisons, cleared.comparisons);
+    }
+}
+
 #[derive(Default)]
 struct Movement {
     distance: f64,
+    cross_distance: f64,
     survivors: usize,
     inversions: usize,
     pairs: usize,
@@ -446,6 +632,8 @@ impl Movement {
         for (index, (&before, &after)) in previous.nodes.iter().zip(&current.nodes).enumerate() {
             let (start, finish) = (before.center(), after.center());
             movement.distance += (finish.x - start.x).hypot(finish.y - start.y);
+            movement.cross_distance +=
+                (cross_center(after, direction) - cross_center(before, direction)).abs();
             movement.survivors += 1;
             for neighbor in 0..index {
                 if previous.node_ranks[neighbor] == previous.node_ranks[index]
@@ -465,6 +653,7 @@ impl Movement {
 
     fn record(&mut self, value: &Self) {
         self.distance += value.distance;
+        self.cross_distance += value.cross_distance;
         self.survivors += value.survivors;
         self.inversions += value.inversions;
         self.pairs += value.pairs;
@@ -473,12 +662,94 @@ impl Movement {
     fn mean(&self) -> f64 {
         self.distance / self.survivors as f64
     }
+
+    fn mean_across(&self) -> f64 {
+        self.cross_distance / self.survivors as f64
+    }
+}
+
+fn check_geometry(graph: &Graph, drawing: &LayoutOutput, routing: RoutingStyle) {
+    const EPS: f64 = 1e-8;
+    let within = |v, low, high| low - EPS <= v && v <= high + EPS;
+    assert_eq!(graph.nodes.len(), drawing.nodes.len());
+    assert_eq!(graph.edges.len(), drawing.edges.len());
+    for (index, node) in drawing.nodes.iter().enumerate() {
+        assert!(node.x.is_finite() && node.y.is_finite());
+        assert_eq!(node.width, graph.nodes[index].size.width);
+        assert_eq!(node.height, graph.nodes[index].size.height);
+        for other in &drawing.nodes[..index] {
+            assert!(
+                node.x.max(other.x) + EPS >= (node.x + node.width).min(other.x + other.width)
+                    || node.y.max(other.y) + EPS
+                        >= (node.y + node.height).min(other.y + other.height),
+                "overlapping node boxes {node:?} and {other:?}"
+            );
+        }
+    }
+    for (spec, geometry) in graph.edges.iter().zip(&drawing.edges) {
+        let points = &geometry.points;
+        assert!(points.len() >= 2);
+        assert!(
+            points
+                .iter()
+                .all(|point| point.x.is_finite() && point.y.is_finite())
+        );
+        for (end, side, point) in [
+            (spec.source, geometry.ports.0, &points[0]),
+            (spec.target, geometry.ports.1, points.last().unwrap()),
+        ] {
+            let r = drawing.nodes[node_index(end)];
+            assert_eq!(point.axis, side.axis());
+            assert!(within(point.x, r.x, r.x + r.width));
+            assert!(within(point.y, r.y, r.y + r.height));
+            assert!(match side {
+                Side::Top => (point.y - r.y).abs() <= EPS,
+                Side::Bottom => (point.y - (r.y + r.height)).abs() <= EPS,
+                Side::Left => (point.x - r.x).abs() <= EPS,
+                Side::Right => (point.x - (r.x + r.width)).abs() <= EPS,
+            });
+        }
+        let hits = |r: Rect, a: &RoutePoint, b: &RoutePoint| {
+            let (mut enter, mut exit) = (0.0_f64, 1.0_f64);
+            for (low, high, start, end) in [
+                (r.x + EPS, r.x + r.width - EPS, a.x, b.x),
+                (r.y + EPS, r.y + r.height - EPS, a.y, b.y),
+            ] {
+                if start == end {
+                    if !(low < start && start < high) {
+                        return false;
+                    }
+                } else {
+                    let start_t = (low - start) / (end - start);
+                    let end_t = (high - start) / (end - start);
+                    enter = enter.max(start_t.min(end_t));
+                    exit = exit.min(start_t.max(end_t));
+                }
+            }
+            enter < exit
+        };
+        for pair in points.windows(2) {
+            let (a, b) = (&pair[0], &pair[1]);
+            if routing == RoutingStyle::Orthogonal {
+                assert!(a.x == b.x || a.y == b.y);
+            }
+            for &rect in &drawing.nodes {
+                if routing == RoutingStyle::Curved && a.x != b.x && a.y != b.y {
+                    // Check the canonical knots for diagonal curved legs.
+                    assert!(!hits(rect, a, a) && !hits(rect, b, b));
+                } else {
+                    assert!(!hits(rect, a, b), "route {a:?} → {b:?} enters {rect:?}");
+                }
+            }
+        }
+    }
 }
 
 #[test]
-fn editor_corpus_preserves_more_sibling_order_at_equal_crossings() {
+fn editor_corpus_preserves_sibling_order_and_positions_at_equal_crossings() {
     let mut total_stateless = Movement::default();
-    let mut total_hinted = Movement::default();
+    let mut total_ordered = Movement::default();
+    let mut total_positioned = Movement::default();
     let mut improved_leaf_frames = 0;
     let mut improved_edge_frames = 0;
     for direction in [
@@ -488,18 +759,13 @@ fn editor_corpus_preserves_more_sibling_order_at_equal_crossings() {
         Direction::Left,
     ] {
         for sequence in &SEQUENCES {
-            let mut graph = Graph::default();
-            graph.direction = direction;
-            graph.nodes = (0..9).map(|index| node(index, direction)).collect();
-            graph.edges = sequence
-                .edges
-                .iter()
-                .map(|&(source, target)| edge(source, target))
-                .collect();
+            let mut graph = sequence_graph(sequence, direction);
             let mut options = Options::default();
             options.capture_node_ranks = true;
             let mut previous_stateless = layout(&graph, &options).unwrap();
-            let mut previous_hinted = previous_stateless.clone();
+            let mut previous_ordered = previous_stateless.clone();
+            let mut previous_positioned = previous_stateless.clone();
+            let mut previous_signatures = incident_signatures(&graph);
             for edit in [
                 Edit::Relabel,
                 Edit::Restyle,
@@ -508,29 +774,46 @@ fn editor_corpus_preserves_more_sibling_order_at_equal_crossings() {
             ] {
                 edit.apply(&mut graph, &mut options);
                 let stateless = layout(&graph, &options).unwrap();
-                let hinted =
-                    layout(&with_previous_hints(&graph, &previous_hinted), &options).unwrap();
-                assert_eq!(
-                    stateless.node_ranks, hinted.node_ranks,
-                    "{direction:?} {edit:?}"
-                );
+                let ordered =
+                    layout(&with_previous_hints(&graph, &previous_ordered), &options).unwrap();
+                let signatures = incident_signatures(&graph);
+                let positioned = layout(
+                    &with_previous_positions(
+                        &graph,
+                        &previous_positioned,
+                        &previous_signatures,
+                        &signatures,
+                    ),
+                    &options,
+                )
+                .unwrap();
                 let crossings = (
                     stateless.stats.topological_crossings,
                     stateless.stats.routed_crossings,
                 );
-                assert_eq!(
-                    crossings,
-                    (
-                        hinted.stats.topological_crossings,
-                        hinted.stats.routed_crossings
-                    ),
-                    "{} {direction:?} {edit:?}",
-                    sequence.name
-                );
+                for drawing in [&stateless, &ordered, &positioned] {
+                    assert_eq!(
+                        stateless.node_ranks, drawing.node_ranks,
+                        "{direction:?} {edit:?}"
+                    );
+                    assert_eq!(
+                        crossings,
+                        (
+                            drawing.stats.topological_crossings,
+                            drawing.stats.routed_crossings
+                        ),
+                        "{} {direction:?} {edit:?}",
+                        sequence.name
+                    );
+                    check_geometry(&graph, drawing, options.routing);
+                }
                 let without = Movement::between(&previous_stateless, &stateless);
-                let with = Movement::between(&previous_hinted, &hinted);
+                let with = Movement::between(&previous_ordered, &ordered);
+                let positions = Movement::between(&previous_positioned, &positioned);
                 assert_eq!(without.pairs, with.pairs);
+                assert_eq!(with.pairs, positions.pairs);
                 assert_eq!(without.survivors, with.survivors);
+                assert_eq!(with.survivors, positions.survivors);
                 if with.inversions < without.inversions {
                     match edit {
                         Edit::AddLeaf(_) => improved_leaf_frames += 1,
@@ -539,34 +822,53 @@ fn editor_corpus_preserves_more_sibling_order_at_equal_crossings() {
                     }
                 }
                 println!(
-                    "{} {direction:?} {edit:?}: mean {:.3} → {:.3}; inversions {}/{} → {}/{}; crossings {:?}",
+                    "{} {direction:?} {edit:?}: mean {:.3} → {:.3} → {:.3}; across {:.3} → {:.3} → {:.3}; inversions {}/{} → {}/{} → {}/{}; crossings {:?}; hard geometry passed in all three modes",
                     sequence.name,
                     without.mean(),
                     with.mean(),
+                    positions.mean(),
+                    without.mean_across(),
+                    with.mean_across(),
+                    positions.mean_across(),
                     without.inversions,
                     without.pairs,
                     with.inversions,
                     with.pairs,
+                    positions.inversions,
+                    positions.pairs,
                     crossings,
                 );
                 total_stateless.record(&without);
-                total_hinted.record(&with);
+                total_ordered.record(&with);
+                total_positioned.record(&positions);
                 previous_stateless = stateless;
-                previous_hinted = hinted;
+                previous_ordered = ordered;
+                previous_positioned = positioned;
+                previous_signatures = signatures;
             }
         }
     }
     println!(
-        "Edit corpus: mean displacement {:.3} → {:.3}, surviving inversions {}/{} → {}/{}",
+        "Edit corpus, {} surviving nodes: mean displacement {:.3} → {:.3} → {:.3}; across {:.3} → {:.3} → {:.3}; surviving inversions {}/{} → {}/{} → {}/{}",
+        total_stateless.survivors,
         total_stateless.mean(),
-        total_hinted.mean(),
+        total_ordered.mean(),
+        total_positioned.mean(),
+        total_stateless.mean_across(),
+        total_ordered.mean_across(),
+        total_positioned.mean_across(),
         total_stateless.inversions,
         total_stateless.pairs,
-        total_hinted.inversions,
-        total_hinted.pairs,
+        total_ordered.inversions,
+        total_ordered.pairs,
+        total_positioned.inversions,
+        total_positioned.pairs,
     );
     assert!(improved_leaf_frames > 0);
     assert!(improved_edge_frames > 0);
-    assert!(total_hinted.mean() < total_stateless.mean());
-    assert!(total_hinted.inversions < total_stateless.inversions);
+    assert!(total_ordered.mean() < total_stateless.mean());
+    assert!(total_ordered.inversions < total_stateless.inversions);
+    assert!(total_positioned.mean() < total_ordered.mean());
+    assert!(total_positioned.mean_across() < total_ordered.mean_across());
+    assert!(total_positioned.inversions <= total_ordered.inversions);
 }

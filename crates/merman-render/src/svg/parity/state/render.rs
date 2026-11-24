@@ -15,7 +15,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     layout: &StateDiagramLayout,
     model: &StateSvgModel,
     label_sidecar: &crate::state::StateLabelSidecar,
-    #[cfg(feature = "layout-shoal")] canonical_routes: Option<&CanonicalRoutes>,
+    route_contract: &crate::graph_layout::RouteContract,
     effect_evidence: &crate::diagram_theme::SvgShadowEvidenceRecorder,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
@@ -31,8 +31,9 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         layout,
         model,
         label_sidecar,
+        route_contract.is_elk_parity(),
         #[cfg(feature = "layout-shoal")]
-        canonical_routes,
+        route_contract.canonical_routes(),
         effect_evidence,
         style_plan,
         effective_config,
@@ -47,6 +48,7 @@ fn render_state_diagram_svg_with_plan(
     layout: &StateDiagramLayout,
     model: &StateSvgModel,
     label_sidecar: &crate::state::StateLabelSidecar,
+    elk_parity: bool,
     #[cfg(feature = "layout-shoal")] canonical_routes: Option<&CanonicalRoutes>,
     effect_evidence: &crate::diagram_theme::SvgShadowEvidenceRecorder,
     style_plan: &crate::state::StateStylePlan,
@@ -142,7 +144,7 @@ fn render_state_diagram_svg_with_plan(
     let mut ctx = StateRenderCtx {
         work_meter: options.work_meter(),
         diagram_id,
-        uses_elk_adapter_dom: layout.uses_elk_adapter_dom,
+        uses_elk_adapter_dom: elk_parity,
         elk_edge_paths: &layout.elk_edge_paths,
         elk_line_hop_paths: FxHashMap::default(),
         diagram_look: state_render_settings.diagram_look,
@@ -314,7 +316,7 @@ fn render_state_diagram_svg_with_plan(
         out
     }
 
-    if layout.uses_elk_adapter_dom {
+    if elk_parity {
         ctx.elk_line_hop_paths = prepare_state_line_hop_paths(&ctx, effective_config, options)?;
     } else {
         ctx.nested_roots = compute_state_nested_roots(&ctx);
@@ -1488,6 +1490,7 @@ mod tests {
                         &layout,
                         model,
                         &labels,
+                        true,
                         #[cfg(feature = "layout-shoal")]
                         None,
                         &effects,

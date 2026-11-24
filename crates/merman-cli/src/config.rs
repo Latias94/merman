@@ -25,9 +25,9 @@ use crate::invocation::{ResolvedParseOptions, ResolvedRuntimeOptions};
 use merman::SvgEnvironment;
 #[cfg(feature = "svg")]
 use merman::svg::{
-    DiagramThemeCompiler, IconRegistry, LayoutOptions, MAX_THEME_ENCODED_BYTES_HARD_CAP,
-    SvgRenderOptions, ThemeAdmissionPolicy, ThemeAppearance, ThemeResourcePolicy, TrustedThemeLane,
-    TrustedThemeLanes,
+    DiagramThemeCompiler, IconRegistry, LayoutAdaptation, LayoutOptions,
+    MAX_THEME_ENCODED_BYTES_HARD_CAP, SvgRenderOptions, ThemeAdmissionPolicy, ThemeAppearance,
+    ThemeResourcePolicy, TrustedThemeLane, TrustedThemeLanes,
 };
 #[cfg(feature = "svg")]
 use merman_bindings_core::{
@@ -451,6 +451,7 @@ struct RendererInputs<'a> {
     theme: Option<ThemeInput<'a>>,
     theme_portability: crate::cli::ThemePortabilityKind,
     math_renderer: Option<MathRendererKind>,
+    adaptation: LayoutAdaptation,
     container_width: Option<f64>,
     container_height: Option<f64>,
     svg_id: Option<&'a str>,
@@ -470,6 +471,7 @@ impl<'a> RendererInputs<'a> {
             )?,
             theme_portability: render.theme_portability,
             math_renderer: render.math_renderer,
+            adaptation: LayoutAdaptation::None,
             container_width: render.container_width,
             container_height: render.container_height,
             svg_id: render.svg_id.as_deref(),
@@ -482,6 +484,7 @@ impl<'a> RendererInputs<'a> {
             theme: ThemeInput::from_resolved(render)?,
             theme_portability: render.theme_portability,
             math_renderer: render.math_renderer,
+            adaptation: render.adaptation,
             container_width: render.container_width,
             container_height: render.container_height,
             svg_id: render.svg_id.as_deref(),
@@ -554,10 +557,12 @@ fn renderer_from_config(
         .with_resource_policy(*resources.input_policy());
     let svg_request = merman::SvgRequest {
         environment,
-        layout: LayoutOptions::default().with_container_size(
-            render.container_width.unwrap_or(800.0),
-            render.container_height.unwrap_or(600.0),
-        ),
+        layout: LayoutOptions::default()
+            .with_adaptation_if_supported(render.adaptation)
+            .with_container_size(
+                render.container_width.unwrap_or(800.0),
+                render.container_height.unwrap_or(600.0),
+            ),
         options: svg,
         debug: Default::default(),
         pipeline: None,
@@ -657,6 +662,7 @@ mod tests {
             #[cfg(feature = "native-fonts")]
             fonts: crate::cli::FontCliArgs::default(),
             math_renderer,
+            adaptation: LayoutAdaptation::None,
             container_width: None,
             container_height: None,
             svg_id: None,

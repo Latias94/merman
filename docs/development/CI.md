@@ -54,8 +54,9 @@ The core, native Node, and SVG/browser owners publish separate same-run results 
   tests, optimized rejection tests, and SVG/PNG authoring contracts;
 - `svg-parity` owns the complete DOM comparison and Chromium containment oracle;
 - `node-contracts` runs Node-WASM and N-API as parallel matrix members on PRs and main;
-- Pages builds its Web package once while compiling the optimized size tool independently;
-  size-report and Playground consumers use that same uploaded Web package and run in parallel;
+- Pages builds the standard Web package group and the Playground's Shoal WASM in one job.
+  The optimized size tool builds independently. Size reporting and Playground qualification
+  use the uploaded artifacts and run in parallel.
 - A shared native runtime workflow builds each non-Linux complete CLI once when both CLI
   and VS Code are selected. The same platform job checks the analysis profile, builds LSP and
   the complete CLI, then packages and tests VSIX. CLI-only runs retain their three-host profile
@@ -329,10 +330,11 @@ pairwise combination and artifact recipe.
 ## GitHub Pages and Playground
 
 The Pages workflow owns the deployable Playground and browser integration evidence. It builds the
-Web package group once, then uses those exact package artifacts for size reports, package smoke,
-Playground preparation, and browser tests. Generated-source freshness remains owned by the central
-CI workflow for pull requests. A main-branch or manual Pages deployment repeats only the deployable
-browser projections because deployment is an independently mutable side effect.
+standard Web package group for package smoke, size reports, and the installed browser consumer.
+The same producer builds an additional full WASM with `layout-shoal`. The Playground job assembles
+that variant after qualifying the standard packages, verifies its provenance, and tests the
+resulting site. Generated-source freshness remains owned by the central CI workflow for pull
+requests. A main-branch or manual Pages deployment repeats the deployable browser projections.
 
 Web and Playground WASM sizes are reported without byte ceilings. Package provenance, capability
 identity, package smoke, and browser tests remain required. Typst publication owns its separate

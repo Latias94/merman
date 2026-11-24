@@ -45,7 +45,7 @@ The public capability leaves are:
 | `ascii` | Terminal text output | None |
 | `png`, `jpeg`, `pdf` | Independent binary exports | None |
 | `layout-cytoscape`, `layout-elk` | Mermaid-compatible layout engines | Each implies `svg` |
-| `layout-shoal` | Experimental Merman layered layout for Flowchart, Agentflow, Class, State, ER, Requirement, and Usecase | Implies `svg` |
+| `layout-shoal` | Experimental Merman layered layout and orthogonal edge routing | Implies `svg` |
 | `math` | Math-label rendering | Implies `svg` |
 | `native-fonts` | Explicit font contexts for shared text measurement and native painting | Facade and CLI forward SVG; no codec requirement |
 | `system-clock`, `system-timezone`, `system-random`, `system-timing` | Optional native adapters | None; compiled separately and selected explicitly at runtime |
@@ -107,7 +107,7 @@ select their own direct leaf set instead.
 
 ### Try the experimental Shoal layout
 
-Enable `layout-shoal` on the Rust `merman` facade or build the CLI with `cargo build --locked -p merman-cli --features layout-shoal`. Check `merman-cli capabilities` for `layout-shoal`, then select the engine in the diagram's Mermaid frontmatter.
+The hosted Playground includes Shoal for the Merman SVG preview. Enable `layout-shoal` on the Rust `merman` dependency or build the CLI with `cargo build --locked -p merman-cli --features layout-shoal`. Check `merman-cli capabilities` for `layout-shoal`, then select the engine in the diagram's Mermaid frontmatter.
 
 ```text
 ---
@@ -120,18 +120,26 @@ flowchart LR
 
 Run `target/debug/merman-cli render diagram.mmd --theme-preset editor --theme-appearance dark -o diagram.svg` from the checkout. Select `dagre` or `elk` in the same field to compare drawings in a build containing those engines. Shoal uses the family's measured shapes and labels, including effective theme fonts and edge-label padding.
 
-Shoal draws Flowcharts in all four directions, including cycles, self-loops, parallel labeled edges, nested subgraphs and group endpoints. Agentflow uses the same engine after projecting visible nodes, collapsed flows and connectors. Class retains measured class boxes, namespaces and multiplicity labels. State supports explicit composite directions, concurrent regions and self-transitions. ER routes identifying and non-identifying relations with cardinality markers at both ends. Requirement supports relation labels and containment markers. Usecase routes relationships across system boundaries and clips them to actor and use-case contours.
+Set `{"layout":"shoal"}` in the Playground's **Config** tab to select Shoal for the workspace. A `layout` value in **Config** takes precedence over frontmatter. To make Shoal the CLI default for supported diagrams, save the same JSON to a file and pass `--config-file path/to/mermaid.json`. A diagram's frontmatter can override the CLI default. Rust hosts can set the same site configuration on `MermaidEngine`. [Rust embedding guide](rendering/RUST_EMBEDDING.md#replace-the-previous-renderer)
+
+Shoal draws Flowcharts in all four directions, including cycles, self-loops, parallel labeled edges, nested subgraphs and group endpoints. Agentflow uses the same engine after projecting visible nodes, collapsed flows and connectors. Architecture uses the declared port faces on services, junctions and groups for orthogonal routing. C4 keeps its measured elements and routes relationships across nested boundaries. Class retains measured class boxes, namespaces and multiplicity labels. State supports explicit composite directions, concurrent regions and self-transitions. ER routes identifying and non-identifying relations with cardinality markers at both ends. Requirement supports relation labels and containment markers. Usecase routes relationships across system boundaries and clips them to actor and use-case contours.
+
+Use a `swimlane-beta` header with `layout: shoal` to align work across lanes. Root lanes share rank positions and align their borders. Use `layout: shoal` in Block to try orthogonal edge routing on the authored grid. Block uses its usual route for an edge if the router cannot find a clear alternative.
 
 A build without Shoal reports the missing capability when one of these diagrams requests it. Rust callers can also pass measured graphs directly to the standalone crate. [Shoal crate](../crates/merman-layout-shoal/README.md)
 
-Shoal Flowchart and Agentflow support explicit container fitting and previous-frame hints for
-previews. Standalone Playground previews use frame hints with a custom WASM build that enables
-`layout-shoal`. To try Shoal in VS Code, set `merman.cli.path` to the absolute path of the built
-CLI and open the SVG preview. The extension reuses placement hints when the CLI advertises the
-preview frame protocol.
+For supported diagrams, request a width with `merman-cli render diagram.mmd --fit-width --width 640 -o diagram.svg`.
+In the Merman SVG preview, use **Tools → Fit preview width** when the diagram selects Shoal. In VS Code, select a
+Shoal-enabled CLI with `merman.cli.path` and set `merman.preview.fitWidth` to the desired width in
+CSS pixels. Use `0` for natural placement. The extension reuses hints across successive SVG
+previews when the CLI advertises frame support. Swimlane can capture a placement frame with its
+shared rank grid. Swimlane and Block use their natural geometry width. [Width and frame support](rendering/HEADLESS_LAYOUT.md#shoal-width-adaptation-and-preview-frames)
 [Host integration](rendering/HEADLESS_LAYOUT.md#shoal-width-adaptation-and-preview-frames) ·
 [Playground experiment](../platforms/web/README.md#try-shoal-in-playground) ·
 [Layout benchmark](performance/2026-11-24-shoal.md)
+
+Use `layout: tidy-tree` for Mindmap's compact two-sided tree layout. It is available with the
+Mindmap SVG renderer and uses the diagram's measured node sizes and contours.
 
 ### Optional CLI Fonts
 
@@ -412,7 +420,7 @@ Strict parsing of a known disabled family returns `UnsupportedDiagram`. Suppress
 render parsing produces the existing Error diagram; suppressed unknown input returns `None`.
 Cancellation is never suppressed, and custom registry overlays keep their existing precedence.
 Rendering rejects a missing local handler after cancellation, provenance, and semantic/layout
-pair validation, before optional backend planning. Optional graph backends retain their registered fallback when absent from the build; denying a compiled requested backend returns a typed runtime-policy error. Architecture requires its Cytoscape render backend. See the [embedding guide](rendering/RUST_EMBEDDING.md#handle-unavailable-languages-and-backends) for family-specific behavior.
+pair validation, before optional backend planning. Optional graph backends retain their registered fallback when absent from the build. Denying a compiled requested backend returns a typed runtime-policy error. Architecture requires Cytoscape by default and `layout-shoal` when selected explicitly. See the [embedding guide](rendering/RUST_EMBEDDING.md#handle-unavailable-languages-and-backends) for family-specific behavior.
 
 Existing distributed products retain their all-family recipes; this change adds no family-specific
 prebuilt package. Artifact profile schema 2 records the exact compiled parser set in
@@ -469,7 +477,7 @@ explicit SVG pipeline. The complete set of copyable task examples lives in
 merman = { path = "crates/merman", default-features = false, features = ["all-diagrams", "svg"] }
 ```
 
-Optional layout loaders retain their family-specific fallback rules: without compiled ELK, graph requests can resolve to Dagre; Mindmap can also use its registered fallback. Architecture requires Cytoscape for its rendering path and reports a typed missing-capability error when it is unavailable. A compiled backend denied by runtime policy reports a policy error, and an execution failure in the selected backend does not trigger fallback. Missing required math capability also reports a typed error. See the [embedding guide](rendering/RUST_EMBEDDING.md#example-an-editor-with-a-family-allowlist) and test the actual family/backend combination.
+Without compiled ELK, graph requests can resolve to Dagre. Mindmap can also use its registered fallback. Architecture reports a typed missing-capability error when the selected engine is unavailable. The default engine is Cytoscape. An explicit `layout: shoal` can render using `diagram-architecture,layout-shoal` and the SVG feature. A compiled backend denied by runtime policy reports a policy error. Execution errors from the selected backend propagate to the caller. Missing required math capability also reports a typed error. See the [embedding guide](rendering/RUST_EMBEDDING.md#example-an-editor-with-a-family-allowlist) and test the actual family/backend combination.
 
 ### Analysis and editor support
 

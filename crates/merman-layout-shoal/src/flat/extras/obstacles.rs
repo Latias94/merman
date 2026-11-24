@@ -38,7 +38,7 @@ impl Bounds {
     }
     // A route leg can have zero width or height. Its envelope still obstructs a label
     // whenever the leg lies strictly inside the label's two axis intervals.
-    fn intersects_label(self, label: Self) -> bool {
+    pub(super) fn intersects_label(self, label: Self) -> bool {
         label.x0 < label.x1
             && label.y0 < label.y1
             && self.x0 < label.x1
@@ -69,6 +69,7 @@ pub(super) enum Owner {
     Node,
     Middle(u32),
     Marker(u32),
+    LaneMarker(u32, Side),
     Stroke(u32),
     End,
 }
@@ -135,7 +136,7 @@ impl Obstacles {
                 Owner::Middle(id) => id == edge,
                 // A shared marker shaft occupies the same outward ray. The other edge
                 // must also be able to leave this port. Label placement sees both boxes.
-                Owner::Marker(id) => {
+                Owner::Marker(id) | Owner::LaneMarker(id, _) => {
                     id == edge
                         || ports.iter().any(|p| match p.side {
                             Side::Right | Side::Left => {
@@ -157,6 +158,26 @@ impl Obstacles {
             }
         }
         Ok(RouteWalls(rects))
+    }
+
+    pub(super) fn clear_lane_marker(
+        &self,
+        edge: u32,
+        side: Side,
+        ink: Bounds,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<bool> {
+        for &(owner, wall) in &self.boxes {
+            work.visit(1)?;
+            // Busy faces can share their normal shafts when their usable span cannot fit another
+            // marker. Measured bodies, labels and markers on other faces still obstruct them.
+            let same_face = matches!(owner, Owner::LaneMarker(id, face)
+                if id == edge || (face == side && wall.along(side).0 == ink.along(side).0));
+            if !same_face && wall.intersects_label(ink) {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
     pub(super) fn add_stroke(
         &mut self,

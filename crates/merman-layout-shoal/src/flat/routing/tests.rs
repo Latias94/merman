@@ -274,7 +274,10 @@ fn every_style_keeps_lens_and_protects_occupied_bands_while_omitting_a_bare_dumm
             }
             for pair in route.points.windows(2) {
                 if pair[0].x != pair[1].x {
-                    assert!(pair[1].y < top || pair[0].y > bottom, "{style:?} {pair:?}");
+                    assert!(
+                        pair[1].y <= top || pair[0].y >= bottom,
+                        "{style:?} {pair:?}"
+                    );
                 } else if pair[0].y < bottom && pair[1].y > top {
                     assert_eq!(pair[0].x, x);
                 }
@@ -358,12 +361,68 @@ fn gap(spans: &[(f64, f64)]) -> Gap {
                 Piece {
                     span,
                     occupied: span,
+                    leads: [0.0; 2],
                     lower: 0,
                     track: None,
                 }
             })
             .collect(),
         ..Gap::default()
+    }
+}
+
+#[test]
+fn a_label_inserted_between_adjacent_nodes_shares_one_rank_gap() {
+    let mut scene = Scene::new(&[20., 20.], &[&[0], &[2], &[1]], &[&[0, 2, 1]], &[0.; 3]);
+    scene.label(0, 2, 25., 21.);
+    scene.g.inserted_ranks.push(1);
+    let drawing = scene.draw();
+    let gap = |drawing: &Drawing| drawing.nodes[1].y - drawing.nodes[0].y - 20.;
+    assert_eq!(gap(&drawing), scene.options.spacing.rank + 21.);
+
+    scene.g.inserted_ranks.clear();
+    assert_eq!(gap(&scene.draw()), 2. * scene.options.spacing.rank + 21.);
+}
+
+#[test]
+fn a_separated_curve_uses_its_own_runway_and_keeps_the_marker_lead() {
+    let mut gap = gap(&[(0., 20.), (90., 90.)]);
+    gap.upper_guard = 22.;
+    gap.lower_guard = 25.;
+    gap.marker_half_width = 7.;
+    gap.allow_local_sweeps = true;
+    gap.pieces[0].leads = [0., 12.];
+    let upper = Band {
+        bottom: 10.,
+        ..Band::default()
+    };
+    let lower = Band {
+        top: 80.,
+        ..Band::default()
+    };
+    let options = Options::default();
+    let mut control = NoopWorkControl;
+    let mut work = Work::new(&mut control);
+    let mut points = Vec::new();
+    for (occupied, has_end_labels, expected) in [
+        (90., false, [10., 68.]),
+        (25., false, [32., 55.]),
+        (90., true, [32., 55.]),
+    ] {
+        gap.pieces[1].occupied.from = occupied;
+        gap.has_end_labels = has_end_labels;
+        points.clear();
+        draw_piece(
+            &mut points,
+            gap.next_piece(),
+            &upper,
+            &lower,
+            &gap,
+            &options,
+            &mut work,
+        )
+        .unwrap();
+        assert_eq!([points[0].y, points[1].y], expected);
     }
 }
 

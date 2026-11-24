@@ -5,23 +5,30 @@ use crate::architecture_metrics::{
 use crate::model::Bounds;
 use crate::text::TextMeasurer;
 use merman_model::families::architecture::{ArchitectureDiagramModel, ArchitectureEdgeModel};
+use std::borrow::Cow;
+
+#[cfg(feature = "layout-shoal")]
+mod shoal;
 
 use super::super::{
     SvgDiagramId, SvgOutput, escape_attr_into, escape_xml_into, fmt, fmt_into, fmt_string,
 };
 use super::ArchitectureEmitCheckpoints;
 use super::geometry::{arrow_shift, bounds_from_rect, extend_bounds, is_arch_dir_x, is_arch_dir_y};
-use super::labels::{
-    svg_line_formatted_bbox_width_px, svg_line_plain_text, svg_lines_have_visible_text,
-    wrap_svg_words_to_lines, write_svg_text_lines,
-};
+use super::labels::write_svg_text_lines;
 use super::settings::ArchitectureRenderSettings;
+use crate::architecture::labels::{
+    SvgLine, svg_line_formatted_bbox_width_px, svg_line_plain_text, svg_lines_have_visible_text,
+    wrap_svg_words_to_lines,
+};
 use crate::model::ArchitectureDiagramLayout;
 
 pub(super) struct ArchitectureEdgeRenderContext<'a, O: SvgOutput> {
     pub(super) out: &'a mut O,
     pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) layout: &'a ArchitectureDiagramLayout,
+    #[cfg(feature = "layout-shoal")]
+    pub(super) shoal: Option<&'a crate::architecture::ArchitectureShoalGeometry>,
     pub(super) model: &'a ArchitectureDiagramModel,
     pub(super) node_xy: &'a rustc_hash::FxHashMap<&'a str, (f64, f64)>,
     pub(super) settings: &'a ArchitectureRenderSettings,
@@ -36,8 +43,8 @@ pub(super) struct ArchitectureEdgeRenderContext<'a, O: SvgOutput> {
     pub(super) checkpoints: ArchitectureEmitCheckpoints<'a>,
 }
 
-struct ArchitectureEdgeLabelPlan {
-    lines: Vec<super::labels::SvgLine>,
+struct ArchitectureEdgeLabelPlan<'a> {
+    lines: Cow<'a, [SvgLine]>,
     bounds: Bounds,
     dominant_baseline: &'static str,
     transform: String,
@@ -309,7 +316,7 @@ fn architecture_edge_label_plan(
     points: ArchitectureEdgePoints,
     settings: &ArchitectureRenderSettings,
     text_measurer: &dyn TextMeasurer,
-) -> Option<ArchitectureEdgeLabelPlan> {
+) -> Option<ArchitectureEdgeLabelPlan<'static>> {
     let label = edge
         .title
         .as_deref()
@@ -437,11 +444,46 @@ fn architecture_edge_label_plan(
     };
 
     Some(ArchitectureEdgeLabelPlan {
-        lines,
+        lines: Cow::Owned(lines),
         bounds,
         dominant_baseline,
         transform,
     })
+}
+
+enum ArchitectureShaft<'a> {
+    Legacy(ArchitectureEdgePoints, &'a ArchitectureEdgeModel),
+    #[cfg(feature = "layout-shoal")]
+    Shoal(shoal::Shaft<'a>),
+}
+
+impl ArchitectureShaft<'_> {
+    fn bounds(&self) -> Bounds {
+        match self {
+            Self::Legacy(points, _) => architecture_edge_segment_bounds(*points),
+            #[cfg(feature = "layout-shoal")]
+            Self::Shoal(shaft) => shaft.painted.path.bounds.clone(),
+        }
+    }
+
+    fn write(
+        &self,
+        out: &mut impl SvgOutput,
+        diagram_id: SvgDiagramId<'_>,
+        ordinal: usize,
+        style: Option<&str>,
+    ) -> crate::Result<()> {
+        match self {
+            Self::Legacy(points, edge) => {
+                write_architecture_edge_path(out, diagram_id, edge, *points, style)
+            }
+            #[cfg(feature = "layout-shoal")]
+            Self::Shoal(shaft) => shaft.write(out, diagram_id, ordinal, style)?,
+        }
+        #[cfg(not(feature = "layout-shoal"))]
+        let _ = ordinal;
+        Ok(())
+    }
 }
 
 pub(super) fn push_architecture_edges<O: SvgOutput>(
@@ -604,31 +646,46 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
         let arrow_size = settings.icon_size_px / 6.0;
         let arrow_points = ArchitectureArrowPoints::new(arrow_size);
         for (edge_idx, edge) in model.edges.iter().enumerate() {
-            let points = edge_points(edge_idx, edge);
-            let lhs_arrow = (edge.lhs_into == Some(true)).then(|| {
-                architecture_arrow_geometry(
-                    edge.lhs_dir,
-                    points.start_x,
-                    points.start_y,
-                    points.mid_x,
-                    points.mid_y,
-                    arrow_size,
-                    &arrow_points,
-                )
-            });
-            let rhs_arrow = (edge.rhs_into == Some(true)).then(|| {
-                architecture_arrow_geometry(
-                    edge.rhs_dir,
-                    points.end_x,
-                    points.end_y,
-                    points.mid_x,
-                    points.mid_y,
-                    arrow_size,
-                    &arrow_points,
-                )
-            });
+            let legacy = || {
+                let p = edge_points(edge_idx, edge);
+                let lhs = (edge.lhs_into == Some(true)).then(|| {
+                    architecture_arrow_geometry(
+                        edge.lhs_dir,
+                        p.start_x,
+                        p.start_y,
+                        p.mid_x,
+                        p.mid_y,
+                        arrow_size,
+                        &arrow_points,
+                    )
+                });
+                let rhs = (edge.rhs_into == Some(true)).then(|| {
+                    architecture_arrow_geometry(
+                        edge.rhs_dir,
+                        p.end_x,
+                        p.end_y,
+                        p.mid_x,
+                        p.mid_y,
+                        arrow_size,
+                        &arrow_points,
+                    )
+                });
+                let label = architecture_edge_label_plan(edge, p, settings, text_measurer);
+                (ArchitectureShaft::Legacy(p, edge), lhs, rhs, label)
+            };
+            #[cfg(feature = "layout-shoal")]
+            let (shaft, lhs_arrow, rhs_arrow, label_plan) = if let Some(geometry) = ctx.shoal {
+                let shaft = shoal::Shaft::new(geometry, layout, edge_idx)?;
+                let (lhs, rhs) = shaft.arrows(&arrow_points);
+                let label = shaft.label(geometry.edge_labels[edge_idx].as_ref());
+                (ArchitectureShaft::Shoal(shaft), lhs, rhs, label)
+            } else {
+                legacy()
+            };
+            #[cfg(not(feature = "layout-shoal"))]
+            let (shaft, lhs_arrow, rhs_arrow, label_plan) = legacy();
 
-            extend_bounds(content_bounds, architecture_edge_segment_bounds(points));
+            extend_bounds(content_bounds, shaft.bounds());
 
             if let Some(arrow) = lhs_arrow.as_ref() {
                 extend_bounds(content_bounds, arrow.bounds.clone());
@@ -638,7 +695,6 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
                 extend_bounds(content_bounds, arrow.bounds.clone());
             }
 
-            let label_plan = architecture_edge_label_plan(edge, points, settings, text_measurer);
             let has_visible_label = label_plan.as_ref().is_some_and(|plan| {
                 svg_lines_have_visible_text(&plan.lines, settings.text_style.font_size)
             });
@@ -649,7 +705,7 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
             }
 
             out.push_str("<g>");
-            write_architecture_edge_path(out, diagram_id, edge, points, edge_inline_style);
+            shaft.write(out, diagram_id, edge_idx, edge_inline_style)?;
             checkpoints.checkpoint()?;
 
             let lhs_arrow_style = surface_styles.as_deref().and_then(|styles| {
@@ -677,10 +733,15 @@ pub(super) fn push_architecture_edges<O: SvgOutput>(
             if let Some(label_plan) = label_plan {
                 let _ = write!(
                     out,
-                    r#"<g dy="1em" alignment-baseline="middle" dominant-baseline="{baseline}" text-anchor="middle" transform="{transform}">"#,
+                    r#"<g dy="1em" alignment-baseline="middle" dominant-baseline="{baseline}" text-anchor="middle" transform="{transform}""#,
                     baseline = label_plan.dominant_baseline,
                     transform = label_plan.transform.as_str()
                 );
+                #[cfg(feature = "layout-shoal")]
+                if let ArchitectureShaft::Shoal(shaft) = &shaft {
+                    super::write_geometry_attrs(out, "edge-label", &shaft.edge.id);
+                }
+                out.push('>');
                 out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
                 let writer_facts = write_svg_text_lines(out, &label_plan.lines, label_style);
                 out.push_str("</g></g>");
@@ -886,6 +947,8 @@ mod tests {
                     out: &mut out,
                     diagram_id,
                     layout: &layout,
+                    #[cfg(feature = "layout-shoal")]
+                    shoal: None,
                     model: &model,
                     node_xy: &node_xy,
                     settings: &settings,
@@ -950,6 +1013,8 @@ mod tests {
                 out: &mut out,
                 diagram_id,
                 layout: &layout,
+                #[cfg(feature = "layout-shoal")]
+                shoal: None,
                 model: &model,
                 node_xy: &node_xy,
                 settings: &settings,

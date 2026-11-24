@@ -8,6 +8,7 @@ import {
   type PreviewViewerBackground,
 } from "./preview-model.js";
 import type { PreviewInput } from "./preview-source.js";
+import { isFitWidth } from "./render-options.js";
 import {
   isDiagramTheme,
   isThemePreference,
@@ -197,6 +198,7 @@ function isPreviewSourceKey(value: unknown): value is PreviewSourceKey {
     isPreviewDiagramTheme(record.diagramTheme) &&
     isPreviewDisplayMode(record.displayMode) &&
     (record.themeSelection === undefined || (typeof record.themeSelection === "string" && record.themeSelection.length < 256)) &&
+    (record.fitWidth === undefined || (record.displayMode === "svg" && isFitWidth(record.fitWidth))) &&
     (record.background === "theme" || record.background === "transparent" ||
       record.background === "paper" ||
       record.background === "dark")

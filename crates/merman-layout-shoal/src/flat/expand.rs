@@ -3,8 +3,8 @@
 mod proxy;
 
 use super::acyclic::Orientation;
-use super::{BoundaryRank, Component, Expanded, Kind, Link, canonical_size, rank};
-use crate::work::{LayoutResult, Work, filled, reserved};
+use super::{BoundaryRank, Component, Expanded, Kind, Link, canonical_size, label_place, rank};
+use crate::work::{LayoutResult, Work, filled, push, reserved};
 use crate::{Graph, LayoutError, Options, PortSideHint, Size, WorkError};
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -55,6 +55,7 @@ fn sublayers(
     arcs: &[Link],
     graph: &Graph,
     proxies: Option<proxy::ProxyPorts<'_>>,
+    inline: Option<label_place::GapPolicy<'_>>,
     g: &mut Expanded,
     work: &mut Work<'_>,
 ) -> LayoutResult<Vec<u32>> {
@@ -79,11 +80,19 @@ fn sublayers(
     };
     work.charge(add(occupied.len(), arcs.len())?)?;
     let mut split = filled(occupied.len(), false)?;
+    if let Some(policy) = &inline {
+        for &rank in policy.restored {
+            work.visit(1)?;
+            split[rank as usize] = true;
+        }
+    }
+    g.inline_labels.clear();
+    let mut label_counts = Vec::new();
     let mut pairs = HashSet::new();
     pairs
         .try_reserve(arcs.len())
         .map_err(|_| LayoutError::AllocationLimit)?;
-    for edge in arcs {
+    for (index, edge) in arcs.iter().enumerate() {
         work.visit(1)?;
         let spec = graph
             .edges
@@ -93,16 +102,58 @@ fn sublayers(
         if b <= a {
             return Err(LayoutError::InvalidInput("edge opposes its ranking order"));
         }
-        if b - a == 1 && !split[a as usize] {
-            let ends = (edge.from, edge.to);
-            split[a as usize] =
-                spec.label.is_some() || !pairs.insert(ends) && !g.separate_ports(ends, work)?;
+        let gap = a as usize;
+        if b - a != 1 || split[gap] {
+            continue;
         }
+        if let Some(size) = spec.label {
+            if !inline
+                .as_ref()
+                .is_some_and(|policy| policy.admits(size, spec, graph.direction))
+                || occupied[gap + 1] - occupied[gap] != 1
+                || g.inline_labels.len() == label_place::MAX_LABELS
+            {
+                split[gap] = true;
+                continue;
+            }
+            if label_counts.is_empty() {
+                work.charge(occupied.len())?;
+                label_counts = filled(occupied.len(), 0_u8)?;
+            }
+            if label_counts[gap] == label_place::MAX_LABELS_IN_GAP {
+                split[gap] = true;
+                continue;
+            }
+            label_counts[gap] += 1;
+            work.charge(1)?;
+            push(
+                &mut g.inline_labels,
+                label_place::InlineLabel {
+                    edge: index,
+                    gap: a,
+                },
+            )?;
+        }
+        let ends = (edge.from, edge.to);
+        split[gap] = !pairs.insert(ends) && !g.separate_ports(ends, work)?;
     }
-    let levels = add(occupied.len(), split.iter().filter(|&&yes| yes).count())?;
+    if !g.inline_labels.is_empty() {
+        work.charge(g.inline_labels.len())?;
+        if g.inline_labels
+            .iter()
+            .any(|label| !split[label.gap as usize])
+        {
+            label_place::protect_transit_faces(&g.inline_labels, arcs, &g.rank, &mut split, work)?;
+            work.charge(g.inline_labels.len())?;
+        }
+        g.inline_labels.retain(|label| !split[label.gap as usize]);
+    }
+    let splits = split.iter().filter(|&&yes| yes).count();
+    let levels = add(occupied.len(), splits)?;
     count(levels)?;
-    work.charge(add(levels, occupied.len())?)?;
+    work.charge(add(add(levels, occupied.len())?, splits)?)?;
     clear_reserve(&mut g.logical_rank, levels)?;
+    clear_reserve(&mut g.inserted_ranks, splits)?;
     let mut real = reserved(occupied.len())?;
     let mut extra = 0_u64;
     for (i, &r) in occupied.iter().enumerate() {
@@ -113,6 +164,7 @@ fn sublayers(
         if split[i] {
             let gap = occupied[i + 1] - r;
             if gap == 1 {
+                g.inserted_ranks.push(count(g.logical_rank.len())?);
                 extra += 1;
             }
             g.logical_rank.push(
@@ -212,6 +264,11 @@ fn prepare_layers(
         }
     }
     g.logical_rank.truncate(used);
+    work.visit(g.inserted_ranks.len())?;
+    g.inserted_ranks.retain_mut(|rank| {
+        *rank = dense[*rank as usize];
+        *rank != u32::MAX
+    });
     rows(&mut g.layers, used)?;
     for (layer, size) in g.layers.iter_mut().zip(members) {
         clear_reserve(layer, size)?;
@@ -276,6 +333,7 @@ pub(super) fn build(
     orientation: &Orientation,
     graph: &Graph,
     options: &Options,
+    restored_labels: &[u32],
     work: &mut Work<'_>,
     g: &mut Expanded,
 ) -> LayoutResult<()> {
@@ -302,7 +360,23 @@ pub(super) fn build(
         reversed: &orientation.reversed,
         clearance: options.spacing.edge,
     });
-    let mut real = sublayers(&raw, &arcs, graph, proxies, g, work)?;
+    let inline = options.inline_labels
+        && graph.groups.is_empty()
+        && !component.boundaries
+        && !component.pinned
+        && !component.group_proxies;
+    let mut real = sublayers(
+        &raw,
+        &arcs,
+        graph,
+        proxies,
+        inline.then_some(label_place::GapPolicy {
+            spacing: options.spacing,
+            restored: restored_labels,
+        }),
+        g,
+        work,
+    )?;
     let (dummies, segments) = dummy_budget(&arcs, g, options.caps.max_dummies, work)?;
     let vertices = add(n, dummies)?;
     count(vertices)?;
@@ -345,6 +419,7 @@ pub(super) fn build(
         });
         g.layers[g.rank[v] as usize].push(v as u32);
     }
+    let mut inline = g.inline_labels.iter().map(|label| label.edge).peekable();
     for (i, e) in arcs.iter().enumerate() {
         work.visit(1)?;
         let (a, b) = (g.rank[e.from as usize], g.rank[e.to as usize]);
@@ -366,7 +441,9 @@ pub(super) fn build(
             std::mem::swap(&mut start, &mut end);
         }
         let mut label_vertex = None;
-        let label = if let Some(size) = spec.label {
+        let label = if let Some(size) = spec.label
+            && inline.next_if_eq(&i).is_none()
+        {
             work.visit(3 * (real.len().ilog2() as usize + 1))?;
             Some((
                 label_layer(a, b, &real, &g.logical_rank, reversed, start, end),
@@ -436,7 +513,7 @@ mod tests {
             links: links.to_vec(),
             ..Default::default()
         };
-        super::build(&c, orientation, graph, options, work, g)
+        super::build(&c, orientation, graph, options, &[], work, g)
     }
 
     fn shape(w: f64, h: f64) -> Size {
@@ -492,6 +569,7 @@ mod tests {
         .unwrap();
         let m = u64::from(u32::MAX);
         assert_eq!(g.logical_rank, [0, m / 2, m, 2 * m]);
+        assert!(g.inserted_ranks.is_empty());
         assert_eq!(g.rank, [0, 2, 3, 1]);
         assert_eq!(g.kind, [Kind::Node, Kind::Node, Kind::Node, Kind::Label]);
         assert_eq!(g.chains, [vec![0, 3, 1], vec![1, 2]]);
@@ -529,6 +607,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(g.logical_rank, [0, 1, 2]);
+        assert_eq!(g.inserted_ranks, [1]);
         assert_eq!(g.label_vertex, [Some(2), None]);
         assert_eq!(g.kind, [Kind::Node, Kind::Node, Kind::Label, Kind::Dummy]);
         assert_eq!((g.width[0], g.height[0]), (23.0, 12.0));

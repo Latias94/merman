@@ -1,7 +1,7 @@
 use super::{
     C4_FRAMED_FRAME_WIDTH, C4_NEO_FRAMED_LABEL_PADDING_X, C4_NEO_FRAMED_LABEL_PADDING_Y, C4Conf,
-    C4ConfigView, C4Look, C4Model, C4NodeShape, c4_node_shape, c4_stereotype_text,
-    measure_c4_unified_text, prepare_c4_legacy_text,
+    C4ConfigView, C4Look, C4Model, C4NodeShape, c4_cap_radius, c4_node_shape,
+    c4_person_head_radius, c4_stereotype_text, measure_c4_unified_text, prepare_c4_legacy_text,
 };
 use crate::model::{
     Bounds, C4BoundaryLayout, C4DiagramLayout, C4ImageLayout, C4RelLayout, C4ShapeLayout,
@@ -10,7 +10,7 @@ use crate::model::{
 use crate::resources::OperationWorkMeter;
 use crate::text::TextMeasurer;
 use crate::{Error, Result};
-use merman_model::families::c4::{C4Boundary, C4DiagramModel};
+use merman_model::families::c4::{C4Boundary, C4DiagramModel, C4Relation, C4Shape};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -123,14 +123,18 @@ struct Rect {
     margin: f64,
 }
 
+pub(super) struct C4Measurement<'a> {
+    pub(super) typography: &'a super::C4TypographyThemePlan,
+    pub(super) conf: &'a C4Conf,
+    pub(super) measurer: &'a dyn TextMeasurer,
+    pub(super) work: &'a OperationWorkMeter,
+}
+
 struct C4LayoutContext<'a> {
     model: &'a C4Model,
-    typography: &'a super::C4TypographyThemePlan,
-    conf: &'a C4Conf,
+    measure: C4Measurement<'a>,
     c4_shape_in_row: f64,
     c4_boundary_in_row: f64,
-    measurer: &'a dyn TextMeasurer,
-    work: &'a OperationWorkMeter,
     boundary_children: &'a HashMap<String, Vec<usize>>,
     shape_children: &'a HashMap<String, Vec<usize>>,
 }
@@ -444,267 +448,257 @@ fn intersect_shape_point(shape: C4NodeShape, from: &Rect, end_point: LayoutPoint
     }
 }
 
+pub(super) fn measure_c4_shape(shape: &C4Shape, ctx: &C4Measurement<'_>) -> C4ShapeLayout {
+    let type_c4_shape = shape.type_c4_shape.as_str().to_string();
+    let shape_kind = c4_node_shape(shape);
+    let look = ctx.conf.look;
+    // The 11.17 unified C4 label helper reads the diagram-local `c4.wrap` setting.  The
+    // parser's per-object `wrap` field belongs to the legacy boundary/relationship path and
+    // is not consulted by the unified shape renderer.
+    let text_wrap = ctx.conf.wrap;
+    let text_limit_width = match shape_kind {
+        // Mermaid's cylinder handlers subtract one padding unit from the requested node
+        // width before c4LabelHelper derives its inner wrapping width.
+        C4NodeShape::Cylinder => {
+            let label_padding = if look.is_neo() {
+                24.0
+            } else {
+                ctx.conf.c4_shape_padding
+            };
+            (ctx.conf.width - label_padding - ctx.conf.c4_shape_padding * 2.0).max(32.0)
+        }
+        C4NodeShape::HorizontalCylinder => {
+            // `tiltedCylinder` first subtracts half the padding from the target width;
+            // the label helper then subtracts the full node padding for its wrap probe.
+            let label_padding = if look.is_neo() {
+                12.0
+            } else {
+                ctx.conf.c4_shape_padding / 2.0
+            };
+            (ctx.conf.width - label_padding - ctx.conf.c4_shape_padding * 2.0).max(32.0)
+        }
+        _ => (ctx.conf.width - ctx.conf.c4_shape_padding * 2.0).max(32.0),
+    };
+    let text_conf = ctx
+        .typography
+        .element_style(&type_c4_shape)
+        .expect("C4 preparation binds every model shape type before layout")
+        .font
+        .measurement_style
+        .clone();
+
+    // Unified C4 labels are measured as stacked name/stereotype/description sections.
+    // Their CSS font sizes are part of the geometry contract, so measure each section with
+    // the same scale that the SVG renderer emits.
+    let label_text = shape.label.as_str().to_string();
+    let has_label = !label_text.trim().is_empty();
+    let label_m = if !has_label {
+        None
+    } else {
+        let mut name_conf = text_conf.clone();
+        name_conf.font_weight = Some("bold".to_string());
+        Some(measure_c4_unified_text(
+            ctx.measurer,
+            &label_text,
+            &name_conf,
+            text_wrap,
+            text_limit_width,
+        ))
+    };
+    let label = C4TextBlockLayout {
+        text: label_text,
+        y: 0.0,
+        width: label_m.as_ref().map_or(0.0, |m| m.metrics.width),
+        height: label_m.as_ref().map_or(0.0, |m| m.metrics.height),
+        line_count: label_m.as_ref().map_or(0, |m| m.metrics.line_count),
+        render_plan: label_m.map(|m| m.render_plan),
+    };
+
+    // Mermaid's unified C4 shape adapter derives the node stereotype exclusively from
+    // `typeC4Shape` and the optional technology. A named `$type` argument may remain in the
+    // legacy source model, but unlike boundary `type` it is not a node label override.
+    let stereotype_text = c4_stereotype_text(shape);
+    let mut stereotype_conf = text_conf.clone();
+    stereotype_conf.font_size *= 0.75;
+    let stereotype_m = measure_c4_unified_text(
+        ctx.measurer,
+        &stereotype_text,
+        &stereotype_conf,
+        text_wrap,
+        text_limit_width,
+    );
+    let type_block = C4TextBlockLayout {
+        text: stereotype_text,
+        y: 0.0,
+        width: stereotype_m.metrics.width,
+        height: stereotype_m.metrics.height,
+        line_count: stereotype_m.metrics.line_count,
+        render_plan: Some(stereotype_m.render_plan),
+    };
+
+    let descr_block = shape
+        .descr
+        .as_ref()
+        .filter(|text| !text.as_str().is_empty())
+        .map(|descr| {
+            let text = descr.as_str().to_string();
+            let mut descr_conf = text_conf.clone();
+            descr_conf.font_size *= 0.82;
+            let measured = measure_c4_unified_text(
+                ctx.measurer,
+                &text,
+                &descr_conf,
+                text_wrap,
+                text_limit_width,
+            );
+            C4TextBlockLayout {
+                text,
+                y: 0.0,
+                width: measured.metrics.width,
+                height: measured.metrics.height,
+                line_count: measured.metrics.line_count,
+                render_plan: Some(measured.render_plan),
+            }
+        });
+
+    let section_gap = 3.0;
+    let has_descr = descr_block.is_some();
+    let section_count = usize::from(has_label) + 1 + usize::from(has_descr);
+    let content_width = label
+        .width
+        .max(type_block.width)
+        .max(descr_block.as_ref().map(|block| block.width).unwrap_or(0.0));
+    let content_height = label.height
+        + type_block.height
+        + descr_block
+            .as_ref()
+            .map(|block| block.height)
+            .unwrap_or(0.0)
+        + section_gap * section_count.saturating_sub(1) as f64;
+
+    // Store section centre positions relative to the top-left layout box. The SVG renderer
+    // translates the unified shape to its centre and uses these values to place each label.
+    let label_padding_y = match (shape_kind, look) {
+        // `section_y` is a per-side offset, while Mermaid's subroutine padding is the total
+        // vertical addition to the label bounds.
+        (C4NodeShape::Framed, C4Look::Neo) => C4_NEO_FRAMED_LABEL_PADDING_Y / 2.0,
+        (C4NodeShape::HorizontalCylinder, C4Look::Neo) => 6.0,
+        (C4NodeShape::Cylinder, C4Look::Neo) => 24.0,
+        _ => ctx.conf.c4_shape_padding,
+    };
+    let mut section_y =
+        (ctx.conf.height.max(content_height + 2.0 * label_padding_y) - content_height) / 2.0;
+    let mut label = label;
+    if has_label {
+        label.y = section_y + label.height / 2.0;
+        section_y += label.height + section_gap;
+    }
+    let mut type_block = type_block;
+    type_block.y = section_y + type_block.height / 2.0;
+    section_y += type_block.height + section_gap;
+    let mut descr_block = descr_block;
+    if let Some(descr) = descr_block.as_mut() {
+        descr.y = section_y + descr.height / 2.0;
+    }
+
+    let image = C4ImageLayout {
+        width: 0.0,
+        height: 0.0,
+        y: 0.0,
+    };
+    let padding = ctx.conf.c4_shape_padding;
+    let base_width = (content_width + 2.0 * padding).max(ctx.conf.width);
+    // Unified shapes receive the configured width as a target, but no legacy minimum
+    // height. Their self-sized label bounds determine the vertical extent.
+    let base_height = content_height + 2.0 * padding;
+    let (width, height) = match shape_kind {
+        C4NodeShape::Rounded => (base_width, base_height),
+        C4NodeShape::Framed => {
+            let label_padding_x = if look.is_neo() {
+                C4_NEO_FRAMED_LABEL_PADDING_X
+            } else {
+                padding
+            };
+            let label_padding_y = if look.is_neo() {
+                C4_NEO_FRAMED_LABEL_PADDING_Y
+            } else {
+                padding
+            };
+            (
+                (content_width + 2.0 * C4_FRAMED_FRAME_WIDTH + label_padding_x).max(ctx.conf.width),
+                content_height + label_padding_y,
+            )
+        }
+        C4NodeShape::Person => {
+            let width = base_width.max(100.0);
+            let head_radius = c4_person_head_radius(width);
+            let overlap = head_radius * 0.27;
+            let body_height = base_height;
+            (width, body_height + 2.0 * head_radius - overlap)
+        }
+        C4NodeShape::Cylinder => {
+            // The unified cylinder reserves one padding unit around the label, while the
+            // legacy `c4.width` remains a lower bound for the full shape.
+            let label_padding = if look.is_neo() { 24.0 } else { padding };
+            let width = (content_width + label_padding).max(ctx.conf.width).max(1.0);
+            let ry = c4_cap_radius(width);
+            // `cylinder`'s path extends one cap radius beyond its vertical body on both
+            // sides; the legacy grid stores the resulting outer bounding-box height.
+            (width, content_height + label_padding + 3.0 * ry)
+        }
+        C4NodeShape::HorizontalCylinder => {
+            // Mermaid's `h-cyl` resolves to `tiltedCylinder`: the requested width is
+            // reduced by half-padding for the wrap probe, then the rendered path adds that
+            // half-padding and a horizontal cap radius back. Its returned height is the
+            // path height itself (the path's vertical capsule is centered by a transform).
+            let label_padding = if look.is_neo() { 12.0 } else { padding / 2.0 };
+            let inner_width = (ctx.conf.width - label_padding).max(10.0);
+            let body_height = content_height + label_padding;
+            let rx = c4_cap_radius(body_height);
+            let width = inner_width.max(content_width) + rx + label_padding;
+            (width, body_height)
+        }
+    };
+    let margin = ctx.conf.c4_shape_margin;
+
+    C4ShapeLayout {
+        alias: shape.alias.clone(),
+        parent_boundary: shape.parent_boundary.clone(),
+        type_c4_shape,
+        x: 0.0,
+        y: 0.0,
+        width,
+        height,
+        margin,
+        image,
+        type_block,
+        label,
+        ty: None,
+        techn: None,
+        descr: descr_block,
+    }
+}
+
 fn layout_c4_shape_array(
     current_bounds: &mut BoundsState,
     shape_indices: &[usize],
     ctx: &C4LayoutContext<'_>,
     state: &mut C4LayoutState,
 ) {
-    for idx in shape_indices {
-        let shape = &ctx.model.shapes[*idx];
-        let type_c4_shape = shape.type_c4_shape.as_str().to_string();
-        let shape_kind = c4_node_shape(shape);
-        let look = ctx.conf.look;
-        // The 11.17 unified C4 label helper reads the diagram-local `c4.wrap` setting.  The
-        // parser's per-object `wrap` field belongs to the legacy boundary/relationship path and
-        // is not consulted by the unified shape renderer.
-        let text_wrap = ctx.conf.wrap;
-        let text_limit_width = match shape_kind {
-            // Mermaid's cylinder handlers subtract one padding unit from the requested node
-            // width before c4LabelHelper derives its inner wrapping width.
-            C4NodeShape::Cylinder => {
-                let label_padding = if look.is_neo() {
-                    24.0
-                } else {
-                    ctx.conf.c4_shape_padding
-                };
-                (ctx.conf.width - label_padding - ctx.conf.c4_shape_padding * 2.0).max(32.0)
-            }
-            C4NodeShape::HorizontalCylinder => {
-                // `tiltedCylinder` first subtracts half the padding from the target width;
-                // the label helper then subtracts the full node padding for its wrap probe.
-                let label_padding = if look.is_neo() {
-                    12.0
-                } else {
-                    ctx.conf.c4_shape_padding / 2.0
-                };
-                (ctx.conf.width - label_padding - ctx.conf.c4_shape_padding * 2.0).max(32.0)
-            }
-            _ => (ctx.conf.width - ctx.conf.c4_shape_padding * 2.0).max(32.0),
-        };
-        let text_conf = ctx
-            .typography
-            .element_style(&type_c4_shape)
-            .expect("C4 preparation binds every model shape type before layout")
-            .font
-            .measurement_style
-            .clone();
-
-        // Unified C4 labels are measured as stacked name/stereotype/description sections.
-        // Their CSS font sizes are part of the geometry contract, so measure each section with
-        // the same scale that the SVG renderer emits.
-        let label_text = shape.label.as_str().to_string();
-        let has_label = !label_text.trim().is_empty();
-        let label_m = if !has_label {
-            None
-        } else {
-            let mut name_conf = text_conf.clone();
-            name_conf.font_weight = Some("bold".to_string());
-            Some(measure_c4_unified_text(
-                ctx.measurer,
-                &label_text,
-                &name_conf,
-                text_wrap,
-                text_limit_width,
-            ))
-        };
-        let label = C4TextBlockLayout {
-            text: label_text,
-            y: 0.0,
-            width: label_m.as_ref().map_or(0.0, |m| m.metrics.width),
-            height: label_m.as_ref().map_or(0.0, |m| m.metrics.height),
-            line_count: label_m.as_ref().map_or(0, |m| m.metrics.line_count),
-            render_plan: label_m.map(|m| m.render_plan),
-        };
-
-        // Mermaid's unified C4 shape adapter derives the node stereotype exclusively from
-        // `typeC4Shape` and the optional technology. A named `$type` argument may remain in the
-        // legacy source model, but unlike boundary `type` it is not a node label override.
-        let stereotype_text = c4_stereotype_text(shape);
-        let mut stereotype_conf = text_conf.clone();
-        stereotype_conf.font_size *= 0.75;
-        let stereotype_m = measure_c4_unified_text(
-            ctx.measurer,
-            &stereotype_text,
-            &stereotype_conf,
-            text_wrap,
-            text_limit_width,
-        );
-        let type_block = C4TextBlockLayout {
-            text: stereotype_text,
-            y: 0.0,
-            width: stereotype_m.metrics.width,
-            height: stereotype_m.metrics.height,
-            line_count: stereotype_m.metrics.line_count,
-            render_plan: Some(stereotype_m.render_plan),
-        };
-
-        let descr_block = shape
-            .descr
-            .as_ref()
-            .filter(|text| !text.as_str().is_empty())
-            .map(|descr| {
-                let text = descr.as_str().to_string();
-                let mut descr_conf = text_conf.clone();
-                descr_conf.font_size *= 0.82;
-                let measured = measure_c4_unified_text(
-                    ctx.measurer,
-                    &text,
-                    &descr_conf,
-                    text_wrap,
-                    text_limit_width,
-                );
-                C4TextBlockLayout {
-                    text,
-                    y: 0.0,
-                    width: measured.metrics.width,
-                    height: measured.metrics.height,
-                    line_count: measured.metrics.line_count,
-                    render_plan: Some(measured.render_plan),
-                }
-            });
-
-        let section_gap = 3.0;
-        let has_descr = descr_block.is_some();
-        let section_count = usize::from(has_label) + 1 + usize::from(has_descr);
-        let content_width = label
-            .width
-            .max(type_block.width)
-            .max(descr_block.as_ref().map(|block| block.width).unwrap_or(0.0));
-        let content_height = label.height
-            + type_block.height
-            + descr_block
-                .as_ref()
-                .map(|block| block.height)
-                .unwrap_or(0.0)
-            + section_gap * section_count.saturating_sub(1) as f64;
-
-        // Store section centre positions relative to the top-left layout box. The SVG renderer
-        // translates the unified shape to its centre and uses these values to place each label.
-        let label_padding_y = match (shape_kind, look) {
-            // `section_y` is a per-side offset, while Mermaid's subroutine padding is the total
-            // vertical addition to the label bounds.
-            (C4NodeShape::Framed, C4Look::Neo) => C4_NEO_FRAMED_LABEL_PADDING_Y / 2.0,
-            (C4NodeShape::HorizontalCylinder, C4Look::Neo) => 6.0,
-            (C4NodeShape::Cylinder, C4Look::Neo) => 24.0,
-            _ => ctx.conf.c4_shape_padding,
-        };
-        let mut section_y =
-            (ctx.conf.height.max(content_height + 2.0 * label_padding_y) - content_height) / 2.0;
-        let mut label = label;
-        if has_label {
-            label.y = section_y + label.height / 2.0;
-            section_y += label.height + section_gap;
-        }
-        let mut type_block = type_block;
-        type_block.y = section_y + type_block.height / 2.0;
-        section_y += type_block.height + section_gap;
-        let mut descr_block = descr_block;
-        if let Some(descr) = descr_block.as_mut() {
-            descr.y = section_y + descr.height / 2.0;
-        }
-
-        let image = C4ImageLayout {
-            width: 0.0,
-            height: 0.0,
-            y: 0.0,
-        };
-        let padding = ctx.conf.c4_shape_padding;
-        let base_width = (content_width + 2.0 * padding).max(ctx.conf.width);
-        // Unified shapes receive the configured width as a target, but no legacy minimum
-        // height. Their self-sized label bounds determine the vertical extent.
-        let base_height = content_height + 2.0 * padding;
-        let (width, height) = match shape_kind {
-            C4NodeShape::Rounded => (base_width, base_height),
-            C4NodeShape::Framed => {
-                let label_padding_x = if look.is_neo() {
-                    C4_NEO_FRAMED_LABEL_PADDING_X
-                } else {
-                    padding
-                };
-                let label_padding_y = if look.is_neo() {
-                    C4_NEO_FRAMED_LABEL_PADDING_Y
-                } else {
-                    padding
-                };
-                (
-                    (content_width + 2.0 * C4_FRAMED_FRAME_WIDTH + label_padding_x)
-                        .max(ctx.conf.width),
-                    content_height + label_padding_y,
-                )
-            }
-            C4NodeShape::Person => {
-                let width = base_width.max(100.0);
-                let head_radius = (width * 0.23).clamp(16.0, 56.0);
-                let overlap = head_radius * 0.27;
-                let body_height = base_height;
-                (width, body_height + 2.0 * head_radius - overlap)
-            }
-            C4NodeShape::Cylinder => {
-                // The unified cylinder reserves one padding unit around the label, while the
-                // legacy `c4.width` remains a lower bound for the full shape.
-                let label_padding = if look.is_neo() { 24.0 } else { padding };
-                let width = (content_width + label_padding).max(ctx.conf.width).max(1.0);
-                let rx = width / 2.0;
-                let ry = rx / (2.5 + width / 50.0);
-                // `cylinder`'s path extends one cap radius beyond its vertical body on both
-                // sides; the legacy grid stores the resulting outer bounding-box height.
-                (width, content_height + label_padding + 3.0 * ry)
-            }
-            C4NodeShape::HorizontalCylinder => {
-                // Mermaid's `h-cyl` resolves to `tiltedCylinder`: the requested width is
-                // reduced by half-padding for the wrap probe, then the rendered path adds that
-                // half-padding and a horizontal cap radius back. Its returned height is the
-                // path height itself (the path's vertical capsule is centered by a transform).
-                let label_padding = if look.is_neo() { 12.0 } else { padding / 2.0 };
-                let inner_width = (ctx.conf.width - label_padding).max(10.0);
-                let body_height = content_height + label_padding;
-                let ry = body_height / 2.0;
-                let rx = ry / (2.5 + body_height / 50.0);
-                let width = inner_width.max(content_width) + rx + label_padding;
-                (width, body_height)
-            }
-        };
-        let margin = ctx.conf.c4_shape_margin;
-
+    for &idx in shape_indices {
+        let mut shape = measure_c4_shape(&ctx.model.shapes[idx], &ctx.measure);
         let mut rect = Rect {
             origin: crate::geom::point(0.0, 0.0),
-            size: crate::geom::Size::new(width, height),
-            margin,
+            size: crate::geom::Size::new(shape.width, shape.height),
+            margin: shape.margin,
         };
-        current_bounds.insert_rect(&mut rect, ctx.c4_shape_in_row, ctx.conf);
-
-        state.shapes.insert(
-            shape.alias.clone(),
-            C4ShapeLayout {
-                alias: shape.alias.clone(),
-                parent_boundary: shape.parent_boundary.clone(),
-                type_c4_shape: type_c4_shape.clone(),
-                x: rect.origin.x,
-                y: rect.origin.y,
-                width: rect.size.width,
-                height: rect.size.height,
-                margin: rect.margin,
-                image,
-                type_block,
-                label,
-                ty: None,
-                techn: None,
-                descr: descr_block,
-            },
-        );
+        current_bounds.insert_rect(&mut rect, ctx.c4_shape_in_row, ctx.measure.conf);
+        shape.x = rect.origin.x;
+        shape.y = rect.origin.y;
+        state.shapes.insert(shape.alias.clone(), shape);
     }
 
-    current_bounds.bump_last_margin(ctx.conf.c4_shape_margin);
-}
-
-struct PendingC4BoundaryLayout {
-    alias: String,
-    parent_boundary: String,
-    image: C4ImageLayout,
-    label: C4TextBlockLayout,
-    ty: Option<C4TextBlockLayout>,
-    descr: Option<C4TextBlockLayout>,
+    current_bounds.bump_last_margin(ctx.measure.conf.c4_shape_margin);
 }
 
 struct C4BoundaryFrame {
@@ -712,7 +706,7 @@ struct C4BoundaryFrame {
     next_index: usize,
     parent_bounds: BoundsState,
     current_bounds: BoundsState,
-    pending: Option<PendingC4BoundaryLayout>,
+    pending: Option<C4BoundaryLayout>,
 }
 
 impl C4BoundaryFrame {
@@ -738,11 +732,11 @@ impl C4BoundaryFrame {
     }
 }
 
-fn prepare_c4_boundary_layout(
+pub(super) fn prepare_c4_boundary_layout(
     boundary: &C4Boundary,
     width_limit: f64,
-    ctx: &C4LayoutContext<'_>,
-) -> Result<(PendingC4BoundaryLayout, f64)> {
+    ctx: &C4Measurement<'_>,
+) -> Result<(C4BoundaryLayout, f64)> {
     let mut y = 0.0;
 
     let mut image = C4ImageLayout {
@@ -806,9 +800,13 @@ fn prepare_c4_boundary_layout(
     }
 
     Ok((
-        PendingC4BoundaryLayout {
+        C4BoundaryLayout {
             alias: boundary.alias.clone(),
             parent_boundary: boundary.parent_boundary.clone(),
+            x: 0.0,
+            y: 0.0,
+            width: 0.0,
+            height: 0.0,
             image,
             label,
             ty,
@@ -821,7 +819,7 @@ fn prepare_c4_boundary_layout(
 fn finish_c4_boundary_layout(
     parent_bounds: &mut BoundsState,
     current_bounds: &BoundsState,
-    pending: PendingC4BoundaryLayout,
+    mut pending: C4BoundaryLayout,
     ctx: &C4LayoutContext<'_>,
     state: &mut C4LayoutState,
 ) {
@@ -830,24 +828,14 @@ fn finish_c4_boundary_layout(
     let starty = current_bounds.data.starty.unwrap_or(0.0);
     let stopy = current_bounds.data.stopy.unwrap_or(starty);
 
-    state.boundaries.insert(
-        pending.alias.clone(),
-        C4BoundaryLayout {
-            alias: pending.alias,
-            parent_boundary: pending.parent_boundary,
-            x: startx,
-            y: starty,
-            width: stopx - startx,
-            height: stopy - starty,
-            image: pending.image,
-            label: pending.label,
-            ty: pending.ty,
-            descr: pending.descr,
-        },
-    );
+    pending.x = startx;
+    pending.y = starty;
+    pending.width = stopx - startx;
+    pending.height = stopy - starty;
+    state.boundaries.insert(pending.alias.clone(), pending);
 
-    let stopx_with_margin = stopx + ctx.conf.c4_shape_margin;
-    let stopy_with_margin = stopy + ctx.conf.c4_shape_margin;
+    let stopx_with_margin = stopx + ctx.measure.conf.c4_shape_margin;
+    let stopy_with_margin = stopy + ctx.measure.conf.c4_shape_margin;
     parent_bounds.data.stopx = Some(
         parent_bounds
             .data
@@ -914,7 +902,7 @@ fn layout_inside_boundary(
 
         let boundary = &ctx.model.boundaries[idx];
         let width_limit = frame.current_bounds.data.width_limit;
-        let (pending, y) = prepare_c4_boundary_layout(boundary, width_limit, ctx)?;
+        let (pending, y) = prepare_c4_boundary_layout(boundary, width_limit, &ctx.measure)?;
 
         let parent_startx = frame
             .parent_bounds
@@ -932,14 +920,14 @@ fn layout_inside_boundary(
             })?;
 
         if i == 0 || i as f64 % ctx.c4_boundary_in_row == 0.0 {
-            let x = parent_startx + ctx.conf.diagram_margin_x;
-            let y0 = parent_stopy + ctx.conf.diagram_margin_y + y;
+            let x = parent_startx + ctx.measure.conf.diagram_margin_x;
+            let y0 = parent_stopy + ctx.measure.conf.diagram_margin_y + y;
             frame.current_bounds.set_data(x, x, y0, y0);
         } else {
             let startx = frame.current_bounds.data.startx.unwrap_or(parent_startx);
             let stopx = frame.current_bounds.data.stopx.unwrap_or(startx);
             let x = if stopx != startx {
-                stopx + ctx.conf.diagram_margin_x
+                stopx + ctx.measure.conf.diagram_margin_x
             } else {
                 startx
             };
@@ -976,6 +964,75 @@ fn layout_inside_boundary(
     }
 
     Ok(())
+}
+
+pub(super) fn measure_c4_relation(
+    rel: &C4Relation,
+    index: usize,
+    c4_type: &str,
+    ctx: &C4Measurement<'_>,
+) -> Result<C4RelLayout> {
+    let rel_font = &ctx.typography.message_font().measurement_style;
+    let mut label_text = rel.label.as_str().to_string();
+    if c4_type == "C4Dynamic" {
+        label_text = format!("{}: {}", index + 1, label_text);
+    }
+
+    let rel_text_wrap = rel.wrap && ctx.conf.wrap;
+
+    let label = prepare_c4_legacy_text(
+        ctx.measurer,
+        &label_text,
+        rel_font,
+        rel_text_wrap,
+        None,
+        ctx.work,
+    )?;
+
+    let techn = rel
+        .techn
+        .as_ref()
+        .filter(|t| !t.as_str().is_empty())
+        .map(|t| {
+            prepare_c4_legacy_text(
+                ctx.measurer,
+                t.as_str(),
+                rel_font,
+                rel_text_wrap,
+                None,
+                ctx.work,
+            )
+        })
+        .transpose()?;
+
+    let descr = rel
+        .descr
+        .as_ref()
+        .filter(|t| !t.as_str().is_empty())
+        .map(|t| {
+            prepare_c4_legacy_text(
+                ctx.measurer,
+                t.as_str(),
+                rel_font,
+                rel_text_wrap,
+                None,
+                ctx.work,
+            )
+        })
+        .transpose()?;
+
+    Ok(C4RelLayout {
+        from: rel.from_alias.clone(),
+        to: rel.to_alias.clone(),
+        rel_type: rel.rel_type.clone(),
+        start_point: LayoutPoint { x: 0.0, y: 0.0 },
+        end_point: LayoutPoint { x: 0.0, y: 0.0 },
+        offset_x: rel.offset_x.clone(),
+        offset_y: rel.offset_y.clone(),
+        label,
+        techn,
+        descr,
+    })
 }
 
 /// Lays out a typed C4 render model without a compatibility-JSON round trip.
@@ -1035,12 +1092,14 @@ pub(crate) fn layout_c4_diagram_typed(
 
     let ctx = C4LayoutContext {
         model,
-        typography,
-        conf: &conf,
+        measure: C4Measurement {
+            typography,
+            conf: &conf,
+            measurer,
+            work,
+        },
         c4_shape_in_row,
         c4_boundary_in_row,
-        measurer,
-        work,
         boundary_children: &boundary_children,
         shape_children: &shape_children,
     };
@@ -1102,37 +1161,9 @@ pub(crate) fn layout_c4_diagram_typed(
             });
     }
 
-    let rel_font = &typography.message_font().measurement_style;
     let mut rels_out: Vec<C4RelLayout> = Vec::new();
     for (i, rel) in model.rels.iter().enumerate() {
-        let mut label_text = rel.label.as_str().to_string();
-        if model.c4_type == "C4Dynamic" {
-            label_text = format!("{}: {}", i + 1, label_text);
-        }
-
-        let rel_text_wrap = rel.wrap && conf.wrap;
-
-        let label =
-            prepare_c4_legacy_text(measurer, &label_text, rel_font, rel_text_wrap, None, work)?;
-
-        let techn = rel
-            .techn
-            .as_ref()
-            .filter(|t| !t.as_str().is_empty())
-            .map(|t| {
-                prepare_c4_legacy_text(measurer, t.as_str(), rel_font, rel_text_wrap, None, work)
-            })
-            .transpose()?;
-
-        let descr = rel
-            .descr
-            .as_ref()
-            .filter(|t| !t.as_str().is_empty())
-            .map(|t| {
-                prepare_c4_legacy_text(measurer, t.as_str(), rel_font, rel_text_wrap, None, work)
-            })
-            .transpose()?;
-
+        let mut measured = measure_c4_relation(rel, i, &model.c4_type, &ctx.measure)?;
         let (from, from_shape) =
             endpoint_rects
                 .get(rel.from_alias.as_str())
@@ -1169,18 +1200,9 @@ pub(crate) fn layout_c4_diagram_typed(
             None => intersect_rect_point(to, to_center),
         };
 
-        rels_out.push(C4RelLayout {
-            from: rel.from_alias.clone(),
-            to: rel.to_alias.clone(),
-            rel_type: rel.rel_type.clone(),
-            start_point,
-            end_point,
-            offset_x: rel.offset_x.clone(),
-            offset_y: rel.offset_y.clone(),
-            label,
-            techn,
-            descr,
-        });
+        measured.start_point = start_point;
+        measured.end_point = end_point;
+        rels_out.push(measured);
     }
 
     let mut boundaries_out = Vec::with_capacity(model.boundaries.len());

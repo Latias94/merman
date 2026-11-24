@@ -61,6 +61,9 @@ jobs:
       - name: Verify and smoke web package
         run: npm run smoke --prefix platforms/web
 
+      - name: Build Shoal WASM for Playground
+        run: npm run build:wasm:full --prefix platforms/web -- --local-shoal
+
       - name: Upload built Web package
         id: upload
         uses: actions/upload-artifact@v7.0.2
@@ -218,8 +221,11 @@ jobs:
       - name: Qualify installed Web packages in Chromium and Worker
         run: node platforms/web/scripts/installed-browser-consumer.mjs
 
+      - name: Assemble Playground package with Shoal
+        run: npm run assemble:shoal --prefix playground
+
       - name: Prepare playground browser runtime
-        run: npm run prepare:browser-runtime --prefix playground
+        run: npm run prepare:browser-runtime:shoal --prefix playground
 
       - name: Test prepared playground
         run: npm run test:prepared --prefix playground

@@ -32,14 +32,15 @@ pub(super) enum ClusterGeometry<'a> {
     Swimlane(
         &'a crate::model::SwimlaneLaneLayout,
         crate::model::SwimlaneDirection,
+        bool,
     ),
 }
 impl<'a> ClusterGeometry<'a> {
     pub(super) fn top_left(self) -> (f64, f64) {
         match self {
             Self::Flowchart(c) => (c.x - c.width / 2.0, c.y - c.height / 2.0),
-            Self::Swimlane(c, dir) => {
-                let geometry = super::swimlane::swimlane_terminal_geometry(c, dir);
+            Self::Swimlane(c, dir, canonical) => {
+                let geometry = super::swimlane::swimlane_terminal_geometry(c, dir, canonical);
                 (c.x - geometry.width / 2.0, c.y - geometry.height / 2.0)
             }
         }
@@ -47,7 +48,8 @@ impl<'a> ClusterGeometry<'a> {
     pub(super) fn direction(self) -> &'a str {
         match self {
             Self::Flowchart(c) => &c.effective_dir,
-            Self::Swimlane(_, dir) => dir.as_str(),
+            Self::Swimlane(c, dir, true) => c.requested_dir.as_deref().unwrap_or(dir.as_str()),
+            Self::Swimlane(_, dir, false) => dir.as_str(),
         }
     }
 }
@@ -143,9 +145,25 @@ impl<'a> FlowchartNodeInventoryInput<'a> {
                     .filter(|id| !id.is_empty())
                     .map(String::as_str)
                     .collect(),
-                layout.uses_elk_adapter_dom,
+                layout.route_contract.is_elk_parity(),
             ),
             FlowchartNodeLayoutView::Swimlane(layout) => {
+                let canonical = layout.has_canonical_routes();
+                if canonical {
+                    for lane in &layout.lanes {
+                        subgraph_ids_with_children.insert(lane.id.as_str());
+                        if let Some(owner) = &lane.parent_id {
+                            parent.insert(&lane.id, owner);
+                        } else {
+                            parent.remove(lane.id.as_str());
+                        }
+                    }
+                    for node in &layout.nodes {
+                        if let Some(owner) = &node.parent_id {
+                            parent.insert(&node.id, owner);
+                        }
+                    }
+                }
                 // FlowDB emits visible collapsed groups before authored vertices.
                 let order = layout
                     .nodes
@@ -185,7 +203,7 @@ impl<'a> FlowchartNodeInventoryInput<'a> {
                         .map(|lane| {
                             (
                                 lane.id.as_str(),
-                                ClusterGeometry::Swimlane(lane, layout.direction),
+                                ClusterGeometry::Swimlane(lane, layout.direction, canonical),
                             )
                         })
                         .collect(),
@@ -304,9 +322,11 @@ impl FlowchartPreparedNodes {
         let (owners, use_projected_edges) = match layout {
             FlowchartNodeLayoutView::Flowchart(layout) => (
                 &layout.edge_owners,
-                layout.uses_elk_adapter_dom || layout.route_contract.uses_projected_edges(),
+                layout.route_contract.uses_projected_edges(),
             ),
-            FlowchartNodeLayoutView::Swimlane(layout) => (&layout.edge_owners, false),
+            FlowchartNodeLayoutView::Swimlane(layout) => {
+                (&layout.edge_owners, layout.has_canonical_routes())
+            }
         };
         let helper_ids = super::render_input::flowchart_helper_node_ids(
             model,
@@ -767,7 +787,10 @@ impl FlowchartNodeRootSchedule {
     pub(super) fn prepare(ctx: &FlowchartNodeInventoryInput<'_>) -> crate::Result<Self> {
         let effective_parents = FlowchartEffectiveParentIndex::prepare(
             &ctx.parent,
-            |id| ctx.subgraphs_by_id.contains_key(id) && !ctx.recursive_clusters.contains(id),
+            |id| {
+                (ctx.subgraphs_by_id.contains_key(id) || ctx.layout_clusters_by_id.contains_key(id))
+                    && !ctx.recursive_clusters.contains(id)
+            },
             ctx.work_meter,
         )?;
         let (top, nested) = {
@@ -903,7 +926,7 @@ mod source_typography_tests {
             &model,
             &metadata.effective_config,
             &theme.compatibility,
-            layout.uses_elk_adapter_dom,
+            layout.route_contract.is_elk_parity(),
             sidecar.base_typography(),
             sidecar.edge_label_padding(),
         );
@@ -932,7 +955,7 @@ mod source_typography_tests {
         drop(prepared);
         assert_eq!(work.prepared_text_retained_bytes(), before);
 
-        layout.uses_elk_adapter_dom = true;
+        layout.route_contract = crate::graph_layout::RouteContract::ElkParity;
         layout
             .dom_node_order_by_root
             .insert(String::new(), vec!["Shared".into(), "Shared".into()]);
@@ -1017,7 +1040,7 @@ mod source_typography_tests {
             &model,
             &metadata.effective_config,
             &theme.compatibility,
-            layout.uses_elk_adapter_dom,
+            layout.route_contract.is_elk_parity(),
             sidecar.base_typography(),
             sidecar.edge_label_padding(),
         );

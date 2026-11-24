@@ -3,6 +3,7 @@ use crate::text::{TextMeasurer, TextStyle};
 
 pub(crate) const ARCHITECTURE_SERVICE_LABEL_BOTTOM_EXTENSION_PX: f64 = 18.0;
 pub(crate) const ARCHITECTURE_CREATE_TEXT_DEFAULT_WRAP_WIDTH_PX: f64 = 200.0;
+#[cfg(any(feature = "layout-cytoscape", test))]
 const CYTOSCAPE_LEAF_BODY_BORDER_WIDTH_PX: f64 = 0.0;
 const CYTOSCAPE_NODE_LABEL_MARGIN_OF_ERROR_PX: f64 = 2.0;
 const CYTOSCAPE_PARENT_BODY_BORDER_WIDTH_PX: f64 = 1.0;
@@ -20,11 +21,13 @@ pub(crate) struct ArchitectureServiceBoundsEstimate {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ArchitectureCytoscapeCanvasLabelMetrics {
+    #[cfg(any(feature = "layout-cytoscape", test))]
     pub(crate) width: f64,
     pub(crate) half_width: f64,
 }
 
 #[derive(Debug, Clone, Copy)]
+#[cfg(any(feature = "layout-cytoscape", test))]
 pub(crate) struct ArchitectureCytoscapeEdgeLabelMetrics {
     pub(crate) width: f64,
     pub(crate) height: f64,
@@ -32,6 +35,7 @@ pub(crate) struct ArchitectureCytoscapeEdgeLabelMetrics {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ArchitectureCytoscapeChildLabelBounds {
+    #[cfg(any(feature = "layout-cytoscape", test))]
     pub(crate) metrics: ArchitectureCytoscapeCanvasLabelMetrics,
     pub(crate) half_width: f64,
     pub(crate) bottom_extension_px: f64,
@@ -52,13 +56,16 @@ impl ArchitectureCytoscapeChildLabelBounds {
 #[derive(Debug, Clone)]
 pub(crate) struct ArchitectureCytoscapeChildContributionBounds {
     // Raw icon bounds are retained for the emitted SVG geometry.
+    #[cfg(any(feature = "layout-cytoscape", test))]
     pub(crate) body_bounds: Bounds,
+    #[cfg(any(feature = "layout-cytoscape", test))]
     pub(crate) label_bounds: Option<Bounds>,
     // Compound sizing unions the cached body and label bounds without the final element expansion.
     pub(crate) union_bounds: Bounds,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
+#[cfg(any(feature = "layout-cytoscape", test))]
 pub(crate) struct ArchitectureNodeBBoxExtras {
     pub(crate) left: f64,
     pub(crate) right: f64,
@@ -81,9 +88,14 @@ pub(crate) fn architecture_cytoscape_canvas_label_metrics(
         })
         .fold(0.0_f64, f64::max);
     let half_width = width / 2.0;
-    ArchitectureCytoscapeCanvasLabelMetrics { width, half_width }
+    ArchitectureCytoscapeCanvasLabelMetrics {
+        #[cfg(any(feature = "layout-cytoscape", test))]
+        width,
+        half_width,
+    }
 }
 
+#[cfg(any(feature = "layout-cytoscape", test))]
 pub(crate) fn architecture_cytoscape_edge_label_metrics(
     label: &str,
     measurer: &dyn TextMeasurer,
@@ -120,6 +132,14 @@ pub(crate) fn architecture_svg_group_bbox_padding_px(padding_px: f64) -> f64 {
         + CYTOSCAPE_FINAL_ELEMENT_BBOX_EXPANSION_PX
 }
 
+pub(crate) fn extend_bounds(bounds: &mut Option<Bounds>, other: Bounds) {
+    let b = bounds.get_or_insert(other.clone());
+    b.min_x = b.min_x.min(other.min_x);
+    b.min_y = b.min_y.min(other.min_y);
+    b.max_x = b.max_x.max(other.max_x);
+    b.max_y = b.max_y.max(other.max_y);
+}
+
 fn union_bounds(a: &Bounds, b: &Bounds) -> Bounds {
     Bounds {
         min_x: a.min_x.min(b.min_x),
@@ -142,21 +162,23 @@ pub(crate) fn architecture_cytoscape_child_contribution_bounds(
     icon_bounds: &Bounds,
     label_bounds: Option<&ArchitectureCytoscapeChildLabelBounds>,
 ) -> ArchitectureCytoscapeChildContributionBounds {
-    let body_bounds = icon_bounds.clone();
-    let body_bbox_bounds = expand_bounds(&body_bounds, CYTOSCAPE_FINAL_ELEMENT_BBOX_EXPANSION_PX);
-    let label_bounds = label_bounds.map(|label| label.bounds_for_icon(&body_bounds));
+    let body_bbox_bounds = expand_bounds(icon_bounds, CYTOSCAPE_FINAL_ELEMENT_BBOX_EXPANSION_PX);
+    let label_bounds = label_bounds.map(|label| label.bounds_for_icon(icon_bounds));
     let union_bounds = label_bounds
         .as_ref()
         .map(|label| union_bounds(&body_bbox_bounds, label))
         .unwrap_or_else(|| body_bbox_bounds.clone());
 
     ArchitectureCytoscapeChildContributionBounds {
-        body_bounds,
+        #[cfg(any(feature = "layout-cytoscape", test))]
+        body_bounds: icon_bounds.clone(),
+        #[cfg(any(feature = "layout-cytoscape", test))]
         label_bounds,
         union_bounds,
     }
 }
 
+#[cfg(any(feature = "layout-cytoscape", test))]
 fn architecture_cytoscape_final_element_bounds(
     icon_bounds: &Bounds,
     label_bounds: Option<&ArchitectureCytoscapeChildLabelBounds>,
@@ -178,12 +200,14 @@ pub(crate) fn architecture_cytoscape_child_label_bounds(
     let title = title.map(str::trim).filter(|t| !t.is_empty())?;
     let metrics = architecture_cytoscape_canvas_label_metrics(title, measurer, style);
     Some(ArchitectureCytoscapeChildLabelBounds {
+        #[cfg(any(feature = "layout-cytoscape", test))]
         metrics,
         half_width: metrics.half_width + CYTOSCAPE_NODE_LABEL_MARGIN_OF_ERROR_PX,
         bottom_extension_px: architecture_cytoscape_node_label_bottom_extension_px(font_size_px),
     })
 }
 
+#[cfg(any(feature = "layout-cytoscape", test))]
 pub(crate) fn architecture_measure_cytoscape_final_node_bbox_extras(
     title: Option<&str>,
     measurer: &dyn TextMeasurer,
@@ -206,6 +230,7 @@ pub(crate) fn architecture_measure_cytoscape_final_node_bbox_extras(
     architecture_cytoscape_bbox_extras(&element_bounds, half_icon)
 }
 
+#[cfg(any(feature = "layout-cytoscape", test))]
 pub(crate) fn architecture_measure_cytoscape_compound_child_bbox_extras(
     title: Option<&str>,
     measurer: &dyn TextMeasurer,
@@ -228,6 +253,7 @@ pub(crate) fn architecture_measure_cytoscape_compound_child_bbox_extras(
     architecture_cytoscape_bbox_extras(&contribution.union_bounds, half_icon)
 }
 
+#[cfg(any(feature = "layout-cytoscape", test))]
 fn architecture_cytoscape_bbox_extras(
     bounds: &Bounds,
     half_icon: f64,
@@ -246,6 +272,7 @@ fn architecture_cytoscape_bbox_extras(
     }
 }
 
+#[cfg(feature = "layout-cytoscape")]
 pub(crate) fn architecture_node_bbox_extras_to_manatee(
     extras: ArchitectureNodeBBoxExtras,
 ) -> manatee::BoundsExtras {
@@ -415,6 +442,7 @@ mod tests {
         assert_eq!(super::CYTOSCAPE_FINAL_ELEMENT_BBOX_EXPANSION_PX, 1.0);
     }
 
+    #[cfg(feature = "layout-cytoscape")]
     #[test]
     fn architecture_node_bbox_extras_convert_to_manatee_bounds_extras() {
         let extras = super::ArchitectureNodeBBoxExtras {

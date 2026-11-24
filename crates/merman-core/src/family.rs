@@ -14,7 +14,7 @@ use crate::{EditorFamilySemantics, EditorSemanticFacts, EditorSemanticKind};
 use crate::{Error, OperationControl, OperationControlResult, Result};
 #[cfg(feature = "presentation")]
 use crate::{MermaidConfig, SourcePresentationMetadata};
-#[cfg(any(test, feature = "presentation", feature = "editor-facts"))]
+#[cfg(any(test, feature = "editor-facts"))]
 use merman_model::family::diagram_type_family_id;
 #[cfg(test)]
 use merman_model::family::diagram_type_metadata_id;
@@ -829,17 +829,10 @@ pub(crate) fn operation_family_id(
     diagram_type: &str,
     effective_config: &MermaidConfig,
 ) -> Option<DiagramFamilyId> {
-    let family = diagram_type_family_id(diagram_type)?;
-    if family == DiagramFamilyId::FLOWCHART || family == DiagramFamilyId::SWIMLANE {
-        return Some(
-            if effective_config.get_str("layout") == Some(DiagramFamilyId::SWIMLANE.as_str()) {
-                DiagramFamilyId::SWIMLANE
-            } else {
-                DiagramFamilyId::FLOWCHART
-            },
-        );
-    }
-    Some(family)
+    merman_model::family::diagram_type_presentation_family_id(
+        diagram_type,
+        effective_config.get_str("layout"),
+    )
 }
 
 #[cfg(feature = "editor-facts")]
@@ -1660,8 +1653,10 @@ mod catalog_tests {
             ("flowchart-v2", Some("dagre"), DiagramFamilyId::FLOWCHART),
             ("flowchart-elk", Some("elk"), DiagramFamilyId::FLOWCHART),
             ("flowchart", Some("swimlane"), DiagramFamilyId::SWIMLANE),
+            ("flowchart", Some("shoal"), DiagramFamilyId::FLOWCHART),
             ("swimlane", None, DiagramFamilyId::FLOWCHART),
             ("swimlane", Some("elk"), DiagramFamilyId::FLOWCHART),
+            ("swimlane", Some("shoal"), DiagramFamilyId::SWIMLANE),
             ("swimlane", Some("swimlane"), DiagramFamilyId::SWIMLANE),
         ] {
             let mut config = MermaidConfig::empty_object();

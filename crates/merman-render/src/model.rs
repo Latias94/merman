@@ -758,18 +758,7 @@ pub struct FlowchartLayout {
     #[serde(skip)]
     pub(crate) route_contract: crate::graph_layout::RouteContract,
     #[serde(skip)]
-    pub(crate) placement: FlowchartPlacement,
-}
-
-#[derive(Debug, Default, Clone)]
-#[cfg(any(
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-agentflow"
-))]
-pub(crate) struct FlowchartPlacement {
-    pub(crate) adaptation: Option<crate::LayoutAdaptationObservation>,
-    pub(crate) frame: Option<std::sync::Arc<crate::ShoalLayoutFrame>>,
+    pub(crate) placement: crate::layout_frame::GraphPlacement,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -922,7 +911,33 @@ pub struct SwimlaneLayout {
     ))]
     #[serde(skip)]
     pub(crate) edge_owners: crate::flowchart::FlowchartEdgeOwners,
+    #[cfg(all(
+        feature = "layout-shoal",
+        any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+    ))]
+    #[serde(skip)]
+    pub(crate) shoal: Option<crate::swimlane::SwimlaneShoal>,
     pub bounds: Option<Bounds>,
+}
+
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+impl SwimlaneLayout {
+    pub(crate) const fn has_canonical_routes(&self) -> bool {
+        #[cfg(all(
+            feature = "layout-shoal",
+            any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+        ))]
+        return self.shoal.is_some();
+        #[cfg(not(all(
+            feature = "layout-shoal",
+            any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+        )))]
+        false
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

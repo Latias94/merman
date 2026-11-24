@@ -9,14 +9,12 @@ pub(super) fn layout(
     config: &Value,
     plans: &[UsecaseNodePlan],
     edge_plans: &mut [UsecaseEdgePlan],
+    #[cfg(feature = "layout-elk")] route_contract: &crate::graph_layout::RouteContract,
     work: &mut OperationLayoutWorkControl,
     #[cfg(feature = "layout-elk")] operation_seed: merman_layout_elk::ElkOperationSeed,
 ) -> Result<UsecaseDiagramLayout> {
-    crate::layout_backend::resolve_graph_layout(config).validate_rootless_graph()?;
     #[cfg(feature = "layout-elk")]
-    if crate::layout_backend::resolve_graph_layout(config).backend
-        == crate::layout_backend::GraphLayoutBackend::Elk
-    {
+    if route_contract.is_elk_parity() {
         return elk_layout(model, config, plans, edge_plans, work, operation_seed);
     }
     super::dagre::layout(model, config, plans, edge_plans, work)
@@ -372,11 +370,11 @@ pub(super) fn prepare_edge_paths(
     plans: &[UsecaseNodePlan],
     edge_plans: &[UsecaseEdgePlan],
     config: &Value,
+    route_contract: &crate::graph_layout::RouteContract,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<HashMap<String, Vec<LayoutPoint>>> {
     use super::elk_edge_geometry::{self as geometry, Outline, Shape};
-    let elk = crate::layout_backend::resolve_graph_layout(config).backend
-        == crate::layout_backend::GraphLayoutBackend::Elk;
+    let elk = route_contract.is_elk_parity();
     // Dagre's recursive paint measurement includes title labels which may extend beyond
     // a rect boundary's frame. Retain that measured contribution when clipping edge paths.
     let dagre_paint_bounds = (!elk).then(|| layout.bounds.clone()).flatten();

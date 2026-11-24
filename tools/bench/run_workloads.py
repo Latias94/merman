@@ -24,6 +24,8 @@ HERE = Path(__file__).resolve().parent
 FAMILY_MANIFEST = ROOT / "playground/examples/manifest.json"
 FAMILY_LABELS = HERE / "workload_family_labels.json"
 LAYOUTS = ("dagre", "elk", "shoal")
+LAYOUT_EVIDENCE_DAGRE = ("flowchart", "agentflow", "class", "state", "requirement", "usecase")
+LAYOUT_EVIDENCE_ENGINES = (*LAYOUT_EVIDENCE_DAGRE, "architecture", "block", "c4", "er", "swimlane")
 OPERATIONS = (
     "svg-data",
     "svg",
@@ -506,11 +508,10 @@ def check_layout_evidence(response, job, signatures, requested, *, inventory):
         family = receipt["family"]
         required = [c.removeprefix("layout-") for c in receipt["required_capabilities"] if c.startswith("layout-")]
         actual = None
-        if family in ("flowchart", "agentflow", "class", "state", "er", "requirement", "usecase"):
-            if len(required) == 1:
-                actual = required[0]
-            elif not required and family != "er":
-                actual = "dagre"
+        if len(required) == 1 and family in LAYOUT_EVIDENCE_ENGINES:
+            actual = required[0]
+        elif not required and family in LAYOUT_EVIDENCE_DAGRE:
+            actual = "dagre"
         receipt["backend"] = actual
         if actual is None or actual != requested:
             observed = actual or "unconfirmed"

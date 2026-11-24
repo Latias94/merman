@@ -87,16 +87,22 @@ pub(super) fn assign(
             Terminal::Item(item, _) => hierarchy.item_slot(item),
             Terminal::Boundary(port) => level.items.len() + hierarchy.borders[port].slot,
         };
+        let ranked = |terminal| match terminal {
+            Terminal::Item(item, _) => hierarchy.lane_shell(graph, item).is_none(),
+            Terminal::Boundary(_) => true,
+        };
+        let legs = level
+            .legs
+            .iter()
+            .filter(|leg| ranked(leg.source) && ranked(leg.target));
         work.charge(level.legs.len())?;
         let mut links = reserved(level.legs.len())?;
         links.extend(
-            level
-                .legs
-                .iter()
+            legs.clone()
                 .map(|leg| (index(leg.source), index(leg.target))),
         );
         let reversed = flat::orientations(&nodes, &links, options, work)?;
-        for (leg, reversed) in level.legs.iter().zip(reversed) {
+        for (leg, reversed) in legs.zip(reversed) {
             let (outgoing, incoming) = if reversed { (start, end) } else { (end, start) };
             for (terminal, side) in [(leg.source, outgoing), (leg.target, incoming)] {
                 if let Terminal::Item(_, Some(port)) = terminal {
