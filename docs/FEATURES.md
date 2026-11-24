@@ -44,7 +44,7 @@ The public capability leaves are:
 | `editor` | Parser-backed editor intelligence | None |
 | `ascii` | Terminal text output | None |
 | `png`, `jpeg`, `pdf` | Independent binary exports | None |
-| `layout-cytoscape`, `layout-elk` | Mermaid-compatible layout engines | Each implies `svg` |
+| `layout-dagre`, `layout-elk`, `layout-cytoscape` | Mermaid-compatible layout engines | Each implies `svg` |
 | `layout-shoal` | Experimental Merman layered layout and orthogonal edge routing | Implies `svg` |
 | `math` | Math-label rendering | Implies `svg` |
 | `native-fonts` | Explicit font contexts for shared text measurement and native painting | Facade and CLI forward SVG; no codec requirement |
@@ -73,12 +73,12 @@ the feature requirements of an SVG application. Use the
 
 `merman-model/terminal-text` owns shared terminal normalization and Unicode width helpers. ASCII and facade diagnostics explicitly select it; direct core semantic parsing does not. `merman-model` has no source ingestion or rendering dependency. ASCII, Render, and Export consume shared models or SVG without a production core dependency; the [model/source migration](migrations/model-source-boundaries.md) covers package selection and breaking Rust imports.
 
-The current development branch retains `complete-svg = ["svg", "layout-cytoscape"]` and
+The current development branch retains `complete-svg = ["svg", "layout-cytoscape", "layout-dagre"]` and
 `complete-svg-elk = ["complete-svg", "layout-elk"]` on `merman` and `merman-rustdoc`.
 Neither aggregate selects diagram families or math. This changes their previously math-enabled
 behavior: add `math` explicitly, for example `features = ["complete-svg-elk", "math"]`, when
 upgrading a mathematical-label consumer. Direct output/layout leaves remain available. The facade defaults to
-`all-diagrams + svg + layout-cytoscape + layout-elk`, without math. Ordinary prebuilt SVG
+`all-diagrams + svg + layout-cytoscape + layout-dagre + layout-elk`, without math. Ordinary prebuilt SVG
 products, including Web full/render and official CLI archives, select math explicitly.
 CLI source defaults and the `rustdoc` leaf omit it; custom source builds choose their own leaves.
 Installed `0.9.3` artifacts retain their published recipes.
@@ -192,7 +192,7 @@ Rustdoc generation defaults remain unchanged. For a minimal CLI build with
 explicit fonts and SVG output:
 
 ```powershell
-cargo run -p merman-cli --no-default-features --features diagram-flowchart,native-fonts -- mmdc -i diagram.mmd -o diagram.svg --font-file fonts/MyFont-Regular.ttf --font-file fonts/MyFont-Bold.ttf --font-system off
+cargo run -p merman-cli --no-default-features --features diagram-flowchart,layout-dagre,native-fonts -- mmdc -i diagram.mmd -o diagram.svg --font-file fonts/MyFont-Regular.ttf --font-file fonts/MyFont-Bold.ttf --font-system off
 ```
 
 Add `png`, `jpeg`, or `pdf` individually for binary output. Each CLI codec feature
@@ -343,16 +343,16 @@ operation or batch and never accumulate user fonts in a process-global cache.
 
 | Workflow | Recommended dependency or package | Typical feature selection |
 | --- | --- | --- |
-| Deterministic SVG in Rust | `merman` | Defaults (`all-diagrams + svg + layout-cytoscape + layout-elk`), or `default-features = false, features = ["all-diagrams", "svg"]` for basic SVG |
-| SVG, Cytoscape, and math without ELK | `merman` | `default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape", "math"]` |
-| SVG, Cytoscape, ELK, and math | `merman` | Add `math` to defaults, or select `all-diagrams,svg,layout-cytoscape,layout-elk,math` with defaults disabled |
+| Deterministic SVG in Rust | `merman` | Defaults (`all-diagrams + svg + layout-cytoscape + layout-dagre + layout-elk`), or `default-features = false, features = ["diagram-sequence", "diagram-pie", "svg"]` for SVG without graph solvers |
+| SVG, Dagre, Cytoscape, and math without ELK | `merman` | `default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape", "layout-dagre", "math"]` |
+| SVG, Dagre, Cytoscape, ELK, and math | `merman` | Add `math` to defaults, or select `all-diagrams,svg,layout-cytoscape,layout-dagre,layout-elk,math` with defaults disabled |
 | Lint and diagnostics | `merman-analysis` | `all-diagrams`, or the required `diagram-*` selectors; defaults are empty |
 | Editor library | `merman-editor-core` or `merman` | `merman` with `all-diagrams, analysis, editor` |
 | Standalone LSP server with code actions | `merman-lsp` | `--no-default-features --features all-diagrams,fixes,stdio` |
-| Complete diagram CLI | `merman-cli` | Source defaults: all families, ELK, exports, analysis, Markdown and `rustdoc`; `cli-release` additionally selects math explicitly |
+| Complete diagram CLI | `merman-cli` | Source defaults: all families, Dagre, ELK, Cytoscape, exports, analysis, Markdown and `rustdoc`; `cli-release` additionally selects math explicitly |
 | Lean CLI lint | `merman-cli` | `--no-default-features --features all-diagrams,analysis` |
 | Checked Rustdoc fragments | `merman-cli rustdoc` | Included in the default and release CLI; documented crates consume committed files through native `include_str!` |
-| One-step Rustdoc attributes | `merman-rustdoc` | Default `all-diagrams + svg + layout-cytoscape + layout-elk`; add `math` for mathematical labels |
+| One-step Rustdoc attributes | `merman-rustdoc` | Default `all-diagrams + svg + layout-cytoscape + layout-dagre + layout-elk`; add `math` for mathematical labels |
 | Browser rendering | `@mermanjs/web` or an admitted slim package | Select the npm package, not Cargo features |
 | Typst rendering | `@preview/merman` | Select the Typst package; internal WASM profiles are maintainer-only |
 | C/C++ embedding | Native C SDK (`sdk-native-full`) or `merman-ffi` | Use the matching full SDK archive for a supported target; `c-abi-native` remains the reference/custom source recipe, with `native-runtime` for explicit native runtime policy |
@@ -363,8 +363,8 @@ operation or batch and never accumulate user fonts in a process-global cache.
 
 Node/SSG users can select the experimental `@mermanjs/node` alpha package. It installs a small
 loader plus one exact-version N-API platform package. Main's next-release recipe selects
-deterministic SVG with math and both layout backends, without analysis, ASCII, or binary export;
-published `0.9.2` retains its math-free recipe. `@mermanjs/node-wasm` is an explicit alternative
+deterministic SVG with math, Dagre, ELK, and Cytoscape. The Node recipe omits analysis, ASCII, and binary export.
+Published `0.9.2` retains its math-free recipe. `@mermanjs/node-wasm` is an explicit alternative
 with the same SVG scope. Browser WASM is not a supported Node transport or fallback. See the
 [Node guide](../platforms/node/README.md) for host requirements and publication boundaries.
 
@@ -381,12 +381,12 @@ For an application checked out beside this repository:
 
 ```toml
 [dependencies]
-merman = { path = "../merman/crates/merman", default-features = false, features = ["svg", "diagram-flowchart", "diagram-gantt"] }
+merman = { path = "../merman/crates/merman", default-features = false, features = ["svg", "diagram-flowchart", "diagram-gantt", "layout-dagre"] }
 ```
 
 Use the `Renderer::render(RenderRequest::svg(...))` example below for either Flowchart or Gantt
-input. No optional layout engine or math renderer is implied. Add `layout-elk`, `layout-cytoscape`,
-or `math` only if an input requires it. Parser-only applications can instead use:
+input. Flowchart uses Dagre as the registered fallback for Mermaid 12’s default ELK request. Gantt
+uses its own layout. Add optional engines or `math` as needed. Parser-only applications can instead use the following recipe.
 
 ```toml
 [dependencies]
@@ -423,7 +423,7 @@ Strict parsing of a known disabled family returns `UnsupportedDiagram`. Suppress
 render parsing produces the existing Error diagram; suppressed unknown input returns `None`.
 Cancellation is never suppressed, and custom registry overlays keep their existing precedence.
 Rendering rejects a missing local handler after cancellation, provenance, and semantic/layout
-pair validation, before optional backend planning. Optional graph backends retain their registered fallback when absent from the build. Denying a compiled requested backend returns a typed runtime-policy error. Architecture requires Cytoscape by default and `layout-shoal` when selected explicitly. See the [embedding guide](rendering/RUST_EMBEDDING.md#handle-unavailable-languages-and-backends) for family-specific behavior.
+pair validation, before optional backend planning. The layout plan records the selected backend after family fallback and reports any missing capability ID. A host that denies a compiled selection receives the same typed capability error. Architecture requires Cytoscape by default and `layout-shoal` when selected explicitly. See the [embedding guide](rendering/RUST_EMBEDDING.md#handle-unavailable-languages-and-backends) for family-specific behavior.
 
 Existing distributed products retain their all-family recipes; this change adds no family-specific
 prebuilt package. Artifact profile schema 2 records the exact compiled parser set in
@@ -442,7 +442,7 @@ must be completed before claiming a reduction.
 
 ```toml
 [dependencies]
-merman = { path = "crates/merman", default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape", "math"] }
+merman = { path = "crates/merman", default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape", "layout-dagre", "math"] }
 ```
 
 ```rust
@@ -463,7 +463,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 The ordinary `merman = { path = "crates/merman" }` dependency enables
-`all-diagrams,svg,layout-cytoscape,layout-elk`. Add `math` explicitly for mathematical labels.
+`all-diagrams,svg,layout-cytoscape,layout-dagre,layout-elk`. Add `math` explicitly for mathematical labels.
 The default operation remains deterministic; it does not read ambient time, time zone, randomness,
 or timing state.
 
@@ -473,14 +473,31 @@ configuration, semantic/layout inspection, binary export, presentation, resource
 explicit SVG pipeline. The complete set of copyable task examples lives in
 [`crates/merman/examples`](../crates/merman/examples/README.md).
 
-### Basic SVG without optional engines
+### SVG without general-purpose layout engines
 
 ```toml
 [dependencies]
-merman = { path = "crates/merman", default-features = false, features = ["all-diagrams", "svg"] }
+merman = { path = "crates/merman", default-features = false, features = ["svg", "diagram-sequence", "diagram-pie"] }
 ```
 
-Without compiled ELK, graph requests can resolve to Dagre. Mindmap can also use its registered fallback. Architecture reports a typed missing-capability error when the selected engine is unavailable. The default engine is Cytoscape. An explicit `layout: shoal` can render using `diagram-architecture,layout-shoal` and the SVG feature. A compiled backend denied by runtime policy reports a policy error. Execution errors from the selected backend propagate to the caller. Missing required math capability also reports a typed error. See the [embedding guide](rendering/RUST_EMBEDDING.md#example-an-editor-with-a-family-allowlist) and test the actual family/backend combination.
+Sequence and Pie have their own layouts. An application can also enable Flowchart parsing with
+`diagram-flowchart`. Flowchart rendering requires a separately compiled graph engine, and the SVG
+and layout JSON APIs report a typed error at admission when the selected engine is missing.
+
+| Flowchart Cargo features in addition to `svg,diagram-flowchart` | Layout selection |
+| --- | --- |
+| `layout-dagre` | `layout: dagre`, or the Mermaid 12 fallback for an absent ELK loader |
+| `layout-elk` | Mermaid 12’s default, `layout: elk`, or another registered ELK algorithm |
+| `layout-shoal` | Set `layout: shoal` in the diagram or site config |
+| No graph engine | The default request reports `layout-elk` missing. An explicit `layout: dagre` reports `layout-dagre` missing. |
+
+Add `layout-dagre` to a previous defaults-off recipe that relied on the implicit Dagre backend.
+Mindmap's default CoSE layout falls back to Dagre when Cytoscape is absent. An explicit ELK request
+tries ELK, CoSE, then Dagre and reports `layout-elk` missing when none of them is compiled.
+For a selective `RenderCapabilityPolicy`, explicitly allow `RenderCapability::LayoutDagre` if the
+host should admit it. Graph ASCII can independently bring Dugong into the application. To check an
+SVG-only dependency closure, use `cargo tree -e normal` in the final consumer build with `ascii`
+disabled. [Configure an application layout default](rendering/RUST_EMBEDDING.md#set-an-application-layout-default)
 
 ### Analysis and editor support
 
@@ -597,8 +614,9 @@ Likewise, `markdown` enables serial document conversion without analysis command
 `parallel-markdown` implies `markdown` and adds only the Rayon worker pool and `--jobs` to
 `batch` and Markdown-mode `mmdc`. Disabling it does not remove Markdown support or change chart
 numbering, source order, diagnostics ordering, resource admission, or transaction semantics.
-Use `--no-default-features --features all-diagrams,markdown` for a sequential all-family Markdown CLI and
-`--no-default-features --features all-diagrams,parallel-markdown` when measured throughput justifies Rayon.
+Use `--no-default-features --features all-diagrams,markdown,layout-dagre` for sequential Markdown
+rendering with Dagre. Add `layout-cytoscape` for Architecture's default layout. Select
+`parallel-markdown` to enable Rayon.
 
 ## Rustdoc
 
@@ -676,10 +694,11 @@ svg = engine.render_svg("flowchart TD\n  A --> B", None)
 ```
 
 Main's Android, Apple, Python, and Flutter native products select
-`all-diagrams,analysis,ascii,fixes,layout-cytoscape,layout-elk,math,svg` in the artifact descriptor.
-They include mathematical SVG, both layout engines, ASCII, analysis, fixes, validation, and document
-analysis. They omit PNG, JPEG, PDF, ambient native runtime adapters, and the C/WASI memory-font
-service. Math availability does not override constrained-policy rejection of opaque math rendering.
+`all-diagrams,analysis,ascii,fixes,layout-cytoscape,layout-dagre,layout-elk,math,svg` in the artifact descriptor.
+They include mathematical SVG, Dagre, ELK, Cytoscape, ASCII, analysis, fixes, validation, and
+document analysis. They omit PNG, JPEG, PDF, ambient native runtime adapters, and the C/WASI
+memory-font service. Math availability does not override constrained-policy rejection of opaque
+math rendering.
 Use an appropriate interactive/trusted policy for admitted formulas and retain host execution and
 memory limits. Their package-specific math and ELK notices and source provenance remain part of
 the artifact contract. Generated APIs keep optional operation names for custom current-contract
@@ -696,7 +715,7 @@ transport API 2 rather than C ABI 3. The Maven publication bundle does not
 establish public Central availability. Apple delivery includes a complete local SwiftPM
 package with matching sources, resources, and XCFramework; public remote SwiftPM installation
 awaits a hosted package repository. C and C++ can use the published `0.9.3` native SDK, with
-`sdk-native-full` recommended for SVG, PNG, JPEG, PDF, ASCII, math, both layout backends, and
+`sdk-native-full` recommended for SVG, PNG, JPEG, PDF, ASCII, math, Dagre, Cytoscape, ELK, and
 caller-owned fonts on supported desktop targets. `c-abi-native` remains the complete source
 reference build, not the downloadable SDK. The [SDK](../distribution/sdk/README.md),
 [Flutter](../platforms/flutter/README.md),

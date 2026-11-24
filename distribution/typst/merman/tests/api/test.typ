@@ -299,6 +299,12 @@
   capabilities.capabilities.capability_ids.contains("svg"),
   message: "capabilities should stay exported",
 )
+#assert(
+  capabilities.capabilities.capability_ids.contains("layout-dagre"),
+  message: "the packaged runtime should expose Dagre",
+)
+#let dagre-result = mermaid-result(source, site-config: (layout: "dagre"))
+#assert(dagre-result.ok, message: "the packaged runtime should render an explicit Dagre request")
 #assert.eq(
   capabilities.capabilities.operation_ids,
   (

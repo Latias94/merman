@@ -53,6 +53,7 @@
             "ascii",
             "fixes",
             "layout-cytoscape",
+            "layout-dagre",
             "layout-elk",
             "math",
             "svg"
@@ -98,7 +99,7 @@
     "offline": true,
     "cargo_lock_sha256": "c4ca1fdb09d3f1556fdc925fdaf11efa7d1107892c499906e346b09b1134d76e",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
-    "artifact_bundle_sha256": "cc24a456dbe61a0205a8da3396fbd36e73d56d0ccf3b253270b2fab712e974b8"
+    "artifact_bundle_sha256": "49ea1d31b4b28ad47f538b85313f926b472e9b27df5f16db507bea205a589e1e"
   },
   "target_dependency_closures": [
     {

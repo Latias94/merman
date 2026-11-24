@@ -1147,7 +1147,7 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
             core.index("verify_theme_acceptance_boundary.py"),
         )
         self.assertIn(
-            "--features diagram-flowchart,png,platform-system-font-default --test native_fonts_contract",
+            "--features diagram-flowchart,layout-dagre,png,platform-system-font-default --test native_fonts_contract",
             core,
         )
         self.assertIn(
@@ -1157,7 +1157,7 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
         )
         fontconfig = core.split("- name: Test automatic Fontconfig fallback on Linux\n", 1)[1].split("\n      - ", 1)[0]
         self.assertIn("if: runner.os == 'Linux'", fontconfig)
-        self.assertIn("diagram-flowchart,png,platform-system-font-query --test native_fonts_contract", fontconfig)
+        self.assertIn("diagram-flowchart,layout-dagre,png,platform-system-font-query --test native_fonts_contract", fontconfig)
         self.assertIn("test(=fontconfig_availability_controls_automatic_fallback)", fontconfig)
         self.assertIn("--test linux_fontconfig", fontconfig)
         self.assertIn("binary(linux_fontconfig)", fontconfig)

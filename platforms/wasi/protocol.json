@@ -42,7 +42,7 @@
     "__wbindgen_skip_interpret_calls": [0, 0]
   },
   "allowed_global_exports": ["__data_end", "__heap_base", "__abort_handler", "__instance_terminated"],
-  "required_capabilities": ["svg", "png", "native-fonts", "layout-cytoscape"],
+  "required_capabilities": ["svg", "png", "native-fonts", "layout-cytoscape", "layout-dagre"],
   "required_operations": ["svg", "png", "svg-plan-json"],
   "checks": [
     "actual-import-export-audit", "reactor-initialized", "catalog-actual-capabilities",

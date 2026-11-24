@@ -8,7 +8,10 @@ mod support;
 use support::proc_macro_artifact;
 
 #[test]
-#[cfg(feature = "diagram-flowchart")]
+#[cfg(all(
+    feature = "diagram-flowchart",
+    any(feature = "layout-dagre", feature = "layout-elk")
+))]
 fn nested_macros_inherit_explicitly_override_and_reset_parent_configuration() {
     let temp = TempDir::new().expect("create unique test directory");
     let source = temp.path().join("lib.rs");

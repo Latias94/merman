@@ -373,6 +373,7 @@ impl<'a> RectangleStyleDeclarations<'a> {
     }
 }
 
+#[cfg(feature = "layout-dagre")]
 pub(super) fn flowchart_subgraph_css_size(
     class_defs: &IndexMap<String, Vec<String>>,
     classes: &[String],

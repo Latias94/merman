@@ -1,9 +1,25 @@
 //! Mindmap projections for Mermaid's registered graph layout loaders.
 
-use super::{MindmapEdgeModel, MindmapModel, compute_bounds};
+#[cfg(any(
+    feature = "layout-cytoscape",
+    feature = "layout-dagre",
+    feature = "layout-elk"
+))]
+use super::compute_bounds;
+use super::{MindmapEdgeModel, MindmapModel};
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+use crate::Error;
+use crate::Result;
+#[cfg(feature = "layout-elk")]
+use crate::layout_backend::ElkRootAlgorithm;
+#[cfg(any(
+    feature = "layout-cytoscape",
+    feature = "layout-dagre",
+    feature = "layout-elk"
+))]
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{LayoutEdge, LayoutNode, LayoutPoint, MindmapDiagramLayout};
-use crate::{Error, Result};
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 use serde_json::Value;
 
 fn edge(model: &MindmapEdgeModel, points: Vec<LayoutPoint>) -> LayoutEdge {
@@ -25,6 +41,7 @@ fn edge(model: &MindmapEdgeModel, points: Vec<LayoutPoint>) -> LayoutEdge {
     }
 }
 
+#[cfg(feature = "layout-dagre")]
 pub(super) fn dagre(
     model: &MindmapModel,
     mut nodes: Vec<LayoutNode>,
@@ -129,6 +146,7 @@ pub(super) fn elk(
     model: &MindmapModel,
     mut nodes: Vec<LayoutNode>,
     config: &Value,
+    algorithm: ElkRootAlgorithm,
     work: &mut OperationLayoutWorkControl,
     operation_seed: merman_layout_elk::ElkOperationSeed,
 ) -> Result<MindmapDiagramLayout> {
@@ -167,7 +185,7 @@ pub(super) fn elk(
             })
             .collect(),
         spacing: elk::Spacing::default(),
-        options: crate::elk_options::layout_options(config),
+        options: crate::elk_options::layout_options(config, algorithm),
     };
     let oriented = crate::elk_feedback_edges::orient_feedback_edges(
         &mut graph,
@@ -227,6 +245,89 @@ pub(super) fn elk(
         edges,
         bounds,
     })
+}
+
+#[cfg(feature = "layout-cytoscape")]
+pub(super) fn cose_bilkent(
+    model: &MindmapModel,
+    mut nodes: Vec<LayoutNode>,
+    edge_indices: &[(usize, usize)],
+    work: &mut OperationLayoutWorkControl,
+) -> Result<MindmapDiagramLayout> {
+    use manatee::algo::cose_bilkent::{IndexedEdge, IndexedNode, layout_indexed_with_work_control};
+
+    let indexed_nodes: Vec<_> = nodes
+        .iter()
+        .map(|node| IndexedNode {
+            width: node.width,
+            height: node.height,
+            x: node.x,
+            y: node.y,
+        })
+        .collect();
+    let mut indexed_edges = Vec::with_capacity(model.edges.len());
+    for &(a, b) in edge_indices {
+        if a != b {
+            indexed_edges.push(IndexedEdge { a, b });
+        }
+    }
+
+    let positions = layout_indexed_with_work_control(&indexed_nodes, &indexed_edges, work)
+        .map_err(|error| work.map_manatee_error(error))?;
+    for (node, position) in nodes.iter_mut().zip(positions) {
+        node.x = position.x;
+        node.y = position.y;
+    }
+    shift_nodes_to_positive_bounds(&mut nodes);
+
+    let edges: Vec<_> = model
+        .edges
+        .iter()
+        .zip(edge_indices)
+        .map(|(source, &(a, b))| {
+            edge(
+                source,
+                vec![
+                    LayoutPoint {
+                        x: nodes[a].x,
+                        y: nodes[a].y,
+                    },
+                    LayoutPoint {
+                        x: nodes[b].x,
+                        y: nodes[b].y,
+                    },
+                ],
+            )
+        })
+        .collect();
+    let bounds = compute_bounds(&nodes, &edges);
+    Ok(MindmapDiagramLayout {
+        swimlane_lanes: Vec::new(),
+        nodes,
+        edges,
+        bounds,
+    })
+}
+
+#[cfg(feature = "layout-cytoscape")]
+fn shift_nodes_to_positive_bounds(nodes: &mut [LayoutNode]) {
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    for node in nodes.iter() {
+        min_x = min_x.min(node.x - node.width / 2.0);
+        min_y = min_y.min(node.y - node.height / 2.0);
+    }
+    if !(min_x.is_finite() && min_y.is_finite()) {
+        return;
+    }
+
+    // Mermaid's CoSE-Bilkent transform starts the content at (15, 15) before viewport padding.
+    let dx = 15.0 - min_x;
+    let dy = 15.0 - min_y;
+    for node in nodes {
+        node.x += dx;
+        node.y += dy;
+    }
 }
 
 pub(super) fn swimlane(

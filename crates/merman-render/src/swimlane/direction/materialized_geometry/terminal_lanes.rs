@@ -31,17 +31,10 @@ fn orthogonally_aligned(first: &LayoutPoint, second: &LayoutPoint) -> bool {
 }
 
 fn rect_intersection(node: &WorkingNode, point: &LayoutPoint) -> LayoutPoint {
-    let point = dugong::util::intersect_rect(
-        dugong::util::Rect {
-            x: node.x,
-            y: node.y,
-            width: node.width,
-            height: node.height,
-        },
-        dugong::Point {
-            x: point.x,
-            y: point.y,
-        },
+    let point = crate::geom::intersect_centered_rect_ray(
+        crate::geom::point(node.x, node.y),
+        crate::geom::Size::new(node.width, node.height),
+        crate::geom::point(point.x, point.y),
     );
     LayoutPoint {
         x: point.x,

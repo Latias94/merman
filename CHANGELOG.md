@@ -29,7 +29,7 @@ Save the example as `diagram.mmd`, then build and run the CLI with `layout-shoal
 cargo run --locked -p merman-cli --features layout-shoal -- render diagram.mmd -f svg -o diagram.svg
 ```
 
-For a shared CLI default, save `{"layout":"shoal"}` in `mermaid.json` and pass `--config-file mermaid.json` to `render` or `batch` for supported diagrams. Run `merman-cli capabilities` to check for `layout-shoal`. Rust projects enable `features = ["layout-shoal"]` on the `merman` dependency and can set the same default with `MermaidEngine::with_site_config`. [Rust embedding guide](docs/rendering/RUST_EMBEDDING.md#replace-the-previous-renderer) · [Build Playground locally with Shoal](platforms/web/README.md#try-shoal-in-playground)
+For a shared CLI default, save `{"layout":"shoal"}` in `mermaid.json` and pass `--config-file mermaid.json` to `render` or `batch` for supported diagrams. Run `merman-cli capabilities` to check for `layout-shoal`. Rust projects enable `features = ["layout-shoal"]` on the `merman` dependency and can set the same default with `MermaidEngine::with_site_config`. [Rust embedding guide](docs/rendering/RUST_EMBEDDING.md#set-an-application-layout-default) · [Build Playground locally with Shoal](platforms/web/README.md#try-shoal-in-playground)
 
 Add `--fit-width --width 640` to fit the Flowchart to a 640 CSS pixel container. Shoal can reuse placement hints across edits. Flat diagrams also use the previous frame's positions to reduce movement. Use **Tools → Fit preview width** in the Merman SVG preview, or set `merman.preview.fitWidth` in VS Code with a Shoal-enabled CLI.
 
@@ -40,6 +40,8 @@ On an Apple M4 Pro, a nested Flowchart returned SVG in 0.426 ms with Shoal, 1.03
 Merman plans to make Shoal the default layout for supported diagrams when it adopts Mermaid v13 as its compatibility baseline.
 
 ### Changed
+
+- **Selectable Dagre for SVG builds.** With Cargo defaults disabled, add `layout-dagre` to keep Dagre and the Mermaid 12 fallback for a missing ELK loader. Select only `layout-elk` or `layout-shoal` for an application that uses one engine, or omit all graph engines for diagrams with their own layouts, such as Sequence and Pie. Missing backends produce a typed error in SVG and layout JSON. Default Rust builds and official artifacts keep their existing compatibility engines. Hosts with a capability allowlist can allow `RenderCapability::LayoutDagre`. [Feature recipes](docs/FEATURES.md#svg-without-general-purpose-layout-engines) · [Application layout default](docs/rendering/RUST_EMBEDDING.md#set-an-application-layout-default)
 
 - **CLI fonts on macOS and Linux.** Official archives use Core Text or Fontconfig by default for native Mermaid PNG, JPEG, and PDF exports. Platform lookup opens the selected fonts on demand and avoids the bounded scan's aggregate character-map limit. On Linux the automatic policy retries bounded discovery if the Fontconfig runtime cannot load. Use `--font-system bounded` to select the previous provider, or `--font-file` to pin the fonts used for both measurement and painting. [CLI font guide](crates/merman-cli/README.md#explicit-fonts)
 - **Native SVG rendering.** Native text measurement, PNG, JPEG, and PDF share Merman's SVG renderer based on usvg/resvg 0.50. It carries the platform-selected font instance through shaping and export. Rust hosts that pass parser options to `NativeFontContext::apply_to_usvg_options` should import `merman::svg::export::usvg` or `merman_export::usvg`. [Rust embedding guide](docs/rendering/RUST_EMBEDDING.md)

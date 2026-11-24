@@ -94,6 +94,7 @@ default = []
 analysis = ["merman-bindings-core/analysis"]
 svg = ["merman-bindings-core/svg"]
 layout-cytoscape = ["svg", "merman-bindings-core/layout-cytoscape"]
+layout-dagre = ["svg", "merman-bindings-core/layout-dagre"]
 layout-elk = ["svg", "merman-bindings-core/layout-elk"]
 
 [dependencies]

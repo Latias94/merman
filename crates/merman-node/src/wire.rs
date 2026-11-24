@@ -43,6 +43,8 @@ const NODE_OPERATIONS: &[OperationKey] = &[
 const NODE_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
     #[cfg(feature = "layout-cytoscape")]
     CapabilityKey::LayoutCytoscape,
+    #[cfg(feature = "layout-dagre")]
+    CapabilityKey::LayoutDagre,
     #[cfg(feature = "layout-elk")]
     CapabilityKey::LayoutElk,
     #[cfg(feature = "math")]

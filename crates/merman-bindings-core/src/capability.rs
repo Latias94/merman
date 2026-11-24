@@ -16,6 +16,11 @@ const COMPILED_SVG_CAPABILITY_BITS: u64 = CapabilityKey::Svg.compact_bit()
     } else {
         0
     }
+    | if merman::svg::layout_dagre_available() {
+        CapabilityKey::LayoutDagre.compact_bit()
+    } else {
+        0
+    }
     | if merman::svg::layout_elk_available() {
         CapabilityKey::LayoutElk.compact_bit()
     } else {
@@ -114,6 +119,7 @@ impl TransportCompiledExtensionKey {
     test,
     feature = "svg",
     feature = "layout-cytoscape",
+    feature = "layout-dagre",
     feature = "layout-elk",
     feature = "math"
 ))]
@@ -121,6 +127,7 @@ mod feature_unification_probe_tests {
     #[test]
     fn ambient_render_backends_are_really_compiled() {
         assert!(merman::svg::layout_cytoscape_available());
+        assert!(merman::svg::layout_dagre_available());
         assert!(merman::svg::layout_elk_available());
         assert!(merman::svg::math_available());
     }

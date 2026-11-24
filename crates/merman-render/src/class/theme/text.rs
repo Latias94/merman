@@ -1493,6 +1493,7 @@ mod tests {
         assert!(inherited_terminal.color_ownership_is_unverified());
         assert_eq!(inherited.unverified_font_run_count(), 1);
     }
+    #[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
     #[test]
     fn partially_shadowed_text_evidence_preserves_rule_identity_and_ordinal_residuals() {
         use crate::diagram_theme::{

@@ -47,7 +47,7 @@ class LayoutGalleryTests(unittest.TestCase):
 
     def test_layout_override_keeps_the_authored_source_and_checks_the_runner_receipt(self):
         original = "---\nconfig:\n  layout: dagre\n  htmlLabels: false\n---\nagentflow-beta LR\nA --> B\n"
-        backend = {"dagre": [], "elk": ["layout-elk"], "shoal": ["layout-shoal"]}
+        backend = {"dagre": ["layout-dagre"], "elk": ["layout-elk"], "shoal": ["layout-shoal"]}
 
         def draw(_runner, job):
             request, = job["requests"]

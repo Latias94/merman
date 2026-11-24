@@ -24,6 +24,17 @@ pub fn architecture_diagram() {}
 
 #[merman_rustdoc::merman]
 /// ```mermaid
+/// ---
+/// config:
+///   layout: dagre
+/// ---
+/// flowchart TD
+///   A --> B
+/// ```
+pub fn dagre_diagram() {}
+
+#[merman_rustdoc::merman]
+/// ```mermaid
 /// flowchart-elk TD
 ///   A --> B
 /// ```
@@ -65,6 +76,7 @@ pub fn math_diagram() {}
 
     for page in [
         "fn.architecture_diagram.html",
+        "fn.dagre_diagram.html",
         "fn.elk_diagram.html",
         "fn.math_diagram.html",
     ] {

@@ -208,7 +208,12 @@ impl Frozen {
                 layer_layer: measured.rank_spacing,
                 ..Default::default()
             },
-            options: crate::elk_options::layout_options(&diagram.metadata().effective_config),
+            options: crate::elk_options::layout_options(
+                &diagram.metadata().effective_config,
+                crate::layout_backend::ElkRootAlgorithm::for_diagnostic(
+                    &diagram.metadata().effective_config,
+                ),
+            ),
             nodes,
             edges,
         };

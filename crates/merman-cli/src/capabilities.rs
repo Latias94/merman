@@ -565,6 +565,7 @@ fn compiled_capability_ids() -> Vec<&'static str> {
     include_capability!("icons", "icons");
     include_capability!("jpeg", "jpeg");
     include_capability!("layout-cytoscape", "layout-cytoscape");
+    include_capability!("layout-dagre", "layout-dagre");
     include_capability!("layout-elk", "layout-elk");
     include_capability!("layout-shoal", "layout-shoal");
     include_capability!("markdown", "markdown");

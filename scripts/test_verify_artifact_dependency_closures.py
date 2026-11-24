@@ -52,6 +52,13 @@ from verify_artifact_dependency_closures import (  # noqa: E402
 )
 
 
+DAGRE_SVG_FIXTURE_PACKAGES = {
+    "dugong": (),
+    "dugong-graphlib": (),
+    "merman-render": ("layout-dagre",),
+}
+
+
 def recipe(
     profile_id: str,
     *,
@@ -315,6 +322,7 @@ class VerificationCaseTests(unittest.TestCase):
                 closure = parse_fixture_metadata(
                     metadata_document(current.recipe.package, {
                         current.recipe.package: (), "ratex-svg": (), "ratex-katex-fonts": (),
+                        **DAGRE_SVG_FIXTURE_PACKAGES,
                     }), root_package=current.recipe.package,
                 )
                 failures, _ = check_case(current, closure)
@@ -332,6 +340,7 @@ class VerificationCaseTests(unittest.TestCase):
                 self.assertIn("manatee", current.claim.required_packages)
                 self.assertNotIn("manatee", current.claim.forbidden_packages)
                 baseline = {name: () for name in current.claim.required_packages}
+                baseline.update(DAGRE_SVG_FIXTURE_PACKAGES)
                 baseline.update({"merman-resvg": (), "merman-usvg": ()})
                 if "-native-" in profile_id:
                     baseline.update({"merman-krilla": (), "merman-krilla-svg": ()})
@@ -362,6 +371,7 @@ class VerificationCaseTests(unittest.TestCase):
         for current in cases.values():
             self.assertEqual(current.target, "wasm32-wasip1")
             baseline = {name: () for name in current.claim.required_packages}
+            baseline.update(DAGRE_SVG_FIXTURE_PACKAGES)
             baseline.update({"merman-resvg": (), "merman-usvg": ()})
             if not current.recipe.profile_id.endswith("standard"):
                 closure = parse_fixture_metadata(
@@ -1030,9 +1040,10 @@ class ClaimTests(unittest.TestCase):
                 with self.subTest(profile=profile_id, normal_build=normal_build):
                     def failures(packages: set[str]) -> list[str]:
                         names = (current.recipe.package, *scope.required_packages, *sorted(packages))
-                        document = metadata_document(
-                            current.recipe.package, dict.fromkeys(names, ())
-                        )
+                        baseline = dict.fromkeys(names, ())
+                        if not normal_build and "layout-dagre" in current.recipe.features:
+                            baseline.update(DAGRE_SVG_FIXTURE_PACKAGES)
+                        document = metadata_document(current.recipe.package, baseline)
                         closure = parse_fixture_metadata(document, root_package=current.recipe.package)
                         return check_case(current, closure, normal_build=normal_build)[0]
 
@@ -1121,10 +1132,13 @@ class ClaimTests(unittest.TestCase):
             metadata_document(
                 "merman",
                 {
-                    "merman": ("layout-elk", "svg"),
+                    "merman": ("layout-dagre", "layout-elk", "svg"),
                     "merman-core": ("system-timezone",),
-                    "merman-render": ("math",),
+                    "merman-render": ("layout-dagre", "math"),
+                    "dugong": (),
+                    "dugong-graphlib": (),
                     "merman-analysis": (),
+                    "merman-elk-layered": (),
                     "merman-layout-elk": (),
                 },
             ),
@@ -1134,10 +1148,36 @@ class ClaimTests(unittest.TestCase):
             case("rust-svg-basic", loaded_claim=loaded_claim),
             closure,
         )
-        self.assertTrue(any("forbidden packages present" in x for x in failures))
+        self.assertIn(
+            "forbidden packages present: dugong, dugong-graphlib, merman-analysis, "
+            "merman-elk-layered, merman-layout-elk",
+            failures,
+        )
+        self.assertIn("package 'merman-render' enables forbidden features: layout-dagre, math", failures)
         self.assertTrue(any("layout-elk" in x for x in failures))
         self.assertTrue(any("system-timezone" in x for x in failures))
         self.assertTrue(any("math" in x for x in failures))
+
+    def test_explicit_dagre_requires_the_svg_adapter_even_with_ascii_dagre(self) -> None:
+        current = case(loaded_recipe=recipe("fixture", features=("ascii", "layout-dagre")))
+        packages = {
+            "fixture": ("ascii", "layout-dagre"),
+            "dugong": (),
+            "dugong-graphlib": (),
+            "merman-ascii": (),
+            "merman-render": (),
+        }
+        closure = parse_fixture_metadata(metadata_document("fixture", packages), root_package="fixture")
+        failures, _ = check_case(current, closure)
+        self.assertIn("package 'merman-render' must enable feature 'layout-dagre'", failures)
+
+        packages["merman-render"] = ("layout-dagre",)
+        closure = parse_fixture_metadata(metadata_document("fixture", packages), root_package="fixture")
+        self.assertEqual(check_case(current, closure)[0], [])
+
+        del packages["dugong-graphlib"]
+        closure = parse_fixture_metadata(metadata_document("fixture", packages), root_package="fixture")
+        self.assertIn("required packages missing: dugong-graphlib", check_case(current, closure)[0])
 
 
 class VerificationTests(unittest.TestCase):

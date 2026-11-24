@@ -954,6 +954,7 @@ pub(super) fn measure(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::resources::OperationWorkMeter;
     use crate::resources::RenderResourcePolicy;
     use crate::text::DeterministicTextMeasurer;
     use merman_model::families::usecase::{
@@ -1120,6 +1121,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn self_loop_projection_keeps_original_prepared_style_on_all_segments() {
         let mut model = styled_model();
@@ -1159,6 +1161,7 @@ mod tests {
         assert!(helpers.iter().all(|node| node.source_style.is_empty()));
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn parallel_self_loop_theme_reconciliation_still_requires_surviving_edge_emission() {
         use crate::diagram_theme::{

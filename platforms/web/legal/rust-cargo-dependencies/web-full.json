@@ -51,6 +51,7 @@
         "editor",
         "fixes",
         "layout-cytoscape",
+        "layout-dagre",
         "layout-elk",
         "math",
         "svg"
@@ -82,7 +83,7 @@
     "offline": true,
     "cargo_lock_sha256": "c4ca1fdb09d3f1556fdc925fdaf11efa7d1107892c499906e346b09b1134d76e",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
-    "artifact_profile_sha256": "3661757da87934410547c3d7be421bcc993b4bcd60123cc668c17b2e2b55d333"
+    "artifact_profile_sha256": "f1a00eb7bd273dade4826d7595dd9dafb43f8bf5518ffec3d0fd1774b31f1ba8"
   },
   "dependency_closure": {
     "package_count": 172,

@@ -46,7 +46,7 @@ class PreflightHistoryContractsTest(unittest.TestCase):
             checkout=checkout,
             package="merman",
             bench="pipeline",
-            features=("all-diagrams", "svg", "compat-json", "editor-facts")
+            features=("all-diagrams", "svg", "compat-json", "editor-facts", "layout-dagre")
             if corpus_has_editor else ("svg",),
             default_features=True,
             toolchain=None,

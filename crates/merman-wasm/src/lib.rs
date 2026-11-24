@@ -83,6 +83,8 @@ const WASM_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
     CapabilityKey::Fixes,
     #[cfg(feature = "layout-cytoscape")]
     CapabilityKey::LayoutCytoscape,
+    #[cfg(feature = "layout-dagre")]
+    CapabilityKey::LayoutDagre,
     #[cfg(feature = "layout-elk")]
     CapabilityKey::LayoutElk,
     #[cfg(feature = "layout-shoal")]
@@ -1327,6 +1329,7 @@ mod tests {
     #[cfg(all(
         feature = "svg",
         not(feature = "layout-cytoscape"),
+        not(feature = "layout-dagre"),
         not(feature = "layout-elk"),
         not(feature = "math")
     ))]
@@ -1341,10 +1344,10 @@ mod tests {
                 "architecture-beta\n  service api(server)[API]",
             ),
             (
-                "layout-elk",
-                "---\nconfig:\n  layout: elk\n---\nflowchart TD\nA --> B",
+                "layout-dagre",
+                "---\nconfig:\n  layout: dagre\n---\nflowchart TD\nA --> B",
             ),
-            ("math", "flowchart TD\nA[\"$$x^2$$\"] --> B"),
+            ("math", "sequenceDiagram\nA->>B: $$x^2$$"),
         ] {
             assert!(!capabilities.has_capability(capability_id));
 
@@ -1768,6 +1771,10 @@ mod tests {
             assert_eq!(
                 capabilities.has_capability("layout-cytoscape"),
                 cfg!(feature = "layout-cytoscape")
+            );
+            assert_eq!(
+                capabilities.has_capability("layout-dagre"),
+                cfg!(feature = "layout-dagre")
             );
             assert_eq!(
                 capabilities.has_capability("layout-elk"),

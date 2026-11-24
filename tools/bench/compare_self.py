@@ -4453,7 +4453,7 @@ def decision_grade_main(argv: list[str]) -> int:
         help="Base checkout's features; override independently for its benchmark recipe.",
     )
     parser.add_argument(
-        "--head-features", default="all-diagrams,svg,compat-json,editor-facts"
+        "--head-features", default="all-diagrams,svg,compat-json,editor-facts,layout-dagre"
     )
     parser.add_argument(
         "--base-default-features", action=argparse.BooleanOptionalAction, default=True

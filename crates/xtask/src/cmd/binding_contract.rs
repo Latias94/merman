@@ -40,6 +40,7 @@ const NODE_STATIC_SVG_OPERATIONS: &[OperationKey] = &[
 ];
 const NODE_STATIC_SVG_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
     CapabilityKey::LayoutCytoscape,
+    CapabilityKey::LayoutDagre,
     CapabilityKey::LayoutElk,
     CapabilityKey::Math,
 ];
@@ -62,6 +63,7 @@ const DEFAULT_NATIVE_PREBUILT_OPERATIONS: &[OperationKey] = &[
 const DEFAULT_NATIVE_PREBUILT_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
     CapabilityKey::Fixes,
     CapabilityKey::LayoutCytoscape,
+    CapabilityKey::LayoutDagre,
     CapabilityKey::LayoutElk,
     CapabilityKey::Math,
 ];

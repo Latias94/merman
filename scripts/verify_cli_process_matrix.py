@@ -62,8 +62,8 @@ PROFILE_CASES = (
     ProfileCase(
         "svg",
         "SVG",
-        ("all-diagrams", "svg"),
-        "Render one SVG to stdout and to an atomic file target.",
+        ("all-diagrams", "layout-dagre", "svg"),
+        "Render a Dagre Flowchart to stdout and to an atomic file target.",
     ),
     ProfileCase(
         "ascii",
@@ -74,49 +74,49 @@ PROFILE_CASES = (
     ProfileCase(
         "local-icons",
         "Local icons",
-        ("all-diagrams", "icons"),
+        ("all-diagrams", "icons", "layout-dagre"),
         "Load a bounded local icon pack and render it.",
     ),
     ProfileCase(
         "markdown",
         "Markdown",
-        ("all-diagrams", "markdown"),
+        ("all-diagrams", "layout-dagre", "markdown"),
         "Run sequential native batch publication and recovery smoke.",
     ),
     ProfileCase(
         "parallel-markdown",
         "Parallel Markdown",
-        ("all-diagrams", "parallel-markdown"),
+        ("all-diagrams", "layout-dagre", "parallel-markdown"),
         "Render a multi-chart SVG Markdown batch with bounded parallel scheduling.",
     ),
     ProfileCase(
         "network-icons",
         "Network icons",
-        ("all-diagrams", "network-icons"),
+        ("all-diagrams", "layout-dagre", "network-icons"),
         "Reject unauthorized loopback, then load an authorized bounded fixture.",
     ),
     ProfileCase(
         "png",
         "PNG",
-        ("all-diagrams", "png"),
+        ("all-diagrams", "layout-dagre", "png"),
         "Render and validate one PNG.",
     ),
     ProfileCase(
         "jpeg",
         "JPEG",
-        ("all-diagrams", "jpeg"),
+        ("all-diagrams", "jpeg", "layout-dagre"),
         "Render and validate one JPEG.",
     ),
     ProfileCase(
         "pdf",
         "PDF",
-        ("all-diagrams", "pdf"),
+        ("all-diagrams", "layout-dagre", "pdf"),
         "Render and validate one PDF.",
     ),
     ProfileCase(
         "parallel-pdf",
         "Parallel PDF",
-        ("all-diagrams", "parallel-markdown", "pdf"),
+        ("all-diagrams", "layout-dagre", "parallel-markdown", "pdf"),
         "Render a multi-chart Markdown batch with bounded parallel scheduling.",
     ),
     ProfileCase(
@@ -134,13 +134,13 @@ PROFILE_CASES = (
     ProfileCase(
         "math",
         "Math",
-        ("all-diagrams", "math"),
+        ("all-diagrams", "layout-dagre", "math"),
         "Render one RaTeX expression.",
     ),
     ProfileCase(
         "rustdoc",
         "Rustdoc",
-        ("all-diagrams", "rustdoc"),
+        ("all-diagrams", "layout-dagre", "rustdoc"),
         "Build and check one committed static Rustdoc fragment.",
     ),
     ProfileCase(

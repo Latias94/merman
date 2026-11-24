@@ -90,7 +90,7 @@ diagram-venn = ["merman?/diagram-venn"]
 diagram-wardley = ["merman?/diagram-wardley"]
 diagram-xychart = ["merman?/diagram-xychart"]
 diagram-zenuml = ["merman?/diagram-zenuml"]
-default = ["all-diagrams", "svg", "layout-cytoscape", "layout-elk"]
+default = ["all-diagrams", "svg", "layout-cytoscape", "layout-dagre", "layout-elk"]
 svg = [
     "dep:merman",
     "dep:proc-macro2",
@@ -102,10 +102,11 @@ svg = [
     "merman/svg",
 ]
 layout-cytoscape = ["svg", "merman/layout-cytoscape"]
+layout-dagre = ["svg", "merman/layout-dagre"]
 layout-elk = ["svg", "merman/layout-elk"]
 math = ["svg", "merman/math"]
 # Convenience output/layout bundles; mathematical labels require explicit `math`.
-complete-svg = ["svg", "layout-cytoscape"]
+complete-svg = ["svg", "layout-cytoscape", "layout-dagre"]
 complete-svg-elk = ["complete-svg", "layout-elk"]
 
 [dependencies]
@@ -119,7 +120,7 @@ syn = { workspace = true, optional = true }
 
 [[test]]
 name = "attribute_macro"
-required-features = ["svg", "diagram-flowchart"]
+required-features = ["svg", "diagram-flowchart", "layout-dagre"]
 
 [[test]]
 name = "complete_svg_e2e"
@@ -127,6 +128,7 @@ required-features = [
     "diagram-architecture",
     "diagram-flowchart",
     "layout-cytoscape",
+    "layout-dagre",
     "layout-elk",
     "math",
     "svg",
@@ -134,7 +136,7 @@ required-features = [
 
 [[test]]
 name = "rustdoc_e2e"
-required-features = ["svg", "diagram-flowchart"]
+required-features = ["svg", "diagram-flowchart", "layout-dagre"]
 
 [[test]]
 name = "feature_selection"

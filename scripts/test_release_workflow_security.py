@@ -855,7 +855,8 @@ jobs:
                 )
                 self.assertIn(
                     "python3 scripts/run_theme_acceptance.py test --release --locked "
-                    "-p merman-theme-acceptance --no-default-features --features png,all-diagrams,layout-cytoscape "
+                    "-p merman-theme-acceptance --no-default-features "
+                    "--features png,all-diagrams,layout-cytoscape,layout-dagre "
                     "--lib preset_qualification::", command,
                 )
 
@@ -872,8 +873,8 @@ jobs:
 
     def test_theme_authoring_and_font_resource_boundaries_run_in_ci_and_preflight(self) -> None:
         for name, runner, binding_features in (
-            ("ci.yml", "cargo nextest run", "svg,diagram-flowchart"),
-            ("release-preflight.yml", "cargo test", "svg,all-diagrams"),
+            ("ci.yml", "cargo nextest run", "svg,diagram-flowchart,layout-dagre"),
+            ("release-preflight.yml", "cargo test", "svg,all-diagrams,layout-dagre"),
         ):
             with self.subTest(workflow=name):
                 step = read(WORKFLOW_ROOT / name).split(
@@ -886,11 +887,11 @@ jobs:
                                    .replace("\\\n", " ").split())
                 self.assertIn(
                     f"{runner} --locked -p merman-ffi --no-default-features "
-                    "--features svg,diagram-flowchart --test c_consumer_smoke", command,
+                    "--features svg,diagram-flowchart,layout-dagre --test c_consumer_smoke", command,
                 )
                 self.assertIn(
                     f"{runner} --locked -p merman-render --no-default-features "
-                    "--features diagram-flowchart,diagram-swimlane "
+                    "--features diagram-flowchart,diagram-swimlane,layout-dagre "
                     "--test theme_font_capability --test flowchart_node_effects", command,
                 )
                 self.assertIn(

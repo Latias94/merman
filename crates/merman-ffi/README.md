@@ -34,13 +34,13 @@ The committed `c-abi-native` artifact profile owns the complete host C ABI recip
 ```sh
 # Complete C ABI reference artifact: SVG, analysis, ASCII, exports, layouts, math, and native adapters.
 # This explicit recipe includes the EPL-2.0 ELK and OFL-1.1 font closures; ship the matching notices.
-cargo build -p merman-ffi --profile native-sdk --no-default-features --features all-diagrams,svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-elk,math,native-runtime
+cargo build -p merman-ffi --profile native-sdk --no-default-features --features all-diagrams,svg,analysis,ascii,png,jpeg,pdf,layout-cytoscape,layout-dagre,layout-elk,math,native-runtime
 
 # A semantic-only embedding with all built-in parsers.
 cargo build -p merman-ffi --release --no-default-features --features all-diagrams
 
 # A focused SVG artifact.
-cargo build -p merman-ffi --release --no-default-features --features svg,diagram-flowchart,diagram-gantt
+cargo build -p merman-ffi --release --no-default-features --features svg,diagram-flowchart,diagram-gantt,layout-dagre
 ```
 
 The crate produces `cdylib`, `staticlib`, and `rlib` artifacts. Include the release-matched [`include/merman.h`](include/merman.h) instead of copying a header from a moving branch.
@@ -284,7 +284,7 @@ The public feature names describe callable capabilities:
 
 - `svg`, `analysis`, and `ascii` enable their corresponding operation families.
 - `png`, `jpeg`, and `pdf` add real binary output operations.
-- `layout-cytoscape`, `layout-elk`, and `math` add their rendering capabilities.
+- `layout-cytoscape`, `layout-dagre`, `layout-elk`, and `math` add their rendering capabilities.
 - `native-runtime` installs the complete system clock, time-zone, and random adapter set. This
   binding-owned feature is intentionally atomic; the runtime catalog still reports the concrete
   adapter IDs `system-clock`, `system-timezone`, and `system-random`.

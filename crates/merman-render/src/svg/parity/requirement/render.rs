@@ -1,7 +1,7 @@
 use super::super::roughjs_common::RoughRectSpec;
 use super::super::roughjs_common::parse_hex_color_to_srgba as roughjs_parse_hex_color_to_srgba;
 use super::super::*;
-use crate::requirement::requirement_color_indices;
+use crate::requirement::{RequirementEdgeIdentity, requirement_color_indices};
 use merman_model::families::requirement::RequirementDiagramModel;
 
 // Requirement diagram SVG renderer implementation (split from parity.rs).
@@ -105,7 +105,7 @@ where
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "layout-dagre"))]
 fn requirement_color_css<I: SvgDiagramIdValue>(
     diagram_id: I,
     data_look: &str,
@@ -318,12 +318,9 @@ pub(crate) fn render_requirement_diagram_svg_model(
         font_style: None,
     };
 
-    let edge_identity = |edge: &crate::model::LayoutEdge| {
-        dugong::graphlib::EdgeKey::new(&edge.from, &edge.to, Some(&edge.id))
-    };
     let mut painted_edges = std::collections::HashMap::with_capacity(layout.edges.len());
     for edge in &layout.edges {
-        let identity = edge_identity(edge);
+        let identity = RequirementEdgeIdentity::from(edge);
         let prepared_edge = prepared_edges
             .get(&identity)
             .ok_or_else(|| Error::InvalidModel {
@@ -462,7 +459,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             max_x = max_x.max(point.x);
             max_y = max_y.max(point.y);
         }
-        let identity = edge_identity(edge);
+        let identity = RequirementEdgeIdentity::from(edge);
         let painted = &painted_edges[&identity];
         if let Some(canonical) = &painted.canonical {
             min_x = min_x.min(canonical.bounds.min_x);
@@ -563,7 +560,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
             return None;
         }
         let label = prepared_edges
-            .get(&edge_identity(edge))
+            .get(&RequirementEdgeIdentity::from(edge))
             .filter(|label| label.has_label)?;
         edge.label
             .as_ref()
@@ -580,7 +577,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
         for edge in &layout.edges {
             options.work_meter().charge(1)?;
             if let Some(label) = prepared_edges
-                .get(&edge_identity(edge))
+                .get(&RequirementEdgeIdentity::from(edge))
                 .filter(|label| label.has_label)
             {
                 expected_text_terminals.push(crate::requirement::RequirementTextTerminalId::edge(
@@ -686,7 +683,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
         r#"<g class="edgePaths">"#
     });
     for (edge_index, e) in layout.edges.iter().enumerate() {
-        let identity = edge_identity(e);
+        let identity = RequirementEdgeIdentity::from(e);
         let prepared_label = prepared_edges
             .get(&identity)
             .ok_or_else(|| Error::InvalidModel {
@@ -782,7 +779,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
 
     out.push_str(r#"<g class="edgeLabels">"#);
     for e in &layout.edges {
-        let identity = edge_identity(e);
+        let identity = RequirementEdgeIdentity::from(e);
         let prepared_label = prepared_edges
             .get(&identity)
             .ok_or_else(|| Error::InvalidModel {
@@ -968,45 +965,43 @@ pub(crate) fn render_requirement_diagram_svg_model(
             .ok_or_else(|| Error::InvalidModel {
                 message: format!("missing prepared Requirement node plan for {}", n.id),
             })?;
-        if matches!(
-            prepared_node,
-            crate::requirement::RequirementNodeRenderPlan::EdgeLabelAnchor
-        ) {
-            let _ = write!(
-                &mut out,
-                r#"<g class="label edgeLabel" id="{id}" transform="translate({cx}, {cy})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate(0, 0)"><rect/>"#,
-                id = escape_xml(&n.id),
-                cx = fmt(cx),
-                cy = fmt(cy),
-            );
-            if render_settings.html_labels {
-                mk_label_foreign_object(
+        use crate::requirement::RequirementNodeRenderPlan;
+        let prepared_node = match prepared_node {
+            RequirementNodeRenderPlan::Semantic(plan) => plan,
+            #[cfg(feature = "layout-dagre")]
+            RequirementNodeRenderPlan::EdgeLabelAnchor => {
+                let _ = write!(
                     &mut out,
-                    LabelForeignObject {
-                        html: "",
-                        width: 0.0,
-                        height: 0.0,
-                        span_class: "nodeLabel",
-                        span_style: None,
-                        div_class: None,
-                        div_style_prefix: None,
-                        max_width_px: 10,
-                        text_align: "center",
-                    },
+                    r#"<g class="label edgeLabel" id="{id}" transform="translate({cx}, {cy})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate(0, 0)"><rect/>"#,
+                    id = escape_xml(&n.id),
+                    cx = fmt(cx),
+                    cy = fmt(cy),
                 );
-            } else {
-                out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
-                super::super::label::write_svg_text_markdown_from_create_text_source(
-                    &mut out, "", true,
-                );
-                out.push_str("</g>");
+                if render_settings.html_labels {
+                    mk_label_foreign_object(
+                        &mut out,
+                        LabelForeignObject {
+                            html: "",
+                            width: 0.0,
+                            height: 0.0,
+                            span_class: "nodeLabel",
+                            span_style: None,
+                            div_class: None,
+                            div_style_prefix: None,
+                            max_width_px: 10,
+                            text_align: "center",
+                        },
+                    );
+                } else {
+                    out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
+                    super::super::label::write_svg_text_markdown_from_create_text_source(
+                        &mut out, "", true,
+                    );
+                    out.push_str("</g>");
+                }
+                out.push_str("</g></g>");
+                continue;
             }
-            out.push_str("</g></g>");
-            continue;
-        }
-        let crate::requirement::RequirementNodeRenderPlan::Semantic(prepared_node) = prepared_node
-        else {
-            unreachable!("edge label anchors return before semantic rendering");
         };
         let rendered_node = label_measurements
             .node_plan_for_render(prepared_node)
@@ -1514,17 +1509,31 @@ fn push_requirement_shadow_defs(out: &mut impl SvgOutput, diagram_id: &str, floo
 mod tests {
     use super::super::super::output::{BoundedSvgOutput, SvgOutput};
     use super::super::*;
+    #[cfg(feature = "layout-dagre")]
+    use super::RequirementEdgeIdentity;
     use crate::DiagramFamilyId;
+    #[cfg(feature = "layout-dagre")]
     use crate::environment::{RenderEnvironment, TextMeasurementPhase};
-    use crate::resources::{
-        RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
-    };
-    use crate::svg::{SvgDebugOptions, SvgExecution, SvgRenderOptions, with_test_svg_execution};
-    use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode};
+    use crate::resources::{RenderResourcePolicy, ResourceLimitId};
+    #[cfg(feature = "layout-dagre")]
+    use crate::resources::{ResourceLimitCause, ResourceLimitPhase};
+    #[cfg(feature = "layout-dagre")]
+    use crate::svg::{SvgDebugOptions, SvgExecution};
+    #[cfg(any(feature = "layout-dagre", feature = "layout-shoal"))]
+    use crate::svg::{SvgRenderOptions, with_test_svg_execution};
+    #[cfg(any(feature = "layout-dagre", feature = "layout-shoal"))]
+    use crate::text::{DeterministicTextMeasurer, TextMeasurer};
+    #[cfg(feature = "layout-dagre")]
+    use crate::text::{TextMetrics, TextStyle, WrapMode};
+    #[cfg(feature = "layout-dagre")]
+    use merman_model::families::requirement::RequirementElement;
+    #[cfg(any(feature = "layout-dagre", feature = "layout-shoal"))]
     use merman_model::families::requirement::{
-        RequirementDiagramModel, RequirementElement, RequirementNode, RequirementRelationship,
+        RequirementDiagramModel, RequirementNode, RequirementRelationship,
     };
+    #[cfg(feature = "layout-dagre")]
     use std::cell::Cell;
+    #[cfg(any(feature = "layout-dagre", feature = "layout-shoal"))]
     use std::collections::BTreeMap;
 
     #[test]
@@ -1553,6 +1562,7 @@ mod tests {
         assert!(limit.actual > limit.max);
     }
 
+    #[cfg(feature = "layout-dagre")]
     fn report_call_count(session: &crate::environment::RenderSession) -> u64 {
         session
             .text_measurement_report()
@@ -1562,6 +1572,7 @@ mod tests {
             .sum()
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[derive(Default)]
     struct CountingRequirementMeasurer {
         inner: DeterministicTextMeasurer,
@@ -1569,6 +1580,7 @@ mod tests {
         wrapped: Cell<usize>,
     }
 
+    #[cfg(feature = "layout-dagre")]
     impl TextMeasurer for CountingRequirementMeasurer {
         fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
             self.inner.measure(text, style)
@@ -1598,6 +1610,7 @@ mod tests {
         }
     }
 
+    #[cfg(any(feature = "layout-dagre", feature = "layout-shoal"))]
     fn empty_requirement_model() -> RequirementDiagramModel {
         RequirementDiagramModel {
             acc_title: None,
@@ -1610,6 +1623,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "layout-dagre")]
     fn prepared_requirement_model() -> RequirementDiagramModel {
         RequirementDiagramModel {
             requirements: vec![RequirementNode {
@@ -1638,6 +1652,7 @@ mod tests {
         }
     }
 
+    #[cfg(any(feature = "layout-dagre", feature = "layout-shoal"))]
     fn requirement_node(name: &str) -> RequirementNode {
         RequirementNode {
             name: name.to_string(),
@@ -1651,6 +1666,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_redux_colors_follow_requirement_then_element_order() {
         let model = RequirementDiagramModel {
@@ -1781,6 +1797,7 @@ mod tests {
         ));
     }
 
+    #[cfg(feature = "layout-dagre")]
     fn root_view_box(svg: &str) -> Vec<f64> {
         let root_open = svg.split_once('>').expect("root svg open tag").0;
         let value = root_open
@@ -1794,6 +1811,7 @@ mod tests {
             .collect()
     }
 
+    #[cfg(feature = "layout-dagre")]
     fn render_requirement_for_test(
         model: &RequirementDiagramModel,
         effective_config: &serde_json::Value,
@@ -1818,6 +1836,7 @@ mod tests {
         )
     }
 
+    #[cfg(any(feature = "layout-dagre", feature = "layout-shoal"))]
     fn render_prepared_requirement_for_test(
         prepared: &crate::requirement::RequirementPreparedArtifact,
         model: &RequirementDiagramModel,
@@ -1847,6 +1866,7 @@ mod tests {
         .and_then(|svg| svg.into_string_for(DiagramFamilyId::REQUIREMENT))
     }
 
+    #[cfg(feature = "layout-dagre")]
     fn render_requirement_with_policy(policy: RenderResourcePolicy) -> crate::Result<String> {
         let model = prepared_requirement_model();
         let effective_config = crate::test_support::presentation_config(serde_json::json!({}));
@@ -1893,6 +1913,7 @@ mod tests {
         .into_string_for(DiagramFamilyId::REQUIREMENT)
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
         let baseline =
@@ -1926,6 +1947,7 @@ mod tests {
         assert!(limit.actual > limit.max);
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_opaque_measurer_preserves_render_stage_label_measurements() {
         let model = prepared_requirement_model();
@@ -1964,6 +1986,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_routed_builtin_measurements_are_reused_during_svg_emission() {
         let model = prepared_requirement_model();
@@ -1997,6 +2020,7 @@ mod tests {
         assert_eq!(report_call_count(&session), calls_after_prepare);
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_prepared_measurements_are_not_reused_across_style_changes() {
         let model = prepared_requirement_model();
@@ -2034,6 +2058,7 @@ mod tests {
         assert!(report_call_count(&session) > calls_after_prepare);
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_prepared_measurements_are_not_reused_across_label_modes() {
         let model = prepared_requirement_model();
@@ -2069,6 +2094,7 @@ mod tests {
         assert!(!svg.contains("foreignObject"));
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_prepared_labels_keep_markdown_and_strict_sanitization_at_render_time() {
         let mut model = prepared_requirement_model();
@@ -2121,6 +2147,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_prepared_edge_plan_keeps_parallel_relationships() {
         let mut model = prepared_requirement_model();
@@ -2173,6 +2200,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_prepared_edge_plan_disambiguates_colliding_endpoint_text() {
         let model = RequirementDiagramModel {
@@ -2209,8 +2237,7 @@ mod tests {
         let (layout, _, edge_plans) = prepared.render_parts();
         assert_eq!(layout.edges.len(), 2);
         for edge in &layout.edges {
-            let identity =
-                dugong::graphlib::EdgeKey::new(&edge.from, &edge.to, Some(edge.id.as_str()));
+            let identity = RequirementEdgeIdentity::from(edge);
             let label_plan = edge_plans.get(&identity).expect("prepared edge identity");
             match (edge.from.as_str(), edge.to.as_str()) {
                 ("a-b", "c") => {
@@ -2272,6 +2299,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_prepared_source_paints_reach_actual_paths_in_both_label_modes() {
         let mut node = requirement_node("source-node");
@@ -2314,6 +2342,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_self_loop_preserves_pinned_segment_identity_and_dom() {
         let model = RequirementDiagramModel {
@@ -2361,7 +2390,7 @@ mod tests {
             .edges
             .iter()
             .map(|edge| {
-                let identity = dugong::graphlib::EdgeKey::new(&edge.from, &edge.to, Some(&edge.id));
+                let identity = RequirementEdgeIdentity::from(edge);
                 let plan = edge_plans.get(&identity).expect("self-loop edge plan");
                 (
                     plan.rendered_id.as_str(),
@@ -2441,6 +2470,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_contains_self_loop_keeps_only_the_first_segment_start_marker() {
         let model = RequirementDiagramModel {
@@ -2584,6 +2614,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_root_honors_disabled_max_width() {
         let measurer = crate::text::DeterministicTextMeasurer::default();
@@ -2612,6 +2643,7 @@ mod tests {
         assert!(!root_open.contains("max-width"), "{root_open}");
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_root_is_derived_for_formerly_pinned_fixture_ids() {
         let measurer = crate::text::DeterministicTextMeasurer::default();
@@ -2639,6 +2671,7 @@ mod tests {
         assert!(root_open.contains("max-width:"), "{root_open}");
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_title_uses_pre_title_bounds_and_state_margin() {
         let measurer = crate::text::DeterministicTextMeasurer::default();
@@ -2664,6 +2697,7 @@ mod tests {
         assert!(view_box[3] > 41.0, "{view_box:?}");
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_html_labels_use_xhtml_and_deterministic_wrap_styles() {
         let measurer = crate::text::DeterministicTextMeasurer::default();

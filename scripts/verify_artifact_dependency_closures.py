@@ -71,6 +71,7 @@ MATH_BACKEND_PACKAGES = (
     "ratex-font", "ratex-font-loader", "ratex-katex-fonts", "ratex-layout",
     "ratex-lexer", "ratex-parser", "ratex-svg", "ratex-types",
 )
+DAGRE_PACKAGES = ("dugong", "dugong-graphlib")
 UPSTREAM_RENDERER_PACKAGES = frozenset({"krilla", "krilla-svg", "resvg", "usvg"})
 SVG_FONT_BACKEND = "merman-usvg"
 RASTER_BACKEND_PACKAGES = frozenset({"merman-resvg", SVG_FONT_BACKEND})
@@ -246,6 +247,7 @@ SEMANTIC_CLAIMS = (
         profile_id="rust-svg-basic",
         required_packages=("merman", "merman-core", "merman-render"),
         forbidden_packages=(
+            *DAGRE_PACKAGES,
             "brotli-decompressor",
             "rustybuzz",
             "ttf-parser",
@@ -259,6 +261,7 @@ SEMANTIC_CLAIMS = (
             "merman-analysis",
             "merman-ascii",
             "merman-editor-core",
+            "merman-elk-layered",
             "merman-export",
             "merman-layout-elk",
             "ratex-layout",
@@ -277,7 +280,9 @@ SEMANTIC_CLAIMS = (
                     "editor",
                     "jpeg",
                     "layout-cytoscape",
+                    "layout-dagre",
                     "layout-elk",
+                    "layout-shoal",
                     "math",
                     "pdf",
                     "png",
@@ -300,7 +305,9 @@ SEMANTIC_CLAIMS = (
                 "merman-render",
                 (
                     "layout-cytoscape",
+                    "layout-dagre",
                     "layout-elk",
+                    "layout-shoal",
                     "math",
                     "system-clock",
                     "system-random",
@@ -1031,20 +1038,23 @@ def check_case(
     failures: list[str] = []
     required = set(claim.required_packages)
     forbidden = set(claim.forbidden_packages)
-    features = set(case.recipe.features)
+    recipe_features = set(case.recipe.features)
     renderer_packages = frozenset()
-    if "pdf" in features:
+    if "pdf" in recipe_features:
         # The PDF adapter uses the raster backend for SVG filters.
         renderer_packages = PDF_BACKEND_PACKAGES
-    elif features & {"jpeg", "png"}:
+    elif recipe_features & {"jpeg", "png"}:
         renderer_packages = RASTER_BACKEND_PACKAGES
-    elif features & {"native-fonts", "system-fonts"}:
+    elif recipe_features & {"native-fonts", "system-fonts"}:
         renderer_packages = frozenset({SVG_FONT_BACKEND})
     required.update(renderer_packages)
     forbidden.update(UPSTREAM_RENDERER_PACKAGES | (PDF_BACKEND_PACKAGES - renderer_packages))
 
+    explicit_dagre = not normal_build and "layout-dagre" in recipe_features
+    if explicit_dagre:
+        required.update((*DAGRE_PACKAGES, "merman-render"))
     if not normal_build:
-        if "layout-shoal" in features:
+        if "layout-shoal" in recipe_features:
             required.add("merman-layout-shoal")
         else:
             forbidden.add("merman-layout-shoal")
@@ -1064,13 +1074,23 @@ def check_case(
             + ", ".join(overlaps)
         )
 
-    missing = sorted(required - closure.packages)
+    packages = closure.packages
+    missing = sorted(required - packages)
     if missing:
         failures.append("required packages missing: " + ", ".join(missing))
 
-    present = sorted(forbidden & closure.packages)
+    present = sorted(forbidden & packages)
     if present:
         failures.append("forbidden packages present: " + ", ".join(present))
+
+    features = closure.features_by_package if explicit_dagre or claim.forbidden_features else {}
+    if (
+        explicit_dagre
+        and "merman-render" in features
+        and "layout-dagre" not in features["merman-render"]
+    ):
+        # Graph ASCII can bring the same packages into the artifact independently.
+        failures.append("package 'merman-render' must enable feature 'layout-dagre'")
 
     for exclusion in claim.forbidden_features:
         if exclusion.package not in required:
@@ -1078,7 +1098,7 @@ def check_case(
                 f"feature exclusion owner {exclusion.package!r} is not a required package"
             )
             continue
-        actual = closure.features_by_package.get(exclusion.package)
+        actual = features.get(exclusion.package)
         if actual is None:
             continue
         enabled = sorted(set(exclusion.features) & actual)

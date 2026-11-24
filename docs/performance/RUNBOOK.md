@@ -591,10 +591,8 @@ Never assume that base and head share a feature vocabulary or benchmark configur
 side's checkout, label, package, bench, features, default-feature policy, toolchain, target, target
 directory, and corpus.
 
-For the current full `pipeline` bench, explicitly enable
-`all-diagrams,svg,compat-json,editor-facts`; selecting only an SVG timing group still requires the
-compatibility and editor gates on the executable. The default facade does not enable
-`compat-json`. The Performance workflow reads the base recipe from the base checkout's
+The current `pipeline` bench uses `all-diagrams,svg,compat-json,editor-facts,layout-dagre` for
+every group. The Performance workflow reads the base recipe from the base checkout's
 `tools/bench/performance_lanes.json` and the head recipe from the head descriptor. Keep these
 independent for historical refs that lack the new feature names.
 
@@ -619,7 +617,7 @@ python3 tools/bench/compare_self.py \
   --base-bench pipeline \
   --head-bench pipeline \
   --base-features render \
-  --head-features all-diagrams,svg,compat-json,editor-facts \
+  --head-features all-diagrams,svg,compat-json,editor-facts,layout-dagre \
   --base-toolchain 1.95.0 \
   --head-toolchain 1.95.0 \
   --base-target-dir target/performance/base \
@@ -644,8 +642,8 @@ validates the public operation, lifecycle, selector history, and normalization d
 `--base-logical-operations` or `--head-logical-operations` value must match that metadata. Legacy
 schema-v1 confirmation keeps both divisors at one and requires exact benchmark identity. Use the
 same recipe shape for an adjacent candidate comparison. For two current revisions, explicitly set
-both feature lists to `all-diagrams,svg,compat-json,editor-facts`; older bases retain their own
-feature vocabulary.
+both feature lists to `all-diagrams,svg,compat-json,editor-facts,layout-dagre`. Older bases retain
+their feature vocabulary.
 
 ## 3. Establish the evidence contract
 
@@ -686,8 +684,8 @@ python3 tools/bench/compare_self.py \
   --head-package merman \
   --base-bench pipeline \
   --head-bench pipeline \
-  --base-features all-diagrams,svg,compat-json,editor-facts \
-  --head-features all-diagrams,svg,compat-json,editor-facts \
+  --base-features all-diagrams,svg,compat-json,editor-facts,layout-dagre \
+  --head-features all-diagrams,svg,compat-json,editor-facts,layout-dagre \
   --base-toolchain 1.95.0 \
   --head-toolchain 1.95.0 \
   --base-target-dir target/performance/base \

@@ -242,10 +242,11 @@ def validate_repository_contract(root: Path = ROOT) -> list[ResolvedBinstallArti
             "cargo-dist and cli-release must select the same feature set"
         )
     default_feature_set = set(default_features)
-    if "layout-elk" not in release_features:
-        raise InstallationContractError(
-            "cli-release must retain explicit layout-elk for the release artifact"
-        )
+    for layout in ("layout-dagre", "layout-elk"):
+        if layout not in release_features:
+            raise InstallationContractError(
+                f"cli-release must retain explicit {layout} for the release artifact"
+            )
     if "platform-system-font-default" not in release_features:
         raise InstallationContractError(
             "cli-release must select the platform system-font default"
