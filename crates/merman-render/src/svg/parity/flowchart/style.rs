@@ -283,7 +283,7 @@ impl FlowchartCompiledStyles {
     }
 
     /// An important declaration on the path outranks generated structural class CSS.
-    #[cfg(feature = "layout-shoal")]
+    #[cfg(any(feature = "layout-shoal", test))]
     pub(super) fn edge_important_stroke_width(&self) -> Option<&FlowchartStyleDeclaration> {
         self.edge_important_stroke_width.as_deref()
     }

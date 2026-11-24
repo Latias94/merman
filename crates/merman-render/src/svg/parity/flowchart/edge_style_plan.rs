@@ -450,7 +450,7 @@ impl FlowchartEdgeStylePlan {
         Ok(self)
     }
 
-    #[cfg(feature = "layout-shoal")]
+    #[cfg(any(feature = "layout-shoal", test))]
     pub(in crate::svg::parity::flowchart) fn stroke_outset_for(
         &self,
         key: crate::flowchart::FlowchartEdgeKey,
