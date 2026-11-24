@@ -835,6 +835,8 @@ pub(crate) struct ResourceOptionsJson {
 pub(crate) struct BaseBindingOptions {
     normalized_wire: Arc<Value>,
     resource_ceiling: ResourceOptionsJson,
+    #[cfg(feature = "svg")]
+    has_analysis_wrapper: bool,
 }
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
@@ -857,6 +859,11 @@ pub(crate) enum BindingRequestOverlay {
         #[cfg(any(feature = "svg", feature = "ascii"))]
         theme: BindingThemeOverlay,
     },
+}
+
+#[cfg(feature = "svg")]
+pub(crate) struct LightSvgOverride {
+    pub(crate) diagram_id: Option<String>,
 }
 
 #[cfg(feature = "ascii")]
@@ -1246,6 +1253,9 @@ fn parse_base_options_for_contract(
 
 fn base_options_from_wire(wire: Value, typed: &BindingOptions) -> BaseBindingOptions {
     let resource_ceiling = typed.analysis.resources.clone().unwrap_or_default();
+    // Constructor decoding and overlay merging can see different fields from a wrapper.
+    #[cfg(feature = "svg")]
+    let has_analysis_wrapper = wire.get("analysis").is_some() || wire.get("merman").is_some();
     let normalized_wire = normalize_analysis_wrapper(wire);
     #[cfg(any(feature = "svg", feature = "ascii"))]
     let normalized_wire = {
@@ -1259,6 +1269,8 @@ fn base_options_from_wire(wire: Value, typed: &BindingOptions) -> BaseBindingOpt
     BaseBindingOptions {
         normalized_wire: Arc::new(normalized_wire),
         resource_ceiling,
+        #[cfg(feature = "svg")]
+        has_analysis_wrapper,
     }
 }
 
@@ -1596,6 +1608,33 @@ pub(crate) fn parse_request_overlay_for_artifact(
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
 impl BindingRequestOverlay {
+    #[cfg(feature = "svg")]
+    pub(crate) fn take_light_svg_override(&mut self) -> Option<LightSvgOverride> {
+        let Self::Override {
+            normalized_wire,
+            requested_resources: None,
+            theme: BindingThemeOverlay::Inherit,
+        } = self
+        else {
+            return None;
+        };
+        let options = normalized_wire.as_object_mut()?;
+        if options.len() != 1 + usize::from(options.contains_key("version")) {
+            return None;
+        }
+        let svg = options.get_mut("svg")?.as_object_mut()?;
+        if svg.len() != 1 {
+            return None;
+        }
+        // The typed request was validated before constructing the overlay.
+        let diagram_id = match svg.get_mut("diagram_id")?.take() {
+            Value::String(id) => Some(id),
+            Value::Null => None,
+            _ => unreachable!("validated svg.diagram_id is a string or null"),
+        };
+        Some(LightSvgOverride { diagram_id })
+    }
+
     pub(crate) fn select_theme(
         &self,
         base_theme: Option<&merman::theme::ThemeSelection>,
@@ -1636,6 +1675,11 @@ impl BindingRequestOverlay {
 
 impl BaseBindingOptions {
     #[cfg(feature = "svg")]
+    pub(crate) const fn has_analysis_wrapper(&self) -> bool {
+        self.has_analysis_wrapper
+    }
+
+    #[cfg(feature = "svg")]
     pub(crate) fn prepared_output_defaults(
         &self,
         artifact: &ValidatedArtifactContract,
@@ -1656,6 +1700,7 @@ impl BaseBindingOptions {
             Self {
                 normalized_wire: Arc::new(normalized),
                 resource_ceiling: self.resource_ceiling.clone(),
+                has_analysis_wrapper: self.has_analysis_wrapper,
             },
         ))
     }

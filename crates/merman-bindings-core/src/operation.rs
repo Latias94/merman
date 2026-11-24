@@ -1627,6 +1627,13 @@ impl BindingEngine {
                 control.clone(),
                 include_metadata,
             ),
+            #[cfg(feature = "svg")]
+            crate::engine::PreparedRequestOverlay::Svg(overlay) => self.execute_svg_override(
+                overlay,
+                request.source,
+                control.clone(),
+                include_metadata,
+            ),
             crate::engine::PreparedRequestOverlay::Override(configs) => self
                 .execute_request_projection(
                     admitted,

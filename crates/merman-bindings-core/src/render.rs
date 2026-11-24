@@ -2,7 +2,7 @@ mod request;
 
 #[cfg(test)]
 use crate::common::parse_options;
-use crate::common::{BindingError, BindingOptions, source_text};
+use crate::common::{BindingError, BindingOptions, LightSvgOverride, source_text};
 use request::RenderRequestPlan;
 
 #[cfg(test)]
@@ -56,7 +56,7 @@ impl CachedRenderEngine {
         match operation {
             crate::OperationKey::Svg => {
                 self.plan
-                    .render_svg_output(input, control, include_metadata)
+                    .render_svg_output(input, control, include_metadata, None)
             }
             crate::OperationKey::LayoutJson => self
                 .plan
@@ -75,12 +75,14 @@ impl CachedRenderEngine {
         source: &[u8],
         control: merman::OperationControl,
         include_metadata: bool,
+        overlay: Option<LightSvgOverride>,
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
         let source = source_text(source)?;
         self.plan.render_svg_output(
             request::RenderInput::Source(source),
             control,
             include_metadata,
+            overlay,
         )
     }
 
