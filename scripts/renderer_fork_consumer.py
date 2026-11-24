@@ -1,4 +1,4 @@
-"""Compile the SVG and PDF fork interfaces with one packaged candidate."""
+"""Compile the SVG and PDF fork interfaces before and after publication."""
 
 from __future__ import annotations
 
@@ -55,7 +55,7 @@ fn main() {
 '''
 
 
-def _manifest(candidate: PackageSpec, candidate_path: Path) -> str:
+def _manifest(candidate: PackageSpec, candidate_path: Path | None) -> str:
     lines = [
         "[workspace]",
         "[package]",
@@ -72,16 +72,17 @@ def _manifest(candidate: PackageSpec, candidate_path: Path) -> str:
         lines.append(
             f'{alias} = {{ package = "{name}", version = "{requirement}", default-features = false }}'
         )
-    lines.extend([
-        "",
-        "[patch.crates-io]",
-        f'{candidate.name} = {{ path = {toml_string(str(candidate_path))} }}',
-    ])
+    if candidate_path is not None:
+        lines.extend([
+            "",
+            "[patch.crates-io]",
+            f'{candidate.name} = {{ path = {toml_string(str(candidate_path))} }}',
+        ])
     return "\n".join(lines) + "\n"
 
 
 def _verify_resolution(
-    metadata: dict, candidate: PackageSpec, candidate_path: Path
+    metadata: dict, candidate: PackageSpec, candidate_path: Path | None
 ) -> dict[str, str]:
     # Cargo enforces the manifest requirements. Check the identity and source of each fork.
     resolved_ids = {node["id"] for node in metadata["resolve"]["nodes"]}
@@ -92,17 +93,17 @@ def _verify_resolution(
             if package["name"] == name and package["id"] in resolved_ids
         ]
         is_candidate = name == candidate.name
-        expected_source = None if is_candidate else CRATES_IO_SOURCE
+        local = is_candidate and candidate_path is not None
+        expected_source = None if local else CRATES_IO_SOURCE
         valid = len(selected) == 1 and selected[0]["source"] == expected_source
         if valid and is_candidate:
-            valid = (
-                selected[0]["version"] == candidate.version
-                and Path(selected[0]["manifest_path"]).resolve() == candidate_path / "Cargo.toml"
-            )
+            valid = selected[0]["version"] == candidate.version
+            if valid and local:
+                valid = Path(selected[0]["manifest_path"]).resolve() == candidate_path / "Cargo.toml"
         if not valid:
             expected = (
-                f"{candidate.version} from the extracted candidate" if is_candidate
-                else f"matching {requirement} from crates.io"
+                f"{candidate.version} from the extracted candidate" if local
+                else f"matching {candidate.version if is_candidate else requirement} from crates.io"
             )
             observed = [(package["version"], package["source"]) for package in selected]
             raise RegistryDependentError(
@@ -113,7 +114,7 @@ def _verify_resolution(
 
 
 def verify(
-    archive: Path,
+    archive: Path | None,
     *,
     candidate: str,
     version: str,
@@ -122,16 +123,21 @@ def verify(
     run_check=run_cargo_check,
 ) -> None:
     spec = PackageSpec(candidate, version)
+    if candidate not in FORK_REQUIREMENTS:
+        raise RegistryDependentError(f"unknown renderer fork: {candidate}")
+    label = archive.name if archive is not None else f"{candidate} {version} from crates.io"
     toolchain = tomllib.loads((repo_root / "rust-toolchain.toml").read_text(encoding="utf-8"))
     with tempfile.TemporaryDirectory(prefix="merman-renderer-fork-") as temporary:
         root = Path(temporary)
-        unpacked = root / "unpacked"
-        try:
-            with tarfile.open(archive, "r:gz") as package:
-                package.extractall(unpacked, filter="data")
-        except tarfile.TarError as error:
-            raise RegistryDependentError(f"cannot extract candidate {archive.name}: {error}") from error
-        candidate_path = validate_candidate(unpacked / f"{spec.name}-{spec.version}", spec)
+        candidate_path = None
+        if archive is not None:
+            unpacked = root / "unpacked"
+            try:
+                with tarfile.open(archive, "r:gz") as package:
+                    package.extractall(unpacked, filter="data")
+            except tarfile.TarError as error:
+                raise RegistryDependentError(f"cannot extract candidate {label}: {error}") from error
+            candidate_path = validate_candidate(unpacked / f"{spec.name}-{spec.version}", spec)
 
         project = root / "consumer"
         (project / "src").mkdir(parents=True)
@@ -148,16 +154,16 @@ def verify(
         resolved = run_check(["cargo", "metadata", "--format-version", "1"], cwd=project, env=env)
         if resolved.returncode:
             detail = (resolved.stderr or resolved.stdout).strip()
-            raise RegistryDependentError(f"could not resolve registry siblings for {archive.name}: {detail}")
+            raise RegistryDependentError(f"could not resolve registry siblings for {label}: {detail}")
         resolved_versions = _verify_resolution(json.loads(resolved.stdout), spec, candidate_path)
 
         checked = run_check(["cargo", "check", "--locked"], cwd=project, env=env)
         if checked.returncode:
             detail = (checked.stderr or checked.stdout).strip()
-            raise RegistryDependentError(f"fork consumer failed with {archive.name}: {detail}")
+            raise RegistryDependentError(f"fork consumer failed with {label}: {detail}")
 
     siblings = ", ".join(
         f"{name} {resolved_version}"
         for name, resolved_version in resolved_versions.items() if name != candidate
     )
-    print(f"Compiled {archive.name} with registry siblings {siblings}")
+    print(f"Compiled {label} with registry siblings {siblings}")

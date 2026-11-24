@@ -43,6 +43,13 @@ class PackageLegalMaterialTests(unittest.TestCase):
         self.assertEqual(verify.required_legal_paths(package), {"LICENSE"})
         verify.verify_package_listing(package, {"LICENSE", "src/lib.rs"})
 
+    def test_krilla_requires_the_embedded_icc_profile_license(self) -> None:
+        package = self.package() | {"name": "merman-krilla"}
+        files = {"LICENSE-MIT", "LICENSE-APACHE", "icc/sRGB-v4.icc"}
+        with self.assertRaisesRegex(verify.PackageLegalMaterialError, "icc/LICENSE"):
+            verify.verify_package_listing(package, files)
+        verify.verify_package_listing(package, files | {"icc/LICENSE"})
+
     def test_apache_only_package_cannot_omit_its_license_text(self) -> None:
         with self.assertRaisesRegex(
             verify.PackageLegalMaterialError, "package omits legal files: LICENSE$"

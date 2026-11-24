@@ -725,6 +725,25 @@ requirements in the normalized archives. Publish the versions those requirements
 dispatching. Coordinate incompatible fork upgrades through group qualification and an explicit
 publication order, then update the compatibility ranges for the new series.
 
+The four forks share one workflow concurrency group across source refs, from candidate preflight
+through registry consumer verification. `roughr-merman` has a separate group. Each group allows
+one running and one pending dispatch. A newer dispatch replaces the pending one. Submit dependent
+releases in order and wait for each run to finish before dispatching the next.
+[GitHub concurrency semantics](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)
+
+The read-only preflight records the candidate archive's SHA-256. Before uploading a missing
+version, the publisher rechecks the crates.io API and Cargo sparse index and compares its package
+bytes to that digest. Both endpoints must report absence to authorize an upload. A matching
+published version proceeds to verification. A partial observation, conflicting checksum or yank
+stops the release. If an upload response is lost, check propagation before attempting recovery.
+When retrying the upload job, re-run **all jobs** so the candidate is checked against the siblings
+visible in that attempt.
+
+After upload or a matching existing release, a read-only job waits for both endpoints to report
+the exact checksum. For a renderer fork it then compiles a fresh consumer with all four packages
+from crates.io and the released fork pinned to its exact version. This verification job can be
+retried on its own after registry propagation.
+
 ## Release Preflight
 
 Before tagging or publishing, run:

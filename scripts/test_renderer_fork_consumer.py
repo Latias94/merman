@@ -107,3 +107,18 @@ class RendererForkConsumerTests(unittest.TestCase):
                 metadata["resolve"]["nodes"].append({"id": "second"})
                 with self.assertRaisesRegex(consumer.RegistryDependentError, f"expected exactly one {name}"):
                     consumer._verify_resolution(metadata, spec, path)
+
+    def test_published_candidate_is_exact_and_all_forks_are_registry_sourced(self) -> None:
+        spec = consumer.PackageSpec("merman-usvg", "0.50.1")
+        manifest = tomllib.loads(consumer._manifest(spec, None))
+        self.assertNotIn("patch", manifest)
+        self.assertEqual(manifest["dependencies"]["usvg"]["version"], "=0.50.1")
+        metadata = resolution(spec, Path.cwd())
+        selected = next(p for p in metadata["packages"] if p["name"] == spec.name)
+        with self.assertRaisesRegex(consumer.RegistryDependentError, spec.name):
+            consumer._verify_resolution(metadata, spec, None)
+        selected["source"] = consumer.CRATES_IO_SOURCE
+        self.assertEqual(consumer._verify_resolution(metadata, spec, None)[spec.name], spec.version)
+        selected["version"] = "0.50.0"
+        with self.assertRaisesRegex(consumer.RegistryDependentError, spec.name):
+            consumer._verify_resolution(metadata, spec, None)

@@ -18,6 +18,10 @@ on:
         required: true
         type: string
 
+concurrency:
+  group: release-independent-crate-${{ inputs.package == 'roughr-merman' && 'roughr' || 'renderers' }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -68,6 +72,9 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       source_sha: ${{ steps.source.outputs.source_sha }}
+      attempt: ${{ steps.source.outputs.attempt }}
+      sha256: ${{ steps.candidate.outputs.sha256 }}
+      publish: ${{ steps.candidate.outputs.publish }}
       stable_dependent_version: ${{ steps.dependent-versions.outputs.stable_version }}
       prerelease_dependent_version: ${{ steps.dependent-versions.outputs.prerelease_version }}
     steps:
@@ -83,6 +90,7 @@ jobs:
           set -euo pipefail
           source_sha="$(git rev-parse HEAD)"
           printf 'source_sha=%s\n' "$source_sha" >> "$GITHUB_OUTPUT"
+          echo "attempt=$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
           echo "Verified source commit: $source_sha"
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.100.0
@@ -154,6 +162,7 @@ jobs:
         run: cargo check --locked -p merman-export --no-default-features --features native-fonts,png,jpeg,pdf
 
       - name: Verify registry bytes or dry-run independent crate publication
+        id: candidate
         env:
           PACKAGE: ${{ needs.validate-inputs.outputs.package }}
           VERSION: ${{ needs.validate-inputs.outputs.version }}
@@ -193,43 +202,32 @@ jobs:
         uses: dtolnay/rust-toolchain@1.100.0
       - name: Inspect independent crate publication state
         id: crate-state
+        if: ${{ needs.preflight.outputs.publish == 'true' }}
         env:
           PACKAGE: ${{ needs.validate-inputs.outputs.package }}
           VERSION: ${{ needs.validate-inputs.outputs.version }}
+          SHA256: ${{ needs.preflight.outputs.sha256 }}
+          PREFLIGHT_ATTEMPT: ${{ needs.preflight.outputs.attempt }}
         shell: bash
         run: |
           set -euo pipefail
-
-          actual_version="$(cargo pkgid -p "$PACKAGE" | sed -E 's/.*[#@]//')"
-          if [[ "$actual_version" != "$VERSION" ]]; then
-            echo "::error::$PACKAGE version $actual_version does not match preflight version $VERSION." >&2
+          if [[ "$PREFLIGHT_ATTEMPT" != "$GITHUB_RUN_ATTEMPT" ]]; then
+            echo "::error::Re-run all jobs to qualify the candidate against the current registry siblings."
             exit 1
           fi
+          python3 scripts/crates_io_release.py registry-independent \
+            --package "$PACKAGE" --version "$VERSION" --sha256 "$SHA256"
 
-          python3 scripts/crates_io_release.py preflight-independent \
-            --package "$PACKAGE" \
-            --version "$VERSION"
-
-          crate_version_available() {
-            local crate="$1"
-            local version="$2"
-            local lookup_dir="${RUNNER_TEMP:-/tmp}"
-            (
-              cd "$lookup_dir"
-              cargo info "$crate@$version" --registry crates-io >/dev/null 2>&1
-            )
-          }
-
-          if crate_version_available "$PACKAGE" "$VERSION"; then
-            python3 scripts/crates_io_release.py preflight-independent \
-              --package "$PACKAGE" \
-              --version "$VERSION"
-            echo "Skipping $PACKAGE $VERSION because it is already published."
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "publish=true" >> "$GITHUB_OUTPUT"
+      - name: Match the upload archive to the read-only preflight
+        if: ${{ steps.crate-state.outputs.publish == 'true' }}
+        env:
+          PACKAGE: ${{ needs.validate-inputs.outputs.package }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+          SHA256: ${{ needs.preflight.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          cargo package -p "$PACKAGE" --locked --no-verify
+          printf '%s  %s\n' "$SHA256" "${CARGO_TARGET_DIR:-target}/package/$PACKAGE-$VERSION.crate" | sha256sum --check
 
       - name: Authenticate with crates.io
         if: ${{ steps.crate-state.outputs.publish == 'true' }}
@@ -243,28 +241,29 @@ jobs:
           PACKAGE: ${{ needs.validate-inputs.outputs.package }}
         run: cargo publish -p "$PACKAGE" --locked --no-verify --registry crates-io
 
-      - name: Verify independent crate registry visibility
-        if: ${{ steps.crate-state.outputs.publish == 'true' }}
+  verify-published:
+    needs: [validate-inputs, preflight, publish]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.preflight.outputs.source_sha }}
+          persist-credentials: false
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.100.0
+      - name: Verify exact published archive and registry consumers
         env:
           PACKAGE: ${{ needs.validate-inputs.outputs.package }}
           VERSION: ${{ needs.validate-inputs.outputs.version }}
+          SHA256: ${{ needs.preflight.outputs.sha256 }}
+        shell: bash
         run: |
           set -euo pipefail
-
-          for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
-            if (cd "$RUNNER_TEMP" && cargo info "$PACKAGE@$VERSION" --registry crates-io >/dev/null 2>&1); then
-              python3 scripts/crates_io_release.py preflight-independent \
-                --package "$PACKAGE" \
-                --version "$VERSION"
-              echo "$PACKAGE $VERSION is visible in crates.io."
-              exit 0
-            fi
-            if [[ "$attempt" == 12 ]]; then
-              echo "::error::$PACKAGE $VERSION was published but did not become visible in crates.io in time." >&2
-              exit 1
-            fi
-            sleep 15
-          done
+          args=(registry-independent --observe-only --package "$PACKAGE" --version "$VERSION" --sha256 "$SHA256")
+          if [[ "$PACKAGE" != "roughr-merman" ]]; then
+            args+=(--verify-fork-consumer)
+          fi
+          python3 scripts/crates_io_release.py "${args[@]}"
 
       - name: Verify published dependent lanes
         if: ${{ needs.validate-inputs.outputs.package == 'roughr-merman' }}

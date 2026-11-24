@@ -264,7 +264,7 @@ class CratesIoReceiptTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(
                 release.CratesIoPublishError,
-                "registry checksum mismatch for roughr-merman 1.0.0",
+                "cannot confirm registry state for roughr-merman 1.0.0",
             ):
                 release.preflight_independent_crate(
                     ROOT,
@@ -286,14 +286,15 @@ class CratesIoReceiptTests(unittest.TestCase):
                 "fetch_crates_io_checksum",
                 return_value=self.DIGEST,
             ),
+            mock.patch.object(release, "fetch_crates_io_index_checksum", return_value=self.DIGEST),
         ):
-            self.assertTrue(
+            self.assertEqual(
                 release.preflight_independent_crate(
                     ROOT,
                     metadata,
                     package_name="roughr-merman",
                     expected_version="1.0.0",
-                )
+                ), (True, self.DIGEST),
             )
 
     def test_independent_preflight_dry_runs_missing_version(self) -> None:
@@ -308,15 +309,16 @@ class CratesIoReceiptTests(unittest.TestCase):
         with (
             mock.patch.object(release, "_prepare_crate", return_value=prepared),
             mock.patch.object(release, "fetch_crates_io_checksum", return_value=None),
+            mock.patch.object(release, "fetch_crates_io_index_checksum", return_value=None),
             mock.patch.object(release, "run_command", side_effect=run),
         ):
-            self.assertFalse(
+            self.assertEqual(
                 release.preflight_independent_crate(
                     ROOT,
                     metadata,
                     package_name="roughr-merman",
                     expected_version="1.0.0",
-                )
+                ), (False, self.DIGEST),
             )
         self.assertEqual(commands[0][0:4], ["cargo", "publish", "-p", "roughr-merman"])
 
@@ -333,16 +335,17 @@ class CratesIoReceiptTests(unittest.TestCase):
                     mock.patch.object(release, "_prepare_crate", return_value=prepared),
                     mock.patch.object(release, "_assert_artifact_unchanged") as assert_unchanged,
                     mock.patch.object(release, "fetch_crates_io_checksum", return_value=None),
+                    mock.patch.object(release, "fetch_crates_io_index_checksum", return_value=None),
                     mock.patch.object(release, "run_command", return_value=publish.subprocess.CompletedProcess([], 0)),
                     mock.patch.object(renderer_fork_consumer, "verify") as verify,
                 ):
-                    self.assertFalse(release.preflight_independent_crate(
+                    self.assertEqual(release.preflight_independent_crate(
                         ROOT, metadata, package_name=name, expected_version="1.0.0"
-                    ))
+                    ), (False, self.DIGEST))
                     verify.assert_not_called()
-                    self.assertFalse(release.preflight_independent_crate(
+                    self.assertEqual(release.preflight_independent_crate(
                         ROOT, metadata, package_name=name, expected_version="1.0.0", verify_fork_consumer=True
-                    ))
+                    ), (False, self.DIGEST))
                     assert_unchanged.assert_called_once_with(prepared)
                     verify.assert_called_once_with(
                         prepared.artifact_path, candidate=name, version="1.0.0",
@@ -938,7 +941,8 @@ class CratesIoReceiptTests(unittest.TestCase):
 
 class SparseIndexBoundaryTests(unittest.TestCase):
     @contextmanager
-    def registry(self, *, api_delay=0, index_delay=0, index_checksum=None, yanked=False):
+    def registry(self, *, name="alpha", api_delay=0, index_delay=0, index_checksum=None,
+                 yanked=False, api_yanked=False):
         state = {"now": 0, "paths": [], "sleeps": []}
         digest = CratesIoReceiptTests.DIGEST
 
@@ -955,9 +959,9 @@ class SparseIndexBoundaryTests(unittest.TestCase):
                     self.end_headers()
                     return
                 if is_api:
-                    payload = {"version": {"checksum": digest}}
+                    payload = {"version": {"checksum": digest, "yanked": api_yanked}}
                 else:
-                    payload = {"name": "alpha", "vers": "1.0.0", "cksum": index_checksum or digest, "yanked": yanked}
+                    payload = {"name": name, "vers": "1.0.0", "cksum": index_checksum or digest, "yanked": yanked}
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
@@ -996,6 +1000,51 @@ class SparseIndexBoundaryTests(unittest.TestCase):
         self.assertEqual(clock["sleeps"], [5, 10, 20])
         self.assertIn("/al/ph/alpha", clock["paths"])
         self.assertEqual(barrier.index_checksums["alpha"], item.artifact_sha256)
+
+    def test_independent_upload_state_requires_two_consistent_observations(self) -> None:
+        for options, expected in (
+            ({}, True),
+            ({"api_delay": 10, "index_delay": 10}, False),
+            ({"index_delay": 10}, "propagation"),
+            ({"api_delay": 10}, "propagation"),
+            ({"index_checksum": "f" * 64}, "cannot confirm"),
+            ({"api_yanked": True}, "yanked"),
+            ({"yanked": True}, "yanked"),
+        ):
+            with self.subTest(options=options), self.registry(**options) as (item, url, _):
+                def inspect():
+                    return release.independent_version_exists(
+                        "alpha", "1.0.0", item.artifact_sha256,
+                        registry_api=url + "/api/v1", registry_index=url,
+                    )
+                if isinstance(expected, str):
+                    with self.assertRaisesRegex(release.CratesIoPublishError, expected):
+                        inspect()
+                else:
+                    self.assertIs(inspect(), expected)
+
+    def test_registry_cli_only_compiles_after_both_checksums_match(self) -> None:
+        for delay, expected in ((1000, 1), (5, 0)):
+            with self.subTest(delay=delay), self.registry(name="merman-usvg", api_delay=delay, index_delay=delay) as (item, url, clock):
+                output = item.artifact_path.parent / "outputs"
+                args = ["release", "registry-independent", "--observe-only", "--verify-fork-consumer",
+                        "--package", "merman-usvg", "--version", "1.0.0", "--sha256", item.artifact_sha256,
+                        "--registry-api", url + "/api/v1", "--registry-index", url,
+                        "--visibility-attempts", "2", "--visibility-delay", "5"]
+                with (mock.patch("sys.argv", args),
+                      mock.patch.dict(os.environ, {"GITHUB_OUTPUT": str(output), "CARGO_TARGET_DIR": str(output.parent)}),
+                      mock.patch.object(release, "run_command") as run,
+                      mock.patch.object(renderer_fork_consumer, "verify") as verify):
+                    self.assertEqual(release.main(), expected)
+                run.assert_not_called()
+                self.assertEqual(clock["sleeps"], [5])
+                if expected:
+                    verify.assert_not_called()
+                    self.assertFalse(output.exists())
+                else:
+                    verify.assert_called_once_with(None, candidate="merman-usvg", version="1.0.0",
+                                                   repo_root=ROOT, target_directory=output.parent)
+                    self.assertIn("publish=false", output.read_text(encoding="utf-8").splitlines())
 
     def test_index_visibility_cannot_bypass_missing_api_checksum(self) -> None:
         with self.registry(api_delay=1000) as (item, endpoint, clock):

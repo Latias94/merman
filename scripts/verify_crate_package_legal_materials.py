@@ -48,6 +48,9 @@ def required_legal_paths(package: dict[str, Any]) -> set[str]:
             f"{license_expression!r}"
         )
 
+    if package["name"] == "merman-krilla":
+        required.add("icc/LICENSE")
+
     notice = crate_root / "THIRD_PARTY_NOTICES.md"
     license_root = crate_root / "THIRD_PARTY_LICENSES"
     if requires_third_party_bundle(package) or notice.exists() or license_root.exists():
