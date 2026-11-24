@@ -6,6 +6,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  candidateArtifactDirectory,
   candidateDependencyClosure,
   candidateBuildInvocation,
   collectLocalInputEntries,
@@ -68,14 +69,52 @@ test("candidate builds project diagram selection, capabilities, and one transpor
       [...descriptor.cargo.features, ...descriptor.capability_recipe.capabilities, item.transportFeature].sort(),
     );
     assert.equal(invocation.args.includes("--no-default-features"), true);
+    assert.equal(invocation.args.includes("--locked"), true);
     assert.equal(invocation.args.includes("-j1"), true);
     assert.equal(invocation.args.join(" ").includes("rust-static-svg"), false);
+    if (item.candidate === "napi") {
+      assert.equal(recipe.cargoProfile, "native-sdk");
+      assert.equal(invocation.args[invocation.args.indexOf("--profile") + 1], "native-sdk");
+      assert.equal(invocation.args[invocation.args.indexOf("--package") + 1], "merman-node-candidate");
+      assert.equal(invocation.args.includes("--release"), false);
+    } else {
+      assert.equal(recipe.cargoProfile, "release");
+      assert.equal(invocation.args.includes("--release"), true);
+      assert.equal(invocation.args.includes("--profile"), false);
+    }
   }
   assert.equal(resolveCandidateRecipe("napi", "linux-x64-gnu").glibcFloor, "2.31");
   assert.equal(resolveCandidateRecipe("napi", "linux-x64-musl").glibcFloor, null);
   assert.equal(resolveCandidateRecipe("napi", "linux-arm64-gnu").glibcFloor, "2.31");
   assert.equal(resolveCandidateRecipe("napi", "linux-arm64-gnu").rustTarget, "aarch64-unknown-linux-gnu");
   assert.equal(resolveCandidateRecipe("napi", "linux-arm64-musl").rustTarget, "aarch64-unknown-linux-musl");
+});
+
+test("each local Shoal recipe adds one feature and keeps its transport and profile", () => {
+  const baselineContract = resolveCandidateRuntimeContract();
+  for (const [candidate, target] of [["napi", "darwin-arm64"], ["node-wasm", null]]) {
+    const baseline = resolveCandidateRecipe(candidate, target);
+    const local = resolveCandidateRecipe(candidate, target, { localShoal: true });
+    const baselineBuild = candidateBuildInvocation(baseline, "/tmp/merman-node-candidate");
+    const localBuild = candidateBuildInvocation(local, "/tmp/merman-node-candidate");
+    assert.equal(local.cargoProfile, baseline.cargoProfile);
+    assert.deepEqual(local.cargoFeatures, [...baseline.cargoFeatures, "layout-shoal"].sort());
+    const expectedArgs = [...baselineBuild.args];
+    expectedArgs[expectedArgs.indexOf("--features") + 1] = local.cargoFeatures.join(",");
+    assert.deepEqual(localBuild, { ...baselineBuild, args: expectedArgs });
+    assert.deepEqual(resolveCandidateRuntimeContract(local), {
+      ...baselineContract,
+      capabilityRecipe: {
+        ...baselineContract.capabilityRecipe,
+        capabilities: local.capabilityFeatures,
+      },
+      capabilityIds: local.capabilityFeatures,
+    });
+    assert.equal(candidateArtifactDirectory(local), path.join(
+      repositoryRoot, "target", "bench", "node-shoal", "artifacts", target ?? candidate,
+    ));
+    assert.notEqual(candidateArtifactDirectory(local), candidateArtifactDirectory(baseline));
+  }
 });
 
 test("full candidate parser families match the core artifact contract", async () => {
@@ -167,6 +206,7 @@ test("merman-node forwards every candidate capability leaf without a private agg
   for (const feature of [
     ...descriptor.cargo.features,
     ...descriptor.capability_recipe.capabilities,
+    "layout-shoal",
     "transport-napi",
     "transport-wasm",
   ]) {
@@ -183,62 +223,49 @@ test("merman-node forwards every candidate capability leaf without a private agg
   );
 });
 
-test("candidate dependency closures isolate transport-only packages", () => {
-  const basePackages = [
+test("workspace dependency evidence follows the selected tree and rejects transport or Shoal drift", () => {
+  const metadata = metadataWithPackages([
     ["root", "merman-node-candidate"],
     ["bindings", "merman-bindings-core"],
-  ];
-  const napiMetadata = metadataWithPackages([
-    ...basePackages,
     ["napi", "napi"],
     ["napi-build", "napi-build"],
     ["napi-derive", "napi-derive"],
-  ]);
-  const wasmMetadata = metadataWithPackages([
-    ...basePackages,
     ["wasm-bindgen", "wasm-bindgen"],
+    ["shoal", "merman-layout-shoal"],
+    ["unrelated", "merman-cli"],
   ]);
-
-  assert.equal(
-    candidateDependencyClosure(
-      napiMetadata,
-      resolveCandidateRecipe("napi", "darwin-arm64"),
-    ).packages.some((item) => item.name === "napi-build"),
-    true,
-  );
-  assert.equal(
-    candidateDependencyClosure(
-      wasmMetadata,
-      resolveCandidateRecipe("node-wasm", null),
-    ).packages.some((item) => item.name === "napi-build"),
-    false,
-  );
-
-  assert.throws(
-    () =>
-      candidateDependencyClosure(
-        metadataWithPackages([...basePackages, ["napi-build", "napi-build"]]),
-        resolveCandidateRecipe("node-wasm", null),
-      ),
-    /napi-build.*wasm/i,
-  );
-  assert.throws(
-    () =>
-      candidateDependencyClosure(
-        metadataWithPackages([
-          ...basePackages,
-          ["napi", "napi"],
-          ["napi-derive", "napi-derive"],
-        ]),
-        resolveCandidateRecipe("napi", "darwin-arm64"),
-      ),
-    /napi-build.*napi/i,
-  );
+  const tree = (...ids) => ids.map((id) => {
+    const { name, version } = metadata.packages.find((item) => item.id === id);
+    return `${name} v${version}`;
+  }).join("\n");
+  const closure = (recipe, ...ids) => candidateDependencyClosure(metadata, tree(...ids), recipe);
+  const napi = resolveCandidateRecipe("napi", "darwin-arm64");
+  const wasm = resolveCandidateRecipe("node-wasm", null);
+  const napiTree = ["root", "bindings", "napi", "napi-build", "napi-derive"];
+  const wasmTree = ["root", "bindings", "wasm-bindgen"];
+  const baseline = closure(napi, ...napiTree, "bindings");
+  assert.deepEqual(baseline.packages.map((item) => item.name), [
+    "merman-bindings-core", "merman-node-candidate", "napi", "napi-build", "napi-derive",
+  ]);
+  assert.ok(collectLocalInputEntries(baseline).some(({ path }) => path === "crates/merman-node/src/wire.rs"));
+  assert.deepEqual(closure(wasm, ...wasmTree).packages.map((item) => item.name), [
+    "merman-bindings-core", "merman-node-candidate", "wasm-bindgen",
+  ]);
+  for (const [recipe, baselineTree] of [[napi, napiTree], [wasm, wasmTree]]) {
+    const local = resolveCandidateRecipe(recipe.candidate, recipe.targetId, { localShoal: true });
+    assert.ok(closure(local, ...baselineTree, "shoal").packages.some((item) => item.name === "merman-layout-shoal"));
+    assert.throws(() => closure(recipe, ...baselineTree, "shoal"), /contain Shoal only/);
+    assert.throws(() => closure(local, ...baselineTree), /contain Shoal only/);
+  }
+  assert.throws(() => closure(wasm, ...wasmTree, "napi-build"), /napi-build.*wasm/i);
+  assert.throws(() => closure(napi, "root", "bindings", "napi", "napi-derive"), /napi-build.*napi/i);
+  assert.throws(() => closure(napi, "unrelated", ...napiTree), /tree must start at merman-node-candidate/i);
 });
 
 test("candidate source receipt covers runtime wrappers and generated package contracts", async () => {
   const entries = collectLocalInputEntries({ packages: [] });
   for (const relativePath of [
+    "Cargo.lock",
     "platforms/node/src/candidates/native.mjs",
     "platforms/node/src/candidates/wasm.mjs",
     "platforms/node/src/candidates/wrap-engine.mjs",
@@ -281,12 +308,18 @@ test("candidate Cargo packages stay aligned with the private package surface ver
     () => validateCandidatePackageVersions(staleBindings),
     new RegExp(`merman-bindings-core.*${escapedPackageVersion}`, "i"),
   );
+  assert.throws(
+    () => validateCandidatePackageVersions({ ...metadata, workspace_members: [] }),
+    /root Cargo workspace and lockfile/i,
+  );
 });
 
-test("real locked Cargo metadata matches both candidate transport recipes", () => {
+test("real locked Cargo metadata and tree match the default and local candidate recipes", () => {
   for (const recipe of [
     resolveCandidateRecipe("node-wasm", null),
     resolveCandidateRecipe("napi", "linux-x64-gnu"),
+    resolveCandidateRecipe("napi", "linux-x64-gnu", { localShoal: true }),
+    resolveCandidateRecipe("node-wasm", null, { localShoal: true }),
   ]) {
     assert.equal(validateCandidateCargoMetadata(recipe), PACKAGE_VERSION);
   }
@@ -298,16 +331,15 @@ async function readJson(file) {
 
 function metadataWithPackages(entries) {
   return {
+    workspace_root: repositoryRoot,
+    workspace_members: ["root", "bindings"],
     packages: entries.map(([id, name]) => ({
       id,
       name,
       version: name.startsWith("merman-") ? PACKAGE_VERSION : "1.0.0",
       source: name.startsWith("merman-") ? null : "registry+test",
-      manifest_path: path.join(repositoryRoot, "crates", name, "Cargo.toml"),
+      manifest_path: path.join(repositoryRoot, "crates", name === "merman-node-candidate" ? "merman-node" : name, "Cargo.toml"),
     })),
-    resolve: {
-      nodes: entries.map(([id]) => ({ id })),
-    },
   };
 }
 

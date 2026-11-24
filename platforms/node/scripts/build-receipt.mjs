@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  cargoLockPath,
   probeCandidateRuntime,
   resolveCandidateBuildEvidence,
   resolveCandidateRecipe,
@@ -14,8 +15,6 @@ import { digestJson, stableJson } from "./stable-json.mjs";
 import { validateRuntimeCatalog } from "../src/engine.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const repositoryRoot = path.resolve(nodeRoot, "..", "..");
-const cargoLockPath = path.join(repositoryRoot, "crates", "merman-node", "Cargo.lock");
 const packageVersion = JSON.parse(
   readFileSync(path.join(nodeRoot, "package-surfaces.json"), "utf8"),
 ).version;
@@ -23,6 +22,7 @@ const packageVersion = JSON.parse(
 export function readBuildReceipt(
   artifact,
   {
+    localShoal = false,
     probeCurrentRuntime = probeCandidateRuntime,
     resolveCurrentEvidence = resolveCandidateBuildEvidence,
   } = {},
@@ -30,8 +30,8 @@ export function readBuildReceipt(
   const receiptPath = path.join(path.dirname(artifact), "build-receipt.json");
   assertFile(receiptPath, "candidate build receipt");
   const value = JSON.parse(readFileSync(receiptPath, "utf8"));
-  if (value.schema_version !== 1) {
-    throw new Error("candidate build receipt schema_version must be 1.");
+  if (value.schema_version !== 2) {
+    throw new Error("candidate build receipt schema_version must be 2.");
   }
   for (const key of [
     "source_digest",
@@ -46,11 +46,8 @@ export function readBuildReceipt(
   if (value.cargo_lock_digest !== digestFile(cargoLockPath)) {
     throw new Error("candidate build receipt Cargo lock digest does not match the current lockfile.");
   }
-  const dependencyClosureDigest = validateDependencyClosure(
-    value.dependency_closure,
-    value.config?.candidate,
-  );
-  const { buildRecipe, capabilityRecipe } = validateCapabilityRecipe(value.config);
+  const { buildRecipe, capabilityRecipe } = validateCapabilityRecipe(value.config, localShoal);
+  const dependencyClosureDigest = validateDependencyClosure(value.dependency_closure, buildRecipe);
   validateBuildTools(value.tools);
   const expectedInputDigest = digestJson({
     cargo_lock_digest: value.cargo_lock_digest,
@@ -123,7 +120,7 @@ export function readBuildReceipt(
   if (recordedArtifact?.sha256 !== artifactDigest) {
     throw new Error(`candidate build receipt does not match ${artifactPath}.`);
   }
-  const runtimeCatalogDigest = validateRuntimeEvidence(value.runtime, capabilityRecipe);
+  const runtimeCatalogDigest = validateRuntimeEvidence(value.runtime, buildRecipe);
   const runtimeArtifacts = runtimeArtifactEntries(value.config.candidate, value.artifacts);
   const currentRuntime = probeCurrentRuntime(receiptRoot, buildRecipe);
   if (stableJson(currentRuntime) !== stableJson(value.runtime)) {
@@ -176,7 +173,7 @@ function runtimeArtifactEntries(candidate, artifacts) {
   }));
 }
 
-function validateDependencyClosure(closure, candidate) {
+function validateDependencyClosure(closure, buildRecipe) {
   if (
     !closure ||
     typeof closure !== "object" ||
@@ -187,11 +184,11 @@ function validateDependencyClosure(closure, candidate) {
   ) {
     throw new Error("candidate build receipt dependency closure is invalid.");
   }
-  validateCandidateDependencyPackages(closure.packages, candidate);
+  validateCandidateDependencyPackages(closure.packages, buildRecipe);
   return closure.digest;
 }
 
-function validateRuntimeEvidence(runtime, capabilityRecipe) {
+function validateRuntimeEvidence(runtime, buildRecipe) {
   if (!runtime || typeof runtime !== "object" || Array.isArray(runtime)) {
     throw new Error("candidate build receipt runtime evidence is required.");
   }
@@ -200,7 +197,7 @@ function validateRuntimeEvidence(runtime, capabilityRecipe) {
   }
   let catalog;
   try {
-    catalog = validateRuntimeCatalog(JSON.stringify(runtime.catalog));
+    catalog = validateRuntimeCatalog(JSON.stringify(runtime.catalog), buildRecipe);
   } catch (cause) {
     throw new Error(
       `candidate build receipt runtime catalog is invalid: ${cause instanceof Error ? cause.message : String(cause)}`,
@@ -237,7 +234,7 @@ function validateRuntimeEvidence(runtime, capabilityRecipe) {
     capabilities?.text_measurement?.provider_ids,
     "runtime text measurement provider IDs",
   );
-  const expectedRuntime = resolveCandidateRuntimeContract();
+  const expectedRuntime = resolveCandidateRuntimeContract(buildRecipe);
   if (
     JSON.stringify(textMeasurementProviderIds) !==
     JSON.stringify(expectedRuntime.textMeasurementProviderIds)
@@ -283,7 +280,7 @@ function validateRuntimeEvidence(runtime, capabilityRecipe) {
   return runtime.catalog_digest;
 }
 
-function validateCapabilityRecipe(config) {
+function validateCapabilityRecipe(config, localShoal) {
   if (!config || typeof config !== "object" || Array.isArray(config)) {
     throw new Error("candidate build receipt config must be an object.");
   }
@@ -296,6 +293,7 @@ function validateCapabilityRecipe(config) {
     "rust_target",
     "wasm_pack_target",
     "glibc_floor",
+    "cargo_profile",
     "default_features",
     "capability_recipe",
     "features",
@@ -317,7 +315,7 @@ function validateCapabilityRecipe(config) {
     recipe.capabilities,
     "capability recipe capabilities",
   );
-  const expectedRecipe = resolveCandidateRuntimeContract().capabilityRecipe;
+  const expectedRecipe = resolveCandidateRuntimeContract({ localShoal }).capabilityRecipe;
   if (
     recipe.descriptor !== expectedRecipe.descriptor ||
     recipe.target !== expectedRecipe.target ||
@@ -328,7 +326,7 @@ function validateCapabilityRecipe(config) {
   const cargoFeatures = sortedUniqueStrings(config.features, "Cargo features");
   let expectedBuildRecipe;
   try {
-    expectedBuildRecipe = resolveCandidateRecipe(config.candidate, config.target);
+    expectedBuildRecipe = resolveCandidateRecipe(config.candidate, config.target, { localShoal });
   } catch (error) {
     throw new Error(
       `candidate build receipt has an invalid candidate target: ${error instanceof Error ? error.message : String(error)}`,
@@ -344,6 +342,9 @@ function validateCapabilityRecipe(config) {
   }
   if (JSON.stringify(config.diagram_families) !== JSON.stringify(expectedBuildRecipe.diagramFamilies)) {
     throw new Error("candidate build receipt diagram families do not match the canonical Node recipe.");
+  }
+  if (config.cargo_profile !== expectedBuildRecipe.cargoProfile) {
+    throw new Error("candidate build receipt Cargo profile is not the canonical Node recipe.");
   }
   if (JSON.stringify(cargoFeatures) !== JSON.stringify(expectedBuildRecipe.cargoFeatures)) {
     throw new Error(

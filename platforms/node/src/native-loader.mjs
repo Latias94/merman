@@ -35,6 +35,11 @@ export function nodeLoaderPackageVersion() {
   return loaderPackageVersion;
 }
 
+export function nodeLoaderUsesLocalShoal(packageName = "@mermanjs/node") {
+  return loaderPackageManifest.name === packageName &&
+    loaderPackageManifest.private === true && loaderPackageManifest.mermanLocalShoal === true;
+}
+
 export function assertRuntimePackageVersion(value) {
   const catalog = parseRuntimeCatalogJsonText(value);
   if (catalog?.package_version !== loaderPackageVersion) {
@@ -106,6 +111,7 @@ export async function loadInstalledNativeTransport(optionsJson, iconPacksJson) {
   });
   const transport = await wrapNativeBinding(binding, optionsJson, iconPacksJson, {
     directSvgAddon: nativeAddon,
+    localShoal: nodeLoaderUsesLocalShoal(),
   });
   if (nativeAddon) {
     directSvgTransports.add(transport);
@@ -121,7 +127,7 @@ export async function wrapNativeBinding(
   binding,
   optionsJson,
   iconPacksJson,
-  { directSvgAddon = false } = {},
+  { directSvgAddon = false, localShoal = false } = {},
 ) {
   const label = "The target-specific Merman addon";
   const NativeEngine = binding?.NativeEngine ?? binding?.default?.NativeEngine;
@@ -134,6 +140,7 @@ export async function wrapNativeBinding(
     expectedPackageVersion: nodeLoaderPackageVersion(),
     expectedTransport: "napi",
     label: "The target-specific Merman package",
+    localShoal,
   });
   let transport;
   try {

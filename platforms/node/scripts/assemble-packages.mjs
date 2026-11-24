@@ -12,6 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { readBuildReceipt } from "./build-receipt.mjs";
+import { candidateArtifactDirectory, localShoalRoot, resolveCandidateRecipe } from "./build-candidate.mjs";
 import { replaceDirectory } from "./replace-directory.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -21,19 +22,23 @@ const descriptor = JSON.parse(readFileSync(path.join(nodeRoot, "package-surfaces
 if (isMainModule()) {
   try {
     const args = process.argv.slice(2);
-    const outputRoot = valueAfter(args, "--output-root") ?? path.join(nodeRoot, "dist-packages");
+    const outputRoot = valueAfter(args, "--output-root") ?? undefined;
+    const localShoal = args.includes("--local-shoal");
+    if (localShoal && args.includes("--loader-only")) {
+      throw new Error("--local-shoal requires --wasm or a native --target.");
+    }
     if (args.includes("--loader-only")) {
       assembleLoaderOnly(outputRoot);
     } else if (args.includes("--wasm")) {
-      assembleWasmPackage(outputRoot);
+      assembleWasmPackage(outputRoot, null, { localShoal });
     } else {
       const target = valueAfter(args, "--target");
       if (!target) {
         throw new Error(
-          "usage: node scripts/assemble-packages.mjs (--loader-only | --wasm | --target <target-id>) [--output-root <path>]",
+          "usage: node scripts/assemble-packages.mjs (--loader-only | --wasm | --target <target-id>) [--local-shoal] [--output-root <path>]",
         );
       }
-      assembleNativePackages(target, outputRoot);
+      assembleNativePackages(target, outputRoot, null, { localShoal });
     }
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
@@ -43,17 +48,19 @@ if (isMainModule()) {
 
 export function assembleNativePackages(
   target,
-  outputRoot = path.join(nodeRoot, "dist-packages"),
+  outputRoot,
   binaryOverride = null,
-  { readReceipt = readBuildReceipt } = {},
+  { localShoal = false, readReceipt = readBuildReceipt } = {},
 ) {
+  outputRoot ??= localShoal ? path.join(localShoalRoot, "packages") : path.join(nodeRoot, "dist-packages");
   const targetDescriptor = descriptor.targets.find((item) => item.target === target);
   if (!targetDescriptor) throw new Error(`Unknown Node target: ${target}.`);
   assertAssemblyPackageManifest(descriptor.root);
   assertAssemblyPackageManifest(targetDescriptor);
-  const binary = binaryOverride ?? path.join(nodeRoot, "artifacts", "napi", target, "merman.node");
+  const recipe = resolveCandidateRecipe("napi", target, { localShoal });
+  const binary = binaryOverride ?? path.join(candidateArtifactDirectory(recipe), "merman.node");
   assertFile(binary, "native candidate binary");
-  assertNativeBuildProvenance(targetDescriptor, readReceipt(binary));
+  assertNativeBuildProvenance(targetDescriptor, readReceipt(binary, { localShoal }));
 
   const stage = `${outputRoot}.stage-${process.pid}`;
   rmSync(stage, { recursive: true, force: true });
@@ -61,11 +68,29 @@ export function assembleNativePackages(
   try {
     assembleLoaderPackage(path.join(stage, "node"));
     assemblePlatformPackage(targetDescriptor, binary, path.join(stage, target));
+    if (localShoal) {
+      markLocalShoalPackage(path.join(stage, "node"), targetDescriptor.name);
+      markLocalShoalPackage(path.join(stage, target));
+    }
     replaceDirectory(stage, outputRoot);
   } catch (error) {
     rmSync(stage, { recursive: true, force: true });
     throw error;
   }
+}
+
+function markLocalShoalPackage(directory, optionalDependency) {
+  const manifestPath = path.join(directory, "package.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  manifest.private = true;
+  manifest.mermanLocalShoal = true;
+  delete manifest.publishConfig;
+  if (optionalDependency !== undefined) {
+    manifest.optionalDependencies = {
+      [optionalDependency]: manifest.optionalDependencies[optionalDependency],
+    };
+  }
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
 export function assembleLoaderOnly(outputRoot = path.join(nodeRoot, "dist-packages")) {
@@ -83,32 +108,30 @@ export function assembleLoaderOnly(outputRoot = path.join(nodeRoot, "dist-packag
 }
 
 export function assembleWasmPackage(
-  outputRoot = path.join(nodeRoot, "dist-packages"),
+  outputRoot,
   wasmOverride = null,
-  { readReceipt = readBuildReceipt } = {},
+  { localShoal = false, readReceipt = readBuildReceipt } = {},
 ) {
+  outputRoot ??= localShoal ? path.join(localShoalRoot, "wasm-packages") : path.join(nodeRoot, "dist-packages");
   const wasmDescriptor = descriptor.wasm;
   if (!wasmDescriptor) throw new Error("Node package surface does not declare a WASM package.");
   assertAssemblyPackageManifest(wasmDescriptor);
   const candidateRoot = wasmOverride
     ? path.dirname(wasmOverride)
-    : path.join(nodeRoot, "artifacts", "node-wasm");
+    : candidateArtifactDirectory(resolveCandidateRecipe("node-wasm", null, { localShoal }));
   const wasm = wasmOverride ?? path.join(candidateRoot, wasmDescriptor.wasm_artifact);
   const loader = path.join(candidateRoot, "merman_node.js");
   assertFile(wasm, "Node-targeted WASM binary");
   assertFile(loader, "Node-targeted WASM loader");
-  assertWasmBuildProvenance(wasmDescriptor, readReceipt(wasm));
+  assertWasmBuildProvenance(wasmDescriptor, readReceipt(wasm, { localShoal }));
 
   const stage = `${outputRoot}.stage-${process.pid}`;
   rmSync(stage, { recursive: true, force: true });
   mkdirSync(stage, { recursive: true });
   try {
-    assembleWasmPackageContents(
-      wasmDescriptor,
-      loader,
-      wasm,
-      path.join(stage, path.basename(wasmDescriptor.directory)),
-    );
+    const packageRoot = path.join(stage, path.basename(wasmDescriptor.directory));
+    assembleWasmPackageContents(wasmDescriptor, loader, wasm, packageRoot);
+    if (localShoal) markLocalShoalPackage(packageRoot);
     replaceDirectory(stage, outputRoot);
   } catch (error) {
     rmSync(stage, { recursive: true, force: true });

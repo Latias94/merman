@@ -40,7 +40,6 @@ WEB_DESCRIPTOR = Path("platforms/web/web-surface-descriptor.json")
 WEB_LOCK = Path("platforms/web/package-lock.json")
 NODE_ROOT = Path("platforms/node")
 NODE_CARGO_MANIFEST = Path("crates/merman-node/Cargo.toml")
-NODE_CARGO_LOCK = Path("crates/merman-node/Cargo.lock")
 NODE_DESCRIPTOR = NODE_ROOT / "package-surfaces.json"
 NODE_WORKSPACE_PACKAGE = NODE_ROOT / "package.json"
 NODE_WORKSPACE_LOCK = NODE_ROOT / "package-lock.json"
@@ -755,59 +754,24 @@ def _collect_node_candidate_projection(
         raise ReleaseProjectionError(
             f"{NODE_CARGO_MANIFEST} must remain a private, non-publishable candidate"
         )
-    if not isinstance(cargo_manifest.get("workspace"), dict):
+    if (
+        "workspace" in cargo_manifest
+        or catalog.coupled_packages.get(NODE_CARGO_PACKAGE) != NODE_CARGO_MANIFEST.parent
+    ):
         raise ReleaseProjectionError(
-            f"{NODE_CARGO_MANIFEST} must remain a detached private workspace "
-            "until Node admission"
+            f"{NODE_CARGO_MANIFEST} must be a private member of the root Cargo workspace"
         )
-    observe("Node candidate Cargo package", NODE_CARGO_MANIFEST, cargo_package.get("version"))
+    observe("Node candidate Cargo package", NODE_CARGO_MANIFEST, canonical)
 
     dependencies = _mapping(
         cargo_manifest.get("dependencies"),
         f"{NODE_CARGO_MANIFEST} [dependencies]",
     )
-    bindings_dependency = _mapping(
-        dependencies.get(NODE_BINDINGS_PACKAGE),
-        f"{NODE_CARGO_MANIFEST} dependency {NODE_BINDINGS_PACKAGE}",
-    )
-    bindings_path = Path(
-        _string(
-            bindings_dependency.get("path"),
-            f"{NODE_CARGO_MANIFEST} dependency {NODE_BINDINGS_PACKAGE}.path",
-        )
-    )
-    bindings_member = catalog.coupled_packages.get(NODE_BINDINGS_PACKAGE)
-    if bindings_member is None:
-        raise ReleaseProjectionError(
-            f"root workspace must contain the coupled {NODE_BINDINGS_PACKAGE} package"
-        )
-    expected_bindings_dir = (view.root / bindings_member).resolve()
-    actual_bindings_dir = (
-        (view.root / NODE_CARGO_MANIFEST).parent / bindings_path
-    ).resolve()
-    if actual_bindings_dir != expected_bindings_dir:
+    if dependencies.get(NODE_BINDINGS_PACKAGE) != {"workspace": True}:
         errors.append(
-            f"{NODE_CARGO_MANIFEST} must depend on the local "
-            f"{NODE_BINDINGS_PACKAGE} package"
+            f"{NODE_CARGO_MANIFEST} must inherit {NODE_BINDINGS_PACKAGE} from the root workspace"
         )
 
-    _collect_cargo_lock_versions(
-        view,
-        catalog,
-        NODE_CARGO_LOCK,
-        {NODE_CARGO_PACKAGE, NODE_BINDINGS_PACKAGE},
-        observations,
-        errors,
-        label="Node candidate Cargo.lock",
-    )
-    _collect_independent_lock_versions(
-        view,
-        catalog,
-        NODE_CARGO_LOCK,
-        observations,
-        errors,
-        label="Node candidate Cargo.lock",
-    )
     observe("Node candidate package surface", NODE_DESCRIPTOR, node_catalog.version)
 
     workspace_manifest = view.json(NODE_WORKSPACE_PACKAGE)
@@ -1286,7 +1250,6 @@ def _prepare_cargo_versions(root: Path, release: ReleaseVersion) -> None:
     lock_owners = {
         ROOT_LOCK: coupled,
         FUZZ_LOCK: coupled,
-        NODE_CARGO_LOCK: coupled | {NODE_CARGO_PACKAGE},
     }
     before_locks = {path: view.text(path) for path in lock_owners}
 
@@ -1315,18 +1278,8 @@ def _prepare_cargo_versions(root: Path, release: ReleaseVersion) -> None:
                 workspace_dependency_requirement(release),
             )
     _write_relative(root, ROOT_MANIFEST, root_text)
-    _write_relative(
-        root,
-        NODE_CARGO_MANIFEST,
-        _replace_toml_section_string(
-            view.text(NODE_CARGO_MANIFEST),
-            "package",
-            "version",
-            release.canonical,
-        ),
-    )
 
-    for manifest in (ROOT_MANIFEST, FUZZ_MANIFEST, NODE_CARGO_MANIFEST):
+    for manifest in (ROOT_MANIFEST, FUZZ_MANIFEST):
         _run_command(
             [
                 cargo,

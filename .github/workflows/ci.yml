@@ -917,7 +917,7 @@ jobs:
       - name: Install Node candidate dependencies
         run: npm ci --prefix platforms/node
 
-      - name: Verify Node candidate contracts and nested lock freshness
+      - name: Verify Node candidate contracts and root lock freshness
         run: npm test --prefix platforms/node
 
       - name: Install Rust toolchain for real Node candidates

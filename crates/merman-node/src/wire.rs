@@ -1,3 +1,15 @@
+#[cfg(not(feature = "svg"))]
+compile_error!("the Node candidates must be built with the direct static SVG feature set");
+
+#[cfg(not(feature = "layout-cytoscape"))]
+compile_error!("the Node candidates require the static layout-cytoscape capability recipe");
+
+#[cfg(not(feature = "layout-dagre"))]
+compile_error!("the Node candidates require the static layout-dagre capability recipe");
+
+#[cfg(not(feature = "layout-elk"))]
+compile_error!("the Node candidates require the static layout-elk capability recipe");
+
 use std::borrow::Cow;
 #[cfg(not(target_arch = "wasm32"))]
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -44,6 +56,8 @@ const NODE_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
     CapabilityKey::LayoutDagre,
     #[cfg(feature = "layout-elk")]
     CapabilityKey::LayoutElk,
+    #[cfg(feature = "layout-shoal")]
+    CapabilityKey::LayoutShoal,
     #[cfg(feature = "math")]
     CapabilityKey::Math,
 ];
@@ -60,6 +74,14 @@ static ARTIFACT_CONTRACT: ValidatedArtifactContract =
 static NODE_WIRE_CONTRACT: LazyLock<NodeWireContract> = LazyLock::new(|| {
     let contract = serde_json::from_str::<NodeWireContract>(NODE_WIRE_CONTRACT_JSON)
         .expect("the embedded Node wire contract must be valid JSON");
+    #[cfg(feature = "layout-shoal")]
+    let contract = {
+        let mut contract = contract;
+        let ids = &mut contract.artifact.capability_ids;
+        ids.push(CapabilityKey::LayoutShoal.id().to_owned());
+        ids.sort_unstable();
+        contract
+    };
     contract
         .validate()
         .expect("the embedded Node wire contract must be internally consistent");
@@ -1558,6 +1580,13 @@ mod tests {
         assert_eq!(
             expected.capability_ids.iter().any(|id| id == "math"),
             cfg!(feature = "math")
+        );
+        assert_eq!(
+            expected
+                .capability_ids
+                .iter()
+                .any(|id| id == "layout-shoal"),
+            cfg!(feature = "layout-shoal")
         );
         assert_eq!(
             capabilities["output_ids"],

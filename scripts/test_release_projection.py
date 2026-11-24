@@ -193,11 +193,7 @@ class ReleaseProjectionTests(unittest.TestCase):
         self.assertIn("Playground license lock digest", labels)
         self.assertIn("Playground license local Web package", labels)
         self.assertIn("Node candidate Cargo package", labels)
-        self.assertIn("Node candidate Cargo.lock package merman-bindings-core", labels)
-        self.assertIn(
-            "Node candidate Cargo.lock independent package roughr-merman",
-            labels,
-        )
+        self.assertIn("Cargo.lock package merman-node-candidate", labels)
         self.assertIn("Node candidate package surface", labels)
         self.assertIn("Node candidate workspace", labels)
         self.assertIn("Node candidate workspace lock", labels)
@@ -414,14 +410,6 @@ class ReleaseProjectionTests(unittest.TestCase):
                 ),
             ),
             (
-                release_projection.NODE_CARGO_LOCK,
-                lambda text: replace_once(
-                    text,
-                    f'name = "roughr-merman"\nversion = "{roughr_version}"',
-                    'name = "roughr-merman"\nversion = "9.9.9"',
-                ),
-            ),
-            (
                 release_projection.WEB_WORKSPACE_PACKAGE,
                 lambda text: replace_once(
                     text,
@@ -590,53 +578,17 @@ class ReleaseProjectionTests(unittest.TestCase):
         self,
     ) -> None:
         version = release_projection.verify_repository(self.ROOT).authority.canonical
-        catalog = release_projection.load_workspace_catalog(
-            release_projection.RepositoryView(self.ROOT)
-        )
         descriptor = node_package_surface()
-        local_lock_packages = [
-            (package["name"], package["version"])
-            for package in release_projection.RepositoryView(self.ROOT)
-            .toml(release_projection.NODE_CARGO_LOCK)["package"]
-            if "source" not in package
-            and (
-                package["name"] == release_projection.NODE_CARGO_PACKAGE
-                or package["name"] in catalog.coupled_packages
-                or package["name"] in catalog.independent_packages
-            )
-        ]
         mutations = [
             (
-                "Cargo manifest",
-                release_projection.NODE_CARGO_MANIFEST,
+                "root Cargo lock",
+                release_projection.ROOT_LOCK,
                 lambda text: replace_once(
                     text,
-                    (
-                        '[package]\n'
-                        'name = "merman-node-candidate"\n'
-                        f'version = "{version}"'
-                    ),
-                    (
-                        '[package]\n'
-                        'name = "merman-node-candidate"\n'
-                        'version = "9.9.9"'
-                    ),
+                    f'name = "merman-node-candidate"\nversion = "{version}"',
+                    'name = "merman-node-candidate"\nversion = "9.9.9"',
                 ),
             ),
-            *[
-                (
-                    f"Cargo lock {package_name}",
-                    release_projection.NODE_CARGO_LOCK,
-                    lambda text,
-                    package_name=package_name,
-                    package_version=package_version: replace_once(
-                        text,
-                        f'name = "{package_name}"\nversion = "{package_version}"',
-                        f'name = "{package_name}"\nversion = "9.9.9"',
-                    ),
-                )
-                for package_name, package_version in local_lock_packages
-            ],
             (
                 "package surface",
                 release_projection.NODE_DESCRIPTOR,
@@ -712,21 +664,17 @@ class ReleaseProjectionTests(unittest.TestCase):
         )
         self.assertTrue(result.ok)
 
-    def test_node_candidate_cargo_projection_preserves_detached_workspace(self) -> None:
-        cargo_manifest = (
-            self.ROOT / release_projection.NODE_CARGO_MANIFEST
-        ).read_text(encoding="utf-8")
+    def test_node_candidate_cargo_projection_requires_workspace_membership(self) -> None:
+        manifest = (self.ROOT / release_projection.ROOT_MANIFEST).read_text(encoding="utf-8")
         with self.assertRaisesRegex(
             release_projection.ReleaseProjectionError,
-            "detached private workspace",
+            "private member of the root Cargo workspace",
         ):
             release_projection.verify_repository(
                 self.ROOT,
                 overrides={
-                    release_projection.NODE_CARGO_MANIFEST: replace_once(
-                        cargo_manifest,
-                        "\n[workspace]\nresolver = \"2\"\n",
-                        "\n",
+                    release_projection.ROOT_MANIFEST: replace_once(
+                        manifest, '    "crates/merman-node",\n', "",
                     )
                 },
             )
