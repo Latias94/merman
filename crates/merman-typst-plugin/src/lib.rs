@@ -9,7 +9,7 @@ use merman_bindings_core::{
     CapabilityKey, MetadataKey, OperationKey, RuntimePolicyExposure, TargetKey,
     ValidatedArtifactContract,
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 const TYPST_RESULT_PAYLOAD_SCHEMA_VERSION: u32 = 1;
 pub const TYPST_RUNTIME_CATALOG_SCHEMA_VERSION: u32 =
@@ -407,12 +407,10 @@ mod tests {
         assert_success_envelope(&payload, "theme-catalog");
         let catalog = &payload["data"]["result"];
         assert_eq!(catalog["schema_version"], 2);
-        assert!(
-            catalog["mermaid_themes"]
-                .as_array()
-                .unwrap()
-                .contains(&json!("forest"))
-        );
+        assert!(catalog["mermaid_themes"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("forest")));
         assert_eq!(
             catalog["presets"].as_array().unwrap().len(),
             if cfg!(feature = "svg") { 13 } else { 0 }
@@ -450,12 +448,10 @@ mod tests {
                 "Typst must not advertise uncallable capability {omitted}"
             );
         }
-        assert!(
-            capabilities["system_adapter_ids"]
-                .as_array()
-                .unwrap()
-                .is_empty()
-        );
+        assert!(capabilities["system_adapter_ids"]
+            .as_array()
+            .unwrap()
+            .is_empty());
         if let Some(text_measurement) = capabilities["text_measurement"].as_object() {
             assert_eq!(
                 text_measurement["provider_ids"],
@@ -475,11 +471,9 @@ mod tests {
                 .map(OperationKey::id)
                 .collect::<Vec<_>>()
         );
-        assert!(
-            TYPST_OPERATIONS
-                .iter()
-                .all(|operation| TYPST_TRANSPORT_OPERATION_KEYS.contains(operation))
-        );
+        assert!(TYPST_OPERATIONS
+            .iter()
+            .all(|operation| TYPST_TRANSPORT_OPERATION_KEYS.contains(operation)));
         assert_eq!(
             TYPST_TRANSPORT_OPERATION_KEYS
                 .iter()
@@ -768,11 +762,9 @@ mod tests {
                 .expect("valid theme-operation error envelope");
 
         assert_error_envelope(&payload, "svg", "MERMAN_UNSUPPORTED_OPERATION");
-        assert!(
-            payload["message"]
-                .as_str()
-                .is_some_and(|message| message.contains("theme authoring"))
-        );
+        assert!(payload["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("theme authoring")));
     }
 
     #[cfg(feature = "svg")]
@@ -801,11 +793,9 @@ mod tests {
             .expect("valid unknown-operation error envelope");
 
         assert_error_envelope(&payload, THEME_OPERATION, "MERMAN_UNSUPPORTED_OPERATION");
-        assert!(
-            !payload
-                .to_string()
-                .contains("future-theme-operation-identifier")
-        );
+        assert!(!payload
+            .to_string()
+            .contains("future-theme-operation-identifier"));
     }
 
     #[test]
@@ -1404,12 +1394,10 @@ mod tests {
             .expect("valid JSON payload");
 
         assert_error_envelope(&payload, RENDER_OPERATION, "MERMAN_RESOURCE_LIMIT_EXCEEDED");
-        assert!(
-            payload["message"]
-                .as_str()
-                .unwrap()
-                .contains("max_source_bytes")
-        );
+        assert!(payload["message"]
+            .as_str()
+            .unwrap()
+            .contains("max_source_bytes"));
         assert_eq!(
             payload["details"]["resource"]["limit_id"],
             "max_source_bytes"

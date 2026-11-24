@@ -16,7 +16,7 @@
 )
 #let inferred-width-config = config-with-context-width(render-config(), typst-length-to-css-px(72pt))
 #assert.eq(inferred-width-config.binding_options.layout.container_width, 96)
-#assert.eq(inferred-width-config.binding_options.version, 3)
+#assert.eq(inferred-width-config.binding_options.version, 4)
 #assert(not "presentation" in inferred-width-config.binding_options)
 #assert(not "host_theme" in inferred-width-config.binding_options)
 #let inferred-style = context-text-style(("Arial", "sans-serif"), 12pt)

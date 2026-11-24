@@ -434,7 +434,10 @@ pub struct LinearGradient {
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(
     not(feature = "compile"),
-    allow(dead_code, reason = "Runtime-only consumers cannot construct authoring gradients.")
+    allow(
+        dead_code,
+        reason = "Runtime-only consumers cannot construct authoring gradients."
+    )
 )]
 enum GradientKind {
     LinearGradient,
