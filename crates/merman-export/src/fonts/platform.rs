@@ -240,18 +240,14 @@ impl PlatformCatalog {
                             Style::Normal,
                             None,
                         );
-                        if self
-                            .family_candidates(query, control)?
-                            .iter()
-                            .any(|candidate| {
-                                #[cfg(target_os = "macos")]
-                                if let FontCandidate::Native(face) = candidate {
-                                    return face.implicit_eligible(None);
-                                }
-                                let _ = candidate;
-                                true
-                            })
-                        {
+                        if self.family_candidates(query, control)?.iter().any(|face| {
+                            #[cfg(target_os = "macos")]
+                            if let FontCandidate::Native(face) = &face.candidate {
+                                return face.implicit_eligible(None);
+                            }
+                            let _ = face;
+                            true
+                        }) {
                             return Ok(Some(name.to_owned()));
                         }
                     }
@@ -431,8 +427,28 @@ impl FamilyQuery {
 #[cfg(any(windows, target_os = "macos", test))]
 #[derive(Default)]
 struct FamilyCache {
-    entries: HashMap<FamilyQuery, Arc<[FontCandidate]>>,
+    entries: HashMap<FamilyQuery, Arc<[FamilyFace]>>,
     bytes: usize,
+    #[cfg(windows)]
+    cmap_bytes: usize,
+}
+
+#[cfg(any(windows, target_os = "macos", test))]
+struct FamilyFace {
+    candidate: FontCandidate,
+    #[cfg(windows)]
+    coverage: Option<dwrite::FamilyCoverage>,
+}
+
+#[cfg(any(windows, target_os = "macos", test))]
+impl From<FontCandidate> for FamilyFace {
+    fn from(candidate: FontCandidate) -> Self {
+        Self {
+            candidate,
+            #[cfg(windows)]
+            coverage: None,
+        }
+    }
 }
 
 #[cfg(any(windows, target_os = "macos", test))]
@@ -483,9 +499,20 @@ impl PlatformCatalog {
             }
             for name in self.family_names(family) {
                 let query = FamilyQuery::new(name, weight, stretch, style, language);
-                for candidate in &*self.family_candidates(query, control)? {
+                for face in &*self.family_candidates(query, control)? {
                     control.terminal_checkpoint_at(OperationPhase::Layout)?;
-                    if let Some(id) = try_candidate(candidate.clone())? {
+                    #[cfg(windows)]
+                    if let Some(fallback) = fallback
+                        && face
+                            .coverage
+                            .as_ref()
+                            .is_some_and(|coverage| !coverage.may_cover(fallback.text))
+                    {
+                        // The native catalog owns this negative coverage result. A positive
+                        // still needs snapshot validation and contextual shaping.
+                        continue;
+                    }
+                    if let Some(id) = try_candidate(face.candidate.clone())? {
                         return Ok(Some(id));
                     }
                 }
@@ -545,7 +572,12 @@ impl PlatformCatalog {
         &self,
         query: FamilyQuery,
         control: &OperationControl,
-    ) -> Result<Arc<[FontCandidate]>, NativeFontError> {
+    ) -> Result<Arc<[FamilyFace]>, NativeFontError> {
+        const MAX_FAMILY_ENTRIES: usize = 512;
+        const MAX_FAMILY_BYTES: usize = 512 * 1024;
+        #[cfg(windows)]
+        const MAX_FAMILY_CMAP_BYTES: usize = 512 * 1024;
+
         control.terminal_checkpoint_at(OperationPhase::Layout)?;
         let mut cache = self.family_cache.lock().map_err(|_| poisoned_catalog())?;
         if let Some(candidates) = cache.entries.get(&query) {
@@ -553,17 +585,19 @@ impl PlatformCatalog {
         }
         #[cfg(test)]
         self.family_queries.fetch_add(1, Ordering::Relaxed);
-        let candidates: Arc<[FontCandidate]> = match &self.backend {
+        #[cfg(windows)]
+        let mut remaining_coverage = if cache.entries.len() < MAX_FAMILY_ENTRIES {
+            MAX_FAMILY_CMAP_BYTES - cache.cmap_bytes
+        } else {
+            0
+        };
+        #[cfg(windows)]
+        let initial_remaining_coverage = remaining_coverage;
+        let candidates: Arc<[FamilyFace]> = match &self.backend {
             #[cfg(windows)]
-            Backend::DirectWrite(catalog) => {
-                let mut faces = Vec::new();
-                let collect: &mut AcceptFallback<'_> = &mut |face| {
-                    faces.push(face);
-                    Ok(None)
-                };
-                catalog.candidates(&query.name, query.weight, query.stretch, query.style, control, collect)?;
-                faces.into()
-            }
+            Backend::DirectWrite(catalog) => catalog
+                .family_candidates(&query, control, &mut remaining_coverage)?
+                .into(),
             #[cfg(target_os = "macos")]
             Backend::CoreText => {
                 let faces = if is_system_ui(&query.name) {
@@ -571,12 +605,12 @@ impl PlatformCatalog {
                 } else {
                     coretext::named_candidates(&query.name, query.weight, query.stretch, query.style, control)?
                 };
-                faces.into_iter().map(FontCandidate::Native).collect()
+                faces.into_iter().map(|face| FontCandidate::Native(face).into()).collect()
             }
             #[cfg(test)]
             Backend::Fixture(faces) => faces.iter().filter(|candidate| {
                 matches!(candidate, FontCandidate::File { expected: ExpectedFace::Platform(face), .. } if unicase::eq(face.family.as_str(), query.name.as_str()))
-            }).cloned().collect(),
+            }).cloned().map(FamilyFace::from).collect(),
             #[cfg(all(test, any(target_os = "linux", target_os = "freebsd")))]
             Backend::Fontconfig(_) => unreachable!("Fontconfig ranks whole substituted patterns"),
         };
@@ -584,9 +618,21 @@ impl PlatformCatalog {
         let bytes = size_of::<FamilyQuery>()
             .saturating_add(query.name.len())
             .saturating_add(query.language.as_ref().map_or(0, String::len))
-            .saturating_add(candidates.iter().map(FontCandidate::metadata_bytes).sum());
-        if cache.entries.len() < 512 && bytes <= (512 * 1024_usize).saturating_sub(cache.bytes) {
+            .saturating_add(
+                candidates
+                    .iter()
+                    .map(|face| {
+                        face.candidate.metadata_bytes() + size_of::<FamilyFace>()
+                            - size_of::<FontCandidate>()
+                    })
+                    .sum(),
+            );
+        if cache.entries.len() < MAX_FAMILY_ENTRIES && bytes <= MAX_FAMILY_BYTES - cache.bytes {
             cache.bytes += bytes;
+            #[cfg(windows)]
+            {
+                cache.cmap_bytes += initial_remaining_coverage - remaining_coverage;
+            }
             cache.entries.insert(query, candidates.clone());
         }
         Ok(candidates)

@@ -1,8 +1,8 @@
 //! DirectWrite family matching and cluster fallback over local physical font faces.
 
 use super::{
-    AcceptFallback, GlyphFallback, NativeFontError, OperationControl, OperationPhase, PlatformFace,
-    cluster, ranked_faces,
+    AcceptFallback, FamilyFace, FamilyQuery, GlyphFallback, NativeFontError, OperationControl,
+    OperationPhase, PlatformFace, cluster, ranked_faces,
 };
 use std::{
     collections::HashSet,
@@ -111,35 +111,37 @@ impl Catalog {
             .map_err(Clone::clone)
     }
 
-    pub(super) fn candidates(
+    pub(super) fn family_candidates(
         &self,
-        family: &str,
-        weight: Weight,
-        stretch: Stretch,
-        style: Style,
+        query: &FamilyQuery,
         control: &OperationControl,
-        accept: &mut AcceptFallback<'_>,
-    ) -> Result<Option<ID>, NativeFontError> {
+        remaining_coverage: &mut usize,
+    ) -> Result<Vec<FamilyFace>, NativeFontError> {
         let mut seen = HashSet::new();
+        let mut candidates = Vec::new();
         self.family_faces(
-            family,
+            &query.name,
             FaceStyle {
-                weight,
-                stretch,
-                style,
+                weight: query.weight,
+                stretch: query.stretch,
+                style: query.style,
             },
             control,
-            |face| {
-                let candidate = file_face(&face, 1.0, None);
+            |native| {
+                let candidate = file_face(&native, 1.0, None);
                 control.terminal_checkpoint_at(OperationPhase::Layout)?;
                 if let Some((path, face)) = candidate
                     && seen.insert((path.clone(), face.index, face.variations.clone()))
                 {
-                    return accept(face.into_file(path));
+                    candidates.push(FamilyFace {
+                        candidate: face.into_file(path),
+                        coverage: FamilyCoverage::read(&native, remaining_coverage),
+                    });
                 }
                 Ok(None)
             },
-        )
+        )?;
+        Ok(candidates)
     }
 
     fn family_faces(
@@ -873,6 +875,36 @@ fn default_emoji_presentation(ch: char) -> bool {
         | '\u{1faef}'..='\u{1fafa}')
 }
 
+pub(super) struct FamilyCoverage {
+    cmap: Box<[u8]>,
+    glyph_count: u16,
+}
+
+impl FamilyCoverage {
+    fn read(face: &IDWriteFontFace, remaining: &mut usize) -> Option<Self> {
+        if *remaining == 0 {
+            return None;
+        }
+        let cmap = FontTable::read(face, b"cmap")?;
+        let bytes = cmap.bytes();
+        let left = remaining.checked_sub(bytes.len())?;
+        cmap::Table::parse(bytes)?;
+        let maxp = FontTable::read(face, b"maxp")?;
+        let glyph_count = maxp::Table::parse(maxp.bytes())?.number_of_glyphs.get();
+        *remaining = left;
+        // A small owned table avoids retaining DirectWrite face handles or re-reading the file.
+        Some(Self {
+            cmap: bytes.into(),
+            glyph_count,
+        })
+    }
+
+    pub(super) fn may_cover(&self, text: &str) -> bool {
+        cmap::Table::parse(&self.cmap)
+            .is_none_or(|cmap| cluster::cmap_may_cover(cmap, self.glyph_count, text))
+    }
+}
+
 fn covers_cluster(face: &IDWriteFontFace, request: GlyphFallback<'_>) -> bool {
     let [Some(head), Some(cmap), Some(maxp), os2] =
         [b"head", b"cmap", b"maxp", b"OS/2"].map(|tag| FontTable::read(face, tag))
@@ -1180,42 +1212,53 @@ mod tests {
     }
 
     #[test]
-    fn directwrite_continues_through_ranked_family_members() {
+    fn directwrite_ranks_family_members_with_bounded_coverage() {
         let catalog = fixture_catalog(&["Cousine-test-collection.ttc"], &[]);
         let control = OperationControl::new();
-        let mut tried = Vec::new();
-        let mut accept = |candidate| {
-            let (_, _, physical) = physical_face(candidate);
-            tried.push(physical.index);
-            Ok((physical.index == 0).then_some(physical.id))
-        };
-        assert!(
-            catalog
-                .candidates(
-                    "cOuSiNe",
-                    Weight::NORMAL,
-                    Stretch::Normal,
-                    Style::Italic,
-                    &control,
-                    &mut accept
-                )
-                .unwrap()
-                .is_some()
+        let query = FamilyQuery::new(
+            "cOuSiNe",
+            Weight::NORMAL,
+            Stretch::Normal,
+            Style::Italic,
+            None,
+        );
+        let budget = 128 * 1024;
+        let mut available = budget;
+        let candidates = catalog
+            .family_candidates(&query, &control, &mut available)
+            .unwrap();
+        let mut indices = Vec::new();
+        let mut cmap_bytes = 0;
+        for face in candidates {
+            let (_, _, physical) = physical_face(face.candidate);
+            indices.push(physical.index);
+            let coverage = face.coverage.unwrap();
+            assert!(coverage.may_cover("A"));
+            assert!(!coverage.may_cover("中"));
+            cmap_bytes += coverage.cmap.len();
+        }
+        assert_eq!(indices, [1, 0]);
+        assert_eq!(available, budget - cmap_bytes);
+        let mut no_coverage = 0;
+        let candidates = catalog
+            .family_candidates(&query, &control, &mut no_coverage)
+            .unwrap();
+        assert_eq!(candidates.len(), 2);
+        assert!(candidates.iter().all(|face| face.coverage.is_none()));
+
+        let absent = FamilyQuery::new(
+            "Arial",
+            Weight::NORMAL,
+            Stretch::Normal,
+            Style::Normal,
+            None,
         );
         assert!(
             catalog
-                .candidates(
-                    "Arial",
-                    Weight::NORMAL,
-                    Stretch::Normal,
-                    Style::Normal,
-                    &control,
-                    &mut accept
-                )
+                .family_candidates(&absent, &control, &mut available)
                 .unwrap()
-                .is_none()
+                .is_empty()
         );
-        assert_eq!(tried, [1, 0]);
     }
 
     #[test]
@@ -1317,16 +1360,19 @@ mod tests {
             assert_eq!(physical.weight, Weight(100));
             Ok(Some(physical.id))
         };
+        let query = FamilyQuery::new(
+            "Merman Variable Weight",
+            base.weight,
+            base.stretch,
+            base.style,
+            None,
+        );
+        let mut no_coverage = 0;
+        let candidates = catalog
+            .family_candidates(&query, &control, &mut no_coverage)
+            .unwrap();
         assert!(
-            catalog
-                .candidates(
-                    "Merman Variable Weight",
-                    base.weight,
-                    base.stretch,
-                    base.style,
-                    &control,
-                    &mut |candidate| check(1.0, candidate)
-                )
+            check(1.0, candidates.into_iter().next().unwrap().candidate)
                 .unwrap()
                 .is_some()
         );
