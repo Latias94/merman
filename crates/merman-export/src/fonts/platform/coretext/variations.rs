@@ -14,6 +14,68 @@ const MAX_VARIATION_AXES: u16 = 256;
 
 type AxisValues = CFDictionary<CFNumber, CFType>;
 
+#[derive(Clone, Copy, Default)]
+pub(super) struct MatchingAxes {
+    pub(super) weight: Option<f32>,
+    pub(super) width: Option<f32>,
+}
+
+impl MatchingAxes {
+    pub(super) fn for_font(
+        font: &CTFont,
+        weight: f32,
+        width: f32,
+        control: Option<&OperationControl>,
+    ) -> Result<Self, NativeFontError> {
+        let table = read_table(font, u32::from_be_bytes(*b"fvar"), control)?;
+        let Some(fvar) = table
+            .as_deref()
+            .map(table_bytes)
+            .and_then(fvar::Table::parse)
+        else {
+            return Ok(Self::default());
+        };
+        // SAFETY: The retained font supplies its effective design coordinates.
+        let selected = unsafe { font.variation() }.map(typed_axis_values);
+        Ok(Self::from_fvar(fvar, weight, width, |tag| {
+            let key = CFNumber::new_i32(i32::from_be_bytes(tag));
+            selected
+                .as_deref()?
+                .get(&key)
+                .as_deref()
+                .and_then(axis_value)
+        }))
+    }
+
+    pub(super) fn from_fvar(
+        table: fvar::Table<'_>,
+        weight: f32,
+        width: f32,
+        mut selected: impl FnMut([u8; 4]) -> Option<f32>,
+    ) -> Self {
+        let mut axes = Self::default();
+        if table.axes.len() > MAX_VARIATION_AXES {
+            return axes;
+        }
+        for axis in table.axes {
+            let tag = axis.tag.0.to_be_bytes();
+            let (position, requested) = match &tag {
+                b"wght" => (&mut axes.weight, weight),
+                b"wdth" => (&mut axes.width, width),
+                _ => continue,
+            };
+            // An installed non-default instance keeps its own position. A base
+            // face can realize the authored CSS coordinate during usvg layout.
+            *position = Some(
+                selected(tag)
+                    .filter(|value| *value != axis.def_value)
+                    .unwrap_or_else(|| requested.clamp(axis.min_value, axis.max_value)),
+            );
+        }
+        axes
+    }
+}
+
 /// Translate Core Text design coordinates using the selected physical face's fvar.
 pub(super) fn read(
     font: &CTFont,

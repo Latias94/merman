@@ -14,6 +14,8 @@ use objc2_core_text::{
 };
 use usvg::fontdb::{Stretch, Style, Weight};
 
+use super::super::{css_width, ranked_axis_faces, ranked_faces};
+use super::variations::MatchingAxes;
 use super::{
     LOCAL_FONT_OPTIONS, NAME, NativeFace, NativeFontError, OperationControl, checkpoint,
     read_table, table_bytes,
@@ -26,6 +28,7 @@ type NativeStyle = (Option<Weight>, Stretch, Style);
 struct FaceAttributes {
     table: Option<CssStyle>,
     native: NativeStyle,
+    axes: MatchingAxes,
 }
 
 /// Offers the local family in CSS order, stopping when the caller accepts a face.
@@ -49,7 +52,21 @@ pub(super) fn match_family<T>(
         };
         let native = descriptor_attributes(&descriptor).unwrap_or_else(|| native_attributes(&font));
         let table = table_attributes(&font, native.1, native.2, control)?;
-        candidates.push(((font, descriptor), FaceAttributes { table, native }));
+        candidates.push((
+            (font, descriptor),
+            FaceAttributes {
+                table,
+                native,
+                axes: MatchingAxes::default(),
+            },
+        ));
+    }
+    if candidates.len() > 1 {
+        let (weight, stretch, _) = style;
+        for ((font, _), attributes) in &mut candidates {
+            attributes.axes =
+                MatchingAxes::for_font(font, weight.0.into(), css_width(stretch), control)?;
+        }
     }
     rank_family(
         candidates,
@@ -74,6 +91,9 @@ fn rank_family<T, R>(
         }
     }
 
+    let has_axes = candidates
+        .iter()
+        .any(|(_, attributes)| attributes.axes.weight.is_some() || attributes.axes.width.is_some());
     let candidates = candidates
         .into_iter()
         .map(|(candidate, attributes)| {
@@ -89,10 +109,26 @@ fn rank_family<T, R>(
             if weight_groups.get(&css).is_some_and(|(_, differs)| *differs) {
                 weight = native_weight.unwrap_or(weight);
             }
-            (candidate, weight, stretch, style)
+            let attainable = (
+                candidate,
+                attributes.axes.weight.unwrap_or(weight.0.into()),
+                attributes.axes.width.unwrap_or_else(|| css_width(stretch)),
+                style,
+            );
+            (attainable, weight, stretch, style)
         })
         .collect();
-    for candidate in super::super::ranked_faces(candidates, weight, stretch, style) {
+    let ordered = ranked_faces(candidates, weight, stretch, style);
+    // Prefer the existing exact style (including named instances) on a range tie.
+    let ordered = if has_axes {
+        ranked_axis_faces(ordered, weight.0.into(), css_width(stretch), style)
+    } else {
+        ordered
+            .into_iter()
+            .map(|(candidate, ..)| candidate)
+            .collect()
+    };
+    for candidate in ordered {
         if let Some(selected) = accept(candidate)? {
             return Ok(Some(selected));
         }
@@ -548,7 +584,14 @@ mod tests {
                 let style = Style::Normal;
                 let table = Some((Weight::NORMAL, stretch, style));
                 let native = (Some(css_weight(native_weight)), stretch, style);
-                (name, FaceAttributes { table, native })
+                (
+                    name,
+                    FaceAttributes {
+                        table,
+                        native,
+                        axes: MatchingAxes::default(),
+                    },
+                )
             });
 
         for (weight, expected) in [
@@ -580,6 +623,85 @@ mod tests {
         )
         .unwrap();
         assert_eq!(tried, ["bold", "black", "regular"]);
+    }
+
+    #[test]
+    fn family_ranks_attainable_axes_without_overriding_style_or_named_instances() {
+        let raw = ttf_parser::RawFace::parse(
+            include_bytes!("../../../../tests/fonts/MermanVariableWeight.ttf"),
+            0,
+        )
+        .unwrap();
+        let weight_table = raw.table(ttf_parser::Tag::from_bytes(b"fvar")).unwrap();
+        let mut width_table = weight_table.to_vec();
+        let offset = usize::from(u16::from_be_bytes(width_table[4..6].try_into().unwrap()));
+        width_table[offset..offset + 4].copy_from_slice(b"wdth");
+        let regular = (Weight(100), Stretch::Normal, Style::Normal);
+        let bold = (Weight(700), Stretch::Normal, Style::Normal);
+        let select =
+            |table: &[u8], pinned, variable: CssStyle, fixed: CssStyle, request: CssStyle| {
+                let (weight, stretch, _) = request;
+                let axes = MatchingAxes::from_fvar(
+                    ttf_parser::fvar::Table::parse(table).unwrap(),
+                    weight.0.into(),
+                    css_width(stretch),
+                    |_| pinned,
+                );
+                let attributes = |(weight, stretch, style), axes| FaceAttributes {
+                    table: Some((weight, stretch, style)),
+                    native: (Some(weight), stretch, style),
+                    axes,
+                };
+                rank_family(
+                    vec![
+                        ("variable", attributes(variable, axes)),
+                        ("static", attributes(fixed, MatchingAxes::default())),
+                    ],
+                    request,
+                    |face| Ok(Some(face)),
+                )
+                .unwrap()
+                .unwrap()
+            };
+        let semibold = (Weight(600), Stretch::Normal, Style::Normal);
+        assert_eq!(
+            select(weight_table, None, regular, bold, semibold),
+            "variable"
+        );
+        assert_eq!(select(weight_table, None, regular, bold, bold), "static");
+        assert_eq!(
+            select(weight_table, Some(200.0), regular, bold, semibold),
+            "static"
+        );
+        let italic = (Weight(700), Stretch::Normal, Style::Italic);
+        assert_eq!(
+            select(
+                weight_table,
+                None,
+                regular,
+                italic,
+                (Weight(600), Stretch::Normal, Style::Italic)
+            ),
+            "static"
+        );
+        let expanded = (Weight(700), Stretch::ExtraExpanded, Style::Normal);
+        assert_eq!(
+            select(
+                &width_table,
+                None,
+                regular,
+                expanded,
+                (Weight(700), Stretch::Expanded, Style::Normal)
+            ),
+            "variable"
+        );
+        // The width fixture starts at 100%; it cannot match a condensed request.
+        let condensed = (Weight(700), Stretch::Condensed, Style::Normal);
+        let semi_condensed = (Weight(700), Stretch::SemiCondensed, Style::Normal);
+        assert_eq!(
+            select(&width_table, None, regular, semi_condensed, condensed),
+            "static"
+        );
     }
 
     #[test]
