@@ -607,8 +607,11 @@ fn resolve<T>(
         let _selection = matches!(provider, DiscoveryProvider::Platform { .. })
             .then(|| context.0.sources.lock_selection())
             .transpose()?;
-        context.checkpoint(control)?;
-        query(provider)
+        let selection = context.checkpoint(control).and_then(|()| query(provider));
+        Ok(selection.unwrap_or_else(|error| {
+            context.record_failure(control, exporting, error);
+            None
+        }))
     })();
     match result {
         Ok(result) => result,
