@@ -2245,17 +2245,24 @@ fn raw_svg_fonts_are_conversion_only_and_each_compiled_codec_works() {
         let blank = raw_conversion(format, blank_svg, &["--font-system=off"]);
         assert!(blank.status.success(), "{format}: {blank:?}");
         assert!(blank.stdout.starts_with(magic), "{format}");
-        for target in [
-            r#"<g id="label"/>"#,
-            r#"<rect id="label" width="20" height="20"/>"#,
+        for (target, link) in [
+            (r#"<g id="label"/>"#, r##"<tref href="#label"/>"##),
+            (
+                r#"<rect id="label" width="20" height="20"/>"#,
+                r##"<tref href="#label"/>"##,
+            ),
+            (
+                r#"<g id="label"/>"#,
+                r##"<tref href="#label">Ignored<tspan>Still ignored</tspan></tref>"##,
+            ),
         ] {
             let input = RAW_PATH_SVG.replace(
                 "</svg>",
-                &format!(r##"<defs>{target}</defs><text><tref href="#label"/></text></svg>"##),
+                &format!("<defs>{target}</defs><text>{link}</text></svg>"),
             );
             let output = raw_conversion(format, &input, &["--font-system=off"]);
             assert!(output.status.success(), "{format}: {output:?}");
-            assert_eq!(output.stdout, paths.stdout, "{format}: {target}");
+            assert_eq!(output.stdout, paths.stdout, "{format}: {target} {link}");
         }
 
         for input in [RAW_FONT_SVG, RAW_NESTED_FONT_SVG, RAW_TREF_FONT_SVG] {

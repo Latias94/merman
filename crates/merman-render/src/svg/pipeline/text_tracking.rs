@@ -35,6 +35,7 @@ pub(super) struct SvgTextContentTracker {
 #[derive(Debug)]
 struct OpenText {
     depth: usize,
+    open_tref_depth: Option<usize>,
     first_reference: usize,
     has_content: bool,
 }
@@ -43,12 +44,18 @@ impl SvgTextContentTracker {
     pub(super) fn observe_start(&mut self, depth: usize) {
         self.open_text.push(OpenText {
             depth,
+            open_tref_depth: None,
             first_reference: self.references.len(),
             has_content: false,
         });
     }
 
     pub(super) fn observe_end(&mut self, depth: usize) {
+        if let Some(text) = self.open_text.last_mut()
+            && text.open_tref_depth == Some(depth)
+        {
+            text.open_tref_depth = None;
+        }
         let Some(text) = self.open_text.pop_if(|text| text.depth == depth) else {
             return;
         };
@@ -67,14 +74,20 @@ impl SvgTextContentTracker {
         }
     }
 
-    pub(super) fn observe_reference(&mut self, target: String) {
-        if !self.open_text.is_empty() {
-            self.references.push(target);
+    pub(super) fn observe_tref(&mut self, target: Option<String>, open_depth: Option<usize>) {
+        if let Some(text) = self.open_text.last_mut()
+            && text.open_tref_depth.is_none()
+        {
+            self.references.extend(target);
+            // The renderer uses the referenced text in place of any children of this element.
+            text.open_tref_depth = open_depth;
         }
     }
 
     pub(super) fn observe_character(&mut self) {
-        if let Some(text) = self.open_text.last_mut() {
+        if let Some(text) = self.open_text.last_mut()
+            && text.open_tref_depth.is_none()
+        {
             text.has_content = true;
         }
     }

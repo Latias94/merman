@@ -843,8 +843,8 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
                 {
                     text_content.observe_start(depth);
                 }
-                if let Some(target) = validated.local_text_reference.take() {
-                    text_content.observe_reference(target);
+                if validated.is_svg_element && element.local_name().as_ref() == "tref" {
+                    text_content.observe_tref(validated.local_text_reference.take(), Some(depth));
                 }
                 let opens_style = validated.is_style;
                 let tracks_text = validated.is_svg_element && validated.ids.raw_value().is_some();
@@ -882,8 +882,8 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
                     checkpoint,
                     check_coordinate,
                 )?;
-                if let Some(target) = validated.local_text_reference.take() {
-                    text_content.observe_reference(target);
+                if validated.is_svg_element && element.local_name().as_ref() == "tref" {
+                    text_content.observe_tref(validated.local_text_reference.take(), None);
                 }
                 let empty_style = validated.is_style;
                 fallback_css_residual |= validated.fallback_css_residual;
@@ -3184,6 +3184,15 @@ mod tests {
                 &["label"]
             );
         }
+    }
+
+    #[test]
+    fn a_text_element_inside_tref_can_still_be_rendered_through_use() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><g id="blank"/></defs><text><tref href="#blank"><text id="label">Visible through use</text></tref></text><use href="#label"/></svg>"##;
+        let validated =
+            validate_resvg_compatible_svg(svg, RenderResourcePolicy::trusted_native()).unwrap();
+        assert_eq!(validated.text_elements, 1);
+        assert!(!validated.font_seal.is_complete());
     }
 
     #[test]
