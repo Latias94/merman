@@ -61,8 +61,14 @@ _merman__cli() {
             merman__cli__subcmd__rustdoc,check)
                 cmd="merman__cli__subcmd__rustdoc__subcmd__check"
                 ;;
-            merman__cli__subcmd__theme,inspect)
-                cmd="merman__cli__subcmd__theme__subcmd__inspect"
+            merman__cli__subcmd__theme,check)
+                cmd="merman__cli__subcmd__theme__subcmd__check"
+                ;;
+            merman__cli__subcmd__theme,export)
+                cmd="merman__cli__subcmd__theme__subcmd__export"
+                ;;
+            merman__cli__subcmd__theme,list)
+                cmd="merman__cli__subcmd__theme__subcmd__list"
                 ;;
             *)
                 ;;
@@ -85,7 +91,7 @@ _merman__cli() {
             return 0
             ;;
         merman__cli__subcmd__batch)
-            opts="-o -j -f -b -C -q -s -c -t -w -H -I -h -V --stdin-file-name --output-dir --jobs --format --svg-pipeline --background --css-file --quiet --scale --raster-fit-width --raster-fit-height --raster-max-width --raster-max-height --raster-max-pixels --raster-unbounded --pdf-filter-scale --pdf-max-filter-pixels --pdf-max-filter-image-pixels --pdf-filter-unbounded --pdf-filter-images-unbounded --embedded-image-max-bytes --embedded-image-max-total-bytes --embedded-image-max-pixels --embedded-image-max-total-pixels --embedded-images-unbounded --allow-network --allow-private-network --icon-pack --icon-pack-source --suppress-errors --config-file --theme --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-unix-millis --fixed-local-offset-minutes --font-file --font-dir --font-measurement --font-system --font-max-bytes --font-max-measurements --theme-preset --theme-file --theme-design-file --theme-appearance --theme-portability --theme-report --math-renderer --width --height --svg-id --hand-drawn-seed --resource-profile --resource-limit --operation-timeout-ms --help --version"
+            opts="-o -j -f -C -q -s -c -t -b -w -H -I -h -V --stdin-file-name --output-dir --jobs --format --svg-pipeline --css-file --quiet --scale --raster-fit-width --raster-fit-height --raster-max-width --raster-max-height --raster-max-pixels --raster-unbounded --pdf-filter-scale --pdf-max-filter-pixels --pdf-max-filter-image-pixels --pdf-filter-unbounded --pdf-filter-images-unbounded --embedded-image-max-bytes --embedded-image-max-total-bytes --embedded-image-max-pixels --embedded-image-max-total-pixels --embedded-images-unbounded --allow-network --allow-private-network --icon-pack --icon-pack-source --suppress-errors --config-file --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-unix-millis --fixed-local-offset-minutes --theme --appearance --theme-precedence --background --font-file --font-dir --font-measurement --font-system --font-max-bytes --font-max-measurements --math-renderer --width --height --svg-id --hand-drawn-seed --resource-profile --resource-limit --operation-timeout-ms --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -138,14 +144,6 @@ _merman__cli() {
                     ;;
                 --svg-pipeline)
                     COMPREPLY=($(compgen -W "parity static readable resvg-safe" -- "${cur}"))
-                    return 0
-                    ;;
-                --background)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                -b)
-                    COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
                 --css-file)
@@ -272,14 +270,6 @@ _merman__cli() {
                     fi
                     return 0
                     ;;
-                --theme)
-                    COMPREPLY=($(compgen -W "default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color" -- "${cur}"))
-                    return 0
-                    ;;
-                -t)
-                    COMPREPLY=($(compgen -W "default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color" -- "${cur}"))
-                    return 0
-                    ;;
                 --runtime)
                     COMPREPLY=($(compgen -W "deterministic native" -- "${cur}"))
                     return 0
@@ -293,6 +283,52 @@ _merman__cli() {
                     return 0
                     ;;
                 --fixed-local-offset-minutes)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --theme)
+                    local oldifs
+                    if [ -n "${IFS+x}" ]; then
+                        oldifs="$IFS"
+                    fi
+                    IFS=$'\n'
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    if [ -n "${oldifs+x}" ]; then
+                        IFS="$oldifs"
+                    fi
+                    if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
+                        compopt -o filenames
+                    fi
+                    return 0
+                    ;;
+                -t)
+                    local oldifs
+                    if [ -n "${IFS+x}" ]; then
+                        oldifs="$IFS"
+                    fi
+                    IFS=$'\n'
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    if [ -n "${oldifs+x}" ]; then
+                        IFS="$oldifs"
+                    fi
+                    if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
+                        compopt -o filenames
+                    fi
+                    return 0
+                    ;;
+                --appearance)
+                    COMPREPLY=($(compgen -W "light dark" -- "${cur}"))
+                    return 0
+                    ;;
+                --theme-precedence)
+                    COMPREPLY=($(compgen -W "host source" -- "${cur}"))
+                    return 0
+                    ;;
+                --background)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -b)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
@@ -337,66 +373,6 @@ _merman__cli() {
                     COMPREPLY=("${cur}")
                     if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
                         compopt -o nospace
-                    fi
-                    return 0
-                    ;;
-                --theme-preset)
-                    COMPREPLY=("${cur}")
-                    if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
-                        compopt -o nospace
-                    fi
-                    return 0
-                    ;;
-                --theme-file)
-                    local oldifs
-                    if [ -n "${IFS+x}" ]; then
-                        oldifs="$IFS"
-                    fi
-                    IFS=$'\n'
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    if [ -n "${oldifs+x}" ]; then
-                        IFS="$oldifs"
-                    fi
-                    if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
-                        compopt -o filenames
-                    fi
-                    return 0
-                    ;;
-                --theme-design-file)
-                    local oldifs
-                    if [ -n "${IFS+x}" ]; then
-                        oldifs="$IFS"
-                    fi
-                    IFS=$'\n'
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    if [ -n "${oldifs+x}" ]; then
-                        IFS="$oldifs"
-                    fi
-                    if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
-                        compopt -o filenames
-                    fi
-                    return 0
-                    ;;
-                --theme-appearance)
-                    COMPREPLY=($(compgen -W "light dark" -- "${cur}"))
-                    return 0
-                    ;;
-                --theme-portability)
-                    COMPREPLY=($(compgen -W "best-effort require-portable" -- "${cur}"))
-                    return 0
-                    ;;
-                --theme-report)
-                    local oldifs
-                    if [ -n "${IFS+x}" ]; then
-                        oldifs="$IFS"
-                    fi
-                    IFS=$'\n'
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    if [ -n "${oldifs+x}" ]; then
-                        IFS="$oldifs"
-                    fi
-                    if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
-                        compopt -o filenames
                     fi
                     return 0
                     ;;
@@ -639,12 +615,20 @@ _merman__cli() {
             return 0
             ;;
         merman__cli__subcmd__layout)
-            opts="-c -t -w -H -h -V --pretty --snapshot --suppress-errors --config-file --theme --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-unix-millis --fixed-local-offset-minutes --math-renderer --width --height --resource-profile --resource-limit --operation-timeout-ms --help --version"
+            opts="-t -c -w -H -h -V --pretty --snapshot --theme --suppress-errors --config-file --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-unix-millis --fixed-local-offset-minutes --math-renderer --width --height --resource-profile --resource-limit --operation-timeout-ms --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
+                --theme)
+                    COMPREPLY=($(compgen -W "default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color" -- "${cur}"))
+                    return 0
+                    ;;
+                -t)
+                    COMPREPLY=($(compgen -W "default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color" -- "${cur}"))
+                    return 0
+                    ;;
                 --config-file)
                     local oldifs
                     if [ -n "${IFS+x}" ]; then
@@ -673,14 +657,6 @@ _merman__cli() {
                     if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
                         compopt -o filenames
                     fi
-                    return 0
-                    ;;
-                --theme)
-                    COMPREPLY=($(compgen -W "default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color" -- "${cur}"))
-                    return 0
-                    ;;
-                -t)
-                    COMPREPLY=($(compgen -W "default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color" -- "${cur}"))
                     return 0
                     ;;
                 --runtime)
@@ -1246,12 +1222,20 @@ _merman__cli() {
             return 0
             ;;
         merman__cli__subcmd__parse)
-            opts="-c -t -h -V --pretty --meta --suppress-errors --config-file --theme --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-unix-millis --fixed-local-offset-minutes --resource-profile --resource-limit --help --version"
+            opts="-t -c -h -V --pretty --meta --theme --suppress-errors --config-file --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-unix-millis --fixed-local-offset-minutes --resource-profile --resource-limit --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
+                --theme)
+                    COMPREPLY=($(compgen -W "default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color" -- "${cur}"))
+                    return 0
+                    ;;
+                -t)
+                    COMPREPLY=($(compgen -W "default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color" -- "${cur}"))
+                    return 0
+                    ;;
                 --config-file)
                     local oldifs
                     if [ -n "${IFS+x}" ]; then
@@ -1280,14 +1264,6 @@ _merman__cli() {
                     if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
                         compopt -o filenames
                     fi
-                    return 0
-                    ;;
-                --theme)
-                    COMPREPLY=($(compgen -W "default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color" -- "${cur}"))
-                    return 0
-                    ;;
-                -t)
-                    COMPREPLY=($(compgen -W "default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color" -- "${cur}"))
                     return 0
                     ;;
                 --runtime)
@@ -1322,7 +1298,7 @@ _merman__cli() {
             return 0
             ;;
         merman__cli__subcmd__render)
-            opts="-o -f -b -C -q -s -c -t -w -H -I -h -V --output --input-kind --format --svg-pipeline --background --css-file --quiet --scale --raster-fit-width --raster-fit-height --raster-max-width --raster-max-height --raster-max-pixels --raster-unbounded --pdf-filter-scale --pdf-max-filter-pixels --pdf-max-filter-image-pixels --pdf-filter-unbounded --pdf-filter-images-unbounded --embedded-image-max-bytes --embedded-image-max-total-bytes --embedded-image-max-pixels --embedded-image-max-total-pixels --embedded-images-unbounded --allow-network --allow-private-network --icon-pack --icon-pack-source --suppress-errors --config-file --theme --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-unix-millis --fixed-local-offset-minutes --font-file --font-dir --font-measurement --font-system --font-max-bytes --font-max-measurements --theme-preset --theme-file --theme-design-file --theme-appearance --theme-portability --theme-report --math-renderer --width --height --svg-id --hand-drawn-seed --sequence-mirror-actors --ascii-charset --ascii-width-profile --ascii-node-padding --ascii-node-padding-x --ascii-node-padding-y --ascii-graph-padding-x --ascii-graph-padding-y --ascii-flowchart-node-label-wrap-width --ascii-direction --ascii-color --xychart-vertical-plot-height --xychart-category-band-width --xychart-horizontal-plot-width --ascii-max-grid-cells --ascii-max-width --ascii-overflow --ascii-trim-trailing-spaces --ascii-layout-profile --ascii-graph-presentation --ascii-report --resource-profile --resource-limit --operation-timeout-ms --help --version"
+            opts="-o -f -C -q -s -c -t -b -w -H -I -h -V --output --input-kind --format --svg-pipeline --css-file --quiet --scale --raster-fit-width --raster-fit-height --raster-max-width --raster-max-height --raster-max-pixels --raster-unbounded --pdf-filter-scale --pdf-max-filter-pixels --pdf-max-filter-image-pixels --pdf-filter-unbounded --pdf-filter-images-unbounded --embedded-image-max-bytes --embedded-image-max-total-bytes --embedded-image-max-pixels --embedded-image-max-total-pixels --embedded-images-unbounded --allow-network --allow-private-network --icon-pack --icon-pack-source --suppress-errors --config-file --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-unix-millis --fixed-local-offset-minutes --theme --appearance --theme-precedence --background --font-file --font-dir --font-measurement --font-system --font-max-bytes --font-max-measurements --math-renderer --width --height --svg-id --hand-drawn-seed --sequence-mirror-actors --ascii-charset --ascii-width-profile --ascii-node-padding --ascii-node-padding-x --ascii-node-padding-y --ascii-graph-padding-x --ascii-graph-padding-y --ascii-flowchart-node-label-wrap-width --ascii-direction --ascii-color --xychart-vertical-plot-height --xychart-category-band-width --xychart-horizontal-plot-width --ascii-max-grid-cells --ascii-max-width --ascii-overflow --ascii-trim-trailing-spaces --ascii-layout-profile --ascii-graph-presentation --ascii-report --resource-profile --resource-limit --operation-timeout-ms --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -1372,14 +1348,6 @@ _merman__cli() {
                     ;;
                 --svg-pipeline)
                     COMPREPLY=($(compgen -W "parity static readable resvg-safe" -- "${cur}"))
-                    return 0
-                    ;;
-                --background)
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                -b)
-                    COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
                 --css-file)
@@ -1506,14 +1474,6 @@ _merman__cli() {
                     fi
                     return 0
                     ;;
-                --theme)
-                    COMPREPLY=($(compgen -W "default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color" -- "${cur}"))
-                    return 0
-                    ;;
-                -t)
-                    COMPREPLY=($(compgen -W "default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color" -- "${cur}"))
-                    return 0
-                    ;;
                 --runtime)
                     COMPREPLY=($(compgen -W "deterministic native" -- "${cur}"))
                     return 0
@@ -1527,6 +1487,52 @@ _merman__cli() {
                     return 0
                     ;;
                 --fixed-local-offset-minutes)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --theme)
+                    local oldifs
+                    if [ -n "${IFS+x}" ]; then
+                        oldifs="$IFS"
+                    fi
+                    IFS=$'\n'
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    if [ -n "${oldifs+x}" ]; then
+                        IFS="$oldifs"
+                    fi
+                    if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
+                        compopt -o filenames
+                    fi
+                    return 0
+                    ;;
+                -t)
+                    local oldifs
+                    if [ -n "${IFS+x}" ]; then
+                        oldifs="$IFS"
+                    fi
+                    IFS=$'\n'
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    if [ -n "${oldifs+x}" ]; then
+                        IFS="$oldifs"
+                    fi
+                    if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
+                        compopt -o filenames
+                    fi
+                    return 0
+                    ;;
+                --appearance)
+                    COMPREPLY=($(compgen -W "light dark" -- "${cur}"))
+                    return 0
+                    ;;
+                --theme-precedence)
+                    COMPREPLY=($(compgen -W "host source" -- "${cur}"))
+                    return 0
+                    ;;
+                --background)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -b)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
@@ -1571,66 +1577,6 @@ _merman__cli() {
                     COMPREPLY=("${cur}")
                     if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
                         compopt -o nospace
-                    fi
-                    return 0
-                    ;;
-                --theme-preset)
-                    COMPREPLY=("${cur}")
-                    if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
-                        compopt -o nospace
-                    fi
-                    return 0
-                    ;;
-                --theme-file)
-                    local oldifs
-                    if [ -n "${IFS+x}" ]; then
-                        oldifs="$IFS"
-                    fi
-                    IFS=$'\n'
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    if [ -n "${oldifs+x}" ]; then
-                        IFS="$oldifs"
-                    fi
-                    if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
-                        compopt -o filenames
-                    fi
-                    return 0
-                    ;;
-                --theme-design-file)
-                    local oldifs
-                    if [ -n "${IFS+x}" ]; then
-                        oldifs="$IFS"
-                    fi
-                    IFS=$'\n'
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    if [ -n "${oldifs+x}" ]; then
-                        IFS="$oldifs"
-                    fi
-                    if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
-                        compopt -o filenames
-                    fi
-                    return 0
-                    ;;
-                --theme-appearance)
-                    COMPREPLY=($(compgen -W "light dark" -- "${cur}"))
-                    return 0
-                    ;;
-                --theme-portability)
-                    COMPREPLY=($(compgen -W "best-effort require-portable" -- "${cur}"))
-                    return 0
-                    ;;
-                --theme-report)
-                    local oldifs
-                    if [ -n "${IFS+x}" ]; then
-                        oldifs="$IFS"
-                    fi
-                    IFS=$'\n'
-                    COMPREPLY=($(compgen -f "${cur}"))
-                    if [ -n "${oldifs+x}" ]; then
-                        IFS="$oldifs"
-                    fi
-                    if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
-                        compopt -o filenames
                     fi
                     return 0
                     ;;
@@ -1838,7 +1784,7 @@ _merman__cli() {
             return 0
             ;;
         merman__cli__subcmd__theme)
-            opts="-h -V --help --version inspect"
+            opts="-h -V --help --version list export check"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -1851,25 +1797,79 @@ _merman__cli() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
-        merman__cli__subcmd__theme__subcmd__inspect)
-            opts="-h -V --resource-profile --resource-limit --operation-timeout-ms --help --version"
+        merman__cli__subcmd__theme__subcmd__check)
+            opts="-h -V --appearance --strict-contrast --json --operation-timeout-ms --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
             case "${prev}" in
-                --resource-profile)
-                    COMPREPLY=($(compgen -W "interactive constrained trusted-native unbounded-for-trusted-input" -- "${cur}"))
-                    return 0
-                    ;;
-                --resource-limit)
-                    COMPREPLY=($(compgen -f "${cur}"))
+                --appearance)
+                    COMPREPLY=($(compgen -W "light dark" -- "${cur}"))
                     return 0
                     ;;
                 --operation-timeout-ms)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        merman__cli__subcmd__theme__subcmd__export)
+            opts="-o -h -V --minimal --output --help --version studio prism paper monograph gruvbox tokyo paper-cut riso carbon-copy blueprint lacquer cyberpunk pop-art"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --output)
+                    local oldifs
+                    if [ -n "${IFS+x}" ]; then
+                        oldifs="$IFS"
+                    fi
+                    IFS=$'\n'
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    if [ -n "${oldifs+x}" ]; then
+                        IFS="$oldifs"
+                    fi
+                    if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
+                        compopt -o filenames
+                    fi
+                    return 0
+                    ;;
+                -o)
+                    local oldifs
+                    if [ -n "${IFS+x}" ]; then
+                        oldifs="$IFS"
+                    fi
+                    IFS=$'\n'
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    if [ -n "${oldifs+x}" ]; then
+                        IFS="$oldifs"
+                    fi
+                    if [[ "${BASH_VERSINFO[0]}" -ge 4 ]]; then
+                        compopt -o filenames
+                    fi
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        merman__cli__subcmd__theme__subcmd__list)
+            opts="-h -V --json --help --version"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
                 *)
                     COMPREPLY=()
                     ;;

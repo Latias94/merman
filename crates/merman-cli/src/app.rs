@@ -1,6 +1,6 @@
 use crate::cli::{Cli, RawCommand};
 use crate::error::CliError;
-#[cfg(feature = "ascii")]
+#[cfg(any(feature = "svg", feature = "ascii"))]
 use crate::invocation::ColorEnvironment;
 use crate::invocation::InvocationFacts;
 use crate::runtime::{ExecutionContext, SharedWriter};
@@ -40,9 +40,9 @@ struct ProcessSnapshot {
     args: Vec<OsString>,
     cwd: io::Result<std::path::PathBuf>,
     stdin_is_terminal: bool,
-    #[cfg(feature = "ascii")]
+    #[cfg(any(feature = "svg", feature = "ascii"))]
     stdout_is_terminal: bool,
-    #[cfg(feature = "ascii")]
+    #[cfg(any(feature = "svg", feature = "ascii"))]
     color: ColorEnvironment,
 }
 
@@ -52,14 +52,17 @@ impl ProcessSnapshot {
             args: env::args_os().collect(),
             cwd: env::current_dir(),
             stdin_is_terminal: io::stdin().is_terminal(),
-            #[cfg(feature = "ascii")]
+            #[cfg(any(feature = "svg", feature = "ascii"))]
             stdout_is_terminal: io::stdout().is_terminal(),
-            #[cfg(feature = "ascii")]
+            #[cfg(any(feature = "svg", feature = "ascii"))]
             color: ColorEnvironment {
                 no_color: nonempty_environment_value(env::var_os("NO_COLOR").as_deref()),
+                #[cfg(feature = "ascii")]
                 force_color: env::var_os("CLICOLOR_FORCE")
                     .is_some_and(|value| value != OsStr::new("") && value != OsStr::new("0")),
+                #[cfg(feature = "ascii")]
                 colorterm: env::var("COLORTERM").ok(),
+                #[cfg(feature = "ascii")]
                 term: env::var("TERM").ok(),
             },
         }
@@ -74,9 +77,9 @@ impl ProcessSnapshot {
         Ok(InvocationFacts {
             cwd,
             stdin_is_terminal: self.stdin_is_terminal,
-            #[cfg(feature = "ascii")]
+            #[cfg(any(feature = "svg", feature = "ascii"))]
             stdout_is_terminal: self.stdout_is_terminal,
-            #[cfg(feature = "ascii")]
+            #[cfg(any(feature = "svg", feature = "ascii"))]
             color: self.color,
         })
     }
@@ -244,6 +247,15 @@ fn error_output_mode(_args: &[OsString]) -> ErrorOutputMode {
 fn command_needs_working_directory(command: &RawCommand) -> bool {
     match command {
         RawCommand::Capabilities(_) => false,
+        #[cfg(feature = "svg")]
+        RawCommand::Theme(args) => match &args.command {
+            crate::cli::ThemeCommand::List { .. } => false,
+            crate::cli::ThemeCommand::Export(args) => args
+                .output
+                .as_deref()
+                .is_some_and(|path| path != std::path::Path::new("-")),
+            crate::cli::ThemeCommand::Check(args) => args.input != std::path::Path::new("-"),
+        },
         #[cfg(feature = "analysis")]
         RawCommand::LintRules(_) => false,
         #[cfg(feature = "shell-completions")]
@@ -319,7 +331,6 @@ pub(crate) fn cli_command() -> clap::Command {
 pub(crate) fn completion_script(shell: clap_complete::aot::Shell) -> Vec<u8> {
     let mut command = cli_command();
     if shell == clap_complete::aot::Shell::Bash {
-        command = hide_bash_theme_preset_values(command);
         // The Bash generator uses different separators for the binary name and
         // command path. Give its internal root an already-normalized name so a
         // hyphenated executable reaches the generated subcommand branches.
@@ -329,22 +340,6 @@ pub(crate) fn completion_script(shell: clap_complete::aot::Shell) -> Vec<u8> {
     let mut output = Vec::new();
     clap_complete::aot::generate(shell, &mut command, "merman-cli", &mut output);
     output
-}
-
-#[cfg(feature = "shell-completions")]
-fn hide_bash_theme_preset_values(command: clap::Command) -> clap::Command {
-    command
-        .mut_args(|argument| {
-            if argument.get_id().as_str() == "theme_preset" {
-                argument
-                    .value_parser(clap::builder::StringValueParser::new())
-                    .hide_possible_values(true)
-                    .value_hint(clap::ValueHint::Other)
-            } else {
-                argument
-            }
-        })
-        .mut_subcommands(hide_bash_theme_preset_values)
 }
 
 fn parse_cli(args: &[OsString]) -> Result<Cli, clap::Error> {
@@ -634,7 +629,7 @@ fn root_help(command: &clap::Command) -> String {
     output
 }
 
-#[cfg(feature = "ascii")]
+#[cfg(any(feature = "svg", feature = "ascii"))]
 fn nonempty_environment_value(value: Option<&OsStr>) -> bool {
     value.is_some_and(|value| !value.is_empty())
 }
@@ -882,15 +877,10 @@ mod tests {
                 .collect(),
             cwd,
             stdin_is_terminal,
-            #[cfg(feature = "ascii")]
+            #[cfg(any(feature = "svg", feature = "ascii"))]
             stdout_is_terminal: false,
-            #[cfg(feature = "ascii")]
-            color: ColorEnvironment {
-                no_color: false,
-                force_color: false,
-                colorterm: None,
-                term: None,
-            },
+            #[cfg(any(feature = "svg", feature = "ascii"))]
+            color: ColorEnvironment::default(),
         }
     }
 

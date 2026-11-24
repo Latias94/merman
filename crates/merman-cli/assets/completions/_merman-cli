@@ -97,19 +97,38 @@ _arguments "${_arguments_options[@]}" : \
         (( CURRENT += 1 ))
         curcontext="${curcontext%:*:*}:merman-cli-theme-command-$line[1]:"
         case $line[1] in
-            (inspect)
+            (list)
 _arguments "${_arguments_options[@]}" : \
-'--resource-profile=[Resource policy for input, semantic models, output, and CLI acquisition]:PROFILE:((interactive\:"General interactive applications and public binding surfaces"
-constrained\:"Constrained rendering for untrusted or publicly submitted documents"
-trusted-native\:"Local CLI and controlled native batch rendering"
-unbounded-for-trusted-input\:"Explicitly disable policy budgets while retaining hard backend capabilities"))' \
-'*--resource-limit=[Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated]:STABLE_ID=POSITIVE_U64:_default' \
+'--json[Print the shared theme catalog as JSON]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'-V[Print version]' \
+'--version[Print version]' \
+&& ret=0
+;;
+(export)
+_arguments "${_arguments_options[@]}" : \
+'-o+[Output file. Defaults to stdout]:FILE:_files' \
+'--output=[Output file. Defaults to stdout]:FILE:_files' \
+'--minimal[Export a small template that extends the preset]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'-V[Print version]' \
+'--version[Print version]' \
+':preset -- Built-in Merman preset to export:(studio prism paper monograph gruvbox tokyo paper-cut riso carbon-copy blueprint lacquer cyberpunk pop-art)' \
+&& ret=0
+;;
+(check)
+_arguments "${_arguments_options[@]}" : \
+'--appearance=[Check this appearance. Defaults to the document'\''s default appearance]:APPEARANCE:(light dark)' \
 '--operation-timeout-ms=[Cancel the complete command operation after this many milliseconds]:MILLISECONDS:_default' \
+'--strict-contrast[Fail when any checked contrast pair misses its target]' \
+'--json[Print the resolved theme, contrast ratios, and diagnostics as JSON]' \
 '-h[Print help (see more with '\''--help'\'')]' \
 '--help[Print help (see more with '\''--help'\'')]' \
 '-V[Print version]' \
 '--version[Print version]' \
-':input -- Theme recipe JSON file. Use `-` for stdin:_files' \
+':input -- Theme document JSON file. Use `-` for stdin:_files' \
 && ret=0
 ;;
         esac
@@ -141,10 +160,10 @@ unbounded-for-trusted-input\:"Explicitly disable policy budgets while retaining 
 ;;
 (parse)
 _arguments "${_arguments_options[@]}" : \
-'-c+[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
-'--config-file=[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
 '-t+[Mermaid theme override]:THEME:(default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color)' \
 '--theme=[Mermaid theme override]:THEME:(default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color)' \
+'-c+[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
+'--config-file=[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
 '--runtime=[Runtime source for clock, local timezone, and operation randomness]:POLICY:(deterministic native)' \
 '--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
 '(--fixed-today)--fixed-unix-millis=[Override the clock with exact Unix milliseconds within the JavaScript Date range.]:FIXED_UNIX_MILLIS:_default' \
@@ -179,8 +198,6 @@ _arguments "${_arguments_options[@]}" : \
 static\:"Generates SVG for fixed markup, emitting only the container palette slots it uses"
 readable\:"Advanced text fallback for consumers that ignore HTML labels; browsers may show duplicates"
 resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
-'-b+[Background color for the selected rendered output]:BACKGROUND_COLOR:_default' \
-'--background=[Background color for the selected rendered output]:BACKGROUND_COLOR:_default' \
 '-C+[CSS file injected into SVG output before export]:CSS_FILE:_files' \
 '--css-file=[CSS file injected into SVG output before export]:CSS_FILE:_files' \
 '-s+[Raster output scale factor. Defaults to 1]:SCALE:_default' \
@@ -201,12 +218,16 @@ resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
 '*--icon-pack-source=[Iconify prefix and source as PREFIX#SOURCE. Can be repeated]:PREFIX#SOURCE:_default' \
 '-c+[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
 '--config-file=[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
-'-t+[Mermaid theme override]:THEME:(default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color)' \
-'--theme=[Mermaid theme override]:THEME:(default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color)' \
 '--runtime=[Runtime source for clock, local timezone, and operation randomness]:POLICY:(deterministic native)' \
 '--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
 '(--fixed-today)--fixed-unix-millis=[Override the clock with exact Unix milliseconds within the JavaScript Date range.]:FIXED_UNIX_MILLIS:_default' \
 '--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
+'-t+[Merman preset ID, v2 JSON file (\`-\` for stdin), or Mermaid theme ID]:ID_OR_PATH:_files' \
+'--theme=[Merman preset ID, v2 JSON file (\`-\` for stdin), or Mermaid theme ID]:ID_OR_PATH:_files' \
+'--appearance=[Appearance for a native preset or document. Defaults to the selected theme'\''s default]:APPEARANCE:(light dark)' \
+'--theme-precedence=[Decide whether the CLI selection or a source-authored Mermaid theme takes precedence]:THEME_PRECEDENCE:(host source)' \
+'-b+[Override the diagram canvas with a color or \`transparent\`]:COLOR:_default' \
+'--background=[Override the diagram canvas with a color or \`transparent\`]:COLOR:_default' \
 '*--font-file=[Load a local font file and enable native Mermaid text measurement; repeatable, earlier sources take precedence]:PATH:_files' \
 '*--font-dir=[Load fonts from a bounded directory scan and enable native Mermaid text measurement; repeatable]:PATH:_files -/' \
 '--font-measurement=[Text measurement\: SVG defaults to deterministic; PNG/JPEG/PDF use native fonts for shared layout and painting. Explicit deterministic keeps approximate layout]:FONT_MEASUREMENT:(deterministic native)' \
@@ -216,28 +237,6 @@ bounded\:"Use Merman'\''s bounded system font discovery"
 platform\:"Query the platform'\''s font catalog. Platform metadata access is outside Merman'\''s scan limits"))' \
 '--font-max-bytes=[Byte budget for the entire native font context, including explicit and selected system fonts (default 256 MiB). Use a positive integer in bytes or with a KiB, MiB, or GiB suffix, such as 256MiB]:SIZE:' \
 '--font-max-measurements=[Maximum uncached native font shaping probes per diagram (default\: 16384); independent of --resource-profile]:COUNT:' \
-'--theme-preset=[Compiled diagram-theme preset; each value reports its catalog maturity, and explicit Mermaid configuration takes precedence]:THEME_PRESET:((editor\:"\[alpha\] Editor"
-one-dark\:"\[alpha\] One Dark"
-gruvbox\:"\[alpha\] Gruvbox"
-ayu\:"\[alpha\] Ayu"
-brutalist\:"\[alpha\] Brutalist"
-spotless\:"\[alpha\] Spotless"
-cyberpunk\:"\[alpha\] Cyberpunk"
-ghibli\:"\[alpha\] Ghibli"
-paper-cut\:"\[alpha\] Paper Cut"
-carbon-copy\:"\[alpha\] Carbon Copy"
-pop-art\:"\[alpha\] Pop Art"
-editor-light\:"\[alpha\] Editor Light"
-editor-dark\:"\[alpha\] Editor Dark"
-gruvbox-light\:"\[alpha\] Gruvbox Light"
-gruvbox-dark\:"\[alpha\] Gruvbox Dark"
-ayu-light\:"\[alpha\] Ayu Light"
-ayu-dark\:"\[alpha\] Ayu Dark"))' \
-'(--theme-preset --theme-design-file)--theme-file=[Versioned theme recipe JSON, or an exact preset, recipe, or spec selection]:THEME_FILE:_files' \
-'(--theme-preset --theme-file)--theme-design-file=[Shareable ThemeDesignV1 JSON materialized before rendering. Use a portable recipe through --theme-file with --theme-appearance]:THEME_DESIGN_FILE:_files' \
-'(--theme-design-file)--theme-appearance=[Concrete Merman appearance for --theme-preset or --theme-file; omitted uses the selected document'\''s default. Must agree with any selector already in the file]:THEME_APPEARANCE:(light dark)' \
-'--theme-portability=[Renderer portability requirement; require-portable rejects nonportable target output]:THEME_PORTABILITY:(best-effort require-portable)' \
-'--theme-report=[Write versioned theme results to a separate JSON file, including render failures]:PATH:_files' \
 '--math-renderer=[Math renderer override. Unspecified uses the compiled default; \`ratex\` requires \`math\`]:MATH_RENDERER:(none ratex)' \
 '-w+[Available container width for size-sensitive layouts]:CONTAINER_WIDTH:_default' \
 '--width=[Available container width for size-sensitive layouts]:CONTAINER_WIDTH:_default' \
@@ -308,8 +307,6 @@ _arguments "${_arguments_options[@]}" : \
 static\:"Generates SVG for fixed markup, emitting only the container palette slots it uses"
 readable\:"Advanced text fallback for consumers that ignore HTML labels; browsers may show duplicates"
 resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
-'-b+[Background color for the selected rendered output]:BACKGROUND_COLOR:_default' \
-'--background=[Background color for the selected rendered output]:BACKGROUND_COLOR:_default' \
 '-C+[CSS file injected into SVG output before export]:CSS_FILE:_files' \
 '--css-file=[CSS file injected into SVG output before export]:CSS_FILE:_files' \
 '-s+[Raster output scale factor. Defaults to 1]:SCALE:_default' \
@@ -330,12 +327,16 @@ resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
 '*--icon-pack-source=[Iconify prefix and source as PREFIX#SOURCE. Can be repeated]:PREFIX#SOURCE:_default' \
 '-c+[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
 '--config-file=[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
-'-t+[Mermaid theme override]:THEME:(default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color)' \
-'--theme=[Mermaid theme override]:THEME:(default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color)' \
 '--runtime=[Runtime source for clock, local timezone, and operation randomness]:POLICY:(deterministic native)' \
 '--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
 '(--fixed-today)--fixed-unix-millis=[Override the clock with exact Unix milliseconds within the JavaScript Date range.]:FIXED_UNIX_MILLIS:_default' \
 '--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
+'-t+[Merman preset ID, v2 JSON file (\`-\` for stdin), or Mermaid theme ID]:ID_OR_PATH:_files' \
+'--theme=[Merman preset ID, v2 JSON file (\`-\` for stdin), or Mermaid theme ID]:ID_OR_PATH:_files' \
+'--appearance=[Appearance for a native preset or document. Defaults to the selected theme'\''s default]:APPEARANCE:(light dark)' \
+'--theme-precedence=[Decide whether the CLI selection or a source-authored Mermaid theme takes precedence]:THEME_PRECEDENCE:(host source)' \
+'-b+[Override the diagram canvas with a color or \`transparent\`]:COLOR:_default' \
+'--background=[Override the diagram canvas with a color or \`transparent\`]:COLOR:_default' \
 '*--font-file=[Load a local font file and enable native Mermaid text measurement; repeatable, earlier sources take precedence]:PATH:_files' \
 '*--font-dir=[Load fonts from a bounded directory scan and enable native Mermaid text measurement; repeatable]:PATH:_files -/' \
 '--font-measurement=[Text measurement\: SVG defaults to deterministic; PNG/JPEG/PDF use native fonts for shared layout and painting. Explicit deterministic keeps approximate layout]:FONT_MEASUREMENT:(deterministic native)' \
@@ -345,28 +346,6 @@ bounded\:"Use Merman'\''s bounded system font discovery"
 platform\:"Query the platform'\''s font catalog. Platform metadata access is outside Merman'\''s scan limits"))' \
 '--font-max-bytes=[Byte budget for the entire native font context, including explicit and selected system fonts (default 256 MiB). Use a positive integer in bytes or with a KiB, MiB, or GiB suffix, such as 256MiB]:SIZE:' \
 '--font-max-measurements=[Maximum uncached native font shaping probes per diagram (default\: 16384); independent of --resource-profile]:COUNT:' \
-'--theme-preset=[Compiled diagram-theme preset; each value reports its catalog maturity, and explicit Mermaid configuration takes precedence]:THEME_PRESET:((editor\:"\[alpha\] Editor"
-one-dark\:"\[alpha\] One Dark"
-gruvbox\:"\[alpha\] Gruvbox"
-ayu\:"\[alpha\] Ayu"
-brutalist\:"\[alpha\] Brutalist"
-spotless\:"\[alpha\] Spotless"
-cyberpunk\:"\[alpha\] Cyberpunk"
-ghibli\:"\[alpha\] Ghibli"
-paper-cut\:"\[alpha\] Paper Cut"
-carbon-copy\:"\[alpha\] Carbon Copy"
-pop-art\:"\[alpha\] Pop Art"
-editor-light\:"\[alpha\] Editor Light"
-editor-dark\:"\[alpha\] Editor Dark"
-gruvbox-light\:"\[alpha\] Gruvbox Light"
-gruvbox-dark\:"\[alpha\] Gruvbox Dark"
-ayu-light\:"\[alpha\] Ayu Light"
-ayu-dark\:"\[alpha\] Ayu Dark"))' \
-'(--theme-preset --theme-design-file)--theme-file=[Versioned theme recipe JSON, or an exact preset, recipe, or spec selection]:THEME_FILE:_files' \
-'(--theme-preset --theme-file)--theme-design-file=[Shareable ThemeDesignV1 JSON materialized before rendering. Use a portable recipe through --theme-file with --theme-appearance]:THEME_DESIGN_FILE:_files' \
-'(--theme-design-file)--theme-appearance=[Concrete Merman appearance for --theme-preset or --theme-file; omitted uses the selected document'\''s default. Must agree with any selector already in the file]:THEME_APPEARANCE:(light dark)' \
-'--theme-portability=[Renderer portability requirement; require-portable rejects nonportable target output]:THEME_PORTABILITY:(best-effort require-portable)' \
-'--theme-report=[Write versioned theme results to a separate JSON file, including render failures]:PATH:_files' \
 '--math-renderer=[Math renderer override. Unspecified uses the compiled default; \`ratex\` requires \`math\`]:MATH_RENDERER:(none ratex)' \
 '-w+[Available container width for size-sensitive layouts]:CONTAINER_WIDTH:_default' \
 '--width=[Available container width for size-sensitive layouts]:CONTAINER_WIDTH:_default' \
@@ -483,10 +462,10 @@ _arguments "${_arguments_options[@]}" : \
 ;;
 (layout)
 _arguments "${_arguments_options[@]}" : \
-'-c+[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
-'--config-file=[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
 '-t+[Mermaid theme override]:THEME:(default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color)' \
 '--theme=[Mermaid theme override]:THEME:(default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color)' \
+'-c+[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
+'--config-file=[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
 '--runtime=[Runtime source for clock, local timezone, and operation randomness]:POLICY:(deterministic native)' \
 '--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
 '(--fixed-today)--fixed-unix-millis=[Override the clock with exact Unix milliseconds within the JavaScript Date range.]:FIXED_UNIX_MILLIS:_default' \
@@ -616,7 +595,7 @@ _merman-cli_commands() {
     local commands; commands=(
 'lint-rules:List lint rule metadata' \
 'rustdoc:Build or check committed static Mermaid fragments for Rustdoc' \
-'theme:Inspect portable theme recipe documents' \
+'theme:List, export, or check native theme documents' \
 'capabilities:Print the compiled capabilities from the canonical capability descriptor' \
 'detect:Detect the Mermaid diagram type' \
 'parse:Parse Mermaid source and print the semantic JSON model' \
@@ -706,14 +685,26 @@ _merman-cli__subcmd__rustdoc__subcmd__check_commands() {
 (( $+functions[_merman-cli__subcmd__theme_commands] )) ||
 _merman-cli__subcmd__theme_commands() {
     local commands; commands=(
-'inspect:Validate the complete portable recipe and print schema-1 inspection JSON' \
+'list:List native presets and their default-appearance swatches' \
+'export:Export an editable v2 document for a native preset' \
+'check:Validate a v2 document and show its contrast results' \
     )
     _describe -t commands 'merman-cli theme commands' commands "$@"
 }
-(( $+functions[_merman-cli__subcmd__theme__subcmd__inspect_commands] )) ||
-_merman-cli__subcmd__theme__subcmd__inspect_commands() {
+(( $+functions[_merman-cli__subcmd__theme__subcmd__check_commands] )) ||
+_merman-cli__subcmd__theme__subcmd__check_commands() {
     local commands; commands=()
-    _describe -t commands 'merman-cli theme inspect commands' commands "$@"
+    _describe -t commands 'merman-cli theme check commands' commands "$@"
+}
+(( $+functions[_merman-cli__subcmd__theme__subcmd__export_commands] )) ||
+_merman-cli__subcmd__theme__subcmd__export_commands() {
+    local commands; commands=()
+    _describe -t commands 'merman-cli theme export commands' commands "$@"
+}
+(( $+functions[_merman-cli__subcmd__theme__subcmd__list_commands] )) ||
+_merman-cli__subcmd__theme__subcmd__list_commands() {
+    local commands; commands=()
+    _describe -t commands 'merman-cli theme list commands' commands "$@"
 }
 
 if [ "$funcstack[1]" = "_merman-cli" ]; then

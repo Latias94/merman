@@ -5,27 +5,14 @@ use support::{exit_code, run_with_stdin};
 
 #[cfg(feature = "svg")]
 #[test]
-fn human_capabilities_explains_theme_scope_and_explicit_application() {
+fn human_capabilities_points_to_theme_list() {
     let output = Command::new(assert_cmd::cargo_bin!("merman-cli"))
         .arg("capabilities")
         .output()
         .expect("run capabilities without reading stdin");
     assert!(output.status.success(), "{:?}", output.stderr);
     let text = String::from_utf8(output.stdout).unwrap();
-    let ghibli = text
-        .lines()
-        .find(|line| line.starts_with("ghibli\t"))
-        .expect("the human catalog includes Ghibli's design scope");
-    let fields: Vec<_> = ghibli.split('\t').collect();
-    assert_eq!(fields.len(), 4);
-    assert_eq!(fields[1], "light");
-    assert!(fields[2].split(", ").any(|family| family == "pie"));
-    assert!(text.contains("Hard node shadows work with supported basic shapes"));
-    assert!(text.contains("Classic and Neo"));
-    assert!(text.contains("Unlisted families have unreviewed design scope"));
-    assert!(text.contains("--theme-preset ID or --theme-file PATH"));
-    assert!(text.contains("--theme-appearance light|dark"));
-    assert!(text.contains("theme inspect INPUT"));
+    assert!(text.contains("merman-cli theme list"));
 }
 
 #[test]
@@ -61,10 +48,10 @@ fn render_help_excludes_mmdc_and_batch_only_options() {
         "--output",
         "--format",
         "--css-file",
-        "--theme-preset",
-        "--theme-file",
-        "--theme-design-file",
-        "--theme-appearance",
+        "--theme",
+        "--appearance",
+        "--theme-precedence",
+        "--background",
         "--raster-max-width",
         "--icon-pack",
         "--icon-pack-source",
@@ -96,7 +83,15 @@ fn render_short_help_prioritizes_the_common_workflow() {
     let short = String::from_utf8(short.stdout).expect("stdout should be utf8");
     let long = String::from_utf8(long.stdout).expect("stdout should be utf8");
 
-    for common in ["--output", "--format", "--theme", "--quiet"] {
+    for common in [
+        "--output",
+        "--format",
+        "--theme",
+        "--appearance",
+        "--theme-precedence",
+        "--background",
+        "--quiet",
+    ] {
         assert!(
             short.contains(common),
             "short help should retain common option {common}:\n{short}"
@@ -107,10 +102,6 @@ fn render_short_help_prioritizes_the_common_workflow() {
         "--raster-max-width",
         "--pdf-filter-scale",
         "--embedded-image-max-bytes",
-        "--theme-preset",
-        "--theme-file",
-        "--theme-design-file",
-        "--theme-appearance",
         "--system-timing",
         "--allow-private-network",
     ] {
@@ -162,10 +153,10 @@ fn batch_help_exposes_only_graphical_batch_options() {
         "--format",
         "--jobs",
         "--svg-pipeline",
-        "--theme-preset",
-        "--theme-file",
-        "--theme-design-file",
-        "--theme-appearance",
+        "--theme",
+        "--appearance",
+        "--theme-precedence",
+        "--background",
     ] {
         assert!(
             stdout.contains(present),
@@ -192,16 +183,20 @@ fn batch_and_mmdc_use_progressive_help_without_losing_contract_options() {
     for (command, common, advanced) in [
         (
             "batch",
-            &["--output-dir", "--format", "--jobs"][..],
+            &[
+                "--output-dir",
+                "--format",
+                "--jobs",
+                "--theme",
+                "--appearance",
+                "--theme-precedence",
+                "--background",
+            ][..],
             &[
                 "--resource-limit",
                 "--raster-max-width",
                 "--pdf-filter-scale",
                 "--svg-pipeline",
-                "--theme-preset",
-                "--theme-file",
-                "--theme-design-file",
-                "--theme-appearance",
             ][..],
         ),
         (
@@ -251,12 +246,7 @@ fn batch_and_mmdc_use_progressive_help_without_losing_contract_options() {
             "{command} short help needs an example and long-help cue:\n{short}"
         );
         if command == "mmdc" {
-            for removed in [
-                "--theme-preset",
-                "--theme-file",
-                "--theme-design-file",
-                "--theme-appearance",
-            ] {
+            for removed in ["--appearance", "--theme-precedence"] {
                 assert!(
                     !long.contains(removed),
                     "mmdc long help must not expose provisional native option {removed}:\n{long}"
@@ -276,12 +266,7 @@ fn layout_help_excludes_native_theme_selection() {
 
     assert!(output.status.success(), "stderr: {:?}", output.stderr);
     let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
-    for removed in [
-        "--theme-preset",
-        "--theme-file",
-        "--theme-design-file",
-        "--theme-appearance",
-    ] {
+    for removed in ["--appearance", "--theme-precedence", "--background"] {
         assert!(
             !stdout.contains(removed),
             "layout help must not expose provisional native option {removed}:\n{stdout}"

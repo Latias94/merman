@@ -71,75 +71,45 @@ fn complete_profile_bash_completion_preserves_native_and_mmdc_contracts() {
         !render.contains("-e"),
         "removed native -e must not appear in render completion"
     );
-    assert!(
-        render.contains("--theme-file"),
-        "native render completion must expose structured theme files"
-    );
-    assert!(
-        render.contains("--theme-design-file"),
-        "native render completion must expose shareable theme designs"
-    );
-    assert!(
-        render.contains("--theme-appearance"),
-        "native render completion must expose concrete Merman appearances"
-    );
-    assert_eq!(
-        bash_option_values(&script, "render", "--theme-appearance"),
-        ["light", "dark"].into_iter().map(str::to_owned).collect()
-    );
-
     let batch = bash_options(&script, "batch");
-    assert!(
-        batch.contains("-f"),
-        "native batch completion must expose -f"
-    );
-    assert!(
-        !batch.contains("-e"),
-        "removed native -e must not appear in batch completion"
-    );
+    assert!(batch.contains("-f") && !batch.contains("-e"));
+    for options in [&render, &batch] {
+        for name in [
+            "--theme",
+            "--appearance",
+            "--theme-precedence",
+            "--background",
+        ] {
+            assert!(options.contains(name), "missing {name}");
+        }
+        for retired in [
+            "--theme-preset",
+            "--theme-file",
+            "--theme-design-file",
+            "--theme-appearance",
+            "--theme-report",
+            "--theme-portability",
+        ] {
+            assert!(!options.contains(retired), "unexpected {retired}");
+        }
+    }
+    for command in ["render", "batch"] {
+        assert_eq!(
+            bash_option_values(&script, command, "--appearance"),
+            ["light", "dark"].into_iter().map(str::to_owned).collect()
+        );
+        assert_eq!(
+            bash_option_values(&script, command, "--theme-precedence"),
+            ["host", "source"].into_iter().map(str::to_owned).collect()
+        );
+    }
 
     let mmdc = bash_options(&script, "mmdc");
-    assert!(
-        mmdc.contains("-e"),
-        "the permanent mmdc compatibility surface must retain -e"
-    );
-    for removed in [
-        "--theme-preset",
-        "--theme-file",
-        "--theme-design-file",
-        "--theme-appearance",
-    ] {
-        assert!(
-            !mmdc.contains(removed),
-            "mmdc completion must not expose provisional native option {removed}"
-        );
-    }
-
+    assert!(mmdc.contains("-e"));
     let layout = bash_options(&script, "layout");
-    for removed in [
-        "--theme-preset",
-        "--theme-file",
-        "--theme-design-file",
-        "--theme-appearance",
-    ] {
-        assert!(
-            !layout.contains(removed),
-            "layout completion must not expose provisional native option {removed}"
-        );
+    for options in [&mmdc, &layout] {
+        assert!(!options.contains("--appearance") && !options.contains("--theme-precedence"));
     }
-
-    let native_themes = bash_option_values(&script, "render", "--theme");
-    let expected_native_themes = merman::supported_themes()
-        .iter()
-        .map(|theme| (*theme).to_owned())
-        .collect::<BTreeSet<_>>();
-    assert_eq!(native_themes, expected_native_themes);
-
-    assert!(render.contains("--theme-preset"));
-    assert!(
-        bash_option_values(&script, "render", "--theme-preset").is_empty(),
-        "Bash cannot display per-value maturity, so it must not advertise alpha preset ids as stable-looking candidates"
-    );
 
     assert!(!script.contains("--text-measurer"));
 
@@ -153,118 +123,20 @@ fn complete_profile_bash_completion_preserves_native_and_mmdc_contracts() {
     );
 }
 
-fn preset_completion_entry(
-    relative: &str,
-    descriptor: &merman::svg::ThemePresetSelectionDescriptor,
-) -> String {
-    match relative {
-        "completions/_merman-cli" => format!(
-            r#"{}\:"\[{}\] {}""#,
-            descriptor.id(),
-            descriptor.maturity(),
-            descriptor.display_name()
-        ),
-        "completions/merman-cli.fish" => format!(
-            r#"{}\t'[{}] {}'"#,
-            descriptor.id(),
-            descriptor.maturity(),
-            descriptor.display_name()
-        ),
-        _ => panic!("shell has no per-value maturity descriptions"),
-    }
-}
-
-fn preset_completion_entries_are_labelled(asset: &str, id: &str, expected: &str) -> bool {
-    let identifier_character =
-        |character: char| character.is_ascii_alphanumeric() || character == '-' || character == '_';
-    let mut entries = asset
-        .lines()
-        .filter(|line| {
-            line.match_indices(id).any(|(offset, _)| {
-                !line[..offset]
-                    .chars()
-                    .next_back()
-                    .is_some_and(identifier_character)
-                    && !line[offset + id.len()..]
-                        .chars()
-                        .next()
-                        .is_some_and(identifier_character)
-            })
-        })
-        .peekable();
-    entries.peek().is_some() && entries.all(|line| line.contains(expected))
-}
-
 #[test]
-fn preset_completion_guard_rejects_one_missing_label_among_other_alpha_candidates() {
-    let descriptors = merman::svg::theme_preset_selection_descriptors();
-    let descriptor = descriptors
-        .iter()
-        .find(|descriptor| descriptor.id() == "cyberpunk")
-        .expect("Cyberpunk descriptor");
-    for relative in ["completions/_merman-cli", "completions/merman-cli.fish"] {
-        let asset = read_asset(relative);
-        let expected = preset_completion_entry(relative, descriptor);
-        let changed = asset.replacen(&expected, descriptor.id(), 1);
-        assert!(
-            changed.contains("alpha"),
-            "other candidates must retain their labels"
-        );
-        assert!(
-            asset.contains(&expected),
-            "the mutation must change a real candidate"
-        );
-        assert!(!preset_completion_entries_are_labelled(
-            &changed,
-            descriptor.id(),
-            &expected
-        ));
+fn generated_assets_cover_the_theme_command_hierarchy() {
+    let bash = read_asset("completions/merman-cli.bash");
+    for command in ["list", "export", "check"] {
+        assert!(bash.contains(&format!("merman__cli__subcmd__theme,{command})")));
+        let manpage = read_asset(&format!("man/merman-cli-theme-{command}.1"));
+        assert!(manpage.contains(&format!(
+            ".TH MERMAN-CLI-THEME-{} ",
+            command.to_ascii_uppercase()
+        )));
     }
-}
-
-#[test]
-fn generated_cli_assets_do_not_publish_theme_presets_without_maturity() {
-    for relative in ["completions/_merman-cli", "completions/merman-cli.fish"] {
-        let asset = read_asset(relative);
-        for descriptor in merman::svg::theme_preset_selection_descriptors() {
-            let expected = preset_completion_entry(relative, &descriptor);
-            assert!(
-                preset_completion_entries_are_labelled(&asset, descriptor.id(), &expected),
-                "generated CLI asset {relative} must label every candidate `{}` with its own maturity and display name",
-                descriptor.id()
-            );
-        }
-    }
-    for relative in [
-        "completions/merman-cli.bash",
-        "completions/merman-cli.elv",
-        "completions/merman-cli.ps1",
-    ] {
-        let asset = read_asset(relative);
-        for descriptor in merman::svg::theme_preset_selection_descriptors() {
-            assert!(
-                !asset.contains(descriptor.id()),
-                "generated CLI asset {relative} cannot label value maturity and must not advertise preset candidates"
-            );
-        }
-    }
-
-    for relative in ["man/merman-cli-batch.1", "man/merman-cli-render.1"] {
-        let manpage = read_asset(relative);
-        for descriptor in merman::svg::theme_preset_selection_descriptors() {
-            let expected = format!(
-                "{}: [{}] {}",
-                descriptor.id().replace('-', "\\-"),
-                descriptor.maturity(),
-                descriptor.display_name()
-            );
-            assert!(
-                manpage.contains(&expected),
-                "generated manpage {relative} must label preset `{}` with catalog maturity",
-                descriptor.id()
-            );
-        }
-    }
+    assert!(!bash.contains("merman__cli__subcmd__theme,inspect)"));
+    assert!(bash_options(&bash, "theme__subcmd__export").contains("--minimal"));
+    assert!(bash_options(&bash, "theme__subcmd__check").contains("--strict-contrast"));
 }
 
 #[test]

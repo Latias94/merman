@@ -1,0 +1,57 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH MERMAN-CLI-THEME-EXPORT 1 2026-08-15 "Merman 0.11.0" "Merman CLI Manual"
+.SH NAME
+merman\-cli\-theme\-export \- Export an editable v2 document for a native preset
+.SH SYNOPSIS
+\fBmerman\-cli theme export\fR [\fB\-\-minimal\fR] [\fB\-o\fR|\fB\-\-output\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIPRESET_ID\fR>
+.SH DESCRIPTION
+Export an editable v2 document for a native preset
+.SH OPTIONS
+.TP
+\fB\-\-minimal\fR
+Export a small template that extends the preset
+.TP
+\fB\-o\fR, \fB\-\-output\fR \fI<FILE>\fR
+Output file. Defaults to stdout
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
+.TP
+<\fIPRESET_ID\fR>
+Built\-in Merman preset to export
+.sp
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+studio
+.IP \(bu 2
+prism
+.IP \(bu 2
+paper
+.IP \(bu 2
+monograph
+.IP \(bu 2
+gruvbox
+.IP \(bu 2
+tokyo
+.IP \(bu 2
+paper\-cut
+.IP \(bu 2
+riso
+.IP \(bu 2
+carbon\-copy
+.IP \(bu 2
+blueprint
+.IP \(bu 2
+lacquer
+.IP \(bu 2
+cyberpunk
+.IP \(bu 2
+pop\-art
+.RE
+.SH VERSION
+v0.11.0

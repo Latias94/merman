@@ -1,6 +1,10 @@
 use clap::builder::{PossibleValue, PossibleValuesParser, TypedValueParser};
 use clap::{Args as ClapArgs, Parser, Subcommand, ValueEnum, ValueHint};
 use merman::model::time::{CivilDate, UtcOffset};
+#[cfg(any(feature = "svg", feature = "ascii"))]
+use merman::theme::{Appearance, ThemePrecedence};
+#[cfg(feature = "svg")]
+use merman::theme::{BuiltinPreset, Color};
 #[cfg(feature = "analysis")]
 use merman_analysis::{AnalysisRuleProfile, DiagnosticSeverity, configurable_rule_descriptor};
 use std::path::PathBuf;
@@ -57,7 +61,7 @@ pub(crate) enum RawCommand {
     /// Parse and layout Mermaid source, then print layout JSON.
     Layout(LayoutArgs),
     #[cfg(feature = "svg")]
-    /// Inspect portable theme recipe documents.
+    /// List, export, or check native theme documents.
     Theme(ThemeArgs),
     /// Print the compiled capabilities from the canonical capability descriptor.
     Capabilities(CapabilitiesArgs),
@@ -83,22 +87,52 @@ pub(crate) struct ThemeArgs {
 #[cfg(feature = "svg")]
 #[derive(Debug, Subcommand)]
 pub(crate) enum ThemeCommand {
-    /// Validate the complete portable recipe and print schema-1 inspection JSON.
-    ///
-    /// Accepts a schema-1 design or concrete complete_spec recipe.
-    /// Render-selection wrappers belong to render --theme-file.
-    Inspect(ThemeInspectArgs),
+    /// List native presets and their default-appearance swatches.
+    List {
+        /// Print the shared theme catalog as JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Export an editable v2 document for a native preset.
+    Export(ThemeExportArgs),
+    /// Validate a v2 document and show its contrast results.
+    Check(ThemeCheckArgs),
 }
 
 #[cfg(feature = "svg")]
 #[derive(Debug, ClapArgs)]
-pub(crate) struct ThemeInspectArgs {
-    /// Theme recipe JSON file. Use `-` for stdin.
-    #[arg(value_name = "INPUT", value_hint = ValueHint::FilePath)]
+pub(crate) struct ThemeExportArgs {
+    /// Built-in Merman preset to export.
+    #[arg(value_name = "PRESET_ID", value_parser = builtin_preset_value_parser())]
+    pub(crate) preset: BuiltinPreset,
+
+    /// Export a small template that extends the preset.
+    #[arg(long)]
+    pub(crate) minimal: bool,
+
+    /// Output file. Defaults to stdout.
+    #[arg(short, long, value_name = "FILE", value_hint = ValueHint::FilePath)]
+    pub(crate) output: Option<PathBuf>,
+}
+
+#[cfg(feature = "svg")]
+#[derive(Debug, ClapArgs)]
+pub(crate) struct ThemeCheckArgs {
+    /// Theme document JSON file. Use `-` for stdin.
+    #[arg(value_name = "FILE", value_hint = ValueHint::FilePath)]
     pub(crate) input: PathBuf,
 
-    #[command(flatten)]
-    pub(crate) resources: ResourceCliArgs,
+    /// Check this appearance. Defaults to the document's default appearance.
+    #[arg(long, value_parser = appearance_value_parser())]
+    pub(crate) appearance: Option<Appearance>,
+
+    /// Fail when any checked contrast pair misses its target.
+    #[arg(long)]
+    pub(crate) strict_contrast: bool,
+
+    /// Print the resolved theme, contrast ratios, and diagnostics as JSON.
+    #[arg(long)]
+    pub(crate) json: bool,
 
     #[command(flatten)]
     pub(crate) operation: OperationCliArgs,
@@ -603,6 +637,21 @@ pub(crate) struct CompletionArgs {
 
 #[derive(Debug, Clone, ClapArgs, Default)]
 pub(crate) struct ParseCliArgs {
+    /// Mermaid theme override.
+    #[arg(
+        short = 't',
+        long,
+        value_parser = theme_value_parser(),
+        help_heading = "Mermaid configuration"
+    )]
+    pub(crate) theme: Option<String>,
+
+    #[command(flatten)]
+    pub(crate) source: SourceCliArgs,
+}
+
+#[derive(Debug, Clone, ClapArgs, Default)]
+pub(crate) struct SourceCliArgs {
     /// Emit an error diagram instead of failing on parse errors.
     #[arg(
         long = "suppress-errors",
@@ -620,15 +669,6 @@ pub(crate) struct ParseCliArgs {
         hide_short_help = true
     )]
     pub(crate) config_file: Option<PathBuf>,
-
-    /// Mermaid theme override.
-    #[arg(
-        short = 't',
-        long,
-        value_parser = theme_value_parser(),
-        help_heading = "Mermaid configuration"
-    )]
-    pub(crate) theme: Option<String>,
 
     #[command(flatten)]
     pub(crate) runtime: RuntimeCliArgs,
@@ -727,84 +767,38 @@ pub(crate) enum RuntimePolicyKind {
 
 #[cfg(any(feature = "svg", feature = "ascii"))]
 #[derive(Debug, Clone, Default, ClapArgs)]
+pub(crate) struct NativeThemeCliArgs {
+    /// Merman preset ID, v2 JSON file (`-` for stdin), or Mermaid theme ID.
+    #[arg(
+        short = 't',
+        long,
+        value_name = "ID_OR_PATH",
+        value_hint = ValueHint::FilePath,
+        value_parser = clap::builder::PathBufValueParser::new().try_map(crate::theme::ThemeInput::parse),
+        help_heading = "Theme"
+    )]
+    pub(crate) theme: Option<crate::theme::ThemeInput>,
+
+    /// Appearance for a native preset or document. Defaults to the selected theme's default.
+    #[arg(long, value_parser = appearance_value_parser(), help_heading = "Theme")]
+    pub(crate) appearance: Option<Appearance>,
+
+    /// Decide whether the CLI selection or a source-authored Mermaid theme takes precedence.
+    #[arg(long, value_parser = theme_precedence_value_parser(), default_value = "host", help_heading = "Theme")]
+    pub(crate) theme_precedence: ThemePrecedence,
+
+    /// Override the diagram canvas with a color or `transparent`.
+    #[cfg(feature = "svg")]
+    #[arg(short = 'b', long, value_name = "COLOR", value_parser = crate::theme::parse_background, help_heading = "Theme")]
+    pub(crate) background: Option<Color>,
+}
+
+#[cfg(feature = "svg")]
+#[derive(Debug, Clone, Default, ClapArgs)]
 pub(crate) struct RenderCliArgs {
     #[cfg(feature = "native-fonts")]
     #[command(flatten)]
     pub(crate) fonts: FontCliArgs,
-
-    #[cfg(feature = "svg")]
-    /// Compiled diagram-theme preset; each value reports its catalog maturity, and explicit
-    /// Mermaid configuration takes precedence.
-    #[arg(
-        long = "theme-preset",
-        value_parser = theme_preset_value_parser(),
-        group = "merman_theme_selection",
-        help_heading = "Merman renderer controls",
-        hide_short_help = true
-    )]
-    pub(crate) theme_preset: Option<String>,
-
-    #[cfg(feature = "svg")]
-    /// Versioned theme recipe JSON, or an exact preset, recipe, or spec selection.
-    #[arg(
-        long = "theme-file",
-        value_hint = ValueHint::FilePath,
-        group = "merman_theme_selection",
-        conflicts_with_all = ["theme_preset", "theme_design_file"],
-        help_heading = "Merman renderer controls",
-        hide_short_help = true
-    )]
-    pub(crate) theme_file: Option<PathBuf>,
-
-    #[cfg(feature = "svg")]
-    /// Shareable ThemeDesignV1 JSON materialized before rendering.
-    /// Use a portable recipe through --theme-file with --theme-appearance.
-    #[arg(
-        long = "theme-design-file",
-        value_hint = ValueHint::FilePath,
-        conflicts_with_all = ["theme_preset", "theme_file"],
-        help_heading = "Merman renderer controls",
-        hide_short_help = true
-    )]
-    pub(crate) theme_design_file: Option<PathBuf>,
-
-    #[cfg(feature = "svg")]
-    /// Concrete Merman appearance for --theme-preset or --theme-file; omitted uses the
-    /// selected document's default. Must agree with any selector already in the file.
-    #[arg(
-        long = "theme-appearance",
-        value_parser = theme_appearance_value_parser(),
-        requires = "merman_theme_selection",
-        conflicts_with = "theme_design_file",
-        help_heading = "Merman renderer controls",
-        hide_short_help = true
-    )]
-    pub(crate) theme_appearance: Option<merman::svg::ThemeAppearance>,
-
-    #[cfg(feature = "svg")]
-    /// Renderer portability requirement; require-portable rejects nonportable target output.
-    #[arg(
-        long = "theme-portability",
-        value_enum,
-        default_value_t = ThemePortabilityKind::BestEffort,
-        help_heading = "Theme feedback",
-        hide_short_help = true
-    )]
-    pub(crate) theme_portability: ThemePortabilityKind,
-
-    #[cfg(feature = "svg")]
-    /// Write versioned theme results to a separate JSON file, including render failures.
-    ///
-    /// The parent directory must exist. Use a path outside the managed output directory for
-    /// batch. Reports describe rendering before image publication; stdout remains image-only.
-    #[arg(
-        long = "theme-report",
-        value_name = "PATH",
-        value_hint = ValueHint::FilePath,
-        help_heading = "Theme feedback",
-        hide_short_help = true
-    )]
-    pub(crate) theme_report: Option<PathBuf>,
 
     #[cfg(feature = "svg")]
     /// Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`.
@@ -882,24 +876,6 @@ pub(crate) struct LayoutRenderCliArgs {
         help_heading = "Layout viewport"
     )]
     pub(crate) container_height: Option<f64>,
-}
-
-#[cfg(feature = "svg")]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
-pub(crate) enum ThemePortabilityKind {
-    #[default]
-    BestEffort,
-    RequirePortable,
-}
-
-#[cfg(feature = "svg")]
-impl ThemePortabilityKind {
-    pub(crate) const fn requirement(self) -> merman::svg::ThemePortabilityRequirement {
-        match self {
-            Self::BestEffort => merman::svg::ThemePortabilityRequirement::BestEffort,
-            Self::RequirePortable => merman::svg::ThemePortabilityRequirement::RequirePortable,
-        }
-    }
 }
 
 #[cfg(feature = "native-fonts")]
@@ -1065,12 +1041,6 @@ impl clap::FromArgMatches for FontCliArgs {
 impl LayoutRenderCliArgs {
     pub(crate) fn into_render_args(self) -> RenderCliArgs {
         RenderCliArgs {
-            theme_preset: None,
-            theme_file: None,
-            theme_design_file: None,
-            theme_appearance: None,
-            theme_portability: ThemePortabilityKind::default(),
-            theme_report: None,
             math_renderer: self.math_renderer,
             container_width: self.container_width,
             container_height: self.container_height,
@@ -1404,11 +1374,6 @@ pub(crate) struct GraphicalRenderCliArgs {
     pub(crate) svg_pipeline: Option<SvgPipelineKind>,
 
     #[cfg(feature = "svg")]
-    /// Background color for the selected rendered output.
-    #[arg(short = 'b', long = "background", help_heading = "SVG-based output")]
-    pub(crate) background_color: Option<String>,
-
-    #[cfg(feature = "svg")]
     /// CSS file injected into SVG output before export.
     #[arg(
         short = 'C',
@@ -1440,8 +1405,12 @@ pub(crate) struct GraphicalRenderCliArgs {
     pub(crate) icons: NativeIconCliArgs,
 
     #[command(flatten)]
-    pub(crate) parse: ParseCliArgs,
+    pub(crate) parse: SourceCliArgs,
 
+    #[command(flatten)]
+    pub(crate) theme: NativeThemeCliArgs,
+
+    #[cfg(feature = "svg")]
     #[command(flatten)]
     pub(crate) render: RenderCliArgs,
 }
@@ -1978,29 +1947,27 @@ fn theme_value_parser() -> impl TypedValueParser<Value = String> {
 }
 
 #[cfg(feature = "svg")]
-fn theme_preset_value_parser() -> impl TypedValueParser<Value = String> {
-    PossibleValuesParser::new(
-        merman::svg::theme_preset_selection_descriptors()
-            .into_iter()
-            .map(|descriptor| {
-                PossibleValue::new(descriptor.id()).help(format!(
-                    "[{}] {}",
-                    descriptor.maturity(),
-                    descriptor.display_name()
-                ))
-            }),
+fn builtin_preset_value_parser() -> impl TypedValueParser<Value = BuiltinPreset> {
+    PossibleValuesParser::new(BuiltinPreset::ALL.iter().map(|preset| preset.as_str()))
+        .map(|id| BuiltinPreset::from_id(&id).expect("listed built-in preset"))
+}
+
+#[cfg(any(feature = "svg", feature = "ascii"))]
+fn appearance_value_parser() -> impl TypedValueParser<Value = Appearance> {
+    PossibleValuesParser::new([Appearance::Light.as_str(), Appearance::Dark.as_str()]).map(
+        |value| match value.as_str() {
+            "light" => Appearance::Light,
+            _ => Appearance::Dark,
+        },
     )
 }
 
-#[cfg(feature = "svg")]
-fn theme_appearance_value_parser() -> impl TypedValueParser<Value = merman::svg::ThemeAppearance> {
-    PossibleValuesParser::new(merman::svg::ThemeAppearance::ALL.map(|value| value.as_str())).map(
-        |value| {
-            value
-                .parse()
-                .expect("possible values are concrete appearances")
-        },
-    )
+#[cfg(any(feature = "svg", feature = "ascii"))]
+fn theme_precedence_value_parser() -> impl TypedValueParser<Value = ThemePrecedence> {
+    PossibleValuesParser::new(["host", "source"]).map(|value| match value.as_str() {
+        "host" => ThemePrecedence::Host,
+        _ => ThemePrecedence::Source,
+    })
 }
 
 fn parse_resource_limit_override(value: &str) -> Result<ResourceLimitOverride, String> {
@@ -2469,37 +2436,6 @@ mod tests {
         }
         assert!(parse_font_max_bytes(&format!("{}0", usize::MAX)).is_err());
         assert!(parse_font_max_bytes(&format!("{}MiB", (usize::MAX >> 20) + 1)).is_err());
-    }
-
-    #[cfg(feature = "svg")]
-    #[test]
-    fn theme_preset_values_report_catalog_maturity() {
-        let parser = theme_preset_value_parser();
-        let actual = parser
-            .possible_values()
-            .expect("theme presets expose possible values")
-            .map(|value| {
-                (
-                    value.get_name().to_owned(),
-                    value.get_help().map(ToString::to_string),
-                )
-            })
-            .collect::<Vec<_>>();
-        let expected = merman::svg::theme_preset_selection_descriptors()
-            .into_iter()
-            .map(|descriptor| {
-                (
-                    descriptor.id().to_owned(),
-                    Some(format!(
-                        "[{}] {}",
-                        descriptor.maturity(),
-                        descriptor.display_name()
-                    )),
-                )
-            })
-            .collect::<Vec<_>>();
-
-        assert_eq!(actual, expected);
     }
 
     #[cfg(feature = "svg")]

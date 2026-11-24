@@ -43,6 +43,32 @@ fn png_canvas_uses_export_policy_instead_of_svg_css() {
             vec!["render", "--format", "png", "--background", "#112233", "-"],
             [17, 34, 51, 255],
         ),
+        (
+            vec![
+                "render",
+                "--format",
+                "png",
+                "--theme",
+                "studio",
+                "--background",
+                "#112233",
+                "-",
+            ],
+            [17, 34, 51, 255],
+        ),
+        (
+            vec![
+                "render",
+                "--format",
+                "png",
+                "--theme",
+                "studio",
+                "--background",
+                "transparent",
+                "-",
+            ],
+            [0, 0, 0, 0],
+        ),
     ] {
         let output = support::run_with_stdin(&args, source);
         assert!(output.status.success(), "{args:?}: {:?}", output.stderr);

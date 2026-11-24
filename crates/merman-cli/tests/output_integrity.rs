@@ -132,23 +132,16 @@ fn hard_link_output_alias_of_primary_input_is_rejected_by_file_identity() {
 
 #[test]
 fn aliases_of_every_auxiliary_input_are_rejected() {
-    #[derive(Clone, Copy)]
-    enum AliasKind {
-        Exact,
-        HardLink,
-    }
-
     #[allow(
         clippy::type_complexity,
         reason = "The fixture table keeps command, alias, output, and capability expectations together."
     )]
-    let cases: &[(&str, &str, &str, &str, AliasKind, &[&str])] = &[
+    let cases: &[(&str, &str, &str, &str, &[&str])] = &[
         (
             "configuration",
             "config.json",
             "out.svg",
             "{}",
-            AliasKind::HardLink,
             &[
                 "render",
                 "diagram.mmd",
@@ -163,7 +156,6 @@ fn aliases_of_every_auxiliary_input_are_rejected() {
             "style.css",
             "out.svg",
             "svg { color: red; }",
-            AliasKind::HardLink,
             &[
                 "render",
                 "diagram.mmd",
@@ -178,7 +170,6 @@ fn aliases_of_every_auxiliary_input_are_rejected() {
             "puppeteer.json",
             "out.svg",
             "{}",
-            AliasKind::HardLink,
             &[
                 "mmdc",
                 "-i",
@@ -194,7 +185,6 @@ fn aliases_of_every_auxiliary_input_are_rejected() {
             "icons.json",
             "out.svg",
             r#"{"prefix":"fixture","icons":{"box":{"body":"<path d=\"M0 0\"/>"}}}"#,
-            AliasKind::HardLink,
             &[
                 "render",
                 "diagram.mmd",
@@ -205,41 +195,39 @@ fn aliases_of_every_auxiliary_input_are_rejected() {
             ],
         ),
         (
-            "theme selection",
-            "theme.svg",
-            "theme.svg",
-            r#"{"preset":"editor-dark"}"#,
-            AliasKind::Exact,
+            "theme document",
+            "theme.json",
+            "out.svg",
+            r#"{"schema_version":2,"extends":"studio"}"#,
             &[
                 "render",
                 "diagram.mmd",
                 "--output",
-                "theme.svg",
+                "out.svg",
                 "--format",
                 "svg",
-                "--theme-file",
-                "theme.svg",
+                "--theme",
+                "theme.json",
             ],
         ),
         (
-            "theme design",
+            "batch theme document",
+            "generated/theme.json",
             "generated/diagram.md",
-            "generated/diagram.md",
-            r#"{}"#,
-            AliasKind::Exact,
+            r#"{"schema_version":2,"extends":"studio"}"#,
             &[
                 "batch",
                 "diagram.md",
                 "--output-dir",
                 "generated",
-                "--theme-design-file",
-                "generated/diagram.md",
+                "--theme",
+                "generated/theme.json",
                 "--quiet",
             ],
         ),
     ];
 
-    for (label, protected_name, output_name, contents, alias_kind, args) in cases {
+    for (label, protected_name, output_name, contents, args) in cases {
         let tmp = tempfile::tempdir().expect("tempdir");
         fs::write(tmp.path().join("diagram.mmd"), MERMAID_SOURCE).expect("write source");
         fs::write(
@@ -253,18 +241,15 @@ fn aliases_of_every_auxiliary_input_are_rejected() {
         }
         fs::write(&protected, contents).expect("write protected input");
         let output_path = tmp.path().join(output_name);
-        if matches!(alias_kind, AliasKind::HardLink) {
-            fs::hard_link(&protected, &output_path).expect("create output hard link");
-        } else {
-            assert_eq!(
-                protected, output_path,
-                "exact alias fixture must share a path"
-            );
-        }
+        fs::hard_link(&protected, &output_path).expect("create output hard link");
 
         let output = run_in(tmp.path(), args);
 
-        assert_alias_rejected(&output, output_name, protected_name);
+        let output_file = output_path
+            .file_name()
+            .and_then(std::ffi::OsStr::to_str)
+            .unwrap();
+        assert_alias_rejected(&output, output_file, protected_name);
         assert_eq!(
             fs::read_to_string(&protected).expect("read protected input"),
             *contents,

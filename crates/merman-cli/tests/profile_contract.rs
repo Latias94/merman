@@ -308,46 +308,8 @@ fn assert_capability_document(case: &str, payload: &Value) {
     let expected_commands = expected_commands(&expected_ids);
 
     assert_eq!(payload["schema_version"], 2);
-    assert_eq!(payload["cli_contract_version"], 8);
-    #[cfg(feature = "svg")]
-    {
-        assert_eq!(payload["theme_presets"]["schema_version"], 1);
-        assert_eq!(payload["theme_presets"]["recipe_schema_version"], 1);
-        assert_eq!(
-            payload["theme_presets"]["authoring_request_schema_version"],
-            1
-        );
-        assert_eq!(
-            payload["theme_presets"]["authoring_result_schema_version"],
-            1
-        );
-        assert!(payload["theme_presets"].get("legacy_selections").is_none());
-        assert_eq!(
-            payload["theme_presets"]["mermaid_theme_designs"],
-            serde_json::to_value(merman::svg::describe_mermaid_theme_designs()).unwrap()
-        );
-        assert!(
-            payload["theme_presets"]["presets"]
-                .as_array()
-                .is_some_and(|presets| !presets.is_empty()),
-            "SVG artifacts must expose preset discovery metadata"
-        );
-        let compiler = merman::svg::DiagramThemeCompiler::new().with_resource_policy(
-            merman::svg::ThemeResourcePolicy::for_profile(
-                merman::svg::CLI_DEFAULT_RESOURCE_PROFILE,
-            ),
-        );
-        assert_eq!(
-            payload["theme_presets"]["presets"],
-            serde_json::to_value(merman::svg::describe_theme_presets(&compiler)).unwrap(),
-            "spawned CLI preset metadata must match the production compiler projection"
-        );
-    }
-    #[cfg(not(feature = "svg"))]
-    assert!(
-        payload.get("theme_presets").is_none(),
-        "artifacts without SVG must omit preset discovery metadata"
-    );
+    assert_eq!(payload["cli_contract_version"], 9);
+    assert!(payload.get("theme_presets").is_none());
     assert_eq!(payload["package"]["name"], "merman-cli");
     assert_eq!(payload["package"]["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(
@@ -574,11 +536,15 @@ fn assert_option_ownership(case: &str, capabilities: &BTreeSet<&str>, commands: 
             assert!(stderr.contains("merman-cli render -"), "{case}: {stderr}");
             assert!(!stderr.contains("merman-cli batch"), "{case}: {stderr}");
         }
+        for flag in ["--theme", "--appearance", "--theme-precedence"] {
+            assert!(
+                help.contains(flag),
+                "{flag} missing in case {case}:\n{help}"
+            );
+        }
         for (capability, flag) in [
             ("svg", "--svg-pipeline"),
-            ("svg", "--theme-preset"),
-            ("svg", "--theme-file"),
-            ("svg", "--theme-appearance"),
+            ("svg", "--background"),
             ("ascii", "--ascii-charset"),
             ("icons", "--icon-pack-source"),
             ("network-icons", "--allow-network"),
@@ -1199,25 +1165,17 @@ fn workflow_completions() {
             .collect::<BTreeSet<_>>();
             assert_eq!(format_values, expected_formats);
 
-            let theme_values = bash_completion_values(&script, "render", "--theme");
+            for option in ["--theme", "--appearance", "--theme-precedence"] {
+                assert!(render.contains(option));
+            }
+            assert!(!mmdc.contains("--appearance"));
             assert_eq!(
-                theme_values,
-                merman::supported_themes()
-                    .iter()
-                    .map(|theme| (*theme).to_owned())
-                    .collect()
-            );
-
-            let theme_presets = bash_completion_values(&script, "render", "--theme-preset");
-            assert!(
-                theme_presets.is_empty(),
-                "Bash cannot display per-value maturity, so it must not advertise alpha preset ids as stable-looking candidates: {theme_presets:?}"
-            );
-            assert!(render.contains("--theme-appearance"));
-            assert!(!mmdc.contains("--theme-appearance"));
-            assert_eq!(
-                bash_completion_values(&script, "render", "--theme-appearance"),
+                bash_completion_values(&script, "render", "--appearance"),
                 ["light", "dark"].into_iter().map(str::to_owned).collect()
+            );
+            assert_eq!(
+                bash_completion_values(&script, "render", "--theme-precedence"),
+                ["host", "source"].into_iter().map(str::to_owned).collect()
             );
         }
     }

@@ -51,10 +51,8 @@ pub(crate) struct PreparedSingleRender {
 #[cfg(feature = "ascii")]
 pub(super) struct PreparedTextRender {
     pub(super) destination: ResolvedDestination,
-    pub(super) renderer: Box<crate::config::ConfiguredRenderer>,
-    pub(super) options: merman::ascii::AsciiRenderOptions,
-    pub(super) resources: merman::ascii::AsciiResourcePolicy,
-    pub(super) viewport: merman::ascii::AsciiViewportPolicy,
+    pub(super) renderer: Box<merman::Renderer>,
+    pub(super) request: merman::AsciiRequest,
     pub(super) report: bool,
     pub(super) admission: BackendAdmission,
 }
@@ -76,26 +74,12 @@ pub(crate) struct PreparedGraphicalRender {
     pub(super) output: PreparedGraphicalOutput,
     pub(super) admission: BackendAdmission,
     pub(super) quiet: bool,
-    pub(super) theme_requested: bool,
-    pub(super) theme_feedback_enabled: bool,
-    pub(super) theme_report: Option<std::path::PathBuf>,
     #[cfg(feature = "layout-shoal")]
     pub(super) preview_frame_out: Option<std::path::PathBuf>,
     #[cfg(feature = "native-fonts")]
     pub(super) font_context: Option<merman::svg::export::NativeFontContext>,
     #[cfg(feature = "native-fonts")]
     pub(super) font_diagnostics: bool,
-}
-
-#[cfg(feature = "svg")]
-impl PreparedGraphicalRender {
-    pub(super) fn selected_theme_appearance(&self) -> Option<merman::svg::ThemeAppearance> {
-        match &self.source {
-            PreparedGraphicalSource::Mermaid(renderer) => renderer.selected_theme_appearance(),
-            #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-            PreparedGraphicalSource::RawSvg(_) => None,
-        }
-    }
 }
 
 #[cfg(feature = "rustdoc")]
@@ -176,6 +160,7 @@ pub(crate) fn prepare_render_for_native(
     let raw_svg = matches!(resolved.input_kind, crate::cli::RenderInputKind::Svg);
     #[cfg(not(any(feature = "png", feature = "jpeg", feature = "pdf")))]
     let raw_svg = false;
+    let native_theme = crate::theme::prepare(&resolved.common.theme, stdin, &control)?;
     let limit = render_input_limit(raw_svg, &resolved.common.resources);
     let source = read_resolved_input(&resolved.input, true, limit, stdin, stderr, &control)?;
     prepare_single(
@@ -184,6 +169,7 @@ pub(crate) fn prepare_render_for_native(
             raw_svg,
             output: resolved.output,
             common: resolved.common,
+            native_theme,
             publications,
             control,
             mmdc_compat: false,
@@ -202,6 +188,7 @@ pub(crate) fn prepare_render_for_batch(
     stdin: &mut dyn Read,
     stderr: &SharedWriter,
 ) -> Result<PreparedWorkflow, CliError> {
+    let native_theme = crate::theme::prepare(&resolved.common.theme, stdin, &control)?;
     let source = read_resolved_input(
         &resolved.input,
         true,
@@ -225,6 +212,7 @@ pub(crate) fn prepare_render_for_batch(
         source,
         output: resolved.output,
         common: resolved.common,
+        native_theme,
         output_path,
         transaction_root: resolved.output_root.clone(),
         artefacts: Some(resolved.output_root),
@@ -279,6 +267,7 @@ pub(crate) fn prepare_render_for_mmdc(
             raw_svg: false,
             output: resolved.output,
             common: resolved.common,
+            native_theme: None,
             publications,
             control,
             mmdc_compat: true,
@@ -351,6 +340,7 @@ fn prepare_mmdc_markdown(
         source,
         output: resolved.output,
         common: resolved.common,
+        native_theme: None,
         output_path,
         transaction_root,
         artefacts: resolved.compatibility.artefacts,
@@ -367,6 +357,7 @@ struct SinglePreparation {
     raw_svg: bool,
     output: ResolvedOutput,
     common: ResolvedRenderCommon,
+    native_theme: Option<merman::theme::ThemeSelection>,
     publications: PublicationGuards,
     control: OperationControl,
     mmdc_compat: bool,
@@ -381,6 +372,7 @@ fn prepare_single(
         raw_svg,
         output,
         common,
+        native_theme,
         publications,
         control,
         mmdc_compat,
@@ -408,7 +400,6 @@ fn prepare_single(
                     "native font options require SVG, PNG, JPEG, or PDF output".to_string(),
                 ));
             }
-            let options = *options;
             let mut resources = common.resources.ascii_policy();
             for (id, value) in legacy_resources.explicit_overrides() {
                 if resources.explicit_override(id).is_some() {
@@ -427,15 +418,22 @@ fn prepare_single(
                 &common.resources,
                 &control,
             )?;
+            let mut request = merman::AsciiRequest {
+                options: *options,
+                resources,
+                viewport,
+                ..Default::default()
+            };
+            if let Some(theme) = native_theme {
+                request = request.with_native_theme(theme);
+            }
             Ok(PreparedSingleRender {
                 source,
                 control,
                 output: PreparedSingleOutput::Text(Box::new(PreparedTextRender {
                     destination,
                     renderer: Box::new(renderer),
-                    options,
-                    resources,
-                    viewport,
+                    request,
                     report,
                     admission,
                 })),
@@ -447,6 +445,7 @@ fn prepare_single(
             let (destination, renderer) = prepare_graphical_output(
                 graphical,
                 common,
+                native_theme,
                 raw_svg,
                 mmdc_compat,
                 &control,
@@ -470,11 +469,25 @@ fn prepare_single(
 pub(crate) fn prepare_graphical_output(
     output: ResolvedOutput,
     common: ResolvedRenderCommon,
+    native_theme: Option<merman::theme::ThemeSelection>,
     raw_svg: bool,
     mmdc_compat: bool,
     control: &OperationControl,
     #[cfg(feature = "network-icons")] network: &mut dyn crate::network::NetworkAcquirer,
 ) -> Result<(ResolvedDestination, PreparedGraphicalRender), CliError> {
+    let output_background = if mmdc_compat {
+        common.mmdc_background.clone()
+    } else if raw_svg {
+        common.theme.background.map(|color| {
+            if color.channels()[3] == 0 {
+                "transparent".to_owned()
+            } else {
+                color.to_string()
+            }
+        })
+    } else {
+        None
+    };
     let css = read_optional_text_file_controlled(
         common.css_file.as_deref(),
         "CSS file",
@@ -510,7 +523,7 @@ pub(crate) fn prepare_graphical_output(
                 options: raster_options(
                     raster,
                     embedded_images,
-                    common.background.clone(),
+                    output_background.clone(),
                     &common.resources,
                 ),
             },
@@ -527,7 +540,7 @@ pub(crate) fn prepare_graphical_output(
                 options: raster_options(
                     raster,
                     embedded_images,
-                    common.background.clone(),
+                    output_background.clone(),
                     &common.resources,
                 ),
             },
@@ -545,7 +558,7 @@ pub(crate) fn prepare_graphical_output(
                 options: pdf_options(
                     options,
                     embedded_images,
-                    common.background.clone(),
+                    output_background.clone(),
                     &common,
                     mmdc_compat,
                     mmdc_fit_width_px,
@@ -578,7 +591,7 @@ pub(crate) fn prepare_graphical_output(
             "native text measurement does not support --css-file (post-layout styling); configure typography through Mermaid configuration, or use --font-measurement deterministic without font sources".to_string(),
         ));
     }
-    let pipeline = svg_output_pipeline(pipeline_kind, common.background.as_deref(), css.as_deref());
+    let pipeline = svg_output_pipeline(pipeline_kind, output_background.as_deref(), css.as_deref());
     let pipeline = if !mmdc_compat && !raw_svg && !matches!(&output, PreparedGraphicalOutput::Svg) {
         pipeline.with_generation(merman::svg::SvgGeneration::Static)
     } else {
@@ -615,13 +628,18 @@ pub(crate) fn prepare_graphical_output(
             ));
         }
     } else {
-        let renderer = crate::config::renderer_for_resolved(
+        let mut renderer = crate::config::renderer_for_resolved(
             &common.parse,
             &common.render,
-            None,
             &common.resources,
             control,
         )?;
+        if let Some(theme) = native_theme {
+            renderer.svg = renderer.svg.with_native_theme(theme);
+        }
+        if let Some(color) = common.theme.background {
+            renderer.svg = renderer.svg.with_background(color);
+        }
         #[cfg(feature = "layout-shoal")]
         let renderer = {
             let mut renderer = renderer;
@@ -678,12 +696,6 @@ pub(crate) fn prepare_graphical_output(
             output,
             admission,
             quiet: common.quiet,
-            theme_requested: common.render.theme_preset.is_some()
-                || common.render.theme_file.is_some()
-                || common.render.theme_design_file.is_some()
-                || (!mmdc_compat && common.parse.theme.is_some()),
-            theme_feedback_enabled: !mmdc_compat,
-            theme_report: common.render.theme_report,
             #[cfg(feature = "layout-shoal")]
             preview_frame_out: common.render.preview_frame_out,
             #[cfg(feature = "native-fonts")]
@@ -875,17 +887,12 @@ fn prepare_rustdoc_renderer(
         suppress_errors: false,
         config_file: None,
         theme: Some(theme.to_string()),
+        theme_precedence: None,
         runtime: crate::invocation::ResolvedRuntimeOptions {
             runtime_policy: merman::model::runtime::RuntimePolicy::deterministic(),
         },
     };
     let render = crate::invocation::ResolvedRenderOptions {
-        theme_preset: None,
-        theme_file: None,
-        theme_design_file: None,
-        theme_appearance: None,
-        theme_portability: crate::cli::ThemePortabilityKind::default(),
-        theme_report: None,
         #[cfg(feature = "layout-shoal")]
         preview_frame_in: None,
         #[cfg(feature = "layout-shoal")]
@@ -914,9 +921,6 @@ fn prepare_rustdoc_renderer(
         output: PreparedGraphicalOutput::Svg,
         admission: BackendAdmission::for_svg(resources)?,
         quiet: true,
-        theme_requested: true,
-        theme_feedback_enabled: false,
-        theme_report: None,
         #[cfg(feature = "layout-shoal")]
         preview_frame_out: None,
         #[cfg(feature = "native-fonts")]

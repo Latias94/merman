@@ -86,9 +86,29 @@ pub(crate) fn run(
             0
         }
         #[cfg(feature = "svg")]
-        ResolvedInvocation::ThemeInspect(args) => {
-            crate::theme::inspect(args, operation_control, context)?;
+        ResolvedInvocation::ThemeList { json, color } => {
+            crate::theme::list(json, color, &context.stdout)?;
             0
+        }
+        #[cfg(feature = "svg")]
+        ResolvedInvocation::ThemeExport {
+            preset,
+            minimal,
+            output,
+        } => {
+            crate::theme::export(
+                preset,
+                minimal,
+                output,
+                &publications,
+                operation_control,
+                context,
+            )?;
+            0
+        }
+        #[cfg(feature = "svg")]
+        ResolvedInvocation::ThemeCheck(args) => {
+            crate::theme::check(args, operation_control, context)?
         }
         #[cfg(feature = "analysis")]
         ResolvedInvocation::Lint(args) => run_lint(args, context)?,
@@ -253,7 +273,6 @@ fn run_layout(
     let configured = renderer_for_resolved(
         &args.parse,
         &args.render,
-        None,
         &args.resources,
         operation_control,
     )?;
@@ -262,7 +281,7 @@ fn run_layout(
     } else {
         merman::RenderTarget::LayoutJson(configured.svg.clone())
     };
-    let request = configured.request(&text, target, operation_control.clone());
+    let request = merman::RenderRequest::new(&text, target, operation_control.clone());
     if !args.snapshot {
         return context.stdout.with_writer(|writer| {
             use std::io::{BufWriter, Write};
@@ -648,10 +667,12 @@ fn analyzer_for(
     resources: &ResolvedResourcePolicy,
 ) -> Result<Analyzer, CliError> {
     let parse = ParseCliArgs {
-        config_file: args.config_file.clone(),
         theme: None,
-        runtime: args.runtime.clone(),
-        ..Default::default()
+        source: crate::cli::SourceCliArgs {
+            config_file: args.config_file.clone(),
+            runtime: args.runtime.clone(),
+            ..Default::default()
+        },
     };
     let runtime_policy = runtime_policy_for(&parse)?;
     let site_config = site_config_for(&parse, resources)?;

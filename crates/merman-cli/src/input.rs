@@ -118,7 +118,7 @@ pub(crate) fn read_bytes(
 }
 
 /// Reads a bounded binary auxiliary input, checking operation control around each chunk.
-#[cfg(feature = "svg")]
+#[cfg(any(feature = "svg", feature = "ascii"))]
 pub(crate) fn read_bytes_with_limit_controlled(
     reader: impl Read,
     resource: impl Into<String>,
