@@ -867,7 +867,7 @@ impl FlowchartNodeRootSchedule {
     }
 }
 
-#[cfg(all(test, feature = "diagram-flowchart"))]
+#[cfg(all(test, feature = "diagram-flowchart", feature = "layout-dagre"))]
 mod source_typography_tests {
     use super::*;
 

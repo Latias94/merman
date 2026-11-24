@@ -44,6 +44,12 @@ export const CAPABILITY_SPECS = [
     ]
   },
   {
+    "id": "layout-dagre",
+    "implication_ids": [
+      "svg"
+    ]
+  },
+  {
     "id": "layout-elk",
     "implication_ids": [
       "svg"

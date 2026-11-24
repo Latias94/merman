@@ -1143,10 +1143,8 @@ fn prepare_requirement_family<'parsed>(
             execution.text_measurer(),
             paint_theme.css(),
             &execution.work_meter(),
-            #[cfg(feature = "layout-shoal")]
+            #[cfg(any(feature = "layout-elk", feature = "layout-shoal"))]
             Some(execution),
-            #[cfg(feature = "layout-elk")]
-            execution.elk_operation_seed(),
         )?;
     Ok(BuiltinFamilyArtifact::Requirement(Box::new(
         RequirementFamilyArtifact {

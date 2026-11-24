@@ -12,7 +12,8 @@
     "features": [
       "all-diagrams",
       "svg",
-      "compat-json"
+      "compat-json",
+      "layout-dagre"
     ],
     "default_features": false,
     "inputs": [
@@ -26,7 +27,7 @@
       },
       {
         "path": "crates/merman/Cargo.toml",
-        "sha256": "a15e715ba14804aa493f6ea4bfeea6745bc102f1c85fe56997240c95a50f7075"
+        "sha256": "b8d9a06b27a2b979ceba38a00ae5fdc596b2f07f7b81db2d600d06033b6680c9"
       },
       {
         "path": "Cargo.lock",

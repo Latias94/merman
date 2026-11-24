@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:e133cab82e0ce4916729079d0c673e8d871165dd89384e7d441caef276d0caad" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:5b115a3268501bd91daff3ff963b213e8e1d204f123fdafd87e059b195cf7af5" as const;
 
 export const TARGETS = [
   {
@@ -85,6 +85,19 @@ export const CAPABILITIES = [
     "id": "layout-cytoscape",
     "kind": "engine",
     "description": "Enable Mermaid Cytoscape-backed layout behavior.",
+    "targets": [
+      "native",
+      "typst",
+      "web"
+    ],
+    "implications": [
+      "svg"
+    ]
+  },
+  {
+    "id": "layout-dagre",
+    "kind": "engine",
+    "description": "Enable Mermaid Dagre-backed SVG graph layout.",
     "targets": [
       "native",
       "typst",
@@ -588,6 +601,7 @@ export const CAPABILITY_IDS = [
   "icons",
   "jpeg",
   "layout-cytoscape",
+  "layout-dagre",
   "layout-elk",
   "layout-shoal",
   "markdown",

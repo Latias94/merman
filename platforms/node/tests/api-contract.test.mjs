@@ -297,9 +297,9 @@ function runtimeCatalog(overrides = {}) {
       { id: "binding-result", version: 1 },
       { id: "operation-metadata", version: 1 },
     ],
-    metadata_ids: metadataIds(["layout-cytoscape", "layout-elk", "math", "svg"]),
+    metadata_ids: metadataIds(["layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"]),
     option_group_ids: optionGroupIds(
-      ["layout-cytoscape", "layout-elk", "math", "svg"],
+      ["layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
       { usesSvgPipeline: true },
     ),
     constructor_service_ids: [...NODE_WIRE_CONTRACT.artifact.constructor_service_ids],
@@ -312,7 +312,7 @@ function runtimeCatalog(overrides = {}) {
       };
     }),
     capabilities: {
-      capability_ids: ["layout-cytoscape", "layout-elk", "math", "svg"],
+      capability_ids: ["layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
       output_ids: ["svg"],
       operation_ids: [...NODE_WIRE_CONTRACT.artifact.operation_ids],
       system_adapter_ids: [],
@@ -378,6 +378,7 @@ test("runtime catalog accepts additive fields within schema 1", async () => {
   const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
   assert.deepEqual(engine.runtimeCatalog.capabilities.capability_ids, [
     "layout-cytoscape",
+    "layout-dagre",
     "layout-elk",
     "math",
     "svg",
@@ -2234,7 +2235,7 @@ test("advertised SVG preserves missing content capabilities in sync and async ca
 });
 
 test("missing advertised capabilities still contradict the runtime catalog", async () => {
-  for (const capabilityId of ["svg", "layout-elk"]) {
+  for (const capabilityId of ["svg", "layout-dagre", "layout-elk"]) {
     const response = failure({ kind: "missing-capability", capabilityId });
     const factory = transportFactory({
       async execute() { return response; },

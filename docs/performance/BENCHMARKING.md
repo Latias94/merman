@@ -228,7 +228,7 @@ The full `pipeline` executable requires `svg,compat-json,editor-facts`, includin
 group is selected. Default facade features do not enable `compat-json`. Use the explicit recipe
 above to retain all diagram families; default features still supply the layout backends.
 With defaults disabled, bench-list verification uses
-`all-diagrams,svg,compat-json,editor-facts,layout-cytoscape,layout-elk,math`.
+`all-diagrams,svg,compat-json,editor-facts,layout-cytoscape,layout-dagre,layout-elk,math`.
 
 The October 22, 2026 U8/U9 API/recipe migration uses `MermaidEngine` and
 `PresentationArtifact` for SVG preparation. It refreshes current lane/probe features and
@@ -326,9 +326,11 @@ fonts and default render/export resource limits. PNG uses the default 1x scale w
 
 ```bash
 CARGO_BUILD_JOBS=1 cargo bench --locked -p merman --no-default-features \
-  --features svg,png,pdf --bench native_export -- --test
+  --features svg,png,pdf,diagram-flowchart,diagram-sequence,diagram-xychart,layout-dagre \
+  --bench native_export -- --test
 CARGO_BUILD_JOBS=1 cargo bench --locked -p merman --no-default-features \
-  --features svg,png,pdf --bench native_export -- \
+  --features svg,png,pdf,diagram-flowchart,diagram-sequence,diagram-xychart,layout-dagre \
+  --bench native_export -- \
   --noplot --sample-size 30 --warm-up-time 2 --measurement-time 3
 ```
 

@@ -891,6 +891,7 @@ mod tests {
             vec![
                 "all-diagrams",
                 "layout-cytoscape",
+                "layout-dagre",
                 "layout-elk",
                 "math",
                 "svg"
@@ -971,6 +972,7 @@ mod tests {
                 "editor",
                 "fixes",
                 "layout-cytoscape",
+                "layout-dagre",
                 "layout-elk",
                 "math",
                 "svg"
@@ -982,6 +984,7 @@ mod tests {
             "editor",
             "fixes",
             "layout-cytoscape",
+            "layout-dagre",
             "layout-elk",
             "math",
             "svg",
@@ -997,11 +1000,18 @@ mod tests {
         let render_features = vec![
             "all-diagrams",
             "layout-cytoscape",
+            "layout-dagre",
             "layout-elk",
             "math",
             "svg",
         ];
-        let render_capabilities = vec!["layout-cytoscape", "layout-elk", "math", "svg"];
+        let render_capabilities = vec![
+            "layout-cytoscape",
+            "layout-dagre",
+            "layout-elk",
+            "math",
+            "svg",
+        ];
         assert_eq!(string_values(&render.features), render_features);
         assert_eq!(string_values(&render.capabilities), render_capabilities);
         assert_eq!(string_values(&render.runtime_ids), render_capabilities);
@@ -1022,6 +1032,7 @@ mod tests {
                 "all-diagrams",
                 "analysis",
                 "layout-cytoscape",
+                "layout-dagre",
                 "layout-elk",
                 "svg"
             ]

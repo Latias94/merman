@@ -239,20 +239,20 @@ jobs:
         shell: bash
         run: |
           cargo test --locked -p merman-ffi --no-default-features \
-            --features svg,diagram-flowchart --test c_consumer_smoke
+            --features svg,diagram-flowchart,layout-dagre --test c_consumer_smoke
           cargo test --locked -p merman-render --no-default-features \
-            --features diagram-flowchart,diagram-swimlane \
+            --features diagram-flowchart,diagram-swimlane,layout-dagre \
             --test theme_font_capability --test flowchart_node_effects
           cargo test --locked -p merman-bindings-core --no-default-features \
-            --features svg,all-diagrams --lib
-          cargo test --locked -p merman --no-default-features --features svg,diagram-flowchart \
+            --features svg,all-diagrams,layout-dagre --lib
+          cargo test --locked -p merman --no-default-features --features svg,diagram-flowchart,layout-dagre \
             --test theme_font_capability --test flowchart_edge_label_theme
           cargo test --locked -p merman-export --no-default-features \
             --features png,jpeg,pdf --lib
 
       - name: Test native theme consumers
         run: |
-          cargo test --locked -p merman --no-default-features --features svg,all-diagrams,png,pdf,layout-cytoscape,system-fonts,compat-json \
+          cargo test --locked -p merman --no-default-features --features svg,all-diagrams,png,pdf,layout-cytoscape,layout-dagre,system-fonts,compat-json \
             --test theme_flowchart_edge_effects --test flowchart_edge_label_theme --test render_operation \
             --test theme_composed_effects
 
@@ -261,7 +261,7 @@ jobs:
           cargo test --release --locked -p merman-render --no-default-features \
             --lib family::evidence_support::tests
           python3 scripts/run_theme_acceptance.py test --release --locked \
-            -p merman-theme-acceptance --no-default-features --features png,all-diagrams,layout-cytoscape \
+            -p merman-theme-acceptance --no-default-features --features png,all-diagrams,layout-cytoscape,layout-dagre \
             --lib preset_qualification::
 
       - name: Verify published theme acceptance boundary
@@ -270,7 +270,7 @@ jobs:
       - name: Test preset qualification and family terminal behavior
         run: |
           python3 scripts/run_theme_acceptance.py test --locked -p merman-theme-acceptance \
-            --no-default-features --features png,all-diagrams,layout-cytoscape \
+            --no-default-features --features png,all-diagrams,layout-cytoscape,layout-dagre \
             --test preset_qualification --test block_title_legacy_projection --test class_edge_label_background_legacy_projection --test flowchart_marker_legacy_projection
           python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-render \
             --no-default-features --features all-diagrams --test theme_support_discovery_test --cargo-quiet

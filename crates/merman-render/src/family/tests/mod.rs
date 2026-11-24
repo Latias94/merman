@@ -12456,21 +12456,21 @@ fn agentflow_spacing_projection_follows_registered_backend_selection() {
         )
         .unwrap();
         let flow = &projected.as_value()["flowchart"];
-        let elk_registered = cfg!(feature = "layout-elk")
+        let elk_selected = (crate::layout_elk_available() || !crate::layout_dagre_available())
             && crate::layout_backend::ElkRootAlgorithm::from_name(layout).is_some();
         assert_eq!(
             matches!(selected, GraphLayoutBackend::Elk(_)),
-            elk_registered,
+            elk_selected,
             "{layout}"
         );
         assert_eq!(
             flow["nodeSpacing"],
-            if elk_registered { 50 } else { 90 },
+            if elk_selected { 50 } else { 90 },
             "{layout}"
         );
         assert_eq!(
             flow["rankSpacing"],
-            if elk_registered { 50 } else { 110 },
+            if elk_selected { 50 } else { 110 },
             "{layout}"
         );
     }

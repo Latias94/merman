@@ -1,6 +1,7 @@
 #![cfg(all(
     feature = "svg",
     not(feature = "layout-cytoscape"),
+    not(feature = "layout-dagre"),
     not(feature = "layout-elk"),
     not(feature = "math")
 ))]
@@ -26,10 +27,10 @@ fn ambient_render_dependencies_do_not_widen_the_android_owner_contract() {
             b"architecture-beta\n  service api(server)[API]".as_slice(),
         ),
         (
-            "layout-elk",
-            b"---\nconfig:\n  layout: elk\n---\nflowchart TD\nA --> B".as_slice(),
+            "layout-dagre",
+            b"---\nconfig:\n  layout: dagre\n---\nflowchart TD\nA --> B".as_slice(),
         ),
-        ("math", b"flowchart TD\nA[\"$$x^2$$\"] --> B".as_slice()),
+        ("math", b"sequenceDiagram\nA->>B: $$x^2$$".as_slice()),
     ] {
         assert!(!capabilities.has_capability(capability_id));
 

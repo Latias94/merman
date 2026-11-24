@@ -117,10 +117,9 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         effective_config,
         #[cfg(feature = "layout-shoal")]
         canonical,
-        (execution.text_measurer(), execution.math_renderer()),
+        execution,
         svg_label_sidecar,
         edge_style_plan,
-        &work_meter,
     )?;
     #[cfg(feature = "layout-shoal")]
     let shoal = if canonical {

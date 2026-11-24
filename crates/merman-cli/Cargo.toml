@@ -34,6 +34,7 @@ features = [
     "icons",
     "jpeg",
     "layout-cytoscape",
+    "layout-dagre",
     "layout-elk",
     "markdown",
     "math",
@@ -317,6 +318,7 @@ default = [
     "icons",
     "jpeg",
     "layout-cytoscape",
+    "layout-dagre",
     "layout-elk",
     "markdown",
     "native-fonts",
@@ -358,6 +360,7 @@ png = ["svg", "dep:merman-render", "merman/png", "system-fonts"]
 jpeg = ["svg", "dep:merman-render", "merman/jpeg", "system-fonts"]
 pdf = ["svg", "dep:merman-render", "merman/pdf", "system-fonts"]
 layout-cytoscape = ["svg", "merman/layout-cytoscape"]
+layout-dagre = ["svg", "merman/layout-dagre"]
 layout-elk = ["svg", "merman/layout-elk"]
 layout-shoal = ["svg", "merman/layout-shoal"]
 math = ["svg", "merman/math"]
@@ -449,6 +452,7 @@ required-features = [
     "jpeg",
     "pdf",
     "layout-cytoscape",
+    "layout-dagre",
     "layout-elk",
     "math",
     "icons",
@@ -472,6 +476,7 @@ required-features = [
     "jpeg",
     "pdf",
     "layout-cytoscape",
+    "layout-dagre",
     "layout-elk",
     "math",
     "icons",
@@ -501,6 +506,7 @@ required-features = [
     "png",
     "pdf",
     "layout-cytoscape",
+    "layout-dagre",
     "icons",
     "markdown",
     "network-icons",
@@ -518,6 +524,7 @@ required-features = [
     "jpeg",
     "pdf",
     "layout-cytoscape",
+    "layout-dagre",
     "layout-elk",
     "icons",
     "markdown",
@@ -536,6 +543,7 @@ required-features = [
     "jpeg",
     "pdf",
     "layout-cytoscape",
+    "layout-dagre",
     "layout-elk",
     "icons",
     "markdown",

@@ -26,6 +26,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 pub(crate) mod config;
+#[cfg(feature = "layout-dagre")]
 mod dagre;
 #[cfg(feature = "layout-elk")]
 mod elk_terminals;
@@ -35,7 +36,9 @@ pub(crate) mod node_binding;
 pub(crate) mod shoal;
 pub(crate) use self::config::ClassRenderConfig;
 #[doc(hidden)]
+#[cfg(feature = "layout-dagre")]
 pub use self::dagre::debug_build_class_diagram_dagre_graph;
+#[cfg(feature = "layout-dagre")]
 pub(crate) use self::dagre::layout as layout_class_diagram_typed_with_config;
 pub(crate) use node_binding::{ClassInterfaceVisualBinding, ClassNodeVisualPlan};
 mod theme;

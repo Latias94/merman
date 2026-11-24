@@ -1204,6 +1204,10 @@ mod tests {
             expected_layout_cytoscape
         );
         assert_eq!(
+            capabilities.has_capability("layout-dagre"),
+            cfg!(feature = "layout-dagre")
+        );
+        assert_eq!(
             capabilities.has_capability("layout-elk"),
             expected_layout_elk
         );

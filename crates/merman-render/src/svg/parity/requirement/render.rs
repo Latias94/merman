@@ -965,45 +965,43 @@ pub(crate) fn render_requirement_diagram_svg_model(
             .ok_or_else(|| Error::InvalidModel {
                 message: format!("missing prepared Requirement node plan for {}", n.id),
             })?;
-        if matches!(
-            prepared_node,
-            crate::requirement::RequirementNodeRenderPlan::EdgeLabelAnchor
-        ) {
-            let _ = write!(
-                &mut out,
-                r#"<g class="label edgeLabel" id="{id}" transform="translate({cx}, {cy})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate(0, 0)"><rect/>"#,
-                id = escape_xml(&n.id),
-                cx = fmt(cx),
-                cy = fmt(cy),
-            );
-            if render_settings.html_labels {
-                mk_label_foreign_object(
+        use crate::requirement::RequirementNodeRenderPlan;
+        let prepared_node = match prepared_node {
+            RequirementNodeRenderPlan::Semantic(plan) => plan,
+            #[cfg(feature = "layout-dagre")]
+            RequirementNodeRenderPlan::EdgeLabelAnchor => {
+                let _ = write!(
                     &mut out,
-                    LabelForeignObject {
-                        html: "",
-                        width: 0.0,
-                        height: 0.0,
-                        span_class: "nodeLabel",
-                        span_style: None,
-                        div_class: None,
-                        div_style_prefix: None,
-                        max_width_px: 10,
-                        text_align: "center",
-                    },
+                    r#"<g class="label edgeLabel" id="{id}" transform="translate({cx}, {cy})"><rect width="0.1" height="0.1"/><g class="label" style="" transform="translate(0, 0)"><rect/>"#,
+                    id = escape_xml(&n.id),
+                    cx = fmt(cx),
+                    cy = fmt(cy),
                 );
-            } else {
-                out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
-                super::super::label::write_svg_text_markdown_from_create_text_source(
-                    &mut out, "", true,
-                );
-                out.push_str("</g>");
+                if render_settings.html_labels {
+                    mk_label_foreign_object(
+                        &mut out,
+                        LabelForeignObject {
+                            html: "",
+                            width: 0.0,
+                            height: 0.0,
+                            span_class: "nodeLabel",
+                            span_style: None,
+                            div_class: None,
+                            div_style_prefix: None,
+                            max_width_px: 10,
+                            text_align: "center",
+                        },
+                    );
+                } else {
+                    out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
+                    super::super::label::write_svg_text_markdown_from_create_text_source(
+                        &mut out, "", true,
+                    );
+                    out.push_str("</g>");
+                }
+                out.push_str("</g></g>");
+                continue;
             }
-            out.push_str("</g></g>");
-            continue;
-        }
-        let crate::requirement::RequirementNodeRenderPlan::Semantic(prepared_node) = prepared_node
-        else {
-            unreachable!("edge label anchors return before semantic rendering");
         };
         let rendered_node = label_measurements
             .node_plan_for_render(prepared_node)
@@ -2311,6 +2309,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_self_loop_preserves_pinned_segment_identity_and_dom() {
         let model = RequirementDiagramModel {

@@ -147,6 +147,7 @@ fn has_native_sdk_operation_features() -> bool {
         feature = "jpeg",
         feature = "pdf",
         feature = "layout-cytoscape",
+        feature = "layout-dagre",
         feature = "layout-elk",
         feature = "math",
         feature = "native-runtime",

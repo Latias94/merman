@@ -13,6 +13,9 @@ compile_error!("the Node candidates must be built with the direct static SVG fea
 #[cfg(not(feature = "layout-cytoscape"))]
 compile_error!("the Node candidates require the static layout-cytoscape capability recipe");
 
+#[cfg(not(feature = "layout-dagre"))]
+compile_error!("the Node candidates require the static layout-dagre capability recipe");
+
 #[cfg(not(feature = "layout-elk"))]
 compile_error!("the Node candidates require the static layout-elk capability recipe");
 

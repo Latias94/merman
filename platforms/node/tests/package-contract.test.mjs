@@ -186,7 +186,7 @@ test("candidate recipes pin the approved napi baseline and an explicit Node WASM
   assert.deepEqual(recipes.capability_recipe, {
     descriptor: "capabilities/feature-surface-v1.json",
     target: "native",
-    capabilities: ["layout-cytoscape", "layout-elk", "math", "svg"],
+    capabilities: ["layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
   });
   assert.equal(recipes.cargo.default_features, false);
   assert.deepEqual(recipes.cargo.features, ["all-diagrams"]);

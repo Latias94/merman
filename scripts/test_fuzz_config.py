@@ -247,7 +247,7 @@ class FuzzConfigTests(unittest.TestCase):
         self.assertEqual(features["editor-facts"], ["merman?/editor-facts"])
         self.assertEqual(set(features["render"]), {
             "parse", "svg", "merman/svg", "merman/layout-cytoscape",
-            "merman/layout-elk", "merman/math",
+            "merman/layout-dagre", "merman/layout-elk", "merman/math",
         })
         self.assertEqual(features["ffi"], ["dep:merman-ffi"])
         dependencies = manifest["dependencies"]
@@ -260,7 +260,7 @@ class FuzzConfigTests(unittest.TestCase):
             self.assertEqual(dependencies[name].get("features", []), [])
         self.assertEqual(set(dependencies["merman-ffi"]["features"]), {
             "all-diagrams", "analysis", "fixes", "ascii", "svg", "png", "jpeg",
-            "pdf", "layout-cytoscape", "layout-elk", "math", "native-runtime",
+            "pdf", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "native-runtime",
         })
 
     def test_matrix_checks_and_sanitizer_runs_use_the_same_recipe(self) -> None:

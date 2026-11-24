@@ -604,6 +604,7 @@ pub(crate) fn layout_mindmap_diagram_typed_with_work_meter(
 
     let layout = match backend {
         GraphLayoutBackend::Swimlane => registered::swimlane(model, nodes, config, work_meter),
+        #[cfg(feature = "layout-dagre")]
         GraphLayoutBackend::Dagre => registered::dagre(model, nodes, effective_config, &mut work),
         #[cfg(feature = "layout-elk")]
         GraphLayoutBackend::Elk(algorithm) => registered::elk(

@@ -26,7 +26,7 @@ export async function exercise(realm) {
   const source = "flowchart TD\nA[Start] --> B[Done]";
   const operationsStarted = performance.now();
   if (id === "full" || id === "render") {
-    for (const capability of ["svg", "math", "layout-cytoscape", "layout-elk"]) {
+    for (const capability of ["svg", "math", "layout-cytoscape", "layout-dagre", "layout-elk"]) {
       require(capabilities.includes(capability), `Missing ${capability} capability`);
     }
     const options = {
@@ -40,7 +40,12 @@ export async function exercise(realm) {
     output.mathSvg = api.renderSvg('flowchart TD\nA["$$x^2$$"] --> B[Done]', options);
     output.firstMathRenderMs = performance.now() - renderStarted;
     output.elkSvg = api.renderSvg(source, options);
-    operations.push("svg-plan-json:elk", "svg:math", "svg:elk");
+    const dagreOptions = { ...options, site_config: { ...options.site_config, layout: "dagre" } };
+    const dagrePlan = api.svgPlanJson(source, dagreOptions);
+    require(dagrePlan.ready && dagrePlan.required_capability_ids.includes("layout-dagre"),
+      "Explicit Dagre plan is not executable");
+    output.dagreSvg = api.renderSvg(source, dagreOptions);
+    operations.push("svg-plan-json:elk", "svg:math", "svg:elk", "svg-plan-json:dagre", "svg:dagre");
   } else if (id === "analysis") {
     require(capabilities.includes("analysis") && !capabilities.includes("svg"),
       "Expected the independent analysis package");

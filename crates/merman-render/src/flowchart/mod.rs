@@ -3,6 +3,7 @@ pub(crate) mod bpmn;
 mod class_style;
 mod compatibility;
 mod config;
+#[cfg(feature = "layout-dagre")]
 pub(crate) mod dagre;
 mod edge_label_padding;
 mod edge_occurrence;

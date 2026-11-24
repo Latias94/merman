@@ -27,6 +27,7 @@ fn edge(model: &MindmapEdgeModel, points: Vec<LayoutPoint>) -> LayoutEdge {
     }
 }
 
+#[cfg(feature = "layout-dagre")]
 pub(super) fn dagre(
     model: &MindmapModel,
     mut nodes: Vec<LayoutNode>,

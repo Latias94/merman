@@ -19,7 +19,8 @@ pub(crate) enum GraphLayoutBackend {
 impl GraphLayoutBackend {
     pub(crate) const fn required_capability(self) -> Option<RenderCapability> {
         match self {
-            Self::Native | Self::Swimlane | Self::TidyTree | Self::Dagre => None,
+            Self::Native | Self::Swimlane | Self::TidyTree => None,
+            Self::Dagre => Some(RenderCapability::LayoutDagre),
             Self::Elk(_) => Some(RenderCapability::LayoutElk),
             Self::CoseBilkent => Some(RenderCapability::LayoutCytoscape),
             Self::Shoal => Some(RenderCapability::LayoutShoal),
@@ -155,8 +156,14 @@ pub(crate) fn resolve(
         | DiagramFamilyId::REQUIREMENT
         | DiagramFamilyId::STATE
         | DiagramFamilyId::USECASE => match elk {
-            Some(algorithm) if crate::layout_elk_available() => Backend::Elk(algorithm),
-            _ if requested == "cose-bilkent" && crate::layout_cytoscape_available() => {
+            Some(algorithm)
+                if crate::layout_elk_available() || !crate::layout_dagre_available() =>
+            {
+                Backend::Elk(algorithm)
+            }
+            _ if requested == "cose-bilkent"
+                && (crate::layout_cytoscape_available() || !crate::layout_dagre_available()) =>
+            {
                 Backend::CoseBilkent
             }
             _ => Backend::Dagre,
@@ -191,7 +198,7 @@ mod tests {
             ("elk.box", ElkRootAlgorithm::Box),
             ("elk.rectpacking", ElkRootAlgorithm::Rectpacking),
         ] {
-            let expected = if crate::layout_elk_available() {
+            let expected = if crate::layout_elk_available() || !crate::layout_dagre_available() {
                 Backend::Elk(algorithm)
             } else {
                 Backend::Dagre
@@ -233,9 +240,14 @@ mod tests {
             assert!(
                 matches!(cose.validate_rootless_graph(), Err(Error::InvalidModel { message }) if message.contains("Root node is required"))
             );
-        } else {
+        } else if crate::layout_dagre_available() {
             assert_eq!(cose, Backend::Dagre);
             cose.validate_rootless_graph().unwrap();
+        } else {
+            assert_eq!(
+                cose.required_capability(),
+                Some(RenderCapability::LayoutCytoscape)
+            );
         }
     }
 }

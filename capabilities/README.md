@@ -81,7 +81,7 @@ The current main-line Android, Apple, Python, and Flutter artifact profiles sele
 and one shared native capability set through these Cargo features:
 
 ```text
-all-diagrams,analysis,ascii,fixes,layout-cytoscape,layout-elk,math,svg
+all-diagrams,analysis,ascii,fixes,layout-cytoscape,layout-dagre,layout-elk,math,svg
 ```
 
 Those products omit `png`, `jpeg`, `pdf`, and `native-runtime`; selecting math does not add

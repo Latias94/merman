@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::sync::{Arc, OnceLock};
 
 mod config;
-// The Dagre adapter and its dispatch are the points to gate with layout-dagre.
+#[cfg(feature = "layout-dagre")]
 mod dagre;
 #[cfg(feature = "layout-elk")]
 mod elk;
@@ -1437,6 +1437,7 @@ pub(crate) fn layout_er_diagram_typed(
     backend.validate_rootless_graph()?;
 
     match backend {
+        #[cfg(feature = "layout-dagre")]
         GraphLayoutBackend::Dagre => dagre::layout(
             model,
             measurer,

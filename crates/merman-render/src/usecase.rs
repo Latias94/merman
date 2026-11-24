@@ -10,6 +10,7 @@ use serde_json::Value;
 use std::sync::Arc;
 
 pub(crate) mod actor;
+#[cfg(feature = "layout-dagre")]
 mod dagre;
 mod layout;
 mod measure;
@@ -336,16 +337,17 @@ pub(crate) fn prepare_usecase_diagram(
         });
     }
     let (mut layout, route_contract) = match backend {
+        #[cfg(feature = "layout-dagre")]
         GraphLayoutBackend::Dagre => {
             dagre::expand_self_loops(&mut nodes, &mut edges, &css_binding.generic_font, &mut work)?;
             theme_plan.retain_edge_terminals(&edges, &mut work)?;
-            (
+            Ok((
                 dagre::layout(model, config_value, &nodes, &mut edges, &mut work)?,
                 RouteContract::DagreParity,
-            )
+            ))
         }
         #[cfg(feature = "layout-elk")]
-        GraphLayoutBackend::Elk(algorithm) => (
+        GraphLayoutBackend::Elk(algorithm) => Ok((
             layout::elk_layout(
                 model,
                 config_value,
@@ -356,9 +358,9 @@ pub(crate) fn prepare_usecase_diagram(
                 execution.elk_operation_seed(),
             )?,
             RouteContract::ElkParity,
-        ),
-        _ => return Err(backend.unavailable_for(execution.family_id().as_str())),
-    };
+        )),
+        _ => Err(backend.unavailable_for(execution.family_id().as_str())),
+    }?;
     let edge_paths = layout::prepare_edge_paths(
         &mut layout,
         &nodes,

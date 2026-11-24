@@ -4,7 +4,7 @@
   "capability_authority": {
     "path": "capabilities/feature-surface-v1.json",
     "schema_version": 1,
-    "digest": "sha256:e133cab82e0ce4916729079d0c673e8d871165dd89384e7d441caef276d0caad"
+    "digest": "sha256:5b115a3268501bd91daff3ff963b213e8e1d204f123fdafd87e059b195cf7af5"
   },
   "profiles": [
     {
@@ -16,7 +16,7 @@
         "manifest": "crates/merman-android-jni/Cargo.toml",
         "profile": "native-distribution",
         "default_features": false,
-        "features": ["all-diagrams", "analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
+        "features": ["all-diagrams", "analysis", "ascii", "fixes", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
         "target": {
           "name": "merman_android_jni",
           "kinds": ["cdylib"],
@@ -33,8 +33,8 @@
       },
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
-        "capabilities": ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
-        "runtime_ids": ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
+        "capabilities": ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
+        "runtime_ids": ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
         "outputs": ["ascii", "svg"]
       }
     },
@@ -47,7 +47,7 @@
         "manifest": "crates/merman-uniffi/Cargo.toml",
         "profile": "native-sdk",
         "default_features": false,
-        "features": ["all-diagrams", "analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
+        "features": ["all-diagrams", "analysis", "ascii", "fixes", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
         "target": {
           "name": "merman_uniffi",
           "kinds": ["cdylib", "rlib", "staticlib"],
@@ -67,8 +67,8 @@
       },
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
-        "capabilities": ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
-        "runtime_ids": ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
+        "capabilities": ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
+        "runtime_ids": ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
         "outputs": ["ascii", "svg"]
       }
     },
@@ -81,7 +81,7 @@
         "manifest": "crates/merman-ffi/Cargo.toml",
         "profile": "native-sdk",
         "default_features": false,
-        "features": ["all-diagrams", "analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-runtime", "pdf", "png", "svg", "system-fonts"],
+        "features": ["all-diagrams", "analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "native-runtime", "pdf", "png", "svg", "system-fonts"],
         "target": {
           "name": "merman_ffi",
           "kinds": ["cdylib", "rlib", "staticlib"],
@@ -92,8 +92,8 @@
       },
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
-        "capabilities": ["analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-fonts", "pdf", "png", "svg", "system-clock", "system-random", "system-timezone"],
-        "runtime_ids": ["analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-fonts", "pdf", "png", "svg", "system-clock", "system-random", "system-timezone"],
+        "capabilities": ["analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "native-fonts", "pdf", "png", "svg", "system-clock", "system-random", "system-timezone"],
+        "runtime_ids": ["analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "native-fonts", "pdf", "png", "svg", "system-clock", "system-random", "system-timezone"],
         "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
       }
     },
@@ -137,7 +137,7 @@
         "manifest": "crates/merman-cli/Cargo.toml",
         "profile": "release",
         "default_features": false,
-        "features": ["diagram-flowchart", "native-fonts"],
+        "features": ["diagram-flowchart", "layout-dagre", "native-fonts"],
         "target": {
           "name": "merman-cli",
           "kinds": ["bin"],
@@ -148,8 +148,8 @@
       },
       "expected": {
         "diagram_families": ["flowchart"],
-        "capabilities": ["native-fonts", "svg"],
-        "runtime_ids": ["native-fonts", "svg"],
+        "capabilities": ["layout-dagre", "native-fonts", "svg"],
+        "runtime_ids": ["layout-dagre", "native-fonts", "svg"],
         "outputs": ["svg"]
       }
     },
@@ -162,7 +162,7 @@
         "manifest": "crates/merman-cli/Cargo.toml",
         "profile": "dist",
         "default_features": false,
-        "features": ["all-diagrams", "analysis", "ascii", "fixes", "icons", "jpeg", "layout-cytoscape", "layout-elk", "markdown", "math", "native-fonts", "network-icons", "parallel-markdown", "pdf", "platform-system-font-default", "png", "rustdoc", "shell-completions", "svg", "system-clock", "system-fonts", "system-random", "system-timezone", "system-timing"],
+        "features": ["all-diagrams", "analysis", "ascii", "fixes", "icons", "jpeg", "layout-cytoscape", "layout-dagre", "layout-elk", "markdown", "math", "native-fonts", "network-icons", "parallel-markdown", "pdf", "platform-system-font-default", "png", "rustdoc", "shell-completions", "svg", "system-clock", "system-fonts", "system-random", "system-timezone", "system-timing"],
         "target": {
           "name": "merman-cli",
           "kinds": ["bin"],
@@ -179,8 +179,8 @@
       },
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
-        "capabilities": ["analysis", "ascii", "fixes", "icons", "jpeg", "layout-cytoscape", "layout-elk", "markdown", "math", "native-fonts", "network-icons", "parallel-markdown", "pdf", "png", "rustdoc", "shell-completions", "svg", "system-clock", "system-random", "system-timezone", "system-timing"],
-        "runtime_ids": ["analysis", "ascii", "fixes", "icons", "jpeg", "layout-cytoscape", "layout-elk", "markdown", "math", "native-fonts", "network-icons", "parallel-markdown", "pdf", "png", "rustdoc", "shell-completions", "svg", "system-clock", "system-random", "system-timezone", "system-timing"],
+        "capabilities": ["analysis", "ascii", "fixes", "icons", "jpeg", "layout-cytoscape", "layout-dagre", "layout-elk", "markdown", "math", "native-fonts", "network-icons", "parallel-markdown", "pdf", "png", "rustdoc", "shell-completions", "svg", "system-clock", "system-random", "system-timezone", "system-timing"],
+        "runtime_ids": ["analysis", "ascii", "fixes", "icons", "jpeg", "layout-cytoscape", "layout-dagre", "layout-elk", "markdown", "math", "native-fonts", "network-icons", "parallel-markdown", "pdf", "png", "rustdoc", "shell-completions", "svg", "system-clock", "system-random", "system-timezone", "system-timing"],
         "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
       }
     },
@@ -193,7 +193,7 @@
         "manifest": "crates/merman-ffi/Cargo.toml",
         "profile": "native-distribution",
         "default_features": false,
-        "features": ["all-diagrams", "analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
+        "features": ["all-diagrams", "analysis", "ascii", "fixes", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
         "target": {
           "name": "merman_ffi",
           "kinds": ["cdylib", "rlib", "staticlib"],
@@ -211,8 +211,8 @@
       },
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
-        "capabilities": ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
-        "runtime_ids": ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
+        "capabilities": ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
+        "runtime_ids": ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
         "outputs": ["ascii", "svg"]
       }
     },
@@ -225,7 +225,7 @@
         "manifest": "crates/merman-ffi/Cargo.toml",
         "profile": "native-distribution",
         "default_features": false,
-        "features": ["all-diagrams", "analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
+        "features": ["all-diagrams", "analysis", "ascii", "fixes", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
         "target": {
           "name": "merman_ffi",
           "kinds": ["cdylib", "rlib", "staticlib"],
@@ -245,8 +245,8 @@
       },
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
-        "capabilities": ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
-        "runtime_ids": ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
+        "capabilities": ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
+        "runtime_ids": ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
         "outputs": ["ascii", "svg"]
       }
     },
@@ -259,7 +259,7 @@
         "manifest": "crates/merman-ffi/Cargo.toml",
         "profile": "native-distribution",
         "default_features": false,
-        "features": ["all-diagrams", "analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
+        "features": ["all-diagrams", "analysis", "ascii", "fixes", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
         "target": {
           "name": "merman_ffi",
           "kinds": ["cdylib", "rlib", "staticlib"],
@@ -277,8 +277,8 @@
       },
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
-        "capabilities": ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
-        "runtime_ids": ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
+        "capabilities": ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
+        "runtime_ids": ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
         "outputs": ["ascii", "svg"]
       }
     },
@@ -347,7 +347,7 @@
         "manifest": "crates/merman-uniffi/Cargo.toml",
         "profile": "native-distribution",
         "default_features": false,
-        "features": ["all-diagrams", "analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
+        "features": ["all-diagrams", "analysis", "ascii", "fixes", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
         "target": {
           "name": "merman_uniffi",
           "kinds": ["cdylib", "rlib", "staticlib"],
@@ -367,8 +367,8 @@
       },
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
-        "capabilities": ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
-        "runtime_ids": ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
+        "capabilities": ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
+        "runtime_ids": ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
         "outputs": ["ascii", "svg"]
       }
     },
@@ -381,7 +381,7 @@
         "manifest": "crates/merman/Cargo.toml",
         "profile": "release",
         "default_features": false,
-        "features": ["all-diagrams", "analysis", "ascii", "editor", "fixes", "jpeg", "layout-cytoscape", "layout-elk", "layout-shoal", "math", "pdf", "png", "svg", "system-clock", "system-fonts", "system-random", "system-timezone", "system-timing"],
+        "features": ["all-diagrams", "analysis", "ascii", "editor", "fixes", "jpeg", "layout-cytoscape", "layout-dagre", "layout-elk", "layout-shoal", "math", "pdf", "png", "svg", "system-clock", "system-fonts", "system-random", "system-timezone", "system-timing"],
         "target": {
           "name": "merman",
           "kinds": ["lib"],
@@ -392,8 +392,8 @@
       },
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
-        "capabilities": ["analysis", "ascii", "editor", "fixes", "jpeg", "layout-cytoscape", "layout-elk", "layout-shoal", "math", "native-fonts", "pdf", "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"],
-        "runtime_ids": ["analysis", "ascii", "editor", "fixes", "jpeg", "layout-cytoscape", "layout-elk", "layout-shoal", "math", "native-fonts", "pdf", "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"],
+        "capabilities": ["analysis", "ascii", "editor", "fixes", "jpeg", "layout-cytoscape", "layout-dagre", "layout-elk", "layout-shoal", "math", "native-fonts", "pdf", "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"],
+        "runtime_ids": ["analysis", "ascii", "editor", "fixes", "jpeg", "layout-cytoscape", "layout-dagre", "layout-elk", "layout-shoal", "math", "native-fonts", "pdf", "png", "svg", "system-clock", "system-random", "system-timezone", "system-timing"],
         "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
       }
     },
@@ -456,7 +456,7 @@
         "manifest": "crates/merman-bindings-core/Cargo.toml",
         "profile": "release",
         "default_features": false,
-        "features": ["all-diagrams", "analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-runtime", "pdf", "png", "svg", "system-fonts"],
+        "features": ["all-diagrams", "analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "native-runtime", "pdf", "png", "svg", "system-fonts"],
         "target": {
           "name": "merman_bindings_core",
           "kinds": ["lib"],
@@ -467,8 +467,8 @@
       },
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
-        "capabilities": ["analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-fonts", "pdf", "png", "svg", "system-clock", "system-random", "system-timezone"],
-        "runtime_ids": ["analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-fonts", "pdf", "png", "svg", "system-clock", "system-random", "system-timezone"],
+        "capabilities": ["analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "native-fonts", "pdf", "png", "svg", "system-clock", "system-random", "system-timezone"],
+        "runtime_ids": ["analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "native-fonts", "pdf", "png", "svg", "system-clock", "system-random", "system-timezone"],
         "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
       }
     },
@@ -781,7 +781,7 @@
         "manifest": "crates/merman/Cargo.toml",
         "profile": "release",
         "default_features": false,
-        "features": ["all-diagrams", "analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "layout-elk", "math", "pdf", "png", "svg", "system-clock", "system-fonts", "system-random", "system-timezone"],
+        "features": ["all-diagrams", "analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "pdf", "png", "svg", "system-clock", "system-fonts", "system-random", "system-timezone"],
         "target": {
           "name": "merman",
           "kinds": ["lib"],
@@ -792,8 +792,8 @@
       },
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
-        "capabilities": ["analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-fonts", "pdf", "png", "svg", "system-clock", "system-random", "system-timezone"],
-        "runtime_ids": ["analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-fonts", "pdf", "png", "svg", "system-clock", "system-random", "system-timezone"],
+        "capabilities": ["analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "native-fonts", "pdf", "png", "svg", "system-clock", "system-random", "system-timezone"],
+        "runtime_ids": ["analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "native-fonts", "pdf", "png", "svg", "system-clock", "system-random", "system-timezone"],
         "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
       }
     },
@@ -806,7 +806,7 @@
         "manifest": "crates/merman/Cargo.toml",
         "profile": "release",
         "default_features": false,
-        "features": ["all-diagrams", "layout-cytoscape", "layout-elk", "svg", "system-clock", "system-random", "system-timezone", "system-timing"],
+        "features": ["all-diagrams", "layout-cytoscape", "layout-dagre", "layout-elk", "svg", "system-clock", "system-random", "system-timezone", "system-timing"],
         "target": {
           "name": "merman",
           "kinds": ["lib"],
@@ -818,11 +818,11 @@
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": [
-          "layout-cytoscape", "layout-elk", "svg", "system-clock", "system-random",
+          "layout-cytoscape", "layout-dagre", "layout-elk", "svg", "system-clock", "system-random",
           "system-timezone", "system-timing"
         ],
         "runtime_ids": [
-          "layout-cytoscape", "layout-elk", "svg", "system-clock", "system-random",
+          "layout-cytoscape", "layout-dagre", "layout-elk", "svg", "system-clock", "system-random",
           "system-timezone", "system-timing"
         ],
         "outputs": ["svg"]
@@ -837,7 +837,7 @@
         "manifest": "crates/merman-render/Cargo.toml",
         "profile": "release",
         "default_features": false,
-        "features": ["all-diagrams", "layout-cytoscape", "layout-elk", "system-clock", "system-random", "system-timezone", "system-timing"],
+        "features": ["all-diagrams", "layout-cytoscape", "layout-dagre", "layout-elk", "system-clock", "system-random", "system-timezone", "system-timing"],
         "target": {
           "name": "merman_render",
           "kinds": ["lib"],
@@ -849,11 +849,11 @@
       "expected": {
         "diagram_families": [],
         "capabilities": [
-          "layout-cytoscape", "layout-elk", "svg", "system-clock", "system-random",
+          "layout-cytoscape", "layout-dagre", "layout-elk", "svg", "system-clock", "system-random",
           "system-timezone", "system-timing"
         ],
         "runtime_ids": [
-          "layout-cytoscape", "layout-elk", "svg", "system-clock", "system-random",
+          "layout-cytoscape", "layout-dagre", "layout-elk", "svg", "system-clock", "system-random",
           "system-timezone", "system-timing"
         ],
         "outputs": ["svg"]
@@ -861,14 +861,14 @@
     },
     {
       "id": "rust-static-svg",
-      "description": "Static SVG facade build with explicit Cytoscape and ELK closures; without math or compiled system adapters.",
+      "description": "Static SVG facade build with explicit Cytoscape, Dagre, and ELK support; without math or compiled system adapters.",
       "semantic_target": "native",
       "cargo": {
         "package": "merman",
         "manifest": "crates/merman/Cargo.toml",
         "profile": "release",
         "default_features": false,
-        "features": ["all-diagrams", "layout-cytoscape", "layout-elk", "svg"],
+        "features": ["all-diagrams", "layout-cytoscape", "layout-dagre", "layout-elk", "svg"],
         "target": {
           "name": "merman",
           "kinds": ["lib"],
@@ -879,8 +879,8 @@
       },
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
-        "capabilities": ["layout-cytoscape", "layout-elk", "svg"],
-        "runtime_ids": ["layout-cytoscape", "layout-elk", "svg"],
+        "capabilities": ["layout-cytoscape", "layout-dagre", "layout-elk", "svg"],
+        "runtime_ids": ["layout-cytoscape", "layout-dagre", "layout-elk", "svg"],
         "outputs": ["svg"]
       }
     },
@@ -911,14 +911,14 @@
     },
     {
       "id": "rustdoc-static-svg",
-      "description": "Deterministic static-SVG rustdoc proc-macro build with explicit Cytoscape and ELK closures; math is opt-in.",
+      "description": "Deterministic static-SVG rustdoc proc-macro build with explicit Cytoscape, Dagre, and ELK support; math is opt-in.",
       "semantic_target": "native",
       "cargo": {
         "package": "merman-rustdoc",
         "manifest": "crates/merman-rustdoc/Cargo.toml",
         "profile": "release",
         "default_features": false,
-        "features": ["all-diagrams", "layout-cytoscape", "layout-elk", "svg"],
+        "features": ["all-diagrams", "layout-cytoscape", "layout-dagre", "layout-elk", "svg"],
         "target": {
           "name": "merman_rustdoc",
           "kinds": ["proc-macro"],
@@ -929,8 +929,8 @@
       },
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
-        "capabilities": ["layout-cytoscape", "layout-elk", "svg"],
-        "runtime_ids": ["layout-cytoscape", "layout-elk", "svg"],
+        "capabilities": ["layout-cytoscape", "layout-dagre", "layout-elk", "svg"],
+        "runtime_ids": ["layout-cytoscape", "layout-dagre", "layout-elk", "svg"],
         "outputs": ["svg"]
       }
     },
@@ -943,7 +943,7 @@
         "manifest": "crates/merman-ffi/Cargo.toml",
         "profile": "native-sdk",
         "default_features": false,
-        "features": ["all-diagrams", "analysis", "ascii", "bundled-fonts", "fixes", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-fonts", "pdf", "png", "svg"],
+        "features": ["all-diagrams", "analysis", "ascii", "bundled-fonts", "fixes", "jpeg", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "native-fonts", "pdf", "png", "svg"],
         "target": {
           "name": "merman_ffi",
           "kinds": ["cdylib", "rlib", "staticlib"],
@@ -957,8 +957,8 @@
       },
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
-        "capabilities": ["analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-fonts", "pdf", "png", "svg"],
-        "runtime_ids": ["analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "layout-elk", "math", "native-fonts", "pdf", "png", "svg"],
+        "capabilities": ["analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "native-fonts", "pdf", "png", "svg"],
+        "runtime_ids": ["analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "native-fonts", "pdf", "png", "svg"],
         "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
       }
     },
@@ -971,7 +971,7 @@
         "manifest": "crates/merman-ffi/Cargo.toml",
         "profile": "native-sdk",
         "default_features": false,
-        "features": ["all-diagrams", "analysis", "ascii", "bundled-fonts", "fixes", "jpeg", "layout-cytoscape", "math", "native-fonts", "pdf", "png", "svg"],
+        "features": ["all-diagrams", "analysis", "ascii", "bundled-fonts", "fixes", "jpeg", "layout-cytoscape", "layout-dagre", "math", "native-fonts", "pdf", "png", "svg"],
         "target": {
           "name": "merman_ffi",
           "kinds": ["cdylib", "rlib", "staticlib"],
@@ -985,8 +985,8 @@
       },
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
-        "capabilities": ["analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "math", "native-fonts", "pdf", "png", "svg"],
-        "runtime_ids": ["analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "math", "native-fonts", "pdf", "png", "svg"],
+        "capabilities": ["analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "layout-dagre", "math", "native-fonts", "pdf", "png", "svg"],
+        "runtime_ids": ["analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "layout-dagre", "math", "native-fonts", "pdf", "png", "svg"],
         "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
       }
     },
@@ -999,7 +999,7 @@
         "manifest": "crates/merman-ffi/Cargo.toml",
         "profile": "native-sdk",
         "default_features": false,
-        "features": ["all-diagrams", "analysis", "ascii", "bundled-fonts", "fixes", "jpeg", "layout-cytoscape", "native-fonts", "pdf", "png", "svg"],
+        "features": ["all-diagrams", "analysis", "ascii", "bundled-fonts", "fixes", "jpeg", "layout-cytoscape", "layout-dagre", "native-fonts", "pdf", "png", "svg"],
         "target": {
           "name": "merman_ffi",
           "kinds": ["cdylib", "rlib", "staticlib"],
@@ -1013,8 +1013,8 @@
       },
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
-        "capabilities": ["analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "native-fonts", "pdf", "png", "svg"],
-        "runtime_ids": ["analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "native-fonts", "pdf", "png", "svg"],
+        "capabilities": ["analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "layout-dagre", "native-fonts", "pdf", "png", "svg"],
+        "runtime_ids": ["analysis", "ascii", "fixes", "jpeg", "layout-cytoscape", "layout-dagre", "native-fonts", "pdf", "png", "svg"],
         "outputs": ["ascii", "jpeg", "pdf", "png", "svg"]
       }
     },
@@ -1027,7 +1027,7 @@
         "manifest": "crates/merman-wasi/Cargo.toml",
         "profile": "wasm-size",
         "default_features": false,
-        "features": ["all-diagrams", "bundled-fonts", "layout-cytoscape", "layout-elk", "math", "native-fonts", "png", "svg"],
+        "features": ["all-diagrams", "bundled-fonts", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "native-fonts", "png", "svg"],
         "target": {
           "name": "merman_wasi",
           "kinds": ["cdylib", "rlib"],
@@ -1041,8 +1041,8 @@
       },
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
-        "capabilities": ["layout-cytoscape", "layout-elk", "math", "native-fonts", "png", "svg"],
-        "runtime_ids": ["layout-cytoscape", "layout-elk", "math", "native-fonts", "png", "svg"],
+        "capabilities": ["layout-cytoscape", "layout-dagre", "layout-elk", "math", "native-fonts", "png", "svg"],
+        "runtime_ids": ["layout-cytoscape", "layout-dagre", "layout-elk", "math", "native-fonts", "png", "svg"],
         "outputs": ["png", "svg"]
       }
     },
@@ -1055,7 +1055,7 @@
         "manifest": "crates/merman-wasi/Cargo.toml",
         "profile": "wasm-size",
         "default_features": false,
-        "features": ["all-diagrams", "bundled-fonts", "layout-cytoscape", "math", "native-fonts", "png", "svg"],
+        "features": ["all-diagrams", "bundled-fonts", "layout-cytoscape", "layout-dagre", "math", "native-fonts", "png", "svg"],
         "target": {
           "name": "merman_wasi",
           "kinds": ["cdylib", "rlib"],
@@ -1069,8 +1069,8 @@
       },
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
-        "capabilities": ["layout-cytoscape", "math", "native-fonts", "png", "svg"],
-        "runtime_ids": ["layout-cytoscape", "math", "native-fonts", "png", "svg"],
+        "capabilities": ["layout-cytoscape", "layout-dagre", "math", "native-fonts", "png", "svg"],
+        "runtime_ids": ["layout-cytoscape", "layout-dagre", "math", "native-fonts", "png", "svg"],
         "outputs": ["png", "svg"]
       }
     },
@@ -1083,7 +1083,7 @@
         "manifest": "crates/merman-wasi/Cargo.toml",
         "profile": "wasm-size",
         "default_features": false,
-        "features": ["all-diagrams", "bundled-fonts", "layout-cytoscape", "native-fonts", "png", "svg"],
+        "features": ["all-diagrams", "bundled-fonts", "layout-cytoscape", "layout-dagre", "native-fonts", "png", "svg"],
         "target": {
           "name": "merman_wasi",
           "kinds": ["cdylib", "rlib"],
@@ -1097,8 +1097,8 @@
       },
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
-        "capabilities": ["layout-cytoscape", "native-fonts", "png", "svg"],
-        "runtime_ids": ["layout-cytoscape", "native-fonts", "png", "svg"],
+        "capabilities": ["layout-cytoscape", "layout-dagre", "native-fonts", "png", "svg"],
+        "runtime_ids": ["layout-cytoscape", "layout-dagre", "native-fonts", "png", "svg"],
         "outputs": ["png", "svg"]
       }
     },
@@ -1111,7 +1111,7 @@
         "manifest": "crates/merman-typst-plugin/Cargo.toml",
         "profile": "wasm-size",
         "default_features": false,
-        "features": ["all-diagrams", "analysis", "layout-cytoscape", "layout-elk", "svg"],
+        "features": ["all-diagrams", "analysis", "layout-cytoscape", "layout-dagre", "layout-elk", "svg"],
         "target": {
           "name": "merman_typst_plugin",
           "kinds": ["cdylib", "rlib"],
@@ -1125,9 +1125,9 @@
       },
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
-        "capabilities": ["analysis", "layout-cytoscape", "layout-elk", "svg"],
+        "capabilities": ["analysis", "layout-cytoscape", "layout-dagre", "layout-elk", "svg"],
         "runtime_ids": [
-          "analysis", "layout-cytoscape", "layout-elk", "svg"
+          "analysis", "layout-cytoscape", "layout-dagre", "layout-elk", "svg"
         ],
         "outputs": ["svg"]
       }
@@ -1225,7 +1225,7 @@
         "manifest": "crates/merman-wasm/Cargo.toml",
         "profile": "wasm-size",
         "default_features": false,
-        "features": ["all-diagrams", "analysis", "ascii", "editor", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
+        "features": ["all-diagrams", "analysis", "ascii", "editor", "fixes", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
         "target": {
           "name": "merman_wasm",
           "kinds": ["cdylib", "rlib"],
@@ -1239,8 +1239,8 @@
       },
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
-        "capabilities": ["analysis", "ascii", "editor", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
-        "runtime_ids": ["analysis", "ascii", "editor", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
+        "capabilities": ["analysis", "ascii", "editor", "fixes", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
+        "runtime_ids": ["analysis", "ascii", "editor", "fixes", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
         "outputs": ["ascii", "svg"]
       }
     },
@@ -1253,7 +1253,7 @@
         "manifest": "crates/merman-wasm/Cargo.toml",
         "profile": "wasm-size",
         "default_features": false,
-        "features": ["all-diagrams", "layout-cytoscape", "layout-elk", "math", "svg"],
+        "features": ["all-diagrams", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
         "target": {
           "name": "merman_wasm",
           "kinds": ["cdylib", "rlib"],
@@ -1267,8 +1267,8 @@
       },
       "expected": {
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
-        "capabilities": ["layout-cytoscape", "layout-elk", "math", "svg"],
-        "runtime_ids": ["layout-cytoscape", "layout-elk", "math", "svg"],
+        "capabilities": ["layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
+        "runtime_ids": ["layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
         "outputs": ["svg"]
       }
     }

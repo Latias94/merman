@@ -31,9 +31,9 @@ test("checked-in Web descriptor owns complete SVG and independent task packages"
   );
   assertPackageContract("full", {
     runtimeProfile: "full",
-    features: ["all-diagrams", "analysis", "ascii", "editor", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
-    capabilities: ["analysis", "ascii", "editor", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
-    runtimeIds: ["analysis", "ascii", "editor", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
+    features: ["all-diagrams", "analysis", "ascii", "editor", "fixes", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
+    capabilities: ["analysis", "ascii", "editor", "fixes", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
+    runtimeIds: ["analysis", "ascii", "editor", "fixes", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
     outputs: ["ascii", "svg"],
   });
   assertPackageContract("editor", {
@@ -45,9 +45,9 @@ test("checked-in Web descriptor owns complete SVG and independent task packages"
   });
   assertPackageContract("render", {
     runtimeProfile: "render",
-    features: ["all-diagrams", "layout-cytoscape", "layout-elk", "math", "svg"],
-    capabilities: ["layout-cytoscape", "layout-elk", "math", "svg"],
-    runtimeIds: ["layout-cytoscape", "layout-elk", "math", "svg"],
+    features: ["all-diagrams", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
+    capabilities: ["layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
+    runtimeIds: ["layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
     outputs: ["svg"],
   });
 });

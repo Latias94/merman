@@ -131,13 +131,13 @@ inclusion, Git rollback, and migration from this attribute form.
 
 ## Choose The Renderer Closure
 
-The default features `all-diagrams`, `svg`, `layout-cytoscape`, and `layout-elk` provide all built-in families and deterministic SVG rendering with both layout engines. Math is opt-in; add `math` when diagrams contain mathematical labels. The retained `complete-svg` aggregate enables SVG and Cytoscape; `complete-svg-elk` also enables ELK. Neither aggregate enables math or selects diagram families. Users of the previously math-enabled aggregates or alpha.6's math-enabled default must enable `math` explicitly when upgrading.
+Current source defaults provide all built-in families, SVG, Dagre, ELK, and Cytoscape. Add `math` when diagrams contain mathematical labels. `complete-svg` selects SVG, Dagre, and Cytoscape, and `complete-svg-elk` adds ELK. Select math and diagram families independently of these aggregates. Users of the previously math-enabled aggregates or alpha.6's math-enabled default must enable `math` explicitly when upgrading.
 
 The default includes the EPL-2.0 ELK implementation; distributed artifacts must retain the
 corresponding notices and source provenance. It does not enable host clock, time-zone, random,
 or timing adapters. The separate `merman` facade now defaults to the same direct family/SVG/layout
 leaves, with math explicit. To omit ELK, disable default features and select the required diagram
-families plus `svg` and `layout-cytoscape`. Add `math` independently. Cargo features are additive.
+families plus `svg` and the layout leaves the diagrams need. Add `math` independently. Cargo features are additive.
 See the repository's
 [third-party notices](https://github.com/Latias94/merman/blob/main/THIRD_PARTY_NOTICES.md) for the
 source provenance and artifact obligations.
@@ -153,13 +153,14 @@ merman-rustdoc = { version = "0.11.0", default-features = false, features = ["di
 | --- | --- |
 | `svg` | Base deterministic SVG renderer |
 | `layout-cytoscape` | Architecture and other Cytoscape-backed layouts; implies `svg` |
+| `layout-dagre` | Explicit Dagre for source builds, including the ordinary graph fallback for absent ELK |
 | `layout-elk` | ELK-backed layouts; implies `svg` |
 | `math` | RaTeX math rendering; implies `svg` |
 
-For the current checkout, disable defaults and select both families and outputs explicitly:
+For the current checkout, specify the families, output, and the Dagre compatibility adapter explicitly.
 
 ```toml
-merman-rustdoc = { path = "../merman/crates/merman-rustdoc", default-features = false, features = ["svg", "diagram-flowchart"], optional = true }
+merman-rustdoc = { path = "../merman/crates/merman-rustdoc", default-features = false, features = ["svg", "diagram-flowchart", "layout-dagre"], optional = true }
 ```
 
 Use `all-diagrams` to retain the complete parser surface. Output and layout leaves do not

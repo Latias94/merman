@@ -112,7 +112,11 @@ fn widened_core_cannot_bypass_local_handlers_or_precedence() {
     }
 }
 
-#[cfg(all(feature = "diagram-flowchart", feature = "diagram-gantt"))]
+#[cfg(all(
+    feature = "diagram-flowchart",
+    feature = "diagram-gantt",
+    feature = "layout-dagre"
+))]
 #[test]
 fn selected_embedding_renders_flowchart_and_gantt() {
     let (kind, svg) =
@@ -135,22 +139,118 @@ fn flowchart_preserves_swimlane_layout_without_admitting_swimlane_language() {
 
 #[cfg(feature = "diagram-swimlane")]
 #[test]
-fn swimlane_preserves_dagre_and_elk_routes() {
-    let (kind, svg) = render("---\nconfig:\n  layout: dagre\n---\nswimlane-beta LR\nA --> B");
-    assert_eq!(kind, RenderFamilyKind::Flowchart);
+fn swimlane_header_can_use_graph_backends_or_its_own_layout() {
+    use merman_render::RenderCapability;
+
+    let (kind, svg) = render("swimlane-beta LR\nA --> B");
+    assert_eq!(kind, RenderFamilyKind::Swimlane);
     assert!(svg.contains("<svg"));
-    let parsed = parse("---\nconfig:\n  layout: elk\n---\nswimlane-beta LR\nA --> B");
-    let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let plan = family::plan_render(&parsed, &session).unwrap();
-    let expected: &[merman_render::RenderCapability] = if cfg!(feature = "layout-elk") {
-        &[merman_render::RenderCapability::LayoutElk]
+
+    let elk_available = merman_render::layout_elk_available();
+    let dagre_available = merman_render::layout_dagre_available();
+    for (layout, capability, available) in [
+        ("dagre", RenderCapability::LayoutDagre, dagre_available),
+        (
+            "elk",
+            if dagre_available && !elk_available {
+                RenderCapability::LayoutDagre
+            } else {
+                RenderCapability::LayoutElk
+            },
+            elk_available || dagre_available,
+        ),
+    ] {
+        let parsed = parse(&format!(
+            "---\nconfig:\n  layout: {layout}\n---\nswimlane-beta LR\nA --> B"
+        ));
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let plan = family::plan_render(&parsed, &session).unwrap();
+        assert_eq!(plan.required_capabilities(), &[capability]);
+        assert_eq!(plan.is_ready(), available);
+        let result = family::prepare(&parsed, &LayoutOptions::default(), session);
+        if available {
+            assert_eq!(result.unwrap().family_kind(), RenderFamilyKind::Flowchart);
+        } else {
+            assert!(
+                matches!(result, Err(Error::MissingCapability { capability: actual, .. }) if actual == capability)
+            );
+        }
+    }
+}
+
+#[cfg(feature = "diagram-flowchart")]
+#[test]
+fn flowchart_plan_and_both_graphical_outputs_share_backend_admission() {
+    use merman_render::{RenderCapability, RenderCapabilityPolicy};
+
+    let elk = merman_render::layout_elk_available();
+    let dagre = merman_render::layout_dagre_available();
+    let elk_or_fallback = if !elk && dagre {
+        RenderCapability::LayoutDagre
     } else {
-        &[]
+        RenderCapability::LayoutElk
     };
-    assert_eq!(plan.required_capabilities(), expected);
-    assert!(plan.is_ready());
-    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
-    assert_eq!(artifact.family_kind(), RenderFamilyKind::Flowchart);
+    for (layout, capability, compiled) in [
+        (None, elk_or_fallback, elk || dagre),
+        (Some("dagre"), RenderCapability::LayoutDagre, dagre),
+        (Some("elk.mrtree"), elk_or_fallback, elk || dagre),
+        (
+            Some("shoal"),
+            RenderCapability::LayoutShoal,
+            merman_render::layout_shoal_available(),
+        ),
+    ] {
+        let source = "flowchart TD\nA[Alpha] --> B[Beta]";
+        let parsed = if let Some(layout) = layout {
+            parse(&format!("---\nconfig:\n  layout: {layout}\n---\n{source}"))
+        } else {
+            parse(source)
+        };
+        for (policy, ready) in [
+            (RenderCapabilityPolicy::unrestricted(), compiled),
+            (RenderCapabilityPolicy::deny_all(), false),
+        ] {
+            let environment = RenderEnvironment::deterministic().with_capability_policy(policy);
+            let session = environment.begin_session().unwrap();
+            let plan = family::plan_render(&parsed, &session).unwrap();
+            assert_eq!(plan.required_capabilities(), &[capability]);
+            assert_eq!(
+                plan.missing_capabilities(),
+                if ready {
+                    &[][..]
+                } else {
+                    std::slice::from_ref(&capability)
+                }
+            );
+            let options = LayoutOptions::default();
+            let render = family::prepare(&parsed, &options, session);
+            let layout =
+                family::prepare_layout(&parsed, &options, environment.begin_session().unwrap());
+            if ready {
+                let svg = render
+                    .unwrap()
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .unwrap();
+                assert_eq!(svg.required_capabilities(), &[capability]);
+                assert!(svg.svg().contains("Alpha"));
+                assert!(
+                    layout
+                        .unwrap()
+                        .layout_geometry_json()
+                        .unwrap()
+                        .to_string()
+                        .contains("A")
+                );
+            } else {
+                assert!(
+                    matches!(render, Err(Error::MissingCapability { capability: actual, .. }) if actual == capability)
+                );
+                assert!(
+                    matches!(layout, Err(Error::MissingCapability { capability: actual, .. }) if actual == capability)
+                );
+            }
+        }
+    }
 }
 
 #[cfg(feature = "diagram-mindmap")]
@@ -211,7 +311,7 @@ fn custom_provenance_and_cancellation_precede_family_availability() {
     ));
 }
 
-#[cfg(feature = "diagram-agentflow")]
+#[cfg(all(feature = "diagram-agentflow", feature = "layout-dagre"))]
 #[test]
 fn agentflow_renders_with_independent_family_selection() {
     let (kind, svg) =
@@ -229,7 +329,7 @@ fn agentflow_renders_with_independent_family_selection() {
     );
 }
 
-#[cfg(feature = "diagram-usecase")]
+#[cfg(all(feature = "diagram-usecase", feature = "layout-dagre"))]
 #[test]
 fn usecase_renders_with_independent_family_selection() {
     let (kind, svg) = render(

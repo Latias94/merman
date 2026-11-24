@@ -24,7 +24,13 @@ const MINIMUM_HEADROOM_UNITS: usize = 100_000;
 const MINIMUM_HEADROOM_PERCENT: f64 = 10.0;
 const INTERACTIVE_CEILING_QUANTUM: usize = 100_000;
 const TRUSTED_NATIVE_CEILING_QUANTUM: usize = 1_000_000;
-const EXPECTED_CALIBRATION_FEATURES: [&str; 4] = ["svg", "layout-cytoscape", "layout-elk", "math"];
+const EXPECTED_CALIBRATION_FEATURES: [&str; 5] = [
+    "svg",
+    "layout-cytoscape",
+    "layout-dagre",
+    "layout-elk",
+    "math",
+];
 
 #[derive(Debug)]
 struct Arguments {
@@ -1656,6 +1662,9 @@ fn enabled_features() -> Vec<&'static str> {
     if cfg!(feature = "layout-cytoscape") {
         features.push("layout-cytoscape");
     }
+    if cfg!(feature = "layout-dagre") {
+        features.push("layout-dagre");
+    }
     if cfg!(feature = "layout-elk") {
         features.push("layout-elk");
     }
@@ -1678,7 +1687,7 @@ fn validate_calibration_features() -> Result<(), Box<dyn Error>> {
     let enabled = enabled_features();
     if enabled != EXPECTED_CALIBRATION_FEATURES {
         return Err(format!(
-            "layout calibration requires exactly `svg`, `layout-cytoscape`, `layout-elk`, and `math`; enabled={enabled:?}"
+            "layout calibration requires {EXPECTED_CALIBRATION_FEATURES:?}; enabled={enabled:?}"
         )
         .into());
     }

@@ -43,13 +43,16 @@ pub mod class;
 mod config;
 #[cfg(feature = "diagram-cynefin")]
 pub mod cynefin;
-#[cfg(any(
-    feature = "diagram-agentflow",
-    feature = "diagram-er",
-    feature = "diagram-flowchart",
-    feature = "diagram-requirement",
-    feature = "diagram-state",
-    feature = "diagram-swimlane"
+#[cfg(all(
+    feature = "layout-dagre",
+    any(
+        feature = "diagram-agentflow",
+        feature = "diagram-er",
+        feature = "diagram-flowchart",
+        feature = "diagram-requirement",
+        feature = "diagram-state",
+        feature = "diagram-swimlane"
+    )
 ))]
 mod dagre;
 pub mod diagram_theme;
@@ -649,6 +652,11 @@ pub const fn layout_cytoscape_available() -> bool {
     cfg!(feature = "layout-cytoscape")
 }
 
+/// Reports whether the Dagre layout backend is present in this compiled renderer.
+pub const fn layout_dagre_available() -> bool {
+    cfg!(feature = "layout-dagre")
+}
+
 /// Reports whether the ELK layout backend is present in this compiled renderer.
 pub const fn layout_elk_available() -> bool {
     cfg!(feature = "layout-elk")
@@ -672,6 +680,7 @@ pub enum RenderCapability {
     LayoutElk,
     Math,
     LayoutShoal,
+    LayoutDagre,
 }
 
 impl RenderCapability {
@@ -681,6 +690,7 @@ impl RenderCapability {
             Self::LayoutElk => 1 << 1,
             Self::Math => 1 << 2,
             Self::LayoutShoal => 1 << 3,
+            Self::LayoutDagre => 1 << 4,
         }
     }
 
@@ -690,6 +700,7 @@ impl RenderCapability {
             Self::LayoutElk => "layout-elk",
             Self::Math => "math",
             Self::LayoutShoal => "layout-shoal",
+            Self::LayoutDagre => "layout-dagre",
         }
     }
 }
@@ -697,7 +708,8 @@ impl RenderCapability {
 const ALL_RENDER_CAPABILITY_BITS: u8 = RenderCapability::LayoutCytoscape.bit()
     | RenderCapability::LayoutElk.bit()
     | RenderCapability::Math.bit()
-    | RenderCapability::LayoutShoal.bit();
+    | RenderCapability::LayoutShoal.bit()
+    | RenderCapability::LayoutDagre.bit();
 
 /// Operation-level permission for optional renderer capabilities.
 ///
@@ -902,6 +914,7 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+#[cfg(feature = "layout-dagre")]
 impl From<dugong::LayoutError> for Error {
     fn from(error: dugong::LayoutError) -> Self {
         Self::InvalidModel {
@@ -1349,6 +1362,7 @@ pub(crate) fn layout_class_typed_by_engine(
             )
             .map(|(layout, labels)| (layout, labels, RouteContract::ElkParity))
         }
+        #[cfg(feature = "layout-dagre")]
         GraphLayoutBackend::Dagre => class::layout_class_diagram_typed_with_config(
             model,
             effective_config,
@@ -1442,6 +1456,7 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
                 ),
             )
         }
+        #[cfg(feature = "layout-dagre")]
         GraphLayoutBackend::Dagre => flowchart::dagre::layout(
             model,
             render_label_sources,
@@ -1471,6 +1486,7 @@ mod tests {
         for (capability, stable_id) in [
             (RenderCapability::LayoutCytoscape, "layout-cytoscape"),
             (RenderCapability::LayoutElk, "layout-elk"),
+            (RenderCapability::LayoutDagre, "layout-dagre"),
             (RenderCapability::Math, "math"),
             (RenderCapability::LayoutShoal, "layout-shoal"),
         ] {
@@ -1497,6 +1513,7 @@ mod tests {
         for capability in [
             RenderCapability::LayoutCytoscape,
             RenderCapability::LayoutElk,
+            RenderCapability::LayoutDagre,
             RenderCapability::Math,
             RenderCapability::LayoutShoal,
         ] {
@@ -2279,7 +2296,7 @@ id1(Start)-->id2(Stop)
             serde_json::json!({ "layout": "shoal", "flowchart": { "layout": "dagre" } }),
         ));
         for (source, expected) in [
-            ("flowchart LR\nA --> B", None),
+            ("flowchart LR\nA --> B", Some(RenderCapability::LayoutDagre)),
             (
                 "---\nconfig:\n  layout: shoal\n---\ngraph LR\nA --> B",
                 Some(RenderCapability::LayoutShoal),
@@ -2307,7 +2324,11 @@ id1(Start)-->id2(Stop)
             ),
             (
                 "---\nconfig:\n  flowchart:\n    layout: shoal\n---\nflowchart-elk LR\nA --> B",
-                layout_elk_available().then_some(RenderCapability::LayoutElk),
+                Some(if layout_elk_available() || !layout_dagre_available() {
+                    RenderCapability::LayoutElk
+                } else {
+                    RenderCapability::LayoutDagre
+                }),
             ),
             ("sequenceDiagram\nA->>B: Hello", None),
             (

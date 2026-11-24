@@ -289,7 +289,7 @@ fn validate_catalog(
 fn validate_typst_layout_feature_closure(
     manifest: &CargoProfileManifest,
 ) -> Result<(), XtaskError> {
-    for layout_feature in ["layout-cytoscape", "layout-elk"] {
+    for layout_feature in ["layout-cytoscape", "layout-dagre", "layout-elk"] {
         let dependencies = manifest.features.get(layout_feature).ok_or_else(|| {
             profile_error(format!(
                 "Cargo feature `{layout_feature}` must exist and enable the crate `svg` feature"
@@ -505,15 +505,15 @@ mod tests {
     #[test]
     fn descriptor_rejects_a_layout_feature_that_does_not_enable_svg() {
         let manifest = valid_manifest().replace(
-            "layout-cytoscape = [\"svg\", \"merman-bindings-core/layout-cytoscape\"]",
-            "layout-cytoscape = [\"merman-bindings-core/layout-cytoscape\"]",
+            "layout-dagre = [\"svg\", \"merman-bindings-core/layout-dagre\"]",
+            "layout-dagre = [\"merman-bindings-core/layout-dagre\"]",
         );
         let error = parse_and_validate(&valid_descriptor(), &manifest).unwrap_err();
 
         assert!(
             error
                 .to_string()
-                .contains("layout-cytoscape` must enable the crate `svg` feature"),
+                .contains("layout-dagre` must enable the crate `svg` feature"),
             "{error}"
         );
     }
@@ -625,6 +625,7 @@ mod tests {
           [features]
           svg = []
           layout-cytoscape = ["svg", "merman-bindings-core/layout-cytoscape"]
+          layout-dagre = ["svg", "merman-bindings-core/layout-dagre"]
           layout-elk = ["svg", "merman-bindings-core/layout-elk"]
         "#
     }

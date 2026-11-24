@@ -36,6 +36,10 @@ CAPABILITY_SPECS = (
         "implication_ids": ("svg",),
     },
     {
+        "id": "layout-dagre",
+        "implication_ids": ("svg",),
+    },
+    {
         "id": "layout-elk",
         "implication_ids": ("svg",),
     },

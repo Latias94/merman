@@ -22,6 +22,7 @@ use std::sync::Arc;
 
 mod config;
 mod css_binding;
+#[cfg(feature = "layout-dagre")]
 mod dagre;
 #[cfg(feature = "layout-elk")]
 mod elk;
@@ -190,6 +191,7 @@ impl RequirementPreparedArtifact {
 #[derive(Debug, Clone)]
 pub(crate) enum RequirementNodeRenderPlan {
     Semantic(RequirementNodeLabelPlan),
+    #[cfg(feature = "layout-dagre")]
     EdgeLabelAnchor,
 }
 
@@ -1046,10 +1048,8 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
         text_measurer,
         &binding,
         &work_meter,
-        #[cfg(feature = "layout-shoal")]
+        #[cfg(any(feature = "layout-elk", feature = "layout-shoal"))]
         None,
-        #[cfg(feature = "layout-elk")]
-        merman_layout_elk::ElkOperationSeed::from_operation_seed(std::num::NonZeroU64::MIN),
     )
 }
 
@@ -1061,8 +1061,9 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
     text_measurer: &dyn TextMeasurer,
     css_binding: &RequirementCssBinding,
     work_meter: &std::sync::Arc<OperationWorkMeter>,
-    #[cfg(feature = "layout-shoal")] execution: Option<&crate::LayoutExecution<'_>>,
-    #[cfg(feature = "layout-elk")] operation_seed: merman_layout_elk::ElkOperationSeed,
+    #[cfg(any(feature = "layout-elk", feature = "layout-shoal"))] execution: Option<
+        &crate::LayoutExecution<'_>,
+    >,
 ) -> Result<RequirementPreparedArtifact> {
     work_meter
         .policy()
@@ -1093,9 +1094,17 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
             config.as_value(),
             text_measurer,
             algorithm,
-            operation_seed,
+            execution.map_or_else(
+                || {
+                    merman_layout_elk::ElkOperationSeed::from_operation_seed(
+                        std::num::NonZeroU64::MIN,
+                    )
+                },
+                crate::LayoutExecution::elk_operation_seed,
+            ),
             &mut work_control,
         ),
+        #[cfg(feature = "layout-dagre")]
         GraphLayoutBackend::Dagre => dagre::layout(
             &model.relationships,
             measured,

@@ -392,11 +392,11 @@ pub(super) fn prepare(
     ),
     effective_config: &PresentationConfig,
     #[cfg(feature = "layout-shoal")] canonical: bool,
-    (measurer, math_renderer): (&dyn TextMeasurer, Option<&(dyn MathRenderer + Send + Sync)>),
+    execution: &crate::LayoutExecution<'_>,
     svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
     edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
-    work_meter: &OperationWorkMeter,
 ) -> crate::Result<WorkingLayout> {
+    let work_meter = execution.work_meter_ref();
     let direction = normalize_direction(model.direction.as_deref());
     let config_view = FlowchartConfigView::new(effective_config.as_value());
     let swimlane_title_html_labels = config_view.swimlane_title_html_labels();
@@ -411,8 +411,8 @@ pub(super) fn prepare(
     let measure_ctx = MeasureContext {
         model,
         config: effective_config,
-        measurer,
-        math_renderer,
+        measurer: execution.text_measurer(),
+        math_renderer: execution.math_renderer(),
         direction,
         settings: &settings,
         title_html_labels: swimlane_title_html_labels,

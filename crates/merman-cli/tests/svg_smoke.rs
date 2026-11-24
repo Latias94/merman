@@ -177,12 +177,28 @@ fn working_set_is_rejected_before_the_svg_backend_runs() {
 fn math_labels_require_the_cli_owned_capability() {
     let output = run_with_stdin(
         &["render", "--format", "svg", "-"],
-        "flowchart TD\nA[\"$$x^2$$\"] --> B\n",
+        "sequenceDiagram\nA->>B: $$x^2$$\n",
     );
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
     assert!(stderr.contains("lacks capability `math`"), "{stderr}");
     assert!(!String::from_utf8_lossy(&output.stdout).contains("<svg"));
+}
+
+#[cfg(all(feature = "diagram-flowchart", not(feature = "layout-dagre")))]
+#[test]
+fn dagre_requires_the_cli_owned_capability() {
+    let output = run_with_stdin(
+        &["render", "--format", "svg", "-"],
+        "---\nconfig:\n  layout: dagre\n---\nflowchart TD\nA --> B\n",
+    );
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
+    assert!(
+        stderr.contains("lacks capability `layout-dagre`"),
+        "{stderr}"
+    );
+    assert!(output.stdout.is_empty());
 }
 
 #[cfg(not(feature = "math"))]

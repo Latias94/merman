@@ -261,6 +261,7 @@ mod tests {
             "system-timing",
             "fixes",
             "layout-shoal",
+            "layout-dagre",
         ]
         .into_iter()
         .enumerate()

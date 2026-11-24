@@ -2859,7 +2859,7 @@ mod tests {
         }
     }
 
-    #[cfg(all(feature = "svg", feature = "diagram-flowchart"))]
+    #[cfg(all(feature = "layout-dagre", feature = "diagram-flowchart"))]
     #[test]
     fn narrow_svg_execution_preserves_service_cancellation() {
         struct CancellingHostTextMeasurer(OperationControl);
@@ -2879,6 +2879,7 @@ mod tests {
             crate::BindingTransportKey::Rust,
         )
         .with_operations(&[OperationKey::Svg])
+        .with_supplemental_capabilities(&[crate::CapabilityKey::LayoutDagre])
         .with_constructor_services(&[crate::ConstructorServiceKey::HostTextMeasurement])
         .materialize();
         let source = b"---\nconfig:\n  layout: dagre\n---\nflowchart TD\nA[Measured by host] --> B[Cancelled]";
@@ -4062,18 +4063,19 @@ mod tests {
             operation_control: None,
         });
 
-        if cfg!(feature = "layout-elk") {
-            assert_eq!(result.unwrap().media_type, "image/svg+xml");
-        } else if merman_render::layout_elk_available() {
-            let error = result.expect_err("ambient ELK cannot widen the artifact contract");
-            assert_eq!(error.capability_id(), Some("layout-elk"));
-        } else {
-            // Mermaid falls back when its requested loader was not registered.
-            let fallback = result.expect("absent ELK falls back to the family default");
+        let (required, ready) = crate::svg_plan::expected_elk_request();
+        if !ready {
+            let error = result.expect_err("the selected layout requires an artifact capability");
+            assert_eq!(error.capability_id(), Some(required));
+            return;
+        }
+        let output = result.unwrap();
+        assert_eq!(output.media_type, "image/svg+xml");
+        if required == "layout-dagre" {
             let dagre = engine
                 .render_svg(b"---\nconfig:\n  layout: dagre\n---\nflowchart TD\n  A --> B\n")
                 .unwrap();
-            assert_eq!(fallback.data(), dagre);
+            assert_eq!(output.data(), dagre);
         }
     }
 

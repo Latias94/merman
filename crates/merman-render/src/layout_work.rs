@@ -87,6 +87,7 @@ impl OperationLayoutWorkControl {
         self.record_arithmetic_overflow()
     }
 
+    #[cfg(feature = "layout-dagre")]
     pub(crate) fn map_dugong_error(&mut self, error: impl Into<dugong::LayoutError>) -> Error {
         match error.into() {
             dugong::LayoutError::Work(dugong::WorkError::Interrupted) => {
@@ -194,6 +195,7 @@ impl OperationLayoutWorkControl {
     }
 }
 
+#[cfg(feature = "layout-dagre")]
 impl dugong::WorkControl for OperationLayoutWorkControl {
     fn charge(&mut self, units: usize) -> std::result::Result<(), dugong::WorkError> {
         if self.rejection.borrow().is_some() {

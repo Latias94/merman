@@ -18,7 +18,7 @@ packaging uses its own target-set recipes; see [package surfaces](../release/PAC
 python3 scripts/artifact_profile_recipe.py c-abi-native --build --locked
 
 # Smaller explicit artifacts.
-cargo build -p merman-ffi --release --no-default-features --features svg,diagram-flowchart
+cargo build -p merman-ffi --release --no-default-features --features svg,diagram-flowchart,layout-dagre
 cargo build -p merman-ffi --release --no-default-features --features analysis,diagram-flowchart
 ```
 
@@ -513,8 +513,8 @@ renderer checkpoint.
   use schema `1`, while parser/editor facts use schema `3` with source appearance declarations and provenance.
 - Ignore unknown JSON fields where a payload schema permits it, but never invent unknown native
   status codes, output IDs, capabilities, or record fields.
-- Select an artifact's direct output features deliberately (`svg`, `analysis`, `ascii`, `png`,
-  `jpeg`, `pdf`, `layout-cytoscape`, `layout-elk`, and `math`) and add `native-runtime` only when
+- Select an artifact's output and layout features deliberately. Graph SVG requires the selected
+  engine, such as `layout-dagre`, `layout-elk`, or `layout-cytoscape`. Add `native-runtime` when
   the complete native runtime policy is required. Smaller artifacts must advertise and enforce
   their actual output subset. The binding-owned aggregate is not a native ABI capability ID;
   runtime discovery continues to expose the concrete system adapter IDs.

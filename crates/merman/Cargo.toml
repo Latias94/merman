@@ -30,6 +30,7 @@ features = [
     "jpeg",
     "pdf",
     "layout-cytoscape",
+    "layout-dagre",
     "layout-elk",
     "math",
     "system-clock",
@@ -352,7 +353,7 @@ diagram-zenuml = [
     "merman-editor-core?/diagram-zenuml",
     "merman-render?/diagram-zenuml",
 ]
-default = ["all-diagrams", "svg", "layout-cytoscape", "layout-elk"]
+default = ["all-diagrams", "svg", "layout-cytoscape", "layout-dagre", "layout-elk"]
 system-clock = ["merman-model/system-clock", "merman-core/system-clock", "merman-render?/system-clock"]
 system-timezone = ["merman-model/system-timezone", "merman-core/system-timezone", "merman-render?/system-timezone"]
 system-random = ["merman-model/system-random", "merman-core/system-random", "merman-render?/system-random"]
@@ -368,11 +369,12 @@ analysis = ["dep:merman-analysis"]
 editor = ["analysis", "dep:merman-editor-core"]
 ascii = ["dep:merman-ascii"]
 layout-cytoscape = ["svg", "merman-render/layout-cytoscape"]
+layout-dagre = ["svg", "merman-render/layout-dagre"]
 layout-elk = ["svg", "merman-render/layout-elk"]
 layout-shoal = ["svg", "merman-render/layout-shoal"]
 math = ["svg", "merman-render/math"]
 # Convenience output/layout bundles; mathematical labels require explicit `math`.
-complete-svg = ["svg", "layout-cytoscape"]
+complete-svg = ["svg", "layout-cytoscape", "layout-dagre"]
 complete-svg-elk = ["complete-svg", "layout-elk"]
 png = ["svg", "dep:merman-export", "merman-export/png"]
 jpeg = ["svg", "dep:merman-export", "merman-export/jpeg"]
@@ -617,7 +619,7 @@ required-features = ["svg"]
 
 [[example]]
 name = "layout_work_calibration"
-required-features = ["svg", "compat-json", "layout-cytoscape", "layout-elk", "math"]
+required-features = ["svg", "compat-json", "layout-cytoscape", "layout-dagre", "layout-elk", "math"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(merman_internal_theme_acceptance)'] }

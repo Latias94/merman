@@ -121,9 +121,9 @@ Exact features, diagram selectors, Cargo profiles, and target sets belong to the
 rather than maintaining a second recipe here.
 
 Custom artifacts can select `analysis`, `ascii`, `svg`, `png`, `jpeg`, `pdf`,
-`layout-cytoscape`, `layout-elk`, and `math` independently. Add `native-runtime` only when native
-clock, time-zone, and random behavior is required; UniFFI does not expose partial adapter feature sets.
-`png`, `jpeg`, `pdf`, `layout-cytoscape`, `layout-elk`, and `math` all imply `svg`.
+`layout-dagre`, `layout-elk`, `layout-cytoscape`, and `math` independently. Add `native-runtime`
+when native clock, time-zone, and random behavior is required. UniFFI exposes those adapters as
+one feature. `png`, `jpeg`, `pdf`, the layout features, and `math` all imply `svg`.
 Runtime discovery still reports `system-clock`, `system-timezone`, and `system-random` as concrete
 adapter IDs rather than exposing the Cargo aggregate as a capability.
 

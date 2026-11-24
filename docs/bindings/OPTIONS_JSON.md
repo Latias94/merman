@@ -922,7 +922,7 @@ the closed public fixture manifest and an adjacent typed rejection boundary:
 
 ```sh
 CARGO_BUILD_JOBS=1 cargo build --locked --release -p merman \
-  --example layout_work_calibration --features svg,compat-json,layout-cytoscape,layout-elk,math
+  --example layout_work_calibration --features svg,compat-json,layout-cytoscape,layout-dagre,layout-elk,math
 
 python3 tools/bench/run_layout_work_calibration.py \
   --authoritative-date YYYY-MM-DD \

@@ -82,6 +82,7 @@ pub(crate) fn layout_state_diagram_typed_with_work_meter(
     work_control.charge_adapter(adapter_work)?;
     backend.validate_rootless_graph()?;
     match backend {
+        #[cfg(feature = "layout-dagre")]
         GraphLayoutBackend::Dagre => super::dagre::layout(
             model,
             effective_config,

@@ -765,7 +765,7 @@ pub(super) fn edge_geometry(
     })
 }
 
-#[cfg(all(test, feature = "diagram-flowchart"))]
+#[cfg(all(test, feature = "diagram-flowchart", feature = "layout-dagre"))]
 mod tests {
     use super::*;
 

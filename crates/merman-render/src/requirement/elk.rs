@@ -308,15 +308,15 @@ fn render_layout(
         .zip(&layout.edges)
         .zip(routes.into_iter().zip(label_sizes))
     {
-        if raw.points.is_empty() {
-            if let (Some(first), Some(last)) = (points.first(), points.last()) {
-                edge.label = Some(LayoutLabel {
-                    x: (first.x + last.x) / 2.0,
-                    y: (first.y + last.y) / 2.0,
-                    width: size.width,
-                    height: size.height,
-                });
-            }
+        if raw.points.is_empty()
+            && let (Some(first), Some(last)) = (points.first(), points.last())
+        {
+            edge.label = Some(LayoutLabel {
+                x: (first.x + last.x) / 2.0,
+                y: (first.y + last.y) / 2.0,
+                width: size.width,
+                height: size.height,
+            });
         }
         edge.points = points;
     }

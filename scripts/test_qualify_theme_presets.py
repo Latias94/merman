@@ -14,7 +14,10 @@ from scripts.theme_preset_catalog_test_fixture import canonical_theme_preset_cat
 
 class PresetQualificationTests(unittest.TestCase):
     def test_build_recipe_includes_all_scenario_families_and_png_layout_features(self):
-        self.assertEqual(BUILD[BUILD.index("--features") + 1], "png,layout-cytoscape,all-diagrams")
+        self.assertEqual(
+            BUILD[BUILD.index("--features") + 1],
+            "png,layout-cytoscape,layout-dagre,all-diagrams",
+        )
 
     def test_clean_revision_rejects_untracked_unstaged_and_staged_work(self):
         with tempfile.TemporaryDirectory() as temporary:

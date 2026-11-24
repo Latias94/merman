@@ -308,8 +308,9 @@ def run(args):
         plan = host.execute(engine, "svg-plan-json", FIXTURES["sources"]["elk"])
         success(plan, engine, "application/json")
         value = json.loads(plan["data"])
+        layout_id = "layout-elk" if args.flavor == "full" else "layout-dagre"
         require(value["ready"] is True and value["missing_capability_ids"] == [] and
-                ("layout-elk" in value["required_capability_ids"]) == (args.flavor == "full"),
+                value["required_capability_ids"] == [layout_id],
                 "ELK plan disagrees with actual family fallback/capabilities")
         report["elk_family_fallback"] = args.flavor != "full"
         write_json(output / "elk.plan.json", value)
