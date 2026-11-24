@@ -516,7 +516,7 @@ jobs:
         run: cargo nextest run --locked -p merman-export --no-default-features --features experimental-system-font-query,png,jpeg,pdf --cargo-quiet
 
       - name: Test platform font host contracts on every host
-        run: cargo nextest run --locked -p merman-export --no-default-features --features experimental-system-font-query,png,jpeg,pdf --test platform_font_context ${{ runner.os == 'macOS' && '--lib --test fallback_shaping' || '' }} --run-ignored only --no-fail-fast --cargo-quiet
+        run: cargo nextest run --locked -p merman-export --no-default-features --features experimental-system-font-query,png,jpeg,pdf --test platform_font_context ${{ runner.os == 'macOS' && '--lib --test fallback_shaping' || runner.os == 'Windows' && '--lib' || '' }} --run-ignored only --no-fail-fast --cargo-quiet
 
       - name: Test release platform font CLI policy on every host
         run: cargo nextest run --locked -p merman-cli --no-default-features --features diagram-flowchart,png,platform-system-font-default --test native_fonts_contract --cargo-quiet

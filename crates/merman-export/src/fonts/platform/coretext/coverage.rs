@@ -73,14 +73,11 @@ pub(super) fn check(
         return Ok(false);
     };
     let glyph_count = glyphs.number_of_glyphs.get();
-    if request
-        .scalar()
-        .is_some_and(|ch| crate::font_selection::cmap_covers_character(mapping, glyph_count, ch))
-    {
-        return Ok(true);
-    }
-    if !cluster::cmap_may_cover(mapping, glyph_count, request.text) {
+    if !cluster::cmap_may_cover(mapping, glyph_count, request.text, request.rtl) {
         return Ok(false);
+    }
+    if request.scalar().is_some() {
+        return Ok(true);
     }
 
     let head = match head {

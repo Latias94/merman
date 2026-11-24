@@ -38,6 +38,8 @@ pub(super) struct PlatformFace {
     pub(super) fallback_scale: f32,
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     pub(super) named_instance: Option<u16>,
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    pub(super) require_non_default_uvs: bool,
 }
 
 impl PlatformFace {
@@ -77,11 +79,10 @@ impl PlatformFace {
                 .as_deref()
                 .is_none_or(|name| matches_post_script_name(face, name))
             || !(matches_family(face, &self.family)
-                || (self.post_script_name.is_some()
-                    && self
-                        .other_families
-                        .iter()
-                        .any(|name| matches_family(face, name))))
+                || self
+                    .other_families
+                    .iter()
+                    .any(|name| matches_family(face, name)))
         {
             return Err(source_error(
                 path,
@@ -320,6 +321,7 @@ impl PlatformCatalog {
                         style,
                         text: Some(request.text),
                         language: request.language,
+                        rtl: request.rtl,
                     },
                     control,
                     None,
@@ -336,7 +338,7 @@ impl PlatformCatalog {
             }
             #[cfg(target_os = "macos")]
             Backend::CoreText => {
-                let origin = sources.native_origin(base, control)?;
+                let origin = sources.native_origin(request.font, base, control)?;
                 coretext::fallback_candidates(
                     request,
                     &base.face,
@@ -503,10 +505,9 @@ impl PlatformCatalog {
                     control.terminal_checkpoint_at(OperationPhase::Layout)?;
                     #[cfg(windows)]
                     if let Some(fallback) = fallback
-                        && face
-                            .coverage
-                            .as_ref()
-                            .is_some_and(|coverage| !coverage.may_cover(fallback.text))
+                        && face.coverage.as_ref().is_some_and(|coverage| {
+                            !coverage.may_cover(fallback.text, fallback.rtl)
+                        })
                     {
                         // The native catalog owns this negative coverage result. A positive
                         // still needs snapshot validation and contextual shaping.
@@ -579,20 +580,21 @@ impl PlatformCatalog {
         const MAX_FAMILY_CMAP_BYTES: usize = 512 * 1024;
 
         control.terminal_checkpoint_at(OperationPhase::Layout)?;
-        let mut cache = self.family_cache.lock().map_err(|_| poisoned_catalog())?;
+        let cache = self.family_cache.lock().map_err(|_| poisoned_catalog())?;
         if let Some(candidates) = cache.entries.get(&query) {
             return Ok(candidates.clone());
         }
-        #[cfg(test)]
-        self.family_queries.fetch_add(1, Ordering::Relaxed);
         #[cfg(windows)]
-        let mut remaining_coverage = if cache.entries.len() < MAX_FAMILY_ENTRIES {
+        let available_coverage = if cache.entries.len() < MAX_FAMILY_ENTRIES {
             MAX_FAMILY_CMAP_BYTES - cache.cmap_bytes
         } else {
             0
         };
+        drop(cache);
+        #[cfg(test)]
+        self.family_queries.fetch_add(1, Ordering::Relaxed);
         #[cfg(windows)]
-        let initial_remaining_coverage = remaining_coverage;
+        let mut remaining_coverage = available_coverage;
         let candidates: Arc<[FamilyFace]> = match &self.backend {
             #[cfg(windows)]
             Backend::DirectWrite(catalog) => catalog
@@ -627,11 +629,21 @@ impl PlatformCatalog {
                     })
                     .sum(),
             );
-        if cache.entries.len() < MAX_FAMILY_ENTRIES && bytes <= MAX_FAMILY_BYTES - cache.bytes {
+        let mut cache = self.family_cache.lock().map_err(|_| poisoned_catalog())?;
+        if let Some(candidates) = cache.entries.get(&query) {
+            return Ok(candidates.clone());
+        }
+        let fits_cache =
+            cache.entries.len() < MAX_FAMILY_ENTRIES && bytes <= MAX_FAMILY_BYTES - cache.bytes;
+        #[cfg(windows)]
+        let coverage_bytes = available_coverage - remaining_coverage;
+        #[cfg(windows)]
+        let fits_cache = fits_cache && coverage_bytes <= MAX_FAMILY_CMAP_BYTES - cache.cmap_bytes;
+        if fits_cache {
             cache.bytes += bytes;
             #[cfg(windows)]
             {
-                cache.cmap_bytes += initial_remaining_coverage - remaining_coverage;
+                cache.cmap_bytes += coverage_bytes;
             }
             cache.entries.insert(query, candidates.clone());
         }
@@ -798,6 +810,64 @@ mod tests {
             fallback_scale: 1.0,
             #[cfg(any(target_os = "linux", target_os = "freebsd"))]
             named_instance: None,
+            #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+            require_non_default_uvs: false,
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn primary_requests_keep_distinct_core_text_origins_for_shared_font_bytes() {
+        use crate::fonts::registry::{SelectedFont, SelectionRequest};
+
+        let mut options = usvg::Options::default();
+        options
+            .fontdb_mut()
+            .load_font_data(include_bytes!("../../tests/fonts/Cousine-Regular.ttf").to_vec());
+        let face = options.fontdb.faces().next().unwrap().clone();
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60"><text id="sans" font-family="Cousine,sans-serif">A</text><text id="mono" font-family="Cousine,monospace">B</text></svg>"#;
+        let tree = usvg::Tree::from_str(svg, &options).unwrap();
+        let font = |id| {
+            let Some(usvg::Node::Text(node)) = tree.node_by_id(id) else {
+                panic!("the fixture must shape {id}");
+            };
+            node.chunks()[0].spans()[0].font()
+        };
+        let native = |name| {
+            coretext::named(name, Weight::NORMAL, Stretch::Normal, Style::Normal)
+                .expect("a standard Core Text family must be available")
+        };
+        let origins = [
+            (font("sans"), native("Helvetica")),
+            (font("mono"), native("Courier")),
+        ];
+        let sources = FontSourceRegistry::new(BTreeMap::new(), BTreeMap::new(), 0, 0);
+        let limits = NativeFontLimits::default();
+        for (font, origin) in &origins {
+            sources
+                .remember_selection(
+                    SelectionRequest::primary(font),
+                    SelectedFont {
+                        face: face.clone(),
+                        source: NativeExportFontSource::System,
+                        scale: 1.0,
+                        variations: Vec::new(),
+                        family_fallback_used: false,
+                        native_origin: Some(origin.clone()),
+                    },
+                    &limits,
+                )
+                .unwrap();
+        }
+        let base = TriedFont {
+            face,
+            scale: 1.0,
+            variations: Vec::new(),
+        };
+        let control = OperationControl::new();
+        for (font, origin) in &origins {
+            let selected = sources.native_origin(Some(font), &base, &control).unwrap();
+            assert_eq!(selected.as_ref(), Some(origin));
         }
     }
 
@@ -1039,6 +1109,35 @@ mod tests {
         }
         assert_eq!(registry.resident_bytes(), 0);
         assert!(database.is_empty());
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    #[test]
+    fn fontconfig_fallback_rechecks_required_variation_on_cached_snapshot() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts/Cousine-Regular.ttf");
+        let nominal = fixture_face(&binary_face(fs::read(&path).unwrap()));
+        let mut variant = nominal.clone();
+        variant.require_non_default_uvs = true;
+        let registry = FontSourceRegistry::new(BTreeMap::new(), BTreeMap::new(), 0, 0);
+        let control = OperationControl::new();
+        let limits = NativeFontLimits::default();
+        let mut database = Arc::new(Database::new());
+        let mut admit = |face: PlatformFace| {
+            registry
+                .admit(
+                    face.into_file(path.clone()),
+                    Some("A\u{fe0f}".into()),
+                    &mut database,
+                    &limits,
+                    &control,
+                )
+                .unwrap()
+        };
+        assert!(admit(variant.clone()).is_none());
+        assert_eq!(registry.resident_bytes(), 0);
+        assert!(admit(nominal).is_some());
+        assert!(admit(variant).is_none());
+        assert_eq!(database.len(), 1);
     }
 
     #[test]

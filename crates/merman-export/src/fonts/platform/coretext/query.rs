@@ -507,32 +507,34 @@ mod tests {
                 axis.min_value
             };
             let axis_id = CFNumber::new_i32(i32::from_be_bytes(*b"wght"));
-            // SAFETY: The live descriptor and axis identifier describe this variable font.
-            let descriptor = unsafe {
-                base.font
-                    .font_descriptor()
-                    .copy_with_variation(&axis_id, non_default.into())
-            };
-            let instance = font_from_descriptor(&descriptor, None).unwrap().unwrap();
-            let instance = NativeFace::from_font(instance, Some(&descriptor), None)
-                .unwrap()
-                .expect("the variable STIX instance is supported");
-            assert!(instance.covers_cluster("A".into()));
-            assert_eq!(instance.path.as_deref(), Some(path.as_path()));
-            assert_eq!(instance.post_script_name, expected);
-            assert_eq!(
-                instance
-                    .variations
-                    .iter()
-                    .find(|coord| coord.tag == *b"wght")
-                    .map(|coord| coord.value),
-                Some(non_default)
-            );
-            assert!(
-                instance
-                    .matches_data(&bytes, 0, &OperationControl::new())
+            for value in [axis.def_value, non_default] {
+                // SAFETY: The live descriptor and axis identifier describe this variable font.
+                let descriptor = unsafe {
+                    base.font
+                        .font_descriptor()
+                        .copy_with_variation(&axis_id, value.into())
+                };
+                let instance = font_from_descriptor(&descriptor, None).unwrap().unwrap();
+                let instance = NativeFace::from_font(instance, Some(&descriptor), None)
                     .unwrap()
-            );
+                    .expect("the variable STIX instance is supported");
+                assert!(instance.covers_cluster("A".into()));
+                assert_eq!(instance.path.as_deref(), Some(path.as_path()));
+                assert_eq!(instance.post_script_name, expected);
+                assert_eq!(
+                    instance
+                        .variations
+                        .iter()
+                        .find(|coord| coord.tag == *b"wght")
+                        .map(|coord| coord.value),
+                    Some(value)
+                );
+                assert!(
+                    instance
+                        .matches_data(&bytes, 0, &OperationControl::new())
+                        .unwrap()
+                );
+            }
         }
     }
 

@@ -100,7 +100,9 @@ api! {
     fn FcFontSetSortDestroy(*mut FcFontSet);
     fn FcFontRenderPrepare(*mut FcConfig, *mut FcPattern, *mut FcPattern) -> *mut FcPattern;
     fn FcPatternCreate() -> *mut FcPattern;
+    fn FcPatternDuplicate(*const FcPattern) -> *mut FcPattern;
     fn FcPatternDestroy(*mut FcPattern);
+    fn FcPatternDel(*mut FcPattern, *const c_char) -> FcBool;
     fn FcPatternAddString(*mut FcPattern, *const c_char, *const u8) -> FcBool;
     fn FcPatternAddWeak(*mut FcPattern, *const c_char, FcValue, FcBool) -> FcBool;
     fn FcPatternAddDouble(*mut FcPattern, *const c_char, c_double) -> FcBool;
@@ -114,6 +116,8 @@ api! {
     fn FcCharSetDestroy(*mut FcCharSet);
     fn FcCharSetAddChar(*mut FcCharSet, u32) -> FcBool;
     fn FcCharSetHasChar(*const FcCharSet, u32) -> FcBool;
+    fn FcCharSetSubtract(*const FcCharSet, *const FcCharSet) -> *mut FcCharSet;
+    fn FcCharSetCount(*const FcCharSet) -> u32;
     fn FcWeightFromOpenTypeDouble(c_double) -> c_double;
 }
 

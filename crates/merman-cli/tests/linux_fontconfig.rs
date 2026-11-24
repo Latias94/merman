@@ -282,6 +282,7 @@ fn system_ui_and_empty_defaults_keep_generic_family_precedence() {
         &["Cousine-Regular.ttf", "NotoSans-Latin-subset.ttf"],
         r#"
         <alias binding="weak"><family>system-ui</family><prefer><family>Cousine</family></prefer></alias>
+        <alias binding="strong"><family>-apple-system</family><prefer><family>Merman Variable Weight</family></prefer></alias>
         <alias binding="strong"><family>sans-serif</family><prefer><family>Noto Sans</family></prefer></alias>
         <alias binding="strong"><family>serif</family><prefer><family>Cousine</family></prefer></alias>"#,
         |_| {
@@ -291,6 +292,24 @@ fn system_ui_and_empty_defaults_keep_generic_family_precedence() {
                 ["Cousine-Regular"]
             );
             assert_eq!(selected(&context, "", "A", "en"), ["NotoSans-Regular"]);
+
+            let context = catalog(Some("NotoSans-Latin-subset.ttf"));
+            for family in ["system-ui", "BlinkMacSystemFont"] {
+                assert_eq!(selected(&context, family, "A", "en"), ["Cousine-Regular"]);
+            }
+            assert_eq!(
+                selected(&context, "sans-serif", "A", "en"),
+                ["NotoSans-Regular"]
+            );
+            assert_eq!(
+                selected(
+                    &catalog(Some("MermanVariableWeight.ttf")),
+                    "-apple-system",
+                    "A",
+                    "en"
+                ),
+                ["MermanVariableWeight-Thin"]
+            );
         },
     );
 }
@@ -307,6 +326,105 @@ fn normalized_clusters_can_pass_a_declared_charset() {
             assert_eq!(
                 selected(&context, "MermanProbeBase, Cousine", "e&#x301;", "en"),
                 ["Cousine-Regular"]
+            );
+        },
+    );
+}
+
+#[test]
+fn a_scan_charset_mirrors_only_in_rtl_layout() {
+    with_catalog(
+        &["Cousine-Regular.ttf", "Cousine-Bold.ttf"],
+        r#"
+        <match target="scan"><test name="postscriptname"><string>Cousine-Regular</string></test>
+        <edit name="charset" mode="assign"><charset><int>40</int></charset></edit></match>"#,
+        |_| {
+            let context = catalog(Some("MermanProbeBase.ttf"));
+            let stack = "MermanProbeBase, Cousine";
+            assert_eq!(
+                selected(&context, stack, "f(i", "en"),
+                ["MermanProbeBase", "Cousine-Regular", "MermanProbeBase"]
+            );
+            assert_eq!(
+                selected(&context, stack, "f)i", "en"),
+                ["MermanProbeBase", "Cousine-Bold", "MermanProbeBase"]
+            );
+        },
+    );
+}
+
+#[test]
+fn query_substitutions_see_variation_selectors_and_joiners() {
+    with_catalog(
+        &["Cousine-Regular.ttf", "NotoSans-Latin-subset.ttf"],
+        r#"
+        <alias binding="strong"><family>Body</family><prefer><family>Cousine</family></prefer></alias>
+        <match target="pattern">
+        <test name="family" qual="any"><string>Body</string></test>
+        <test name="charset" compare="contains"><charset><int>65</int><int>65039</int><int>8205</int></charset></test>
+        <edit name="family" mode="prepend_first" binding="strong"><string>Noto Sans</string></edit></match>"#,
+        |_| {
+            let context = catalog(Some("MermanProbeBase.ttf"));
+            let stack = "MermanProbeBase, Body";
+            assert_eq!(
+                selected(&context, stack, "A\u{fe0f}", "en")[0],
+                "Cousine-Regular"
+            );
+            assert_eq!(
+                selected(&context, stack, "A\u{fe0f}\u{200d}", "en")[0],
+                "NotoSans-Regular"
+            );
+        },
+    );
+}
+
+#[test]
+fn a_variation_only_candidate_needs_a_real_non_default_mapping() {
+    with_catalog(
+        &["Cousine-Regular.ttf"],
+        r#"
+        <match target="scan"><test name="family"><string>Cousine</string></test>
+        <edit name="charset" mode="assign"><charset><int>86</int></charset></edit></match>"#,
+        |root| {
+            let fixture = fs::read(fixture("MermanProbeFull.ttf")).unwrap();
+            // A nominal mapping for 'f' and a non-default mapping for A + VS16.
+            let cmap = [
+                0, 0, 0, 2, 0, 3, 0, 10, 0, 0, 0, 20, 0, 0, 0, 5, 0, 0, 0, 48, 0, 12, 0, 0, 0, 0,
+                0, 28, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 102, 0, 0, 0, 102, 0, 0, 0, 1, 0, 14, 0, 0,
+                0, 30, 0, 0, 0, 1, 0, 0xfe, 0x0f, 0, 0, 0, 0, 0, 0, 0, 21, 0, 0, 0, 1, 0, 0, 65, 0,
+                1,
+            ];
+            let variant = replace_table(fixture, b"cmap", &cmap);
+            fs::write(root.join("fonts/Variant.ttf"), variant).unwrap();
+            let context = catalog(Some("MermanProbeBase.ttf"));
+            // Admit Cousine first to cover both the file probe and the snapshot path.
+            assert_eq!(
+                selected(&context, "Cousine", "V", "en"),
+                ["Cousine-Regular"]
+            );
+            assert_eq!(
+                selected(&context, "MermanProbeBase, Cousine", "A\u{fe0f}", "en"),
+                ["MermanProbeFull"]
+            );
+        },
+    );
+}
+
+#[test]
+fn a_stale_leaf_under_a_linked_directory_can_fall_through() {
+    with_catalog(
+        &["Cousine-Regular.ttf", "NotoSans-Latin-subset.ttf"],
+        "",
+        |root| {
+            let fonts = root.join("fonts");
+            let physical = root.join("physical-fonts");
+            fs::rename(&fonts, &physical).unwrap();
+            std::os::unix::fs::symlink(&physical, &fonts).unwrap();
+            let context = catalog(None);
+            fs::remove_file(physical.join("Cousine-Regular.ttf")).unwrap();
+            assert_eq!(
+                selected(&context, "Cousine, Noto Sans", "A", "en"),
+                ["NotoSans-Regular"]
             );
         },
     );
@@ -376,6 +494,7 @@ fn named_fontconfig_instance_and_render_rule_reach_svg_geometry() {
                 .unwrap();
             let named = variable_geometry(&native, "en", "");
             let overridden = variable_geometry(&native, "fr", "");
+            assert_eq!(selected(&native, "Cousine", "A", "fr"), ["Cousine-Regular"]);
             assert_ne!(named, overridden);
             assert_eq!(named, variable_geometry(&explicit, "en", "'wght' 700"));
             assert_eq!(overridden, variable_geometry(&explicit, "en", "'wght' 500"));
@@ -384,40 +503,51 @@ fn named_fontconfig_instance_and_render_rule_reach_svg_geometry() {
 }
 
 fn add_named_weight_fixture(path: &Path) {
-    let mut font = fs::read(fixture("MermanVariableWeight.ttf")).unwrap();
-    let table_count = usize::from(u16::from_be_bytes(font[4..6].try_into().unwrap()));
-    let record = |tag: &[u8; 4]| {
-        (0..table_count)
-            .map(|index| 12 + 16 * index)
-            .find(|&start| &font[start..start + 4] == tag)
-            .unwrap()
-    };
-    let offset = |start: usize| u32::from_be_bytes(font[start + 8..start + 12].try_into().unwrap());
-    let fvar = record(b"fvar");
-    let head = offset(record(b"head")) as usize;
-    let start = offset(fvar) as usize;
-    let length = u32::from_be_bytes(font[fvar + 12..fvar + 16].try_into().unwrap()) as usize;
+    let font = fs::read(fixture("MermanVariableWeight.ttf")).unwrap();
+    let record = table_record(&font, b"fvar");
+    let start = table_offset(&font, record);
+    let length = u32::from_be_bytes(font[record + 12..record + 16].try_into().unwrap()) as usize;
     let mut table = font[start..start + length].to_vec();
     assert_eq!(table[8..16], [0, 1, 0, 20, 0, 0, 0, 8]);
     table[12..14].copy_from_slice(&1u16.to_be_bytes());
     // Use the existing name ID 256 and one 16.16 design coordinate for weight 700.
     table.extend_from_slice(&[1, 0, 0, 0]);
     table.extend_from_slice(&(700u32 << 16).to_be_bytes());
+    fs::write(path, replace_table(font, b"fvar", &table)).unwrap();
+}
+
+fn table_record(font: &[u8], tag: &[u8; 4]) -> usize {
+    let table_count = usize::from(u16::from_be_bytes(font[4..6].try_into().unwrap()));
+    (0..table_count)
+        .map(|index| 12 + 16 * index)
+        .find(|&start| &font[start..start + 4] == tag)
+        .unwrap()
+}
+
+fn table_offset(font: &[u8], record: usize) -> usize {
+    u32::from_be_bytes(font[record + 8..record + 12].try_into().unwrap()) as usize
+}
+
+fn replace_table(mut font: Vec<u8>, tag: &[u8; 4], table: &[u8]) -> Vec<u8> {
+    let record = table_record(&font, tag);
+    let head = table_offset(&font, table_record(&font, b"head"));
+    let end = font.len() as u32;
+    font.extend_from_slice(table);
+    font.resize(font.len().next_multiple_of(4), 0);
     let checksum = |bytes: &[u8]| {
         assert_eq!(bytes.len() % 4, 0);
         bytes.chunks_exact(4).fold(0u32, |sum, word| {
             sum.wrapping_add(u32::from_be_bytes(word.try_into().unwrap()))
         })
     };
-    let end = font.len() as u32;
-    font[fvar + 4..fvar + 8].copy_from_slice(&checksum(&table).to_be_bytes());
-    font[fvar + 8..fvar + 12].copy_from_slice(&end.to_be_bytes());
-    font[fvar + 12..fvar + 16].copy_from_slice(&(table.len() as u32).to_be_bytes());
-    font.extend_from_slice(&table);
+    let table_sum = checksum(&font[end as usize..]);
+    font[record + 4..record + 8].copy_from_slice(&table_sum.to_be_bytes());
+    font[record + 8..record + 12].copy_from_slice(&end.to_be_bytes());
+    font[record + 12..record + 16].copy_from_slice(&(table.len() as u32).to_be_bytes());
     font[head + 8..head + 12].fill(0);
     let adjustment = 0xb1b0_afba_u32.wrapping_sub(checksum(&font));
     font[head + 8..head + 12].copy_from_slice(&adjustment.to_be_bytes());
-    fs::write(path, font).unwrap();
+    font
 }
 
 fn variable_geometry(context: &NativeFontContext, language: &str, settings: &str) -> (f32, f32) {

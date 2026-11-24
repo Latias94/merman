@@ -2,107 +2,238 @@ use objc2_core_foundation::{CFDictionary, CFNumber, CFRetained, CFType};
 use objc2_core_text::{
     CTFont, CTFontDescriptor, kCTFontOpticalSizeAttribute, kCTFontVariationAttribute,
 };
+use ttf_parser::fvar;
 use usvg::FontVariation;
 
 use super::{NativeFontError, OperationControl, checkpoint, read_table, table_bytes};
 
 const OPSZ: [u8; 4] = *b"opsz";
+// Skrifa supports heap-backed locations. Bound the native dictionary probes and
+// the renderer's linear coordinate lookup for each physical axis.
+const MAX_VARIATION_AXES: u16 = 256;
+
+type AxisValues = CFDictionary<CFNumber, CFType>;
 
 /// Translate Core Text design coordinates using the selected physical face's fvar.
 pub(super) fn read(
     font: &CTFont,
-    descriptor: Option<&CTFontDescriptor>,
+    selection_descriptor: Option<&CTFontDescriptor>,
     control: Option<&OperationControl>,
 ) -> Result<Option<Vec<FontVariation>>, NativeFontError> {
     checkpoint(control)?;
-    // SAFETY: Core Text returns an immutable dictionary of CFNumber identifiers and values.
-    let Some(values) = (unsafe { font.variation() }).filter(|values| !values.is_empty()) else {
+    // SAFETY: The font is live and Core Text returns an immutable variation dictionary.
+    let selected = unsafe { font.variation() }.map(typed_axis_values);
+    let requested = descriptor_axis_values(selection_descriptor);
+    let has_selected = selected.as_ref().is_some_and(|axes| !axes.is_empty());
+    if !has_selected && requested.as_ref().is_none_or(|axes| axes.is_empty()) {
         return Ok(Some(Vec::new()));
-    };
-    // SAFETY: The dictionary stores CFNumber keys and CF object values checked below.
-    let values: CFRetained<CFDictionary<CFNumber, CFType>> =
-        unsafe { CFRetained::cast_unchecked(values) };
+    }
     let table = read_table(font, u32::from_be_bytes(*b"fvar"), control)?;
     let Some(fvar) = table
         .as_deref()
         .map(table_bytes)
-        .and_then(ttf_parser::fvar::Table::parse)
+        .and_then(fvar::Table::parse)
     else {
-        return Ok(None);
+        // A descriptor axis can be only a matching preference for a static face.
+        return Ok((!has_selected).then(Vec::new));
     };
-    // ttf-parser::Face::set_variation does not apply coordinates at this axis count.
-    if fvar.axes.len() >= 64 || values.len() > usize::from(fvar.axes.len()) {
-        return Ok(None);
-    }
-
-    let mut variations = Vec::with_capacity(values.len());
-    let mut matched = 0;
-    for axis in fvar.axes {
-        let tag = axis.tag.0.to_be_bytes();
-        let key = CFNumber::new_i32(i32::from_be_bytes(tag));
-        let Some(value) = values.get(&key) else {
-            continue;
-        };
-        matched += 1;
-        let Some(value) = value
-            .downcast::<CFNumber>()
-            .ok()
-            .and_then(|value| value.as_f64())
-            .map(|value| value as f32)
-            .filter(|value| (axis.min_value..=axis.max_value).contains(value))
-        else {
-            return Ok(None);
-        };
-        if value == axis.def_value {
-            continue;
-        }
-        if tag == OPSZ {
-            // SAFETY: The live font's construction point size is an immutable scalar.
-            let point_size = unsafe { font.size() } as f32;
-            if value == point_size.clamp(axis.min_value, axis.max_value)
-                && !has_explicit_optical_size(font, descriptor, &key)
-            {
-                // usvg computes automatic optical sizing from the final glyph size.
-                continue;
-            }
-        }
-        let value = if value == 0.0 { 0.0 } else { value };
-        variations.push(FontVariation::new(tag, value));
-    }
-    if matched != values.len() {
-        // An unmapped identifier can be a native-only axis. Applying a subset can
-        // produce geometry that differs from the Core Text selection.
-        return Ok(None);
-    }
-    variations.sort_unstable_by_key(|variation| variation.tag);
-    if variations.windows(2).any(|pair| pair[0].tag == pair[1].tag) {
-        return Ok(None);
-    }
-    Ok(Some(variations))
+    // SAFETY: These accessors read immutable properties of the retained font.
+    let (point_size, optical_size) = unsafe {
+        (
+            font.size() as f32,
+            font.attribute(kCTFontOpticalSizeAttribute),
+        )
+    };
+    let explicit_optical_size =
+        optical_size.is_some_and(|value| value.downcast::<CFNumber>().is_ok());
+    checkpoint(control)?;
+    Ok(physical_variations(
+        fvar,
+        selected.as_deref(),
+        requested.as_deref(),
+        point_size,
+        explicit_optical_size,
+    ))
 }
 
-fn has_explicit_optical_size(
-    font: &CTFont,
-    descriptor: Option<&CTFontDescriptor>,
-    axis: &CFNumber,
-) -> bool {
-    // SAFETY: The key is an immutable Core Text constant and the font is live.
-    if unsafe { font.attribute(kCTFontOpticalSizeAttribute) }
-        .is_some_and(|value| value.downcast::<CFNumber>().is_ok())
-    {
-        return true;
+fn physical_variations(
+    fvar: fvar::Table<'_>,
+    selected: Option<&AxisValues>,
+    requested: Option<&AxisValues>,
+    point_size: f32,
+    explicit_optical_size: bool,
+) -> Option<Vec<FontVariation>> {
+    let selected_count = selected.map_or(0, CFDictionary::len);
+    if fvar.axes.len() > MAX_VARIATION_AXES || selected_count > usize::from(fvar.axes.len()) {
+        return None;
     }
-    // A matched descriptor can carry an explicit optical coordinate even when it
-    // equals the construction point size. Read the descriptor used to create the font.
-    // SAFETY: The descriptor and attribute key are live and the return value is retained.
-    let Some(axes) = descriptor
+    let mut axes: Vec<_> = fvar.axes.into_iter().collect();
+    axes.sort_unstable_by_key(|axis| axis.tag);
+    if axes.windows(2).any(|pair| pair[0].tag == pair[1].tag) {
+        return None;
+    }
+
+    let mut variations = Vec::with_capacity(selected_count);
+    let mut matched = 0;
+    for axis in axes {
+        let tag = axis.tag.0.to_be_bytes();
+        let key = CFNumber::new_i32(i32::from_be_bytes(tag));
+        let requested = requested
+            .and_then(|axes| axes.get(&key))
+            .as_deref()
+            .and_then(axis_value);
+        let value = if let Some(value) = selected.and_then(|axes| axes.get(&key)) {
+            matched += 1;
+            axis_value(&value).filter(|value| (axis.min_value..=axis.max_value).contains(value))?
+        } else if requested == Some(axis.def_value) {
+            // CTFontCopyVariation omits defaults. Keep the coordinate if the descriptor
+            // used to select the font asked for it explicitly.
+            axis.def_value
+        } else {
+            continue;
+        };
+        if tag == OPSZ
+            && value == point_size.clamp(axis.min_value, axis.max_value)
+            && !explicit_optical_size
+            && requested.is_none()
+        {
+            // usvg computes automatic optical sizing from the final glyph size.
+            continue;
+        }
+        variations.push(FontVariation::new(tag, value + 0.0));
+    }
+    // Every selected axis must be portable to the physical face.
+    (matched == selected_count).then_some(variations)
+}
+
+fn descriptor_axis_values(descriptor: Option<&CTFontDescriptor>) -> Option<CFRetained<AxisValues>> {
+    // SAFETY: The live descriptor uses an immutable Core Text attribute key.
+    descriptor
         .and_then(|descriptor| unsafe { descriptor.attribute(kCTFontVariationAttribute) })
         .and_then(|value| value.downcast::<CFDictionary>().ok())
-    else {
-        return false;
-    };
-    // SAFETY: The variation attribute contains CFNumber keys and CF object values.
-    let axes: CFRetained<CFDictionary<CFNumber, CFType>> =
-        unsafe { CFRetained::cast_unchecked(axes) };
-    axes.get(axis).is_some()
+        .map(typed_axis_values)
+}
+
+fn typed_axis_values(values: CFRetained<CFDictionary>) -> CFRetained<AxisValues> {
+    // SAFETY: Core Text variation dictionaries have CFNumber keys and CF object values.
+    unsafe { CFRetained::cast_unchecked(values) }
+}
+
+fn axis_value(value: &CFType) -> Option<f32> {
+    let value = value.downcast_ref::<CFNumber>()?.as_f64()? as f32;
+    value.is_finite().then_some(value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use objc2_core_foundation::CFString;
+
+    fn fixture_fvar() -> &'static [u8] {
+        let raw = ttf_parser::RawFace::parse(
+            include_bytes!("../../../../tests/fonts/MermanVariableWeight.ttf"),
+            0,
+        )
+        .unwrap();
+        raw.table(ttf_parser::Tag::from_bytes(b"fvar")).unwrap()
+    }
+
+    fn values(tag: [u8; 4], value: f64) -> CFRetained<AxisValues> {
+        let key = CFNumber::new_i32(i32::from_be_bytes(tag));
+        let value = CFNumber::new_f64(value);
+        AxisValues::from_slices(&[&key], &[&value])
+    }
+
+    #[test]
+    fn coretext_keeps_explicit_default_weight_from_the_selection_descriptor() {
+        let table = fvar::Table::parse(fixture_fvar()).unwrap();
+        let name = CFString::from_str("MermanVariableWeight-Thin");
+        let weight = CFNumber::new_i32(i32::from_be_bytes(*b"wght"));
+        // SAFETY: These retained objects supply metadata for an immutable descriptor.
+        let descriptor = unsafe { CTFontDescriptor::with_name_and_size(&name, 0.0) };
+        assert!(
+            physical_variations(table, None, None, 12.0, false)
+                .unwrap()
+                .is_empty()
+        );
+        // SAFETY: The live descriptor and axis identifier describe the requested instance.
+        let explicit = unsafe { descriptor.copy_with_variation(&weight, 100.0) };
+        let requested = descriptor_axis_values(Some(&explicit)).unwrap();
+        assert_eq!(
+            physical_variations(table, None, Some(&requested), 12.0, false).unwrap(),
+            [FontVariation::new(*b"wght", 100.0)]
+        );
+        assert_eq!(
+            physical_variations(table, Some(&requested), None, 12.0, false).unwrap(),
+            [FontVariation::new(*b"wght", 100.0)]
+        );
+        let selected = values(*b"wght", 700.0);
+        assert_eq!(
+            physical_variations(table, Some(&selected), Some(&requested), 12.0, false).unwrap(),
+            [FontVariation::new(*b"wght", 700.0)]
+        );
+        assert!(
+            physical_variations(table, None, Some(&selected), 12.0, false)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn coretext_preserves_explicit_optical_size_and_omits_the_provisional_size() {
+        let mut fvar = fixture_fvar().to_vec();
+        let axis = usize::from(u16::from_be_bytes(fvar[4..6].try_into().unwrap()));
+        fvar[axis..axis + 4].copy_from_slice(b"opsz");
+        let table = fvar::Table::parse(&fvar).unwrap();
+        let optical_size = values(*b"opsz", 150.0);
+        let expected = [FontVariation::new(*b"opsz", 150.0)];
+        assert!(
+            physical_variations(table, Some(&optical_size), None, 150.0, false)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            physical_variations(table, Some(&optical_size), None, 150.0, true).unwrap(),
+            expected
+        );
+        assert_eq!(
+            physical_variations(
+                table,
+                Some(&optical_size),
+                Some(&optical_size),
+                150.0,
+                false
+            )
+            .unwrap(),
+            expected
+        );
+        assert_eq!(
+            physical_variations(table, Some(&optical_size), None, 200.0, false).unwrap(),
+            expected
+        );
+    }
+
+    #[test]
+    fn coretext_axis_limit_allows_the_renderer_past_sixty_three_axes() {
+        let source = fixture_fvar();
+        let axis = usize::from(u16::from_be_bytes(source[4..6].try_into().unwrap()));
+        let first = &source[axis..axis + 20];
+        let mut fvar = source[..axis + 20].to_vec();
+        for index in 1..=MAX_VARIATION_AXES {
+            fvar.extend_from_slice(format!("X{index:03}").as_bytes());
+            fvar.extend_from_slice(&first[4..]);
+        }
+        let selected = values(*b"wght", 700.0);
+        for count in [64, MAX_VARIATION_AXES] {
+            fvar[8..10].copy_from_slice(&count.to_be_bytes());
+            let table = fvar::Table::parse(&fvar).unwrap();
+            assert_eq!(
+                physical_variations(table, Some(&selected), None, 12.0, false).unwrap(),
+                [FontVariation::new(*b"wght", 700.0)]
+            );
+        }
+        fvar[8..10].copy_from_slice(&(MAX_VARIATION_AXES + 1).to_be_bytes());
+        let table = fvar::Table::parse(&fvar).unwrap();
+        assert!(physical_variations(table, Some(&selected), None, 12.0, false).is_none());
+    }
 }

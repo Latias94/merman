@@ -30,7 +30,8 @@ pub(super) struct SnapshotState {
     #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
     native_faces: std::collections::HashMap<platform::coretext::NativeFace, FaceInfo>,
     #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
-    native_origins: std::collections::HashMap<AttemptKey, Option<platform::coretext::NativeFace>>,
+    registered_origins:
+        std::collections::HashMap<AdmittedFaceKey, Option<platform::coretext::NativeFace>>,
     #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
     anonymous_native_files: usize,
     #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
@@ -223,6 +224,8 @@ pub(super) struct SelectedFont<F = FaceInfo> {
     pub(super) scale: f32,
     pub(super) variations: Vec<usvg::FontVariation>,
     pub(super) family_fallback_used: bool,
+    #[cfg(target_os = "macos")]
+    pub(super) native_origin: Option<platform::coretext::NativeFace>,
 }
 
 impl SnapshotState {
@@ -231,6 +234,33 @@ impl SnapshotState {
         #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
         let count = count.saturating_add(self.native_face_count);
         count
+    }
+
+    #[cfg(feature = "experimental-system-font-query")]
+    fn share_style(&self, request: &mut SelectionRequest) -> Option<Arc<SelectionStyle>> {
+        let style = request.style()?;
+        if let Some(shared) = self.authored_stacks.get(style) {
+            *style = Arc::clone(shared);
+            None
+        } else {
+            Some(Arc::clone(style))
+        }
+    }
+
+    #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
+    fn cache_native_face(
+        &mut self,
+        origin: platform::coretext::NativeFace,
+        key: Option<&Path>,
+        face: FaceInfo,
+        max_faces: usize,
+    ) {
+        if self.native_faces.len() < max_faces.saturating_mul(2) {
+            if let (Some(path), Some(key)) = (&origin.path, key) {
+                self.aliases.insert(path.clone(), key.to_owned());
+            }
+            self.native_faces.insert(origin, face);
+        }
     }
 }
 
@@ -403,20 +433,32 @@ impl FontSourceRegistry {
     #[cfg(all(feature = "experimental-system-font-query", target_os = "macos"))]
     pub(super) fn native_origin(
         &self,
+        font: Option<&usvg::Font>,
         base: &TriedFont,
         control: &OperationControl,
     ) -> Result<Option<platform::coretext::NativeFace>, NativeFontError> {
         let mut state = self.snapshots.lock().map_err(|_| snapshot_poisoned())?;
-        let Some(key) = AttemptKey::new(&base.face, base.scale, &base.variations) else {
+        // Primary requests can select different cascades for the same physical font instance.
+        if let Some(font) = font
+            && let Some(selected) = state.selections.get(&SelectionRequest::primary(font))
+            && let Some(origin) = &selected.native_origin
+            && selected.face.index == base.face.index
+            && same_source(&selected.face.source, &base.face.source)
+            && selected.scale == base.scale
+            && selected.variations == base.variations
+        {
+            return Ok(Some(origin.clone()));
+        }
+        let Some(key) = AdmittedFaceKey::of(&base.face) else {
             return Ok(None);
         };
-        if let Some(origin) = state.native_origins.get(&key) {
+        if let Some(origin) = state.registered_origins.get(&key) {
             return Ok(origin.clone());
         }
         let origin = platform::coretext::registered_base(&base.face, control)?;
         // The source registry bounds the number of admitted physical faces.
-        if state.native_origins.len() < 1024 {
-            state.native_origins.insert(key, origin.clone());
+        if state.registered_origins.len() < 1024 {
+            state.registered_origins.insert(key, origin.clone());
         }
         Ok(origin)
     }
@@ -434,6 +476,8 @@ impl FontSourceRegistry {
             family_fallback_used: selected.family_fallback_used,
             scale: selected.scale,
             variations: selected.variations.clone(),
+            #[cfg(target_os = "macos")]
+            native_origin: selected.native_origin.clone(),
         }))
     }
 
@@ -454,18 +498,18 @@ impl FontSourceRegistry {
     ) -> Result<(), NativeFontError> {
         let mut state = self.snapshots.lock().map_err(|_| snapshot_poisoned())?;
         let mut bytes = size_of::<SelectionRequest>().saturating_add(request.heap_bytes());
-        if let Some(style) = request.style() {
-            if let Some(shared) = state.authored_stacks.get(style) {
-                *style = shared.clone();
-            } else {
-                bytes = bytes.saturating_add(style.heap_bytes());
-            }
+        let new_style = state.share_style(&mut request);
+        if let Some(style) = &new_style {
+            bytes = bytes.saturating_add(style.heap_bytes());
         }
         if state.misses.len() < limits.max_cache_entries
             && bytes <= limits.max_cache_bytes.saturating_sub(state.miss_bytes)
             && state.misses.insert(request)
         {
             state.miss_bytes += bytes;
+            if let Some(style) = new_style {
+                state.authored_stacks.insert(style);
+            }
         }
         Ok(())
     }
@@ -475,7 +519,6 @@ impl FontSourceRegistry {
         &self,
         mut request: SelectionRequest,
         selected: SelectedFont,
-        #[cfg(target_os = "macos")] origin: Option<platform::coretext::NativeFace>,
         limits: &NativeFontLimits,
     ) -> Result<(), NativeFontError> {
         let mut state = self.snapshots.lock().map_err(|_| snapshot_poisoned())?;
@@ -505,27 +548,13 @@ impl FontSourceRegistry {
                         .sum(),
                 );
         }
-        let mut new_style = None;
-        if let Some(style) = request.style() {
-            if let Some(shared) = state.authored_stacks.get(style) {
-                *style = shared.clone();
-            } else {
-                bytes = bytes.saturating_add(style.heap_bytes());
-                new_style = Some(style.clone());
-            }
+        let new_style = state.share_style(&mut request);
+        if let Some(style) = &new_style {
+            bytes = bytes.saturating_add(style.heap_bytes());
         }
         #[cfg(target_os = "macos")]
-        let origin = origin
-            .zip(AttemptKey::new(
-                &selected.face,
-                selected.scale,
-                &selected.variations,
-            ))
-            .filter(|(_, key)| !state.native_origins.contains_key(key));
-        #[cfg(target_os = "macos")]
-        if let Some((origin, _)) = &origin {
+        if let Some(origin) = &selected.native_origin {
             bytes = bytes
-                .saturating_add(size_of::<(AttemptKey, platform::coretext::NativeFace)>())
                 .saturating_add(origin.diagnostic_path().as_os_str().len())
                 .saturating_add(origin.family.len())
                 .saturating_add(origin.post_script_name.len())
@@ -536,10 +565,6 @@ impl FontSourceRegistry {
         state.selection_bytes = total;
         if let Some(style) = new_style {
             state.authored_stacks.insert(style);
-        }
-        #[cfg(target_os = "macos")]
-        if let Some((origin, key)) = origin {
-            state.native_origins.insert(key, Some(origin));
         }
         let face = pinned.unwrap_or_else(|| {
             let face = Arc::new(selected.face);
@@ -556,6 +581,8 @@ impl FontSourceRegistry {
                 scale: selected.scale,
                 variations: selected.variations,
                 family_fallback_used: selected.family_fallback_used,
+                #[cfg(target_os = "macos")]
+                native_origin: selected.native_origin,
             },
         );
         Ok(())
@@ -751,7 +778,14 @@ impl FontSourceRegistry {
             #[cfg(feature = "experimental-system-font-query")]
             ExpectedFace::Platform(face) => {
                 let variations = file_axes(face, &data, index, &path)?;
-                if !eligible_face(&data, index, &request) {
+                let Ok(parsed) = ttf_parser::Face::parse(&data, index) else {
+                    return Ok(None);
+                };
+                #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+                if !platform_file::has_required_variation(face, &parsed, &request) {
+                    return Ok(None);
+                }
+                if !eligible_parsed_face(parsed, &request) {
                     return Ok(None);
                 }
                 (face.fallback_scale, variations)
@@ -916,9 +950,7 @@ impl FontSourceRegistry {
         }
         if let Some(face) = equivalent {
             let choice = known_choice(&face, database);
-            if state.native_faces.len() < limits.max_faces.saturating_mul(2) {
-                state.native_faces.insert(candidate, face);
-            }
+            state.cache_native_face(candidate, key.as_deref(), face, limits.max_faces);
             return Ok(choice);
         }
         let next_face = self
@@ -945,7 +977,9 @@ impl FontSourceRegistry {
                 .find(|face| face.index == index && same_source(&face.source, &source))
                 .cloned();
             if let Some(face) = installed {
-                return Ok(known_choice(&face, database));
+                let choice = known_choice(&face, database);
+                state.cache_native_face(candidate, key.as_deref(), face, limits.max_faces);
+                return Ok(choice);
             }
             check_limit("font-faces", next_face, limits.max_faces)?;
             (data, index, 0)
@@ -1062,9 +1096,11 @@ fn file_axes(
 
 #[cfg(feature = "experimental-system-font-query")]
 fn eligible_face(data: &[u8], index: u32, request: &CandidateRequest<'_>) -> bool {
-    let Ok(face) = ttf_parser::Face::parse(data, index) else {
-        return false;
-    };
+    ttf_parser::Face::parse(data, index).is_ok_and(|face| eligible_parsed_face(face, request))
+}
+
+#[cfg(feature = "experimental-system-font-query")]
+fn eligible_parsed_face(face: ttf_parser::Face<'_>, request: &CandidateRequest<'_>) -> bool {
     let table = |tag| face.raw_face().table(ttf_parser::Tag::from_bytes(tag));
     if request.implicit
         && !crate::font_selection::allows_font_tables(

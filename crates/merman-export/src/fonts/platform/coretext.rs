@@ -125,9 +125,10 @@ pub(super) fn system_ui(
 
 impl NativeFace {
     /// Accept only handles from this module's immutable Core Text constructors.
+    /// The original selection descriptor can retain explicit default-valued axes.
     fn from_font(
         font: CFRetained<CTFont>,
-        descriptor: Option<&CTFontDescriptor>,
+        selection_descriptor: Option<&CTFontDescriptor>,
         control: Option<&OperationControl>,
     ) -> Result<Option<Self>, NativeFontError> {
         checkpoint(control)?;
@@ -179,7 +180,7 @@ impl NativeFace {
                 .or_else(|| sfnt_name(names, ttf_parser::name_id::FAMILY))
                 .unwrap_or(family)
         };
-        let Some(variations) = variations::read(&font, descriptor, control)? else {
+        let Some(variations) = variations::read(&font, selection_descriptor, control)? else {
             return Ok(None);
         };
 

@@ -315,7 +315,7 @@ fn active_measurement_control_observes_cancellation_after_successful_acquisition
 }
 
 #[test]
-fn exhausted_native_work_budget_is_latched_on_the_active_measurement_control() {
+fn exhausted_native_work_budget_is_latched_on_each_active_measurement_control() {
     let acquisition = OperationControl::new();
     let context = NativeFontOptions::default()
         .with_font_file(font("Cousine-Regular.ttf"))
@@ -325,17 +325,29 @@ fn exhausted_native_work_budget_is_latched_on_the_active_measurement_control() {
         })
         .load(&acquisition)
         .unwrap();
-    let active = OperationControl::new();
+    for active in [OperationControl::new(), OperationControl::new()] {
+        assert!(
+            context
+                .measure_with_control(request("AV", &style("Cousine")), &active)
+                .is_err()
+        );
+        assert!(matches!(
+            active.terminal_checkpoint_at(OperationPhase::Layout),
+            Err(OperationLedgerError::ResourceLimitExceeded(error))
+                if error.id == "native_font_measurements" && error.limit == 0 && error.requested == 1
+        ));
+    }
+    let cancelled = OperationControl::new();
+    cancelled.cancel();
     assert!(
         context
-            .measure_with_control(request("AV", &style("Cousine")), &active)
+            .measure_with_control(request("AV", &style("Cousine")), &cancelled)
             .is_err()
     );
-    assert!(
-        matches!(active.terminal_checkpoint_at(OperationPhase::Layout),
-        Err(OperationLedgerError::ResourceLimitExceeded(error))
-            if error.id == "native_font_measurements" && error.limit == 0 && error.requested == 1)
-    );
+    assert!(matches!(
+        cancelled.terminal_checkpoint_at(OperationPhase::Layout),
+        Err(OperationLedgerError::Cancelled(_))
+    ));
     assert!(
         acquisition
             .terminal_checkpoint_at(OperationPhase::Layout)

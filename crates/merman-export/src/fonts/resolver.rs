@@ -433,14 +433,18 @@ fn select(
             let id = admitted.id;
             #[cfg(feature = "experimental-system-font-query")]
             if let Some(request) = request.take() {
-                let pinned = pin(&admitted, source, selection.family_fallback_used, database)?;
-                context.0.sources.remember_selection(
-                    request,
-                    pinned,
+                let pinned = pin(
+                    &admitted,
+                    source,
+                    selection.family_fallback_used,
+                    database,
                     #[cfg(target_os = "macos")]
                     origin,
-                    &context.0.limits,
                 )?;
+                context
+                    .0
+                    .sources
+                    .remember_selection(request, pinned, &context.0.limits)?;
             }
             observe_primary(observer, id, source, selection.family_fallback_used);
             choice = Some(admitted);
@@ -526,14 +530,18 @@ fn fallback(
                 let id = admitted.id;
                 #[cfg(feature = "experimental-system-font-query")]
                 if let Some(request) = request.take() {
-                    let pinned = pin(&admitted, source, false, database)?;
-                    context.0.sources.remember_selection(
-                        request,
-                        pinned,
+                    let pinned = pin(
+                        &admitted,
+                        source,
+                        false,
+                        database,
                         #[cfg(target_os = "macos")]
                         None,
-                        &context.0.limits,
                     )?;
+                    context
+                        .0
+                        .sources
+                        .remember_selection(request, pinned, &context.0.limits)?;
                 }
                 if let Some(observer) = observer {
                     observer.admit(id, source);
@@ -565,6 +573,7 @@ fn pin(
     source: NativeExportFontSource,
     family_fallback_used: bool,
     database: &usvg::fontdb::Database,
+    #[cfg(target_os = "macos")] native_origin: Option<platform::coretext::NativeFace>,
 ) -> Result<SelectedFont, NativeFontError> {
     let face = database
         .face(admitted.id)
@@ -576,6 +585,8 @@ fn pin(
         family_fallback_used,
         scale: admitted.scale,
         variations: admitted.variations.clone(),
+        #[cfg(target_os = "macos")]
+        native_origin,
     })
 }
 
@@ -597,7 +608,7 @@ fn resolve<T>(
             .then(|| context.0.sources.lock_selection())
             .transpose()?;
         context.checkpoint(control)?;
-        query(provider).map_err(|error| context.record_failure(control, exporting, error).clone())
+        query(provider)
     })();
     match result {
         Ok(result) => result,

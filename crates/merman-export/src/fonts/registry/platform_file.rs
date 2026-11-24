@@ -1,8 +1,9 @@
 //! Bounded table reads for a registered SFNT face before acquiring its full file.
 
+use super::super::resolver::GlyphFallback;
 use super::*;
 use std::io::{Seek, SeekFrom};
-use ttf_parser::{Face, RawFaceTables, cmap, fvar, maxp};
+use ttf_parser::{Face, RawFaceTables, cmap, fvar};
 use usvg::FontVariation;
 
 pub(super) struct OpenPlatformFont<'a> {
@@ -71,16 +72,14 @@ impl<'a> OpenPlatformFont<'a> {
         let Some(maxp) = probe.prefix(&directory, b"maxp", 6)? else {
             return Ok(None);
         };
-        if Face::from_raw_tables(RawFaceTables {
+        let Ok(headers) = Face::from_raw_tables(RawFaceTables {
             head: &head,
             hhea: &hhea,
             maxp: &maxp,
             ..Default::default()
-        })
-        .is_err()
-        {
+        }) else {
             return Ok(None);
-        }
+        };
         // A named bitmap or unsupported format can fall through to the next family.
         // Actual bounds errors after discovery are reported separately as source errors.
         let Some(cmap) = probe.table(&directory, b"cmap", limits.max_system_cmap_table_bytes)?
@@ -88,26 +87,26 @@ impl<'a> OpenPlatformFont<'a> {
             return Ok(None);
         };
         checked_cmap_bytes(&cmap, probe.source.control, 0, limits)?;
-        let os2 = probe.prefix(&directory, b"OS/2", 34)?;
-        if request.implicit
-            && !crate::font_selection::allows_font_tables(
+        if request.implicit {
+            let os2 = probe.prefix(&directory, b"OS/2", 34)?;
+            if !crate::font_selection::allows_font_tables(
                 &head,
                 os2.as_deref(),
                 &cmap,
                 &maxp,
                 request.fallback.map(|fallback| fallback.text),
-            )
-        {
+            ) {
+                return Ok(None);
+            }
+        }
+        let mapping = cmap::Table::parse(&cmap);
+        let glyph_count = headers.number_of_glyphs();
+        if !required_variation_matches(expected, mapping, glyph_count, request.fallback) {
             return Ok(None);
         }
         if let Some(fallback) = request.fallback {
-            let Some(glyph_count) =
-                maxp::Table::parse(&maxp).map(|table| table.number_of_glyphs.get())
-            else {
-                return Ok(None);
-            };
-            if !cmap::Table::parse(&cmap).is_some_and(|cmap| {
-                platform::cluster::cmap_may_cover(cmap, glyph_count, fallback.text)
+            if !mapping.is_some_and(|cmap| {
+                platform::cluster::cmap_may_cover(cmap, glyph_count, fallback.text, fallback.rtl)
             }) {
                 return Ok(None);
             }
@@ -157,6 +156,41 @@ impl<'a> OpenPlatformFont<'a> {
     }
 }
 
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+pub(super) fn has_required_variation(
+    expected: &platform::PlatformFace,
+    face: &Face<'_>,
+    request: &CandidateRequest<'_>,
+) -> bool {
+    required_variation_matches(
+        expected,
+        face.tables().cmap,
+        face.number_of_glyphs(),
+        request.fallback,
+    )
+}
+
+fn required_variation_matches(
+    expected: &platform::PlatformFace,
+    mapping: Option<cmap::Table<'_>>,
+    glyph_count: u16,
+    fallback: Option<GlyphFallback<'_>>,
+) -> bool {
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    if expected.require_non_default_uvs {
+        return mapping.zip(fallback).is_some_and(|(cmap, request)| {
+            platform::cluster::has_non_default_variation(
+                cmap,
+                glyph_count,
+                request.text,
+                request.rtl,
+            )
+        });
+    }
+    let _ = (expected, mapping, glyph_count, fallback);
+    true
+}
+
 struct Probe<'a, 'file> {
     source: &'a mut OpenPlatformFont<'file>,
     limits: &'a NativeFontLimits,
@@ -182,17 +216,26 @@ impl Directory {
 }
 
 impl Probe<'_, '_> {
-    fn read(&mut self, offset: u64, data: &mut [u8]) -> Result<(), NativeFontError> {
-        self.source
-            .control
-            .terminal_checkpoint_at(OperationPhase::Admission)?;
-        let len = data.len();
-        if self.source.len.saturating_sub(offset) < len as u64 {
+    fn check_range(&self, offset: u64, len: usize) -> Result<(), NativeFontError> {
+        if self
+            .source
+            .len
+            .checked_sub(offset)
+            .is_none_or(|remaining| remaining < len as u64)
+        {
             return Err(source_error(
                 self.source.path,
                 "font table extends beyond the source",
             ));
         }
+        Ok(())
+    }
+
+    fn reserve_read(&mut self, offset: u64, len: usize) -> Result<(), NativeFontError> {
+        self.source
+            .control
+            .terminal_checkpoint_at(OperationPhase::Admission)?;
+        self.check_range(offset, len)?;
         let total = self.scan_bytes.saturating_add(len);
         check_limit(
             "system-discovery-bytes",
@@ -200,6 +243,22 @@ impl Probe<'_, '_> {
             self.limits.max_system_scan_bytes,
         )?;
         *self.scan_bytes = total;
+        Ok(())
+    }
+
+    fn read(&mut self, offset: u64, data: &mut [u8]) -> Result<(), NativeFontError> {
+        self.reserve_read(offset, data.len())?;
+        self.read_reserved(offset, data)
+    }
+
+    fn read_vec(&mut self, offset: u64, len: usize) -> Result<Vec<u8>, NativeFontError> {
+        self.reserve_read(offset, len)?;
+        let mut data = vec![0; len];
+        self.read_reserved(offset, &mut data)?;
+        Ok(data)
+    }
+
+    fn read_reserved(&mut self, offset: u64, data: &mut [u8]) -> Result<(), NativeFontError> {
         self.source
             .file
             .seek(SeekFrom::Start(offset))
@@ -238,9 +297,9 @@ impl Probe<'_, '_> {
             return Ok(None);
         }
         let entries = usize::from(be_u16(&header[4..6]));
-        let mut records = vec![0; entries * 16];
-        self.read(offset + 12, &mut records)?;
-        Ok(Some(Directory(records)))
+        self.read_vec(offset + 12, entries * 16)
+            .map(Directory)
+            .map(Some)
     }
 
     fn prefix(
@@ -252,9 +311,8 @@ impl Probe<'_, '_> {
         let Some((offset, len)) = directory.entry(tag) else {
             return Ok(None);
         };
-        let mut data = vec![0; size.min(len)];
-        self.read(offset, &mut data)?;
-        Ok(Some(data))
+        self.check_range(offset, len)?;
+        self.read_vec(offset, size.min(len)).map(Some)
     }
 
     fn table(
@@ -272,9 +330,10 @@ impl Probe<'_, '_> {
             "system-font-table-bytes"
         };
         check_limit(resource, len, max)?;
-        let mut data = vec![0; len];
-        self.read(offset, &mut data)?;
-        Ok(Some(data))
+        if tag == b"cmap" {
+            check_limit("system-cmap-bytes", len, self.limits.max_system_cmap_bytes)?;
+        }
+        self.read_vec(offset, len).map(Some)
     }
 }
 
@@ -292,7 +351,10 @@ pub(super) fn axes(
     let Some((data, table)) = table.and_then(|data| Some((data, fvar::Table::parse(data)?))) else {
         return if named.is_some() {
             Err("font has no valid named instance")
+        } else if cfg!(windows) {
+            Err("font no longer has the variation axes selected by the platform")
         } else {
+            // Fontconfig render rules can supply axis hints for a static face.
             Ok(Vec::new())
         };
     };
@@ -319,6 +381,9 @@ pub(super) fn axes(
         }
     }
     axes.sort_by_key(|axis| axis.tag);
+    if cfg!(windows) && axes != expected.variations {
+        return Err("font no longer has the variation axes selected by the platform");
+    }
     Ok(axes)
 }
 

@@ -584,7 +584,7 @@ impl NativeFontContext {
     pub fn for_export(&self, control: &OperationControl) -> Result<Self, NativeFontError> {
         control.terminal_checkpoint_at(OperationPhase::Export)?;
         if let Some(error) = self.0.fatal.get() {
-            return Err(error.clone());
+            return Err(Self::replay_failure(control, true, error));
         }
         let context = Self(Arc::new(FontContextInner {
             database: Arc::clone(&self.0.database),
@@ -1134,44 +1134,54 @@ impl NativeFontContext {
         control: &OperationControl,
         exporting: bool,
         error: NativeFontError,
-    ) -> &NativeFontError {
-        self.0.fatal.get_or_init(|| {
-            let Some((id, actual, maximum)) = error.resource_limit() else {
-                return error;
-            };
-            let (phase, resource_phase, provenance) = if exporting {
-                (
-                    OperationPhase::Export,
-                    "native-font-export",
-                    OperationResourceProvenance::new(OperationResourceDomain::Export, None, []),
-                )
-            } else {
-                (
-                    OperationPhase::Layout,
-                    "native-font-measurement",
-                    OperationResourceProvenance::new(
-                        OperationResourceDomain::Render,
-                        None,
-                        [OperationResourceOverride { id, value: maximum }],
-                    ),
-                )
-            };
-            let event = OperationResourceLimitExceeded {
-                id,
-                phase,
-                resource_phase,
-                limit: maximum,
-                consumed: 0,
-                requested: actual,
-                provenance,
-            };
-            let terminal = control.terminate_resource_limit(event.clone());
-            if terminal == OperationLedgerError::ResourceLimitExceeded(event) {
-                error
-            } else {
-                NativeFontError::Operation(terminal)
-            }
-        })
+    ) -> NativeFontError {
+        let error = self.0.fatal.get_or_init(|| error);
+        Self::replay_failure(control, exporting, error)
+    }
+
+    fn replay_failure(
+        control: &OperationControl,
+        exporting: bool,
+        error: &NativeFontError,
+    ) -> NativeFontError {
+        let Some((id, actual, maximum)) = error.resource_limit() else {
+            return error.clone();
+        };
+        let (phase, resource_phase, provenance) = if exporting {
+            (
+                OperationPhase::Export,
+                "native-font-export",
+                OperationResourceProvenance::new(OperationResourceDomain::Export, None, []),
+            )
+        } else {
+            (
+                OperationPhase::Layout,
+                "native-font-measurement",
+                OperationResourceProvenance::new(
+                    OperationResourceDomain::Render,
+                    None,
+                    [OperationResourceOverride { id, value: maximum }],
+                ),
+            )
+        };
+        let event = OperationResourceLimitExceeded {
+            id,
+            phase,
+            resource_phase,
+            limit: maximum,
+            consumed: 0,
+            requested: actual,
+            provenance,
+        };
+        let terminal = control
+            .terminal_checkpoint_at(phase)
+            .err()
+            .unwrap_or_else(|| control.terminate_resource_limit(event.clone()));
+        if terminal == OperationLedgerError::ResourceLimitExceeded(event) {
+            error.clone()
+        } else {
+            NativeFontError::Operation(terminal)
+        }
     }
 
     fn measure_operation(
