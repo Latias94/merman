@@ -142,9 +142,9 @@
     },
     {
       "id": "pdf-export",
-      "description": "PDF output using the Merman Krilla, krilla-svg, and usvg forks with embedded ICC profiles.",
-      "extends": [],
-      "components": ["krilla", "krilla-icc-profiles", "krilla-svg", "usvg"]
+      "description": "PDF output using the Merman Krilla and krilla-svg forks with embedded ICC profiles and resvg filter rasterization.",
+      "extends": ["raster-export"],
+      "components": ["krilla", "krilla-icc-profiles", "krilla-svg"]
     },
     {
       "id": "ascii-render",

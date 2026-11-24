@@ -37,9 +37,9 @@ Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent
 
 ### `pdf-export`
 
-PDF output using the Merman Krilla, krilla-svg, and usvg forks with embedded ICC profiles.
+PDF output using the Merman Krilla and krilla-svg forks with embedded ICC profiles and resvg filter rasterization.
 
-Components: `krilla`, `krilla-icc-profiles`, `krilla-svg`, `usvg`.
+Components: `krilla`, `krilla-icc-profiles`, `krilla-svg`, `resvg`, `resvg-iir-blur`, `usvg`.
 
 ### `playground-reference`
 
@@ -620,7 +620,7 @@ The Merman SVG rasterizer links the Merman usvg fork to share SVG tree and font 
 - Relationship: `copied`, `linked`, `modified`
 - License expression: `Apache-2.0 OR MIT`
 - Selected license path: `MIT`
-- Artifact scopes: `cli-default`, `cli-release`, `raster-export`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`, `sdk-native-standard`, `sdk-standard`, `source-archive`
+- Artifact scopes: `cli-default`, `cli-release`, `pdf-export`, `raster-export`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`, `sdk-native-standard`, `sdk-standard`, `source-archive`
 - Local evidence: `vendor/resvg`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/usvg/LICENSE-APACHE`](THIRD_PARTY_LICENSES/usvg/LICENSE-APACHE) (license, SHA-256 `a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9`)
@@ -637,7 +637,7 @@ The resvg IIR Gaussian blur credits Pascal Getreuer's Simplified BSD implementat
 - Source path: `crates/resvg/src/filter/iir_blur.rs`
 - Relationship: `copied`, `linked`, `modified`
 - License expression: `BSD-2-Clause`
-- Artifact scopes: `cli-default`, `cli-release`, `raster-export`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`, `sdk-native-standard`, `sdk-standard`, `source-archive`
+- Artifact scopes: `cli-default`, `cli-release`, `pdf-export`, `raster-export`, `sdk-full`, `sdk-math`, `sdk-native-full`, `sdk-native-math`, `sdk-native-standard`, `sdk-standard`, `source-archive`
 - Local evidence: `vendor/resvg/src/filter/iir_blur.rs`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/resvg-iir-blur/LICENSE`](THIRD_PARTY_LICENSES/resvg-iir-blur/LICENSE) (license, SHA-256 `a9371cfa1c4d8146817a501ef944663b8a40ee684f767b21ccb1c7047ac7cf00`)
