@@ -1,0 +1,68 @@
+{
+  "$schema": "https://merman.dev/schemas/theme-v2.schema.json",
+  "schema_version": 2,
+  "id": "riso",
+  "name": "Riso",
+  "description": "Two-ink indigo and vermilion risograph print with crisp opposing registration offsets.",
+  "category": "art",
+  "typography": {
+    "sans": ["DM Sans", "Segoe UI", "Arial", "Noto Sans SC", "sans-serif"],
+    "mono": ["JetBrains Mono", "Consolas", "Noto Sans Mono CJK SC", "monospace"],
+    "serif": ["Georgia", "Noto Serif SC", "serif"],
+    "body_family": "sans",
+    "title_family": "sans",
+    "code_family": "mono",
+    "base_size_px": 14,
+    "title_weight": 700,
+    "label_weight": 600
+  },
+  "form": {
+    "density": "balanced",
+    "radius": 2,
+    "container_radius": 2,
+    "stroke_width": 1.35,
+    "connector_width": 1.35,
+    "edge_style": "curved",
+    "marker_style": "filled",
+    "edge_label_bg": "auto",
+    "chart": {
+      "gridlines": false,
+      "bar_radius": 0,
+      "line_markers": true,
+      "pie_gap_px": 1.5,
+      "pie_opacity": 0.90
+    }
+  },
+  "appearances": {
+    "light": {
+      "seed": {
+        "canvas": "#F6F0E4",
+        "surface": "#FAF6ED",
+        "ink": "#1E3668",
+        "accent": "#B8342B",
+        "callout": "#F9E7DF"
+      },
+      "roles": {
+        "surface.container": "#EFE8D9",
+        "surface.emphasis": "#E7ECF5",
+        "stroke.border": "#233F78",
+        "stroke.connector": "#233F78",
+        "text.muted": "#3F537B",
+        "text.title": "#B8342B",
+        "text.callout": "#8C221B"
+      },
+      "elevation": {
+        "kind": "layered_stack",
+        "layers": [
+          { "dx": -1.5, "dy": 1.8, "blur": 0, "color": "#C64037", "opacity": 0.72 },
+          { "dx": 1.5, "dy": -1.2, "blur": 0, "color": "#233F78", "opacity": 0.25 }
+        ]
+      },
+      "data": {
+        "ink":  ["#1E3668", "#B8342B", "#4B6A9B", "#8E413B"],
+        "fill": ["#C8D6EA", "#EFC2B8", "#A9BFE0", "#E3A79C", "#D8E2F0", "#F3D3CA"],
+        "fill_ink": "#1B2E57"
+      }
+    }
+  }
+}

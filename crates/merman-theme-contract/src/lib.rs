@@ -18,6 +18,8 @@ mod theme_recipe;
 mod version;
 mod wire;
 
+pub mod v2;
+
 pub use appearances::{
     MaterializedThemeRecipeV1, ThemeAppearance, ThemeAppearanceInspectionV1,
     ThemeAppearanceOverridesV1, ThemeAppearanceParseError, ThemeRecipeInspectionV1,

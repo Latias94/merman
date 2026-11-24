@@ -1,0 +1,415 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://merman.dev/schemas/theme-v2.schema.json",
+  "title": "Merman Theme Document v2",
+  "description": "Declarative, bounded, OKLCH-derived theme contract for Merman Native Theme v2. Supports 1-level preset extension, paired light/dark appearances, 12 universal semantic roles, dual-track data palettes, first-class canvas textures, elevation primitives, form tokens, and optional family overrides.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version"],
+  "allOf": [
+    {
+      "if": { "not": { "required": ["extends"] } },
+      "then": {
+        "required": ["appearances"],
+        "properties": {
+          "appearances": {
+            "properties": {
+              "light": { "$ref": "#/$defs/standalone_appearance" },
+              "dark": { "$ref": "#/$defs/standalone_appearance" }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 2
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,47}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 240
+    },
+    "category": {
+      "type": "string",
+      "enum": ["reading", "editor", "art", "custom"]
+    },
+    "extends": {
+      "type": "string",
+      "description": "Optional built-in preset ID to inherit from (single-hop only; no remote or recursive chains).",
+      "pattern": "^[a-z][a-z0-9-]{0,47}$"
+    },
+    "default_appearance": {
+      "$ref": "#/$defs/appearance"
+    },
+    "seed": {
+      "$ref": "#/$defs/seed_patch",
+      "description": "Shorthand seed overrides applied across all active appearances (especially useful with `extends`)."
+    },
+    "roles": {
+      "$ref": "#/$defs/role_overrides",
+      "description": "Shorthand universal role overrides applied across all active appearances."
+    },
+    "typography": {
+      "$ref": "#/$defs/typography"
+    },
+    "form": {
+      "$ref": "#/$defs/form"
+    },
+    "appearances": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "light": { "$ref": "#/$defs/appearance_layer" },
+        "dark": { "$ref": "#/$defs/appearance_layer" }
+      }
+    },
+    "overrides": {
+      "type": "array",
+      "maxItems": 32,
+      "items": { "$ref": "#/$defs/family_override" }
+    }
+  },
+  "$defs": {
+    "standalone_appearance": {
+      "required": ["seed"],
+      "properties": {
+        "seed": { "required": ["canvas", "ink", "accent"] }
+      }
+    },
+    "appearance": {
+      "type": "string",
+      "enum": ["light", "dark"]
+    },
+    "hex_color": {
+      "type": "string",
+      "pattern": "^#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$"
+    },
+    "paint": {
+      "oneOf": [
+        { "$ref": "#/$defs/hex_color" },
+        { "const": "transparent" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "stops"],
+          "properties": {
+            "kind": { "const": "linear_gradient" },
+            "angle_deg": { "type": "number", "minimum": 0, "maximum": 360 },
+            "stops": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 8,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["offset", "color"],
+                "properties": {
+                  "offset": { "type": "number", "minimum": 0, "maximum": 1 },
+                  "color": { "$ref": "#/$defs/hex_color" },
+                  "opacity": { "type": "number", "minimum": 0, "maximum": 1 }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "seed_patch": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "canvas": { "$ref": "#/$defs/hex_color" },
+        "ink": { "$ref": "#/$defs/hex_color" },
+        "accent": { "$ref": "#/$defs/hex_color" },
+        "surface": { "$ref": "#/$defs/hex_color" },
+        "callout": { "$ref": "#/$defs/hex_color" },
+        "info": { "$ref": "#/$defs/hex_color" },
+        "success": { "$ref": "#/$defs/hex_color" },
+        "warn": { "$ref": "#/$defs/hex_color" },
+        "danger": { "$ref": "#/$defs/hex_color" }
+      }
+    },
+    "role_overrides": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "canvas": { "$ref": "#/$defs/paint" },
+        "surface.node": { "$ref": "#/$defs/paint" },
+        "surface.container": { "$ref": "#/$defs/paint" },
+        "surface.callout": { "$ref": "#/$defs/paint" },
+        "surface.emphasis": { "$ref": "#/$defs/paint" },
+        "stroke.border": { "$ref": "#/$defs/paint" },
+        "stroke.connector": { "$ref": "#/$defs/paint" },
+        "stroke.guide": { "$ref": "#/$defs/paint" },
+        "text.primary": { "$ref": "#/$defs/hex_color" },
+        "text.muted": { "$ref": "#/$defs/hex_color" },
+        "text.title": { "$ref": "#/$defs/hex_color" },
+        "text.callout": { "$ref": "#/$defs/hex_color" },
+        "text.on_emphasis": { "$ref": "#/$defs/hex_color" },
+        "status.info": { "$ref": "#/$defs/hex_color" },
+        "status.success": { "$ref": "#/$defs/hex_color" },
+        "status.warn": { "$ref": "#/$defs/hex_color" },
+        "status.danger": { "$ref": "#/$defs/hex_color" }
+      }
+    },
+    "data_palette": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ink": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/hex_color" },
+          "description": "High-contrast series colors for thin marks (lines, borders, edges, Gantt/Git branches). Must achieve >= 3.0:1 against canvas."
+        },
+        "fill": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/hex_color" },
+          "description": "Area-fill category colors for Pie slices, Mindmap branches, Treemap tiles, Kanban lanes, and bars."
+        },
+        "fill_ink": {
+          "type": "string",
+          "description": "Text color over data.fill surfaces: 'auto' (per-slice OKLCH/WCAG contrast selection) or explicit hex color.",
+          "pattern": "^(auto|#([0-9A-Fa-f]{6}))$"
+        },
+        "pattern_encoding": {
+          "type": "boolean",
+          "description": "Optional monochrome/accessibility hatch & dash differentiation for print/monograph themes."
+        }
+      }
+    },
+    "texture": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "none" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "step_px"],
+          "properties": {
+            "kind": { "const": "grid" },
+            "step_px": { "type": "number", "minimum": 4, "maximum": 120 },
+            "major_every": { "type": "integer", "minimum": 2, "maximum": 12 },
+            "color": { "$ref": "#/$defs/hex_color" },
+            "opacity": { "type": "number", "minimum": 0.01, "maximum": 0.6 },
+            "major_opacity": { "type": "number", "minimum": 0.01, "maximum": 0.8 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "step_px"],
+          "properties": {
+            "kind": { "const": "dots" },
+            "step_px": { "type": "number", "minimum": 4, "maximum": 64 },
+            "radius_px": { "type": "number", "minimum": 0.4, "maximum": 4.0 },
+            "color": { "$ref": "#/$defs/hex_color" },
+            "opacity": { "type": "number", "minimum": 0.02, "maximum": 0.5 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "line_height_px"],
+          "properties": {
+            "kind": { "const": "ruled" },
+            "line_height_px": { "type": "number", "minimum": 12, "maximum": 64 },
+            "color": { "$ref": "#/$defs/hex_color" },
+            "opacity": { "type": "number", "minimum": 0.02, "maximum": 0.5 },
+            "margin_rule_color": { "$ref": "#/$defs/hex_color" },
+            "margin_rule_x_px": { "type": "number", "minimum": 8, "maximum": 96 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": { "const": "fibers" },
+            "color": { "$ref": "#/$defs/hex_color" },
+            "opacity": { "type": "number", "minimum": 0.01, "maximum": 0.2 },
+            "angle_deg": { "type": "number", "minimum": 0, "maximum": 180 },
+            "cross": { "type": "boolean" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "step_px"],
+          "properties": {
+            "kind": { "const": "scanlines" },
+            "step_px": { "type": "number", "minimum": 2, "maximum": 16 },
+            "color": { "$ref": "#/$defs/hex_color" },
+            "opacity": { "type": "number", "minimum": 0.01, "maximum": 0.35 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "color"],
+          "properties": {
+            "kind": { "const": "radial_wash" },
+            "color": { "$ref": "#/$defs/hex_color" },
+            "opacity": { "type": "number", "minimum": 0.01, "maximum": 0.35 },
+            "cx": { "type": "number", "minimum": 0, "maximum": 1 },
+            "cy": { "type": "number", "minimum": 0, "maximum": 1 },
+            "radius": { "type": "number", "minimum": 0.1, "maximum": 1.5 }
+          }
+        }
+      ]
+    },
+    "canvas_spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "textures": {
+          "type": "array",
+          "maxItems": 3,
+          "items": { "$ref": "#/$defs/texture" }
+        },
+        "padding_px": { "type": "number", "minimum": 0, "maximum": 64 }
+      }
+    },
+    "shadow_layer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dx", "dy", "color"],
+      "properties": {
+        "dx": { "type": "number", "minimum": -16, "maximum": 16 },
+        "dy": { "type": "number", "minimum": -16, "maximum": 16 },
+        "blur": { "type": "number", "minimum": 0, "maximum": 16, "default": 0 },
+        "color": { "$ref": "#/$defs/hex_color" },
+        "opacity": { "type": "number", "minimum": 0.01, "maximum": 1, "default": 1 }
+      }
+    },
+    "elevation": {
+      "oneOf": [
+        { "type": "string", "enum": ["flat", "soft", "crisp"] },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "layers"],
+          "properties": {
+            "kind": { "const": "layered_stack" },
+            "layers": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 4,
+              "items": { "$ref": "#/$defs/shadow_layer" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "color", "blur"],
+          "properties": {
+            "kind": { "const": "glow" },
+            "color": { "$ref": "#/$defs/hex_color" },
+            "blur": { "type": "number", "minimum": 0.5, "maximum": 12 },
+            "opacity": { "type": "number", "minimum": 0.05, "maximum": 0.85 }
+          }
+        }
+      ]
+    },
+    "font_stack": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 8,
+      "items": { "type": "string", "minLength": 1, "maxLength": 64 }
+    },
+    "typography": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sans": { "$ref": "#/$defs/font_stack" },
+        "mono": { "$ref": "#/$defs/font_stack" },
+        "serif": { "$ref": "#/$defs/font_stack" },
+        "body_family": { "type": "string", "enum": ["sans", "serif", "mono"] },
+        "title_family": { "type": "string", "enum": ["sans", "serif", "mono"] },
+        "code_family": { "type": "string", "enum": ["mono", "sans"] },
+        "base_size_px": { "type": "number", "minimum": 10, "maximum": 24 },
+        "title_weight": { "type": "integer", "minimum": 400, "maximum": 800 },
+        "label_weight": { "type": "integer", "minimum": 400, "maximum": 700 }
+      }
+    },
+    "form": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "density": { "type": "string", "enum": ["compact", "balanced", "airy"] },
+        "radius": { "type": "number", "minimum": 0, "maximum": 24 },
+        "container_radius": { "type": "number", "minimum": 0, "maximum": 24 },
+        "stroke_width": { "type": "number", "minimum": 0.5, "maximum": 4.0 },
+        "connector_width": { "type": "number", "minimum": 0.75, "maximum": 4.0 },
+        "edge_style": { "type": "string", "enum": ["curved", "orthogonal", "straight", "sketch"] },
+        "marker_style": { "type": "string", "enum": ["stealth", "filled", "open", "classic"] },
+        "edge_label_bg": { "type": "string", "enum": ["auto", "canvas", "pill", "transparent"] },
+        "elevation": { "$ref": "#/$defs/elevation" },
+        "chart": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "gridlines": { "type": "boolean" },
+            "bar_radius": { "type": "number", "minimum": 0, "maximum": 12 },
+            "bar_wireframe": { "type": "boolean" },
+            "line_markers": { "type": "boolean" },
+            "pie_gap_px": { "type": "number", "minimum": 0, "maximum": 6 },
+            "pie_opacity": { "type": "number", "minimum": 0.65, "maximum": 1.0 }
+          }
+        }
+      }
+    },
+    "appearance_layer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "seed": { "$ref": "#/$defs/seed_patch" },
+        "roles": { "$ref": "#/$defs/role_overrides" },
+        "data": { "$ref": "#/$defs/data_palette" },
+        "canvas": { "$ref": "#/$defs/canvas_spec" },
+        "elevation": { "$ref": "#/$defs/elevation" }
+      }
+    },
+    "family_override": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["families"],
+      "properties": {
+        "families": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 34,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "appearance": { "$ref": "#/$defs/appearance" },
+        "roles": { "$ref": "#/$defs/role_overrides" },
+        "form": { "$ref": "#/$defs/form" },
+        "elevation": { "$ref": "#/$defs/elevation" },
+        "typography": { "$ref": "#/$defs/typography" },
+        "node_ordinal_palette": { "type": "boolean" }
+      }
+    }
+  }
+}

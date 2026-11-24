@@ -1,0 +1,74 @@
+{
+  "$schema": "https://merman.dev/schemas/theme-v2.schema.json",
+  "schema_version": 2,
+  "id": "pop-art",
+  "name": "Pop Art",
+  "description": "Bold comic poster yellow, cyan, and magenta plates with halftone dot canvas and hard double ink offsets.",
+  "category": "art",
+  "typography": {
+    "sans": ["Space Grotesk", "Arial", "Segoe UI", "Noto Sans SC", "sans-serif"],
+    "mono": ["JetBrains Mono", "Consolas", "Noto Sans Mono CJK SC", "monospace"],
+    "serif": ["Georgia", "Noto Serif SC", "serif"],
+    "body_family": "sans",
+    "title_family": "sans",
+    "code_family": "mono",
+    "base_size_px": 14,
+    "title_weight": 800,
+    "label_weight": 700
+  },
+  "form": {
+    "density": "balanced",
+    "radius": 0,
+    "container_radius": 0,
+    "stroke_width": 2.0,
+    "connector_width": 1.8,
+    "edge_style": "curved",
+    "marker_style": "filled",
+    "edge_label_bg": "auto",
+    "chart": {
+      "gridlines": false,
+      "bar_radius": 0,
+      "line_markers": true,
+      "pie_gap_px": 2,
+      "pie_opacity": 0.96
+    }
+  },
+  "appearances": {
+    "light": {
+      "seed": {
+        "canvas": "#FFF9E8",
+        "surface": "#FFE500",
+        "ink": "#141414",
+        "accent": "#C9146A",
+        "callout": "#31D5E8"
+      },
+      "roles": {
+        "surface.container": "#DEF7FA",
+        "surface.emphasis": "#FFD0E6",
+        "stroke.border": "#141414",
+        "stroke.connector": "#141414",
+        "text.muted": "#3D3A34",
+        "text.title": "#141414",
+        "text.callout": "#141414",
+        "text.on_emphasis": "#141414"
+      },
+      "canvas": {
+        "textures": [
+          { "kind": "dots", "step_px": 10, "radius_px": 0.9, "color": "#141414", "opacity": 0.08 }
+        ]
+      },
+      "elevation": {
+        "kind": "layered_stack",
+        "layers": [
+          { "dx": 5, "dy": 5, "blur": 0, "color": "#F32888", "opacity": 1.0 },
+          { "dx": 2.5, "dy": 2.5, "blur": 0, "color": "#141414", "opacity": 1.0 }
+        ]
+      },
+      "data": {
+        "ink":  ["#C9146A", "#00738A", "#141414", "#B84700", "#5B21B6", "#157347"],
+        "fill": ["#FFE500", "#5CE1F0", "#FF8FC2", "#C9B0FF", "#9AE66E", "#FFB86B"],
+        "fill_ink": "#141414"
+      }
+    }
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "$schema": "https://merman.dev/schemas/theme-v2.schema.json",
+  "schema_version": 2,
+  "id": "paper-cut",
+  "name": "Paper Cut",
+  "description": "Tactile three-layer mounted mint, coral, and teal card stock over handmade cotton fiber paper.",
+  "category": "art",
+  "typography": {
+    "sans": ["Plus Jakarta Sans", "Segoe UI", "Arial", "Noto Sans SC", "sans-serif"],
+    "mono": ["JetBrains Mono", "Consolas", "Noto Sans Mono CJK SC", "monospace"],
+    "serif": ["Georgia", "Noto Serif SC", "serif"],
+    "body_family": "sans",
+    "title_family": "sans",
+    "code_family": "mono",
+    "base_size_px": 14.5,
+    "title_weight": 600,
+    "label_weight": 600
+  },
+  "form": {
+    "density": "airy",
+    "radius": 8,
+    "container_radius": 10,
+    "stroke_width": 0.9,
+    "connector_width": 1.35,
+    "edge_style": "curved",
+    "marker_style": "filled",
+    "edge_label_bg": "auto",
+    "chart": {
+      "gridlines": false,
+      "bar_radius": 3,
+      "line_markers": true,
+      "pie_gap_px": 2,
+      "pie_opacity": 0.94
+    }
+  },
+  "appearances": {
+    "light": {
+      "seed": {
+        "canvas": "#FBF8F0",
+        "surface": "#E9F2E9",
+        "ink": "#243E4A",
+        "accent": "#2E7065",
+        "callout": "#F8DFC3"
+      },
+      "roles": {
+        "surface.container": "#EEF1E7",
+        "surface.emphasis": "#DCECE5",
+        "stroke.border": "#739A92",
+        "stroke.connector": "#243E4A",
+        "text.muted": "#465F63",
+        "text.callout": "#243E4A"
+      },
+      "canvas": {
+        "textures": [
+          { "kind": "fibers", "color": "#B2A790", "opacity": 0.05, "angle_deg": 125, "cross": true }
+        ]
+      },
+      "elevation": {
+        "kind": "layered_stack",
+        "layers": [
+          { "dx": 3, "dy": 8, "blur": 2.2, "color": "#243E4A", "opacity": 0.17 },
+          { "dx": 5, "dy": 6, "blur": 0, "color": "#7EB4AA", "opacity": 1.0 },
+          { "dx": 2, "dy": 3, "blur": 0, "color": "#EB9C88", "opacity": 1.0 }
+        ]
+      },
+      "data": {
+        "ink":  ["#A85940", "#243E4A", "#2E7065", "#856A17", "#75559A", "#396C95"],
+        "fill": ["#96D4BC", "#F3B08E", "#EAD46E", "#CCA4E6", "#92C0E3", "#BDD474"],
+        "fill_ink": "#1E343F"
+      }
+    }
+  }
+}

@@ -1,0 +1,82 @@
+{
+  "$schema": "https://merman.dev/schemas/theme-v2.schema.json",
+  "schema_version": 2,
+  "id": "tokyo",
+  "name": "Tokyo",
+  "description": "Modern IDE-inspired twilight indigo and crisp daylight theme with vivid syntax accents.",
+  "category": "editor",
+  "default_appearance": "dark",
+  "typography": {
+    "sans": ["Inter", "Segoe UI", "Arial", "Noto Sans SC", "sans-serif"],
+    "mono": ["JetBrains Mono", "Fira Code", "Consolas", "Noto Sans Mono CJK SC", "monospace"],
+    "serif": ["Georgia", "Noto Serif SC", "serif"],
+    "body_family": "sans",
+    "title_family": "sans",
+    "code_family": "mono",
+    "base_size_px": 14,
+    "title_weight": 600,
+    "label_weight": 500
+  },
+  "form": {
+    "density": "balanced",
+    "radius": 6,
+    "container_radius": 10,
+    "stroke_width": 1.25,
+    "connector_width": 1.5,
+    "edge_style": "curved",
+    "marker_style": "stealth",
+    "edge_label_bg": "auto",
+    "elevation": "soft",
+    "chart": {
+      "gridlines": true,
+      "bar_radius": 4,
+      "line_markers": true,
+      "pie_gap_px": 1.5,
+      "pie_opacity": 0.92
+    }
+  },
+  "appearances": {
+    "light": {
+      "seed": {
+        "canvas": "#E6E8F0",
+        "surface": "#F4F5FA",
+        "ink": "#292E42",
+        "accent": "#5A4A78",
+        "callout": "#EFE5CF"
+      },
+      "roles": {
+        "surface.container": "#DCE0EC",
+        "stroke.border": "#969EC0",
+        "stroke.connector": "#4E5778",
+        "text.muted": "#4B526E",
+        "text.callout": "#5F4311"
+      },
+      "data": {
+        "ink":  ["#2E59B8", "#0F766E", "#7C3AED", "#B54708", "#C81E4E", "#0E7490", "#4D7C0F", "#6D28D9"],
+        "fill": ["#BACBFA", "#A1E3D8", "#D3C2FA", "#F5CCA3", "#F7B5C6", "#A4DFEE", "#C9E39E", "#D6C4F7"],
+        "fill_ink": "#1E2233"
+      }
+    },
+    "dark": {
+      "seed": {
+        "canvas": "#1A1B26",
+        "surface": "#24283B",
+        "ink": "#C8D3F5",
+        "accent": "#BB9AF7",
+        "callout": "#332E24"
+      },
+      "roles": {
+        "surface.container": "#1F2335",
+        "stroke.border": "#414868",
+        "stroke.connector": "#7AA2F7",
+        "text.muted": "#9AA5CE",
+        "text.callout": "#E0AF68"
+      },
+      "data": {
+        "ink":  ["#7AA2F7", "#73DACA", "#BB9AF7", "#FF9E64", "#F7768E", "#2AC3DE", "#9ECE6A", "#E0AF68"],
+        "fill": ["#263966", "#1D4B47", "#423166", "#5E371E", "#5C2232", "#174857", "#354C22", "#57421D"],
+        "fill_ink": "#E5ECFF"
+      }
+    }
+  }
+}

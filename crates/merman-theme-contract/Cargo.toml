@@ -15,10 +15,15 @@ categories = ["encoding", "visualization"]
 [features]
 default = []
 
+[package.metadata.merman]
+wasm-inputs = ["assets/presets"]
+
 [dependencies]
-serde.workspace = true
+serde = { workspace = true, features = ["rc"] }
 serde_json.workspace = true
 serde_json_canonicalizer.workspace = true
+serde_path_to_error.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

@@ -4,6 +4,26 @@
 materialized results, and canonical JSON. It has no parser, renderer, bindings, or host dependency.
 This guide covers `0.11.0`. Use matching wrappers and runtimes.
 
+## Compile a native theme document
+
+The `v2` module compiles native theme documents into shared visual settings. Use the
+[JSON Schema](https://merman.dev/schemas/theme-v2.schema.json) in authoring tools.
+
+```rust
+use merman_theme_contract::v2::{Appearance, BuiltinPreset, ThemeCompiler};
+
+let document = br##"{
+  "schema_version": 2,
+  "extends": "studio",
+  "seed": { "accent": "#0052CC" },
+  "form": { "radius": 8 }
+}"##;
+let theme = ThemeCompiler::new().compile_json(document, Some(Appearance::Dark))?;
+assert_eq!(theme.form().radius, 8.0);
+assert_eq!(BuiltinPreset::Studio.as_str(), "studio");
+# Ok::<(), merman_theme_contract::v2::ThemeError>(())
+```
+
 ## Save and share a theme
 
 `ThemeRecipeV1` is the exchange envelope accepted by binding `options.theme`, CLI `--theme-file`,

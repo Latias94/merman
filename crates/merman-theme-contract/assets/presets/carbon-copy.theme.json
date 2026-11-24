@@ -1,0 +1,72 @@
+{
+  "$schema": "https://merman.dev/schemas/theme-v2.schema.json",
+  "schema_version": 2,
+  "id": "carbon-copy",
+  "name": "Carbon Copy",
+  "description": "Ruled ledger paper with violet carbon-sheet impressions and vermilion stamp accents.",
+  "category": "art",
+  "typography": {
+    "sans": ["IBM Plex Sans", "Segoe UI", "Arial", "Noto Sans SC", "sans-serif"],
+    "mono": ["IBM Plex Mono", "JetBrains Mono", "Consolas", "Noto Sans Mono CJK SC", "monospace"],
+    "serif": ["Georgia", "Noto Serif SC", "serif"],
+    "body_family": "mono",
+    "title_family": "mono",
+    "code_family": "mono",
+    "base_size_px": 13.5,
+    "title_weight": 700,
+    "label_weight": 600
+  },
+  "form": {
+    "density": "balanced",
+    "radius": 2,
+    "container_radius": 2,
+    "stroke_width": 1.25,
+    "connector_width": 1.35,
+    "edge_style": "orthogonal",
+    "marker_style": "classic",
+    "edge_label_bg": "auto",
+    "chart": {
+      "gridlines": true,
+      "bar_radius": 0,
+      "line_markers": true,
+      "pie_gap_px": 1.5,
+      "pie_opacity": 0.90
+    }
+  },
+  "appearances": {
+    "light": {
+      "seed": {
+        "canvas": "#F2EDDF",
+        "surface": "#FBF9F2",
+        "ink": "#3B2050",
+        "accent": "#9E332B",
+        "callout": "#F6DFD8"
+      },
+      "roles": {
+        "surface.container": "#EAE2F0",
+        "surface.emphasis": "#E5D8EE",
+        "stroke.border": "#5D3B78",
+        "stroke.connector": "#4B2C63",
+        "text.muted": "#5E4373",
+        "text.title": "#9E332B",
+        "text.callout": "#782019"
+      },
+      "canvas": {
+        "textures": [
+          { "kind": "ruled", "line_height_px": 24, "color": "#8E7AA0", "opacity": 0.14, "margin_rule_color": "#B34B42", "margin_rule_x_px": 28 }
+        ]
+      },
+      "elevation": {
+        "kind": "layered_stack",
+        "layers": [
+          { "dx": -3, "dy": 2, "blur": 0, "color": "#76508E", "opacity": 0.78 }
+        ]
+      },
+      "data": {
+        "ink":  ["#4B2C63", "#9E332B", "#2D5F7E", "#7A6218", "#356E52", "#7E4B6C"],
+        "fill": ["#D4C1E3", "#EBBCB2", "#B8D3E3", "#E6D6A2", "#BBDCC8", "#E3C2D6"],
+        "fill_ink": "#2F1940"
+      }
+    }
+  }
+}
