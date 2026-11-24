@@ -21,6 +21,7 @@ pub(crate) struct ArchitectureServiceBoundsEstimate {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ArchitectureCytoscapeCanvasLabelMetrics {
+    #[cfg(any(feature = "layout-cytoscape", test))]
     pub(crate) width: f64,
     pub(crate) half_width: f64,
 }
@@ -34,6 +35,7 @@ pub(crate) struct ArchitectureCytoscapeEdgeLabelMetrics {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ArchitectureCytoscapeChildLabelBounds {
+    #[cfg(any(feature = "layout-cytoscape", test))]
     pub(crate) metrics: ArchitectureCytoscapeCanvasLabelMetrics,
     pub(crate) half_width: f64,
     pub(crate) bottom_extension_px: f64,
@@ -54,7 +56,9 @@ impl ArchitectureCytoscapeChildLabelBounds {
 #[derive(Debug, Clone)]
 pub(crate) struct ArchitectureCytoscapeChildContributionBounds {
     // Raw icon bounds are retained for the emitted SVG geometry.
+    #[cfg(any(feature = "layout-cytoscape", test))]
     pub(crate) body_bounds: Bounds,
+    #[cfg(any(feature = "layout-cytoscape", test))]
     pub(crate) label_bounds: Option<Bounds>,
     // Compound sizing unions the cached body and label bounds without the final element expansion.
     pub(crate) union_bounds: Bounds,
@@ -84,7 +88,11 @@ pub(crate) fn architecture_cytoscape_canvas_label_metrics(
         })
         .fold(0.0_f64, f64::max);
     let half_width = width / 2.0;
-    ArchitectureCytoscapeCanvasLabelMetrics { width, half_width }
+    ArchitectureCytoscapeCanvasLabelMetrics {
+        #[cfg(any(feature = "layout-cytoscape", test))]
+        width,
+        half_width,
+    }
 }
 
 #[cfg(any(feature = "layout-cytoscape", test))]
@@ -154,16 +162,17 @@ pub(crate) fn architecture_cytoscape_child_contribution_bounds(
     icon_bounds: &Bounds,
     label_bounds: Option<&ArchitectureCytoscapeChildLabelBounds>,
 ) -> ArchitectureCytoscapeChildContributionBounds {
-    let body_bounds = icon_bounds.clone();
-    let body_bbox_bounds = expand_bounds(&body_bounds, CYTOSCAPE_FINAL_ELEMENT_BBOX_EXPANSION_PX);
-    let label_bounds = label_bounds.map(|label| label.bounds_for_icon(&body_bounds));
+    let body_bbox_bounds = expand_bounds(icon_bounds, CYTOSCAPE_FINAL_ELEMENT_BBOX_EXPANSION_PX);
+    let label_bounds = label_bounds.map(|label| label.bounds_for_icon(icon_bounds));
     let union_bounds = label_bounds
         .as_ref()
         .map(|label| union_bounds(&body_bbox_bounds, label))
         .unwrap_or_else(|| body_bbox_bounds.clone());
 
     ArchitectureCytoscapeChildContributionBounds {
-        body_bounds,
+        #[cfg(any(feature = "layout-cytoscape", test))]
+        body_bounds: icon_bounds.clone(),
+        #[cfg(any(feature = "layout-cytoscape", test))]
         label_bounds,
         union_bounds,
     }
@@ -191,6 +200,7 @@ pub(crate) fn architecture_cytoscape_child_label_bounds(
     let title = title.map(str::trim).filter(|t| !t.is_empty())?;
     let metrics = architecture_cytoscape_canvas_label_metrics(title, measurer, style);
     Some(ArchitectureCytoscapeChildLabelBounds {
+        #[cfg(any(feature = "layout-cytoscape", test))]
         metrics,
         half_width: metrics.half_width + CYTOSCAPE_NODE_LABEL_MARGIN_OF_ERROR_PX,
         bottom_extension_px: architecture_cytoscape_node_label_bottom_extension_px(font_size_px),
