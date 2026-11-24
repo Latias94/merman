@@ -185,7 +185,7 @@ Rustdoc generation defaults remain unchanged. For a minimal CLI build with
 explicit fonts and SVG output:
 
 ```powershell
-cargo run -p merman-cli --no-default-features --features diagram-flowchart,native-fonts -- mmdc -i diagram.mmd -o diagram.svg --font-file fonts/MyFont-Regular.ttf --font-file fonts/MyFont-Bold.ttf --font-system off
+cargo run -p merman-cli --no-default-features --features diagram-flowchart,layout-dagre,native-fonts -- mmdc -i diagram.mmd -o diagram.svg --font-file fonts/MyFont-Regular.ttf --font-file fonts/MyFont-Bold.ttf --font-system off
 ```
 
 Add `png`, `jpeg`, or `pdf` individually for binary output. Each CLI codec feature
@@ -480,6 +480,8 @@ and layout JSON APIs report a typed error at admission when the selected engine 
 | No graph engine | The default request reports `layout-elk` missing. An explicit `layout: dagre` reports `layout-dagre` missing. |
 
 Add `layout-dagre` to a previous defaults-off recipe that relied on the implicit Dagre backend.
+Mindmap's default CoSE layout falls back to Dagre when Cytoscape is absent. An explicit ELK request
+tries ELK, CoSE, then Dagre and reports `layout-elk` missing when none of them is compiled.
 For a selective `RenderCapabilityPolicy`, explicitly allow `RenderCapability::LayoutDagre` if the
 host should admit it. Graph ASCII can independently bring Dugong into the application. To check an
 SVG-only dependency closure, use `cargo tree -e normal` in the final consumer build with `ascii`
@@ -600,8 +602,9 @@ Likewise, `markdown` enables serial document conversion without analysis command
 `parallel-markdown` implies `markdown` and adds only the Rayon worker pool and `--jobs` to
 `batch` and Markdown-mode `mmdc`. Disabling it does not remove Markdown support or change chart
 numbering, source order, diagnostics ordering, resource admission, or transaction semantics.
-Use `--no-default-features --features all-diagrams,markdown` for a sequential all-family Markdown CLI and
-`--no-default-features --features all-diagrams,parallel-markdown` when measured throughput justifies Rayon.
+Use `--no-default-features --features all-diagrams,markdown,layout-dagre` for sequential Markdown
+rendering with Dagre. Add `layout-cytoscape` for Architecture's default layout. Select
+`parallel-markdown` to enable Rayon.
 
 ## Rustdoc
 
@@ -700,7 +703,7 @@ transport API 2 rather than C ABI 3. The Maven publication bundle does not
 establish public Central availability. Apple delivery includes a complete local SwiftPM
 package with matching sources, resources, and XCFramework; public remote SwiftPM installation
 awaits a hosted package repository. C and C++ can use the published `0.9.3` native SDK, with
-`sdk-native-full` recommended for SVG, PNG, JPEG, PDF, ASCII, math, both layout backends, and
+`sdk-native-full` recommended for SVG, PNG, JPEG, PDF, ASCII, math, Dagre, Cytoscape, ELK, and
 caller-owned fonts on supported desktop targets. `c-abi-native` remains the complete source
 reference build, not the downloadable SDK. The [SDK](../distribution/sdk/README.md),
 [Flutter](../platforms/flutter/README.md),

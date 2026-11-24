@@ -1,11 +1,25 @@
 //! Mindmap projections for Mermaid's registered graph layout loaders.
 
-use super::{MindmapEdgeModel, MindmapModel, compute_bounds};
+#[cfg(any(
+    feature = "layout-cytoscape",
+    feature = "layout-dagre",
+    feature = "layout-elk"
+))]
+use super::compute_bounds;
+use super::{MindmapEdgeModel, MindmapModel};
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+use crate::Error;
+use crate::Result;
 #[cfg(feature = "layout-elk")]
 use crate::layout_backend::ElkRootAlgorithm;
+#[cfg(any(
+    feature = "layout-cytoscape",
+    feature = "layout-dagre",
+    feature = "layout-elk"
+))]
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{LayoutEdge, LayoutNode, LayoutPoint, MindmapDiagramLayout};
-use crate::{Error, Result};
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 use serde_json::Value;
 
 fn edge(model: &MindmapEdgeModel, points: Vec<LayoutPoint>) -> LayoutEdge {

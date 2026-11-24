@@ -4,6 +4,11 @@ use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{LayoutLabel, LayoutPoint};
 use std::collections::HashMap;
 
+#[cfg(any(
+    feature = "layout-dagre",
+    feature = "layout-elk",
+    feature = "layout-shoal"
+))]
 pub(super) fn node(plan: &UsecaseNodePlan, x: f64, y: f64, width: f64, height: f64) -> LayoutNode {
     LayoutNode {
         id: plan.id.clone(),
@@ -17,6 +22,11 @@ pub(super) fn node(plan: &UsecaseNodePlan, x: f64, y: f64, width: f64, height: f
     }
 }
 
+#[cfg(any(
+    feature = "layout-dagre",
+    feature = "layout-elk",
+    feature = "layout-shoal"
+))]
 pub(super) fn edge(
     plan: &UsecaseEdgePlan,
     points: Vec<LayoutPoint>,

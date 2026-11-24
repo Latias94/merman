@@ -18,6 +18,7 @@ pub(super) fn state_node_is_effective_group(n: &StateNode) -> bool {
     n.is_group && n.shape != "note"
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 pub(super) fn normalize_dir(direction: &str) -> String {
     match direction.trim().to_uppercase().as_str() {
         "TB" | "TD" => "TB".to_string(),

@@ -200,7 +200,7 @@ mod tests {
     #[cfg(all(feature = "svg", feature = "diagram-flowchart"))]
     #[test]
     fn shoal_plan_and_execution_follow_the_binding_owner_feature() {
-        let source = "---\nconfig:\n  layout: shoal\n---\nflowchart LR\nA --> B";
+        let source = "---\nconfig:\n  layout: shoal\n---\nflowchart LR\nA --> B\nB --> A";
         let payload = plan(source, b"");
         assert_eq!(
             payload["required_capability_ids"],
@@ -210,10 +210,8 @@ mod tests {
         if cfg!(feature = "layout-shoal") {
             assert_eq!(payload["ready"], true);
             assert_eq!(payload["missing_capability_ids"], serde_json::json!([]));
-            result.unwrap();
-            let cycle = format!("{source}\nB --> A");
-            let error = crate::render_svg(cycle.as_bytes(), b"").unwrap_err();
-            assert_eq!(error.status(), crate::BindingStatus::UnsupportedOperation);
+            let svg = String::from_utf8(result.unwrap()).unwrap();
+            assert!(svg.contains("L_A_B_0") && svg.contains("L_B_A_0"));
         } else {
             assert_eq!(payload["ready"], false);
             assert_eq!(

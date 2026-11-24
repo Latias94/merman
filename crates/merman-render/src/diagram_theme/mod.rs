@@ -64,7 +64,11 @@ pub use admission::{
     ThemeAdmissionError, ThemeAdmissionPolicy, ThemeCapability, ThemeHostAdmissionReport,
     ThemePortabilityRequirement, ThemeRequirements, TrustedThemeLane, TrustedThemeLanes,
 };
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "all-diagrams",
+    any(feature = "layout-dagre", feature = "layout-elk")
+))]
 pub(crate) use application::RootThemeResidualReason;
 pub use application::RootThemeVerification;
 pub(crate) use application::{

@@ -7,12 +7,16 @@ use crate::graph_layout::ir::Direction;
 use crate::layout_backend::ElkRootAlgorithm;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::math::MathRenderer;
+#[cfg(feature = "layout-elk")]
+use crate::model::ClassDiagramLayout;
 use crate::model::{
-    Bounds, ClassDiagramLayout, ClassNodeLabelPlan, ClassNodeRowMetrics, ClassPreparedHtmlLabel,
-    ClassPreparedHtmlNodeLabels, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
+    Bounds, ClassNodeLabelPlan, ClassNodeRowMetrics, ClassPreparedHtmlLabel,
+    ClassPreparedHtmlNodeLabels,
 };
 #[cfg(feature = "layout-elk")]
 use crate::model::{ClassRenderItem, ClassRenderRoot, ClassRenderRootId, ClassRenderTree};
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+use crate::model::{LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint};
 use crate::text::{
     MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, MermaidMarkdownAnalysis, TextMeasurer, TextStyle,
     WrapMode, analyze_mermaid_markdown, measure_mermaid_text_dimensions,
@@ -30,6 +34,12 @@ pub(crate) mod config;
 mod dagre;
 #[cfg(feature = "layout-elk")]
 mod elk_terminals;
+#[cfg(any(
+    feature = "layout-dagre",
+    feature = "layout-elk",
+    feature = "layout-shoal",
+    test
+))]
 mod measured;
 pub(crate) mod node_binding;
 #[cfg(feature = "layout-shoal")]
@@ -212,6 +222,7 @@ pub(crate) fn class_namespace_label<'a>(model: &'a ClassDiagramModel, id: &'a st
 
 type Rect = crate::geom::Box2;
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
 #[derive(Debug)]
 struct EdgeTerminalMetrics {
     start_left: Option<(f64, f64)>,
@@ -226,6 +237,7 @@ struct EdgeTerminalMetrics {
     end_arrow_type: Option<&'static str>,
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn round_number(num: f64, precision: i32) -> f64 {
     if !num.is_finite() {
         return 0.0;
@@ -234,6 +246,7 @@ fn round_number(num: f64, precision: i32) -> f64 {
     (num * factor).round() / factor
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn distance(a: &LayoutPoint, b: Option<&LayoutPoint>) -> f64 {
     let Some(b) = b else {
         return 0.0;
@@ -243,6 +256,7 @@ fn distance(a: &LayoutPoint, b: Option<&LayoutPoint>) -> f64 {
     (dx * dx + dy * dy).sqrt()
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn calculate_point(points: &[LayoutPoint], distance_to_traverse: f64) -> Option<LayoutPoint> {
     if points.is_empty() {
         return None;
@@ -276,6 +290,7 @@ fn calculate_point(points: &[LayoutPoint], distance_to_traverse: f64) -> Option<
     None
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[derive(Debug, Clone, Copy)]
 enum TerminalPos {
     StartLeft,
@@ -284,6 +299,7 @@ enum TerminalPos {
     EndRight,
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn calc_terminal_label_position(
     terminal_marker_size: f64,
     position: TerminalPos,
@@ -342,6 +358,7 @@ pub(crate) fn class_arrow_type_for_relation_end(ty: i32) -> Option<&'static str>
     }
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn intersect_segment_with_rect(
     p0: &LayoutPoint,
     p1: &LayoutPoint,
@@ -393,6 +410,7 @@ fn intersect_segment_with_rect(
         .map(|(_, p)| p)
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn terminal_path_for_edge(
     points: &[LayoutPoint],
     from_rect: Rect,
@@ -2632,6 +2650,7 @@ fn class_terminal_metrics(
     }
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn required_terminal_label_position(
     edge_id: &str,
     marker: f64,
@@ -2646,6 +2665,7 @@ fn required_terminal_label_position(
     })
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn apply_class_terminal_labels(
     edge: &mut LayoutEdge,
     meta: &EdgeTerminalMetrics,
@@ -2710,6 +2730,7 @@ fn class_elk_polyline_len(points: &[LayoutPoint]) -> f64 {
         .sum::<f64>()
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn compute_bounds(
     nodes: &[LayoutNode],
     edges: &[LayoutEdge],
@@ -2991,6 +3012,7 @@ mod tests {
         assert_eq!(meter.prepared_text_retained_bytes(), 0);
     }
 
+    #[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
     #[test]
     fn class_html_family_releases_plans_after_svg_failure_or_cancellation() {
         use crate::environment::RenderEnvironment;

@@ -72,13 +72,9 @@ pub use merman_render::text::{
 pub use merman_render::{
     Error as RenderError, LayoutAdaptation, LayoutAdaptationObservation, LayoutOptions,
     RenderCapability, RenderCapabilityPolicy, Result as RenderResult, ShoalLayoutFrame,
-    layout_cytoscape_available, layout_dagre_available, layout_elk_available, math_available,
+    layout_cytoscape_available, layout_dagre_available, layout_elk_available,
+    layout_shoal_available, math_available,
 };
-
-/// Reports whether this facade enables the experimental Shoal layout backend.
-pub const fn layout_shoal_available() -> bool {
-    cfg!(feature = "layout-shoal")
-}
 
 /// Binary export APIs accept only terminally validated [`ResvgCompatibleSvg`] values.
 #[cfg(any(

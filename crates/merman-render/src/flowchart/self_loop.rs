@@ -8,7 +8,9 @@ pub(crate) fn flowchart_dagre_merges_self_loop_segments(keyword: &str) -> bool {
 }
 
 pub(crate) struct FlowchartSelfLoopHelperEdges {
+    #[cfg(feature = "layout-dagre")]
     pub(crate) special_id_1: String,
+    #[cfg(feature = "layout-dagre")]
     pub(crate) special_id_2: String,
     pub(crate) edge1: FlowEdge,
     pub(crate) edge_mid: FlowEdge,
@@ -73,7 +75,9 @@ pub(crate) fn flowchart_self_loop_helper_edges(base: &FlowEdge) -> FlowchartSelf
     );
 
     FlowchartSelfLoopHelperEdges {
+        #[cfg(feature = "layout-dagre")]
         special_id_1,
+        #[cfg(feature = "layout-dagre")]
         special_id_2,
         edge1,
         edge_mid,

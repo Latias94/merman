@@ -608,6 +608,13 @@ jobs:
       - name: Verify representative Cargo feature matrix and isolated layout consumers
         run: cargo run --locked -p xtask -- verify-feature-matrix
 
+      - name: Test renderer with no graph engine and with only Shoal
+        run: |
+          for features in all-diagrams all-diagrams,layout-shoal; do
+            cargo nextest run --locked -p merman-render --no-default-features --features "$features" \
+              --lib --test diagram_features --test typed_family_api_test --cargo-quiet
+          done
+
       - name: Test isolated consumers without diagram families
         run: |
           cargo nextest run --locked -p merman-core --no-default-features --test diagram_features --cargo-quiet
@@ -629,6 +636,8 @@ jobs:
             --features svg --cargo-quiet
           cargo nextest run --locked -p merman-rustdoc --no-default-features \
             --features svg,diagram-gantt --cargo-quiet
+          cargo nextest run --locked -p merman-rustdoc --no-default-features \
+            --features svg,diagram-flowchart --cargo-quiet
           cargo nextest run --locked -p merman-rustdoc --no-default-features \
             --features svg,diagram-flowchart,layout-dagre --cargo-quiet
           cargo nextest run --locked -p merman-rustdoc --test regressions \
@@ -661,6 +670,10 @@ jobs:
             --features "$ambient_render_features,merman-cli/all-diagrams,merman-cli/svg" \
             --test svg_smoke --cargo-quiet \
             -E 'test(math_labels_require_the_cli_owned_capability) | test(dagre_requires_the_cli_owned_capability)'
+          cargo nextest run --locked -p merman-rustdoc --no-default-features \
+            --features svg,diagram-flowchart,diagram-architecture,diagram-sequence,merman/layout-cytoscape,merman/layout-dagre,merman/layout-elk,merman/layout-shoal,merman/math \
+            --lib --cargo-quiet \
+            -E 'test(rustdoc_layout_requests_follow_the_owner_features) | test(rustdoc_math_follows_the_owner_feature)'
 
       - name: Verify committed upstream alignment manifests
         run: cargo run --locked -p xtask -- check-alignment

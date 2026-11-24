@@ -1218,7 +1218,7 @@
     },
     {
       "id": "web-full",
-      "description": "Complete browser SVG SDK with math, analysis, ASCII, editor, Cytoscape and ELK backends.",
+      "description": "Complete browser SDK with SVG, math, analysis, ASCII, and editor support. Includes Cytoscape, Dagre, and ELK.",
       "semantic_target": "web",
       "cargo": {
         "package": "merman-wasm",
@@ -1246,7 +1246,7 @@
     },
     {
       "id": "web-render",
-      "description": "Complete browser SVG renderer with math, Cytoscape and ELK backends; no analysis, ASCII or editor.",
+      "description": "Browser SVG renderer with math and the Cytoscape, Dagre, and ELK backends.",
       "semantic_target": "web",
       "cargo": {
         "package": "merman-wasm",

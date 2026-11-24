@@ -1,10 +1,11 @@
 use crate::environment::{BuiltinTextMeasurementOperationCarrier, TextMeasurementOperation};
 use crate::graph_layout::ir::{Direction, Rect, Size, direction_from_rank};
 use crate::layout_backend::GraphLayoutBackend;
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 use crate::layout_work::OperationLayoutWorkControl;
-use crate::model::{
-    Bounds, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, RequirementDiagramLayout,
-};
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+use crate::model::Bounds;
+use crate::model::{LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, RequirementDiagramLayout};
 #[cfg(test)]
 use crate::resources::RenderResourcePolicy;
 use crate::resources::{ModelComplexity, OperationWorkMeter};
@@ -975,6 +976,7 @@ impl MeasuredRequirementEdge<'_> {
         }
     }
 
+    #[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
     fn parity_label_size(&self) -> Size {
         Size {
             width: self.label_size.width.max(0.0),
@@ -989,6 +991,7 @@ fn missing_relationship_node(terminal: &str, id: &str) -> Error {
     }
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn validate_relationship_endpoints(
     relationship: &RequirementRelationship,
     mut has_node: impl FnMut(&str) -> bool,
@@ -1054,6 +1057,17 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
 }
 
 /// Lays out a Requirement model with renderer-owned inherited typography.
+#[cfg_attr(
+    not(any(
+        feature = "layout-dagre",
+        feature = "layout-elk",
+        feature = "layout-shoal"
+    )),
+    allow(
+        unused_variables,
+        reason = "The no-engine entry point rejects layout before measurement."
+    )
+)]
 pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
     model: &RequirementDiagramModel,
     config: &merman_model::MermaidConfig,
@@ -1082,38 +1096,43 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
         return Err(backend.unavailable_for("requirement"));
     }
     work_meter.charge(requirement_layout_work_units(model))?;
-    let mut work_control = OperationLayoutWorkControl::new(Arc::clone(work_meter));
     backend.validate_rootless_graph()?;
-    let settings = &css_binding.layout;
-    let measured = measure_requirement(model, config, text_measurer, settings, work_meter)?;
-    match backend {
-        #[cfg(feature = "layout-elk")]
-        GraphLayoutBackend::Elk(algorithm) => elk::layout(
-            &model.relationships,
-            measured,
-            config.as_value(),
-            text_measurer,
-            algorithm,
-            execution.map_or_else(
-                || {
-                    merman_layout_elk::ElkOperationSeed::from_operation_seed(
-                        std::num::NonZeroU64::MIN,
-                    )
-                },
-                crate::LayoutExecution::elk_operation_seed,
+    #[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+    {
+        let mut work_control = OperationLayoutWorkControl::new(Arc::clone(work_meter));
+        let settings = &css_binding.layout;
+        let measured = measure_requirement(model, config, text_measurer, settings, work_meter)?;
+        match backend {
+            #[cfg(feature = "layout-elk")]
+            GraphLayoutBackend::Elk(algorithm) => elk::layout(
+                &model.relationships,
+                measured,
+                config.as_value(),
+                text_measurer,
+                algorithm,
+                execution.map_or_else(
+                    || {
+                        merman_layout_elk::ElkOperationSeed::from_operation_seed(
+                            std::num::NonZeroU64::MIN,
+                        )
+                    },
+                    crate::LayoutExecution::elk_operation_seed,
+                ),
+                &mut work_control,
             ),
-            &mut work_control,
-        ),
-        #[cfg(feature = "layout-dagre")]
-        GraphLayoutBackend::Dagre => dagre::layout(
-            &model.relationships,
-            measured,
-            settings,
-            text_measurer,
-            &mut work_control,
-        ),
-        _ => Err(backend.unavailable_for("requirement")),
+            #[cfg(feature = "layout-dagre")]
+            GraphLayoutBackend::Dagre => dagre::layout(
+                &model.relationships,
+                measured,
+                settings,
+                text_measurer,
+                &mut work_control,
+            ),
+            _ => Err(backend.unavailable_for("requirement")),
+        }
     }
+    #[cfg(not(any(feature = "layout-dagre", feature = "layout-elk")))]
+    Err(backend.unavailable_for("requirement"))
 }
 
 fn requirement_layout_node(id: String, rect: Rect) -> LayoutNode {
@@ -1129,6 +1148,7 @@ fn requirement_layout_node(id: String, rect: Rect) -> LayoutNode {
     }
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn requirement_layout_node_from_center(
     id: String,
     x: f64,
@@ -1147,6 +1167,7 @@ fn requirement_layout_node_from_center(
     )
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn bounds_for_nodes_edges(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
     if nodes.is_empty() && edges.is_empty() {
         return None;

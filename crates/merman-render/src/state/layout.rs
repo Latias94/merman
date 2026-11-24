@@ -2,6 +2,11 @@
 
 use super::StateDiagramModel;
 use crate::graph_layout::RouteContract;
+#[cfg(any(
+    feature = "layout-dagre",
+    feature = "layout-elk",
+    feature = "layout-shoal"
+))]
 use crate::layout_backend::GraphLayoutBackend;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::StateDiagramLayout;
@@ -69,6 +74,17 @@ fn state_layout_adapter_work(
     )
 }
 
+#[cfg_attr(
+    not(any(
+        feature = "layout-dagre",
+        feature = "layout-elk",
+        feature = "layout-shoal"
+    )),
+    allow(
+        unused_variables,
+        reason = "The State admission entry point also exists without a solver."
+    )
+)]
 pub(crate) fn layout_state_diagram_typed_with_work_meter(
     model: &StateDiagramModel,
     effective_config: &Value,

@@ -1226,6 +1226,7 @@ A -->|bent| B"
         .unwrap()
     }
 
+    #[cfg(feature = "layout-elk")]
     #[test]
     fn geometry_preserves_the_elk_missing_section_path_and_label() {
         with_source(

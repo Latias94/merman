@@ -428,17 +428,6 @@ pub(super) fn plan_render_request(
     session.checkpoint(OperationPhase::Layout)?;
     let meta = parsed.metadata();
     let family_id = validate_paired_render_model(parsed)?;
-    let selected = layout_backend::resolve(family_id, &meta.diagram_type, &meta.effective_config);
-    let (selected, adaptation) = if let Some(options) =
-        options.filter(|options| options.adaptation != LayoutAdaptation::None)
-    {
-        let backend = selected?;
-        let adaptation =
-            resolve_layout_adaptation(&meta.diagram_type, options, family_id, backend)?;
-        (Ok(backend), adaptation)
-    } else {
-        (selected, LayoutAdaptation::None)
-    };
     if !meta
         .effective_config
         .theme_compatibility()
@@ -449,7 +438,14 @@ pub(super) fn plan_render_request(
     session
         .work_meter()
         .preflight_parsed_render(parsed, OperationPhase::Layout)?;
-    let backend = selected?;
+    let backend = layout_backend::resolve(family_id, &meta.diagram_type, &meta.effective_config)?;
+    let adaptation = if let Some(options) =
+        options.filter(|options| options.adaptation != LayoutAdaptation::None)
+    {
+        resolve_layout_adaptation(&meta.diagram_type, options, family_id, backend)?
+    } else {
+        LayoutAdaptation::None
+    };
     let mut required = Vec::with_capacity(2);
     required.extend(backend.required_capability());
     if parsed_render_requires_math(parsed) {

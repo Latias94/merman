@@ -84,7 +84,7 @@ pub(crate) struct AxisRoutes {
 pub(crate) enum RouteContract {
     #[default]
     DagreParity,
-    #[cfg(any(feature = "layout-elk", all(test, feature = "diagram-flowchart")))]
+    #[cfg(feature = "layout-elk")]
     ElkParity,
     #[cfg(any(
         feature = "diagram-flowchart",
@@ -128,9 +128,9 @@ pub(crate) enum RouteContract {
 ))]
 impl RouteContract {
     pub(crate) fn is_elk_parity(&self) -> bool {
-        #[cfg(any(feature = "layout-elk", all(test, feature = "diagram-flowchart")))]
+        #[cfg(feature = "layout-elk")]
         return matches!(self, Self::ElkParity);
-        #[cfg(not(any(feature = "layout-elk", all(test, feature = "diagram-flowchart"))))]
+        #[cfg(not(feature = "layout-elk"))]
         false
     }
 

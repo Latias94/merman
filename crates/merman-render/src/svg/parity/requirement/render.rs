@@ -105,7 +105,7 @@ where
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "layout-dagre"))]
 fn requirement_color_css<I: SvgDiagramIdValue>(
     diagram_id: I,
     data_look: &str,
@@ -1509,18 +1509,31 @@ fn push_requirement_shadow_defs(out: &mut impl SvgOutput, diagram_id: &str, floo
 mod tests {
     use super::super::super::output::{BoundedSvgOutput, SvgOutput};
     use super::super::*;
+    #[cfg(feature = "layout-dagre")]
     use super::RequirementEdgeIdentity;
     use crate::DiagramFamilyId;
+    #[cfg(feature = "layout-dagre")]
     use crate::environment::{RenderEnvironment, TextMeasurementPhase};
-    use crate::resources::{
-        RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
-    };
-    use crate::svg::{SvgDebugOptions, SvgExecution, SvgRenderOptions, with_test_svg_execution};
-    use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode};
+    use crate::resources::{RenderResourcePolicy, ResourceLimitId};
+    #[cfg(feature = "layout-dagre")]
+    use crate::resources::{ResourceLimitCause, ResourceLimitPhase};
+    #[cfg(feature = "layout-dagre")]
+    use crate::svg::{SvgDebugOptions, SvgExecution};
+    #[cfg(any(feature = "layout-dagre", feature = "layout-shoal"))]
+    use crate::svg::{SvgRenderOptions, with_test_svg_execution};
+    #[cfg(any(feature = "layout-dagre", feature = "layout-shoal"))]
+    use crate::text::{DeterministicTextMeasurer, TextMeasurer};
+    #[cfg(feature = "layout-dagre")]
+    use crate::text::{TextMetrics, TextStyle, WrapMode};
+    #[cfg(feature = "layout-dagre")]
+    use merman_model::families::requirement::RequirementElement;
+    #[cfg(any(feature = "layout-dagre", feature = "layout-shoal"))]
     use merman_model::families::requirement::{
-        RequirementDiagramModel, RequirementElement, RequirementNode, RequirementRelationship,
+        RequirementDiagramModel, RequirementNode, RequirementRelationship,
     };
+    #[cfg(feature = "layout-dagre")]
     use std::cell::Cell;
+    #[cfg(any(feature = "layout-dagre", feature = "layout-shoal"))]
     use std::collections::BTreeMap;
 
     #[test]
@@ -1549,6 +1562,7 @@ mod tests {
         assert!(limit.actual > limit.max);
     }
 
+    #[cfg(feature = "layout-dagre")]
     fn report_call_count(session: &crate::environment::RenderSession) -> u64 {
         session
             .text_measurement_report()
@@ -1558,6 +1572,7 @@ mod tests {
             .sum()
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[derive(Default)]
     struct CountingRequirementMeasurer {
         inner: DeterministicTextMeasurer,
@@ -1565,6 +1580,7 @@ mod tests {
         wrapped: Cell<usize>,
     }
 
+    #[cfg(feature = "layout-dagre")]
     impl TextMeasurer for CountingRequirementMeasurer {
         fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
             self.inner.measure(text, style)
@@ -1594,6 +1610,7 @@ mod tests {
         }
     }
 
+    #[cfg(any(feature = "layout-dagre", feature = "layout-shoal"))]
     fn empty_requirement_model() -> RequirementDiagramModel {
         RequirementDiagramModel {
             acc_title: None,
@@ -1606,6 +1623,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "layout-dagre")]
     fn prepared_requirement_model() -> RequirementDiagramModel {
         RequirementDiagramModel {
             requirements: vec![RequirementNode {
@@ -1634,6 +1652,7 @@ mod tests {
         }
     }
 
+    #[cfg(any(feature = "layout-dagre", feature = "layout-shoal"))]
     fn requirement_node(name: &str) -> RequirementNode {
         RequirementNode {
             name: name.to_string(),
@@ -1647,6 +1666,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_redux_colors_follow_requirement_then_element_order() {
         let model = RequirementDiagramModel {
@@ -1777,6 +1797,7 @@ mod tests {
         ));
     }
 
+    #[cfg(feature = "layout-dagre")]
     fn root_view_box(svg: &str) -> Vec<f64> {
         let root_open = svg.split_once('>').expect("root svg open tag").0;
         let value = root_open
@@ -1790,6 +1811,7 @@ mod tests {
             .collect()
     }
 
+    #[cfg(feature = "layout-dagre")]
     fn render_requirement_for_test(
         model: &RequirementDiagramModel,
         effective_config: &serde_json::Value,
@@ -1814,6 +1836,7 @@ mod tests {
         )
     }
 
+    #[cfg(any(feature = "layout-dagre", feature = "layout-shoal"))]
     fn render_prepared_requirement_for_test(
         prepared: &crate::requirement::RequirementPreparedArtifact,
         model: &RequirementDiagramModel,
@@ -1843,6 +1866,7 @@ mod tests {
         .and_then(|svg| svg.into_string_for(DiagramFamilyId::REQUIREMENT))
     }
 
+    #[cfg(feature = "layout-dagre")]
     fn render_requirement_with_policy(policy: RenderResourcePolicy) -> crate::Result<String> {
         let model = prepared_requirement_model();
         let effective_config = crate::test_support::presentation_config(serde_json::json!({}));
@@ -1889,6 +1913,7 @@ mod tests {
         .into_string_for(DiagramFamilyId::REQUIREMENT)
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_family_svg_accepts_exact_max_svg_bytes_and_rejects_one_byte_less() {
         let baseline =
@@ -1922,6 +1947,7 @@ mod tests {
         assert!(limit.actual > limit.max);
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_opaque_measurer_preserves_render_stage_label_measurements() {
         let model = prepared_requirement_model();
@@ -1960,6 +1986,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_routed_builtin_measurements_are_reused_during_svg_emission() {
         let model = prepared_requirement_model();
@@ -1993,6 +2020,7 @@ mod tests {
         assert_eq!(report_call_count(&session), calls_after_prepare);
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_prepared_measurements_are_not_reused_across_style_changes() {
         let model = prepared_requirement_model();
@@ -2030,6 +2058,7 @@ mod tests {
         assert!(report_call_count(&session) > calls_after_prepare);
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_prepared_measurements_are_not_reused_across_label_modes() {
         let model = prepared_requirement_model();
@@ -2065,6 +2094,7 @@ mod tests {
         assert!(!svg.contains("foreignObject"));
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_prepared_labels_keep_markdown_and_strict_sanitization_at_render_time() {
         let mut model = prepared_requirement_model();
@@ -2117,6 +2147,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_prepared_edge_plan_keeps_parallel_relationships() {
         let mut model = prepared_requirement_model();
@@ -2169,6 +2200,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_prepared_edge_plan_disambiguates_colliding_endpoint_text() {
         let model = RequirementDiagramModel {
@@ -2267,6 +2299,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_prepared_source_paints_reach_actual_paths_in_both_label_modes() {
         let mut node = requirement_node("source-node");
@@ -2437,6 +2470,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_contains_self_loop_keeps_only_the_first_segment_start_marker() {
         let model = RequirementDiagramModel {
@@ -2580,6 +2614,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_root_honors_disabled_max_width() {
         let measurer = crate::text::DeterministicTextMeasurer::default();
@@ -2608,6 +2643,7 @@ mod tests {
         assert!(!root_open.contains("max-width"), "{root_open}");
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_root_is_derived_for_formerly_pinned_fixture_ids() {
         let measurer = crate::text::DeterministicTextMeasurer::default();
@@ -2635,6 +2671,7 @@ mod tests {
         assert!(root_open.contains("max-width:"), "{root_open}");
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_title_uses_pre_title_bounds_and_state_margin() {
         let measurer = crate::text::DeterministicTextMeasurer::default();
@@ -2660,6 +2697,7 @@ mod tests {
         assert!(view_box[3] > 41.0, "{view_box:?}");
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn requirement_html_labels_use_xhtml_and_deterministic_wrap_styles() {
         let measurer = crate::text::DeterministicTextMeasurer::default();

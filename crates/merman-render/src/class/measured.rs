@@ -1,20 +1,24 @@
 //! Shared Class text and box measurements, written into the selected layout input.
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
+use super::EdgeTerminalMetrics;
 #[cfg(feature = "layout-elk")]
 use super::class_arrow_type_for_relation_end;
 use super::{
     ClassBoxMeasureCtx, ClassDiagramModel, ClassNodeLabelPlan, ClassPreparedLabels,
-    ClassPreparedSvgEdgeLabel, ClassRenderConfig, ClassTextThemePlan, EdgeTerminalMetrics,
-    class_box_dimensions, class_cardinality_text_style, class_layout_parent,
-    class_namespace_ids_in_decl_order, class_namespace_label, class_requires_math, note_dimensions,
-    plain_label_metrics, prepare_edge_title, validate_class_namespace_hierarchy,
+    ClassPreparedSvgEdgeLabel, ClassRenderConfig, ClassTextThemePlan, class_box_dimensions,
+    class_cardinality_text_style, class_layout_parent, class_namespace_ids_in_decl_order,
+    class_namespace_label, class_requires_math, note_dimensions, plain_label_metrics,
+    prepare_edge_title, validate_class_namespace_hierarchy,
 };
 use crate::entities::decode_entities_minimal;
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
 use crate::graph_layout::ir::{Direction, direction_from_rank};
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::math::MathRenderer;
 use crate::text::{TextMeasurer, WrapMode};
 use crate::{Error, Result};
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
 use indexmap::IndexMap;
 use merman_model::families::class::ClassRelation;
 use merman_model::presentation::PresentationConfig;
@@ -28,6 +32,7 @@ mod shoal;
 #[cfg(feature = "layout-shoal")]
 pub(super) use shoal::measure_for_shoal;
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
 pub(super) struct MeasuredClassDiagram {
     pub(super) graph: MeasuredGraph,
     pub(super) class_label_plans_by_id: FxHashMap<String, Arc<ClassNodeLabelPlan>>,
@@ -72,6 +77,7 @@ fn positive_label_size((width, height): (f64, f64)) -> Option<(f64, f64)> {
     clippy::too_many_arguments,
     reason = "Class measurement retains operation-owned labels alongside the layout input."
 )]
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
 pub(super) fn measure_class_diagram(
     model: &ClassDiagramModel,
     config: &PresentationConfig,
@@ -360,11 +366,13 @@ fn measure_into<'a>(
     Ok(labels)
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
 struct OrderedMeasurement {
     graph: MeasuredGraph,
     namespace_labels: HashMap<String, (f64, f64)>,
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
 impl<'a> MeasurementTarget<'a> for OrderedMeasurement {
     fn namespace(&mut self, id: &str, parent: Option<&str>, title: (f64, f64)) -> Result<()> {
         self.graph.set_node(
@@ -442,6 +450,7 @@ impl<'a> MeasurementTarget<'a> for OrderedMeasurement {
     }
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
 #[derive(Default)]
 pub(super) struct MeasuredNode {
     pub width: f64,
@@ -449,6 +458,7 @@ pub(super) struct MeasuredNode {
     pub is_namespace: bool,
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
 pub(super) struct MeasuredEdge {
     pub width: f64,
     pub height: f64,
@@ -456,6 +466,7 @@ pub(super) struct MeasuredEdge {
 }
 
 /// Ordered Class measurements shared by the Dagre and ELK adapters.
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
 pub(super) struct MeasuredGraph {
     pub direction: Direction,
     pub nodesep: f64,
@@ -468,6 +479,7 @@ pub(super) struct MeasuredGraph {
     pub edges: IndexMap<(String, String, String), MeasuredEdge>,
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
 impl MeasuredGraph {
     pub fn set_node(&mut self, id: String, mut node: MeasuredNode) {
         if let Some(existing) = self.nodes.get(&id) {

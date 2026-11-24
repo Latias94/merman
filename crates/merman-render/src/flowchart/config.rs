@@ -73,6 +73,7 @@ impl<'a, C: ConfigLookup + ?Sized> FlowchartConfigView<'a, C> {
         let cluster_wrap_mode = flowchart_wrap_mode(cluster_html_labels);
         let title_margin_top = self.layout_subgraph_title_margin("top");
         let title_margin_bottom = self.layout_subgraph_title_margin("bottom");
+        #[cfg(feature = "layout-dagre")]
         let title_total_margin = title_margin_top + title_margin_bottom;
         let text_style = self.layout_text_style();
         let html_label_text_style = self.html_label_measurement_base_style(&text_style);
@@ -96,8 +97,11 @@ impl<'a, C: ConfigLookup + ?Sized> FlowchartConfigView<'a, C> {
             cluster_padding: FIXED_CLUSTER_PADDING,
             title_margin_top,
             title_margin_bottom,
+            #[cfg(feature = "layout-dagre")]
             title_total_margin,
+            #[cfg(feature = "layout-dagre")]
             y_shift: title_total_margin / 2.0,
+            #[cfg(feature = "layout-dagre")]
             inherit_dir: self.flowchart_bool("inheritDir").unwrap_or(false),
             text_style,
             html_label_text_style,
@@ -350,8 +354,11 @@ pub(crate) struct FlowchartLayoutSettings {
     pub(crate) cluster_padding: f64,
     pub(crate) title_margin_top: f64,
     pub(crate) title_margin_bottom: f64,
+    #[cfg(feature = "layout-dagre")]
     pub(crate) title_total_margin: f64,
+    #[cfg(feature = "layout-dagre")]
     pub(crate) y_shift: f64,
+    #[cfg(feature = "layout-dagre")]
     pub(crate) inherit_dir: bool,
     pub(crate) text_style: TextStyle,
     pub(crate) html_label_text_style: TextStyle,

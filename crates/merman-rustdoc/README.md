@@ -142,7 +142,7 @@ See the repository's
 [third-party notices](https://github.com/Latias94/merman/blob/main/THIRD_PARTY_NOTICES.md) for the
 source provenance and artifact obligations.
 
-Use a smaller closure when the documented diagrams need only the base SVG renderer:
+The published `0.11.0` crate includes Dagre in this minimal Flowchart recipe:
 
 ```toml
 [dependencies]
@@ -157,7 +157,7 @@ merman-rustdoc = { version = "0.11.0", default-features = false, features = ["di
 | `layout-elk` | ELK-backed layouts; implies `svg` |
 | `math` | RaTeX math rendering; implies `svg` |
 
-For the current checkout, specify the families, output, and the Dagre compatibility adapter explicitly.
+In the current checkout, select Dagre with `layout-dagre`:
 
 ```toml
 merman-rustdoc = { path = "../merman/crates/merman-rustdoc", default-features = false, features = ["svg", "diagram-flowchart", "layout-dagre"], optional = true }

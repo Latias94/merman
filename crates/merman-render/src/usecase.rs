@@ -287,14 +287,18 @@ pub(crate) fn prepare_usecase_diagram(
     diagram_title: Option<&str>,
     execution: &crate::LayoutExecution<'_>,
 ) -> Result<UsecasePreparedArtifact> {
-    use crate::graph_layout::RouteContract;
-    use crate::layout_backend::GraphLayoutBackend;
+    #[cfg(any(
+        feature = "layout-dagre",
+        feature = "layout-elk",
+        feature = "layout-shoal"
+    ))]
+    use crate::{graph_layout::RouteContract, layout_backend::GraphLayoutBackend};
 
     let work_meter = execution.work_meter();
     work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
     let config_value = effective_config.as_value();
     let css_binding = UsecaseCssBinding::new(config_value);
-    let mut theme_plan = UsecaseThemePlan::resolve(
+    let theme_plan = UsecaseThemePlan::resolve(
         execution.resolved_theme(),
         effective_config,
         model,
@@ -302,7 +306,7 @@ pub(crate) fn prepare_usecase_diagram(
         &work_meter,
     )?;
     let mut work = crate::layout_work::OperationLayoutWorkControl::new(work_meter);
-    let (mut nodes, mut edges) = measure::measure(
+    let (nodes, edges) = measure::measure(
         model,
         effective_config,
         &css_binding,
@@ -336,6 +340,8 @@ pub(crate) fn prepare_usecase_diagram(
             canonical: Some(canonical),
         });
     }
+    #[cfg(feature = "layout-dagre")]
+    let (mut nodes, mut edges, mut theme_plan) = (nodes, edges, theme_plan);
     let (mut layout, route_contract) = match backend {
         #[cfg(feature = "layout-dagre")]
         GraphLayoutBackend::Dagre => {
@@ -383,5 +389,5 @@ pub(crate) fn prepare_usecase_diagram(
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "layout-dagre"))]
 mod tests;

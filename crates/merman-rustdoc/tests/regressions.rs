@@ -1,5 +1,6 @@
 #![cfg(all(feature = "svg", feature = "diagram-flowchart"))]
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
@@ -44,6 +45,7 @@ pub mod ordered {
     assert!(!html.contains("Absent"));
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[test]
 fn facade_reexport_works_without_a_direct_macro_dependency() {
     let temp = TempDir::new().expect("create unique test directory");
@@ -116,6 +118,7 @@ pub mod example {
     assert!(diagram.contains("<svg"));
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[test]
 fn rustdoc_preserves_markdown_and_scopes_diagrams_to_their_embedding() {
     let temp = TempDir::new().expect("create unique test directory");
@@ -470,6 +473,7 @@ pub mod resource_options {{
     );
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[test]
 fn renamed_dependency_supports_macro_generated_items_with_distinct_ids() {
     let temp = TempDir::new().expect("create unique test directory");
@@ -589,6 +593,7 @@ pub mod nested {
     assert_eq!(diagram_svgs(&nested).len(), 2);
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn preformatted_text(html: &str, marker: &str) -> String {
     let example = html
         .split("<pre")
@@ -610,6 +615,7 @@ fn preformatted_text(html: &str, marker: &str) -> String {
         .collect::<String>()
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn assert_unique_svg_ids(svgs: &[&str]) {
     let mut ids = HashSet::new();
     for svg in svgs {
@@ -625,6 +631,7 @@ fn assert_unique_svg_ids(svgs: &[&str]) {
     }
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[test]
 fn strict_mode_rejects_html_resources_and_preserves_css_resource_filtering() {
     for (name, source, evidence, reaches_svg) in [
@@ -689,6 +696,7 @@ style A fill:u\72l(https://example.invalid/image.svg)"#,
     }
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[test]
 fn cargo_build_script_tracks_external_diagram_changes_and_recovery() {
     let temp = TempDir::new().expect("create unique test directory");
@@ -779,6 +787,7 @@ pub struct Diagram {
     assert_eq!(diagram_svgs(&html).len(), 1);
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[test]
 fn rustdoc_renders_diagrams_inside_markdown_containers() {
     let temp = TempDir::new().expect("create unique test directory");
@@ -847,6 +856,7 @@ pub fn footnoted() {}
     assert!(footnoted[note_start..note_end].contains("<strong>Footnote tail</strong>"));
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[test]
 fn rustdoc_math_requires_explicit_feature() {
     let temp = TempDir::new().expect("create unique test directory");
@@ -883,11 +893,13 @@ pub fn math_diagram() {}
     }
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn read_page(temp: &Path, relative: &str) -> String {
     let path = temp.join("doc/merman_regressions").join(relative);
     fs::read_to_string(&path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()))
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn diagram_svgs(html: &str) -> Vec<&str> {
     let mut remaining = html;
     let mut result = Vec::new();
@@ -908,6 +920,7 @@ fn diagram_svgs(html: &str) -> Vec<&str> {
     result
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn assert_background(html: &str, expected: &str) {
     let svgs = diagram_svgs(html);
     assert!(

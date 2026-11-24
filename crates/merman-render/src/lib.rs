@@ -767,7 +767,7 @@ impl std::fmt::Display for RenderCapability {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "layout-elk", feature = "all-diagrams"))]
 use crate::environment::RenderSession;
 use crate::environment::{RoutedTextMeasurer, TextMeasurementPhase};
 use merman_model::OperationPhase;
@@ -1212,7 +1212,7 @@ impl<'a> LayoutExecution<'a> {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "layout-elk", feature = "all-diagrams"))]
     pub(crate) fn unthemed_for_test(
         request: &'a LayoutOptions,
         session: &'a RenderSession,
@@ -1314,6 +1314,17 @@ impl std::ops::Deref for LayoutExecution<'_> {
 }
 
 #[cfg(feature = "diagram-class")]
+#[cfg_attr(
+    not(any(
+        feature = "layout-dagre",
+        feature = "layout-elk",
+        feature = "layout-shoal"
+    )),
+    allow(
+        unused_variables,
+        reason = "The Class admission entry point also exists without a solver."
+    )
+)]
 pub(crate) fn layout_class_typed_by_engine(
     model: &ClassDiagram,
     effective_config: &merman_model::presentation::PresentationConfig,
@@ -1325,8 +1336,12 @@ pub(crate) fn layout_class_typed_by_engine(
     class::ClassPreparedLabels,
     graph_layout::RouteContract,
 )> {
-    use graph_layout::RouteContract;
-    use layout_backend::GraphLayoutBackend;
+    #[cfg(any(
+        feature = "layout-dagre",
+        feature = "layout-elk",
+        feature = "layout-shoal"
+    ))]
+    use {graph_layout::RouteContract, layout_backend::GraphLayoutBackend};
 
     options
         .work_meter_ref()
@@ -1410,6 +1425,17 @@ pub(crate) fn layout_flowchart_typed_by_engine(
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
+#[cfg_attr(
+    not(any(
+        feature = "layout-dagre",
+        feature = "layout-elk",
+        feature = "layout-shoal"
+    )),
+    allow(
+        unused_variables,
+        reason = "The Flowchart admission entry point also exists without a solver."
+    )
+)]
 pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
     model: &FlowchartModel,
     render_label_sources: &merman_model::families::flowchart::FlowchartRenderContext,
@@ -1419,6 +1445,11 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
     svg_label_sidecar: Option<&flowchart::FlowchartSvgLabelSidecarBuilder>,
     edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
 ) -> Result<model::FlowchartLayout> {
+    #[cfg(any(
+        feature = "layout-dagre",
+        feature = "layout-elk",
+        feature = "layout-shoal"
+    ))]
     use layout_backend::GraphLayoutBackend;
 
     options
@@ -1738,11 +1769,12 @@ A-->B
         assert_eq!(limit.limit, "max_model_items");
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn render_model_dispatch_rejects_flowchart_dagre_work_during_its_first_owner_phase() {
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
-                "flowchart TD\nsubgraph Cluster\nA\nend\nA-->B",
+                "---\nconfig:\n  layout: dagre\n---\nflowchart TD\nsubgraph Cluster\nA\nend\nA-->B",
                 ParseOptions::strict(),
             )
             .unwrap()
@@ -1770,6 +1802,7 @@ A-->B
         assert!(limit.actual > 1);
     }
 
+    #[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
     fn assert_class_layout_work_limit(source: &str) {
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
@@ -1798,9 +1831,12 @@ A-->B
         assert_eq!(limit.max, 1);
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn dagre_class_layout_honors_the_public_work_budget() {
-        assert_class_layout_work_limit("classDiagram\nA --> B\nA --> C\nA --> D\nB --> C\nC --> D");
+        assert_class_layout_work_limit(
+            "---\nconfig:\n  layout: dagre\n---\nclassDiagram\nA --> B\nA --> C\nA --> D\nB --> C\nC --> D",
+        );
     }
 
     #[cfg(feature = "layout-elk")]
@@ -2126,6 +2162,7 @@ id1(Start)-->id2(Stop)
         assert_eq!(edge_attr_value(path, "data-id"), "L_A_A_0");
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn graph_layout_unregistered_loader_falls_back_to_dagre() {
         let mut requests = vec!["unknown", "ELK", "elk.layered", "elk.radial"];
@@ -2185,7 +2222,7 @@ id1(Start)-->id2(Stop)
         }
     }
 
-    #[cfg(not(feature = "layout-elk"))]
+    #[cfg(all(feature = "layout-dagre", not(feature = "layout-elk")))]
     #[test]
     fn flowchart_elk_alias_uses_dagre_geometry_when_loader_is_absent() {
         let parsed = MermaidEngine::new()
@@ -2255,8 +2292,18 @@ id1(Start)-->id2(Stop)
                         matches!(result, Err(Error::InvalidModel { message }) if message.contains("Root node is required")),
                         "{body}"
                     );
-                } else {
+                } else if cfg!(feature = "layout-dagre") {
                     result.unwrap_or_else(|error| panic!("{body}: {layout}: {error}"));
+                } else {
+                    let expected = if layout == "cose-bilkent" {
+                        RenderCapability::LayoutCytoscape
+                    } else {
+                        RenderCapability::LayoutDagre
+                    };
+                    assert!(
+                        matches!(result, Err(Error::MissingCapability { capability, .. }) if capability == expected),
+                        "{body}: {layout}"
+                    );
                 }
             }
         }

@@ -263,6 +263,102 @@ fn mindmap_uses_shared_label_measurement_without_flowchart_implementation() {
     assert!(svg.contains("Child"));
 }
 
+#[cfg(feature = "diagram-mindmap")]
+#[test]
+fn mindmap_plan_and_outputs_share_the_registered_fallback() {
+    use merman_render::{RenderCapability, RenderCapabilityPolicy};
+
+    let dagre = cfg!(feature = "layout-dagre");
+    let cose = cfg!(feature = "layout-cytoscape");
+    let elk = cfg!(feature = "layout-elk");
+    let dagre_selection = (RenderCapability::LayoutDagre, dagre);
+    let default_selection = if cose {
+        (RenderCapability::LayoutCytoscape, true)
+    } else {
+        dagre_selection
+    };
+    let elk_selection = if elk || (!cose && !dagre) {
+        (RenderCapability::LayoutElk, elk)
+    } else {
+        default_selection
+    };
+
+    for (layout, (capability, compiled)) in [
+        (None, default_selection),
+        (Some("cose-bilkent"), default_selection),
+        (Some("dagre"), dagre_selection),
+        (Some("elk"), elk_selection),
+        (Some("elk.stress"), elk_selection),
+    ] {
+        let body = "mindmap\n  root[Root]\n    child[Child]";
+        let source = layout.map_or_else(
+            || body.to_owned(),
+            |layout| format!("---\nconfig:\n  layout: {layout}\n---\n{body}"),
+        );
+        let parsed = parse(&source);
+        for (policy, ready) in [
+            (RenderCapabilityPolicy::unrestricted(), compiled),
+            (RenderCapabilityPolicy::deny_all(), false),
+        ] {
+            let environment = RenderEnvironment::deterministic().with_capability_policy(policy);
+            let session = environment.begin_session().unwrap();
+            let plan = family::plan_render(&parsed, &session).unwrap();
+            assert_eq!(plan.required_capabilities(), &[capability], "{source}");
+            assert_eq!(plan.is_ready(), ready, "{source}");
+
+            let options = LayoutOptions::default();
+            let svg = family::prepare(&parsed, &options, session).and_then(|artifact| {
+                artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            });
+            let json =
+                family::prepare_layout(&parsed, &options, environment.begin_session().unwrap())
+                    .and_then(|artifact| artifact.layout_json());
+            if ready {
+                let svg = svg.unwrap();
+                assert_eq!(svg.required_capabilities(), &[capability]);
+                assert!(svg.svg().contains("Child"));
+                assert!(json.unwrap()["layout"].is_object());
+            } else {
+                assert_eq!(plan.missing_capabilities(), &[capability]);
+                assert_eq!(
+                    svg.err().and_then(|error| error.missing_capability()),
+                    Some(capability)
+                );
+                assert_eq!(
+                    json.err().and_then(|error| error.missing_capability()),
+                    Some(capability)
+                );
+            }
+        }
+    }
+}
+
+#[cfg(feature = "diagram-mindmap")]
+#[test]
+fn model_preflight_precedes_backend_selection_with_or_without_adaptation() {
+    use merman_render::{LayoutAdaptation, RenderResourcePolicy, ResourceLimitId};
+
+    let parsed = parse("---\nconfig:\n  layout: shoal\n---\nmindmap\n  Root\n    Child");
+    let policy = RenderResourcePolicy::default()
+        .with_limit(ResourceLimitId::MaxModelItems, 1)
+        .unwrap();
+    let environment = RenderEnvironment::deterministic().with_resource_policy(policy);
+    for adaptation in [LayoutAdaptation::None, LayoutAdaptation::FitWidth] {
+        let mut options = LayoutOptions::default();
+        options.adaptation = adaptation;
+        options.container_width = 320.0;
+        let session = environment.begin_session().unwrap();
+        for error in [
+            family::plan_render_with_options(&parsed, &options, &session).unwrap_err(),
+            family::prepare(&parsed, &options, session).err().unwrap(),
+        ] {
+            assert!(
+                matches!(error, Error::ResourceLimitExceeded(limit) if limit.limit == "max_model_items")
+            );
+        }
+    }
+}
+
 #[test]
 fn custom_provenance_and_cancellation_precede_family_availability() {
     fn custom(

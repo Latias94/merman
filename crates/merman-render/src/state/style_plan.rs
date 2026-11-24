@@ -19,7 +19,9 @@ use crate::mermaid_style::{
     CssFontSizeContext, is_label_style_key, is_safe_css_font_family_value,
     is_supported_css_font_style_value, is_supported_css_font_weight_value,
 };
-use crate::resources::{OperationWorkError, OperationWorkMeter, RenderResourcePolicy};
+#[cfg(any(feature = "layout-dagre", test))]
+use crate::resources::RenderResourcePolicy;
+use crate::resources::{OperationWorkError, OperationWorkMeter};
 use crate::text::{TextMeasurer, TextMetrics, TextStyle, WrapMode};
 
 use super::{
@@ -805,6 +807,7 @@ impl StateStylePlan {
     /// The themed production path must use [`Self::resolve_with_config`] so dynamic selector work
     /// is charged to the render operation's cumulative meter, terminal effect lowering reads the
     /// session-owned resource intersection, and compatibility provenance remains available.
+    #[cfg(any(feature = "layout-dagre", test))]
     pub(crate) fn resolve_unthemed(
         model: &StateDiagramRenderModel,
         effective_config: &serde_json::Value,

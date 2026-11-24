@@ -141,10 +141,11 @@ pub(crate) fn resolve(
             "dagre" => Backend::Dagre,
             "swimlane" => Backend::Swimlane,
             "tidy-tree" => Backend::TidyTree,
-            _ => match elk.filter(|_| crate::layout_elk_available()) {
-                Some(algorithm) => Backend::Elk(algorithm),
-                None if crate::layout_cytoscape_available() => Backend::CoseBilkent,
-                None => Backend::Dagre,
+            _ => match elk {
+                Some(algorithm) if crate::layout_elk_available() => Backend::Elk(algorithm),
+                _ if crate::layout_cytoscape_available() => Backend::CoseBilkent,
+                Some(algorithm) if !crate::layout_dagre_available() => Backend::Elk(algorithm),
+                _ => Backend::Dagre,
             },
         },
         DiagramFamilyId::SWIMLANE => Backend::Swimlane,

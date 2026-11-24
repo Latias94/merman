@@ -4679,7 +4679,15 @@ fn prepare_for<'parsed>(
     Ok(artifact)
 }
 
-#[cfg(all(test, feature = "diagram-flowchart"))]
+#[cfg(all(
+    test,
+    feature = "diagram-flowchart",
+    any(
+        feature = "layout-dagre",
+        feature = "layout-elk",
+        feature = "layout-shoal"
+    )
+))]
 mod flowchart_layout_tests;
 
 #[cfg(all(test, feature = "all-diagrams"))]

@@ -605,7 +605,15 @@ mod rough_group_style_tests {
     }
 }
 
-#[cfg(all(test, feature = "diagram-flowchart"))]
+#[cfg(all(
+    test,
+    feature = "diagram-flowchart",
+    any(
+        feature = "layout-dagre",
+        feature = "layout-elk",
+        feature = "layout-shoal"
+    )
+))]
 mod structural_font_residual_tests {
     use crate::LayoutOptions;
     use crate::diagram_theme::{
@@ -621,9 +629,12 @@ mod structural_font_residual_tests {
     use serde_json::json;
 
     const LAYOUTS: &[&str] = &[
+        #[cfg(feature = "layout-dagre")]
         "dagre",
         #[cfg(feature = "layout-elk")]
         "elk",
+        #[cfg(feature = "layout-shoal")]
+        "shoal",
     ];
 
     fn render(source: &str, theme: Option<&DiagramTheme>, layout: &str) -> RenderedFamilySvg {

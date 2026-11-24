@@ -1,5 +1,7 @@
 use crate::layout_work::OperationLayoutWorkControl;
-use crate::model::{Bounds, ErDiagramLayout, LayoutEdge, LayoutNode, LayoutPoint};
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+use crate::model::LayoutPoint;
+use crate::model::{Bounds, ErDiagramLayout, LayoutEdge, LayoutNode};
 use crate::resources::{OperationWorkMeter, PreparedTextRetainedReservation};
 use crate::text::{
     MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, MermaidMarkdownWordType, TextMeasurer, TextMetrics,
@@ -1336,6 +1338,7 @@ fn measure_entity_box_with_source(
     })
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn parse_er_rel_idx_from_edge_name(name: &str) -> Option<usize> {
     let rest = name.strip_prefix("er-rel-")?;
     let mut end = 0usize;
@@ -1354,6 +1357,7 @@ fn parse_er_rel_idx_from_edge_name(name: &str) -> Option<usize> {
 // Layout-engine fallback used before SVG path insertion. This deliberately stays outside the SVG
 // parity layer: rendered-path change detection and five-decimal placement belong to
 // `svg::parity::edge_label_geometry`, while this function only supplies a missing Dagre/ELK anchor.
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn calc_label_position(points: &[LayoutPoint]) -> Option<(f64, f64)> {
     if points.is_empty() {
         return None;
