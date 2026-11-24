@@ -350,9 +350,9 @@ suppresses that diagnostic.
 Best-effort export remains permissive, while strict portability admission retains
 its existing rejection policy.
 
-Known native backend differences also produce specific warnings: directional filter offsets
-under rotation, shear or reflection; CSS effects on converted HTML labels; and implicit PDF
-viewports that may clip painted content. These fidelity diagnostics preserve default output.
+Native export reports fidelity warnings for directional filter offsets under transforms that
+mix the filter axes, CSS effects on converted HTML labels, and implicit PDF viewports that may
+clip painted content. These fidelity diagnostics preserve default output.
 Use explicit SVG dimensions or a `viewBox` to control PDF clipping. `--quiet` suppresses warnings.
 
 ## Command Dialects And Root Compatibility

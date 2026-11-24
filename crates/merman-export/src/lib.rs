@@ -1966,7 +1966,7 @@ fn prepare_raster_source_on_backend_stack(
     let fallback_css_residual = svg.finalization_report().fallback_css_residual();
     let conversion_plan = plan_svg_conversion(&tree, options.conversion_limits, control)?;
     let directional_filter_transform_residual =
-        !directional_filter_transforms_supported(tree.root(), true, control)?;
+        !directional_filter_transforms_supported(tree.root(), control)?;
     let embedded_image_plan =
         plan_embedded_images(&tree, options.embedded_image_limit, data_plan, control)?;
     let plan = raster_plan_for_geometry(geometry, options, control)?;
@@ -2589,29 +2589,23 @@ fn check_svg_conversion_limit(
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 fn directional_filter_transforms_supported(
     root: &usvg::Group,
-    allow_axis_permutations: bool,
     control: &OperationControl,
 ) -> Result<bool> {
     let mut stack = vec![(root, usvg::Transform::identity())];
     while let Some((group, parent_transform)) = stack.pop() {
         export_checkpoint(control)?;
         let transform = parent_transform.pre_concat(group.transform());
-        let mut preserves_offset_axes =
-            transform.kx == 0.0 && transform.ky == 0.0 && transform.sx > 0.0 && transform.sy > 0.0;
-        if allow_axis_permutations && !preserves_offset_axes {
-            // resvg factors rotation and reflection out of the filter layer and restores them
-            // during compositing. Allow roundoff in quarter-turn SVG transform matrices.
-            let keeps_axes = transform.sx != 0.0
-                && transform.sy != 0.0
-                && transform.ky.abs() <= transform.sx.abs() * f32::EPSILON
-                && transform.kx.abs() <= transform.sy.abs() * f32::EPSILON;
-            let swaps_axes = transform.ky != 0.0
-                && transform.kx != 0.0
-                && transform.sx.abs() <= transform.ky.abs() * f32::EPSILON
-                && transform.sy.abs() <= transform.kx.abs() * f32::EPSILON;
-            preserves_offset_axes = keeps_axes || swaps_axes;
-        }
-        if !preserves_offset_axes {
+        // resvg factors rotation and reflection out of the filter layer and restores them
+        // during compositing, including when Krilla renders a group into a localized image.
+        let keeps_axes = transform.sx != 0.0
+            && transform.sy != 0.0
+            && transform.ky.abs() <= transform.sx.abs() * f32::EPSILON
+            && transform.kx.abs() <= transform.sy.abs() * f32::EPSILON;
+        let swaps_axes = transform.ky != 0.0
+            && transform.kx != 0.0
+            && transform.sx.abs() <= transform.ky.abs() * f32::EPSILON
+            && transform.sy.abs() <= transform.kx.abs() * f32::EPSILON;
+        if !(keeps_axes || swaps_axes) {
             for primitive in group
                 .filters()
                 .iter()
@@ -2785,7 +2779,7 @@ fn pdf_filtered_group_bounds(
                 continue;
             }
             let directional_transform_residual =
-                !directional_filter_transforms_supported(group, false, control)?;
+                !directional_filter_transforms_supported(group, control)?;
             // Match krilla-svg's composed transform before its f32 side cap and pixel rounding.
             // Absolute bounds are insufficient: isolated PDF streams reset their current CTM.
             let local = bbox
@@ -5172,8 +5166,13 @@ mod tests {
     }
 
     #[test]
-    fn pdf_directional_filters_report_local_transform_residual_and_encode() {
-        for transform in ["rotate(90)", "skewX(30)", "scale(-1 1)"] {
+    fn pdf_directional_filters_report_residuals_for_transforms_that_mix_axes() {
+        for (transform, expects_residual) in [
+            ("rotate(90)", false),
+            ("scale(-1 1)", false),
+            ("rotate(30)", true),
+            ("skewX(30)", true),
+        ] {
             for primitive in [
                 r#"<feDropShadow dx="15" dy="0" stdDeviation="0" flood-color="blue"/>"#,
                 r#"<feOffset dx="15" dy="0"/>"#,
@@ -5184,9 +5183,16 @@ mod tests {
                 let prepared = prepare_pdf(&svg, &fixture_pdf_options()).expect(
                     "best-effort PDF still exports localized directional filter transforms",
                 );
-                assert!(prepared.report().directional_filter_transform_residual());
+                assert_eq!(
+                    prepared.report().directional_filter_transform_residual(),
+                    expects_residual,
+                    "{transform} {primitive}"
+                );
                 let (pdf, report) = prepared.encode_with_report().unwrap();
-                assert!(report.directional_filter_transform_residual());
+                assert_eq!(
+                    report.directional_filter_transform_residual(),
+                    expects_residual
+                );
                 assert!(String::from_utf8_lossy(&pdf).contains("/Subtype/Image"));
             }
         }
@@ -5230,7 +5236,7 @@ mod tests {
 
     #[test]
     fn pdf_directional_filters_report_nested_local_transform_residual() {
-        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><filter id="outer"><feGaussianBlur stdDeviation="0"/></filter><filter id="shadow" filterUnits="userSpaceOnUse" x="-20" y="-20" width="80" height="80"><feDropShadow dx="15" dy="0" stdDeviation="0" flood-color="blue"/></filter></defs><g filter="url(#outer)"><g transform="translate(60 20) rotate(90)" filter="url(#shadow)"><rect width="20" height="10" fill="red"/></g></g></svg>"##;
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><filter id="outer"><feGaussianBlur stdDeviation="0"/></filter><filter id="shadow" filterUnits="userSpaceOnUse" x="-20" y="-20" width="80" height="80"><feDropShadow dx="15" dy="0" stdDeviation="0" flood-color="blue"/></filter></defs><g filter="url(#outer)"><g transform="translate(60 20) skewX(30)" filter="url(#shadow)"><rect width="20" height="10" fill="red"/></g></g></svg>"##;
         let prepared = prepare_pdf(svg, &fixture_pdf_options())
             .expect("descendant transform limitations must not disable best-effort PDF output");
         assert!(prepared.report().directional_filter_transform_residual());

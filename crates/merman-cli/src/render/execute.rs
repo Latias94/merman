@@ -608,7 +608,7 @@ fn report_native_export_quality(
 ) {
     let diagnostics = crate::diagnostics::DiagnosticSink::new(quiet, stderr);
     if directional_filter_transform_residual {
-        diagnostics.info("warning: native_directional_filter_transform_residual: directional filter offsets may differ under rotation, shear or reflection; best-effort rendering may differ");
+        diagnostics.info("warning: native_directional_filter_transform_residual: a transform mixes the filter axes; directional offsets may differ");
     }
     if implicit_viewport_clipping_residual {
         diagnostics.info("warning: pdf_implicit_viewport_clipping_residual: the derived PDF viewport may clip painted content; specify an explicit SVG viewport to control clipping");
