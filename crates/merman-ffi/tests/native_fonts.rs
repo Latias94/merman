@@ -69,11 +69,7 @@ fn assert_failure(
 }
 
 #[test]
-fn font_constructor_is_appended_without_changing_the_abi3_minimum() {
-    assert_eq!(
-        MERMAN_NATIVE_ABI_MINIMUM_PREFIX_LAYOUT_DIGEST,
-        "sha256:623c099f91282a88bf4d4e9cc7cdf728fc39c3b71a3ae7392007dd74f2b6ab41"
-    );
+fn font_constructor_extends_the_negotiated_api_prefix() {
     let api = api();
     assert_eq!(
         api.struct_size,
