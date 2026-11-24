@@ -26,6 +26,33 @@ class PublicWorkloadsTest(unittest.TestCase):
         bench.validate_stage_timing(sample)
         with self.assertRaisesRegex(ValueError, "do not match end-to-end time"):
             bench.validate_stage_timing({**sample, "unattributed_ns": 18})
+        report = {"surface": "rust", "options": {"metric": "stages"}}
+        with self.assertRaisesRegex(ValueError, "stage attribution reports do not support compare"):
+            bench.compare(report, report)
+
+    def test_stage_layouts_measure_fixed_families_and_reject_selectable_fallbacks(self):
+        request = {"diagram_id": "stage-test", "source_sha256": "a" * 64}
+        svg = '<svg id="stage-test"/>'
+        cases = [
+            ("sequence", "native", "native", [], "family-fixed", None),
+            ("flowchart", "shoal", None, ["layout-shoal"], "selectable", None),
+            ("flowchart", "dagre", None, ["layout-dagre"], "selectable", "layout-backend-mismatch"),
+        ]
+        for family, backend, fixed, capabilities, applicability, status in cases:
+            with self.subTest(family=family, backend=backend):
+                response = {"outputs": [svg], "layout_evidence": [dict(
+                    request, family=family, backend=backend, fixed_backend=fixed,
+                    required_capabilities=capabilities,
+                )]}
+                signatures = [{}]
+                evidence = bench.check_layout_evidence(
+                    response, {"requests": [request], "operation": "svg-data"}, signatures,
+                    "shoal", inventory=False, stages=True,
+                )
+                result = bench.summarize_stage_layout(evidence, "shoal")
+                self.assertEqual(result["applicability"], applicability)
+                self.assertEqual(result["cross_backend_eligible"], backend == "shoal")
+                self.assertEqual(signatures[0].get("status"), status)
 
     def test_source_reuse_controls_hold_size_topology_or_labels_as_declared(self):
         names = ["four-node-repeat", "four-node-relabel", "four-node-edges"]
@@ -46,7 +73,9 @@ class PublicWorkloadsTest(unittest.TestCase):
             self.assertEqual(request["source"].splitlines()[:5], cases[0][0]["source"].splitlines()[:5])
 
     def test_full_appends_to_the_reviewed_quick_and_legacy_scenarios(self):
-        quick = plan()["scenarios"]
+        quick_plan = plan()
+        quick = quick_plan["scenarios"]
+        self.assertEqual([s["id"] for s in quick_plan["stage_scenarios"]], ["fan-in-500"])
         full = plan("full")["scenarios"]
         self.assertEqual(
             [s["id"] for s in quick],

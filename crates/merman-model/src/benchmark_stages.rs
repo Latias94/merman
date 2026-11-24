@@ -11,6 +11,7 @@ pub enum Stage {
     Parse,
     ThemePrepare,
     Measure,
+    LayoutPrepare,
     LayoutSolve,
     SvgEmit,
     CssEmit,
@@ -18,11 +19,12 @@ pub enum Stage {
 }
 
 impl Stage {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::Preprocess,
         Self::Parse,
         Self::ThemePrepare,
         Self::Measure,
+        Self::LayoutPrepare,
         Self::LayoutSolve,
         Self::SvgEmit,
         Self::CssEmit,
@@ -35,6 +37,7 @@ impl Stage {
             Self::Parse => "parse",
             Self::ThemePrepare => "theme_prepare",
             Self::Measure => "measure",
+            Self::LayoutPrepare => "layout_prepare",
             Self::LayoutSolve => "layout_solve",
             Self::SvgEmit => "svg_emit",
             Self::CssEmit => "css_emit",

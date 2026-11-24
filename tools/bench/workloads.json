@@ -163,7 +163,8 @@
   ],
   "topologies": {
     "quick": [
-      {"shapes":["fan-in","fan-out"], "nodes":[50,500]},
+      {"shapes":["fan-in"], "nodes":[50,500], "stage_render_nodes":[500]},
+      {"shapes":["fan-out"], "nodes":[50,500]},
       {"shapes":["scc","scc-dag"], "nodes":[25]}
     ],
     "full": [

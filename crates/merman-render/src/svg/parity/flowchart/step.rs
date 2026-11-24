@@ -48,6 +48,9 @@ impl FlowchartSteps {
         if !self.emitted.get() {
             return;
         }
+        #[cfg(feature = "benchmark-stages")]
+        let _stage =
+            merman_model::benchmark_stages::enter(merman_model::benchmark_stages::Stage::CssEmit);
         let scope = super::css::FlowchartCssSelectorDiagramId::new(diagram_id);
         let _ = write!(
             out,

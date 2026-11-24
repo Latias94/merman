@@ -282,7 +282,7 @@ pub(super) fn layout(
         for member in members {
             child.set_parent_ref(&member, &id);
         }
-        dugong::layout_controlled(&mut child, work)
+        crate::layout_work::measure_layout_solve!(dugong::layout_controlled(&mut child, work))
             .map_err(|error| work.map_dugong_error(error))?;
         let fragment = project(
             &child,
@@ -299,7 +299,8 @@ pub(super) fn layout(
         extracted.insert(id, fragment);
     }
     let extracted_ids = extracted.keys().cloned().collect();
-    dugong::layout_controlled(&mut root, work).map_err(|error| work.map_dugong_error(error))?;
+    crate::layout_work::measure_layout_solve!(dugong::layout_controlled(&mut root, work))
+        .map_err(|error| work.map_dugong_error(error))?;
     let outer = project(
         &root,
         &plan_by_id,

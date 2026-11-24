@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 import subprocess
 
-from .workloads import LAYOUTS, build_runner, run_rust, write, write_chrome_trace
+from .workloads import LAYOUTS, build_runner, digest, run_rust, write, write_chrome_trace
 
 
 def parse_layouts(value: str) -> list[str]:
@@ -23,6 +23,11 @@ def collect(args: argparse.Namespace) -> tuple[dict, bool]:
     memory_runner = None
     if args.with_memory:
         memory_runner = args.memory_runner or build_runner("stage-memory", shoal=shoal)
+    runner = runner.resolve()
+    if memory_runner is not None:
+        memory_runner = memory_runner.resolve()
+    runner_hash = digest(runner.read_bytes())
+    memory_hash = digest(memory_runner.read_bytes()) if memory_runner else None
     reports = {}
     for layout in args.layouts:
         options = argparse.Namespace(
@@ -44,7 +49,20 @@ def collect(args: argparse.Namespace) -> tuple[dict, bool]:
             with_memory=args.with_memory,
             memory_runner=args.memory_runner,
         )
-        reports[layout] = run_rust(options, raw=raw_plan, runner=runner.resolve(), memory_runner=memory_runner)
+        report = run_rust(options, raw=raw_plan, runner=runner, memory_runner=memory_runner)
+        if (report["runner_sha256"] != runner_hash or report.get("memory_runner_sha256") != memory_hash):
+            raise ValueError("workload executable changed during the stage collection")
+        reports[layout] = report
+    scenarios = {
+        name: {
+            "cross_backend_eligible": len(reports) > 1 and all(
+                report["rows"][name].get("status") is None
+                and report["rows"][name]["stage_layout"]["cross_backend_eligible"]
+                for report in reports.values()
+            ),
+        }
+        for name in next(iter(reports.values()))["rows"]
+    }
     rows = {
         f"{layout}/{name}": row
         for layout, report in reports.items()
@@ -53,7 +71,7 @@ def collect(args: argparse.Namespace) -> tuple[dict, bool]:
     if args.chrome_trace:
         write_chrome_trace(args.chrome_trace, {"rows": rows})
     success = all(row.get("status") in (None, "expected-rejection") for row in rows.values())
-    return {"schema_version": 1, "surface": "rust-stages", "layouts": reports}, success
+    return {"schema_version": 1, "surface": "rust-stages", "layouts": reports, "scenarios": scenarios}, success
 
 
 def main(argv: list[str] | None = None) -> int:

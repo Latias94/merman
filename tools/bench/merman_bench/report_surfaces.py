@@ -361,14 +361,14 @@ def load_browser(path: Path) -> dict:
 
 
 STAGES = (
-    "preprocess", "parse", "theme_prepare", "measure", "layout_solve", "svg_emit",
+    "preprocess", "parse", "theme_prepare", "measure", "layout_prepare", "layout_solve", "svg_emit",
     "css_emit", "postprocess", "unattributed", "end_to_end",
 )
 LAYOUTS = {"dagre", "elk", "shoal"}
 
 
 def load_stages(path):
-    from .workloads import validate_stage_memory
+    from .workloads import validate_stage_memory, validate_stage_timing
 
     report, report_sha = _read_report(path)
     if not _schema_v1(report) or report.get("surface") != "rust-stages":
@@ -389,9 +389,13 @@ def load_stages(path):
         for scenario, result in observation["rows"].items():
             samples = result["samples"]
             memory = result.get("memory_samples", [])
+            for sample in samples:
+                validate_stage_timing(sample)
             for sample in memory:
                 validate_stage_memory(sample)
             row = dict(scenario=scenario, layout=layout, status=result.get("status", "ok"), stages=[])
+            if witness := result.get("stage_layout"):
+                row["backends"] = [_identifier(backend) for backend in witness["backends"]]
             rows.append(row)
             if not samples:
                 continue

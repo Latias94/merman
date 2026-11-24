@@ -72,7 +72,8 @@ pub(super) fn layout(
         }
     }
 
-    dugong::layout_controlled(&mut graph, work).map_err(|error| work.map_dugong_error(error))?;
+    crate::layout_work::measure_layout_solve!(dugong::layout_controlled(&mut graph, work))
+        .map_err(|error| work.map_dugong_error(error))?;
 
     let mut out_nodes = Vec::new();
     for id in graph.nodes() {

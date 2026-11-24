@@ -2841,7 +2841,9 @@ fn layout_flowchart_with_model(
             graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
             ctx: &mut RecursiveLayoutContext<'_>,
         ) -> Result<()> {
-            if let Err(error) = dugong::layout_controlled(graph, &mut *ctx.work_control) {
+            if let Err(error) = crate::layout_work::measure_layout_solve!(
+                dugong::layout_controlled(graph, &mut *ctx.work_control)
+            ) {
                 return Err(ctx.work_control.map_dugong_error(error));
             }
             // The pinned Mermaid title-shift pass is a strict no-op at the default zero margin.

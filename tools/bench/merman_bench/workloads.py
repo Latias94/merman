@@ -355,6 +355,7 @@ def materialize(args):
             )
 
     topologies = []
+    stage_scenarios = []
     topology_suite = args.suite
     if args.suite == "families" or (args.scenario and args.suite == "quick"):
         topology_suite = "full"
@@ -375,16 +376,20 @@ def materialize(args):
                     **({"canonical_id": canonical, "statement_order": order} if name != canonical else {}),
                 }
             )
-            if name in args.scenario or nodes in series.get("render_nodes", []):
+            render = name in args.scenario or nodes in series.get("render_nodes", [])
+            stage_only = nodes in series.get("stage_render_nodes", [])
+            if render or stage_only:
                 labels = [f"C{i}" for i in range(nodes)] if shape in SCC_SHAPES else ["N0", f"N{nodes - 1}"]
-                cases.append(scenario(name, "merman/topology", [(name, source)], {name: labels}))
-    names = [s["id"] for s in cases]
+                population = cases if render else stage_scenarios
+                population.append(scenario(name, "merman/topology", [(name, source)], {name: labels}))
+    names = [s["id"] for s in (*cases, *stage_scenarios)]
     if len(names) != len(set(names)):
         raise ValueError("duplicate scenario ID in workload sources")
     if args.scenario:
         by_id = {s["id"]: s for s in cases}
         cases = [by_id[name] for name in args.scenario]
-    return {"schema_version": 1, "suite": args.suite, "scenarios": cases, "topologies": topologies}
+    return {"schema_version": 1, "suite": args.suite, "scenarios": cases, "topologies": topologies,
+            **({"stage_scenarios": stage_scenarios} if stage_scenarios else {})}
 
 
 def build_runner(metric, *, shoal=False):
@@ -506,7 +511,7 @@ def measure_rust_samples(observe, job, signatures, count, exact):
                 **({"measured_svg_sha256": measured_hashes} if exact else {}))
 
 
-def check_layout_evidence(response, job, signatures, requested, *, inventory):
+def check_layout_evidence(response, job, signatures, requested, *, inventory, stages=False):
     receipts = response.get("layout_evidence")
     if not isinstance(receipts, list) or len(receipts) != len(signatures):
         raise ValueError("layout verification requires a runner that returns per-request layout evidence")
@@ -522,18 +527,41 @@ def check_layout_evidence(response, job, signatures, requested, *, inventory):
             raise ValueError(f"missing or misidentified layout evidence for {diagram_id}")
         family = receipt["family"]
         required = [c.removeprefix("layout-") for c in receipt["required_capabilities"] if c.startswith("layout-")]
-        actual = None
-        if len(required) == 1 and family in LAYOUT_EVIDENCE_ENGINES:
-            actual = required[0]
-        elif not required and family in LAYOUT_EVIDENCE_DAGRE:
-            actual = "dagre"
-        receipt["backend"] = actual
-        if actual is None or actual != requested:
-            observed = actual or "unconfirmed"
-            if family == "er" and not required:
-                observed = "unconfirmed between Dagre and Swimlane"
-            signature.update(status="layout-backend-mismatch",
-                             message=f"requested {requested}, observed {observed} ({family})")
+        if stages:
+            actual = receipt.get("backend")
+            fixed = receipt.get("fixed_backend")
+            if (not isinstance(actual, str) or "fixed_backend" not in receipt
+                    or fixed not in (None, "native", "swimlane", "cytoscape")
+                    or (fixed is not None and requested is None)):
+                raise ValueError(f"missing or invalid stage layout witness for {diagram_id}")
+            capability = actual.partition(".")[0]
+            if capability in ("cytoscape", *LAYOUTS):
+                expected = [capability]
+            elif actual in ("native", "swimlane", "tidy-tree"):
+                expected = []
+            else:
+                raise ValueError(f"invalid stage layout backend for {diagram_id}")
+            if required != expected:
+                raise ValueError(f"inconsistent stage layout witness for {diagram_id}")
+            receipt["layout_applicability"] = ("default" if requested is None else
+                                              "family-fixed" if fixed is not None else "selectable")
+            expected_backend = fixed if fixed is not None else requested
+            if expected_backend is not None and actual != expected_backend:
+                signature.update(status="layout-backend-mismatch",
+                                 message=f"requested {requested}, expected {expected_backend}, observed {actual} ({family})")
+        else:
+            actual = None
+            if len(required) == 1 and family in LAYOUT_EVIDENCE_ENGINES:
+                actual = required[0]
+            elif not required and family in LAYOUT_EVIDENCE_DAGRE:
+                actual = "dagre"
+            receipt["backend"] = actual
+            if actual is None or actual != requested:
+                observed = actual or "unconfirmed"
+                if family == "er" and not required:
+                    observed = "unconfirmed between Dagre and Swimlane"
+                signature.update(status="layout-backend-mismatch",
+                                 message=f"requested {requested}, observed {observed} ({family})")
         if "status" in signature:
             continue
         if job["operation"] == "layout-json":
@@ -578,10 +606,24 @@ def write_chrome_trace(path, report):
 
 
 STAGE_PHASES = {
-    "preprocess", "parse", "theme_prepare", "measure", "layout_solve", "svg_emit",
+    "preprocess", "parse", "theme_prepare", "measure", "layout_prepare", "layout_solve", "svg_emit",
     "css_emit", "postprocess",
 }
 STAGE_MEMORY_COUNTERS = {"allocations", "allocated_bytes", "peak_growth_bytes"}
+
+
+def summarize_stage_layout(receipts, requested):
+    backends = sorted({r["backend"] for r in receipts if r is not None})
+    applicability = {r["layout_applicability"] for r in receipts if r is not None}
+    return {
+        "requested": requested,
+        "backends": backends,
+        "applicability": "unobserved" if not applicability else (
+            next(iter(applicability)) if len(applicability) == 1 else "mixed"
+        ),
+        "cross_backend_eligible": (requested is not None and backends == [requested]
+                                   and applicability == {"selectable"} and None not in receipts),
+    }
 
 
 def validate_stage_timing(sample):
@@ -636,7 +678,7 @@ def run_rust(args, *, raw=None, runner=None, memory_runner=None, layout_comparis
         raise ValueError("a stage memory runner requires --with-memory")
     if stages and args.operation not in SVG_OPERATIONS:
         raise ValueError("stage attribution requires an SVG operation")
-    verify_layout = shoal or (stages and args.site_layout is not None)
+    verify_layout = shoal or stages
     resource_profile = getattr(args, "resource_profile", None)
     if exact and (args.metric != "clock" or args.operation not in SVG_OPERATIONS):
         raise ValueError("--verify-measured-svg requires an SVG operation and --metric clock")
@@ -656,6 +698,8 @@ def run_rust(args, *, raw=None, runner=None, memory_runner=None, layout_comparis
     if args.site_layout:
         site["layout"] = args.site_layout
     selected = plan["topologies" if work else "scenarios"]
+    if stages:
+        selected = [*selected, *plan.get("stage_scenarios", [])]
     by_id = {r["id"]: r for r in selected}
     if not selected or len(by_id) != len(selected):
         raise ValueError("empty selection or duplicate workload ID")
@@ -684,6 +728,7 @@ def run_rust(args, *, raw=None, runner=None, memory_runner=None, layout_comparis
         "samples": 1 if work else args.samples,
         **({"resource_profile": resource_profile} if resource_profile else {}),
         **({"clock_boundary": "returned-svg"} if exact else {}),
+        **({"stage_trace": True} if trace_path is not None else {}),
         **({"with_memory": True} if with_memory else {}),
         **({"heap_profile": True} if heap_profile else {}),
     }
@@ -709,7 +754,8 @@ def run_rust(args, *, raw=None, runner=None, memory_runner=None, layout_comparis
         signatures, shared = rust_signatures(outputs, job["requests"], job["operation"])
         evidence = None
         if verify_layout:
-            evidence = check_layout_evidence(response, job, signatures, args.site_layout, inventory=layout_comparison)
+            evidence = check_layout_evidence(response, job, signatures, args.site_layout,
+                                             inventory=layout_comparison, stages=stages)
             if job["operation"] == "layout-json":
                 signatures = [{k: v for k, v in signature.items() if k != "layout_json"} for signature in signatures]
         validation_modes.add(shared)
@@ -761,6 +807,8 @@ def run_rust(args, *, raw=None, runner=None, memory_runner=None, layout_comparis
         signatures, evidence = verify(job, row)
         if verify_layout:
             row["layout_evidence"] = evidence
+        if stages:
+            row["stage_layout"] = summarize_stage_layout(evidence, args.site_layout)
         statuses = [s.get("status", "ok") for s in signatures]
         row.update(completed=statuses.count("ok"), outputs=signatures)
         if any(status != "ok" for status in statuses):
@@ -894,6 +942,9 @@ def compare_topology(old, new):
 
 
 def compare(base, head, *, drawing_products=None):
+    if any(report.get("surface") == "rust-stages" or report.get("options", {}).get("metric") == "stages"
+           for report in (base, head)):
+        raise ValueError("stage attribution reports do not support compare; use bench.py report --rust-stages")
     if base.get("surface") != "rust" or head.get("surface") != "rust":
         from .reference import compare_reference
 

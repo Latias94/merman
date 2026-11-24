@@ -61,8 +61,9 @@ before and after sampling. A matching comparison reports `matching-verification-
 stops the clock when the public call returns and verifies that same SVG against both witnesses.
 The report records a digest per sample and reserves `same-output` for that comparison. Dropping
 the returned string happens after this clock boundary. The batch clock includes each SVG drop.
-The two measurements have separate comparison options. Node checks each new output after the
-timed batch, with a scenario timeout.
+The two measurements have separate comparison options. The Node worker retains its outputs through
+the last timed batch and then checks each distinct output against the request's validation policy.
+The worker timeout covers the complete scenario, including these checks.
 
 When a Rust SVG scenario declares drawing facts, `--check-drawings` runs the shared browser
 observer after sampling and binds the result to the verified SVG digest. Comparisons withhold
@@ -215,11 +216,17 @@ python tools/bench/bench.py rust --plan target/bench/plan.json --metric stages -
 `stages` takes the same ordered input, capability and SVG verification path as `clock`. It builds
 with `benchmark-stages` and times stage scopes exclusively. Each report includes `end_to_end` and
 `unattributed_ns`, the difference between the batch duration and the sum of instrumented scopes.
-`layout_solve` includes family preparation and the layout backend. Theme preparation includes
+`layout_prepare` covers the renderer's family adapters, including input and output projection.
+`layout_solve` covers instrumented geometry builders and solver calls. Theme preparation includes
 Mermaid theme materialization and the Flowchart family theme binding. `measure` covers routed
-measurement and built-in streaming label widths. `css_emit` currently covers Flowchart, Agentflow
-and Swimlane. A stage with no captured work reports zero calls. The Chrome trace is optional and
-adds collection overhead. Keep both kinds of stage observations separate from clock comparisons.
+measurement and built-in streaming label widths. `css_emit` covers streamed style output and the
+XML serialization of buffered style blocks. A stage with no captured work reports zero calls.
+The stage matrix includes the quick `fan-in-500` control and records the realized backend for every
+successful request. Family-fixed layouts such as Sequence contribute phase observations and are
+ineligible for cross-backend comparisons. An unexpected fallback fails verification. Resource
+rejections appear alongside completed cases without stage samples. The optional Chrome trace adds
+collection overhead. Use `bench.py report --rust-stages` to read phase observations and the ordinary
+clock runners for revision comparisons.
 
 For allocation call stacks, collect a DHAT heap profile from one post-warmup batch. The runner
 builds the `memory` target with `dhat-heap` and records the output path in the workload receipt.

@@ -238,7 +238,12 @@ impl Trial<'_> {
         products.map(verify).collect()
     }
 
-    fn layout_evidence(&self, input: &Request, output: &Value) -> Result<Value, String> {
+    fn layout_evidence(
+        &self,
+        input: &Request,
+        output: &Value,
+        #[cfg(feature = "benchmark-stages")] stage_layout: Option<Option<&str>>,
+    ) -> Result<Value, String> {
         if output.get("render_error").is_some() {
             return Ok(Value::Null);
         }
@@ -291,6 +296,35 @@ impl Trial<'_> {
         });
         if let Some(work_units) = work_units {
             receipt["layout_work_units"] = json!(work_units);
+        }
+        #[cfg(feature = "benchmark-stages")]
+        if let Some(requested) = stage_layout {
+            // Layout capabilities alone cannot tell family-native, Swimlane, and TidyTree apart.
+            // Keep the plan tied to the separately completed SVG witness above.
+            let plan_request = RenderRequest::svg_plan(
+                &input.source,
+                OperationControl::new(),
+                self.operation.svg_request(input, self.resources),
+            );
+            let RenderOutput::SvgPlan(Some(plan)) = self
+                .renderer
+                .render(plan_request)
+                .map_err(|error| error.to_string())?
+            else {
+                return Err("missing stage layout capability plan".into());
+            };
+            if !plan.is_ready()
+                || plan.family_id() != family
+                || plan.required_capabilities() != required.as_slice()
+            {
+                return Err(format!(
+                    "{}: stage plan differs from its SVG witness",
+                    input.diagram_id
+                ));
+            }
+            let (backend, fixed) = plan.benchmark_layout_witness(requested);
+            receipt["backend"] = json!(backend);
+            receipt["fixed_backend"] = json!(fixed);
         }
         Ok(receipt)
     }
@@ -377,6 +411,15 @@ pub(super) fn run(
                     .ok_or("site secure keys must be an array")?;
                 keys.push(json!("layout"));
             }
+            #[cfg(feature = "benchmark-stages")]
+            let stage_layout = (verify_only
+                && verify_layout
+                && matches!(metric, "stages" | "stage-memory"))
+            .then(|| {
+                site.as_ref()
+                    .and_then(|site| site["layout"].as_str())
+                    .map(str::to_owned)
+            });
             let renderer = match site {
                 Some(site) => renderer.with_presentation_engine(
                     MermaidEngine::new()
@@ -416,7 +459,14 @@ pub(super) fn run(
                     let evidence = requests
                         .iter()
                         .zip(&outputs)
-                        .map(|(input, output)| trial.layout_evidence(input, output))
+                        .map(|(input, output)| {
+                            trial.layout_evidence(
+                                input,
+                                output,
+                                #[cfg(feature = "benchmark-stages")]
+                                stage_layout.as_ref().map(Option::as_deref),
+                            )
+                        })
                         .collect::<Result<Vec<_>, _>>()?;
                     verified["layout_evidence"] = Value::Array(evidence);
                 }
