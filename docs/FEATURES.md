@@ -131,7 +131,7 @@ CLI and open the SVG preview. The extension reuses placement hints when the CLI 
 preview frame protocol.
 [Host integration](rendering/HEADLESS_LAYOUT.md#shoal-width-adaptation-and-preview-frames) ·
 [Playground experiment](../platforms/web/README.md#try-shoal-in-playground) ·
-[Layout benchmark](performance/reports/2026-11-24-shoal.md)
+[Layout benchmark](performance/2026-11-24-shoal.md)
 
 ### Optional CLI Fonts
 
