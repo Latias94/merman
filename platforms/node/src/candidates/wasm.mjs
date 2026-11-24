@@ -7,7 +7,7 @@ import {
   validateTransportIdentityExport,
 } from "../errors.mjs";
 import {
-  assertRuntimePackageVersion,
+  cacheRuntimeCatalog,
   nodeLoaderPackageVersion,
 } from "../native-loader.mjs";
 import { wrapCandidateEngine } from "./wrap-engine.mjs";
@@ -74,13 +74,7 @@ export async function loadNodeWasmTransport(
     throw decodeWireCreationError(cause, "The Node-targeted WASM candidate");
   }
   try {
-    const runtimeCatalogJson = assertRuntimePackageVersion(
-      transport.runtimeCatalogJson(),
-    );
-    return {
-      ...transport,
-      runtimeCatalogJson: () => runtimeCatalogJson,
-    };
+    return cacheRuntimeCatalog(transport);
   } catch (cause) {
     try {
       await transport.dispose();

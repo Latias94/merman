@@ -1,5 +1,5 @@
 import { BoundedExecutor } from "./bounded-executor.mjs";
-import { supportsDirectNativeSvg } from "./native-loader.mjs";
+import { supportsDirectNativeSvg, takeVersionCheckedRuntimeCatalog } from "./native-loader.mjs";
 import { NODE_LOCAL_SHOAL_WIRE_CONTRACT } from "./transport-contract.mjs";
 import {
   MermanInvalidTransportError,
@@ -129,7 +129,10 @@ export async function createNodeEngine(
   const transport = await loadTransport(optionsJson, iconPacksJson);
   try {
     assertTransport(transport);
-    const runtimeCatalog = validateRuntimeCatalog(await transport.runtimeCatalogJson(), { localShoal });
+    const catalogText = await transport.runtimeCatalogJson();
+    const catalog = takeVersionCheckedRuntimeCatalog(transport, catalogText) ??
+      parseRuntimeCatalogJsonText(catalogText);
+    const runtimeCatalog = validateParsedRuntimeCatalog(catalog, localShoal);
     const directSvg = supportsDirectNativeSvg(transport) &&
       runtimeCatalog.capabilities.operation_ids.includes("svg");
     return new MermanEngine(
@@ -607,12 +610,10 @@ async function disposeUnusableTransport(transport) {
 }
 
 export function validateRuntimeCatalog(value, { localShoal = false } = {}) {
-  if (typeof value !== "string") {
-    throw new MermanInvalidTransportError(
-      "Merman transport runtime catalog must be JSON text.",
-    );
-  }
-  const catalog = parseRuntimeCatalogJsonText(value);
+  return validateParsedRuntimeCatalog(parseRuntimeCatalogJsonText(value), localShoal);
+}
+
+function validateParsedRuntimeCatalog(catalog, localShoal) {
   if (!isPlainObject(catalog)) {
     throw new MermanInvalidTransportError("Merman transport returned an invalid runtime catalog.");
   }

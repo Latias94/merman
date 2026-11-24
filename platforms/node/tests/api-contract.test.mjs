@@ -1458,6 +1458,98 @@ test("construction validates and exposes the loaded artifact runtime catalog", a
   );
 });
 
+test("candidate construction decodes the runtime catalog once", async (context) => {
+  const catalog = runtimeCatalog();
+  const catalogText = `${JSON.stringify(catalog)}\n`;
+  for (const kind of ["napi", "wasm"]) {
+    await context.test(kind, async (candidateTest) => {
+      const events = [];
+      const identityText = JSON.stringify({
+        schema_version: 1,
+        package_id: NODE_WIRE_CONTRACT.package_id,
+        artifact_id: NODE_WIRE_CONTRACT.artifact_id,
+        package_version: PACKAGE_VERSION,
+        transport_kind: kind,
+        transport_api_version: NODE_WIRE_CONTRACT.transport_api_version,
+        binding_result_payload_version: NODE_WIRE_CONTRACT.binding_result_payload_version,
+        capability_descriptor_digest: CAPABILITY_DESCRIPTOR_DIGEST,
+        wire_contract: NODE_WIRE_CONTRACT,
+      });
+      const parse = JSON.parse;
+      candidateTest.mock.method(JSON, "parse", (text, reviver) => {
+        if (text === identityText) events.push("decode identity");
+        if (text === catalogText) events.push("decode catalog");
+        return parse(text, reviver);
+      });
+
+      let reply = catalogText;
+      let disposeCalls = 0;
+      class CandidateEngine {
+        constructor() { events.push("construct candidate"); }
+        execute() {}
+        executeSync() {}
+        metadataJson() {}
+        runtimeCatalogJson() {
+          events.push("read candidate catalog");
+          return reply;
+        }
+        dispose() { disposeCalls += 1; }
+      }
+      const binding = {
+        NativeEngine: CandidateEngine,
+        WasmEngine: CandidateEngine,
+        transportIdentityJson() {
+          events.push("read identity");
+          return identityText;
+        },
+      };
+      const load = (optionsJson) => kind === "napi"
+        ? loadNativeTransport(optionsJson, { loadPackage: () => binding })
+        : loadNodeWasmTransport(optionsJson, {
+          modulePath: "candidate:node-wasm", loadModule: async () => binding,
+        });
+      let transport;
+      const engine = await createNodeEngine({}, {
+        async loadTransport(optionsJson) {
+          transport = await load(optionsJson);
+          return transport;
+        },
+      });
+      try {
+        assert.deepEqual(engine.runtimeCatalog, catalog);
+        assert.equal(transport.runtimeCatalogJson(), catalogText);
+      } finally {
+        await engine.dispose();
+      }
+      const startupEvents = events.slice();
+      candidateTest.diagnostic(JSON.stringify(startupEvents));
+
+      const modified = await load("{}");
+      modified.runtimeCatalogJson = () => catalog;
+      await assert.rejects(
+        createNodeEngine({}, { loadTransport: () => modified }),
+        /runtime catalog must be JSON text/i,
+      );
+
+      reply = JSON.stringify(runtimeCatalog({
+        capabilities: {
+          ...catalog.capabilities,
+          capability_ids: [...catalog.capabilities.capability_ids, "layout-shoal"].sort(),
+        },
+      }));
+      await assert.rejects(
+        createNodeEngine({}, { loadTransport: load }),
+        /known capabilities do not match the Node artifact contract/i,
+      );
+      assert.equal(disposeCalls, 3);
+      assert.deepEqual(startupEvents, [
+        "read identity", "decode identity", "construct candidate", "read candidate catalog",
+        "decode catalog",
+      ]);
+    });
+  }
+});
+
 test("construction disposes every unusable transport exactly once", async () => {
   const cases = [
     {
