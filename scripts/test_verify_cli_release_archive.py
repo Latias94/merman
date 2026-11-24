@@ -246,6 +246,7 @@ def valid_capabilities_payload(
         "diagram_families": profile["expected"]["diagram_families"],
         "capabilities": capabilities,
         "outputs": outputs,
+        "layout_fit_width": True,
         "native_fonts": {
             "default_policy_scope": "mermaid-svg-input",
             "default_measurement": "deterministic",
@@ -1439,6 +1440,25 @@ class RuntimeContractTests(unittest.TestCase):
             ),
             {field: payload[field] for field in ("capabilities", "outputs", "native_fonts")},
         )
+
+    def test_release_requires_exact_fit_width_capability(self) -> None:
+        expected = verifier._release_capabilities_contract(PROJECT_ROOT, version=VERSION)
+        payload = valid_capabilities_payload()
+        verifier._validate_runtime_capabilities(payload, expected)
+
+        for value in (False, 1, None):
+            with self.subTest(value=value):
+                payload["layout_fit_width"] = value
+                with self.assertRaisesRegex(
+                    verifier.ArchiveVerificationError, r"\.layout_fit_width"
+                ):
+                    verifier._validate_runtime_capabilities(payload, expected)
+
+        del payload["layout_fit_width"]
+        with self.assertRaisesRegex(
+            verifier.ArchiveVerificationError, "missing fields layout_fit_width"
+        ):
+            verifier._validate_runtime_capabilities(payload, expected)
 
     def test_runtime_rejects_equal_valued_output_resources_with_wrong_json_types(self) -> None:
         expected = verifier._release_capabilities_contract(PROJECT_ROOT, version=VERSION)
