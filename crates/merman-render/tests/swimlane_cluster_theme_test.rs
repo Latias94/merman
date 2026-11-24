@@ -122,25 +122,35 @@ fn native_theme_v2_swimlane_layers_container_and_title_paints_beneath_authored_s
             br##"{
                 "schema_version":2,"extends":"paper",
                 "roles":{"surface.container":"#ABCDEF","surface.emphasis":"#234567",
-                         "stroke.guide":"#56789A","stroke.border":"#56789A"}
+                         "stroke.guide":"#56789A","stroke.border":"#102030"}
             }"##,
             None,
         )
         .unwrap();
-    let svg = render(
-        &format!("{SOURCE}classDef source stroke:#22c55e\nclass Lane source\n"),
-        json!({"theme":"default", "look":"neo"}),
-        Some(NativeTheme::new(theme)),
-    );
-    let document = Document::parse(&svg).unwrap();
-    let lane = lane(&document);
-    let css = stylesheet(&document);
-    for (class, fill) in [("swimlane-body", "#ABCDEF"), ("swimlane-title", "#234567")] {
-        assert!(css.contains(&format!("rect.{class}{{fill:{fill};stroke:#56789A}}")));
-        let style = lane_rect(lane, class).attribute("style").unwrap();
-        assert!(
-            style.contains("stroke:#22c55e !important"),
-            "{class}: {style}"
+    let native = NativeTheme::new(theme);
+    for (authored, has_override) in [
+        ("", false),
+        ("classDef source stroke:#22c55e\nclass Lane source\n", true),
+    ] {
+        let svg = render(
+            &format!("{SOURCE}{authored}"),
+            json!({"theme":"default", "look":"neo"}),
+            Some(native.clone()),
         );
+        let document = Document::parse(&svg).unwrap();
+        let lane = lane(&document);
+        let css = stylesheet(&document);
+        assert!(!css.contains(".swimlane.cluster:not([data-color-id]) rect"));
+        for (class, fill) in [("swimlane-body", "#ABCDEF"), ("swimlane-title", "#234567")] {
+            assert!(css.contains(&format!(
+                ".swimlane.cluster rect.{class}{{fill:{fill};stroke:#56789A}}"
+            )));
+            let style = lane_rect(lane, class).attribute("style").unwrap();
+            assert_eq!(
+                style.contains("stroke:#22c55e !important"),
+                has_override,
+                "{class}: {style}",
+            );
+        }
     }
 }

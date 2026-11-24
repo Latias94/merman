@@ -13,20 +13,16 @@ use crate::graph_layout::ir::{
     SolvedGraph,
 };
 use crate::graph_layout::route_paint::{Clearance, ObstacleOwner};
-use crate::graph_layout::{RouteContract, RouteTopology, shoal_bridge};
-use crate::layout_frame::{FrameDirection, ShoalFrameNode};
+use crate::graph_layout::{AxisRoutes, RouteContract, RouteTopology, placement};
+use crate::layout_frame::GraphPlacement;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{
-    Bounds, FlowchartLayout, FlowchartPlacement, LayoutCluster, LayoutEdge, LayoutLabel,
-    LayoutNode, LayoutPoint,
+    Bounds, FlowchartLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
 };
-use crate::{
-    Error, LayoutAdaptation, LayoutAdaptationObservation, LayoutExecution, Result, ShoalLayoutFrame,
-};
+use crate::{Error, LayoutAdaptation, LayoutExecution, Result};
 use merman_model::families::flowchart::{FlowchartModel, FlowchartRenderContext};
 use merman_model::presentation::PresentationConfig;
-use std::collections::{BTreeMap, HashMap};
-use std::sync::Arc;
+use std::collections::HashMap;
 
 fn paint_clearance(
     nodes: &[LayoutNode],
@@ -101,48 +97,21 @@ pub(crate) fn layout(
     );
     let fit_width = execution.adaptation == LayoutAdaptation::FitWidth;
     let (graph, bindings) = measure(view, &measurement, config, fit_width, &mut work)?;
-    let width = if fit_width {
-        shoal_bridge::WidthPolicy::FitWidth {
-            max_width: execution.container_width,
-            allow_turn: true,
-            turn_breakpoint: 640.0,
-            fold_wide_ranks: execution.fold_wide_ranks,
-        }
-    } else {
-        shoal_bridge::WidthPolicy::Natural
-    };
-    let hints = match execution.previous_shoal_frame.as_deref() {
-        Some(previous) if previous.family == execution.family_id().as_str() => {
-            bindings.frame_hints(view, &graph, previous, &mut work)?
-        }
-        _ => Vec::new(),
-    };
-    let solved = shoal_bridge::solve(
+    let (solved, placement) = placement::solve(
         &graph,
-        shoal_bridge::Placement {
-            width,
-            capture_ranks: execution.capture_shoal_frame,
-            hints: &hints,
+        bindings.nodes.iter().map(|node| node.id.as_str()),
+        bindings
+            .groups
+            .iter()
+            .map(|&i| view.semantic.subgraphs[i].id.as_str()),
+        Some(execution),
+        placement::Constraints {
             flow_relative_nodes: &bindings.flow_relative_nodes,
+            allow_turn: true,
+            ..Default::default()
         },
         &mut work,
     )?;
-    let placement = FlowchartPlacement {
-        adaptation: fit_width.then(|| {
-            LayoutAdaptationObservation::fit_width(execution.container_width, solved.bounds.width)
-        }),
-        frame: if execution.capture_shoal_frame {
-            Some(Arc::new(bindings.capture_frame(
-                view,
-                &graph,
-                &solved,
-                execution.family_id().as_str(),
-                &mut work,
-            )?))
-        } else {
-            None
-        },
-    };
     drop(graph);
     bindings.project(view, &measurement, solved, placement, &mut work)
 }
@@ -363,109 +332,6 @@ fn measure(
 }
 
 impl FlowchartBindings {
-    fn frame_hints(
-        &self,
-        model: FlowchartRenderModelRef<'_>,
-        graph: &MeasuredGraph,
-        previous: &ShoalLayoutFrame,
-        work: &mut OperationLayoutWorkControl,
-    ) -> Result<Vec<Option<shoal_bridge::NodeHint>>> {
-        if previous.nodes.is_empty() {
-            return Ok(Vec::new());
-        }
-        let mut hints = Vec::with_capacity(self.nodes.len());
-        let comparisons = previous.nodes.len().ilog2() as usize + 1;
-        work.charge_adapter(work.checked_mul(self.nodes.len(), comparisons)?)?;
-        let mut parent_matches = Vec::with_capacity(self.groups.len());
-        work.charge_adapter(previous.groups.len())?;
-        let mut previous_groups = HashMap::with_capacity(previous.groups.len());
-        for (index, id) in previous.groups.iter().enumerate() {
-            work.charge_adapter(id.len())?;
-            previous_groups.insert(id.as_str(), index);
-        }
-        for &group in &self.groups {
-            let id = &model.semantic.subgraphs[group].id;
-            work.charge_adapter(id.len())?;
-            parent_matches.push(previous_groups.get(id.as_str()).copied());
-        }
-        for (layout, measured) in self.nodes.iter().zip(&graph.nodes) {
-            work.charge_adapter(layout.id.len())?;
-            let Some(node) = previous.nodes.get(&layout.id) else {
-                hints.push(None);
-                continue;
-            };
-            let same_parent = match (measured.parent, node.parent) {
-                (None, None) => true,
-                (Some(group), Some(previous_group)) => {
-                    parent_matches[group as usize] == Some(previous_group as usize)
-                }
-                _ => false,
-            };
-            hints.push(same_parent.then_some((
-                shoal_bridge::OrderHint {
-                    rank: i32::try_from(node.rank).unwrap_or(i32::MAX),
-                    cross_key: node.cross_key,
-                },
-                Direction::from(node.direction),
-            )));
-        }
-        Ok(hints)
-    }
-
-    fn capture_frame(
-        &self,
-        model: FlowchartRenderModelRef<'_>,
-        graph: &MeasuredGraph,
-        solved: &SolvedGraph,
-        family: &str,
-        work: &mut OperationLayoutWorkControl,
-    ) -> Result<ShoalLayoutFrame> {
-        if solved.node_ranks.len() != self.nodes.len() {
-            return Err(Error::InvalidModel {
-                message: "Shoal omitted the requested node ranks".into(),
-            });
-        }
-        let comparisons = self.nodes.len().checked_ilog2().unwrap_or(0) as usize + 1;
-        work.charge_adapter(work.checked_mul(self.nodes.len(), comparisons)?)?;
-        let mut groups = Vec::with_capacity(self.groups.len());
-        for &group in &self.groups {
-            let id = &model.semantic.subgraphs[group].id;
-            work.charge_adapter(id.len())?;
-            groups.push(id.clone());
-        }
-        let mut nodes = BTreeMap::new();
-        for ((node, measured), (&rank, rect)) in self
-            .nodes
-            .iter()
-            .zip(&graph.nodes)
-            .zip(solved.node_ranks.iter().zip(&solved.nodes))
-        {
-            work.charge_adapter(node.id.len())?;
-            let direction = measured.parent.map_or(solved.direction, |index| {
-                solved.groups[index as usize].direction
-            });
-            let center = rect.center();
-            let cross_key = match direction {
-                Direction::Down | Direction::Up => center.x,
-                Direction::Right | Direction::Left => center.y,
-            };
-            nodes.insert(
-                node.id.clone(),
-                ShoalFrameNode {
-                    parent: measured.parent,
-                    rank,
-                    cross_key,
-                    direction: direction.into(),
-                },
-            );
-        }
-        Ok(ShoalLayoutFrame {
-            family: family.to_owned(),
-            groups,
-            nodes,
-        })
-    }
-
     fn push_leaf(
         &mut self,
         graph: &mut MeasuredGraph,
@@ -498,7 +364,7 @@ impl FlowchartBindings {
         model: FlowchartRenderModelRef<'_>,
         measurement: &FlowchartMeasurement<'_>,
         solved: SolvedGraph,
-        placement: FlowchartPlacement,
+        placement: GraphPlacement,
         work: &mut OperationLayoutWorkControl,
     ) -> Result<FlowchartLayout> {
         work.charge_adapter(self.flow_relative_nodes.len())?;
@@ -581,35 +447,16 @@ impl FlowchartBindings {
             dom_node_order_by_root,
             uses_elk_adapter_dom: false,
             placement,
-            route_contract: RouteContract::CanonicalAxis {
-                nodes: self.profiles,
-                group_parents,
-                border_stitches,
-                clearance,
-                routes,
-            },
+            route_contract: RouteContract::CanonicalAxis(
+                AxisRoutes {
+                    nodes: self.profiles,
+                    group_parents,
+                    border_stitches,
+                    clearance,
+                    routes,
+                }
+                .into(),
+            ),
         })
-    }
-}
-
-impl From<FrameDirection> for Direction {
-    fn from(direction: FrameDirection) -> Self {
-        match direction {
-            FrameDirection::Down => Self::Down,
-            FrameDirection::Up => Self::Up,
-            FrameDirection::Left => Self::Left,
-            FrameDirection::Right => Self::Right,
-        }
-    }
-}
-
-impl From<Direction> for FrameDirection {
-    fn from(direction: Direction) -> Self {
-        match direction {
-            Direction::Down => Self::Down,
-            Direction::Up => Self::Up,
-            Direction::Left => Self::Left,
-            Direction::Right => Self::Right,
-        }
     }
 }

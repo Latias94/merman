@@ -50,6 +50,31 @@ describe("Shoal preview layout frames", () => {
   const context = { extensionUri: { fsPath: "/extension" } } as vscode.ExtensionContext;
   const outputChannel = { info: () => {} } as unknown as vscode.LogOutputChannel;
 
+  it("lets the CLI publish a private frame without creating a cold-preview directory", async () => {
+    for (const drawShoal of [false, true]) {
+      let framePath = "";
+      const renderer = loadRenderer(async ({ invocation }) => {
+        const { args } = invocation;
+        if (args[0] === "capabilities") {
+          return { stdout: Buffer.from(JSON.stringify({
+            preview_layout_frame: { ...frameCapability.preview_layout_frame, private_output: true },
+          })) };
+        }
+        assert.equal(args.includes("--preview-frame-in"), false);
+        framePath = args[args.indexOf("--preview-frame-out") + 1]!;
+        assert.equal(path.dirname(framePath), os.tmpdir());
+        await assert.rejects(fs.stat(framePath), { code: "ENOENT" });
+        if (drawShoal) await fs.writeFile(framePath, "{}", { mode: 0o600 });
+        return { stdout: Buffer.from("<svg/>"), stderr: "", invocation };
+      });
+      const rendered = await renderer.renderMermanSource({
+        context, outputChannel, source: "flowchart LR\nA-->B", format: "svg", previewLayoutFrame: {},
+      });
+      assert.equal(rendered.previewLayoutFrame?.toString(), drawShoal ? "{}" : undefined);
+      await assert.rejects(fs.stat(framePath), { code: "ENOENT" });
+    }
+  });
+
   it("negotiates once, replays opaque bytes, and cleans up both private files", async () => {
     let probes = 0;
     let previous: Buffer | undefined;
@@ -185,6 +210,60 @@ describe("Shoal preview layout frames", () => {
       assert.ok(output);
       await assert.rejects(fs.stat(output), { code: "ENOENT" });
     }
+  });
+});
+
+describe("Fit-width SVG preview", () => {
+  const request = {
+    context: { extensionUri: { fsPath: "/extension" } } as vscode.ExtensionContext,
+    outputChannel: { info: () => {} } as unknown as vscode.LogOutputChannel,
+    source: "flowchart LR\nA-->B",
+    format: "svg" as const,
+    previewFitWidth: 640.5,
+  };
+
+  it("negotiates fit-width with the frame in one probe and sends the CSS pixel target", async () => {
+    const invocations: string[][] = [];
+    const renderer = loadRenderer(async ({ invocation }) => {
+      invocations.push(invocation.args);
+      return {
+        stdout: Buffer.from(invocation.args[0] === "capabilities"
+          ? JSON.stringify({ layout_fit_width: true, preview_layout_frame: { protocol_version: 1, max_bytes: 128 } })
+          : "<svg/>"),
+        stderr: "",
+        invocation,
+      };
+    });
+    await renderer.renderMermanSource({ ...request, previewLayoutFrame: {} });
+    assert.equal(invocations.length, 2);
+    assert.deepEqual(invocations[0], ["capabilities", "--json"]);
+    const args = invocations[1]!;
+    const flag = args.indexOf("--fit-width");
+    assert.ok(flag >= 0);
+    assert.deepEqual(args.slice(flag, flag + 3), ["--fit-width", "--width", "640.5"]);
+    assert.ok(args.includes("--preview-frame-out"));
+  });
+
+  it("uses the normal render for older CLIs, invalid widths, text, and exports", async () => {
+    const invocations: string[][] = [];
+    const renderer = loadRenderer(async ({ invocation }) => {
+      invocations.push(invocation.args);
+      return {
+        stdout: Buffer.from(invocation.args[0] === "capabilities" ? "{}" : "<svg/>"),
+        stderr: "",
+        invocation,
+      };
+    });
+    await renderer.renderMermanSource(request);
+    for (const previewFitWidth of [undefined, 0, -1, NaN, Infinity]) {
+      await renderer.renderMermanSource({ ...request, previewFitWidth });
+    }
+    await renderer.renderMermanSource({ ...request, format: "ascii" });
+    await renderer.renderMermanSource({ ...request, format: "unicode" });
+    await renderer.renderMermanSource({ ...request, outputPath: "export.svg" });
+    await renderer.renderMermanSource({ ...request, inputKind: "svg" });
+    assert.equal(invocations.filter((args) => args[0] === "capabilities").length, 1);
+    assert.ok(invocations.every((args) => !args.includes("--fit-width") && !args.includes("--width")));
   });
 });
 

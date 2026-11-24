@@ -127,6 +127,7 @@ pub(crate) struct UsecasePreparedArtifact {
     pub(crate) nodes: Vec<UsecaseNodePlan>,
     pub(crate) edges: Vec<UsecaseEdgePlan>,
     edge_paths: std::collections::HashMap<String, Vec<crate::model::LayoutPoint>>,
+    route_contract: crate::graph_layout::RouteContract,
     #[cfg(feature = "layout-shoal")]
     canonical: Option<shoal::UsecaseCanonicalLayout>,
 }
@@ -147,7 +148,11 @@ impl UsecasePreparedArtifact {
     pub(crate) fn canonical_routes(
         &self,
     ) -> Option<&crate::graph_layout::canonical::CanonicalRoutes> {
-        self.canonical.as_ref().map(|layout| &layout.routes)
+        self.route_contract.canonical_routes()
+    }
+
+    pub(crate) const fn route_contract(&self) -> &crate::graph_layout::RouteContract {
+        &self.route_contract
     }
 
     #[cfg(feature = "layout-shoal")]
@@ -285,6 +290,7 @@ pub(crate) fn prepare_usecase_diagram(
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
     work_meter: Arc<OperationWorkMeter>,
+    #[cfg(feature = "layout-shoal")] execution: &crate::LayoutExecution<'_>,
     #[cfg(feature = "layout-elk")] operation_seed: merman_layout_elk::ElkOperationSeed,
 ) -> Result<UsecasePreparedArtifact> {
     work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
@@ -302,39 +308,61 @@ pub(crate) fn prepare_usecase_diagram(
         math_renderer,
         &mut work,
     )?;
-    let backend = crate::layout_backend::resolve_graph_layout(config_value).backend;
+    let selection = crate::layout_backend::resolve_graph_layout(config_value);
+    selection.validate_rootless_graph()?;
+    let backend = selection.backend;
     #[cfg(feature = "layout-shoal")]
     if backend == crate::layout_backend::GraphLayoutBackend::Shoal {
-        let (layout, canonical) = shoal::layout(model, config_value, &nodes, &edges, &mut work)?;
+        let (layout, canonical, routes) = shoal::layout(
+            model,
+            config_value,
+            &nodes,
+            &edges,
+            Some(execution),
+            &mut work,
+        )?;
         return Ok(UsecasePreparedArtifact {
             css_binding,
             layout,
             nodes,
             edges,
             edge_paths: Default::default(),
+            route_contract: crate::graph_layout::RouteContract::canonical_graph(routes),
             canonical: Some(canonical),
         });
     }
     if backend == crate::layout_backend::GraphLayoutBackend::Dagre {
         dagre::expand_self_loops(&mut nodes, &mut edges, &css_binding.generic_font, &mut work)?;
     }
+    let route_contract = crate::graph_layout::RouteContract::parity(
+        backend == crate::layout_backend::GraphLayoutBackend::Elk,
+    );
     let mut layout = layout::layout(
         model,
         config_value,
         &nodes,
         &mut edges,
+        #[cfg(feature = "layout-elk")]
+        &route_contract,
         &mut work,
         #[cfg(feature = "layout-elk")]
         operation_seed,
     )?;
-    let edge_paths =
-        layout::prepare_edge_paths(&mut layout, &nodes, &edges, config_value, &mut work)?;
+    let edge_paths = layout::prepare_edge_paths(
+        &mut layout,
+        &nodes,
+        &edges,
+        config_value,
+        &route_contract,
+        &mut work,
+    )?;
     Ok(UsecasePreparedArtifact {
         css_binding,
         layout,
         nodes,
         edges,
         edge_paths,
+        route_contract,
         #[cfg(feature = "layout-shoal")]
         canonical: None,
     })

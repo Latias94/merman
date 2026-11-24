@@ -65,7 +65,7 @@ pub(super) fn measure_zero_width_lane_titles(
     }
 }
 
-fn normalize_direction(direction: Option<&str>) -> SwimlaneDirection {
+pub(super) fn normalize_direction(direction: Option<&str>) -> SwimlaneDirection {
     match direction
         .unwrap_or("TB")
         .trim()
@@ -301,7 +301,12 @@ fn working_edge(edge: &ProjectedFlowchartEdge<'_>, transport_id: &str) -> Workin
     }
 }
 
-fn synthetic_node(id: &str, label: &str, label_type: Option<&str>, shape: &str) -> FlowNode {
+pub(super) fn synthetic_node(
+    id: &str,
+    label: &str,
+    label_type: Option<&str>,
+    shape: &str,
+) -> FlowNode {
     FlowNode {
         id: id.to_owned(),
         provenance: Default::default(),
@@ -573,7 +578,27 @@ pub(super) fn prepare(
         .map(|node| node.id.clone())
         .collect();
     if !loose_ids.is_empty() {
-        if let Some(default_lane) = nodes.get_mut(DEFAULT_LANE_ID) {
+        let lane_id: std::borrow::Cow<'_, str> = std::borrow::Cow::Borrowed(DEFAULT_LANE_ID);
+        #[cfg(feature = "layout-shoal")]
+        let lane_id = if effective_config.get_str("layout") == Some("shoal")
+            && nodes
+                .get(DEFAULT_LANE_ID)
+                .is_some_and(|node| !node.is_group())
+        {
+            let mut suffix = 1usize;
+            loop {
+                work_meter.charge(1)?;
+                let candidate = format!("{DEFAULT_LANE_ID}-{suffix}");
+                if !nodes.contains_key(&candidate) {
+                    break std::borrow::Cow::Owned(candidate);
+                }
+                suffix += 1;
+            }
+        } else {
+            lane_id
+        };
+        let lane_id = lane_id.as_ref();
+        if let Some(default_lane) = nodes.get_mut(lane_id) {
             // Mermaid reuses an explicit group with the reserved id. Preserve
             // its title, classes, styles, and measured geometry; only apply
             // the swimlane shape/direction required by the layout adapter.
@@ -583,9 +608,9 @@ pub(super) fn prepare(
             }
         } else {
             nodes.insert(
-                DEFAULT_LANE_ID.to_string(),
+                lane_id.to_owned(),
                 WorkingNode {
-                    id: DEFAULT_LANE_ID.to_string(),
+                    id: lane_id.to_owned(),
                     label: String::new(),
                     label_type: "text".to_string(),
                     shape: "swimlane".to_string(),
@@ -610,7 +635,7 @@ pub(super) fn prepare(
         }
         for id in loose_ids {
             if let Some(node) = nodes.get_mut(&id) {
-                node.parent_id = Some(DEFAULT_LANE_ID.to_string());
+                node.parent_id = Some(lane_id.to_owned());
             }
         }
     }

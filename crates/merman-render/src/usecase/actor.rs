@@ -1,3 +1,14 @@
+#[cfg(feature = "layout-shoal")]
+use super::{UsecaseLabelPlan, UsecaseNodePlan};
+#[cfg(feature = "layout-shoal")]
+use crate::graph_layout::ir::Size;
+#[cfg(feature = "layout-shoal")]
+use kurbo::{BezPath, Rect, Shape};
+#[cfg(feature = "layout-shoal")]
+use merman_model::families::usecase::UsecaseActorType;
+#[cfg(feature = "layout-shoal")]
+use std::sync::LazyLock;
+
 pub(crate) const NORMAL: &str = "M 0 -12 C 6.627 -12 12 -17.373 12 -24 C 12 -30.627 6.627 -36 0 -36 C -6.627 -36 -12 -30.627 -12 -24 C -12 -17.373 -6.627 -12 0 -12 Z M 0 -12 V 8 M -17 -5 H 17 M 0 8 L -15 28 M 0 8 L 15 28";
 pub(crate) const HOLLOW_BODY: &str =
     "M -22 -10 H 22 V 0 H 6 L 22 17 L 13 28 L 0 13 L -13 28 L -22 17 L -6 0 H -22 Z";
@@ -14,6 +25,14 @@ pub(crate) struct ActorPlacement {
     pub(crate) caption_top: f64,
 }
 
+#[cfg(feature = "layout-shoal")]
+pub(crate) struct MeasuredActor {
+    pub(crate) placement: ActorPlacement,
+    pub(crate) size: Size,
+    /// Left/right attachment height from the physical top of the measured box.
+    pub(crate) anchor_y: f64,
+}
+
 impl ActorPlacement {
     pub(crate) fn legacy(height: f64) -> Self {
         let top = -(height - 20.0) / 2.0;
@@ -24,24 +43,67 @@ impl ActorPlacement {
     }
 
     #[cfg(feature = "layout-shoal")]
-    pub(crate) fn canonical(
-        height: f64,
-        variant: merman_model::families::usecase::UsecaseActorType,
-    ) -> (Self, f64) {
-        use merman_model::families::usecase::UsecaseActorType;
+    pub(crate) fn canonical(plan: &UsecaseNodePlan, variant: UsecaseActorType) -> MeasuredActor {
+        const CAPTION_TOP: f64 = 44.0;
+        let mut bounds = glyph_bounds(variant);
+        let mut include = |label: &UsecaseLabelPlan, top: f64| {
+            let (width, height) = (label.metrics.width, label.metrics.height);
+            if width > 0.0 && height > 0.0 {
+                bounds = bounds.union(Rect::from_origin_size((-width / 2.0, top), (width, height)));
+            }
+        };
+        let mut main_top = CAPTION_TOP;
+        if let Some(stereotype) = &plan.stereotype {
+            include(stereotype, main_top);
+            main_top += stereotype.metrics.height + 2.0;
+        }
+        include(&plan.label, main_top);
         let anchor = match variant {
             UsecaseActorType::Normal | UsecaseActorType::Hollow => 5.0,
             UsecaseActorType::Awesome => 13.0,
             UsecaseActorType::Icon => ICON_Y + ICON_HEIGHT / 2.0,
         };
-        let legacy = Self::legacy(height);
-        let shift = -anchor - legacy.glyph_y;
-        (
-            Self {
-                glyph_y: -anchor,
-                caption_top: legacy.caption_top + shift,
+        let center_y = bounds.center().y;
+        MeasuredActor {
+            placement: Self {
+                glyph_y: -center_y,
+                caption_top: CAPTION_TOP - center_y,
             },
-            height + 2.0 * shift.abs(),
-        )
+            size: Size {
+                width: bounds.width(),
+                height: bounds.height(),
+            },
+            anchor_y: anchor - bounds.y0,
+        }
+    }
+}
+#[cfg(feature = "layout-shoal")]
+pub(crate) fn body_path(variant: UsecaseActorType) -> Option<&'static BezPath> {
+    static PATHS: LazyLock<[BezPath; 3]> = LazyLock::new(|| {
+        [NORMAL, HOLLOW_BODY, AWESOME]
+            .map(|path| BezPath::from_svg(path).expect("static Usecase actor path"))
+    });
+    let index = match variant {
+        UsecaseActorType::Normal => 0,
+        UsecaseActorType::Hollow => 1,
+        UsecaseActorType::Awesome => 2,
+        UsecaseActorType::Icon => return None,
+    };
+    Some(&PATHS[index])
+}
+
+#[cfg(feature = "layout-shoal")]
+fn glyph_bounds(variant: UsecaseActorType) -> Rect {
+    let Some(path) = body_path(variant) else {
+        return Rect::from_origin_size((-ICON_WIDTH / 2.0, ICON_Y), (ICON_WIDTH, ICON_HEIGHT));
+    };
+    let bounds = path.bounding_box();
+    if variant == UsecaseActorType::Hollow {
+        bounds.union(Rect::from_center_size(
+            (0.0, HOLLOW_HEAD_Y),
+            (2.0 * HOLLOW_HEAD_RADIUS, 2.0 * HOLLOW_HEAD_RADIUS),
+        ))
+    } else {
+        bounds
     }
 }

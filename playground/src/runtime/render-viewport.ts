@@ -30,3 +30,7 @@ const CANONICAL_CAPTURED_RENDER_VIEWPORT: Readonly<CapturedRenderViewport> =
 export function captureRenderViewport(): Readonly<CapturedRenderViewport> {
   return CANONICAL_CAPTURED_RENDER_VIEWPORT;
 }
+
+export function isPositiveCssWidth(width: number | null | undefined): width is number {
+  return typeof width === "number" && Number.isFinite(width) && width > 0;
+}

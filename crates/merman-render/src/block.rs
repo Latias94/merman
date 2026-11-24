@@ -10,14 +10,19 @@ use std::sync::Arc;
 
 mod config;
 mod css_binding;
+mod edge_geometry;
 mod native_theme;
 mod node_binding;
-mod typography;
-pub(crate) use css_binding::BlockCssThemeBinding;
-pub(crate) use native_theme::{BlockNativeStyle, BlockThemeAdapter};
-pub(crate) use node_binding::BlockNodeBindings;
+#[cfg(feature = "layout-shoal")]
+mod orthogonal;
 mod source;
 mod theme;
+mod typography;
+
+pub(crate) use css_binding::BlockCssThemeBinding;
+pub(crate) use edge_geometry::{BlockEdgeRoutes, block_render_edge_points};
+pub(crate) use native_theme::{BlockNativeStyle, BlockThemeAdapter};
+pub(crate) use node_binding::BlockNodeBindings;
 
 pub(crate) use config::BlockShapeSettings;
 pub(crate) use source::resolve_block_node_sources;

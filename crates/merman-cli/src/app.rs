@@ -1077,9 +1077,17 @@ mod tests {
             execution: execution(io::empty(), stdout, stderr),
         };
         assert_eq!(app.execute(), ExitCode::SUCCESS);
-        assert!(bytes(&stdout_bytes).contains("\"schema_version\": 2"));
+        let capabilities = bytes(&stdout_bytes);
+        assert!(capabilities.contains("\"schema_version\": 2"));
         assert_eq!(
-            bytes(&stdout_bytes).contains("\"preview_layout_frame\""),
+            capabilities.contains("\"layout_fit_width\": true"),
+            cfg!(all(
+                feature = "svg",
+                any(feature = "layout-shoal", feature = "diagram-kanban")
+            ))
+        );
+        assert_eq!(
+            capabilities.contains("\"preview_layout_frame\""),
             cfg!(feature = "layout-shoal")
         );
         assert!(bytes(&stderr_bytes).is_empty());
@@ -1102,8 +1110,11 @@ mod tests {
         assert!(bytes(&stderr_bytes).contains("cwd unavailable"));
     }
 
-    #[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
-    fn preview_frame_render(
+    #[cfg(all(
+        feature = "svg",
+        any(feature = "layout-shoal", feature = "diagram-kanban")
+    ))]
+    fn native_render_from_stdin(
         cwd: &std::path::Path,
         input: &str,
         extra: &[&str],
@@ -1120,21 +1131,164 @@ mod tests {
         (code, bytes(&stdout_bytes), bytes(&stderr_bytes))
     }
 
+    #[cfg(all(
+        feature = "svg",
+        any(feature = "layout-shoal", feature = "diagram-kanban")
+    ))]
+    #[test]
+    fn native_fit_width_requires_a_positive_finite_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let help = native_render_from_stdin(dir.path(), "", &["--help"]);
+        assert_eq!(help.0, ExitCode::SUCCESS, "{}", help.2);
+        assert!(help.1.contains("--fit-width"), "{}", help.1);
+        let missing = native_render_from_stdin(dir.path(), "", &["--fit-width"]);
+        assert_eq!(missing.0, ExitCode::from(2));
+        assert!(missing.2.contains("--width"), "{}", missing.2);
+        for invalid in ["0", "-1", "NaN", "inf", "1e309", "500px"] {
+            let result = native_render_from_stdin(
+                dir.path(),
+                "",
+                &["--fit-width", &format!("--width={invalid}")],
+            );
+            assert_eq!(result.0, ExitCode::from(2), "{invalid}: {}", result.2);
+            assert!(result.1.is_empty());
+            assert!(
+                result.2.contains("expected a positive number"),
+                "{}",
+                result.2
+            );
+        }
+    }
+
+    #[cfg(all(
+        feature = "svg",
+        feature = "ascii",
+        any(feature = "layout-shoal", feature = "diagram-kanban")
+    ))]
+    #[test]
+    fn native_fit_width_rejects_text_output() {
+        let dir = tempfile::tempdir().unwrap();
+        for format in ["ascii", "unicode"] {
+            let result = native_render_from_stdin(
+                dir.path(),
+                "flowchart TB\nA --> B\n",
+                &["--format", format, "--fit-width", "--width", "640"],
+            );
+            assert_eq!(result.0, ExitCode::from(2));
+            assert!(result.1.is_empty());
+            assert!(
+                result.2.contains("--fit-width requires SVG-based output"),
+                "{}",
+                result.2
+            );
+        }
+    }
+
+    #[cfg(all(
+        feature = "png",
+        any(feature = "layout-shoal", feature = "diagram-kanban")
+    ))]
+    #[test]
+    fn native_fit_width_rejects_raw_svg_input() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = native_render_from_stdin(
+            dir.path(),
+            "<svg xmlns=\"http://www.w3.org/2000/svg\"/>",
+            &[
+                "--input-kind",
+                "svg",
+                "--format",
+                "png",
+                "--fit-width",
+                "--width",
+                "640",
+            ],
+        );
+        assert_eq!(result.0, ExitCode::from(2));
+        assert!(result.1.is_empty());
+        assert!(
+            result.2.contains("--fit-width requires Mermaid input"),
+            "{}",
+            result.2
+        );
+    }
+
+    #[cfg(any(
+        all(feature = "diagram-flowchart", feature = "layout-shoal"),
+        all(feature = "svg", feature = "diagram-kanban")
+    ))]
+    fn assert_native_fit_width_narrows_svg(source: &str, width: &str) {
+        fn view_box_width(svg: &str) -> f64 {
+            svg.split_once("viewBox=\"")
+                .unwrap()
+                .1
+                .split('"')
+                .next()
+                .unwrap()
+                .split_whitespace()
+                .nth(2)
+                .unwrap()
+                .parse()
+                .unwrap()
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let normal = native_render_from_stdin(dir.path(), source, &[]);
+        let width_alone = native_render_from_stdin(dir.path(), source, &["--width", width]);
+        let adapted =
+            native_render_from_stdin(dir.path(), source, &["--fit-width", "--width", width]);
+        for result in [&normal, &width_alone, &adapted] {
+            assert_eq!(result.0, ExitCode::SUCCESS, "{}", result.2);
+        }
+        assert_eq!(normal.1, width_alone.1);
+        assert!(view_box_width(&adapted.1) < view_box_width(&normal.1));
+    }
+
+    #[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
+    #[test]
+    fn native_fit_width_changes_shoal_placement() {
+        let source =
+            "---\nconfig:\n  layout: shoal\n---\nflowchart LR\nA --> B --> C --> D --> E --> F\n";
+        assert_native_fit_width_narrows_svg(source, "225.5");
+        let dir = tempfile::tempdir().unwrap();
+        let source = "flowchart LR\nA --> B\n";
+        let natural = native_render_from_stdin(dir.path(), source, &["--width", "225.5"]);
+        let legacy =
+            native_render_from_stdin(dir.path(), source, &["--fit-width", "--width", "225.5"]);
+        assert_eq!(natural.0, ExitCode::SUCCESS, "{}", natural.2);
+        assert_eq!(legacy, natural);
+    }
+
+    #[cfg(all(feature = "svg", feature = "diagram-kanban"))]
+    #[test]
+    fn native_fit_width_wraps_kanban_columns() {
+        let source = "kanban\n  todo[Todo]\n    a[First]\n  doing[Doing]\n    b[Second]\n  done[Done]\n    c[Third]\n";
+        assert_native_fit_width_narrows_svg(source, "425");
+    }
+
     #[cfg(all(feature = "diagram-flowchart", feature = "layout-shoal"))]
     #[test]
     fn preview_layout_frame_round_trips_in_separate_files() {
         let dir = tempfile::tempdir().unwrap();
         let source = "---\nconfig:\n  layout: shoal\n---\nflowchart LR\nA --> B\nA --> C\n";
-        let expected = preview_frame_render(dir.path(), source, &[]);
+        let expected = native_render_from_stdin(dir.path(), source, &[]);
         assert_eq!(expected.0, ExitCode::SUCCESS, "{}", expected.2);
         let capture =
-            preview_frame_render(dir.path(), source, &["--preview-frame-out", "first.json"]);
+            native_render_from_stdin(dir.path(), source, &["--preview-frame-out", "first.json"]);
         assert_eq!(capture.0, ExitCode::SUCCESS, "{}", capture.2);
         assert_eq!(capture.1, expected.1);
-        let first = std::fs::read(dir.path().join("first.json")).unwrap();
+        let first_path = dir.path().join("first.json");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+
+            let mode = std::fs::metadata(&first_path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o077, 0);
+        }
+        let first = std::fs::read(first_path).unwrap();
         serde_json::from_slice::<merman::svg::ShoalLayoutFrame>(&first).unwrap();
 
-        let replay = preview_frame_render(
+        let replay = native_render_from_stdin(
             dir.path(),
             &source.replace("A --> C", "A --> D"),
             &[
@@ -1158,7 +1312,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let source = "flowchart LR\nA --> B\n";
         std::fs::write(dir.path().join("stale.json"), b"{old frame").unwrap();
-        let cold = preview_frame_render(
+        let cold = native_render_from_stdin(
             dir.path(),
             source,
             &[
@@ -1171,7 +1325,7 @@ mod tests {
         assert_eq!(cold.0, ExitCode::SUCCESS, "{}", cold.2);
         assert!(cold.1.contains("<svg"));
         assert!(!dir.path().join("next.json").exists());
-        let conflict = preview_frame_render(
+        let conflict = native_render_from_stdin(
             dir.path(),
             source,
             &["--output", "same.svg", "--preview-frame-out", "same.svg"],
@@ -1183,7 +1337,7 @@ mod tests {
             conflict.2
         );
         assert!(!dir.path().join("same.svg").exists());
-        let invalid = preview_frame_render(
+        let invalid = native_render_from_stdin(
             dir.path(),
             "not a diagram",
             &["--preview-frame-out", "failed.json"],
@@ -1195,7 +1349,7 @@ mod tests {
             .set_len(crate::render::preview_frame::MAX_BYTES as u64 + 1)
             .unwrap();
         let oversized =
-            preview_frame_render(dir.path(), source, &["--preview-frame-in", "large.json"]);
+            native_render_from_stdin(dir.path(), source, &["--preview-frame-in", "large.json"]);
         assert_ne!(oversized.0, ExitCode::SUCCESS);
         assert!(oversized.2.contains("max_preview_layout_frame_bytes"));
     }

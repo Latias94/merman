@@ -9,19 +9,22 @@ enum StateRenderPass {
 
 #[allow(
     clippy::too_many_arguments,
-    reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
+    reason = "The SVG writer takes layout, route geometry, and resolved styles separately."
 )]
 pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     layout: &StateDiagramLayout,
     model: &StateSvgModel,
     label_sidecar: &crate::state::StateLabelSidecar,
-    #[cfg(feature = "layout-shoal")] canonical_routes: Option<&CanonicalRoutes>,
+    route_contract: &crate::graph_layout::RouteContract,
     style_plan: &crate::state::StateStylePlan,
     effective_config: &serde_json::Value,
     diagram_title: Option<&str>,
     measurer: &dyn TextMeasurer,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
+    let elk_parity = route_contract.is_elk_parity();
+    #[cfg(feature = "layout-shoal")]
+    let canonical_routes = route_contract.canonical_routes();
     let timing = options.timing();
     let mut timings = super::timing::RenderTimings::default();
     let total_timer = timing.start();
@@ -113,7 +116,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
     let mut ctx = StateRenderCtx {
         work_meter: options.work_meter(),
         diagram_id,
-        uses_elk_adapter_dom: layout.uses_elk_adapter_dom,
+        uses_elk_adapter_dom: elk_parity,
         elk_edge_paths: &layout.elk_edge_paths,
         elk_line_hop_paths: FxHashMap::default(),
         diagram_look: state_render_settings.diagram_look,
@@ -284,7 +287,7 @@ pub(in crate::svg::parity) fn render_state_diagram_svg_model(
         out
     }
 
-    if layout.uses_elk_adapter_dom {
+    if elk_parity {
         ctx.elk_line_hop_paths = prepare_state_line_hop_paths(&ctx, effective_config, options)?;
     } else {
         ctx.nested_roots = compute_state_nested_roots(&ctx);
@@ -1429,8 +1432,7 @@ mod tests {
                         &layout,
                         model,
                         &labels,
-                        #[cfg(feature = "layout-shoal")]
-                        None,
+                        &crate::graph_layout::RouteContract::ElkParity,
                         &plan,
                         &config,
                         None,

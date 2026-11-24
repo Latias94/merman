@@ -1,7 +1,7 @@
 use super::super::*;
 use crate::block::{
-    BlockNodeBindings, BlockRectangleKind, BlockShapeBoundary, BlockShapeGeometry,
-    BlockTypographyThemePlan, block_label_is_effectively_empty,
+    BlockEdgeRoutes, BlockNodeBindings, BlockRectangleKind, BlockShapeBoundary, BlockShapeGeometry,
+    BlockTypographyThemePlan, block_label_is_effectively_empty, block_render_edge_points,
 };
 use crate::model::{LayoutEdge, LayoutPoint};
 use crate::svg::BaseEdgeMarkerKind;
@@ -187,149 +187,6 @@ fn union_block_bounds(bounds: &mut (f64, f64, f64, f64), candidate: (f64, f64, f
     bounds.3 = bounds.3.max(candidate.3);
 }
 
-fn block_edge_start_marker_inset(arrow: Option<&str>) -> f64 {
-    match arrow.unwrap_or("").trim() {
-        "arrow_point" => 4.5,
-        _ => 0.0,
-    }
-}
-
-fn block_edge_end_marker_inset(arrow: Option<&str>) -> f64 {
-    match arrow.unwrap_or("").trim() {
-        "arrow_point" => 4.0,
-        _ => 0.0,
-    }
-}
-
-fn move_point_towards(point: &LayoutPoint, target: &LayoutPoint, distance: f64) -> LayoutPoint {
-    if distance.abs() <= 1e-12 {
-        return point.clone();
-    }
-    let dx = target.x - point.x;
-    let dy = target.y - point.y;
-    let len = (dx * dx + dy * dy).sqrt();
-    if len <= 1e-12 {
-        return point.clone();
-    }
-    LayoutPoint {
-        x: point.x + dx / len * distance,
-        y: point.y + dy / len * distance,
-    }
-}
-
-struct BlockEdgePoints {
-    /// Points before marker insets, matching Mermaid's `data-points` payload.
-    data_points: Vec<LayoutPoint>,
-    /// Points after marker insets, matching the emitted path and marker anchors.
-    rendered_points: Vec<LayoutPoint>,
-}
-
-fn block_render_edge_points(
-    edge: &merman_model::families::block::BlockEdge,
-    layout_edge: &LayoutEdge,
-    shape_geometries_by_id: &std::collections::HashMap<&str, &BlockShapeGeometry>,
-    style: Option<EdgeStyle>,
-) -> BlockEdgePoints {
-    let data_points = match (
-        shape_geometries_by_id.get(edge.start.as_str()),
-        shape_geometries_by_id.get(edge.end.as_str()),
-    ) {
-        (Some(from), Some(to)) => {
-            let mid = layout_edge.points.get(1).cloned().unwrap_or(LayoutPoint {
-                x: from.allocated.x + (to.allocated.x - from.allocated.x) / 2.0,
-                y: from.allocated.y + (to.allocated.y - from.allocated.y) / 2.0,
-            });
-            if style == Some(EdgeStyle::Orthogonal) {
-                let vertical = (from.allocated.y - to.allocated.y).abs()
-                    > (from.allocated.x - to.allocated.x).abs();
-                let bends = if vertical {
-                    [
-                        LayoutPoint {
-                            x: from.allocated.x,
-                            y: mid.y,
-                        },
-                        LayoutPoint {
-                            x: to.allocated.x,
-                            y: mid.y,
-                        },
-                    ]
-                } else {
-                    [
-                        LayoutPoint {
-                            x: mid.x,
-                            y: from.allocated.y,
-                        },
-                        LayoutPoint {
-                            x: mid.x,
-                            y: to.allocated.y,
-                        },
-                    ]
-                };
-                let from_boundary = from.intersect_native(&bends[0]);
-                let to_boundary = to.intersect_native(&bends[1]);
-                // When the grid slots touch, the exterior bend can fall inside a block.
-                // Keep such intervals ordered on the side of the clipped boundary.
-                let bend_axis = |a: f64, b: f64| {
-                    let low = a.min(b);
-                    let high = a.max(b);
-                    if vertical { mid.y } else { mid.x }.clamp(low, high)
-                };
-                let bends = if vertical {
-                    bends.map(|point| LayoutPoint {
-                        y: bend_axis(from_boundary.y, to_boundary.y),
-                        ..point
-                    })
-                } else {
-                    bends.map(|point| LayoutPoint {
-                        x: bend_axis(from_boundary.x, to_boundary.x),
-                        ..point
-                    })
-                };
-                let mut points = Vec::from([
-                    from_boundary,
-                    bends[0].clone(),
-                    bends[1].clone(),
-                    to_boundary,
-                ]);
-                points.dedup_by(|a, b| a.x == b.x && a.y == b.y);
-                points
-            } else if style.is_some() {
-                vec![
-                    from.intersect_native(&mid),
-                    mid.clone(),
-                    to.intersect_native(&mid),
-                ]
-            } else {
-                vec![from.intersect(&mid), mid.clone(), to.intersect(&mid)]
-            }
-        }
-        _ => layout_edge.points.clone(),
-    };
-    let mut rendered_points = data_points.clone();
-
-    if rendered_points.len() >= 2 {
-        let start_inset = block_edge_start_marker_inset(edge.arrow_type_start.as_deref());
-        if start_inset > 0.0 {
-            rendered_points[0] =
-                move_point_towards(&rendered_points[0], &rendered_points[1], start_inset);
-        }
-        let end_inset = block_edge_end_marker_inset(edge.arrow_type_end.as_deref());
-        if end_inset > 0.0 {
-            let last = rendered_points.len() - 1;
-            rendered_points[last] = move_point_towards(
-                &rendered_points[last],
-                &rendered_points[last - 1],
-                end_inset,
-            );
-        }
-    }
-
-    BlockEdgePoints {
-        data_points,
-        rendered_points,
-    }
-}
-
 fn write_important_declaration(out: &mut impl SvgOutput, key: &str, value: &str) -> Result<()> {
     let _ = write!(out, "{key}:{value}!important;");
     out.checkpoint()
@@ -349,6 +206,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     layout: &BlockDiagramLayout,
     model: &merman_model::families::block::BlockDiagramRenderModel,
     node_bindings: &BlockNodeBindings,
+    edge_routes: &BlockEdgeRoutes,
     typography_theme: &BlockTypographyThemePlan,
     prepared_labels: &crate::block::BlockPreparedLabels,
     options: &SvgExecution<'_>,
@@ -1000,14 +858,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         } else {
             let label_w = n.label_width.unwrap_or(0.0).max(0.0);
             let label_h = n.label_height.unwrap_or(0.0).max(0.0);
-            let label_dx = if matches!(node.block_type, "odd" | "rect_left_inv_arrow") {
-                match &geometry.boundary {
-                    BlockShapeBoundary::Polygon { translation, .. } => translation.x,
-                    _ => 0.0,
-                }
-            } else {
-                0.0
-            };
+            let label_dx = geometry.label_offset_x(node.block_type);
             (label_dx - label_w / 2.0, -label_h / 2.0, label_w, label_h)
         };
         if label_w > 0.0 && label_h > 0.0 {
@@ -1065,47 +916,59 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         out.checkpoint()?;
     }
 
-    for e in &model.edges {
+    let edge_style = native.map(|style| style.form.edge_style);
+    for (edge_index, e) in model.edges.iter().enumerate() {
         let Some(le) = layout_edges_by_id.get(&e.id) else {
             continue;
         };
-        let edge_style = native.map(|style| style.form.edge_style);
-        let edge_points = block_render_edge_points(e, le, &shape_geometries_by_id, edge_style);
-        let data_points = base64::engine::general_purpose::STANDARD
-            .encode(json_stringify_points(&edge_points.data_points));
-        let (mut d, path_bounds) = match edge_style {
-            None | Some(EdgeStyle::Curved) => {
-                curve::curve_basis_path_d_and_bounds(&edge_points.rendered_points)
+        let fallback_points;
+        let mut fallback_d;
+        let (d, points, marker_refs) = 'geometry: {
+            if let Some(route) = edge_routes.orthogonal_route(edge_index) {
+                let b = &route.bounds;
+                union_block_bounds(&mut content_bounds, (b.min_x, b.min_y, b.max_x, b.max_y));
+                break 'geometry (
+                    route.path.as_str(),
+                    le.points.as_slice(),
+                    [Some(&route.marker_refs[0]), Some(&route.marker_refs[1])],
+                );
             }
-            Some(EdgeStyle::Straight | EdgeStyle::Orthogonal | EdgeStyle::Sketch) => {
-                curve::curve_linear_path_d_and_bounds(&edge_points.rendered_points)
+            fallback_points = block_render_edge_points(e, le, &shape_geometries_by_id, edge_style);
+            let (d, bounds) = match edge_style {
+                None | Some(EdgeStyle::Curved) => {
+                    curve::curve_basis_path_d_and_bounds(&fallback_points.rendered_points)
+                }
+                Some(EdgeStyle::Straight | EdgeStyle::Orthogonal | EdgeStyle::Sketch) => {
+                    curve::curve_linear_path_d_and_bounds(&fallback_points.rendered_points)
+                }
+            };
+            fallback_d = d;
+            if edge_style == Some(EdgeStyle::Sketch)
+                && fallback_points.rendered_points.len() >= 2
+                && let Some(rough) = roughjs_hand_drawn_stroke_path_for_svg_path(
+                    &fallback_d,
+                    0.3,
+                    options.work_meter(),
+                    &hand_drawn_seed,
+                )
+            {
+                fallback_d = rough;
             }
-        };
-        if edge_style == Some(EdgeStyle::Sketch)
-            && edge_points.rendered_points.len() >= 2
-            && let Some(rough) = roughjs_hand_drawn_stroke_path_for_svg_path(
-                &d,
-                0.3,
-                options.work_meter(),
-                &hand_drawn_seed,
+            if let Some(b) = bounds {
+                union_block_bounds(&mut content_bounds, (b.min_x, b.min_y, b.max_x, b.max_y));
+            }
+            (
+                fallback_d.as_str(),
+                fallback_points.data_points.as_slice(),
+                [
+                    fallback_points.rendered_points.first(),
+                    fallback_points.rendered_points.last(),
+                ],
             )
-        {
-            d = rough;
-        }
-        if let Some(path_bounds) = path_bounds {
-            union_block_bounds(
-                &mut content_bounds,
-                (
-                    path_bounds.min_x,
-                    path_bounds.min_y,
-                    path_bounds.max_x,
-                    path_bounds.max_y,
-                ),
-            );
-        }
-        if !edge_points.rendered_points.is_empty() {
-            has_rendered_edge = true;
-        }
+        };
+        has_rendered_edge |= !points.is_empty();
+        let data_points =
+            base64::engine::general_purpose::STANDARD.encode(json_stringify_points(points));
         let thickness = e.thickness.as_str();
         has_thick_edge |= thickness == "thick";
         let pattern = e.pattern.as_str();
@@ -1117,7 +980,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         let _ = write!(
             &mut out,
             r#"<path d="{}" id="{}" class="{}" style="undefined;;;undefined" data-edge="true" data-et="edge" data-id="{}" data-points="{}""#,
-            escape_attr(&d),
+            escape_attr(d),
             escape_attr(&path_id),
             escape_attr(&class_attr),
             escape_attr(&prefixed_edge_id),
@@ -1125,7 +988,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         );
 
         if let Some(kind) = BaseEdgeMarkerKind::from_arrow(e.arrow_type_start.as_deref(), true) {
-            if let Some(point) = edge_points.rendered_points.first() {
+            if let Some(point) = marker_refs[0] {
                 include_block_marker_bounds(&mut marker_bounds, point, kind.suffix());
             }
             let _ = write!(
@@ -1135,7 +998,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             );
         }
         if let Some(kind) = BaseEdgeMarkerKind::from_arrow(e.arrow_type_end.as_deref(), false) {
-            if let Some(point) = edge_points.rendered_points.last() {
+            if let Some(point) = marker_refs[1] {
                 include_block_marker_bounds(&mut marker_bounds, point, kind.suffix());
             }
             let _ = write!(

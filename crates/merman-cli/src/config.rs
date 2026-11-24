@@ -20,9 +20,7 @@ use crate::invocation::{ResolvedParseOptions, ResolvedRuntimeOptions};
 #[cfg(feature = "svg")]
 use merman::SvgEnvironment;
 #[cfg(feature = "svg")]
-use merman::svg::{
-    LayoutOptions, SvgRenderOptions,
-};
+use merman::svg::{LayoutOptions, SvgRenderOptions};
 #[cfg(any(feature = "svg", feature = "ascii"))]
 use merman::theme::ThemePrecedence;
 
@@ -337,10 +335,12 @@ fn renderer_from_config(
         .with_resource_policy(*resources.input_policy());
     let svg_request = merman::SvgRequest {
         environment,
-        layout: LayoutOptions::default().with_container_size(
-            render.container_width.unwrap_or(800.0),
-            render.container_height.unwrap_or(600.0),
-        ),
+        layout: LayoutOptions::default()
+            .with_adaptation_if_supported(render.adaptation)
+            .with_container_size(
+                render.container_width.unwrap_or(800.0),
+                render.container_height.unwrap_or(600.0),
+            ),
         options: svg,
         debug: Default::default(),
         pipeline: None,

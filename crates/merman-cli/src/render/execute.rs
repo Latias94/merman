@@ -66,7 +66,7 @@ pub(crate) fn execute_render(
             )?;
             #[cfg(feature = "layout-shoal")]
             if let Some((path, bytes)) = &artifact.preview_frame {
-                context.publication.publish_file_controlled(
+                context.publication.publish_preview_frame(
                     path,
                     bytes,
                     &single.publications,

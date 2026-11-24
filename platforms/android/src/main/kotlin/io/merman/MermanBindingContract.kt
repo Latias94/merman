@@ -152,6 +152,7 @@ internal val MERMAN_BINDING_OPTION_GROUP_SPECS: Map<String, MermanBindingOptionG
     MermanBindingOptionGroupSpec("ascii", false, setOf("ascii"), false),
     MermanBindingOptionGroupSpec("background", false, setOf(), true),
     MermanBindingOptionGroupSpec("environment", false, setOf(), true),
+    MermanBindingOptionGroupSpec("export_matte", false, setOf("jpeg", "pdf", "png"), false),
     MermanBindingOptionGroupSpec("fixed_local_offset_minutes", true, setOf(), false),
     MermanBindingOptionGroupSpec("fixed_today", true, setOf(), false),
     MermanBindingOptionGroupSpec("fixed_unix_millis", true, setOf(), false),

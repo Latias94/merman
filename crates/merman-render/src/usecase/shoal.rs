@@ -5,11 +5,11 @@ use crate::graph_layout::ir::{
     Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, RoutingStyle,
     Side, Size, SolvedGroup, TitlePosition,
 };
+use crate::graph_layout::placement;
 use crate::graph_layout::route_paint::RouteStyle;
-use crate::graph_layout::shoal_bridge;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{Bounds, LayoutLabel, LayoutPoint};
-use crate::{Error, Result};
+use crate::{Error, LayoutExecution, Result};
 use kurbo::Insets;
 use merman_model::families::usecase::{UsecaseDiagramModel, UsecaseNodeKind};
 use serde_json::Value;
@@ -22,7 +22,6 @@ const BOUNDARY_PADDING: f64 = 20.0;
 
 #[derive(Debug)]
 pub(super) struct UsecaseCanonicalLayout {
-    pub(super) routes: CanonicalRoutes,
     pub(super) titles: HashMap<String, LayoutLabel>,
     pub(super) boundary_order: Vec<(usize, usize)>,
 }
@@ -96,8 +95,13 @@ pub(super) fn layout(
     config: &Value,
     plans: &[UsecaseNodePlan],
     edge_plans: &[UsecaseEdgePlan],
+    execution: Option<&LayoutExecution<'_>>,
     work: &mut OperationLayoutWorkControl,
-) -> Result<(UsecaseDiagramLayout, UsecaseCanonicalLayout)> {
+) -> Result<(
+    UsecaseDiagramLayout,
+    UsecaseCanonicalLayout,
+    CanonicalRoutes,
+)> {
     work.charge_adapter(work.checked_add(plans.len(), model.nodes.len())?)?;
     let direction = match model.direction.as_str() {
         "LR" => Direction::Right,
@@ -138,7 +142,7 @@ pub(super) fn layout(
         .map(|node| (node.id.as_str(), node.actor_type))
         .collect();
     let mut profiles = Vec::new();
-    let mut actor_nodes = Vec::new();
+    let mut node_ids = Vec::with_capacity(plans.len().saturating_sub(model.boundaries.len()));
     let mut boundary_plans = Vec::with_capacity(model.boundaries.len());
     let index = |len: usize, work: &OperationLayoutWorkControl| {
         u32::try_from(len).map_err(|_| Error::from(work.record_arithmetic_overflow()))
@@ -180,18 +184,17 @@ pub(super) fn layout(
             group
         } else {
             let node = Endpoint::Node(index(graph.nodes.len(), work)?);
-            let (profile, height, is_actor) = if let Some(&variant) = actors.get(plan.id.as_str()) {
-                let (placement, height) =
-                    super::actor::ActorPlacement::canonical(plan.height, variant);
+            let (profile, size, anchor_y) = if let Some(&variant) = actors.get(plan.id.as_str()) {
+                let actor = super::actor::ActorPlacement::canonical(plan, variant);
                 (
                     ShapePortProfile::usecase_actor(
                         variant,
-                        placement,
+                        actor.placement,
                         dimensions(&plan.label),
                         plan.stereotype.as_ref().map(dimensions),
                     ),
-                    height,
-                    true,
+                    actor.size,
+                    Some(actor.anchor_y),
                 )
             } else {
                 let profile = if plan.ellipse {
@@ -199,21 +202,25 @@ pub(super) fn layout(
                 } else {
                     ShapePortProfile::rectangle(plan.width, plan.height)
                 };
-                (profile, plan.height, false)
+                (
+                    profile,
+                    Size {
+                        width: plan.width,
+                        height: plan.height,
+                    },
+                    None,
+                )
             };
             graph.nodes.push(MeasuredNode {
-                size: Size {
-                    width: plan.width,
-                    height,
-                },
+                size,
                 seq,
                 parent: None,
                 port_span: Some(profile.port_span(face)),
                 perpendicular_port_span: Some(profile.port_span(perpendicular)),
-                anchor_y: None,
+                anchor_y,
             });
+            node_ids.push(plan.id.as_str());
             profiles.push(profile);
-            actor_nodes.push(is_actor);
             node
         };
         endpoints.insert(plan.id.as_str(), endpoint);
@@ -275,25 +282,15 @@ pub(super) fn layout(
             end_marker: marker(false),
         });
     }
-    let mut solved = shoal_bridge::solve(&graph, Default::default(), work)?;
-    for edge in &mut solved.edges {
-        work.charge_adapter(0)?;
-        if let Endpoint::Node(node) = edge.source
-            && edge.source == edge.target
-            && actor_nodes[node as usize]
-        {
-            let center = solved.nodes[node as usize].center();
-            profiles[node as usize].fit_usecase_actor_loop(
-                &mut edge.points,
-                LayoutPoint {
-                    x: center.x,
-                    y: center.y,
-                },
-                edge.ports,
-            );
-        }
-    }
-    let routes = CanonicalRoutes::from_solved(
+    let (mut solved, placement) = placement::solve(
+        &graph,
+        node_ids.iter().copied(),
+        boundary_plans.iter().map(|&index| plans[index].id.as_str()),
+        execution,
+        Default::default(),
+        work,
+    )?;
+    let mut routes = CanonicalRoutes::from_solved(
         &graph,
         &solved,
         &profiles,
@@ -301,6 +298,7 @@ pub(super) fn layout(
         edge_plans.iter().map(|plan| plan.id.as_str()),
         work,
     )?;
+    routes.placement = placement;
     let boundary_order = boundary_paint_order(&solved.groups, &boundary_plans, work)?;
     work.charge_adapter(work.checked_add(plans.len(), edge_plans.len())?)?;
     let mut nodes = Vec::with_capacity(plans.len());
@@ -358,9 +356,9 @@ pub(super) fn layout(
             bounds,
         },
         UsecaseCanonicalLayout {
-            routes,
             titles,
             boundary_order,
         },
+        routes,
     ))
 }

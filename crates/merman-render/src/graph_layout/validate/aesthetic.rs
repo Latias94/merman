@@ -30,6 +30,7 @@ pub(super) struct Metrics<'a> {
     pub(super) micro_kink_count: usize,
     pub(super) border_seam_bump: Option<f64>,
     pub(super) seams: Vec<SeamMetrics<'a>>,
+    pub(super) marker_faces: Vec<MarkerCrowding<'a>>,
 }
 
 #[derive(Serialize)]
@@ -62,21 +63,21 @@ struct MarkerSample<'a> {
 }
 
 #[derive(Serialize)]
-struct MarkerCrowding<'a> {
-    body: &'a str,
-    face: &'static str,
-    marker_count: usize,
+pub(super) struct MarkerCrowding<'a> {
+    pub(super) body: &'a str,
+    pub(super) face: &'static str,
+    pub(super) marker_count: usize,
     edges: [&'a str; 2],
     pitch_px: f64,
     marker_widths_px: [f64; 2],
-    pitch_over_width: f64,
+    pub(super) pitch_over_width: f64,
 }
 
 pub(super) fn emit<'a>(
     case: &str,
     direction: &str,
     scene: &Scene<'_>,
-    body_names: &[impl AsRef<str>],
+    body_names: &'a [impl AsRef<str>],
     edge_names: &'a [impl AsRef<str>],
     seams: &[Seam],
 ) -> Metrics<'a> {
@@ -161,6 +162,7 @@ pub(super) fn emit<'a>(
         micro_kink_count,
         border_seam_bump,
         seams: border_seams,
+        marker_faces: marker_crowding_faces,
     }
 }
 

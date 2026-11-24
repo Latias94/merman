@@ -8,6 +8,7 @@ import type {
   PreviewViewerBackground,
 } from "./preview-model.js";
 import { isDiagramTheme, isThemePreference, type ThemeAppearancePreference } from "./theme-selection.js";
+import { isFitWidth } from "./render-options.js";
 import {
   BUNDLED_ANALYSIS_CONFIG,
   type NegotiatedAnalysisConfig,
@@ -106,6 +107,11 @@ export function getPreviewSettings(resource?: vscode.Uri): PreviewSettings {
     viewerBackground: normalizeViewerBackground(config.get<string>("preview.viewerBackground", "auto")),
     themeFile: config.get<string>("preview.themeFile", "").trim(),
   };
+}
+
+export function getPreviewFitWidth(resource: vscode.Uri): number | undefined {
+  const width = getMermanConfiguration(resource).get<unknown>("preview.fitWidth", 0);
+  return isFitWidth(width) ? width : undefined;
 }
 
 export function getLanguageIntelligenceSettings(): LanguageIntelligenceSettings {

@@ -6,6 +6,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
+import timers from 'node:timers/promises';
 import { promisify } from 'node:util';
 import { artifactFor, releaseFor, setup } from './setup.mjs';
 
@@ -84,8 +85,9 @@ test('rejects corrupted downloaded bytes before extraction or PATH publication',
   const expectedBytes = Buffer.from('the original archive bytes');
   const corruptedBytes = Buffer.from('the corrupted archive bytes');
   const checksum = createHash('sha256').update(expectedBytes).digest('hex');
-  const { download } = await releaseServer(t, assetFiles(artifact.archive, corruptedBytes, checksum));
+  const { download, requests } = await releaseServer(t, assetFiles(artifact.archive, corruptedBytes, checksum));
   await assert.rejects(setup(options, download), /SHA-256 mismatch/);
+  assert.equal(requests.length, 2);
   assert.deepEqual(await readdir(options.runnerTemp), []);
   assert.equal(await readFile(options.githubPath, 'utf8'), 'existing-path\n');
   assert.equal(await readFile(options.githubOutput, 'utf8'), 'existing-output=value\n');
@@ -98,23 +100,25 @@ test('rejects malformed or mislabelled checksums', async (t) => {
   const digest = createHash('sha256').update(bytes).digest('hex');
   const files = assetFiles(artifact.archive, bytes);
   const checksumPath = `/Latias94/merman/releases/download/v${version}/${artifact.archive}.sha256`;
-  const { download } = await releaseServer(t, files);
-  for (const checksum of ['not-a-checksum', `${digest} *another-archive.zip\n`, `${digest}\n${digest}\n`]) {
+  const { download, requests } = await releaseServer(t, files);
+  const invalidChecksums = ['not-a-checksum', `${digest} *another-archive.zip\n`, `${digest}\n${digest}\n`];
+  for (const checksum of invalidChecksums) {
     files.set(checksumPath, checksum);
     await assert.rejects(setup(options, download), /Invalid SHA-256 checksum/);
   }
+  assert.deepEqual(requests, invalidChecksums.map(() => checksumPath));
   assert.deepEqual(await readdir(options.runnerTemp), []);
 });
 
 test('reports an unavailable pinned release without changing PATH', async (t) => {
   const { options } = await temporary(t);
-  const { download } = await releaseServer(t, new Map());
+  const { download, requests } = await releaseServer(t, new Map());
   await assert.rejects(setup(options, download), /HTTP 404/);
+  assert.equal(requests.length, 1);
   assert.equal(await readFile(options.githubPath, 'utf8'), 'existing-path\n');
 });
 
-test('downloads, verifies and extracts a real native archive and publishes its executable', async (t) => {
-  const { root, options } = await temporary(t);
+async function nativeArchive(root) {
   const artifact = artifactFor(process.platform, process.arch);
   const payload = join(root, 'source');
   const binary = join(payload, artifact.binary);
@@ -127,7 +131,13 @@ test('downloads, verifies and extracts a real native archive and publishes its e
   const archivePath = join(root, artifact.archive);
   await execute('tar', [process.platform === 'win32' ? '-acf' : '-cJf', archivePath, '-C', payload, '.']);
   const archiveBytes = await readFile(archivePath);
-  const { download, requests } = await releaseServer(t, assetFiles(artifact.archive, archiveBytes));
+  return { binary, files: assetFiles(artifact.archive, archiveBytes) };
+}
+
+test('downloads, verifies and extracts a real native archive and publishes its executable', async (t) => {
+  const { root, options } = await temporary(t);
+  const { binary, files } = await nativeArchive(root);
+  const { download, requests } = await releaseServer(t, files);
   const installed = await setup(options, download);
   assert.equal(installed.version, version);
   assert.equal(await readFile(installed.path, 'base64'), await readFile(binary, 'base64'));
@@ -137,4 +147,65 @@ test('downloads, verifies and extracts a real native archive and publishes its e
   const args = process.platform === 'win32' ? ['/d', '/c', 'echo fixture-0.9.0'] : [];
   const executed = await execute(installed.path, args);
   assert.equal(executed.stdout.trim(), 'fixture-0.9.0');
+});
+
+test('retries a transient DNS failure and an interrupted archive body', async (t) => {
+  const delay = t.mock.method(timers, 'setTimeout', async () => {});
+  const { root, options } = await temporary(t);
+  const { binary, files } = await nativeArchive(root);
+  const { download } = await releaseServer(t, files);
+  const { url } = releaseFor(version, process.platform, process.arch);
+  const urls = [];
+  const installed = await setup(options, async (requested) => {
+    urls.push(requested);
+    if (urls.length === 1) {
+      throw new TypeError('fetch failed', { cause: { code: 'ENOTFOUND' } });
+    }
+    if (urls.length === 3) {
+      return new Response(new ReadableStream({
+        start(controller) {
+          controller.error(new TypeError('terminated', { cause: { code: 'UND_ERR_SOCKET' } }));
+        },
+      }));
+    }
+    return download(requested);
+  });
+  assert.deepEqual(urls, [`${url}.sha256`, `${url}.sha256`, url, url]);
+  assert.deepEqual(delay.mock.calls.map((call) => call.arguments[0]), [2_000, 2_000]);
+  assert.equal(await readFile(installed.path, 'base64'), await readFile(binary, 'base64'));
+});
+
+test('bounds persistent DNS retries and reports only sanitized transport details', async (t) => {
+  const delay = t.mock.method(timers, 'setTimeout', async () => {});
+  const { options } = await temporary(t);
+  const { url } = releaseFor(version, process.platform, process.arch);
+  const urls = [];
+  const cause = Object.assign(new Error('getaddrinfo ENOTFOUND proxy.internal'), { code: 'ENOTFOUND' });
+  await assert.rejects(setup(options, async (requested) => {
+    urls.push(requested);
+    throw new TypeError('fetch failed for https://example.invalid/?token=fixture', { cause });
+  }), { message: `Download transport failed (ENOTFOUND, attempts=3): ${url}.sha256` });
+  assert.deepEqual(urls, Array(3).fill(`${url}.sha256`));
+  assert.deepEqual(delay.mock.calls.map((call) => call.arguments[0]), [2_000, 4_000]);
+  assert.deepEqual(await readdir(options.runnerTemp), []);
+  assert.equal(await readFile(options.githubPath, 'utf8'), 'existing-path\n');
+  assert.equal(await readFile(options.githubOutput, 'utf8'), 'existing-output=value\n');
+});
+
+test('fails immediately on certificate and unrecognized transport errors', async (t) => {
+  const delay = t.mock.method(timers, 'setTimeout', async () => {});
+  const { options } = await temporary(t);
+  const { url } = releaseFor(version, process.platform, process.arch);
+  const urls = [];
+  for (const [code, reason] of [
+    ['UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE'],
+    ['UNRECOGNIZED_FIXTURE_VALUE', 'unrecognized error code'],
+  ]) {
+    await assert.rejects(setup(options, async (requested) => {
+      urls.push(requested);
+      throw new TypeError('fetch failed', { cause: { code } });
+    }), { message: `Download transport failed (${reason}, attempts=1): ${url}.sha256` });
+  }
+  assert.deepEqual(urls, [`${url}.sha256`, `${url}.sha256`]);
+  assert.equal(delay.mock.callCount(), 0);
 });

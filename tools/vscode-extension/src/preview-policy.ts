@@ -16,6 +16,7 @@ export type PreviewUpdateReason =
   | "source-select"
   | "diagram-theme"
   | "display-mode"
+  | "fit-width"
   | "background"
   | "appearance"
   | "editor-appearance"

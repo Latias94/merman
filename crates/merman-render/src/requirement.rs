@@ -146,8 +146,7 @@ impl RequirementLabelMeasurementBinding {
 pub(crate) struct RequirementPreparedArtifact {
     layout: RequirementDiagramLayout,
     render_layout: Option<RequirementDiagramLayout>,
-    #[cfg(feature = "layout-shoal")]
-    canonical_routes: Option<crate::graph_layout::canonical::CanonicalRoutes>,
+    route_contract: crate::graph_layout::RouteContract,
     nodes: HashMap<String, RequirementNodeRenderPlan>,
     edges: HashMap<EdgeKey, RequirementEdgeLabelPlan>,
     measurement_binding: Option<RequirementLabelMeasurementBinding>,
@@ -159,14 +158,14 @@ impl RequirementPreparedArtifact {
     }
 
     pub(crate) fn uses_elk(&self) -> bool {
-        self.render_layout.is_some()
+        self.route_contract.is_elk_parity()
     }
 
     #[cfg(feature = "layout-shoal")]
     pub(crate) fn canonical_routes(
         &self,
     ) -> Option<&crate::graph_layout::canonical::CanonicalRoutes> {
-        self.canonical_routes.as_ref()
+        self.route_contract.canonical_routes()
     }
 
     pub(crate) fn render_parts(
@@ -969,6 +968,8 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
         text_measurer,
         &binding,
         &work_meter,
+        #[cfg(feature = "layout-shoal")]
+        None,
         #[cfg(feature = "layout-elk")]
         merman_layout_elk::ElkOperationSeed::from_operation_seed(std::num::NonZeroU64::MIN),
     )
@@ -981,6 +982,7 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
     text_measurer: &dyn TextMeasurer,
     css_binding: &RequirementCssBinding,
     work_meter: &std::sync::Arc<OperationWorkMeter>,
+    #[cfg(feature = "layout-shoal")] execution: Option<&crate::LayoutExecution<'_>>,
     #[cfg(feature = "layout-elk")] operation_seed: merman_layout_elk::ElkOperationSeed,
 ) -> Result<RequirementPreparedArtifact> {
     let effective_config = config.as_value();
@@ -990,7 +992,14 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
     let selection = crate::layout_backend::resolve_graph_layout(effective_config);
     if selection.backend == crate::layout_backend::GraphLayoutBackend::Shoal {
         #[cfg(feature = "layout-shoal")]
-        return shoal::layout(model, config, text_measurer, css_binding, work_meter);
+        return shoal::layout(
+            model,
+            config,
+            text_measurer,
+            css_binding,
+            work_meter,
+            execution,
+        );
         #[cfg(not(feature = "layout-shoal"))]
         return Err(Error::MissingCapability {
             capability: crate::RenderCapability::LayoutShoal,
@@ -1309,9 +1318,8 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
     let render_layout = None;
     Ok(RequirementPreparedArtifact {
         layout,
+        route_contract: crate::graph_layout::RouteContract::parity(render_layout.is_some()),
         render_layout,
-        #[cfg(feature = "layout-shoal")]
-        canonical_routes: None,
         nodes: prepared_node_labels,
         edges: prepared_edge_labels,
         measurement_binding,

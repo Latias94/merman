@@ -231,6 +231,7 @@ Register-ArgumentCompleter -Native -CommandName 'merman-cli' -ScriptBlock {
             [CompletionResult]::new('--resource-profile', '--resource-profile', [CompletionResultType]::ParameterName, 'Resource policy for input, semantic models, output, and CLI acquisition')
             [CompletionResult]::new('--resource-limit', '--resource-limit', [CompletionResultType]::ParameterName, 'Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated')
             [CompletionResult]::new('--operation-timeout-ms', '--operation-timeout-ms', [CompletionResultType]::ParameterName, 'Cancel the complete command operation after this many milliseconds')
+            [CompletionResult]::new('--fit-width', '--fit-width', [CompletionResultType]::ParameterName, 'Fit Shoal or Kanban placement toward --width in CSS pixels when supported (experimental)')
             [CompletionResult]::new('-q', '-q', [CompletionResultType]::ParameterName, 'Suppress non-error log output')
             [CompletionResult]::new('--quiet', '--quiet', [CompletionResultType]::ParameterName, 'Suppress non-error log output')
             [CompletionResult]::new('--raster-unbounded', '--raster-unbounded', [CompletionResultType]::ParameterName, 'Disable raster size limits. Use only for trusted oversized exports')

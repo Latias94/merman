@@ -40,6 +40,9 @@ fn uses_pool_shell(ctx: &FlowchartRenderCtx<'_>, id: &str) -> bool {
 
 pub(super) fn is_lane_or_pool_cluster(ctx: &FlowchartRenderCtx<'_>, id: &str) -> bool {
     ctx.swimlane_lanes_by_id.get(id).is_some_and(|group| {
+        if ctx.layout.route_contract.group_parents().is_some() {
+            return group.parent_id.is_none();
+        }
         group.parent_id.is_none()
             || is_pool_cluster(ctx, id)
             || group
@@ -61,7 +64,50 @@ pub(super) struct SwimlaneTerminalGeometry {
 pub(super) fn swimlane_terminal_geometry(
     lane: &crate::model::SwimlaneLaneLayout,
     direction: crate::model::SwimlaneDirection,
+    canonical: bool,
 ) -> SwimlaneTerminalGeometry {
+    if canonical {
+        use crate::model::SwimlaneDirection::*;
+        let (width, height) = (lane.width, lane.height);
+        let (label, title_band_width, title_band_height) = lane.title_rect.as_ref().map_or_else(
+            || {
+                (
+                    LayoutLabel {
+                        x: lane.x,
+                        y: lane.y,
+                        width: 0.0,
+                        height: 0.0,
+                    },
+                    0.0,
+                    0.0,
+                )
+            },
+            |rect| {
+                let label = LayoutLabel {
+                    x: rect.left.midpoint(rect.right),
+                    y: rect.top.midpoint(rect.bottom),
+                    width: rect.right - rect.left,
+                    height: rect.bottom - rect.top,
+                };
+                let x = label.x - lane.x;
+                let y = label.y - lane.y;
+                let (w, h) = match direction {
+                    Lr => (width + 2.0 * x, height),
+                    Rl => (width - 2.0 * x, height),
+                    Tb => (width, height + 2.0 * y),
+                    Bt => (width, height - 2.0 * y),
+                };
+                (label, w.clamp(0.0, width), h.clamp(0.0, height))
+            },
+        );
+        return SwimlaneTerminalGeometry {
+            width,
+            height,
+            title_band_width,
+            title_band_height,
+            title_label: label,
+        };
+    }
     let label_width = lane.title_label_width.max(0.0);
     let label_height = lane.title_label_height.max(0.0);
     let padding = lane.padding.max(0.0);
@@ -224,7 +270,8 @@ fn adapt_swimlane_layout(layout: &SwimlaneLayout) -> FlowchartLayout {
         .lanes
         .iter()
         .map(|lane| {
-            let geometry = swimlane_terminal_geometry(lane, layout.direction);
+            let canonical = layout.has_canonical_routes();
+            let geometry = swimlane_terminal_geometry(lane, layout.direction, canonical);
             LayoutCluster {
                 id: lane.id.clone(),
                 x: lane.x,
@@ -236,7 +283,14 @@ fn adapt_swimlane_layout(layout: &SwimlaneLayout) -> FlowchartLayout {
                 title: lane.title.clone(),
                 title_label: geometry.title_label,
                 requested_dir: lane.requested_dir.clone(),
-                effective_dir: layout.direction.as_str().to_string(),
+                effective_dir: if canonical {
+                    lane.requested_dir
+                        .as_deref()
+                        .unwrap_or(layout.direction.as_str())
+                } else {
+                    layout.direction.as_str()
+                }
+                .to_owned(),
                 padding: lane.padding,
                 title_margin_top: 0.0,
                 title_margin_bottom: 0.0,
@@ -244,6 +298,12 @@ fn adapt_swimlane_layout(layout: &SwimlaneLayout) -> FlowchartLayout {
         })
         .collect();
 
+    let route_contract = crate::graph_layout::RouteContract::Swimlane;
+    #[cfg(feature = "layout-shoal")]
+    let route_contract = layout
+        .shoal
+        .as_ref()
+        .map_or(route_contract, |shoal| shoal.routes.clone());
     FlowchartLayout {
         nodes,
         edges,
@@ -252,7 +312,7 @@ fn adapt_swimlane_layout(layout: &SwimlaneLayout) -> FlowchartLayout {
         bounds: layout.bounds.clone(),
         // Swimlane supplies its node schedule through the prepared node inventory.
         dom_node_order_by_root: Default::default(),
-        route_contract: crate::graph_layout::RouteContract::Swimlane,
+        route_contract,
         placement: Default::default(),
         uses_elk_adapter_dom: false,
     }
@@ -376,14 +436,32 @@ pub(super) fn write_swimlane_css<DiagramId>(
     out: &mut impl crate::svg::parity::SvgOutput,
     diagram_id: DiagramId,
     cluster_border: &str,
+    native: Option<&crate::flowchart::native_theme::FlowchartNativeStyle>,
 ) where
     DiagramId: crate::svg::parity::SvgDiagramIdValue,
 {
     let id = super::FlowchartCssSelectorDiagramId::new(diagram_id);
     let _ = write!(
         out,
-        r#"#{id} [data-look="neo"].cluster rect{{filter:none;}}#{id} .swimlane.cluster:not([data-color-id]) rect{{stroke:{cluster_border}!important;}}"#,
+        r#"#{id} [data-look="neo"].cluster rect{{filter:none;}}"#,
     );
+    if let Some(native) = native {
+        let _ = write!(
+            out,
+            "#{id} .swimlane.cluster rect.swimlane-body{{fill:{};stroke:{}}}#{id} .swimlane.cluster rect.swimlane-title{{fill:{};stroke:{}}}#{id} .swimlane-label text{{fill:{}}}#{id} .swimlane-label span{{color:{}}}",
+            native.container,
+            native.guide,
+            native.emphasis,
+            native.guide,
+            native.on_emphasis,
+            native.on_emphasis,
+        );
+    } else {
+        let _ = write!(
+            out,
+            "#{id} .swimlane.cluster:not([data-color-id]) rect{{stroke:{cluster_border}!important;}}"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -394,7 +472,7 @@ mod tests {
     #[test]
     fn swimlane_css_escapes_the_diagram_id_as_a_css_identifier() {
         let mut css = String::new();
-        write_swimlane_css(&mut css, "seq:prod.v1", "#aaaa33");
+        write_swimlane_css(&mut css, "seq:prod.v1", "#aaaa33", None);
 
         assert!(css.contains(r#"#seq\:prod\.v1 [data-look="neo"].cluster"#));
         assert!(!css.contains(r#"#seq:prod.v1 [data-look="neo"].cluster"#));

@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
-import type { LayoutOptions, SvgRenderMetadata } from "@mermanjs/web";
-import type { ThemeOutcome } from "@mermanjs/web";
+import type { LayoutOptions, SvgPlanResult, SvgRenderMetadata, ThemeOutcome } from "@mermanjs/web";
 import { projectNavigableInlineSvg } from "./render-artifact.ts";
 
 import type { MermanDomainFacade } from "./merman-core.ts";
+import { captureProjectHandoff, generateProjectHandoff } from "../lib/project-handoff.ts";
 import { themeCatalogFixture } from "../lib/theme-appearance.test-fixture.ts";
 import { utf8ByteLength } from "../lib/utf8.ts";
 import {
@@ -25,6 +25,7 @@ import {
 } from "./render-viewport.ts";
 import {
   createRenderCoordinator,
+  type CompletedRenderBatch,
   type RenderCoordinatorInput,
 } from "./render-coordinator.ts";
 import {
@@ -1670,6 +1671,115 @@ test("standalone Shoal edits reuse only the last successful frame for that docum
   assert.equal(requests[6]?.previous_shoal_frame, undefined);
 });
 
+test("Shoal FitWidth supersedes pending widths and keeps the project operation and document frames independent", async (t) => {
+  const base = facade();
+  const coordinator = createRenderCoordinator({ compare: fakeCompare([]), debounceMs: 0 });
+  t.after(() => coordinator.dispose());
+  const themeDocumentJson = '{ "schema_version": 2, "extends": "studio", "name": "布局" }';
+  const themeWorkspace = { themeDocumentJson, themeAppearance: "dark" as const };
+  const themeOptions = { document: JSON.parse(themeDocumentJson), appearance: "dark" };
+  const plans: ConfiguredMermanOperationInput[] = [];
+  const renders: ConfiguredMermanOperationInput[] = [];
+  const requests: LayoutOptions[] = [];
+  const domain = shoalFacade({
+    themeCatalog: themeCatalogFixture,
+    svgPlan(operation) {
+      plans.push(operation);
+      return shoalSvgPlan();
+    },
+    render(operation) {
+      renders.push(operation);
+      const layout = operation.bindingOptions.layout!;
+      requests.push(layout);
+      if (layout.container_width === 320) submit(480);
+      const result = base.render(operation);
+      assert.equal(result.status, "success");
+      return {
+        ...result,
+        metadata: { ...renderMetadata(operation.source), shoal_layout_frame: { revision: requests.length } },
+      };
+    },
+  });
+  const submit = (shoalPreviewWidth: number | null, documentRevision = 0, source = "initial") =>
+    coordinator.setInput({ ...input(source, domain, themeWorkspace), documentRevision, shoalPreviewWidth });
+
+  submit(null);
+  await waitFor(() => coordinator.store.getState().status === "success");
+  assert.equal(requests[0].adaptation, undefined);
+
+  const publications: CompletedRenderBatch[] = [];
+  t.after(coordinator.store.subscribe((state) => {
+    if (state.status === "success") publications.push(state);
+  }));
+  submit(320);
+  await waitFor(() => requests.length === 3 && coordinator.store.getState().status === "success");
+  assert.equal(publications.length, 1);
+  assert.deepEqual(requests[2], {
+    adaptation: "fit-width", container_width: 480, container_height: 600,
+    screen_available_width: 800, fold_wide_ranks: true, capture_shoal_frame: true,
+  });
+  assert.ok(plans[2].bindingOptionsJson.includes(themeDocumentJson));
+  assert.deepEqual(JSON.parse(plans[2].bindingOptionsJson).theme, themeOptions);
+  assert.ok(renders[2].bindingOptionsJson.includes(themeDocumentJson));
+  assert.deepEqual(JSON.parse(renders[2].bindingOptionsJson).theme, themeOptions);
+  assert.deepEqual(JSON.parse(renders[2].bindingOptionsJson).layout, requests[2]);
+  assert.equal(publications[0].snapshot.supportsShoalFitWidth, true);
+  const handoff = captureProjectHandoff({
+    workspace: input("initial", domain, themeWorkspace).workspace,
+    renderState: publications[0],
+    capturedAt: "2026-11-24T00:00:00Z",
+  });
+  const bundle = generateProjectHandoff(handoff, { target: "web", scope: "diagram" });
+  assert.deepEqual(JSON.parse(bundle.files["options.json"]).layout, {
+    container_width: 800, container_height: 600, screen_available_width: 800,
+  });
+  assert.deepEqual(JSON.parse(bundle.files["options.json"]).theme, themeOptions);
+  assert.equal(bundle.files["theme.json"], themeDocumentJson);
+
+  submit(480, 0, "edit");
+  await waitFor(() => publications.length === 2);
+  assert.deepEqual(requests[3].previous_shoal_frame, { revision: 3 });
+  submit(480, 1, "edit");
+  await waitFor(() => publications.length === 3);
+  assert.equal(requests[4].previous_shoal_frame, undefined);
+  submit(null, 1, "edit");
+  await waitFor(() => publications.length === 4);
+  assert.equal(requests[5].adaptation, undefined);
+  assert.equal(requests[5].previous_shoal_frame, undefined);
+});
+
+test("Shoal preview FitWidth requires effective Shoal and advertised adaptation support", async (t) => {
+  const base = facade();
+  let planReads = 0;
+  const requests: LayoutOptions[] = [];
+  const domain = shoalFacade({
+    detectDiagram: ({ source }) => source === "kanban"
+      ? { status: "available", diagramType: "kanban", syntaxId: "kanban", effectiveLayoutId: "builtin", validity: "valid" }
+      : { status: "available", diagramType: "class", syntaxId: "classDiagram", effectiveLayoutId: "shoal", validity: "valid" },
+    svgPlan({ source }) {
+      planReads += 1;
+      return {
+        ...shoalSvgPlan(),
+        supported_layout_adaptation_ids: source === "old-shoal" ? ["none"] : ["none", "fit-width"],
+      };
+    },
+    render(operation) {
+      requests.push(operation.bindingOptions.layout!);
+      return base.render(operation);
+    },
+  });
+  const coordinator = createRenderCoordinator({ compare: fakeCompare([]), debounceMs: 0 });
+  t.after(() => coordinator.dispose());
+  for (const [index, source] of ["kanban", "old-shoal", "new-shoal"].entries()) {
+    coordinator.setInput({ ...input(source, domain), shoalPreviewWidth: 440 });
+    await waitFor(() => requests.length === index + 1 && coordinator.store.getState().status === "success");
+  }
+  assert.equal(planReads, 2);
+  assert.equal(requests[0].adaptation, undefined);
+  assert.equal(requests[1].adaptation, undefined);
+  assert.equal(requests[2].adaptation, "fit-width");
+});
+
 test("two Shoal edits keep rendering when the previous frame would exceed the UTF-8 options budget", async (t) => {
   const frame = { group: "界".repeat(Math.floor((OPTIONS_JSON_LIMIT_BYTES - 24) / 3)) };
   assert.ok(utf8ByteLength(JSON.stringify(frame)) < OPTIONS_JSON_LIMIT_BYTES);
@@ -2074,6 +2184,18 @@ function facade(packageVersion = "test-merman"): MermanDomainFacade {
 }
 
 const OPTIONS_JSON_LIMIT_BYTES = 4 * 1024 * 1024;
+
+function shoalSvgPlan(): SvgPlanResult {
+  return {
+    schema_version: 1,
+    planned_operation_id: "svg",
+    diagram_type: "classDiagram",
+    required_capability_ids: ["layout-shoal"],
+    missing_capability_ids: [],
+    ready: true,
+    supported_layout_adaptation_ids: ["none", "fit-width"],
+  };
+}
 
 function shoalFacade(overrides: Partial<MermanDomainFacade>): MermanDomainFacade {
   const base = facade();

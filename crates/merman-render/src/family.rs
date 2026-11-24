@@ -352,6 +352,7 @@ impl<'parsed, L> FlowchartFamilyArtifact<'parsed, L> {
 pub(crate) struct ClassFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed ClassDiagram, ClassDiagramLayout>,
     prepared_labels: crate::class::ClassPreparedLabels,
+    route_contract: crate::graph_layout::RouteContract,
     relation_theme: crate::class::ClassRelationThemePlan,
     typography_theme: crate::class::ClassTextThemePlan,
     render_config: crate::class::ClassRenderConfig,
@@ -365,6 +366,8 @@ pub(crate) struct C4FamilyArtifact<'parsed> {
     cluster_theme: crate::c4::C4ClusterThemePlan,
     typography_theme: crate::c4::C4TypographyThemePlan,
     text_paint: crate::c4::C4TextPaintPlan,
+    #[cfg(feature = "layout-shoal")]
+    shoal: Option<crate::c4::C4ShoalGeometry>,
 }
 
 #[cfg(feature = "diagram-c4")]
@@ -385,12 +388,21 @@ impl<'parsed> C4FamilyArtifact<'parsed> {
     pub(crate) const fn typography_theme(&self) -> &crate::c4::C4TypographyThemePlan {
         &self.typography_theme
     }
+
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) fn shoal(&self) -> Option<&crate::c4::C4ShoalGeometry> {
+        self.shoal.as_ref()
+    }
 }
 
 #[cfg(feature = "diagram-class")]
 impl<'parsed> ClassFamilyArtifact<'parsed> {
     pub(crate) const fn prepared_labels(&self) -> &crate::class::ClassPreparedLabels {
         &self.prepared_labels
+    }
+
+    pub(crate) const fn route_contract(&self) -> &crate::graph_layout::RouteContract {
+        &self.route_contract
     }
 
     pub(crate) const fn render_config(&self) -> &crate::class::ClassRenderConfig {
@@ -611,6 +623,7 @@ pub(crate) struct BlockFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::block::BlockDiagramRenderModel, BlockDiagramLayout>,
     prepared_labels: crate::block::BlockPreparedLabels,
     node_bindings: crate::block::BlockNodeBindings,
+    edge_routes: crate::block::BlockEdgeRoutes,
     typography_theme: crate::block::BlockTypographyThemePlan,
 }
 
@@ -632,6 +645,10 @@ impl<'parsed> BlockFamilyArtifact<'parsed> {
 
     pub(crate) const fn node_bindings(&self) -> &crate::block::BlockNodeBindings {
         &self.node_bindings
+    }
+
+    pub(crate) const fn edge_routes(&self) -> &crate::block::BlockEdgeRoutes {
+        &self.edge_routes
     }
 }
 
@@ -911,17 +928,13 @@ impl<'parsed> MindmapFamilyArtifact<'parsed> {
 pub(crate) struct ErFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::er::ErDiagramModel, ErDiagramLayout>,
     entity_theme: crate::er::ErEntityThemePlan,
-    #[cfg(feature = "layout-shoal")]
-    canonical_routes: Option<crate::graph_layout::canonical::CanonicalRoutes>,
+    route_contract: crate::graph_layout::RouteContract,
 }
 
 #[cfg(feature = "diagram-er")]
 impl<'parsed> ErFamilyArtifact<'parsed> {
-    #[cfg(feature = "layout-shoal")]
-    pub(crate) const fn canonical_routes(
-        &self,
-    ) -> Option<&crate::graph_layout::canonical::CanonicalRoutes> {
-        self.canonical_routes.as_ref()
+    pub(crate) const fn route_contract(&self) -> &crate::graph_layout::RouteContract {
+        &self.route_contract
     }
 
     pub(crate) const fn pair(
@@ -997,8 +1010,7 @@ impl<'parsed> GanttFamilyArtifact<'parsed> {
 pub(crate) struct StateFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::state::StateDiagramRenderModel, StateDiagramLayout>,
     label_sidecar: crate::state::StateLabelSidecar,
-    #[cfg(feature = "layout-shoal")]
-    canonical_routes: Option<crate::graph_layout::canonical::CanonicalRoutes>,
+    route_contract: crate::graph_layout::RouteContract,
     style: crate::state::StateStylePlan,
 }
 
@@ -1014,11 +1026,8 @@ impl<'parsed> StateFamilyArtifact<'parsed> {
         &self.label_sidecar
     }
 
-    #[cfg(feature = "layout-shoal")]
-    pub(crate) const fn canonical_routes(
-        &self,
-    ) -> Option<&crate::graph_layout::canonical::CanonicalRoutes> {
-        self.canonical_routes.as_ref()
+    pub(crate) const fn route_contract(&self) -> &crate::graph_layout::RouteContract {
+        &self.route_contract
     }
 
     pub(crate) const fn style(&self) -> &crate::state::StateStylePlan {
@@ -1026,7 +1035,7 @@ impl<'parsed> StateFamilyArtifact<'parsed> {
     }
 }
 
-#[cfg(feature = "layout-cytoscape")]
+#[cfg(any(feature = "layout-cytoscape", feature = "layout-shoal"))]
 #[derive(Debug)]
 #[cfg(feature = "diagram-architecture")]
 pub(crate) struct ArchitectureFamilyArtifact<'parsed> {
@@ -1035,9 +1044,11 @@ pub(crate) struct ArchitectureFamilyArtifact<'parsed> {
         ArchitectureDiagramLayout,
     >,
     group_theme: crate::architecture::ArchitectureGroupThemePlan,
+    #[cfg(feature = "layout-shoal")]
+    shoal: Option<crate::architecture::ArchitectureShoalGeometry>,
 }
 
-#[cfg(feature = "layout-cytoscape")]
+#[cfg(any(feature = "layout-cytoscape", feature = "layout-shoal"))]
 #[cfg(feature = "diagram-architecture")]
 impl<'parsed> ArchitectureFamilyArtifact<'parsed> {
     pub(crate) const fn pair(
@@ -1051,6 +1062,11 @@ impl<'parsed> ArchitectureFamilyArtifact<'parsed> {
 
     pub(crate) const fn group_theme(&self) -> &crate::architecture::ArchitectureGroupThemePlan {
         &self.group_theme
+    }
+
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) fn shoal(&self) -> Option<&crate::architecture::ArchitectureShoalGeometry> {
+        self.shoal.as_ref()
     }
 }
 
@@ -1081,7 +1097,7 @@ pub(crate) enum BuiltinFamilyArtifact<'parsed> {
     Flowchart(Box<FlowchartFamilyArtifact<'parsed, FlowchartLayout>>),
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     Swimlane(Box<FlowchartFamilyArtifact<'parsed, SwimlaneLayout>>),
-    #[cfg(feature = "layout-cytoscape")]
+    #[cfg(any(feature = "layout-cytoscape", feature = "layout-shoal"))]
     #[cfg(feature = "diagram-architecture")]
     Architecture(Box<ArchitectureFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-class")]
@@ -1172,7 +1188,7 @@ enum LayoutProjection<'a> {
     BlockDiagram(&'a BlockDiagramLayout),
     #[cfg(feature = "diagram-requirement")]
     RequirementDiagram(&'a RequirementDiagramLayout),
-    #[cfg(feature = "layout-cytoscape")]
+    #[cfg(any(feature = "layout-cytoscape", feature = "layout-shoal"))]
     #[cfg(feature = "diagram-architecture")]
     ArchitectureDiagram(&'a ArchitectureDiagramLayout),
     #[cfg(feature = "diagram-mindmap")]
@@ -1257,7 +1273,7 @@ impl BuiltinFamilyArtifact<'_> {
             Self::Flowchart(_) => DiagramFamilyId::FLOWCHART,
             #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             Self::Swimlane(_) => DiagramFamilyId::SWIMLANE,
-            #[cfg(feature = "layout-cytoscape")]
+            #[cfg(any(feature = "layout-cytoscape", feature = "layout-shoal"))]
             #[cfg(feature = "diagram-architecture")]
             Self::Architecture(_) => DiagramFamilyId::ARCHITECTURE,
             #[cfg(feature = "diagram-class")]
@@ -1381,7 +1397,7 @@ impl BuiltinFamilyArtifact<'_> {
                     .pair
                     .compatibility_json(metadata, output_context, &control)
             }
-            #[cfg(feature = "layout-cytoscape")]
+            #[cfg(any(feature = "layout-cytoscape", feature = "layout-shoal"))]
             #[cfg(feature = "diagram-architecture")]
             Self::Architecture(artifact) => {
                 artifact
@@ -1556,7 +1572,7 @@ impl BuiltinFamilyArtifact<'_> {
             Self::Flowchart(artifact) => LayoutProjection::Flowchart(artifact.pair.layout()),
             #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             Self::Swimlane(artifact) => LayoutProjection::SwimlaneDiagram(artifact.pair.layout()),
-            #[cfg(feature = "layout-cytoscape")]
+            #[cfg(any(feature = "layout-cytoscape", feature = "layout-shoal"))]
             #[cfg(feature = "diagram-architecture")]
             Self::Architecture(artifact) => {
                 LayoutProjection::ArchitectureDiagram(artifact.pair.layout())
@@ -2041,17 +2057,56 @@ impl RenderedStandaloneSvg {
 }
 
 impl<'parsed> FamilyRenderArtifact<'parsed> {
-    #[cfg(any(
-        feature = "diagram-flowchart",
-        feature = "diagram-swimlane",
-        feature = "diagram-agentflow"
-    ))]
-    fn flowchart_placement(&self) -> Option<&crate::model::FlowchartPlacement> {
+    fn graph_placement(&self) -> Option<&crate::layout_frame::GraphPlacement> {
         match &self.family {
             #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             BuiltinFamilyArtifact::Flowchart(flow) => Some(&flow.pair.layout().placement),
+            #[cfg(all(
+                feature = "layout-shoal",
+                any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+            ))]
+            BuiltinFamilyArtifact::Swimlane(flow) => flow
+                .pair
+                .layout()
+                .shoal
+                .as_ref()
+                .map(|shoal| &shoal.placement),
             #[cfg(feature = "diagram-agentflow")]
             BuiltinFamilyArtifact::Agentflow { flow, .. } => Some(&flow.pair.layout().placement),
+            #[cfg(all(feature = "layout-shoal", feature = "diagram-architecture"))]
+            BuiltinFamilyArtifact::Architecture(artifact) => {
+                artifact.shoal().map(|geometry| geometry.placement())
+            }
+            #[cfg(all(feature = "layout-shoal", feature = "diagram-c4"))]
+            BuiltinFamilyArtifact::C4(artifact) => {
+                artifact.shoal().map(|geometry| geometry.placement())
+            }
+            #[cfg(all(feature = "layout-shoal", feature = "diagram-class"))]
+            BuiltinFamilyArtifact::Class(artifact) => artifact
+                .route_contract()
+                .canonical_routes()
+                .map(|routes| &routes.placement),
+            #[cfg(all(feature = "layout-shoal", feature = "diagram-state"))]
+            BuiltinFamilyArtifact::State(artifact) => artifact
+                .route_contract()
+                .canonical_routes()
+                .map(|routes| &routes.placement),
+            #[cfg(all(feature = "layout-shoal", feature = "diagram-er"))]
+            BuiltinFamilyArtifact::Er(artifact) => artifact
+                .route_contract()
+                .canonical_routes()
+                .map(|routes| &routes.placement),
+            #[cfg(all(feature = "layout-shoal", feature = "diagram-requirement"))]
+            BuiltinFamilyArtifact::Requirement(artifact) => artifact
+                .pair
+                .layout()
+                .canonical_routes()
+                .map(|routes| &routes.placement),
+            #[cfg(all(feature = "layout-shoal", feature = "diagram-usecase"))]
+            BuiltinFamilyArtifact::Usecase(pair) => pair
+                .layout()
+                .canonical_routes()
+                .map(|routes| &routes.placement),
             _ => None,
         }
     }
@@ -2061,20 +2116,7 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
         match &self.family {
             #[cfg(feature = "diagram-kanban")]
             BuiltinFamilyArtifact::Kanban(pair) => pair.layout().layout_adaptation(),
-            #[cfg(any(
-                feature = "diagram-flowchart",
-                feature = "diagram-swimlane",
-                feature = "diagram-agentflow"
-            ))]
-            _ => self
-                .flowchart_placement()
-                .and_then(|layout| layout.adaptation),
-            #[cfg(not(any(
-                feature = "diagram-flowchart",
-                feature = "diagram-swimlane",
-                feature = "diagram-agentflow"
-            )))]
-            _ => None,
+            _ => self.graph_placement().and_then(|layout| layout.adaptation),
         }
     }
 
@@ -2313,20 +2355,9 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
             render_family_artifact_svg(&self, options, render_debug, generation)?;
         admit_rendered_svg_output(self.context.session(), &svg)?;
         let layout_adaptation = self.layout_adaptation();
-        #[cfg(any(
-            feature = "diagram-flowchart",
-            feature = "diagram-swimlane",
-            feature = "diagram-agentflow"
-        ))]
         let shoal_layout_frame = self
-            .flowchart_placement()
+            .graph_placement()
             .and_then(|layout| layout.frame.clone());
-        #[cfg(not(any(
-            feature = "diagram-flowchart",
-            feature = "diagram-swimlane",
-            feature = "diagram-agentflow"
-        )))]
-        let shoal_layout_frame = None;
         let prepared_math_evidence = self.family.prepared_math_evidence();
         self.context.session().checkpoint(OperationPhase::Emit)?;
         let family_id = self.family_id();
@@ -2391,7 +2422,10 @@ fn render_family_artifact_svg(
     #[cfg(not(feature = "diagram-agentflow"))]
     let metadata = &artifact.metadata;
 
-    #[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
+    #[cfg(all(
+        feature = "diagram-architecture",
+        any(feature = "layout-cytoscape", feature = "layout-shoal")
+    ))]
     if let BuiltinFamilyArtifact::Architecture(architecture) = &artifact.family {
         return crate::svg::render_architecture_family_artifact(
             architecture,
@@ -2567,7 +2601,14 @@ fn prepare_for<'parsed>(
     preparation: FamilyPreparation,
 ) -> Result<FamilyRenderArtifact<'parsed>> {
     session.checkpoint(OperationPhase::Layout)?;
-    validate_layout_options(parsed, options)?;
+    let adaptation = capability::resolve_layout_adaptation(parsed, options)?;
+    let resolved;
+    let options = if adaptation == options.adaptation {
+        options
+    } else {
+        resolved = options.clone().with_adaptation(adaptation);
+        &resolved
+    };
     let plan = plan_render(parsed, &session)?;
     plan.ensure_available()?;
     let required_capabilities = plan.required_capabilities().to_vec();
@@ -2578,7 +2619,10 @@ fn prepare_for<'parsed>(
     let mut artifact = match expected_family {
         #[cfg(feature = "diagram-class")]
         DiagramFamilyId::CLASS => preparation::prepare_class_render(parsed, options, context),
-        #[cfg(all(feature = "diagram-architecture", feature = "layout-cytoscape"))]
+        #[cfg(all(
+            feature = "diagram-architecture",
+            any(feature = "layout-cytoscape", feature = "layout-shoal")
+        ))]
         DiagramFamilyId::ARCHITECTURE => {
             preparation::prepare_architecture_render(parsed, options, context)
         }

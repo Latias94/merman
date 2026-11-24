@@ -13,6 +13,81 @@ pub(super) struct Hierarchy {
     pub(super) truncated: usize,
     pub(super) node_slots: Vec<usize>,
     pub(super) group_slots: Vec<usize>,
+    pub(super) lanes: Option<LaneMembership>,
+}
+
+#[derive(Debug)]
+pub(super) struct LaneMembership {
+    // The lane ordinal of every group, including the shells themselves.
+    groups: Vec<usize>,
+}
+
+impl LaneMembership {
+    fn new(graph: &Graph, parents: &[usize], work: &mut Work<'_>) -> LayoutResult<Self> {
+        const UNASSIGNED: usize = usize::MAX;
+        let root = graph.groups.len();
+        work.charge(root)?;
+        let mut groups = filled(root, UNASSIGNED)?;
+        for (lane, &GroupId(group)) in graph.lane_order.iter().enumerate() {
+            work.visit(1)?;
+            let group = group as usize;
+            if graph
+                .groups
+                .get(group)
+                .is_none_or(|spec| spec.parent.is_some())
+                || groups[group] != UNASSIGNED
+            {
+                return Err(LayoutError::InvalidInput(
+                    "swimlane order must name distinct root groups",
+                ));
+            }
+            groups[group] = lane;
+        }
+        let mut path = Vec::new();
+        for group in 0..root {
+            work.visit(1)?;
+            let mut current = group;
+            while current != root && groups[current] == UNASSIGNED {
+                work.visit(1)?;
+                push(&mut path, current)?;
+                current = parents[current];
+            }
+            if current == root {
+                return Err(LayoutError::InvalidInput(
+                    "every root group must be a swimlane",
+                ));
+            }
+            let lane = groups[current];
+            work.visit(path.len())?;
+            for member in path.drain(..) {
+                groups[member] = lane;
+            }
+        }
+        Ok(Self { groups })
+    }
+
+    fn shell(&self, graph: &Graph, id: usize) -> Option<usize> {
+        let lane = *self.groups.get(id)?;
+        (graph.lane_order[lane].0 as usize == id).then_some(lane)
+    }
+
+    fn level(&self, graph: &Graph, parent: usize) -> usize {
+        if self.shell(graph, parent).is_some() {
+            graph.groups.len()
+        } else {
+            parent
+        }
+    }
+
+    pub(super) fn item(&self, graph: &Graph, endpoint: Endpoint) -> usize {
+        let group = match endpoint {
+            Endpoint::Node(id) => graph.nodes[id.0 as usize]
+                .parent
+                .expect("validated lane parent"),
+            Endpoint::Group(id) => id,
+        };
+        self.groups[group.0 as usize]
+    }
 }
 
 #[derive(Debug, Default)]
@@ -247,7 +322,19 @@ impl Hierarchy {
         }
     }
 
-    fn new(graph: &Graph, parent: &[usize], work: &mut Work<'_>) -> LayoutResult<Self> {
+    pub(super) fn lane_shell(&self, graph: &Graph, item: Endpoint) -> Option<usize> {
+        match item {
+            Endpoint::Group(id) => self.lanes.as_ref()?.shell(graph, id.0 as usize),
+            Endpoint::Node(_) => None,
+        }
+    }
+
+    fn new(
+        graph: &Graph,
+        parent: &[usize],
+        lanes: Option<LaneMembership>,
+        work: &mut Work<'_>,
+    ) -> LayoutResult<Self> {
         let root = graph.groups.len();
         admit(parent.len(), 5, work)?;
         admit(graph.nodes.len(), 2, work)?;
@@ -257,11 +344,28 @@ impl Hierarchy {
         for (index, node) in graph.nodes.iter().enumerate() {
             work.visit(1)?;
             flat::validate_node(node)?;
-            let level = parent_id(node.parent, root)?;
+            let owner = parent_id(node.parent, root)?;
+            let level = if let Some(lanes) = &lanes {
+                if owner == root {
+                    return Err(LayoutError::InvalidInput(
+                        "assign loose nodes to a swimlane",
+                    ));
+                }
+                lanes.level(graph, owner)
+            } else {
+                owner
+            };
             push(&mut levels[level].items, NodeId(index as u32).into())?;
         }
         for (group, &outer) in parent[..root].iter().enumerate() {
             work.visit(1)?;
+            if lanes
+                .as_ref()
+                .is_some_and(|lanes| lanes.shell(graph, group).is_some())
+            {
+                levels[group].direction = graph.direction;
+                continue;
+            }
             push(&mut levels[outer].items, GroupId(group as u32).into())?;
         }
         let mut order = reserved(parent.len())?;
@@ -316,6 +420,7 @@ impl Hierarchy {
             truncated: 0,
             node_slots,
             group_slots,
+            lanes,
         })
     }
 
@@ -352,12 +457,16 @@ struct End {
 }
 
 impl End {
-    fn new(item: Endpoint, graph: &Graph, tree: &Tree) -> Self {
+    fn new(item: Endpoint, graph: &Graph, tree: &Tree, hierarchy: &Hierarchy) -> Self {
         match item {
             Endpoint::Node(id) => {
                 let owner = graph.nodes[id.0 as usize]
                     .parent
                     .map_or(graph.groups.len(), |id| id.0 as usize);
+                let owner = hierarchy
+                    .lanes
+                    .as_ref()
+                    .map_or(owner, |lanes| lanes.level(graph, owner));
                 Self {
                     item,
                     owner,
@@ -365,7 +474,10 @@ impl End {
                 }
             }
             Endpoint::Group(id) => {
-                let scope = id.0 as usize;
+                let scope = hierarchy
+                    .lanes
+                    .as_ref()
+                    .map_or(id.0 as usize, |lanes| lanes.level(graph, id.0 as usize));
                 Self {
                     item,
                     owner: tree.parent[scope],
@@ -455,8 +567,18 @@ pub(super) fn build(
         .len()
         .checked_add(graph.groups.len())
         .ok_or(WorkError::ArithmeticOverflow)?;
-    let parents = normalize_parents(graph, work)?;
-    let mut hierarchy = Hierarchy::new(graph, &parents, work)?;
+    let mut parents = normalize_parents(graph, work)?;
+    let lanes = if graph.lane_order.is_empty() {
+        None
+    } else {
+        let lanes = LaneMembership::new(graph, &parents, work)?;
+        for parent in &mut parents {
+            work.visit(1)?;
+            *parent = lanes.level(graph, *parent);
+        }
+        Some(lanes)
+    };
+    let mut hierarchy = Hierarchy::new(graph, &parents, lanes, work)?;
     let tree = Tree::index(parents, &hierarchy.order, work)?;
     work.charge(tree.parent.len())?;
     let mut crossed = filled(tree.parent.len(), 0_i64)?;
@@ -466,8 +588,8 @@ pub(super) fn build(
         flat::validate_edge(spec)?;
         validate_endpoint(graph, spec.source, spec.source_port)?;
         validate_endpoint(graph, spec.target, spec.target_port)?;
-        let source = End::new(spec.source, graph, &tree);
-        let target = End::new(spec.target, graph, &tree);
+        let source = End::new(spec.source, graph, &tree, &hierarchy);
+        let target = End::new(spec.target, graph, &tree, &hierarchy);
         let level = if source.item == target.item {
             source.owner
         } else {

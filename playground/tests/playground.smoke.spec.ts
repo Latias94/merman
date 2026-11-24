@@ -11,6 +11,7 @@ import {
   replaceMermaidConfig,
   waitForPreviewSvg,
 } from "./helpers/playground";
+import { fullWebPackageProvenance } from "./helpers/web-package.ts";
 import { MERMAID_JS_VERSION } from "../src/generated/mermaid-reference";
 import { CANONICAL_RENDER_VIEWPORT } from "../src/runtime/render-viewport";
 
@@ -103,6 +104,67 @@ test("editing the source publishes the matching SVG without page overflow", asyn
   await expectNoDocumentOverflow(page);
   await expect(page.locator("header")).toBeVisible();
   await expect(page.locator("footer")).toBeVisible();
+  errors.assertNone();
+});
+
+test("the Playground selects Shoal from frontmatter or the workspace configuration", async ({ page }) => {
+  const provenance = await fullWebPackageProvenance();
+  test.skip(!provenance.runtime_capability_ids.includes("layout-shoal"), "Requires the Shoal WASM build.");
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await waitForPreviewSvg(page);
+
+  const tools = page.getByRole("button", { name: "Tools", exact: true });
+  const fitWidth = page.getByRole("menuitem", { name: "Fit preview width", exact: true });
+  for (const example of [
+    { sourceLayout: "shoal", config: null, label: "Frontmatter Shoal", fit: true },
+    { sourceLayout: null, config: '{ "layout": "shoal" }', label: "Workspace Shoal", fit: true },
+    { sourceLayout: "dagre", config: null, label: "Workspace override", fit: true },
+    { sourceLayout: "dagre", config: "{}", label: "Diagram Dagre", fit: false },
+  ]) {
+    if (example.config !== null) {
+      await replaceMermaidConfig(page, example.config);
+    }
+    const frontmatter = example.sourceLayout
+      ? `---\nconfig:\n  layout: ${example.sourceLayout}\n---\n`
+      : "";
+    await replaceEditorSource(page, `${frontmatter}flowchart TD\n  A[${example.label}] --> B`);
+    await expect.poll(() => previewSvgText(page)).toContain(example.label);
+    await tools.click();
+    await expect(fitWidth).toHaveCount(example.fit ? 1 : 0);
+    await page.keyboard.press("Escape");
+  }
+  errors.assertNone();
+});
+
+test("the Shoal fit-width dialog validates and applies a width in Chinese", async ({ page }) => {
+  const provenance = await fullWebPackageProvenance();
+  test.skip(!provenance.runtime_capability_ids.includes("layout-shoal"), "Requires the Shoal WASM build.");
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await replaceEditorSource(page, "---\nconfig:\n  layout: shoal\n---\nflowchart LR\n  A[Shoal] --> B");
+  await expect.poll(() => previewSvgText(page)).toContain("Shoal");
+
+  await page.getByRole("button", { name: "App settings", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: /中文/u }).click();
+  const tools = page.getByRole("button", { name: "工具", exact: true });
+  await tools.click();
+  await page.getByRole("menuitem", { name: "适配预览宽度", exact: true }).click();
+
+  const dialog = page.getByRole("dialog", { name: "适配预览宽度", exact: true });
+  await dialog.getByRole("checkbox", { name: /启用宽度适配/u }).check();
+  const width = dialog.getByRole("spinbutton", { name: "目标宽度（CSS px）", exact: true });
+  const apply = dialog.getByRole("button", { name: "应用", exact: true });
+  await width.fill("0");
+  await expect(dialog.getByText("请输入大于 0 的宽度。", { exact: true })).toBeVisible();
+  await expect(apply).toBeDisabled();
+  await width.fill("480");
+  await apply.click();
+  await expect(dialog).toHaveCount(0);
+  await expect(tools).toBeFocused();
+
+  await tools.click();
+  await expect(page.getByRole("menuitem", { name: /适配预览宽度.*480 px/u })).toBeVisible();
   errors.assertNone();
 });
 

@@ -165,7 +165,20 @@ fn required_layout_capability(
 ) -> Result<Option<RenderCapability>> {
     let meta = parsed.metadata();
     match family {
-        DiagramFamilyId::ARCHITECTURE => return Ok(Some(RenderCapability::LayoutCytoscape)),
+        #[cfg(feature = "diagram-architecture")]
+        DiagramFamilyId::ARCHITECTURE => {
+            return Ok(
+                crate::layout_backend::resolve_architecture_layout(&meta.effective_config)
+                    .required_capability(),
+            );
+        }
+        DiagramFamilyId::BLOCK | DiagramFamilyId::C4 => {
+            let selected = crate::layout_backend::resolve_graph_layout(&meta.effective_config);
+            return Ok(
+                (selected.backend == crate::layout_backend::GraphLayoutBackend::Shoal)
+                    .then_some(RenderCapability::LayoutShoal),
+            );
+        }
         DiagramFamilyId::AGENTFLOW
         | DiagramFamilyId::CLASS
         | DiagramFamilyId::ER
@@ -187,6 +200,7 @@ fn required_layout_capability(
                 | DiagramFamilyId::ER
                 | DiagramFamilyId::REQUIREMENT
                 | DiagramFamilyId::STATE
+                | DiagramFamilyId::SWIMLANE
                 | DiagramFamilyId::USECASE
         )
         && !(family == DiagramFamilyId::FLOWCHART
@@ -204,6 +218,47 @@ fn required_layout_capability(
         ));
     }
     Ok(selection.required_capability())
+}
+
+#[cfg(all(test, feature = "diagram-architecture"))]
+#[test]
+fn architecture_admits_the_selected_backend_independently() {
+    use crate::{RenderCapabilityPolicy, environment::RenderEnvironment};
+    use merman_core::{MermaidEngine, ParseOptions};
+
+    let diagram = "architecture-beta\nservice api(server)[API]";
+    for (source, capability, compiled) in [
+        (
+            diagram.to_owned(),
+            RenderCapability::LayoutCytoscape,
+            cfg!(feature = "layout-cytoscape"),
+        ),
+        (
+            format!("---\nconfig:\n  layout: shoal\n---\n{diagram}"),
+            RenderCapability::LayoutShoal,
+            cfg!(feature = "layout-shoal"),
+        ),
+    ] {
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let environment = RenderEnvironment::deterministic();
+        let session = environment.begin_session().unwrap();
+        let plan = plan_render(&parsed, &session).unwrap();
+        assert_eq!(plan.required_capabilities(), &[capability]);
+        assert_eq!(plan.is_ready(), compiled);
+
+        let denied = environment
+            .with_capability_policy(RenderCapabilityPolicy::deny_all())
+            .begin_session()
+            .unwrap();
+        assert!(matches!(
+            super::prepare(&parsed, &LayoutOptions::default(), denied),
+            Err(Error::MissingCapability { capability: actual, .. }) if actual == capability
+        ));
+    }
 }
 
 /// Reports whether this renderer contains the logical family handler for a known diagram type.
@@ -292,11 +347,7 @@ fn supported_layout_adaptations(
     shoal: bool,
 ) -> &'static [LayoutAdaptation] {
     if family == DiagramFamilyId::KANBAN
-        || (shoal
-            && matches!(
-                family,
-                DiagramFamilyId::FLOWCHART | DiagramFamilyId::AGENTFLOW
-            ))
+        || (shoal && !matches!(family, DiagramFamilyId::BLOCK | DiagramFamilyId::SWIMLANE))
     {
         &[LayoutAdaptation::None, LayoutAdaptation::FitWidth]
     } else {
@@ -310,16 +361,22 @@ pub fn validate_layout_options(
     parsed: &PresentationDiagram,
     options: &LayoutOptions,
 ) -> Result<()> {
+    resolve_layout_adaptation(parsed, options).map(|_| ())
+}
+
+pub(super) fn resolve_layout_adaptation(
+    parsed: &PresentationDiagram,
+    options: &LayoutOptions,
+) -> Result<LayoutAdaptation> {
     if options.adaptation == LayoutAdaptation::None {
-        return Ok(());
+        return Ok(LayoutAdaptation::None);
     }
     let family = validate_paired_render_model(parsed)?;
-    let shoal = matches!(
-        family,
-        DiagramFamilyId::FLOWCHART | DiagramFamilyId::AGENTFLOW
-    ) && required_layout_capability(parsed, family)?
-        == Some(RenderCapability::LayoutShoal);
+    let shoal = required_layout_capability(parsed, family)? == Some(RenderCapability::LayoutShoal);
     if !supported_layout_adaptations(family, shoal).contains(&options.adaptation) {
+        if options.adaptation_if_supported {
+            return Ok(LayoutAdaptation::None);
+        }
         return Err(Error::UnsupportedLayoutAdaptation {
             adaptation: options.adaptation.id(),
             diagram_type: parsed.metadata().diagram_type.clone(),
@@ -328,7 +385,7 @@ pub fn validate_layout_options(
     if !options.container_width.is_finite() || options.container_width <= 0.0 {
         return Err(Error::InvalidAdaptationWidth);
     }
-    Ok(())
+    Ok(options.adaptation)
 }
 
 /// Identifies the existing edge-geometry projection after closed typed model admission.

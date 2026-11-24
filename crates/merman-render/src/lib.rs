@@ -12,10 +12,15 @@
 //! [`family::supports_diagram_type`] to inspect this renderer's local handler availability:
 //! another dependency may enable additional model families without enabling their renderers.
 
-#[cfg(feature = "layout-cytoscape")]
-#[cfg(feature = "diagram-architecture")]
+#[cfg(all(
+    feature = "diagram-architecture",
+    any(feature = "layout-cytoscape", feature = "layout-shoal")
+))]
 pub mod architecture;
-#[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
+#[cfg(all(
+    feature = "diagram-architecture",
+    any(feature = "layout-cytoscape", feature = "layout-shoal")
+))]
 pub(crate) mod architecture_metrics;
 #[cfg(feature = "diagram-block")]
 pub mod block;
@@ -160,15 +165,18 @@ mod graph_label;
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-agentflow",
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-requirement",
+    feature = "diagram-state",
+    feature = "diagram-usecase",
     all(
-        feature = "layout-shoal",
         any(
-            feature = "diagram-class",
-            feature = "diagram-er",
-            feature = "diagram-requirement",
-            feature = "diagram-state",
-            feature = "diagram-usecase"
-        )
+            feature = "diagram-architecture",
+            feature = "diagram-block",
+            feature = "diagram-c4"
+        ),
+        feature = "layout-shoal"
     )
 ))]
 mod graph_layout;
@@ -687,13 +695,7 @@ pub struct LayoutAdaptationObservation {
 impl Eq for LayoutAdaptationObservation {}
 
 impl LayoutAdaptationObservation {
-    #[cfg(any(
-        feature = "diagram-kanban",
-        all(
-            feature = "layout-shoal",
-            any(feature = "diagram-flowchart", feature = "diagram-agentflow")
-        )
-    ))]
+    #[cfg(any(feature = "diagram-kanban", feature = "layout-shoal"))]
     pub(crate) fn fit_width(requested_width: f64, actual_width: f64) -> Self {
         debug_assert!(requested_width.is_finite() && requested_width > 0.0);
         debug_assert!(actual_width.is_finite() && actual_width >= 0.0);
@@ -741,6 +743,7 @@ pub struct LayoutOptions {
     pub screen_available_width: Option<f64>,
     /// Allow eligible Shoal leaf fans to occupy multiple rows during fit-width layout.
     pub fold_wide_ranks: bool,
+    adaptation_if_supported: bool,
     pub(crate) capture_shoal_frame: bool,
     pub(crate) previous_shoal_frame: Option<std::sync::Arc<ShoalLayoutFrame>>,
 }
@@ -753,6 +756,7 @@ impl Default for LayoutOptions {
             container_height: 600.0,
             screen_available_width: None,
             fold_wide_ranks: false,
+            adaptation_if_supported: false,
             capture_shoal_frame: false,
             previous_shoal_frame: None,
         }
@@ -768,6 +772,14 @@ impl LayoutOptions {
     /// Selects explicit family placement adaptation.
     pub fn with_adaptation(mut self, adaptation: LayoutAdaptation) -> Self {
         self.adaptation = adaptation;
+        self.adaptation_if_supported = false;
+        self
+    }
+
+    /// Prefers adapted placement for diagrams whose selected layout supports it.
+    pub fn with_adaptation_if_supported(mut self, adaptation: LayoutAdaptation) -> Self {
+        self.adaptation = adaptation;
+        self.adaptation_if_supported = true;
         self
     }
 
@@ -878,34 +890,27 @@ impl<'a> LayoutExecution<'a> {
         self.family.session().work_meter().as_ref()
     }
 
-    /// Reuses one bounded scratch buffer on a render worker across operation sessions.
+    /// Transfers scratch only from the preview frame selected by this operation.
     #[cfg(feature = "layout-shoal")]
-    pub(crate) fn with_shoal_scratch<T>(
-        solve: impl FnOnce(&mut merman_layout_shoal::LayoutScratch) -> T,
-    ) -> T {
+    pub(crate) fn shoal_preview_scratch(
+        &self,
+        previous: Option<&ShoalLayoutFrame>,
+    ) -> merman_layout_shoal::LayoutScratch {
         use merman_layout_shoal::LayoutScratch;
-        use std::cell::RefCell;
 
-        std::thread_local! {
-            static IDLE: RefCell<Option<LayoutScratch>> = const { RefCell::new(None) };
+        let policy = self.family.session().resource_policy();
+        let limit = ResourceLimitId::MaxLayoutWorkUnits;
+        let constrained = RenderResourcePolicy::constrained().value(limit);
+        if policy.profile() == RenderResourceProfile::Constrained
+            || policy
+                .value(limit)
+                .is_some_and(|units| constrained.is_some_and(|cap| units <= cap))
+        {
+            return LayoutScratch::with_max_retained_bytes(0);
         }
-
-        let mut scratch = IDLE
-            .try_with(|idle| idle.borrow_mut().take())
-            .ok()
-            .flatten()
-            .unwrap_or_default();
-        let result = solve(&mut scratch);
-        let _ = IDLE.try_with(|idle| {
-            let mut idle = idle.borrow_mut();
-            if idle
-                .as_ref()
-                .is_none_or(|other| other.retained_bytes() < scratch.retained_bytes())
-            {
-                *idle = Some(scratch);
-            }
-        });
-        result
+        previous
+            .and_then(ShoalLayoutFrame::take_scratch)
+            .unwrap_or_default()
     }
 
     pub(crate) fn local_time_zone(&self) -> &merman_model::time::LocalTimeZone {
@@ -941,9 +946,14 @@ pub(crate) fn layout_class_typed_by_engine(
     model: &ClassDiagram,
     effective_config: &merman_model::presentation::PresentationConfig,
     options: &LayoutExecution<'_>,
-
     render_config: &crate::class::ClassRenderConfig,
-) -> Result<(model::ClassDiagramLayout, class::ClassPreparedLabels)> {
+) -> Result<(
+    model::ClassDiagramLayout,
+    class::ClassPreparedLabels,
+    graph_layout::RouteContract,
+)> {
+    use graph_layout::RouteContract;
+
     options
         .work_meter_ref()
         .preflight_class_complexity(model, OperationPhase::Layout)?;
@@ -957,11 +967,11 @@ pub(crate) fn layout_class_typed_by_engine(
         return class::shoal::layout(
             model,
             effective_config,
-            options.text_measurer(),
-            options.math_renderer(),
+            options,
             render_config,
             &mut work_control,
-        );
+        )
+        .map(|(layout, labels, routes)| (layout, labels, RouteContract::canonical_graph(routes)));
     }
     #[cfg(feature = "layout-elk")]
     if selection.backend == layout_backend::GraphLayoutBackend::Elk {
@@ -973,7 +983,8 @@ pub(crate) fn layout_class_typed_by_engine(
             options.elk_operation_seed(),
             render_config,
             &mut work_control,
-        );
+        )
+        .map(|(layout, labels)| (layout, labels, RouteContract::ElkParity));
     }
     class::layout_class_diagram_typed_with_config(
         model,
@@ -983,6 +994,7 @@ pub(crate) fn layout_class_typed_by_engine(
         render_config,
         &mut work_control,
     )
+    .map(|(layout, labels)| (layout, labels, RouteContract::DagreParity))
 }
 
 #[cfg(all(test, feature = "layout-elk"))]
@@ -1848,34 +1860,29 @@ id1(Start)-->id2(Stop)
     }
 
     #[test]
-    fn shoal_rejects_other_graph_adapters_during_planning_and_execution() {
-        for body in [
-            "swimlane-beta LR\nA --> B",
-            "mindmap\n  root((Demo))\n    Leaf",
+    fn shoal_rejects_mindmap_during_planning_and_execution() {
+        let source = "---\nconfig:\n  layout: shoal\n---\nmindmap\n  root((Demo))\n    Leaf\n";
+        let parsed = MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
+        for error in [
+            family::plan_render(&parsed, &session).err(),
+            family::prepare(&parsed, &LayoutOptions::default(), session).err(),
         ] {
-            let source = format!("---\nconfig:\n  layout: shoal\n---\n{body}\n");
-            let parsed = MermaidEngine::new()
-                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
-                .unwrap()
-                .unwrap()
-                .into_presentation();
-            let session = crate::environment::RenderEnvironment::deterministic()
-                .begin_session()
-                .unwrap();
-            for error in [
-                family::plan_render(&parsed, &session).err(),
-                family::prepare(&parsed, &LayoutOptions::default(), session).err(),
-            ] {
-                let Some(Error::UnsupportedLayoutBackend {
-                    backend,
-                    diagram_type,
-                }) = error
-                else {
-                    panic!("expected an unsupported Shoal layout for {body}, got {error:?}");
-                };
-                assert_eq!(backend, "shoal");
-                assert_eq!(diagram_type, parsed.metadata().diagram_type);
-            }
+            let Some(Error::UnsupportedLayoutBackend {
+                backend,
+                diagram_type,
+            }) = error
+            else {
+                panic!("expected an unsupported Shoal layout for Mindmap, got {error:?}");
+            };
+            assert_eq!(backend, "shoal");
+            assert_eq!(diagram_type, parsed.metadata().diagram_type);
         }
     }
 
@@ -1918,7 +1925,15 @@ id1(Start)-->id2(Stop)
             ),
             ("sequenceDiagram\nA->>B: Hello", None),
             (
+                "swimlane-beta LR\nA --> B",
+                Some(RenderCapability::LayoutShoal),
+            ),
+            (
                 "architecture-beta\nservice api(server)[API]",
+                Some(RenderCapability::LayoutShoal),
+            ),
+            (
+                "---\nconfig:\n  layout: cose-bilkent\n---\narchitecture-beta\nservice api(server)[API]",
                 Some(RenderCapability::LayoutCytoscape),
             ),
         ] {

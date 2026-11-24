@@ -216,6 +216,7 @@ set edit:completion:arg-completer[merman-cli] = {|@words|
             cand --resource-profile 'Resource policy for input, semantic models, output, and CLI acquisition'
             cand --resource-limit 'Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated'
             cand --operation-timeout-ms 'Cancel the complete command operation after this many milliseconds'
+            cand --fit-width 'Fit Shoal or Kanban placement toward --width in CSS pixels when supported (experimental)'
             cand -q 'Suppress non-error log output'
             cand --quiet 'Suppress non-error log output'
             cand --raster-unbounded 'Disable raster size limits. Use only for trusted oversized exports'

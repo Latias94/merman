@@ -113,6 +113,14 @@ impl Coordinates {
             origins: filled(frames.len(), Point::default())?,
             borders: filled(hierarchy.borders.len(), Point::default())?,
         };
+        let root = ctx.graph.groups.len();
+        let root_frame = frames[root].as_ref().expect("solved root");
+        work.visit(ctx.graph.lane_order.len())?;
+        for (&id, &(rect, title)) in ctx.graph.lane_order.iter().zip(&root_frame.lane_shells) {
+            let group = &mut result.groups[id.0 as usize];
+            group.rect = place(rect, Point::default())?;
+            group.title_center = title;
+        }
         for &id in &hierarchy.order {
             let level = &hierarchy.levels[id];
             let frame = frames[id].as_ref().expect("solved level");
@@ -138,8 +146,14 @@ impl Coordinates {
                     Endpoint::Group(group) => {
                         let child = group.0 as usize;
                         result.groups[child].rect = rect;
-                        result.groups[child].parent =
-                            (id < ctx.graph.groups.len()).then_some(GroupId(id as u32));
+                        result.groups[child].parent = if id < root {
+                            Some(GroupId(id as u32))
+                        } else {
+                            hierarchy
+                                .lanes
+                                .as_ref()
+                                .map(|lanes| ctx.graph.lane_order[lanes.item(ctx.graph, item)])
+                        };
                         result.origins[child] = Point {
                             x: rect.x,
                             y: rect.y,

@@ -268,6 +268,12 @@ BINDING_OPTION_GROUP_SPECS = (
         "requires_svg_pipeline": True,
     },
     {
+        "id": "export_matte",
+        "always_available": False,
+        "any_capability_ids": ("jpeg", "pdf", "png"),
+        "requires_svg_pipeline": False,
+    },
+    {
         "id": "fixed_local_offset_minutes",
         "always_available": True,
         "any_capability_ids": (),

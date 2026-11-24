@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-import { getPreviewSettings } from "./config.js";
+import { getPreviewFitWidth, getPreviewSettings } from "./config.js";
 import { previewCliBackground } from "./preview-background.js";
 import { configuredThemeFileUri } from "./render-settings.js";
 import { resolvedRenderSettings } from "./render-options.js";
@@ -97,7 +97,7 @@ export class PreviewInstance implements vscode.Disposable {
     private readonly onDidChangeActiveState: (instance: PreviewInstance, active: boolean) => void,
     private readonly onDidChangeLockState: (instance: PreviewInstance) => void,
   ) {
-    this.session = new PreviewSession(getPreviewSettings());
+    this.session = new PreviewSession(getPreviewSettings(), (uri) => getPreviewFitWidth(vscode.Uri.parse(uri)));
     this.webviewClient = new PreviewWebviewClient(context.extensionUri);
   }
 
@@ -371,6 +371,9 @@ export class PreviewInstance implements vscode.Disposable {
           this.scheduleRefresh("diagram-theme", true);
         } else if (backgroundChanged) {
           this.scheduleRefresh("background", true);
+        } else if (this.session.previewDisplayMode === "svg" &&
+          event.affectsConfiguration("merman.preview.fitWidth", resource)) {
+          this.scheduleRefresh("fit-width", true);
         }
       }),
     );
@@ -618,6 +621,7 @@ export class PreviewInstance implements vscode.Disposable {
       outputChannel: this.outputChannel,
       signalLabel: "preview",
       signal,
+      previewFitWidth: snapshot.sourceKey.fitWidth,
       previewLayoutFrame: snapshot.displayMode === "svg"
         ? { previous: previousLayoutFrame }
         : undefined,

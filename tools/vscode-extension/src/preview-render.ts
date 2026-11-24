@@ -34,6 +34,7 @@ interface LayoutFrameSource {
   sourceId: string;
   kind: PreviewInput["kind"];
   sourceHash: string;
+  fitWidth?: number;
   fence?: {
     range: PreviewInput["sourceRange"];
     siblings: LayoutFrameFence[];
@@ -163,6 +164,7 @@ function layoutFrameSource(snapshot: PreviewSnapshot): LayoutFrameSource {
     kind,
     sourceId,
     sourceHash: fence ? hashFenceSource(input.source) : sourceKey.sourceHash,
+    fitWidth: sourceKey.fitWidth,
     fence,
   };
 }
@@ -174,7 +176,8 @@ function hashFenceSource(source: string): string {
 function continuesLayoutFrame(previous: LayoutFrameSource, next: LayoutFrameSource): boolean {
   const sourceChanged = previous.sourceHash !== next.sourceHash;
   if (previous.documentUri !== next.documentUri || previous.kind !== next.kind ||
-    previous.sourceId !== next.sourceId || previous.documentVersion > next.documentVersion ||
+    previous.sourceId !== next.sourceId || previous.fitWidth !== next.fitWidth ||
+    previous.documentVersion > next.documentVersion ||
     (previous.documentVersion === next.documentVersion && sourceChanged)) {
     return false;
   }

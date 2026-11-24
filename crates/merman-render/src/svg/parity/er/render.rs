@@ -2,9 +2,6 @@ use super::super::css::er_css_with_resolved_typography;
 use super::super::*;
 use super::markers::{ErMarkerDefs, er_unified_marker_id, write_er_marker_definitions};
 #[cfg(feature = "layout-shoal")]
-use crate::graph_layout::canonical::CanonicalRoutes;
-
-#[cfg(feature = "layout-shoal")]
 mod canonical;
 mod swimlane;
 
@@ -466,7 +463,7 @@ fn er_edge_dom_id(edge_id: &str, relationships: &[crate::er::ErRelationship]) ->
 )]
 pub(crate) fn render_er_diagram_svg_model(
     layout: &ErDiagramLayout,
-    #[cfg(feature = "layout-shoal")] canonical_routes: Option<&CanonicalRoutes>,
+    route_contract: &crate::graph_layout::RouteContract,
     model: &merman_model::families::er::ErDiagramModel,
     entity_theme: &crate::er::ErEntityThemePlan,
     effective_config: &merman_model::presentation::PresentationConfig,
@@ -483,11 +480,13 @@ pub(crate) fn render_er_diagram_svg_model(
     let native = binding.native.as_ref();
     let er_render_settings = &binding.render_settings;
     #[cfg(feature = "layout-shoal")]
+    let canonical_routes = route_contract.canonical_routes();
+    #[cfg(feature = "layout-shoal")]
     let uses_canonical_routes = canonical_routes.is_some();
     #[cfg(not(feature = "layout-shoal"))]
     let uses_canonical_routes = false;
-    let is_elk_layout = !uses_canonical_routes && er_render_settings.is_elk_layout;
-    let is_swimlane_layout = layout.swimlane.is_some();
+    let is_elk_layout = route_contract.is_elk_parity();
+    let is_swimlane_layout = matches!(route_contract, crate::graph_layout::RouteContract::Swimlane);
     let rounded_layout = is_elk_layout || is_swimlane_layout;
     let data_look = er_render_settings.diagram_look.as_str();
     let redux_border_colors = &binding.redux_border_colors;
@@ -2249,8 +2248,7 @@ mod tests {
             .expect("resolve baseline ER entity theme");
             super::render_er_diagram_svg_model(
                 &layout,
-                #[cfg(feature = "layout-shoal")]
-                None,
+                &crate::graph_layout::RouteContract::DagreParity,
                 &model,
                 &entity_theme,
                 &effective_config,

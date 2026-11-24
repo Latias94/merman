@@ -10,6 +10,9 @@ use std::cell::Cell;
 use std::fmt;
 use std::ops::Range;
 
+#[cfg(feature = "layout-shoal")]
+mod orthogonal;
+
 const BOUNDED_BLOCK_SOURCE: &str = r#"block
   A["Alpha"] --> B["Beta"]
   classDef branded fill:#696,stroke:#333
@@ -130,7 +133,7 @@ fn render_block_direct_with_policy(
     let layout_meter = std::sync::Arc::new(crate::resources::OperationWorkMeter::new(
         RenderResourcePolicy::unbounded_for_trusted_input(),
     ));
-    let (layout, prepared_labels) = crate::block::layout_block_diagram_typed_with_text_style(
+    let (mut layout, prepared_labels) = crate::block::layout_block_diagram_typed_with_text_style(
         model,
         typography_theme.padding(),
         crate::block::BlockShapeSettings::resolve(effective_config.as_value()),
@@ -138,6 +141,13 @@ fn render_block_direct_with_policy(
         typography_theme.text_style().clone(),
         &DeterministicTextMeasurer::default(),
         effective_config,
+        &layout_meter,
+    )?;
+    let edge_routes = BlockEdgeRoutes::prepare(
+        effective_config,
+        model,
+        &mut layout,
+        &typography_theme,
         &layout_meter,
     )?;
     let session = crate::environment::RenderEnvironment::deterministic()
@@ -154,6 +164,7 @@ fn render_block_direct_with_policy(
         &layout,
         model,
         &node_bindings,
+        &edge_routes,
         &typography_theme,
         &prepared_labels,
         &execution,
@@ -365,6 +376,7 @@ fn diagram_id_terminal_precedes_later_block_model_validation() {
         &layout,
         model,
         &BlockNodeBindings::default(),
+        &BlockEdgeRoutes::default(),
         &typography,
         &crate::block::BlockPreparedLabels::default(),
         &options,

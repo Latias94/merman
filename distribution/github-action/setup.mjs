@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { appendFile, mkdir, mkdtemp, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
+import timers from 'node:timers/promises';
 import { promisify } from 'node:util';
 
 const execute = promisify(execFile);
@@ -11,6 +12,15 @@ const targets = new Map([
   ['darwin-x64', 'x86_64-apple-darwin'],
   ['darwin-arm64', 'aarch64-apple-darwin'],
   ['win32-x64', 'x86_64-pc-windows-msvc'],
+]);
+const retryDelaysMs = [2_000, 4_000];
+const retryableTransportCodes = new Set([
+  'ENOTFOUND', 'EAI_AGAIN', 'ECONNRESET', 'ETIMEDOUT',
+  'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT', 'UND_ERR_SOCKET',
+]);
+const certificateErrorCodes = new Set([
+  'CERT_HAS_EXPIRED', 'DEPTH_ZERO_SELF_SIGNED_CERT', 'ERR_TLS_CERT_ALTNAME_INVALID',
+  'SELF_SIGNED_CERT_IN_CHAIN', 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
 ]);
 
 export function artifactFor(platform, arch) {
@@ -37,10 +47,24 @@ export function releaseFor(version, platform, arch) {
   };
 }
 
-async function responseFor(url, download) {
-  const response = await download(url);
-  if (!response.ok) throw new Error(`Download failed (HTTP ${response.status}): ${url}`);
-  return response;
+async function downloadBody(url, download, readBody) {
+  for (let attempt = 0; ; attempt++) {
+    let response;
+    try {
+      response = await download(url);
+      if (response.ok) return await readBody(response);
+    } catch (error) {
+      const code = error?.cause?.code ?? error?.code;
+      const retryable = retryableTransportCodes.has(code);
+      if (!retryable || attempt === retryDelaysMs.length) {
+        const reason = retryable || certificateErrorCodes.has(code) ? code : 'unrecognized error code';
+        throw new Error(`Download transport failed (${reason}, attempts=${attempt + 1}): ${url}`);
+      }
+      await timers.setTimeout(retryDelaysMs[attempt]);
+      continue;
+    }
+    throw new Error(`Download failed (HTTP ${response.status}): ${url}`);
+  }
 }
 
 export async function setup({ version, runnerTemp, githubPath, githubOutput, platform = process.platform, arch = process.arch }, download = fetch) {
@@ -48,12 +72,12 @@ export async function setup({ version, runnerTemp, githubPath, githubOutput, pla
   if (!runnerTemp || !githubPath || !githubOutput) {
     throw new Error('RUNNER_TEMP, GITHUB_PATH and GITHUB_OUTPUT must be set by the GitHub Actions runner');
   }
-  const checksumText = await (await responseFor(`${release.url}.sha256`, download)).text();
+  const checksumText = await downloadBody(`${release.url}.sha256`, download, (response) => response.text());
   const checksum = /^(?:sha256:)?([0-9A-Fa-f]{64})(?:[ \t]+\*?([0-9A-Za-z._-]+))?\r?\n?$/.exec(checksumText);
   if (!checksum || checksum[0] !== checksumText || (checksum[2] && checksum[2] !== release.archive)) {
     throw new Error(`Invalid SHA-256 checksum for ${release.archive}`);
   }
-  const bytes = Buffer.from(await (await responseFor(release.url, download)).arrayBuffer());
+  const bytes = Buffer.from(await downloadBody(release.url, download, (response) => response.arrayBuffer()));
   if (createHash('sha256').update(bytes).digest('hex') !== checksum[1].toLowerCase()) {
     throw new Error(`SHA-256 mismatch for ${release.archive}`);
   }

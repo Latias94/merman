@@ -7,11 +7,14 @@ mod compound;
 mod flat;
 mod model;
 mod options;
+mod ortho;
+mod orthogonal;
 mod scratch;
 mod work;
 
 pub use model::*;
 pub use options::*;
+pub use ortho::{OrthogonalSpan, route_orthogonal_spans};
 pub use scratch::LayoutScratch;
 pub use work::{LayoutError, NoopWorkControl, WorkControl, WorkError};
 
@@ -32,9 +35,19 @@ pub fn layout_with_control(
     scratch: &mut LayoutScratch,
     control: &mut impl WorkControl,
 ) -> Result<LayoutOutput, LayoutError> {
-    let frame = scratch.frame();
+    let mut frame = scratch.frame();
     let mut work = work::Work::new(control);
     work.charge(1)?;
+    if !graph.lane_order.is_empty() && options.width_policy != WidthPolicy::Natural {
+        return Err(LayoutError::Unsupported("width fitting for swimlanes"));
+    }
+    let reuse_components = options.reuse_unchanged_components
+        && options.width_policy == WidthPolicy::Natural
+        && graph.groups.is_empty();
+    if reuse_components {
+        frame.begin_components();
+    }
+    let mut keep_components = reuse_components && options.capture_node_ranks;
     let (output, width_trial) = match options.width_policy {
         WidthPolicy::Natural => (solve(graph, options, frame.expanded, &mut work)?, None),
         WidthPolicy::FitWidth { .. } => {
@@ -42,14 +55,19 @@ pub fn layout_with_control(
             (drawing, Some(trial))
         }
     };
-    let output = if work.editor_choice
+    let mut output = if work.editor_choice
         && (output.stats.topological_crossings != 0 || output.stats.routed_crossings != 0)
     {
+        if reuse_components {
+            frame.pause_components();
+        }
         let comparison = work.compare(|work| {
             let mut reference = adaptive::copy_graph(graph, work)?;
             for node in &mut reference.nodes {
                 work.visit(1)?;
                 node.order_hint = None;
+                node.position_hint = None;
+                node.current_incident_signature = None;
             }
             match width_trial {
                 Some(trial) => trial.replay(&mut reference, frame.expanded, work),
@@ -66,6 +84,7 @@ pub fn layout_with_control(
                         }
                     } =>
             {
+                keep_components = false;
                 reference
             }
             Ok(_) | Err(LayoutError::InvalidInput(_)) => output,
@@ -74,7 +93,11 @@ pub fn layout_with_control(
     } else {
         output
     };
+    orthogonal::refine(graph, &mut output, options, &mut work)?;
     work.finish()?;
+    if keep_components {
+        frame.commit_components(&output);
+    }
     Ok(output)
 }
 
@@ -90,7 +113,7 @@ fn solve(
     expanded: &mut flat::Expanded,
     work: &mut work::Work<'_>,
 ) -> Result<LayoutOutput, LayoutError> {
-    if graph.groups.is_empty() {
+    if graph.groups.is_empty() && graph.lane_order.is_empty() {
         flat::run(graph, options, expanded, work)
     } else {
         compound::run(graph, options, expanded, work)

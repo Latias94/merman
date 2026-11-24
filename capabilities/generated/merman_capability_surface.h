@@ -7,7 +7,7 @@
 #include <stddef.h>
 
 #define MERMAN_CAPABILITY_DESCRIPTOR_SCHEMA_VERSION 1
-#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:ece23386718c7ab5761aa12ceb2d415298082601a129b92aa9b3a97477be2ffa"
+#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:af9b083086538892622758a9724ce178d714d4dfbb34a70792cd94d849a839cd"
 
 #define MERMAN_TARGET_NATIVE "native"
 #define MERMAN_TARGET_TYPST "typst"
@@ -233,7 +233,7 @@ static const MermanCapabilityDescriptor MERMAN_CAPABILITIES[] = {
     { "jpeg", "output", "Export rendered diagrams as JPEG.", MERMAN_CAPABILITY_JPEG_TARGETS, 1, NULL, 0 },
     { "layout-cytoscape", "engine", "Enable Mermaid Cytoscape-backed layout behavior.", MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE_TARGETS, 3, MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE_IMPLICATIONS, 1 },
     { "layout-elk", "engine", "Enable Mermaid ELK-backed layout behavior.", MERMAN_CAPABILITY_LAYOUT_ELK_TARGETS, 3, MERMAN_CAPABILITY_LAYOUT_ELK_IMPLICATIONS, 1 },
-    { "layout-shoal", "engine", "Select the experimental Shoal layout for Flowchart, Agentflow, Class, State, ER, Requirement, and Usecase diagrams.", MERMAN_CAPABILITY_LAYOUT_SHOAL_TARGETS, 2, MERMAN_CAPABILITY_LAYOUT_SHOAL_IMPLICATIONS, 1 },
+    { "layout-shoal", "engine", "Select the experimental Shoal layout for Flowchart, Agentflow, Architecture, C4, Class, State, ER, Requirement, Swimlane, and Usecase diagrams, or route Block edges on the existing grid.", MERMAN_CAPABILITY_LAYOUT_SHOAL_TARGETS, 2, MERMAN_CAPABILITY_LAYOUT_SHOAL_IMPLICATIONS, 1 },
     { "markdown", "tool", "Compile CLI Markdown batch conversion.", MERMAN_CAPABILITY_MARKDOWN_TARGETS, 1, NULL, 0 },
     { "math", "engine", "Render Mermaid math labels with the selected math engine.", MERMAN_CAPABILITY_MATH_TARGETS, 2, MERMAN_CAPABILITY_MATH_IMPLICATIONS, 1 },
     { "native-fonts", "adapter", "Compile reusable native font measurement for shared graphical text, wrapping, bounds and computed lengths; CLI use requires runtime opt-in and shares selected font bytes with native painting while reporting unsupported or missing-glyph fallbacks.", MERMAN_CAPABILITY_NATIVE_FONTS_TARGETS, 1, NULL, 0 },

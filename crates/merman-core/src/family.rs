@@ -14,7 +14,7 @@ use crate::{EditorFamilySemantics, EditorSemanticFacts, EditorSemanticKind};
 use crate::{Error, OperationControl, OperationControlResult, Result};
 #[cfg(feature = "presentation")]
 use crate::{MermaidConfig, SourcePresentationMetadata};
-#[cfg(any(test, feature = "presentation", feature = "editor-facts"))]
+#[cfg(any(test, feature = "editor-facts"))]
 use merman_model::family::diagram_type_family_id;
 #[cfg(test)]
 use merman_model::family::diagram_type_metadata_id;
@@ -1626,6 +1626,77 @@ mod catalog_tests {
             for variant in family.variants {
                 assert_eq!(diagram_type_family_id(variant.id), Some(family.id));
             }
+        }
+    }
+
+    #[test]
+    fn presentation_family_uses_effective_layout() {
+        use merman_model::family::diagram_type_presentation_family_id;
+
+        for (diagram_type, layout, expected) in [
+            ("flowchart", None, DiagramFamilyId::FLOWCHART),
+            ("flowchart-v2", Some("dagre"), DiagramFamilyId::FLOWCHART),
+            ("flowchart-elk", Some("elk"), DiagramFamilyId::FLOWCHART),
+            ("flowchart", Some("swimlane"), DiagramFamilyId::SWIMLANE),
+            ("flowchart", Some("shoal"), DiagramFamilyId::FLOWCHART),
+            ("swimlane", None, DiagramFamilyId::FLOWCHART),
+            ("swimlane", Some("elk"), DiagramFamilyId::FLOWCHART),
+            ("swimlane", Some("shoal"), DiagramFamilyId::SWIMLANE),
+            ("swimlane", Some("swimlane"), DiagramFamilyId::SWIMLANE),
+            ("architecture", Some("shoal"), DiagramFamilyId::ARCHITECTURE),
+            ("mindmap", Some("swimlane"), DiagramFamilyId::MINDMAP),
+        ] {
+            assert_eq!(
+                diagram_type_presentation_family_id(diagram_type, layout),
+                Some(expected),
+                "{diagram_type} with layout {layout:?}"
+            );
+        }
+
+        assert_eq!(
+            diagram_type_presentation_family_id("future-diagram", Some("swimlane")),
+            None
+        );
+    }
+
+    #[cfg(all(feature = "presentation", feature = "diagram-swimlane"))]
+    #[test]
+    fn parsed_swimlane_retains_layout_ownership_and_presentation_family() {
+        let engine = crate::MermaidEngine::new();
+        for (source, layout, explicit, family) in [
+            (
+                "swimlane-beta LR\nA-->B",
+                "swimlane",
+                false,
+                DiagramFamilyId::SWIMLANE,
+            ),
+            (
+                "---\nconfig:\n  layout: shoal\n---\nswimlane-beta LR\nA-->B",
+                "shoal",
+                true,
+                DiagramFamilyId::SWIMLANE,
+            ),
+            (
+                "---\nconfig:\n  layout: elk\n---\nswimlane-beta LR\nA-->B",
+                "elk",
+                true,
+                DiagramFamilyId::FLOWCHART,
+            ),
+        ] {
+            let parsed = engine
+                .parse_diagram_for_render_model_sync(source, crate::ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let metadata = parsed.metadata();
+            assert_eq!(metadata.diagram_type, "swimlane");
+            assert_eq!(metadata.effective_config.get_str("layout"), Some(layout));
+            assert_eq!(
+                metadata
+                    .effective_config
+                    .explicit_config_owns_path("layout"),
+                explicit
+            );
+            assert_eq!(parsed.family_id(), Some(family));
         }
     }
 

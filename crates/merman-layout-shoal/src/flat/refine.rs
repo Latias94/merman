@@ -7,6 +7,8 @@ use super::{
 use crate::work::{LayoutResult, Work, filled, reserved};
 use crate::{Direction, Graph, LayoutError, Options, PortSideHint, RoutingStyle, Side, WorkError};
 
+mod mental_map;
+
 const INLINE: f64 = 0.5;
 const COLLINEAR: f64 = 0.01;
 const NODE_SNAP: f64 = 12.;
@@ -73,6 +75,7 @@ fn vertex(g: &Expanded, e: usize, side: usize) -> usize {
 
 struct Geometry<'a> {
     g: &'a Expanded,
+    columns: Option<super::lanes::Columns<'a>>,
     x: Vec<f64>,
     dx: [Vec<f64>; 2],
     pos: Vec<usize>,
@@ -91,6 +94,7 @@ struct Geometry<'a> {
     twin: Vec<usize>,
     protected: Vec<bool>,
     keep: Vec<bool>,
+    has_position_hints: bool,
 }
 
 impl<'a> Geometry<'a> {
@@ -109,6 +113,7 @@ impl<'a> Geometry<'a> {
         work.charge(m.checked_mul(8).ok_or(WorkError::ArithmeticOverflow)?)?;
         let mut s = Self {
             g,
+            columns: None,
             x: copy(x)?,
             dx: [copy(&g.target_offset)?, copy(&g.source_offset)?],
             pos: filled(n, 0)?,
@@ -128,6 +133,7 @@ impl<'a> Geometry<'a> {
             twin: filled(n, END)?,
             protected: filled(n, false)?,
             keep: filled(n, true)?,
+            has_position_hints: false,
         };
         for (v, &center) in x.iter().enumerate() {
             let (left, right) = extents(g, c, options, v as u32);
@@ -135,6 +141,9 @@ impl<'a> Geometry<'a> {
             s.envelope.lo = s.envelope.lo.min(center - left);
             s.envelope.hi = s.envelope.hi.max(center + right);
             if let Some(node) = c.nodes.get(v) {
+                s.has_position_hints |= c.nodes.len() > 1
+                    && !s.has_position_hints
+                    && node.position_hint_in(graph.direction, g.rank[v]).is_some();
                 s.span[v] = node
                     .port_span
                     .unwrap_or((g.width[v] - 2. * options.spacing.corner_clearance).max(0.))
@@ -196,7 +205,9 @@ impl<'a> Geometry<'a> {
                     .flatten()
                     .map(|p| p - g.width[v] * 0.5);
                 let fixed = match to_canonical_port(graph.direction, hint) {
-                    PortSideHint::Auto => anchor,
+                    PortSideHint::Auto => {
+                        anchor.or_else(|| g.spine_ports.centered(v, side, e).then_some(0.0))
+                    }
                     PortSideHint::FixedOffset {
                         side: Side::Top | Side::Bottom,
                         offset,
@@ -243,6 +254,11 @@ impl<'a> Geometry<'a> {
         self.x[vertex(self.g, e, side)] + self.dx[side][e]
     }
 
+    fn same_lane(&self, a: usize, b: usize) -> bool {
+        self.columns
+            .is_none_or(|columns| columns.owners[a] == columns.owners[b])
+    }
+
     fn room(&self, v: usize, same: impl Fn(usize) -> bool) -> Interval {
         self.room_with_slack(v, same, 0.0)
     }
@@ -258,8 +274,13 @@ impl<'a> Geometry<'a> {
                 0.0
             }
         };
-        let mut lo = self.envelope.lo + l;
-        let mut hi = self.envelope.hi - r;
+        let [left, right] = self
+            .columns
+            .map_or([self.envelope.lo, self.envelope.hi], |columns| {
+                columns.content[columns.owners[v]]
+            });
+        let mut lo = left + l;
+        let mut hi = right - r;
         if i > 0 {
             let p = row[i - 1] as usize;
             if !same(p) {
@@ -612,6 +633,7 @@ fn align_labels(s: &mut Geometry<'_>, work: &mut Work<'_>) -> LayoutResult<()> {
 struct Pool {
     mean: f64,
     count: usize,
+    weight: f64,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -620,14 +642,25 @@ enum ZeroGap {
     Ordered,
 }
 
-/// Equal-weight bounded isotonic projection. Subtracting cumulative pitches turns the shaft
-/// separation constraints into monotonicity. Both bounds are common to all pooled levels.
 fn pava(
     values: &mut [f64],
     gap: &[f64],
     bounds: Interval,
     zero_gap: ZeroGap,
     pools: &mut Vec<Pool>,
+) -> bool {
+    weighted_pava(values, gap, bounds, zero_gap, pools, |_| 1.)
+}
+
+/// Subtract cumulative separations to turn ordered coordinates into an isotonic sequence.
+/// The transformed bounds are common to all pools.
+fn weighted_pava(
+    values: &mut [f64],
+    gap: &[f64],
+    bounds: Interval,
+    zero_gap: ZeroGap,
+    pools: &mut Vec<Pool>,
+    weight: impl Fn(usize) -> f64,
 ) -> bool {
     let total = gap.iter().skip(1).sum::<f64>();
     let hi = bounds.hi - total;
@@ -643,6 +676,7 @@ fn pava(
         pools.push(Pool {
             mean: target - before,
             count: 1,
+            weight: weight(i),
         });
         let mut together = zero_gap == ZeroGap::Equal && i > 0 && gap[i] == 0.;
         while pools.len() > 1 {
@@ -653,7 +687,8 @@ fn pava(
             let right = pools.pop().unwrap();
             let left = pools.last_mut().unwrap();
             left.count += right.count;
-            left.mean += (right.mean - left.mean) * (right.count as f64 / left.count as f64);
+            left.weight += right.weight;
+            left.mean += (right.mean - left.mean) * (right.weight / left.weight);
             together = false;
         }
     }
@@ -1085,7 +1120,10 @@ fn straighten(s: &mut Geometry<'_>, options: &Options, work: &mut Work<'_>) -> L
                 continue;
             }
             let mut end = first + 1;
-            while end < row.len() && !s.protected[row[end] as usize] {
+            while end < row.len()
+                && !s.protected[row[end] as usize]
+                && s.same_lane(row[first] as usize, row[end] as usize)
+            {
                 end += 1;
             }
             let ids = &row[first..end];
@@ -1152,7 +1190,7 @@ fn straighten(s: &mut Geometry<'_>, options: &Options, work: &mut Work<'_>) -> L
         while i + 1 < chain.len() {
             if !can_skip(chain[i]) {
                 let v = chain[i] as usize;
-                if curved && s.free_bend(v) && !s.bare[g.rank[v] as usize] {
+                if curved && s.columns.is_none() && s.free_bend(v) && !s.bare[g.rank[v] as usize] {
                     s.keep[v] = false;
                 }
                 i += 1;
@@ -1207,12 +1245,30 @@ pub(super) fn refine(
     x: &mut [f64],
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
+    refine_in_columns(g, c, orientation, graph, options, x, None, work)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn refine_in_columns(
+    g: &mut Expanded,
+    c: &Component,
+    orientation: &Orientation,
+    graph: &Graph,
+    options: &Options,
+    x: &mut [f64],
+    columns: Option<super::lanes::Columns<'_>>,
+    work: &mut Work<'_>,
+) -> LayoutResult<()> {
     work.charge(1)?;
     let mut s = Geometry::new(g, c, orientation, graph, options, x, work)?;
+    s.columns = columns;
     center_forks(&mut s, c.nodes.len(), work)?;
     align_labels(&mut s, work)?;
     settle(&mut s, c.nodes.len(), options, work)?;
     snap(&mut s, work)?;
+    if s.has_position_hints {
+        mental_map::stabilize(&mut s, c, graph.direction, options, work)?;
+    }
     if c.boundaries {
         align_ports(&mut s, work)?;
     }

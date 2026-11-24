@@ -624,7 +624,7 @@ mod tests {
             &model,
             &metadata.effective_config,
             &prepared_theme.compatibility,
-            layout.uses_elk_adapter_dom,
+            layout.route_contract.is_elk_parity(),
             sidecar.base_typography(),
         );
         let edge_style_plan = FlowchartEdgeStylePlan::prepare_for_model(

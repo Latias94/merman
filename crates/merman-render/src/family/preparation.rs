@@ -95,7 +95,9 @@ fn prepare_flowchart_artifact<'parsed, L>(
         return Err(error.into());
     }
     let uses_elk = match layout_view(&layout) {
-        crate::svg::FlowchartNodeLayoutView::Flowchart(layout) => layout.uses_elk_adapter_dom,
+        crate::svg::FlowchartNodeLayoutView::Flowchart(layout) => {
+            layout.route_contract.is_elk_parity()
+        }
         crate::svg::FlowchartNodeLayoutView::Swimlane(_) => false,
     };
     let mut render_config = crate::svg::prepare_flowchart_render_config(
@@ -230,7 +232,7 @@ fn prepare_block_family<'parsed>(
         None => crate::block::BlockTypographyThemePlan::resolve(meta.effective_config.as_value())?,
     };
     typography_theme.prepare_class_definitions(&model.class_defs);
-    let (layout, prepared_labels) = crate::block::layout_block_diagram_typed_with_text_style(
+    let (mut layout, prepared_labels) = crate::block::layout_block_diagram_typed_with_text_style(
         model,
         typography_theme.padding(),
         crate::block::BlockShapeSettings::resolve(meta.effective_config.as_value())
@@ -241,6 +243,13 @@ fn prepare_block_family<'parsed>(
         &meta.effective_config,
         &execution.work_meter(),
     )?;
+    let edge_routes = crate::block::BlockEdgeRoutes::prepare(
+        &meta.effective_config,
+        model,
+        &mut layout,
+        &typography_theme,
+        &execution.work_meter(),
+    )?;
     let node_bindings =
         crate::block::BlockNodeBindings::prepare(model, &layout, execution.work_meter_ref())?;
     Ok(BuiltinFamilyArtifact::Block(Box::new(
@@ -248,6 +257,7 @@ fn prepare_block_family<'parsed>(
             pair: FamilyPair::new(model, layout),
             prepared_labels,
             node_bindings,
+            edge_routes,
             typography_theme,
         },
     )))
@@ -385,39 +395,19 @@ fn prepare_state_family<'parsed>(
         execution.native_family_theme::<crate::state::StateThemeAdapter>(),
         execution.family.session().canvas_background(),
     );
-    let compatibility = || {
-        crate::state::layout_state_diagram_typed_with_work_meter(
-            model,
-            config,
-            &style,
-            Some(&label_sidecar),
-            execution,
-        )
-    };
-    #[cfg(feature = "layout-shoal")]
-    let (layout, canonical_routes) = if crate::layout_backend::resolve_graph_layout(config).backend
-        == crate::layout_backend::GraphLayoutBackend::Shoal
-    {
-        let (layout, routes) = crate::state::layout_state_diagram_shoal(
-            model,
-            config,
-            &style,
-            Some(&label_sidecar),
-            execution,
-        )?;
-        (layout, Some(routes))
-    } else {
-        (compatibility()?, None)
-    };
-    #[cfg(not(feature = "layout-shoal"))]
-    let layout = compatibility()?;
+    let (layout, route_contract) = crate::state::layout_state_diagram_typed_with_work_meter(
+        model,
+        config,
+        &style,
+        Some(&label_sidecar),
+        execution,
+    )?;
     let label_sidecar = label_sidecar.finish();
     Ok(BuiltinFamilyArtifact::State(Box::new(
         StateFamilyArtifact {
             pair: FamilyPair::new(model, layout),
             label_sidecar,
-            #[cfg(feature = "layout-shoal")]
-            canonical_routes,
+            route_contract,
             style,
         },
     )))
@@ -447,11 +437,9 @@ fn prepare_flowchart_family<'parsed>(
                         model,
                         render_context,
                         &meta.effective_config,
-                        execution.text_measurer(),
-                        execution.math_renderer(),
+                        execution,
                         svg_label_sidecar,
                         edge_style_plan,
-                        execution.work_meter(),
                     )
                 },
             )?))
@@ -486,7 +474,7 @@ fn prepare_flowchart_family<'parsed>(
     }
 }
 
-#[cfg(feature = "layout-cytoscape")]
+#[cfg(any(feature = "layout-cytoscape", feature = "layout-shoal"))]
 #[inline(never)]
 #[cfg(feature = "diagram-architecture")]
 fn prepare_architecture_family<'parsed>(
@@ -497,20 +485,49 @@ fn prepare_architecture_family<'parsed>(
     let native = execution.native_family_theme::<crate::architecture::ArchitectureThemeAdapter>();
     let group_theme =
         crate::architecture::ArchitectureGroupThemePlan::resolve(native, &meta.effective_config);
-    let layout = crate::architecture::layout_architecture_diagram_typed_with_style(
-        model,
-        meta.effective_config.as_value(),
-        execution.text_measurer(),
-        execution.operation_seed(),
-        execution.work_meter_ref(),
-        group_theme.native_style().map(|native| &native.layout_text),
-    )?;
-    Ok(BuiltinFamilyArtifact::Architecture(Box::new(
-        ArchitectureFamilyArtifact {
-            pair: FamilyPair::new(model, layout),
-            group_theme,
-        },
-    )))
+    let config = meta.effective_config.as_value();
+    #[cfg(feature = "layout-shoal")]
+    if crate::layout_backend::resolve_architecture_layout(config).backend
+        == crate::layout_backend::GraphLayoutBackend::Shoal
+    {
+        let (layout, geometry) = crate::architecture::layout_architecture_shoal(
+            model,
+            &meta.effective_config,
+            &group_theme,
+            execution,
+        )?;
+        return Ok(BuiltinFamilyArtifact::Architecture(Box::new(
+            ArchitectureFamilyArtifact {
+                pair: FamilyPair::new(model, layout),
+                group_theme,
+                shoal: Some(geometry),
+            },
+        )));
+    }
+    #[cfg(feature = "layout-cytoscape")]
+    {
+        let layout = crate::architecture::layout_architecture_diagram_typed(
+            model,
+            config,
+            execution.text_measurer(),
+            execution.operation_seed(),
+            execution.work_meter_ref(),
+            group_theme.native_style().map(|native| &native.layout_text),
+        )?;
+        Ok(BuiltinFamilyArtifact::Architecture(Box::new(
+            ArchitectureFamilyArtifact {
+                pair: FamilyPair::new(model, layout),
+                group_theme,
+                #[cfg(feature = "layout-shoal")]
+                shoal: None,
+            },
+        )))
+    }
+    #[cfg(not(feature = "layout-cytoscape"))]
+    Err(Error::MissingCapability {
+        capability: crate::RenderCapability::LayoutCytoscape,
+        diagram_type: meta.diagram_type.clone(),
+    })
 }
 
 #[inline(never)]
@@ -525,15 +542,35 @@ fn prepare_c4_family<'parsed>(
         crate::c4::C4TypographyThemePlan::resolve(native, &meta.effective_config, model);
     let cluster_theme =
         crate::c4::C4ClusterThemePlan::resolve(native, &model.boundaries, &meta.effective_config);
-    let layout = crate::c4::layout_c4_diagram_typed(
-        model,
-        meta.effective_config.as_value(),
-        &typography_theme,
-        execution.text_measurer(),
-        crate::geom::Size::new(execution.container_width, execution.container_height),
-        execution.screen_available_width,
-        execution.work_meter_ref(),
-    )?;
+    let config = meta.effective_config.as_value();
+    let grid = || {
+        crate::c4::layout_c4_diagram_typed(
+            model,
+            config,
+            &typography_theme,
+            execution.text_measurer(),
+            crate::geom::Size::new(execution.container_width, execution.container_height),
+            execution.screen_available_width,
+            execution.work_meter_ref(),
+        )
+    };
+    #[cfg(feature = "layout-shoal")]
+    let (layout, shoal) = if crate::layout_backend::resolve_graph_layout(config).backend
+        == crate::layout_backend::GraphLayoutBackend::Shoal
+    {
+        let (layout, geometry) = crate::c4::layout_c4_shoal(
+            model,
+            config,
+            &typography_theme,
+            &cluster_theme,
+            execution,
+        )?;
+        (layout, Some(geometry))
+    } else {
+        (grid()?, None)
+    };
+    #[cfg(not(feature = "layout-shoal"))]
+    let layout = grid()?;
     let text_paint = crate::c4::C4TextPaintPlan::prepare(
         model,
         &layout,
@@ -545,6 +582,8 @@ fn prepare_c4_family<'parsed>(
         cluster_theme,
         typography_theme,
         text_paint,
+        #[cfg(feature = "layout-shoal")]
+        shoal,
     })))
 }
 
@@ -730,19 +769,24 @@ fn prepare_er_family<'parsed>(
         )
     });
     let font_family = crate::config::config_font_family_css(&meta.effective_config);
+    let config = crate::er::ErConfigView::new(meta.effective_config.as_value());
+    let settings = config.layout_settings_with_native_style(
+        &model.direction,
+        Some(&font_family),
+        native.as_ref(),
+    );
     let crate::er::ErPreparedLayout {
         layout,
-        #[cfg(feature = "layout-shoal")]
-        canonical_routes,
-    } = crate::er::layout_er_diagram_typed_with_resolved_typography(
+        route_contract,
+    } = crate::er::layout_er_diagram_typed(
         model,
         meta.effective_config.as_value(),
         execution.text_measurer(),
         #[cfg(feature = "layout-elk")]
         execution.elk_operation_seed(),
-        Some(&font_family),
-        None,
-        native.as_ref(),
+        settings,
+        #[cfg(feature = "layout-shoal")]
+        Some(execution),
         execution.work_meter(),
     )?;
     let entity_theme = crate::er::ErEntityThemePlan::resolve(
@@ -755,8 +799,7 @@ fn prepare_er_family<'parsed>(
     Ok(BuiltinFamilyArtifact::Er(Box::new(ErFamilyArtifact {
         pair: FamilyPair::new(model, layout),
         entity_theme,
-        #[cfg(feature = "layout-shoal")]
-        canonical_routes,
+        route_contract,
     })))
 }
 
@@ -929,6 +972,8 @@ fn prepare_requirement_family<'parsed>(
             execution.text_measurer(),
             paint_theme.css(),
             &execution.work_meter(),
+            #[cfg(feature = "layout-shoal")]
+            Some(execution),
             #[cfg(feature = "layout-elk")]
             execution.elk_operation_seed(),
         )?;
@@ -960,7 +1005,7 @@ fn prepare_class_family<'parsed>(
     if let Some(native) = native {
         render_config = render_config.with_native_style(native, &meta.effective_config);
     }
-    let (layout, prepared_labels) = crate::layout_class_typed_by_engine(
+    let (layout, prepared_labels, route_contract) = crate::layout_class_typed_by_engine(
         model,
         &meta.effective_config,
         execution,
@@ -972,6 +1017,7 @@ fn prepare_class_family<'parsed>(
         ClassFamilyArtifact {
             pair: FamilyPair::new(model, layout),
             prepared_labels,
+            route_contract,
             relation_theme,
             typography_theme,
             render_config,
@@ -1126,7 +1172,10 @@ pub(super) fn prepare_class_render<'parsed>(
 }
 
 #[inline(never)]
-#[cfg(all(feature = "diagram-architecture", feature = "layout-cytoscape"))]
+#[cfg(all(
+    feature = "diagram-architecture",
+    any(feature = "layout-cytoscape", feature = "layout-shoal")
+))]
 pub(super) fn prepare_architecture_render<'parsed>(
     parsed: &'parsed PresentationDiagram,
     options: &LayoutOptions,
@@ -1199,12 +1248,12 @@ pub(super) fn prepare_non_class_render<'parsed>(
             &execution,
             preparation,
         )?,
-        #[cfg(feature = "layout-cytoscape")]
+        #[cfg(any(feature = "layout-cytoscape", feature = "layout-shoal"))]
         #[cfg(feature = "diagram-architecture")]
         RenderSemanticModel::Architecture(_) => {
             unreachable!("Architecture models use the stack-bounded family dispatch path")
         }
-        #[cfg(not(feature = "layout-cytoscape"))]
+        #[cfg(not(any(feature = "layout-cytoscape", feature = "layout-shoal")))]
         #[cfg(feature = "diagram-architecture")]
         RenderSemanticModel::Architecture(_) => {
             return Err(Error::MissingCapability {
@@ -1295,6 +1344,8 @@ pub(super) fn prepare_non_class_render<'parsed>(
                     execution.text_measurer(),
                     execution.math_renderer(),
                     execution.work_meter(),
+                    #[cfg(feature = "layout-shoal")]
+                    &execution,
                     #[cfg(feature = "layout-elk")]
                     execution.elk_operation_seed(),
                 )

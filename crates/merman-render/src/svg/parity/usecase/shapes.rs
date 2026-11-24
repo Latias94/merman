@@ -153,7 +153,7 @@ pub(super) fn write_node(
         let placement = ActorPlacement::legacy(node.height);
         #[cfg(feature = "layout-shoal")]
         let placement = if context.canonical {
-            ActorPlacement::canonical(plan.height, actor.actor_type).0
+            ActorPlacement::canonical(plan, actor.actor_type).placement
         } else {
             placement
         };

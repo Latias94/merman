@@ -718,7 +718,7 @@ class RustLayoutTests(unittest.TestCase):
         receipts = [proof[0], dict(proof[1], family="sequence", required_capabilities=[])]
         self.assertEqual(check(outputs, receipts)[1]["status"], "layout-backend-mismatch")
         self.assertIsNone(receipts[1]["backend"])
-        for family in ("agentflow", "class", "state", "er", "requirement", "usecase"):
+        for family in ("agentflow", "architecture", "block", "c4", "class", "state", "er", "requirement", "swimlane", "usecase"):
             with self.subTest(family=family):
                 receipts = [proof[0], dict(proof[1], family=family)]
                 self.assertNotIn("status", check(outputs, receipts)[1])
@@ -752,6 +752,10 @@ class RustLayoutTests(unittest.TestCase):
                 expected = None if family == "er" else "dagre"
                 self.assertEqual(receipt["backend"], expected)
                 self.assertEqual(signature["status"], "layout-backend-mismatch")
+
+        receipt, signature = verify("architecture", ["layout-cytoscape"], "shoal")
+        self.assertEqual(receipt["backend"], "cytoscape")
+        self.assertEqual(signature["status"], "layout-backend-mismatch")
 
         receipt, signature = verify("er", [], "dagre")
         self.assertIsNone(receipt["backend"])

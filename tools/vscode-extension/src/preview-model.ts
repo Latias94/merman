@@ -30,6 +30,7 @@ export interface PreviewSourceKey {
   displayMode: PreviewDisplayMode;
   background: PreviewBackground;
   themeSelection?: string;
+  fitWidth?: number;
 }
 
 export interface PreviewSnapshot {
@@ -64,6 +65,7 @@ export interface CreatePreviewSnapshotRequest {
   displayMode: PreviewDisplayMode;
   background: PreviewBackground;
   locked: boolean;
+  fitWidth?: number;
   appearancePreference?: ThemeAppearancePreference;
   resolvedTheme?: ResolvedTheme;
   themeChoices?: ThemeChoice[];
@@ -71,7 +73,7 @@ export interface CreatePreviewSnapshotRequest {
   viewerBackground?: PreviewViewerBackground;
 }
 
-export function createPreviewSnapshot(request: CreatePreviewSnapshotRequest): PreviewSnapshot {
+export function createPreviewSnapshot({ fitWidth, ...request }: CreatePreviewSnapshotRequest): PreviewSnapshot {
   return {
     ...request,
     sourceKey: {
@@ -81,6 +83,7 @@ export function createPreviewSnapshot(request: CreatePreviewSnapshotRequest): Pr
       diagramTheme: request.diagramTheme,
       displayMode: request.displayMode,
       background: request.background,
+      ...(request.displayMode === "svg" && fitWidth !== undefined ? { fitWidth } : {}),
       themeSelection: request.resolvedTheme ? createHash("sha256").update(JSON.stringify({
         requested: request.diagramTheme,
         preference: request.appearancePreference,
@@ -97,15 +100,7 @@ export function samePreviewSource(a: PreviewSnapshot, b: PreviewSnapshot): boole
 }
 
 export function samePreviewRenderKey(a: PreviewSnapshot, b: PreviewSnapshot): boolean {
-  return (
-    a.sourceKey.documentUri === b.sourceKey.documentUri &&
-    a.sourceKey.sourceId === b.sourceKey.sourceId &&
-    a.sourceKey.sourceHash === b.sourceKey.sourceHash &&
-    a.sourceKey.diagramTheme === b.sourceKey.diagramTheme &&
-    a.sourceKey.displayMode === b.sourceKey.displayMode &&
-    a.sourceKey.background === b.sourceKey.background &&
-    a.sourceKey.themeSelection === b.sourceKey.themeSelection
-  );
+  return samePreviewSourceKey(a.sourceKey, b.sourceKey);
 }
 
 export function samePreviewSourceKey(a: PreviewSourceKey, b: PreviewSourceKey): boolean {
@@ -116,7 +111,8 @@ export function samePreviewSourceKey(a: PreviewSourceKey, b: PreviewSourceKey): 
     a.diagramTheme === b.diagramTheme &&
     a.displayMode === b.displayMode &&
     a.background === b.background &&
-    a.themeSelection === b.themeSelection
+    a.themeSelection === b.themeSelection &&
+    a.fitWidth === b.fitWidth
   );
 }
 
@@ -129,5 +125,6 @@ export function previewSourceKeyId(key: PreviewSourceKey): string {
     key.displayMode,
     key.background,
     key.themeSelection ?? "",
+    ...(key.fitWidth === undefined ? [] : [key.fitWidth]),
   ].join("\u0000");
 }

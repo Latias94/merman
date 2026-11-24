@@ -612,8 +612,7 @@ pub(crate) fn render_usecase_diagram_svg_model(
         );
         out.push_str("</g>");
     }
-    let elk = crate::layout_backend::resolve_graph_layout(cfg).backend
-        == crate::layout_backend::GraphLayoutBackend::Elk;
+    let elk = prepared.route_contract().is_elk_parity();
     let hop_points = if elk && config_bool(cfg, &["elk", "lineHops"]) != Some(false) {
         let clone_work = prepared.edges.iter().fold(0usize, |total, plan| {
             total.saturating_add(

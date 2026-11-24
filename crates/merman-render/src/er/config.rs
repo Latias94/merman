@@ -1,5 +1,5 @@
 use crate::config::{config_bool, config_diagram_look, config_f64, config_f64_css_px};
-use crate::layout_backend::{GraphLayoutBackend, resolve_graph_layout};
+use crate::layout_backend::GraphLayoutBackend;
 use crate::text::{TextStyle, WrapMode};
 use dugong::{GraphLabel, RankDir};
 use serde_json::Value;
@@ -38,7 +38,26 @@ impl<'a> ErConfigView<'a> {
         self.layout_settings_with_resolved_typography(direction, font_family_override, None)
     }
 
-    pub(super) fn layout_settings_with_resolved_typography(
+    pub(crate) fn layout_settings_with_native_style(
+        &self,
+        direction: &str,
+        font_family_css: Option<&str>,
+        native: Option<&super::ErNativeStyle>,
+    ) -> ErLayoutSettings {
+        let mut settings = self.layout_settings_with_resolved_typography(
+            direction,
+            native
+                .and_then(|style| style.body_family.as_deref())
+                .or(font_family_css),
+            native.and_then(|style| style.font_size),
+        );
+        if let Some(style) = native {
+            style.apply_layout(&mut settings);
+        }
+        settings
+    }
+
+    fn layout_settings_with_resolved_typography(
         &self,
         direction: &str,
         font_family_override: Option<&str>,
@@ -99,7 +118,6 @@ impl<'a> ErConfigView<'a> {
             .unwrap_or_else(|| self.font_family_css());
         let font_size = font_size_override.unwrap_or_else(|| self.font_size());
         ErRenderSettings {
-            is_elk_layout: self.is_elk_layout(),
             diagram_look: config_diagram_look(self.effective_config)
                 .as_str()
                 .to_string(),
@@ -245,10 +263,6 @@ impl<'a> ErConfigView<'a> {
             .unwrap_or(DEFAULT_TITLE_TOP_MARGIN)
     }
 
-    pub(crate) fn is_elk_layout(&self) -> bool {
-        resolve_graph_layout(self.effective_config).backend == GraphLayoutBackend::Elk
-    }
-
     pub(crate) fn is_swimlane_layout(&self) -> bool {
         crate::layout_backend::resolve_er_graph_layout(self.effective_config).backend
             == GraphLayoutBackend::Swimlane
@@ -321,7 +335,7 @@ impl<'a> ErConfigView<'a> {
     }
 }
 
-pub(super) struct ErLayoutSettings {
+pub(crate) struct ErLayoutSettings {
     pub(super) graph: GraphLabel,
     pub(super) label_style: TextStyle,
     pub(super) attr_style: TextStyle,
@@ -344,7 +358,6 @@ pub(crate) struct ErEntityMeasurementSettings {
 
 #[derive(Debug)]
 pub(crate) struct ErRenderSettings {
-    pub(crate) is_elk_layout: bool,
     pub(crate) diagram_look: String,
     pub(crate) font_family: String,
     pub(crate) font_size: f64,
@@ -425,7 +438,6 @@ mod tests {
 
         let settings = ErConfigView::new(&cfg).layout_settings_with_font_family("LR", None);
 
-        assert!(!ErConfigView::new(&cfg).is_elk_layout());
         assert_eq!(settings.graph.rankdir, RankDir::LR);
         assert_eq!(settings.graph.nodesep, 160.0);
         assert_eq!(settings.graph.ranksep, 90.0);
@@ -543,7 +555,6 @@ mod tests {
 
         let settings = ErConfigView::new(&cfg).render_settings_with_font_family(None);
 
-        assert_eq!(settings.is_elk_layout, cfg!(feature = "layout-elk"));
         assert_eq!(settings.diagram_look, "handDrawn");
         assert_eq!(settings.hand_drawn_seed, 7.0);
         assert_eq!(settings.font_size, 0.0);

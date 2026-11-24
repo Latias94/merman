@@ -219,21 +219,9 @@ pub(super) fn render_flowchart_svg_model(
                     super::swimlane::write_swimlane_css(
                         &mut css_out,
                         diagram_id,
-                        &prepared_theme.compatibility.cluster_border,
+                        &compatibility.cluster_border,
+                        ctx.native,
                     );
-                    if let Some(native) = ctx.native {
-                        let id = FlowchartCssSelectorDiagramId::new(diagram_id);
-                        let _ = write!(
-                            css_out,
-                            "#{id} rect.swimlane-body{{fill:{};stroke:{}}}#{id} rect.swimlane-title{{fill:{};stroke:{}}}#{id} .swimlane-label text{{fill:{}}}#{id} .swimlane-label span{{color:{}}}",
-                            native.container,
-                            native.guide,
-                            native.emphasis,
-                            native.guide,
-                            native.on_emphasis,
-                            native.on_emphasis,
-                        );
-                    }
                 }
                 palette_offset
             };
@@ -256,7 +244,7 @@ pub(super) fn render_flowchart_svg_model(
                 edge_labels: &mut edge_labels,
                 step_badges: &step_badges,
             };
-            if layout.uses_elk_adapter_dom {
+            if layout.route_contract.is_elk_parity() {
                 out.push_str("<g>");
                 defs.push_base_markers(&mut out)?;
                 out.checkpoint()?;
@@ -665,7 +653,7 @@ mod integration_tests {
             &model,
             &metadata.effective_config,
             &prepared_theme.compatibility,
-            layout.uses_elk_adapter_dom,
+            layout.route_contract.is_elk_parity(),
             sidecar.base_typography(),
         );
         let edge_style_plan = FlowchartEdgeStylePlan::prepare_for_model(
@@ -825,7 +813,7 @@ mod integration_tests {
                 &model,
                 &metadata.effective_config,
                 &prepared_theme.compatibility,
-                layout.uses_elk_adapter_dom,
+                layout.route_contract.is_elk_parity(),
                 sidecar.base_typography(),
             );
             let edge_style_plan = FlowchartEdgeStylePlan::prepare_for_model(

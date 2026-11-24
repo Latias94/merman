@@ -10,7 +10,10 @@ pub(crate) mod canvas_svg;
 ))]
 pub(crate) mod edge_label_bg;
 #[cfg(any(
-    all(feature = "diagram-architecture", feature = "layout-cytoscape"),
+    all(
+        feature = "diagram-architecture",
+        any(feature = "layout-cytoscape", feature = "layout-shoal")
+    ),
     feature = "diagram-flowchart",
     feature = "diagram-agentflow",
     feature = "diagram-swimlane",
@@ -153,7 +156,10 @@ pub fn family_capabilities(family: crate::DiagramFamilyId) -> ThemeCapabilityFla
         crate::DiagramFamilyId::USECASE => crate::usecase::UsecaseThemeAdapter::CAPS,
         #[cfg(feature = "diagram-state")]
         crate::DiagramFamilyId::STATE => crate::state::StateThemeAdapter::CAPS,
-        #[cfg(all(feature = "diagram-architecture", feature = "layout-cytoscape"))]
+        #[cfg(all(
+            feature = "diagram-architecture",
+            any(feature = "layout-cytoscape", feature = "layout-shoal")
+        ))]
         crate::DiagramFamilyId::ARCHITECTURE => crate::architecture::ArchitectureThemeAdapter::CAPS,
         #[cfg(feature = "diagram-c4")]
         crate::DiagramFamilyId::C4 => crate::c4::C4ThemeAdapter::CAPS,

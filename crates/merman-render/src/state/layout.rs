@@ -1398,15 +1398,29 @@ pub(crate) fn layout_state_diagram_typed_with_work_meter(
     style_plan: &super::StateStylePlan,
     label_sidecar: Option<&super::StateLabelSidecarBuilder>,
     execution: &crate::LayoutExecution<'_>,
-) -> Result<StateDiagramLayout> {
+) -> Result<(StateDiagramLayout, crate::graph_layout::RouteContract)> {
+    use crate::graph_layout::RouteContract;
+    #[cfg(any(feature = "layout-shoal", feature = "layout-elk"))]
+    use crate::layout_backend::GraphLayoutBackend;
+
+    let selection = crate::layout_backend::resolve_graph_layout(effective_config);
+    #[cfg(feature = "layout-shoal")]
+    if selection.backend == GraphLayoutBackend::Shoal {
+        return super::shoal::layout_state_diagram_shoal(
+            model,
+            effective_config,
+            style_plan,
+            label_sidecar,
+            execution,
+        )
+        .map(|(layout, routes)| (layout, RouteContract::canonical_graph(routes)));
+    }
     let mut work_control = OperationLayoutWorkControl::new(execution.work_meter());
     let adapter_work = state_layout_adapter_work(model, &work_control)?;
     work_control.charge_adapter(adapter_work)?;
-    crate::layout_backend::resolve_graph_layout(effective_config).validate_rootless_graph()?;
+    selection.validate_rootless_graph()?;
     #[cfg(feature = "layout-elk")]
-    if crate::layout_backend::resolve_graph_layout(effective_config).backend
-        == crate::layout_backend::GraphLayoutBackend::Elk
-    {
+    if selection.backend == GraphLayoutBackend::Elk {
         return super::elk::layout(
             model,
             effective_config,
@@ -1415,7 +1429,8 @@ pub(crate) fn layout_state_diagram_typed_with_work_meter(
             execution.text_measurer(),
             execution.elk_operation_seed(),
             &mut work_control,
-        );
+        )
+        .map(|layout| (layout, RouteContract::ElkParity));
     }
     layout_state_diagram_inner(
         model,
@@ -1425,6 +1440,7 @@ pub(crate) fn layout_state_diagram_typed_with_work_meter(
         label_sidecar,
         &mut work_control,
     )
+    .map(|layout| (layout, RouteContract::DagreParity))
 }
 
 pub(super) fn state_hidden_prefixes(model: &StateDiagramModel) -> HiddenPrefixMatcher {

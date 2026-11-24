@@ -78,21 +78,33 @@ impl C4TextPaintPlan {
                 text: text.to_owned(),
             });
         }
-        let source_relations: BTreeMap<_, _> = model
-            .rels
-            .iter()
-            .map(|relation| {
-                (
-                    (relation.from_alias.as_str(), relation.to_alias.as_str()),
-                    relation,
-                )
-            })
-            .collect();
+        let uses_shoal = cfg!(feature = "layout-shoal")
+            && crate::layout_backend::resolve_graph_layout(config.as_value()).backend
+                == crate::layout_backend::GraphLayoutBackend::Shoal;
+        let source_relations = (!uses_shoal).then(|| {
+            model
+                .rels
+                .iter()
+                .map(|relation| {
+                    (
+                        (relation.from_alias.as_str(), relation.to_alias.as_str()),
+                        relation,
+                    )
+                })
+                .collect::<BTreeMap<_, _>>()
+        });
         let relations = layout
             .rels
             .iter()
-            .map(|relation| {
-                let source = source_relations.get(&(relation.from.as_str(), relation.to.as_str()));
+            .enumerate()
+            .map(|(index, relation)| {
+                let source = if let Some(source_relations) = &source_relations {
+                    source_relations
+                        .get(&(relation.from.as_str(), relation.to.as_str()))
+                        .copied()
+                } else {
+                    model.rels.get(index)
+                };
                 C4RelationTerminalPaint {
                     text: source
                         .and_then(|source| source.text_color.as_deref())

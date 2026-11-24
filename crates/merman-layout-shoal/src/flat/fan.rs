@@ -502,6 +502,7 @@ pub(super) fn fold(
             }
             node.size = fans[id].size;
             node.anchor_y = None;
+            node.position_hint = None;
         }
         remap[vertex] = NodeId(local.nodes.len() as u32);
         original.push(vertex);

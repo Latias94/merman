@@ -553,6 +553,14 @@ pub(crate) struct RenderArgs {
     )]
     pub(crate) output: Option<PathBuf>,
 
+    /// Fit Shoal or Kanban placement toward --width in CSS pixels when supported (experimental).
+    #[cfg(all(
+        feature = "svg",
+        any(feature = "layout-shoal", feature = "diagram-kanban")
+    ))]
+    #[arg(long, requires = "container_width", help_heading = "Layout viewport")]
+    pub(crate) fit_width: bool,
+
     /// Replay an optional Shoal preview layout frame from a JSON file.
     #[cfg(feature = "layout-shoal")]
     #[arg(long, value_name = "PATH", value_hint = ValueHint::FilePath, help_heading = "Render input and output")]

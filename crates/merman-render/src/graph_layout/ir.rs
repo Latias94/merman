@@ -237,4 +237,5 @@ pub(crate) struct SolvedEdge {
     pub(crate) label: Option<LayoutLabel>,
     pub(crate) start_label: Option<LayoutLabel>,
     pub(crate) end_label: Option<LayoutLabel>,
+    pub(crate) reversed_for_ranking: bool,
 }

@@ -1,6 +1,6 @@
 //! Checked immutable presentation input, independent of source construction.
 
-use crate::family::{DiagramFamilyId, diagram_type_family_id};
+use crate::family::{DiagramFamilyId, diagram_type_presentation_family_id};
 use crate::resources::{InputResourceLimitExceeded, InputResourcePolicy};
 use crate::{MermaidConfig, OperationControl, OperationControlResult};
 
@@ -129,20 +129,10 @@ impl PresentationDiagram {
         let family_id = if custom {
             None
         } else {
-            diagram_type_family_id(&metadata.diagram_type).map(|family| {
-                if matches!(
-                    family,
-                    DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
-                ) {
-                    if metadata.effective_config.get_str("layout") == Some("swimlane") {
-                        DiagramFamilyId::SWIMLANE
-                    } else {
-                        DiagramFamilyId::FLOWCHART
-                    }
-                } else {
-                    family
-                }
-            })
+            diagram_type_presentation_family_id(
+                &metadata.diagram_type,
+                metadata.effective_config.get_str("layout"),
+            )
         };
         control.checkpoint()?;
         Ok(Ok(Self {

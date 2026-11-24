@@ -215,7 +215,7 @@ Known identities remain in `diagram_family_capabilities()` even when their parse
 
 A widened core dependency can have more parsers than a locally selected SVG or ASCII renderer. Check output planning and output-local capabilities too; enabling a parser elsewhere is not proof that this output has its family handler. Unknown or custom registry failures retain their original unsupported diagnostic.
 
-Optional graph backends preserve registered fallback behavior. Without compiled ELK, an ELK layout request resolves to the family's fallback, usually Dagre, or the available Mindmap fallback. Without Cytoscape, Mindmap can use Dagre; Architecture's Cytoscape-dependent render path returns a typed missing-capability error. When a compiled requested backend is denied by runtime policy, the result is a typed policy error, not a silent fallback. A generic feature flag is therefore neither a universal layout promise nor a substitute for inspecting the host's required family/backend combination.
+Without compiled ELK, an ELK layout request resolves to the family's registered fallback, usually Dagre. Mindmap can use Dagre when Cytoscape is unavailable. Architecture requires Cytoscape for its default layout and `layout-shoal` when selected explicitly. A required backend that is missing or denied by runtime policy returns a typed capability error. Use the render plan to inspect the capabilities a particular diagram requires.
 
 ## Review presentation and host services
 

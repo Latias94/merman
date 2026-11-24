@@ -25,8 +25,7 @@ mod theme;
 pub(crate) use native_theme::{ErNativeStyle, ErThemeAdapter};
 
 use crate::layout_backend::GraphLayoutBackend;
-use config::ErLayoutSettings;
-pub(crate) use config::{ErConfigView, ErEntityMeasurementSettings};
+pub(crate) use config::{ErConfigView, ErEntityMeasurementSettings, ErLayoutSettings};
 pub(crate) use swimlane::ErSwimlanePaintLayout;
 pub(crate) use swimlane::relationship_html_source as swimlane_relationship_html_source;
 pub(crate) use theme::{ErCssBinding, ErEntitySourceStyle, ErEntityThemePlan};
@@ -1668,43 +1667,22 @@ fn er_marker_id(card: &str, suffix: &str) -> Option<String> {
 
 pub(crate) struct ErPreparedLayout {
     pub(crate) layout: ErDiagramLayout,
-    #[cfg(feature = "layout-shoal")]
-    pub(crate) canonical_routes: Option<crate::graph_layout::canonical::CanonicalRoutes>,
+    pub(crate) route_contract: crate::graph_layout::RouteContract,
 }
 
-impl ErPreparedLayout {
-    fn legacy(layout: ErDiagramLayout) -> Self {
-        Self {
-            layout,
-            #[cfg(feature = "layout-shoal")]
-            canonical_routes: None,
-        }
-    }
-}
-
-/// Lays out an ER model with an optional renderer-owned inherited typography override.
-pub(crate) fn layout_er_diagram_typed_with_resolved_typography(
+/// Lays out an ER model with the family's resolved layout and typography settings.
+pub(crate) fn layout_er_diagram_typed(
     model: &merman_model::families::er::ErDiagramModel,
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
     #[cfg(feature = "layout-elk")] operation_seed: elk::ElkOperationSeed,
-    font_family_css: Option<&str>,
-    font_size_px: Option<f64>,
-    native: Option<&ErNativeStyle>,
+    settings: ErLayoutSettings,
+    #[cfg(feature = "layout-shoal")] execution: Option<&crate::LayoutExecution<'_>>,
     work_meter: Arc<crate::resources::OperationWorkMeter>,
 ) -> Result<ErPreparedLayout> {
+    use crate::graph_layout::RouteContract;
+
     let mut work_control = OperationLayoutWorkControl::new(Arc::clone(&work_meter));
-    let mut settings = ErConfigView::new(effective_config)
-        .layout_settings_with_resolved_typography(
-            &model.direction,
-            native
-                .and_then(|style| style.body_family.as_deref())
-                .or(font_family_css),
-            native.and_then(|style| style.font_size).or(font_size_px),
-        );
-    if let Some(native) = native {
-        native.apply_layout(&mut settings);
-    }
     let adapter_work = er_layout_adapter_work(model, &work_control)?;
     work_control.charge_adapter(adapter_work)?;
     validate_er_relationship_endpoints(model)?;
@@ -1726,6 +1704,7 @@ pub(crate) fn layout_er_diagram_typed_with_resolved_typography(
             &settings,
             prepared_labels,
             crate::config::config_diagram_look(effective_config).is_neo(),
+            execution,
             &mut work_control,
         );
     }
@@ -1739,7 +1718,10 @@ pub(crate) fn layout_er_diagram_typed_with_resolved_typography(
             prepared_labels,
             work_meter,
         )
-        .map(ErPreparedLayout::legacy);
+        .map(|layout| ErPreparedLayout {
+            layout,
+            route_contract: RouteContract::Swimlane,
+        });
     }
 
     #[cfg(feature = "layout-elk")]
@@ -1753,7 +1735,10 @@ pub(crate) fn layout_er_diagram_typed_with_resolved_typography(
             operation_seed,
             &mut work_control,
         )
-        .map(ErPreparedLayout::legacy);
+        .map(|layout| ErPreparedLayout {
+            layout,
+            route_contract: RouteContract::ElkParity,
+        });
     }
 
     layout_er_diagram_dagre_typed(
@@ -1763,7 +1748,10 @@ pub(crate) fn layout_er_diagram_typed_with_resolved_typography(
         prepared_labels,
         &mut work_control,
     )
-    .map(ErPreparedLayout::legacy)
+    .map(|layout| ErPreparedLayout {
+        layout,
+        route_contract: RouteContract::DagreParity,
+    })
 }
 
 fn validate_er_relationship_endpoints(
@@ -3665,14 +3653,15 @@ mod tests {
         });
         let config = serde_json::json!({"layout": "shoal", "htmlLabels": false});
         let prepare = |measurer: &dyn TextMeasurer, meter| {
-            super::layout_er_diagram_typed_with_resolved_typography(
+            let settings = super::ErConfigView::new(&config)
+                .layout_settings_with_font_family(&model.direction, None);
+            super::layout_er_diagram_typed(
                 &model,
                 &config,
                 measurer,
                 #[cfg(feature = "layout-elk")]
                 merman_layout_elk::ElkOperationSeed::from_operation_seed(std::num::NonZeroU64::MIN),
-                None,
-                None,
+                settings,
                 None,
                 meter,
             )
@@ -3681,7 +3670,7 @@ mod tests {
         let policy = RenderResourcePolicy::unbounded_for_trusted_input();
         let meter = Arc::new(OperationWorkMeter::new(policy));
         let layout = prepare(&standard, Arc::clone(&meter)).expect("Shoal ER layout");
-        assert!(layout.canonical_routes.is_some());
+        assert!(layout.route_contract.canonical_routes().is_some());
         let required = meter.used();
         drop(layout);
 

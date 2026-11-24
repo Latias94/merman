@@ -209,6 +209,17 @@ impl BlockShapeGeometry {
             self.allocated.y + max_y,
         )
     }
+
+    pub(crate) fn label_offset_x(&self, block_type: &str) -> f64 {
+        match &self.boundary {
+            BlockShapeBoundary::Polygon { translation, .. }
+                if matches!(block_type, "odd" | "rect_left_inv_arrow") =>
+            {
+                translation.x
+            }
+            _ => 0.0,
+        }
+    }
 }
 
 /// Computes the intrinsic shape size used while the grid is choosing a common slot.

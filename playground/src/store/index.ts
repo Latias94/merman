@@ -13,6 +13,7 @@ import type {
   MermanSvgPipeline,
   MermanTextMeasurementMode,
 } from "../runtime/merman-core.ts";
+import { isPositiveCssWidth } from "../runtime/render-viewport.ts";
 import {
   DEFAULT_SVG_PRESENTATION_MODE,
   type SvgPresentationMode,
@@ -86,6 +87,8 @@ export interface AppState {
   setWorkspacePane: (pane: WorkspacePane) => void;
   previewMode: PreviewMode;
   setPreviewMode: (mode: PreviewMode) => void;
+  shoalPreviewWidth: number | null;
+  setShoalPreviewWidth: (width: number | null) => void;
   svgPresentationMode: SvgPresentationMode;
   setSvgPresentationMode: (mode: SvgPresentationMode) => void;
   showSvgBounds: boolean;
@@ -252,6 +255,13 @@ export const useAppStore = create<AppState>((set, get) => {
     setWorkspacePane: (workspacePane) => set({ workspacePane }),
     previewMode: "svg",
     setPreviewMode: (previewMode) => set({ previewMode }),
+    shoalPreviewWidth: null,
+    setShoalPreviewWidth: (shoalPreviewWidth) => {
+      if ((shoalPreviewWidth === null || isPositiveCssWidth(shoalPreviewWidth)) &&
+        get().shoalPreviewWidth !== shoalPreviewWidth) {
+        set({ shoalPreviewWidth });
+      }
+    },
     svgPresentationMode: DEFAULT_SVG_PRESENTATION_MODE,
     setSvgPresentationMode: (svgPresentationMode) =>
       set((state) =>

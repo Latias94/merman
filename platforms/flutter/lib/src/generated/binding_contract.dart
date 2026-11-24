@@ -492,6 +492,16 @@ const Map<String, MermanBindingOptionGroupSpec> mermanBindingOptionGroupSpecs =
     anyCapabilityIds: <String>{},
     requiresSvgPipeline: true,
   ),
+  "export_matte": MermanBindingOptionGroupSpec(
+    id: "export_matte",
+    alwaysAvailable: false,
+    anyCapabilityIds: <String>{
+      "jpeg",
+      "pdf",
+      "png",
+    },
+    requiresSvgPipeline: false,
+  ),
   "fixed_local_offset_minutes": MermanBindingOptionGroupSpec(
     id: "fixed_local_offset_minutes",
     alwaysAvailable: true,

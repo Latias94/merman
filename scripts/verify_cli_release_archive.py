@@ -553,7 +553,7 @@ def _release_capabilities_contract(
         expected_output_ids,
         [output["id"] for output in subcontract["outputs"]],
     )
-    return {
+    contract = {
         "schema_version": CAPABILITIES_SCHEMA_VERSION,
         "cli_contract_version": CLI_CONTRACT_VERSION,
         "package": {"name": PACKAGE_NAME, "version": version},
@@ -566,6 +566,11 @@ def _release_capabilities_contract(
         "diagram_families": diagram_families,
         **subcontract,
     }
+    if "svg" in runtime_ids and (
+        "layout-shoal" in runtime_ids or "kanban" in diagram_families
+    ):
+        contract["layout_fit_width"] = True
+    return contract
 
 
 def _require_exact_json(label: str, observed: object, expected: object) -> None:

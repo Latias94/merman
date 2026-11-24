@@ -908,6 +908,16 @@ export const BINDING_OPTION_GROUP_SPECS = [
     "requires_svg_pipeline": true
   },
   {
+    "id": "export_matte",
+    "always_available": false,
+    "any_capability_ids": [
+      "jpeg",
+      "pdf",
+      "png"
+    ],
+    "requires_svg_pipeline": false
+  },
+  {
     "id": "fixed_local_offset_minutes",
     "always_available": true,
     "any_capability_ids": [],

@@ -3,7 +3,7 @@ use crate::work::push;
 use crate::{MarkerMetrics, Options};
 use fit::blocks;
 
-fn opposite(side: Side) -> Side {
+pub(super) fn opposite(side: Side) -> Side {
     match side {
         Side::Top => Side::Bottom,
         Side::Right => Side::Left,
@@ -24,7 +24,7 @@ fn travel(wire: &Wire, end: usize) -> Contact {
     }
 }
 
-fn snap(edge: &mut EdgeGeometry, end: usize, contact: Contact) {
+pub(super) fn snap(edge: &mut EdgeGeometry, end: usize, contact: Contact) {
     let index = if end == 0 { 0 } else { edge.points.len() - 1 };
     let next = if end == 0 { 1 } else { index - 1 };
     let old = point(edge.points[index]);
@@ -74,6 +74,7 @@ fn position(
                 at: ports[slot],
                 side,
             },
+            End::Lane { .. } => unreachable!("lane contacts are resolved in the root frame"),
             End::Item { slot, child, .. } => {
                 let rect = nodes[slot];
                 let contact = if let Some(child) = child {
@@ -106,7 +107,7 @@ fn position(
     Ok(())
 }
 
-fn marker_rect(port: Contact, marker: MarkerMetrics) -> Rect {
+pub(super) fn marker_rect(port: Contact, marker: MarkerMetrics) -> Rect {
     let tip = towards(port.at, port.side, marker.length);
     if port.side.axis() == Axis::Vertical {
         Rect {

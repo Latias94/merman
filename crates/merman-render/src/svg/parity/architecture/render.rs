@@ -8,7 +8,6 @@ use merman_model::families::architecture::{
 use super::ArchitectureEmitCheckpoints;
 use super::edges::{ArchitectureEdgeRenderContext, push_architecture_edges};
 use super::geometry::{GroupRect, GroupRectComputer, bounds_from_rect, extend_bounds};
-use super::labels::{svg_service_title_bounds, wrap_svg_words_to_lines};
 use super::nodes::{
     ArchitectureNodeRenderContext, push_architecture_group_surfaces, push_architecture_groups,
     push_architecture_services_and_junctions,
@@ -16,6 +15,7 @@ use super::nodes::{
 use super::root::{architecture_a11y_nodes, begin_architecture_document};
 use super::settings::ArchitectureRenderSettings;
 use super::viewport::{ArchitectureRootViewportContext, finalize_architecture_root_viewport};
+use crate::architecture::labels::{svg_service_title_bounds, wrap_svg_words_to_lines};
 
 // Architecture diagram SVG renderer implementation (split from parity.rs).
 
@@ -44,54 +44,56 @@ fn architecture_cached_service_child_bounds<'a>(
     Some(cached)
 }
 
-pub(crate) fn render_architecture_diagram_svg_typed_with_config(
-    layout: &ArchitectureDiagramLayout,
-    model: &ArchitectureDiagramModel,
-    effective_config: &merman_model::presentation::PresentationConfig,
-    group_theme: &crate::architecture::ArchitectureGroupThemePlan,
-    options: &SvgExecution<'_>,
-) -> Result<root_svg::RootedSvg> {
-    let timing = options.timing();
-    let mut timings = super::super::timing::RenderTimings::default();
-    let total_timer = timing.start();
-    let _g_render_svg = timing.section(&mut timings.render_svg);
+struct ArchitectureDrawingBounds<'a> {
+    content_bounds: Option<Bounds>,
+    junction_bounds: rustc_hash::FxHashMap<&'a str, Bounds>,
+    group_rects: Vec<GroupRect<'a>>,
+}
 
-    let diagram_id = options.diagram_id_or("architecture");
-    let checkpoints = ArchitectureEmitCheckpoints::new(options.work_meter());
-    checkpoints.checkpoint()?;
-    let mut settings =
-        ArchitectureRenderSettings::from_prepared(diagram_id, group_theme.typography_theme());
-    let native = group_theme.native_style();
-    if let Some(native) = native {
-        settings.apply_native(
-            diagram_id,
-            native,
-            group_theme.typography_theme().css_binding(),
-        );
+#[cfg(feature = "layout-shoal")]
+impl<'a> ArchitectureDrawingBounds<'a> {
+    fn from_shoal(
+        layout: &ArchitectureDiagramLayout,
+        model: &'a ArchitectureDiagramModel,
+        geometry: &crate::architecture::ArchitectureShoalGeometry,
+    ) -> Self {
+        let group_rects = model
+            .groups
+            .iter()
+            .zip(&geometry.groups)
+            .map(|(model_group, group)| GroupRect {
+                id: model_group.id.as_str(),
+                parent: group
+                    .parent
+                    .map(|index| model.groups[index as usize].id.as_str()),
+                x: group.rect.x,
+                y: group.rect.y,
+                w: group.rect.width,
+                h: group.rect.height,
+                icon: model_group.icon.as_deref(),
+                title: model_group.title.as_deref(),
+            })
+            .collect();
+        Self {
+            content_bounds: layout.bounds.clone(),
+            junction_bounds: Default::default(),
+            group_rects,
+        }
     }
-    checkpoints.checkpoint()?;
-    let css = settings.css.as_str();
+}
+
+fn architecture_legacy_bounds<'a>(
+    layout: &ArchitectureDiagramLayout,
+    model: &'a ArchitectureDiagramModel,
+    node_xy: &rustc_hash::FxHashMap<&'a str, (f64, f64)>,
+    settings: &ArchitectureRenderSettings,
+    text_measurer: &dyn crate::text::TextMeasurer,
+) -> ArchitectureDrawingBounds<'a> {
     let icon_size_px = settings.icon_size_px;
-    let half_icon = settings.half_icon;
     let padding_px = settings.padding_px;
     let arch_font_size_px = settings.arch_font_size_px;
-    let use_max_width = settings.use_max_width;
     let text_style = &settings.text_style;
     let compound_text_style = &settings.compound_text_style;
-
-    let a11y = architecture_a11y_nodes(
-        diagram_id,
-        model.acc_title.as_deref(),
-        model.acc_descr.as_deref(),
-    );
-    checkpoints.checkpoint()?;
-
-    let mut node_xy: rustc_hash::FxHashMap<&str, (f64, f64)> = rustc_hash::FxHashMap::default();
-    for n in &layout.nodes {
-        node_xy.insert(n.id.as_str(), (n.x, n.y));
-    }
-
-    let text_measurer = options.text_measurer();
 
     // Mermaid Architecture uses `setupGraphViewbox()` which expands the viewBox based on the
     // SVG's `getBBox()` plus `architecture.padding`. Reconstruct that effective bbox from the
@@ -259,6 +261,70 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
             extend_bounds(&mut content_bounds, b.clone());
         }
     }
+    ArchitectureDrawingBounds {
+        content_bounds,
+        junction_bounds,
+        group_rects,
+    }
+}
+
+pub(crate) fn render_architecture_diagram_svg_typed_with_config(
+    layout: &ArchitectureDiagramLayout,
+    model: &ArchitectureDiagramModel,
+    effective_config: &merman_model::presentation::PresentationConfig,
+    group_theme: &crate::architecture::ArchitectureGroupThemePlan,
+    #[cfg(feature = "layout-shoal")] shoal_geometry: Option<
+        &crate::architecture::ArchitectureShoalGeometry,
+    >,
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::RootedSvg> {
+    let timing = options.timing();
+    let mut timings = super::super::timing::RenderTimings::default();
+    let total_timer = timing.start();
+    let _g_render_svg = timing.section(&mut timings.render_svg);
+
+    let diagram_id = options.diagram_id_or("architecture");
+    let checkpoints = ArchitectureEmitCheckpoints::new(options.work_meter());
+    checkpoints.checkpoint()?;
+    let typography = group_theme.typography_theme();
+    let mut settings = ArchitectureRenderSettings::from_prepared(diagram_id, typography);
+    let native = group_theme.native_style();
+    if let Some(native) = native {
+        settings.apply_native(diagram_id, native, typography.css_binding());
+    }
+    checkpoints.checkpoint()?;
+    let css = settings.css.as_str();
+    let icon_size_px = settings.icon_size_px;
+    let half_icon = settings.half_icon;
+    let padding_px = settings.padding_px;
+    let use_max_width = settings.use_max_width;
+
+    let a11y = architecture_a11y_nodes(
+        diagram_id,
+        model.acc_title.as_deref(),
+        model.acc_descr.as_deref(),
+    );
+    checkpoints.checkpoint()?;
+
+    let mut node_xy: rustc_hash::FxHashMap<&str, (f64, f64)> = rustc_hash::FxHashMap::default();
+    for n in &layout.nodes {
+        node_xy.insert(n.id.as_str(), (n.x, n.y));
+    }
+
+    let text_measurer = options.text_measurer();
+
+    #[cfg(feature = "layout-shoal")]
+    let drawing = shoal_geometry
+        .map(|geometry| ArchitectureDrawingBounds::from_shoal(layout, model, geometry));
+    #[cfg(not(feature = "layout-shoal"))]
+    let drawing = None;
+    let ArchitectureDrawingBounds {
+        mut content_bounds,
+        junction_bounds,
+        group_rects,
+    } = drawing.unwrap_or_else(|| {
+        architecture_legacy_bounds(layout, model, &node_xy, &settings, text_measurer)
+    });
 
     let is_empty = model.nodes.is_empty() && model.groups.is_empty() && model.edges.is_empty();
 
@@ -273,14 +339,20 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
         use_max_width,
     )?;
     checkpoints.checkpoint()?;
-    if let Some(native) = native {
-        let group_style = format!("fill:{};stroke-dasharray:none;", native.group_fill);
+    let separate_group_surfaces = native.is_some();
+    #[cfg(feature = "layout-shoal")]
+    let separate_group_surfaces = separate_group_surfaces || shoal_geometry.is_some();
+    if separate_group_surfaces {
+        let group_style =
+            native.map(|style| format!("fill:{};stroke-dasharray:none;", style.group_fill));
         push_architecture_group_surfaces(
             &mut out,
             diagram_id,
             &group_rects,
-            Some(&group_style),
-            Some(native.group_radius),
+            group_style.as_deref(),
+            native.map(|style| style.group_radius),
+            #[cfg(feature = "layout-shoal")]
+            shoal_geometry.is_some(),
             checkpoints,
         )?;
     }
@@ -330,6 +402,8 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
             out: &mut out,
             diagram_id,
             layout,
+            #[cfg(feature = "layout-shoal")]
+            shoal: shoal_geometry,
             model,
             node_xy: &node_xy,
             settings: &settings,
@@ -348,6 +422,8 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
         let mut node_render_ctx = ArchitectureNodeRenderContext {
             out: &mut out,
             diagram_id,
+            #[cfg(feature = "layout-shoal")]
+            shoal: shoal_geometry,
             model,
             node_xy: &node_xy,
             settings: &settings,
@@ -363,7 +439,7 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
             checkpoints,
         };
         push_architecture_services_and_junctions(&mut node_render_ctx)?;
-        push_architecture_groups(&mut node_render_ctx, &group_rects, native.is_none())?;
+        push_architecture_groups(&mut node_render_ctx, &group_rects, !separate_group_surfaces)?;
     }
 
     checkpoints.checkpoint()?;

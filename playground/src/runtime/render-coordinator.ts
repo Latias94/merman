@@ -15,6 +15,7 @@ import type {
 import {
   freezeRenderOperation,
   matchesWorkspaceRender,
+  previewRenderWithShoalFitWidth,
   previewRenderWithShoalFrame,
   type ConfiguredMermanOperationInput,
   type FreezeRenderOperationInput,
@@ -30,7 +31,7 @@ import type {
   MermaidRealmRenderSuccess,
 } from "./mermaid-realm-controller.ts";
 import type { CompareFailureStage } from "./realm/channel-protocol.ts";
-import type { CapturedRenderViewport } from "./render-viewport.ts";
+import { isPositiveCssWidth, type CapturedRenderViewport } from "./render-viewport.ts";
 import { projectError, type ErrorProjection } from "./error-projection.ts";
 import { isAsciiSupported } from "../lib/ascii-support.ts";
 import {
@@ -43,12 +44,14 @@ export interface RenderCoordinatorInput {
   readonly facade: MermanDomainFacade | null;
   readonly renderViewport: Readonly<CapturedRenderViewport>;
   readonly workspace: Readonly<WorkspaceSnapshot>;
+  readonly shoalPreviewWidth?: number | null;
   readonly hostAppearance?: ThemeAppearance;
 }
 
 export interface FrozenRenderSnapshot {
   readonly operation: FrozenRenderOperation;
   readonly publicationId: RenderPublicationId;
+  readonly supportsShoalFitWidth?: true;
 }
 
 export interface ScheduledRenderSnapshot {
@@ -233,10 +236,12 @@ interface ScheduledRequest {
   readonly operationInput: FreezeRenderOperationInput;
   readonly publicationId: RenderPublicationId;
   readonly runAt: number;
+  readonly shoalPreviewWidth: number | null;
 }
 
 interface ActiveRequest {
   readonly facade: MermanDomainFacade;
+  readonly shoalPreviewWidth: number | null;
   readonly snapshot: FrozenRenderSnapshot;
 }
 
@@ -294,7 +299,7 @@ export function createRenderCoordinator({
 
   const scheduleCurrent = (force: boolean, immediate = false) => {
     if (disposed || !enabled || !currentInput) return;
-    const { facade, renderViewport, workspace, hostAppearance } = currentInput;
+    const { facade, renderViewport, workspace, shoalPreviewWidth = null, hostAppearance } = currentInput;
     if (!facade || !workspace.code.trim()) {
       cancelActiveCompare();
       requestSequence += 1;
@@ -326,6 +331,7 @@ export function createRenderCoordinator({
       !force &&
       latest !== null &&
       sameScheduledOperationInput(latest.operationInput, operationInput) &&
+      latest.shoalPreviewWidth === shoalPreviewWidth &&
       latest.facade === facade
     ) {
       return;
@@ -342,6 +348,7 @@ export function createRenderCoordinator({
       operationInput,
       publicationId,
       runAt: now() + (immediate ? 0 : debounceMs),
+      shoalPreviewWidth,
     };
     const previous = previousCompleted();
     replaceState(
@@ -380,6 +387,7 @@ export function createRenderCoordinator({
       }
       const activeRequestForExecution: ActiveRequest = Object.freeze({
         facade: request.facade,
+        shoalPreviewWidth: request.shoalPreviewWidth,
         snapshot: Object.freeze({
           operation: freezeOperation({
             ...request.operationInput,
@@ -428,7 +436,7 @@ export function createRenderCoordinator({
   const execute = async (
     request: ActiveRequest,
   ): Promise<{ completed: CompletedRenderBatch; frame?: ShoalLayoutFrame }> => {
-    const { facade, snapshot } = request;
+    const { facade, shoalPreviewWidth, snapshot } = request;
     const operation = snapshot.operation;
     const detection = detectDiagram(facade, operation);
     const externalRequirements = mermaidExternalRequirementsFor(detection);
@@ -437,15 +445,19 @@ export function createRenderCoordinator({
       operation,
       externalRequirements,
     );
-    const standaloneShoal = !operation.compareEnabled && !operation.asciiEnabled &&
+    const shoalSvg = !operation.compareEnabled &&
       !operation.diagnosticsEnabled && detection.status === "available" &&
       detection.validity === "valid" && detection.effectiveLayoutId === "shoal";
-    const optionsByteLimit = standaloneShoal ? shoalOptionsByteLimit(facade) : undefined;
+    const optionsByteLimit = shoalSvg ? shoalOptionsByteLimit(facade) : undefined;
+    const supportsFitWidth = optionsByteLimit !== undefined && supportsShoalFitWidth(facade, operation);
+    const svgOperation = supportsFitWidth && shoalPreviewWidth !== null
+      ? previewRenderWithShoalFitWidth(operation, shoalPreviewWidth)
+      : operation;
     const previous = shoalPreview?.diagramType === detection.diagramType ? shoalPreview.frame : undefined;
-    const preview = optionsByteLimit === undefined
-      ? operation
-      : previewRenderWithShoalFrame(operation, previous, optionsByteLimit);
-    const { merman, frame } = renderMerman(facade, preview, preview !== operation);
+    const preview = optionsByteLimit !== undefined && !operation.asciiEnabled
+      ? previewRenderWithShoalFrame(svgOperation, previous, optionsByteLimit)
+      : svgOperation;
+    const { merman, frame } = renderMerman(facade, preview, preview !== svgOperation);
     const ascii = operation.asciiEnabled
       ? renderMermanAscii(facade, operation, detection)
       : null;
@@ -456,18 +468,22 @@ export function createRenderCoordinator({
     const mermaid = compareResult
       ? toMermaidBatchResult(compareResult, operation)
       : null;
+    const evaluatedSnapshot = supportsFitWidth
+      ? Object.freeze({ ...snapshot, supportsShoalFitWidth: true as const })
+      : snapshot;
     return {
-      completed: classifyBatch(snapshot, detection, diagnostics, merman, ascii, mermaid, now()),
+      completed: classifyBatch(evaluatedSnapshot, detection, diagnostics, merman, ascii, mermaid, now()),
       ...(frame === undefined ? {} : { frame }),
     };
   };
 
   const setInput = (input: RenderCoordinatorInput) => {
+    const shoalPreviewWidth = isPositiveCssWidth(input.shoalPreviewWidth) ? input.shoalPreviewWidth : null;
     const identityChanged = currentInput?.documentRevision !== input.documentRevision ||
       currentInput?.facade !== input.facade;
     const previous = currentInput?.workspace;
-    if (identityChanged) shoalPreview = null;
-    currentInput = input;
+    if (identityChanged || currentInput?.shoalPreviewWidth !== shoalPreviewWidth) shoalPreview = null;
+    currentInput = { ...input, shoalPreviewWidth };
     if (!enabled) {
       markCompletedInputStale();
       renderRequiredWhenEnabled = true;
@@ -530,6 +546,7 @@ export function createRenderCoordinator({
       asciiEnabled: true,
     });
     const snapshot: FrozenRenderSnapshot = Object.freeze({
+      ...state.snapshot,
       operation,
       publicationId,
     });
@@ -894,6 +911,18 @@ function shoalOptionsByteLimit(facade: MermanDomainFacade): number | undefined {
     return typeof limit === "number" && Number.isSafeInteger(limit) && limit > 0 ? limit : undefined;
   } catch {
     return undefined;
+  }
+}
+
+function supportsShoalFitWidth(facade: MermanDomainFacade, operation: FrozenRenderOperation): boolean {
+  if (operation.configurationError) return false;
+  try {
+    const plan = facade.svgPlan(operation);
+    return plan.schema_version === 1 && plan.ready &&
+      plan.required_capability_ids.includes("layout-shoal") &&
+      plan.supported_layout_adaptation_ids.includes("fit-width");
+  } catch {
+    return false;
   }
 }
 

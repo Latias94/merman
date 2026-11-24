@@ -51,6 +51,156 @@ fn render_swimlane(source: &str, diagram_id: &str) -> String {
 }
 
 #[test]
+fn explicit_shoal_swimlane_retains_the_family_and_checks_capability() {
+    use merman_render::{LayoutAdaptation, RenderCapability, RenderCapabilityPolicy};
+
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(
+            "---\nconfig:\n  layout: shoal\n---\nswimlane-beta TB\nA --> B",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    for (policy, available) in [
+        (
+            RenderCapabilityPolicy::unrestricted(),
+            cfg!(feature = "layout-shoal"),
+        ),
+        (RenderCapabilityPolicy::deny_all(), false),
+    ] {
+        let session = RenderEnvironment::deterministic()
+            .with_capability_policy(policy)
+            .begin_session()
+            .unwrap();
+        let plan = family::plan_render(&parsed, &session).unwrap();
+        assert_eq!(plan.family_id(), merman_render::DiagramFamilyId::SWIMLANE);
+        assert_eq!(
+            plan.required_capabilities(),
+            &[RenderCapability::LayoutShoal]
+        );
+        assert_eq!(
+            plan.supported_layout_adaptations(),
+            &[LayoutAdaptation::None]
+        );
+        let options = LayoutOptions::default().with_shoal_layout_frame(None);
+        let result = family::prepare(&parsed, &options, session);
+        if available {
+            let svg = result
+                .unwrap()
+                .render_svg(&Default::default(), &Default::default())
+                .unwrap();
+            let frame = svg.shoal_layout_frame().unwrap();
+            let options = options.with_shoal_layout_frame(Some(frame));
+            let session = RenderEnvironment::deterministic().begin_session().unwrap();
+            let replay = family::prepare(&parsed, &options, session)
+                .unwrap()
+                .render_svg(&Default::default(), &Default::default())
+                .unwrap();
+            assert_eq!(svg.svg(), replay.svg());
+        } else {
+            assert!(matches!(
+                result,
+                Err(Error::MissingCapability {
+                    capability: RenderCapability::LayoutShoal,
+                    ..
+                })
+            ));
+        }
+    }
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_swimlane_keeps_a_node_named_like_the_synthetic_lane() {
+    let id = "__swimlane_default__";
+    let source =
+        format!("---\nconfig:\n  layout: shoal\n---\nswimlane-beta TB\n{id}[Review] --> B");
+    let (svg, layout) = render_swimlane_with_layout(&source, "shoal-lane-id");
+    assert_eq!(layout.lanes.len(), 1);
+    assert_ne!(layout.lanes[0].id, id);
+    assert!(
+        layout
+            .nodes
+            .iter()
+            .any(|node| node.id == id && node.parent_id.as_ref() == Some(&layout.lanes[0].id))
+    );
+    let doc = roxmltree::Document::parse(&svg).unwrap();
+    assert!(
+        doc.descendants()
+            .any(|part| part.attribute("data-id") == Some(id)
+                && part.attribute("data-et") == Some("node"))
+    );
+}
+
+#[cfg(feature = "layout-shoal")]
+#[test]
+fn shoal_swimlane_aligns_ranks_and_paints_headers_and_markers_in_four_directions() {
+    for direction in ["TB", "BT", "LR", "RL"] {
+        let source = format!(
+            "---\nconfig:\n  layout: shoal\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n---\nswimlane-beta {direction}\n\
+             subgraph customer[Customer]\nA[Open] --> B[Close]\nend\n\
+             subgraph operator[Operator]\nC[Accept] --> D[Complete]\nend\n\
+             subgraph observer[Observer]\nend\nA -->|Handoff| D"
+        );
+        let (svg, layout) = render_swimlane_with_layout(&source, "shoal-swimlane");
+        let find = |id: &str| layout.nodes.iter().find(|node| node.id == id).unwrap();
+        let horizontal = matches!(direction, "LR" | "RL");
+        let along = |id| if horizontal { find(id).x } else { find(id).y };
+        for (a, b) in [("A", "C"), ("B", "D")] {
+            assert_eq!(find(a).layer, find(b).layer, "{direction}");
+            assert!((along(a) - along(b)).abs() < 0.01, "{direction}");
+        }
+        assert_eq!(layout.edges.len(), 3, "{direction}");
+        let doc = roxmltree::Document::parse(&svg).unwrap();
+        let paths: Vec<_> = doc
+            .descendants()
+            .filter(|part| part.has_tag_name("path") && part.attribute("data-et") == Some("edge"))
+            .collect();
+        assert_eq!(paths.len(), layout.edges.len(), "{direction}");
+        assert!(
+            paths
+                .iter()
+                .all(|part| part.attribute("marker-end").is_some()),
+            "{direction}"
+        );
+        assert!(
+            doc.descendants().any(|part| part.text() == Some("Handoff")),
+            "{direction}"
+        );
+        let heading = doc
+            .descendants()
+            .find(|part| {
+                part.attribute("data-id") == Some("customer")
+                    && part.attribute("data-et") == Some("cluster")
+            })
+            .unwrap();
+        let title = heading
+            .children()
+            .find(|part| has_class(*part, "swimlane-title"))
+            .unwrap();
+        let body = heading
+            .children()
+            .find(|part| has_class(*part, "swimlane-body"))
+            .unwrap();
+        let from = if horizontal { "x" } else { "y" };
+        let span = if horizontal { "width" } else { "height" };
+        let number = |part: roxmltree::Node<'_, '_>, name| {
+            part.attribute(name).unwrap().parse::<f64>().unwrap()
+        };
+        let (first, second) = if matches!(direction, "BT" | "RL") {
+            (body, title)
+        } else {
+            (title, body)
+        };
+        assert!(
+            (number(first, from) + number(first, span) - number(second, from)).abs() < 0.01,
+            "{direction}"
+        );
+    }
+}
+
+#[test]
 fn long_edge_placeholders_preserve_authored_nodes_and_routes() {
     let diagram_id = "long-edge-placeholder";
     let source = |middle| format!("swimlane-beta TB\n  A --> {middle}[Review] --> C\n  A --> C\n");

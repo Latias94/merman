@@ -6,6 +6,9 @@ use crate::model::LayoutPoint;
 use kurbo::{Arc, Point};
 use std::f64::consts::TAU;
 
+#[cfg(all(feature = "diagram-c4", feature = "layout-shoal"))]
+#[path = "../c4/contour.rs"]
+mod c4;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
@@ -14,6 +17,8 @@ use std::f64::consts::TAU;
 mod flowchart;
 #[cfg(all(feature = "diagram-usecase", feature = "layout-shoal"))]
 mod usecase;
+
+const ROUNDED_PORT_FRACTION: f64 = 0.55;
 
 /// The span is a full width (top/bottom) or height (left/right), centered on the port anchor.
 #[derive(Clone, Debug, PartialEq)]
@@ -51,7 +56,11 @@ impl ShapePortProfile {
     }
 
     pub(crate) fn ellipse(width: f64, height: f64) -> Self {
-        Self::new(Outline::ellipse(width, height), width * 0.55, height * 0.55)
+        Self::new(
+            Outline::ellipse(width, height),
+            width * ROUNDED_PORT_FRACTION,
+            height * ROUNDED_PORT_FRACTION,
+        )
     }
 
     pub(crate) fn diamond(width: f64, height: f64) -> Self {
@@ -367,7 +376,7 @@ mod tests {
             ("process", 100.0, 40.0, 84.0, 24.0),
             ("subroutine", 100.0, 40.0, 84.0, 24.0),
             ("rounded", 100.0, 40.0, 90.0, 30.0),
-            ("stadium", 100.0, 40.0, 60.0, 0.0),
+            ("stadium", 100.0, 40.0, 60.0, 22.0),
             ("circle", 60.0, 60.0, 33.0, 33.0),
             ("double-circle", 60.0, 60.0, 33.0, 33.0),
             ("small-circle", 14.0, 14.0, 7.7, 7.7),

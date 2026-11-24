@@ -146,6 +146,7 @@
       key.displayMode,
       key.background,
       key.themeSelection ?? "",
+      ...(key.fitWidth === undefined ? [] : [key.fitWidth]),
     ].join("\u0000");
   }
 

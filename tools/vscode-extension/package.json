@@ -408,6 +408,14 @@
             "order": 30,
             "markdownDescription": "Default display mode for new Merman preview panels. The preview toolbar can override this for the current panel session."
           },
+          "merman.preview.fitWidth": {
+            "type": "number",
+            "minimum": 0,
+            "default": 0,
+            "scope": "resource",
+            "order": 31,
+            "markdownDescription": "Experimental SVG preview layout width in CSS pixels for Shoal and Kanban. Set `0` to disable. Requires a CLI that supports layout fit-width."
+          },
           "merman.preview.background": {
             "type": "string",
             "enum": [

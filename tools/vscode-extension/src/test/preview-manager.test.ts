@@ -51,7 +51,16 @@ interface DeferredRender {
 class FakePreviewHost {
   readonly commands = new Map<string, CommandHandler>();
   readonly panels: FakePanel[] = [];
-  readonly renderCalls: Array<{ source: string; format?: string; outputPath?: string; background?: string; theme?: string; themeAppearance?: string; themeFileContent?: string }> = [];
+  readonly renderCalls: Array<{
+    source: string;
+    format?: string;
+    outputPath?: string;
+    background?: string;
+    theme?: string;
+    themeAppearance?: string;
+    themeFileContent?: string;
+    previewFitWidth?: number;
+  }> = [];
   readonly renderSignals: AbortSignal[] = [];
   readonly clipboardWrites: string[] = [];
   readonly writtenFiles: Array<{ path: string; data: string }> = [];
@@ -1390,6 +1399,42 @@ describe("preview manager", () => {
     for (const subscription of host.subscriptions) subscription.dispose();
   });
 
+  it("applies fit-width setting changes to SVG previews and invalidates stale output keys", async () => {
+    const host = new FakePreviewHost();
+    host.previewSettings.set("preview.fitWidth", 640.5);
+    const { registerPreview } = loadPreviewModule(host);
+    registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    const panel = host.panels[0]!;
+    await panel.receive({ type: "ready" });
+    await flushPreviewWork();
+    const previous = lastRenderedSourceKey(panel);
+    assert.equal(previous.fitWidth, 640.5);
+    assert.equal(host.renderCalls.at(-1)?.previewFitWidth, 640.5);
+
+    host.changePreviewSetting("preview.fitWidth", 420);
+    await flushPreviewWork();
+    assert.equal(lastRenderedSourceKey(panel).fitWidth, 420);
+    assert.equal(host.renderCalls.at(-1)?.previewFitWidth, 420);
+    await panel.receive({ type: "copySvg", svg: "<svg/>", sourceKey: previous });
+    assert.equal(host.clipboardWrites.length, 0);
+    assert.match(host.warnings.at(-1) ?? "", /latest Mermaid preview/);
+    await panel.receive({ type: "exportRendered", format: "svg", sourceKey: lastRenderedSourceKey(panel) });
+    await flushPreviewWork();
+    assert.equal(host.writtenFiles.length, 1);
+    assert.equal(host.renderCalls.at(-1)?.previewFitWidth, undefined);
+
+    await panel.receive({ type: "setDisplayMode", mode: "ascii" });
+    await flushPreviewWork();
+    assert.equal(lastRenderedSourceKey(panel).fitWidth, undefined);
+    assert.equal(host.renderCalls.at(-1)?.previewFitWidth, undefined);
+    host.changePreviewSetting("preview.fitWidth", "640");
+    await panel.receive({ type: "setDisplayMode", mode: "svg" });
+    await flushPreviewWork();
+    assert.equal(host.renderCalls.at(-1)?.previewFitWidth, undefined);
+    for (const subscription of host.subscriptions) subscription.dispose();
+  });
+
   it("keeps a matching in-flight render when only the viewer background changes", async () => {
     const host = new FakePreviewHost();
     const { registerPreview } = loadPreviewModule(host);
@@ -2307,6 +2352,7 @@ function loadPreviewModule(
           theme?: string;
           themeAppearance?: string;
           themeFileContent?: string;
+          previewFitWidth?: number;
           signal?: AbortSignal;
         }) => {
           host.renderCalls.push({
@@ -2317,6 +2363,7 @@ function loadPreviewModule(
             ...(renderRequest.theme ? { theme: renderRequest.theme } : {}),
             ...(renderRequest.themeAppearance ? { themeAppearance: renderRequest.themeAppearance } : {}),
             ...(renderRequest.themeFileContent ? { themeFileContent: renderRequest.themeFileContent } : {}),
+            ...(renderRequest.previewFitWidth !== undefined ? { previewFitWidth: renderRequest.previewFitWidth } : {}),
           });
           if (renderRequest.signal) {
             host.renderSignals.push(renderRequest.signal);

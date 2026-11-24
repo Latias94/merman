@@ -6,6 +6,7 @@ import type {
   DiagramDetectionFacts,
   DiagramType,
   RuntimeCatalog,
+  SvgPlanResult,
   SvgRenderMetadata,
   ThemeCatalog,
   ThemeDocumentV2,
@@ -78,6 +79,7 @@ export interface MermanDomainFacade {
   getSupportedDiagrams(): DiagramType[];
   layoutJson(input: ConfiguredMermanOperationInput): string;
   parseJson(input: ConfiguredMermanOperationInput): string;
+  svgPlan(input: ConfiguredMermanOperationInput): SvgPlanResult;
   render(input: ConfiguredMermanOperationInput): MermanRenderResult;
   renderAscii(input: ConfiguredMermanOperationInput): MermanAsciiResult;
   validate(code: string): ValidationResult;

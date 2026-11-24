@@ -468,7 +468,7 @@
     "scope_theme": "Theme only",
     "scope_diagram": "Reproduce current diagram",
     "scopeDescription_theme": "Adopt the selected Merman theme and Mermaid base with a separate example. Current source, authored config, font and layout stay out of that example.",
-    "scopeDescription_diagram": "Use the completed render's configured source, binding options, layout and versions. Host fonts and measurement still matter.",
+    "scopeDescription_diagram": "Use the configured source, original layout and runtime versions. Fit preview width applies to the SVG artifact. Host fonts and measurement still matter.",
     "unrenderedSnapshot": "Workspace snapshot · no matching completed Merman render",
     "renderSnapshot": "Completed Merman render · snapshot #{{publication}}",
     "capturedAt": "Captured {{time}}",
@@ -521,6 +521,16 @@
       "advancedRendering": "Advanced rendering",
       "compareInput": "Both panes render the same Mermaid source and configuration. Compare shows each engine’s output; it does not certify pixel parity.",
       "compareStyled": "Both panes use the same Mermaid source and configuration. The left pane renders with the selected Merman theme."
+    },
+    "fitWidth": {
+      "title": "Fit preview width",
+      "activeWidth": "{{width}} px",
+      "description": "Shoal rearranges the SVG preview toward this width. The diagram may be wider. SVG downloads use the preview layout. PNG and project exports use the original layout.",
+      "enable": "Enable width fitting (experimental)",
+      "width": "Target width (CSS px)",
+      "invalidWidth": "Enter a width greater than 0.",
+      "cancel": "Cancel",
+      "apply": "Apply"
     },
     "export": {
       "currentArtifact": "Current diagram output",
