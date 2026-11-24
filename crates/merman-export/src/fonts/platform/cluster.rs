@@ -71,10 +71,13 @@ fn scalar_may_map(ch: char, rtl: bool, maps: &mut impl FnMut(char) -> bool) -> b
     if ch.is_ascii() {
         return false;
     }
-    // The shaper can synthesize these spaces or use the breakable hyphen.
+    // HarfRust substitutes some spaces and hyphens and decomposes SARA AM
+    // when shaping Thai and Lao, before canonical normalization.
     let synthesized = match ch {
         '\u{a0}' | '\u{2000}'..='\u{200a}' | '\u{202f}' | '\u{205f}' | '\u{3000}' => maps(' '),
         '\u{2011}' => maps('\u{2010}'),
+        '\u{0e33}' => maps('\u{0e4d}') && maps('\u{0e32}'),
+        '\u{0eb3}' => maps('\u{0ecd}') && maps('\u{0eb2}'),
         _ => false,
     };
 
@@ -353,12 +356,16 @@ mod tests {
     }
 
     #[test]
-    fn scalar_preflight_matches_harfrust_whitespace_and_one_step_decomposition() {
+    fn scalar_preflight_matches_harfrust_whitespace_and_decomposition() {
         for (text, nominal, expected) in [
             ("\u{2000}", &['\u{2002}'][..], true),
             ("ệ", &['ẹ', '\u{302}'], true),
             ("ệ", &['ê', '\u{323}'], false),
             ("\u{fb2c}", &['\u{fb49}', '\u{05c1}'], true),
+            ("\u{0e33}", &['\u{0e4d}', '\u{0e32}'], true),
+            ("\u{0e33}", &['\u{0e32}'], false),
+            ("\u{0eb3}", &['\u{0ecd}', '\u{0eb2}'], true),
+            ("\u{0eb3}", &['\u{0ecd}'], false),
         ] {
             let rtl = text == "\u{fb2c}";
             let cmap = fixture_cmap(nominal, false, 10);
