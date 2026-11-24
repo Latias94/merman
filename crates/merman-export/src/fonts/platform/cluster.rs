@@ -1,9 +1,10 @@
+use harfrust::unicode::{Decomposed, decompose};
 use rustybuzz::{Direction, Feature, UnicodeBuffer, script};
 use ttf_parser::{Face, Tag};
 use unicode_normalization::UnicodeNormalization;
-use unicode_normalization::char::compose;
 
 use super::GlyphFallback;
+use crate::font_selection::PlatformCmap;
 
 pub(super) fn is_default_ignorable(ch: char) -> bool {
     // Preserve the spacing fillers used as real glyphs by the shaping engine.
@@ -20,15 +21,14 @@ fn is_variation_selector(ch: char) -> bool {
     matches!(ch, '\u{fe00}'..='\u{fe0f}' | '\u{e0100}'..='\u{e01ef}')
 }
 
-#[cfg(any(target_os = "linux", target_os = "freebsd", test))]
-pub(super) fn has_variation_sequence(text: &str) -> bool {
-    let mut chars = text.chars().peekable();
-    while let Some(base) = chars.next() {
-        if !is_default_ignorable(base) && chars.peek().copied().is_some_and(is_variation_selector) {
-            return true;
-        }
-    }
-    false
+pub(in crate::fonts) fn has_variation_sequence(text: &str) -> bool {
+    variation_sequences(text).next().is_some()
+}
+
+pub(in crate::fonts) fn variation_sequences(text: &str) -> impl Iterator<Item = (char, char)> + '_ {
+    text.chars()
+        .zip(text.chars().skip(1))
+        .filter(|&(base, selector)| !is_default_ignorable(base) && is_variation_selector(selector))
 }
 
 fn scalar_may_map(ch: char, rtl: bool, maps: &mut impl FnMut(char) -> bool) -> bool {
@@ -47,29 +47,22 @@ fn scalar_may_map(ch: char, rtl: bool, maps: &mut impl FnMut(char) -> bool) -> b
         _ => {}
     }
 
-    // Every part of a scalar's decomposition must map. Try intermediate forms too,
-    // such as å + acute for ǻ, if the face lacks the fully decomposed base or marks.
-    let mut rest = std::iter::once(ch).nfd();
-    let Some(mut base) = rest.next().filter(|&base| base != ch) else {
-        return false;
+    decomposition_may_map(u32::from(ch), maps)
+}
+
+fn decomposition_may_map(ch: u32, maps: &mut impl FnMut(char) -> bool) -> bool {
+    // Shaping can recursively decompose the leading scalar if the second maps.
+    // One-step decomposition preserves intermediate forms and composition exclusions.
+    let base = match decompose(ch) {
+        Some(Decomposed::Singleton(base)) => base,
+        Some(Decomposed::Pair(base, mark)) if char::from_u32(mark).is_some_and(&mut *maps) => base,
+        _ => return false,
     };
-    loop {
-        if maps(base) && rest.clone().all(&mut *maps) {
-            return true;
-        }
-        let Some(composed) = rest.next().and_then(|mark| compose(base, mark)) else {
-            return false;
-        };
-        base = composed;
-    }
+    char::from_u32(base).is_some_and(&mut *maps) || decomposition_may_map(base, maps)
 }
 
 /// Check for nominal glyphs that could participate in shaping this request.
-pub(super) fn has_candidate_mapping(
-    text: &str,
-    rtl: bool,
-    mut maps: impl FnMut(char) -> bool,
-) -> bool {
+fn has_candidate_mapping(text: &str, rtl: bool, mut maps: impl FnMut(char) -> bool) -> bool {
     let meaningful = |ch: &char| !is_default_ignorable(*ch);
     let mut chars = text.chars().filter(meaningful).peekable();
     let Some(first) = chars.next() else {
@@ -92,61 +85,68 @@ pub(super) fn has_candidate_mapping(
                 .any(|ch| scalar_may_map(ch, rtl, &mut maps)))
 }
 
-/// Check for any relevant Unicode mapping, including explicit variant glyphs.
-pub(in crate::fonts) fn cmap_may_cover(
-    cmap: ttf_parser::cmap::Table<'_>,
-    glyph_count: u16,
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+pub(super) fn has_advertised_coverage(
     text: &str,
     rtl: bool,
+    mut maps: impl FnMut(char) -> bool,
 ) -> bool {
-    has_candidate_mapping(text, rtl, |ch| {
-        crate::font_selection::cmap_covers_character(cmap, glyph_count, ch)
-    }) || has_non_default_variation(cmap, glyph_count, text, rtl)
+    // A scan rule can deliberately remove a mark the physical font can shape.
+    // Allow a complete normalized form when the rule lists a precomposed glyph.
+    let mut covered = |ch| is_default_ignorable(ch) || scalar_may_map(ch, rtl, &mut maps);
+    text.chars().all(&mut covered) || (!text.is_ascii() && text.nfc().all(covered))
 }
 
-pub(in crate::fonts) fn has_non_default_variation(
-    cmap: ttf_parser::cmap::Table<'_>,
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+pub(super) fn unadvertised_variations(
+    text: &str,
+    rtl: bool,
+    mut maps: impl FnMut(char) -> bool,
+) -> Option<Vec<(char, char)>> {
+    let mut missing = Vec::new();
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if !is_default_ignorable(ch) && !scalar_may_map(ch, rtl, &mut maps) {
+            // Fontconfig has no charset entries for UVS pairs. Only an actual
+            // variation glyph can make up for an unadvertised base.
+            let selector = chars
+                .peek()
+                .copied()
+                .filter(|&ch| is_variation_selector(ch))?;
+            missing.push((ch, selector));
+        }
+    }
+    (!missing.is_empty()).then_some(missing)
+}
+
+/// Check for any relevant Unicode mapping, including explicit variant glyphs.
+pub(in crate::fonts) fn cmap_may_cover(
+    cmap: &[u8],
     glyph_count: u16,
     text: &str,
     rtl: bool,
 ) -> bool {
-    use ttf_parser::cmap::GlyphVariationResult;
-
-    let mut preceding = None;
-    for ch in text.chars() {
-        if is_variation_selector(ch)
-            && let Some(base) = preceding
-        {
-            // Mirroring happens before sequence lookup, and only for a nominal
-            // glyph that exists in the font.
-            let mirror = rtl
-                .then(|| unicode_bidi_mirroring::get_mirrored(base))
-                .flatten()
-                .filter(|&ch| crate::font_selection::cmap_covers_character(cmap, glyph_count, ch));
-            let base = u32::from(mirror.unwrap_or(base));
-            if cmap.subtables.into_iter().any(|table| {
-                table.is_unicode()
-                    && matches!(
-                        table.glyph_variation_index(base, u32::from(ch)),
-                        Some(GlyphVariationResult::Found(glyph)) if (1..glyph_count).contains(&glyph.0)
-                    )
-            }) {
-                return true;
-            }
+    PlatformCmap::parse(cmap, glyph_count).is_some_and(|cmap| {
+        if has_candidate_mapping(text, rtl, |ch| cmap.maps(ch)) {
+            return true;
         }
-        preceding = (!is_default_ignorable(ch)).then_some(ch);
-    }
-    false
+        let mut sequences = variation_sequences(text).peekable();
+        sequences.peek().is_some() && sequences.any(cmap.non_default_variation(rtl))
+    })
 }
 
 /// Reject only clusters known to produce missing glyphs before snapshot acquisition.
 pub(in crate::fonts) fn may_shape(face: Face<'_>, request: GlyphFallback<'_>) -> bool {
-    if !face.tables().cmap.is_some_and(|cmap| {
-        cmap_may_cover(cmap, face.number_of_glyphs(), request.text, request.rtl)
-    }) {
+    let Some(cmap) = face.raw_face().table(Tag::from_bytes(b"cmap")) else {
         return false;
-    }
-    if request.scalar().is_some() {
+    };
+    cmap_may_cover(cmap, face.number_of_glyphs(), request.text, request.rtl)
+        && may_shape_after_cmap(face, request)
+}
+
+pub(in crate::fonts) fn may_shape_after_cmap(face: Face<'_>, request: GlyphFallback<'_>) -> bool {
+    if request.scalar().is_some() || has_variation_sequence(request.text) {
+        // Rustybuzz and HarfRust can select different variation subtables.
         return true;
     }
     let gsub = face.tables().gsub;
@@ -232,6 +232,24 @@ mod tests {
             ch,
             'å' | '\u{301}'
         )));
+        assert!(has_candidate_mapping("ệ", false, |ch| matches!(
+            ch,
+            'ẹ' | '\u{302}'
+        )));
+        assert!(has_candidate_mapping("ệ", false, |ch| matches!(
+            ch,
+            'e' | '\u{323}' | '\u{302}'
+        )));
+        assert!(!has_candidate_mapping("ệ", false, |ch| matches!(
+            ch,
+            'ê' | '\u{323}'
+        )));
+        assert!(!has_candidate_mapping("ệ", false, |ch| ch == 'ẹ'));
+        assert!(has_candidate_mapping("\u{fb2c}", true, |ch| matches!(
+            ch,
+            '\u{fb49}' | '\u{05c1}'
+        )));
+        assert!(!has_candidate_mapping("\u{fb2c}", true, |ch| ch == '\u{fb49}'));
         assert!(has_candidate_mapping("i\u{301}", false, |ch| ch == 'í'));
         assert!(has_candidate_mapping("i\u{301}", false, |ch| ch == 'i'));
     }
@@ -239,16 +257,42 @@ mod tests {
     #[test]
     fn non_default_variation_covers_a_base_without_a_nominal_mapping() {
         // One Unicode cmap format 14 subtable, mapping U+2764 U+FE0F to glyph 1.
-        let cmap = ttf_parser::cmap::Table::parse(&[
+        let cmap = &[
             0, 0, 0, 1, 0, 0, 0, 5, 0, 0, 0, 12, 0, 14, 0, 0, 0, 30, 0, 0, 0, 1, 0, 0xfe, 0x0f, 0,
             0, 0, 0, 0, 0, 0, 21, 0, 0, 0, 1, 0, 0x27, 0x64, 0, 1,
-        ])
-        .unwrap();
+        ];
         assert!(!cmap_may_cover(cmap, 2, "❤", false));
         assert!(has_variation_sequence("❤\u{fe0f}"));
         assert!(cmap_may_cover(cmap, 2, "❤\u{fe0f}", false));
         assert!(!cmap_may_cover(cmap, 1, "❤\u{fe0f}", false));
         assert!(!cmap_may_cover(cmap, 2, "❤\u{fe0e}", false));
         assert!(!has_variation_sequence("❤\u{200d}\u{fe0f}"));
+    }
+
+    #[test]
+    fn a_secondary_cmap_cannot_supply_a_missing_scalar() {
+        // The higher-ranked Windows full-Unicode subtable maps ∈ only.
+        // The lower-ranked Unicode subtable maps ∋, but HarfRust never uses it.
+        let cmap = &[
+            0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 20, 0, 3, 0, 10, 0, 0, 0, 48, 0, 12, 0, 0, 0, 0, 0,
+            28, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0x22, 0x0b, 0, 0, 0x22, 0x0b, 0, 0, 0, 1, 0, 12, 0,
+            0, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0x22, 0x08, 0, 0, 0x22, 0x08, 0, 0, 0, 1,
+        ];
+        assert!(!cmap_may_cover(cmap, 2, "∋", false));
+        assert!(cmap_may_cover(cmap, 2, "∋", true));
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    #[test]
+    fn variation_sequences_only_replace_their_own_scan_charset_entries() {
+        let maps = |ch| ch == 'A';
+        assert_eq!(
+            unadvertised_variations("A\u{fe0f}\u{200d}B\u{fe0e}", false, maps),
+            Some(vec![('B', '\u{fe0e}')])
+        );
+        assert_eq!(
+            unadvertised_variations("A\u{fe0f}\u{301}", false, maps),
+            None
+        );
     }
 }

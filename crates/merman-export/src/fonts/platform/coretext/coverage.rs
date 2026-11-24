@@ -57,7 +57,7 @@ pub(super) fn check(
                 os2.as_deref().map(table_bytes),
                 cmap,
                 maxp,
-                fallback.map(|request| request.text),
+                fallback.map(|request| (request.text, request.rtl)),
             )
         }) {
             return Ok(false);
@@ -73,10 +73,10 @@ pub(super) fn check(
         return Ok(false);
     };
     let glyph_count = glyphs.number_of_glyphs.get();
-    if !cluster::cmap_may_cover(mapping, glyph_count, request.text, request.rtl) {
+    if !cluster::cmap_may_cover(cmap, glyph_count, request.text, request.rtl) {
         return Ok(false);
     }
-    if request.scalar().is_some() {
+    if request.scalar().is_some() || cluster::has_variation_sequence(request.text) {
         return Ok(true);
     }
 
@@ -111,5 +111,5 @@ pub(super) fn check(
         feat,
         ..Default::default()
     });
-    Ok(face.is_ok_and(|face| cluster::may_shape(face, request)))
+    Ok(face.is_ok_and(|face| cluster::may_shape_after_cmap(face, request)))
 }

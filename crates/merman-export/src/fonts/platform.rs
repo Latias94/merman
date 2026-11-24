@@ -28,6 +28,8 @@ pub(super) mod coretext;
 #[allow(unsafe_code)]
 mod fontconfig;
 
+pub(super) const MAX_FVAR_TABLE_BYTES: usize = 1024 * 1024;
+
 #[derive(Clone)]
 pub(super) struct PlatformFace {
     index: u32,
@@ -36,10 +38,13 @@ pub(super) struct PlatformFace {
     other_families: Vec<String>,
     pub(super) variations: Vec<usvg::FontVariation>,
     pub(super) fallback_scale: f32,
+    #[cfg(windows)]
+    pub(super) fvar_digest: Option<[u8; 32]>,
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     pub(super) named_instance: Option<u16>,
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-    pub(super) require_non_default_uvs: bool,
+    // An empty list requires any non-default UVS. Otherwise each listed pair must map.
+    pub(super) required_uvs: Option<Vec<(char, char)>>,
 }
 
 impl PlatformFace {
@@ -53,6 +58,10 @@ impl PlatformFace {
     }
 
     pub(super) fn has_variations(&self) -> bool {
+        #[cfg(windows)]
+        if self.fvar_digest.is_some() {
+            return true;
+        }
         #[cfg(any(target_os = "linux", target_os = "freebsd"))]
         if self.named_instance.is_some() {
             return true;
@@ -657,13 +666,43 @@ pub(super) fn is_system_ui(name: &str) -> bool {
         .any(|alias| name.eq_ignore_ascii_case(alias))
 }
 
-// CSS Fonts 4 orders width first, then style, then weight. Stable ordering preserves
-// the native order for faces with the same rank.
 #[cfg(any(windows, target_os = "macos"))]
+fn css_width(stretch: Stretch) -> f32 {
+    css_width_class(stretch.to_number())
+}
+
+#[cfg(any(windows, target_os = "macos"))]
+fn css_width_class(class: u16) -> f32 {
+    [50.0, 62.5, 75.0, 87.5, 100.0, 112.5, 125.0, 150.0, 200.0][usize::from(class - 1)]
+}
+
+#[cfg(target_os = "macos")]
 fn ranked_faces<T>(
-    mut faces: Vec<(T, Weight, Stretch, Style)>,
+    faces: Vec<(T, Weight, Stretch, Style)>,
     weight: Weight,
     stretch: Stretch,
+    style: Style,
+) -> Vec<T> {
+    ranked_axis_faces(
+        faces
+            .into_iter()
+            .map(|(face, weight, stretch, style)| {
+                (face, f32::from(weight.0), css_width(stretch), style)
+            })
+            .collect(),
+        f32::from(weight.0),
+        css_width(stretch),
+        style,
+    )
+}
+
+// CSS Fonts 4 orders width first, then style, then weight. Stable ordering preserves
+// the native order for faces with the same rank.
+#[cfg(any(windows, target_os = "macos", test))]
+fn ranked_axis_faces<T>(
+    mut faces: Vec<(T, f32, f32, Style)>,
+    weight: f32,
+    width: f32,
     style: Style,
 ) -> Vec<T> {
     let style_order = match style {
@@ -671,45 +710,40 @@ fn ranked_faces<T>(
         Style::Italic => [Style::Italic, Style::Oblique, Style::Normal],
         Style::Oblique => [Style::Oblique, Style::Italic, Style::Normal],
     };
-    faces.sort_by_key(
-        |&(_, candidate_weight, candidate_stretch, candidate_style)| {
-            let width = candidate_stretch.to_number();
-            let desired_width = stretch.to_number();
-            let other_direction = if stretch <= Stretch::Normal {
-                width > desired_width
+    faces.sort_by_key(|&(_, candidate_weight, candidate_width, candidate_style)| {
+        let other_direction = if width <= 100.0 {
+            candidate_width > width
+        } else {
+            candidate_width < width
+        };
+        let style_rank = style_order
+            .iter()
+            .position(|&style| style == candidate_style)
+            .unwrap_or(3);
+        let weight_group = if (400.0..=500.0).contains(&weight) {
+            if (weight..=500.0).contains(&candidate_weight) {
+                0
+            } else if candidate_weight < weight {
+                1
             } else {
-                width < desired_width
-            };
-            let style_rank = style_order
-                .iter()
-                .position(|&style| style == candidate_style)
-                .unwrap_or(3);
-            let candidate_weight = candidate_weight.0;
-            let weight = weight.0;
-            let weight_group = if (400..=500).contains(&weight) {
-                if (weight..=500).contains(&candidate_weight) {
-                    0
-                } else if candidate_weight < weight {
-                    1
-                } else {
-                    2
-                }
+                2
+            }
+        } else {
+            u8::from(if weight < 400.0 {
+                candidate_weight > weight
             } else {
-                u8::from(if weight < 400 {
-                    candidate_weight > weight
-                } else {
-                    candidate_weight < weight
-                })
-            };
-            (
-                other_direction,
-                width.abs_diff(desired_width),
-                style_rank,
-                weight_group,
-                candidate_weight.abs_diff(weight),
-            )
-        },
-    );
+                candidate_weight < weight
+            })
+        };
+        // The distance keys are nonnegative, so their bits preserve numerical order.
+        (
+            other_direction,
+            (candidate_width - width).abs().to_bits(),
+            style_rank,
+            weight_group,
+            (candidate_weight - weight).abs().to_bits(),
+        )
+    });
     faces.into_iter().map(|(face, ..)| face).collect()
 }
 
@@ -786,6 +820,35 @@ mod tests {
     use super::*;
     use crate::fonts::registry::FontSourceRegistry;
 
+    #[test]
+    fn css_axis_ranking_preserves_fractional_distances_and_native_ties() {
+        let faces = vec![
+            ("wider-far", 499.25, 100.5, Style::Italic),
+            ("wider-near", 499.25, 100.25, Style::Italic),
+            ("narrower", 499.25, 99.0, Style::Italic),
+            ("wrong-style", 499.25, 100.0, Style::Normal),
+            ("lighter", 499.0, 100.0, Style::Italic),
+            ("above-500", 500.125, 100.0, Style::Italic),
+            ("heavier-far", 499.75, 100.0, Style::Italic),
+            ("heavier-first", 499.5, 100.0, Style::Italic),
+            ("heavier-second", 499.5, 100.0, Style::Italic),
+        ];
+        assert_eq!(
+            ranked_axis_faces(faces, 499.25, 100.0, Style::Italic),
+            [
+                "heavier-first",
+                "heavier-second",
+                "heavier-far",
+                "lighter",
+                "above-500",
+                "wrong-style",
+                "narrower",
+                "wider-near",
+                "wider-far",
+            ]
+        );
+    }
+
     fn test_catalog(filenames: &[&str]) -> PlatformCatalog {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts");
         let mut candidates = Vec::new();
@@ -808,10 +871,12 @@ mod tests {
             other_families: Vec::new(),
             variations: Vec::new(),
             fallback_scale: 1.0,
+            #[cfg(windows)]
+            fvar_digest: None,
             #[cfg(any(target_os = "linux", target_os = "freebsd"))]
             named_instance: None,
             #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-            require_non_default_uvs: false,
+            required_uvs: None,
         }
     }
 
@@ -1117,7 +1182,7 @@ mod tests {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts/Cousine-Regular.ttf");
         let nominal = fixture_face(&binary_face(fs::read(&path).unwrap()));
         let mut variant = nominal.clone();
-        variant.require_non_default_uvs = true;
+        variant.required_uvs = Some(Vec::new());
         let registry = FontSourceRegistry::new(BTreeMap::new(), BTreeMap::new(), 0, 0);
         let control = OperationControl::new();
         let limits = NativeFontLimits::default();
@@ -1183,7 +1248,7 @@ mod tests {
         fs::remove_file(path).unwrap();
         let mut exported = Arc::new(Database::new());
         let export_id = registry
-            .for_export()
+            .for_export(|| Ok(()))
             .unwrap()
             .materialize(after_removal, Some('A'), &mut exported, &limits, &control)
             .unwrap()

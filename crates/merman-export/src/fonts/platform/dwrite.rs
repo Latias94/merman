@@ -1,9 +1,10 @@
 //! DirectWrite family matching and cluster fallback over local physical font faces.
 
 use super::{
-    AcceptFallback, FamilyFace, FamilyQuery, GlyphFallback, NativeFontError, OperationControl,
-    OperationPhase, PlatformFace, cluster, ranked_faces,
+    AcceptFallback, FamilyFace, FamilyQuery, GlyphFallback, MAX_FVAR_TABLE_BYTES, NativeFontError,
+    OperationControl, OperationPhase, PlatformFace, cluster, css_width, ranked_axis_faces,
 };
+use sha2::{Digest, Sha256};
 use std::{
     collections::HashSet,
     ffi::{OsString, c_void},
@@ -25,15 +26,14 @@ use windows::Win32::Graphics::DirectWrite::{
     DWRITE_FONT_AXIS_TAG_SLANT, DWRITE_FONT_AXIS_TAG_WEIGHT, DWRITE_FONT_AXIS_TAG_WIDTH,
     DWRITE_FONT_AXIS_VALUE, DWRITE_FONT_FACE_TYPE_CFF, DWRITE_FONT_FACE_TYPE_OPENTYPE_COLLECTION,
     DWRITE_FONT_FACE_TYPE_TRUETYPE, DWRITE_FONT_FAMILY_MODEL_WEIGHT_STRETCH_STYLE,
-    DWRITE_FONT_SIMULATIONS_NONE, DWRITE_FONT_STRETCH, DWRITE_FONT_STYLE, DWRITE_FONT_STYLE_ITALIC,
-    DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STYLE_OBLIQUE, DWRITE_FONT_WEIGHT, DWRITE_LOCALITY_LOCAL,
-    DWRITE_READING_DIRECTION, DWRITE_READING_DIRECTION_LEFT_TO_RIGHT,
-    DWRITE_READING_DIRECTION_RIGHT_TO_LEFT, DWriteCreateFactory, IDWriteFactory, IDWriteFactory2,
-    IDWriteFactory3, IDWriteFactory6, IDWriteFont, IDWriteFont3, IDWriteFontCollection,
-    IDWriteFontFace, IDWriteFontFace2, IDWriteFontFace5, IDWriteFontFaceReference1,
-    IDWriteFontFallback, IDWriteFontFallback1, IDWriteFontFamily1, IDWriteFontFamily2,
-    IDWriteLocalFontFileLoader, IDWriteNumberSubstitution, IDWriteTextAnalysisSource,
-    IDWriteTextAnalysisSource_Impl,
+    DWRITE_FONT_STRETCH, DWRITE_FONT_STYLE, DWRITE_FONT_STYLE_ITALIC, DWRITE_FONT_STYLE_NORMAL,
+    DWRITE_FONT_STYLE_OBLIQUE, DWRITE_FONT_WEIGHT, DWRITE_LOCALITY_LOCAL, DWRITE_READING_DIRECTION,
+    DWRITE_READING_DIRECTION_LEFT_TO_RIGHT, DWRITE_READING_DIRECTION_RIGHT_TO_LEFT,
+    DWriteCreateFactory, IDWriteFactory, IDWriteFactory2, IDWriteFactory3, IDWriteFactory6,
+    IDWriteFont, IDWriteFont3, IDWriteFontCollection, IDWriteFontFace, IDWriteFontFace2,
+    IDWriteFontFace5, IDWriteFontFaceReference1, IDWriteFontFallback, IDWriteFontFallback1,
+    IDWriteFontFamily1, IDWriteFontFamily2, IDWriteLocalFontFileLoader, IDWriteNumberSubstitution,
+    IDWriteTextAnalysisSource, IDWriteTextAnalysisSource_Impl,
 };
 use windows_core::{Error, Interface, OutRef, PCWSTR, Result as WinResult, implement};
 
@@ -140,16 +140,13 @@ impl Catalog {
                 stretch: query.stretch,
                 style: query.style,
             },
+            None,
             control,
-            |native| {
-                let candidate = file_face(&native, 1.0, None);
-                control.terminal_checkpoint_at(OperationPhase::Layout)?;
-                if let Some((path, face)) = candidate
-                    && seen.insert((path.clone(), face.index, face.variations.clone()))
-                {
+            |native, path, face| {
+                if seen.insert((path.clone(), face.index, face.variations.clone())) {
                     candidates.push(FamilyFace {
                         candidate: face.into_file(path),
-                        coverage: FamilyCoverage::read(native.native(), remaining_coverage),
+                        coverage: FamilyCoverage::read(native, remaining_coverage),
                     });
                 }
                 Ok(None)
@@ -162,8 +159,13 @@ impl Catalog {
         &self,
         name: &str,
         style: FaceStyle,
+        request: Option<GlyphFallback<'_>>,
         control: &OperationControl,
-        mut visit: impl FnMut(MatchedFace) -> Result<Option<ID>, NativeFontError>,
+        mut visit: impl FnMut(
+            &IDWriteFontFace,
+            PathBuf,
+            PlatformFace,
+        ) -> Result<Option<ID>, NativeFontError>,
     ) -> Result<Option<ID>, NativeFontError> {
         control.terminal_checkpoint_at(OperationPhase::Layout)?;
         if name.is_empty() || name.contains('\0') {
@@ -173,6 +175,15 @@ impl Catalog {
         let collection = self.collection()?;
         let mut index = 0;
         let mut exists = Default::default();
+        let mut candidates = Vec::new();
+        let mut add = |matched: MatchedFace| {
+            control.terminal_checkpoint_at(OperationPhase::Layout)?;
+            if let Some((path, face)) = file_face(&matched, 1.0, request) {
+                let (weight, width, slant) = rendered_style(matched.native(), &face.variations);
+                candidates.push(((matched, path, face), weight, width, slant));
+            }
+            Ok::<_, NativeFontError>(())
+        };
         // SAFETY: The name is NUL terminated, output slots are writable, and the family/list
         // interfaces stay live while iterating indices within their reported counts.
         unsafe {
@@ -195,7 +206,7 @@ impl Catalog {
                 Err(_) => None,
             };
             if let Some(list) = modern {
-                // GetMatchingFonts has already ranked the instantiated axis matches.
+                // Keep the precise instances and use their native order to break CSS ties.
                 for index in 0..list.GetFontCount() {
                     control.terminal_checkpoint_at(OperationPhase::Layout)?;
                     if list.GetFontLocality(index) != DWRITE_LOCALITY_LOCAL {
@@ -208,9 +219,6 @@ impl Catalog {
                     else {
                         continue;
                     };
-                    if reference.GetSimulations() != DWRITE_FONT_SIMULATIONS_NONE {
-                        continue;
-                    }
                     let face = if let Ok(reference) = reference.cast::<IDWriteFontFaceReference1>()
                     {
                         reference.CreateFontFace().map(MatchedFace::AxisMatched)
@@ -219,16 +227,12 @@ impl Catalog {
                             .CreateFontFace()
                             .map(|face| MatchedFace::Classic(face.into()))
                     };
-                    control.terminal_checkpoint_at(OperationPhase::Layout)?;
-                    if let Some(face) = candidate_result(face, "opening a matched font instance")?
-                        && let Some(id) = visit(face)?
-                    {
-                        return Ok(Some(id));
+                    if let Some(face) = candidate_result(face, "opening a matched font instance")? {
+                        add(face)?;
                     }
                 }
             } else {
                 let locality = family.cast::<IDWriteFontFamily1>().ok();
-                let mut candidates = Vec::new();
                 for index in 0..family.GetFontCount() {
                     control.terminal_checkpoint_at(OperationPhase::Layout)?;
                     if locality.as_ref().is_some_and(|family| {
@@ -241,27 +245,21 @@ impl Catalog {
                     else {
                         continue;
                     };
-                    if font.GetSimulations() != DWRITE_FONT_SIMULATIONS_NONE {
-                        continue;
-                    }
-                    let attributes = FaceStyle::from_font(&font);
-                    candidates.push((
-                        font,
-                        attributes.weight,
-                        attributes.stretch,
-                        attributes.style,
-                    ));
-                }
-                for font in ranked_faces(candidates, style.weight, style.stretch, style.style) {
-                    control.terminal_checkpoint_at(OperationPhase::Layout)?;
-                    let face = local_font_face(&font)?;
-                    control.terminal_checkpoint_at(OperationPhase::Layout)?;
-                    if let Some(face) = face
-                        && let Some(id) = visit(MatchedFace::Classic(face))?
-                    {
-                        return Ok(Some(id));
+                    if let Some(face) = local_font_face(&font)? {
+                        add(MatchedFace::Classic(face))?;
                     }
                 }
+            }
+        }
+        for (matched, path, face) in ranked_axis_faces(
+            candidates,
+            f32::from(style.weight.0),
+            css_width(style.stretch),
+            style.style,
+        ) {
+            control.terminal_checkpoint_at(OperationPhase::Layout)?;
+            if let Some(id) = visit(matched.native(), path, face)? {
+                return Ok(Some(id));
             }
         }
         control.terminal_checkpoint_at(OperationPhase::Layout)?;
@@ -304,27 +302,24 @@ impl Catalog {
         };
         let emoji = emoji_presentation(request.text);
         let mut seen = HashSet::new();
-        let mut prepare = |native_face: MatchedFace, scale| {
-            let candidate = file_face(&native_face, scale, Some(request));
-            control.terminal_checkpoint_at(OperationPhase::Layout)?;
-            let Some((path, face)) = candidate else {
-                return Ok(None);
-            };
+        let mut prepare = |native_face: &IDWriteFontFace, path: PathBuf, face: PlatformFace| {
             let emoji_family = face.family.to_ascii_lowercase().contains("emoji");
             let key = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
             control.terminal_checkpoint_at(OperationPhase::Layout)?;
-            if !seen.insert((key, face.index, face.variations.clone(), scale.to_bits())) {
+            if !seen.insert((
+                key,
+                face.index,
+                face.variations.clone(),
+                face.fallback_scale.to_bits(),
+            )) {
                 return Ok(None);
             }
             let presents_emoji = emoji_family
                 || (emoji
-                    && native_face
-                        .native()
-                        .cast::<IDWriteFontFace2>()
-                        .is_ok_and(|face| {
-                            // SAFETY: The color-font query only borrows the live face.
-                            unsafe { face.IsColorFont().as_bool() }
-                        }));
+                    && native_face.cast::<IDWriteFontFace2>().is_ok_and(|face| {
+                        // SAFETY: The color-font query only borrows the live face.
+                        unsafe { face.IsColorFont().as_bool() }
+                    }));
             Ok::<_, NativeFontError>(Some((face.into_file(path), presents_emoji)))
         };
         let mut deferred = Vec::new();
@@ -334,8 +329,9 @@ impl Catalog {
             control.terminal_checkpoint_at(OperationPhase::Layout)?;
             // A partial mapping still proposes a face. Preflight and acceptance use the
             // original cluster, including its surrounding shaping context in the resolver.
-            if let Some(face) = mapped.face
-                && let Some((candidate, presents_emoji)) = prepare(face, mapped.scale)?
+            if let Some(native) = mapped.face
+                && let Some((path, face)) = file_face(&native, mapped.scale, Some(request))
+                && let Some((candidate, presents_emoji)) = prepare(native.native(), path, face)?
             {
                 if emoji != presents_emoji {
                     // Keep the native map eligible after the preferred presentation has been tried.
@@ -388,10 +384,16 @@ impl Catalog {
         }
 
         let mut supplemental = |family, accept: &mut AcceptFallback<'_>| {
-            self.family_faces(family, style, control, |face| match prepare(face, 1.0)? {
-                Some((candidate, _)) => accept(candidate),
-                None => Ok(None),
-            })
+            self.family_faces(
+                family,
+                style,
+                Some(request),
+                control,
+                |native, path, face| match prepare(native, path, face)? {
+                    Some((candidate, _)) => accept(candidate),
+                    None => Ok(None),
+                },
+            )
         };
         if emoji && let Some(id) = supplemental("Segoe UI Emoji", accept)? {
             return Ok(Some(id));
@@ -516,32 +518,54 @@ struct FaceStyle {
     style: Style,
 }
 
-impl FaceStyle {
-    fn from_font(font: &IDWriteFont) -> Self {
-        // SAFETY: These property getters only borrow the live font interface.
-        unsafe {
-            Self {
-                weight: Weight(font.GetWeight().0.clamp(1, 1000) as u16),
-                stretch: match font.GetStretch().0 {
-                    1 => Stretch::UltraCondensed,
-                    2 => Stretch::ExtraCondensed,
-                    3 => Stretch::Condensed,
-                    4 => Stretch::SemiCondensed,
-                    6 => Stretch::SemiExpanded,
-                    7 => Stretch::Expanded,
-                    8 => Stretch::ExtraExpanded,
-                    9 => Stretch::UltraExpanded,
-                    _ => Stretch::Normal,
-                },
-                style: match font.GetStyle() {
-                    DWRITE_FONT_STYLE_ITALIC => Style::Italic,
-                    DWRITE_FONT_STYLE_OBLIQUE => Style::Oblique,
-                    _ => Style::Normal,
-                },
-            }
+fn rendered_style(face: &IDWriteFontFace, variations: &[FontVariation]) -> (f32, f32, Style) {
+    // fontdb derives style from OS/2 and post. Simulated attributes do not
+    // describe the outlines usvg loads from the underlying file.
+    let os2 = FontTable::read(face, b"OS/2");
+    let os2 = os2
+        .as_ref()
+        .and_then(|table| ttf_parser::os2::Table::parse(table.bytes()));
+    let mut style = match os2.map(|table| table.style()) {
+        Some(ttf_parser::Style::Italic) => Style::Italic,
+        Some(ttf_parser::Style::Oblique) => Style::Oblique,
+        _ if FontTable::read(face, b"post")
+            .is_some_and(|table| table.bytes().get(4..8).is_some_and(|angle| angle != [0; 4])) =>
+        {
+            Style::Italic
         }
+        _ => Style::Normal,
+    };
+    let coordinate = |tag| {
+        variations
+            .iter()
+            .find(|axis| axis.tag == tag)
+            .map(|axis| axis.value)
+    };
+    if let Some(italic) = coordinate(*b"ital") {
+        style = if italic >= 0.5 {
+            Style::Italic
+        } else {
+            Style::Normal
+        };
     }
+    if style != Style::Italic
+        && let Some(slant) = coordinate(*b"slnt")
+    {
+        style = if slant == 0.0 {
+            Style::Normal
+        } else {
+            Style::Oblique
+        };
+    }
+    let weight = coordinate(*b"wght")
+        .unwrap_or_else(|| os2.map_or(400.0, |table| f32::from(table.weight().to_number())));
+    let width = coordinate(*b"wdth").unwrap_or_else(|| {
+        super::css_width_class(os2.map_or(5, |table| table.width().to_number()))
+    });
+    (weight, width, style)
+}
 
+impl FaceStyle {
     fn classic_weight(self) -> DWRITE_FONT_WEIGHT {
         DWRITE_FONT_WEIGHT(i32::from(self.weight.0.clamp(1, 999)))
     }
@@ -556,7 +580,6 @@ impl FaceStyle {
 
     fn axes(self) -> [DWRITE_FONT_AXIS_VALUE; 4] {
         // OpenType wdth uses percentages and slnt uses counterclockwise degrees.
-        let width = [50., 62.5, 75., 87.5, 100., 112.5, 125., 150., 200.];
         [
             DWRITE_FONT_AXIS_VALUE {
                 axisTag: DWRITE_FONT_AXIS_TAG_WEIGHT,
@@ -564,7 +587,7 @@ impl FaceStyle {
             },
             DWRITE_FONT_AXIS_VALUE {
                 axisTag: DWRITE_FONT_AXIS_TAG_WIDTH,
-                value: width[usize::from(self.stretch.to_number() - 1)],
+                value: css_width(self.stretch),
             },
             DWRITE_FONT_AXIS_VALUE {
                 axisTag: DWRITE_FONT_AXIS_TAG_ITALIC,
@@ -685,6 +708,7 @@ fn file_face(
         .or_else(|| physical_name(names, name_id::FAMILY))?;
     // SAFETY: The face is live and GetIndex identifies its member of the local file.
     let index = unsafe { face.GetIndex() };
+    let (variations, fvar_digest) = variations(matched)?;
     Some((
         path,
         PlatformFace {
@@ -692,8 +716,9 @@ fn file_face(
             family,
             post_script_name: physical_name(names, name_id::POST_SCRIPT_NAME),
             other_families: Vec::new(),
-            variations: variations(matched)?,
+            variations,
             fallback_scale,
+            fvar_digest,
         },
     ))
 }
@@ -762,7 +787,7 @@ fn file_path(face: &IDWriteFontFace) -> Option<PathBuf> {
     }
 }
 
-fn variations(matched: &MatchedFace) -> Option<Vec<FontVariation>> {
+fn variations(matched: &MatchedFace) -> Option<(Vec<FontVariation>, Option<[u8; 32]>)> {
     let classic;
     let (instance, axis_matched) = match matched {
         MatchedFace::AxisMatched(face) => (Some(face), true),
@@ -772,15 +797,19 @@ fn variations(matched: &MatchedFace) -> Option<Vec<FontVariation>> {
         }
     };
     let table = FontTable::read(matched.native(), b"fvar");
-    let Some(table) = table
+    let Some((data, table)) = table
         .as_ref()
-        .and_then(|table| fvar::Table::parse(table.bytes()))
+        .map(FontTable::bytes)
+        .and_then(|data| Some((data, fvar::Table::parse(data)?)))
     else {
         return instance
             // SAFETY: The query only borrows the live face.
             .is_none_or(|instance| !unsafe { instance.HasVariations().as_bool() })
-            .then(Vec::new);
+            .then(|| (Vec::new(), None));
     };
+    if data.len() > MAX_FVAR_TABLE_BYTES {
+        return None;
+    }
     let mut values = if let Some(instance) = instance {
         // SAFETY: The face reports the required size before receiving the writable slice.
         let count = unsafe { instance.GetFontAxisValueCount() } as usize;
@@ -792,7 +821,10 @@ fn variations(matched: &MatchedFace) -> Option<Vec<FontVariation>> {
     } else {
         None
     };
-    physical_variations(table, values.as_deref_mut(), axis_matched)
+    let coordinates = physical_variations(table, values.as_deref_mut(), axis_matched)?;
+    // A classic selection can leave coordinates to CSS while still binding the
+    // admitted file to the variable resource selected by DirectWrite.
+    Some((coordinates, Some(Sha256::digest(data).into())))
 }
 
 fn physical_variations(
@@ -963,8 +995,7 @@ impl FamilyCoverage {
     }
 
     pub(super) fn may_cover(&self, text: &str, rtl: bool) -> bool {
-        cmap::Table::parse(&self.cmap)
-            .is_none_or(|cmap| cluster::cmap_may_cover(cmap, self.glyph_count, text, rtl))
+        cluster::cmap_may_cover(&self.cmap, self.glyph_count, text, rtl)
     }
 }
 
@@ -979,15 +1010,18 @@ fn covers_cluster(face: &IDWriteFontFace, request: GlyphFallback<'_>) -> bool {
         os2.as_ref().map(FontTable::bytes),
         cmap.bytes(),
         maxp.bytes(),
-        Some(request.text),
+        Some((request.text, request.rtl)),
     ) {
         return false;
     }
-    cmap::Table::parse(cmap.bytes())
-        .zip(maxp::Table::parse(maxp.bytes()))
-        .is_some_and(|(cmap, maxp)| {
-            cluster::cmap_may_cover(cmap, maxp.number_of_glyphs.get(), request.text, request.rtl)
-        })
+    maxp::Table::parse(maxp.bytes()).is_some_and(|maxp| {
+        cluster::cmap_may_cover(
+            cmap.bytes(),
+            maxp.number_of_glyphs.get(),
+            request.text,
+            request.rtl,
+        )
+    })
 }
 
 struct FontTable<'a> {
@@ -1377,7 +1411,7 @@ mod tests {
     }
 
     #[test]
-    fn directwrite_preserves_the_local_physical_axis_match_order() {
+    fn directwrite_ranks_the_rendered_css_faces_instead_of_simulated_attributes() {
         let catalog = fixture_catalog(
             &[
                 "Cousine-Regular.ttf",
@@ -1386,34 +1420,18 @@ mod tests {
             ],
             &[],
         );
-        let query = FamilyQuery::new("Cousine", Weight(510), Stretch::Normal, Style::Normal, None);
-        let style = FaceStyle {
-            weight: query.weight,
-            stretch: query.stretch,
-            style: query.style,
-        };
-        // SAFETY: The fixture collection has one family and all list indices are in bounds.
-        let expected: Vec<_> = unsafe {
-            let family = catalog.collection().unwrap().GetFontFamily(0).unwrap();
-            let Ok(family) = family.cast::<IDWriteFontFamily2>() else {
-                return;
-            };
-            let list = family.GetMatchingFonts(&style.axes()).unwrap();
-            (0..list.GetFontCount())
-                .filter(|&index| list.GetFontLocality(index) == DWRITE_LOCALITY_LOCAL)
-                .map(|index| list.GetFont(index).unwrap())
-                .filter(|font| font.GetSimulations() == DWRITE_FONT_SIMULATIONS_NONE)
-                .map(|font| file_path(&font.CreateFontFace().unwrap()).unwrap())
-                .collect()
-        };
-        assert_eq!(expected.len(), 3);
-        let actual: Vec<_> = catalog
-            .family_candidates(&query, &OperationControl::new(), &mut 0)
-            .unwrap()
-            .into_iter()
-            .map(|face| physical_face(face.candidate).0)
-            .collect();
-        assert_eq!(actual, expected);
+        let control = OperationControl::new();
+        for (weight, style, first) in [
+            (400, Style::Normal, "Cousine-Regular"),
+            (510, Style::Normal, "Cousine-Bold"),
+            (625, Style::Italic, "Cousine-Italic"),
+        ] {
+            let query = FamilyQuery::new("Cousine", Weight(weight), Stretch::Normal, style, None);
+            let candidates = catalog.family_candidates(&query, &control, &mut 0).unwrap();
+            assert_eq!(candidates.len(), 3, "one candidate per physical face");
+            let (_, _, selected) = physical_face(candidates.into_iter().next().unwrap().candidate);
+            assert_eq!(selected.post_script_name, first, "{weight} {style:?}");
+        }
     }
 
     #[test]
@@ -1515,8 +1533,13 @@ mod tests {
             assert_eq!(physical.weight, Weight(100));
             Ok(Some(physical.id))
         };
-        for weight in [100, 700] {
+        for (weight, slant) in [
+            (100, Style::Normal),
+            (510, Style::Normal),
+            (700, Style::Oblique),
+        ] {
             base.weight = Weight(weight);
+            base.style = slant;
             let query = FamilyQuery::new(
                 "Merman Variable Weight",
                 base.weight,
@@ -1543,6 +1566,7 @@ mod tests {
 
         catalog.modern_fallback = None;
         base.weight = Weight(100);
+        base.style = Style::Normal;
         assert!(
             catalog
                 .fallback("A".into(), &base, &control, &mut |candidate| {
@@ -1554,6 +1578,125 @@ mod tests {
                 .unwrap()
                 .is_some()
         );
+    }
+
+    #[test]
+    fn directwrite_classic_fallback_rejects_a_same_name_static_replacement() {
+        use crate::fonts::{NativeFontLimits, registry::FontSourceRegistry};
+        use std::{fs, sync::Arc};
+
+        let variable = include_bytes!("../../../tests/fonts/MermanVariableWeight.ttf");
+        let mut replacement = variable.to_vec();
+        let count = usize::from(u16::from_be_bytes(replacement[4..6].try_into().unwrap()));
+        let fvar = replacement[12..12 + count * 16]
+            .chunks_exact_mut(16)
+            .find(|record| &record[..4] == b"fvar")
+            .unwrap();
+        // Keep the sorted directory and physical names, but remove the variation axis table.
+        fvar[..4].copy_from_slice(b"fvzz");
+        let replaced = ttf_parser::Face::parse(&replacement, 0).unwrap();
+        assert!(!replaced.is_variable());
+
+        let path =
+            std::env::temp_dir().join(format!("merman-dwrite-fvar-{}.ttf", std::process::id()));
+        let original = path.with_extension("variable.ttf");
+        fs::write(&path, variable).unwrap();
+        let control = OperationControl::new();
+        let request = GlyphFallback::from("A");
+        let mut base = base_face();
+        base.weight = Weight(100);
+        let candidate = {
+            let mut catalog =
+                fixture_catalog(&[&path], &[('A', w!("Merman Variable Weight"), 1.0)]);
+            catalog.modern_fallback = None;
+            let mut selected = None;
+            catalog
+                .fallback(request, &base, &control, &mut |candidate| {
+                    selected = Some(candidate);
+                    Ok(Some(ID::dummy()))
+                })
+                .unwrap();
+            selected.unwrap()
+        };
+        let (_, expected, physical) = physical_face(candidate.clone());
+        assert_eq!(physical.weight, Weight(100));
+        assert!(expected.variations.is_empty());
+        assert!(expected.fvar_digest.is_some());
+        let mut static_db = Database::new();
+        static_db.load_font_data(replacement.clone());
+        expected
+            .validate(static_db.faces().next().unwrap(), &path)
+            .unwrap();
+
+        let registry = FontSourceRegistry::new(Default::default(), Default::default(), 0, 0);
+        let mut database = Arc::new(Database::new());
+        let limits = NativeFontLimits::default();
+        fs::rename(&path, &original).unwrap();
+        fs::write(&path, replacement).unwrap();
+        let result = registry.materialize(candidate, Some('A'), &mut database, &limits, &control);
+        fs::remove_file(&path).unwrap();
+        fs::remove_file(&original).unwrap();
+        assert!(
+            matches!(result, Err(NativeFontError::Source { .. })),
+            "{result:?}"
+        );
+        assert_eq!(registry.admitted_faces(), 0);
+        assert_eq!(registry.resident_bytes(), 0);
+        assert!(database.is_empty());
+    }
+
+    #[test]
+    #[ignore = "requires installed Arial and Bahnschrift faces"]
+    fn directwrite_system_renders_arial_510_and_bahnschrift_700_oblique() {
+        use crate::fonts::NativeFontOptions;
+
+        let control = OperationControl::new();
+        let context = NativeFontOptions::default()
+            .with_system_fonts(true)
+            .load_platform(&control)
+            .unwrap();
+        let mut options = usvg::Options::default();
+        context.apply_to_usvg_options(&mut options);
+        let mut bahnschrift = Vec::new();
+        for (family, weight, style, expected) in [
+            ("Arial", 510, "normal", "Arial-BoldMT"),
+            ("Bahnschrift", 400, "normal", "Bahnschrift"),
+            ("Bahnschrift", 700, "normal", "Bahnschrift"),
+            ("Bahnschrift", 700, "oblique", "Bahnschrift"),
+        ] {
+            let source = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="80"><text id="sample" x="4" y="45" font-size="26" font-family="{family}" font-weight="{weight}" font-style="{style}">AV</text></svg>"#
+            );
+            let tree = usvg::Tree::from_str(&source, &options).unwrap();
+            let Some(usvg::Node::Text(text)) = tree.node_by_id("sample") else {
+                panic!("expected positioned {family} text");
+            };
+            let selected: Vec<_> = text
+                .layouted()
+                .iter()
+                .flat_map(|span| &span.positioned_glyphs)
+                .map(|glyph| {
+                    tree.fontdb()
+                        .face(glyph.font)
+                        .unwrap()
+                        .post_script_name
+                        .as_str()
+                })
+                .collect();
+            assert_eq!(selected, [expected, expected]);
+            if family == "Bahnschrift" {
+                bahnschrift.push(tree.to_string(&usvg::WriteOptions::default()));
+            }
+        }
+        let [normal, bold, oblique] = bahnschrift.as_slice() else {
+            panic!("expected the three Bahnschrift samples");
+        };
+        assert_ne!(normal, bold, "the variable weight changes the outlines");
+        assert_eq!(
+            bold, oblique,
+            "the rendered fallback keeps the upright outline"
+        );
+        context.check().unwrap();
     }
 
     #[test]

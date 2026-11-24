@@ -1,7 +1,9 @@
 #![cfg(all(target_os = "linux", feature = "platform-system-font-query"))]
 
 use merman::OperationControl;
-use merman::svg::export::{NativeFontContext, NativeFontError, NativeFontOptions};
+use merman::svg::export::{
+    NativeFontContext, NativeFontError, NativeFontLimits, NativeFontOptions,
+};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -282,7 +284,7 @@ fn system_ui_and_empty_defaults_keep_generic_family_precedence() {
         &["Cousine-Regular.ttf", "NotoSans-Latin-subset.ttf"],
         r#"
         <alias binding="weak"><family>system-ui</family><prefer><family>Cousine</family></prefer></alias>
-        <alias binding="strong"><family>-apple-system</family><prefer><family>Merman Variable Weight</family></prefer></alias>
+        <alias binding="strong"><family>-apple-system</family><prefer><family>MermanVariableWeight</family></prefer></alias>
         <alias binding="strong"><family>sans-serif</family><prefer><family>Noto Sans</family></prefer></alias>
         <alias binding="strong"><family>serif</family><prefer><family>Cousine</family></prefer></alias>"#,
         |_| {
@@ -315,17 +317,51 @@ fn system_ui_and_empty_defaults_keep_generic_family_precedence() {
 }
 
 #[test]
-fn normalized_clusters_can_pass_a_declared_charset() {
+fn system_ui_weak_caller_alias_preserves_native_language_order() {
     with_catalog(
-        &["MermanProbeBase.ttf", "Cousine-Regular.ttf"],
+        &["Cousine-Regular.ttf", "NotoSans-Latin-subset.ttf"],
         r#"
+        <alias binding="weak"><family>system-ui</family><prefer><family>Cousine</family><family>Noto Sans</family></prefer></alias>
         <match target="scan"><test name="family"><string>Cousine</string></test>
+        <edit name="lang" mode="assign"><langset><string>en</string></langset></edit></match>
+        <match target="scan"><test name="family"><string>Noto Sans</string></test>
+        <edit name="lang" mode="assign"><langset><string>ja</string></langset></edit></match>"#,
+        |_| {
+            let context = catalog(Some("Cousine-Regular.ttf"));
+            assert_eq!(
+                selected(&context, "system-ui", "A", "en"),
+                ["Cousine-Regular"]
+            );
+            assert_eq!(
+                selected(&context, "system-ui", "A", "ja"),
+                ["NotoSans-Regular"]
+            );
+        },
+    );
+}
+
+#[test]
+fn scan_charsets_require_a_complete_normalized_cluster() {
+    with_catalog(
+        &[
+            "MermanProbeBase.ttf",
+            "Cousine-Regular.ttf",
+            "Cousine-Bold.ttf",
+        ],
+        r#"
+        <match target="scan"><test name="postscriptname"><string>Cousine-Regular</string></test>
+        <edit name="charset" mode="assign"><charset><int>101</int></charset></edit></match>
+        <match target="scan"><test name="postscriptname"><string>Cousine-Bold</string></test>
         <edit name="charset" mode="assign"><charset><int>233</int></charset></edit></match>"#,
         |_| {
             let context = catalog(None);
             assert_eq!(
-                selected(&context, "MermanProbeBase, Cousine", "e&#x301;", "en"),
+                selected(&context, "Cousine", "e", "en"),
                 ["Cousine-Regular"]
+            );
+            assert_eq!(
+                selected(&context, "MermanProbeBase, Cousine", "e&#x301;", "en"),
+                ["Cousine-Bold"]
             );
         },
     );
@@ -387,14 +423,7 @@ fn a_variation_only_candidate_needs_a_real_non_default_mapping() {
         <edit name="charset" mode="assign"><charset><int>86</int></charset></edit></match>"#,
         |root| {
             let fixture = fs::read(fixture("MermanProbeFull.ttf")).unwrap();
-            // A nominal mapping for 'f' and a non-default mapping for A + VS16.
-            let cmap = [
-                0, 0, 0, 2, 0, 3, 0, 10, 0, 0, 0, 20, 0, 0, 0, 5, 0, 0, 0, 48, 0, 12, 0, 0, 0, 0,
-                0, 28, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 102, 0, 0, 0, 102, 0, 0, 0, 1, 0, 14, 0, 0,
-                0, 30, 0, 0, 0, 1, 0, 0xfe, 0x0f, 0, 0, 0, 0, 0, 0, 0, 21, 0, 0, 0, 1, 0, 0, 65, 0,
-                1,
-            ];
-            let variant = replace_table(fixture, b"cmap", &cmap);
+            let variant = replace_table(fixture, b"cmap", &coverage_cmap(&['f'], Some('A')));
             fs::write(root.join("fonts/Variant.ttf"), variant).unwrap();
             let context = catalog(Some("MermanProbeBase.ttf"));
             // Admit Cousine first to cover both the file probe and the snapshot path.
@@ -406,6 +435,79 @@ fn a_variation_only_candidate_needs_a_real_non_default_mapping() {
                 selected(&context, "MermanProbeBase, Cousine", "A\u{fe0f}", "en"),
                 ["MermanProbeFull"]
             );
+        },
+    );
+}
+
+#[test]
+fn rtl_variation_beats_nominal_mirroring_with_bounded_cmap_reads() {
+    with_catalog(
+        &[],
+        r#"
+        <match target="scan"><test name="family"><string>Cousine</string></test>
+        <edit name="lang" mode="assign"><langset><string>en</string></langset></edit></match>
+        <match target="scan"><test name="family"><string>MermanProbeFull</string></test>
+        <edit name="lang" mode="assign"><langset><string>ja</string></langset></edit></match>"#,
+        |root| {
+            let write_font = |name: &str, path: &str, cmap: &[u8]| {
+                let bytes = fs::read(fixture(name)).unwrap();
+                fs::write(root.join(path), replace_table(bytes, b"cmap", cmap)).unwrap();
+            };
+            let mut large = coverage_cmap(&['∈'], None);
+            large.resize(64 * 1024, 0);
+            write_font("Cousine-Regular.ttf", "fonts/Nominal.ttf", large.as_slice());
+            // The RTL shaper mirrors ∋ to ∈ in this face, so its ∋ + VS16
+            // mapping is irrelevant. The other face keeps ∋ and uses its UVS.
+            write_font(
+                "Cousine-Bold.ttf",
+                "fonts/OtherBase.ttf",
+                &coverage_cmap(&['∈'], Some('∋')),
+            );
+            write_font(
+                "MermanProbeFull.ttf",
+                "fonts/Variant.ttf",
+                &coverage_cmap(&['f'], Some('∋')),
+            );
+            write_font(
+                "MermanProbeBase.ttf",
+                "Base.ttf",
+                &coverage_cmap(&['א'], None),
+            );
+            let options = NativeFontOptions::default()
+                .with_system_fonts(true)
+                .with_font_file(root.join("Base.ttf"));
+            let context = options
+                .clone()
+                .load_platform(&OperationControl::new())
+                .unwrap();
+            assert_eq!(
+                selected(&context, "MermanProbeBase", "א∋א", "en"),
+                ["MermanProbeBase", "Cousine-Regular", "MermanProbeBase"]
+            );
+            let options = options.with_limits(NativeFontLimits {
+                max_system_scan_bytes: 8192,
+                ..NativeFontLimits::default()
+            });
+            for corrupt in [false, true] {
+                let context = options
+                    .clone()
+                    .load_platform(&OperationControl::new())
+                    .unwrap();
+                if corrupt {
+                    // The catalog saw a valid nominal-only font. A stale cmap
+                    // length must not stop a speculative search for UVS.
+                    let path = root.join("fonts/Nominal.ttf");
+                    let mut font = fs::read(&path).unwrap();
+                    let cmap = table_record(&font, b"cmap");
+                    let length = (font.len() as u32).to_be_bytes();
+                    font[cmap + 12..cmap + 16].copy_from_slice(&length);
+                    fs::write(path, font).unwrap();
+                }
+                assert_eq!(
+                    selected(&context, "MermanProbeBase", "א∋\u{fe0f}א", "en"),
+                    ["MermanProbeBase", "MermanProbeFull", "MermanProbeBase"]
+                );
+            }
         },
     );
 }
@@ -526,6 +628,37 @@ fn table_record(font: &[u8], tag: &[u8; 4]) -> usize {
 
 fn table_offset(font: &[u8], record: usize) -> usize {
     u32::from_be_bytes(font[record + 8..record + 12].try_into().unwrap()) as usize
+}
+
+fn coverage_cmap(nominal: &[char], vs16_base: Option<char>) -> Vec<u8> {
+    let nominal_offset = if vs16_base.is_some() { 20u32 } else { 12 };
+    let nominal_length = 16 + 12 * nominal.len() as u32;
+    let mut cmap = vec![0, 0, 0, if vs16_base.is_some() { 2 } else { 1 }];
+    if vs16_base.is_some() {
+        cmap.extend_from_slice(&[0, 0, 0, 5]);
+        cmap.extend_from_slice(&(nominal_offset + nominal_length).to_be_bytes());
+    }
+    cmap.extend_from_slice(&[0, 3, 0, 10]);
+    cmap.extend_from_slice(&nominal_offset.to_be_bytes());
+    cmap.extend_from_slice(&[0, 12, 0, 0]);
+    cmap.extend_from_slice(&nominal_length.to_be_bytes());
+    cmap.extend_from_slice(&[0; 4]);
+    cmap.extend_from_slice(&(nominal.len() as u32).to_be_bytes());
+    for &ch in nominal {
+        let code = u32::from(ch).to_be_bytes();
+        cmap.extend_from_slice(&code);
+        cmap.extend_from_slice(&code);
+        cmap.extend_from_slice(&1u32.to_be_bytes());
+    }
+    if let Some(base) = vs16_base {
+        // Format 14, one selector with a non-default glyph for the requested base.
+        cmap.extend_from_slice(&[
+            0, 14, 0, 0, 0, 30, 0, 0, 0, 1, 0, 0xfe, 0x0f, 0, 0, 0, 0, 0, 0, 0, 21, 0, 0, 0, 1,
+        ]);
+        cmap.extend_from_slice(&u32::from(base).to_be_bytes()[1..]);
+        cmap.extend_from_slice(&1u16.to_be_bytes());
+    }
+    cmap
 }
 
 fn replace_table(mut font: Vec<u8>, tag: &[u8; 4], table: &[u8]) -> Vec<u8> {

@@ -29,7 +29,21 @@ native-fonts = [
     "dep:usvg",
 ]
 system-fonts = ["dep:usvg", "usvg/system-fonts"]
-experimental-system-font-query = ["native-fonts", "system-fonts", "dep:unicode-bidi-mirroring", "dep:unicode-general-category", "dep:unicode-normalization", "dep:windows", "dep:windows-core", "dep:objc2-core-foundation", "dep:objc2-core-text", "dep:write-fonts", "dep:libloading"]
+experimental-system-font-query = [
+    "native-fonts",
+    "system-fonts",
+    "dep:harfrust",
+    "dep:libloading",
+    "dep:objc2-core-foundation",
+    "dep:objc2-core-text",
+    "dep:read-fonts",
+    "dep:unicode-bidi-mirroring",
+    "dep:unicode-general-category",
+    "dep:unicode-normalization",
+    "dep:windows",
+    "dep:windows-core",
+    "dep:write-fonts",
+]
 png = [
     "dep:cssparser",
     "dep:data-url",
@@ -76,12 +90,14 @@ pdf = [
 [dependencies]
 cssparser = { workspace = true, optional = true }
 data-url = { workspace = true, optional = true }
+harfrust = { version = "0.15.0", optional = true }
 image = { workspace = true, optional = true }
 krilla = { workspace = true, optional = true }
 krilla-svg = { workspace = true, optional = true }
 merman-model = { workspace = true, optional = true }
 merman-render = { workspace = true, optional = true }
 quick-xml = { workspace = true, optional = true }
+read-fonts = { version = "0.46.0", default-features = false, optional = true }
 resvg = { workspace = true, optional = true, features = ["raster-images"] }
 rustybuzz = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }

@@ -236,6 +236,94 @@ pub(crate) fn cmap_covers_character(
     })
 }
 
+/// The same SFNT cmap subtable selection used by HarfRust.
+#[cfg(all(
+    feature = "experimental-system-font-query",
+    not(target_family = "wasm")
+))]
+pub(crate) struct PlatformCmap<'a> {
+    cmap: read_fonts::tables::cmap::Cmap<'a>,
+    nominal: Option<(
+        read_fonts::tables::cmap::EncodingRecord,
+        read_fonts::tables::cmap::CmapSubtable<'a>,
+    )>,
+    glyph_count: u32,
+}
+
+#[cfg(all(
+    feature = "experimental-system-font-query",
+    not(target_family = "wasm")
+))]
+impl<'a> PlatformCmap<'a> {
+    pub(crate) fn parse(data: &'a [u8], glyph_count: u16) -> Option<Self> {
+        use read_fonts::{FontData, FontRead, tables::cmap::Cmap};
+
+        let cmap = Cmap::read(FontData::new(data)).ok()?;
+        let nominal = cmap
+            .best_subtable()
+            .map(|(_, record, table)| (record, table));
+        Some(Self {
+            cmap,
+            nominal,
+            glyph_count: u32::from(glyph_count),
+        })
+    }
+
+    pub(crate) fn maps(&self, ch: char) -> bool {
+        self.nominal_glyph(ch)
+            .is_some_and(|glyph| self.valid_glyph(glyph))
+    }
+
+    fn nominal_glyph(&self, ch: char) -> Option<read_fonts::types::GlyphId> {
+        let (record, table) = self.nominal.as_ref()?;
+        let codepoint = if record.is_mac_roman() && !ch.is_ascii() {
+            u32::from(read_fonts::tables::name::MacRomanMapping.encode(ch)?)
+        } else {
+            u32::from(ch)
+        };
+        let map = |codepoint| {
+            table
+                .map_codepoint(codepoint)
+                .filter(|glyph| glyph.to_u32() != 0)
+        };
+        map(codepoint).or_else(|| {
+            if record.is_symbol() && codepoint <= 0xff {
+                map(0xf000 + codepoint)
+            } else {
+                None
+            }
+        })
+    }
+
+    fn directional_base(&self, ch: char, rtl: bool) -> char {
+        // HarfRust mirrors before looking up variations, provided the mirror
+        // has a nominal glyph in the preferred subtable.
+        if rtl
+            && let Some(mirror) = unicode_bidi_mirroring::get_mirrored(ch)
+            && self.nominal_glyph(mirror).is_some()
+        {
+            return mirror;
+        }
+        ch
+    }
+
+    pub(crate) fn non_default_variation(&self, rtl: bool) -> impl Fn((char, char)) -> bool + '_ {
+        use read_fonts::tables::cmap::MapVariant;
+
+        let table = self.cmap.uvs_subtable().map(|(_, subtable)| subtable);
+        move |(base, selector)| {
+            table.as_ref().is_some_and(|table| {
+                let base = self.directional_base(base, rtl);
+                matches!(table.map_variant(base, selector), Some(MapVariant::Variant(glyph)) if self.valid_glyph(glyph))
+            })
+        }
+    }
+
+    fn valid_glyph(&self, glyph: read_fonts::types::GlyphId) -> bool {
+        (1..self.glyph_count).contains(&glyph.to_u32())
+    }
+}
+
 #[cfg(test)]
 #[test]
 fn cmap_notdef_is_not_fallback_coverage() {
@@ -335,14 +423,14 @@ pub(crate) fn is_last_resort_head(head: &[u8]) -> bool {
 pub(crate) fn allows_font_tables(
     head: &[u8],
     os2: Option<&[u8]>,
-    cmap: &[u8],
+    cmap_data: &[u8],
     maxp: &[u8],
-    fallback: Option<&str>,
+    fallback: Option<(&str, bool)>,
 ) -> bool {
     use ttf_parser::{cmap, maxp};
     use unicode_general_category::{GeneralCategory, get_general_category};
 
-    let Some(cmap) = cmap::Table::parse(cmap) else {
+    let Some(cmap) = cmap::Table::parse(cmap_data) else {
         return false;
     };
     if !cmap
@@ -354,29 +442,34 @@ pub(crate) fn allows_font_tables(
     }
     match classify_tables(Some(head), os2, Some(cmap)) {
         FaceClass::LastResort | FaceClass::SymbolEncoding => false,
-        FaceClass::Symbolic => fallback.is_some_and(|text| {
+        FaceClass::Symbolic => fallback.is_some_and(|(text, rtl)| {
             let Some(maxp) = maxp::Table::parse(maxp) else {
                 return false;
             };
+            let Some(cmap) = PlatformCmap::parse(cmap_data, maxp.number_of_glyphs.get()) else {
+                return false;
+            };
+            let maps_variant = cmap.non_default_variation(rtl);
             let mut symbol = false;
             let keycap = text.ends_with('\u{20e3}');
-            for ch in text.chars() {
+            let mut chars = text.chars().peekable();
+            while let Some(ch) = chars.next() {
                 match get_general_category(ch) {
                     GeneralCategory::MathSymbol
                     | GeneralCategory::CurrencySymbol
                     | GeneralCategory::ModifierSymbol
-                    | GeneralCategory::OtherSymbol => {
-                        symbol |= cmap_covers_character(cmap, maxp.number_of_glyphs.get(), ch);
-                    }
-                    _ if keycap && matches!(ch, '0'..='9' | '#' | '*') => {
-                        symbol |= cmap_covers_character(cmap, maxp.number_of_glyphs.get(), ch);
-                    }
+                    | GeneralCategory::OtherSymbol => {}
+                    _ if keycap && matches!(ch, '0'..='9' | '#' | '*') => {}
                     GeneralCategory::NonspacingMark
                     | GeneralCategory::SpacingMark
                     | GeneralCategory::EnclosingMark
-                    | GeneralCategory::Format => {}
+                    | GeneralCategory::Format => continue,
                     _ => return false,
                 }
+                symbol |= cmap.maps(cmap.directional_base(ch, rtl))
+                    || chars
+                        .peek()
+                        .is_some_and(|&selector| maps_variant((ch, selector)));
             }
             symbol
         }),
@@ -401,17 +494,23 @@ fn pictorial_face_is_eligible_for_its_unicode_dingbat_only() {
     let mut head = table(b"head").to_vec();
     let cmap = table(b"cmap");
     let maxp = table(b"maxp");
-    for text in [None, Some("f"), Some("∑")] {
+    for text in [None, Some(("f", false)), Some(("∑", false))] {
         assert!(!allows_font_tables(&head, Some(&os2), cmap, maxp, text));
     }
-    assert!(allows_font_tables(&head, Some(&os2), cmap, maxp, Some("✓")));
+    assert!(allows_font_tables(
+        &head,
+        Some(&os2),
+        cmap,
+        maxp,
+        Some(("✓", false))
+    ));
     head[16] |= 0x40;
     assert!(!allows_font_tables(
         &head,
         Some(&os2),
         cmap,
         maxp,
-        Some("✓")
+        Some(("✓", false))
     ));
 }
 

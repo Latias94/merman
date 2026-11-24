@@ -57,6 +57,18 @@ enum MatchScope<'a> {
     Fallback,
 }
 
+#[derive(Clone, Copy)]
+enum CoveragePass {
+    Nominal,
+    NonDefaultVariation,
+    NominalOrVariation,
+}
+
+enum Coverage {
+    Nominal,
+    NonDefaultVariation(Vec<(char, char)>),
+}
+
 type InstanceBases<'a> = HashMap<(&'a CStr, u32), Option<PatternRef<'a>>>;
 
 impl Query<'_> {
@@ -67,7 +79,21 @@ impl Query<'_> {
             self.weight,
             self.stretch,
             self.style,
-        )?;
+        )
+        .or_else(|| {
+            let canonical = database
+                .faces()
+                .flat_map(|face| &face.families)
+                .map(|(family, _)| family)
+                .find(|family| eq_family(family, name))?;
+            crate::query_font_family(
+                database,
+                usvg::fontdb::Family::Name(canonical),
+                self.weight,
+                self.stretch,
+                self.style,
+            )
+        })?;
         database.face(id)
     }
 
@@ -340,14 +366,15 @@ impl Catalog {
             (_, Some(_)) => (None, Some(self.sort(&pattern, query.text)?)),
         };
         let has_variation = query.text.is_some_and(cluster::has_variation_sequence);
-        // A scan charset cannot advertise a format-14-only mapping. In a broad
-        // cascade, try advertised coverage before opening unknown files for UVS.
-        let defer_variants = has_variation && preferred.is_none();
+        // Keep the named cascade in family order. In a broad cascade a true
+        // variation glyph takes precedence over nominal coverage or mirroring.
+        let passes: &[_] = match (has_variation, preferred.is_some()) {
+            (true, false) => &[CoveragePass::NonDefaultVariation, CoveragePass::Nominal],
+            (true, true) => &[CoveragePass::NominalOrVariation],
+            (false, _) => &[CoveragePass::Nominal],
+        };
         let mut bases = InstanceBases::new();
-        for variant_pass in [false, true]
-            .into_iter()
-            .take(1 + usize::from(defer_variants))
-        {
+        for &pass in passes {
             for face in single
                 .into_iter()
                 .chain(sorted.iter().flat_map(FontSet::iter))
@@ -359,8 +386,11 @@ impl Catalog {
                     let Some(rank) = face.family_rank(names) else {
                         continue;
                     };
-                    while let Some((_, caller)) = callers.next_if(|(position, _)| *position <= rank)
-                    {
+                    // A weak system-ui alias follows the system cascade, where
+                    // Fontconfig can rank a language match ahead of that alias.
+                    while let Some((_, caller)) = callers.next_if(|(position, _)| {
+                        *position <= rank && (caller_exact || *position < names.len())
+                    }) {
                         if let Some(id) = lock.outside(|| {
                             accept(FontCandidate::Loaded(caller.clone()), caller_exact)
                         })? {
@@ -368,14 +398,9 @@ impl Catalog {
                         }
                     }
                 }
-                let variant_only = query
-                    .text
-                    .is_some_and(|text| !face.may_cover(text, query.rtl));
-                if (variant_only && !has_variation)
-                    || (defer_variants && variant_only != variant_pass)
-                {
+                let Some(coverage) = face.coverage(query.text, query.rtl, pass) else {
                     continue;
-                }
+                };
                 let Some((path, mut physical)) = self.file_face(face, &mut bases) else {
                     continue;
                 };
@@ -391,7 +416,10 @@ impl Catalog {
                 let prepared = Pattern::from_raw(self.api, raw)
                     .ok_or_else(|| failed("preparing a candidate"))?;
                 physical.variations = prepared.as_ref().variations();
-                physical.require_non_default_uvs = variant_only;
+                physical.required_uvs = match coverage {
+                    Coverage::Nominal => None,
+                    Coverage::NonDefaultVariation(required) => Some(required),
+                };
                 drop(prepared);
                 let exact_name = matches!(scope, MatchScope::Named(_))
                     && query
@@ -560,7 +588,7 @@ impl Catalog {
                 variations: Vec::new(),
                 fallback_scale: 1.0,
                 named_instance,
-                require_non_default_uvs: false,
+                required_uvs: None,
             },
         ))
     }
@@ -875,18 +903,32 @@ impl<'a> PatternRef<'a> {
         }
     }
 
-    fn may_cover(self, text: &str, rtl: bool) -> bool {
-        let Some(first) = self.charset(0) else {
-            return true;
+    fn coverage(self, text: Option<&str>, rtl: bool, pass: CoveragePass) -> Option<Coverage> {
+        let Some(text) = text else {
+            return Some(Coverage::Nominal);
         };
+        let first = self.charset(0);
         let maps = |ch| {
             let has_char = |chars: NonNull<FcCharSet>| {
                 // SAFETY: The charset belongs to this borrowed scan pattern.
                 unsafe { (self.api.FcCharSetHasChar)(chars.as_ptr(), u32::from(ch)) != 0 }
             };
-            has_char(first) || (1..).map_while(|index| self.charset(index)).any(has_char)
+            first.is_none_or(|first| {
+                has_char(first) || (1..).map_while(|index| self.charset(index)).any(has_char)
+            })
         };
-        cluster::has_candidate_mapping(text, rtl, maps)
+        if cluster::has_advertised_coverage(text, rtl, maps) {
+            return Some(match pass {
+                CoveragePass::NonDefaultVariation => Coverage::NonDefaultVariation(Vec::new()),
+                _ => Coverage::Nominal,
+            });
+        }
+        match pass {
+            CoveragePass::Nominal => None,
+            _ => {
+                cluster::unadvertised_variations(text, rtl, maps).map(Coverage::NonDefaultVariation)
+            }
+        }
     }
 
     fn variations(self) -> Vec<usvg::FontVariation> {

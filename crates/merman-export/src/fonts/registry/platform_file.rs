@@ -3,7 +3,9 @@
 use super::super::resolver::GlyphFallback;
 use super::*;
 use std::io::{Seek, SeekFrom};
-use ttf_parser::{Face, RawFaceTables, cmap, fvar};
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+use ttf_parser::Tag;
+use ttf_parser::{Face, RawFaceTables, fvar};
 use usvg::FontVariation;
 
 pub(super) struct OpenPlatformFont<'a> {
@@ -60,6 +62,12 @@ impl<'a> OpenPlatformFont<'a> {
         let Some(directory) = probe.directory(index)? else {
             return Ok(None);
         };
+        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+        if let Some(required) = &expected.required_uvs
+            && !probe.has_variation_subtable(&directory, request.fallback, required)?
+        {
+            return Ok(None);
+        }
         let Some(head) = probe.prefix(&directory, b"head", 54)? else {
             return Ok(None);
         };
@@ -87,6 +95,10 @@ impl<'a> OpenPlatformFont<'a> {
             return Ok(None);
         };
         checked_cmap_bytes(&cmap, probe.source.control, 0, limits)?;
+        let glyph_count = headers.number_of_glyphs();
+        if !required_variation_matches(expected, Some(&cmap), glyph_count, request.fallback) {
+            return Ok(None);
+        }
         if request.implicit {
             let os2 = probe.prefix(&directory, b"OS/2", 34)?;
             if !crate::font_selection::allows_font_tables(
@@ -94,23 +106,20 @@ impl<'a> OpenPlatformFont<'a> {
                 os2.as_deref(),
                 &cmap,
                 &maxp,
-                request.fallback.map(|fallback| fallback.text),
+                request
+                    .fallback
+                    .map(|fallback| (fallback.text, fallback.rtl)),
             ) {
                 return Ok(None);
             }
         }
-        let mapping = cmap::Table::parse(&cmap);
-        let glyph_count = headers.number_of_glyphs();
-        if !required_variation_matches(expected, mapping, glyph_count, request.fallback) {
-            return Ok(None);
-        }
         if let Some(fallback) = request.fallback {
-            if !mapping.is_some_and(|cmap| {
-                platform::cluster::cmap_may_cover(cmap, glyph_count, fallback.text, fallback.rtl)
-            }) {
+            if !platform::cluster::cmap_may_cover(&cmap, glyph_count, fallback.text, fallback.rtl) {
                 return Ok(None);
             }
-            if fallback.scalar().is_none() {
+            if fallback.scalar().is_none()
+                && !platform::cluster::has_variation_sequence(fallback.text)
+            {
                 // Only small substitution tables participate in the speculative shape.
                 // Defer expensive or variation-dependent shaping to the admitted face.
                 const MAX_PROBE_LAYOUT_TABLE: usize = 256 * 1024;
@@ -138,7 +147,7 @@ impl<'a> OpenPlatformFont<'a> {
                         morx: morx.as_deref(),
                         feat: feat.as_deref(),
                         ..Default::default()
-                    }) && !platform::cluster::may_shape(face, fallback)
+                    }) && !platform::cluster::may_shape_after_cmap(face, fallback)
                     {
                         return Ok(None);
                     }
@@ -146,7 +155,7 @@ impl<'a> OpenPlatformFont<'a> {
             }
         }
         let fvar = if expected.has_variations() {
-            probe.table(&directory, b"fvar", 1024 * 1024)?
+            probe.table(&directory, b"fvar", platform::MAX_FVAR_TABLE_BYTES)?
         } else {
             None
         };
@@ -164,7 +173,7 @@ pub(super) fn has_required_variation(
 ) -> bool {
     required_variation_matches(
         expected,
-        face.tables().cmap,
+        face.raw_face().table(Tag::from_bytes(b"cmap")),
         face.number_of_glyphs(),
         request.fallback,
     )
@@ -172,19 +181,21 @@ pub(super) fn has_required_variation(
 
 fn required_variation_matches(
     expected: &platform::PlatformFace,
-    mapping: Option<cmap::Table<'_>>,
+    mapping: Option<&[u8]>,
     glyph_count: u16,
     fallback: Option<GlyphFallback<'_>>,
 ) -> bool {
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-    if expected.require_non_default_uvs {
+    if let Some(required) = &expected.required_uvs {
         return mapping.zip(fallback).is_some_and(|(cmap, request)| {
-            platform::cluster::has_non_default_variation(
-                cmap,
-                glyph_count,
-                request.text,
-                request.rtl,
-            )
+            crate::font_selection::PlatformCmap::parse(cmap, glyph_count).is_some_and(|cmap| {
+                let maps = cmap.non_default_variation(request.rtl);
+                if required.is_empty() {
+                    platform::cluster::variation_sequences(request.text).any(maps)
+                } else {
+                    required.iter().copied().all(maps)
+                }
+            })
         });
     }
     let _ = (expected, mapping, glyph_count, fallback);
@@ -216,13 +227,15 @@ impl Directory {
 }
 
 impl Probe<'_, '_> {
-    fn check_range(&self, offset: u64, len: usize) -> Result<(), NativeFontError> {
-        if self
-            .source
+    fn contains(&self, offset: u64, len: usize) -> bool {
+        self.source
             .len
             .checked_sub(offset)
-            .is_none_or(|remaining| remaining < len as u64)
-        {
+            .is_some_and(|remaining| remaining >= len as u64)
+    }
+
+    fn check_range(&self, offset: u64, len: usize) -> Result<(), NativeFontError> {
+        if !self.contains(offset, len) {
             return Err(source_error(
                 self.source.path,
                 "font table extends beyond the source",
@@ -315,6 +328,99 @@ impl Probe<'_, '_> {
         self.read_vec(offset, size.min(len)).map(Some)
     }
 
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    fn has_variation_subtable(
+        &mut self,
+        directory: &Directory,
+        fallback: Option<GlyphFallback<'_>>,
+        required: &[(char, char)],
+    ) -> Result<bool, NativeFontError> {
+        let Some(request) = fallback else {
+            return Ok(false);
+        };
+        let Some((offset, len)) = directory.entry(b"cmap") else {
+            return Ok(false);
+        };
+        // An invalid cmap cannot supply a UVS. Ordinary admission still checks
+        // the source range and reports the error for a selected candidate.
+        if len < 4 || !self.contains(offset, len) {
+            return Ok(false);
+        }
+        let mut header = [0; 4];
+        self.read(offset, &mut header)?;
+        let count = usize::from(be_u16(&header[2..]));
+        if header[..2] != [0, 0] || 4 + count * 8 > len {
+            return Ok(false);
+        }
+        check_limit("system-cmap-subtables", count, 32)?;
+        let mut records = [0; 32 * 8];
+        let records = &mut records[..count * 8];
+        self.read(offset + 4, records)?;
+        let mut selectors = [false; 256];
+        let variants = platform::cluster::variation_sequences(request.text)
+            .take_while(|_| required.is_empty())
+            .chain(required.iter().copied());
+        for (_, selector) in variants {
+            let selector = u32::from(selector);
+            let index = if selector <= 0xfe0f {
+                selector - 0xfe00
+            } else {
+                selector - 0xe0100 + 16
+            };
+            selectors[index as usize] = true;
+        }
+        for record in records.as_chunks::<8>().0.iter().rev() {
+            if record[..4] != [0, 0, 0, 5] {
+                continue;
+            }
+            let start = be_u32(&record[4..]) as usize;
+            let start_offset = offset + start as u64;
+            let remaining = len.saturating_sub(start);
+            if remaining < 2 || !self.contains(start_offset, 2) {
+                continue;
+            }
+            if remaining < 10 {
+                continue;
+            }
+            let mut header = [0; 10];
+            self.read(start_offset, &mut header)?;
+            let min_mapping = match be_u16(&header[..2]) {
+                14 => 9,
+                15 => 10,
+                _ => continue,
+            };
+            let length = be_u32(&header[2..6]) as usize;
+            let count = be_u32(&header[6..]) as usize;
+            if !(10..=remaining).contains(&length) || count > (length - 10) / 11 {
+                continue;
+            }
+            // Leave unusually large selector lists to the full parser.
+            if count > selectors.len() {
+                return Ok(true);
+            }
+            let mut entries = [0; 256 * 11];
+            let entries = &mut entries[..count * 11];
+            self.read(start_offset + 10, entries)?;
+            for entry in entries.as_chunks::<11>().0 {
+                let selector = u32::from_be_bytes([0, entry[0], entry[1], entry[2]]);
+                let index = match selector {
+                    0xfe00..=0xfe0f => selector - 0xfe00,
+                    0xe0100..=0xe01ef => selector - 0xe0100 + 16,
+                    _ => continue,
+                };
+                let mapping = be_u32(&entry[7..]) as usize;
+                // Require space for a count and at least one glyph record.
+                if selectors[index as usize]
+                    && mapping != 0
+                    && mapping <= length.saturating_sub(min_mapping)
+                {
+                    return Ok(true);
+                }
+            }
+        }
+        Ok(false)
+    }
+
     fn table(
         &mut self,
         directory: &Directory,
@@ -341,6 +447,12 @@ pub(super) fn axes(
     expected: &platform::PlatformFace,
     table: Option<&[u8]>,
 ) -> Result<Vec<FontVariation>, &'static str> {
+    #[cfg(windows)]
+    if let Some(digest) = expected.fvar_digest
+        && !table.is_some_and(|data| <[u8; 32]>::from(Sha256::digest(data)) == digest)
+    {
+        return Err("font no longer has the variation axes selected by the platform");
+    }
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     let named = expected.named_instance;
     #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
