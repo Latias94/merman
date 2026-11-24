@@ -3,7 +3,6 @@
 use crate::Result;
 use crate::elk_edge_geometry;
 use crate::model::{Bounds, LayoutEdge, LayoutNode};
-use crate::resources::OperationWorkMeter;
 use crate::text::{TextMeasurer, TextMetrics, TextStyle};
 use merman_model::families::usecase::{UsecaseDiagramModel, UsecaseLabelType};
 use serde::{Deserialize, Serialize};
@@ -11,6 +10,7 @@ use serde_json::Value;
 use std::sync::Arc;
 
 pub(crate) mod actor;
+#[cfg(feature = "layout-dagre")]
 mod dagre;
 mod layout;
 mod measure;
@@ -281,46 +281,44 @@ pub(crate) fn requires_math(
     false
 }
 
-#[allow(
-    clippy::too_many_arguments,
-    reason = "Usecase preparation consumes the operation's model, theme, text, and layout services."
-)]
 pub(crate) fn prepare_usecase_diagram(
     model: &UsecaseDiagramModel,
     effective_config: &merman_model::presentation::PresentationConfig,
-    resolved_theme: Option<&crate::diagram_theme::ResolvedDiagramTheme>,
     diagram_title: Option<&str>,
-    measurer: &dyn TextMeasurer,
-    math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
-    work_meter: Arc<OperationWorkMeter>,
-    #[cfg(feature = "layout-shoal")] execution: &crate::LayoutExecution<'_>,
-    #[cfg(feature = "layout-elk")] operation_seed: merman_layout_elk::ElkOperationSeed,
+    execution: &crate::LayoutExecution<'_>,
 ) -> Result<UsecasePreparedArtifact> {
+    #[cfg(any(
+        feature = "layout-dagre",
+        feature = "layout-elk",
+        feature = "layout-shoal"
+    ))]
+    use crate::{graph_layout::RouteContract, layout_backend::GraphLayoutBackend};
+
+    let work_meter = execution.work_meter();
     work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
     let config_value = effective_config.as_value();
     let css_binding = UsecaseCssBinding::new(config_value);
-    let mut theme_plan = UsecaseThemePlan::resolve(
-        resolved_theme,
+    let theme_plan = UsecaseThemePlan::resolve(
+        execution.resolved_theme(),
         effective_config,
         model,
         diagram_title,
         &work_meter,
     )?;
     let mut work = crate::layout_work::OperationLayoutWorkControl::new(work_meter);
-    let (mut nodes, mut edges) = measure::measure(
+    let (nodes, edges) = measure::measure(
         model,
         effective_config,
         &css_binding,
         &theme_plan,
-        measurer,
-        math_renderer,
+        execution.text_measurer(),
+        execution.math_renderer(),
         &mut work,
     )?;
-    let selection = crate::layout_backend::resolve_graph_layout(config_value);
-    selection.validate_rootless_graph()?;
-    let backend = selection.backend;
+    let backend = execution.layout_backend();
+    backend.validate_rootless_graph()?;
     #[cfg(feature = "layout-shoal")]
-    if backend == crate::layout_backend::GraphLayoutBackend::Shoal {
+    if backend == GraphLayoutBackend::Shoal {
         let (layout, canonical, routes) = shoal::layout(
             model,
             config_value,
@@ -338,28 +336,37 @@ pub(crate) fn prepare_usecase_diagram(
             nodes,
             edges,
             edge_paths: Default::default(),
-            route_contract: crate::graph_layout::RouteContract::canonical_graph(routes),
+            route_contract: RouteContract::canonical_graph(routes),
             canonical: Some(canonical),
         });
     }
-    if backend == crate::layout_backend::GraphLayoutBackend::Dagre {
-        dagre::expand_self_loops(&mut nodes, &mut edges, &css_binding.generic_font, &mut work)?;
-        theme_plan.retain_edge_terminals(&edges, &mut work)?;
-    }
-    let route_contract = crate::graph_layout::RouteContract::parity(
-        backend == crate::layout_backend::GraphLayoutBackend::Elk,
-    );
-    let mut layout = layout::layout(
-        model,
-        config_value,
-        &nodes,
-        &mut edges,
+    #[cfg(feature = "layout-dagre")]
+    let (mut nodes, mut edges, mut theme_plan) = (nodes, edges, theme_plan);
+    let (mut layout, route_contract) = match backend {
+        #[cfg(feature = "layout-dagre")]
+        GraphLayoutBackend::Dagre => {
+            dagre::expand_self_loops(&mut nodes, &mut edges, &css_binding.generic_font, &mut work)?;
+            theme_plan.retain_edge_terminals(&edges, &mut work)?;
+            Ok((
+                dagre::layout(model, config_value, &nodes, &mut edges, &mut work)?,
+                RouteContract::DagreParity,
+            ))
+        }
         #[cfg(feature = "layout-elk")]
-        &route_contract,
-        &mut work,
-        #[cfg(feature = "layout-elk")]
-        operation_seed,
-    )?;
+        GraphLayoutBackend::Elk(algorithm) => Ok((
+            layout::elk_layout(
+                model,
+                config_value,
+                &nodes,
+                &edges,
+                &mut work,
+                algorithm,
+                execution.elk_operation_seed(),
+            )?,
+            RouteContract::ElkParity,
+        )),
+        _ => Err(backend.unavailable_for(execution.family_id().as_str())),
+    }?;
     let edge_paths = layout::prepare_edge_paths(
         &mut layout,
         &nodes,
@@ -382,5 +389,5 @@ pub(crate) fn prepare_usecase_diagram(
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "layout-dagre"))]
 mod tests;

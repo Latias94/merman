@@ -319,7 +319,7 @@ hook; use `native_assets` to override acquisition and bundling. During migration
 without a manifest still accepts explicitly built self-contained `native/` files.
 
 ```sh
-cargo build -p merman-ffi --profile native-distribution --no-default-features --features 'svg,analysis,ascii,layout-cytoscape,layout-elk,math'
+cargo build -p merman-ffi --profile native-distribution --no-default-features --features 'all-diagrams,svg,analysis,ascii,layout-cytoscape,layout-dagre,layout-elk,math'
 ```
 
 The bundled artifacts are deterministic and contain no system adapters. Custom source builds may

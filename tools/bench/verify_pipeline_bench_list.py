@@ -102,7 +102,7 @@ def validate_pipeline_bench_list(
     output: str,
     *,
     enabled_features: Sequence[str] = (
-        "all-diagrams", "svg", "compat-json", "editor-facts"
+        "all-diagrams", "svg", "compat-json", "editor-facts", "layout-dagre"
     ),
 ) -> dict[str, object]:
     current, historical = _pipeline_lane_groups(
@@ -298,7 +298,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--target-dir", default="target")
     parser.add_argument(
         "--features",
-        default="all-diagrams,svg,compat-json,editor-facts,layout-cytoscape,layout-elk,math",
+        default="all-diagrams,svg,compat-json,editor-facts,layout-cytoscape,layout-dagre,layout-elk,math",
     )
     parser.add_argument("--package", default="merman")
     parser.add_argument("--bench", default="pipeline")

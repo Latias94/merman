@@ -16,7 +16,15 @@ flowchart LR
   classDef cluster fill:#eee,stroke:#000
 ";
     let policy = RenderResourcePolicy::unbounded_for_trusted_input();
-    let parsed = MermaidEngine::new()
+    let mut engine = MermaidEngine::new();
+    if !cfg!(any(feature = "layout-dagre", feature = "layout-elk")) {
+        engine = engine.with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(
+                serde_json::json!({"layout": "shoal"}),
+            ),
+        );
+    }
+    let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap()

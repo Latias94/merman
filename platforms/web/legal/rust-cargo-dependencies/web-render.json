@@ -47,6 +47,7 @@
       "features": [
         "all-diagrams",
         "layout-cytoscape",
+        "layout-dagre",
         "layout-elk",
         "math",
         "svg"
@@ -78,7 +79,7 @@
     "offline": true,
     "cargo_lock_sha256": "882f6aae02fa4723a249b1d83bc486c36331611c6dc909f1a326a52670c94a4c",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
-    "artifact_profile_sha256": "caaa99d16f01ecc804757b206a5d4d1eaf3d4f0d6c7e22ac4a27e239ee7a0dd1"
+    "artifact_profile_sha256": "b570223852f6f57dee6f328510b8307d9ef7537d3386d4da7585b94a38ce4fc3"
   },
   "dependency_closure": {
     "package_count": 170,

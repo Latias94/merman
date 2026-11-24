@@ -118,6 +118,15 @@ pub fn svg_plan_json(source: &[u8], options_json: &[u8]) -> Result<Vec<u8>, Bind
     crate::execute_once_data("svg-plan-json", source, None, options_json)
 }
 
+#[cfg(all(test, feature = "svg"))]
+pub(crate) fn expected_elk_request() -> (&'static str, bool) {
+    if !merman::svg::layout_elk_available() && merman::svg::layout_dagre_available() {
+        ("layout-dagre", cfg!(feature = "layout-dagre"))
+    } else {
+        ("layout-elk", cfg!(feature = "layout-elk"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,19 +149,16 @@ mod tests {
     #[cfg(feature = "svg")]
     #[test]
     fn basic_flowchart_plan_resolves_the_default_registered_backend() {
+        let (required, ready) = expected_elk_request();
         assert_eq!(
             plan("flowchart TD\nA --> B", b""),
             serde_json::json!({
                 "schema_version": SVG_PLAN_SCHEMA_VERSION,
                 "planned_operation_id": "svg",
                 "diagram_type": "flowchart-v2",
-                "required_capability_ids": if cfg!(feature = "layout-elk") {
-                    serde_json::json!(["layout-elk"])
-                } else {
-                    serde_json::json!([])
-                },
-                "missing_capability_ids": [],
-                "ready": true,
+                "required_capability_ids": [required],
+                "missing_capability_ids": (!ready).then_some(required).into_iter().collect::<Vec<_>>(),
+                "ready": ready,
                 "supported_layout_adaptation_ids": ["none"],
             })
         );
@@ -160,8 +166,41 @@ mod tests {
 
     #[cfg(all(feature = "svg", feature = "diagram-flowchart"))]
     #[test]
+    fn dagre_plan_and_execution_follow_the_binding_owner_feature() {
+        let source = "---\nconfig:\n  layout: dagre\n---\nflowchart TD\nA --> B";
+        let ready = cfg!(feature = "layout-dagre");
+        let payload = plan(source, b"");
+        assert_eq!(
+            payload["required_capability_ids"],
+            serde_json::json!(["layout-dagre"])
+        );
+        assert_eq!(payload["ready"], ready);
+        assert!(crate::parse_json(source.as_bytes(), b"").is_ok());
+
+        let svg = crate::render_svg(source.as_bytes(), b"");
+        let layout = crate::layout_json(source.as_bytes(), b"");
+        if ready {
+            assert_eq!(payload["missing_capability_ids"], serde_json::json!([]));
+            assert!(String::from_utf8(svg.unwrap()).unwrap().contains("<svg"));
+            let layout: serde_json::Value = serde_json::from_slice(&layout.unwrap()).unwrap();
+            assert!(layout.is_object());
+        } else {
+            assert_eq!(
+                payload["missing_capability_ids"],
+                serde_json::json!(["layout-dagre"])
+            );
+            for error in [svg.unwrap_err(), layout.unwrap_err()] {
+                assert_eq!(error.status(), BindingStatus::UnsupportedOperation);
+                assert_eq!(error.kind(), crate::BindingErrorKind::MissingCapability);
+                assert_eq!(error.capability_id(), Some("layout-dagre"));
+            }
+        }
+    }
+
+    #[cfg(all(feature = "svg", feature = "diagram-flowchart"))]
+    #[test]
     fn shoal_plan_and_execution_follow_the_binding_owner_feature() {
-        let source = "---\nconfig:\n  layout: shoal\n---\nflowchart LR\nA --> B";
+        let source = "---\nconfig:\n  layout: shoal\n---\nflowchart LR\nA --> B\nB --> A";
         let payload = plan(source, b"");
         assert_eq!(
             payload["required_capability_ids"],
@@ -171,10 +210,8 @@ mod tests {
         if cfg!(feature = "layout-shoal") {
             assert_eq!(payload["ready"], true);
             assert_eq!(payload["missing_capability_ids"], serde_json::json!([]));
-            result.unwrap();
-            let cycle = format!("{source}\nB --> A");
-            let error = crate::render_svg(cycle.as_bytes(), b"").unwrap_err();
-            assert_eq!(error.status(), crate::BindingStatus::UnsupportedOperation);
+            let svg = String::from_utf8(result.unwrap()).unwrap();
+            assert!(svg.contains("L_A_B_0") && svg.contains("L_B_A_0"));
         } else {
             assert_eq!(payload["ready"], false);
             assert_eq!(
@@ -194,14 +231,14 @@ mod tests {
             "---\nconfig:\n  layout: elk\n---\nflowchart TD\nA --> B",
             b"",
         );
-        let required = if cfg!(feature = "layout-elk") {
-            serde_json::json!(["layout-elk"])
-        } else {
-            serde_json::json!([])
-        };
-        assert_eq!(value["required_capability_ids"], required);
-        assert_eq!(value["missing_capability_ids"], serde_json::json!([]));
-        assert_eq!(value["ready"], true);
+        let (required, ready) = expected_elk_request();
+        assert_eq!(
+            value["required_capability_ids"],
+            serde_json::json!([required])
+        );
+        let missing = (!ready).then_some(required).into_iter().collect::<Vec<_>>();
+        assert_eq!(value["missing_capability_ids"], serde_json::json!(missing));
+        assert_eq!(value["ready"], ready);
     }
 
     #[cfg(feature = "svg")]
@@ -211,18 +248,18 @@ mod tests {
             "---\nconfig:\n  layout: elk\n---\nflowchart TD\nA[\"$$x^2$$\"] --> B",
             b"",
         );
-        let expected_missing = [(!cfg!(feature = "math")).then_some("math")]
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
+        let (layout, layout_ready) = expected_elk_request();
+        let expected_missing = [
+            (!layout_ready).then_some(layout),
+            (!cfg!(feature = "math")).then_some("math"),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
 
         assert_eq!(
             value["required_capability_ids"],
-            if cfg!(feature = "layout-elk") {
-                serde_json::json!(["layout-elk", "math"])
-            } else {
-                serde_json::json!(["math"])
-            }
+            serde_json::json!([layout, "math"])
         );
         assert_eq!(
             value["missing_capability_ids"],
@@ -260,15 +297,19 @@ mod tests {
             br#"{"environment":{"math_renderer":"none"}}"#,
         );
 
+        let (layout, layout_ready) = expected_elk_request();
+        let expected_missing = [(!layout_ready).then_some(layout), Some("math")]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
         assert_eq!(
             value["required_capability_ids"],
-            if cfg!(feature = "layout-elk") {
-                serde_json::json!(["layout-elk", "math"])
-            } else {
-                serde_json::json!(["math"])
-            }
+            serde_json::json!([layout, "math"])
         );
-        assert_eq!(value["missing_capability_ids"], serde_json::json!(["math"]));
+        assert_eq!(
+            value["missing_capability_ids"],
+            serde_json::json!(expected_missing)
+        );
         assert_eq!(value["ready"], false);
     }
 }

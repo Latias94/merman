@@ -66,10 +66,13 @@ impl RectWithTitleGeometry {
 
 mod compatibility;
 mod config;
+#[cfg(feature = "layout-dagre")]
+mod dagre;
 mod effect_plan;
 #[cfg(feature = "layout-elk")]
 mod elk;
 mod layout;
+mod measure;
 #[cfg(feature = "layout-shoal")]
 mod shoal;
 mod style_plan;
@@ -85,10 +88,9 @@ pub(crate) use style_plan::{
 };
 pub(crate) use theme_evidence::{StateAppliedThemeOutcome, StateThemeOutcomes, StateThemeSurface};
 
+#[cfg(feature = "layout-dagre")]
+pub use dagre::{debug_build_state_diagram_dagre_graph, debug_extract_state_diagram_cluster_graph};
 pub(crate) use layout::layout_state_diagram_typed_with_work_meter;
-pub use layout::{
-    debug_build_state_diagram_dagre_graph, debug_extract_state_diagram_cluster_graph,
-};
 
 #[cfg(all(test, feature = "diagram-state"))]
 mod tests {

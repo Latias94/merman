@@ -1,6 +1,7 @@
 use crate::config::config_bool;
 use crate::elk_options::layout_options as elk_layout_options;
-use crate::layout_work::ElkOperationWorkControl;
+use crate::layout_backend::ElkRootAlgorithm;
+use crate::layout_work::OperationLayoutWorkControl;
 use crate::math::MathRenderer;
 use crate::model::{
     FlowchartLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
@@ -35,6 +36,7 @@ pub(crate) struct FlowchartElkLayoutExecution<'a> {
     measurer: &'a dyn TextMeasurer,
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
     operation_seed: elk::ElkOperationSeed,
+    algorithm: ElkRootAlgorithm,
     svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
     edge_style_plan: &'a crate::svg::FlowchartEdgeStylePlan,
     work_meter: Arc<OperationWorkMeter>,
@@ -45,6 +47,7 @@ impl<'a> FlowchartElkLayoutExecution<'a> {
         measurer: &'a dyn TextMeasurer,
         math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
         operation_seed: elk::ElkOperationSeed,
+        algorithm: ElkRootAlgorithm,
         svg_label_sidecar: Option<&'a FlowchartSvgLabelSidecarBuilder>,
         edge_style_plan: &'a crate::svg::FlowchartEdgeStylePlan,
         work_meter: Arc<OperationWorkMeter>,
@@ -53,6 +56,7 @@ impl<'a> FlowchartElkLayoutExecution<'a> {
             measurer,
             math_renderer,
             operation_seed,
+            algorithm,
             svg_label_sidecar,
             edge_style_plan,
             work_meter,
@@ -123,6 +127,7 @@ pub(crate) fn layout_flowchart_elk_typed_with_operation_seed(
             measurer,
             math_renderer,
             operation_seed,
+            ElkRootAlgorithm::for_diagnostic(effective_config),
             None,
             &edge_style_plan,
             work_meter,
@@ -137,12 +142,13 @@ pub(crate) fn layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
     effective_config: &PresentationConfig,
     execution: FlowchartElkLayoutExecution<'_>,
 ) -> Result<FlowchartLayout> {
-    let mut work_control = ElkOperationWorkControl::new(execution.work_meter);
+    let mut work_control = OperationLayoutWorkControl::new(execution.work_meter);
     let mut graph = build_flowchart_elk_graph_with_render_labels_and_work_control(
         model,
         render_label_sources,
         class_defs,
         effective_config,
+        execution.algorithm,
         execution.measurer,
         execution.math_renderer,
         execution.svg_label_sidecar,
@@ -298,7 +304,7 @@ fn flowchart_layout_from_elk_with_work_control(
     effective_config: &PresentationConfig,
     graph: &elk::Graph,
     layout: elk::LayoutResult,
-    work_control: Option<&mut ElkOperationWorkControl>,
+    work_control: Option<&mut OperationLayoutWorkControl>,
 ) -> Result<FlowchartLayout> {
     flowchart_layout_from_elk_with_render_labels_and_work_control(
         model,
@@ -316,7 +322,7 @@ fn flowchart_layout_from_elk_with_render_labels_and_work_control(
     effective_config: &PresentationConfig,
     graph: &elk::Graph,
     layout: elk::LayoutResult,
-    mut work_control: Option<&mut ElkOperationWorkControl>,
+    mut work_control: Option<&mut OperationLayoutWorkControl>,
 ) -> Result<FlowchartLayout> {
     let render_model = FlowchartRenderModelRef::new(model, render_label_sources);
     let model = &render_model;
@@ -642,7 +648,7 @@ fn align_degenerate_node_to_anchor(node: &mut LayoutNode, anchor: &elk::Point, a
 
 fn flowchart_elk_dom_node_order_by_root(
     graph: &elk::Graph,
-    work_control: &mut Option<&mut ElkOperationWorkControl>,
+    work_control: &mut Option<&mut OperationLayoutWorkControl>,
 ) -> Result<HashMap<String, Vec<String>>> {
     // Mermaid's flat paint list is stably sorted after layout, independently from ELK's
     // recursive graph traversal. Admit that sorting work before retaining output ids.
@@ -897,6 +903,7 @@ fn build_flowchart_elk_graph_with_render_labels(
         render_label_sources,
         &FlowchartClassDefinitions::new(&model.class_defs),
         effective_config,
+        ElkRootAlgorithm::for_diagnostic(effective_config),
         measurer,
         math_renderer,
         None,
@@ -911,7 +918,7 @@ fn build_flowchart_elk_graph_with_work_control(
     effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-    work_control: Option<&mut ElkOperationWorkControl>,
+    work_control: Option<&mut OperationLayoutWorkControl>,
 ) -> Result<elk::Graph> {
     let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
         model,
@@ -926,6 +933,7 @@ fn build_flowchart_elk_graph_with_work_control(
         &FlowchartRenderContext::default(),
         &FlowchartClassDefinitions::new(&model.class_defs),
         effective_config,
+        ElkRootAlgorithm::for_diagnostic(effective_config),
         measurer,
         math_renderer,
         None,
@@ -935,7 +943,7 @@ fn build_flowchart_elk_graph_with_work_control(
 }
 
 fn charge_adapter_work(
-    work_control: &mut Option<&mut ElkOperationWorkControl>,
+    work_control: &mut Option<&mut OperationLayoutWorkControl>,
     units: usize,
 ) -> Result<()> {
     match work_control.as_deref_mut() {
@@ -945,7 +953,7 @@ fn charge_adapter_work(
 }
 
 fn checked_adapter_add(
-    work_control: &Option<&mut ElkOperationWorkControl>,
+    work_control: &Option<&mut OperationLayoutWorkControl>,
     left: usize,
     right: usize,
 ) -> Result<usize> {
@@ -964,7 +972,7 @@ fn checked_adapter_add(
 }
 
 fn checked_adapter_mul(
-    work_control: &Option<&mut ElkOperationWorkControl>,
+    work_control: &Option<&mut OperationLayoutWorkControl>,
     left: usize,
     right: usize,
 ) -> Result<usize> {
@@ -984,7 +992,7 @@ fn checked_adapter_mul(
 
 fn comparison_sort_work_units(
     items: usize,
-    work_control: &Option<&mut ElkOperationWorkControl>,
+    work_control: &Option<&mut OperationLayoutWorkControl>,
 ) -> Result<usize> {
     if items < 2 {
         return Ok(0);
@@ -1002,11 +1010,12 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control(
     render_label_sources: &FlowchartRenderContext,
     class_defs: &FlowchartClassDefinitions<'_>,
     effective_config: &PresentationConfig,
+    algorithm: ElkRootAlgorithm,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
     edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
-    mut work_control: Option<&mut ElkOperationWorkControl>,
+    mut work_control: Option<&mut OperationLayoutWorkControl>,
 ) -> Result<elk::Graph> {
     // Mermaid's FlowDB projects collapsed subgraphs before handing data to any layout backend.
     // Keep the public typed model lossless, but give ELK the same visible graph. The projected
@@ -1019,6 +1028,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control(
             render_label_sources,
             class_defs,
             effective_config,
+            algorithm,
             measurer,
             math_renderer,
             svg_label_sidecar,
@@ -1034,6 +1044,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control(
         render_label_sources,
         class_defs,
         effective_config,
+        algorithm,
         measurer,
         math_renderer,
         svg_label_sidecar,
@@ -1047,7 +1058,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control(
 fn project_collapsed_flowchart_model(
     model: &FlowchartModel,
     render_label_sources: &FlowchartRenderContext,
-    work_control: &mut Option<&mut ElkOperationWorkControl>,
+    work_control: &mut Option<&mut OperationLayoutWorkControl>,
 ) -> Result<Option<ProjectedFlowchartModel>> {
     let has_collapsed_projection = model.subgraphs.iter().any(|subgraph| {
         render_label_sources.is_subgraph_collapsed(subgraph.id.as_str())
@@ -1140,13 +1151,14 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
     render_label_sources: &FlowchartRenderContext,
     class_defs: &FlowchartClassDefinitions<'_>,
     effective_config: &PresentationConfig,
+    algorithm: ElkRootAlgorithm,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
     edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
     node_owner_indices: Option<&[usize]>,
     edge_owner_indices: Option<&[usize]>,
-    mut work_control: Option<&mut ElkOperationWorkControl>,
+    mut work_control: Option<&mut OperationLayoutWorkControl>,
 ) -> Result<elk::Graph> {
     let render_model = FlowchartRenderModelRef::new(model, render_label_sources);
     let model = &render_model;
@@ -1187,7 +1199,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
             group_padding_y: settings.cluster_padding,
             ..Default::default()
         },
-        options: elk_layout_options(effective_config),
+        options: elk_layout_options(effective_config, algorithm),
         ..Default::default()
     };
 
@@ -1374,7 +1386,7 @@ fn dir_to_elk_direction(dir: &str) -> elk::Direction {
 
 fn parent_by_id(
     model: &FlowchartModel,
-    work_control: &mut Option<&mut ElkOperationWorkControl>,
+    work_control: &mut Option<&mut OperationLayoutWorkControl>,
 ) -> Result<HashMap<String, String>> {
     let mut parent_by_id = HashMap::new();
     for sg in model.subgraphs.iter().rev() {
@@ -1398,7 +1410,7 @@ fn parent_by_id(
 fn first_elk_parent_cycle_assignment(
     model: &FlowchartModel,
     parent_by_id: &HashMap<String, String>,
-    work_control: &mut Option<&mut ElkOperationWorkControl>,
+    work_control: &mut Option<&mut OperationLayoutWorkControl>,
 ) -> Result<Option<(String, String)>> {
     // ELK does not materialize a Graphlib compound graph, so it must validate the final FlowDB
     // parent map itself. Preserve Mermaid's reverse-subgraph assignment order, but keep this check
@@ -1527,7 +1539,7 @@ fn first_elk_parent_cycle_assignment(
 fn include_children_groups<'a>(
     model: &'a FlowchartModel,
     parent_by_id: &'a HashMap<String, String>,
-    work_control: &mut Option<&mut ElkOperationWorkControl>,
+    work_control: &mut Option<&mut OperationLayoutWorkControl>,
 ) -> Result<HashSet<&'a str>> {
     if model.subgraphs.is_empty() || model.edges.is_empty() {
         return Ok(HashSet::new());
@@ -1553,7 +1565,7 @@ fn subgraph_label(
     declaration_ordinal: usize,
     sg: &FlowSubgraph,
     ctx: &ElkMeasureContext<'_>,
-    work_control: &mut Option<&mut ElkOperationWorkControl>,
+    work_control: &mut Option<&mut OperationLayoutWorkControl>,
 ) -> Result<Option<elk::Label>> {
     let label_type = sg.label_type.as_deref().unwrap_or("text");
     let title = ctx.model.subgraph_title_for_render(declaration_ordinal, sg);
@@ -1645,7 +1657,7 @@ fn subgraph_to_elk_node(
     parent: Option<String>,
     include_children_groups: &HashSet<&str>,
     ctx: &ElkMeasureContext<'_>,
-    work_control: &mut Option<&mut ElkOperationWorkControl>,
+    work_control: &mut Option<&mut OperationLayoutWorkControl>,
 ) -> Result<elk::Node> {
     let label = subgraph_label(declaration_ordinal, sg, ctx, work_control)?;
     if ctx.model.is_subgraph_collapsed(sg.id.as_str()) {
@@ -1986,6 +1998,7 @@ mod tests {
             &FlowchartRenderContext::default(),
             &FlowchartClassDefinitions::new(&model.class_defs),
             &config,
+            ElkRootAlgorithm::for_diagnostic(&config),
             &measurer,
             None,
             Some(&builder),
@@ -2073,6 +2086,7 @@ A -->|boundary| D
             render_context,
             &FlowchartClassDefinitions::new(&model.class_defs),
             &config,
+            ElkRootAlgorithm::for_diagnostic(&config),
             &measurer,
             None,
             Some(&builder),
@@ -2165,6 +2179,7 @@ A -->|boundary| D
             &FlowchartRenderContext::default(),
             &FlowchartClassDefinitions::new(&model.class_defs),
             &config,
+            ElkRootAlgorithm::for_diagnostic(&config),
             &measurer,
             None,
             Some(&builder),
@@ -2707,7 +2722,7 @@ A -->|boundary| D
         let meter = Arc::new(OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         ));
-        let mut work_control = ElkOperationWorkControl::new(meter);
+        let mut work_control = OperationLayoutWorkControl::new(meter);
         let graph = build_flowchart_elk_graph_with_work_control(
             model,
             config,
@@ -2840,7 +2855,7 @@ A -->|boundary| D
 
     #[test]
     fn flowchart_elk_checked_work_overflow_maps_to_the_resource_contract() {
-        let work_control = ElkOperationWorkControl::new(Arc::new(OperationWorkMeter::new(
+        let work_control = OperationLayoutWorkControl::new(Arc::new(OperationWorkMeter::new(
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         )));
         let error = work_control.checked_mul(usize::MAX, 2).unwrap_err();
@@ -2913,7 +2928,7 @@ A -->|boundary| D
                 )
                 .unwrap(),
         ));
-        let mut work_control = ElkOperationWorkControl::new(meter);
+        let mut work_control = OperationLayoutWorkControl::new(meter);
         let measured = flowchart_layout_from_elk_with_work_control(
             &model,
             &PresentationConfig::default(),
@@ -2954,7 +2969,7 @@ A -->|boundary| D
                 )
                 .unwrap(),
         ));
-        let mut work_control = ElkOperationWorkControl::new(meter);
+        let mut work_control = OperationLayoutWorkControl::new(meter);
         let error = flowchart_layout_from_elk_with_work_control(
             &model,
             &PresentationConfig::default(),
@@ -3002,7 +3017,7 @@ A -->|boundary| D
                 .with_limit(crate::ResourceLimitId::MaxLayoutWorkUnits, max_work)
                 .unwrap(),
         ));
-        let mut work_control = ElkOperationWorkControl::new(meter);
+        let mut work_control = OperationLayoutWorkControl::new(meter);
         let error = flowchart_layout_from_elk_with_work_control(
             &model,
             &PresentationConfig::default(),
@@ -3103,7 +3118,7 @@ A -->|boundary| D
 
         for limit in [exact_work, exact_work + 1] {
             let mut work_control =
-                ElkOperationWorkControl::new(Arc::new(OperationWorkMeter::new(policy(limit))));
+                OperationLayoutWorkControl::new(Arc::new(OperationWorkMeter::new(policy(limit))));
             let actual = build_flowchart_elk_graph_with_work_control(
                 &model,
                 &config,
@@ -3117,8 +3132,9 @@ A -->|boundary| D
             assert_eq!(actual.edges.len(), expected.edges.len());
         }
 
-        let mut below =
-            ElkOperationWorkControl::new(Arc::new(OperationWorkMeter::new(policy(exact_work - 1))));
+        let mut below = OperationLayoutWorkControl::new(Arc::new(OperationWorkMeter::new(policy(
+            exact_work - 1,
+        ))));
         let error = build_flowchart_elk_graph_with_work_control(
             &model,
             &config,
@@ -3159,7 +3175,7 @@ A -->|boundary| D
             .with_limit(crate::ResourceLimitId::MaxLayoutWorkUnits, 1)
             .unwrap();
         let mut work_control =
-            ElkOperationWorkControl::new(Arc::new(OperationWorkMeter::new(policy)));
+            OperationLayoutWorkControl::new(Arc::new(OperationWorkMeter::new(policy)));
 
         let error = build_flowchart_elk_graph_with_work_control(
             &model,
@@ -3620,7 +3636,7 @@ A -->|boundary| D
     #[test]
     fn flowchart_elk_keeps_the_source_default_nonzero_seed() {
         assert_eq!(
-            elk_layout_options(&serde_json::Value::Null)
+            elk_layout_options(&serde_json::Value::Null, ElkRootAlgorithm::Layered)
                 .layered
                 .random_seed,
             1

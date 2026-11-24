@@ -200,6 +200,8 @@ fn render_block_direct_with_edge_theme(
         effective_config,
         model,
         &mut layout,
+        #[cfg(feature = "layout-shoal")]
+        crate::layout_backend::GraphLayoutBackend::Native,
         session.work_meter(),
     )
     .expect("edge paint theme");
@@ -445,6 +447,8 @@ fn diagram_id_terminal_precedes_later_block_model_validation() {
         config,
         model,
         &mut layout,
+        #[cfg(feature = "layout-shoal")]
+        crate::layout_backend::GraphLayoutBackend::Native,
         session.work_meter(),
     )
     .unwrap();

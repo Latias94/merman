@@ -1,22 +1,57 @@
-//! Resolve registered graph layouts before execution.
-//!
-//! Mermaid 12's `getRegisteredLayoutAlgorithm` falls back when a loader is absent,
-//! never after a selected backend fails. Host capability policy remains a separate
-//! admission check: a compiled backend denied by the caller is not an absent loader.
+//! Family-aware Mermaid 12 loader selection, before session capability admission.
 
+use crate::config::ConfigLookup;
+use crate::{Error, RenderCapability, Result};
+use merman_model::family::DiagramFamilyId;
 use serde_json::Value;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum GraphLayoutBackend {
+    Native,
     Dagre,
-    Elk,
+    Elk(ElkRootAlgorithm),
     CoseBilkent,
     Shoal,
-    #[cfg(feature = "diagram-er")]
     Swimlane,
+    TidyTree,
 }
 
-/// The root loaders registered by Mermaid 12. Container metadata has its own allowlist.
+impl GraphLayoutBackend {
+    pub(crate) const fn required_capability(self) -> Option<RenderCapability> {
+        match self {
+            Self::Native | Self::Swimlane | Self::TidyTree => None,
+            Self::Dagre => Some(RenderCapability::LayoutDagre),
+            Self::Elk(_) => Some(RenderCapability::LayoutElk),
+            Self::CoseBilkent => Some(RenderCapability::LayoutCytoscape),
+            Self::Shoal => Some(RenderCapability::LayoutShoal),
+        }
+    }
+
+    /// The selected CoSE loader requires Mindmap's root node.
+    pub(crate) fn validate_rootless_graph(self) -> Result<()> {
+        if self == Self::CoseBilkent {
+            return Err(Error::InvalidModel {
+                message: "Root node is required for the cose-bilkent layout".to_owned(),
+            });
+        }
+        Ok(())
+    }
+
+    pub(crate) fn unavailable_for(self, diagram_type: &str) -> Error {
+        if let Some(capability) = self.required_capability() {
+            Error::MissingCapability {
+                capability,
+                diagram_type: diagram_type.to_owned(),
+            }
+        } else {
+            Error::InvalidModel {
+                message: format!("no {self:?} layout adapter for {diagram_type}"),
+            }
+        }
+    }
+}
+
+/// The ELK root loaders registered by Mermaid 12. Containers have their own allowlist.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ElkRootAlgorithm {
     Layered,
@@ -42,6 +77,11 @@ impl ElkRootAlgorithm {
         })
     }
 
+    #[cfg(all(test, feature = "layout-elk"))]
+    pub(crate) fn for_diagnostic(config: &(impl ConfigLookup + ?Sized)) -> Self {
+        Self::from_name(requested_layout(config)).unwrap_or(Self::Layered)
+    }
+
     #[cfg(feature = "layout-elk")]
     pub(crate) fn algorithm(self) -> merman_layout_elk::Algorithm {
         use merman_layout_elk::Algorithm;
@@ -57,162 +97,158 @@ impl ElkRootAlgorithm {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct GraphLayoutSelection {
-    pub backend: GraphLayoutBackend,
+fn requested_layout(config: &(impl ConfigLookup + ?Sized)) -> &str {
+    config.get("layout").and_then(Value::as_str).unwrap_or("")
 }
 
-impl GraphLayoutSelection {
-    pub(crate) fn required_capability(self) -> Option<crate::RenderCapability> {
-        match self.backend {
-            GraphLayoutBackend::Dagre => None,
-            #[cfg(feature = "diagram-er")]
-            GraphLayoutBackend::Swimlane => None,
-            GraphLayoutBackend::Elk => Some(crate::RenderCapability::LayoutElk),
-            GraphLayoutBackend::CoseBilkent => Some(crate::RenderCapability::LayoutCytoscape),
-            GraphLayoutBackend::Shoal => Some(crate::RenderCapability::LayoutShoal),
+pub(crate) fn resolve(
+    family: DiagramFamilyId,
+    diagram_type: &str,
+    config: &(impl ConfigLookup + ?Sized),
+) -> Result<GraphLayoutBackend> {
+    use GraphLayoutBackend as Backend;
+
+    let requested = requested_layout(config);
+    if requested == "shoal" {
+        match family {
+            DiagramFamilyId::ARCHITECTURE
+            | DiagramFamilyId::BLOCK
+            | DiagramFamilyId::C4
+            | DiagramFamilyId::AGENTFLOW
+            | DiagramFamilyId::CLASS
+            | DiagramFamilyId::ER
+            | DiagramFamilyId::REQUIREMENT
+            | DiagramFamilyId::STATE
+            | DiagramFamilyId::SWIMLANE
+            | DiagramFamilyId::USECASE => return Ok(Backend::Shoal),
+            DiagramFamilyId::FLOWCHART if matches!(diagram_type, "flowchart" | "flowchart-v2") => {
+                return Ok(Backend::Shoal);
+            }
+            DiagramFamilyId::FLOWCHART | DiagramFamilyId::MINDMAP => {
+                return Err(Error::UnsupportedLayoutBackend {
+                    backend: "shoal",
+                    diagram_type: diagram_type.to_owned(),
+                });
+            }
+            _ => {}
         }
     }
 
-    /// The selected CoSE loader requires Mindmap's root node. Graph-family adapters
-    /// must preserve that upstream failure instead of silently executing Dagre.
-    pub(crate) fn validate_rootless_graph(self) -> crate::Result<()> {
-        if self.backend == GraphLayoutBackend::CoseBilkent {
-            return Err(crate::Error::InvalidModel {
-                message: "Root node is required for the cose-bilkent layout".to_owned(),
-            });
-        }
-        Ok(())
-    }
-}
-
-/// Select a registered loader before validating the family's layout data.
-pub(crate) fn resolve_graph_layout(
-    config: &(impl crate::config::ConfigLookup + ?Sized),
-) -> GraphLayoutSelection {
-    let requested = config.get("layout").and_then(Value::as_str).unwrap_or("");
-    let backend = match requested {
-        // Explicit Shoal requests retain their capability requirement even in a lean build.
-        "shoal" => GraphLayoutBackend::Shoal,
-        "cose-bilkent" if cfg!(feature = "layout-cytoscape") => GraphLayoutBackend::CoseBilkent,
-        name if cfg!(feature = "layout-elk") && ElkRootAlgorithm::from_name(name).is_some() => {
-            GraphLayoutBackend::Elk
-        }
-        _ => GraphLayoutBackend::Dagre,
-    };
-    GraphLayoutSelection { backend }
-}
-
-#[cfg(feature = "diagram-architecture")]
-pub(crate) fn resolve_architecture_layout(
-    config: &(impl crate::config::ConfigLookup + ?Sized),
-) -> GraphLayoutSelection {
-    if resolve_graph_layout(config).backend == GraphLayoutBackend::Shoal {
-        GraphLayoutSelection {
-            backend: GraphLayoutBackend::Shoal,
-        }
-    } else {
-        GraphLayoutSelection {
-            backend: GraphLayoutBackend::CoseBilkent,
-        }
-    }
-}
-
-/// ER supplies measured compound data to Swimlane. Other rootless graph families still use
-/// their existing provider admission until they have a family-specific measured adapter.
-#[cfg(feature = "diagram-er")]
-pub(crate) fn resolve_er_graph_layout(config: &Value) -> GraphLayoutSelection {
-    if config.get("layout").and_then(Value::as_str) == Some("swimlane") {
-        GraphLayoutSelection {
-            backend: GraphLayoutBackend::Swimlane,
-        }
-    } else {
-        resolve_graph_layout(config)
-    }
+    let elk = ElkRootAlgorithm::from_name(requested);
+    Ok(match family {
+        DiagramFamilyId::ARCHITECTURE => Backend::CoseBilkent,
+        DiagramFamilyId::MINDMAP => match requested {
+            "dagre" => Backend::Dagre,
+            "swimlane" => Backend::Swimlane,
+            "tidy-tree" => Backend::TidyTree,
+            _ => match elk {
+                Some(algorithm) if crate::layout_elk_available() => Backend::Elk(algorithm),
+                _ if crate::layout_cytoscape_available() => Backend::CoseBilkent,
+                Some(algorithm) if !crate::layout_dagre_available() => Backend::Elk(algorithm),
+                _ => Backend::Dagre,
+            },
+        },
+        DiagramFamilyId::SWIMLANE => Backend::Swimlane,
+        DiagramFamilyId::ER if requested == "swimlane" => Backend::Swimlane,
+        DiagramFamilyId::AGENTFLOW
+        | DiagramFamilyId::CLASS
+        | DiagramFamilyId::ER
+        | DiagramFamilyId::FLOWCHART
+        | DiagramFamilyId::REQUIREMENT
+        | DiagramFamilyId::STATE
+        | DiagramFamilyId::USECASE => match elk {
+            Some(algorithm)
+                if crate::layout_elk_available() || !crate::layout_dagre_available() =>
+            {
+                Backend::Elk(algorithm)
+            }
+            _ if requested == "cose-bilkent"
+                && (crate::layout_cytoscape_available() || !crate::layout_dagre_available()) =>
+            {
+                Backend::CoseBilkent
+            }
+            _ => Backend::Dagre,
+        },
+        _ => Backend::Native,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use GraphLayoutBackend as Backend;
     use serde_json::json;
 
-    #[cfg(feature = "diagram-er")]
-    #[test]
-    fn er_admits_swimlane_without_changing_other_rootless_family_selection() {
-        let config = json!({"layout": "swimlane"});
-        let selected = resolve_er_graph_layout(&config);
-        assert_eq!(selected.backend, GraphLayoutBackend::Swimlane);
-        assert_eq!(selected.required_capability(), None);
-        selected.validate_rootless_graph().unwrap();
-        assert_eq!(
-            resolve_graph_layout(&config).backend,
-            GraphLayoutBackend::Dagre
-        );
-
-        for requested in ["dagre", "elk", "cose-bilkent", "unknown", "SWIMLANE"] {
-            let config = json!({"layout": requested});
-            assert_eq!(
-                resolve_er_graph_layout(&config).backend,
-                resolve_graph_layout(&config).backend,
-            );
-        }
+    fn flowchart(requested: &str) -> Backend {
+        resolve(
+            DiagramFamilyId::FLOWCHART,
+            "flowchart-v2",
+            &json!({"layout": requested}),
+        )
+        .unwrap()
     }
 
     #[test]
-    fn registered_cose_preserves_missing_root_failure_while_unknown_layout_falls_back() {
-        let config = json!({"layout": "cose-bilkent"});
-        let selected = resolve_graph_layout(&config);
-        if cfg!(feature = "layout-cytoscape") {
-            assert_eq!(selected.backend, GraphLayoutBackend::CoseBilkent);
-            assert_eq!(
-                selected.required_capability(),
-                Some(crate::RenderCapability::LayoutCytoscape)
-            );
-            assert!(
-                matches!(selected.validate_rootless_graph(), Err(crate::Error::InvalidModel { message }) if message.contains("Root node is required"))
-            );
-        } else {
-            assert_eq!(selected.backend, GraphLayoutBackend::Dagre);
-            assert_eq!(selected.required_capability(), None);
-            selected.validate_rootless_graph().unwrap();
-        }
-        let unknown = json!({"layout": "unknown-layout-probe"});
-        let selected = resolve_graph_layout(&unknown);
-        assert_eq!(selected.backend, GraphLayoutBackend::Dagre);
-        assert_eq!(selected.required_capability(), None);
-        selected.validate_rootless_graph().unwrap();
-    }
-
-    #[test]
-    fn graph_layout_selection_retains_request_and_resolves_available_loader() {
-        for (requested, registered_elk) in [
-            ("dagre", false),
-            ("elk", true),
-            ("elk.stress", true),
-            ("elk.force", true),
-            ("elk.mrtree", true),
-            ("elk.sporeOverlap", true),
-            ("elk.box", true),
-            ("elk.rectpacking", true),
-            ("elk.layered", false),
-            ("elk.radial", false),
-            ("elk.sporeoverlap", false),
-            ("ELK", false),
-            ("unknown", false),
-            ("", false),
+    fn preserves_the_selected_registered_elk_algorithm() {
+        for (name, algorithm) in [
+            ("elk", ElkRootAlgorithm::Layered),
+            ("elk.stress", ElkRootAlgorithm::Stress),
+            ("elk.force", ElkRootAlgorithm::Force),
+            ("elk.mrtree", ElkRootAlgorithm::MrTree),
+            ("elk.sporeOverlap", ElkRootAlgorithm::SporeOverlap),
+            ("elk.box", ElkRootAlgorithm::Box),
+            ("elk.rectpacking", ElkRootAlgorithm::Rectpacking),
         ] {
-            let config = json!({"layout": requested});
-            let selected = resolve_graph_layout(&config);
-            let expected = if registered_elk && cfg!(feature = "layout-elk") {
-                GraphLayoutBackend::Elk
+            let expected = if crate::layout_elk_available() || !crate::layout_dagre_available() {
+                Backend::Elk(algorithm)
             } else {
-                GraphLayoutBackend::Dagre
+                Backend::Dagre
             };
-            assert_eq!(selected.backend, expected);
+            assert_eq!(flowchart(name), expected, "{name}");
         }
-        assert_eq!(
-            resolve_graph_layout(&Value::Null).backend,
-            GraphLayoutBackend::Dagre
-        );
+        for name in [
+            "dagre",
+            "elk.layered",
+            "elk.radial",
+            "elk.sporeoverlap",
+            "ELK",
+            "unknown",
+            "",
+        ] {
+            assert_eq!(flowchart(name), Backend::Dagre, "{name}");
+        }
+    }
+
+    #[test]
+    fn native_and_rootless_families_apply_their_own_registration() {
+        let swimlane = json!({"layout": "swimlane"});
+        for (family, diagram_type, expected) in [
+            (DiagramFamilyId::ER, "er", Backend::Swimlane),
+            (DiagramFamilyId::SWIMLANE, "flowchart-v2", Backend::Swimlane),
+            (DiagramFamilyId::FLOWCHART, "flowchart-v2", Backend::Dagre),
+            (DiagramFamilyId::BLOCK, "block", Backend::Native),
+            (
+                DiagramFamilyId::ARCHITECTURE,
+                "architecture",
+                Backend::CoseBilkent,
+            ),
+        ] {
+            assert_eq!(resolve(family, diagram_type, &swimlane).unwrap(), expected);
+        }
+        let cose = flowchart("cose-bilkent");
+        if crate::layout_cytoscape_available() {
+            assert_eq!(cose, Backend::CoseBilkent);
+            assert!(
+                matches!(cose.validate_rootless_graph(), Err(Error::InvalidModel { message }) if message.contains("Root node is required"))
+            );
+        } else if crate::layout_dagre_available() {
+            assert_eq!(cose, Backend::Dagre);
+            cose.validate_rootless_graph().unwrap();
+        } else {
+            assert_eq!(
+                cose.required_capability(),
+                Some(RenderCapability::LayoutCytoscape)
+            );
+        }
     }
 }

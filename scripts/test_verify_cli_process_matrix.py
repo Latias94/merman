@@ -36,20 +36,20 @@ CLI_RELEASE_FEATURES = tuple(
 EXPECTED_SELECTIONS = (
     ("base", (), "exact"),
     ("analysis", ("all-diagrams", "analysis"), "exact"),
-    ("svg", ("all-diagrams", "svg"), "exact"),
+    ("svg", ("all-diagrams", "layout-dagre", "svg"), "exact"),
     ("ascii", ("all-diagrams", "ascii"), "exact"),
-    ("local-icons", ("all-diagrams", "icons"), "exact"),
-    ("markdown", ("all-diagrams", "markdown"), "exact"),
-    ("parallel-markdown", ("all-diagrams", "parallel-markdown"), "exact"),
-    ("network-icons", ("all-diagrams", "network-icons"), "exact"),
-    ("png", ("all-diagrams", "png"), "exact"),
-    ("jpeg", ("all-diagrams", "jpeg"), "exact"),
-    ("pdf", ("all-diagrams", "pdf"), "exact"),
-    ("parallel-pdf", ("all-diagrams", "parallel-markdown", "pdf"), "exact"),
+    ("local-icons", ("all-diagrams", "icons", "layout-dagre"), "exact"),
+    ("markdown", ("all-diagrams", "layout-dagre", "markdown"), "exact"),
+    ("parallel-markdown", ("all-diagrams", "layout-dagre", "parallel-markdown"), "exact"),
+    ("network-icons", ("all-diagrams", "layout-dagre", "network-icons"), "exact"),
+    ("png", ("all-diagrams", "layout-dagre", "png"), "exact"),
+    ("jpeg", ("all-diagrams", "jpeg", "layout-dagre"), "exact"),
+    ("pdf", ("all-diagrams", "layout-dagre", "pdf"), "exact"),
+    ("parallel-pdf", ("all-diagrams", "layout-dagre", "parallel-markdown", "pdf"), "exact"),
     ("cytoscape-layout", ("all-diagrams", "layout-cytoscape"), "exact"),
     ("elk-layout", ("all-diagrams", "layout-elk"), "exact"),
-    ("math", ("all-diagrams", "math"), "exact"),
-    ("rustdoc", ("all-diagrams", "rustdoc"), "exact"),
+    ("math", ("all-diagrams", "layout-dagre", "math"), "exact"),
+    ("rustdoc", ("all-diagrams", "layout-dagre", "rustdoc"), "exact"),
     ("completions", ("shell-completions",), "exact"),
     ("svg-completions", ("shell-completions", "svg"), "exact"),
     ("system-clock", ("all-diagrams", "system-clock"), "exact"),
@@ -121,13 +121,16 @@ class CliProcessMatrixTests(unittest.TestCase):
             expected_defaults,
             "workspace defaults select all-diagrams and the standard CLI workflows",
         )
+        self.assertIn("layout-dagre", features["default"])
         self.assertIn("layout-elk", features["default"])
         self.assertIn("native-fonts", features["default"])
         self.assertIn("system-fonts", features["default"])
         self.assertNotIn("experimental-system-font-query", features["default"])
         self.assertIn("rustdoc", public_features)
         self.assertIn("rustdoc", features["default"])
+        self.assertNotIn("layout-dagre", {edge.rsplit("/", 1)[-1] for edge in features["rustdoc"]})
         self.assertNotIn("math", features["default"])
+        self.assertIn("layout-dagre", CLI_RELEASE_FEATURES)
         self.assertIn("math", CLI_RELEASE_FEATURES)
         self.assertIn("platform-system-font-default", CLI_RELEASE_FEATURES)
 

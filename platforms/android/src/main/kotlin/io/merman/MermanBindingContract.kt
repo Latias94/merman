@@ -117,6 +117,7 @@ internal val MERMAN_BINDING_CAPABILITY_SPECS: Map<String, MermanBindingCapabilit
     MermanBindingCapabilitySpec("icons", listOf()),
     MermanBindingCapabilitySpec("jpeg", listOf()),
     MermanBindingCapabilitySpec("layout-cytoscape", listOf("svg")),
+    MermanBindingCapabilitySpec("layout-dagre", listOf("svg")),
     MermanBindingCapabilitySpec("layout-elk", listOf("svg")),
     MermanBindingCapabilitySpec("layout-shoal", listOf("svg")),
     MermanBindingCapabilitySpec("markdown", listOf()),
@@ -207,7 +208,7 @@ internal val MERMAN_BINDING_OPERATION_EXPECTATIONS: List<MermanBindingOperationE
 )
 
 internal val MERMAN_ANDROID_ARTIFACT_EXPECTATION = MermanBindingArtifactExpectation(
-    capabilityIds = listOf("analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"),
+    capabilityIds = listOf("analysis", "ascii", "fixes", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"),
     outputIds = listOf("ascii", "svg"),
     systemAdapterIds = listOf(),
     operationIds = listOf("analysis-facts-json", "analysis-json", "ascii", "describe-theme-support-json", "document-analysis-facts-json", "document-analysis-json", "edge-geometry-json", "export-theme-preset-json", "layout-json", "materialize-theme-json", "semantic-json", "svg", "svg-plan-json", "validation-json"),

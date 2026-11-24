@@ -1376,11 +1376,17 @@ mod tests {
         let index = profile_index(&value, "rustdoc-static-svg");
         assert_eq!(
             value["profiles"][index]["cargo"]["features"],
-            json!(["all-diagrams", "layout-cytoscape", "layout-elk", "svg"])
+            json!([
+                "all-diagrams",
+                "layout-cytoscape",
+                "layout-dagre",
+                "layout-elk",
+                "svg"
+            ])
         );
         assert_eq!(
             value["profiles"][index]["expected"]["capabilities"],
-            json!(["layout-cytoscape", "layout-elk", "svg"])
+            json!(["layout-cytoscape", "layout-dagre", "layout-elk", "svg"])
         );
     }
 

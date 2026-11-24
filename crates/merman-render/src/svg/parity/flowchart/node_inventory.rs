@@ -867,7 +867,7 @@ impl FlowchartNodeRootSchedule {
     }
 }
 
-#[cfg(all(test, feature = "diagram-flowchart"))]
+#[cfg(all(test, feature = "diagram-flowchart", feature = "layout-dagre"))]
 mod source_typography_tests {
     use super::*;
 
@@ -908,12 +908,18 @@ mod source_typography_tests {
             &work,
         )
         .unwrap();
-        let mut layout = crate::flowchart::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
-            &model, &render_context,
+        let layout = crate::flowchart::dagre::layout(
+            &model,
+            &render_context,
             &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
             &metadata.effective_config,
-            &crate::text::DeterministicTextMeasurer::default(), None, None, &edge_style, work.clone(),
-        ).unwrap();
+            &crate::text::DeterministicTextMeasurer::default(),
+            None,
+            None,
+            &edge_style,
+            work.clone(),
+        )
+        .unwrap();
         let theme = crate::flowchart::FlowchartPreparedTheme::resolve(
             None,
             &metadata.effective_config,
@@ -955,29 +961,33 @@ mod source_typography_tests {
         drop(prepared);
         assert_eq!(work.prepared_text_retained_bytes(), before);
 
-        layout.route_contract = crate::graph_layout::RouteContract::ElkParity;
-        layout
-            .dom_node_order_by_root
-            .insert(String::new(), vec!["Shared".into(), "Shared".into()]);
-        let helpers = std::collections::BTreeSet::new();
-        let input = FlowchartNodeInventoryInput::prepare(
-            &model,
-            &render_context,
-            FlowchartNodeLayoutView::Flowchart(&layout),
-            &helpers,
-            &work,
-        );
-        let schedule = FlowchartNodeRootSchedule::prepare(&input).unwrap();
-        let error = prepared_cluster_ids(
-            &model,
-            FlowchartNodeLayoutView::Flowchart(&layout),
-            &input,
-            &schedule,
-        )
-        .unwrap_err();
-        assert!(
-            matches!(error, crate::Error::InvalidModel { message } if message.contains("cluster `Shared` more than once"))
-        );
+        #[cfg(feature = "layout-elk")]
+        {
+            let mut layout = layout;
+            layout.route_contract = crate::graph_layout::RouteContract::ElkParity;
+            layout
+                .dom_node_order_by_root
+                .insert(String::new(), vec!["Shared".into(), "Shared".into()]);
+            let helpers = std::collections::BTreeSet::new();
+            let input = FlowchartNodeInventoryInput::prepare(
+                &model,
+                &render_context,
+                FlowchartNodeLayoutView::Flowchart(&layout),
+                &helpers,
+                &work,
+            );
+            let schedule = FlowchartNodeRootSchedule::prepare(&input).unwrap();
+            let error = prepared_cluster_ids(
+                &model,
+                FlowchartNodeLayoutView::Flowchart(&layout),
+                &input,
+                &schedule,
+            )
+            .unwrap_err();
+            assert!(
+                matches!(error, crate::Error::InvalidModel { message } if message.contains("cluster `Shared` more than once"))
+            );
+        }
     }
 
     #[test]
@@ -1011,7 +1021,7 @@ mod source_typography_tests {
             &layout_work,
         )
         .unwrap();
-        let layout = crate::flowchart::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
+        let layout = crate::flowchart::dagre::layout(
             &model,
             &render_context,
             &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),

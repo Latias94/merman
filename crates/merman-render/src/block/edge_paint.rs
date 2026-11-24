@@ -40,6 +40,7 @@ impl BlockEdgePaintPlan {
         config: &merman_model::presentation::PresentationConfig,
         model: &merman_model::families::block::BlockDiagramRenderModel,
         layout: &mut BlockDiagramLayout,
+        #[cfg(feature = "layout-shoal")] backend: crate::layout_backend::GraphLayoutBackend,
         work: &Arc<OperationWorkMeter>,
     ) -> crate::Result<Self> {
         work.charge(model.edges.len())?;
@@ -49,8 +50,7 @@ impl BlockEdgePaintPlan {
                 .collect(),
             evidence: FamilyThemeOutcomes::default(),
             #[cfg(feature = "layout-shoal")]
-            orthogonal_routes: if crate::layout_backend::resolve_graph_layout(config).backend
-                == crate::layout_backend::GraphLayoutBackend::Shoal
+            orthogonal_routes: if backend == crate::layout_backend::GraphLayoutBackend::Shoal
                 && !layout.edges.is_empty()
             {
                 let width =
@@ -311,6 +311,8 @@ mod tests {
             &parsed.metadata().effective_config,
             model,
             &mut layout,
+            #[cfg(feature = "layout-shoal")]
+            crate::layout_backend::GraphLayoutBackend::Native,
             &work,
         )
         .unwrap();

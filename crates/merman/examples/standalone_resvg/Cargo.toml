@@ -8,6 +8,6 @@ publish = false
 [workspace]
 
 [dependencies]
-merman = { path = "../..", default-features = false, features = ["diagram-class", "native-fonts"] }
+merman = { path = "../..", default-features = false, features = ["diagram-class", "layout-dagre", "native-fonts"] }
 resvg = { version = "=0.50.0", default-features = false, features = ["text"] }
 serde_json = "1"

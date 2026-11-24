@@ -39,8 +39,10 @@ pub(super) fn unsupported_html_style(
         }
     }
 
-    let swimlane = view.is_swimlane_layout();
-    if view.relationship_html_labels() {
+    // This typography probe also runs without a prepared render plan.
+    let swimlane = config.get_str("layout") == Some("swimlane");
+    let relationship_html_labels = view.relationship_html_labels(swimlane);
+    if relationship_html_labels {
         for relationship in &model.relationships {
             control.checkpoint()?;
             let html = if swimlane {
@@ -75,7 +77,7 @@ pub(super) fn unsupported_html_style(
     for group in &model.subgraphs {
         control.checkpoint()?;
         let is_lane = swimlane && !children.contains(group.id.as_str());
-        if !view.subgraph_html_labels(is_lane)
+        if !view.subgraph_html_labels(is_lane, relationship_html_labels)
             || (!is_lane && matches!(group.label_type.as_str(), "string" | "text"))
         {
             // Ordinary string/text titles are escaped by the cluster writer.

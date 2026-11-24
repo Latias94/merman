@@ -103,6 +103,14 @@ fn catalog_is_owned_and_uses_the_independent_abi_epoch() {
     assert_eq!(segment(&runtime, result, 4), b"application/json");
     let catalog: Value = serde_json::from_slice(segment(&runtime, result, 6)).unwrap();
     assert_eq!(catalog["transport_api_version"], ABI_VERSION);
+    assert_eq!(
+        catalog["capabilities"]["capability_ids"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|id| id == "layout-dagre"),
+        cfg!(feature = "layout-dagre")
+    );
     assert!(
         catalog["capabilities"]["system_adapter_ids"]
             .as_array()

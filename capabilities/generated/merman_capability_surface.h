@@ -7,7 +7,7 @@
 #include <stddef.h>
 
 #define MERMAN_CAPABILITY_DESCRIPTOR_SCHEMA_VERSION 1
-#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:e133cab82e0ce4916729079d0c673e8d871165dd89384e7d441caef276d0caad"
+#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:5b115a3268501bd91daff3ff963b213e8e1d204f123fdafd87e059b195cf7af5"
 
 #define MERMAN_TARGET_NATIVE "native"
 #define MERMAN_TARGET_TYPST "typst"
@@ -20,6 +20,7 @@
 #define MERMAN_CAPABILITY_ICONS "icons"
 #define MERMAN_CAPABILITY_JPEG "jpeg"
 #define MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE "layout-cytoscape"
+#define MERMAN_CAPABILITY_LAYOUT_DAGRE "layout-dagre"
 #define MERMAN_CAPABILITY_LAYOUT_ELK "layout-elk"
 #define MERMAN_CAPABILITY_LAYOUT_SHOAL "layout-shoal"
 #define MERMAN_CAPABILITY_MARKDOWN "markdown"
@@ -138,6 +139,16 @@ static const char *const MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE_IMPLICATIONS[] = {
     "svg",
 };
 
+static const char *const MERMAN_CAPABILITY_LAYOUT_DAGRE_TARGETS[] = {
+    "native",
+    "typst",
+    "web",
+};
+
+static const char *const MERMAN_CAPABILITY_LAYOUT_DAGRE_IMPLICATIONS[] = {
+    "svg",
+};
+
 static const char *const MERMAN_CAPABILITY_LAYOUT_ELK_TARGETS[] = {
     "native",
     "typst",
@@ -233,6 +244,7 @@ static const MermanCapabilityDescriptor MERMAN_CAPABILITIES[] = {
     { "icons", "tool", "Compile CLI local Iconify pack loading.", MERMAN_CAPABILITY_ICONS_TARGETS, 1, NULL, 0 },
     { "jpeg", "output", "Export rendered diagrams as JPEG.", MERMAN_CAPABILITY_JPEG_TARGETS, 1, NULL, 0 },
     { "layout-cytoscape", "engine", "Enable Mermaid Cytoscape-backed layout behavior.", MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE_TARGETS, 3, MERMAN_CAPABILITY_LAYOUT_CYTOSCAPE_IMPLICATIONS, 1 },
+    { "layout-dagre", "engine", "Enable Mermaid Dagre-backed SVG graph layout.", MERMAN_CAPABILITY_LAYOUT_DAGRE_TARGETS, 3, MERMAN_CAPABILITY_LAYOUT_DAGRE_IMPLICATIONS, 1 },
     { "layout-elk", "engine", "Enable Mermaid ELK-backed layout behavior.", MERMAN_CAPABILITY_LAYOUT_ELK_TARGETS, 3, MERMAN_CAPABILITY_LAYOUT_ELK_IMPLICATIONS, 1 },
     { "layout-shoal", "engine", "Select the experimental Shoal layout for Flowchart, Agentflow, Architecture, C4, Class, State, ER, Requirement, Swimlane, and Usecase diagrams, or route Block edges on the existing grid.", MERMAN_CAPABILITY_LAYOUT_SHOAL_TARGETS, 2, MERMAN_CAPABILITY_LAYOUT_SHOAL_IMPLICATIONS, 1 },
     { "markdown", "tool", "Compile CLI Markdown batch conversion.", MERMAN_CAPABILITY_MARKDOWN_TARGETS, 1, NULL, 0 },
@@ -250,7 +262,7 @@ static const MermanCapabilityDescriptor MERMAN_CAPABILITIES[] = {
     { "system-timezone", "adapter", "Compile the native system time-zone adapter.", MERMAN_CAPABILITY_SYSTEM_TIMEZONE_TARGETS, 1, NULL, 0 },
     { "system-timing", "adapter", "Compile the native monotonic timing adapter.", MERMAN_CAPABILITY_SYSTEM_TIMING_TARGETS, 1, NULL, 0 },
 };
-#define MERMAN_CAPABILITY_COUNT 23u
+#define MERMAN_CAPABILITY_COUNT 24u
 
 static const char *const MERMAN_OUTPUT_ASCII_TARGETS[] = {
     "native",

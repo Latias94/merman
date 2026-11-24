@@ -171,7 +171,7 @@ class CorpusContractsTest(unittest.TestCase):
             verify_pipeline_bench_list._pipeline_lane_groups(
                 corpus,
                 enabled_features=frozenset(
-                    {"all-diagrams", "svg", "compat-json", "editor-facts"}
+                    {"all-diagrams", "svg", "compat-json", "editor-facts", "layout-dagre"}
                 ),
             )[0]
         )

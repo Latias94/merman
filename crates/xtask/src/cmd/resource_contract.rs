@@ -41,6 +41,7 @@ const FULL_WEB_OPERATIONS: &[OperationKey] = &[
 ];
 const FULL_WEB_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
     CapabilityKey::LayoutCytoscape,
+    CapabilityKey::LayoutDagre,
     CapabilityKey::LayoutElk,
     CapabilityKey::Math,
 ];

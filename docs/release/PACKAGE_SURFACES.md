@@ -82,7 +82,7 @@ Foundational Rust implementation crates are not product entry points. Homebrew/c
 publication; this repository only validates the external formula after a stable release.
 
 Android, Python, and Flutter main-line prebuilt products select math explicitly alongside SVG,
-semantic and layout operations, both supported layout engines, ASCII, analysis, validation, and
+semantic and layout operations, Dagre, ELK, Cytoscape, ASCII, analysis, validation, and
 document analysis. Published 0.9.x packages retain their version-specific capabilities. Main's
 Apple product, both Node transports, and Web full/render also select math explicitly. Published
 Web full/render 0.9.3 includes math; published Node, Python, Flutter, Android and legacy
@@ -145,10 +145,10 @@ library for Markdown recognition and HTML embedding, and the renderer owns SVG s
 isolation. The shared library does not depend on either product or select rendering features; it
 is published in the workspace dependency order before both consumers.
 
-The macro and current-source facade default to `all-diagrams`, `svg`,
-`layout-cytoscape`, and `layout-elk`; mathematical labels require explicit `math`.
-The current development branch retains `complete-svg` (SVG and Cytoscape) and `complete-svg-elk`
-(also ELK) on both packages, without math or implicit diagram selection. Add `math` explicitly
+The macro and current-source facade default to `all-diagrams`, `svg`, `layout-cytoscape`,
+`layout-dagre`, and `layout-elk`. Mathematical labels require explicit `math`.
+On both packages, `complete-svg` selects SVG, Dagre, and Cytoscape, and `complete-svg-elk` also
+selects ELK. Select math and diagram families independently of these aggregates. Add `math` explicitly
 when upgrading a previously math-enabled aggregate selection; installed older products retain
 their original feature definitions.
 Both source defaults include the EPL-2.0 ELK implementation and its notice/source obligations.
@@ -286,11 +286,11 @@ self-hosting. It contains exactly one owned WASM artifact at
 
 | Package | Artifact profile | Intended use |
 | --- | --- | --- |
-| `@mermanjs/web` | `web-full` | Browser SDK: SVG with math, analysis, ASCII, editor intelligence, Cytoscape and ELK layouts. |
+| `@mermanjs/web` | `web-full` | Browser SDK: SVG with math, analysis, ASCII, editor intelligence, Dagre, ELK, and Cytoscape layouts. |
 | `@mermanjs/web-analysis` | `web-analysis` | Analysis, diagnostics, facts, and detection without rendering. |
 | `@mermanjs/web-editor` | `web-editor` | Analysis plus parser-backed editor intelligence, intended for a dedicated Worker. |
 | `@mermanjs/web-ascii` | `web-ascii` | ASCII/Unicode diagram output. |
-| `@mermanjs/web-render` | `web-render` | SVG-only renderer with math, Cytoscape and ELK layouts. |
+| `@mermanjs/web-render` | `web-render` | SVG-only renderer with math, Dagre, ELK, and Cytoscape layouts. |
 
 The package group deliberately has no Node or SSR fallback. Browser consumers import one package,
 then use its generated wrapper and runtime capability report. Unsupported operations are rejected by
@@ -319,7 +319,7 @@ Current source semantics are intentionally explicit:
 
 - Cargo features separately select positive diagram families and capabilities; the source of truth
   for an exact shipped artifact is the artifact profile catalog. The Rust facade defaults to
-  `all-diagrams + svg + layout-cytoscape + layout-elk` (math is opt-in). Consumers disabling
+  `all-diagrams + svg + layout-cytoscape + layout-dagre + layout-elk` (math is opt-in). Consumers disabling
   defaults must select `all-diagrams` or the required `diagram-*` selectors alongside output leaves
   and layout leaves. Products and release profiles select explicit families
   and capabilities when they need an artifact-specific closure.
@@ -339,7 +339,7 @@ Current source semantics are intentionally explicit:
 ## Native Prebuilt SKU Policy
 
 Python, Android, and Flutter main-line products use their surface-owned transports with explicit
-`analysis`, `ascii`, `fixes`, `layout-cytoscape`, `layout-elk`, `math`, `svg` and diagram selection.
+`analysis`, `ascii`, `fixes`, `layout-cytoscape`, `layout-dagre`, `layout-elk`, `math`, `svg` and diagram selection.
 Their outputs remain ASCII and SVG. Binary export and native runtime adapters remain separate.
 The generated wrappers expose the complete operation vocabulary, while runtime discovery and
 typed missing-capability errors describe the loaded artifact precisely.
@@ -353,7 +353,7 @@ defaults and published v0.9.x products unchanged.
 The C ABI is published as the source-only `merman-ffi` crate. Its `c-abi-native` artifact profile
 continues to build the complete host reference library for ABI and output-path verification, not a
 downloadable default binary SDK. The binding crates intentionally have no `complete-svg` aggregate:
-source users select direct leaves such as `svg`, `layout-cytoscape`, `layout-elk`, `math`, and
+source users select direct leaves such as `svg`, `layout-cytoscape`, `layout-dagre`, `layout-elk`, `math`, and
 `native-runtime`, then use the artifact recipe and notices as the legal closure authority.
 
 The corresponding cross-language recipes are intentionally not identical when their interfaces
@@ -361,10 +361,10 @@ differ:
 
 | Surface | Compiled capabilities | Product rationale |
 | --- | --- | --- |
-| Android, Python, Flutter | analysis, ASCII, SVG, math, Cytoscape, ELK | Main-line complete SVG products; published maintenance packages retain their own capabilities. |
-| Apple on main | analysis, ASCII, SVG, math, Cytoscape, ELK | Complete local SwiftPM package and thin remote delivery handoff; published v0.9.x remains math-free. |
-| Typst | analysis, SVG, Cytoscape, ELK | Matches the seven-function Typst ABI, whose SVG-capable transport also exposes three explicitly Alpha theme-authoring operations; no callable ASCII or binary-export operation, and no admitted math backend. |
-| Node alpha package group | SVG, math, Cytoscape, ELK | Matches the complete deterministic static-SVG interface; codecs and ambient services remain out of the prebuilt download. |
+| Android, Python, Flutter | analysis, ASCII, SVG, math, Dagre, ELK, Cytoscape | Main-line complete SVG products; published maintenance packages retain their own capabilities. |
+| Apple on main | analysis, ASCII, SVG, math, Dagre, ELK, Cytoscape | Complete local SwiftPM package and thin remote delivery handoff; published v0.9.x remains math-free. |
+| Typst | analysis, SVG, Dagre, ELK, Cytoscape | Matches the seven-function Typst ABI, whose SVG-capable transport also exposes three explicitly Alpha theme-authoring operations; no callable ASCII or binary-export operation, and no admitted math backend. |
+| Node alpha package group | SVG, math, Dagre, ELK, Cytoscape | Matches the complete deterministic static-SVG interface; codecs and ambient services remain out of the prebuilt download. |
 | Browser packages | package-specific | `web-full` and `web-render` include math; dedicated packages own analysis, editor, and ASCII workflows. |
 | C ABI source reference | complete | Exercises every ABI/output path for custom embedders without defining a default binary download. |
 

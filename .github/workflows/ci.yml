@@ -486,13 +486,13 @@ jobs:
         shell: bash
         run: |
           cargo nextest run --locked -p merman-ffi --no-default-features \
-            --features svg,diagram-flowchart --test c_consumer_smoke
+            --features svg,diagram-flowchart,layout-dagre --test c_consumer_smoke
           cargo nextest run --locked -p merman-render --no-default-features \
-            --features diagram-flowchart,diagram-swimlane \
+            --features diagram-flowchart,diagram-swimlane,layout-dagre \
             --test theme_font_capability --test flowchart_node_effects --cargo-quiet
           cargo nextest run --locked -p merman-bindings-core --no-default-features \
-            --features svg,diagram-flowchart --lib -E 'test(embedded_fonts_are_rejected_before_decoding) | test(resource_free_font_stack)' --cargo-quiet
-          cargo nextest run --locked -p merman --no-default-features --features svg,diagram-flowchart \
+            --features svg,diagram-flowchart,layout-dagre --lib -E 'test(embedded_fonts_are_rejected_before_decoding) | test(resource_free_font_stack)' --cargo-quiet
+          cargo nextest run --locked -p merman --no-default-features --features svg,diagram-flowchart,layout-dagre \
             --test theme_font_capability --test flowchart_edge_label_theme --cargo-quiet
           cargo nextest run --locked -p merman-export --no-default-features \
             --features png,jpeg,pdf --lib --cargo-quiet
@@ -502,15 +502,15 @@ jobs:
         run: |
           cargo nextest run --locked -p merman-export --no-default-features --features native-fonts --cargo-quiet
           cargo nextest run --locked -p merman --features native-fonts --test native_font_context --test native_font_families --test native_flowchart_typography --test native_swimlane_typography --test native_font_wrapping --cargo-quiet
-          cargo nextest run --locked -p merman-cli --no-default-features --features svg,diagram-flowchart,native-fonts,markdown,parallel-markdown --test native_fonts_contract --cargo-quiet
-          cargo nextest run --locked -p merman --no-default-features --features diagram-flowchart,native-fonts,png,jpeg,pdf --test native_font_context --cargo-quiet
+          cargo nextest run --locked -p merman-cli --no-default-features --features svg,diagram-flowchart,layout-dagre,native-fonts,markdown,parallel-markdown --test native_fonts_contract --cargo-quiet
+          cargo nextest run --locked -p merman --no-default-features --features diagram-flowchart,layout-dagre,native-fonts,png,jpeg,pdf --test native_font_context --cargo-quiet
 
       - name: Test bounded system font policy on every host
         shell: bash
         run: |
           cargo nextest run --locked -p merman-export --no-default-features --features native-fonts,system-fonts --cargo-quiet
-          cargo nextest run --locked -p merman-cli --no-default-features --features diagram-flowchart,system-fonts --test native_fonts_contract --cargo-quiet
-          cargo nextest run --locked -p merman-cli --no-default-features --features diagram-flowchart,native-fonts,png --test native_fonts_contract --cargo-quiet
+          cargo nextest run --locked -p merman-cli --no-default-features --features diagram-flowchart,layout-dagre,system-fonts --test native_fonts_contract --cargo-quiet
+          cargo nextest run --locked -p merman-cli --no-default-features --features diagram-flowchart,layout-dagre,native-fonts,png --test native_fonts_contract --cargo-quiet
 
       - name: Test experimental platform font query on every host
         run: cargo nextest run --locked -p merman-export --no-default-features --features experimental-system-font-query,png,jpeg,pdf --cargo-quiet
@@ -519,11 +519,11 @@ jobs:
         run: cargo nextest run --locked -p merman-export --no-default-features --features experimental-system-font-query,png,jpeg,pdf --test platform_font_context ${{ runner.os == 'macOS' && '--lib --test fallback_shaping' || '' }} --run-ignored only --no-fail-fast --cargo-quiet
 
       - name: Test release platform font CLI policy on every host
-        run: cargo nextest run --locked -p merman-cli --no-default-features --features diagram-flowchart,png,platform-system-font-default --test native_fonts_contract --cargo-quiet
+        run: cargo nextest run --locked -p merman-cli --no-default-features --features diagram-flowchart,layout-dagre,png,platform-system-font-default --test native_fonts_contract --cargo-quiet
 
       - name: Test automatic Fontconfig fallback on Linux
         if: runner.os == 'Linux'
-        run: cargo nextest run --locked -p merman-cli --no-default-features --features diagram-flowchart,png,platform-system-font-query --test native_fonts_contract --test linux_fontconfig -E 'test(=fontconfig_availability_controls_automatic_fallback) | binary(linux_fontconfig)' --cargo-quiet
+        run: cargo nextest run --locked -p merman-cli --no-default-features --features diagram-flowchart,layout-dagre,png,platform-system-font-query --test native_fonts_contract --test linux_fontconfig -E 'test(=fontconfig_availability_controls_automatic_fallback) | binary(linux_fontconfig)' --cargo-quiet
 
       - name: Test host-sensitive contracts on ordinary runs
         if: runner.os != 'Linux' && github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
@@ -538,7 +538,7 @@ jobs:
             --features "$ffi_features" \
             --test header_smoke --test c_consumer_smoke --cargo-quiet
           cargo nextest run --locked -p merman-cli --features layout-elk --test markdown_cli --cargo-quiet
-          cargo nextest run --locked -p merman-cli --no-default-features --features all-diagrams,rustdoc \
+          cargo nextest run --locked -p merman-cli --no-default-features --features all-diagrams,layout-dagre,rustdoc \
             --test rustdoc_cli --cargo-quiet
 
       - name: Verify published theme acceptance boundary
@@ -605,8 +605,15 @@ jobs:
           sudo apt-get update --error-on=any
           sudo apt-get install --no-install-recommends --yes libfontconfig1-dev pkg-config fonts-dejavu-core fonts-noto-cjk
 
-      - name: Verify representative Cargo feature matrix
+      - name: Verify representative Cargo feature matrix and isolated layout consumers
         run: cargo run --locked -p xtask -- verify-feature-matrix
+
+      - name: Test renderer with no graph engine and with only Shoal
+        run: |
+          for features in all-diagrams all-diagrams,layout-shoal; do
+            cargo nextest run --locked -p merman-render --no-default-features --features "$features" \
+              --lib --test diagram_features --test typed_family_api_test --cargo-quiet
+          done
 
       - name: Test isolated consumers without diagram families
         run: |
@@ -621,7 +628,7 @@ jobs:
         run: |
           cargo test --locked -p merman-core --no-default-features --features diagram-flowchart,diagram-sequence,diagram-state --doc
           cargo test -p merman-render --doc --features all-diagrams
-          cargo test -p merman --doc --no-default-features --features all-diagrams,layout-cytoscape,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing
+          cargo test -p merman --doc --no-default-features --features all-diagrams,layout-cytoscape,layout-dagre,layout-elk,math,svg,system-clock,system-random,system-timezone,system-timing
 
       - name: Test Rustdoc family subsets, math opt-in, and exact artifact recipe
         run: |
@@ -631,6 +638,8 @@ jobs:
             --features svg,diagram-gantt --cargo-quiet
           cargo nextest run --locked -p merman-rustdoc --no-default-features \
             --features svg,diagram-flowchart --cargo-quiet
+          cargo nextest run --locked -p merman-rustdoc --no-default-features \
+            --features svg,diagram-flowchart,layout-dagre --cargo-quiet
           cargo nextest run --locked -p merman-rustdoc --test regressions \
             -E 'test(rustdoc_math_requires_explicit_feature)' --cargo-quiet
           cargo nextest run --locked -p merman-rustdoc --features math --test regressions \
@@ -641,7 +650,7 @@ jobs:
             -E 'test(rustdoc::document::tests::explicit_math_capability_renders_in_rustdoc_mode)' --cargo-quiet
           cargo nextest run --locked -p merman --features math --test layout_work_calibration_contract --cargo-quiet
           cargo nextest run --locked -p merman-render \
-            --features all-diagrams,layout-cytoscape,layout-elk,math \
+            --features all-diagrams,layout-cytoscape,layout-dagre,layout-elk,math \
             --test flowchart_svg_test --test sequence_svg_test --test usecase_svg_test \
             -E 'test(flowchart_svg_renders_ratex_math_labels_end_to_end) | test(sequence_svg_renders_ratex_math_message_and_note_end_to_end) | test(usecase_math_labels_render_real_math_for_every_label_owner)' \
             --cargo-quiet
@@ -650,7 +659,7 @@ jobs:
 
       - name: Test representative Cargo feature unification contract
         run: |
-          ambient_render_features="merman-bindings-core/all-diagrams,merman-bindings-core/layout-cytoscape,merman-bindings-core/layout-elk,merman-bindings-core/math"
+          ambient_render_features="merman-bindings-core/all-diagrams,merman-bindings-core/layout-cytoscape,merman-bindings-core/layout-dagre,merman-bindings-core/layout-elk,merman-bindings-core/math"
           cargo nextest run --locked -p merman-bindings-core -p merman-ffi \
             --no-default-features \
             --features "$ambient_render_features,merman-ffi/all-diagrams,merman-ffi/svg" \
@@ -660,7 +669,11 @@ jobs:
             --no-default-features \
             --features "$ambient_render_features,merman-cli/all-diagrams,merman-cli/svg" \
             --test svg_smoke --cargo-quiet \
-            -E 'test(math_labels_require_the_cli_owned_capability)'
+            -E 'test(math_labels_require_the_cli_owned_capability) | test(dagre_requires_the_cli_owned_capability)'
+          cargo nextest run --locked -p merman-rustdoc --no-default-features \
+            --features svg,diagram-flowchart,diagram-architecture,diagram-sequence,merman/layout-cytoscape,merman/layout-dagre,merman/layout-elk,merman/layout-shoal,merman/math \
+            --lib --cargo-quiet \
+            -E 'test(rustdoc_layout_requests_follow_the_owner_features) | test(rustdoc_math_follows_the_owner_feature)'
 
       - name: Verify committed upstream alignment manifests
         run: cargo run --locked -p xtask -- check-alignment
@@ -759,7 +772,7 @@ jobs:
             -p merman-theme-acceptance -p merman-render -p merman-export -p merman \
             --lib --cargo-quiet
           python3 scripts/run_theme_acceptance.py nextest run --locked -p merman-theme-acceptance \
-            --no-default-features --features png,all-diagrams \
+            --no-default-features --features png,all-diagrams,layout-dagre \
               --test preset_qualification \
             --test block_title_legacy_projection --test class_edge_label_background_legacy_projection --test flowchart_marker_legacy_projection \
             --cargo-quiet
@@ -771,13 +784,13 @@ jobs:
           cargo test --release --locked -p merman-render --no-default-features \
             --lib family::evidence_support::tests
           python3 scripts/run_theme_acceptance.py test --release --locked \
-            -p merman-theme-acceptance --no-default-features --features png,all-diagrams,layout-cytoscape \
+            -p merman-theme-acceptance --no-default-features --features png,all-diagrams,layout-cytoscape,layout-dagre \
             --lib preset_qualification::
 
       - name: Test theme authoring and Flowchart paint across SVG and PNG
         run: |
           python3 scripts/run_theme_acceptance.py nextest run --locked -p merman \
-            --no-default-features --features all-diagrams,svg,png,pdf,layout-cytoscape,system-fonts,compat-json --test theme_authoring \
+            --no-default-features --features all-diagrams,svg,png,pdf,layout-cytoscape,layout-dagre,system-fonts,compat-json --test theme_authoring \
             --test theme_flowchart_markers --test theme_flowchart_geometry \
             --test theme_flowchart_edge_effects --test flowchart_edge_label_theme \
             --test render_operation --test theme_composed_effects --cargo-quiet
@@ -1062,7 +1075,7 @@ jobs:
         run: |
           cargo nextest run --locked -p merman-typst-plugin --no-default-features
           cargo nextest run --locked -p merman-typst-plugin --no-default-features \
-            --features all-diagrams,analysis,layout-cytoscape,layout-elk,svg
+            --features all-diagrams,analysis,layout-cytoscape,layout-dagre,layout-elk,svg
 
       - name: Prefetch locked dependencies for offline metadata
         # Metadata loads cross-platform packages even with --filter-platform.

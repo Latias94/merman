@@ -845,6 +845,7 @@ impl UsecaseThemePlan {
         &self.title
     }
 
+    #[cfg(any(feature = "layout-dagre", test))]
     pub(crate) fn retain_edge_terminals(
         &mut self,
         edges: &[super::super::UsecaseEdgePlan],

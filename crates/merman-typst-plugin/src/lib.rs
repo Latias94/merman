@@ -51,6 +51,8 @@ const TYPST_OPERATIONS: &[OperationKey] = &[
 const TYPST_SUPPLEMENTAL_CAPABILITIES: &[CapabilityKey] = &[
     #[cfg(feature = "layout-cytoscape")]
     CapabilityKey::LayoutCytoscape,
+    #[cfg(feature = "layout-dagre")]
+    CapabilityKey::LayoutDagre,
     #[cfg(feature = "layout-elk")]
     CapabilityKey::LayoutElk,
 ];
@@ -81,7 +83,11 @@ pub use wasm_exports::{
 include!("generated/typst_plugin_abi.rs");
 
 #[cfg(all(
-    any(feature = "layout-cytoscape", feature = "layout-elk"),
+    any(
+        feature = "layout-cytoscape",
+        feature = "layout-dagre",
+        feature = "layout-elk"
+    ),
     not(feature = "svg")
 ))]
 compile_error!(
@@ -627,6 +633,10 @@ mod tests {
             assert_eq!(
                 projected.capability_ids.contains(&"layout-cytoscape"),
                 cfg!(feature = "layout-cytoscape")
+            );
+            assert_eq!(
+                projected.has_capability("layout-dagre"),
+                cfg!(feature = "layout-dagre")
             );
             assert_eq!(
                 projected.capability_ids.contains(&"layout-elk"),
@@ -1532,6 +1542,21 @@ mod tests {
             user_text_tag.contains("font-size:18px") || user_text_tag.contains("font-size: 18px"),
             "explicit Typst typography must reach the class label: {user_text_tag}"
         );
+    }
+
+    #[cfg(all(feature = "svg", feature = "diagram-flowchart"))]
+    #[test]
+    fn render_svg_json_dagre_follows_the_typst_feature() {
+        let source = b"---\nconfig:\n  layout: dagre\n---\nflowchart TD\nA --> B";
+        let payload: Value = serde_json::from_slice(&render_svg_json(source, b"")).unwrap();
+        if cfg!(feature = "layout-dagre") {
+            assert_success_envelope(&payload, RENDER_OPERATION);
+            assert!(payload["data"]["svg"].as_str().unwrap().contains("<svg"));
+        } else {
+            assert_error_envelope(&payload, RENDER_OPERATION, "MERMAN_UNSUPPORTED_OPERATION");
+            assert_eq!(payload["kind"], "missing-capability");
+            assert_eq!(payload["capability_id"], "layout-dagre");
+        }
     }
 
     #[cfg(feature = "layout-elk")]

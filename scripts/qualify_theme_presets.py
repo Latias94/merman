@@ -38,7 +38,8 @@ QUALIFIED_OUTPUTS = {"svg", "png"}
 
 BUILD = [
     "cargo", "build", "--release", "--locked", "-p", "merman-theme-acceptance",
-    "--no-default-features", "--features", "png,layout-cytoscape,all-diagrams", "--example", "preset_qualification",
+    "--no-default-features", "--features", "png,layout-cytoscape,layout-dagre,all-diagrams",
+    "--example", "preset_qualification",
     "--jobs", "2", "--message-format=json-render-diagnostics",
 ]
 

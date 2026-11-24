@@ -2,7 +2,7 @@
 
 # Capability Surface v1
 
-Semantic digest: `sha256:e133cab82e0ce4916729079d0c673e8d871165dd89384e7d441caef276d0caad`
+Semantic digest: `sha256:5b115a3268501bd91daff3ff963b213e8e1d204f123fdafd87e059b195cf7af5`
 
 ## Public Leaves
 
@@ -15,6 +15,7 @@ Semantic digest: `sha256:e133cab82e0ce4916729079d0c673e8d871165dd89384e7d441caef
 | `icons` | `Tool` | `native` | none | Compile CLI local Iconify pack loading. |
 | `jpeg` | `Output` | `native` | none | Export rendered diagrams as JPEG. |
 | `layout-cytoscape` | `Engine` | `native`, `web`, `typst` | `svg` | Enable Mermaid Cytoscape-backed layout behavior. |
+| `layout-dagre` | `Engine` | `native`, `web`, `typst` | `svg` | Enable Mermaid Dagre-backed SVG graph layout. |
 | `layout-elk` | `Engine` | `native`, `web`, `typst` | `svg` | Enable Mermaid ELK-backed layout behavior. |
 | `layout-shoal` | `Engine` | `native`, `web` | `svg` | Select the experimental Shoal layout for Flowchart, Agentflow, Architecture, C4, Class, State, ER, Requirement, Swimlane, and Usecase diagrams, or route Block edges on the existing grid. |
 | `markdown` | `Tool` | `native` | none | Compile CLI Markdown batch conversion. |

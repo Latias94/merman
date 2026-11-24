@@ -209,7 +209,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                 self.assertEqual(recipe.package, package)
                 self.assertEqual(recipe.cargo_profile, cargo_profile)
                 self.assertFalse(recipe.default_features)
-                self.assertTrue(recipe.features)
+                self.assertIn("layout-dagre", recipe.features)
 
     def test_native_svg_products_share_complete_document_capabilities(self) -> None:
         profile_ids = (
@@ -227,11 +227,11 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
 
         self.assertEqual(
             baseline["cargo"]["features"],
-            ["all-diagrams", "analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
+            ["all-diagrams", "analysis", "ascii", "fixes", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
         )
         self.assertEqual(
             baseline["expected"]["capabilities"],
-            ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-elk", "math", "svg"],
+            ["analysis", "ascii", "fixes", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "svg"],
         )
         self.assertEqual(baseline["expected"]["outputs"], ["ascii", "svg"])
 
@@ -244,12 +244,13 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                 )
                 self.assertEqual(candidate["expected"], baseline["expected"])
 
-    def test_recommended_svg_products_include_math_and_elk(self) -> None:
+    def test_recommended_svg_products_include_math_and_layout_engines(self) -> None:
+        capabilities = {"layout-dagre", "layout-elk", "math", "svg"}
         for host in ("swift", "c", "wasi"):
             with self.subTest(host=host):
                 profile = artifact_profile_recipe.recommend_artifact_profile(host)
-                self.assertTrue({"math", "layout-elk", "svg"}.issubset(profile.capabilities))
-                self.assertTrue({"math", "layout-elk", "svg"}.issubset(profile.cargo.features))
+                self.assertTrue(capabilities.issubset(profile.capabilities))
+                self.assertTrue(capabilities.issubset(profile.cargo.features))
         apple = artifact_profile_recipe.recommend_artifact_profile("swift")
         self.assertEqual(apple.outputs, ("ascii", "svg"))
         self.assertFalse({"png", "jpeg", "pdf", "native-fonts"}.intersection(apple.capabilities))
@@ -265,6 +266,7 @@ class ArtifactProfileRecipeTests(unittest.TestCase):
                 "fixes",
                 "jpeg",
                 "layout-cytoscape",
+                "layout-dagre",
                 "layout-elk",
                 "math",
                 "native-runtime",

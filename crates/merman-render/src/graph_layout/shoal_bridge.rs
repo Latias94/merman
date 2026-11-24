@@ -39,7 +39,12 @@ pub(crate) struct Placement<'a> {
     pub(crate) constraints: Constraints<'a>,
 }
 
-#[cfg(all(test, feature = "diagram-flowchart", feature = "layout-elk"))]
+#[cfg(all(
+    test,
+    feature = "diagram-flowchart",
+    feature = "layout-dagre",
+    feature = "layout-elk"
+))]
 #[path = "kernel_bench.rs"]
 mod kernel_bench;
 
@@ -177,7 +182,12 @@ pub(crate) fn solve(
     options.width_policy = placement.width;
     options.capture_node_ranks = placement.capture_ranks || placement.constraints.capture_ranks;
     options.reuse_unchanged_components = placement.reuse_components;
-    #[cfg(all(test, feature = "diagram-flowchart", feature = "layout-elk"))]
+    #[cfg(all(
+        test,
+        feature = "diagram-flowchart",
+        feature = "layout-dagre",
+        feature = "layout-elk"
+    ))]
     kernel_bench::capture(measured, options);
     let graph = project_input(measured, &placement, work)?;
     let solved = shoal::layout_with_control(&graph, &options, scratch, work)

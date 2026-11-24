@@ -541,7 +541,12 @@ func run(module, flavor, catalogOut, output, directory string) object {
 	plan := h.execute(engine, "svg-plan-json", fixture.Sources["elk"], nil)
 	success(plan, engine, "application/json")
 	value := decode(plan.Data)
-	require(value["ready"] == true && contains(stringsOf(value["required_capability_ids"]), "layout-elk") == (flavor == "full") && len(stringsOf(value["missing_capability_ids"])) == 0, "ELK plan disagrees with actual family fallback/capabilities")
+	layoutID := "layout-dagre"
+	if flavor == "full" {
+		layoutID = "layout-elk"
+	}
+	required := stringsOf(value["required_capability_ids"])
+	require(value["ready"] == true && len(required) == 1 && required[0] == layoutID && len(stringsOf(value["missing_capability_ids"])) == 0, "ELK plan disagrees with actual family fallback/capabilities")
 	report["elk_family_fallback"] = flavor != "full"
 	writeJSON(filepath.Join(output, "elk.plan.json"), value)
 	h.release("result_free", plan.Handle)

@@ -6,6 +6,7 @@
     "target": "native",
     "capabilities": [
       "layout-cytoscape",
+      "layout-dagre",
       "layout-elk",
       "math",
       "svg"

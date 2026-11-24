@@ -165,6 +165,12 @@ const Map<String, MermanBindingCapabilitySpec> mermanBindingCapabilitySpecs =
       "svg",
     },
   ),
+  "layout-dagre": MermanBindingCapabilitySpec(
+    id: "layout-dagre",
+    implicationIds: <String>{
+      "svg",
+    },
+  ),
   "layout-elk": MermanBindingCapabilitySpec(
     id: "layout-elk",
     implicationIds: <String>{

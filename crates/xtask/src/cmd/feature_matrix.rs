@@ -116,7 +116,13 @@ const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
     ("merman-wasm", &[]),
     ("roughr-merman", &["host-random", "legacy-compat"]),
 ];
-const SVG_ENGINE_FEATURES: &[&str] = &["layout-cytoscape", "layout-elk", "layout-shoal", "math"];
+const SVG_ENGINE_FEATURES: &[&str] = &[
+    "layout-cytoscape",
+    "layout-dagre",
+    "layout-elk",
+    "layout-shoal",
+    "math",
+];
 const RETIRED_BINDING_RUNTIME_FEATURES: &[&str] =
     &["system-clock", "system-random", "system-timezone"];
 const BINDINGS_CORE_NATIVE_RUNTIME_EDGES: &[&str] = &[
@@ -175,6 +181,11 @@ struct FeatureForwardingContract {
 const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
     FeatureForwardingContract {
         package: "merman",
+        dependency: "merman-render",
+        features: &["layout-dagre"],
+    },
+    FeatureForwardingContract {
+        package: "merman",
         dependency: "merman-analysis",
         features: &["fixes"],
     },
@@ -207,6 +218,7 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
             "fixes",
             "jpeg",
             "layout-cytoscape",
+            "layout-dagre",
             "layout-elk",
             "math",
             "pdf",
@@ -222,6 +234,7 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
             "ascii",
             "jpeg",
             "layout-cytoscape",
+            "layout-dagre",
             "layout-elk",
             "layout-shoal",
             "math",
@@ -239,6 +252,7 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
             "ascii",
             "jpeg",
             "layout-cytoscape",
+            "layout-dagre",
             "layout-elk",
             "layout-shoal",
             "math",
@@ -262,6 +276,7 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
             "fixes",
             "jpeg",
             "layout-cytoscape",
+            "layout-dagre",
             "layout-elk",
             "math",
             "native-fonts",
@@ -285,6 +300,7 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
             "fixes",
             "jpeg",
             "layout-cytoscape",
+            "layout-dagre",
             "layout-elk",
             "math",
             "pdf",
@@ -300,6 +316,7 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
             "analysis",
             "ascii",
             "layout-cytoscape",
+            "layout-dagre",
             "layout-elk",
             "math",
             "native-fonts",
@@ -320,6 +337,7 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
             "ascii",
             "fixes",
             "layout-cytoscape",
+            "layout-dagre",
             "layout-elk",
             "math",
             "svg",
@@ -328,12 +346,24 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
     FeatureForwardingContract {
         package: "merman-typst-plugin",
         dependency: "merman-bindings-core",
-        features: &["analysis", "layout-cytoscape", "layout-elk", "svg"],
+        features: &[
+            "analysis",
+            "layout-cytoscape",
+            "layout-dagre",
+            "layout-elk",
+            "svg",
+        ],
     },
     FeatureForwardingContract {
         package: "merman-rustdoc",
         dependency: "merman",
-        features: &["layout-cytoscape", "layout-elk", "math", "svg"],
+        features: &[
+            "layout-cytoscape",
+            "layout-dagre",
+            "layout-elk",
+            "math",
+            "svg",
+        ],
     },
 ];
 
@@ -531,7 +561,7 @@ pub(crate) fn verify_feature_matrix(args: Vec<String>) -> Result<(), XtaskError>
     } else {
         (Vec::new(), Vec::new())
     };
-    run_isolated_diagram_consumers(&root)?;
+    run_isolated_diagram_consumers(&root, options.strict)?;
     let cases = graph.build_cases(options.strict, &wasm_artifacts)?;
     for (index, case) in cases.iter().enumerate() {
         println!(
@@ -970,7 +1000,10 @@ impl FeatureGraph {
         for package_name in ["merman", "merman-rustdoc"] {
             let package = self.package(package_name)?;
             for (feature, members) in [
-                ("complete-svg", &["svg", "layout-cytoscape"][..]),
+                (
+                    "complete-svg",
+                    &["svg", "layout-cytoscape", "layout-dagre"][..],
+                ),
                 ("complete-svg-elk", &["complete-svg", "layout-elk"][..]),
             ] {
                 let actual = direct_feature_members(package, feature)?;
@@ -990,11 +1023,12 @@ impl FeatureGraph {
             "all-diagrams".to_string(),
             "svg".to_string(),
             "layout-cytoscape".to_string(),
+            "layout-dagre".to_string(),
             "layout-elk".to_string(),
         ]);
         if facade_defaults != expected_defaults {
             return Err(matrix_error(format!(
-                "{}: merman default must equal `all-diagrams`, `svg`, `layout-cytoscape`, and `layout-elk`; expected {expected_defaults:?}, found {facade_defaults:?}",
+                "{}: merman default must equal {expected_defaults:?}, found {facade_defaults:?}",
                 facade.manifest_path.display()
             )));
         }
@@ -1004,7 +1038,7 @@ impl FeatureGraph {
         let expected_rustdoc_defaults = &expected_defaults;
         if &rustdoc_defaults != expected_rustdoc_defaults {
             return Err(matrix_error(format!(
-                "{}: merman-rustdoc default must equal `all-diagrams`, `svg`, `layout-cytoscape`, and `layout-elk`; expected {expected_rustdoc_defaults:?}, found {rustdoc_defaults:?}",
+                "{}: merman-rustdoc default must equal {expected_rustdoc_defaults:?}, found {rustdoc_defaults:?}",
                 rustdoc.manifest_path.display()
             )));
         }
@@ -1024,7 +1058,7 @@ impl FeatureGraph {
         })?;
         let published_features = dist_recipe.features.into_iter().collect::<BTreeSet<_>>();
         let cli_defaults = direct_feature_members(cli, "default")?;
-        for feature in ["layout-elk", "fixes"]
+        for feature in ["layout-dagre", "layout-elk", "fixes"]
             .into_iter()
             .chain(CLI_RELEASE_ONLY_FEATURES.iter().copied())
         {
@@ -1438,7 +1472,7 @@ fn display_feature_set(features: &BTreeSet<String>) -> String {
     )
 }
 
-fn run_isolated_diagram_consumers(root: &std::path::Path) -> Result<(), XtaskError> {
+fn run_isolated_diagram_consumers(root: &std::path::Path, strict: bool) -> Result<(), XtaskError> {
     let target_root = super::target_root();
     let all = merman::model::family::diagram_family_selectors()
         .iter()
@@ -1516,7 +1550,7 @@ fn run_isolated_diagram_consumers(root: &std::path::Path) -> Result<(), XtaskErr
         ),
         (
             "facade-flowchart",
-            "facade,merman/svg,merman/diagram-flowchart",
+            "facade,merman/svg,merman/diagram-flowchart,merman/layout-dagre",
             "flowchart",
             "flowchart,swimlane",
             "",
@@ -1525,7 +1559,7 @@ fn run_isolated_diagram_consumers(root: &std::path::Path) -> Result<(), XtaskErr
         (
             "facade-embedding-subset",
             concat!(
-                "facade,merman/layout-cytoscape,merman/diagram-flowchart,",
+                "facade,merman/layout-cytoscape,merman/layout-dagre,merman/diagram-flowchart,",
                 "merman/diagram-sequence,merman/diagram-class,merman/diagram-state,",
                 "merman/diagram-er,merman/diagram-gantt,merman/diagram-pie,",
                 "merman/diagram-git-graph,merman/diagram-mindmap,merman/diagram-timeline,",
@@ -1538,7 +1572,7 @@ fn run_isolated_diagram_consumers(root: &std::path::Path) -> Result<(), XtaskErr
         ),
         (
             "facade-embedding-all",
-            "facade,merman/all-diagrams,merman/layout-cytoscape",
+            "facade,merman/all-diagrams,merman/layout-cytoscape,merman/layout-dagre",
             all.as_str(),
             all.as_str(),
             "",
@@ -1554,7 +1588,7 @@ fn run_isolated_diagram_consumers(root: &std::path::Path) -> Result<(), XtaskErr
         ),
         (
             "agentflow",
-            "source,renderer,merman-core/diagram-agentflow,merman-render/diagram-agentflow",
+            "source,renderer,merman-core/diagram-agentflow,merman-render/diagram-agentflow,merman-render/layout-dagre",
             "agentflow",
             "agentflow,flowchart,swimlane",
             "agentflow",
@@ -1562,7 +1596,7 @@ fn run_isolated_diagram_consumers(root: &std::path::Path) -> Result<(), XtaskErr
         ),
         (
             "usecase",
-            "source,renderer,merman-core/diagram-usecase,merman-render/diagram-usecase",
+            "source,renderer,merman-core/diagram-usecase,merman-render/diagram-usecase,merman-render/layout-dagre",
             "usecase",
             "usecase",
             "usecase",
@@ -1570,7 +1604,7 @@ fn run_isolated_diagram_consumers(root: &std::path::Path) -> Result<(), XtaskErr
         ),
         (
             "flowchart",
-            "source,renderer,merman-core/diagram-flowchart,merman-render/diagram-flowchart",
+            "source,renderer,merman-core/diagram-flowchart,merman-render/diagram-flowchart,merman-render/layout-dagre",
             "flowchart",
             "flowchart,swimlane",
             "flowchart",
@@ -1578,7 +1612,7 @@ fn run_isolated_diagram_consumers(root: &std::path::Path) -> Result<(), XtaskErr
         ),
         (
             "swimlane",
-            "source,renderer,merman-core/diagram-swimlane,merman-render/diagram-swimlane",
+            "source,renderer,merman-core/diagram-swimlane,merman-render/diagram-swimlane,merman-render/layout-dagre",
             "swimlane",
             "flowchart,swimlane",
             "swimlane",
@@ -1586,7 +1620,7 @@ fn run_isolated_diagram_consumers(root: &std::path::Path) -> Result<(), XtaskErr
         ),
         (
             "flowchart-gantt",
-            "source,renderer,merman-core/diagram-flowchart,merman-core/diagram-gantt,merman-render/diagram-flowchart,merman-render/diagram-gantt",
+            "source,renderer,merman-core/diagram-flowchart,merman-core/diagram-gantt,merman-render/diagram-flowchart,merman-render/diagram-gantt,merman-render/layout-dagre",
             "flowchart,gantt",
             "flowchart,gantt,swimlane",
             "flowchart,gantt",
@@ -1594,7 +1628,7 @@ fn run_isolated_diagram_consumers(root: &std::path::Path) -> Result<(), XtaskErr
         ),
         (
             "renderer-data",
-            "renderer,data-flowchart,merman-render/diagram-flowchart",
+            "renderer,data-flowchart,merman-render/diagram-flowchart,merman-render/layout-dagre",
             "",
             "flowchart,swimlane",
             "flowchart",
@@ -1610,7 +1644,7 @@ fn run_isolated_diagram_consumers(root: &std::path::Path) -> Result<(), XtaskErr
         ),
         (
             "renderer-asymmetric",
-            "source,renderer,merman-core/all-diagrams,merman-render/diagram-flowchart",
+            "source,renderer,merman-core/all-diagrams,merman-render/diagram-flowchart,merman-render/layout-dagre",
             all.as_str(),
             all.as_str(),
             "flowchart",
@@ -1724,6 +1758,159 @@ fn run_isolated_diagram_consumers(root: &std::path::Path) -> Result<(), XtaskErr
             "omitted Sequence payload must fail with an unresolved import: {diagnostics}"
         )));
     }
+    run_isolated_layout_consumers(root, &manifest, strict)
+}
+
+const ANALYSIS_CONSUMER: &str =
+    include_str!("../../tests/fixtures/diagram-features/layout/analysis.rs");
+
+const ASCII_CONSUMER: &str = include_str!("../../tests/fixtures/diagram-features/layout/ascii.rs");
+
+const SVG_LAYOUT_CONSUMER: &str =
+    include_str!("../../tests/fixtures/diagram-features/layout/svg.rs");
+
+fn run_isolated_layout_consumers(
+    root: &std::path::Path,
+    manifest: &std::path::Path,
+    strict: bool,
+) -> Result<(), XtaskError> {
+    // Reuse the staged workspace and lock with only the final consumer's facade dependency.
+    std::fs::write(
+        manifest,
+        r#"[package]
+name = "diagram-feature-consumer"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+merman = { path = "../../../../merman", default-features = false }
+"#,
+    )
+    .map_err(|error| matrix_error(format!("cannot stage layout consumer manifest: {error}")))?;
+
+    let mut probes = vec![
+        (
+            "analysis,diagram-flowchart".to_owned(),
+            ANALYSIS_CONSUMER,
+            vec![],
+            None,
+        ),
+        (
+            "ascii,diagram-flowchart".to_owned(),
+            ASCII_CONSUMER,
+            vec![],
+            Some("dagre"),
+        ),
+        (
+            "svg,diagram-sequence,diagram-pie".to_owned(),
+            SVG_LAYOUT_CONSUMER,
+            vec!["native"],
+            None,
+        ),
+        (
+            "svg,diagram-swimlane".to_owned(),
+            SVG_LAYOUT_CONSUMER,
+            vec!["swimlane"],
+            None,
+        ),
+        (
+            "svg,diagram-flowchart".to_owned(),
+            SVG_LAYOUT_CONSUMER,
+            vec!["missing"],
+            None,
+        ),
+    ];
+    for layout in ["dagre", "elk", "shoal"] {
+        probes.push((
+            format!("svg,diagram-flowchart,layout-{layout}"),
+            SVG_LAYOUT_CONSUMER,
+            vec![layout],
+            Some(layout),
+        ));
+    }
+    if strict {
+        for family in ["class", "er", "state", "requirement"] {
+            for layout in ["elk", "shoal"] {
+                probes.push((
+                    format!("svg,diagram-{family},layout-{layout}"),
+                    SVG_LAYOUT_CONSUMER,
+                    vec![layout, family],
+                    Some(layout),
+                ));
+            }
+        }
+    }
+
+    let source = manifest.with_file_name("src").join("main.rs");
+    let target_root = super::target_root();
+    for (recipe, program, args, engine) in probes {
+        println!("feature-matrix isolated layout consumer features={recipe}");
+        std::fs::write(&source, program)
+            .map_err(|error| matrix_error(format!("cannot stage layout consumer: {error}")))?;
+        let features = format!("merman/{}", recipe.replace(',', ",merman/"));
+        let cargo = |subcommand| {
+            let mut command = Command::new("cargo");
+            command
+                .args([subcommand, "--quiet", "--manifest-path"])
+                .arg(manifest)
+                .args(["--no-default-features", "--features", &features])
+                .env("CARGO_TARGET_DIR", &target_root)
+                .current_dir(root);
+            command
+        };
+        let tree = cargo("tree")
+            .args(["--edges", "normal", "--prefix", "none", "--format", "{p}"])
+            .output()
+            .map_err(|error| matrix_error(format!("cannot inspect {recipe}: {error}")))?;
+        if !tree.status.success() {
+            return Err(matrix_error(format!(
+                "isolated normal dependencies for {recipe} failed: {}",
+                String::from_utf8_lossy(&tree.stderr)
+            )));
+        }
+        let tree = String::from_utf8_lossy(&tree.stdout);
+        let packages = tree
+            .lines()
+            .filter_map(|line| line.split_whitespace().next())
+            .collect::<BTreeSet<_>>();
+        for (package, required) in [
+            ("merman", true),
+            (
+                "merman-render",
+                recipe.split(',').any(|feature| feature == "svg"),
+            ),
+            ("dugong", engine == Some("dagre")),
+            ("dugong-graphlib", engine == Some("dagre")),
+            ("merman-layout-elk", engine == Some("elk")),
+            ("merman-elk-layered", engine == Some("elk")),
+            ("merman-layout-shoal", engine == Some("shoal")),
+            ("manatee", false),
+        ] {
+            if packages.contains(package) != required {
+                let expectation = if required { "include" } else { "exclude" };
+                return Err(matrix_error(format!(
+                    "isolated normal dependencies for {recipe} must {expectation} {package}\n{tree}"
+                )));
+            }
+        }
+        let status = cargo("run")
+            .args(["--locked", "--jobs", "2", "--"])
+            .args(args)
+            .status()
+            .map_err(|error| matrix_error(format!("cannot run {recipe}: {error}")))?;
+        if !status.success() {
+            return Err(matrix_error(format!(
+                "isolated layout consumer {recipe} failed with {status}"
+            )));
+        }
+        println!(
+            "feature-matrix isolated layout consumer passed normal_packages={}",
+            packages.len()
+        );
+    }
     Ok(())
 }
 
@@ -1823,6 +2010,7 @@ mod tests {
         "icons",
         "jpeg",
         "layout-cytoscape",
+        "layout-dagre",
         "layout-elk",
         "markdown",
         "math",
@@ -2073,9 +2261,15 @@ mod tests {
                 &[
                     (
                         "default",
-                        &["all-diagrams", "svg", "layout-cytoscape", "layout-elk"],
+                        &[
+                            "all-diagrams",
+                            "svg",
+                            "layout-cytoscape",
+                            "layout-dagre",
+                            "layout-elk",
+                        ],
                     ),
-                    ("complete-svg", &["svg", "layout-cytoscape"]),
+                    ("complete-svg", &["svg", "layout-cytoscape", "layout-dagre"]),
                     ("complete-svg-elk", &["complete-svg", "layout-elk"]),
                 ],
             ),
@@ -2084,9 +2278,15 @@ mod tests {
                 &[
                     (
                         "default",
-                        &["all-diagrams", "svg", "layout-cytoscape", "layout-elk"],
+                        &[
+                            "all-diagrams",
+                            "svg",
+                            "layout-cytoscape",
+                            "layout-dagre",
+                            "layout-elk",
+                        ],
                     ),
-                    ("complete-svg", &["svg", "layout-cytoscape"]),
+                    ("complete-svg", &["svg", "layout-cytoscape", "layout-dagre"]),
                     ("complete-svg-elk", &["complete-svg", "layout-elk"]),
                 ],
             ),
@@ -2370,13 +2570,13 @@ mod tests {
             .get_mut("merman")
             .unwrap()
             .features
-            .insert("default".to_string(), vec!["svg".to_string()]);
+            .get_mut("default")
+            .unwrap()
+            .retain(|feature| feature != "layout-dagre");
 
         let error = graph.validate_product_feature_contracts().unwrap_err();
         assert!(
-            error
-                .to_string()
-                .contains("merman default must equal `all-diagrams`, `svg`, `layout-cytoscape`, and `layout-elk`"),
+            error.to_string().contains("merman default must equal"),
             "{error}"
         );
     }
@@ -2395,9 +2595,7 @@ mod tests {
 
         let error = graph.validate_product_feature_contracts().unwrap_err();
         assert!(
-            error
-                .to_string()
-                .contains("merman default must equal `all-diagrams`, `svg`, `layout-cytoscape`, and `layout-elk`"),
+            error.to_string().contains("merman default must equal"),
             "{error}"
         );
     }
@@ -2410,6 +2608,7 @@ mod tests {
                 "all-diagrams".to_string(),
                 "svg".to_string(),
                 "layout-cytoscape".to_string(),
+                "layout-dagre".to_string(),
                 "layout-elk".to_string(),
                 "math".to_string(),
             ],
@@ -2424,9 +2623,9 @@ mod tests {
 
             let error = graph.validate_product_feature_contracts().unwrap_err();
             assert!(
-                error.to_string().contains(
-                    "merman-rustdoc default must equal `all-diagrams`, `svg`, `layout-cytoscape`, and `layout-elk`"
-                ),
+                error
+                    .to_string()
+                    .contains("merman-rustdoc default must equal"),
                 "{error}"
             );
         }
@@ -2455,18 +2654,25 @@ mod tests {
     }
 
     #[test]
-    fn cli_release_must_retain_explicit_elk() {
-        let mut graph = product_contract_graph();
-        graph.packages.get_mut("merman-cli").unwrap().metadata["dist"]["features"] =
-            serde_json::json!(["analysis"]);
+    fn cli_release_must_retain_explicit_layouts() {
+        for removed in ["layout-dagre", "layout-elk"] {
+            let mut graph = product_contract_graph();
+            let release_features = CLI_RELEASE_FEATURES
+                .iter()
+                .copied()
+                .filter(|feature| *feature != removed)
+                .collect::<Vec<_>>();
+            graph.packages.get_mut("merman-cli").unwrap().metadata["dist"]["features"] =
+                serde_json::json!(release_features);
 
-        let error = graph.validate_product_feature_contracts().unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("published cargo-dist recipe must retain explicit `layout-elk`"),
-            "{error}"
-        );
+            let error = graph.validate_product_feature_contracts().unwrap_err();
+            assert!(
+                error.to_string().contains(&format!(
+                    "published cargo-dist recipe must retain explicit `{removed}`"
+                )),
+                "{error}"
+            );
+        }
     }
 
     #[test]
@@ -2584,21 +2790,26 @@ mod tests {
 
     #[test]
     fn transport_engine_must_imply_the_local_svg_leaf() {
-        let graph = graph(vec![package(
-            "merman-wasm",
-            &[
-                ("default", &[]),
-                ("svg", &["binding/svg"]),
-                ("layout-elk", &["binding/layout-elk"]),
-            ],
-        )]);
-        let error = graph
-            .validate_transport_contracts(&["merman-wasm"])
-            .unwrap_err();
-        assert!(
-            error.to_string().contains("must imply this crate's `svg`"),
-            "{error}"
-        );
+        for (feature, edges) in [
+            ("layout-dagre", &["binding/layout-dagre"][..]),
+            ("layout-elk", &["binding/layout-elk"][..]),
+        ] {
+            let graph = graph(vec![package(
+                "merman-wasm",
+                &[
+                    ("default", &[]),
+                    ("svg", &["binding/svg"]),
+                    (feature, edges),
+                ],
+            )]);
+            let error = graph
+                .validate_transport_contracts(&["merman-wasm"])
+                .unwrap_err();
+            assert!(
+                error.to_string().contains("must imply this crate's `svg`"),
+                "{error}"
+            );
+        }
     }
 
     #[test]

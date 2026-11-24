@@ -322,7 +322,7 @@ class PreflightWorkflowTests(unittest.TestCase):
                 self.assertTrue(required <= installed, f"missing targets: {required - installed}")
                 self.assertLess(job.index(setup), job.index("verify-feature-matrix --strict"))
 
-    def test_complete_binding_library_tests_enable_their_diagram_families(self):
+    def test_complete_binding_library_tests_enable_families_and_dagre(self):
         workflow = (ROOT / ".github/workflows/release-preflight.yml").read_text()
         versions = self.job(workflow, "versions-and-packages")
         command = re.search(
@@ -331,7 +331,7 @@ class PreflightWorkflowTests(unittest.TestCase):
             versions,
         )
         self.assertIsNotNone(command)
-        self.assertEqual(set(command.group(1).split(",")), {"svg", "all-diagrams"})
+        self.assertEqual(set(command.group(1).split(",")), {"svg", "all-diagrams", "layout-dagre"})
 
     def test_native_theme_consumers_enable_all_families_and_required_fonts(self):
         workflow = (ROOT / ".github/workflows/release-preflight.yml").read_text()
