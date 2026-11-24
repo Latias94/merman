@@ -123,7 +123,7 @@ pub(crate) struct EdgeClearance<'a> {
 
 impl EdgeClearance<'_> {
     fn blocked(self, bounds: Rect, enters: impl FnMut(Rect) -> bool) -> bool {
-        self.query(bounds, None, enters)
+        self.query(bounds, None, |_| true, enters)
             .expect("no detour budget is used for a clearance check")
     }
 
@@ -131,6 +131,7 @@ impl EdgeClearance<'_> {
         self,
         bounds: Rect,
         mut budget: Option<&mut DetourBudget>,
+        mut near_curve: impl FnMut(Rect) -> bool,
         mut enters: impl FnMut(Rect) -> bool,
     ) -> Result<bool, RoutePaintError> {
         let outset = self.stroke_outset;
@@ -140,7 +141,7 @@ impl EdgeClearance<'_> {
             if let Some(budget) = budget.as_deref_mut() {
                 budget.visit()?;
             }
-            if !overlaps(query, branch.bounds) {
+            if !overlaps(query, branch.bounds) || !near_curve(branch.bounds) {
                 at = branch.end;
                 continue;
             }
@@ -158,6 +159,7 @@ impl EdgeClearance<'_> {
                 };
                 if !own
                     && overlaps(rect, query)
+                    && near_curve(rect)
                     && enters((rect - self.paint_to_layout).inflate(outset, outset))
                 {
                     return Ok(true);
@@ -169,10 +171,45 @@ impl EdgeClearance<'_> {
     }
 
     pub(super) fn blocks_cubic(self, curve: CubicBez) -> bool {
-        let bounds = Rect::from_points(curve.p0, curve.p3)
-            .union_pt(curve.p1)
-            .union_pt(curve.p2);
-        self.blocked(bounds, |rect| cubic_enters(curve, rect))
+        self.query_cubic(curve, |rect| cubic_enters(curve, rect))
+    }
+
+    fn query_cubic(self, curve: CubicBez, enters: impl FnMut(Rect) -> bool) -> bool {
+        let bounds = control_bounds(curve);
+        let mut sections = None;
+        self.query(
+            bounds,
+            None,
+            |rect| {
+                sections
+                    .get_or_insert_with(|| self.cubic_hulls(curve, bounds))
+                    .iter()
+                    .any(|&hull| !hull.is_finite() || overlaps(hull, rect))
+            },
+            enters,
+        )
+        .expect("no detour budget is used for a clearance check")
+    }
+
+    fn cubic_hulls(self, curve: CubicBez, bounds: Rect) -> [Rect; 3] {
+        // Short end sections separate the terminal rows from the broad middle of a fan curve.
+        // Each subcurve stays in its control hull. Pad the hulls for subdivision and translation
+        // roundoff so obstacles close to a boundary still reach the exact intersection test.
+        let magnitude = bounds
+            .x0
+            .abs()
+            .max(bounds.x1.abs())
+            .max(bounds.y0.abs())
+            .max(bounds.y1.abs())
+            .max(self.paint_to_layout.x.abs())
+            .max(self.paint_to_layout.y.abs())
+            .max(self.stroke_outset.abs())
+            .max(1.0);
+        let padding = self.stroke_outset + 64.0 * f64::EPSILON * magnitude;
+        [0.0..0.0625, 0.0625..0.9375, 0.9375..1.0].map(|range| {
+            (control_bounds(curve.subsegment(range)) + self.paint_to_layout)
+                .inflate(padding, padding)
+        })
     }
 
     pub(super) fn blocks_line(self, from: Point, to: Point) -> bool {
@@ -188,9 +225,12 @@ impl EdgeClearance<'_> {
         budget: &mut DetourBudget,
     ) -> Result<bool, RoutePaintError> {
         budget.visit()?;
-        self.query(Rect::from_points(from, to), Some(budget), |rect| {
-            line_enters(from, to, rect)
-        })
+        self.query(
+            Rect::from_points(from, to),
+            Some(budget),
+            |_| true,
+            |rect| line_enters(from, to, rect),
+        )
     }
 
     pub(super) fn detour(
@@ -212,19 +252,24 @@ impl EdgeClearance<'_> {
             points.clear();
             points.push(from);
             let mut expanded = bounds;
-            let occupied = self.query(bounds, Some(budget), |rect| {
-                if line_enters(from, from, rect) || line_enters(to, to, rect) {
-                    return true;
-                }
-                expanded = expanded.union(rect);
-                points.extend([
-                    Point::new(rect.x0, rect.y0),
-                    Point::new(rect.x0, rect.y1),
-                    Point::new(rect.x1, rect.y0),
-                    Point::new(rect.x1, rect.y1),
-                ]);
-                false
-            })?;
+            let occupied = self.query(
+                bounds,
+                Some(budget),
+                |_| true,
+                |rect| {
+                    if line_enters(from, from, rect) || line_enters(to, to, rect) {
+                        return true;
+                    }
+                    expanded = expanded.union(rect);
+                    points.extend([
+                        Point::new(rect.x0, rect.y0),
+                        Point::new(rect.x0, rect.y1),
+                        Point::new(rect.x1, rect.y0),
+                        Point::new(rect.x1, rect.y1),
+                    ]);
+                    false
+                },
+            )?;
             if occupied {
                 return Err(RoutePaintError::NoClearDetour);
             }
@@ -298,6 +343,12 @@ impl EdgeClearance<'_> {
 
 fn overlaps(a: Rect, b: Rect) -> bool {
     a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0
+}
+
+fn control_bounds(curve: CubicBez) -> Rect {
+    Rect::from_points(curve.p0, curve.p3)
+        .union_pt(curve.p1)
+        .union_pt(curve.p2)
 }
 
 fn line_enters(from: Point, to: Point, rect: Rect) -> bool {
@@ -419,5 +470,63 @@ mod tests {
             Rect::from_points(distant.p0, distant.p3)
         ));
         assert!(!route.blocks_cubic(distant));
+    }
+
+    #[test]
+    fn cubic_hulls_prune_wide_fans_without_missing_contacts() {
+        let offset = Vec2::new(-20., 300.);
+        let curve = CubicBez::new((0., 45.), (0., 60.), (50_000., 63.), (50_000., 78.));
+        let nodes: Vec<_> = (0..250)
+            .map(|index| {
+                let x = f64::from(index) * 200. + 120.;
+                (
+                    Rect::new(x, 0., x + 152., 45.) + offset,
+                    ObstacleOwner::Node(index as u32 + 2),
+                )
+            })
+            .collect();
+        let tree = Clearance::new(nodes.clone());
+        let route = tree.for_edge(0, (Endpoint::Node(0), Endpoint::Node(1)), offset, 1.);
+        let mut broad = 0;
+        let mut narrow = 0;
+        route.blocked(control_bounds(curve), |_| {
+            broad += 1;
+            false
+        });
+        route.query_cubic(curve, |_| {
+            narrow += 1;
+            false
+        });
+        assert!(
+            broad > 200 && narrow < 10,
+            "candidate boxes {broad} → {narrow}"
+        );
+
+        for curve in [
+            curve,
+            CubicBez::new(curve.p3, curve.p2, curve.p1, curve.p0),
+            CubicBez::new((0., 47.), (1_000., 31.), (400., 92.), (1_200., 48.)),
+        ] {
+            for (rect, owner) in
+                nodes
+                    .iter()
+                    .copied()
+                    .chain([0.0, 0.03, 0.0625, 0.5, 0.9375, 0.97, 1.0].map(|t| {
+                        let point = curve.eval(t) + offset;
+                        (
+                            Rect::from_center_size(point, (1., 1.)),
+                            ObstacleOwner::GroupTitle(0),
+                        )
+                    }))
+            {
+                let tree = Clearance::new(vec![(rect, owner)]);
+                let route = tree.for_edge(0, (Endpoint::Node(0), Endpoint::Node(1)), offset, 1.);
+                assert_eq!(
+                    route.blocks_cubic(curve),
+                    route.blocked(control_bounds(curve), |rect| cubic_enters(curve, rect)),
+                    "{curve:?} near {rect:?}",
+                );
+            }
+        }
     }
 }
