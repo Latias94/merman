@@ -1820,7 +1820,7 @@ fn fontconfig_keeps_preferred_aliases_and_usable_coverage_alternatives() {
     assert!(replaced.stdout.is_empty());
     let diagnostic = String::from_utf8_lossy(&replaced.stderr);
     assert!(
-        diagnostic.contains("font properties changed after platform lookup"),
+        diagnostic.contains("font identity changed after platform lookup"),
         "{diagnostic}"
     );
 }
