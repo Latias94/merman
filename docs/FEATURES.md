@@ -107,9 +107,9 @@ select their own direct leaf set instead.
 
 ### Try the experimental Shoal layout
 
-Enable `layout-shoal` on the Rust `merman` facade or build the CLI with `cargo build -p merman-cli --features layout-shoal`. Use Mermaid configuration to select the engine for a document.
+Enable `layout-shoal` on the Rust `merman` facade or build the CLI with `cargo build --locked -p merman-cli --features layout-shoal`. Check `merman-cli capabilities` for `layout-shoal`, then select the engine in the diagram's Mermaid frontmatter.
 
-```mermaid
+```text
 ---
 config:
   layout: shoal
@@ -126,9 +126,12 @@ A build without Shoal reports the missing capability when one of these diagrams 
 
 Shoal Flowchart and Agentflow support explicit container fitting and previous-frame hints for
 previews. Standalone Playground previews use frame hints with a custom WASM build that enables
-`layout-shoal`. VS Code preview uses frame hints when its CLI advertises the preview frame protocol.
+`layout-shoal`. To try Shoal in VS Code, set `merman.cli.path` to the absolute path of the built
+CLI and open the SVG preview. The extension reuses placement hints when the CLI advertises the
+preview frame protocol.
 [Host integration](rendering/HEADLESS_LAYOUT.md#shoal-width-adaptation-and-preview-frames) ·
-[Playground experiment](../platforms/web/README.md#try-shoal-in-playground)
+[Playground experiment](../platforms/web/README.md#try-shoal-in-playground) ·
+[Layout benchmark](performance/reports/2026-11-24-shoal.md)
 
 ### Optional CLI Fonts
 

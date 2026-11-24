@@ -345,8 +345,8 @@ another backend records `layout-backend-mismatch` and skips timing for that batc
 
 Read `rows.<scenario>` for completion and median nanoseconds per operation. `matching-inventories`
 requires the same node and group IDs, directed endpoints, painted edge occurrences, marker ends,
-and node, group and edge label text across backends. Coordinates, paths and byte counts may differ. The check
-covers structural agreement on the drawing. Visual quality can be inspected separately.
+and node, group and edge label text across backends. Coordinates, paths and byte counts may differ.
+Inspect the SVGs in the gallery to assess visual quality.
 `runs.<backend>.<operation>` holds the individual receipts, output digests, samples and failures.
 The command exits with a failure if any scenario misses the comparison criteria. Treat these
 fixed-order medians as diagnostics.
@@ -451,7 +451,7 @@ diagram ID. Historical identity-only runners can still replay ordinary workloads
 the default ELK layout-work ceiling and accepts only the original default layout.
 
 ```console
-python3 tools/bench/perf_runner.py workloads rust --plan target/bench/layouts/flat.json --metric memory --operation svg --site-layout shoal --require-complete --out target/bench/layouts/shoal-memory.json
+python3 tools/bench/perf_runner.py workloads rust --plan target/bench/layouts/comparison-plan.json --metric memory --operation svg --site-layout shoal --require-complete --out target/bench/layouts/shoal-memory.json
 ```
 
 To check source precedence, run the Dagre-pinned control under a Shoal site default. The second

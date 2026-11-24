@@ -4,6 +4,7 @@ These reports show how released renderers and identified local builds handle sel
 
 | Measurement date | Report | Coverage |
 | --- | --- | --- |
+| 2026-11-24 | [Shoal layout benchmark](2026-11-24-shoal.md) · [Measurements](2026-11-24-shoal.json) | Native Dagre, ELK and Shoal layout JSON, SVG and heap use on the same Flowcharts, with separate Node references and stress coverage. |
 | 2026-11-23 | [Windows x64 comparison](2026-11-23-windows-x64.md) · [Measurements](2026-11-23-windows-x64.json) · [Raw samples and outputs](https://raw.githubusercontent.com/Latias94/merman/d17b7feaf461775b4a27db6edf4b08b21fef12b3/windows-x64-20261123.zip) · [ZIP checksum](https://raw.githubusercontent.com/Latias94/merman/d17b7feaf461775b4a27db6edf4b08b21fef12b3/SHA256SUMS) | 12 Node timing scenarios with startup and peak RSS, a 25-chart CLI document, browser delivery and SVG return times, and 32 native layout stress controls. |
 
 **Other benchmark results.** The earlier [native Rust comparison with mmdr](../renderer_comparison_2026-07-28_75c9fd156_vs_mmdr.md) uses a separate corpus and toolchain. The [alignment dashboard](../../alignment/STATUS.md) tracks Mermaid compatibility. For changes between Merman releases, see the [release comparison guide](../../release/RELEASE_REPORTS.md).

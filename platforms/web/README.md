@@ -541,6 +541,8 @@ that build for the Playground's file dependency after checking its wasm-bindgen 
 feature preset, current inputs, assembly provenance, and runtime file hashes before starting Vite.
 Run the same check on its own with `npm --prefix playground run verify:wasm-inputs -- --local-shoal`.
 
+With Vite running on port 5173, open the [release workflow with Shoal](http://localhost:5173/#s2:eJxdkM1uwyAQhF8FORdHsqXaafPDoVWVHHqqqraXyvaBwGKjUIgMbhrFefcCSRw1lwV25mMWDhHVDCIcpWlaKqoVFzUuFUKS7HVnMTKNJrJUQeZS72hDWos-V97j9qqGuFiGFbVA2L4aozR9dBLQjTksw4K2xJin4wkJDWfpv8D0yFhSQ_Hhq-MlEAPVje9V94iL3-IdfgTsECdCdi2YYAt4CDTfeuMu8hVZMPZGJh0Ttnj29aQEYwAbsY2Lt24thWmqsReDeRB9x-WHc6Mli4sXV70zDCrd21bAUU0sOJ-UeMQ5v6OQGNu6EDyaL6ZZnidUS93i0WSRkyz7h3KhXPYZZoznwAY4h9l8ur7A2ez-YUIH-PJNPvva9EMnftLzxaWKjn-hEqTh).
+
 Open the standalone SVG preview and paste:
 
 ```mermaid
