@@ -71,6 +71,16 @@ pub(crate) struct AxisRoutes {
 }
 
 #[derive(Clone, Debug, Default)]
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-flowchart",
+    feature = "diagram-requirement",
+    feature = "diagram-state",
+    feature = "diagram-swimlane",
+    feature = "diagram-usecase"
+))]
 pub(crate) enum RouteContract {
     #[default]
     DagreParity,
@@ -96,8 +106,6 @@ pub(crate) enum RouteContract {
     #[cfg(all(
         feature = "layout-shoal",
         any(
-            feature = "diagram-architecture",
-            feature = "diagram-c4",
             feature = "diagram-class",
             feature = "diagram-er",
             feature = "diagram-requirement",
@@ -108,6 +116,16 @@ pub(crate) enum RouteContract {
     CanonicalGraph(std::sync::Arc<canonical::CanonicalRoutes>),
 }
 
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-flowchart",
+    feature = "diagram-requirement",
+    feature = "diagram-state",
+    feature = "diagram-swimlane",
+    feature = "diagram-usecase"
+))]
 impl RouteContract {
     #[cfg(any(feature = "diagram-requirement", feature = "diagram-usecase"))]
     pub(crate) fn parity(uses_elk: bool) -> Self {

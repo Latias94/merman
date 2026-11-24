@@ -38,6 +38,13 @@ pub(crate) struct CanonicalPaintedEdge {
     pub(crate) markers: (Marker, Marker),
 }
 
+#[cfg(any(
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-requirement",
+    feature = "diagram-state",
+    feature = "diagram-usecase"
+))]
 impl super::RouteContract {
     pub(crate) fn canonical_graph(routes: CanonicalRoutes) -> Self {
         Self::CanonicalGraph(std::sync::Arc::new(routes))

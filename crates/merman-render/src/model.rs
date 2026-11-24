@@ -920,12 +920,22 @@ pub struct SwimlaneLayout {
     pub bounds: Option<Bounds>,
 }
 
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
 impl SwimlaneLayout {
     pub(crate) const fn has_canonical_routes(&self) -> bool {
-        #[cfg(feature = "layout-shoal")]
+        #[cfg(all(
+            feature = "layout-shoal",
+            any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+        ))]
         return self.shoal.is_some();
-        #[cfg(not(feature = "layout-shoal"))]
+        #[cfg(not(all(
+            feature = "layout-shoal",
+            any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+        )))]
         false
     }
 }
