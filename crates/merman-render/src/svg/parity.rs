@@ -1501,11 +1501,14 @@ fn render_builtin_family_artifact_raw(
             )
         }
         #[cfg(feature = "diagram-info")]
-        BuiltinFamilyArtifact::Info(artifact) => info::render_info_diagram_svg(
-            artifact.pair().layout(),
-            artifact.typography_theme(),
-            options,
-        ),
+        BuiltinFamilyArtifact::Info(artifact) => match artifact.typography_theme() {
+            crate::info::InfoAppearance::Mermaid(style) => {
+                info::render_info_diagram_svg(artifact.pair().layout(), style, options)
+            }
+            crate::info::InfoAppearance::Native(style) => {
+                info::render_native_info_svg(artifact.pair().layout(), style, options)
+            }
+        },
         #[cfg(feature = "diagram-treemap")]
         BuiltinFamilyArtifact::Treemap(artifact) => treemap::render_treemap_diagram_svg(
             artifact.pair().layout(),

@@ -54,3 +54,20 @@ pub trait FamilyThemeAdapter {
         theme.family(Self::FAMILY.as_str())
     }
 }
+
+#[cfg(any(feature = "diagram-info", feature = "diagram-pie"))]
+pub(crate) fn font_family_css(families: &[String]) -> String {
+    let mut css = String::new();
+    for (index, family) in families.iter().enumerate() {
+        if index != 0 {
+            css.push_str(", ");
+        }
+        if crate::diagram_theme::GenericFontFamily::from_css_keyword(family).is_some() {
+            css.push_str(family);
+        } else {
+            cssparser::serialize_string(family, &mut css)
+                .expect("writing a CSS string to String cannot fail");
+        }
+    }
+    css
+}

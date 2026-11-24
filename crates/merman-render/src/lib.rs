@@ -1193,6 +1193,16 @@ impl<'a> LayoutExecution<'a> {
         self.family.resolved_theme()
     }
 
+    #[cfg(any(feature = "diagram-info", feature = "diagram-pie"))]
+    pub(crate) fn native_family_theme<A: crate::theme::FamilyThemeAdapter>(
+        &self,
+    ) -> Option<&crate::theme::FamilyTheme> {
+        self.family
+            .session()
+            .native_theme()
+            .map(|theme| A::resolve(theme.resolved()))
+    }
+
     pub(crate) fn math_renderer(&self) -> Option<&(dyn crate::math::MathRenderer + Send + Sync)> {
         self.family.session().math_renderer()
     }

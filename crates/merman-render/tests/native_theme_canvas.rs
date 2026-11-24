@@ -1,4 +1,4 @@
-#![cfg(feature = "diagram-pie")]
+#![cfg(any(feature = "diagram-pie", feature = "diagram-info"))]
 
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::environment::RenderEnvironment;
@@ -6,12 +6,9 @@ use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::theme::{BuiltinPreset, Color, NativeTheme, ThemeCompiler};
 use merman_render::{LayoutOptions, family};
 
-fn render(native: Option<&NativeTheme>) -> String {
+fn render(source: &str, native: Option<&NativeTheme>) -> String {
     let parsed = MermaidEngine::new()
-        .parse_diagram_for_render_model_sync(
-            "pie title Capacity\n  \"Used\" : 40\n  \"Free\" : 60\n",
-            ParseOptions::strict(),
-        )
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap();
     let environment = RenderEnvironment::deterministic();
@@ -39,12 +36,16 @@ fn render(native: Option<&NativeTheme>) -> String {
     .to_owned()
 }
 
+#[cfg(feature = "diagram-pie")]
+const PIE_SOURCE: &str = "pie title Capacity\n  \"Used\" : 40\n  \"Free\" : 60\n";
+
+#[cfg(feature = "diagram-pie")]
 #[test]
 fn canvas_inserts_base_and_grid_before_family_content() {
     let theme = ThemeCompiler::new()
         .compile_preset(BuiltinPreset::Blueprint, None)
         .unwrap();
-    let svg = render(Some(&NativeTheme::new(theme)));
+    let svg = render(PIE_SOURCE, Some(&NativeTheme::new(theme)));
     let doc = roxmltree::Document::parse(&svg).unwrap();
     let layer = doc.root_element().first_element_child().unwrap();
     assert_eq!(layer.attribute("class"), Some("merman-theme-canvas"));
@@ -57,9 +58,10 @@ fn canvas_inserts_base_and_grid_before_family_content() {
         node.has_tag_name("rect")
             && node.attribute("fill") == Some("url(#capacity-merman-canvas-texture-0)")
     }));
-    assert!(!render(None).contains("merman-theme-canvas"));
+    assert!(!render(PIE_SOURCE, None).contains("merman-theme-canvas"));
 }
 
+#[cfg(feature = "diagram-pie")]
 #[test]
 fn a_host_background_replaces_the_canvas_and_keeps_its_texture() {
     let theme = ThemeCompiler::new()
@@ -70,7 +72,7 @@ fn a_host_background_replaces_the_canvas_and_keeps_its_texture() {
         (Color::TRANSPARENT, None),
     ] {
         let native = NativeTheme::new(theme.clone()).with_background(color);
-        let svg = render(Some(&native));
+        let svg = render(PIE_SOURCE, Some(&native));
         let doc = roxmltree::Document::parse(&svg).unwrap();
         let layer = doc.root_element().first_element_child().unwrap();
         let fill = layer.children().find_map(|node| {
@@ -80,4 +82,38 @@ fn a_host_background_replaces_the_canvas_and_keeps_its_texture() {
         assert_eq!(fill, expected);
         assert!(layer.descendants().any(|node| node.has_tag_name("pattern")));
     }
+}
+
+#[cfg(feature = "diagram-info")]
+#[test]
+fn info_measures_and_draws_with_the_native_code_stack() {
+    let selected = ThemeCompiler::new()
+        .compile_json(
+            br##"{
+        "schema_version": 2,
+        "extends": "studio",
+        "overrides": [{
+            "families": ["info"],
+            "typography": {"mono": ["A&B Mono", "monospace"], "base_size_px": 20},
+            "roles": {"text.primary": "#152737"}
+        }]
+    }"##,
+            None,
+        )
+        .unwrap();
+    let svg = render("info", Some(&NativeTheme::new(selected)));
+    let doc = roxmltree::Document::parse(&svg).unwrap();
+    let version = doc
+        .descendants()
+        .find(|node| node.attribute("class") == Some("version"))
+        .unwrap();
+    assert_eq!(version.attribute("fill"), Some("#152737"));
+    assert_eq!(version.attribute("font-size"), Some("40"));
+    assert_eq!(
+        version.attribute("font-family"),
+        Some("\"A&B Mono\", monospace")
+    );
+    let parity = render("info", None);
+    assert!(parity.contains(r#"class="version" font-size="32""#));
+    assert!(!parity.contains("merman-theme-canvas"));
 }

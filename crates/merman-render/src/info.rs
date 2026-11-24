@@ -16,6 +16,7 @@ use crate::family::{
 use crate::model::{Bounds, InfoDiagramLayout};
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 use crate::text::TextMeasurer;
+use crate::theme::{Color, FamilyTheme, FamilyThemeAdapter, ThemeCapabilityFlags};
 use merman_model::baseline::PINNED_MERMAID_BASELINE_VERSION;
 use merman_model::families::info::InfoDiagramModel;
 use merman_model::presentation::PresentationConfig;
@@ -25,6 +26,68 @@ const INFO_BASELINE_HEIGHT_PX: f64 = 100.0;
 const INFO_VERSION_FONT_SIZE_PX: f64 = 32.0;
 const INFO_VERSION_BASELINE_X_PX: f64 = 100.0;
 const INFO_VERSION_BASELINE_Y_PX: f64 = 40.0;
+
+pub(crate) struct InfoThemeAdapter;
+
+impl FamilyThemeAdapter for InfoThemeAdapter {
+    const FAMILY: crate::DiagramFamilyId = crate::DiagramFamilyId::INFO;
+    const CAPS: ThemeCapabilityFlags =
+        ThemeCapabilityFlags::CANVAS.union(ThemeCapabilityFlags::TYPOGRAPHY);
+}
+
+#[derive(Debug)]
+pub(crate) enum InfoAppearance {
+    Mermaid(InfoTypographyThemePlan),
+    Native(InfoNativeStyle),
+}
+
+#[derive(Debug)]
+pub(crate) struct InfoNativeStyle {
+    pub(crate) font_family: String,
+    pub(crate) text_color: Color,
+    geometry: InheritedTextViewportFacts,
+}
+
+impl InfoNativeStyle {
+    pub(crate) fn resolve(theme: &FamilyTheme, measurer: &dyn TextMeasurer) -> Self {
+        let typography = &theme.typography;
+        let font_family = crate::theme::font_family_css(typography.stack(typography.code_family));
+        let version = format!("v{PINNED_MERMAID_BASELINE_VERSION}");
+        let geometry = InheritedTextViewportFacts::prepare(
+            INFO_BASELINE_WIDTH_PX,
+            INFO_BASELINE_HEIGHT_PX,
+            [InheritedTextRunSpec::new(
+                &version,
+                typography.base_size_px * 2.0,
+                INFO_VERSION_BASELINE_X_PX,
+                INFO_VERSION_BASELINE_Y_PX,
+            )],
+            &font_family,
+            measurer,
+        );
+        Self {
+            font_family,
+            text_color: theme.roles.text_primary,
+            geometry,
+        }
+    }
+
+    pub(crate) fn version(&self) -> &InheritedTextRunFacts {
+        self.geometry.run(0)
+    }
+
+    pub(crate) fn layout(&self) -> InfoDiagramLayout {
+        InfoDiagramLayout {
+            bounds: Some(Bounds {
+                min_x: 0.0,
+                min_y: 0.0,
+                max_x: self.geometry.width_px(),
+                max_y: self.geometry.height_px(),
+            }),
+            version: self.version().text().to_owned(),
+        }
+    }
+}
 
 #[derive(Debug)]
 pub(crate) struct InfoSurfaceReceipt {

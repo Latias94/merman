@@ -2191,7 +2191,7 @@ impl<'parsed> ErrorFamilyArtifact<'parsed> {
 #[cfg(feature = "diagram-info")]
 pub(crate) struct InfoFamilyArtifact<'parsed> {
     pair: FamilyPair<&'parsed diagrams::info::InfoDiagramModel, InfoDiagramLayout>,
-    typography_theme: crate::info::InfoTypographyThemePlan,
+    typography_theme: crate::info::InfoAppearance,
 }
 
 #[cfg(feature = "diagram-info")]
@@ -2202,7 +2202,7 @@ impl<'parsed> InfoFamilyArtifact<'parsed> {
         &self.pair
     }
 
-    pub(crate) const fn typography_theme(&self) -> &crate::info::InfoTypographyThemePlan {
+    pub(crate) const fn typography_theme(&self) -> &crate::info::InfoAppearance {
         &self.typography_theme
     }
 }
@@ -3030,7 +3030,11 @@ impl BuiltinFamilyArtifact<'_> {
             Self::Railroad(artifact) => artifact.typography_theme().record_evidence(evidence),
             Self::Error(artifact) => artifact.typography_theme().record_evidence(evidence),
             #[cfg(feature = "diagram-info")]
-            Self::Info(artifact) => artifact.typography_theme().record_evidence(evidence),
+            Self::Info(artifact) => {
+                if let crate::info::InfoAppearance::Mermaid(theme) = artifact.typography_theme() {
+                    theme.record_evidence(evidence);
+                }
+            }
             #[cfg(feature = "diagram-cynefin")]
             Self::Cynefin(artifact) => artifact.typography_theme().record_evidence(evidence),
             #[cfg(feature = "diagram-wardley")]

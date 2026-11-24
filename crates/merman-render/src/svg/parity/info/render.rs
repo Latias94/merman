@@ -1,4 +1,49 @@
 use super::super::*;
+
+pub(crate) fn render_native_info_svg(
+    layout: &InfoDiagramLayout,
+    style: &crate::info::InfoNativeStyle,
+    options: &SvgExecution<'_>,
+) -> Result<root_svg::RootedSvg> {
+    let version = style.version();
+    let diagram_id = options.diagram_id_or("merman");
+    let bounds = layout
+        .bounds
+        .as_ref()
+        .ok_or_else(|| crate::Error::InvalidModel {
+            message: "Info layout is missing its prepared viewport bounds".to_owned(),
+        })?;
+    let viewport = root_svg::RootViewportSpec::responsive(root_svg::DiagramBounds::from_extents(
+        bounds.min_x,
+        bounds.min_y,
+        bounds.max_x,
+        bounds.max_y,
+        0.0,
+    ));
+    let mut out = BoundedSvgOutput::new(options.work_meter());
+    let root = root_svg::RootViewportContext::new(crate::DiagramFamilyId::INFO, diagram_id)
+        .write_open(
+            &mut out,
+            viewport,
+            root_svg::RootChrome::new(diagram_id, "info"),
+        )?;
+    let _ = write!(
+        &mut out,
+        r#"<g><text x="{}" y="{}" class="version" font-size="{}" font-family="{}" "#,
+        fmt(version.x()),
+        fmt(version.y()),
+        fmt(version.font_size_px()),
+        escape_attr(&style.font_family),
+    );
+    let _ = crate::theme::canvas_svg::write_color(&mut out, "fill", style.text_color, 1.0);
+    let _ = write!(
+        &mut out,
+        r#" text-anchor="middle">{}</text></g></svg>"#,
+        escape_xml(version.text())
+    );
+    root.complete(out.finish()?)
+}
+
 pub(crate) fn render_info_diagram_svg(
     layout: &InfoDiagramLayout,
     typography_theme: &crate::info::InfoTypographyThemePlan,

@@ -354,6 +354,16 @@ fn prepare_info_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
+    use crate::info::{InfoAppearance, InfoNativeStyle, InfoThemeAdapter};
+
+    if let Some(theme) = execution.native_family_theme::<InfoThemeAdapter>() {
+        let native = InfoNativeStyle::resolve(theme, execution.text_measurer());
+        let layout = native.layout();
+        return Ok(BuiltinFamilyArtifact::Info(Box::new(InfoFamilyArtifact {
+            pair: FamilyPair::new(model, layout),
+            typography_theme: InfoAppearance::Native(native),
+        })));
+    }
     let typography_theme = crate::info::InfoTypographyThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
@@ -363,7 +373,7 @@ fn prepare_info_family<'parsed>(
     let layout = crate::info::layout_info_diagram_typed(model, &typography_theme)?;
     Ok(BuiltinFamilyArtifact::Info(Box::new(InfoFamilyArtifact {
         pair: FamilyPair::new(model, layout),
-        typography_theme,
+        typography_theme: InfoAppearance::Mermaid(typography_theme),
     })))
 }
 
