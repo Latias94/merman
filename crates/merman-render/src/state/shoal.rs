@@ -17,7 +17,7 @@ use crate::graph_layout::ir::{
     Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, Rect,
     RoutePoint, RoutingStyle, Side, Size, SolvedGraph, TitlePosition,
 };
-use crate::graph_layout::shoal_bridge::{self, LayoutScratch};
+use crate::graph_layout::shoal_bridge;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{
     Bounds, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, StateDiagramLayout,
@@ -62,12 +62,7 @@ pub(crate) fn layout_state_diagram_shoal(
         execution.text_measurer(),
         &mut work,
     )?;
-    let mut solved = shoal_bridge::solve(
-        &input.graph,
-        Default::default(),
-        &mut LayoutScratch::default(),
-        &mut work,
-    )?;
+    let mut solved = shoal_bridge::solve(&input.graph, Default::default(), &mut work)?;
     regions::stretch(&input, &mut solved, &mut work)?;
     let routes = CanonicalRoutes::from_solved(
         &input.graph,

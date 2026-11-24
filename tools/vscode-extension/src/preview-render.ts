@@ -85,11 +85,10 @@ export class PreviewRenderQueue {
     const pending = { snapshot, abortController };
     this.pending = pending;
     const snapshotPayload = snapshotMessagePayload(snapshot);
-    const source = layoutFrameSource(snapshot);
-    if (this.layoutFrame && !continuesLayoutFrame(this.layoutFrame.source, source)) {
+    const source = snapshot.displayMode === "svg" ? layoutFrameSource(snapshot) : undefined;
+    if (!source || (this.layoutFrame && !continuesLayoutFrame(this.layoutFrame.source, source))) {
       this.layoutFrame = undefined;
     }
-    const capturesLayout = snapshot.displayMode === "svg";
 
     try {
       await host.beforeRender?.();
@@ -111,7 +110,7 @@ export class PreviewRenderQueue {
       const { content, previewLayoutFrame } = await host.renderContent(
         snapshot,
         abortController.signal,
-        capturesLayout ? this.layoutFrame?.frame : undefined,
+        this.layoutFrame?.frame,
       );
       if (!host.isCurrentRequest(requestId) || abortController.signal.aborted) {
         return;
@@ -123,7 +122,7 @@ export class PreviewRenderQueue {
         snapshot: snapshotPayload,
         content,
       });
-      if (capturesLayout && host.isCurrentRequest(requestId) && !abortController.signal.aborted) {
+      if (source && host.isCurrentRequest(requestId) && !abortController.signal.aborted) {
         this.layoutFrame = previewLayoutFrame
           ? { source, frame: previewLayoutFrame }
           : undefined;

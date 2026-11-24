@@ -39,6 +39,7 @@ pub(crate) struct RouteAxes {
 pub(crate) enum RouteContract {
     #[default]
     DagreParity,
+    #[cfg(feature = "layout-elk")]
     ElkParity,
     Swimlane,
     /// Axes indexed by semantic occurrence, including holes for hidden edges.
@@ -63,6 +64,7 @@ impl RouteContract {
 
     pub(crate) fn uses_projected_edges(&self) -> bool {
         match self {
+            #[cfg(feature = "layout-elk")]
             Self::ElkParity => true,
             #[cfg(any(feature = "layout-shoal", test))]
             Self::CanonicalAxis { .. } => true,

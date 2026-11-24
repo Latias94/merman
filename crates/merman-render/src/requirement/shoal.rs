@@ -9,7 +9,7 @@ use crate::graph_layout::ir::{
     Direction, Endpoint, Marker, MeasuredEdge, MeasuredGraph, MeasuredNode, RoutingStyle, Side,
     Size,
 };
-use crate::graph_layout::shoal_bridge::{self, LayoutScratch};
+use crate::graph_layout::shoal_bridge;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{Bounds, LayoutEdge, LayoutNode, LayoutPoint, RequirementDiagramLayout};
 use crate::resources::OperationWorkMeter;
@@ -119,12 +119,7 @@ pub(super) fn layout(
         plans.push(plan);
     }
 
-    let solved = shoal_bridge::solve(
-        &graph,
-        Default::default(),
-        &mut LayoutScratch::default(),
-        &mut work,
-    )?;
+    let solved = shoal_bridge::solve(&graph, Default::default(), &mut work)?;
     let canonical_routes = CanonicalRoutes::from_solved(
         &graph,
         &solved,

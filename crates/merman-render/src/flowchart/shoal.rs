@@ -125,7 +125,6 @@ pub(crate) fn layout(
             hints: &hints,
             flow_relative_nodes: &bindings.flow_relative_nodes,
         },
-        &mut shoal_bridge::LayoutScratch::default(),
         &mut work,
     )?;
     let placement = FlowchartPlacement {

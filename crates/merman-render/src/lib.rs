@@ -1230,6 +1230,36 @@ impl<'a> LayoutExecution<'a> {
         self.family.session().work_meter().as_ref()
     }
 
+    /// Reuses one bounded scratch buffer on a render worker across operation sessions.
+    #[cfg(feature = "layout-shoal")]
+    pub(crate) fn with_shoal_scratch<T>(
+        solve: impl FnOnce(&mut merman_layout_shoal::LayoutScratch) -> T,
+    ) -> T {
+        use merman_layout_shoal::LayoutScratch;
+        use std::cell::RefCell;
+
+        std::thread_local! {
+            static IDLE: RefCell<Option<LayoutScratch>> = const { RefCell::new(None) };
+        }
+
+        let mut scratch = IDLE
+            .try_with(|idle| idle.borrow_mut().take())
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        let result = solve(&mut scratch);
+        let _ = IDLE.try_with(|idle| {
+            let mut idle = idle.borrow_mut();
+            if idle
+                .as_ref()
+                .is_none_or(|other| other.retained_bytes() < scratch.retained_bytes())
+            {
+                *idle = Some(scratch);
+            }
+        });
+        result
+    }
+
     pub(crate) fn local_time_zone(&self) -> &merman_model::time::LocalTimeZone {
         self.family.session().local_time_zone()
     }

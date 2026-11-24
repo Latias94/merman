@@ -7,9 +7,9 @@ use super::ir::{
 use super::route_paint::LEAD;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::LayoutLabel;
-use crate::{Error, Result};
+use crate::{Error, LayoutExecution, Result};
 use merman_layout_shoal as shoal;
-pub(crate) use shoal::{LayoutScratch, OrderHint, WidthPolicy};
+pub(crate) use shoal::{OrderHint, WidthPolicy};
 
 pub(crate) type NodeHint = (OrderHint, shoal::Direction);
 
@@ -123,7 +123,6 @@ fn project_input(
 pub(crate) fn solve(
     measured: &MeasuredGraph,
     placement: Placement<'_>,
-    scratch: &mut LayoutScratch,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<SolvedGraph> {
     let mut options = shoal::Options::default();
@@ -137,8 +136,10 @@ pub(crate) fn solve(
     #[cfg(all(test, feature = "diagram-flowchart", feature = "layout-elk"))]
     kernel_bench::capture(measured, options);
     let graph = project_input(measured, &placement, work)?;
-    let solved = shoal::layout_with_control(&graph, &options, scratch, work)
-        .map_err(|error| work.map_shoal_error(error))?;
+    let solved = LayoutExecution::with_shoal_scratch(|scratch| {
+        shoal::layout_with_control(&graph, &options, scratch, work)
+    })
+    .map_err(|error| work.map_shoal_error(error))?;
     project_output(measured, solved, work)
 }
 
@@ -240,4 +241,41 @@ pub(super) fn project_output(
         direction: solved.direction,
         bounds: solved.bounds,
     })
+}
+
+#[cfg(all(test, feature = "diagram-flowchart"))]
+#[test]
+fn render_sessions_reuse_shoal_scratch_after_an_unsuccessful_attempt() {
+    use crate::environment::RenderEnvironment;
+
+    std::thread::spawn(|| {
+        let parsed = merman_core::MermaidEngine::new()
+            .parse_diagram_for_render_model_sync(
+                "---\nconfig:\n  layout: shoal\n---\nflowchart TB\nA --> B --> C\nA -->|Skip ahead| C",
+                merman_core::ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let render = || {
+            let session = RenderEnvironment::deterministic().begin_session().unwrap();
+            let artifact = crate::family::prepare(&parsed, &Default::default(), session).unwrap();
+            let svg = artifact.render_svg(&Default::default(), &Default::default()).unwrap();
+            svg.svg().to_owned()
+        };
+
+        let first = render();
+        let rejected: std::result::Result<(), usize> = LayoutExecution::with_shoal_scratch(|scratch| {
+            let retained = scratch.retained_bytes();
+            assert!(retained > 0 && retained <= 2 * 1024 * 1024);
+            LayoutExecution::with_shoal_scratch(|nested| assert_eq!(nested.retained_bytes(), 0));
+            Err(retained)
+        });
+        LayoutExecution::with_shoal_scratch(|scratch| {
+            assert_eq!(scratch.retained_bytes(), rejected.unwrap_err());
+        });
+        assert_eq!(render(), first);
+    })
+    .join()
+    .unwrap();
 }

@@ -8,7 +8,7 @@ use crate::graph_layout::ir::{
     Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, RoutingStyle,
     Side, Size, TitlePosition,
 };
-use crate::graph_layout::shoal_bridge::{self, LayoutScratch};
+use crate::graph_layout::shoal_bridge;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::math::MathRenderer;
 use crate::model::{
@@ -43,12 +43,7 @@ pub(crate) fn layout(
     )?;
     let (graph, profiles) =
         canonical_input(model, &measured, settings, render.look == "neo", work)?;
-    let solved = shoal_bridge::solve(
-        &graph,
-        Default::default(),
-        &mut LayoutScratch::default(),
-        work,
-    )?;
+    let solved = shoal_bridge::solve(&graph, Default::default(), work)?;
     let source = &measured.graph;
     measured.prepared_labels.canonical_routes = Some(CanonicalRoutes::from_solved(
         &graph,

@@ -8,7 +8,7 @@ use crate::graph_layout::ir::{
     Side, Size, SolvedGroup, TitlePosition,
 };
 use crate::graph_layout::route_paint::RouteStyle;
-use crate::graph_layout::shoal_bridge::{self, LayoutScratch};
+use crate::graph_layout::shoal_bridge;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{Bounds, LayoutLabel, LayoutPoint};
 use crate::{Error, Result};
@@ -278,12 +278,7 @@ pub(super) fn layout(
             end_marker: marker(false),
         });
     }
-    let mut solved = shoal_bridge::solve(
-        &graph,
-        Default::default(),
-        &mut LayoutScratch::default(),
-        work,
-    )?;
+    let mut solved = shoal_bridge::solve(&graph, Default::default(), work)?;
     for edge in &mut solved.edges {
         work.charge_adapter(0)?;
         if let Endpoint::Node(node) = edge.source

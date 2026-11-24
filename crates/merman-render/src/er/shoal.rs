@@ -5,7 +5,7 @@ use crate::graph_layout::ir::{
     Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, Rect,
     RoutingStyle, Side, Size, SolvedGraph, TitlePosition,
 };
-use crate::graph_layout::shoal_bridge::{self, LayoutScratch};
+use crate::graph_layout::shoal_bridge;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{
     Bounds, ErDiagramLayout, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
@@ -38,12 +38,7 @@ pub(super) fn layout(
 ) -> Result<ErPreparedLayout> {
     let input = measure(model, measurer, settings, &prepared_labels, neo, work)?;
     let group_order = parent_first_groups(&input, work)?;
-    let solved = shoal_bridge::solve(
-        &input.graph,
-        Default::default(),
-        &mut LayoutScratch::default(),
-        work,
-    )?;
+    let solved = shoal_bridge::solve(&input.graph, Default::default(), work)?;
     let canonical_routes = CanonicalRoutes::from_solved(
         &input.graph,
         &solved,

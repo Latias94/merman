@@ -22,7 +22,7 @@ describe("preview render queue", () => {
     );
   });
 
-  it("reuses one accepted SVG frame across edits without sending it to the webview or text renders", async () => {
+  it("reuses SVG frames across edits and clears them when changing display mode", async () => {
     const queue = new PreviewRenderQueue();
     const messages: unknown[] = [];
     const first = snapshot();
@@ -39,21 +39,19 @@ describe("preview render queue", () => {
       observed.push(previous);
       return result;
     }));
-    await queue.render(snapshot({ displayMode: "ascii" }), "document-change", host(
-      queue, messages, async (_source, _signal, previous) => {
-        observed.push(previous);
-        return { content: "text", previewLayoutFrame: Buffer.from("ignored") };
-      },
-    ));
     await queue.render(edited, "document-change", host(queue, messages, async (_source, _signal, previous) => {
       observed.push(previous);
-      return "<svg/>";
+      return result;
+    }));
+    await queue.render({ ...edited, displayMode: "ascii" }, "document-change", host(queue, messages, async (_source, _signal, previous) => {
+      observed.push(previous);
+      return { content: "text", previewLayoutFrame: Buffer.from("ignored") };
     }));
     await queue.render(edited, "document-change", host(queue, messages, async (_source, _signal, previous) => {
       observed.push(previous);
       return "<svg/>";
     }));
-    assert.deepEqual(observed, [undefined, undefined, frame, undefined]);
+    assert.deepEqual(observed, [undefined, frame, undefined, undefined]);
     assert.equal(messages.some((message) => Object.hasOwn(message as object, "previewLayoutFrame")), false);
   });
 
