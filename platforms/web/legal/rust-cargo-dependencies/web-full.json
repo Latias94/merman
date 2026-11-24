@@ -81,13 +81,13 @@
     "version": "0.9.3",
     "command_profile": "artifact-profile-runtime",
     "offline": true,
-    "cargo_lock_sha256": "c1c15af93aba48a871833d335b1deca7ba6067332726f0ee2ede1482222d3fcf",
+    "cargo_lock_sha256": "c6576a60210d8b430a92264dfd45b730a2998ce737993ad9286fc0f2138273eb",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_profile_sha256": "f1a00eb7bd273dade4826d7595dd9dafb43f8bf5518ffec3d0fd1774b31f1ba8"
   },
   "dependency_closure": {
-    "package_count": 173,
-    "packages_sha256": "efd7c544f0b7e123e4bb0cdc9b056ef4b55a064e988b4fe7ca7830243894b9e7"
+    "package_count": 172,
+    "packages_sha256": "0b32bb936d0aebc6623db629bdd1be3c5d8e779c7619c86cc6efca5c616c0c07"
   },
   "licenses": [
     {
@@ -1693,22 +1693,6 @@
           "license_expression": "MIT",
           "authors": [],
           "repository": "https://github.com/ia0/data-encoding"
-        }
-      ]
-    },
-    {
-      "id": "MIT",
-      "name": "MIT License",
-      "text_sha256": "b68d86a60d3619bfd55b89a322e8464d3f9ca1c7e2409cc6035ea290435831e0",
-      "text": "MIT License\r\n\r\nCopyright (c) 2023 Attila Mravik\r\n\r\nPermission is hereby granted, free of charge, to any person obtaining a copy\r\nof this software and associated documentation files (the \"Software\"), to deal\r\nin the Software without restriction, including without limitation the rights\r\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\r\ncopies of the Software, and to permit persons to whom the Software is\r\nfurnished to do so, subject to the following conditions:\r\n\r\nThe above copyright notice and this permission notice shall be included in all\r\ncopies or substantial portions of the Software.\r\n\r\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\r\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\r\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\r\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\r\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\r\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\r\nSOFTWARE.\r\n",
-      "packages": [
-        {
-          "name": "serde_json_canonicalizer",
-          "version": "0.4.1",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT",
-          "authors": [],
-          "repository": "https://github.com/evik42/serde-json-canonicalizer"
         }
       ]
     },
