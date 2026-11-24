@@ -2713,6 +2713,7 @@ mod tests {
     #[cfg(all(
         feature = "svg",
         not(feature = "layout-cytoscape"),
+        not(feature = "layout-dagre"),
         not(feature = "layout-elk"),
         not(feature = "math")
     ))]
@@ -2731,10 +2732,10 @@ mod tests {
                 "architecture-beta\n  service api(server)[API]",
             ),
             (
-                "layout-elk",
-                "---\nconfig:\n  layout: elk\n---\nflowchart TD\nA --> B",
+                "layout-dagre",
+                "---\nconfig:\n  layout: dagre\n---\nflowchart TD\nA --> B",
             ),
-            ("math", "flowchart TD\nA[\"$$x^2$$\"] --> B"),
+            ("math", "sequenceDiagram\nA->>B: $$x^2$$"),
         ] {
             assert!(!capability_ids.iter().any(|id| id == capability_id));
 
@@ -3665,6 +3666,7 @@ mod tests {
         }
         for (capability_id, expected) in [
             ("layout-cytoscape", cfg!(feature = "layout-cytoscape")),
+            ("layout-dagre", cfg!(feature = "layout-dagre")),
             ("layout-elk", cfg!(feature = "layout-elk")),
             ("math", cfg!(feature = "math")),
         ] {

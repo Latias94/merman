@@ -816,6 +816,7 @@ impl FlowchartSvgLabelSidecarBuilder {
         self
     }
 
+    #[cfg(feature = "layout-elk")]
     pub(crate) fn has_prepared_math(
         &self,
         owner: FlowchartSvgLabelOwner,
@@ -1473,7 +1474,7 @@ impl FlowchartSvgLabelSidecarBuilder {
         self.pending.borrow().prepared.len()
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "layout-dagre"))]
     pub(crate) fn prepared_hit_count(&self) -> usize {
         self.prepared_hits.get()
     }
@@ -1524,6 +1525,11 @@ pub(crate) fn measure_flowchart_svg_label_for_layout_with_source_style(
     }
 }
 
+#[cfg(any(
+    feature = "layout-dagre",
+    feature = "layout-elk",
+    feature = "layout-shoal"
+))]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn measure_flowchart_svg_label_for_layout_with_metrics_and_source_style(
     sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,

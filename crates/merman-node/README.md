@@ -8,8 +8,8 @@ Applications install the matching npm package; this Rust crate is not published 
 
 Both candidate artifact recipes explicitly select `all-diagrams`. Family selectors are independent
 of outputs; custom source subsets must be validated against the actual consumer graph.
-Both `transport-napi` and `transport-wasm` require the direct `svg`, `layout-cytoscape`, and
-`layout-elk` features. The ordinary SVG recipe also selects the positive `math` feature. These
+Both `transport-napi` and `transport-wasm` require the direct `svg`, `layout-cytoscape`,
+`layout-dagre`, and `layout-elk` features. The ordinary SVG recipe also selects `math`. These
 leaves forward to `merman-bindings-core`; both transports share `BindingEngine` execution.
 Node transport API `2` passes source and optional Options JSON separately to the N-API SVG
 methods. The generic operation and Node-WASM paths retain their bounded JSON request documents.

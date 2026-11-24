@@ -871,7 +871,7 @@ class CompareSelfRecipeContractsTest(unittest.TestCase):
 
     def test_cli_keeps_historical_base_features_independent_of_current_head(self) -> None:
         for overrides, expected_base, expected_head in (
-            ([], "svg", "all-diagrams,svg,compat-json,editor-facts"),
+            ([], "svg", "all-diagrams,svg,compat-json,editor-facts,layout-dagre"),
             (
                 ["--base-features", "render", "--head-features", "svg,compat-json"],
                 "render",

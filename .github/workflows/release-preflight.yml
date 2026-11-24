@@ -239,20 +239,23 @@ jobs:
         shell: bash
         run: |
           cargo test --locked -p merman-ffi --no-default-features \
-            --features svg,diagram-flowchart --test c_consumer_smoke
+            --features svg,diagram-flowchart,layout-dagre --test c_consumer_smoke
           cargo test --locked -p merman-render --no-default-features \
             --features diagram-pie,diagram-info \
             --test native_theme_canvas
+          cargo test --locked -p merman-render --no-default-features \
+            --features diagram-flowchart,layout-dagre --test flowchart_node_effects
           cargo test --locked -p merman-bindings-core --no-default-features \
-            --features svg,all-diagrams --lib
-          cargo test --locked -p merman --no-default-features --features svg,diagram-flowchart \
+            --features svg,all-diagrams,layout-dagre --lib
+          cargo test --locked -p merman --no-default-features --features svg,diagram-flowchart,layout-dagre \
             --test theme_font_capability --test flowchart_edge_label_theme
           cargo test --locked -p merman-export --no-default-features \
             --features png,jpeg,pdf --lib
 
       - name: Test native theme consumers
         run: |
-          cargo test --locked -p merman --no-default-features --features svg,all-diagrams,ascii,png,pdf,layout-cytoscape,system-fonts,compat-json \
+          cargo test --locked -p merman --no-default-features \
+            --features svg,all-diagrams,ascii,png,pdf,layout-cytoscape,layout-dagre,system-fonts,compat-json \
             --test native_theme --test render_operation --test prepared_source
 
       - name: Verify native theme preset colors

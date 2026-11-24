@@ -1,4 +1,6 @@
 use super::super::*;
+use crate::layout_backend::GraphLayoutBackend;
+use crate::model::LayoutPoint;
 
 // Mindmap diagram SVG renderer implementation (split from parity.rs).
 
@@ -540,6 +542,39 @@ fn write_mindmap_native_css(
     }
 }
 
+fn clip_circle_endpoints(
+    mut points: Vec<LayoutPoint>,
+    start: &LayoutNode,
+    end: &LayoutNode,
+    start_circle: bool,
+    end_circle: bool,
+) -> Vec<LayoutPoint> {
+    if points.len() < 2 {
+        return points;
+    }
+    let intersect = |node: &LayoutNode, point: &LayoutPoint| {
+        let dx = point.x - node.x;
+        let dy = point.y - node.y;
+        let length = dx.hypot(dy);
+        if length == 0.0 {
+            return point.clone();
+        }
+        let radius = node.width / 2.0;
+        LayoutPoint {
+            x: node.x + radius * dx / length,
+            y: node.y + radius * dy / length,
+        }
+    };
+    if start_circle {
+        points[0] = intersect(start, &points[1]);
+    }
+    if end_circle {
+        let last = points.len() - 1;
+        points[last] = intersect(end, &points[last - 1]);
+    }
+    points
+}
+
 pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     layout: &MindmapDiagramLayout,
     model: &merman_model::families::mindmap::MindmapDiagramRenderModel,
@@ -551,12 +586,6 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     let timing = options.timing();
     let mut timings = super::super::timing::RenderTimings::default();
     let total_timer = timing.start();
-
-    #[derive(Debug, Clone, serde::Serialize)]
-    struct Pt {
-        x: f64,
-        y: f64,
-    }
 
     let (binding, native) = match appearance {
         crate::mindmap::MindmapAppearance::Mermaid(binding) => (Some(binding.as_ref()), None),
@@ -746,7 +775,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         .iter()
         .map(|node| (node.id.as_str(), node))
         .collect();
-    let backend = crate::mindmap::layout_backend(config.as_value());
+    let backend = options.layout_backend();
 
     drop(_g_build_ctx);
 
@@ -873,118 +902,106 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     out.push_str(r#"<g class="edgePaths">"#);
     out.checkpoint()?;
     for e in &model.edges {
-        let (sx, sy, tx, ty) = match (node_by_id.get(&e.start), node_by_id.get(&e.end)) {
-            (Some(a), Some(b)) => (a.x, a.y, b.x, b.y),
-            _ => (0.0, 0.0, 0.0, 0.0),
-        };
-
-        let points_for_data_points = if backend == crate::mindmap::MindmapLayoutBackend::Cose {
-            // Mermaid mindmap edges use `curveBasis` and offset endpoints from node centers
-            // along the direction of the edge.
-            let (vx, vy) = (tx - sx, ty - sy);
-            let v_len = (vx * vx + vy * vy).sqrt();
-            let (ux, uy) = if v_len == 0.0 {
-                (0.0, 0.0)
-            } else {
-                (vx / v_len, vy / v_len)
-            };
-            let endpoint_offset = 15.0;
-            let start_x = sx + endpoint_offset * ux;
-            let start_y = sy + endpoint_offset * uy;
-            let end_x = tx - endpoint_offset * ux;
-            let end_y = ty - endpoint_offset * uy;
-            let mid_x = (start_x + end_x) / 2.0;
-            let mid_y = (start_y + end_y) / 2.0;
-
-            let points = [
-                Pt {
-                    x: start_x,
-                    y: start_y,
-                },
-                Pt { x: mid_x, y: mid_y },
-                Pt { x: end_x, y: end_y },
-            ];
-            points
-                .iter()
-                .map(|p| crate::model::LayoutPoint { x: p.x, y: p.y })
-                .collect::<Vec<_>>()
-        } else if backend == crate::mindmap::MindmapLayoutBackend::TidyTree {
+        let start = node_by_id.get(&e.start).copied();
+        let end = node_by_id.get(&e.end).copied();
+        let projected_points = || {
             edge_by_id
                 .get(e.id.as_str())
                 .map(|edge| edge.points.clone())
                 .unwrap_or_default()
-        } else {
-            let points = edge_by_id
-                .get(e.id.as_str())
-                .map(|edge| edge.points.clone())
-                .unwrap_or_default();
-            let start = node_by_id.get(&e.start).copied();
-            let end = node_by_id.get(&e.end).copied();
-            let is_circle = |id: &str| {
-                source_node_by_id
-                    .get(id)
-                    .is_some_and(|node| node.shape == "mindmapCircle")
-            };
-            match (start, end) {
-                (Some(start), Some(end)) => {
-                    #[cfg(feature = "layout-elk")]
-                    if backend == crate::mindmap::MindmapLayoutBackend::Elk {
-                        use crate::elk_edge_geometry::{Outline, Shape, sanitize};
-                        {
-                            let mut elk_points = Vec::with_capacity(points.len() + 2);
-                            elk_points.push(crate::model::LayoutPoint {
-                                x: start.x,
-                                y: start.y,
-                            });
-                            elk_points.extend(points.iter().cloned());
-                            elk_points.push(crate::model::LayoutPoint { x: end.x, y: end.y });
-                            sanitize(
-                                &elk_points,
-                                Shape {
-                                    intersection: None,
-                                    node: start,
-                                    outline: if is_circle(&e.start) {
-                                        Outline::Ellipse
-                                    } else {
-                                        Outline::Rect
-                                    },
-                                },
-                                Shape {
-                                    intersection: None,
-                                    node: end,
-                                    outline: if is_circle(&e.end) {
-                                        Outline::Ellipse
-                                    } else {
-                                        Outline::Rect
-                                    },
-                                },
-                            )
-                        }
-                    } else {
-                        crate::mindmap::dagre_shape_points(
-                            points,
-                            start,
-                            end,
-                            is_circle(&e.start),
-                            is_circle(&e.end),
-                        )
-                    }
-                    #[cfg(not(feature = "layout-elk"))]
-                    crate::mindmap::dagre_shape_points(
-                        points,
-                        start,
-                        end,
-                        is_circle(&e.start),
-                        is_circle(&e.end),
-                    )
-                }
-                _ => points,
+        };
+        let is_circle = |id: &str| {
+            source_node_by_id
+                .get(id)
+                .is_some_and(|node| node.shape == "mindmapCircle")
+        };
+        let points_for_data_points = match (backend, start, end) {
+            (GraphLayoutBackend::CoseBilkent, ..) => {
+                // Mermaid offsets the endpoints of CoSE edges along the node-to-node ray.
+                let (sx, sy, tx, ty) = match (start, end) {
+                    (Some(a), Some(b)) => (a.x, a.y, b.x, b.y),
+                    _ => (0.0, 0.0, 0.0, 0.0),
+                };
+                let (vx, vy) = (tx - sx, ty - sy);
+                let v_len = (vx * vx + vy * vy).sqrt();
+                let (ux, uy) = if v_len == 0.0 {
+                    (0.0, 0.0)
+                } else {
+                    (vx / v_len, vy / v_len)
+                };
+                let endpoint_offset = 15.0;
+                let start_x = sx + endpoint_offset * ux;
+                let start_y = sy + endpoint_offset * uy;
+                let end_x = tx - endpoint_offset * ux;
+                let end_y = ty - endpoint_offset * uy;
+                let mid_x = (start_x + end_x) / 2.0;
+                let mid_y = (start_y + end_y) / 2.0;
+                vec![
+                    LayoutPoint {
+                        x: start_x,
+                        y: start_y,
+                    },
+                    LayoutPoint { x: mid_x, y: mid_y },
+                    LayoutPoint { x: end_x, y: end_y },
+                ]
             }
+            (GraphLayoutBackend::Dagre | GraphLayoutBackend::Swimlane, Some(start), Some(end)) => {
+                clip_circle_endpoints(
+                    projected_points(),
+                    start,
+                    end,
+                    is_circle(&e.start),
+                    is_circle(&e.end),
+                )
+            }
+            #[cfg(feature = "layout-elk")]
+            (GraphLayoutBackend::Elk(_), Some(start), Some(end)) => {
+                use crate::elk_edge_geometry::{Outline, Shape, sanitize};
+
+                let points = projected_points();
+                let mut elk_points = Vec::with_capacity(points.len() + 2);
+                elk_points.push(LayoutPoint {
+                    x: start.x,
+                    y: start.y,
+                });
+                elk_points.extend(points);
+                elk_points.push(LayoutPoint { x: end.x, y: end.y });
+                sanitize(
+                    &elk_points,
+                    Shape {
+                        intersection: None,
+                        node: start,
+                        outline: if is_circle(&e.start) {
+                            Outline::Ellipse
+                        } else {
+                            Outline::Rect
+                        },
+                    },
+                    Shape {
+                        intersection: None,
+                        node: end,
+                        outline: if is_circle(&e.end) {
+                            Outline::Ellipse
+                        } else {
+                            Outline::Rect
+                        },
+                    },
+                )
+            }
+            #[cfg(feature = "layout-elk")]
+            (GraphLayoutBackend::Elk(_), ..) => projected_points(),
+            (
+                GraphLayoutBackend::TidyTree
+                | GraphLayoutBackend::Dagre
+                | GraphLayoutBackend::Swimlane,
+                ..,
+            ) => projected_points(),
+            _ => return Err(backend.unavailable_for("mindmap")),
         };
         let data_points = base64::engine::general_purpose::STANDARD
             .encode(json_stringify_points(&points_for_data_points));
 
-        let d = if backend == crate::mindmap::MindmapLayoutBackend::Swimlane {
+        let d = if backend == GraphLayoutBackend::Swimlane {
             curve::curve_rounded_path_d_and_bounds(&points_for_data_points, 10.0, false, None).0
         } else if e.curve.trim() == "basis" {
             curve::curve_basis_path_d(&points_for_data_points)

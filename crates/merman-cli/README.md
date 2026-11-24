@@ -632,14 +632,14 @@ The source defaults to the standard diagram CLI with `all-diagrams` and the Rust
 | `--no-default-features --features all-diagrams` | `detect`, `parse`, and `capabilities` |
 | `--no-default-features --features all-diagrams,analysis` | Lint and rule metadata without render dependencies or replacement generation |
 | `--no-default-features --features all-diagrams,fixes` | Lint, the fix command, and rule metadata without render dependencies |
-| `--no-default-features --features all-diagrams,svg` | Basic deterministic SVG |
-| `--no-default-features --features all-diagrams,native-fonts` | SVG with explicit-font measurement controls, no output codecs |
+| `--no-default-features --features diagram-sequence,diagram-pie,svg` | Deterministic SVG using the diagram families’ own layouts |
+| `--no-default-features --features all-diagrams,native-fonts,layout-dagre` | SVG with explicit-font measurement and the Dagre adapter |
 | `--no-default-features --features all-diagrams,ascii` | ASCII/Unicode without SVG |
-| `--no-default-features --features all-diagrams,markdown` | Sequential native Markdown batch and SVG |
-| `--no-default-features --features all-diagrams,rustdoc` | Static Rustdoc fragment build/check with deterministic SVG and Cytoscape layout; add `math` for mathematical labels |
-| `--no-default-features --features all-diagrams,icons` | SVG plus bounded local Iconify packs |
-| `--no-default-features --features all-diagrams,png` | SVG plus PNG only |
-| `--no-default-features --features all-diagrams,pdf` | SVG plus vector PDF only |
+| `--no-default-features --features all-diagrams,markdown,layout-dagre` | Sequential native Markdown batch and SVG with Dagre |
+| `--no-default-features --features all-diagrams,rustdoc,layout-dagre` | Static Rustdoc fragment build/check with Dagre and Cytoscape. Add `math` for mathematical labels |
+| `--no-default-features --features all-diagrams,icons,layout-dagre` | SVG plus bounded local Iconify packs |
+| `--no-default-features --features all-diagrams,png,layout-dagre` | SVG and PNG with Dagre |
+| `--no-default-features --features all-diagrams,pdf,layout-dagre` | SVG and vector PDF with Dagre |
 
 Install a lint-only binary:
 
@@ -648,7 +648,11 @@ cargo install merman-cli --version 0.11.0 --locked \
   --no-default-features --features all-diagrams,analysis
 ```
 
-Additional leaves are `jpeg`, `layout-cytoscape`, `layout-elk`, `math`, `network-icons`, `parallel-markdown`, `shell-completions`, `system-clock`, `system-timezone`, `system-random`, and `system-timing`. The default includes ELK and therefore carries its EPL-2.0 notice and provenance; lean builds can omit it with `--no-default-features`. Implications such as `png -> svg` and `network-icons -> icons` are intentional.
+Additional leaves are `jpeg`, `layout-cytoscape`, `layout-dagre`, `layout-elk`, `layout-shoal`, `math`, `network-icons`, `parallel-markdown`, `shell-completions`, `system-clock`, `system-timezone`, `system-random`, and `system-timing`. The default includes ELK and therefore carries its EPL-2.0 notice and provenance; lean builds can omit it with `--no-default-features`. Implications such as `png -> svg` and `network-icons -> icons` are intentional.
+
+The current source build requires an explicit layout leaf for defaults-off recipes that render
+ordinary graph diagrams. Default CLI builds include Dagre, ELK, and Cytoscape. An explicit Shoal
+request needs a build with `layout-shoal`. [Graph layout feature recipes](../../docs/FEATURES.md#svg-without-general-purpose-layout-engines)
 
 Use `merman-cli capabilities --json` as the machine-readable authority for the installed artifact. The document reports `schema_version: 2` and `cli_contract_version: 9`, package and pinned compatibility versions, descriptor digest, compiled commands, `diagram_families`, capabilities, and outputs. `diagram_families` lists the compiled parser families. Use the corresponding output capabilities to determine SVG or ASCII availability. SVG-enabled artifacts expose `theme list --json` for the shared theme catalog.
 

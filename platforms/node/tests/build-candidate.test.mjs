@@ -15,6 +15,7 @@ import {
   validateCandidateCargoMetadata,
   validateCandidatePackageVersions,
 } from "../scripts/build-candidate.mjs";
+import { NODE_WIRE_CONTRACT } from "../src/errors.mjs";
 
 const nodeRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = path.resolve(nodeRoot, "..", "..");
@@ -143,6 +144,7 @@ test("native ARM64 musl uses the host linker and preserves an explicit override"
 test("candidate runtime outputs follow explicit binding operation ownership", () => {
   const contract = resolveCandidateRuntimeContract();
 
+  assert.deepEqual(contract.capabilityIds, NODE_WIRE_CONTRACT.artifact.capability_ids);
   assert.deepEqual(contract.operationIds, [
     "export-theme-preset",
     "layout-json",

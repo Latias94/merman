@@ -1,7 +1,6 @@
 use crate::config::{config_bool, config_diagram_look, config_f64, config_f64_css_px};
-use crate::layout_backend::GraphLayoutBackend;
+use crate::graph_layout::ir::{Direction, direction_from_rank};
 use crate::text::{TextStyle, WrapMode};
-use dugong::{GraphLabel, RankDir};
 use serde_json::Value;
 
 const DEFAULT_NODE_SPACING: f64 = 140.0;
@@ -30,12 +29,17 @@ impl<'a> ErConfigView<'a> {
     }
 
     #[cfg(test)]
-    pub(super) fn layout_settings_with_font_family(
+    pub(super) fn layout_settings_for_test(
         &self,
         direction: &str,
-        font_family_override: Option<&str>,
+        swimlane: bool,
     ) -> ErLayoutSettings {
-        self.layout_settings_with_resolved_typography(direction, font_family_override, None)
+        self.layout_settings_with_resolved_typography(
+            direction,
+            None,
+            None,
+            self.relationship_html_labels(swimlane),
+        )
     }
 
     pub(crate) fn layout_settings_with_native_style(
@@ -43,6 +47,7 @@ impl<'a> ErConfigView<'a> {
         direction: &str,
         font_family_css: Option<&str>,
         native: Option<&super::ErNativeStyle>,
+        relationship_html_labels: bool,
     ) -> ErLayoutSettings {
         let mut settings = self.layout_settings_with_resolved_typography(
             direction,
@@ -50,6 +55,7 @@ impl<'a> ErConfigView<'a> {
                 .and_then(|style| style.body_family.as_deref())
                 .or(font_family_css),
             native.and_then(|style| style.font_size),
+            relationship_html_labels,
         );
         if let Some(style) = native {
             style.apply_layout(&mut settings);
@@ -62,6 +68,7 @@ impl<'a> ErConfigView<'a> {
         direction: &str,
         font_family_override: Option<&str>,
         font_size_override: Option<f64>,
+        relationship_html_labels: bool,
     ) -> ErLayoutSettings {
         let label_style =
             self.text_style_with_resolved_typography(font_family_override, font_size_override);
@@ -80,22 +87,15 @@ impl<'a> ErConfigView<'a> {
         };
 
         ErLayoutSettings {
-            graph: GraphLabel {
-                rankdir: rank_dir_from(direction),
-                nodesep: self.er_spacing("nodeSpacing", DEFAULT_NODE_SPACING),
-                ranksep: self.er_spacing("rankSpacing", DEFAULT_RANK_SPACING),
-                // Mermaid's unified Dagre adapter lays out inside an 8px graph margin, then its
-                // root viewport adds the same 8px around the emitted bbox.
-                marginx: 8.0,
-                marginy: 8.0,
-                ..Default::default()
-            },
+            direction: direction_from_rank(direction),
+            node_spacing: self.er_spacing("nodeSpacing", DEFAULT_NODE_SPACING),
+            rank_spacing: self.er_spacing("rankSpacing", DEFAULT_RANK_SPACING),
             label_style,
             attr_style,
             code_family: None,
             calculation_style: self.calculation_text_style(),
             relationship_label_style,
-            relationship_html_labels: self.relationship_html_labels(),
+            relationship_html_labels,
             entity_measurement: self.entity_measurement_settings(),
         }
     }
@@ -132,7 +132,6 @@ impl<'a> ErConfigView<'a> {
                 font_weight: None,
                 font_style: None,
             },
-            relationship_html_labels: self.relationship_html_labels(),
             entity_html_label_wrap_mode: self.entity_html_label_wrap_mode(),
             entity_measurement: self.entity_measurement_settings(),
             hand_drawn_seed: self
@@ -189,9 +188,9 @@ impl<'a> ErConfigView<'a> {
         }
     }
 
-    pub(crate) fn relationship_html_labels(&self) -> bool {
-        if self.is_swimlane_layout() {
-            return self.swimlane_relationship_html_labels();
+    pub(crate) fn relationship_html_labels(&self, swimlane: bool) -> bool {
+        if swimlane {
+            return Self::evaluate_html_labels(self.effective_config.get("htmlLabels"));
         }
         // Mermaid ER relationship labels follow `getEffectiveHtmlLabels(config)` from
         // `rendering-elements/edges.js`:
@@ -263,15 +262,6 @@ impl<'a> ErConfigView<'a> {
             .unwrap_or(DEFAULT_TITLE_TOP_MARGIN)
     }
 
-    pub(crate) fn is_swimlane_layout(&self) -> bool {
-        crate::layout_backend::resolve_er_graph_layout(self.effective_config).backend
-            == GraphLayoutBackend::Swimlane
-    }
-
-    pub(crate) fn swimlane_relationship_html_labels(&self) -> bool {
-        Self::evaluate_html_labels(self.effective_config.get("htmlLabels"))
-    }
-
     pub(crate) fn swimlane_relationship_wrapping_width(&self) -> f64 {
         self.flowchart_f64("wrappingWidth")
             .unwrap_or(DEFAULT_WRAPPING_WIDTH)
@@ -282,11 +272,15 @@ impl<'a> ErConfigView<'a> {
         Self::evaluate_html_labels(self.flowchart_config.get("htmlLabels"))
     }
 
-    pub(crate) fn subgraph_html_labels(&self, is_swimlane_lane: bool) -> bool {
+    pub(crate) fn subgraph_html_labels(
+        &self,
+        is_swimlane_lane: bool,
+        relationship_html_labels: bool,
+    ) -> bool {
         if is_swimlane_lane {
             self.swimlane_title_html_labels()
         } else {
-            self.relationship_html_labels()
+            relationship_html_labels
         }
     }
 
@@ -336,7 +330,9 @@ impl<'a> ErConfigView<'a> {
 }
 
 pub(crate) struct ErLayoutSettings {
-    pub(super) graph: GraphLabel,
+    pub(super) direction: Direction,
+    pub(super) node_spacing: f64,
+    pub(super) rank_spacing: f64,
     pub(super) label_style: TextStyle,
     pub(super) attr_style: TextStyle,
     pub(super) code_family: Option<String>,
@@ -365,30 +361,9 @@ pub(crate) struct ErRenderSettings {
     pub(crate) insert_title_top_margin: f64,
     pub(crate) use_max_width: bool,
     pub(crate) label_style: TextStyle,
-    pub(crate) relationship_html_labels: bool,
     pub(crate) entity_html_label_wrap_mode: WrapMode,
     pub(crate) entity_measurement: ErEntityMeasurementSettings,
     pub(crate) hand_drawn_seed: f64,
-}
-
-pub(super) fn rank_dir_from(direction: &str) -> RankDir {
-    match normalize_dir(direction).as_str() {
-        "TB" => RankDir::TB,
-        "BT" => RankDir::BT,
-        "LR" => RankDir::LR,
-        "RL" => RankDir::RL,
-        _ => RankDir::TB,
-    }
-}
-
-fn normalize_dir(direction: &str) -> String {
-    match direction.trim().to_uppercase().as_str() {
-        "TB" | "TD" => "TB".to_string(),
-        "BT" => "BT".to_string(),
-        "LR" => "LR".to_string(),
-        "RL" => "RL".to_string(),
-        other => other.to_string(),
-    }
 }
 
 #[cfg(test)]
@@ -402,7 +377,7 @@ mod tests {
             "fontFamily": "BudgetFont", "fontSize": 10, "fontWeight": 500,
             "themeVariables": {"fontFamily": "VisibleFont", "fontSize": "32px"}
         });
-        let settings = ErConfigView::new(&config).layout_settings_with_font_family("TB", None);
+        let settings = ErConfigView::new(&config).layout_settings_for_test("TB", false);
         assert_eq!(
             settings.label_style.font_family.as_deref(),
             Some("VisibleFont")
@@ -421,7 +396,7 @@ mod tests {
     }
 
     #[test]
-    fn er_layout_settings_project_dagre_text_and_relationship_labels() {
+    fn er_layout_settings_project_direction_spacing_and_label_styles() {
         let cfg = json!({
             "fontFamily": "Root Sans",
             "themeVariables": {
@@ -436,13 +411,11 @@ mod tests {
             }
         });
 
-        let settings = ErConfigView::new(&cfg).layout_settings_with_font_family("LR", None);
+        let settings = ErConfigView::new(&cfg).layout_settings_for_test("LR", false);
 
-        assert_eq!(settings.graph.rankdir, RankDir::LR);
-        assert_eq!(settings.graph.nodesep, 160.0);
-        assert_eq!(settings.graph.ranksep, 90.0);
-        assert_eq!(settings.graph.marginx, 8.0);
-        assert_eq!(settings.graph.marginy, 8.0);
+        assert_eq!(settings.direction, Direction::Right);
+        assert_eq!(settings.node_spacing, 160.0);
+        assert_eq!(settings.rank_spacing, 90.0);
         assert_eq!(
             settings.label_style.font_family.as_deref(),
             Some("Root Sans")
@@ -463,12 +436,12 @@ mod tests {
         });
         let view = ErConfigView::new(&config);
 
-        let configured = view.layout_settings_with_resolved_typography("TB", None, None);
+        let configured = view.layout_settings_with_resolved_typography("TB", None, None, true);
         assert_eq!(configured.label_style.font_size, 10.0);
         assert_eq!(configured.attr_style.font_size, 10.0);
         assert_eq!(configured.relationship_label_style.font_size, 14.0);
 
-        let typed = view.layout_settings_with_resolved_typography("TB", None, Some(24.0));
+        let typed = view.layout_settings_with_resolved_typography("TB", None, Some(24.0), true);
         assert_eq!(typed.label_style.font_size, 24.0);
         assert_eq!(typed.attr_style.font_size, 24.0);
         assert_eq!(typed.relationship_label_style.font_size, 14.0);
@@ -478,7 +451,7 @@ mod tests {
                 "fontSize": 30
             }
         }))
-        .layout_settings_with_resolved_typography("TB", None, None);
+        .layout_settings_with_resolved_typography("TB", None, None, true);
         assert_eq!(er_fallback.label_style.font_size, 30.0);
         assert_eq!(er_fallback.attr_style.font_size, 30.0);
         assert_eq!(er_fallback.relationship_label_style.font_size, 14.0);
@@ -486,33 +459,38 @@ mod tests {
 
     #[test]
     fn er_relationship_html_labels_keep_root_precedence() {
-        assert!(ErConfigView::new(&json!({})).relationship_html_labels());
+        assert!(ErConfigView::new(&json!({})).relationship_html_labels(false));
         assert!(
             ErConfigView::new(&json!({
                 "flowchart": { "htmlLabels": true }
             }))
-            .relationship_html_labels()
+            .relationship_html_labels(false)
         );
         assert!(
             !ErConfigView::new(&json!({
                 "flowchart": { "htmlLabels": false }
             }))
-            .relationship_html_labels()
+            .relationship_html_labels(false)
         );
         assert!(
             ErConfigView::new(&json!({
                 "htmlLabels": true,
                 "flowchart": { "htmlLabels": false }
             }))
-            .relationship_html_labels()
+            .relationship_html_labels(false)
         );
         assert!(
             !ErConfigView::new(&json!({
                 "htmlLabels": false,
                 "flowchart": { "htmlLabels": true }
             }))
-            .relationship_html_labels()
+            .relationship_html_labels(false)
         );
+
+        let config = json!({"layout": "swimlane", "flowchart": {"htmlLabels": false}});
+        let view = ErConfigView::new(&config);
+        assert!(!view.relationship_html_labels(false));
+        assert!(view.relationship_html_labels(true));
     }
 
     #[test]
@@ -561,7 +539,6 @@ mod tests {
         assert_eq!(settings.title_top_margin, 12.0);
         assert_eq!(settings.insert_title_top_margin, 12.0);
         assert!(!settings.use_max_width);
-        assert!(!settings.relationship_html_labels);
 
         let flowchart_fallback = ErConfigView::new(&json!({
             "flowchart": { "htmlLabels": false }

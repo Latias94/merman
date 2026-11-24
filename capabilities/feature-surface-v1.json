@@ -101,7 +101,18 @@
       "implications": ["svg"],
       "absence": {
         "error_id": "missing-capability",
-        "contract": "Architecture requires Cytoscape for its default layout and returns a typed missing-capability error when it is absent. An explicit Shoal request uses layout-shoal. Mindmap uses the registered Dagre fallback when Cose is absent. Denying a compiled Cose loader returns a typed missing-capability error."
+        "contract": "Architecture requires Cytoscape for its default layout and returns a typed missing-capability error when it is absent. An explicit Shoal request uses layout-shoal. When Cose is absent, Mindmap selects the Dagre fallback and requires layout-dagre. Denying a compiled Cose loader returns a typed missing-capability error."
+      }
+    },
+    {
+      "id": "layout-dagre",
+      "kind": "engine",
+      "description": "Enable Mermaid Dagre-backed SVG graph layout.",
+      "targets": ["native", "web", "typst"],
+      "implications": ["svg"],
+      "absence": {
+        "error_id": "missing-capability",
+        "contract": "A selected Dagre layout, including a Dagre fallback for an absent loader, returns a typed missing-capability error when Dagre is unavailable or denied by the render session."
       }
     },
     {
@@ -112,7 +123,7 @@
       "implications": ["svg"],
       "absence": {
         "error_id": "missing-capability",
-        "contract": "An absent ELK loader uses the registered family fallback (Dagre, or Cose for Mindmap when available). A compiled loader denied by the render session returns a typed missing-capability error."
+        "contract": "An absent ELK loader uses the registered family fallback when available, such as Dagre for Flowchart or Cose for Mindmap. An unavailable or host-denied ELK selection returns a typed missing-capability error."
       }
     },
     {

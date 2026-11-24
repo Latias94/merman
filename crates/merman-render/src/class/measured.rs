@@ -1,19 +1,24 @@
 //! Shared Class text and box measurements, written into the selected layout input.
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
+use super::EdgeTerminalMetrics;
 #[cfg(feature = "layout-elk")]
 use super::class_arrow_type_for_relation_end;
 use super::{
-    ClassBoxMeasureCtx, ClassDiagramModel, ClassLayoutGraph, ClassNodeLabelPlan,
-    ClassPreparedLabels, ClassPreparedSvgEdgeLabel, ClassRenderConfig, EdgeTerminalMetrics,
-    MeasuredClassDiagram, class_box_dimensions, class_cardinality_text_style, class_layout_parent,
-    class_namespace_ids_in_decl_order, class_namespace_label, class_requires_math, normalize_dir,
-    note_dimensions, plain_label_metrics, prepare_edge_title, validate_class_namespace_hierarchy,
+    ClassBoxMeasureCtx, ClassDiagramModel, ClassNodeLabelPlan, ClassPreparedLabels,
+    ClassPreparedSvgEdgeLabel, ClassRenderConfig, class_box_dimensions,
+    class_cardinality_text_style, class_layout_parent, class_namespace_ids_in_decl_order,
+    class_namespace_label, class_requires_math, note_dimensions, plain_label_metrics,
+    prepare_edge_title, validate_class_namespace_hierarchy,
 };
 use crate::Result;
 use crate::entities::decode_entities_minimal;
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
+use crate::graph_layout::ir::{Direction, direction_from_rank};
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::math::MathRenderer;
 use crate::text::{TextMeasurer, WrapMode};
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
 use indexmap::IndexMap;
 use merman_model::families::class::ClassRelation;
 use merman_model::presentation::PresentationConfig;
@@ -26,6 +31,15 @@ use std::sync::Arc;
 mod shoal;
 #[cfg(feature = "layout-shoal")]
 pub(super) use shoal::measure_for_shoal;
+
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
+pub(super) struct MeasuredClassDiagram {
+    pub(super) graph: MeasuredGraph,
+    pub(super) class_label_plans_by_id: FxHashMap<String, Arc<ClassNodeLabelPlan>>,
+    pub(super) prepared_labels: ClassPreparedLabels,
+    pub(super) node_label_metrics_by_id: HashMap<String, (f64, f64)>,
+    pub(super) namespace_label_metrics_by_id: HashMap<String, (f64, f64)>,
+}
 
 #[derive(Default)]
 pub(super) struct MeasuredLabels {
@@ -59,6 +73,11 @@ fn positive_label_size((width, height): (f64, f64)) -> Option<(f64, f64)> {
     (width > 0.0 && height > 0.0).then_some((width, height))
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Class measurement retains operation-owned labels alongside the layout input."
+)]
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
 pub(super) fn measure_class_diagram(
     model: &ClassDiagramModel,
     config: &PresentationConfig,
@@ -69,9 +88,9 @@ pub(super) fn measure_class_diagram(
     work: Option<&OperationLayoutWorkControl>,
 ) -> Result<MeasuredClassDiagram> {
     let settings = render.layout_settings();
-    let mut target = LegacyMeasurement {
+    let mut target = OrderedMeasurement {
         graph: MeasuredGraph {
-            direction: normalize_dir(&model.model().direction),
+            direction: direction_from_rank(&model.model().direction),
             nodesep: settings.nodesep,
             ranksep: settings.ranksep,
             nodes: IndexMap::new(),
@@ -101,7 +120,7 @@ pub(super) fn measure_class_diagram(
 
 #[allow(
     clippy::too_many_arguments,
-    reason = "Both layout targets share one traversal with the operation's render inputs."
+    reason = "Class layout targets share one traversal with the operation's render inputs."
 )]
 fn measure_into<'a>(
     model: &'a ClassDiagramModel,
@@ -334,12 +353,14 @@ fn measure_into<'a>(
     Ok(labels)
 }
 
-struct LegacyMeasurement {
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
+struct OrderedMeasurement {
     graph: MeasuredGraph,
     namespace_labels: HashMap<String, (f64, f64)>,
 }
 
-impl<'a> MeasurementTarget<'a> for LegacyMeasurement {
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
+impl<'a> MeasurementTarget<'a> for OrderedMeasurement {
     fn namespace(&mut self, id: &str, parent: Option<&str>, title: (f64, f64)) -> Result<()> {
         self.graph.set_node(
             id.to_owned(),
@@ -378,8 +399,8 @@ impl<'a> MeasurementTarget<'a> for LegacyMeasurement {
         (width, height): (f64, f64),
         terminals: Option<RelationTerminals<'a>>,
     ) -> Result<()> {
-        // Mermaid's arrow type strings are truthy even for `none`. Dagre's terminal placement
-        // reserves the 10px offset on each end with an authored label.
+        // Mermaid's fallback terminal placement reserves 10px for each authored cardinality,
+        // including when its arrow type is `none`.
         let marker_offset = |label: Option<&str>| {
             if label.is_some_and(|label| !label.trim().is_empty()) {
                 10.0
@@ -416,6 +437,7 @@ impl<'a> MeasurementTarget<'a> for LegacyMeasurement {
     }
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
 #[derive(Default)]
 pub(super) struct MeasuredNode {
     pub width: f64,
@@ -423,25 +445,28 @@ pub(super) struct MeasuredNode {
     pub is_namespace: bool,
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
 pub(super) struct MeasuredEdge {
     pub width: f64,
     pub height: f64,
     pub terminals: Option<EdgeTerminalMetrics>,
 }
 
-/// Legacy Dagre and ELK input, including Graphlib's insertion and parent mutation order.
+/// Ordered Class measurements shared by the Dagre and ELK adapters.
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
 pub(super) struct MeasuredGraph {
-    pub direction: String,
+    pub direction: Direction,
     pub nodesep: f64,
     pub ranksep: f64,
     pub nodes: IndexMap<String, MeasuredNode>,
     // Parent references may insert nodes before their declarations. Preserve hierarchy mutation
     // order separately so those placeholders do not reorder a namespace's declared children.
     pub parents: IndexMap<String, String>,
-    // Source, target, and name together identify a Graphlib multiedge.
+    // A named edge is scoped to its ordered pair of endpoints.
     pub edges: IndexMap<(String, String, String), MeasuredEdge>,
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
 impl MeasuredGraph {
     pub fn set_node(&mut self, id: String, mut node: MeasuredNode) {
         if let Some(existing) = self.nodes.get(&id) {
@@ -451,7 +476,7 @@ impl MeasuredGraph {
     }
 
     pub fn set_parent(&mut self, child: String, parent: String) {
-        // Graphlib inserts a referenced parent immediately, even before its declaration.
+        // A forward reference reserves the parent's slot until its declaration.
         self.nodes.entry(child.clone()).or_default();
         self.nodes.entry(parent.clone()).or_default();
         self.parents.insert(child, parent);
@@ -461,115 +486,5 @@ impl MeasuredGraph {
         self.nodes.entry(source.clone()).or_default();
         self.nodes.entry(target.clone()).or_default();
         self.edges.insert((source, target, id), edge);
-    }
-
-    pub fn to_dagre(&self) -> ClassLayoutGraph {
-        use dugong::graphlib::{Graph, GraphOptions};
-        use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel};
-
-        let mut graph = Graph::new(GraphOptions {
-            directed: true,
-            multigraph: true,
-            compound: true,
-        });
-        graph.set_graph(GraphLabel {
-            rankdir: super::rank_dir_from(&self.direction),
-            nodesep: self.nodesep,
-            ranksep: self.ranksep,
-            // The SVG viewport adds Mermaid's graph margins after layout.
-            marginx: 0.0,
-            marginy: 0.0,
-            ..Default::default()
-        });
-        for (id, node) in &self.nodes {
-            graph.set_node(
-                id.clone(),
-                NodeLabel {
-                    width: node.width,
-                    height: node.height,
-                    ..Default::default()
-                },
-            );
-        }
-        for (child, parent) in &self.parents {
-            graph.set_parent(child.clone(), parent.clone());
-        }
-        for ((source, target, id), edge) in &self.edges {
-            let mut label = EdgeLabel {
-                width: edge.width,
-                height: edge.height,
-                labelpos: LabelPos::C,
-                labeloffset: 10.0,
-                minlen: 1,
-                weight: 1.0,
-                ..Default::default()
-            };
-            if let Some(meta) = &edge.terminals {
-                for (key, metrics) in [
-                    ("startLeft", meta.start_left),
-                    ("startRight", meta.start_right),
-                    ("endLeft", meta.end_left),
-                    ("endRight", meta.end_right),
-                ] {
-                    if let Some((width, height)) = metrics {
-                        super::set_extras_label_metrics(&mut label.extras, key, width, height);
-                    }
-                }
-                label
-                    .extras
-                    .insert("startMarker".to_string(), meta.start_marker.into());
-                label
-                    .extras
-                    .insert("endMarker".to_string(), meta.end_marker.into());
-            }
-            graph.set_edge_named(
-                source.clone(),
-                target.clone(),
-                Some(id.clone()),
-                Some(label),
-            );
-        }
-        graph
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{MeasuredGraph, MeasuredNode};
-    use indexmap::IndexMap;
-
-    #[test]
-    fn forward_namespace_parents_do_not_reorder_declared_children() {
-        let mut measured = MeasuredGraph {
-            direction: "TB".into(),
-            nodesep: 50.0,
-            ranksep: 50.0,
-            nodes: IndexMap::new(),
-            parents: IndexMap::new(),
-            edges: IndexMap::new(),
-        };
-        for (child, parent) in [("Child", "Parent"), ("Sibling", "Root"), ("Parent", "Root")] {
-            measured.set_node(
-                child.into(),
-                MeasuredNode {
-                    is_namespace: true,
-                    ..Default::default()
-                },
-            );
-            measured.set_parent(child.into(), parent.into());
-        }
-        measured.set_node(
-            "Root".into(),
-            MeasuredNode {
-                is_namespace: true,
-                ..Default::default()
-            },
-        );
-
-        let graph = measured.to_dagre();
-        assert_eq!(graph.node_ids(), ["Child", "Parent", "Sibling", "Root"]);
-        assert_eq!(graph.children("Root"), ["Sibling", "Parent"]);
-        assert_eq!(graph.parent("Child"), Some("Parent"));
-        assert_eq!(graph.parent("Parent"), Some("Root"));
     }
 }

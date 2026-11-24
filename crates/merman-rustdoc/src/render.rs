@@ -106,12 +106,28 @@ fn render_mermaid_svg(
         SanitizeMode::Strict => policy.pipeline().with_browser_inline_contract(diagram_id),
         SanitizeMode::Off => policy.pipeline().with_rebased_ids(diagram_id),
     };
+    // Cargo can link optional services enabled by other consumers of the facade.
+    let mut capability_policy =
+        RenderCapabilityPolicy::unrestricted().with_denied(RenderCapability::LayoutShoal);
+    for (capability, enabled) in [
+        (
+            RenderCapability::LayoutCytoscape,
+            cfg!(feature = "layout-cytoscape"),
+        ),
+        (
+            RenderCapability::LayoutDagre,
+            cfg!(feature = "layout-dagre"),
+        ),
+        (RenderCapability::LayoutElk, cfg!(feature = "layout-elk")),
+        (RenderCapability::Math, cfg!(feature = "math")),
+    ] {
+        if !enabled {
+            capability_policy = capability_policy.with_denied(capability);
+        }
+    }
     let request = SvgRequest {
-        // The macro has its own feature surface even if a sibling enables Shoal on the facade.
         environment: SvgEnvironment::deterministic()
-            .with_capability_policy(
-                RenderCapabilityPolicy::unrestricted().with_denied(RenderCapability::LayoutShoal),
-            )
+            .with_capability_policy(capability_policy)
             .with_resource_policy(resources),
         pipeline: Some(pipeline),
         options: merman::svg::SvgRenderOptions {
@@ -176,7 +192,14 @@ pub(crate) fn stable_hash(bytes: &[u8]) -> u64 {
     hash
 }
 
-#[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-class")))]
+#[cfg(all(
+    test,
+    any(
+        feature = "diagram-flowchart",
+        feature = "diagram-class",
+        feature = "diagram-sequence"
+    )
+))]
 mod tests {
     use super::*;
 
@@ -184,20 +207,62 @@ mod tests {
         render_mermaid_diagram(source, index, &options, "merman-rustdoc-test")
     }
 
-    #[test]
     #[cfg(feature = "diagram-flowchart")]
-    fn rustdoc_does_not_inherit_a_sibling_shoal_feature() {
-        let source = "---\nconfig:\n  layout: shoal\n---\nflowchart LR\nA --> B";
-        assert!(
-            render(source, 0, Options::default())
-                .unwrap_err()
-                .to_string()
-                .contains("layout-shoal")
-        );
+    #[test]
+    fn rustdoc_layout_requests_follow_the_owner_features() {
+        use merman::svg::{layout_dagre_available, layout_elk_available};
+
+        let elk_selection = if !layout_elk_available() && layout_dagre_available() {
+            ("layout-dagre", cfg!(feature = "layout-dagre"))
+        } else {
+            ("layout-elk", cfg!(feature = "layout-elk"))
+        };
+        for (layout, body, (required, enabled)) in [
+            (
+                "dagre",
+                "flowchart LR\nA --> B",
+                ("layout-dagre", cfg!(feature = "layout-dagre")),
+            ),
+            ("elk", "flowchart LR\nA --> B", elk_selection),
+            ("shoal", "flowchart LR\nA --> B", ("layout-shoal", false)),
+            #[cfg(feature = "diagram-architecture")]
+            (
+                "cose-bilkent",
+                "architecture-beta\nservice api(server)[API]",
+                ("layout-cytoscape", cfg!(feature = "layout-cytoscape")),
+            ),
+        ] {
+            let source = format!("---\nconfig:\n  layout: {layout}\n---\n{body}");
+            let result = render(&source, 0, Options::default());
+            if enabled {
+                result.unwrap();
+            } else {
+                let error = result.unwrap_err().to_string();
+                assert!(
+                    error.contains(&format!("lacks capability `{required}`")),
+                    "{error}"
+                );
+            }
+        }
+    }
+
+    #[cfg(feature = "diagram-sequence")]
+    #[test]
+    fn rustdoc_math_follows_the_owner_feature() {
+        let result = render("sequenceDiagram\nA->>B: $$x^2$$", 0, Options::default());
+        if cfg!(feature = "math") {
+            result.unwrap();
+        } else {
+            let error = result.unwrap_err().to_string();
+            assert!(error.contains("lacks capability `math`"), "{error}");
+        }
     }
 
     #[test]
-    #[cfg(feature = "diagram-flowchart")]
+    #[cfg(all(
+        feature = "diagram-flowchart",
+        any(feature = "layout-dagre", feature = "layout-elk")
+    ))]
     fn default_rustdoc_theme_renders_light_and_dark_svgs() {
         let source = "flowchart TD\nA[Plain source] --> B[Themed]";
         let rendered = render(source, 0, Options::default()).unwrap();
@@ -212,7 +277,10 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "diagram-flowchart")]
+    #[cfg(all(
+        feature = "diagram-flowchart",
+        any(feature = "layout-dagre", feature = "layout-elk")
+    ))]
     fn fixed_theme_renders_single_svg() {
         let source = "flowchart TD\nA[Plain source] --> B[Themed]";
         let rendered = render(
@@ -229,7 +297,10 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "diagram-class")]
+    #[cfg(all(
+        feature = "diagram-class",
+        any(feature = "layout-dagre", feature = "layout-elk")
+    ))]
     fn default_pipeline_keeps_one_browser_label_representation() {
         let source = r#"classDiagram
     EventConsumer <|.. OnClickConsumer
@@ -333,18 +404,21 @@ mod tests {
                 .contains("set a larger `max_layout_work_units`")
         );
 
-        let options = Options::parse(quote::quote! {
-            theme = "default"
-        })
-        .unwrap();
-        assert!(matches!(
-            render(&source, 0, options).unwrap(),
-            RenderedDiagram::Single(_)
-        ));
+        #[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+        {
+            let options = Options::parse(quote::quote! { theme = "default" }).unwrap();
+            assert!(matches!(
+                render(&source, 0, options).unwrap(),
+                RenderedDiagram::Single(_)
+            ));
+        }
     }
 
     #[test]
-    #[cfg(feature = "diagram-flowchart")]
+    #[cfg(all(
+        feature = "diagram-flowchart",
+        any(feature = "layout-dagre", feature = "layout-elk")
+    ))]
     fn readable_pipeline_remains_an_explicit_fallback_overlay_option() {
         let rendered = render(
             "flowchart TD\nA[Start] --> B[Done]",
@@ -367,7 +441,10 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "diagram-flowchart")]
+    #[cfg(all(
+        feature = "diagram-flowchart",
+        any(feature = "layout-dagre", feature = "layout-elk")
+    ))]
     fn source_level_theme_overrides_rustdoc_theme() {
         let source = r#"%%{init: {"theme": "default"}}%%
 flowchart TD
@@ -401,7 +478,10 @@ A[Source theme] --> B[Rustdoc theme]
         );
     }
 
-    #[cfg(feature = "diagram-flowchart")]
+    #[cfg(all(
+        feature = "diagram-flowchart",
+        any(feature = "layout-dagre", feature = "layout-elk")
+    ))]
     fn strip_theme_suffixes(svg: &str) -> String {
         svg.replace("-light", "").replace("-dark", "")
     }

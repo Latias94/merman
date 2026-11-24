@@ -1,8 +1,9 @@
 use super::{
-    RequirementCssBinding, RequirementEdgeLabelPlan, RequirementMeasurements,
+    RequirementCssBinding, RequirementEdgeLabels, RequirementMeasurements,
     RequirementNodeRenderPlan, RequirementPreparedArtifact, measure_requirement,
-    measure_requirement_relationship, rank_dir_from,
+    measure_requirement_relationship, missing_relationship_node, requirement_layout_node,
 };
+use crate::Result;
 use crate::graph_layout::canonical::CanonicalRoutes;
 use crate::graph_layout::contour::ShapePortProfile;
 use crate::graph_layout::ir::{
@@ -11,11 +12,9 @@ use crate::graph_layout::ir::{
 };
 use crate::graph_layout::placement;
 use crate::layout_work::OperationLayoutWorkControl;
-use crate::model::{Bounds, LayoutEdge, LayoutNode, LayoutPoint, RequirementDiagramLayout};
+use crate::model::{Bounds, LayoutPoint, RequirementDiagramLayout};
 use crate::resources::OperationWorkMeter;
 use crate::text::TextMeasurer;
-use crate::{Error, Result};
-use dugong::{RankDir, graphlib::EdgeKey};
 use merman_model::MermaidConfig;
 use merman_model::families::requirement::RequirementDiagramModel;
 use std::{collections::HashMap, sync::Arc};
@@ -33,17 +32,16 @@ pub(super) fn layout(
     work.charge_adapter(work.checked_add(node_count, model.relationships.len())?)?;
     let settings = &css_binding.layout;
     let RequirementMeasurements {
+        direction,
         nodes,
         styles,
         binding: measurement_binding,
     } = measure_requirement(model, config, text_measurer, settings, work_meter)?;
     u32::try_from(nodes.len()).map_err(|_| work.record_arithmetic_overflow())?;
 
-    let (direction, face, perpendicular) = match rank_dir_from(&model.direction) {
-        RankDir::TB => (Direction::Down, Side::Top, Side::Left),
-        RankDir::BT => (Direction::Up, Side::Top, Side::Left),
-        RankDir::LR => (Direction::Right, Side::Left, Side::Top),
-        RankDir::RL => (Direction::Left, Side::Left, Side::Top),
+    let (face, perpendicular) = match direction {
+        Direction::Down | Direction::Up => (Side::Top, Side::Left),
+        Direction::Right | Direction::Left => (Side::Left, Side::Top),
     };
     let mut graph = MeasuredGraph {
         direction,
@@ -83,11 +81,9 @@ pub(super) fn layout(
         nodes
             .get_index_of(id)
             .map(|index| Endpoint::Node(index as u32))
-            .ok_or_else(|| Error::InvalidModel {
-                message: format!("relationship {terminal} node not found: {id}"),
-            })
+            .ok_or_else(|| missing_relationship_node(terminal, id))
     };
-    let mut plans = Vec::with_capacity(graph.edges.capacity());
+    let mut measured_edges = Vec::with_capacity(graph.edges.capacity());
     for (index, relationship) in model.relationships.iter().enumerate() {
         work.charge_adapter(work.checked_add(
             relationship.rel_type.len(),
@@ -95,10 +91,8 @@ pub(super) fn layout(
         )?)?;
         let source = endpoint(&relationship.src, "src")?;
         let target = endpoint(&relationship.dst, "dst")?;
-        let (display, metrics) =
-            measure_requirement_relationship(relationship, text_measurer, &styles)?;
-        let plan = RequirementEdgeLabelPlan::for_relationship(relationship, index, display);
-        let (start_marker, end_marker) = if plan.marker_start {
+        let edge = measure_requirement_relationship(relationship, index, text_measurer, &styles)?;
+        let (start_marker, end_marker) = if edge.plan.marker_start {
             (contains_marker, Marker::default())
         } else {
             (Marker::default(), arrow_marker)
@@ -108,16 +102,13 @@ pub(super) fn layout(
             target,
             min_rank_span: 1,
             weight: 1.0,
-            label: Some(Size {
-                width: metrics.width,
-                height: metrics.height,
-            }),
+            label: Some(edge.label_size),
             start_label: None,
             end_label: None,
             start_marker,
             end_marker,
         });
-        plans.push(plan);
+        measured_edges.push(edge);
     }
 
     let (solved, placement) = placement::solve(
@@ -133,7 +124,7 @@ pub(super) fn layout(
         &solved,
         &profiles,
         |_| 0.0,
-        plans.iter().map(|plan| plan.rendered_id.as_str()),
+        measured_edges.iter().map(|edge| edge.identity().name),
         &mut work,
     )?;
     canonical_routes.placement = placement;
@@ -141,55 +132,31 @@ pub(super) fn layout(
     let mut prepared_nodes = HashMap::with_capacity(nodes.len());
     for ((id, measured), rect) in nodes.into_iter().zip(solved.nodes) {
         work.charge_adapter(id.len())?;
-        layout_nodes.push(LayoutNode {
-            id: id.to_owned(),
-            x: rect.x,
-            y: rect.y,
-            width: rect.width,
-            height: rect.height,
-            is_cluster: false,
-            label_width: None,
-            label_height: None,
-        });
+        layout_nodes.push(requirement_layout_node(id.to_owned(), rect));
         prepared_nodes.insert(
             id.to_owned(),
             RequirementNodeRenderPlan::Semantic(measured.label),
         );
     }
 
-    let mut layout_edges = Vec::with_capacity(plans.len());
-    let mut prepared_edges = HashMap::with_capacity(plans.len());
-    for ((relationship, plan), edge) in model.relationships.iter().zip(plans).zip(solved.edges) {
-        work.charge_adapter(work.checked_add(edge.points.len(), plan.rendered_id.len())?)?;
-        let key = EdgeKey::new(
-            &relationship.src,
-            &relationship.dst,
-            Some(&plan.rendered_id),
+    let mut layout_edges = Vec::with_capacity(measured_edges.len());
+    let mut prepared_edges = RequirementEdgeLabels::with_capacity(measured_edges.len());
+    for (measured, edge) in measured_edges.into_iter().zip(solved.edges) {
+        let identity = measured.identity();
+        work.charge_adapter(work.checked_add(edge.points.len(), identity.name.len())?)?;
+        layout_edges.push(
+            identity.layout_edge(
+                edge.points
+                    .into_iter()
+                    .map(|point| LayoutPoint {
+                        x: point.x,
+                        y: point.y,
+                    })
+                    .collect(),
+                edge.label,
+            ),
         );
-        layout_edges.push(LayoutEdge {
-            id: plan.rendered_id.clone(),
-            from: relationship.src.clone(),
-            to: relationship.dst.clone(),
-            from_cluster: None,
-            to_cluster: None,
-            points: edge
-                .points
-                .into_iter()
-                .map(|point| LayoutPoint {
-                    x: point.x,
-                    y: point.y,
-                })
-                .collect(),
-            label: edge.label,
-            start_label_left: None,
-            start_label_right: None,
-            end_label_left: None,
-            end_label_right: None,
-            start_marker: None,
-            end_marker: None,
-            stroke_dasharray: None,
-        });
-        prepared_edges.insert(key, plan);
+        prepared_edges.insert(identity.into_owned(), measured.plan);
     }
 
     let bounds = (!layout_nodes.is_empty()).then_some(Bounds {

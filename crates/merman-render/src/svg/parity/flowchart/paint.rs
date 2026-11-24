@@ -744,7 +744,7 @@ pub(super) fn edge_geometry(
     })
 }
 
-#[cfg(all(test, feature = "diagram-flowchart"))]
+#[cfg(all(test, feature = "diagram-flowchart", feature = "layout-dagre"))]
 mod tests {
     use super::*;
 
@@ -782,7 +782,7 @@ mod tests {
                 session.work_meter(),
             )
             .unwrap();
-            crate::flowchart::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
+            crate::flowchart::dagre::layout(
                 model,
                 context,
                 &crate::flowchart::FlowchartClassDefinitions::new(&model.class_defs),
@@ -1184,6 +1184,7 @@ A -->|bent| B"
         .unwrap()
     }
 
+    #[cfg(feature = "layout-elk")]
     #[test]
     fn geometry_preserves_the_elk_missing_section_path_and_label() {
         with_source(

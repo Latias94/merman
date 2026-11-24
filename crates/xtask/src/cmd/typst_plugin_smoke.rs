@@ -1368,6 +1368,7 @@ mod tests {
         );
         assert!(artifact.capabilities.contains(&"svg".to_string()));
         assert!(artifact.capabilities.contains(&"analysis".to_string()));
+        assert!(artifact.capabilities.contains(&"layout-dagre".to_string()));
         assert_eq!(artifact.runtime_ids, artifact.capabilities);
         assert_eq!(
             expected_typst_operation_ids(&artifact),

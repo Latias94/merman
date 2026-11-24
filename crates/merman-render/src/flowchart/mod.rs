@@ -3,6 +3,8 @@ pub(crate) mod bpmn;
 mod class_style;
 mod compatibility;
 mod config;
+#[cfg(feature = "layout-dagre")]
+pub(crate) mod dagre;
 mod edge_occurrence;
 #[cfg(feature = "layout-elk")]
 pub mod elk;
@@ -10,7 +12,6 @@ pub(crate) mod native_theme;
 use crate::graph_label as label;
 mod image;
 mod lane_title;
-mod layout;
 #[cfg(any(feature = "layout-elk", feature = "layout-shoal"))]
 mod measured;
 mod node;
@@ -207,8 +208,6 @@ impl Deref for FlowchartRenderModelRef<'_> {
     }
 }
 
-pub(crate) use layout::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter;
-
 pub(crate) use base_typography::{FlowchartBaseTypographyPlan, FlowchartBaseTypographyStyles};
 #[cfg(any(
     feature = "diagram-flowchart",
@@ -248,26 +247,38 @@ pub(crate) use node::{FlowchartRectangleGeometry, PreparedFlowchartNodeGeometry}
 pub(crate) use self_loop::{
     flowchart_dagre_merges_self_loop_segments, flowchart_self_loop_helper_edges,
 };
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+pub(crate) use shapes::validate_flowchart_model_shapes;
 pub(crate) use shapes::{
     FlowchartShape, OrganicShapeGeometry, RelativeArc, bang_geometry, cloud_geometry,
-    is_flowchart_process_shape, validate_flowchart_model_shapes,
-    validate_flowchart_node_asset_dimensions,
+    is_flowchart_process_shape, validate_flowchart_node_asset_dimensions,
 };
+#[cfg(any(
+    feature = "layout-dagre",
+    feature = "layout-elk",
+    feature = "layout-shoal"
+))]
+pub(crate) use style::flowchart_apply_html_node_class_box_metrics;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) use style::flowchart_node_layout_style;
 #[cfg(test)]
 pub(crate) use style::flowchart_swimlane_label_rect_text_style;
 pub(crate) use style::{
     FlowchartRectangleCssSize, FlowchartTerminalForeground, FlowchartTerminalForegroundProvenance,
-    FlowchartTextStyleResolution, flowchart_apply_html_node_class_box_metrics,
-    flowchart_effective_node_class_names, flowchart_effective_text_style_for_classes,
+    FlowchartTextStyleResolution, flowchart_effective_node_class_names,
+    flowchart_effective_text_style_for_classes,
     flowchart_effective_text_style_for_classes_with_provenance,
     flowchart_effective_text_style_for_node_classes, flowchart_insert_style_by_spelling,
     flowchart_is_source_spelled_label_style_key, flowchart_split_mermaid_style_decls,
 };
+#[cfg(any(
+    feature = "layout-dagre",
+    feature = "layout-elk",
+    feature = "layout-shoal"
+))]
+pub(crate) use svg_label_artifact::measure_flowchart_svg_label_for_layout_with_metrics_and_source_style;
 pub(crate) use svg_label_artifact::{
     FlowchartNodeSourceTypography, FlowchartPreparedLabelResolution, FlowchartSvgLabelOwner,
     FlowchartSvgLabelRenderPlan, FlowchartSvgLabelSidecar, FlowchartSvgLabelSidecarBuilder,
-    measure_flowchart_svg_label_for_layout_with_metrics_and_source_style,
     measure_flowchart_svg_label_for_layout_with_source_style,
 };

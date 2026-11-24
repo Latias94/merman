@@ -68,6 +68,7 @@ fn build_proc_macro() -> (Vec<PathBuf>, PathBuf) {
         ("diagram-zenuml", cfg!(feature = "diagram-zenuml")),
         ("svg", cfg!(feature = "svg")),
         ("layout-cytoscape", cfg!(feature = "layout-cytoscape")),
+        ("layout-dagre", cfg!(feature = "layout-dagre")),
         ("layout-elk", cfg!(feature = "layout-elk")),
         ("math", cfg!(feature = "math")),
     ]

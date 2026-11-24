@@ -171,11 +171,7 @@ fn prepare_mindmap_family<'parsed>(
         model,
         &meta.effective_config,
         appearance.text_style(),
-        execution.text_measurer(),
-        execution.math_renderer(),
-        execution.work_meter(),
-        #[cfg(feature = "layout-elk")]
-        execution.elk_operation_seed(),
+        execution,
     )?;
     Ok(BuiltinFamilyArtifact::Mindmap(Box::new(
         MindmapFamilyArtifact {
@@ -244,10 +240,11 @@ fn prepare_block_family<'parsed>(
         &execution.work_meter(),
     )?;
     let edge_routes = crate::block::BlockEdgeRoutes::prepare(
-        &meta.effective_config,
         model,
         &mut layout,
         &typography_theme,
+        #[cfg(feature = "layout-shoal")]
+        execution.layout_backend(),
         &execution.work_meter(),
     )?;
     let node_bindings =
@@ -392,6 +389,7 @@ fn prepare_state_family<'parsed>(
     let style = crate::state::StateStylePlan::resolve(
         model,
         &meta.effective_config,
+        execution.layout_backend(),
         execution.native_family_theme::<crate::state::StateThemeAdapter>(),
         execution.family.session().canvas_background(),
     );
@@ -485,11 +483,10 @@ fn prepare_architecture_family<'parsed>(
     let native = execution.native_family_theme::<crate::architecture::ArchitectureThemeAdapter>();
     let group_theme =
         crate::architecture::ArchitectureGroupThemePlan::resolve(native, &meta.effective_config);
+    #[cfg(feature = "layout-cytoscape")]
     let config = meta.effective_config.as_value();
     #[cfg(feature = "layout-shoal")]
-    if crate::layout_backend::resolve_architecture_layout(config).backend
-        == crate::layout_backend::GraphLayoutBackend::Shoal
-    {
+    if execution.layout_backend() == GraphLayoutBackend::Shoal {
         let (layout, geometry) = crate::architecture::layout_architecture_shoal(
             model,
             &meta.effective_config,
@@ -505,7 +502,7 @@ fn prepare_architecture_family<'parsed>(
         )));
     }
     #[cfg(feature = "layout-cytoscape")]
-    {
+    if execution.layout_backend() == GraphLayoutBackend::CoseBilkent {
         let layout = crate::architecture::layout_architecture_diagram_typed(
             model,
             config,
@@ -514,20 +511,18 @@ fn prepare_architecture_family<'parsed>(
             execution.work_meter_ref(),
             group_theme.native_style().map(|native| &native.layout_text),
         )?;
-        Ok(BuiltinFamilyArtifact::Architecture(Box::new(
+        return Ok(BuiltinFamilyArtifact::Architecture(Box::new(
             ArchitectureFamilyArtifact {
                 pair: FamilyPair::new(model, layout),
                 group_theme,
                 #[cfg(feature = "layout-shoal")]
                 shoal: None,
             },
-        )))
+        )));
     }
-    #[cfg(not(feature = "layout-cytoscape"))]
-    Err(Error::MissingCapability {
-        capability: crate::RenderCapability::LayoutCytoscape,
-        diagram_type: meta.diagram_type.clone(),
-    })
+    Err(execution
+        .layout_backend()
+        .unavailable_for(&meta.diagram_type))
 }
 
 #[inline(never)]
@@ -555,9 +550,7 @@ fn prepare_c4_family<'parsed>(
         )
     };
     #[cfg(feature = "layout-shoal")]
-    let (layout, shoal) = if crate::layout_backend::resolve_graph_layout(config).backend
-        == crate::layout_backend::GraphLayoutBackend::Shoal
-    {
+    let (layout, shoal) = if execution.layout_backend() == GraphLayoutBackend::Shoal {
         let (layout, geometry) = crate::c4::layout_c4_shoal(
             model,
             config,
@@ -576,6 +569,7 @@ fn prepare_c4_family<'parsed>(
         &layout,
         &mut typography_theme,
         &meta.effective_config,
+        execution.layout_backend() == GraphLayoutBackend::Shoal,
     )?;
     Ok(BuiltinFamilyArtifact::C4(Box::new(C4FamilyArtifact {
         pair: FamilyPair::new(model, layout),
@@ -770,10 +764,14 @@ fn prepare_er_family<'parsed>(
     });
     let font_family = crate::config::config_font_family_css(&meta.effective_config);
     let config = crate::er::ErConfigView::new(meta.effective_config.as_value());
+    let backend = execution.layout_backend();
+    let relationship_html_labels =
+        config.relationship_html_labels(backend == GraphLayoutBackend::Swimlane);
     let settings = config.layout_settings_with_native_style(
         &model.direction,
         Some(&font_family),
         native.as_ref(),
+        relationship_html_labels,
     );
     let crate::er::ErPreparedLayout {
         layout,
@@ -781,6 +779,7 @@ fn prepare_er_family<'parsed>(
     } = crate::er::layout_er_diagram_typed(
         model,
         meta.effective_config.as_value(),
+        backend,
         execution.text_measurer(),
         #[cfg(feature = "layout-elk")]
         execution.elk_operation_seed(),
@@ -792,6 +791,7 @@ fn prepare_er_family<'parsed>(
     let entity_theme = crate::er::ErEntityThemePlan::resolve(
         &meta.effective_config,
         theme.zip(native),
+        relationship_html_labels,
         model,
         &layout,
         execution.work_meter_ref(),
@@ -969,13 +969,12 @@ fn prepare_requirement_family<'parsed>(
         crate::requirement::layout_requirement_diagram_typed_with_work_meter_and_typography(
             model,
             meta.effective_config.as_config(),
+            execution.layout_backend(),
             execution.text_measurer(),
             paint_theme.css(),
             &execution.work_meter(),
-            #[cfg(feature = "layout-shoal")]
+            #[cfg(any(feature = "layout-elk", feature = "layout-shoal"))]
             Some(execution),
-            #[cfg(feature = "layout-elk")]
-            execution.elk_operation_seed(),
         )?;
     Ok(BuiltinFamilyArtifact::Requirement(Box::new(
         RequirementFamilyArtifact {
@@ -1336,33 +1335,24 @@ pub(super) fn prepare_non_class_render<'parsed>(
         #[cfg(feature = "diagram-usecase")]
         RenderSemanticModel::Usecase(model) => {
             BuiltinFamilyArtifact::Usecase(prepare_pair(model, |model| {
-                crate::usecase::prepare_usecase_diagram(
-                    model,
-                    &meta.effective_config,
-                    execution.native_family_theme::<crate::usecase::UsecaseThemeAdapter>(),
-                    execution.family.session().canvas_background(),
-                    execution.text_measurer(),
-                    execution.math_renderer(),
-                    execution.work_meter(),
-                    #[cfg(feature = "layout-shoal")]
-                    &execution,
-                    #[cfg(feature = "layout-elk")]
-                    execution.elk_operation_seed(),
-                )
+                crate::usecase::prepare_usecase_diagram(model, &meta.effective_config, &execution)
             })?)
         }
         #[cfg(feature = "diagram-agentflow")]
         RenderSemanticModel::Agentflow(model) => {
             let (flowchart, render_context) = model.to_flowchart_model();
-            let config = project_agentflow_flowchart_config(
+            let mut projected_metadata = Box::new(meta.clone());
+            projected_metadata.effective_config = project_agentflow_flowchart_config(
                 &meta.effective_config,
+                execution.layout_backend(),
                 execution.work_meter_ref().control(),
             )?;
+            let config = &projected_metadata.effective_config;
             let flow = prepare_flowchart_artifact(
                 std::borrow::Cow::Owned(flowchart),
                 std::borrow::Cow::Owned(render_context),
                 &execution,
-                &config,
+                config,
                 false,
                 preparation,
                 |layout| crate::svg::FlowchartNodeLayoutView::Flowchart(layout),
@@ -1371,7 +1361,7 @@ pub(super) fn prepare_non_class_render<'parsed>(
                         model,
                         render_context,
                         class_defs,
-                        &config,
+                        config,
                         &execution,
                         sidecar,
                         edge_style_plan,
@@ -1381,6 +1371,7 @@ pub(super) fn prepare_non_class_render<'parsed>(
             BuiltinFamilyArtifact::Agentflow {
                 semantic: model,
                 flow,
+                projected_metadata,
             }
         }
         RenderSemanticModel::CustomJson(_) => {

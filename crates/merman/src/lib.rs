@@ -56,17 +56,16 @@
 //! - `math`: opt-in pure-Rust math label rendering for the SVG path; this implies
 //!   `svg` and is not included in defaults.
 //!
-//! The default feature set is `all-diagrams`, `svg`, `layout-cytoscape`, and `layout-elk`: it supports
-//! all built-in parsers, Mermaid 12's default ELK SVG path, deterministic rendering, and the Cytoscape
-//! layout engine without ambient system adapters. Enable `math` explicitly to render math labels.
+//! Defaults select `all-diagrams`, `svg`, `layout-cytoscape`, `layout-dagre`, and `layout-elk`.
+//! Mermaid 12 selects ELK for ordinary graph diagrams and Cytoscape for Architecture and Mindmap.
+//! Enable `math` explicitly to render math labels.
 //! Distributed artifacts must retain the ELK implementation's EPL-2.0 notices and source provenance.
-//! Use `default-features = false` with explicit family selectors, `svg`, and `layout-cytoscape` to omit
-//! ELK, or choose individual capability leaves when you need a measured artifact closure.
+//! To use Dagre without ELK, set `default-features = false` and select the required family features
+//! and `layout-dagre`. Add `layout-cytoscape` for Architecture and the default Mindmap layout.
 //!
 //! Parser-only applications should depend on `merman-core` directly. If they need this facade's
 //! re-exports instead, set `default-features = false` and select the required `diagram-*` features
-//! (or `all-diagrams` to retain the previous parser surface). An ordinary `merman` dependency
-//! intentionally compiles SVG rendering with both layout engines.
+//! (or `all-diagrams` for all built-in parsers).
 //!
 //! # Quick start
 //!

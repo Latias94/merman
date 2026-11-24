@@ -104,6 +104,8 @@ macro_rules! native_sdk_artifact_contract {
             $crate::CapabilityKey::Fixes,
             #[cfg(feature = "layout-cytoscape")]
             $crate::CapabilityKey::LayoutCytoscape,
+            #[cfg(feature = "layout-dagre")]
+            $crate::CapabilityKey::LayoutDagre,
             #[cfg(feature = "layout-elk")]
             $crate::CapabilityKey::LayoutElk,
             #[cfg(feature = "layout-shoal")]
@@ -844,6 +846,10 @@ impl ValidatedArtifactContract {
             (
                 CapabilityKey::LayoutCytoscape,
                 merman::svg::RenderCapability::LayoutCytoscape,
+            ),
+            (
+                CapabilityKey::LayoutDagre,
+                merman::svg::RenderCapability::LayoutDagre,
             ),
             (
                 CapabilityKey::LayoutElk,

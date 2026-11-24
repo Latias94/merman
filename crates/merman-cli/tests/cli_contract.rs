@@ -1238,6 +1238,7 @@ fn compiled_capabilities_match_the_full_test_artifact() {
         "icons",
         "jpeg",
         "layout-cytoscape",
+        "layout-dagre",
         "layout-elk",
         "markdown",
         "network-icons",

@@ -1341,14 +1341,6 @@ impl PresentationArtifact {
     }
 
     fn admit_target(&self, target: RenderTarget) -> Result<RenderTarget, RenderError> {
-        #[cfg(feature = "svg")]
-        if matches!(&target, RenderTarget::EdgeGeometryJson(_)) {
-            crate::operation_runner::checkpoint(self.control(), OperationPhase::Layout)?;
-            if !merman_render::family::has_edge_geometry(self.parsed())? {
-                return Ok(target);
-            }
-        }
-
         #[cfg(feature = "native-fonts")]
         let target = target
             .normalize_native_font_context()?
@@ -1397,6 +1389,21 @@ impl PresentationArtifact {
 
     /// Consumes this operation-owned presentation artifact into one typed output target.
     pub fn render(self, target: RenderTarget) -> Result<RenderOutput, RenderError> {
+        #[cfg(feature = "svg")]
+        if let RenderTarget::EdgeGeometryJson(request) = &target {
+            crate::operation_runner::checkpoint(self.control(), OperationPhase::Layout)?;
+            if !merman_render::family::has_edge_geometry(self.parsed())? {
+                check_edge_geometry_portability(request)?;
+                merman_render::family::validate_layout_options(self.parsed(), &request.layout)?;
+                crate::operation_runner::checkpoint(self.control(), OperationPhase::Emit)?;
+                return Ok(RenderOutput::EdgeGeometryJson(Some(
+                    merman_render::model::EdgePaintGeometryOutput::new(
+                        self.parsed().metadata().diagram_type.clone(),
+                        Vec::new(),
+                    ),
+                )));
+            }
+        }
         let target = self.admit_target(target)?;
         match target {
             RenderTarget::Semantic => Err(RenderError::UnsupportedTarget(
@@ -1598,11 +1605,7 @@ fn with_prepared_layout_json<T>(
 }
 
 #[cfg(feature = "svg")]
-fn render_edge_geometry_json_target(
-    semantic: PresentationArtifact,
-    request: SvgRequest,
-) -> Result<Option<merman_render::model::EdgePaintGeometryOutput>, RenderError> {
-    crate::operation_runner::checkpoint(semantic.control(), OperationPhase::Layout)?;
+fn check_edge_geometry_portability(request: &SvgRequest) -> Result<(), RenderError> {
     if request.environment.theme_portability_requirement()
         == ThemePortabilityRequirement::RequirePortable
     {
@@ -1610,14 +1613,16 @@ fn render_edge_geometry_json_target(
             target: "edge-geometry-json",
         });
     }
-    merman_render::family::validate_layout_options(semantic.parsed(), &request.layout)?;
-    if !merman_render::family::has_edge_geometry(semantic.parsed())? {
-        crate::operation_runner::checkpoint(semantic.control(), OperationPhase::Emit)?;
-        return Ok(Some(merman_render::model::EdgePaintGeometryOutput::new(
-            semantic.parsed().metadata().diagram_type.clone(),
-            Vec::new(),
-        )));
-    }
+    Ok(())
+}
+
+#[cfg(feature = "svg")]
+fn render_edge_geometry_json_target(
+    semantic: PresentationArtifact,
+    request: SvgRequest,
+) -> Result<Option<merman_render::model::EdgePaintGeometryOutput>, RenderError> {
+    crate::operation_runner::checkpoint(semantic.control(), OperationPhase::Layout)?;
+    check_edge_geometry_portability(&request)?;
     let (parsed, operation) = semantic.into_parts();
     let session = request.environment.begin_session_in_context(
         parsed.metadata(),
@@ -1647,8 +1652,7 @@ fn render_svg_plan_target(
         operation.context,
         operation.control,
     )?;
-    merman_render::family::validate_layout_options(parsed.parsed(), &request.layout)?;
-    merman_render::family::plan_render(parsed.parsed(), &session)
+    merman_render::family::plan_render_with_options(parsed.parsed(), &request.layout, &session)
         .map(Some)
         .map_err(RenderError::from)
 }

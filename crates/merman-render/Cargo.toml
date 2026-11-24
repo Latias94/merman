@@ -100,6 +100,7 @@ system-timezone = ["merman-model/system-timezone"]
 system-random = ["merman-model/system-random"]
 system-timing = ["merman-model/system-timing"]
 layout-cytoscape = ["dep:manatee"]
+layout-dagre = ["dep:dugong"]
 layout-elk = ["dep:merman-layout-elk"]
 layout-shoal = ["dep:merman-layout-shoal"]
 math = [
@@ -119,7 +120,7 @@ base64.workspace = true
 cssparser.workspace = true
 data-url.workspace = true
 imagesize = { workspace = true, optional = true }
-dugong.workspace = true
+dugong = { workspace = true, optional = true }
 euclid.workspace = true
 indexmap = { workspace = true, features = ["serde"] }
 kurbo.workspace = true

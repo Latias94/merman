@@ -29,8 +29,8 @@ This guide covers `merman-render 0.11.0`. Upgrade shared model and renderer pack
 
 Defaults are empty. Select `all-diagrams` or the required `diagram-*` families for layout and SVG
 handlers; these selectors also forward to model data. SVG itself is intrinsic to this crate. For example,
-`default-features = false, features = ["diagram-flowchart", "diagram-gantt"]` selects those two
-families without optional engines or math. Family payloads and artifacts are conditional public
+`default-features = false, features = ["diagram-sequence", "diagram-pie"]` renders those families
+with their own layouts. Select a `layout-*` feature to render families that require a graph engine. Family payloads and artifacts are conditional public
 types. If another dependency widens model data, a family missing its local render handler returns an
 explicit unsupported result before backend planning. See the
 [migration guide](../../docs/FEATURES.md#select-diagram-families).
@@ -40,11 +40,18 @@ Optional features add distinct backends or system adapters:
 | Feature | Adds |
 | --- | --- |
 | `layout-cytoscape` | Architecture FCoSE and non-`tidy-tree` Mindmap COSE-Bilkent layout through `manatee`. |
-| `layout-elk` | Source-backed ELK layered layout for Flowchart ELK, Class, and ER. |
+| `layout-dagre` | Dagre compatibility adapter and Mermaid 12 loader fallback for the supported graph families. |
+| `layout-elk` | Mermaid’s registered ELK layout algorithms for the supported graph families. |
+| `layout-shoal` | Experimental layered layout and orthogonal edge routing for supported families. |
 | `math` | RaTeX parsing, layout, SVG output, and embedded math fonts. |
 | `system-clock`, `system-timezone`, `system-random`, `system-timing` | Explicit host runtime adapters; none are selected by default. |
 
-Omitting an optional backend preserves parsing and semantic support. Flowchart, Class, and ER follow Mermaid 12's registered-layout lookup: an unknown layout, or an ELK request in a build without `layout-elk`, resolves to Dagre before capability admission. The original requested configuration remains available in the prepared artifact metadata. An installed backend denied by the host policy still returns a typed capability error. Layout failures, cancellation, work limits, and missing math support do not trigger layout fallback.
+The render plan identifies the selected backend and reports missing features before layout. With
+`layout-dagre` compiled, an ordinary graph family can fall back to Dagre when its ELK loader is
+absent. Otherwise an ELK request reports missing `layout-elk`. The original requested configuration
+remains available in the artifact metadata. A host that denies a compiled selection receives a
+typed capability error. Cancellation, resource limits, and solver failures propagate from the
+selected execution. [Rust feature recipes](../../docs/FEATURES.md#svg-without-general-purpose-layout-engines)
 
 ## Render Environment
 
@@ -67,6 +74,8 @@ Use `DeterministicTextMeasurer::with_width_callback(...)` when the application c
 This is a breaking replacement for independently configured layout and SVG services. Text and math adapters no longer live in `LayoutOptions`, and render code does not read process-global policy. Production request values stay in `SvgRenderOptions`; diagnostics, including timing output, live in `SvgDebugOptions` and are accepted only by the explicit `*_with_debug` entry points.
 
 ## Low-Level Pipeline Example
+
+Enable `diagram-flowchart,layout-dagre` for this example.
 
 ```rust
 use merman_core::{MermaidEngine, ParseOptions};

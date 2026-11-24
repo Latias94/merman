@@ -793,12 +793,70 @@ fn descriptor_implications_are_closed_automatically() {
     assert!(CONTRACT.exposes_capability(CapabilityKey::LayoutElk));
 }
 
-#[cfg(feature = "svg")]
+#[cfg(all(feature = "layout-dagre", feature = "diagram-flowchart"))]
+#[test]
+fn compiled_dagre_requires_an_artifact_declaration() {
+    const SVG_ARTIFACT: ArtifactContractSpec =
+        ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
+            .with_operations(&[
+                OperationKey::LayoutJson,
+                OperationKey::Svg,
+                OperationKey::SvgPlanJson,
+            ]);
+    const OMITTED: ValidatedArtifactContract = SVG_ARTIFACT.materialize();
+    const DECLARED: ValidatedArtifactContract = SVG_ARTIFACT
+        .with_supplemental_capabilities(&[CapabilityKey::LayoutDagre])
+        .materialize();
+    let omitted = OMITTED.create_engine(b"").unwrap();
+    let declared = DECLARED.create_engine(b"").unwrap();
+
+    assert!(merman::svg::layout_dagre_available());
+    assert!(
+        !OMITTED
+            .runtime_capabilities()
+            .has_capability("layout-dagre")
+    );
+    assert!(
+        DECLARED
+            .runtime_capabilities()
+            .has_capability("layout-dagre")
+    );
+    for layout in ["dagre", "elk"] {
+        if layout == "elk" && merman::svg::layout_elk_available() {
+            continue;
+        }
+        let source = format!("---\nconfig:\n  layout: {layout}\n---\nflowchart TD\nA --> B");
+        let source = source.as_bytes();
+        let plan: serde_json::Value =
+            serde_json::from_slice(&omitted.svg_plan_json(source).unwrap()).unwrap();
+        assert_eq!(
+            plan["required_capability_ids"],
+            serde_json::json!(["layout-dagre"])
+        );
+        assert_eq!(
+            plan["missing_capability_ids"],
+            serde_json::json!(["layout-dagre"])
+        );
+        assert_eq!(plan["ready"], false);
+        for error in [
+            omitted.render_svg(source).unwrap_err(),
+            omitted.layout_json(source).unwrap_err(),
+        ] {
+            assert_eq!(error.kind(), crate::BindingErrorKind::MissingCapability);
+            assert_eq!(error.capability_id(), Some("layout-dagre"));
+        }
+        assert!(declared.render_svg(source).is_ok());
+        assert!(declared.layout_json(source).is_ok());
+    }
+}
+
+#[cfg(all(feature = "layout-dagre", feature = "diagram-flowchart"))]
 #[test]
 fn resource_free_font_stack_remains_available_without_embedded_fonts() {
     const CONTRACT: ValidatedArtifactContract =
         ArtifactContractSpec::new(TargetKey::Native, crate::BindingTransportKey::Rust)
             .with_operations(&[OperationKey::Svg])
+            .with_supplemental_capabilities(&[CapabilityKey::LayoutDagre])
             .materialize();
     let options = br#"{"site_config":{"layout":"dagre"},"theme":{"schema_version":2,"extends":"studio","typography":{"sans":["Example Host Font","sans-serif"]}}}"#;
     let engine = CONTRACT

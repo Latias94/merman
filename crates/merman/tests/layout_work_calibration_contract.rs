@@ -1,6 +1,7 @@
 #![cfg(all(
     feature = "svg",
     feature = "layout-cytoscape",
+    feature = "layout-dagre",
     feature = "layout-elk",
     feature = "math"
 ))]

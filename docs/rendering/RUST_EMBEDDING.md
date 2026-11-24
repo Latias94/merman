@@ -14,16 +14,45 @@ The [0.10 prepared-rendering migration](../migrations/render-reuse-host-integrat
 
 Choose these independently. `diagram-*` selects built-in languages and their implementations; `svg` selects SVG output; `layout-*` selects optional layout engines and implies `svg`. A layout feature does not select a language, and a language feature does not select an optional layout engine. This keeps parser-only users and applications with small allowlists from acquiring unrelated implementations.
 
-For an SVG host that needs all built-in diagram families and Cytoscape support:
+For an SVG host that needs all built-in diagram families and the Dagre and Cytoscape adapters, use this dependency.
 
 ```toml
 [dependencies]
-merman = { path = "../merman/crates/merman", default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape"] }
+merman = { path = "../merman/crates/merman", default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape", "layout-dagre"] }
 ```
 
-Default facade builds include all languages, SVG, Cytoscape and ELK. Math is opt-in through `math`; `complete-svg` selects SVG and Cytoscape, and `complete-svg-elk` adds ELK. Neither aggregate selects math or diagram families. Add `math` explicitly when upgrading a previously math-enabled aggregate selection. Disable defaults and select the required families plus an aggregate or individual output/layout leaves when the default exceeds the host's requirements. See [Features](../FEATURES.md) for the complete matrix and distribution notices.
+Default facade builds include all languages, SVG, Dagre, ELK, and Cytoscape. Math is opt-in through `math`. `complete-svg` selects SVG, Dagre, and Cytoscape, and `complete-svg-elk` adds ELK. Select math and diagram families independently of these aggregates. Add `math` explicitly when upgrading a previously math-enabled aggregate selection. Disable defaults and select the required families plus an aggregate or individual output/layout leaves when the default exceeds the host's requirements. See [Features](../FEATURES.md) for the complete matrix and distribution notices.
 
 For a host accepting only Flowchart and Sequence, replace `all-diagrams` with `diagram-flowchart, diagram-sequence`. Forward selectors from a reusable library rather than assuming another dependency will enable them. Cargo features are additive: inspect the final application with `cargo tree -e features`, and verify a narrow selection in an independent consumer workspace.
+
+## Set an application layout default
+
+This development-build example enables Shoal as the only graph engine for Flowchart SVG.
+
+```toml
+[dependencies]
+merman = { path = "../merman/crates/merman", default-features = false, features = ["svg", "diagram-flowchart", "layout-shoal"] }
+serde_json = "1"
+```
+
+```rust
+use merman::{MermaidEngine, Renderer, SourcePresentationConfig};
+
+let config = SourcePresentationConfig::from_value(serde_json::json!({
+    "flowchart": { "layout": "shoal" }
+}));
+let renderer = Renderer::new()
+    .with_presentation_engine(MermaidEngine::new().with_site_config(config));
+```
+
+The scoped key sets the Flowchart default for that renderer. For a global default, set top-level
+`"layout": "shoal"`. Document frontmatter and directives follow Mermaid’s configuration
+precedence. A document override can request a different engine and will need that engine’s feature.
+
+For a defaults-off build that previously depended on Dagre, add `layout-dagre`. With a host allowlist,
+include `RenderCapabilityPolicy::deny_all().with_allowed(RenderCapability::LayoutDagre)` in the
+policy installed through `SvgEnvironment::with_capability_policy`, along with any other capabilities
+your application needs. [Feature recipes](../FEATURES.md#svg-without-general-purpose-layout-engines)
 
 ## Embed canonical semantics without presentation
 
@@ -185,7 +214,7 @@ The reviewed Zed reference snapshot pins `0.8.0-alpha.5` and selects `svg, layou
 
 ```toml
 merman = { path = "../merman/crates/merman", default-features = false, features = [
-    "svg", "layout-cytoscape",
+    "svg", "layout-cytoscape", "layout-dagre",
     "diagram-flowchart", "diagram-sequence", "diagram-class", "diagram-state",
     "diagram-er", "diagram-gantt", "diagram-pie", "diagram-git-graph",
     "diagram-mindmap", "diagram-timeline", "diagram-quadrant-chart",
@@ -215,7 +244,7 @@ Known identities remain in `diagram_family_capabilities()` even when their parse
 
 A widened core dependency can have more parsers than a locally selected SVG or ASCII renderer. Check output planning and output-local capabilities too; enabling a parser elsewhere is not proof that this output has its family handler. Unknown or custom registry failures retain their original unsupported diagnostic.
 
-Without compiled ELK, an ELK layout request resolves to the family's registered fallback, usually Dagre. Mindmap can use Dagre when Cytoscape is unavailable. Architecture requires Cytoscape for its default layout and `layout-shoal` when selected explicitly. A required backend that is missing or denied by runtime policy returns a typed capability error. Use the render plan to inspect the capabilities a particular diagram requires.
+For ordinary graph diagrams, a missing ELK loader falls back to Dagre when `layout-dagre` is compiled. If neither is available, an ELK request reports missing `layout-elk`. Mindmap uses its own registered fallback chain through Cytoscape and Dagre. Architecture requires Cytoscape for its default layout and `layout-shoal` when selected explicitly. The SVG and layout JSON operations report a typed missing-capability error for an unavailable or denied backend before measuring labels. Inspect the SVG render plan for the required and missing IDs.
 
 ## Review presentation and host services
 

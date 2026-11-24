@@ -87,6 +87,7 @@ impl OperationLayoutWorkControl {
         self.record_arithmetic_overflow()
     }
 
+    #[cfg(feature = "layout-dagre")]
     pub(crate) fn map_dugong_error(&mut self, error: impl Into<dugong::LayoutError>) -> Error {
         match error.into() {
             dugong::LayoutError::Work(dugong::WorkError::Interrupted) => {
@@ -194,11 +195,7 @@ impl OperationLayoutWorkControl {
     }
 }
 
-pub(crate) type DugongOperationWorkControl = OperationLayoutWorkControl;
-
-#[cfg(feature = "layout-elk")]
-pub(crate) type ElkOperationWorkControl = OperationLayoutWorkControl;
-
+#[cfg(feature = "layout-dagre")]
 impl dugong::WorkControl for OperationLayoutWorkControl {
     fn charge(&mut self, units: usize) -> std::result::Result<(), dugong::WorkError> {
         if self.rejection.borrow().is_some() {
@@ -388,7 +385,7 @@ mod shoal_tests {
 
 #[cfg(all(test, feature = "layout-elk"))]
 mod tests {
-    use super::ElkOperationWorkControl;
+    use super::OperationLayoutWorkControl;
     use crate::Error;
     use crate::resources::{
         OperationWorkMeter, RenderResourcePolicy, RenderResourceProfile, ResourceLimitCause,
@@ -417,7 +414,7 @@ mod tests {
                 policy,
                 control.clone(),
             ));
-            let mut work_control = ElkOperationWorkControl::new(Arc::clone(&meter));
+            let mut work_control = OperationLayoutWorkControl::new(Arc::clone(&meter));
             ElkWorkControl::check(&mut work_control, PREFIX).unwrap();
             ElkWorkControl::charge(&mut work_control, PREFIX).unwrap();
             assert_eq!(meter.used(), PREFIX);
@@ -480,7 +477,7 @@ mod tests {
                 policy,
                 fresh_control.clone(),
             ));
-            let mut fresh = ElkOperationWorkControl::new(Arc::clone(&fresh_meter));
+            let mut fresh = OperationLayoutWorkControl::new(Arc::clone(&fresh_meter));
             for units in [PREFIX, NEXT] {
                 ElkWorkControl::check(&mut fresh, units).unwrap();
                 ElkWorkControl::charge(&mut fresh, units).unwrap();
@@ -506,7 +503,7 @@ mod tests {
             policy,
             control.clone(),
         ));
-        let mut work_control = ElkOperationWorkControl::new(Arc::clone(&meter));
+        let mut work_control = OperationLayoutWorkControl::new(Arc::clone(&meter));
         ElkWorkControl::check(&mut work_control, PREFIX).unwrap();
         ElkWorkControl::charge(&mut work_control, PREFIX).unwrap();
 

@@ -144,10 +144,11 @@ fn render_block_direct_with_policy(
         &layout_meter,
     )?;
     let edge_routes = BlockEdgeRoutes::prepare(
-        effective_config,
         model,
         &mut layout,
         &typography_theme,
+        #[cfg(feature = "layout-shoal")]
+        crate::layout_backend::GraphLayoutBackend::Native,
         &layout_meter,
     )?;
     let session = crate::environment::RenderEnvironment::deterministic()

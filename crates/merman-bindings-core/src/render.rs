@@ -235,9 +235,10 @@ mod tests {
     fn render_svg_flowchart_elk_follows_the_artifact_owner_feature() {
         let result = render_svg(b"flowchart-elk TD\nA[Hello] --> B[World]", b"");
 
-        if !cfg!(feature = "layout-elk") && merman_render::layout_elk_available() {
-            let error = result.expect_err("ambient ELK cannot widen the artifact contract");
-            assert_eq!(error.capability_id(), Some("layout-elk"));
+        let (required, ready) = crate::svg_plan::expected_elk_request();
+        if !ready {
+            let error = result.expect_err("the selected layout requires an artifact capability");
+            assert_eq!(error.capability_id(), Some(required));
             return;
         }
         let svg = String::from_utf8(result.unwrap()).expect("SVG is UTF-8");
@@ -258,9 +259,10 @@ mod tests {
             b"---\nconfig:\n  layout: elk\n---\nflowchart TD\nA[Hello] --> B[World]",
             b"",
         );
-        if merman_render::layout_elk_available() {
-            let error = result.expect_err("ambient ELK cannot widen the artifact contract");
-            assert_eq!(error.capability_id(), Some("layout-elk"));
+        let (required, ready) = crate::svg_plan::expected_elk_request();
+        if !ready {
+            let error = result.expect_err("the selected layout requires an artifact capability");
+            assert_eq!(error.capability_id(), Some(required));
             return;
         }
         let fallback = result.expect("an unregistered ELK loader uses the family fallback");
@@ -322,6 +324,7 @@ mod tests {
         assert!(svg.contains("data-merman-foreignobject"));
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn render_svg_static_pipeline_preserves_the_body_and_elides_unused_palette_rules() {
         let source = b"---\nconfig:\n  layout: dagre\n---\nflowchart TD\nA[Start] --> B[Done]";

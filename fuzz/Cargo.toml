@@ -22,6 +22,7 @@ render = [
     "svg",
     "merman/svg",
     "merman/layout-cytoscape",
+    "merman/layout-dagre",
     "merman/layout-elk",
     "merman/math",
 ]
@@ -33,7 +34,7 @@ tree-sitter = ["dep:tree-sitter", "dep:tree-sitter-mermaid"]
 libfuzzer-sys = "0.4"
 merman = { path = "../crates/merman", default-features = false, optional = true }
 merman-model = { path = "../crates/merman-model", default-features = false, optional = true }
-merman-ffi = { path = "../crates/merman-ffi", default-features = false, optional = true, features = ["all-diagrams", "analysis", "fixes", "ascii", "svg", "png", "jpeg", "pdf", "layout-cytoscape", "layout-elk", "math", "native-runtime"] }
+merman-ffi = { path = "../crates/merman-ffi", default-features = false, optional = true, features = ["all-diagrams", "analysis", "fixes", "ascii", "svg", "png", "jpeg", "pdf", "layout-cytoscape", "layout-dagre", "layout-elk", "math", "native-runtime"] }
 merman-render = { path = "../crates/merman-render", default-features = false, optional = true }
 roxmltree = { version = "0.21.2", optional = true }
 tree-sitter = { version = "=0.27.1", optional = true }

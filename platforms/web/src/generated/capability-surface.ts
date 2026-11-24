@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:af9b083086538892622758a9724ce178d714d4dfbb34a70792cd94d849a839cd" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:0c26d41286136ae5f3a76c0b6bd1cb6afa8d8166043f91172c0487dcf52d476c" as const;
 
 export const WEB_CAPABILITIES = [
   {
@@ -29,6 +29,13 @@ export const WEB_CAPABILITIES = [
   },
   {
     "id": "layout-cytoscape",
+    "kind": "engine",
+    "implications": [
+      "svg"
+    ]
+  },
+  {
+    "id": "layout-dagre",
     "kind": "engine",
     "implications": [
       "svg"
@@ -212,6 +219,7 @@ export const WEB_CAPABILITY_IDS = [
   "editor",
   "fixes",
   "layout-cytoscape",
+  "layout-dagre",
   "layout-elk",
   "layout-shoal",
   "math",

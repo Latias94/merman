@@ -1,27 +1,30 @@
 use crate::environment::{BuiltinTextMeasurementOperationCarrier, TextMeasurementOperation};
+use crate::graph_layout::ir::{Direction, Rect, Size, direction_from_rank};
+use crate::layout_backend::GraphLayoutBackend;
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 use crate::layout_work::OperationLayoutWorkControl;
-use crate::model::{
-    Bounds, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, RequirementDiagramLayout,
-};
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+use crate::model::Bounds;
+use crate::model::{LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint, RequirementDiagramLayout};
 #[cfg(test)]
 use crate::resources::RenderResourcePolicy;
 use crate::resources::{ModelComplexity, OperationWorkMeter};
 use crate::text::{MermaidMarkdownWordType, TextMeasurer, TextMetrics, TextStyle, WrapMode};
 use crate::{Error, Result};
-use dugong::graphlib::{EdgeKey, Graph, GraphOptions};
-use dugong::{EdgeLabel, GraphLabel, LabelPos, NodeLabel, RankDir};
-use indexmap::{IndexMap, map::Entry};
+use indexmap::{Equivalent, IndexMap, map::Entry};
 use merman_model::families::requirement::{
     RequirementDiagramModel, RequirementElement, RequirementNode, RequirementRelationship,
 };
 #[cfg(test)]
 use serde_json::Value;
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 mod config;
 mod css_binding;
+#[cfg(feature = "layout-dagre")]
+mod dagre;
 #[cfg(feature = "layout-elk")]
 mod elk;
 mod html_label;
@@ -50,7 +53,7 @@ fn requirement_layout_work_units(model: &RequirementDiagramModel) -> usize {
         .iter()
         .filter(|relationship| relationship.src == relationship.dst)
         .count();
-    // Mermaid expands every self-loop into two labelRect nodes and three layout edges.
+    // Keep the legacy admission charge for both parity layouts, including Dagre's loop expansion.
     let node_count = source_node_count.saturating_add(self_loop_count.saturating_mul(2));
     let edge_count = source_edge_count.saturating_add(self_loop_count.saturating_mul(2));
     // Dugong's ranking, crossing, and routing phases repeatedly inspect graph incidence. Charge a
@@ -59,26 +62,6 @@ fn requirement_layout_work_units(model: &RequirementDiagramModel) -> usize {
     node_count
         .saturating_add(edge_count)
         .saturating_add(node_count.saturating_mul(edge_count))
-}
-
-fn normalize_dir(direction: &str) -> String {
-    match direction.trim().to_uppercase().as_str() {
-        "TB" | "TD" => "TB".to_string(),
-        "BT" => "BT".to_string(),
-        "LR" => "LR".to_string(),
-        "RL" => "RL".to_string(),
-        other => other.to_string(),
-    }
-}
-
-fn rank_dir_from(direction: &str) -> RankDir {
-    match normalize_dir(direction).as_str() {
-        "TB" => RankDir::TB,
-        "BT" => RankDir::BT,
-        "LR" => RankDir::LR,
-        "RL" => RankDir::RL,
-        _ => RankDir::TB,
-    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -148,7 +131,7 @@ pub(crate) struct RequirementPreparedArtifact {
     render_layout: Option<RequirementDiagramLayout>,
     route_contract: crate::graph_layout::RouteContract,
     nodes: HashMap<String, RequirementNodeRenderPlan>,
-    edges: HashMap<EdgeKey, RequirementEdgeLabelPlan>,
+    edges: RequirementEdgeLabels,
     measurement_binding: Option<RequirementLabelMeasurementBinding>,
 }
 
@@ -173,7 +156,7 @@ impl RequirementPreparedArtifact {
     ) -> (
         &RequirementDiagramLayout,
         &HashMap<String, RequirementNodeRenderPlan>,
-        &HashMap<EdgeKey, RequirementEdgeLabelPlan>,
+        &RequirementEdgeLabels,
     ) {
         (
             self.render_layout.as_ref().unwrap_or(&self.layout),
@@ -204,6 +187,7 @@ impl RequirementPreparedArtifact {
 #[derive(Debug, Clone)]
 pub(crate) enum RequirementNodeRenderPlan {
     Semantic(RequirementNodeLabelPlan),
+    #[cfg(feature = "layout-dagre")]
     EdgeLabelAnchor,
 }
 
@@ -225,6 +209,64 @@ pub(crate) struct RequirementNodeLabelLine {
     pub(crate) bold: bool,
     pub(crate) keep_centered: bool,
 }
+
+/// The directed name in the layout projection. A Dagre loop segment can have a different SVG ID.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct RequirementEdgeIdentity<T> {
+    from: T,
+    to: T,
+    name: T,
+}
+
+impl<'a> From<&'a LayoutEdge> for RequirementEdgeIdentity<&'a str> {
+    fn from(edge: &'a LayoutEdge) -> Self {
+        Self {
+            from: &edge.from,
+            to: &edge.to,
+            name: &edge.id,
+        }
+    }
+}
+
+impl RequirementEdgeIdentity<&str> {
+    fn into_owned(self) -> RequirementEdgeIdentity<String> {
+        RequirementEdgeIdentity {
+            from: self.from.to_owned(),
+            to: self.to.to_owned(),
+            name: self.name.to_owned(),
+        }
+    }
+}
+
+impl Equivalent<RequirementEdgeIdentity<String>> for RequirementEdgeIdentity<&str> {
+    fn equivalent(&self, key: &RequirementEdgeIdentity<String>) -> bool {
+        self.from == key.from && self.to == key.to && self.name == key.name
+    }
+}
+
+impl<T: Into<String>> RequirementEdgeIdentity<T> {
+    fn layout_edge(self, points: Vec<LayoutPoint>, label: Option<LayoutLabel>) -> LayoutEdge {
+        LayoutEdge {
+            id: self.name.into(),
+            from: self.from.into(),
+            to: self.to.into(),
+            from_cluster: None,
+            to_cluster: None,
+            points,
+            label,
+            start_label_left: None,
+            start_label_right: None,
+            end_label_left: None,
+            end_label_right: None,
+            start_marker: None,
+            end_marker: None,
+            stroke_dasharray: None,
+        }
+    }
+}
+
+pub(crate) type RequirementEdgeLabels =
+    IndexMap<RequirementEdgeIdentity<String>, RequirementEdgeLabelPlan>;
 
 #[derive(Debug, Clone)]
 pub(crate) struct RequirementEdgeLabelPlan {
@@ -668,32 +710,6 @@ fn requirement_edge_id(src: &str, dst: &str, idx: usize) -> String {
     format!("{src}-{dst}-{idx}")
 }
 
-fn requirement_layout_edge_label(width: f64, height: f64) -> EdgeLabel {
-    EdgeLabel {
-        width,
-        height,
-        labelpos: LabelPos::C,
-        // Dagre defaults to 10 when unspecified.
-        labeloffset: 10.0,
-        minlen: 1,
-        weight: 1.0,
-        ..Default::default()
-    }
-}
-
-fn insert_requirement_layout_edge(
-    graph: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>,
-    plans: &mut HashMap<EdgeKey, RequirementEdgeLabelPlan>,
-    from: &str,
-    to: &str,
-    graph_name: &str,
-    label: EdgeLabel,
-    plan: RequirementEdgeLabelPlan,
-) {
-    graph.set_edge_named(from, to, Some(graph_name), Some(label));
-    plans.insert(EdgeKey::new(from, to, Some(graph_name)), plan);
-}
-
 fn prefixed_nonempty_line(prefix: &str, value: &str) -> String {
     let value = value.trim();
     if value.is_empty() {
@@ -861,6 +877,7 @@ struct MeasuredRequirementNode {
 }
 
 struct RequirementMeasurements<'a> {
+    direction: Direction,
     nodes: IndexMap<&'a str, MeasuredRequirementNode>,
     styles: RequirementMeasurementStyles,
     binding: Option<RequirementLabelMeasurementBinding>,
@@ -929,17 +946,63 @@ fn measure_requirement<'a>(
         }
     }
     Ok(RequirementMeasurements {
+        direction: direction_from_rank(&model.direction),
         nodes,
         styles,
         binding,
     })
 }
 
-fn measure_requirement_relationship(
+struct MeasuredRequirementEdge<'a> {
+    from: &'a str,
+    to: &'a str,
+    label_size: Size,
+    plan: RequirementEdgeLabelPlan,
+}
+
+impl MeasuredRequirementEdge<'_> {
+    fn identity(&self) -> RequirementEdgeIdentity<&str> {
+        RequirementEdgeIdentity {
+            from: self.from,
+            to: self.to,
+            name: &self.plan.rendered_id,
+        }
+    }
+
+    #[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+    fn parity_label_size(&self) -> Size {
+        Size {
+            width: self.label_size.width.max(0.0),
+            height: self.label_size.height.max(0.0),
+        }
+    }
+}
+
+fn missing_relationship_node(terminal: &str, id: &str) -> Error {
+    Error::InvalidModel {
+        message: format!("relationship {terminal} node not found: {id}"),
+    }
+}
+
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+fn validate_relationship_endpoints(
     relationship: &RequirementRelationship,
+    mut has_node: impl FnMut(&str) -> bool,
+) -> Result<()> {
+    for (terminal, id) in [("src", &relationship.src), ("dst", &relationship.dst)] {
+        if !has_node(id) {
+            return Err(missing_relationship_node(terminal, id));
+        }
+    }
+    Ok(())
+}
+
+fn measure_requirement_relationship<'a>(
+    relationship: &'a RequirementRelationship,
+    index: usize,
     text_measurer: &dyn TextMeasurer,
     styles: &RequirementMeasurementStyles,
-) -> Result<(String, RequirementLabelMetrics)> {
+) -> Result<MeasuredRequirementEdge<'a>> {
     let display = format!("&lt;&lt;{}&gt;&gt;", relationship.rel_type);
     let metrics = measure_requirement_edge_label_metrics(text_measurer, styles, &display)
         .ok_or_else(|| Error::InvalidModel {
@@ -948,7 +1011,15 @@ fn measure_requirement_relationship(
                 relationship.src, relationship.dst, relationship.rel_type
             ),
         })?;
-    Ok((display, metrics))
+    Ok(MeasuredRequirementEdge {
+        from: &relationship.src,
+        to: &relationship.dst,
+        label_size: Size {
+            width: metrics.width,
+            height: metrics.height,
+        },
+        plan: RequirementEdgeLabelPlan::for_relationship(relationship, index, display),
+    })
 }
 
 /// Lays out a Requirement model under the resource policy owned by the render operation.
@@ -965,32 +1036,46 @@ pub(crate) fn layout_requirement_diagram_typed_with_resource_policy(
     layout_requirement_diagram_typed_with_work_meter_and_typography(
         model,
         &config,
+        crate::layout_backend::resolve(
+            crate::DiagramFamilyId::REQUIREMENT,
+            "requirement",
+            effective_config,
+        )?,
         text_measurer,
         &binding,
         &work_meter,
-        #[cfg(feature = "layout-shoal")]
+        #[cfg(any(feature = "layout-elk", feature = "layout-shoal"))]
         None,
-        #[cfg(feature = "layout-elk")]
-        merman_layout_elk::ElkOperationSeed::from_operation_seed(std::num::NonZeroU64::MIN),
     )
 }
 
 /// Lays out a Requirement model with renderer-owned inherited typography.
+#[cfg_attr(
+    not(any(
+        feature = "layout-dagre",
+        feature = "layout-elk",
+        feature = "layout-shoal"
+    )),
+    allow(
+        unused_variables,
+        reason = "The no-engine entry point rejects layout before measurement."
+    )
+)]
 pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
     model: &RequirementDiagramModel,
     config: &merman_model::MermaidConfig,
+    backend: GraphLayoutBackend,
     text_measurer: &dyn TextMeasurer,
     css_binding: &RequirementCssBinding,
     work_meter: &std::sync::Arc<OperationWorkMeter>,
-    #[cfg(feature = "layout-shoal")] execution: Option<&crate::LayoutExecution<'_>>,
-    #[cfg(feature = "layout-elk")] operation_seed: merman_layout_elk::ElkOperationSeed,
+    #[cfg(any(feature = "layout-elk", feature = "layout-shoal"))] execution: Option<
+        &crate::LayoutExecution<'_>,
+    >,
 ) -> Result<RequirementPreparedArtifact> {
-    let effective_config = config.as_value();
     work_meter
         .policy()
         .check_model_complexity(ModelComplexity::from_requirement(model))?;
-    let selection = crate::layout_backend::resolve_graph_layout(effective_config);
-    if selection.backend == crate::layout_backend::GraphLayoutBackend::Shoal {
+    if backend == GraphLayoutBackend::Shoal {
         #[cfg(feature = "layout-shoal")]
         return shoal::layout(
             model,
@@ -1001,328 +1086,119 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
             execution,
         );
         #[cfg(not(feature = "layout-shoal"))]
-        return Err(Error::MissingCapability {
-            capability: crate::RenderCapability::LayoutShoal,
-            diagram_type: "requirement".to_owned(),
-        });
+        return Err(backend.unavailable_for("requirement"));
     }
     work_meter.charge(requirement_layout_work_units(model))?;
-    let mut work_control = OperationLayoutWorkControl::new(Arc::clone(work_meter));
-    selection.validate_rootless_graph()?;
-    let backend = selection.backend;
-    let direction = if model.direction.trim().is_empty() {
-        normalize_dir("TB")
-    } else {
-        normalize_dir(&model.direction)
-    };
-
-    let cfg = &css_binding.layout;
-    let RequirementMeasurements {
-        mut nodes,
-        styles,
-        binding: measurement_binding,
-    } = measure_requirement(model, config, text_measurer, cfg, work_meter)?;
-    let mut edge_labels = HashMap::new();
-    let mut edge_label_anchor_nodes = HashSet::new();
-
-    let mut g = Graph::<NodeLabel, EdgeLabel, GraphLabel>::new(GraphOptions {
-        directed: true,
-        multigraph: true,
-        compound: true,
-    });
-    g.set_graph(GraphLabel {
-        rankdir: rank_dir_from(&direction),
-        nodesep: cfg.nodesep,
-        ranksep: cfg.ranksep,
-        marginx: 8.0,
-        marginy: 8.0,
-        ..Default::default()
-    });
-
-    for (&id, node) in &nodes {
-        g.set_node(
-            id,
-            NodeLabel {
-                width: node.width,
-                height: node.height,
-                ..Default::default()
-            },
-        );
-    }
-
-    // Mermaid assigns one monotonically increasing edge counter across the complete
-    // relationship list, including parallel relationships and mixed relationship kinds.
-    for (relationship_index, rel) in model.relationships.iter().enumerate() {
-        if !g.has_node(&rel.src) {
-            return Err(Error::InvalidModel {
-                message: format!("relationship src node not found: {}", rel.src),
-            });
-        }
-        if !g.has_node(&rel.dst) {
-            return Err(Error::InvalidModel {
-                message: format!("relationship dst node not found: {}", rel.dst),
-            });
-        }
-
-        let (label_display, metrics) =
-            measure_requirement_relationship(rel, text_measurer, &styles)?;
-
-        let is_contains = rel.rel_type == "contains";
-        if rel.src == rel.dst && backend == crate::layout_backend::GraphLayoutBackend::Dagre {
-            // The pinned Dagre renderer replaces a self-loop with two measured labelRect nodes and
-            // three named edges. Requirement intentionally keeps those segments separate in SVG.
-            let first_anchor = format!("{}---{}---1", rel.src, rel.src);
-            let second_anchor = format!("{}---{}---2", rel.src, rel.src);
-            for anchor in [&first_anchor, &second_anchor] {
-                g.set_node(
-                    anchor.clone(),
-                    NodeLabel {
-                        width: 0.1,
-                        height: 0.1,
-                        ..Default::default()
+    backend.validate_rootless_graph()?;
+    #[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+    {
+        let mut work_control = OperationLayoutWorkControl::new(Arc::clone(work_meter));
+        let settings = &css_binding.layout;
+        let measured = measure_requirement(model, config, text_measurer, settings, work_meter)?;
+        match backend {
+            #[cfg(feature = "layout-elk")]
+            GraphLayoutBackend::Elk(algorithm) => elk::layout(
+                &model.relationships,
+                measured,
+                config.as_value(),
+                text_measurer,
+                algorithm,
+                execution.map_or_else(
+                    || {
+                        merman_layout_elk::ElkOperationSeed::from_operation_seed(
+                            std::num::NonZeroU64::MIN,
+                        )
                     },
-                );
-                edge_label_anchor_nodes.insert(anchor.clone());
-            }
-
-            let first_graph_name = format!("{}-cyclic-special-0", rel.src);
-            let middle_graph_name = format!("{}-cyclic-special-1", rel.src);
-            let last_graph_name = format!("{}-cyclic-special-2", rel.src);
-            insert_requirement_layout_edge(
-                &mut g,
-                &mut edge_labels,
-                &rel.src,
-                &first_anchor,
-                &first_graph_name,
-                requirement_layout_edge_label(0.0, 0.0),
-                RequirementEdgeLabelPlan {
-                    relationship_type: rel.rel_type.clone(),
-                    display_text: String::new(),
-                    rendered_id: format!("{}-cyclic-special-1", rel.src),
-                    has_label: false,
-                    marker_start: is_contains,
-                    marker_end: false,
-                },
-            );
-            insert_requirement_layout_edge(
-                &mut g,
-                &mut edge_labels,
-                &first_anchor,
-                &second_anchor,
-                &middle_graph_name,
-                requirement_layout_edge_label(metrics.width.max(0.0), metrics.height.max(0.0)),
-                RequirementEdgeLabelPlan {
-                    relationship_type: rel.rel_type.clone(),
-                    display_text: label_display,
-                    rendered_id: format!("{}-cyclic-special-mid", rel.src),
-                    has_label: true,
-                    marker_start: false,
-                    marker_end: false,
-                },
-            );
-            insert_requirement_layout_edge(
-                &mut g,
-                &mut edge_labels,
-                &second_anchor,
-                &rel.dst,
-                &last_graph_name,
-                requirement_layout_edge_label(0.0, 0.0),
-                RequirementEdgeLabelPlan {
-                    relationship_type: rel.rel_type.clone(),
-                    display_text: String::new(),
-                    rendered_id: last_graph_name.clone(),
-                    has_label: false,
-                    marker_start: false,
-                    marker_end: !is_contains,
-                },
-            );
-        } else {
-            let plan =
-                RequirementEdgeLabelPlan::for_relationship(rel, relationship_index, label_display);
-            let graph_name = plan.rendered_id.clone();
-            insert_requirement_layout_edge(
-                &mut g,
-                &mut edge_labels,
-                &rel.src,
-                &rel.dst,
-                &graph_name,
-                requirement_layout_edge_label(metrics.width.max(0.0), metrics.height.max(0.0)),
-                plan,
-            );
-        }
-    }
-
-    match backend {
-        #[cfg(feature = "layout-elk")]
-        crate::layout_backend::GraphLayoutBackend::Elk => {
-            elk::layout(&mut g, effective_config, operation_seed, &mut work_control)?;
-        }
-        _ => dugong::layout_controlled(&mut g, &mut work_control)
-            .map_err(|error| work_control.map_dugong_error(error))?,
-    }
-
-    let mut out_nodes: Vec<LayoutNode> = Vec::new();
-    for v in g.nodes() {
-        let Some(n) = g.node(v) else {
-            continue;
-        };
-        let (Some(cx), Some(cy)) = (n.x, n.y) else {
-            continue;
-        };
-        out_nodes.push(LayoutNode {
-            id: v.to_string(),
-            x: cx - n.width / 2.0,
-            y: cy - n.height / 2.0,
-            width: n.width,
-            height: n.height,
-            is_cluster: false,
-            label_width: None,
-            label_height: None,
-        });
-    }
-
-    let mut out_edges: Vec<LayoutEdge> = Vec::new();
-    let mut prepared_edge_labels = HashMap::new();
-    for ek in g.edge_keys() {
-        let Some(e) = g.edge_by_key(&ek) else {
-            continue;
-        };
-        let prepared_label = edge_labels.remove(&ek).ok_or_else(|| Error::InvalidModel {
-            message: format!(
-                "missing prepared Requirement edge label for {} -> {} ({:?})",
-                ek.v, ek.w, ek.name
+                    crate::LayoutExecution::elk_operation_seed,
+                ),
+                &mut work_control,
             ),
-        })?;
+            #[cfg(feature = "layout-dagre")]
+            GraphLayoutBackend::Dagre => dagre::layout(
+                &model.relationships,
+                measured,
+                settings,
+                text_measurer,
+                &mut work_control,
+            ),
+            _ => Err(backend.unavailable_for("requirement")),
+        }
+    }
+    #[cfg(not(any(feature = "layout-dagre", feature = "layout-elk")))]
+    Err(backend.unavailable_for("requirement"))
+}
 
-        let points = e
-            .points
-            .iter()
-            .map(|p| LayoutPoint { x: p.x, y: p.y })
-            .collect::<Vec<_>>();
+fn requirement_layout_node(id: String, rect: Rect) -> LayoutNode {
+    LayoutNode {
+        id,
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+        is_cluster: false,
+        label_width: None,
+        label_height: None,
+    }
+}
 
-        let label = match (e.x, e.y) {
-            (Some(x), Some(y)) if e.width > 0.0 && e.height > 0.0 => Some(LayoutLabel {
-                x,
-                y,
-                width: e.width,
-                height: e.height,
-            }),
-            _ => None,
-        };
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+fn requirement_layout_node_from_center(
+    id: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> LayoutNode {
+    requirement_layout_node(
+        id,
+        Rect {
+            x: x - width / 2.0,
+            y: y - height / 2.0,
+            width,
+            height,
+        },
+    )
+}
 
-        let layout_edge_id = ek
-            .name
-            .clone()
-            .unwrap_or_else(|| format!("{}-{}", ek.v, ek.w));
-        out_edges.push(LayoutEdge {
-            id: layout_edge_id,
-            from: ek.v.clone(),
-            to: ek.w.clone(),
-            from_cluster: None,
-            to_cluster: None,
-            points,
-            label,
-            start_label_left: None,
-            start_label_right: None,
-            end_label_left: None,
-            end_label_right: None,
-            start_marker: None,
-            end_marker: None,
-            stroke_dasharray: None,
-        });
-        if prepared_edge_labels.insert(ek, prepared_label).is_some() {
-            return Err(Error::InvalidModel {
-                message: "duplicate prepared Requirement edge identity after layout".to_string(),
-            });
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
+fn bounds_for_nodes_edges(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
+    if nodes.is_empty() && edges.is_empty() {
+        return None;
+    }
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+
+    for n in nodes {
+        min_x = min_x.min(n.x);
+        min_y = min_y.min(n.y);
+        max_x = max_x.max(n.x + n.width);
+        max_y = max_y.max(n.y + n.height);
+    }
+    for e in edges {
+        for p in &e.points {
+            min_x = min_x.min(p.x);
+            min_y = min_y.min(p.y);
+            max_x = max_x.max(p.x);
+            max_y = max_y.max(p.y);
+        }
+        if let Some(l) = &e.label {
+            min_x = min_x.min(l.x - l.width / 2.0);
+            max_x = max_x.max(l.x + l.width / 2.0);
+            min_y = min_y.min(l.y - l.height / 2.0);
+            max_y = max_y.max(l.y + l.height / 2.0);
         }
     }
 
-    fn bounds_for_nodes_edges(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
-        if nodes.is_empty() && edges.is_empty() {
-            return None;
-        }
-        let mut min_x = f64::INFINITY;
-        let mut min_y = f64::INFINITY;
-        let mut max_x = f64::NEG_INFINITY;
-        let mut max_y = f64::NEG_INFINITY;
-
-        for n in nodes {
-            min_x = min_x.min(n.x);
-            min_y = min_y.min(n.y);
-            max_x = max_x.max(n.x + n.width);
-            max_y = max_y.max(n.y + n.height);
-        }
-        for e in edges {
-            for p in &e.points {
-                min_x = min_x.min(p.x);
-                min_y = min_y.min(p.y);
-                max_x = max_x.max(p.x);
-                max_y = max_y.max(p.y);
-            }
-            if let Some(l) = &e.label {
-                min_x = min_x.min(l.x - l.width / 2.0);
-                max_x = max_x.max(l.x + l.width / 2.0);
-                min_y = min_y.min(l.y - l.height / 2.0);
-                max_y = max_y.max(l.y + l.height / 2.0);
-            }
-        }
-
-        if !min_x.is_finite() || !min_y.is_finite() || !max_x.is_finite() || !max_y.is_finite() {
-            return None;
-        }
-        Some(Bounds {
-            min_x,
-            min_y,
-            max_x,
-            max_y,
-        })
+    if !min_x.is_finite() || !min_y.is_finite() || !max_x.is_finite() || !max_y.is_finite() {
+        return None;
     }
-
-    let bounds = bounds_for_nodes_edges(&out_nodes, &out_edges);
-    let mut prepared_node_labels = HashMap::with_capacity(out_nodes.len());
-    for node in &out_nodes {
-        let plan = if edge_label_anchor_nodes.contains(&node.id) {
-            RequirementNodeRenderPlan::EdgeLabelAnchor
-        } else {
-            let measured =
-                nodes
-                    .swap_remove(node.id.as_str())
-                    .ok_or_else(|| Error::InvalidModel {
-                        message: format!("missing prepared Requirement node label for {}", node.id),
-                    })?;
-            RequirementNodeRenderPlan::Semantic(measured.label)
-        };
-        if prepared_node_labels.insert(node.id.clone(), plan).is_some() {
-            return Err(Error::InvalidModel {
-                message: format!("duplicate prepared Requirement node identity: {}", node.id),
-            });
-        }
-    }
-    let layout = RequirementDiagramLayout {
-        nodes: out_nodes,
-        edges: out_edges,
-        bounds,
-    };
-    #[cfg(feature = "layout-elk")]
-    let render_layout = if backend == crate::layout_backend::GraphLayoutBackend::Elk {
-        Some(elk::render_layout(
-            &layout,
-            &g,
-            effective_config,
-            &mut work_control,
-        )?)
-    } else {
-        None
-    };
-    #[cfg(not(feature = "layout-elk"))]
-    let render_layout = None;
-    Ok(RequirementPreparedArtifact {
-        layout,
-        route_contract: crate::graph_layout::RouteContract::parity(render_layout.is_some()),
-        render_layout,
-        nodes: prepared_node_labels,
-        edges: prepared_edge_labels,
-        measurement_binding,
+    Some(Bounds {
+        min_x,
+        min_y,
+        max_x,
+        max_y,
     })
 }
 

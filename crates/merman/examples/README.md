@@ -188,8 +188,8 @@ bytes in memory, or save them without adding file/viewer actions to the library.
 the export path; callers do not need to build a separate product rendering backend.
 
 ```sh
-cargo run -p merman --no-default-features --features diagram-flowchart,svg --example custom_diagram_theme > custom-theme.svg
-cargo run -p merman --no-default-features --features all-diagrams,png,system-fonts --example render_png -- target/diagram.png
+cargo run -p merman --no-default-features --features diagram-flowchart,layout-dagre --example custom_diagram_theme > custom-theme.svg
+cargo run -p merman --no-default-features --features diagram-flowchart,layout-dagre,png,system-fonts --example render_png -- target/diagram.png
 ```
 
 For browser Workers, choose a [Web package](../../../platforms/web/README.md) with the required
@@ -229,7 +229,7 @@ Copy the relevant `.rs` file into your application's `examples/` directory and r
 cargo run --example render_svg
 ```
 
-Enable `features = ["diagram-flowchart", "png", "system-fonts"]` on the Merman dependency when copying `render_png`, or `features = ["all-diagrams", "ascii"]` when copying `render_terminal`, `render_agent_log`, or `terminal_palette`. Enable `compat-json` when copying `deterministic_gantt`. Add `serde_json = "1"` when copying `configure_mermaid`, `deterministic_gantt`, or `render_agent_log`.
+Enable `features = ["diagram-flowchart", "layout-dagre", "png", "system-fonts"]` on the Merman dependency when copying `render_png`, or `features = ["all-diagrams", "ascii"]` when copying `render_terminal`, `render_agent_log`, or `terminal_palette`. Enable `compat-json` when copying `deterministic_gantt`. Add `serde_json = "1"` when copying `configure_mermaid`, `deterministic_gantt`, or `render_agent_log`.
 
 `render_svg_monospace` uses Merman's `svg` feature. It also needs `usvg` with its `system-fonts` and `text` features plus `rustybuzz`.
 
@@ -247,21 +247,21 @@ The table lists output and engine requirements in addition to that family select
 | --- | --- |
 | `inspect_semantics` | None beyond the required diagram families |
 | `deterministic_gantt` | `compat-json` |
-| `render_svg`, `render_svg_monospace`, `embed_multiple_svgs`, `render_many`, `inspect_layout`, `configure_mermaid`, `custom_diagram_theme`, `custom_svg_pipeline` | `svg` |
+| `render_svg`, `render_svg_monospace`, `embed_multiple_svgs`, `render_many`, `render_cancellable`, `inspect_layout`, `configure_mermaid`, `custom_diagram_theme`, `custom_svg_pipeline` | `layout-dagre` (also enables `svg`) |
+| `redraw_prepared` | `svg` |
 | `render_terminal`, `render_agent_log`, `terminal_palette` | `ascii` |
-| `render_png` | `png`, `system-fonts` |
-| `standalone_resvg` | `native-fonts` (also enables `svg`) |
+| `render_png` | `layout-dagre`, `png`, `system-fonts` |
+| `standalone_resvg` | `layout-dagre`, `native-fonts` |
 
 For example:
 
 ```sh
-cargo run -p merman --no-default-features --features all-diagrams,svg --example render_svg > diagram.svg
-cargo run -p merman --no-default-features --features all-diagrams --example inspect_semantics
-cargo run -p merman --no-default-features --features all-diagrams,png,system-fonts --example render_png
+cargo run -p merman --no-default-features --features diagram-flowchart,layout-dagre --example render_svg > diagram.svg
+cargo run -p merman --no-default-features --features diagram-flowchart --example inspect_semantics
+cargo run -p merman --no-default-features --features diagram-flowchart,layout-dagre,png,system-fonts --example render_png
 ```
 
-Replace `all-diagrams` with the required `diagram-*` selectors when embedding only selected
-languages. These commands retain every family so the existing examples keep their behavior.
+Add the `diagram-*` selectors for the other languages your application renders.
 
 A minimal SVG build returns a typed `missing-capability` error when an input needs an optional layout engine or math renderer. It never silently substitutes a different semantic result. See the [capability guide](../../../docs/FEATURES.md) for dependency declarations and feature forwarding.
 

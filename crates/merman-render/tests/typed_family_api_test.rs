@@ -1,3 +1,5 @@
+#![cfg(feature = "all-diagrams")]
+
 // Parser/editor-only fields remain in the shared core characterization cases.
 #[allow(dead_code)]
 #[path = "../../merman-core/src/tests/registry_cases.rs"]
@@ -153,8 +155,18 @@ fn mindmap_tidy_tree_renders_without_cytoscape_layout() {
 }
 
 #[test]
+#[cfg(any(
+    feature = "layout-dagre",
+    feature = "layout-elk",
+    feature = "layout-shoal"
+))]
 fn state_prepared_artifact_renders_the_typed_family() {
-    let parsed = parse_for_render("stateDiagram-v2\n[*] --> Active\n");
+    let source = if cfg!(any(feature = "layout-dagre", feature = "layout-elk")) {
+        "stateDiagram-v2\n[*] --> Active\n"
+    } else {
+        "---\nconfig:\n  layout: shoal\n---\nstateDiagram-v2\n[*] --> Active\n"
+    };
+    let parsed = parse_for_render(source);
     let session = render_session();
     let artifact = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare State artifact");
@@ -215,9 +227,25 @@ fn every_catalog_variant_prepares_its_declared_family_or_exact_missing_capabilit
             "{} parsed family",
             case.variant_id
         );
-        let expected_missing = match case.variant_id {
-            "architecture" if !cfg!(feature = "layout-cytoscape") => {
+        let expected_missing = match expected {
+            DiagramFamilyId::ARCHITECTURE if !cfg!(feature = "layout-cytoscape") => {
                 Some(RenderCapability::LayoutCytoscape)
+            }
+            DiagramFamilyId::MINDMAP
+                if !cfg!(any(feature = "layout-cytoscape", feature = "layout-dagre")) =>
+            {
+                Some(RenderCapability::LayoutDagre)
+            }
+            DiagramFamilyId::AGENTFLOW
+            | DiagramFamilyId::CLASS
+            | DiagramFamilyId::ER
+            | DiagramFamilyId::FLOWCHART
+            | DiagramFamilyId::REQUIREMENT
+            | DiagramFamilyId::STATE
+            | DiagramFamilyId::USECASE
+                if !cfg!(any(feature = "layout-dagre", feature = "layout-elk")) =>
+            {
+                Some(RenderCapability::LayoutElk)
             }
             _ => None,
         };
@@ -267,7 +295,10 @@ fn every_catalog_variant_prepares_its_declared_family_or_exact_missing_capabilit
             .collect::<BTreeSet<_>>(),
         DiagramFamilyId::all().iter().copied().collect()
     );
-    if cfg!(all(feature = "layout-elk", feature = "layout-cytoscape")) {
+    if cfg!(all(
+        any(feature = "layout-dagre", feature = "layout-elk"),
+        feature = "layout-cytoscape"
+    )) {
         assert!(missing_families.is_empty());
     }
 }

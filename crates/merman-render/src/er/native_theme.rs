@@ -96,7 +96,7 @@ impl ErNativeStyle {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "layout-dagre"))]
 mod tests {
     use merman_core::{MermaidEngine, ParseOptions};
 

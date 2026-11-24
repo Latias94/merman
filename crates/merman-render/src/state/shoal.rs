@@ -1,10 +1,10 @@
 mod regions;
 
-use super::config::{StateConfigView, rank_dir_from, state_node_is_effective_group};
-use super::layout::{
-    edge_label_metrics, note_group_owner_id, state_fork_join_painted_dimensions,
-    state_hidden_prefixes, state_layout_adapter_work, state_node_dimensions, title_label_metrics,
-    validate_state_parent_cycles,
+use super::config::{StateConfigView, state_node_is_effective_group};
+use super::layout::{note_group_owner_id, state_hidden_prefixes, validate_state_parent_cycles};
+use super::measure::{
+    edge_label_metrics, state_fork_join_painted_dimensions, state_node_dimensions,
+    title_label_metrics,
 };
 use super::{
     StateCompatibilityPlan, StateDiagramModel, StateLabelOwner, StateLabelSidecarBuilder,
@@ -14,7 +14,7 @@ use crate::graph_layout::canonical::CanonicalRoutes;
 use crate::graph_layout::contour::ShapePortProfile;
 use crate::graph_layout::ir::{
     Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, Rect,
-    RoutePoint, RoutingStyle, Side, Size, SolvedGraph, TitlePosition,
+    RoutePoint, RoutingStyle, Side, Size, SolvedGraph, TitlePosition, direction_from_rank,
 };
 use crate::graph_layout::placement;
 use crate::layout_work::OperationLayoutWorkControl;
@@ -23,7 +23,6 @@ use crate::model::{
 };
 use crate::text::TextMeasurer;
 use crate::{Error, LayoutExecution, Result};
-use dugong::RankDir;
 use kurbo::Insets;
 use merman_model::families::state::StateDiagramRenderEdge;
 use serde_json::Value;
@@ -43,15 +42,14 @@ struct MeasuredState<'a> {
     profiles: Vec<ShapePortProfile>,
 }
 
-pub(crate) fn layout_state_diagram_shoal(
+pub(super) fn layout_state_diagram_shoal(
     model: &StateDiagramModel,
     effective_config: &Value,
     style_plan: &StateStylePlan,
     label_sidecar: Option<&StateLabelSidecarBuilder>,
     execution: &LayoutExecution<'_>,
+    work: &mut OperationLayoutWorkControl,
 ) -> Result<(StateDiagramLayout, CanonicalRoutes)> {
-    let mut work = OperationLayoutWorkControl::new(execution.work_meter());
-    work.charge_adapter(state_layout_adapter_work(model, &work)?)?;
     validate_state_parent_cycles(model)?;
     let input = measure(
         model,
@@ -59,7 +57,7 @@ pub(crate) fn layout_state_diagram_shoal(
         style_plan,
         label_sidecar,
         execution.text_measurer(),
-        &mut work,
+        work,
     )?;
     let (mut solved, placement) = placement::solve(
         &input.graph,
@@ -67,28 +65,19 @@ pub(crate) fn layout_state_diagram_shoal(
         input.groups.iter().map(|group| group.node.id.as_str()),
         Some(execution),
         Default::default(),
-        &mut work,
+        work,
     )?;
-    regions::stretch(&input, &mut solved, &mut work)?;
+    regions::stretch(&input, &mut solved, work)?;
     let mut routes = CanonicalRoutes::from_solved(
         &input.graph,
         &solved,
         &input.profiles,
         |id| group_corner_radius(input.groups[id as usize].node, style_plan),
         input.edges.iter().map(|edge| edge.id.as_str()),
-        &mut work,
+        work,
     )?;
     routes.placement = placement;
-    Ok((project(input, solved, &mut work)?, routes))
-}
-
-fn direction(rankdir: RankDir) -> Direction {
-    match rankdir {
-        RankDir::TB => Direction::Down,
-        RankDir::BT => Direction::Up,
-        RankDir::LR => Direction::Right,
-        RankDir::RL => Direction::Left,
-    }
+    Ok((project(input, solved, work)?, routes))
 }
 
 fn direction_name(direction: Direction) -> &'static str {
@@ -111,13 +100,12 @@ fn measure<'a>(
     let hidden = state_hidden_prefixes(model);
     let settings =
         StateConfigView::new(config).layout_settings(&model.direction, style_plan.compatibility());
-    let rankdir = settings.graph.rankdir;
     let mut graph = MeasuredGraph {
-        direction: direction(rankdir),
+        direction: settings.direction,
         routing: RoutingStyle::Curved,
-        node_spacing: settings.graph.nodesep,
-        rank_spacing: settings.graph.ranksep,
-        component_spacing: settings.graph.nodesep.max(settings.graph.ranksep),
+        node_spacing: settings.node_spacing,
+        rank_spacing: settings.rank_spacing,
+        component_spacing: settings.node_spacing.max(settings.rank_spacing),
         inherit_crossed_group_direction: false,
         nodes: Vec::new(),
         groups: Vec::new(),
@@ -177,7 +165,7 @@ fn measure<'a>(
                     .dir
                     .as_deref()
                     .filter(|_| node.explicit_dir != Some(false))
-                    .map(|value| direction(rank_dir_from(value))),
+                    .map(direction_from_rank),
                 padding: Insets::new(padding, top, padding, padding),
                 min_size: Size {
                     width: 1.0,
@@ -222,9 +210,9 @@ fn measure<'a>(
     restore_concurrent_directions(&groups, &mut graph.groups, work)?;
     let group_directions = effective_group_directions(&graph, work)?;
     let mut profiles = Vec::with_capacity(leaves.len());
-    let (face, perpendicular) = match rankdir {
-        RankDir::TB | RankDir::BT => (Side::Top, Side::Left),
-        RankDir::LR | RankDir::RL => (Side::Left, Side::Top),
+    let (face, perpendicular) = match graph.direction {
+        Direction::Down | Direction::Up => (Side::Top, Side::Left),
+        Direction::Right | Direction::Left => (Side::Left, Side::Top),
     };
     for &(seq, node) in &leaves {
         work.charge_adapter(0)?;
@@ -233,12 +221,7 @@ fn measure<'a>(
             let direction = parent.map_or(graph.direction, |group| {
                 group_directions[group as usize].unwrap_or(graph.direction)
             });
-            state_fork_join_painted_dimensions(match direction {
-                Direction::Down => RankDir::TB,
-                Direction::Up => RankDir::BT,
-                Direction::Right => RankDir::LR,
-                Direction::Left => RankDir::RL,
-            })
+            state_fork_join_painted_dimensions(direction)
         } else {
             state_node_dimensions(node, &settings, style_plan, measurer, sidecar)?
         };

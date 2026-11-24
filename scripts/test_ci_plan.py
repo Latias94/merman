@@ -1141,7 +1141,7 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
         self.assertIn("Test Rustdoc family subsets", feature)
         self.assertIn("Test representative ASCII public contracts", feature)
         self.assertIn(
-            "--features diagram-flowchart,png,platform-system-font-default --test native_fonts_contract",
+            "--features diagram-flowchart,layout-dagre,png,platform-system-font-default --test native_fonts_contract",
             core,
         )
         self.assertIn(
@@ -1150,13 +1150,13 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
         )
         fontconfig = core.split("- name: Test automatic Fontconfig fallback on Linux\n", 1)[1].split("\n      - ", 1)[0]
         self.assertIn("if: runner.os == 'Linux'", fontconfig)
-        self.assertIn("diagram-flowchart,png,platform-system-font-query --test native_fonts_contract", fontconfig)
+        self.assertIn("diagram-flowchart,layout-dagre,png,platform-system-font-query --test native_fonts_contract", fontconfig)
         self.assertIn("test(=fontconfig_availability_controls_automatic_fallback)", fontconfig)
         self.assertIn("--test linux_fontconfig", fontconfig)
         self.assertIn("binary(linux_fontconfig)", fontconfig)
         self.assertIn("verify_v2_presets.py --check-colors", theme)
         self.assertIn("-p merman-theme-contract --test theme_v2", theme)
-        self.assertIn("Test theme authoring and Flowchart paint across SVG and PNG", theme)
+        self.assertIn("Test native theme consumers", theme)
         for job in (core, feature, theme):
             self.assertNotIn("      RUSTFLAGS:", job)
             self.assertNotIn("      CARGO_ENCODED_RUSTFLAGS:", job)
@@ -1292,7 +1292,7 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
         self.assertIn("cargo clean --workspace --profile dev", reclaim)
         self.assertEqual(job.count("cargo clean"), 1)
         self.assertLess(job.index("Test full workspace"), job.index(reclaim_name))
-        self.assertLess(job.index(reclaim_name), job.index("Test theme authoring and font resource boundaries"))
+        self.assertLess(job.index(reclaim_name), job.index("Test native theme rendering and export boundaries"))
         self.assertLess(reclaim.index("du -sh target"), reclaim.index("cargo clean"))
         self.assertLess(reclaim.index("cargo clean"), reclaim.rindex("du -sh target"))
 

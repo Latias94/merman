@@ -350,6 +350,7 @@ pub(crate) struct ErEntityThemePlan {
     entity_source_styles: Vec<ErEntitySourceStyle>,
     subgraph_source_styles: BTreeMap<String, ErEntitySourceStyle>,
     html_subgraph_labels: BTreeMap<String, ErPreparedHtmlSubgraphLabel>,
+    relationship_html_labels: bool,
     // Drop shared source views before their counted prepared-label owner.
     _prepared_labels: Arc<crate::er::ErPreparedLabels>,
 }
@@ -358,6 +359,7 @@ impl ErEntityThemePlan {
     pub(crate) fn resolve(
         config: &merman_model::presentation::PresentationConfig,
         native: Option<(&crate::theme::FamilyTheme, crate::er::ErNativeStyle)>,
+        relationship_html_labels: bool,
         model: &merman_model::families::er::ErDiagramModel,
         layout: &crate::model::ErDiagramLayout,
         work_meter: &OperationWorkMeter,
@@ -420,7 +422,7 @@ impl ErEntityThemePlan {
         let mut html_subgraph_labels = BTreeMap::new();
         for cluster in &layout.clusters {
             let lane = swimlane_lanes.get(cluster.id.as_str());
-            if !config.subgraph_html_labels(lane.is_some())
+            if !config.subgraph_html_labels(lane.is_some(), relationship_html_labels)
                 || html_subgraph_labels.contains_key(&cluster.id)
             {
                 continue;
@@ -461,6 +463,7 @@ impl ErEntityThemePlan {
             entity_source_styles,
             subgraph_source_styles,
             html_subgraph_labels,
+            relationship_html_labels,
             _prepared_labels: Arc::clone(&layout.prepared_labels),
         }
         .prepare_visuals(model, work_meter)
@@ -472,6 +475,10 @@ impl ErEntityThemePlan {
 
     pub(crate) fn css_binding(&self) -> &css_binding::ErCssBinding {
         &self.css_binding
+    }
+
+    pub(crate) const fn relationship_html_labels(&self) -> bool {
+        self.relationship_html_labels
     }
 
     pub(crate) fn source_style(&self, entity_index: usize) -> Option<&ErEntitySourceStyle> {

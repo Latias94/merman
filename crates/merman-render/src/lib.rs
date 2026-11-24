@@ -41,11 +41,16 @@ pub mod class;
 mod config;
 #[cfg(feature = "diagram-cynefin")]
 pub mod cynefin;
-#[cfg(any(
-    feature = "diagram-agentflow",
-    feature = "diagram-flowchart",
-    feature = "diagram-swimlane",
-    feature = "diagram-state"
+#[cfg(all(
+    feature = "layout-dagre",
+    any(
+        feature = "diagram-agentflow",
+        feature = "diagram-er",
+        feature = "diagram-flowchart",
+        feature = "diagram-requirement",
+        feature = "diagram-state",
+        feature = "diagram-swimlane"
+    )
 ))]
 mod dagre;
 #[cfg(feature = "layout-elk")]
@@ -395,6 +400,11 @@ pub const fn layout_cytoscape_available() -> bool {
     cfg!(feature = "layout-cytoscape")
 }
 
+/// Reports whether the Dagre layout backend is present in this compiled renderer.
+pub const fn layout_dagre_available() -> bool {
+    cfg!(feature = "layout-dagre")
+}
+
 /// Reports whether the ELK layout backend is present in this compiled renderer.
 pub const fn layout_elk_available() -> bool {
     cfg!(feature = "layout-elk")
@@ -418,6 +428,7 @@ pub enum RenderCapability {
     LayoutElk,
     Math,
     LayoutShoal,
+    LayoutDagre,
 }
 
 impl RenderCapability {
@@ -427,6 +438,7 @@ impl RenderCapability {
             Self::LayoutElk => 1 << 1,
             Self::Math => 1 << 2,
             Self::LayoutShoal => 1 << 3,
+            Self::LayoutDagre => 1 << 4,
         }
     }
 
@@ -436,6 +448,7 @@ impl RenderCapability {
             Self::LayoutElk => "layout-elk",
             Self::Math => "math",
             Self::LayoutShoal => "layout-shoal",
+            Self::LayoutDagre => "layout-dagre",
         }
     }
 }
@@ -443,7 +456,8 @@ impl RenderCapability {
 const ALL_RENDER_CAPABILITY_BITS: u8 = RenderCapability::LayoutCytoscape.bit()
     | RenderCapability::LayoutElk.bit()
     | RenderCapability::Math.bit()
-    | RenderCapability::LayoutShoal.bit();
+    | RenderCapability::LayoutShoal.bit()
+    | RenderCapability::LayoutDagre.bit();
 
 /// Operation-level permission for optional renderer capabilities.
 ///
@@ -501,7 +515,7 @@ impl std::fmt::Display for RenderCapability {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "layout-elk", feature = "all-diagrams"))]
 use crate::environment::RenderSession;
 use crate::environment::{RoutedTextMeasurer, TextMeasurementPhase};
 use merman_model::OperationPhase;
@@ -600,6 +614,7 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+#[cfg(feature = "layout-dagre")]
 impl From<dugong::LayoutError> for Error {
     fn from(error: dugong::LayoutError) -> Self {
         Self::InvalidModel {
@@ -847,20 +862,25 @@ impl<'a> LayoutExecution<'a> {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "layout-elk", feature = "all-diagrams"))]
     pub(crate) fn unthemed_for_test(
         request: &'a LayoutOptions,
         session: &'a RenderSession,
         family_id: DiagramFamilyId,
+        backend: layout_backend::GraphLayoutBackend,
     ) -> Self {
         Self::new(
             request,
-            crate::family::FamilyExecutionView::for_test(session, family_id),
+            crate::family::FamilyExecutionView::for_test(session, family_id, backend),
         )
     }
 
     pub(crate) const fn family_id(&self) -> DiagramFamilyId {
         self.family.family_id()
+    }
+
+    pub(crate) const fn layout_backend(&self) -> layout_backend::GraphLayoutBackend {
+        self.family.layout_backend()
     }
 
     pub(crate) fn text_measurer(&self) -> &dyn crate::text::TextMeasurer {
@@ -942,6 +962,17 @@ impl std::ops::Deref for LayoutExecution<'_> {
 }
 
 #[cfg(feature = "diagram-class")]
+#[cfg_attr(
+    not(any(
+        feature = "layout-dagre",
+        feature = "layout-elk",
+        feature = "layout-shoal"
+    )),
+    allow(
+        unused_variables,
+        reason = "The Class admission entry point also exists without a solver."
+    )
+)]
 pub(crate) fn layout_class_typed_by_engine(
     model: &ClassDiagram,
     effective_config: &merman_model::presentation::PresentationConfig,
@@ -952,7 +983,12 @@ pub(crate) fn layout_class_typed_by_engine(
     class::ClassPreparedLabels,
     graph_layout::RouteContract,
 )> {
-    use graph_layout::RouteContract;
+    #[cfg(any(
+        feature = "layout-dagre",
+        feature = "layout-elk",
+        feature = "layout-shoal"
+    ))]
+    use {graph_layout::RouteContract, layout_backend::GraphLayoutBackend};
 
     options
         .work_meter_ref()
@@ -960,41 +996,44 @@ pub(crate) fn layout_class_typed_by_engine(
     let mut work_control = layout_work::OperationLayoutWorkControl::new(options.work_meter());
     let preparation_work = class::class_layout_work_units(model, &work_control)?;
     work_control.charge_adapter(preparation_work)?;
-    let selection = layout_backend::resolve_graph_layout(effective_config);
-    selection.validate_rootless_graph()?;
-    #[cfg(feature = "layout-shoal")]
-    if selection.backend == layout_backend::GraphLayoutBackend::Shoal {
-        return class::shoal::layout(
+    let backend = options.layout_backend();
+    backend.validate_rootless_graph()?;
+    match backend {
+        #[cfg(feature = "layout-shoal")]
+        GraphLayoutBackend::Shoal => class::shoal::layout(
             model,
             effective_config,
             options,
             render_config,
             &mut work_control,
         )
-        .map(|(layout, labels, routes)| (layout, labels, RouteContract::canonical_graph(routes)));
-    }
-    #[cfg(feature = "layout-elk")]
-    if selection.backend == layout_backend::GraphLayoutBackend::Elk {
-        return class::layout_class_diagram_elk_typed_with_config_and_operation_seed(
+        .map(|(layout, labels, routes)| (layout, labels, RouteContract::canonical_graph(routes))),
+        #[cfg(feature = "layout-elk")]
+        GraphLayoutBackend::Elk(algorithm) => {
+            class::layout_class_diagram_elk_typed_with_config_and_operation_seed(
+                model,
+                effective_config,
+                options.text_measurer(),
+                options.math_renderer(),
+                options.elk_operation_seed(),
+                algorithm,
+                render_config,
+                &mut work_control,
+            )
+            .map(|(layout, labels)| (layout, labels, RouteContract::ElkParity))
+        }
+        #[cfg(feature = "layout-dagre")]
+        GraphLayoutBackend::Dagre => class::layout_class_diagram_typed_with_config(
             model,
             effective_config,
             options.text_measurer(),
             options.math_renderer(),
-            options.elk_operation_seed(),
             render_config,
             &mut work_control,
         )
-        .map(|(layout, labels)| (layout, labels, RouteContract::ElkParity));
+        .map(|(layout, labels)| (layout, labels, RouteContract::DagreParity)),
+        _ => Err(backend.unavailable_for(options.family_id().as_str())),
     }
-    class::layout_class_diagram_typed_with_config(
-        model,
-        effective_config,
-        options.text_measurer(),
-        options.math_renderer(),
-        render_config,
-        &mut work_control,
-    )
-    .map(|(layout, labels)| (layout, labels, RouteContract::DagreParity))
 }
 
 #[cfg(all(test, feature = "layout-elk"))]
@@ -1030,6 +1069,17 @@ pub(crate) fn layout_flowchart_typed_by_engine(
     feature = "diagram-swimlane",
     feature = "diagram-agentflow"
 ))]
+#[cfg_attr(
+    not(any(
+        feature = "layout-dagre",
+        feature = "layout-elk",
+        feature = "layout-shoal"
+    )),
+    allow(
+        unused_variables,
+        reason = "The Flowchart admission entry point also exists without a solver."
+    )
+)]
 pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
     model: &FlowchartModel,
     render_label_sources: &merman_model::families::flowchart::FlowchartRenderContext,
@@ -1039,15 +1089,22 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
     svg_label_sidecar: Option<&flowchart::FlowchartSvgLabelSidecarBuilder>,
     edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
 ) -> Result<model::FlowchartLayout> {
+    #[cfg(any(
+        feature = "layout-dagre",
+        feature = "layout-elk",
+        feature = "layout-shoal"
+    ))]
+    use layout_backend::GraphLayoutBackend;
+
     options
         .family
         .session()
         .checkpoint(OperationPhase::Layout)?;
-    let selection = layout_backend::resolve_graph_layout(effective_config);
-    selection.validate_rootless_graph()?;
-    if selection.backend == layout_backend::GraphLayoutBackend::Shoal {
+    let backend = options.layout_backend();
+    backend.validate_rootless_graph()?;
+    match backend {
         #[cfg(feature = "layout-shoal")]
-        return flowchart::shoal::layout(
+        GraphLayoutBackend::Shoal => flowchart::shoal::layout(
             model,
             render_label_sources,
             class_defs,
@@ -1055,42 +1112,39 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
             options,
             svg_label_sidecar,
             edge_style_plan,
-        );
-        #[cfg(not(feature = "layout-shoal"))]
-        return Err(Error::MissingCapability {
-            capability: RenderCapability::LayoutShoal,
-            diagram_type: options.family_id().as_str().to_owned(),
-        });
-    }
-    #[cfg(feature = "layout-elk")]
-    if selection.backend == layout_backend::GraphLayoutBackend::Elk {
-        return flowchart::elk::layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
+        ),
+        #[cfg(feature = "layout-elk")]
+        GraphLayoutBackend::Elk(algorithm) => {
+            flowchart::elk::layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
+                model,
+                render_label_sources,
+                class_defs,
+                effective_config,
+                flowchart::elk::FlowchartElkLayoutExecution::new(
+                    options.text_measurer(),
+                    options.math_renderer(),
+                    options.elk_operation_seed(),
+                    algorithm,
+                    svg_label_sidecar,
+                    edge_style_plan,
+                    options.work_meter(),
+                ),
+            )
+        }
+        #[cfg(feature = "layout-dagre")]
+        GraphLayoutBackend::Dagre => flowchart::dagre::layout(
             model,
             render_label_sources,
             class_defs,
             effective_config,
-            flowchart::elk::FlowchartElkLayoutExecution::new(
-                options.text_measurer(),
-                options.math_renderer(),
-                options.elk_operation_seed(),
-                svg_label_sidecar,
-                edge_style_plan,
-                options.work_meter(),
-            ),
-        );
+            options.text_measurer(),
+            options.math_renderer(),
+            svg_label_sidecar,
+            edge_style_plan,
+            options.work_meter(),
+        ),
+        _ => Err(backend.unavailable_for(options.family_id().as_str())),
     }
-
-    flowchart::layout_flowchart_typed_with_render_labels_and_svg_label_sidecar_and_work_meter(
-        model,
-        render_label_sources,
-        class_defs,
-        effective_config,
-        options.text_measurer(),
-        options.math_renderer(),
-        svg_label_sidecar,
-        edge_style_plan,
-        options.work_meter(),
-    )
 }
 
 #[cfg(all(test, feature = "all-diagrams"))]
@@ -1107,6 +1161,7 @@ mod tests {
         for (capability, stable_id) in [
             (RenderCapability::LayoutCytoscape, "layout-cytoscape"),
             (RenderCapability::LayoutElk, "layout-elk"),
+            (RenderCapability::LayoutDagre, "layout-dagre"),
             (RenderCapability::Math, "math"),
             (RenderCapability::LayoutShoal, "layout-shoal"),
         ] {
@@ -1133,6 +1188,7 @@ mod tests {
         for capability in [
             RenderCapability::LayoutCytoscape,
             RenderCapability::LayoutElk,
+            RenderCapability::LayoutDagre,
             RenderCapability::Math,
             RenderCapability::LayoutShoal,
         ] {
@@ -1162,7 +1218,17 @@ mod tests {
         layout_flowchart_typed_by_engine(
             model,
             &parsed.metadata().effective_config,
-            &LayoutExecution::unthemed_for_test(options, session, DiagramFamilyId::FLOWCHART),
+            &LayoutExecution::unthemed_for_test(
+                options,
+                session,
+                DiagramFamilyId::FLOWCHART,
+                layout_backend::resolve(
+                    DiagramFamilyId::FLOWCHART,
+                    &parsed.metadata().diagram_type,
+                    &parsed.metadata().effective_config,
+                )
+                .unwrap(),
+            ),
         )
         .expect("flowchart layout")
     }
@@ -1185,7 +1251,17 @@ mod tests {
         layout_class_typed_by_engine(
             model,
             &parsed.metadata().effective_config,
-            &LayoutExecution::unthemed_for_test(options, session, DiagramFamilyId::CLASS),
+            &LayoutExecution::unthemed_for_test(
+                options,
+                session,
+                DiagramFamilyId::CLASS,
+                layout_backend::resolve(
+                    DiagramFamilyId::CLASS,
+                    &parsed.metadata().diagram_type,
+                    &parsed.metadata().effective_config,
+                )
+                .unwrap(),
+            ),
             &render_config,
         )
         .expect("class layout")
@@ -1243,6 +1319,7 @@ mod tests {
                 &LayoutOptions::default(),
                 &session,
                 DiagramFamilyId::ERROR,
+                layout_backend::GraphLayoutBackend::Native,
             )
             .elk_operation_seed()
         }
@@ -1335,11 +1412,12 @@ A-->B
         assert_eq!(limit.limit, "max_model_items");
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn render_model_dispatch_rejects_flowchart_dagre_work_during_its_first_owner_phase() {
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
-                "flowchart TD\nsubgraph Cluster\nA\nend\nA-->B",
+                "---\nconfig:\n  layout: dagre\n---\nflowchart TD\nsubgraph Cluster\nA\nend\nA-->B",
                 ParseOptions::strict(),
             )
             .unwrap()
@@ -1367,6 +1445,7 @@ A-->B
         assert!(limit.actual > 1);
     }
 
+    #[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
     fn assert_class_layout_work_limit(source: &str) {
         let parsed = MermaidEngine::new()
             .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
@@ -1395,9 +1474,12 @@ A-->B
         assert_eq!(limit.max, 1);
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn dagre_class_layout_honors_the_public_work_budget() {
-        assert_class_layout_work_limit("classDiagram\nA --> B\nA --> C\nA --> D\nB --> C\nC --> D");
+        assert_class_layout_work_limit(
+            "---\nconfig:\n  layout: dagre\n---\nclassDiagram\nA --> B\nA --> C\nA --> D\nB --> C\nC --> D",
+        );
     }
 
     #[cfg(feature = "layout-elk")]
@@ -1723,6 +1805,7 @@ id1(Start)-->id2(Stop)
         assert_eq!(edge_attr_value(path, "data-id"), "L_A_A_0");
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn graph_layout_unregistered_loader_falls_back_to_dagre() {
         let mut requests = vec!["unknown", "ELK", "elk.layered", "elk.radial"];
@@ -1782,7 +1865,7 @@ id1(Start)-->id2(Stop)
         }
     }
 
-    #[cfg(not(feature = "layout-elk"))]
+    #[cfg(all(feature = "layout-dagre", not(feature = "layout-elk")))]
     #[test]
     fn flowchart_elk_alias_uses_dagre_geometry_when_loader_is_absent() {
         let parsed = MermaidEngine::new()
@@ -1852,8 +1935,18 @@ id1(Start)-->id2(Stop)
                         matches!(result, Err(Error::InvalidModel { message }) if message.contains("Root node is required")),
                         "{body}"
                     );
-                } else {
+                } else if cfg!(feature = "layout-dagre") {
                     result.unwrap_or_else(|error| panic!("{body}: {layout}: {error}"));
+                } else {
+                    let expected = if layout == "cose-bilkent" {
+                        RenderCapability::LayoutCytoscape
+                    } else {
+                        RenderCapability::LayoutDagre
+                    };
+                    assert!(
+                        matches!(result, Err(Error::MissingCapability { capability, .. }) if capability == expected),
+                        "{body}: {layout}"
+                    );
                 }
             }
         }
@@ -1893,7 +1986,7 @@ id1(Start)-->id2(Stop)
             serde_json::json!({ "layout": "shoal", "flowchart": { "layout": "dagre" } }),
         ));
         for (source, expected) in [
-            ("flowchart LR\nA --> B", None),
+            ("flowchart LR\nA --> B", Some(RenderCapability::LayoutDagre)),
             (
                 "---\nconfig:\n  layout: shoal\n---\ngraph LR\nA --> B",
                 Some(RenderCapability::LayoutShoal),
@@ -1921,7 +2014,11 @@ id1(Start)-->id2(Stop)
             ),
             (
                 "---\nconfig:\n  flowchart:\n    layout: shoal\n---\nflowchart-elk LR\nA --> B",
-                layout_elk_available().then_some(RenderCapability::LayoutElk),
+                Some(if layout_elk_available() || !layout_dagre_available() {
+                    RenderCapability::LayoutElk
+                } else {
+                    RenderCapability::LayoutDagre
+                }),
             ),
             ("sequenceDiagram\nA->>B: Hello", None),
             (

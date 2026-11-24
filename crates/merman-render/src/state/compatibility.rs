@@ -458,6 +458,7 @@ impl StateCompatibilityPlan {
         self
     }
 
+    #[cfg(any(feature = "layout-dagre", test))]
     pub(crate) fn from_value(value: &Value) -> Self {
         Self::resolve(StateCompatibilityResolver::new(value, None))
     }

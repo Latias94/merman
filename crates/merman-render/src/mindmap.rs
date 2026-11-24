@@ -1,11 +1,12 @@
 use crate::config::config_f64_css_px;
 use crate::graph_label::{FlowchartLabelMetricsRequest, flowchart_label_metrics_for_layout};
+use crate::layout_backend::GraphLayoutBackend;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::math::MathRenderer;
-use crate::model::{Bounds, LayoutEdge, LayoutNode, LayoutPoint, MindmapDiagramLayout};
+use crate::model::{Bounds, LayoutEdge, LayoutNode, MindmapDiagramLayout};
 use crate::text::WrapMode;
 use crate::text::{TextMeasurer, TextStyle};
-use crate::{Error, Result};
+use crate::{Error, LayoutExecution, Result};
 use merman_model::presentation::PresentationConfig;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -47,78 +48,6 @@ pub(crate) fn mindmap_node_look<'a>(
     } else {
         crate::config::DiagramLook::from_raw(Some(model_look))
     }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum MindmapLayoutBackend {
-    Cose,
-    TidyTree,
-    Swimlane,
-    Dagre,
-    #[cfg(feature = "layout-elk")]
-    Elk,
-}
-
-pub(crate) fn layout_backend(config: &Value) -> MindmapLayoutBackend {
-    let requested = config.get("layout").and_then(Value::as_str).unwrap_or("");
-    match requested {
-        "tidy-tree" => MindmapLayoutBackend::TidyTree,
-        "dagre" => MindmapLayoutBackend::Dagre,
-        "swimlane" => MindmapLayoutBackend::Swimlane,
-        #[cfg(feature = "layout-elk")]
-        _ if crate::layout_backend::resolve_graph_layout(config).backend
-            == crate::layout_backend::GraphLayoutBackend::Elk =>
-        {
-            MindmapLayoutBackend::Elk
-        }
-        _ if cfg!(feature = "layout-cytoscape") => MindmapLayoutBackend::Cose,
-        _ => MindmapLayoutBackend::Dagre,
-    }
-}
-
-pub(crate) fn required_layout_capability(
-    config: &PresentationConfig,
-) -> Option<crate::RenderCapability> {
-    match layout_backend(config.as_value()) {
-        MindmapLayoutBackend::Cose => Some(crate::RenderCapability::LayoutCytoscape),
-        #[cfg(feature = "layout-elk")]
-        MindmapLayoutBackend::Elk => Some(crate::RenderCapability::LayoutElk),
-        _ => None,
-    }
-}
-
-/// The Dagre renderer clips circular nodes along the endpoint-to-center ray.
-pub(crate) fn dagre_shape_points(
-    mut points: Vec<LayoutPoint>,
-    start: &LayoutNode,
-    end: &LayoutNode,
-    start_circle: bool,
-    end_circle: bool,
-) -> Vec<LayoutPoint> {
-    if points.len() < 2 {
-        return points;
-    }
-    let intersect = |node: &LayoutNode, point: &LayoutPoint| {
-        let dx = point.x - node.x;
-        let dy = point.y - node.y;
-        let length = dx.hypot(dy);
-        if length == 0.0 {
-            return point.clone();
-        }
-        let radius = node.width / 2.0;
-        LayoutPoint {
-            x: node.x + radius * dx / length,
-            y: node.y + radius * dy / length,
-        }
-    };
-    if start_circle {
-        points[0] = intersect(start, &points[1]);
-    }
-    if end_circle {
-        let last = points.len() - 1;
-        points[last] = intersect(end, &points[last - 1]);
-    }
-    points
 }
 
 type MindmapModel = merman_model::families::mindmap::MindmapDiagramRenderModel;
@@ -544,27 +473,6 @@ fn compute_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> 
     Bounds::from_points(pts)
 }
 
-fn shift_nodes_to_positive_bounds(nodes: &mut [LayoutNode], content_min: f64) {
-    if nodes.is_empty() {
-        return;
-    }
-    let mut min_x = f64::INFINITY;
-    let mut min_y = f64::INFINITY;
-    for n in nodes.iter() {
-        min_x = min_x.min(n.x - n.width / 2.0);
-        min_y = min_y.min(n.y - n.height / 2.0);
-    }
-    if !(min_x.is_finite() && min_y.is_finite()) {
-        return;
-    }
-    let dx = content_min - min_x;
-    let dy = content_min - min_y;
-    for n in nodes.iter_mut() {
-        n.x += dx;
-        n.y += dy;
-    }
-}
-
 fn mindmap_layout_adapter_work(
     model: &MindmapModel,
     use_tidy_tree: bool,
@@ -593,43 +501,18 @@ pub(crate) fn layout_mindmap_diagram_typed_with_work_meter(
     model: &MindmapModel,
     config: &PresentationConfig,
     text_style: &TextStyle,
-    text_measurer: &dyn TextMeasurer,
-    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-    work_meter: Arc<crate::resources::OperationWorkMeter>,
-    #[cfg(feature = "layout-elk")] operation_seed: merman_layout_elk::ElkOperationSeed,
+    execution: &LayoutExecution<'_>,
 ) -> Result<(MindmapDiagramLayout, MindmapPreparedLabels)> {
-    let mut work_control = OperationLayoutWorkControl::new(work_meter.clone());
-    let use_tidy_tree = layout_backend(config.as_value()) == MindmapLayoutBackend::TidyTree;
-    let adapter_work = mindmap_layout_adapter_work(model, use_tidy_tree, &work_control)?;
-    work_control.charge_adapter(adapter_work)?;
-    layout_mindmap_diagram_model(
-        model,
-        config,
-        text_style,
-        text_measurer,
-        math_renderer,
-        &mut work_control,
-        work_meter,
-        #[cfg(feature = "layout-elk")]
-        operation_seed,
-    )
-}
+    let backend = execution.layout_backend();
+    let work_meter = execution.work_meter();
+    let mut work = OperationLayoutWorkControl::new(Arc::clone(&work_meter));
+    let adapter_work =
+        mindmap_layout_adapter_work(model, backend == GraphLayoutBackend::TidyTree, &work)?;
+    work.charge_adapter(adapter_work)?;
 
-#[allow(
-    clippy::too_many_arguments,
-    reason = "Layout inputs and operation controls remain explicit at this family boundary"
-)]
-fn layout_mindmap_diagram_model(
-    model: &MindmapModel,
-    config: &PresentationConfig,
-    text_style: &TextStyle,
-    text_measurer: &dyn TextMeasurer,
-    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
-    _work_control: &mut OperationLayoutWorkControl,
-    work_meter: Arc<crate::resources::OperationWorkMeter>,
-    #[cfg(feature = "layout-elk")] operation_seed: merman_layout_elk::ElkOperationSeed,
-) -> Result<(MindmapDiagramLayout, MindmapPreparedLabels)> {
     let effective_config = config.as_value();
+    let text_measurer = execution.text_measurer();
+    let math_renderer = execution.math_renderer();
 
     let mut nodes: Vec<LayoutNode> = Vec::with_capacity(model.nodes.len());
     let prepared_labels = MindmapPreparedLabels::prepare(model, config, &work_meter)?;
@@ -688,149 +571,42 @@ fn layout_mindmap_diagram_model(
         edge_indices.push((a, b));
     }
 
-    let backend = layout_backend(effective_config);
-    match backend {
-        MindmapLayoutBackend::Swimlane => {
-            return Ok((
-                registered::swimlane(model, nodes, config, work_meter)?,
-                prepared_labels,
-            ));
-        }
-        MindmapLayoutBackend::Dagre => {
-            return Ok((
-                registered::dagre(model, nodes, effective_config, _work_control)?,
-                prepared_labels,
-            ));
-        }
+    let layout = match backend {
+        GraphLayoutBackend::Swimlane => registered::swimlane(model, nodes, config, work_meter),
+        #[cfg(feature = "layout-dagre")]
+        GraphLayoutBackend::Dagre => registered::dagre(model, nodes, effective_config, &mut work),
         #[cfg(feature = "layout-elk")]
-        MindmapLayoutBackend::Elk => {
-            return Ok((
-                registered::elk(
-                    model,
-                    nodes,
-                    effective_config,
-                    _work_control,
-                    operation_seed,
-                )?,
-                prepared_labels,
-            ));
-        }
-        _ => {}
-    }
-    let use_tidy_tree = backend == MindmapLayoutBackend::TidyTree;
-    let tidy_tree_edges = if use_tidy_tree {
-        Some(tidy_tree::layout(
-            &mut nodes,
-            &model.nodes,
-            &model.edges,
-            &edge_indices,
-            work_meter.as_ref(),
-        )?)
-    } else {
-        #[cfg(feature = "layout-cytoscape")]
-        {
-            let indexed_nodes: Vec<manatee::algo::cose_bilkent::IndexedNode> = nodes
-                .iter()
-                .map(|n| manatee::algo::cose_bilkent::IndexedNode {
-                    width: n.width,
-                    height: n.height,
-                    x: n.x,
-                    y: n.y,
-                })
-                .collect();
-            let mut indexed_edges: Vec<manatee::algo::cose_bilkent::IndexedEdge> =
-                Vec::with_capacity(model.edges.len());
-            for (edge_idx, (a, b)) in edge_indices.iter().copied().enumerate() {
-                if a == b {
-                    continue;
-                }
-                indexed_edges.push(manatee::algo::cose_bilkent::IndexedEdge { a, b });
-
-                // Keep `edge_idx` referenced so unused warnings don't obscure failures if we ever
-                // enhance indexed validation error messages.
-                let _ = edge_idx;
-            }
-
-            let positions = manatee::algo::cose_bilkent::layout_indexed_with_work_control(
-                &indexed_nodes,
-                &indexed_edges,
-                _work_control,
-            )
-            .map_err(|error| _work_control.map_manatee_error(error))?;
-
-            for (n, p) in nodes.iter_mut().zip(positions) {
-                n.x = p.x;
-                n.y = p.y;
-            }
-            None
-        }
-        #[cfg(not(feature = "layout-cytoscape"))]
-        {
-            return Err(Error::MissingCapability {
-                capability: crate::RenderCapability::LayoutCytoscape,
-                diagram_type: "mindmap".to_string(),
-            });
-        }
-    };
-
-    // Mermaid's COSE-Bilkent post-layout normalizes to a positive coordinate space via
-    // `transform(0,0)` (layout-base), yielding a content bbox that starts around (15,15) before
-    // the 10px viewport padding is applied (viewBox starts at 5,5).
-    //
-    // Tidy-tree is centered around x=0 and intentionally grows in both horizontal directions.
-    // COSE-Bilkent instead normalizes into Mermaid's positive Cytoscape coordinate space.
-    if !use_tidy_tree {
-        shift_nodes_to_positive_bounds(&mut nodes, 15.0);
-    }
-
-    let edges = if let Some(edges) = tidy_tree_edges {
-        edges
-    } else {
-        model
-            .edges
-            .iter()
-            .zip(edge_indices.iter().copied())
-            .map(|(edge, (source_index, target_index))| {
-                let source = &nodes[source_index];
-                let target = &nodes[target_index];
-                LayoutEdge {
-                    id: edge.id.clone(),
-                    from: edge.start.clone(),
-                    to: edge.end.clone(),
-                    from_cluster: None,
-                    to_cluster: None,
-                    points: vec![
-                        LayoutPoint {
-                            x: source.x,
-                            y: source.y,
-                        },
-                        LayoutPoint {
-                            x: target.x,
-                            y: target.y,
-                        },
-                    ],
-                    label: None,
-                    start_label_left: None,
-                    start_label_right: None,
-                    end_label_left: None,
-                    end_label_right: None,
-                    start_marker: None,
-                    end_marker: None,
-                    stroke_dasharray: None,
-                }
-            })
-            .collect()
-    };
-    let bounds = compute_bounds(&nodes, &edges);
-    Ok((
-        MindmapDiagramLayout {
-            swimlane_lanes: Vec::new(),
+        GraphLayoutBackend::Elk(algorithm) => registered::elk(
+            model,
             nodes,
-            edges,
-            bounds,
-        },
-        prepared_labels,
-    ))
+            effective_config,
+            algorithm,
+            &mut work,
+            execution.elk_operation_seed(),
+        ),
+        #[cfg(feature = "layout-cytoscape")]
+        GraphLayoutBackend::CoseBilkent => {
+            registered::cose_bilkent(model, nodes, &edge_indices, &mut work)
+        }
+        GraphLayoutBackend::TidyTree => {
+            let edges = tidy_tree::layout(
+                &mut nodes,
+                &model.nodes,
+                &model.edges,
+                &edge_indices,
+                work_meter.as_ref(),
+            )?;
+            let bounds = compute_bounds(&nodes, &edges);
+            Ok(MindmapDiagramLayout {
+                swimlane_lanes: Vec::new(),
+                nodes,
+                edges,
+                bounds,
+            })
+        }
+        _ => Err(backend.unavailable_for("mindmap")),
+    }?;
+    Ok((layout, prepared_labels))
 }
 
 #[cfg(all(test, feature = "diagram-mindmap"))]

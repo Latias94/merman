@@ -97,8 +97,7 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
     let render_model = FlowchartRenderModelRef::new(model, render_label_sources);
     let visible_edges = render_model.projected_edges().collect::<Vec<_>>();
     #[cfg(feature = "layout-shoal")]
-    let canonical = crate::layout_backend::resolve_graph_layout(effective_config).backend
-        == crate::layout_backend::GraphLayoutBackend::Shoal;
+    let canonical = execution.layout_backend() == crate::layout_backend::GraphLayoutBackend::Shoal;
     #[cfg(not(feature = "layout-shoal"))]
     let canonical = false;
     if canonical {
@@ -121,10 +120,11 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         &render_model,
         (&visible_edges, &transport_plan),
         effective_config,
-        (execution.text_measurer(), execution.math_renderer()),
+        #[cfg(feature = "layout-shoal")]
+        canonical,
+        execution,
         svg_label_sidecar,
         edge_style_plan,
-        &work_meter,
     )?;
     #[cfg(feature = "layout-shoal")]
     let shoal = if canonical {

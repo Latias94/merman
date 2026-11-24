@@ -1,6 +1,7 @@
 use crate::html::label_box::{HtmlLabelBox, HtmlLabelWidth};
 use crate::math::MathRenderer;
 use crate::mermaid_style::HtmlTextGeometryDeclarations;
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
 use crate::model::{Bounds, LayoutEdge, LayoutNode};
 #[cfg(all(
     test,
@@ -1517,6 +1518,7 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
     }
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk", test))]
 fn compute_bounds_impl<E>(
     nodes: &[LayoutNode],
     edges: &[LayoutEdge],
@@ -1571,6 +1573,7 @@ pub(crate) fn compute_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Opti
     }
 }
 
+#[cfg(any(feature = "layout-dagre", test))]
 pub(crate) fn compute_bounds_controlled(
     nodes: &[LayoutNode],
     edges: &[LayoutEdge],

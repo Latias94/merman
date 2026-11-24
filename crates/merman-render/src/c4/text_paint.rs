@@ -32,6 +32,7 @@ impl C4TextPaintPlan {
         layout: &C4DiagramLayout,
         typography: &mut super::C4TypographyThemePlan,
         config: &PresentationConfig,
+        uses_shoal: bool,
     ) -> crate::Result<Self> {
         // The last source entry for an alias owns overrides. Defaults belong to each
         // layout occurrence's actual type, even when aliases repeat.
@@ -78,9 +79,6 @@ impl C4TextPaintPlan {
                 text: text.to_owned(),
             });
         }
-        let uses_shoal = cfg!(feature = "layout-shoal")
-            && crate::layout_backend::resolve_graph_layout(config.as_value()).backend
-                == crate::layout_backend::GraphLayoutBackend::Shoal;
         let source_relations = (!uses_shoal).then(|| {
             model
                 .rels
@@ -200,7 +198,7 @@ mod tests {
             "person_border_color": "var(--actual-border)", "custom_border_color": "red"
         }}));
         let mut typography = super::super::C4TypographyThemePlan::resolve(None, &config, &model);
-        let plan = C4TextPaintPlan::prepare(&model, &layout, &mut typography, &config)
+        let plan = C4TextPaintPlan::prepare(&model, &layout, &mut typography, &config, false)
             .expect("C4 source paint");
         let paint = plan.element_paint(0).expect("bound occurrence");
         assert_eq!(paint.background, "");

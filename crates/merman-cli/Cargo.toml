@@ -34,6 +34,7 @@ features = [
     "icons",
     "jpeg",
     "layout-cytoscape",
+    "layout-dagre",
     "layout-elk",
     "markdown",
     "math",
@@ -283,6 +284,7 @@ default = [
     "icons",
     "jpeg",
     "layout-cytoscape",
+    "layout-dagre",
     "layout-elk",
     "markdown",
     "native-fonts",
@@ -324,6 +326,7 @@ png = ["svg", "dep:merman-render", "merman/png", "system-fonts"]
 jpeg = ["svg", "dep:merman-render", "merman/jpeg", "system-fonts"]
 pdf = ["svg", "dep:merman-render", "merman/pdf", "system-fonts"]
 layout-cytoscape = ["svg", "merman/layout-cytoscape"]
+layout-dagre = ["svg", "merman/layout-dagre"]
 layout-elk = ["svg", "merman/layout-elk"]
 layout-shoal = ["svg", "merman/layout-shoal"]
 math = ["svg", "merman/math"]
@@ -415,6 +418,7 @@ required-features = [
     "jpeg",
     "pdf",
     "layout-cytoscape",
+    "layout-dagre",
     "layout-elk",
     "math",
     "icons",
@@ -438,6 +442,7 @@ required-features = [
     "jpeg",
     "pdf",
     "layout-cytoscape",
+    "layout-dagre",
     "layout-elk",
     "math",
     "icons",
@@ -454,11 +459,11 @@ required-features = [
 
 [[test]]
 name = "cli_analysis_contract"
-required-features = ["analysis", "svg"]
+required-features = ["analysis", "svg", "layout-dagre"]
 
 [[test]]
 name = "cli_output_contract"
-required-features = ["png", "pdf", "shell-completions"]
+required-features = ["png", "pdf", "shell-completions", "layout-dagre"]
 
 [[test]]
 name = "mmdc_contract"
@@ -467,6 +472,7 @@ required-features = [
     "png",
     "pdf",
     "layout-cytoscape",
+    "layout-dagre",
     "icons",
     "markdown",
     "network-icons",
@@ -484,6 +490,7 @@ required-features = [
     "jpeg",
     "pdf",
     "layout-cytoscape",
+    "layout-dagre",
     "layout-elk",
     "icons",
     "markdown",
@@ -502,6 +509,7 @@ required-features = [
     "jpeg",
     "pdf",
     "layout-cytoscape",
+    "layout-dagre",
     "layout-elk",
     "icons",
     "markdown",
@@ -515,6 +523,7 @@ name = "resource_limits"
 required-features = [
     "analysis",
     "svg",
+    "layout-dagre",
     "png",
     "icons",
     "markdown",
@@ -528,6 +537,7 @@ required-features = [
     "analysis",
     "fixes",
     "svg",
+    "layout-dagre",
     "icons",
     "markdown",
     "network-icons",
@@ -552,24 +562,24 @@ required-features = ["markdown"]
 
 [[test]]
 name = "jpeg_smoke"
-required-features = ["jpeg"]
+required-features = ["jpeg", "layout-dagre"]
 
 [[test]]
 name = "pdf_smoke"
-required-features = ["pdf"]
+required-features = ["pdf", "layout-dagre"]
 
 [[test]]
 name = "png_smoke"
-required-features = ["png"]
+required-features = ["png", "layout-dagre"]
 
 [[test]]
 name = "ratex_math"
-required-features = ["math"]
+required-features = ["math", "layout-dagre"]
 
 [[test]]
 name = "rustdoc_cli"
-required-features = ["rustdoc"]
+required-features = ["rustdoc", "layout-dagre"]
 
 [[test]]
 name = "rustdoc_package"
-required-features = ["rustdoc"]
+required-features = ["rustdoc", "layout-dagre"]

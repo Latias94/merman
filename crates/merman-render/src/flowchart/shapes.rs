@@ -158,6 +158,7 @@ impl FlowchartShape {
     }
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 pub(crate) fn validate_flowchart_model_shapes(
     model: &merman_model::families::flowchart::FlowchartModel,
 ) -> Result<()> {

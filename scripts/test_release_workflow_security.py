@@ -839,17 +839,19 @@ jobs:
         self.assertNotIn("flutter-v", text.split("  workflow_dispatch:", 1)[0])
         self.assertNotIn("tree-sitter-mermaid-v", text.split("  workflow_dispatch:", 1)[0])
 
-    def test_public_theme_pixel_tests_use_system_fonts(self) -> None:
-        step = read(CI_WORKFLOW).split(
-            "      - name: Test native theme consumers\n", 1,
-        )[1].split("\n      - name:", 1)[0]
-        features = step.split("--features ", 1)[1].split()[0].split(",")
-        self.assertIn("system-fonts", features)
+    def test_native_theme_consumer_profiles_enable_dagre_and_system_fonts(self) -> None:
+        for name in ("ci.yml", "release-preflight.yml"):
+            with self.subTest(workflow=name):
+                step = read(WORKFLOW_ROOT / name).split(
+                    "      - name: Test native theme consumers\n", 1,
+                )[1].split("\n      - name:", 1)[0]
+                features = set(step.split("--features ", 1)[1].split()[0].split(","))
+                self.assertLessEqual({"layout-dagre", "system-fonts"}, features)
 
     def test_native_theme_and_export_boundaries_run_in_ci_and_preflight(self) -> None:
         for name, runner, binding_features in (
-            ("ci.yml", "cargo nextest run", "svg,diagram-flowchart"),
-            ("release-preflight.yml", "cargo test", "svg,all-diagrams"),
+            ("ci.yml", "cargo nextest run", "svg,diagram-flowchart,layout-dagre"),
+            ("release-preflight.yml", "cargo test", "svg,all-diagrams,layout-dagre"),
         ):
             with self.subTest(workflow=name):
                 step = read(WORKFLOW_ROOT / name).split(
@@ -862,15 +864,24 @@ jobs:
                                    .replace("\\\n", " ").split())
                 self.assertIn(
                     f"{runner} --locked -p merman-ffi --no-default-features "
-                    "--features svg,diagram-flowchart --test c_consumer_smoke", command,
+                    "--features svg,diagram-flowchart,layout-dagre --test c_consumer_smoke", command,
                 )
                 self.assertIn(
                     f"{runner} --locked -p merman-render --no-default-features "
                     "--features diagram-pie,diagram-info --test native_theme_canvas", command,
                 )
                 self.assertIn(
+                    f"{runner} --locked -p merman-render --no-default-features "
+                    "--features diagram-flowchart,layout-dagre --test flowchart_node_effects", command,
+                )
+                self.assertIn(
                     f"{runner} --locked -p merman-bindings-core --no-default-features "
                     f"--features {binding_features} --lib", command,
+                )
+                self.assertIn(
+                    f"{runner} --locked -p merman --no-default-features "
+                    "--features svg,diagram-flowchart,layout-dagre "
+                    "--test theme_font_capability --test flowchart_edge_label_theme", command,
                 )
                 self.assertNotIn("embedded-fonts", command)
 

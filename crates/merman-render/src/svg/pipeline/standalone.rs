@@ -197,9 +197,13 @@ mod tests {
     }
 
     #[test]
-    #[cfg(all(feature = "diagram-class", feature = "diagram-journey"))]
+    #[cfg(feature = "diagram-journey")]
     fn ordinary_generated_svg_does_not_run_terminal_document_observers() {
         for source in [
+            #[cfg(all(
+                feature = "diagram-class",
+                any(feature = "layout-dagre", feature = "layout-elk")
+            ))]
             "classDiagram\nA --> B",
             "journey\n  title Release\n  section Delivery\n    Ship: 5: Maintainer",
         ] {

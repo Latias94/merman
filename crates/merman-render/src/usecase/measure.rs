@@ -1,6 +1,7 @@
 use super::*;
 use crate::Error;
 use crate::layout_work::OperationLayoutWorkControl;
+use crate::text::TextMeasurer;
 use crate::text::{
     WrapMode, measure_wrapped_markdown_with_inline_styles,
     measure_xhtml_label_fragment_with_terminal_fonts,
@@ -918,6 +919,7 @@ pub(super) fn measure(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::resources::OperationWorkMeter;
     use crate::resources::RenderResourcePolicy;
     use crate::text::DeterministicTextMeasurer;
     use merman_model::families::usecase::{
@@ -1083,6 +1085,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn self_loop_projection_keeps_original_prepared_style_on_all_segments() {
         let mut model = styled_model();
@@ -1121,6 +1124,7 @@ mod tests {
         assert!(helpers.iter().all(|node| node.source_style.is_empty()));
     }
 
+    #[cfg(feature = "layout-dagre")]
     #[test]
     fn parallel_self_loops_keep_the_last_relationship_after_dagre_projection() {
         let mut model = styled_model();

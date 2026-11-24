@@ -25,6 +25,7 @@ merman-bindings-core = { workspace = true, features = [
     "fixes",
     "jpeg",
     "layout-cytoscape",
+    "layout-dagre",
     "layout-elk",
     "math",
     "native-runtime",
@@ -37,6 +38,7 @@ merman-fixture-render-context = { path = "../merman-fixture-render-context" }
 merman-render = { path = "../merman-render", features = [
     "all-diagrams",
     "layout-cytoscape",
+    "layout-dagre",
     "layout-elk",
 ] }
 merman-typst-plugin = { path = "../merman-typst-plugin", default-features = false, features = ["all-diagrams"] }

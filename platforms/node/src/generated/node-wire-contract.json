@@ -7,6 +7,7 @@
   "artifact": {
     "capability_ids": [
       "layout-cytoscape",
+      "layout-dagre",
       "layout-elk",
       "math",
       "svg"

@@ -209,7 +209,7 @@ can explain a byte difference. The raw SVG repeatability result remains part of 
 The `pipeline` bench can be run directly for local attribution:
 
 ```bash
-cargo bench -p merman --features all-diagrams,svg,compat-json,editor-facts --bench pipeline
+cargo bench -p merman --features all-diagrams,svg,compat-json,editor-facts,layout-dagre --bench pipeline
 ```
 
 It measures:
@@ -224,11 +224,10 @@ It measures:
 - `render/*`: SVG emission from an already laid-out diagram.
 - `end_to_end/*`: parse, layout, and SVG emission through the public pipeline.
 
-The full `pipeline` executable requires `svg,compat-json,editor-facts`, including when only one
-group is selected. Default facade features do not enable `compat-json`. Use the explicit recipe
-above to retain all diagram families; default features still supply the layout backends.
+The full `pipeline` executable requires `svg,compat-json,editor-facts,layout-dagre` for every group.
+The recipe above includes all diagram families. Cargo defaults supply Cytoscape and ELK.
 With defaults disabled, bench-list verification uses
-`all-diagrams,svg,compat-json,editor-facts,layout-cytoscape,layout-elk,math`.
+`all-diagrams,svg,compat-json,editor-facts,layout-cytoscape,layout-dagre,layout-elk,math`.
 
 The October 22, 2026 U8/U9 API/recipe migration uses `MermaidEngine` and
 `PresentationArtifact` for SVG preparation. It refreshes current lane/probe features and
@@ -312,9 +311,11 @@ limits. PNG uses the default 1x scale without a fit box.
 
 ```bash
 CARGO_BUILD_JOBS=1 cargo bench --locked -p merman --no-default-features \
-  --features svg,png,pdf,diagram-flowchart,diagram-sequence,diagram-xychart --bench native_export -- --test
+  --features svg,png,pdf,diagram-flowchart,diagram-sequence,diagram-xychart,layout-dagre \
+  --bench native_export -- --test
 CARGO_BUILD_JOBS=1 cargo bench --locked -p merman --no-default-features \
-  --features svg,png,pdf,diagram-flowchart,diagram-sequence,diagram-xychart --bench native_export -- \
+  --features svg,png,pdf,diagram-flowchart,diagram-sequence,diagram-xychart,layout-dagre \
+  --bench native_export -- \
   --noplot --sample-size 30 --warm-up-time 2 --measurement-time 3
 ```
 
@@ -451,7 +452,7 @@ Base and head are separate `RunnerRecipe` values. Each recipe records its own:
 
 Do not project the head recipe onto an older revision. Capability names can change across releases.
 For example, `v0.8.0-alpha.3` exposes SVG rendering through `render`, while the current candidate
-uses `all-diagrams,svg,compat-json,editor-facts` for the full pipeline bench.
+uses `all-diagrams,svg,compat-json,editor-facts,layout-dagre` for the full pipeline bench.
 `compare_self.py` keeps the historical base default at `svg` and uses that full recipe for head.
 Override `--base-features` and `--head-features` independently according to each checkout's bench
 requirements. A base that predates `compat-json` or `editor-facts` must keep its own feature
@@ -470,7 +471,7 @@ python3 tools/bench/compare_self.py \
   --base-bench pipeline \
   --head-bench pipeline \
   --base-features render \
-  --head-features all-diagrams,svg,compat-json,editor-facts \
+  --head-features all-diagrams,svg,compat-json,editor-facts,layout-dagre \
   --base-toolchain 1.95.0 \
   --head-toolchain 1.95.0 \
   --base-target-dir target/performance/base \
@@ -689,8 +690,8 @@ baseline for `kanban_medium` is 40,000 ns:
 ```bash
 python3 tools/bench/compare_self.py \
   --base-dir ../merman-base --head-dir . \
-  --base-features all-diagrams,svg,compat-json,editor-facts \
-  --head-features all-diagrams,svg,compat-json,editor-facts \
+  --base-features all-diagrams,svg,compat-json,editor-facts,layout-dagre \
+  --head-features all-diagrams,svg,compat-json,editor-facts,layout-dagre \
   --group end_to_end --filter '^end_to_end/kanban_medium$' \
   --evidence-mode confirmation --preset long \
   --low-latency-baseline-ns kanban_medium=40000 \

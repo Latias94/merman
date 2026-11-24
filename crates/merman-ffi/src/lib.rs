@@ -4949,6 +4949,7 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
             .unwrap();
         for (capability_id, expected) in [
             ("layout-cytoscape", cfg!(feature = "layout-cytoscape")),
+            ("layout-dagre", cfg!(feature = "layout-dagre")),
             ("layout-elk", cfg!(feature = "layout-elk")),
             ("math", cfg!(feature = "math")),
         ] {
@@ -5913,6 +5914,7 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
     #[cfg(all(
         feature = "svg",
         not(feature = "layout-cytoscape"),
+        not(feature = "layout-dagre"),
         not(feature = "layout-elk"),
         not(feature = "math")
     ))]
@@ -5940,6 +5942,12 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
         );
         unsafe { api.result_free.unwrap()(&mut config_result) };
 
+        let default_layout =
+            if !merman::svg::layout_elk_available() && merman::svg::layout_dagre_available() {
+                "layout-dagre"
+            } else {
+                "layout-elk"
+            };
         for (required_capabilities, source, rejected_capability) in [
             (
                 &["layout-cytoscape"][..],
@@ -5947,14 +5955,19 @@ A@{ icon: "alpha:rocket", label: "A" } --> B@{ icon: "fleet:ship", label: "B" }"
                 "layout-cytoscape",
             ),
             (
-                &["layout-elk"][..],
-                b"---\nconfig:\n  layout: elk\n---\nflowchart TD\nA --> B".as_slice(),
-                "layout-elk",
+                &["layout-dagre"][..],
+                b"---\nconfig:\n  layout: dagre\n---\nflowchart TD\nA --> B".as_slice(),
+                "layout-dagre",
             ),
             (
-                &["layout-elk", "math"][..],
+                &[default_layout][..],
+                b"---\nconfig:\n  layout: elk\n---\nflowchart TD\nA --> B".as_slice(),
+                default_layout,
+            ),
+            (
+                &[default_layout, "math"][..],
                 b"flowchart TD\nA[\"$$x^2$$\"] --> B".as_slice(),
-                "layout-elk",
+                default_layout,
             ),
         ] {
             for capability_id in required_capabilities {

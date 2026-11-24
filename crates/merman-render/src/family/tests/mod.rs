@@ -99,6 +99,7 @@ fn decode_data_points(svg: &str) -> Vec<(String, Vec<(f64, f64)>)> {
     out
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn decode_edge_label_positions(svg: &str) -> std::collections::HashMap<String, (f64, f64)> {
     let document = crate::xml_dom::Document::parse(svg).expect("valid flowchart SVG");
     let mut positions = std::collections::HashMap::new();
@@ -145,6 +146,7 @@ fn parse_flowchart(source: &str) -> PresentationDiagram {
         .into_presentation()
 }
 
+#[cfg(feature = "layout-dagre")]
 #[test]
 fn independent_flowchart_without_context_renders_canonical_css() {
     use merman_model::families::flowchart::{
@@ -209,6 +211,7 @@ fn independent_flowchart_without_context_renders_canonical_css() {
     assert!(ordinary.contains("fill:#123456"), "{ordinary}");
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[test]
 fn edge_geometry_json_points_match_the_emitted_data_points() {
     // Circle endpoints exercise the difference between `layoutJson.points` and the clipped
@@ -292,6 +295,7 @@ M -->|back| S
     );
 }
 
+#[cfg(feature = "layout-dagre")]
 #[test]
 fn edge_geometry_json_keeps_duplicate_ids_occurrence_bound() {
     let source = r#"---
@@ -347,6 +351,7 @@ A -->|second owner| B
     }
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn flowchart_node_wrapper<'a, 'input>(
     document: &'a crate::xml_dom::Document<'input>,
     node_id: &str,
@@ -361,6 +366,7 @@ fn flowchart_node_wrapper<'a, 'input>(
         .unwrap_or_else(|| panic!("Flowchart node wrapper for {node_id}"))
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn flowchart_node_shape_style(svg: &str, node_id: &str) -> String {
     let document = crate::xml_dom::Document::parse(svg).expect("valid Flowchart SVG");
     let wrapper = flowchart_node_wrapper(&document, node_id);
@@ -417,6 +423,7 @@ fn assert_flowchart_point_marker_paint(svg: &str, marker_id: &str, paint: &str) 
     assert_eq!(path.attribute("stroke"), Some(paint));
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn flowchart_node_shape_attribute(svg: &str, node_id: &str, attribute: &str) -> Option<String> {
     let document = crate::xml_dom::Document::parse(svg).expect("valid Flowchart SVG");
     let wrapper = flowchart_node_wrapper(&document, node_id);
@@ -434,6 +441,7 @@ fn flowchart_node_shape_attribute(svg: &str, node_id: &str, attribute: &str) -> 
         .map(str::to_string)
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn flowchart_node_label_style(svg: &str, node_id: &str) -> String {
     let document = crate::xml_dom::Document::parse(svg).expect("valid Flowchart SVG");
     let wrapper = flowchart_node_wrapper(&document, node_id);
@@ -487,6 +495,7 @@ fn capability_plan_reports_the_authoritative_render_family() {
     }
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[test]
 fn classic_flowchart_without_diagram_theme_does_not_emit_radius_attributes() {
     let parsed = MermaidEngine::new()
@@ -512,6 +521,7 @@ fn classic_flowchart_without_diagram_theme_does_not_emit_radius_attributes() {
     );
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[test]
 fn flowchart_generated_css_emits_important_once() {
     let parsed = MermaidEngine::new()
@@ -531,6 +541,7 @@ fn flowchart_generated_css_emits_important_once() {
     assert!(!rendered.svg().contains("important!important"));
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[test]
 fn planned_family_drives_flowchart_router_before_layout() {
     let engine = MermaidEngine::new();
@@ -544,28 +555,39 @@ fn planned_family_drives_flowchart_router_before_layout() {
     let swimlane = super::preparation::prepare_non_class_render(
         &flowchart,
         &options,
-        FamilyRenderContext::resolve(session(), DiagramFamilyId::SWIMLANE),
+        FamilyRenderContext::resolve(
+            session(),
+            DiagramFamilyId::SWIMLANE,
+            GraphLayoutBackend::Swimlane,
+        ),
         FamilyPreparation::Render,
     )
     .expect("planned Swimlane family should drive layout");
     assert_eq!(swimlane.family_id(), DiagramFamilyId::SWIMLANE);
 
-    let configured_swimlane = engine
-        .parse_diagram_for_render_model_sync(
-            "---\nconfig:\n  layout: swimlane\n---\nflowchart TD\nA --> B\n",
-            ParseOptions::strict(),
+    #[cfg(feature = "layout-dagre")]
+    {
+        let configured_swimlane = engine
+            .parse_diagram_for_render_model_sync(
+                "---\nconfig:\n  layout: swimlane\n---\nflowchart TD\nA --> B\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .expect("configured Swimlane source should produce a render model")
+            .into_presentation();
+        let flowchart = super::preparation::prepare_non_class_render(
+            &configured_swimlane,
+            &options,
+            FamilyRenderContext::resolve(
+                session(),
+                DiagramFamilyId::FLOWCHART,
+                GraphLayoutBackend::Dagre,
+            ),
+            FamilyPreparation::Render,
         )
-        .unwrap()
-        .expect("configured Swimlane source should produce a render model")
-        .into_presentation();
-    let flowchart = super::preparation::prepare_non_class_render(
-        &configured_swimlane,
-        &options,
-        FamilyRenderContext::resolve(session(), DiagramFamilyId::FLOWCHART),
-        FamilyPreparation::Render,
-    )
-    .expect("planned Flowchart family should drive layout");
-    assert_eq!(flowchart.family_id(), DiagramFamilyId::FLOWCHART);
+        .expect("planned Flowchart family should drive layout");
+        assert_eq!(flowchart.family_id(), DiagramFamilyId::FLOWCHART);
+    }
 }
 
 #[test]
@@ -579,7 +601,7 @@ fn flowchart_router_rejects_an_incompatible_planned_family() {
     let error = match super::preparation::prepare_non_class_render(
         &parsed,
         &LayoutOptions::default(),
-        FamilyRenderContext::resolve(session(), DiagramFamilyId::STATE),
+        FamilyRenderContext::resolve(session(), DiagramFamilyId::STATE, GraphLayoutBackend::Dagre),
         FamilyPreparation::Render,
     ) {
         Ok(_) => panic!("State cannot consume a Flowchart semantic model"),
@@ -592,6 +614,7 @@ fn flowchart_router_rejects_an_incompatible_planned_family() {
     assert!(message.contains("Flowchart"));
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[test]
 fn family_artifact_rejects_planned_family_drift() {
     let parsed = MermaidEngine::new()
@@ -605,7 +628,7 @@ fn family_artifact_rejects_planned_family_drift() {
     let error = match FamilyRenderArtifact::new(
         &parsed,
         family,
-        FamilyRenderContext::resolve(session(), DiagramFamilyId::STATE),
+        FamilyRenderContext::resolve(session(), DiagramFamilyId::STATE, GraphLayoutBackend::Dagre),
     ) {
         Ok(_) => panic!("family drift must be rejected"),
         Err(error) => error,
@@ -617,6 +640,11 @@ fn family_artifact_rejects_planned_family_drift() {
     assert!(message.contains("flowchart"));
 }
 
+#[cfg(any(
+    feature = "layout-dagre",
+    feature = "layout-elk",
+    feature = "layout-cytoscape"
+))]
 fn text_measurement_call_count(session: &RenderSession) -> u64 {
     session
         .text_measurement_report()
@@ -626,12 +654,14 @@ fn text_measurement_call_count(session: &RenderSession) -> u64 {
         .sum()
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[derive(Debug, Clone, Copy)]
 enum SidecarHostOutcome {
     Success,
     Missing,
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct SidecarHostRequest {
     ordinal: usize,
@@ -644,11 +674,13 @@ struct SidecarHostRequest {
     wrap_mode: WrapMode,
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 struct SidecarRecordingHost {
     outcome: SidecarHostOutcome,
     requests: Mutex<Vec<SidecarHostRequest>>,
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 impl SidecarRecordingHost {
     fn new(outcome: SidecarHostOutcome) -> Self {
         Self {
@@ -662,6 +694,7 @@ impl SidecarRecordingHost {
     }
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 impl HostTextMeasurer for SidecarRecordingHost {
     fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
         let ordinal = {
@@ -739,6 +772,7 @@ fn sidecar_host_measurement(
     }
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[test]
 fn flowchart_measurement_and_terminal_style_share_the_important_typography_winner() {
     let source = r#"---
@@ -828,6 +862,7 @@ fn prepare_mindmap_with_host_limit(
     ((parsed, LayoutOptions::default(), session), host)
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[test]
 fn public_flowchart_preparation_enables_prepared_svg_label_reuse() {
     let source = r#"---
@@ -859,6 +894,7 @@ A -->|control label| B
     );
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[test]
 fn prepared_self_loop_edge_label_keeps_its_semantic_owner_through_family_dispatch() {
     let source = r#"---
@@ -1154,6 +1190,7 @@ fn prepare_with_layout_work_limit(source: &str, max_layout_work_units: usize) ->
     (parsed, LayoutOptions::default(), session)
 }
 
+#[cfg(feature = "layout-dagre")]
 fn prepare_with_unbounded_layout_work(source: &str) -> FamilyFixture {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
@@ -1179,18 +1216,26 @@ fn assert_model_item_limit(error: Error, actual: usize, max: usize) {
 
 #[test]
 fn session_report_accounts_for_every_metered_layout_family() {
-    let cases = vec![
+    let cases = [
+        #[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
         (
             "classDiagram\nclass A\nclass B\nA --> B\n",
             DiagramFamilyId::CLASS,
         ),
+        #[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
         (
             "stateDiagram-v2\n[*] --> Idle\nIdle --> Active\n",
             DiagramFamilyId::STATE,
         ),
+        #[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
         (
             "erDiagram\nCUSTOMER ||--o{ ORDER : places\n",
             DiagramFamilyId::ER,
+        ),
+        #[cfg(feature = "layout-shoal")]
+        (
+            "---\nconfig:\n  layout: shoal\n---\nflowchart LR\nA --> B",
+            DiagramFamilyId::FLOWCHART,
         ),
         (
             "---\nconfig:\n  layout: tidy-tree\n---\nmindmap\n  Root\n    First child\n    Second child\n",
@@ -1204,6 +1249,7 @@ fn session_report_accounts_for_every_metered_layout_family() {
             "kanban\n  todo[Todo]\n    task[Task]\n",
             DiagramFamilyId::KANBAN,
         ),
+        #[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
         (
             "requirementDiagram\nrequirement req1 {\n  id: 1\n  text: Login\n  risk: high\n}\n",
             DiagramFamilyId::REQUIREMENT,
@@ -1221,17 +1267,12 @@ fn session_report_accounts_for_every_metered_layout_family() {
             "treemap\n\"Section\"\n  \"Leaf\": 4\n",
             DiagramFamilyId::TREEMAP,
         ),
-    ];
-
-    #[cfg(feature = "layout-cytoscape")]
-    let cases = {
-        let mut cases = cases;
-        cases.push((
+        #[cfg(feature = "layout-cytoscape")]
+        (
             "mindmap\n  Root\n    First child\n    Second child\n",
             DiagramFamilyId::MINDMAP,
-        ));
-        cases
-    };
+        ),
+    ];
 
     for (source, expected_family) in cases {
         let parsed = MermaidEngine::new()
@@ -1249,6 +1290,7 @@ fn session_report_accounts_for_every_metered_layout_family() {
     }
 }
 
+#[cfg(feature = "layout-dagre")]
 #[test]
 fn dagre_family_work_budgets_are_exact_and_preserve_layout_output() {
     let cases = [
@@ -1266,7 +1308,8 @@ fn dagre_family_work_budgets_are_exact_and_preserve_layout_output() {
         ),
     ];
 
-    for (source, expected_family) in cases {
+    for (body, expected_family) in cases {
+        let source = &format!("---\nconfig:\n  layout: dagre\n---\n{body}");
         let (fixture_parsed_1, fixture_layout_1, fixture_session_1) =
             prepare_with_unbounded_layout_work(source);
         let unbounded = prepare(&fixture_parsed_1, &fixture_layout_1, fixture_session_1).unwrap();
@@ -1348,6 +1391,7 @@ fn default_mindmap_cose_reports_kernel_work_and_has_an_exact_resource_boundary()
     );
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[test]
 fn requirement_layout_projection_excludes_operation_prepared_labels() {
     let parsed = MermaidEngine::new()
@@ -1391,6 +1435,7 @@ system - satisfies -> req1
     );
 }
 
+#[cfg(feature = "layout-dagre")]
 #[test]
 fn dagre_flowchart_family_renderer_reuses_prepared_labels_by_semantic_owner() {
     assert_flowchart_prepared_labels_reused_by_semantic_owner(
@@ -1408,6 +1453,7 @@ fn elk_flowchart_family_renderer_reuses_prepared_labels_by_semantic_owner() {
     );
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn assert_flowchart_prepared_labels_reused_by_semantic_owner(
     layout: &str,
     empty_subgraph_owner: fn(usize) -> crate::flowchart::FlowchartSvgLabelOwner,
@@ -1635,6 +1681,7 @@ end
     assert!(!svg.contains(">$$x^2$$<"), "{svg}");
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[test]
 fn flowchart_special_shape_intersections_reuse_layout_label_metrics() {
     let parsed = MermaidEngine::new()
@@ -1839,6 +1886,7 @@ A styled@-->|swimlane semantic owner wraps alpha beta gamma delta epsilon| B
     );
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[test]
 fn flowchart_family_layout_projections_exclude_operation_prepared_labels() {
     for (source, variant) in [
@@ -1948,8 +1996,15 @@ fn layout_json_observes_cancellation_inside_the_owned_semantic_projection() {
     let session = crate::environment::RenderEnvironment::deterministic()
         .begin_session_with_control(control.clone())
         .unwrap();
-    let canonical_76 = parse_flowchart("flowchart LR\nA-->B");
-    let artifact = prepare(&canonical_76, &LayoutOptions::default(), session).unwrap();
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(
+            "sequenceDiagram\nA->>B: Message",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let artifact = prepare(&parsed, &LayoutOptions::default(), session).unwrap();
     control.cancel_after_checkpoints(1);
     let Error::Cancelled(cancelled) = artifact.layout_json().unwrap_err() else {
         panic!("projection cancellation must keep its category");
@@ -1981,9 +2036,10 @@ fn layout_json_preserves_the_original_owned_projection_error() {
     assert!(error.message().contains("invalid Block child index"));
 }
 
+#[cfg(feature = "layout-dagre")]
 #[test]
 fn dagre_flowchart_node_limit_accepts_boundary_and_rejects_one_beyond() {
-    let source = "flowchart TD\nA --> B";
+    let source = "---\nconfig:\n  layout: dagre\n---\nflowchart TD\nA --> B";
     let (fixture_parsed_6, fixture_layout_6, fixture_session_6) =
         prepare_with_model_item_limit(source, 3);
     let artifact = prepare(&fixture_parsed_6, &fixture_layout_6, fixture_session_6).unwrap();
@@ -2094,8 +2150,10 @@ fn flowchart_math_capability_uses_parser_owned_render_spelling() {
                 .contains(&RenderCapability::Math),
             "encoded dollar entities remain ordinary createText input: {source}"
         );
-        prepare(&parsed, &LayoutOptions::default(), session)
-            .expect("encoded dollar entities must not require a Math renderer");
+        if plan.is_ready() {
+            prepare(&parsed, &LayoutOptions::default(), session)
+                .expect("encoded dollar entities must not require a Math renderer");
+        }
     }
 
     let parsed = MermaidEngine::new()
@@ -2165,12 +2223,17 @@ fn constrained_profile_rejects_math_before_invoking_an_opaque_backend() {
         Err(error) => error,
         Ok(_) => panic!("constrained math unexpectedly reached opaque backend dispatch"),
     };
+    let expected = if cfg!(any(feature = "layout-dagre", feature = "layout-elk")) {
+        RenderCapability::Math
+    } else {
+        RenderCapability::LayoutElk
+    };
     assert!(matches!(
         error,
         Error::MissingCapability {
-            capability: RenderCapability::Math,
+            capability,
             ref diagram_type,
-        } if diagram_type == "flowchart-v2"
+        } if capability == expected && diagram_type == "flowchart-v2"
     ));
     assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 0);
 }
@@ -2485,6 +2548,7 @@ fn compiled_math_native_finalization_rejects_untrusted_evidence_mutation() {
     assert_eq!(work_meter.prepared_text_retained_bytes(), 0);
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[test]
 fn declining_math_backend_fails_closed_for_native_flowchart_and_sequence_outputs() {
     for (diagram_type, source) in [
@@ -3041,18 +3105,25 @@ class Formula["$$x^2$$"]
         Err(error) => error,
         Ok(_) => panic!("Class math label unexpectedly rendered without a math backend"),
     };
+    let expected = if cfg!(any(feature = "layout-dagre", feature = "layout-elk")) {
+        RenderCapability::Math
+    } else {
+        RenderCapability::LayoutElk
+    };
     assert!(matches!(
         error,
         Error::MissingCapability {
-            capability: RenderCapability::Math,
+            capability,
             ref diagram_type,
-        } if diagram_type == "classDiagram"
+        } if capability == expected && diagram_type == "classDiagram"
     ));
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[derive(Debug)]
 struct ClassMathRenderer;
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 impl crate::math::MathRenderer for ClassMathRenderer {
     fn render_html_label(
         &self,
@@ -3079,6 +3150,7 @@ impl crate::math::MathRenderer for ClassMathRenderer {
     }
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[test]
 fn class_math_label_is_consumed_by_the_math_renderer() {
     let source = r#"classDiagram
@@ -3110,6 +3182,7 @@ class Formula["$$x^2$$"]
     assert!(!rendered.svg().contains("$$x^2$$"));
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn render_class_math(source: &str) -> String {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
@@ -3128,6 +3201,7 @@ fn render_class_math(source: &str) -> String {
         .to_string()
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[test]
 fn class_math_label_forces_html_rendering_when_html_labels_are_disabled() {
     let svg = render_class_math(
@@ -3144,6 +3218,7 @@ class Formula["$$x^2$$"]
     assert!(!svg.contains("$$x^2$$"));
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[test]
 fn class_relation_terminal_and_note_math_labels_use_the_math_renderer() {
     let svg = render_class_math(
@@ -3160,6 +3235,7 @@ note for Formula "$$note$$"
     assert!(!svg.contains("<p><div>"));
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[test]
 fn class_annotation_and_interface_math_labels_require_and_use_math() {
     for source in [
@@ -3339,6 +3415,7 @@ fn suppressed_parse_failure_uses_the_typed_error_artifact_and_renderer() {
     assert!(rendered.svg().contains("Syntax error in text"));
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 fn render_with_sidecar_host_control(
     preparation: FamilyPreparation,
     outcome: SidecarHostOutcome,
@@ -3402,6 +3479,7 @@ A traced-edge@-->|edge label words| B["delta epsilon"]
     (indexed_sidecar, trace, report, svg)
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[test]
 fn routed_host_and_fallback_traces_match_a_no_sidecar_family_control() {
     for outcome in [SidecarHostOutcome::Success, SidecarHostOutcome::Missing] {
@@ -3428,6 +3506,14 @@ fn routed_host_and_fallback_traces_match_a_no_sidecar_family_control() {
     }
 }
 
+fn project_agentflow_for_test(
+    config: &merman_model::presentation::PresentationConfig,
+    control: &merman_model::OperationControl,
+) -> Result<merman_model::presentation::PresentationConfig> {
+    let backend = crate::layout_backend::resolve(DiagramFamilyId::AGENTFLOW, "agentflow", config)?;
+    project_agentflow_flowchart_config(config, backend, control)
+}
+
 #[test]
 fn agentflow_layout_config_prioritizes_family_measurement_keys() {
     let config = crate::test_support::presentation_config(json!({
@@ -3435,8 +3521,7 @@ fn agentflow_layout_config_prioritizes_family_measurement_keys() {
         "flowchart": { "minNodeWidth": 90 }
     }));
     let projected =
-        project_agentflow_flowchart_config(&config, &merman_model::OperationControl::new())
-            .unwrap();
+        project_agentflow_for_test(&config, &merman_model::OperationControl::new()).unwrap();
     let number = |config: &merman_model::presentation::PresentationConfig, path: &str| {
         config
             .as_value()
@@ -3474,7 +3559,7 @@ fn agentflow_projection_clones_deep_routing_values_on_a_small_stack() {
             )
             .unwrap()
             .unwrap();
-            let projected = project_agentflow_flowchart_config(&config, &control).unwrap();
+            let projected = project_agentflow_for_test(&config, &control).unwrap();
             for key in ["diagramPadding", "nodeSpacing"] {
                 let mut value = &projected.as_value()["flowchart"][key];
                 for _ in 0..2048 {
@@ -3496,8 +3581,7 @@ fn agentflow_layout_config_keeps_flowchart_wrapping_fallback() {
             "flowchart": { "minNodeWidth": 90, "wrappingWidth": 240 }
         }));
         let projected =
-            project_agentflow_flowchart_config(&config, &merman_model::OperationControl::new())
-                .unwrap();
+            project_agentflow_for_test(&config, &merman_model::OperationControl::new()).unwrap();
         assert_eq!(projected.as_value()["flowchart"]["minNodeWidth"], 0);
         assert_eq!(projected.as_value()["flowchart"]["wrappingWidth"], 240);
     }
@@ -3516,8 +3600,7 @@ fn agentflow_projection_separates_renderer_ownership_from_shared_shape_settings(
             }
         }));
         let projected =
-            project_agentflow_flowchart_config(&config, &merman_model::OperationControl::new())
-                .unwrap();
+            project_agentflow_for_test(&config, &merman_model::OperationControl::new()).unwrap();
         let flow = &projected.as_value()["flowchart"];
         assert_eq!(flow["diagramPadding"], 8);
         assert_eq!(flow["titleTopMargin"], 0);
@@ -3543,8 +3626,7 @@ fn agentflow_projection_separates_renderer_ownership_from_shared_shape_settings(
             }
         }));
         let projected =
-            project_agentflow_flowchart_config(&config, &merman_model::OperationControl::new())
-                .unwrap();
+            project_agentflow_for_test(&config, &merman_model::OperationControl::new()).unwrap();
         let flow = &projected.as_value()["flowchart"];
         assert_eq!(flow["diagramPadding"], if value.is_null() { 8 } else { 0 });
         assert_eq!(flow["titleTopMargin"], 0);
@@ -3574,26 +3656,31 @@ fn agentflow_spacing_projection_follows_registered_backend_selection() {
             "agentflow": {"nodeSpacing": 200, "rankSpacing": 210},
             "flowchart": {"nodeSpacing": 300, "rankSpacing": 310}
         }));
-        let selected = crate::layout_backend::resolve_graph_layout(config.as_value());
-        let projected =
-            project_agentflow_flowchart_config(&config, &merman_model::OperationControl::new())
+        let selected =
+            crate::layout_backend::resolve(DiagramFamilyId::AGENTFLOW, "agentflow", &config)
                 .unwrap();
+        let projected = project_agentflow_flowchart_config(
+            &config,
+            selected,
+            &merman_model::OperationControl::new(),
+        )
+        .unwrap();
         let flow = &projected.as_value()["flowchart"];
-        let elk_registered = cfg!(feature = "layout-elk")
+        let elk_selected = (crate::layout_elk_available() || !crate::layout_dagre_available())
             && crate::layout_backend::ElkRootAlgorithm::from_name(layout).is_some();
         assert_eq!(
-            selected.backend == crate::layout_backend::GraphLayoutBackend::Elk,
-            elk_registered,
+            matches!(selected, GraphLayoutBackend::Elk(_)),
+            elk_selected,
             "{layout}"
         );
         assert_eq!(
             flow["nodeSpacing"],
-            if elk_registered { 50 } else { 90 },
+            if elk_selected { 50 } else { 90 },
             "{layout}"
         );
         assert_eq!(
             flow["rankSpacing"],
-            if elk_registered { 50 } else { 110 },
+            if elk_selected { 50 } else { 110 },
             "{layout}"
         );
     }
@@ -3773,6 +3860,7 @@ fn renderer_owned_metadata_scan_observes_the_artifact_session_control() {
     assert_eq!(cancelled.phase, OperationPhase::Postprocess);
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[test]
 fn edge_geometry_json_label_positions_match_emitted_positions() {
     let cases = [
@@ -3853,6 +3941,7 @@ fn edge_geometry_json_label_positions_match_emitted_positions() {
     }
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[test]
 fn preparation_borrows_the_canonical_models_metadata_and_flowchart_context() {
     for source in [
@@ -3892,7 +3981,7 @@ fn preparation_borrows_the_canonical_models_metadata_and_flowchart_context() {
                     assert!(std::ptr::eq(value.pair().semantic(), model))
                 }
                 (
-                    BuiltinFamilyArtifact::Agentflow { semantic, flow },
+                    BuiltinFamilyArtifact::Agentflow { semantic, flow, .. },
                     RenderSemanticModel::Agentflow(model),
                 ) => {
                     assert!(std::ptr::eq(*semantic, model));
@@ -3907,34 +3996,46 @@ fn preparation_borrows_the_canonical_models_metadata_and_flowchart_context() {
 #[test]
 fn edge_geometry_json_family_cases_match_actual_svg_coordinates() {
     let cases = [
+        #[cfg(feature = "layout-dagre")]
         (
             "dagre_nested",
             "---\nconfig:\n  layout: dagre\n  htmlLabels: false\n---\nflowchart LR\nsubgraph Outer\n direction TB\n A((Circle)) -->|inner| B{Diamond}\nend\nB -->|outer| C[End]",
         ),
+        #[cfg(any(feature = "layout-elk", feature = "layout-dagre"))]
         (
             "elk_parallel",
             "---\nconfig:\n  layout: elk\n  htmlLabels: false\n---\nflowchart LR\nA((Circle)) -->|one| B{Diamond}\nA -->|two| B\nB --> C[End]",
         ),
+        #[cfg(feature = "layout-dagre")]
         (
             "hand_drawn",
             "---\nconfig:\n  layout: dagre\n  htmlLabels: false\n  look: handDrawn\n  handDrawnSeed: 7\n---\nflowchart LR\nA((Circle)) -->|one| B[End]\nB -->|back| A",
         ),
+        #[cfg(feature = "layout-dagre")]
         (
             "fallback_rough_nested",
             "---\nconfig:\n  layout: dagre\n  htmlLabels: false\n  look: handDrawn\n  handDrawnSeed: -1\n---\nflowchart LR\nsubgraph Group\n direction TB\n A((Circle)) -->|inner| B[End]\nend\nX -->|outer| Y\nY --> Group",
         ),
+        #[cfg(feature = "layout-dagre")]
         (
             "fallback_uint32_zero_nested",
             "---\nconfig:\n  layout: dagre\n  htmlLabels: false\n  look: handDrawn\n  handDrawnSeed: 4294967296\n---\nflowchart LR\nsubgraph Group\n direction TB\n A((Circle)) -->|inner| B[End]\nend\nX -->|outer| Y\nY --> Group",
+        ),
+        #[cfg(feature = "layout-shoal")]
+        (
+            "shoal_nested",
+            "---\nconfig:\n  layout: shoal\n  htmlLabels: false\n---\nflowchart LR\nsubgraph Outer\n A((Circle)) -->|inner| B{Diamond}\nend\nB -->|outer| C[End]",
         ),
         (
             "swimlane_nested",
             "---\nconfig:\n  htmlLabels: false\n---\nswimlane-beta LR\nsubgraph Outer\n subgraph Inner\n A((Circle)) -->|inner| B{Diamond}\n end\nend\nB -->|outer| C[End]",
         ),
+        #[cfg(any(feature = "layout-elk", feature = "layout-dagre"))]
         (
             "empty_labels",
             "---\nconfig:\n  htmlLabels: false\n  layout: elk\n---\nflowchart LR\nA -->| | B\nB --> C",
         ),
+        #[cfg(any(feature = "layout-elk", feature = "layout-dagre"))]
         ("agentflow", "agentflow-beta\nA -->|label| B"),
     ];
     fn transform(node: crate::xml_dom::Node<'_, '_>) -> (f64, f64) {
@@ -4071,6 +4172,7 @@ fn edge_geometry_json_family_cases_match_actual_svg_coordinates() {
     }
 }
 
+#[cfg(any(feature = "layout-dagre", feature = "layout-elk"))]
 #[test]
 fn edge_geometry_rejects_portability_after_observing_the_session_terminal() {
     let parsed = parse_flowchart("flowchart LR\nA --> B");

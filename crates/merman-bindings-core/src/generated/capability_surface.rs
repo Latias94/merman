@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 pub const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
-pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:af9b083086538892622758a9724ce178d714d4dfbb34a70792cd94d849a839cd";
+pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:0c26d41286136ae5f3a76c0b6bd1cb6afa8d8166043f91172c0487dcf52d476c";
 
 pub const TARGET_IDS: &[&str] = &[
     "native",
@@ -18,6 +18,7 @@ pub const CAPABILITY_IDS: &[&str] = &[
     "icons",
     "jpeg",
     "layout-cytoscape",
+    "layout-dagre",
     "layout-elk",
     "layout-shoal",
     "markdown",
@@ -110,6 +111,7 @@ pub enum CapabilityKey {
     Icons,
     Jpeg,
     LayoutCytoscape,
+    LayoutDagre,
     LayoutElk,
     LayoutShoal,
     Markdown,
@@ -137,6 +139,7 @@ impl CapabilityKey {
         Self::Icons,
         Self::Jpeg,
         Self::LayoutCytoscape,
+        Self::LayoutDagre,
         Self::LayoutElk,
         Self::LayoutShoal,
         Self::Markdown,
@@ -164,6 +167,7 @@ impl CapabilityKey {
             "icons" => Some(Self::Icons),
             "jpeg" => Some(Self::Jpeg),
             "layout-cytoscape" => Some(Self::LayoutCytoscape),
+            "layout-dagre" => Some(Self::LayoutDagre),
             "layout-elk" => Some(Self::LayoutElk),
             "layout-shoal" => Some(Self::LayoutShoal),
             "markdown" => Some(Self::Markdown),
@@ -197,22 +201,23 @@ impl CapabilityKey {
             Self::Icons => &CAPABILITIES[4],
             Self::Jpeg => &CAPABILITIES[5],
             Self::LayoutCytoscape => &CAPABILITIES[6],
-            Self::LayoutElk => &CAPABILITIES[7],
-            Self::LayoutShoal => &CAPABILITIES[8],
-            Self::Markdown => &CAPABILITIES[9],
-            Self::Math => &CAPABILITIES[10],
-            Self::NativeFonts => &CAPABILITIES[11],
-            Self::NetworkIcons => &CAPABILITIES[12],
-            Self::ParallelMarkdown => &CAPABILITIES[13],
-            Self::Pdf => &CAPABILITIES[14],
-            Self::Png => &CAPABILITIES[15],
-            Self::Rustdoc => &CAPABILITIES[16],
-            Self::ShellCompletions => &CAPABILITIES[17],
-            Self::Svg => &CAPABILITIES[18],
-            Self::SystemClock => &CAPABILITIES[19],
-            Self::SystemRandom => &CAPABILITIES[20],
-            Self::SystemTimezone => &CAPABILITIES[21],
-            Self::SystemTiming => &CAPABILITIES[22],
+            Self::LayoutDagre => &CAPABILITIES[7],
+            Self::LayoutElk => &CAPABILITIES[8],
+            Self::LayoutShoal => &CAPABILITIES[9],
+            Self::Markdown => &CAPABILITIES[10],
+            Self::Math => &CAPABILITIES[11],
+            Self::NativeFonts => &CAPABILITIES[12],
+            Self::NetworkIcons => &CAPABILITIES[13],
+            Self::ParallelMarkdown => &CAPABILITIES[14],
+            Self::Pdf => &CAPABILITIES[15],
+            Self::Png => &CAPABILITIES[16],
+            Self::Rustdoc => &CAPABILITIES[17],
+            Self::ShellCompletions => &CAPABILITIES[18],
+            Self::Svg => &CAPABILITIES[19],
+            Self::SystemClock => &CAPABILITIES[20],
+            Self::SystemRandom => &CAPABILITIES[21],
+            Self::SystemTimezone => &CAPABILITIES[22],
+            Self::SystemTiming => &CAPABILITIES[23],
         }
     }
 }
@@ -243,6 +248,7 @@ impl CapabilityKey {
             Self::SystemTiming => 1_u64 << 20,
             Self::Fixes => 1_u64 << 21,
             Self::LayoutShoal => 1_u64 << 22,
+            Self::LayoutDagre => 1_u64 << 23,
         }
     }
 }
@@ -687,6 +693,14 @@ pub const CAPABILITIES: &[CapabilityDescriptor] = &[
         id: "layout-cytoscape",
         kind: "engine",
         description: "Enable Mermaid Cytoscape-backed layout behavior.",
+        targets: &[TargetKey::Native, TargetKey::Typst, TargetKey::Web, ],
+        implications: &[CapabilityKey::Svg, ],
+    },
+    CapabilityDescriptor {
+        key: CapabilityKey::LayoutDagre,
+        id: "layout-dagre",
+        kind: "engine",
+        description: "Enable Mermaid Dagre-backed SVG graph layout.",
         targets: &[TargetKey::Native, TargetKey::Typst, TargetKey::Web, ],
         implications: &[CapabilityKey::Svg, ],
     },

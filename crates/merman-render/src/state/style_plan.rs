@@ -5,7 +5,9 @@ use merman_model::families::state::{
 use merman_model::presentation::PresentationConfig;
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::layout_backend::{GraphLayoutBackend, resolve_graph_layout};
+#[cfg(any(feature = "layout-dagre", test))]
+use crate::layout_backend;
+use crate::layout_backend::GraphLayoutBackend;
 use crate::mermaid_style::{
     CssFontSizeContext, ParsedStyleDeclaration, is_label_style_key, is_safe_css_font_family_value,
     is_supported_css_font_style_value, is_supported_css_font_weight_value, parse_style_declaration,
@@ -295,10 +297,7 @@ pub(crate) struct StateStylePlan {
 }
 
 impl StateStylePlan {
-    #[allow(
-        dead_code,
-        reason = "Used by parity tests and the Dagre debug projection."
-    )]
+    #[cfg(any(feature = "layout-dagre", test))]
     pub(crate) fn resolve_unthemed(
         model: &StateDiagramRenderModel,
         config: &serde_json::Value,
@@ -306,7 +305,8 @@ impl StateStylePlan {
         Self::prepare(
             model,
             StateCompatibilityPlan::from_value(config),
-            resolve_graph_layout(config).backend,
+            layout_backend::resolve(crate::DiagramFamilyId::STATE, "stateDiagram", config)
+                .unwrap_or(GraphLayoutBackend::Dagre),
             None,
         )
     }
@@ -314,6 +314,7 @@ impl StateStylePlan {
     pub(crate) fn resolve(
         model: &StateDiagramRenderModel,
         config: &PresentationConfig,
+        backend: GraphLayoutBackend,
         native: Option<&FamilyTheme>,
         background: Option<Color>,
     ) -> Self {
@@ -322,12 +323,7 @@ impl StateStylePlan {
             Some(native) => compatibility.with_native(native, config, background),
             None => compatibility,
         };
-        Self::prepare(
-            model,
-            compatibility,
-            resolve_graph_layout(config.as_value()).backend,
-            native,
-        )
+        Self::prepare(model, compatibility, backend, native)
     }
 
     fn prepare(

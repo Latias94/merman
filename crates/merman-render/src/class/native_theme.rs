@@ -94,7 +94,7 @@ pub(super) fn edge_curve(style: EdgeStyle) -> &'static str {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "layout-dagre"))]
 mod tests {
     use std::sync::{Arc, Mutex};
 

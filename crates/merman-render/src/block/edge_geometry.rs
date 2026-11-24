@@ -2,7 +2,6 @@ use super::{BlockShapeGeometry, BlockTypographyThemePlan};
 use crate::model::{BlockDiagramLayout, Bounds, LayoutEdge, LayoutPoint};
 use crate::resources::OperationWorkMeter;
 use merman_model::families::block::{BlockDiagramRenderModel, BlockEdge};
-use merman_model::presentation::PresentationConfig;
 use merman_theme_contract::v2::EdgeStyle;
 use std::{collections::HashMap, sync::Arc};
 
@@ -21,23 +20,20 @@ pub(crate) struct BlockOrthogonalRoute {
 
 impl BlockEdgeRoutes {
     pub(crate) fn prepare(
-        config: &PresentationConfig,
         model: &BlockDiagramRenderModel,
         layout: &mut BlockDiagramLayout,
         typography: &BlockTypographyThemePlan,
+        #[cfg(feature = "layout-shoal")] backend: crate::layout_backend::GraphLayoutBackend,
         work: &Arc<OperationWorkMeter>,
     ) -> crate::Result<Self> {
         #[cfg(feature = "layout-shoal")]
-        if !layout.edges.is_empty()
-            && crate::layout_backend::resolve_graph_layout(config).backend
-                == crate::layout_backend::GraphLayoutBackend::Shoal
-        {
+        if !layout.edges.is_empty() && backend == crate::layout_backend::GraphLayoutBackend::Shoal {
             return Ok(Self {
                 orthogonal: super::orthogonal::prepare(model, layout, typography, work)?,
             });
         }
         #[cfg(not(feature = "layout-shoal"))]
-        let _ = (config, model, layout, typography, work);
+        let _ = (model, layout, typography, work);
         Ok(Self::default())
     }
 

@@ -1,11 +1,12 @@
 use super::{
     MeasuredLabels, MeasurementTarget, RelationTerminals, measure_into, positive_label_size,
 };
-use crate::class::{ClassDiagramModel, ClassLayoutSettings, ClassRenderConfig, normalize_dir};
+use crate::class::config::ClassLayoutSettings;
+use crate::class::{ClassDiagramModel, ClassRenderConfig, normalize_dir};
 use crate::graph_layout::contour::ShapePortProfile;
 use crate::graph_layout::ir::{
     Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, RoutingStyle,
-    Side, Size, TitlePosition,
+    Side, Size, TitlePosition, direction_from_rank,
 };
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::math::MathRenderer;
@@ -45,13 +46,8 @@ pub(in crate::class) fn measure_for_shoal<'a>(
     render: &ClassRenderConfig,
     work: &mut OperationLayoutWorkControl,
 ) -> Result<(ShoalMeasurement<'a>, MeasuredLabels)> {
+    let direction = direction_from_rank(&model.model().direction);
     let direction_name = normalize_dir(&model.model().direction);
-    let direction = match direction_name.as_str() {
-        "LR" => Direction::Right,
-        "RL" => Direction::Left,
-        "BT" => Direction::Up,
-        _ => Direction::Down,
-    };
     let settings = render.layout_settings();
     let mut target = ShoalInput {
         graph: MeasuredGraph {

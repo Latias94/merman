@@ -499,7 +499,7 @@ pub(crate) fn render_er_diagram_svg_model(
     let title_top_margin = er_render_settings.title_top_margin;
     let use_max_width = er_render_settings.use_max_width;
     let label_style = er_render_settings.label_style.clone();
-    let edge_html_labels = er_render_settings.relationship_html_labels;
+    let edge_html_labels = entity_theme.relationship_html_labels();
     let entity_wrap_mode = er_render_settings.entity_html_label_wrap_mode;
     let entity_measurement = er_render_settings.entity_measurement;
     let hand_drawn_seed =
@@ -2230,17 +2230,20 @@ mod tests {
                 max_x: 300.0,
                 max_y: 160.0,
             }),
-            prepared_labels: crate::er::prepare_er_labels(&model, &config, &measurer),
+            prepared_labels: crate::er::prepare_er_labels(&model, &config, &measurer, false),
         };
         let options = SvgRenderOptions {
             diagram_id: Some("er-colors".to_string()),
             ..SvgRenderOptions::default()
         };
         let effective_config = crate::test_support::presentation_config(config.clone());
+        let relationship_html_labels = crate::er::ErConfigView::new(effective_config.as_value())
+            .relationship_html_labels(false);
         let svg = with_test_svg_execution(DiagramFamilyId::ER, &options, |options| {
             let entity_theme = crate::er::ErEntityThemePlan::resolve(
                 &effective_config,
                 None,
+                relationship_html_labels,
                 &model,
                 &layout,
                 options.work_meter(),

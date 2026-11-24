@@ -58,7 +58,15 @@ fn proc_macro_accepts_only_selected_diagram_families() {
             .output()
             .unwrap();
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if selected {
+        let layout_missing =
+            family != "gantt" && !cfg!(any(feature = "layout-dagre", feature = "layout-elk"));
+        if selected && layout_missing {
+            assert!(
+                !output.status.success(),
+                "{family} rendered without a graph backend"
+            );
+            assert!(stderr.contains("lacks capability `layout-elk`"), "{stderr}");
+        } else if selected {
             assert!(
                 output.status.success(),
                 "selected {family} failed: {stderr}"

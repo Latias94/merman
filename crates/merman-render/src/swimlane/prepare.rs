@@ -389,11 +389,12 @@ pub(super) fn prepare(
         &FlowchartEdgeTransportPlan<'_>,
     ),
     effective_config: &PresentationConfig,
-    (measurer, math_renderer): (&dyn TextMeasurer, Option<&(dyn MathRenderer + Send + Sync)>),
+    #[cfg(feature = "layout-shoal")] canonical: bool,
+    execution: &crate::LayoutExecution<'_>,
     svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
     edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
-    work_meter: &OperationWorkMeter,
 ) -> crate::Result<WorkingLayout> {
+    let work_meter = execution.work_meter_ref();
     let direction = normalize_direction(model.direction.as_deref());
     let config_view = FlowchartConfigView::new(effective_config.as_value());
     let swimlane_title_html_labels = config_view.swimlane_title_html_labels();
@@ -404,8 +405,8 @@ pub(super) fn prepare(
     let measure_ctx = MeasureContext {
         model,
         config: effective_config,
-        measurer,
-        math_renderer,
+        measurer: execution.text_measurer(),
+        math_renderer: execution.math_renderer(),
         direction,
         settings: &settings,
         title_html_labels: swimlane_title_html_labels,
@@ -580,7 +581,7 @@ pub(super) fn prepare(
     if !loose_ids.is_empty() {
         let lane_id: std::borrow::Cow<'_, str> = std::borrow::Cow::Borrowed(DEFAULT_LANE_ID);
         #[cfg(feature = "layout-shoal")]
-        let lane_id = if effective_config.get_str("layout") == Some("shoal")
+        let lane_id = if canonical
             && nodes
                 .get(DEFAULT_LANE_ID)
                 .is_some_and(|node| !node.is_group())

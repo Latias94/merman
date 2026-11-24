@@ -4,9 +4,10 @@ mod preparation;
 
 pub use capability::{RenderCapabilityPlan, plan_render, supports_diagram_type};
 #[doc(hidden)]
-pub use capability::{has_edge_geometry, validate_layout_options};
+pub use capability::{has_edge_geometry, plan_render_with_options, validate_layout_options};
 
 use crate::environment::{RenderSession, RenderSessionReport};
+use crate::layout_backend::GraphLayoutBackend;
 use crate::math::PreparedMathEvidenceLease;
 use crate::model::*;
 use crate::resources::ResourceLimitPhase;
@@ -200,12 +201,14 @@ impl FamilyRenderReport {
 }
 
 struct FamilyRenderContext {
+    layout_backend: GraphLayoutBackend,
     family_id: DiagramFamilyId,
     session: RenderSession,
 }
 
 #[derive(Clone, Copy)]
 pub(crate) struct FamilyExecutionView<'a> {
+    layout_backend: GraphLayoutBackend,
     family_id: DiagramFamilyId,
     session: &'a RenderSession,
 }
@@ -213,6 +216,10 @@ pub(crate) struct FamilyExecutionView<'a> {
 impl<'a> FamilyExecutionView<'a> {
     pub(crate) const fn family_id(self) -> DiagramFamilyId {
         self.family_id
+    }
+
+    pub(crate) const fn layout_backend(self) -> GraphLayoutBackend {
+        self.layout_backend
     }
 
     pub(crate) const fn session(self) -> &'a RenderSession {
@@ -228,14 +235,30 @@ impl<'a> FamilyExecutionView<'a> {
     }
 
     #[cfg(test)]
-    pub(crate) const fn for_test(session: &'a RenderSession, family_id: DiagramFamilyId) -> Self {
-        Self { family_id, session }
+    pub(crate) const fn for_test(
+        session: &'a RenderSession,
+        family_id: DiagramFamilyId,
+        layout_backend: GraphLayoutBackend,
+    ) -> Self {
+        Self {
+            layout_backend,
+            family_id,
+            session,
+        }
     }
 }
 
 impl FamilyRenderContext {
-    const fn resolve(session: RenderSession, family_id: DiagramFamilyId) -> Self {
-        Self { family_id, session }
+    const fn resolve(
+        session: RenderSession,
+        family_id: DiagramFamilyId,
+        layout_backend: GraphLayoutBackend,
+    ) -> Self {
+        Self {
+            layout_backend,
+            family_id,
+            session,
+        }
     }
 
     const fn family_id(&self) -> DiagramFamilyId {
@@ -248,6 +271,7 @@ impl FamilyRenderContext {
 
     const fn execution(&self) -> FamilyExecutionView<'_> {
         FamilyExecutionView {
+            layout_backend: self.layout_backend,
             family_id: self.family_id,
             session: &self.session,
         }
@@ -1076,6 +1100,7 @@ pub(crate) enum BuiltinFamilyArtifact<'parsed> {
     Agentflow {
         semantic: &'parsed diagrams::agentflow::AgentflowDiagramRenderModel,
         flow: Box<FlowchartFamilyArtifact<'parsed, FlowchartLayout>>,
+        projected_metadata: Box<PresentationMetadata>,
     },
     Error(Box<ErrorFamilyArtifact<'parsed>>),
     #[cfg(feature = "diagram-mindmap")]
@@ -2148,6 +2173,17 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
         self.metadata
     }
 
+    fn paint_metadata(&self) -> &PresentationMetadata {
+        #[cfg(feature = "diagram-agentflow")]
+        if let BuiltinFamilyArtifact::Agentflow {
+            projected_metadata, ..
+        } = &self.family
+        {
+            return projected_metadata;
+        }
+        self.metadata
+    }
+
     pub fn family_kind(&self) -> RenderFamilyKind {
         RenderFamilyKind::from_family_id(self.family_id())
     }
@@ -2285,25 +2321,9 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
                 target: "edge-geometry-json",
             });
         }
-        #[cfg(feature = "diagram-agentflow")]
-        let projected_metadata = if matches!(&self.family, BuiltinFamilyArtifact::Agentflow { .. })
-        {
-            let mut metadata = self.metadata.clone();
-            metadata.effective_config = project_agentflow_flowchart_config(
-                &metadata.effective_config,
-                self.context.session().work_meter().control(),
-            )?;
-            Some(metadata)
-        } else {
-            None
-        };
-        #[cfg(feature = "diagram-agentflow")]
-        let metadata = projected_metadata.as_ref().unwrap_or(self.metadata);
-        #[cfg(not(feature = "diagram-agentflow"))]
-        let metadata = self.metadata;
         let geometry = crate::svg::edge_geometry_family_artifact(
             &self.family,
-            metadata,
+            self.paint_metadata(),
             self.context.execution(),
         )?;
         self.context.session().checkpoint(OperationPhase::Emit)?;
@@ -2403,25 +2423,7 @@ fn render_family_artifact_svg(
 ) -> Result<(String, bool)> {
     let options = crate::svg::normalize_svg_render_options(request, artifact.context.session())?;
     let execution = artifact.context.execution();
-    #[cfg(feature = "diagram-agentflow")]
-    // Agentflow is adapted to the Flowchart renderer, while Mermaid's config namespace remains
-    // `agentflow`. Keep the public metadata untouched and project only the renderer input.
-    let projected_metadata = if matches!(&artifact.family, BuiltinFamilyArtifact::Agentflow { .. })
-    {
-        let mut metadata = artifact.metadata.clone();
-        metadata.effective_config = project_agentflow_flowchart_config(
-            &metadata.effective_config,
-            artifact.context.session().work_meter().control(),
-        )?;
-        Some(metadata)
-    } else {
-        None
-    };
-    #[cfg(feature = "diagram-agentflow")]
-    let metadata = projected_metadata.as_ref().unwrap_or(artifact.metadata);
-    #[cfg(not(feature = "diagram-agentflow"))]
-    let metadata = &artifact.metadata;
-
+    let metadata = artifact.paint_metadata();
     #[cfg(all(
         feature = "diagram-architecture",
         any(feature = "layout-cytoscape", feature = "layout-shoal")
@@ -2448,6 +2450,7 @@ fn render_family_artifact_svg(
 #[cfg(feature = "diagram-agentflow")]
 fn project_agentflow_flowchart_config(
     config: &merman_model::presentation::PresentationConfig,
+    backend: GraphLayoutBackend,
     control: &merman_model::OperationControl,
 ) -> Result<merman_model::presentation::PresentationConfig> {
     let mut projected = config.as_config().clone();
@@ -2472,11 +2475,9 @@ fn project_agentflow_flowchart_config(
     // Dagre takes a truthy root override before the renderer's family spacing.
     // Mermaid's ELK adapter ignores all three configuration namespaces for spacing.
     // Our shared adapter reads Flowchart settings, so keep its default spacing for ELK.
-    // Resolve registration first: an unavailable ELK loader executes Dagre instead.
     let uses_family_spacing = matches!(
-        crate::layout_backend::resolve_graph_layout(root).backend,
-        crate::layout_backend::GraphLayoutBackend::Dagre
-            | crate::layout_backend::GraphLayoutBackend::Shoal
+        backend,
+        GraphLayoutBackend::Dagre | GraphLayoutBackend::Shoal
     );
     for key in ["nodeSpacing", "rankSpacing"] {
         let value = uses_family_spacing
@@ -2600,8 +2601,8 @@ fn prepare_for<'parsed>(
     session: RenderSession,
     preparation: FamilyPreparation,
 ) -> Result<FamilyRenderArtifact<'parsed>> {
-    session.checkpoint(OperationPhase::Layout)?;
-    let adaptation = capability::resolve_layout_adaptation(parsed, options)?;
+    let (plan, adaptation) = capability::plan_render_request(parsed, Some(options), &session)?;
+    plan.ensure_available()?;
     let resolved;
     let options = if adaptation == options.adaptation {
         options
@@ -2609,11 +2610,9 @@ fn prepare_for<'parsed>(
         resolved = options.clone().with_adaptation(adaptation);
         &resolved
     };
-    let plan = plan_render(parsed, &session)?;
-    plan.ensure_available()?;
     let required_capabilities = plan.required_capabilities().to_vec();
     let expected_family = plan.family_id();
-    let context = FamilyRenderContext::resolve(session, expected_family);
+    let context = FamilyRenderContext::resolve(session, expected_family, plan.backend());
     // Keep the heterogeneous router's debug-build caller slots out of the Dagre and FCoSE
     // preparation chains. Share the completion path so each route needs only one artifact slot.
     let mut artifact = match expected_family {
@@ -2636,7 +2635,15 @@ fn prepare_for<'parsed>(
     Ok(artifact)
 }
 
-#[cfg(all(test, feature = "diagram-flowchart"))]
+#[cfg(all(
+    test,
+    feature = "diagram-flowchart",
+    any(
+        feature = "layout-dagre",
+        feature = "layout-elk",
+        feature = "layout-shoal"
+    )
+))]
 mod flowchart_layout_tests;
 
 #[cfg(all(test, feature = "all-diagrams"))]

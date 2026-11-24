@@ -294,16 +294,31 @@ fn renderer_from_config(
     resources: &ResolvedResourcePolicy,
 ) -> ConfiguredRenderer {
     let runtime = ResolvedCliRuntimePolicy::from_resolved(&parse.runtime);
+    use merman::svg::{RenderCapability, RenderCapabilityPolicy};
+    let mut layout_policy = RenderCapabilityPolicy::unrestricted();
+    for (capability, enabled) in [
+        (
+            RenderCapability::LayoutCytoscape,
+            cfg!(feature = "layout-cytoscape"),
+        ),
+        (
+            RenderCapability::LayoutDagre,
+            cfg!(feature = "layout-dagre"),
+        ),
+        (RenderCapability::LayoutElk, cfg!(feature = "layout-elk")),
+        (
+            RenderCapability::LayoutShoal,
+            cfg!(feature = "layout-shoal"),
+        ),
+    ] {
+        if !enabled {
+            layout_policy = layout_policy.with_denied(capability);
+        }
+    }
     let mut environment = SvgEnvironment::deterministic()
         .with_resource_policy(resources.render_policy())
-        .with_trusted_theme_css(true);
-    #[cfg(not(feature = "layout-shoal"))]
-    {
-        use merman::svg::{RenderCapability, RenderCapabilityPolicy};
-        environment = environment.with_capability_policy(
-            RenderCapabilityPolicy::unrestricted().with_denied(RenderCapability::LayoutShoal),
-        );
-    }
+        .with_trusted_theme_css(true)
+        .with_capability_policy(layout_policy);
     #[cfg(not(feature = "math"))]
     {
         environment = environment.without_math_renderer();
@@ -373,12 +388,12 @@ pub(crate) fn ascii_renderer_for_resolved(
 mod tests {
     use super::*;
 
-    #[cfg(feature = "svg")]
+    #[cfg(all(feature = "svg", feature = "diagram-sequence"))]
     fn default_resources() -> ResolvedResourcePolicy {
         ResolvedResourcePolicy::for_profile(merman::model::resources::CLI_DEFAULT_RESOURCE_PROFILE)
     }
 
-    #[cfg(feature = "svg")]
+    #[cfg(all(feature = "svg", feature = "diagram-sequence"))]
     fn default_resolved_parse() -> ResolvedParseOptions {
         ResolvedParseOptions {
             suppress_errors: false,
@@ -391,7 +406,7 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "svg")]
+    #[cfg(all(feature = "svg", feature = "diagram-sequence"))]
     fn resolved_render(math_renderer: Option<MathRendererKind>) -> ResolvedRenderOptions {
         ResolvedRenderOptions {
             math_renderer,
@@ -399,7 +414,7 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "svg")]
+    #[cfg(all(feature = "svg", feature = "diagram-sequence"))]
     #[test]
     fn none_math_renderer_disables_the_compiled_default() {
         let control = merman::OperationControl::new();
@@ -413,7 +428,7 @@ mod tests {
         let error = renderer
             .renderer
             .render(merman::RenderRequest::new(
-                "flowchart TD\nA[\"$$x^2$$\"] --> B[Done]",
+                "sequenceDiagram\nA->>B: $$x^2$$",
                 merman::RenderTarget::Svg(renderer.svg.clone()),
                 merman::OperationControl::new(),
             ))
@@ -428,7 +443,7 @@ mod tests {
         }
     }
 
-    #[cfg(all(feature = "svg", feature = "math"))]
+    #[cfg(all(feature = "svg", feature = "math", feature = "diagram-sequence"))]
     #[test]
     fn unspecified_math_renderer_uses_the_compiled_default() {
         let control = merman::OperationControl::new();
@@ -442,7 +457,7 @@ mod tests {
         let output = renderer
             .renderer
             .render(merman::RenderRequest::new(
-                "flowchart TD\nA[\"$$x^2$$\"] --> B[Done]",
+                "sequenceDiagram\nA->>B: $$x^2$$",
                 merman::RenderTarget::Svg(renderer.svg.clone()),
                 merman::OperationControl::new(),
             ))

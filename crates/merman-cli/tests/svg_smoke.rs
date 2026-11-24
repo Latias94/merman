@@ -1,22 +1,15 @@
 #![cfg(feature = "svg")]
 
-use std::fs;
 use std::io::Write;
-use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 #[cfg(feature = "parallel-markdown")]
 use std::time::{Duration, Instant};
 
+#[cfg(all(
+    feature = "diagram-flowchart",
+    any(feature = "layout-dagre", feature = "layout-elk")
+))]
 const SOURCE: &str = "flowchart TD\nA[Start] --> B{Ready?}\nB -->|Yes| C[Ship]\n";
-
-fn repo_root() -> PathBuf {
-    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    manifest_dir
-        .parent()
-        .and_then(Path::parent)
-        .expect("expected crates/<name> layout")
-        .to_path_buf()
-}
 
 fn run_with_stdin(args: &[&str], input: &str) -> Output {
     let exe = assert_cmd::cargo_bin!("merman-cli");
@@ -37,6 +30,10 @@ fn run_with_stdin(args: &[&str], input: &str) -> Output {
 }
 
 #[test]
+#[cfg(all(
+    feature = "diagram-flowchart",
+    any(feature = "layout-dagre", feature = "layout-elk")
+))]
 fn cli_renders_svg_from_stdin_to_stdout() {
     let output = run_with_stdin(&["render", "--format", "svg", "-"], SOURCE);
 
@@ -55,6 +52,10 @@ fn cli_renders_svg_from_stdin_to_stdout() {
 }
 
 #[test]
+#[cfg(all(
+    feature = "diagram-flowchart",
+    any(feature = "layout-dagre", feature = "layout-elk")
+))]
 fn mmdc_svg_canvas_defaults_to_white_and_accepts_overrides() {
     for color in [None, Some("transparent"), Some("#112233")] {
         let mut args = vec!["mmdc", "-i", "-", "-o", "-"];
@@ -76,6 +77,10 @@ fn mmdc_svg_canvas_defaults_to_white_and_accepts_overrides() {
 }
 
 #[test]
+#[cfg(all(
+    feature = "diagram-flowchart",
+    any(feature = "layout-dagre", feature = "layout-elk")
+))]
 fn native_svg_canvas_accepts_explicit_host_colors() {
     for (color, expected) in [
         ("transparent", None),
@@ -101,14 +106,20 @@ fn native_svg_canvas_accepts_explicit_host_colors() {
 }
 
 #[test]
+#[cfg(all(
+    feature = "diagram-flowchart",
+    any(feature = "layout-dagre", feature = "layout-elk")
+))]
 fn cli_renders_named_input_to_a_sibling_svg_by_default() {
+    use std::fs;
+
     let tmp = tempfile::tempdir().expect("tempdir");
     let input = tmp.path().join("diagram.mmd");
     fs::write(&input, SOURCE).expect("write input");
 
     let exe = assert_cmd::cargo_bin!("merman-cli");
     let output = Command::new(exe)
-        .current_dir(repo_root())
+        .current_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
         .args(["render", input.to_string_lossy().as_ref()])
         .output()
         .expect("run CLI");
@@ -119,6 +130,10 @@ fn cli_renders_named_input_to_a_sibling_svg_by_default() {
 }
 
 #[test]
+#[cfg(all(
+    feature = "diagram-flowchart",
+    any(feature = "layout-dagre", feature = "layout-elk")
+))]
 fn cli_selects_the_resvg_safe_svg_pipeline() {
     let output = run_with_stdin(
         &[
@@ -177,12 +192,12 @@ fn working_set_is_rejected_before_the_svg_backend_runs() {
     assert!(!stderr.contains("UnknownDiagram"), "{stderr}");
 }
 
-#[cfg(not(feature = "math"))]
+#[cfg(all(feature = "diagram-sequence", not(feature = "math")))]
 #[test]
 fn math_labels_require_the_cli_owned_capability() {
     let output = run_with_stdin(
         &["render", "--format", "svg", "-"],
-        "flowchart TD\nA[\"$$x^2$$\"] --> B\n",
+        "sequenceDiagram\nA->>B: $$x^2$$\n",
     );
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
@@ -190,12 +205,28 @@ fn math_labels_require_the_cli_owned_capability() {
     assert!(!String::from_utf8_lossy(&output.stdout).contains("<svg"));
 }
 
+#[cfg(all(feature = "diagram-flowchart", not(feature = "layout-dagre")))]
+#[test]
+fn dagre_requires_the_cli_owned_capability() {
+    let output = run_with_stdin(
+        &["render", "--format", "svg", "-"],
+        "---\nconfig:\n  layout: dagre\n---\nflowchart TD\nA --> B\n",
+    );
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
+    assert!(
+        stderr.contains("lacks capability `layout-dagre`"),
+        "{stderr}"
+    );
+    assert!(output.stdout.is_empty());
+}
+
 #[cfg(not(feature = "math"))]
 #[test]
 fn svg_only_build_does_not_advertise_ratex() {
     let output = run_with_stdin(
         &["render", "--math-renderer", "ratex", "--format", "svg", "-"],
-        SOURCE,
+        "info",
     );
 
     assert!(!output.status.success());
@@ -204,9 +235,15 @@ fn svg_only_build_does_not_advertise_ratex() {
     assert!(stderr.contains("possible values: none"), "{stderr}");
 }
 
-#[cfg(feature = "parallel-markdown")]
+#[cfg(all(
+    feature = "parallel-markdown",
+    feature = "diagram-flowchart",
+    any(feature = "layout-dagre", feature = "layout-elk")
+))]
 #[test]
 fn parallel_markdown_progresses_with_capacity_for_one_backend() {
+    use std::fs;
+
     let tmp = tempfile::tempdir().expect("tempdir");
     let input = tmp.path().join("input.md");
     let output_dir = tmp.path().join("rendered");
@@ -263,6 +300,8 @@ fn run_with_timeout(mut command: Command, timeout: Duration) -> Output {
 #[cfg(all(feature = "diagram-class", feature = "layout-elk"))]
 #[test]
 fn native_defaults_render_nested_class_in_every_graphical_format() {
+    use std::fs;
+
     let tmp = tempfile::tempdir().expect("tempdir");
     let input = tmp.path().join("nested.mmd");
     fs::write(
@@ -323,6 +362,8 @@ fn native_defaults_render_nested_class_in_every_graphical_format() {
 ))]
 #[test]
 fn native_batch_completes_multiple_nested_class_diagrams() {
+    use std::fs;
+
     let tmp = tempfile::tempdir().expect("tempdir");
     let input = tmp.path().join("input.md");
     let output_dir = tmp.path().join("rendered");

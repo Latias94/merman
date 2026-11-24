@@ -23,7 +23,7 @@ shared binding options schema, native C ABI, or workspace package version.
 The low-level crate defaults to **no features**. A typical standard reactor is:
 
 ```console
-cargo build -p merman-wasi --target wasm32-wasip1 --profile wasm-size --no-default-features --features all-diagrams,svg,native-fonts,png,bundled-fonts,layout-cytoscape
+cargo build -p merman-wasi --target wasm32-wasip1 --profile wasm-size --no-default-features --features all-diagrams,svg,native-fonts,png,bundled-fonts,layout-cytoscape,layout-dagre
 ```
 
 Add `math` for mathematical rendering and additionally `layout-elk` for the full
