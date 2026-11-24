@@ -8,7 +8,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Experimental Shoal layout
 
-Choose `layout: shoal` for Flowchart, Agentflow, Class, State, ER, Requirement, or Usecase diagrams in a build with the `layout-shoal` feature. Shoal handles cycles and nested groups and uses the diagram's measured labels and shapes. Flowchart and Agentflow hosts can also fit graphs to a requested width and reuse placement hints while editing. [Usage and supported graphs](docs/FEATURES.md#try-the-experimental-shoal-layout)
+Choose `layout: shoal` for Flowchart, Agentflow, Class, State, ER, Requirement, or Usecase diagrams in a build with the `layout-shoal` feature. Shoal handles cycles and nested groups using the diagram's measured labels and shapes. Flowchart branches use smooth curves, and edges between sibling groups can follow a shared lane through both borders. Flowchart and Agentflow hosts can also fit graphs to a requested width and reuse placement hints while editing. [Usage and supported graphs](docs/FEATURES.md#try-the-experimental-shoal-layout)
 
 ```text
 ---
@@ -31,7 +31,7 @@ cargo run --locked -p merman-cli --features layout-shoal -- render diagram.mmd -
 
 The hosted Playground opens the full example with Dagre. Use the local Shoal-enabled Playground build to edit and render it with Shoal. [Open the example in Playground](https://frankorz.com/merman/#s2:eJxdkM1OwzAQhF_FSi6plEokhf7kAELtgRNCwAW5Obj2OrFq4ip2KKjpu2Nv2yB6Wds783nWPkTcCIiKSGqz5zVrHXlfrRtC_L6pIKFLXEkLTPyUIzIe33sJ-NYelriQHbP24XhCsOEt_QfYnljHKqBvoXpeA7NQXvmeTU-k-qav8KVgTyRTumvBog1xDLSfZusvCpU4sO5KZp1Qjj6GelLQiGCtdgl96TZa2bocBRHNgxg6Ph_PtdEioU--BicOqv3bViBJxRx4n9ZFLKW84ZBa1_qQIp4vplmep9xo0xbxZJGzLPuHStX47DMshMxBDHAOs_l0c4Gz2e3dhA_w5ZtC9l8zDJ2GSc8Xr5vo-As-0Zis) · [Build Playground with Shoal](platforms/web/README.md#try-shoal-in-playground)
 
-On an Apple M4 Pro, a nested Flowchart took 0.541 ms with Shoal, 1.149 ms with Dagre, and 0.754 ms with ELK to return SVG. A 75-node cyclic graph took 1.421 ms, 4.830 ms, and 12.238 ms, respectively. The small control took about 0.13 ms on all three. These are medians from the same native release executable and inputs. [Benchmark results and samples](docs/performance/2026-11-24-shoal.md)
+In the recorded native benchmark on an Apple M4 Pro, a nested Flowchart took 0.541 ms with Shoal, 1.149 ms with Dagre, and 0.754 ms with ELK to return SVG. A 75-node cyclic graph took 1.421 ms, 4.830 ms, and 12.238 ms, respectively. The small control took about 0.13 ms on all three. These are medians from the same executable and inputs at the revision pinned in the report. [Benchmark results and samples](docs/performance/2026-11-24-shoal.md)
 
 ### Changed
 
