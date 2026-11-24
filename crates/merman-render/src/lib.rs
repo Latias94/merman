@@ -163,16 +163,11 @@ mod graph_label;
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-agentflow",
-    all(
-        feature = "layout-shoal",
-        any(
-            feature = "diagram-class",
-            feature = "diagram-er",
-            feature = "diagram-requirement",
-            feature = "diagram-state",
-            feature = "diagram-usecase"
-        )
-    )
+    feature = "diagram-class",
+    feature = "diagram-er",
+    feature = "diagram-requirement",
+    feature = "diagram-state",
+    feature = "diagram-usecase"
 ))]
 mod graph_layout;
 #[cfg_attr(
@@ -1037,13 +1032,7 @@ pub struct LayoutAdaptationObservation {
 impl Eq for LayoutAdaptationObservation {}
 
 impl LayoutAdaptationObservation {
-    #[cfg(any(
-        feature = "diagram-kanban",
-        all(
-            feature = "layout-shoal",
-            any(feature = "diagram-flowchart", feature = "diagram-agentflow")
-        )
-    ))]
+    #[cfg(any(feature = "diagram-kanban", feature = "layout-shoal"))]
     pub(crate) fn fit_width(requested_width: f64, actual_width: f64) -> Self {
         debug_assert!(requested_width.is_finite() && requested_width > 0.0);
         debug_assert!(actual_width.is_finite() && actual_width >= 0.0);
@@ -1091,6 +1080,7 @@ pub struct LayoutOptions {
     pub screen_available_width: Option<f64>,
     /// Allow eligible Shoal leaf fans to occupy multiple rows during fit-width layout.
     pub fold_wide_ranks: bool,
+    adaptation_if_supported: bool,
     pub(crate) capture_shoal_frame: bool,
     pub(crate) previous_shoal_frame: Option<std::sync::Arc<ShoalLayoutFrame>>,
 }
@@ -1103,6 +1093,7 @@ impl Default for LayoutOptions {
             container_height: 600.0,
             screen_available_width: None,
             fold_wide_ranks: false,
+            adaptation_if_supported: false,
             capture_shoal_frame: false,
             previous_shoal_frame: None,
         }
@@ -1118,6 +1109,14 @@ impl LayoutOptions {
     /// Selects explicit family placement adaptation.
     pub fn with_adaptation(mut self, adaptation: LayoutAdaptation) -> Self {
         self.adaptation = adaptation;
+        self.adaptation_if_supported = false;
+        self
+    }
+
+    /// Prefers adapted placement for diagrams whose selected layout supports it.
+    pub fn with_adaptation_if_supported(mut self, adaptation: LayoutAdaptation) -> Self {
+        self.adaptation = adaptation;
+        self.adaptation_if_supported = true;
         self
     }
 
@@ -1295,7 +1294,13 @@ pub(crate) fn layout_class_typed_by_engine(
     options: &LayoutExecution<'_>,
     typography_theme: &crate::class::ClassTextThemePlan,
     render_config: &crate::class::ClassRenderConfig,
-) -> Result<(model::ClassDiagramLayout, class::ClassPreparedLabels)> {
+) -> Result<(
+    model::ClassDiagramLayout,
+    class::ClassPreparedLabels,
+    graph_layout::RouteContract,
+)> {
+    use graph_layout::RouteContract;
+
     options
         .work_meter_ref()
         .preflight_class_complexity(model, OperationPhase::Layout)?;
@@ -1309,12 +1314,12 @@ pub(crate) fn layout_class_typed_by_engine(
         return class::shoal::layout(
             model,
             effective_config,
-            options.text_measurer(),
-            options.math_renderer(),
+            options,
             typography_theme,
             render_config,
             &mut work_control,
-        );
+        )
+        .map(|(layout, labels, routes)| (layout, labels, RouteContract::canonical_graph(routes)));
     }
     #[cfg(feature = "layout-elk")]
     if selection.backend == layout_backend::GraphLayoutBackend::Elk {
@@ -1327,7 +1332,8 @@ pub(crate) fn layout_class_typed_by_engine(
             typography_theme,
             render_config,
             &mut work_control,
-        );
+        )
+        .map(|(layout, labels)| (layout, labels, RouteContract::ElkParity));
     }
     class::layout_class_diagram_typed_with_config(
         model,
@@ -1338,6 +1344,7 @@ pub(crate) fn layout_class_typed_by_engine(
         render_config,
         &mut work_control,
     )
+    .map(|(layout, labels)| (layout, labels, RouteContract::DagreParity))
 }
 
 #[cfg(all(test, feature = "layout-elk"))]

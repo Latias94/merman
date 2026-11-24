@@ -66,7 +66,7 @@ pub(super) fn with_flowchart_paint_context<T>(
         model,
         render_context,
         &layout.edge_owners,
-        layout.uses_elk_adapter_dom || layout.route_contract.uses_projected_edges(),
+        layout.route_contract.uses_projected_edges(),
     );
     if let Some(swimlane_layout) = swimlane_layout {
         super::swimlane::apply_swimlane_edge_curves(&mut render_edges, swimlane_layout);
@@ -264,7 +264,7 @@ pub(super) fn with_flowchart_paint_context<T>(
         node_html_labels,
         edge_html_labels,
         swimlane_title_html_labels,
-        uses_elk_adapter_dom: layout.uses_elk_adapter_dom,
+        uses_elk_adapter_dom: layout.route_contract.is_elk_parity(),
         class_defs: &model.class_defs,
         edge_style_plan,
         steps: super::step::FlowchartSteps::new(model, effective_config),
@@ -841,14 +841,14 @@ mod tests {
             model,
             &parsed.metadata().effective_config,
             &theme.compatibility,
-            layout.uses_elk_adapter_dom,
+            layout.route_contract.is_elk_parity(),
             None,
             sidecar.edge_label_padding(),
         );
         let style = FlowchartEdgeStylePlan::prepare_for_model(
             model,
             &parsed.metadata().effective_config,
-            layout.uses_elk_adapter_dom,
+            layout.route_contract.is_elk_parity(),
             execution.work_meter(),
         )
         .unwrap()
@@ -1216,7 +1216,7 @@ A -->|bent| B"
             false,
             |request, execution| {
                 let mut layout = request.layout.clone();
-                layout.uses_elk_adapter_dom = true;
+                layout.route_contract = crate::graph_layout::RouteContract::ElkParity;
                 layout.edges[0].points.clear();
                 let request = FlowchartSvgModelRequest {
                     layout: &layout,

@@ -1737,18 +1737,7 @@ fn er_marker_id(card: &str, suffix: &str) -> Option<String> {
 
 pub(crate) struct ErPreparedLayout {
     pub(crate) layout: ErDiagramLayout,
-    #[cfg(feature = "layout-shoal")]
-    pub(crate) canonical_routes: Option<crate::graph_layout::canonical::CanonicalRoutes>,
-}
-
-impl ErPreparedLayout {
-    fn legacy(layout: ErDiagramLayout) -> Self {
-        Self {
-            layout,
-            #[cfg(feature = "layout-shoal")]
-            canonical_routes: None,
-        }
-    }
+    pub(crate) route_contract: crate::graph_layout::RouteContract,
 }
 
 /// Lays out an ER model with an optional renderer-owned inherited typography override.
@@ -1759,8 +1748,11 @@ pub(crate) fn layout_er_diagram_typed_with_resolved_typography(
     #[cfg(feature = "layout-elk")] operation_seed: elk::ElkOperationSeed,
     font_family_css: Option<&str>,
     font_size_px: Option<f64>,
+    #[cfg(feature = "layout-shoal")] execution: Option<&crate::LayoutExecution<'_>>,
     work_meter: Arc<crate::resources::OperationWorkMeter>,
 ) -> Result<ErPreparedLayout> {
+    use crate::graph_layout::RouteContract;
+
     let mut work_control = OperationLayoutWorkControl::new(Arc::clone(&work_meter));
     let settings = ErConfigView::new(effective_config).layout_settings_with_resolved_typography(
         &model.direction,
@@ -1788,6 +1780,7 @@ pub(crate) fn layout_er_diagram_typed_with_resolved_typography(
             &settings,
             prepared_labels,
             crate::config::config_diagram_look(effective_config).is_neo(),
+            execution,
             &mut work_control,
         );
     }
@@ -1801,7 +1794,10 @@ pub(crate) fn layout_er_diagram_typed_with_resolved_typography(
             prepared_labels,
             work_meter,
         )
-        .map(ErPreparedLayout::legacy);
+        .map(|layout| ErPreparedLayout {
+            layout,
+            route_contract: RouteContract::Swimlane,
+        });
     }
 
     #[cfg(feature = "layout-elk")]
@@ -1815,7 +1811,10 @@ pub(crate) fn layout_er_diagram_typed_with_resolved_typography(
             operation_seed,
             &mut work_control,
         )
-        .map(ErPreparedLayout::legacy);
+        .map(|layout| ErPreparedLayout {
+            layout,
+            route_contract: RouteContract::ElkParity,
+        });
     }
 
     layout_er_diagram_dagre_typed(
@@ -1825,7 +1824,10 @@ pub(crate) fn layout_er_diagram_typed_with_resolved_typography(
         prepared_labels,
         &mut work_control,
     )
-    .map(ErPreparedLayout::legacy)
+    .map(|layout| ErPreparedLayout {
+        layout,
+        route_contract: RouteContract::DagreParity,
+    })
 }
 
 fn validate_er_relationship_endpoints(
@@ -3784,6 +3786,7 @@ mod tests {
                 merman_layout_elk::ElkOperationSeed::from_operation_seed(std::num::NonZeroU64::MIN),
                 None,
                 None,
+                None,
                 meter,
             )
         };
@@ -3791,7 +3794,7 @@ mod tests {
         let policy = RenderResourcePolicy::unbounded_for_trusted_input();
         let meter = Arc::new(OperationWorkMeter::new(policy));
         let layout = prepare(&standard, Arc::clone(&meter)).expect("Shoal ER layout");
-        assert!(layout.canonical_routes.is_some());
+        assert!(layout.route_contract.canonical_routes().is_some());
         let required = meter.used();
         drop(layout);
 

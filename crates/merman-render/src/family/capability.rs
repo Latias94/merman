@@ -291,13 +291,7 @@ fn supported_layout_adaptations(
     family: DiagramFamilyId,
     shoal: bool,
 ) -> &'static [LayoutAdaptation] {
-    if family == DiagramFamilyId::KANBAN
-        || (shoal
-            && matches!(
-                family,
-                DiagramFamilyId::FLOWCHART | DiagramFamilyId::AGENTFLOW
-            ))
-    {
+    if family == DiagramFamilyId::KANBAN || shoal {
         &[LayoutAdaptation::None, LayoutAdaptation::FitWidth]
     } else {
         &[LayoutAdaptation::None]
@@ -310,16 +304,22 @@ pub fn validate_layout_options(
     parsed: &PresentationDiagram,
     options: &LayoutOptions,
 ) -> Result<()> {
+    resolve_layout_adaptation(parsed, options).map(|_| ())
+}
+
+pub(super) fn resolve_layout_adaptation(
+    parsed: &PresentationDiagram,
+    options: &LayoutOptions,
+) -> Result<LayoutAdaptation> {
     if options.adaptation == LayoutAdaptation::None {
-        return Ok(());
+        return Ok(LayoutAdaptation::None);
     }
     let family = validate_paired_render_model(parsed)?;
-    let shoal = matches!(
-        family,
-        DiagramFamilyId::FLOWCHART | DiagramFamilyId::AGENTFLOW
-    ) && required_layout_capability(parsed, family)?
-        == Some(RenderCapability::LayoutShoal);
+    let shoal = required_layout_capability(parsed, family)? == Some(RenderCapability::LayoutShoal);
     if !supported_layout_adaptations(family, shoal).contains(&options.adaptation) {
+        if options.adaptation_if_supported {
+            return Ok(LayoutAdaptation::None);
+        }
         return Err(Error::UnsupportedLayoutAdaptation {
             adaptation: options.adaptation.id(),
             diagram_type: parsed.metadata().diagram_type.clone(),
@@ -328,7 +328,7 @@ pub fn validate_layout_options(
     if !options.container_width.is_finite() || options.container_width <= 0.0 {
         return Err(Error::InvalidAdaptationWidth);
     }
-    Ok(())
+    Ok(options.adaptation)
 }
 
 /// Identifies the existing edge-geometry projection after closed typed model admission.

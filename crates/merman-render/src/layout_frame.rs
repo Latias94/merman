@@ -1,5 +1,12 @@
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::BTreeMap;
+use std::sync::Arc;
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct GraphPlacement {
+    pub(crate) adaptation: Option<crate::LayoutAdaptationObservation>,
+    pub(crate) frame: Option<Arc<ShoalLayoutFrame>>,
+}
 
 /// Placement hints from a successful experimental Shoal preview.
 ///

@@ -1,72 +1,69 @@
 use super::{
-    ClassDiagramModel, ClassLayoutSettings, ClassPreparedLabels, ClassRenderConfig,
-    ClassTextThemePlan, MeasuredClassDiagram, class_namespace_label, measure_class_diagram,
+    ClassDiagramModel, ClassPreparedLabels, ClassRenderConfig, ClassTextThemePlan,
+    class_namespace_label, measured::measure_for_shoal,
 };
 use crate::graph_layout::canonical::CanonicalRoutes;
-use crate::graph_layout::contour::ShapePortProfile;
-use crate::graph_layout::ir::{
-    Direction, Endpoint, MeasuredEdge, MeasuredGraph, MeasuredGroup, MeasuredNode, RoutingStyle,
-    Side, Size, TitlePosition,
-};
-use crate::graph_layout::shoal_bridge;
+use crate::graph_layout::ir::Endpoint;
+use crate::graph_layout::placement;
 use crate::layout_work::OperationLayoutWorkControl;
-use crate::math::MathRenderer;
 use crate::model::{
     Bounds, ClassDiagramLayout, ClassRenderItem, ClassRenderRoot, ClassRenderRootId,
     ClassRenderTree, LayoutCluster, LayoutEdge, LayoutLabel, LayoutNode, LayoutPoint,
 };
-use crate::text::TextMeasurer;
-use crate::{Error, Result};
-use kurbo::Insets;
+use crate::{LayoutExecution, Result};
 use merman_model::presentation::PresentationConfig;
-use rustc_hash::FxHashMap;
 
 pub(crate) fn layout(
     model: &ClassDiagramModel,
     config: &PresentationConfig,
-    measurer: &dyn TextMeasurer,
-    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    execution: &LayoutExecution<'_>,
     typography: &ClassTextThemePlan,
     render: &ClassRenderConfig,
     work: &mut OperationLayoutWorkControl,
-) -> Result<(ClassDiagramLayout, ClassPreparedLabels)> {
+) -> Result<(ClassDiagramLayout, ClassPreparedLabels, CanonicalRoutes)> {
     let settings = render.layout_settings();
-    let mut measured = measure_class_diagram(
+    let (measured, labels) = measure_for_shoal(
         model,
         config,
-        measurer,
-        math_renderer,
-        render,
-        false,
+        execution.text_measurer(),
+        execution.math_renderer(),
         typography,
-        Some(work),
-    )?;
-    let (graph, profiles) =
-        canonical_input(model, &measured, settings, render.look == "neo", work)?;
-    let solved = shoal_bridge::solve(&graph, Default::default(), work)?;
-    let source = &measured.graph;
-    measured.prepared_labels.canonical_routes = Some(CanonicalRoutes::from_solved(
-        &graph,
-        &solved,
-        &profiles,
-        |_| 0.0,
-        source.edges.keys().map(|(_, _, id)| id.as_str()),
+        render,
         work,
-    )?);
+    )?;
+    let graph = &measured.graph;
+    let (solved, placement) = placement::solve(
+        graph,
+        measured.node_ids.iter().copied(),
+        measured.group_ids.iter().copied(),
+        Some(execution),
+        &[],
+        false,
+        work,
+    )?;
+    let mut routes = CanonicalRoutes::from_solved(
+        graph,
+        &solved,
+        &measured.profiles,
+        |_| 0.0,
+        measured.edge_ids.iter().map(|id| id.as_ref()),
+        work,
+    )?;
+    routes.placement = placement;
     work.charge_adapter(work.checked_add(
-        source.nodes.len(),
-        work.checked_add(source.edges.len(), solved.groups.len())?,
+        work.checked_add(graph.nodes.len(), graph.groups.len())?,
+        work.checked_add(graph.edges.len(), solved.groups.len())?,
     )?)?;
-    let nodes: Vec<_> = source
-        .nodes
+    let nodes: Vec<_> = measured
+        .node_ids
         .iter()
-        .filter(|(_, node)| !node.is_namespace)
+        .copied()
         .zip(solved.nodes)
-        .map(|((id, _), rect)| {
+        .map(|(id, rect)| {
             let center = rect.center();
-            let label = measured.node_label_metrics_by_id.get(id);
+            let label = labels.node_label_metrics_by_id.get(id);
             LayoutNode {
-                id: id.clone(),
+                id: id.to_owned(),
                 x: center.x,
                 y: center.y,
                 width: rect.width,
@@ -77,12 +74,12 @@ pub(crate) fn layout(
             }
         })
         .collect();
-    let clusters: Vec<_> = source
-        .nodes
+    let clusters: Vec<_> = measured
+        .group_ids
         .iter()
-        .filter(|(_, node)| node.is_namespace)
+        .copied()
         .zip(solved.groups)
-        .map(|((id, _), group)| {
+        .map(|(id, group)| {
             let center = group.rect.center();
             let title_label = group.title.unwrap_or(LayoutLabel {
                 x: center.x,
@@ -91,7 +88,7 @@ pub(crate) fn layout(
                 height: 0.0,
             });
             LayoutCluster {
-                id: id.clone(),
+                id: id.to_owned(),
                 x: center.x,
                 y: center.y,
                 width: group.rect.width,
@@ -102,21 +99,23 @@ pub(crate) fn layout(
                 title_margin_top: title_label.y - title_label.height / 2.0 - group.rect.y,
                 title_margin_bottom: settings.title_margin_bottom,
                 title_label,
-                effective_dir: source.direction.clone(),
+                effective_dir: measured.direction_name.clone(),
                 requested_dir: None,
                 padding: settings.namespace_padding,
             }
         })
         .collect();
-    let mut edges = Vec::with_capacity(source.edges.len());
-    for ((from, to, id), edge) in source.edges.keys().zip(solved.edges) {
+    let mut edges = Vec::with_capacity(graph.edges.len());
+    for ((id, relation), edge) in measured.edge_ids.iter().zip(&graph.edges).zip(solved.edges) {
         work.charge_adapter(edge.points.len())?;
+        let from = measured.endpoint_id(relation.source);
+        let to = measured.endpoint_id(relation.target);
         edges.push(LayoutEdge {
-            id: id.clone(),
-            from: from.clone(),
-            to: to.clone(),
-            from_cluster: source.nodes[from].is_namespace.then(|| from.clone()),
-            to_cluster: source.nodes[to].is_namespace.then(|| to.clone()),
+            id: id.to_string(),
+            from: from.to_owned(),
+            to: to.to_owned(),
+            from_cluster: matches!(relation.source, Endpoint::Group(_)).then(|| from.to_owned()),
+            to_cluster: matches!(relation.target, Endpoint::Group(_)).then(|| to.to_owned()),
             points: edge
                 .points
                 .into_iter()
@@ -157,145 +156,10 @@ pub(crate) fn layout(
             clusters,
             bounds,
             uses_elk_adapter_dom: false,
-            class_label_plans_by_id: measured.class_label_plans_by_id,
+            class_label_plans_by_id: labels.class_label_plans_by_id,
             render_tree,
         },
-        measured.prepared_labels,
+        labels.prepared_labels,
+        routes,
     ))
-}
-
-fn canonical_input(
-    model: &ClassDiagramModel,
-    measured: &MeasuredClassDiagram,
-    settings: &ClassLayoutSettings,
-    neo: bool,
-    work: &mut OperationLayoutWorkControl,
-) -> Result<(MeasuredGraph, Vec<ShapePortProfile>)> {
-    let source = &measured.graph;
-    let direction = match source.direction.as_str() {
-        "LR" => Direction::Right,
-        "RL" => Direction::Left,
-        "BT" => Direction::Up,
-        _ => Direction::Down,
-    };
-    let (face, perpendicular) = match direction {
-        Direction::Down | Direction::Up => (Side::Top, Side::Left),
-        Direction::Left | Direction::Right => (Side::Left, Side::Top),
-    };
-    let mut graph = MeasuredGraph {
-        direction,
-        routing: RoutingStyle::Curved,
-        node_spacing: source.nodesep,
-        rank_spacing: source.ranksep,
-        component_spacing: source.nodesep.max(source.ranksep),
-        inherit_crossed_group_direction: true,
-        nodes: Vec::new(),
-        groups: Vec::new(),
-        edges: Vec::new(),
-    };
-    work.charge_adapter(work.checked_mul(source.nodes.len(), 2)?)?;
-    work.charge_adapter(work.checked_add(source.edges.len(), model.relations().len())?)?;
-    let mut profiles = Vec::new();
-    let mut endpoints = FxHashMap::with_capacity_and_hasher(source.nodes.len(), Default::default());
-    let index = |index: usize, work: &OperationLayoutWorkControl| {
-        u32::try_from(index).map_err(|_| Error::from(work.record_arithmetic_overflow()))
-    };
-    for (sequence, (id, node)) in source.nodes.iter().enumerate() {
-        let seq = index(sequence, work)?;
-        let endpoint = if node.is_namespace {
-            let endpoint = Endpoint::Group(index(graph.groups.len(), work)?);
-            let pad = settings.namespace_padding.max(0.0);
-            let title = label_size(measured.namespace_label_metrics_by_id.get(id).copied());
-            let title_band = title.map_or(pad, |size| {
-                2.0 * pad
-                    + size.height
-                    + settings.title_margin_top.max(0.0)
-                    + settings.title_margin_bottom.max(0.0)
-            });
-            graph.groups.push(MeasuredGroup {
-                seq,
-                parent: None,
-                direction: None,
-                padding: Insets::new(pad, title_band, pad, pad),
-                min_size: Size {
-                    width: 2.0 * pad + title.map_or(0.0, |size| size.width),
-                    height: title_band + pad,
-                },
-                title,
-                title_position: TitlePosition::TopCenter,
-            });
-            endpoint
-        } else {
-            let endpoint = Endpoint::Node(index(graph.nodes.len(), work)?);
-            let size = Size {
-                width: node.width.max(1.0),
-                height: node.height.max(1.0),
-            };
-            let profile = ShapePortProfile::rectangle(size.width, size.height);
-            graph.nodes.push(MeasuredNode {
-                size,
-                seq,
-                parent: None,
-                port_span: Some(profile.port_span(face)),
-                perpendicular_port_span: Some(profile.port_span(perpendicular)),
-                anchor_y: None,
-            });
-            profiles.push(profile);
-            endpoint
-        };
-        endpoints.insert(id.as_str(), endpoint);
-    }
-    for (child, parent) in &source.parents {
-        let Endpoint::Group(parent) = endpoints[parent.as_str()] else {
-            return Err(Error::InvalidModel {
-                message: format!("Class parent `{parent}` is not a namespace"),
-            });
-        };
-        match endpoints[child.as_str()] {
-            Endpoint::Node(index) => graph.nodes[index as usize].parent = Some(parent),
-            Endpoint::Group(index) => graph.groups[index as usize].parent = Some(parent),
-        }
-    }
-    let relations: FxHashMap<_, _> = model
-        .relations()
-        .map(|rel| {
-            (
-                rel.source.id.as_str(),
-                (rel.relation.type1, rel.relation.type2),
-            )
-        })
-        .collect();
-    for ((from, to, id), edge) in &source.edges {
-        work.charge_adapter(0)?;
-        let (start_marker, end_marker) =
-            relations
-                .get(id.as_str())
-                .map_or_else(Default::default, |&(start, end)| {
-                    (
-                        crate::svg::class_canonical_marker(start, true, neo),
-                        crate::svg::class_canonical_marker(end, false, neo),
-                    )
-                });
-        graph.edges.push(MeasuredEdge {
-            source: endpoints[from.as_str()],
-            target: endpoints[to.as_str()],
-            min_rank_span: 1,
-            weight: 1.0,
-            label: label_size(Some((edge.width, edge.height))),
-            start_label: label_size(
-                edge.terminals
-                    .as_ref()
-                    .and_then(|metrics| metrics.start_right),
-            ),
-            end_label: label_size(edge.terminals.as_ref().and_then(|metrics| metrics.end_left)),
-            start_marker,
-            end_marker,
-        });
-    }
-    Ok((graph, profiles))
-}
-
-fn label_size(metrics: Option<(f64, f64)>) -> Option<Size> {
-    let (width, height) = metrics?;
-    (width > 0.0 && height > 0.0).then_some(Size { width, height })
 }

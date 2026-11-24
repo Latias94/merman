@@ -9,7 +9,7 @@ use crate::graph_layout::ir::{
     Direction, Endpoint, Marker, MeasuredEdge, MeasuredGraph, MeasuredNode, RoutingStyle, Side,
     Size,
 };
-use crate::graph_layout::shoal_bridge;
+use crate::graph_layout::placement;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::model::{Bounds, LayoutEdge, LayoutNode, LayoutPoint, RequirementDiagramLayout};
 use crate::resources::OperationWorkMeter;
@@ -26,6 +26,7 @@ pub(super) fn layout(
     text_measurer: &dyn TextMeasurer,
     css_binding: &RequirementCssBinding,
     work_meter: &Arc<OperationWorkMeter>,
+    execution: Option<&crate::LayoutExecution<'_>>,
 ) -> Result<RequirementPreparedArtifact> {
     let mut work = OperationLayoutWorkControl::new(Arc::clone(work_meter));
     let node_count = work.checked_add(model.requirements.len(), model.elements.len())?;
@@ -119,8 +120,16 @@ pub(super) fn layout(
         plans.push(plan);
     }
 
-    let solved = shoal_bridge::solve(&graph, Default::default(), &mut work)?;
-    let canonical_routes = CanonicalRoutes::from_solved(
+    let (solved, placement) = placement::solve(
+        &graph,
+        nodes.keys().copied(),
+        std::iter::empty(),
+        execution,
+        &[],
+        false,
+        &mut work,
+    )?;
+    let mut canonical_routes = CanonicalRoutes::from_solved(
         &graph,
         &solved,
         &profiles,
@@ -128,6 +137,7 @@ pub(super) fn layout(
         plans.iter().map(|plan| plan.rendered_id.as_str()),
         &mut work,
     )?;
+    canonical_routes.placement = placement;
     let mut layout_nodes = Vec::with_capacity(nodes.len());
     let mut prepared_nodes = HashMap::with_capacity(nodes.len());
     for ((id, measured), rect) in nodes.into_iter().zip(solved.nodes) {
@@ -196,7 +206,7 @@ pub(super) fn layout(
             bounds,
         },
         render_layout: None,
-        canonical_routes: Some(canonical_routes),
+        route_contract: crate::graph_layout::RouteContract::canonical_graph(canonical_routes),
         nodes: prepared_nodes,
         edges: prepared_edges,
         measurement_binding,

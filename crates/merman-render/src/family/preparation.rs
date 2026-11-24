@@ -96,7 +96,9 @@ fn prepare_flowchart_artifact<'parsed, L>(
         return Err(error.into());
     }
     let uses_elk = match layout_view(&layout) {
-        crate::svg::FlowchartNodeLayoutView::Flowchart(layout) => layout.uses_elk_adapter_dom,
+        crate::svg::FlowchartNodeLayoutView::Flowchart(layout) => {
+            layout.route_contract.is_elk_parity()
+        }
         crate::svg::FlowchartNodeLayoutView::Swimlane(_) => false,
     };
     let render_config = crate::svg::prepare_flowchart_render_config(
@@ -434,39 +436,19 @@ fn prepare_state_family<'parsed>(
     let style = execution
         .state_style_plan()
         .expect("State family layout requires an adapted style plan");
-    let compatibility = || {
-        crate::state::layout_state_diagram_typed_with_work_meter(
-            model,
-            config,
-            style,
-            Some(&label_sidecar),
-            execution,
-        )
-    };
-    #[cfg(feature = "layout-shoal")]
-    let (layout, canonical_routes) = if crate::layout_backend::resolve_graph_layout(config).backend
-        == crate::layout_backend::GraphLayoutBackend::Shoal
-    {
-        let (layout, routes) = crate::state::layout_state_diagram_shoal(
-            model,
-            config,
-            style,
-            Some(&label_sidecar),
-            execution,
-        )?;
-        (layout, Some(routes))
-    } else {
-        (compatibility()?, None)
-    };
-    #[cfg(not(feature = "layout-shoal"))]
-    let layout = compatibility()?;
+    let (layout, route_contract) = crate::state::layout_state_diagram_typed_with_work_meter(
+        model,
+        config,
+        style,
+        Some(&label_sidecar),
+        execution,
+    )?;
     let label_sidecar = label_sidecar.finish();
     Ok(BuiltinFamilyArtifact::State(Box::new(
         StateFamilyArtifact {
             pair: FamilyPair::new(model, layout),
             label_sidecar,
-            #[cfg(feature = "layout-shoal")]
-            canonical_routes,
+            route_contract,
             effect_evidence: crate::diagram_theme::SvgShadowEvidenceRecorder::default(),
         },
     )))
@@ -868,8 +850,7 @@ fn prepare_er_family<'parsed>(
     let font_size_override = base_font_size.layout_override_px();
     let crate::er::ErPreparedLayout {
         layout,
-        #[cfg(feature = "layout-shoal")]
-        canonical_routes,
+        route_contract,
     } = crate::er::layout_er_diagram_typed_with_resolved_typography(
         model,
         meta.effective_config.as_value(),
@@ -878,6 +859,8 @@ fn prepare_er_family<'parsed>(
         execution.elk_operation_seed(),
         Some(inherited_font_stack.font_family_css()),
         font_size_override,
+        #[cfg(feature = "layout-shoal")]
+        Some(execution),
         execution.work_meter(),
     )?;
     let entity_theme = crate::er::ErEntityThemePlan::resolve(
@@ -894,8 +877,7 @@ fn prepare_er_family<'parsed>(
     Ok(BuiltinFamilyArtifact::Er(Box::new(ErFamilyArtifact {
         pair: FamilyPair::new(model, layout),
         entity_theme,
-        #[cfg(feature = "layout-shoal")]
-        canonical_routes,
+        route_contract,
     })))
 }
 
@@ -1109,6 +1091,8 @@ fn prepare_requirement_family<'parsed>(
             execution.text_measurer(),
             paint_theme.css(),
             &execution.work_meter(),
+            #[cfg(feature = "layout-shoal")]
+            Some(execution),
             #[cfg(feature = "layout-elk")]
             execution.elk_operation_seed(),
         )?;
@@ -1177,7 +1161,7 @@ fn prepare_class_family<'parsed>(
     );
     let render_config =
         crate::class::ClassRenderConfig::resolve(&meta.effective_config, &typography_theme);
-    let (layout, prepared_labels) = crate::layout_class_typed_by_engine(
+    let (layout, prepared_labels, route_contract) = crate::layout_class_typed_by_engine(
         model,
         &meta.effective_config,
         execution,
@@ -1202,6 +1186,7 @@ fn prepare_class_family<'parsed>(
         ClassFamilyArtifact {
             pair: FamilyPair::new(model, layout),
             prepared_labels,
+            route_contract,
             relation_theme,
             typography_theme,
             render_config,
@@ -1567,6 +1552,8 @@ pub(super) fn prepare_non_class_render<'parsed>(
                     execution.text_measurer(),
                     execution.math_renderer(),
                     execution.work_meter(),
+                    #[cfg(feature = "layout-shoal")]
+                    &execution,
                     #[cfg(feature = "layout-elk")]
                     execution.elk_operation_seed(),
                 )

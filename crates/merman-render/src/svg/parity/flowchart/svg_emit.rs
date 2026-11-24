@@ -303,7 +303,7 @@ pub(super) fn render_flowchart_svg_model(
                 edge_labels: &mut edge_labels,
                 step_badges: &step_badges,
             };
-            if layout.uses_elk_adapter_dom {
+            if layout.route_contract.is_elk_parity() {
                 out.push_str("<g>");
                 defs.push_base_markers(&mut out)?;
                 out.checkpoint()?;
@@ -731,7 +731,7 @@ mod integration_tests {
             &model,
             &metadata.effective_config,
             &prepared_theme.compatibility,
-            layout.uses_elk_adapter_dom,
+            layout.route_contract.is_elk_parity(),
             sidecar.base_typography(),
             sidecar.edge_label_padding(),
         );
@@ -906,7 +906,7 @@ mod integration_tests {
                 &model,
                 &metadata.effective_config,
                 &prepared_theme.compatibility,
-                layout.uses_elk_adapter_dom,
+                layout.route_contract.is_elk_parity(),
                 sidecar.base_typography(),
                 sidecar.edge_label_padding(),
             );

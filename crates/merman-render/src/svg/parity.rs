@@ -1376,8 +1376,7 @@ fn render_builtin_family_artifact_raw(
             artifact.pair().layout(),
             artifact.pair().semantic(),
             artifact.label_sidecar(),
-            #[cfg(feature = "layout-shoal")]
-            artifact.canonical_routes(),
+            artifact.route_contract(),
             artifact.effect_evidence(),
             effective_config.as_value(),
             title,
@@ -1389,6 +1388,7 @@ fn render_builtin_family_artifact_raw(
             class::render_class_diagram_svg_model_with_config(
                 artifact.pair().layout(),
                 artifact.prepared_labels(),
+                artifact.route_contract(),
                 artifact.pair().semantic(),
                 artifact.relation_theme(),
                 artifact.typography_theme(),
@@ -1556,8 +1556,7 @@ fn render_builtin_family_artifact_raw(
         #[cfg(feature = "diagram-er")]
         BuiltinFamilyArtifact::Er(artifact) => er::render_er_diagram_svg_model(
             artifact.pair().layout(),
-            #[cfg(feature = "layout-shoal")]
-            artifact.canonical_routes(),
+            artifact.route_contract(),
             artifact.pair().semantic(),
             artifact.entity_theme(),
             effective_config,

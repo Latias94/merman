@@ -16,6 +16,7 @@ use super::*;
 pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     layout: &ClassDiagramLayout,
     prepared_labels: &crate::class::ClassPreparedLabels,
+    route_contract: &crate::graph_layout::RouteContract,
     model: &ClassSvgModel,
     relation_theme: &crate::class::ClassRelationThemePlan,
     typography_theme: &crate::class::ClassTextThemePlan,
@@ -71,15 +72,16 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     let mut relation_theme_receipt = relation_theme.begin_outcomes(marker_expectations);
 
     #[cfg(feature = "layout-shoal")]
-    let canonical_routes = prepared_labels.canonical_routes.as_ref();
+    let canonical_routes = route_contract.canonical_routes();
     #[cfg(feature = "layout-shoal")]
     let uses_canonical_routes = canonical_routes.is_some();
     #[cfg(not(feature = "layout-shoal"))]
     let uses_canonical_routes = false;
+    let elk_parity = route_contract.is_elk_parity();
 
     // Mermaid's Dagre renderer applies fixed 8px graph margins. Its registered ELK renderer emits
     // the layout coordinates directly and keeps the viewport padding as the only outer margin.
-    let content_tx = if layout.uses_elk_adapter_dom || uses_canonical_routes {
+    let content_tx = if elk_parity || uses_canonical_routes {
         0.0
     } else {
         CLASS_GRAPH_MARGIN_PX
@@ -139,7 +141,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
 
     let terminal_text_style = crate::class::class_cardinality_text_style(settings.text_style());
     let mut paint_edges = std::borrow::Cow::Borrowed(layout.edges.as_slice());
-    if layout.uses_elk_adapter_dom {
+    if elk_parity {
         let edges = super::edge::class_edge_render_order(&layout.edges, &relation_index_by_id)
             .into_iter()
             .cloned()
@@ -147,7 +149,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         paint_edges = std::borrow::Cow::Owned(edges);
     }
     let mut missing_section_points = rustc_hash::FxHashMap::default();
-    if layout.uses_elk_adapter_dom {
+    if elk_parity {
         let nodes_by_id: rustc_hash::FxHashMap<_, _> = layout
             .nodes
             .iter()
@@ -167,7 +169,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
             }
         }
     }
-    let line_hop_edges = if layout.uses_elk_adapter_dom {
+    let line_hop_edges = if elk_parity {
         options.work_meter().charge(paint_edges.len())?;
         paint_edges
             .iter()
@@ -221,8 +223,8 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         look: settings.look.as_str(),
         hand_drawn_seed: hand_drawn_seed.clone(),
         timing,
-        uses_elk_adapter_dom: layout.uses_elk_adapter_dom,
-        edge_paths_class: if layout.uses_elk_adapter_dom {
+        uses_elk_adapter_dom: elk_parity,
+        edge_paths_class: if elk_parity {
             "edges edgePaths"
         } else {
             "edgePaths"
@@ -260,7 +262,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         timing,
         emit,
     };
-    if layout.uses_elk_adapter_dom {
+    if elk_parity {
         out.push_str(r#"<g class="root">"#);
         render_class_elk_adapter_dom(
             ClassNodesRenderState {

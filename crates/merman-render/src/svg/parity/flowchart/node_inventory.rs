@@ -143,7 +143,7 @@ impl<'a> FlowchartNodeInventoryInput<'a> {
                     .filter(|id| !id.is_empty())
                     .map(String::as_str)
                     .collect(),
-                layout.uses_elk_adapter_dom,
+                layout.route_contract.is_elk_parity(),
             ),
             FlowchartNodeLayoutView::Swimlane(layout) => {
                 // FlowDB emits visible collapsed groups before authored vertices.
@@ -304,7 +304,7 @@ impl FlowchartPreparedNodes {
         let (owners, use_projected_edges) = match layout {
             FlowchartNodeLayoutView::Flowchart(layout) => (
                 &layout.edge_owners,
-                layout.uses_elk_adapter_dom || layout.route_contract.uses_projected_edges(),
+                layout.route_contract.uses_projected_edges(),
             ),
             FlowchartNodeLayoutView::Swimlane(layout) => (&layout.edge_owners, false),
         };
@@ -903,7 +903,7 @@ mod source_typography_tests {
             &model,
             &metadata.effective_config,
             &theme.compatibility,
-            layout.uses_elk_adapter_dom,
+            layout.route_contract.is_elk_parity(),
             sidecar.base_typography(),
             sidecar.edge_label_padding(),
         );
@@ -932,7 +932,7 @@ mod source_typography_tests {
         drop(prepared);
         assert_eq!(work.prepared_text_retained_bytes(), before);
 
-        layout.uses_elk_adapter_dom = true;
+        layout.route_contract = crate::graph_layout::RouteContract::ElkParity;
         layout
             .dom_node_order_by_root
             .insert(String::new(), vec!["Shared".into(), "Shared".into()]);
@@ -1017,7 +1017,7 @@ mod source_typography_tests {
             &model,
             &metadata.effective_config,
             &theme.compatibility,
-            layout.uses_elk_adapter_dom,
+            layout.route_contract.is_elk_parity(),
             sidecar.base_typography(),
             sidecar.edge_label_padding(),
         );
