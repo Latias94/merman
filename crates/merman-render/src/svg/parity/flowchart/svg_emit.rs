@@ -798,6 +798,7 @@ mod integration_tests {
         assert_eq!(details.limit, ResourceLimitId::MaxSvgBytes.as_str());
     }
 
+    #[cfg(feature = "layout-elk")]
     #[test]
     fn elk_terminal_straightening_reaches_svg_and_preserves_ports() {
         use crate::model::{LayoutEdge, LayoutPoint};
