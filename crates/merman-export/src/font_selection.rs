@@ -6,6 +6,7 @@ use usvg::fontdb::{Database, FaceInfo, Family, ID, Query, Stretch, Style, Weight
 #[derive(Clone, Copy, Default)]
 enum FaceClass {
     LastResort,
+    SymbolEncoding,
     Symbolic,
     Monospace,
     Serif,
@@ -16,7 +17,10 @@ enum FaceClass {
 
 impl FaceClass {
     fn allows_implicit_text(self) -> bool {
-        !matches!(self, Self::Symbolic | Self::LastResort)
+        !matches!(
+            self,
+            Self::SymbolEncoding | Self::Symbolic | Self::LastResort
+        )
     }
 }
 
@@ -232,19 +236,6 @@ pub(crate) fn cmap_covers_character(
     })
 }
 
-/// Check glyph coverage on admitted bytes. Generic and unrequested faces must also suit body text.
-#[cfg(all(feature = "native-fonts", feature = "system-fonts"))]
-pub(crate) fn allows_binary_face(face: &FaceInfo, character: Option<char>, implicit: bool) -> bool {
-    let usvg::fontdb::Source::Binary(bytes) = &face.source else {
-        return false;
-    };
-    let Ok(face) = ttf_parser::Face::parse(bytes.as_ref().as_ref(), face.index) else {
-        return character.is_none();
-    };
-    (!implicit || classify_family(&face).allows_implicit_text())
-        && character.is_none_or(|character| covers_character(&face, character))
-}
-
 #[cfg(test)]
 #[test]
 fn cmap_notdef_is_not_fallback_coverage() {
@@ -288,25 +279,32 @@ fn has_fixed_latin_advances(face: &ttf_parser::Face<'_>) -> bool {
 }
 
 fn classify_family(face: &ttf_parser::Face<'_>) -> FaceClass {
+    let table = |tag| face.raw_face().table(ttf_parser::Tag::from_bytes(tag));
+    classify_tables(table(b"head"), table(b"OS/2"), face.tables().cmap)
+}
+
+fn classify_tables(
+    head: Option<&[u8]>,
+    os2: Option<&[u8]>,
+    cmap: Option<ttf_parser::cmap::Table<'_>>,
+) -> FaceClass {
     // OpenType head.flags bit 14 marks generic code-point-range placeholders,
     // whose nonzero cmap glyphs do not establish readable character coverage.
     // https://learn.microsoft.com/en-us/typography/opentype/spec/head
-    if face
-        .raw_face()
-        .table(ttf_parser::Tag::from_bytes(b"head"))
-        .and_then(|head| head.get(16..18))
-        .is_some_and(|flags| u16::from_be_bytes([flags[0], flags[1]]) & (1 << 14) != 0)
-    {
+    if head.is_some_and(is_last_resort_head) {
         return FaceClass::LastResort;
     }
-    if face.tables().cmap.is_some_and(|cmap| {
+    if cmap.is_some_and(|cmap| {
         cmap.subtables.into_iter().any(|subtable| {
             subtable.platform_id == ttf_parser::PlatformId::Windows && subtable.encoding_id == 0
-        })
+        }) && !cmap
+            .subtables
+            .into_iter()
+            .any(|subtable| subtable.is_unicode())
     }) {
-        return FaceClass::Symbolic;
+        return FaceClass::SymbolEncoding;
     }
-    let Some(os2) = face.raw_face().table(ttf_parser::Tag::from_bytes(b"OS/2")) else {
+    let Some(os2) = os2 else {
         return FaceClass::Unclassified;
     };
     // OpenType OS/2 sFamilyClass and PANOSE bFamilyType/bSerifStyle have fixed offsets.
@@ -323,6 +321,98 @@ fn classify_family(face: &ttf_parser::Face<'_>) -> FaceClass {
     } else {
         FaceClass::Unclassified
     }
+}
+
+pub(crate) fn is_last_resort_head(head: &[u8]) -> bool {
+    head.get(16).is_some_and(|flags| flags & 0x40 != 0)
+}
+
+/// Eligibility for an implicit platform match, before acquiring its outlines.
+#[cfg(all(
+    feature = "experimental-system-font-query",
+    not(target_family = "wasm")
+))]
+pub(crate) fn allows_font_tables(
+    head: &[u8],
+    os2: Option<&[u8]>,
+    cmap: &[u8],
+    maxp: &[u8],
+    fallback: Option<&str>,
+) -> bool {
+    use ttf_parser::{cmap, maxp};
+    use unicode_general_category::{GeneralCategory, get_general_category};
+
+    let Some(cmap) = cmap::Table::parse(cmap) else {
+        return false;
+    };
+    if !cmap
+        .subtables
+        .into_iter()
+        .any(|subtable| subtable.is_unicode())
+    {
+        return false;
+    }
+    match classify_tables(Some(head), os2, Some(cmap)) {
+        FaceClass::LastResort | FaceClass::SymbolEncoding => false,
+        FaceClass::Symbolic => fallback.is_some_and(|text| {
+            let Some(maxp) = maxp::Table::parse(maxp) else {
+                return false;
+            };
+            let mut symbol = false;
+            let keycap = text.ends_with('\u{20e3}');
+            for ch in text.chars() {
+                match get_general_category(ch) {
+                    GeneralCategory::MathSymbol
+                    | GeneralCategory::CurrencySymbol
+                    | GeneralCategory::ModifierSymbol
+                    | GeneralCategory::OtherSymbol => {
+                        symbol |= cmap_covers_character(cmap, maxp.number_of_glyphs.get(), ch);
+                    }
+                    _ if keycap && matches!(ch, '0'..='9' | '#' | '*') => {
+                        symbol |= cmap_covers_character(cmap, maxp.number_of_glyphs.get(), ch);
+                    }
+                    GeneralCategory::NonspacingMark
+                    | GeneralCategory::SpacingMark
+                    | GeneralCategory::EnclosingMark
+                    | GeneralCategory::Format => {}
+                    _ => return false,
+                }
+            }
+            symbol
+        }),
+        _ => true,
+    }
+}
+
+#[cfg(all(
+    test,
+    feature = "experimental-system-font-query",
+    not(target_family = "wasm")
+))]
+#[test]
+fn pictorial_face_is_eligible_for_its_unicode_dingbat_only() {
+    use ttf_parser::{RawFace, Tag};
+
+    let bytes = include_bytes!("../tests/fonts/MermanProbeFull.ttf");
+    let face = RawFace::parse(bytes, 0).unwrap();
+    let table = |tag| face.table(Tag::from_bytes(tag)).unwrap();
+    let mut os2 = table(b"OS/2").to_vec();
+    os2[30] = 12;
+    let mut head = table(b"head").to_vec();
+    let cmap = table(b"cmap");
+    let maxp = table(b"maxp");
+    for text in [None, Some("f"), Some("∑")] {
+        assert!(!allows_font_tables(&head, Some(&os2), cmap, maxp, text));
+    }
+    assert!(allows_font_tables(&head, Some(&os2), cmap, maxp, Some("✓")));
+    head[16] |= 0x40;
+    assert!(!allows_font_tables(
+        &head,
+        Some(&os2),
+        cmap,
+        maxp,
+        Some("✓")
+    ));
 }
 
 pub(crate) fn query_named_font_family_case_insensitively(

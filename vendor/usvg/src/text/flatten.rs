@@ -76,9 +76,21 @@ pub(crate) fn flatten(
         // with just outlines (which is the most common case).
         let mut span_builder = tiny_skia_path::PathBuilder::new();
 
+        let variations = &span.variations;
         for glyph in &span.positioned_glyphs {
+            let colr = if variations.is_empty() {
+                cache.fontdb_colr(glyph.font, glyph.id)
+            } else if cache.font_has_colr(glyph.font) {
+                cache
+                    .fontdb
+                    .colr_with_variations(glyph.font, glyph.id, variations)
+            } else {
+                None
+            };
             // A (best-effort conversion of a) COLR glyph.
-            if let Some(tree) = cache.fontdb_colr(glyph.font, glyph.id) {
+            if let Some(tree) = colr {
+                push_outline_paths(span, &mut span_builder, &mut new_children, rendering_mode);
+
                 let mut group = Group {
                     transform: glyph.colr_transform(),
                     ..Group::empty()
@@ -108,11 +120,16 @@ pub(crate) fn flatten(
                 push_outline_paths(span, &mut span_builder, &mut new_children, rendering_mode);
 
                 let transform = if img.is_sbix {
+                    let bbox = if variations.is_empty() {
+                        img.glyph_bbox
+                    } else {
+                        cache.fontdb.glyph_bounds(glyph.font, glyph.id, variations)
+                    };
                     glyph.sbix_transform(
                         img.x as f32,
                         img.y as f32,
-                        img.glyph_bbox.map(|bbox| bbox.x_min).unwrap_or(0) as f32,
-                        img.glyph_bbox.map(|bbox| bbox.y_min).unwrap_or(0) as f32,
+                        bbox.map(|bbox| bbox.x_min).unwrap_or(0) as f32,
+                        bbox.map(|bbox| bbox.y_min).unwrap_or(0) as f32,
                         img.pixels_per_em as f32,
                         img.image.size.height(),
                     )
@@ -134,27 +151,13 @@ pub(crate) fn flatten(
 
                 new_children.push(Node::Group(Box::new(group)));
             } else {
-                // The outline cache stores default coordinates. Keep using it when the face
-                // has no applicable variation, including most uses of CSS font-weight.
-                let needs_variations = cache.font_variation_axes(glyph.font).iter().any(|axis| {
-                    let tag = axis.tag.to_bytes();
-                    (tag == *b"opsz" && span.font_optical_sizing == FontOpticalSizing::Auto)
-                        || span
-                            .variations
-                            .iter()
-                            .any(|v| v.tag == tag && v.value != axis.def_value)
-                });
-
-                let outline = if needs_variations {
-                    cache.fontdb.outline_with_variations(
-                        glyph.font,
-                        glyph.id,
-                        &span.variations,
-                        glyph.font_size(),
-                        span.font_optical_sizing,
-                    )
-                } else {
+                // The outline cache stores the default instance.
+                let outline = if variations.is_empty() {
                     cache.fontdb_outline(glyph.font, glyph.id)
+                } else {
+                    cache
+                        .fontdb
+                        .outline_with_variations(glyph.font, glyph.id, variations)
                 };
 
                 if let Some(outline) = outline.and_then(|p| p.transform(glyph.outline_transform()))
@@ -219,14 +222,24 @@ pub(crate) trait DatabaseExt {
         &self,
         id: ID,
         glyph_id: GlyphId,
-        variations: &[crate::FontVariation],
-        font_size: f32,
-        font_optical_sizing: crate::FontOpticalSizing,
+        variations: &[FontVariation],
     ) -> Option<tiny_skia_path::Path>;
-    fn variation_axes(&self, id: ID) -> Vec<ttf_parser::VariationAxis>;
+    fn glyph_bounds(
+        &self,
+        id: ID,
+        glyph_id: GlyphId,
+        variations: &[FontVariation],
+    ) -> Option<ttf_parser::Rect>;
     fn raster(&self, id: ID, glyph_id: GlyphId) -> Option<BitmapImage>;
     fn svg(&self, id: ID, glyph_id: GlyphId) -> Option<Node>;
+    fn has_colr(&self, id: ID) -> bool;
     fn colr(&self, id: ID, glyph_id: GlyphId) -> Option<Tree>;
+    fn colr_with_variations(
+        &self,
+        id: ID,
+        glyph_id: GlyphId,
+        variations: &[FontVariation],
+    ) -> Option<Tree>;
 }
 
 #[derive(Clone)]
@@ -242,23 +255,7 @@ pub(crate) struct BitmapImage {
 impl DatabaseExt for Database {
     #[inline(never)]
     fn outline(&self, id: ID, glyph_id: GlyphId) -> Option<tiny_skia_path::Path> {
-        self.with_face_data(id, |data, face_index| -> Option<tiny_skia_path::Path> {
-            let mut font = ttf_parser::Face::parse(data, face_index).ok()?;
-
-            // For variable fonts, we need to set default variation values to get proper outlines
-            if font.is_variable() {
-                for axis in font.variation_axes() {
-                    font.set_variation(axis.tag, axis.def_value);
-                }
-            }
-
-            let mut builder = PathBuilder {
-                builder: tiny_skia_path::PathBuilder::new(),
-            };
-
-            font.outline_glyph(glyph_id, &mut builder)?;
-            builder.builder.finish()
-        })?
+        self.outline_with_variations(id, glyph_id, &[])
     }
 
     #[inline(never)]
@@ -266,14 +263,12 @@ impl DatabaseExt for Database {
         &self,
         id: ID,
         glyph_id: GlyphId,
-        variations: &[crate::FontVariation],
-        font_size: f32,
-        font_optical_sizing: crate::FontOpticalSizing,
+        variations: &[FontVariation],
     ) -> Option<tiny_skia_path::Path> {
         self.with_face_data(id, |data, face_index| -> Option<tiny_skia_path::Path> {
             let mut font = ttf_parser::Face::parse(data, face_index).ok()?;
 
-            super::apply_variations(&mut font, variations, font_size, font_optical_sizing);
+            super::apply_variations(&mut font, variations);
 
             let mut builder = PathBuilder {
                 builder: tiny_skia_path::PathBuilder::new(),
@@ -284,15 +279,17 @@ impl DatabaseExt for Database {
         })?
     }
 
-    fn variation_axes(&self, id: ID) -> Vec<ttf_parser::VariationAxis> {
+    fn glyph_bounds(
+        &self,
+        id: ID,
+        glyph_id: GlyphId,
+        variations: &[FontVariation],
+    ) -> Option<ttf_parser::Rect> {
         self.with_face_data(id, |data, face_index| {
-            ttf_parser::Face::parse(data, face_index)
-                .ok()
-                .into_iter()
-                .flat_map(|face| face.variation_axes())
-                .collect()
-        })
-        .unwrap_or_default()
+            let mut font = ttf_parser::Face::parse(data, face_index).ok()?;
+            super::apply_variations(&mut font, variations);
+            font.glyph_bounding_box(glyph_id)
+        })?
     }
 
     fn raster(&self, id: ID, glyph_id: GlyphId) -> Option<BitmapImage> {
@@ -360,9 +357,26 @@ impl DatabaseExt for Database {
         })?
     }
 
+    fn has_colr(&self, id: ID) -> bool {
+        self.with_face_data(id, |data, face_index| {
+            ttf_parser::Face::parse(data, face_index).is_ok_and(|face| face.tables().colr.is_some())
+        })
+        .unwrap_or(false)
+    }
+
     fn colr(&self, id: ID, glyph_id: GlyphId) -> Option<Tree> {
+        self.colr_with_variations(id, glyph_id, &[])
+    }
+
+    fn colr_with_variations(
+        &self,
+        id: ID,
+        glyph_id: GlyphId,
+        variations: &[FontVariation],
+    ) -> Option<Tree> {
         self.with_face_data(id, |data, face_index| -> Option<Tree> {
-            let face = ttf_parser::Face::parse(data, face_index).ok()?;
+            let mut face = ttf_parser::Face::parse(data, face_index).ok()?;
+            super::apply_variations(&mut face, variations);
 
             let mut svg = XmlWriter::new(xmlwriter::Options::default());
 

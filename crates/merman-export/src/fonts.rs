@@ -144,11 +144,6 @@ impl NativeFontOptions {
         self,
         control: &OperationControl,
     ) -> Result<NativeFontContext, NativeFontError> {
-        if self.system_fonts {
-            // Detect a missing service before acquiring any explicit sources. A caller
-            // choosing an automatic provider may then retry bounded discovery cleanly.
-            platform::ensure_available(control)?;
-        }
         self.load_inner(control, true)
     }
 
@@ -162,6 +157,18 @@ impl NativeFontOptions {
         if self.system_fonts {
             return Err(NativeFontError::SystemDiscoveryUnavailable);
         }
+        #[cfg(all(
+            feature = "experimental-system-font-query",
+            not(target_family = "wasm")
+        ))]
+        let platform = (self.system_fonts && platform_requested)
+            .then(|| platform::PlatformCatalog::new(control).map(Arc::new))
+            .transpose()?;
+        #[cfg(not(all(
+            feature = "experimental-system-font-query",
+            not(target_family = "wasm")
+        )))]
+        let _ = platform_requested;
         let mut loader = FontLoader::new(self.limits, control.clone());
         for source in self.sources {
             #[cfg(not(target_family = "wasm"))]
@@ -184,7 +191,15 @@ impl NativeFontOptions {
                 }
             }
         }
-        loader.finish(self.system_fonts, platform_requested, control)
+        loader.finish(
+            self.system_fonts,
+            control,
+            #[cfg(all(
+                feature = "experimental-system-font-query",
+                not(target_family = "wasm")
+            ))]
+            platform,
+        )
     }
 }
 
@@ -424,7 +439,15 @@ impl NativeFontContext {
             #[cfg(not(all(feature = "system-fonts", not(target_family = "wasm"))))]
             let _ = admitted;
         }
-        loader.finish(false, false, control)
+        loader.finish(
+            false,
+            control,
+            #[cfg(all(
+                feature = "experimental-system-font-query",
+                not(target_family = "wasm")
+            ))]
+            None,
+        )
     }
 
     /// Starts an independent operation scope with the selected glyph coverage policy.
@@ -687,6 +710,65 @@ trait TextFallbackOptions<'a> {
 
 impl<'a> TextFallbackOptions<'a> for usvg::Options<'a> {}
 
+#[cfg(all(
+    feature = "experimental-system-font-query",
+    not(target_family = "wasm")
+))]
+type FontInstance = (usvg::fontdb::ID, f32, Vec<usvg::FontVariation>);
+
+#[cfg(all(
+    feature = "experimental-system-font-query",
+    not(target_family = "wasm")
+))]
+type InstanceSelection<'a> = Box<
+    dyn Fn(&usvg::Font, &mut Arc<usvg::fontdb::Database>) -> Option<FontInstance>
+        + Send
+        + Sync
+        + 'a,
+>;
+
+#[cfg(all(
+    feature = "experimental-system-font-query",
+    not(target_family = "wasm")
+))]
+type InstanceFallbackSelection<'a> = Box<
+    dyn Fn(
+            &usvg::Font,
+            &str,
+            Option<&str>,
+            bool,
+            &[FontInstance],
+            &mut Arc<usvg::fontdb::Database>,
+        ) -> Option<FontInstance>
+        + Send
+        + Sync
+        + 'a,
+>;
+
+#[cfg(all(
+    feature = "experimental-system-font-query",
+    not(target_family = "wasm")
+))]
+#[allow(dead_code)]
+trait FontInstanceOptions<'a> {
+    fn supports_font_instances(&self) -> bool {
+        false
+    }
+
+    fn set_font_instances(
+        &mut self,
+        _select: Option<InstanceSelection<'a>>,
+        _fallback: Option<InstanceFallbackSelection<'a>>,
+    ) {
+    }
+}
+
+#[cfg(all(
+    feature = "experimental-system-font-query",
+    not(target_family = "wasm")
+))]
+impl<'a> FontInstanceOptions<'a> for usvg::Options<'a> {}
+
 // Published usvg lacks the workspace hook for language-aware primary selection.
 #[cfg(feature = "experimental-system-font-query")]
 #[allow(dead_code)]
@@ -754,8 +836,12 @@ impl FontLoader {
     fn finish(
         self,
         system_fonts: bool,
-        platform_requested: bool,
         control: &OperationControl,
+        #[cfg(all(
+            feature = "experimental-system-font-query",
+            not(target_family = "wasm")
+        ))]
+        platform: Option<Arc<platform::PlatformCatalog>>,
     ) -> Result<NativeFontContext, NativeFontError> {
         let mut loader = self;
         #[cfg(not(all(feature = "system-fonts", not(target_family = "wasm"))))]
@@ -764,16 +850,13 @@ impl FontLoader {
             feature = "experimental-system-font-query",
             not(target_family = "wasm")
         ))]
-        let platform = if system_fonts && platform_requested {
-            Some(Arc::new(platform::PlatformCatalog::new(control)?))
-        } else {
-            None
-        };
-        #[cfg(not(all(
-            feature = "experimental-system-font-query",
-            not(target_family = "wasm")
-        )))]
-        let _ = platform_requested;
+        let platform_requested = platform.is_some();
+        #[cfg(all(
+            feature = "system-fonts",
+            not(target_family = "wasm"),
+            not(feature = "experimental-system-font-query")
+        ))]
+        let platform_requested = false;
         loader.selection.configure_generics(&mut loader.database);
         #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         let system = if system_fonts && !platform_requested {
@@ -824,7 +907,7 @@ impl FontLoader {
             not(target_family = "wasm")
         ))]
         if platform.is_some() {
-            loader.hash.update(b"\0platform-query/native/v6");
+            loader.hash.update(b"\0platform-query/native/v7");
         }
         #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         if let Some(catalog) = &system {
@@ -1158,22 +1241,7 @@ impl HostTextMeasurer for NativeFontContext {
             Ok(result) => Ok(Some(result)),
             Err(NativeFontError::MissingGlyphCoverage) if !self.strict_glyph_coverage() => Ok(None),
             Err(error) => {
-                if let Some((id, actual, maximum)) = error.resource_limit() {
-                    control.terminate_resource_limit(OperationResourceLimitExceeded {
-                        id,
-                        phase: OperationPhase::Layout,
-                        resource_phase: "native-font-measurement",
-                        limit: maximum,
-                        consumed: 0,
-                        requested: actual,
-                        provenance: OperationResourceProvenance::new(
-                            OperationResourceDomain::Render,
-                            None,
-                            [OperationResourceOverride { id, value: maximum }],
-                        ),
-                    });
-                }
-                let error = self.0.fatal.get_or_init(|| error);
+                let error = self.record_failure(control, false, error);
                 Err(HostTextMeasurementError::new(error.to_string()))
             }
         }
@@ -1181,6 +1249,51 @@ impl HostTextMeasurer for NativeFontContext {
 }
 
 impl NativeFontContext {
+    fn record_failure(
+        &self,
+        control: &OperationControl,
+        exporting: bool,
+        error: NativeFontError,
+    ) -> &NativeFontError {
+        self.0.fatal.get_or_init(|| {
+            let Some((id, actual, maximum)) = error.resource_limit() else {
+                return error;
+            };
+            let (phase, resource_phase, provenance) = if exporting {
+                (
+                    OperationPhase::Export,
+                    "native-font-export",
+                    OperationResourceProvenance::new(OperationResourceDomain::Export, None, []),
+                )
+            } else {
+                (
+                    OperationPhase::Layout,
+                    "native-font-measurement",
+                    OperationResourceProvenance::new(
+                        OperationResourceDomain::Render,
+                        None,
+                        [OperationResourceOverride { id, value: maximum }],
+                    ),
+                )
+            };
+            let event = OperationResourceLimitExceeded {
+                id,
+                phase,
+                resource_phase,
+                limit: maximum,
+                consumed: 0,
+                requested: actual,
+                provenance,
+            };
+            let terminal = control.terminate_resource_limit(event.clone());
+            if terminal == OperationLedgerError::ResourceLimitExceeded(event) {
+                error
+            } else {
+                NativeFontError::Operation(terminal)
+            }
+        })
+    }
+
     fn measure_operation(
         &self,
         request: HostTextMeasurementRequest<'_>,
@@ -1410,9 +1523,7 @@ impl NativeFontContext {
         );
         let cacheable = match &result {
             Ok(metrics) => Some(Some(*metrics)),
-            Err(NativeFontError::MissingGlyphCoverage) if self.cache_missing_glyph_coverage() => {
-                Some(None)
-            }
+            Err(NativeFontError::MissingGlyphCoverage) => Some(None),
             Err(_) => None,
         };
         if let Some(metrics) = cacheable {
@@ -1432,28 +1543,6 @@ impl NativeFontContext {
             }
         }
         result
-    }
-
-    fn cache_missing_glyph_coverage(&self) -> bool {
-        // Platform queries do not promise a frozen candidate set. Only fixed font inputs or
-        // bounded metadata discovery can prove that the same probe will keep missing coverage.
-        #[cfg(all(
-            feature = "experimental-system-font-query",
-            not(target_family = "wasm")
-        ))]
-        {
-            !matches!(
-                self.0.discovery.as_ref(),
-                Some(resolver::DiscoveryProvider::Platform { .. })
-            )
-        }
-        #[cfg(not(all(
-            feature = "experimental-system-font-query",
-            not(target_family = "wasm")
-        )))]
-        {
-            true
-        }
     }
 
     fn check_label(&self, text: &str, style: &TextStyle) -> Result<(), NativeFontError> {
@@ -1516,9 +1605,21 @@ impl NativeFontContext {
                 ));
             }
         };
+        let weight = style
+            .font_weight
+            .as_deref()
+            .map_or_else(String::new, |weight| {
+                format!(r#" font-weight="{}""#, escape_xml(weight))
+            });
+        let slant = style
+            .font_style
+            .as_deref()
+            .map_or_else(String::new, |style| {
+                format!(r#" font-style="{}""#, escape_xml(style))
+            });
         let svg = |nodes: &str| {
             format!(
-                r#"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><g font-family="{}" font-size="{}" font-weight="{}" font-style="{}" xml:space="{space}" text-decoration="{decoration}">{nodes}</g></svg>"#,
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><g font-family="{}" font-size="{}"{weight}{slant} xml:space="{space}" text-decoration="{decoration}">{nodes}</g></svg>"#,
                 escape_xml(
                     style
                         .font_family
@@ -1526,8 +1627,6 @@ impl NativeFontContext {
                         .unwrap_or(&self.0.default_family)
                 ),
                 style.font_size,
-                escape_xml(style.font_weight.as_deref().unwrap_or("400")),
-                escape_xml(style.font_style.as_deref().unwrap_or("normal")),
             )
         };
         let mut options = usvg::Options::default();

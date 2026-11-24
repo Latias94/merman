@@ -19,7 +19,7 @@ Stable coupled workspace crates use ordinary compatible requirements such as `0.
 | NAPI runtime / derive / build | Exact 3.16.1 / 3.7.0 / 2.6.0 group | Generated native Node binding code, build integration, and runtime must be admitted together; review package loading and platform artifacts as one group. |
 | Tree-sitter CLI / Rust and Web runtime | Exact 0.27.1 group | Parser generation and the selected runtimes are admitted together. Grammar candidate 0.3.3 remains independent; generated language ABI stays 15. Native Node's separate 0.25.x runtime contract remains explicit. |
 | `tree-sitter-language` | Compatible 0.1.9 requirement | `LanguageFn` is a public function-pointer adapter, not the generated language ABI. Its API and representation are unchanged from 0.1.8; upstream Tree-sitter uses the compatible requirement too. `Cargo.lock` fixes the audited build at 0.1.9 without forcing other grammars to accept an exact shared adapter version. |
-| `ctrlc`, `fontique`, `granit-parser`, `serde-saphyr`, current `svgtypes` | Ordinary compatible requirements | Remove unexplained exact equality. YAML/parser crates select granit-parser 2.1.0 and serde-saphyr 2.1.1; `merman-core/editor-facts` enables `granit-parser/comments` and individual requests select capture so source-config rewrites retain comment evidence. Upgrades require their owning semantic and artifact checks. |
+| `ctrlc`, `granit-parser`, `serde-saphyr`, current `svgtypes` | Ordinary compatible requirements | Remove unexplained exact equality. YAML/parser crates select granit-parser 2.1.0 and serde-saphyr 2.1.1; `merman-core/editor-facts` enables `granit-parser/comments` and individual requests select capture so source-config rewrites retain comment evidence. Upgrades require their owning semantic and artifact checks. |
 | `roughr-merman` legacy `svgtypes` | Retain 0.11 public compatibility line | Public path types used by already-published Merman consumers must remain compatible. The 0.12.5 arc-rounding fix preserves the legacy API and default features retained by 0.12.4. Current Merman disables legacy defaults and retains explicit randomness. |
 | `resvg` / `usvg` | Retain compatible 0.47.0 line | `krilla-svg` 0.8.1 consumes usvg 0.47, and public fontdb 0.23 types cross the shared native font context. Advancing only one renderer would split font types and font/budget ownership. Upgrade the export chain together with a proven adapter or a common admitted dependency line. |
 
@@ -28,29 +28,32 @@ The [published krilla-svg 0.8.1 manifest](https://docs.rs/crate/krilla-svg/0.8.1
 An incompatible `usvg::Tree` handoff prevents mixing the 0.49 renderer with the 0.47 PDF adapter. Keep CSS color acceleration local to the ZenUML renderer and TOML writing local to test tooling; parser-only and production read-only consumers should not inherit unused features.
 
 Repository builds use a [backport on usvg 0.47.0](../vendor/usvg/UPSTREAM.md) to shape missing
-clusters with the authored font stack and language. The workspace patch preserves the
-shared `usvg::Tree`, `usvg::Options`, and `fontdb` types across the font host, raster, and PDF.
-Registry packages still resolve the public 0.47 line through their consumer's Cargo workspace.
-The Windows release default is qualified with the repository patch. Remove the local source and
-patch together when a compatible released export chain covers these fallback cases.
-Linux and FreeBSD load Fontconfig dynamically for platform queries. The optional
-`yeslogic-fontconfig-sys` binding supplies the configuration, pattern, and sort calls.
-A small supplemental binding supplies `FcPatternGetWithBinding` with the C `FcValue` union
-layout, along with the sysroot and OpenType weight helpers. Fontconfig keeps ownership of
-alias substitution and ranking. An intentionally empty configuration is distinct from a
-runtime load failure. The adapter keeps alternate file faces for Merman's text suitability
-and snapshot checks. Representing non-default named variable instances requires effective
-axis coordinates to reach shaping and both raster and PDF outlines.
+clusters with the authored stack and language and carry the selected OpenType coordinates
+and relative font size. A single `usvg::Tree`, `usvg::Options`, and `fontdb` type identity spans
+the font host, raster, and PDF. Registry builds on public usvg 0.47 use scalar fallback with
+unit scale and skip selections that require native non-default coordinates.
 
-macOS platform queries use Core Text descriptors for one requested family at a time and retain
-the selected native face. `write-fonts` 0.48.1, already in the PDF dependency graph, assembles that
-face's tables into a bounded standalone SFNT. Collections whose members share a dominant
-outline table can use one verified, bounded TTC backing across the selected faces.
-These adapters preserve the existing usvg/fontdb
-handoff and do not require another renderer fork. Native non-default variation coordinates and
-oversized bitmap-font tables remain separate instance/data-interface work. A future published
-usvg fork must keep one package identity across Merman, resvg and krilla-svg; a root workspace
-patch alone does not deliver its behavior to ordinary crates.io consumers.
+Windows queries requested families and missing clusters through DirectWrite. Linux and FreeBSD
+use one dynamic Fontconfig binding for substitution, configuration refresh, matching and
+character coverage. macOS retains Core Text selections and uses `write-fonts` from the PDF
+dependency graph to assemble bounded SFNT snapshots. Faces in a verified TTC can share its bytes.
+The native providers return physical source identity and instance metadata. The exporter owns
+snapshot limits and usvg applies the effective coordinates to shaping and outlines.
+
+Workspace PDF builds also use a [Krilla 0.8.2 backport](../vendor/krilla/UPSTREAM.md).
+It gives each PDF CID font subset its own name prefix, including subsets with the same glyphs
+at different effective variation coordinates. Registry builds resolve the ordinary Krilla dependency.
+
+Publishing a `merman-usvg` fork would make its text behavior available to ordinary Cargo
+consumers once the raster and PDF adapters depend on that same package. A dependency alias
+preserves Rust import spelling but leaves the package identity distinct from crates.io `usvg`.
+Keep SVG parsing and shaping in usvg, raster painting in resvg, and PDF serialization in
+Krilla. Prefer compatible upstream releases that carry the same font contract. If a fork is
+needed, publish the shared usvg package first and adopt it in both adapters. Carry the CID
+subset fix via a compatible Krilla release or a separately maintained dependency. Verify one
+`usvg::Tree` identity through both exporters in a clean registry consumer before changing
+distribution defaults. See [Cargo's dependency override rules](https://doc.rust-lang.org/cargo/reference/overriding-dependencies.html)
+and the [krilla-svg 0.8.1 manifest](https://docs.rs/crate/krilla-svg/0.8.1/source/Cargo.toml).
 
 The 2026-11-19 dependency review selected Jiff 1.0.1, following the existing removal of Chrono.
 Jiff's [1.0 changelog](https://docs.rs/crate/jiff/1.0.1/source/CHANGELOG.md) commits to the stable

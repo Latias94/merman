@@ -148,6 +148,7 @@ pub struct Font {
     pub(crate) stretch: FontStretch,
     pub(crate) weight: u16,
     pub(crate) variations: Vec<FontVariation>,
+    pub(crate) implicit_weight_axis: bool,
 }
 
 impl Font {
@@ -267,7 +268,7 @@ impl Default for LengthAdjust {
 ///
 /// Controls automatic adjustment of the `opsz` axis in variable fonts
 /// based on font size. Matches CSS `font-optical-sizing`.
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum FontOpticalSizing {
     /// Automatically set `opsz` to match font size (browser default).
     Auto,

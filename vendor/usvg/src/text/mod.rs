@@ -7,7 +7,7 @@ use fontdb::{Database, ID};
 use svgtypes::FontFamily;
 
 use self::layout::DatabaseExt;
-use crate::{Cache, Font, FontStretch, FontStyle, Text};
+use crate::{Cache, Font, FontStretch, FontStyle, FontVariation, Text};
 
 pub(crate) mod flatten;
 
@@ -96,28 +96,45 @@ pub(crate) fn is_language_tag(tag: &str) -> bool {
     true
 }
 
-// Use the same coordinates for shaping and outline extraction.
-fn apply_variations(
-    face: &mut rustybuzz::ttf_parser::Face<'_>,
-    variations: &[crate::FontVariation],
-    font_size: f32,
-    optical_sizing: crate::FontOpticalSizing,
-) {
+fn apply_variations(face: &mut rustybuzz::ttf_parser::Face<'_>, variations: &[FontVariation]) {
     use rustybuzz::ttf_parser::Tag;
-
-    if !face.is_variable() {
-        return;
-    }
 
     for variation in variations {
         face.set_variation(Tag::from_bytes(&variation.tag), variation.value);
     }
-    if optical_sizing == crate::FontOpticalSizing::Auto
-        && !variations.iter().any(|variation| variation.tag == *b"opsz")
-    {
-        face.set_variation(Tag::from_bytes(b"opsz"), font_size);
-    }
 }
+
+/// A selected physical face, its relative size, and its native OpenType design coordinates.
+///
+/// The tuple contains the face ID in the callback's database, a positive finite scale
+/// relative to the authored size, and the selected coordinates before SVG styling.
+pub type FontInstance = (ID, f32, Vec<FontVariation>);
+
+/// Selects a font instance for an authored font specification.
+///
+/// The database may be extended as in [`FontSelectionFn`].
+pub type FontInstanceSelectionFn<'a> =
+    Box<dyn Fn(&Font, &mut Arc<Database>) -> Option<FontInstance> + Send + Sync + 'a>;
+
+/// Selects a font instance for a missing shaping cluster.
+///
+/// The callback receives the authored font, cluster text, language, RTL flag,
+/// and previous selections in order, starting with the primary instance. Their
+/// coordinates are the original selections so the resolver can identify them.
+/// Return a new selection or `None` when the candidates are exhausted.
+pub type FontInstanceFallbackFn<'a> = Box<
+    dyn Fn(
+            &Font,
+            &str,
+            Option<&str>,
+            bool,
+            &[FontInstance],
+            &mut Arc<Database>,
+        ) -> Option<FontInstance>
+        + Send
+        + Sync
+        + 'a,
+>;
 
 /// A shorthand for [FontResolver]'s font selection function.
 ///
@@ -164,11 +181,13 @@ pub type ClusterFallbackFn<'a> = Box<
         + 'a,
 >;
 
-/// Optional context for text shaping and missing-cluster selection.
+/// Optional language and selection hooks for text shaping.
 #[derive(Default)]
 pub struct TextFallback<'a> {
     pub(crate) language: Option<String>,
     pub(crate) select: Option<ClusterFallbackFn<'a>>,
+    pub(crate) select_instance: Option<FontInstanceSelectionFn<'a>>,
+    pub(crate) fallback_instance: Option<FontInstanceFallbackFn<'a>>,
 }
 
 impl std::fmt::Debug for TextFallback<'_> {

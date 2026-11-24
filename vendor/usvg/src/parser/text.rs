@@ -439,26 +439,23 @@ fn resolve_text_flow(node: SvgNode, state: &converter::State) -> Option<TextFlow
 }
 
 fn convert_font(node: SvgNode, state: &converter::State) -> Font {
-    let style: FontStyle = node.find_attribute(AId::FontStyle).unwrap_or_default();
+    let style: Option<FontStyle> = node.find_attribute(AId::FontStyle);
     let stretch = conv_font_stretch(node);
-    let weight = resolve_font_weight(node);
+    let authored_weight = resolve_font_weight(node);
+    let weight = authored_weight.unwrap_or(400);
     let mut variations = parse_font_variation_settings(node);
 
-    // Auto-map standard font properties to variation axes if not explicitly set.
-    // This allows variable fonts to work with regular font-weight/font-stretch properties.
-    let has_wght = variations.iter().any(|v| &v.tag == b"wght");
-    let has_wdth = variations.iter().any(|v| &v.tag == b"wdth");
-    let has_ital = variations.iter().any(|v| &v.tag == b"ital");
-    let has_slnt = variations.iter().any(|v| &v.tag == b"slnt");
+    // Explicit variation settings override the axes derived from font properties.
+    let mut add_axis = |tag, value| {
+        let missing = !variations.iter().any(|v| v.tag == tag);
+        if missing {
+            variations.push(FontVariation::new(tag, value));
+        }
+        missing
+    };
+    let implicit_weight_axis = add_axis(*b"wght", weight as f32) && authored_weight.is_none();
 
-    // The face's default wght coordinate can differ from CSS normal (400).
-    if !has_wght {
-        variations.push(FontVariation::new(*b"wght", weight as f32));
-    }
-
-    // Map font-stretch to wdth axis (if not already set)
-    // CSS font-stretch percentages: ultra-condensed=50%, condensed=75%, normal=100%, expanded=125%, ultra-expanded=200%
-    if !has_wdth {
+    if let Some(stretch) = stretch {
         let wdth = match stretch {
             FontStretch::UltraCondensed => 50.0,
             FontStretch::ExtraCondensed => 62.5,
@@ -470,20 +467,17 @@ fn convert_font(node: SvgNode, state: &converter::State) -> Font {
             FontStretch::ExtraExpanded => 150.0,
             FontStretch::UltraExpanded => 200.0,
         };
-        if wdth != 100.0 {
-            variations.push(FontVariation::new(*b"wdth", wdth));
-        }
+        add_axis(*b"wdth", wdth);
     }
 
-    // Map font-style: italic to ital axis (if not already set)
-    if !has_ital && style == FontStyle::Italic {
-        variations.push(FontVariation::new(*b"ital", 1.0));
-    }
-
-    // Map font-style: oblique to slnt axis (if not already set)
-    // Default oblique angle is typically 12-14 degrees
-    if !has_slnt && style == FontStyle::Oblique {
-        variations.push(FontVariation::new(*b"slnt", -12.0));
+    if let Some(style) = style {
+        let (ital, slnt) = match style {
+            FontStyle::Normal => (0.0, 0.0),
+            FontStyle::Italic => (1.0, 0.0),
+            FontStyle::Oblique => (0.0, -12.0),
+        };
+        add_axis(*b"ital", ital);
+        add_axis(*b"slnt", slnt);
     }
 
     let font_families = if let Some(n) = node.ancestors().find(|n| n.has_attribute(AId::FontFamily))
@@ -516,10 +510,11 @@ fn convert_font(node: SvgNode, state: &converter::State) -> Font {
             .or(state.opt.text_fallback.language.as_deref())
             .filter(|tag| crate::text::is_language_tag(tag))
             .map(str::to_ascii_lowercase),
-        style,
-        stretch,
+        style: style.unwrap_or_default(),
+        stretch: stretch.unwrap_or_default(),
         weight,
         variations,
+        implicit_weight_axis,
     }
 }
 
@@ -596,8 +591,8 @@ fn parse_font_variation_settings(node: SvgNode) -> Vec<FontVariation> {
         let value_str = value_str.trim();
 
         let value = match value_str.parse::<f32>() {
-            Ok(v) => v,
-            Err(_) => {
+            Ok(v) if v.is_finite() => v,
+            _ => {
                 log::warn!("Invalid font-variation-settings value: '{}'", value_str);
                 continue;
             }
@@ -613,45 +608,31 @@ fn parse_font_variation_settings(node: SvgNode) -> Vec<FontVariation> {
 }
 
 // TODO: properly resolve narrower/wider
-fn conv_font_stretch(node: SvgNode) -> FontStretch {
-    if let Some(n) = node.ancestors().find(|n| n.has_attribute(AId::FontStretch)) {
-        match n.attribute(AId::FontStretch).unwrap_or("") {
-            "narrower" | "condensed" => FontStretch::Condensed,
-            "ultra-condensed" => FontStretch::UltraCondensed,
-            "extra-condensed" => FontStretch::ExtraCondensed,
-            "semi-condensed" => FontStretch::SemiCondensed,
-            "semi-expanded" => FontStretch::SemiExpanded,
-            "wider" | "expanded" => FontStretch::Expanded,
-            "extra-expanded" => FontStretch::ExtraExpanded,
-            "ultra-expanded" => FontStretch::UltraExpanded,
-            _ => FontStretch::Normal,
-        }
-    } else {
-        FontStretch::Normal
-    }
+fn conv_font_stretch(node: SvgNode) -> Option<FontStretch> {
+    let stretch = match node.find_attribute::<&str>(AId::FontStretch)? {
+        "narrower" | "condensed" => FontStretch::Condensed,
+        "ultra-condensed" => FontStretch::UltraCondensed,
+        "extra-condensed" => FontStretch::ExtraCondensed,
+        "semi-condensed" => FontStretch::SemiCondensed,
+        "normal" => FontStretch::Normal,
+        "semi-expanded" => FontStretch::SemiExpanded,
+        "wider" | "expanded" => FontStretch::Expanded,
+        "extra-expanded" => FontStretch::ExtraExpanded,
+        "ultra-expanded" => FontStretch::UltraExpanded,
+        _ => return None,
+    };
+    Some(stretch)
 }
 
-fn resolve_font_weight(node: SvgNode) -> u16 {
-    fn bound(min: usize, val: usize, max: usize) -> usize {
-        std::cmp::max(min, std::cmp::min(max, val))
-    }
-
+fn resolve_font_weight(node: SvgNode) -> Option<u16> {
     let nodes: Vec<_> = node.ancestors().collect();
-    let mut weight = 400;
+    let mut weight = 400u16;
+    let mut authored = false;
     for n in nodes.iter().rev().skip(1) {
         // skip Root
         weight = match n.attribute(AId::FontWeight).unwrap_or("") {
             "normal" => 400,
             "bold" => 700,
-            "100" => 100,
-            "200" => 200,
-            "300" => 300,
-            "400" => 400,
-            "500" => 500,
-            "600" => 600,
-            "700" => 700,
-            "800" => 800,
-            "900" => 900,
             "bolder" => {
                 // By the CSS2 spec the default value should be 400
                 // so `bolder` will result in 500.
@@ -660,7 +641,7 @@ fn resolve_font_weight(node: SvgNode) -> u16 {
                 // we will follow such behavior for now.
                 let step = if weight == 400 { 300 } else { 100 };
 
-                bound(100, weight + step, 900)
+                (weight + step).clamp(100, 900)
             }
             "lighter" => {
                 // By the CSS2 spec the default value should be 400
@@ -670,13 +651,17 @@ fn resolve_font_weight(node: SvgNode) -> u16 {
                 // we will follow such behavior for now.
                 let step = if weight == 400 { 200 } else { 100 };
 
-                bound(100, weight - step, 900)
+                weight.saturating_sub(step).clamp(100, 900)
             }
-            _ => weight,
+            value => match value.parse::<u16>() {
+                Ok(value) if (1..=1000).contains(&value) => value,
+                _ => continue,
+            },
         };
+        authored = true;
     }
 
-    weight as u16
+    authored.then_some(weight)
 }
 
 /// Resolves text's character positions.

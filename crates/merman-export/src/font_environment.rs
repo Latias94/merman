@@ -471,6 +471,21 @@ pub(crate) struct ExportFontEnvironment {
 
 impl ExportFontEnvironment {
     pub(crate) fn from_svg(svg: &ResvgCompatibleSvg) -> Result<Self> {
+        if svg.finalization_report().text_element_count() == 0 {
+            let fontdb = Arc::new(usvg::fontdb::Database::new());
+            return Ok(Self {
+                fontdb: Arc::clone(&fontdb),
+                default_family: String::new(),
+                resolver: usvg::FontResolver::default(),
+                plan: ExportFontPlanSeed {
+                    source_mode: ExportFontMode::SystemOnly,
+                    system_fonts: fontdb,
+                    recorder: Arc::new(FontResolutionRecorder::default()),
+                    #[cfg(feature = "native-fonts")]
+                    native_export: None,
+                },
+            });
+        }
         #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         {
             Self::from_resources(svg.font_catalog(), svg.font_source_policy(), || {
@@ -628,6 +643,21 @@ mod tests {
         );
 
         assert!(matches!(result, Err(ExportError::FontSourceUnavailable)));
+    }
+
+    #[test]
+    fn sealed_svg_without_text_needs_no_available_font_source() {
+        let session = RenderEnvironment::deterministic()
+            .with_font_source_policy(FontSourcePolicy::embedded_only())
+            .begin_session()
+            .unwrap();
+        let svg = finalize_resvg_svg(
+            r#"<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0h5v5z"/></svg>"#,
+            &session,
+        )
+        .unwrap();
+        let fonts = ExportFontEnvironment::from_svg(&svg).unwrap();
+        assert!(fonts.fontdb.is_empty());
     }
 
     #[test]

@@ -29,7 +29,7 @@ native-fonts = [
     "dep:usvg",
 ]
 system-fonts = ["dep:usvg", "usvg/system-fonts"]
-experimental-system-font-query = ["native-fonts", "system-fonts", "dep:fontique", "dep:unicode-script", "dep:windows", "dep:windows-core", "dep:objc2-core-foundation", "dep:objc2-core-text", "dep:write-fonts", "dep:yeslogic-fontconfig-sys", "dep:libloading"]
+experimental-system-font-query = ["native-fonts", "system-fonts", "dep:unicode-bidi-mirroring", "dep:unicode-general-category", "dep:unicode-normalization", "dep:windows", "dep:windows-core", "dep:objc2-core-foundation", "dep:objc2-core-text", "dep:write-fonts", "dep:libloading"]
 png = [
     "dep:cssparser",
     "dep:data-url",
@@ -76,7 +76,6 @@ pdf = [
 [dependencies]
 cssparser = { workspace = true, optional = true }
 data-url = { workspace = true, optional = true }
-fontique = { workspace = true, optional = true }
 image = { workspace = true, optional = true }
 krilla = { workspace = true, optional = true }
 krilla-svg = { workspace = true, optional = true }
@@ -91,14 +90,14 @@ thiserror = { workspace = true, optional = true }
 tiny-skia = { workspace = true, optional = true }
 ttf-parser = { workspace = true, optional = true }
 unicase = { workspace = true, optional = true }
-unicode-script = { workspace = true, optional = true }
+unicode-bidi-mirroring = { version = "0.4.0", optional = true }
+unicode-general-category = { workspace = true, optional = true }
+unicode-normalization = { workspace = true, optional = true }
 usvg = { workspace = true, optional = true, features = ["text"] }
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies]
 # System font queries can load Fontconfig when selected. Keep it out of the CLI's load-time ABI.
-fontique = { workspace = true, optional = true, features = ["fontconfig-dlopen"] }
 libloading = { version = "0.8.9", optional = true }
-yeslogic-fontconfig-sys = { version = "6.0.1", optional = true, features = ["dlopen"] }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62.2", optional = true, features = ["Win32_Graphics_DirectWrite"] }

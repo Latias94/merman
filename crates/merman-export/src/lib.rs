@@ -366,9 +366,7 @@ fn terminate_export_resource_error(control: &OperationControl, error: ExportErro
     let Some(provenance) = error.resource_limit_provenance() else {
         return error;
     };
-    if let Err(terminal) = control.terminal_checkpoint_at(OperationPhase::Export) {
-        return export_terminal_error(terminal);
-    }
+    let previous = control.terminal_checkpoint_at(OperationPhase::Export).err();
     let (terminal, expected) = match details.cause {
         ExportResourceLimitCause::Ceiling => {
             let error = OperationResourceLimitExceeded {
@@ -381,7 +379,7 @@ fn terminate_export_resource_error(control: &OperationControl, error: ExportErro
                 provenance: provenance.clone(),
             };
             (
-                control.terminate_resource_limit(error.clone()),
+                previous.unwrap_or_else(|| control.terminate_resource_limit(error.clone())),
                 OperationLedgerError::ResourceLimitExceeded(error),
             )
         }
@@ -395,14 +393,16 @@ fn terminate_export_resource_error(control: &OperationControl, error: ExportErro
                 provenance: provenance.clone(),
             };
             (
-                control.terminate_resource_overflow(
-                    details.limit_id,
-                    OperationPhase::Export,
-                    details.phase,
-                    details.actual,
-                    details.max,
-                    provenance,
-                ),
+                previous.unwrap_or_else(|| {
+                    control.terminate_resource_overflow(
+                        details.limit_id,
+                        OperationPhase::Export,
+                        details.phase,
+                        details.actual,
+                        details.max,
+                        provenance,
+                    )
+                }),
                 expected,
             )
         }
@@ -1931,11 +1931,11 @@ fn prepare_raster_source_on_backend_stack(
     )?;
     export_checkpoint(control)?;
     let tree = usvg::Tree::from_str(source, &usvg_options).map_err(|_| ExportError::SvgParse);
-    export_checkpoint(control)?;
     #[cfg(feature = "native-fonts")]
     if let Some(context) = &options.font_context {
         context.check()?;
     }
+    export_checkpoint(control)?;
     let tree = tree?;
     let (geometry, translate_min_to_origin) = raster_geometry_for_svg(root_metadata, &tree);
     let native_filter_receipt = match usvg::Rect::from_xywh(
@@ -2291,11 +2291,11 @@ fn parse_pdf_tree(
     let mut opts = usvg::Options::default();
     let font_plan = configure_usvg_options_for_pdf(&mut opts, svg, options, control)?;
     let tree = usvg::Tree::from_str(svg.as_str(), &opts).map_err(|_| ExportError::SvgParse);
-    export_checkpoint(control)?;
     #[cfg(feature = "native-fonts")]
     if let Some(context) = &options.font_context {
         context.check()?;
     }
+    export_checkpoint(control)?;
     let tree = tree?;
     let font_plan = font_plan.finish_with_tree(&tree, control)?;
     #[cfg(feature = "native-fonts")]

@@ -82,6 +82,8 @@
         "rust-render-base"
       ],
       "components": [
+        "krilla",
+        "krilla-icc-profiles",
         "sdk-cousine",
         "usvg"
       ]
@@ -93,6 +95,8 @@
         "ratex-render"
       ],
       "components": [
+        "krilla",
+        "krilla-icc-profiles",
         "sdk-cousine",
         "usvg"
       ]
@@ -105,6 +109,8 @@
         "ratex-render"
       ],
       "components": [
+        "krilla",
+        "krilla-icc-profiles",
         "sdk-cousine",
         "usvg"
       ]
@@ -190,13 +196,13 @@
       "id": "cli-default",
       "description": "The source-default CLI feature closure including ELK without RaTeX math/font support.",
       "extends": ["elk-render"],
-      "components": ["usvg"]
+      "components": ["krilla", "krilla-icc-profiles", "usvg"]
     },
     {
       "id": "cli-release",
       "description": "The published complete CLI release closure, including explicit ELK and RaTeX math/font support.",
       "extends": ["elk-render", "ratex-render"],
-      "components": ["usvg"]
+      "components": ["krilla", "krilla-icc-profiles", "usvg"]
     },
     {
       "id": "web-full",
@@ -694,6 +700,76 @@
         }
       ],
       "notice": "The RaTeX SVG backend embeds twenty KaTeX TrueType fonts; those font bytes are licensed under OFL-1.1 rather than RaTeX's MIT code license."
+    },
+    {
+      "id": "krilla",
+      "name": "Krilla",
+      "version": "0.8.2 with CID font subset naming backport",
+      "source": {
+        "repository": "https://github.com/LaurenzV/krilla",
+        "ref": "crates.io:krilla@0.8.2",
+        "commit": "3ffdf0588cf98050aad6edba51ca70162e1fb5b5",
+        "path": "crates/krilla"
+      },
+      "relationships": ["copied", "modified", "linked"],
+      "local_paths": ["vendor/krilla"],
+      "license_expression": "Apache-2.0 OR MIT",
+      "selected_license": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/krilla/LICENSE-APACHE",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "source_url": "https://raw.githubusercontent.com/LaurenzV/krilla/3ffdf0588cf98050aad6edba51ca70162e1fb5b5/LICENSE_APACHE",
+          "source_path": "LICENSE_APACHE",
+          "role": "license"
+        },
+        {
+          "path": "THIRD_PARTY_LICENSES/krilla/LICENSE-MIT",
+          "sha256": "9d1eb142840c7acfd5511b4dd298cece3f0053f5809228906445cd8a3365592f",
+          "source_url": "https://raw.githubusercontent.com/LaurenzV/krilla/3ffdf0588cf98050aad6edba51ca70162e1fb5b5/LICENSE_MIT",
+          "source_path": "LICENSE_MIT",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {
+          "type": "pinned-file",
+          "path": "vendor/krilla/UPSTREAM.md",
+          "sha256": "0400d3f629d3f22bf0630a69b55c6fc4365ecd92b2af8f243c94b44d186b26d5"
+        }
+      ],
+      "notice": "Workspace PDF builds link Krilla 0.8.2 with a local correction that assigns distinct names to embedded CID font subsets."
+    },
+    {
+      "id": "krilla-icc-profiles",
+      "name": "Compact ICC Profiles bundled by Krilla",
+      "version": "krilla@0.8.2",
+      "source": {
+        "repository": "https://github.com/LaurenzV/krilla",
+        "ref": "crates.io:krilla@0.8.2",
+        "commit": "3ffdf0588cf98050aad6edba51ca70162e1fb5b5",
+        "path": "crates/krilla/icc"
+      },
+      "relationships": ["copied", "embedded"],
+      "local_paths": ["vendor/krilla/icc"],
+      "license_expression": "CC0-1.0",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/krilla/LICENSE-ICC",
+          "sha256": "469d87b5fa48f8aaf69e25f4fcac3a309c97dbb7d561b917638abdb640e004d9",
+          "source_url": "https://raw.githubusercontent.com/LaurenzV/krilla/3ffdf0588cf98050aad6edba51ca70162e1fb5b5/crates/krilla/icc/LICENSE",
+          "source_path": "crates/krilla/icc/LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {
+          "type": "pinned-file",
+          "path": "vendor/krilla/UPSTREAM.md",
+          "sha256": "0400d3f629d3f22bf0630a69b55c6fc4365ecd92b2af8f243c94b44d186b26d5"
+        }
+      ],
+      "notice": "Krilla includes Compact ICC Profiles for grayscale and RGB PDF output, distributed under CC0-1.0."
     },
     {
       "id": "layout-base-v1",
@@ -1541,7 +1617,7 @@
         {
           "type": "pinned-file",
           "path": "vendor/usvg/UPSTREAM.md",
-          "sha256": "96edf473205e6638fa3d3b14428732341df096461c583869013bea8a8cb69849"
+          "sha256": "f20c6c7f8cfdc8cc22c8bc7fc9550371f78804cdcc3e3f1d22e50574aea7b221"
         }
       ],
       "notice": "Source-tree builds of the native font and image export pipeline link usvg 0.47.0 with a local font fallback backport. This source component carries the two upstream license texts."

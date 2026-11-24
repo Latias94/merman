@@ -10,6 +10,7 @@
   "root_directories": [
     "THIRD_PARTY_LICENSES",
     "capabilities",
+    "vendor/krilla",
     "vendor/usvg"
   ],
   "script_files": [

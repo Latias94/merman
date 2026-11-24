@@ -64,6 +64,11 @@ required-features = [
     "memmap-fonts",
 ]
 
+[[test]]
+name = "font_instances"
+path = "tests/font_instances.rs"
+required-features = ["text"]
+
 [dependencies.base64]
 version = "0.22"
 

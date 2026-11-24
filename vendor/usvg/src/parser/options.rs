@@ -85,7 +85,7 @@ pub struct Options<'a> {
     #[cfg(feature = "text")]
     pub font_resolver: FontResolver<'a>,
 
-    /// Optional default language and missing-cluster resolver for text.
+    /// Optional shaping language and font instance or missing-cluster resolvers.
     #[cfg(feature = "text")]
     pub text_fallback: crate::TextFallback<'a>,
 
@@ -112,7 +112,26 @@ impl<'a> Options<'a> {
         language: Option<String>,
         select: Option<crate::ClusterFallbackFn<'a>>,
     ) {
-        self.text_fallback = crate::TextFallback { language, select };
+        self.text_fallback.language = language;
+        self.text_fallback.select = select;
+    }
+
+    /// Installs instance-aware primary and missing-cluster selectors.
+    ///
+    /// Each installed selector supersedes the legacy selector for that role.
+    /// The default language is still set by [`Self::set_text_fallback`].
+    pub fn set_font_instances(
+        &mut self,
+        select: Option<crate::FontInstanceSelectionFn<'a>>,
+        fallback: Option<crate::FontInstanceFallbackFn<'a>>,
+    ) {
+        self.text_fallback.select_instance = select;
+        self.text_fallback.fallback_instance = fallback;
+    }
+
+    /// Reports support for instance-aware font selectors, including when unset.
+    pub fn supports_font_instances(&self) -> bool {
+        true
     }
 }
 

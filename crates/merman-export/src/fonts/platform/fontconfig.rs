@@ -1,93 +1,43 @@
 //! Native Fontconfig matching and borrowed metadata for selected file faces.
 
-use std::ffi::{CStr, CString, OsStr, c_char, c_double, c_int, c_void};
+use std::ffi::{CStr, CString, OsStr, c_int};
 use std::io::ErrorKind;
 use std::mem::MaybeUninit;
 use std::os::unix::ffi::OsStrExt;
 use std::ptr::{self, NonNull};
 
-use fontconfig_sys::constants::*;
-use fontconfig_sys::statics::LIB_RESULT;
-use fontconfig_sys::{
-    Fc, FcCharSet, FcConfig, FcFontSet, FcMatchPattern, FcPattern, FcResult,
-    FcResultMatch as FC_RESULT_MATCH, FcResultNoMatch as FC_RESULT_NO_MATCH,
-};
-
 use super::*;
 
-// These functions and the FcValue union are absent from yeslogic-fontconfig-sys 6.0.1.
-// Match fontconfig.h even though the only output we read is the binding.
-#[repr(C)]
-struct FcValue {
-    kind: c_int,
-    value: FcValueData,
-}
+mod config;
+mod ffi;
 
-#[repr(C)]
-union FcValueData {
-    pointer: *const c_void,
-    number: c_double,
-    integer: c_int,
-}
+use config::Watch;
+use ffi::*;
 
-struct Api {
-    fc: &'static Fc,
-    get_with_binding: unsafe extern "C" fn(
-        *const FcPattern,
-        *const c_char,
-        c_int,
-        *mut FcValue,
-        *mut c_int,
-    ) -> FcResult,
-    get_sysroot: unsafe extern "C" fn(*const FcConfig) -> *const u8,
-    weight_from_opentype: unsafe extern "C" fn(c_double) -> c_double,
-    _library: libloading::Library,
-}
-
-impl Api {
-    fn get() -> Option<&'static Self> {
-        static API: OnceLock<Option<Api>> = OnceLock::new();
-        API.get_or_init(|| {
-            let fc = LIB_RESULT.as_ref().ok()?;
-            // SAFETY: Use the system soname and signatures from fontconfig.h. Retain
-            // this additional handle along with the function pointers it supplies.
-            unsafe {
-                let library = libloading::Library::new("libfontconfig.so.1").ok()?;
-                Some(Self {
-                    fc,
-                    get_with_binding: *library.get(b"FcPatternGetWithBinding\0").ok()?,
-                    get_sysroot: *library.get(b"FcConfigGetSysRoot\0").ok()?,
-                    weight_from_opentype: *library.get(b"FcWeightFromOpenTypeDouble\0").ok()?,
-                    _library: library,
-                })
-            }
-        })
-        .as_ref()
-    }
-}
-
-pub(super) fn library_available() -> bool {
-    Api::get().is_some()
-}
+const FC_FAMILY: &CStr = c"family";
+const FC_LANG: &CStr = c"lang";
+const FC_WEIGHT: &CStr = c"weight";
+const FC_WIDTH: &CStr = c"width";
+const FC_SLANT: &CStr = c"slant";
+const FC_CHARSET: &CStr = c"charset";
+const FC_FILE: &CStr = c"file";
+const FC_INDEX: &CStr = c"index";
+const FC_POSTSCRIPT_NAME: &CStr = c"postscriptname";
+const FC_FONTFORMAT: &CStr = c"fontformat";
+const FC_FONT_VARIATIONS: &CStr = c"fontvariations";
 
 pub(super) struct Catalog {
     api: &'static Api,
     config: NonNull<FcConfig>,
+    sysroot: Option<PathBuf>,
+    paths: Vec<Watch>,
 }
 
-// SAFETY: This owns a reference to an initialized config. Matching uses immutable
-// configured font sets and only mutates private queries. Fontconfig matching
-// and config reference counting are thread-safe on the supported ABI.
+// SAFETY: The catalog owns its config. All calls into older ABIs use the compatibility lock.
 unsafe impl Send for Catalog {}
-// SAFETY: No config mutation or borrowed pointer escapes this adapter.
+// SAFETY: Matches only mutate private patterns. Refresh serializes the rescan timestamp,
+// and no native pointer escapes the catalog.
 unsafe impl Sync for Catalog {}
-
-impl Drop for Catalog {
-    fn drop(&mut self) {
-        // SAFETY: FcInitLoadConfigAndFonts returned this owned reference.
-        unsafe { (self.api.fc.FcConfigDestroy)(self.config.as_ptr()) };
-    }
-}
 
 pub(super) struct Query<'a> {
     pub(super) families: &'a [&'a str],
@@ -96,6 +46,13 @@ pub(super) struct Query<'a> {
     pub(super) style: Style,
     pub(super) text: Option<&'a str>,
     pub(super) language: Option<&'a str>,
+}
+
+enum MatchScope<'a> {
+    Named(&'a Database),
+    SystemUi,
+    Generic,
+    Fallback,
 }
 
 impl Query<'_> {
@@ -135,44 +92,52 @@ impl Query<'_> {
 }
 
 impl Catalog {
-    pub(super) fn new() -> Result<Self, NativeFontError> {
-        let api = Api::get().ok_or(NativeFontError::PlatformDiscoveryUnavailable {
-            service: "Fontconfig",
-        })?;
-        // SAFETY: This initializes a separate configuration without changing the current one.
-        let config = NonNull::new(unsafe { (api.fc.FcInitLoadConfigAndFonts)() })
-            .ok_or_else(|| failed("initializing the catalog"))?;
-        Ok(Self { api, config })
-    }
-
     pub(super) fn default_family(
         &self,
         control: &OperationControl,
     ) -> Result<Option<String>, NativeFontError> {
-        let pattern = self.pattern(&Query {
+        let query = Query {
             families: &["sans-serif"],
             weight: Weight::NORMAL,
             stretch: Stretch::Normal,
             style: Style::Normal,
             text: None,
             language: None,
-        })?;
-        let mut status = FC_RESULT_NO_MATCH;
-        // SAFETY: The config, substituted request and result storage are live.
-        let raw = unsafe {
-            (self.api.fc.FcFontMatch)(self.config.as_ptr(), pattern.as_ptr(), &mut status)
         };
-        let matched = Pattern::from_raw(self.api.fc, raw);
         control.terminal_checkpoint_at(OperationPhase::Admission)?;
-        match status {
-            FC_RESULT_MATCH => Ok(matched
-                .as_ref()
-                .and_then(|p| p.get_string(FC_FAMILY, 0))
-                .and_then(|s| s.to_str().ok())
-                .map(str::to_owned)),
-            FC_RESULT_NO_MATCH => Ok(None),
-            _ => Err(failed("identifying the default family")),
+        let matched = {
+            let _lock = self.api.lock();
+            let pattern = self.pattern(&query, false)?;
+            let mut status = FC_RESULT_NO_MATCH;
+            // SAFETY: The config, substituted request and result storage are live.
+            let raw = unsafe {
+                (self.api.FcFontMatch)(self.config.as_ptr(), pattern.as_ptr(), &mut status)
+            };
+            let matched = Pattern::from_raw(self.api, raw);
+            control.terminal_checkpoint_at(OperationPhase::Admission)?;
+            match (status, matched.as_ref()) {
+                (FC_RESULT_MATCH, Some(face)) => self.file_face(face.as_ref()),
+                (FC_RESULT_NO_MATCH, None) => return Ok(None),
+                _ => return Err(failed("identifying the default family")),
+            }
+        };
+        if let Some((path, face)) = matched
+            && !source_disappeared(&path)
+        {
+            return Ok(Some(face.family));
         }
+        self.search(query, control, MatchScope::Generic, |candidate, _| {
+            if let FontCandidate::File {
+                path,
+                expected: ExpectedFace::Platform(face),
+                ..
+            } = candidate
+                && !source_disappeared(&path)
+            {
+                return Ok(Some(face.family));
+            }
+            Ok(None)
+        })
     }
 
     pub(super) fn select(
@@ -194,30 +159,29 @@ impl Catalog {
             accept(selection, implicit)
                 .or_else(|error| defer_missing_source(error, &mut first_missing))
         };
-        let query =
-            |names: &[&str], family_fallback_used, named_sources, accept: &mut AcceptFont<'_>| {
-                self.candidates(
-                    Query {
-                        families: names,
-                        weight,
-                        stretch,
-                        style,
-                        text: fallback.map(|request| request.text),
-                        language,
-                    },
-                    control,
-                    named_sources,
-                    |candidate, exact_name| {
-                        accept(
-                            FontSelection {
-                                candidate,
-                                family_fallback_used,
-                            },
-                            !exact_name,
-                        )
-                    },
-                )
-            };
+        let query = |names: &[&str], family_fallback_used, scope, accept: &mut AcceptFont<'_>| {
+            self.search(
+                Query {
+                    families: names,
+                    weight,
+                    stretch,
+                    style,
+                    text: fallback.map(|request| request.text),
+                    language,
+                },
+                control,
+                scope,
+                |candidate, exact_name| {
+                    accept(
+                        FontSelection {
+                            candidate,
+                            family_fallback_used,
+                        },
+                        !exact_name,
+                    )
+                },
+            )
+        };
         let mut named = Vec::new();
         for (index, family) in font
             .families()
@@ -226,27 +190,29 @@ impl Catalog {
             .enumerate()
         {
             control.terminal_checkpoint_at(OperationPhase::Layout)?;
+            use usvg::FontFamily;
+            let system_ui = matches!(family, FontFamily::Named(name) if super::is_system_ui(name));
             let (name, generic) = match family {
-                usvg::FontFamily::Named(name) if !name.is_empty() => (name.as_str(), false),
-                usvg::FontFamily::Named(_) if explicit.faces().next().is_some() => continue,
-                usvg::FontFamily::Named(_) | usvg::FontFamily::SansSerif => ("sans-serif", true),
-                usvg::FontFamily::Serif => ("serif", true),
-                usvg::FontFamily::Monospace => ("monospace", true),
-                usvg::FontFamily::Cursive => ("cursive", true),
-                usvg::FontFamily::Fantasy => ("fantasy", true),
+                FontFamily::Named(name) if !name.is_empty() && !system_ui => {
+                    named.push(name.as_str());
+                    continue;
+                }
+                FontFamily::Named(_) | FontFamily::SansSerif => {
+                    ("sans-serif", &FontFamily::SansSerif)
+                }
+                FontFamily::Serif => ("serif", family),
+                FontFamily::Monospace => ("monospace", family),
+                FontFamily::Cursive => ("cursive", family),
+                FontFamily::Fantasy => ("fantasy", family),
             };
-            let family_fallback_used = index == font.families().len();
-            if !generic {
-                named.push(name);
-                continue;
-            }
             if !named.is_empty() {
-                if let Some(id) = query(&named, false, Some(explicit), &mut accept)? {
+                if let Some(id) = query(&named, false, MatchScope::Named(explicit), &mut accept)? {
                     return Ok(Some(id));
                 }
                 named.clear();
             }
-            if let Some(face) = explicit_face(explicit, family, weight, stretch, style)
+            let family_fallback_used = index == font.families().len();
+            if let Some(face) = explicit_face(explicit, generic, weight, stretch, style)
                 && let Some(id) = accept(
                     FontSelection {
                         candidate: FontCandidate::Loaded(face),
@@ -257,12 +223,27 @@ impl Catalog {
             {
                 return Ok(Some(id));
             }
-            if let Some(id) = query(&[name], family_fallback_used, None, &mut accept)? {
+            if system_ui
+                && let Some(id) = query(
+                    &["system-ui"],
+                    family_fallback_used,
+                    MatchScope::SystemUi,
+                    &mut accept,
+                )?
+            {
+                return Ok(Some(id));
+            }
+            if let Some(id) = query(
+                &[name],
+                family_fallback_used,
+                MatchScope::Generic,
+                &mut accept,
+            )? {
                 return Ok(Some(id));
             }
         }
         if !named.is_empty()
-            && let Some(id) = query(&named, false, Some(explicit), &mut accept)?
+            && let Some(id) = query(&named, false, MatchScope::Named(explicit), &mut accept)?
         {
             return Ok(Some(id));
         }
@@ -280,45 +261,58 @@ impl Catalog {
         query: Query<'_>,
         control: &OperationControl,
         named_sources: Option<&Database>,
-        mut accept: impl FnMut(FontCandidate, bool) -> Result<Option<ID>, NativeFontError>,
+        accept: impl FnMut(FontCandidate, bool) -> Result<Option<ID>, NativeFontError>,
     ) -> Result<Option<ID>, NativeFontError> {
+        let scope = match named_sources {
+            Some(database) => MatchScope::Named(database),
+            None if query.text.is_some() => MatchScope::Fallback,
+            None => MatchScope::Generic,
+        };
+        self.search(query, control, scope, accept)
+    }
+
+    fn search<T>(
+        &self,
+        query: Query<'_>,
+        control: &OperationControl,
+        scope: MatchScope<'_>,
+        mut accept: impl FnMut(FontCandidate, bool) -> Result<Option<T>, NativeFontError>,
+    ) -> Result<Option<T>, NativeFontError> {
         control.terminal_checkpoint_at(OperationPhase::Layout)?;
-        let pattern = self.pattern(&query)?;
-        let (preferred, callers) = match named_sources {
-            Some(database) => {
-                let preferred = pattern.preferred_families(self.api);
-                let callers = query.explicit_faces(database, &preferred);
-                (Some(preferred), callers)
+        let mut lock = self.api.lock();
+        let pattern = self.pattern(&query, matches!(scope, MatchScope::Fallback))?;
+        let preferred = matches!(scope, MatchScope::Named(_) | MatchScope::SystemUi)
+            .then(|| pattern.preferred_families());
+        let callers = match scope {
+            MatchScope::Named(database) => {
+                query.explicit_faces(database, preferred.as_deref().unwrap_or_default())
             }
-            None => (None, Vec::new()),
+            _ => Vec::new(),
         };
         let mut callers = callers.into_iter().peekable();
-        let mut status = FC_RESULT_NO_MATCH;
-        // SAFETY: The configuration and pattern are live. Keep all coverage alternatives,
-        // since an earlier font can be unsuitable even with identical advertised coverage.
-        let raw = unsafe {
-            (self.api.fc.FcFontSort)(
-                self.config.as_ptr(),
-                pattern.as_ptr(),
-                0,
-                ptr::null_mut(),
-                &mut status,
-            )
-        };
-        let sorted = NonNull::new(raw).map(|raw| FontSet {
-            raw,
-            fc: self.api.fc,
+        // A caller at the first strong position precedes every possible system match.
+        while let Some((_, caller)) = callers.next_if(|(rank, _)| *rank == 0) {
+            if let Some(result) =
+                lock.outside(|| accept(FontCandidate::Loaded(caller.clone()), true))?
+            {
+                return Ok(Some(result));
+            }
+        }
+
+        // After substitution, sorting only affects the order of multiple eligible patterns.
+        let mut matching = self.scan_patterns().filter(|face| {
+            preferred
+                .as_deref()
+                .is_none_or(|names| face.family_rank(names).is_some())
         });
-        control.terminal_checkpoint_at(OperationPhase::Layout)?;
-        let sorted = match status {
-            FC_RESULT_MATCH => Some(sorted.ok_or_else(|| failed("sorting candidates"))?),
-            FC_RESULT_NO_MATCH => None,
-            _ => return Err(failed("sorting candidates")),
+        let (single, sorted) = match (matching.next(), matching.next()) {
+            (first, None) => (first, None),
+            (_, Some(_)) => (None, Some(self.sort(&pattern)?)),
         };
-        let scalar = query
-            .text
-            .and_then(super::super::resolver::single_character);
-        for face in sorted.iter().flat_map(FontSet::iter) {
+        for face in single
+            .into_iter()
+            .chain(sorted.iter().flat_map(FontSet::iter))
+        {
             control.terminal_checkpoint_at(OperationPhase::Layout)?;
             // Insert caller faces at their strong family positions without breaking the
             // native ordering of system alternatives. A weak alias follows every strong name.
@@ -327,67 +321,123 @@ impl Catalog {
                     continue;
                 };
                 while let Some((_, caller)) = callers.next_if(|(position, _)| *position <= rank) {
-                    if let Some(id) = accept(FontCandidate::Loaded(caller.clone()), true)? {
+                    if let Some(id) =
+                        lock.outside(|| accept(FontCandidate::Loaded(caller.clone()), true))?
+                    {
                         return Ok(Some(id));
                     }
                 }
             }
-            if scalar.is_some_and(|ch| face.covers(ch) == Some(false)) {
+            if query.text.is_some_and(|text| !face.may_cover(text)) {
                 continue;
             }
-            let Some(candidate) = self.candidate(face) else {
+            let Some((path, mut physical)) = self.file_face(face) else {
                 continue;
             };
-            let exact_name = preferred.is_some()
+            // SAFETY: The substituted query and borrowed scan pattern are live. This
+            // prepares a new pattern, applying render rules and resolving variable ranges.
+            let raw = unsafe {
+                (self.api.FcFontRenderPrepare)(
+                    self.config.as_ptr(),
+                    pattern.as_ptr(),
+                    face.raw.as_ptr(),
+                )
+            };
+            let prepared =
+                Pattern::from_raw(self.api, raw).ok_or_else(|| failed("preparing a candidate"))?;
+            physical.variations = prepared.as_ref().variations();
+            drop(prepared);
+            let exact_name = matches!(scope, MatchScope::Named(_))
                 && query
                     .families
                     .iter()
                     .any(|wanted| face.families().any(|name| eq_family(name, wanted)));
-            if let Some(id) = accept(candidate, exact_name)? {
+            let candidate = physical.into_file(path);
+            if let Some(id) = lock.outside(|| accept(candidate, exact_name))? {
                 return Ok(Some(id));
             }
         }
+        control.terminal_checkpoint_at(OperationPhase::Layout)?;
         for (_, face) in callers {
-            if let Some(id) = accept(FontCandidate::Loaded(face.clone()), true)? {
+            if let Some(id) = lock.outside(|| accept(FontCandidate::Loaded(face.clone()), true))? {
                 return Ok(Some(id));
             }
         }
         Ok(None)
     }
 
-    fn pattern(&self, query: &Query<'_>) -> Result<Pattern<'static>, NativeFontError> {
-        let fc = self.api.fc;
+    fn sort(&self, pattern: &Pattern<'_>) -> Result<FontSet, NativeFontError> {
+        let mut status = FC_RESULT_NO_MATCH;
+        // SAFETY: The configuration and pattern are live. Keep all alternatives;
+        // candidates with identical advertised coverage can have different eligibility.
+        let raw = unsafe {
+            (self.api.FcFontSort)(
+                self.config.as_ptr(),
+                pattern.as_ptr(),
+                0,
+                ptr::null_mut(),
+                &mut status,
+            )
+        };
+        let set = FontSet {
+            api: self.api,
+            raw: NonNull::new(raw).ok_or_else(|| failed("sorting candidates"))?,
+        };
+        match status {
+            FC_RESULT_MATCH | FC_RESULT_NO_MATCH => Ok(set),
+            _ => Err(failed("sorting candidates")),
+        }
+    }
+
+    fn scan_patterns(&self) -> impl Iterator<Item = PatternRef<'_>> {
+        [FC_SET_SYSTEM, FC_SET_APPLICATION]
+            .into_iter()
+            .filter_map(|kind| {
+                // SAFETY: The config owns the immutable, possibly absent set. The
+                // iterator runs with the Fontconfig compatibility lock held.
+                unsafe { (self.api.FcConfigGetFonts)(self.config.as_ptr(), kind).as_ref() }
+            })
+            .flat_map(|set| font_patterns(self.api, set))
+    }
+
+    fn pattern(
+        &self,
+        query: &Query<'_>,
+        weak_base: bool,
+    ) -> Result<Pattern<'static>, NativeFontError> {
+        let fc = self.api;
         // SAFETY: A nonnull result is a new pattern owned by this method.
         let pattern = Pattern::from_raw(fc, unsafe { (fc.FcPatternCreate)() })
             .ok_or_else(|| failed("allocating a query"))?;
-        for family in query.families {
-            pattern.add_string(FC_FAMILY, family)?;
+        for family in query.families.iter().filter(|name| !name.is_empty()) {
+            // Glyph fallback can prefer a covering sibling, while language retains priority.
+            pattern.add_string(FC_FAMILY, family, weak_base)?;
         }
         if let Some(language) = query.language {
-            pattern.add_string(FC_LANG, language)?;
+            pattern.add_string(FC_LANG, language, false)?;
             if let Some(orthography) = chinese_orthography(language) {
-                pattern.add_string(FC_LANG, &orthography)?;
+                pattern.add_string(FC_LANG, &orthography, false)?;
             }
         }
         let stretch = match query.stretch {
-            Stretch::UltraCondensed => FC_WIDTH_ULTRACONDENSED,
-            Stretch::ExtraCondensed => FC_WIDTH_EXTRACONDENSED,
-            Stretch::Condensed => FC_WIDTH_CONDENSED,
-            Stretch::SemiCondensed => FC_WIDTH_SEMICONDENSED,
-            Stretch::Normal => FC_WIDTH_NORMAL,
-            Stretch::SemiExpanded => FC_WIDTH_SEMIEXPANDED,
-            Stretch::Expanded => FC_WIDTH_EXPANDED,
-            Stretch::ExtraExpanded => FC_WIDTH_EXTRAEXPANDED,
-            Stretch::UltraExpanded => FC_WIDTH_ULTRAEXPANDED,
+            Stretch::UltraCondensed => 50,
+            Stretch::ExtraCondensed => 63,
+            Stretch::Condensed => 75,
+            Stretch::SemiCondensed => 87,
+            Stretch::Normal => 100,
+            Stretch::SemiExpanded => 113,
+            Stretch::Expanded => 125,
+            Stretch::ExtraExpanded => 150,
+            Stretch::UltraExpanded => 200,
         };
         let style = match query.style {
-            Style::Normal => FC_SLANT_ROMAN,
-            Style::Italic => FC_SLANT_ITALIC,
-            Style::Oblique => FC_SLANT_OBLIQUE,
+            Style::Normal => 0,
+            Style::Italic => 100,
+            Style::Oblique => 110,
         };
         // SAFETY: All objects are owned/live, and the added numbers are copied by value.
         let added = unsafe {
-            let weight = (self.api.weight_from_opentype)(f64::from(query.weight.0));
+            let weight = (fc.FcWeightFromOpenTypeDouble)(f64::from(query.weight.0));
             (fc.FcPatternAddDouble)(pattern.as_ptr(), FC_WEIGHT.as_ptr(), weight) != 0
                 && (fc.FcPatternAddInteger)(pattern.as_ptr(), FC_WIDTH.as_ptr(), stretch) != 0
                 && (fc.FcPatternAddInteger)(pattern.as_ptr(), FC_SLANT.as_ptr(), style) != 0
@@ -395,12 +445,18 @@ impl Catalog {
         if !added {
             return Err(failed("adding query properties"));
         }
-        if let Some(text) = query.text {
+        let mut meaningful = query
+            .text
+            .into_iter()
+            .flat_map(str::chars)
+            .filter(|&ch| !cluster::is_default_ignorable(ch))
+            .peekable();
+        if meaningful.peek().is_some() {
             // SAFETY: Fontconfig allocates the set and retains a copy when adding it.
             let chars = NonNull::new(unsafe { (fc.FcCharSetCreate)() })
                 .ok_or_else(|| failed("allocating a character set"))?;
             let added = unsafe {
-                let added = text.chars().all(|character| {
+                let added = meaningful.all(|character| {
                     (fc.FcCharSetAddChar)(chars.as_ptr(), u32::from(character)) != 0
                 }) && (fc.FcPatternAddCharSet)(
                     pattern.as_ptr(),
@@ -416,7 +472,8 @@ impl Catalog {
         }
         // SAFETY: Only the private request is modified, with the initialized config live.
         unsafe {
-            if (fc.FcConfigSubstitute)(self.config.as_ptr(), pattern.as_ptr(), FcMatchPattern) == 0
+            if (fc.FcConfigSubstitute)(self.config.as_ptr(), pattern.as_ptr(), FC_MATCH_PATTERN)
+                == 0
             {
                 return Err(failed("applying query substitutions"));
             }
@@ -425,7 +482,7 @@ impl Catalog {
         Ok(pattern)
     }
 
-    fn candidate(&self, face: PatternRef<'_>) -> Option<FontCandidate> {
+    fn file_face(&self, face: PatternRef<'_>) -> Option<(PathBuf, PlatformFace)> {
         // The snapshot parser accepts SFNT faces and collections. FreeType also catalogs
         // other formats, including BDF and PCF, which cannot enter that parser.
         if face
@@ -435,40 +492,39 @@ impl Catalog {
             return None;
         }
         let filename = face.get_string(FC_FILE, 0)?;
-        let mut families = face.families();
-        let family = families.next()?;
         let index = u32::try_from(face.get_integer(FC_INDEX)?).ok()?;
-        // The upper 16 bits encode a named instance. A physical face ID
-        // cannot express this selection's effective variation settings.
-        if index >> 16 != 0 {
-            return None;
-        }
-        let path = Path::new(OsStr::from_bytes(filename.to_bytes()));
-        // SAFETY: A nonnull sysroot is a C string borrowed from this live config.
-        let root = unsafe { (self.api.get_sysroot)(self.config.as_ptr()) };
-        let path = if root.is_null() {
-            path.to_owned()
+        let instance = (index >> 16) as u16;
+        let named_instance = (instance != 0).then_some(instance);
+        let index = index & 0xffff;
+        let base = if named_instance.is_some() {
+            self.scan_patterns().find(|pattern| {
+                pattern.get_integer(FC_INDEX) == Some(index as c_int)
+                    && pattern.get_string(FC_FILE, 0) == Some(filename)
+                    && pattern.get_string(FC_POSTSCRIPT_NAME, 0).is_some()
+            })
         } else {
-            let root = unsafe { CStr::from_ptr(root.cast()) };
-            Path::new(OsStr::from_bytes(root.to_bytes()))
-                .join(path.strip_prefix("/").unwrap_or(path))
+            Some(face)
         };
-        Some(
+        // Named styles can have their own PostScript name. Use the physical scan
+        // pattern's names when available, including any scan-rule aliases.
+        let mut families = base.unwrap_or(face).families();
+        let family = families.next()?;
+        let path = self.resolve_path(Path::new(OsStr::from_bytes(filename.to_bytes())));
+        Some((
+            path,
             PlatformFace {
                 index,
                 family: family.to_owned(),
-                fontconfig_other_families: families.map(str::to_owned).collect(),
-                post_script_name: face
-                    .get_string(FC_POSTSCRIPT_NAME, 0)
+                other_families: families.map(str::to_owned).collect(),
+                post_script_name: base
+                    .and_then(|pattern| pattern.get_string(FC_POSTSCRIPT_NAME, 0))
                     .and_then(|name| name.to_str().ok())
                     .map(str::to_owned),
-                // Config rules can edit style metadata. Validate the physical name and
-                // index rather than comparing substituted style values.
-                attributes: FaceAttributes::default(),
-                coverage_source: None,
-            }
-            .into_file(path),
-        )
+                variations: Vec::new(),
+                fallback_scale: 1.0,
+                named_instance,
+            },
+        ))
     }
 }
 
@@ -497,8 +553,41 @@ fn chinese_orthography(language: &str) -> Option<String> {
 }
 
 fn eq_family(a: &str, b: &str) -> bool {
-    // Fontconfig compares family names case-insensitively and ignores blanks.
-    unicase::eq(a, b) || unicase::eq(&a.replace(' ', ""), &b.replace(' ', ""))
+    // Fontconfig compares folded Unicode and ignores ASCII spaces. Most names
+    // compare directly or can be compared with a byte iterator.
+    if a.is_ascii() && b.is_ascii() {
+        let fold = |byte: u8| (byte != b' ').then_some(byte.to_ascii_lowercase());
+        return a.bytes().filter_map(fold).eq(b.bytes().filter_map(fold));
+    }
+    if unicase::eq(a, b) {
+        return true;
+    }
+    if !a.contains(' ') && !b.contains(' ') {
+        return false;
+    }
+    let (mut left, mut right) = ([0; 128], [0; 128]);
+    unicase::eq(
+        &without_blanks(a, &mut left),
+        &without_blanks(b, &mut right),
+    )
+}
+
+fn without_blanks<'a>(name: &'a str, buffer: &'a mut [u8]) -> std::borrow::Cow<'a, str> {
+    use std::borrow::Cow;
+
+    if !name.contains(' ') {
+        return Cow::Borrowed(name);
+    }
+    if name.len() > buffer.len() {
+        return Cow::Owned(name.replace(' ', ""));
+    }
+    let mut length = 0;
+    for byte in name.bytes().filter(|&byte| byte != b' ') {
+        buffer[length] = byte;
+        length += 1;
+    }
+    // Removing ASCII spaces preserves UTF-8.
+    Cow::Borrowed(std::str::from_utf8(&buffer[..length]).unwrap_or(name))
 }
 
 fn failed(operation: &str) -> NativeFontError {
@@ -508,9 +597,9 @@ fn failed(operation: &str) -> NativeFontError {
 struct Pattern<'a>(PatternRef<'a>);
 
 impl<'a> Pattern<'a> {
-    fn from_raw(fc: &'a Fc, raw: *mut FcPattern) -> Option<Self> {
+    fn from_raw(api: &'a Api, raw: *mut FcPattern) -> Option<Self> {
         Some(Self(PatternRef {
-            fc,
+            api,
             raw: NonNull::new(raw)?,
         }))
     }
@@ -519,31 +608,40 @@ impl<'a> Pattern<'a> {
         self.0.raw.as_ptr()
     }
 
-    fn get_string(&self, key: &CStr, index: c_int) -> Option<&CStr> {
-        self.0.get_string(key, index)
+    fn as_ref(&self) -> PatternRef<'_> {
+        self.0
     }
 
-    fn add_string(&self, key: &CStr, value: &str) -> Result<(), NativeFontError> {
+    fn add_string(&self, key: &CStr, value: &str, weak: bool) -> Result<(), NativeFontError> {
         let value = CString::new(value).map_err(|_| failed("encoding a query string"))?;
         // SAFETY: The pattern and NUL-terminated strings are live. Fontconfig copies the value.
-        if unsafe {
-            (self.0.fc.FcPatternAddString)(self.as_ptr(), key.as_ptr(), value.as_ptr().cast())
-        } == 0
-        {
+        let added = unsafe {
+            if weak {
+                (self.0.api.FcPatternAddWeak)(
+                    self.as_ptr(),
+                    key.as_ptr(),
+                    FcValue::string(&value),
+                    1,
+                )
+            } else {
+                (self.0.api.FcPatternAddString)(self.as_ptr(), key.as_ptr(), value.as_ptr().cast())
+            }
+        };
+        if added == 0 {
             return Err(failed("adding a query string"));
         }
         Ok(())
     }
 
-    fn preferred_families(&self, api: &Api) -> Vec<(&str, bool)> {
+    fn preferred_families(&self) -> Vec<(&str, bool)> {
         let mut names = Vec::new();
         let mut last_strong = None;
         for index in 0.. {
             let mut value = MaybeUninit::<FcValue>::uninit();
-            let mut binding = 0;
+            let mut binding = FC_VALUE_BINDING_WEAK;
             // SAFETY: The query is live, and both out parameters have the C ABI layout.
             let status = unsafe {
-                (api.get_with_binding)(
+                (self.0.api.FcPatternGetWithBinding)(
                     self.as_ptr(),
                     FC_FAMILY.as_ptr(),
                     index,
@@ -555,15 +653,16 @@ impl<'a> Pattern<'a> {
                 break;
             }
             if let Some(name) = self
+                .as_ref()
                 .get_string(FC_FAMILY, index)
                 .and_then(|s| s.to_str().ok())
             {
-                names.push((name, binding != 0));
+                names.push((name, binding != FC_VALUE_BINDING_WEAK));
             }
             // FcValueBindingWeak is zero. Keep weak prefer entries before the last
             // strong/same value as Skia does. Trailing defaults cannot shadow
             // the next authored family.
-            if binding != 0 {
+            if binding != FC_VALUE_BINDING_WEAK {
                 last_strong = Some(names.len());
             }
         }
@@ -576,14 +675,14 @@ impl<'a> Pattern<'a> {
 
 impl Drop for Pattern<'_> {
     fn drop(&mut self) {
-        // SAFETY: This wrapper exclusively owns the query or FcFontMatch result.
-        unsafe { (self.0.fc.FcPatternDestroy)(self.as_ptr()) };
+        // SAFETY: This wrapper owns the pattern and is scoped to a native call lock.
+        unsafe { (self.0.api.FcPatternDestroy)(self.as_ptr()) };
     }
 }
 
 #[derive(Clone, Copy)]
 struct PatternRef<'a> {
-    fc: &'a Fc,
+    api: &'a Api,
     raw: NonNull<FcPattern>,
 }
 
@@ -592,7 +691,7 @@ impl<'a> PatternRef<'a> {
         let mut value = ptr::null_mut();
         // SAFETY: The pattern stays live and unmodified for the borrow of its owner.
         let status = unsafe {
-            (self.fc.FcPatternGetString)(self.raw.as_ptr(), key.as_ptr(), index, &mut value)
+            (self.api.FcPatternGetString)(self.raw.as_ptr(), key.as_ptr(), index, &mut value)
         };
         (status == FC_RESULT_MATCH && !value.is_null())
             .then(|| unsafe { CStr::from_ptr(value.cast()) })
@@ -621,55 +720,109 @@ impl<'a> PatternRef<'a> {
         let mut value = 0;
         // SAFETY: The pattern and output are live.
         let status = unsafe {
-            (self.fc.FcPatternGetInteger)(self.raw.as_ptr(), key.as_ptr(), 0, &mut value)
+            (self.api.FcPatternGetInteger)(self.raw.as_ptr(), key.as_ptr(), 0, &mut value)
         };
         (status == FC_RESULT_MATCH).then_some(value)
     }
 
-    fn covers(self, character: char) -> Option<bool> {
-        let mut chars: *mut FcCharSet = ptr::null_mut();
+    fn charset(self, index: c_int) -> Option<NonNull<FcCharSet>> {
+        let mut chars = ptr::null_mut();
         // SAFETY: A returned charset is borrowed from the live immutable pattern.
-        unsafe {
-            let status = (self.fc.FcPatternGetCharSet)(
+        let status = unsafe {
+            (self.api.FcPatternGetCharSet)(
                 self.raw.as_ptr(),
                 FC_CHARSET.as_ptr(),
-                0,
+                index,
                 &mut chars,
-            );
-            (status == FC_RESULT_MATCH && !chars.is_null())
-                .then(|| (self.fc.FcCharSetHasChar)(chars, u32::from(character)) != 0)
+            )
+        };
+        if status == FC_RESULT_MATCH {
+            NonNull::new(chars)
+        } else {
+            None
         }
+    }
+
+    fn may_cover(self, text: &str) -> bool {
+        let Some(first) = self.charset(0) else {
+            return true;
+        };
+        let maps = |ch| {
+            let has_char = |chars: NonNull<FcCharSet>| {
+                // SAFETY: The charset belongs to this borrowed scan pattern.
+                unsafe { (self.api.FcCharSetHasChar)(chars.as_ptr(), u32::from(ch)) != 0 }
+            };
+            has_char(first) || (1..).map_while(|index| self.charset(index)).any(has_char)
+        };
+        text.chars().filter(|&ch| !cluster::is_default_ignorable(ch)).all(maps)
+            || cluster::has_candidate_mapping(text, maps)
+            // Fontconfig's Unicode charset has no cmap format 14 variants.
+            || text.chars().any(|ch| matches!(ch, '\u{fe00}'..='\u{fe0f}' | '\u{e0100}'..='\u{e01ef}'))
+    }
+
+    fn variations(self) -> Vec<usvg::FontVariation> {
+        let Some(settings) = self
+            .get_string(FC_FONT_VARIATIONS, 0)
+            .and_then(|s| s.to_str().ok())
+        else {
+            return Vec::new();
+        };
+        let mut axes = Vec::<usvg::FontVariation>::new();
+        for setting in settings.split(',') {
+            let Some((tag, value)) = setting.split_once('=') else {
+                continue;
+            };
+            let Ok(tag) = <[u8; 4]>::try_from(tag.trim().as_bytes()) else {
+                continue;
+            };
+            let Ok(value) = value.trim().parse::<f32>() else {
+                continue;
+            };
+            if !value.is_finite() || !tag.iter().all(|byte| matches!(byte, b' '..=b'~')) {
+                continue;
+            }
+            if let Some(axis) = axes.iter_mut().find(|axis| axis.tag == tag) {
+                axis.value = value;
+            } else {
+                axes.push(usvg::FontVariation::new(tag, value));
+            }
+        }
+        axes
     }
 }
 
 struct FontSet {
-    fc: &'static Fc,
+    api: &'static Api,
     raw: NonNull<FcFontSet>,
 }
 
 impl FontSet {
     fn iter(&self) -> impl Iterator<Item = PatternRef<'_>> {
-        // SAFETY: FcFontSort owns an array with nfont live pattern pointers when nonempty.
-        let set = unsafe { self.raw.as_ref() };
-        let pointers = if set.nfont > 0 && !set.fonts.is_null() {
-            unsafe { std::slice::from_raw_parts(set.fonts, set.nfont as usize) }
-        } else {
-            &[]
-        };
-        pointers.iter().filter_map(|&p| {
-            Some(PatternRef {
-                fc: self.fc,
-                raw: NonNull::new(p)?,
-            })
-        })
+        // SAFETY: FcFontSort returned this owned font set.
+        font_patterns(self.api, unsafe { self.raw.as_ref() })
     }
 }
 
 impl Drop for FontSet {
     fn drop(&mut self) {
         // SAFETY: FcFontSort returned this owned font set.
-        unsafe { (self.fc.FcFontSetSortDestroy)(self.raw.as_ptr()) };
+        unsafe { (self.api.FcFontSetSortDestroy)(self.raw.as_ptr()) };
     }
+}
+
+fn font_patterns<'a>(api: &'a Api, set: &'a FcFontSet) -> impl Iterator<Item = PatternRef<'a>> {
+    let pointers = if set.nfont > 0 && !set.fonts.is_null() {
+        // SAFETY: A live Fontconfig set with nfont entries owns this array.
+        unsafe { std::slice::from_raw_parts(set.fonts, set.nfont as usize) }
+    } else {
+        &[]
+    };
+    pointers.iter().filter_map(|&p| {
+        Some(PatternRef {
+            api,
+            raw: NonNull::new(p)?,
+        })
+    })
 }
 
 /// Try the rest of the catalog after a file disappears. Admission runs first so retained

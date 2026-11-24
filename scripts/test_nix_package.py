@@ -96,7 +96,7 @@ class NixPackageContractTests(unittest.TestCase):
             self.assertEqual(len(values), len(set(values)), key)
         self.assertEqual(
             policy["root_directories"],
-            ["THIRD_PARTY_LICENSES", "capabilities", "vendor/usvg"],
+            ["THIRD_PARTY_LICENSES", "capabilities", "vendor/krilla", "vendor/usvg"],
         )
         self.assertEqual(
             policy["script_files"],
@@ -122,6 +122,9 @@ class NixPackageContractTests(unittest.TestCase):
             "scripts/ascii_capability_contract.py",
             "scripts/theme_preset_catalog_contract.py",
             "scripts/verify_cli_installation.py",
+            "vendor/krilla/Cargo.toml",
+            "vendor/krilla/icc/sRGB-v4.icc",
+            "vendor/krilla/src/text/cid.rs",
             "vendor/usvg/Cargo.toml",
             "vendor/usvg/src/text/layout.rs",
         }

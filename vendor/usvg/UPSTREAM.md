@@ -7,20 +7,29 @@ The Cargo manifest disables publication. The runtime source and both upstream li
 are copied from the archive.
 
 The change in `src/text/layout.rs` shapes missing text in its original direction and
-surrounding context. Consecutive missing clusters resolved to the same face, scale and
-script are shaped together, preserving ligatures and joining. Glyphs already supplied
-by the primary face keep their original positions within their cluster. Adjacent spans
-with matching shaping properties and equivalent language tags share a run.
+surrounding context. Consecutive missing clusters with equivalent physical faces, effective
+coordinates, sizes and scripts are shaped together, preserving ligatures and joining. Glyphs
+already supplied by the primary face keep their original positions within their cluster.
+Adjacent spans with matching shaping properties and equivalent language tags share a run.
 `Font::selection_language` supplies the effective language to primary family matching.
 `Options::set_text_fallback` lets the font host consider the authored family stack,
-inherited `xml:lang`, and complete cluster text. The returned relative size affects
-glyph advances, outlines and PDF spans.
-The scalar resolver remains available for existing callers. Upstream
+inherited `xml:lang`, and complete cluster text. `Options::set_font_instances` also
+carries native design coordinates and relative size in primary and fallback selections.
+The fallback callback receives the original selections in order, beginning with the primary
+instance. Layout deduplicates attempts by physical face, effective coordinates and size.
+Nested SVGs inherit the selectors and default language. The scalar and cluster selectors
+remain available for existing callers. Upstream
 [resvg #1087](https://github.com/linebender/resvg/pull/1087) discusses cluster replacement.
 
-The CSS weight mapping follows [usvg 0.50.0](https://docs.rs/crate/usvg/0.50.0/source/src/parser/text.rs).
-It supplies `wght` for CSS normal (400) as well as other weights. An explicit `wght` takes
-precedence. Outline caching still applies to faces at their default coordinates.
+Effective coordinates are resolved against the physical face. Explicit variation settings
+override authored font properties, followed by native coordinates and face defaults.
+An omitted weight uses CSS normal (400) when the native selection supplies no weight.
+Automatic optical sizing uses the scaled font size, and `none` retains the native optical
+coordinate. Explicit `opsz` takes precedence in either mode. The same coordinates are used
+for shaping, active face metrics and outlines. Glyph bounds use the glyph's effective instance.
+Baselines and decorations use the effective primary instance for the styled span. SVG layout
+passes the resulting glyph coordinates and size to PDF-facing spans, with default coordinates
+omitted. Outline caching still applies to the default instance.
 
 The Merman workspace patches one usvg source for native measurement, raster, and vector PDF.
 Remove the corresponding patches when a common supported release provides these fixes.

@@ -113,6 +113,7 @@ impl crate::Tree {
         let nested_opt = Options {
             resources_dir: None,
             dpi: opt.dpi,
+            font_family: opt.font_family.clone(),
             font_size: opt.font_size,
             languages: opt.languages.clone(),
             shape_rendering: opt.shape_rendering,
@@ -144,6 +145,16 @@ impl crate::Tree {
                     .select
                     .as_ref()
                     .map(|select| Box::new(select) as crate::ClusterFallbackFn<'_>),
+                select_instance: opt
+                    .text_fallback
+                    .select_instance
+                    .as_ref()
+                    .map(|select| Box::new(select) as crate::FontInstanceSelectionFn<'_>),
+                fallback_instance: opt
+                    .text_fallback
+                    .fallback_instance
+                    .as_ref()
+                    .map(|select| Box::new(select) as crate::FontInstanceFallbackFn<'_>),
             },
             ..Options::default()
         };

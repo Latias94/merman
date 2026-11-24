@@ -11,7 +11,7 @@ use fontdb::Database;
 #[cfg(feature = "text")]
 use fontdb::ID;
 #[cfg(feature = "text")]
-use rustybuzz::ttf_parser::{GlyphId, VariationAxis};
+use rustybuzz::ttf_parser::GlyphId;
 use svgtypes::{Length, LengthUnit as Unit, PaintOrderKind, TransformOrigin};
 use tiny_skia_path::PathBuilder;
 
@@ -66,7 +66,7 @@ pub struct Cache {
     #[cfg(feature = "text")]
     cache_raster: HashMap<(ID, GlyphId), Option<BitmapImage>>,
     #[cfg(feature = "text")]
-    cache_variation_axes: HashMap<ID, Vec<VariationAxis>>,
+    cache_colr_faces: HashMap<ID, bool>,
     #[cfg(feature = "text")]
     pub(super) text_anchor_probe: Option<TextAnchorProbe>,
 
@@ -126,7 +126,7 @@ impl Cache {
             #[cfg(feature = "text")]
             cache_raster: HashMap::new(),
             #[cfg(feature = "text")]
-            cache_variation_axes: HashMap::new(),
+            cache_colr_faces: HashMap::new(),
             #[cfg(feature = "text")]
             text_anchor_probe: None,
 
@@ -230,10 +230,11 @@ impl Cache {
     font_lookup!(fontdb_raster, cache_raster, raster, BitmapImage);
 
     #[cfg(feature = "text")]
-    pub(crate) fn font_variation_axes(&mut self, font: ID) -> &[VariationAxis] {
-        self.cache_variation_axes
+    pub(crate) fn font_has_colr(&mut self, font: ID) -> bool {
+        *self
+            .cache_colr_faces
             .entry(font)
-            .or_insert_with(|| self.fontdb.variation_axes(font))
+            .or_insert_with(|| self.fontdb.has_colr(font))
     }
 }
 

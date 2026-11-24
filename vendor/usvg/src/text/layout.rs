@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::num::NonZeroU16;
 use std::ops::Range;
 use std::sync::Arc;
@@ -17,8 +18,9 @@ use unicode_script::UnicodeScript;
 use crate::tree::{BBox, IsValidLength};
 use crate::{
     AlignmentBaseline, ApproxZeroUlps, BaselineShift, DominantBaseline, Fill, FillRule, Font,
-    LengthAdjust, PaintOrder, Path, ShapeRendering, Stroke, Text, TextAnchor, TextChunk,
-    TextDecorationStyle, TextFlow, TextPath, TextSpan, WritingMode,
+    FontInstance, FontOpticalSizing, FontVariation, LengthAdjust, PaintOrder, Path, ShapeRendering,
+    Stroke, Text, TextAnchor, TextChunk, TextDecorationStyle, TextFlow, TextPath, TextSpan,
+    WritingMode,
 };
 
 /// A glyph that has already been positioned correctly.
@@ -141,8 +143,7 @@ impl PositionedGlyph {
     }
 }
 
-/// A span contains a number of layouted glyphs that share the same fill, stroke, paint order and
-/// visibility.
+/// A span contains positioned glyphs with the same paint, size and effective variation settings.
 #[derive(Clone, Debug)]
 pub struct Span {
     /// The fill of the span.
@@ -153,10 +154,11 @@ pub struct Span {
     pub paint_order: PaintOrder,
     /// The font size of the span.
     pub font_size: NonZeroPositiveF32,
-    /// Font variation settings for variable fonts.
-    pub variations: Vec<crate::FontVariation>,
-    /// Font optical sizing mode.
-    pub font_optical_sizing: crate::FontOpticalSizing,
+    /// Effective OpenType design coordinates. Omitted axes use the face defaults.
+    pub variations: Vec<FontVariation>,
+    /// Optical sizing mode for the renderer. SVG layout sets this to [`FontOpticalSizing::None`]
+    /// because `variations` already reflects optical sizing.
+    pub font_optical_sizing: FontOpticalSizing,
     /// The visibility of the span.
     pub visible: bool,
     /// The glyphs that make up the span.
@@ -191,6 +193,7 @@ struct GlyphCluster {
     advance: f32,
     ascent: f32,
     descent: f32,
+    font: Arc<ResolvedFont>,
     has_relative_shift: bool,
     glyphs: Vec<PositionedGlyph>,
     transform: Transform,
@@ -246,18 +249,37 @@ pub(crate) fn layout_text(
     let mut fonts_cache: FontsCache = HashMap::new();
     let mut primary_miss = false;
 
-    for chunk in &text_node.chunks {
-        for span in &chunk.spans {
-            if !fonts_cache.contains_key(&span.font) {
-                if let Some(font) = (options.font_resolver.select_font)(&span.font, fontdb)
-                    .and_then(|id| fontdb.load_font(id))
-                {
-                    fonts_cache.insert(span.font.clone(), Arc::new(font));
-                } else {
-                    primary_miss |= span.has_visible_paint();
+    for span in text_node.chunks.iter().flat_map(|chunk| &chunk.spans) {
+        let size_key = span_font_size_key(span);
+        let resolved = match fonts_cache.entry(&span.font) {
+            Entry::Occupied(mut entry) => {
+                let primary = entry.get_mut();
+                match primary.sizes.entry(size_key) {
+                    Entry::Occupied(_) => true,
+                    Entry::Vacant(entry) => fontdb
+                        .load_font(&primary.selection, span)
+                        .map(|font| entry.insert(Arc::new(font)))
+                        .is_some(),
                 }
             }
-        }
+            Entry::Vacant(entry) => {
+                let selection = match &options.text_fallback.select_instance {
+                    Some(select) => select(&span.font, fontdb),
+                    None => (options.font_resolver.select_font)(&span.font, fontdb)
+                        .map(|id| (id, 1.0, Vec::new())),
+                };
+                selection
+                    .and_then(|selection| {
+                        let font = fontdb.load_font(&selection, span)?;
+                        Some(entry.insert(PrimaryFont {
+                            selection,
+                            sizes: HashMap::from([(size_key, Arc::new(font))]),
+                        }))
+                    })
+                    .is_some()
+            }
+        };
+        primary_miss |= !resolved && span.has_visible_paint();
     }
 
     if primary_miss && !*no_primary_face {
@@ -267,7 +289,7 @@ pub(crate) fn layout_text(
             chunk
                 .spans
                 .iter()
-                .any(|span| span.has_visible_paint() && !fonts_cache.contains_key(&span.font))
+                .any(|span| span.has_visible_paint() && primary_font(&fonts_cache, span).is_none())
         });
     }
 
@@ -360,8 +382,8 @@ fn append_chunk_geometry(
     }
 
     for span in &chunk.spans {
-        let font = match fonts_cache.get(&span.font) {
-            Some(v) => v,
+        let font = match primary_font(fonts_cache, span) {
+            Some((_, font)) => font,
             None => continue,
         };
 
@@ -388,8 +410,8 @@ fn append_chunk_geometry(
             // https://www.w3.org/TR/css-text-decor-3/#text-underline-position-property
             // but it doesn't go into details.
             let offset = match text_node.writing_mode {
-                WritingMode::LeftToRight => -font.underline_position(span.font_size.get()),
-                WritingMode::TopToBottom => font.height(span.font_size.get()) / 2.0,
+                WritingMode::LeftToRight => -font.underline_position(),
+                WritingMode::TopToBottom => font.height() / 2.0,
             };
 
             if let Some(path) =
@@ -402,8 +424,8 @@ fn append_chunk_geometry(
 
         if let Some(decoration) = span.decoration.overline.clone() {
             let offset = match text_node.writing_mode {
-                WritingMode::LeftToRight => -font.ascent(span.font_size.get()),
-                WritingMode::TopToBottom => -font.height(span.font_size.get()) / 2.0,
+                WritingMode::LeftToRight => -font.ascent(),
+                WritingMode::TopToBottom => -font.height() / 2.0,
             };
 
             if let Some(path) =
@@ -416,7 +438,7 @@ fn append_chunk_geometry(
 
         if let Some(decoration) = span.decoration.line_through.clone() {
             let offset = match text_node.writing_mode {
-                WritingMode::LeftToRight => -font.line_through_position(span.font_size.get()),
+                WritingMode::LeftToRight => -font.line_through_position(),
                 WritingMode::TopToBottom => 0.0,
             };
 
@@ -441,65 +463,67 @@ fn append_chunk_geometry(
         if let Some((span_fragments, span_bbox)) = convert_span(span, clusters, span_ts) {
             geometry.bbox = geometry.bbox.expand(span_bbox);
 
-            let positioned_glyphs = span_fragments
-                .into_iter()
-                .flat_map(|mut gc| {
-                    let cluster_ts = gc.transform();
-                    gc.glyphs.iter_mut().for_each(|pg| {
-                        pg.cluster_ts = cluster_ts;
-                        pg.span_ts = span_ts;
-                    });
-                    gc.glyphs
-                })
-                .collect();
-
-            append_sized_spans(
+            append_font_spans(
                 &mut geometry.spans,
                 Span {
                     fill,
                     stroke: span.stroke.clone(),
                     paint_order: span.paint_order,
-                    font_size: span.font_size,
-                    variations: span.font.variations.clone(),
-                    font_optical_sizing: span.font_optical_sizing,
+                    font_size: font.size,
+                    variations: Vec::new(),
+                    font_optical_sizing: FontOpticalSizing::None,
                     visible: span.visible,
-                    positioned_glyphs,
+                    positioned_glyphs: Vec::new(),
                     underline,
                     overline,
                     line_through,
                 },
+                span_fragments,
+                span_ts,
             );
         }
     }
 }
 
-fn append_sized_spans(spans: &mut Vec<Span>, mut span: Span) {
-    if span
-        .positioned_glyphs
-        .iter()
-        .all(|glyph| glyph.font_size() == span.font_size.get())
-    {
+fn append_font_spans(
+    spans: &mut Vec<Span>,
+    mut span: Span,
+    fragments: Vec<GlyphCluster>,
+    span_ts: Transform,
+) {
+    if fragments.is_empty() {
         spans.push(span);
         return;
     }
 
-    // PDF adapters use the span size for optical sizing and glyph drawing.
-    // Keep decorations around the original paint span when its glyph sizes differ.
+    // PDF consumers use the span's size and coordinates together with each glyph's face ID.
+    // Keep decorations around the glyphs of the original paint span.
     let first = spans.len();
-    let mut glyphs = std::mem::take(&mut span.positioned_glyphs)
-        .into_iter()
-        .peekable();
+    let mut clusters = fragments.into_iter().peekable();
     let underline = span.underline.take();
     let overline = span.overline.take();
     let line_through = span.line_through.take();
-    while let Some(glyph) = glyphs.next() {
-        let size = glyph.font_size();
-        let mut positioned_glyphs = vec![glyph];
-        while let Some(glyph) = glyphs.next_if(|next| next.font_size() == size) {
-            positioned_glyphs.push(glyph);
-        }
+    while let Some(cluster) = clusters.next() {
+        let font = Arc::clone(&cluster.font);
+        let positioned_glyphs = std::iter::once(cluster)
+            .chain(std::iter::from_fn(|| {
+                clusters.next_if(|next| {
+                    next.font.size.get() == font.size.get()
+                        && next.font.variations == font.variations
+                })
+            }))
+            .flat_map(|mut cluster| {
+                let cluster_ts = cluster.transform();
+                for glyph in &mut cluster.glyphs {
+                    glyph.cluster_ts = cluster_ts;
+                    glyph.span_ts = span_ts;
+                }
+                cluster.glyphs
+            })
+            .collect();
         spans.push(Span {
-            font_size: NonZeroPositiveF32::new(size).unwrap_or(span.font_size),
+            font_size: font.size,
+            variations: font.variations.clone(),
             positioned_glyphs,
             ..span.clone()
         });
@@ -590,7 +614,7 @@ pub(crate) fn convert_decoration(
 ) -> Option<Path> {
     debug_assert!(!decoration_spans.is_empty());
 
-    let thickness = font.underline_thickness(span.font_size.get());
+    let thickness = font.underline_thickness();
 
     let mut builder = tiny_skia_path::PathBuilder::new();
     for dec_span in decoration_spans {
@@ -723,29 +747,29 @@ pub(crate) fn resolve_baseline(
     font: &ResolvedFont,
     writing_mode: WritingMode,
 ) -> f32 {
-    let mut shift = -resolve_baseline_shift(&span.baseline_shift, font, span.font_size.get());
+    let mut shift = -resolve_baseline_shift(&span.baseline_shift, font);
 
     // TODO: support vertical layout as well
     if writing_mode == WritingMode::LeftToRight {
         if span.alignment_baseline == AlignmentBaseline::Auto
             || span.alignment_baseline == AlignmentBaseline::Baseline
         {
-            shift += font.dominant_baseline_shift(span.dominant_baseline, span.font_size.get());
+            shift += font.dominant_baseline_shift(span.dominant_baseline);
         } else {
-            shift += font.alignment_baseline_shift(span.alignment_baseline, span.font_size.get());
+            shift += font.alignment_baseline_shift(span.alignment_baseline);
         }
     }
 
     shift
 }
 
-fn resolve_baseline_shift(baselines: &[BaselineShift], font: &ResolvedFont, font_size: f32) -> f32 {
+fn resolve_baseline_shift(baselines: &[BaselineShift], font: &ResolvedFont) -> f32 {
     let mut shift = 0.0;
     for baseline in baselines.iter().rev() {
         match baseline {
             BaselineShift::Baseline => {}
-            BaselineShift::Subscript => shift -= font.subscript_offset(font_size),
-            BaselineShift::Superscript => shift += font.superscript_offset(font_size),
+            BaselineShift::Subscript => shift -= font.subscript_offset(),
+            BaselineShift::Superscript => shift += font.superscript_offset(),
             BaselineShift::Number(n) => shift += n,
         }
     }
@@ -804,8 +828,8 @@ fn resolve_clusters_positions_path(
 
         let baseline_shift = chunk_span_at(chunk, cluster.byte_idx)
             .map(|span| {
-                let font = match fonts_cache.get(&span.font) {
-                    Some(v) => v,
+                let font = match primary_font(fonts_cache, span) {
+                    Some((_, font)) => font,
                     None => return 0.0,
                 };
                 -resolve_baseline(span, font, writing_mode)
@@ -1024,7 +1048,7 @@ fn process_chunk(
             } else {
                 end - 1 - (index - start)
             }];
-            let Some(font) = fonts_cache.get(&span.font) else {
+            let Some((selection, font)) = primary_font(fonts_cache, span) else {
                 continue;
             };
             let bytes = run.start.max(bytes.start)..run.end.min(bytes.end);
@@ -1035,19 +1059,15 @@ fn process_chunk(
                 span,
                 language: shaping_language(span, default_language),
             };
-            glyphs.extend(run.shape_text(bytes, font, options, fontdb));
+            glyphs.extend(run.shape_text(bytes, selection, font, options, fontdb));
         }
     }
 
     // Convert glyphs to clusters.
     let mut clusters = Vec::new();
     for (range, byte_idx) in GlyphClusters::new(&glyphs) {
-        if let Some(span) = chunk_span_at(chunk, byte_idx) {
-            clusters.push(form_glyph_clusters(
-                &glyphs[range],
-                &chunk.text,
-                span.font_size.get(),
-            ));
+        if chunk_span_at(chunk, byte_idx).is_some() {
+            clusters.push(form_glyph_clusters(&glyphs[range], &chunk.text));
         }
     }
 
@@ -1241,7 +1261,7 @@ fn apply_word_spacing(chunk: &TextChunk, clusters: &mut [GlyphCluster]) {
     }
 }
 
-fn form_glyph_clusters(glyphs: &[Glyph], text: &str, font_size: f32) -> GlyphCluster {
+fn form_glyph_clusters(glyphs: &[Glyph], text: &str) -> GlyphCluster {
     debug_assert!(!glyphs.is_empty());
 
     let mut width = 0.0;
@@ -1250,8 +1270,6 @@ fn form_glyph_clusters(glyphs: &[Glyph], text: &str, font_size: f32) -> GlyphClu
     let mut positioned_glyphs = vec![];
 
     for glyph in glyphs {
-        let font_size = font_size * glyph.scale;
-
         // Apply offset.
         //
         // The first glyph in the cluster will have an offset from 0x0,
@@ -1267,7 +1285,7 @@ fn form_glyph_clusters(glyphs: &[Glyph], text: &str, font_size: f32) -> GlyphClu
             // Will be set later.
             span_ts: Transform::default(),
             units_per_em: glyph.font.units_per_em.get(),
-            font_size,
+            font_size: glyph.font.size.get(),
             font: glyph.font.id,
             text: glyph.text.clone(),
             id: glyph.id,
@@ -1275,19 +1293,19 @@ fn form_glyph_clusters(glyphs: &[Glyph], text: &str, font_size: f32) -> GlyphClu
 
         x += glyph.width as f32;
 
-        width += glyph.width as f32 * glyph.font.scale(font_size);
+        width += glyph.width as f32 * glyph.font.scale();
     }
 
     let byte_idx = glyphs[0].byte_idx;
     let font = &glyphs[0].font;
-    let font_size = font_size * glyphs[0].scale;
     GlyphCluster {
         byte_idx,
         codepoint: byte_idx.char_from(text),
         width,
         advance: width,
-        ascent: font.ascent(font_size),
-        descent: font.descent(font_size),
+        ascent: font.ascent(),
+        descent: font.descent(),
+        font: Arc::clone(font),
         has_relative_shift: false,
         transform: Transform::default(),
         path_transform: Transform::default(),
@@ -1297,15 +1315,19 @@ fn form_glyph_clusters(glyphs: &[Glyph], text: &str, font_size: f32) -> GlyphClu
 }
 
 pub(crate) trait DatabaseExt {
-    fn load_font(&self, id: ID) -> Option<ResolvedFont>;
+    fn load_font(&self, instance: &FontInstance, span: &TextSpan) -> Option<ResolvedFont>;
     fn has_char(&self, id: ID, c: char) -> bool;
 }
 
 impl DatabaseExt for Database {
     #[inline(never)]
-    fn load_font(&self, id: ID) -> Option<ResolvedFont> {
+    fn load_font(&self, instance: &FontInstance, span: &TextSpan) -> Option<ResolvedFont> {
+        let (id, scale, native_variations) = instance;
+        let size = NonZeroPositiveF32::new(span.font_size.get() * scale)?;
+        let id = *id;
         self.with_face_data(id, |data, face_index| -> Option<ResolvedFont> {
-            let font = ttf_parser::Face::parse(data, face_index).ok()?;
+            let mut font = ttf_parser::Face::parse(data, face_index).ok()?;
+            let variations = resolve_variations(&mut font, span, size.get(), native_variations);
 
             let units_per_em = NonZeroU16::new(font.units_per_em())?;
 
@@ -1321,7 +1343,7 @@ impl DatabaseExt for Database {
                 None => {
                     // If not set - fallback to height * 45%.
                     // 45% is what Firefox uses.
-                    u16::try_from((f32::from(ascent - descent) * 0.45) as i32)
+                    u16::try_from(((f32::from(ascent) - f32::from(descent)) * 0.45) as i32)
                         .ok()
                         .and_then(NonZeroU16::new)?
                 }
@@ -1362,6 +1384,8 @@ impl DatabaseExt for Database {
 
             Some(ResolvedFont {
                 id,
+                size,
+                variations,
                 units_per_em,
                 ascent,
                 descent,
@@ -1387,6 +1411,71 @@ impl DatabaseExt for Database {
     }
 }
 
+fn resolve_variations(
+    face: &mut ttf_parser::Face<'_>,
+    span: &TextSpan,
+    size: f32,
+    native: &[FontVariation],
+) -> Vec<FontVariation> {
+    fn axis_value(variations: &[FontVariation], tag: [u8; 4]) -> Option<f32> {
+        variations
+            .iter()
+            .rev()
+            .find(|v| v.tag == tag && v.value.is_finite())
+            .map(|v| v.value)
+    }
+
+    let mut effective = Vec::new();
+    for axis in face.variation_axes() {
+        let tag = axis.tag.to_bytes();
+        let authored = if tag == *b"wght" && span.font.implicit_weight_axis {
+            None
+        } else {
+            axis_value(&span.font.variations, tag)
+        };
+        let value = authored.or_else(|| {
+            if tag == *b"opsz" && span.font_optical_sizing == FontOpticalSizing::Auto {
+                Some(size)
+            } else {
+                // CSS normal is the weight fallback even on fonts with a different default.
+                axis_value(native, tag).or_else(|| (tag == *b"wght").then_some(400.0))
+            }
+        });
+        if let Some(value) = value {
+            let value = value.clamp(axis.min_value, axis.max_value);
+            if value != axis.def_value && face.set_variation(axis.tag, value).is_some() {
+                // Make signed zeros equivalent in instance keys.
+                effective.push(FontVariation::new(tag, value + 0.0));
+            }
+        }
+    }
+    effective.sort_unstable_by_key(|v| v.tag);
+    effective
+}
+
+fn same_physical_face(db: &Database, first: ID, second: ID) -> bool {
+    use fontdb::Source;
+
+    if first == second {
+        return true;
+    }
+    let (Some(first), Some(second)) = (db.face(first), db.face(second)) else {
+        return false;
+    };
+    if first.index != second.index {
+        return false;
+    }
+    #[allow(unreachable_patterns)]
+    match (&first.source, &second.source) {
+        (Source::Binary(a), Source::Binary(b)) => Arc::ptr_eq(a, b),
+        #[cfg(any(feature = "system-fonts", feature = "memmap-fonts"))]
+        (Source::File(a), Source::File(b)) => a == b,
+        #[cfg(feature = "memmap-fonts")]
+        (Source::SharedFile(_, a), Source::SharedFile(_, b)) => Arc::ptr_eq(a, b),
+        _ => false,
+    }
+}
+
 struct ShapingRun<'a> {
     text: &'a str,
     bytes: Range<usize>,
@@ -1403,7 +1492,7 @@ struct ClusterRepair {
 }
 
 impl ClusterRepair {
-    fn run_length(repairs: &[Self], text: &str) -> usize {
+    fn run_length(repairs: &[Self], text: &str, fontdb: &Database) -> usize {
         use unicode_script::Script;
 
         let first = &repairs[0].glyphs[0];
@@ -1411,9 +1500,7 @@ impl ClusterRepair {
         let mut script = None;
         for (index, repair) in repairs.iter().enumerate() {
             let glyph = &repair.glyphs[0];
-            if next_glyph != repair.original.start
-                || glyph.font.id != first.font.id
-                || glyph.scale != first.scale
+            if next_glyph != repair.original.start || !glyph.font.same_instance(&first.font, fontdb)
             {
                 return index;
             }
@@ -1434,56 +1521,33 @@ impl ClusterRepair {
 
 #[derive(Default)]
 struct FallbackCandidates {
-    faces: Vec<(ID, f32)>,
+    tried: Vec<FontInstance>,
+    fonts: Vec<Arc<ResolvedFont>>,
     exhausted_at: Option<usize>,
 }
 
-impl FallbackCandidates {
-    // The callback sees the same cluster, style, direction and exclusion prefix.
-    // Cache its choices, but always shape in the actual surrounding text.
-    fn get_or_select(
-        &mut self,
-        index: usize,
-        primary: ID,
-        db: &mut Arc<Database>,
-        select: impl FnOnce(&[ID], &mut Arc<Database>) -> Option<(ID, f32)>,
-    ) -> Option<(ID, f32)> {
-        if let Some(&choice) = self.faces.get(index) {
-            return Some(choice);
-        }
-        if self.exhausted_at == Some(db.len()) {
-            return None;
-        }
-        let used: Vec<_> = std::iter::once(primary)
-            .chain(self.faces.iter().map(|face| face.0))
-            .collect();
-        let choice = select(&used, db).filter(|(id, _)| !used.contains(id));
-        if let Some(face) = choice {
-            self.faces.push(face);
-        } else {
-            self.exhausted_at = Some(db.len());
-        }
-        choice
-    }
+fn same_selection(a: &FontInstance, b: &FontInstance) -> bool {
+    a.0 == b.0 && a.1.to_bits() == b.1.to_bits() && a.2 == b.2
 }
 
 #[derive(Default)]
 struct RunFallbacks<'a> {
     candidates: HashMap<&'a str, FallbackCandidates>,
     // Retain discovery order for the legacy scalar resolver.
-    fonts: Vec<Arc<ResolvedFont>>,
+    fonts: Vec<(FontInstance, Arc<ResolvedFont>)>,
 }
 
 impl<'a> ShapingRun<'a> {
     fn shape_text(
         &self,
         bytes: Range<usize>,
+        selection: &FontInstance,
         font: &Arc<ResolvedFont>,
         options: &crate::Options,
         fontdb: &mut Arc<Database>,
     ) -> Vec<Glyph> {
         let run_end = bytes.end;
-        let Some(primary) = self.shape(bytes, font, 1.0, fontdb) else {
+        let Some(primary) = self.shape(bytes, font, fontdb) else {
             return Vec::new();
         };
         if primary.iter().all(|glyph| !glyph.is_missing()) {
@@ -1507,7 +1571,13 @@ impl<'a> ShapingRun<'a> {
             };
             let bytes = start.value()..next_logical.map_or(run_end, |glyph| glyph.byte_idx.value());
             let glyphs = self
-                .repair(bytes.clone(), font.id, options, fontdb, &mut fallbacks)
+                .repair(
+                    bytes.clone(),
+                    (selection, font),
+                    options,
+                    fontdb,
+                    &mut fallbacks,
+                )
                 .unwrap_or_default();
             repairs.push(ClusterRepair {
                 bytes,
@@ -1516,14 +1586,16 @@ impl<'a> ShapingRun<'a> {
             });
         }
 
-        if options.text_fallback.select.is_none() {
+        if options.text_fallback.fallback_instance.is_none()
+            && options.text_fallback.select.is_none()
+        {
             // A scalar lookup may have admitted new faces for a later character.
             if fontdb.len() != initial_face_count {
                 for repair in repairs.iter_mut().filter(|r| r.glyphs.is_empty()) {
                     repair.glyphs = self
                         .repair(
                             repair.bytes.clone(),
-                            font.id,
+                            (selection, font),
                             options,
                             fontdb,
                             &mut fallbacks,
@@ -1535,7 +1607,7 @@ impl<'a> ShapingRun<'a> {
                 if let Some(glyphs) = fallbacks
                     .fonts
                     .iter()
-                    .find_map(|face| self.shape_covered(repair.bytes.clone(), face, 1.0, fontdb))
+                    .find_map(|(_, face)| self.shape_covered(repair.bytes.clone(), face, fontdb))
                 {
                     repair.glyphs = glyphs;
                 }
@@ -1562,7 +1634,7 @@ impl<'a> ShapingRun<'a> {
         let mut remaining = repairs.as_mut_slice();
         while !remaining.is_empty() {
             let (group, rest) =
-                remaining.split_at_mut(ClusterRepair::run_length(remaining, self.text));
+                remaining.split_at_mut(ClusterRepair::run_length(remaining, self.text, fontdb));
             remaining = rest;
             let start = group[0].original.start;
             let end = group.last().unwrap().original.end;
@@ -1593,7 +1665,7 @@ impl<'a> ShapingRun<'a> {
         let last = group.last()?;
         let bytes = first.bytes.start.min(last.bytes.start)..first.bytes.end.max(last.bytes.end);
         let face = &first.glyphs[0];
-        let mut glyphs = self.shape_covered(bytes, &face.font, face.scale, fontdb)?;
+        let mut glyphs = self.shape_covered(bytes, &face.font, fontdb)?;
 
         // Rustybuzz emits monotone clusters in visual order, including for RTL.
         // A ligature belongs to its logical start; a split primary cluster keeps
@@ -1612,7 +1684,7 @@ impl<'a> ShapingRun<'a> {
     fn repair(
         &self,
         bytes: Range<usize>,
-        primary: ID,
+        (selection, primary): (&FontInstance, &ResolvedFont),
         options: &crate::Options,
         fontdb: &mut Arc<Database>,
         fallbacks: &mut RunFallbacks<'a>,
@@ -1621,45 +1693,106 @@ impl<'a> ShapingRun<'a> {
             return None;
         }
         let cluster = self.text.get(bytes.clone())?;
-        let candidates = fallbacks.candidates.entry(cluster).or_default();
-        for index in 0.. {
-            let (id, scale) = candidates.get_or_select(index, primary, fontdb, |used, db| {
-                if let Some(select) = &options.text_fallback.select {
-                    select(&self.span.font, cluster, self.language, !self.ltr, used, db)
-                } else {
-                    (options.font_resolver.select_fallback)(cluster.chars().next()?, used, db)
-                        .map(|id| (id, 1.0))
-                }
-            })?;
-            let size = self.span.font_size.get() * scale;
-            if !size.is_finite() || size <= 0.0 {
-                continue;
-            }
-            let font = match fallbacks.fonts.iter().find(|font| font.id == id) {
-                Some(font) => font,
-                None => {
-                    let Some(font) = fontdb.load_font(id) else {
-                        continue;
-                    };
-                    fallbacks.fonts.push(Arc::new(font));
-                    fallbacks.fonts.last().unwrap()
-                }
-            };
-            if let Some(glyphs) = self.shape_covered(bytes.clone(), font, scale, fontdb) {
+        let candidates =
+            fallbacks
+                .candidates
+                .entry(cluster)
+                .or_insert_with(|| FallbackCandidates {
+                    tried: vec![selection.clone()],
+                    ..FallbackCandidates::default()
+                });
+        // Cache choices for identical cluster text, while always shaping in context.
+        for font in &candidates.fonts {
+            if let Some(glyphs) = self.shape_covered(bytes.clone(), font, fontdb) {
                 return Some(glyphs);
             }
         }
+
+        while candidates.exhausted_at != Some(fontdb.len()) {
+            let choice = self.select_fallback(cluster, &candidates.tried, options, fontdb);
+            let Some(choice) = choice else {
+                candidates.exhausted_at = Some(fontdb.len());
+                break;
+            };
+            candidates.tried.push(choice);
+            let choice = candidates.tried.last()?;
+            let font = match fallbacks
+                .fonts
+                .iter()
+                .find(|(old, _)| same_selection(old, choice))
+            {
+                Some((_, font)) => Arc::clone(font),
+                None => {
+                    let Some(font) = fontdb.load_font(choice, self.span) else {
+                        continue;
+                    };
+                    let font = Arc::new(font);
+                    fallbacks.fonts.push((choice.clone(), Arc::clone(&font)));
+                    font
+                }
+            };
+            // Different native selections can resolve to the same effective font after CSS.
+            if font.same_instance(primary, fontdb)
+                || candidates
+                    .fonts
+                    .iter()
+                    .any(|old| font.same_instance(old, fontdb))
+            {
+                continue;
+            }
+            let glyphs = self.shape_covered(bytes.clone(), &font, fontdb);
+            candidates.fonts.push(font);
+            if glyphs.is_some() {
+                return glyphs;
+            }
+        }
         None
+    }
+
+    fn select_fallback(
+        &self,
+        cluster: &str,
+        tried: &[FontInstance],
+        options: &crate::Options,
+        fontdb: &mut Arc<Database>,
+    ) -> Option<FontInstance> {
+        if let Some(select) = &options.text_fallback.fallback_instance {
+            return select(
+                &self.span.font,
+                cluster,
+                self.language,
+                !self.ltr,
+                tried,
+                fontdb,
+            )
+            .filter(|next| !tried.iter().any(|old| same_selection(old, next)));
+        }
+
+        let used: Vec<_> = tried.iter().map(|face| face.0).collect();
+        let (id, scale) = if let Some(select) = &options.text_fallback.select {
+            select(
+                &self.span.font,
+                cluster,
+                self.language,
+                !self.ltr,
+                &used,
+                fontdb,
+            )?
+        } else {
+            let id =
+                (options.font_resolver.select_fallback)(cluster.chars().next()?, &used, fontdb)?;
+            (id, 1.0)
+        };
+        (!used.contains(&id)).then(|| (id, scale, Vec::new()))
     }
 
     fn shape_covered(
         &self,
         bytes: Range<usize>,
         font: &Arc<ResolvedFont>,
-        scale: f32,
         fontdb: &Database,
     ) -> Option<Vec<Glyph>> {
-        self.shape(bytes, font, scale, fontdb)
+        self.shape(bytes, font, fontdb)
             .filter(|glyphs| !glyphs.is_empty() && !glyphs.iter().any(Glyph::is_missing))
     }
 
@@ -1667,18 +1800,12 @@ impl<'a> ShapingRun<'a> {
         &self,
         bytes: Range<usize>,
         font: &Arc<ResolvedFont>,
-        scale: f32,
         fontdb: &Database,
     ) -> Option<Vec<Glyph>> {
         let text = self.text.get(bytes.clone())?;
         fontdb.with_face_data(font.id, |font_data, face_index| {
             let mut rb_font = rustybuzz::Face::from_slice(font_data, face_index)?;
-            super::apply_variations(
-                rb_font.as_mut(),
-                &self.span.font.variations,
-                self.span.font_size.get() * scale,
-                self.span.font_optical_sizing,
-            );
+            super::apply_variations(rb_font.as_mut(), &font.variations);
 
             let mut buffer = rustybuzz::UnicodeBuffer::new();
             buffer.push_str(text);
@@ -1723,7 +1850,6 @@ impl<'a> ShapingRun<'a> {
                         dy: pos.y_offset,
                         width: pos.x_advance,
                         font: Arc::clone(font),
-                        scale,
                     }
                 })
                 .collect();
@@ -1827,7 +1953,6 @@ pub(crate) struct Glyph {
     ///
     /// Each glyph can have it's own source font.
     pub(crate) font: Arc<ResolvedFont>,
-    scale: f32,
 }
 
 impl Glyph {
@@ -1836,9 +1961,11 @@ impl Glyph {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 pub(crate) struct ResolvedFont {
     pub(crate) id: ID,
+    size: NonZeroPositiveF32,
+    variations: Vec<FontVariation>,
 
     units_per_em: NonZeroU16,
 
@@ -1881,57 +2008,64 @@ pub(crate) fn is_word_separator_characters(c: char) -> bool {
 }
 
 impl ResolvedFont {
-    #[inline]
-    pub(crate) fn scale(&self, font_size: f32) -> f32 {
-        font_size / self.units_per_em.get() as f32
+    fn same_instance(&self, other: &Self, db: &Database) -> bool {
+        std::ptr::eq(self, other)
+            || (self.size.get() == other.size.get()
+                && self.variations == other.variations
+                && same_physical_face(db, self.id, other.id))
     }
 
     #[inline]
-    pub(crate) fn ascent(&self, font_size: f32) -> f32 {
-        self.ascent as f32 * self.scale(font_size)
+    fn scale(&self) -> f32 {
+        self.size.get() / self.units_per_em.get() as f32
     }
 
     #[inline]
-    pub(crate) fn descent(&self, font_size: f32) -> f32 {
-        self.descent as f32 * self.scale(font_size)
+    fn ascent(&self) -> f32 {
+        self.ascent as f32 * self.scale()
     }
 
     #[inline]
-    pub(crate) fn height(&self, font_size: f32) -> f32 {
-        self.ascent(font_size) - self.descent(font_size)
+    fn descent(&self) -> f32 {
+        self.descent as f32 * self.scale()
     }
 
     #[inline]
-    pub(crate) fn x_height(&self, font_size: f32) -> f32 {
-        self.x_height.get() as f32 * self.scale(font_size)
+    fn height(&self) -> f32 {
+        self.ascent() - self.descent()
     }
 
     #[inline]
-    pub(crate) fn underline_position(&self, font_size: f32) -> f32 {
-        self.underline_position as f32 * self.scale(font_size)
+    fn x_height(&self) -> f32 {
+        self.x_height.get() as f32 * self.scale()
     }
 
     #[inline]
-    fn underline_thickness(&self, font_size: f32) -> f32 {
-        self.underline_thickness.get() as f32 * self.scale(font_size)
+    fn underline_position(&self) -> f32 {
+        self.underline_position as f32 * self.scale()
     }
 
     #[inline]
-    pub(crate) fn line_through_position(&self, font_size: f32) -> f32 {
-        self.line_through_position as f32 * self.scale(font_size)
+    fn underline_thickness(&self) -> f32 {
+        self.underline_thickness.get() as f32 * self.scale()
     }
 
     #[inline]
-    fn subscript_offset(&self, font_size: f32) -> f32 {
-        self.subscript_offset as f32 * self.scale(font_size)
+    fn line_through_position(&self) -> f32 {
+        self.line_through_position as f32 * self.scale()
     }
 
     #[inline]
-    fn superscript_offset(&self, font_size: f32) -> f32 {
-        self.superscript_offset as f32 * self.scale(font_size)
+    fn subscript_offset(&self) -> f32 {
+        self.subscript_offset as f32 * self.scale()
     }
 
-    fn dominant_baseline_shift(&self, baseline: DominantBaseline, font_size: f32) -> f32 {
+    #[inline]
+    fn superscript_offset(&self) -> f32 {
+        self.superscript_offset as f32 * self.scale()
+    }
+
+    fn dominant_baseline_shift(&self, baseline: DominantBaseline) -> f32 {
         let alignment = match baseline {
             DominantBaseline::Auto => AlignmentBaseline::Auto,
             DominantBaseline::UseScript => AlignmentBaseline::Auto, // unsupported
@@ -1947,7 +2081,7 @@ impl ResolvedFont {
             DominantBaseline::TextBeforeEdge => AlignmentBaseline::TextBeforeEdge,
         };
 
-        self.alignment_baseline_shift(alignment, font_size)
+        self.alignment_baseline_shift(alignment)
     }
 
     // The `alignment-baseline` property is a mess.
@@ -1979,27 +2113,41 @@ impl ResolvedFont {
     //
     // But that's not all! SVG 2 and CSS Inline Layout 3 did a baseline handling overhaul,
     // and it's far more complex now. Not sure if anyone actually supports it.
-    fn alignment_baseline_shift(&self, alignment: AlignmentBaseline, font_size: f32) -> f32 {
+    fn alignment_baseline_shift(&self, alignment: AlignmentBaseline) -> f32 {
         match alignment {
             AlignmentBaseline::Auto => 0.0,
             AlignmentBaseline::Baseline => 0.0,
-            AlignmentBaseline::BeforeEdge | AlignmentBaseline::TextBeforeEdge => {
-                self.ascent(font_size)
-            }
-            AlignmentBaseline::Middle => self.x_height(font_size) * 0.5,
-            AlignmentBaseline::Central => self.ascent(font_size) - self.height(font_size) * 0.5,
-            AlignmentBaseline::AfterEdge | AlignmentBaseline::TextAfterEdge => {
-                self.descent(font_size)
-            }
-            AlignmentBaseline::Ideographic => self.descent(font_size),
+            AlignmentBaseline::BeforeEdge | AlignmentBaseline::TextBeforeEdge => self.ascent(),
+            AlignmentBaseline::Middle => self.x_height() * 0.5,
+            AlignmentBaseline::Central => self.ascent() - self.height() * 0.5,
+            AlignmentBaseline::AfterEdge | AlignmentBaseline::TextAfterEdge => self.descent(),
+            AlignmentBaseline::Ideographic => self.descent(),
             AlignmentBaseline::Alphabetic => 0.0,
-            AlignmentBaseline::Hanging => self.ascent(font_size) * 0.8,
-            AlignmentBaseline::Mathematical => self.ascent(font_size) * 0.5,
+            AlignmentBaseline::Hanging => self.ascent() * 0.8,
+            AlignmentBaseline::Mathematical => self.ascent() * 0.5,
         }
     }
 }
 
-pub(crate) type FontsCache = HashMap<Font, Arc<ResolvedFont>>;
+type FontsCache<'a> = HashMap<&'a Font, PrimaryFont>;
+
+struct PrimaryFont {
+    selection: FontInstance,
+    sizes: HashMap<(u32, FontOpticalSizing), Arc<ResolvedFont>>,
+}
+
+fn span_font_size_key(span: &TextSpan) -> (u32, FontOpticalSizing) {
+    (span.font_size.get().to_bits(), span.font_optical_sizing)
+}
+
+fn primary_font<'a>(
+    cache: &'a FontsCache,
+    span: &TextSpan,
+) -> Option<(&'a FontInstance, &'a Arc<ResolvedFont>)> {
+    let primary = cache.get(&span.font)?;
+    let font = primary.sizes.get(&span_font_size_key(span))?;
+    Some((&primary.selection, font))
+}
 
 /// A read-only text index in bytes.
 ///
