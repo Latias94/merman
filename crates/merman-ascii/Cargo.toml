@@ -94,6 +94,7 @@ default = []
 ryu-js = { workspace = true, optional = true }
 dugong = { workspace = true, optional = true }
 merman-model = { workspace = true, features = ["terminal-text", "html-entities"] }
+merman-theme-contract.workspace = true
 serde.workspace = true
 serde_json = { workspace = true, features = ["raw_value"] }
 thiserror.workspace = true

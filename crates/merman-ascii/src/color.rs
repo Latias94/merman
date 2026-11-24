@@ -146,6 +146,58 @@ impl Default for AsciiColorTheme {
 }
 
 impl AsciiColorTheme {
+    /// Projects a native theme's semantic colors into the terminal palette.
+    pub fn from_resolved_v2(theme: &merman_theme_contract::v2::ResolvedThemeV2) -> Self {
+        use merman_theme_contract::v2::{Appearance, Color, Paint};
+
+        fn solid(paint: &Paint, under: Color) -> Color {
+            match paint {
+                Paint::Solid(color) => color.composite(under, 1.0),
+                Paint::LinearGradient(gradient) => gradient
+                    .stops
+                    .first()
+                    .map_or(under, |stop| stop.color.composite(under, stop.opacity)),
+            }
+        }
+
+        let roles = theme.roles();
+        let backdrop = match theme.appearance() {
+            Appearance::Light => Color::rgb(255, 255, 255),
+            Appearance::Dark => Color::rgb(0, 0, 0),
+        };
+        let canvas = solid(&roles.canvas, backdrop);
+        let rgb = |color: Color| {
+            let [r, g, b, _] = color.composite(canvas, 1.0).channels();
+            AsciiRgb::new(r, g, b)
+        };
+        let text = rgb(roles.text_primary);
+        let title = rgb(roles.text_title);
+        let connector = rgb(solid(&roles.stroke_connector, canvas));
+        let guide = rgb(solid(&roles.stroke_guide, canvas));
+        let border = rgb(solid(&roles.stroke_border, canvas));
+
+        Self {
+            surface: rgb(solid(&roles.surface_node, canvas)),
+            text,
+            muted_text: rgb(roles.text_muted),
+            title,
+            section: title,
+            diagnostic: rgb(roles.status_warn),
+            status_emphasis: rgb(roles.status_info),
+            node_border: border,
+            group_border: guide,
+            edge_line: connector,
+            edge_arrow: connector,
+            edge_label: text,
+            junction: connector,
+            sequence_lifeline: guide,
+            sequence_activation: rgb(solid(&roles.surface_emphasis, canvas)),
+            sequence_frame: guide,
+            chart_axis: connector,
+            chart_series: std::array::from_fn(|index| rgb(theme.data().ink(index))),
+        }
+    }
+
     pub const fn default_light() -> Self {
         Self {
             surface: AsciiRgb::from_hex24(0xf4f4f5),
@@ -333,6 +385,29 @@ const fn mix_channel(foreground: u8, background: u8, fg: u16, bg: u16) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_theme_projects_connectors_text_and_chart_inks() {
+        use merman_theme_contract::v2::{BuiltinPreset, ThemeCompiler};
+
+        let theme = ThemeCompiler::new()
+            .compile_preset(BuiltinPreset::Cyberpunk, None)
+            .unwrap();
+        let terminal = AsciiColorTheme::from_resolved_v2(&theme);
+        assert_eq!(
+            terminal.color_for(AsciiColorRole::Text),
+            AsciiRgb::from_hex24(0xeaf4f0)
+        );
+        assert_eq!(
+            terminal.color_for(AsciiColorRole::EdgeLine),
+            AsciiRgb::from_hex24(0x29f3ec)
+        );
+        let [r, g, b, _] = theme.data().ink(1).channels();
+        assert_eq!(
+            terminal.color_for(AsciiColorRole::ChartSeries(1)),
+            AsciiRgb::new(r, g, b)
+        );
+    }
 
     #[test]
     fn terminal_palette_derives_stable_roles_from_two_colors() {
