@@ -227,6 +227,7 @@ fn resolve(
 
 fn loop_geometry(
     rect: Rect,
+    node: &NodeSpec,
     l: &super::Loop,
     nth: usize,
     spec: &EdgeSpec,
@@ -239,15 +240,32 @@ fn loop_geometry(
     } else {
         rect.x
     };
-    let center = rect.center();
+    let mut center = rect.center();
+    let span = if node.anchor_y.is_some() {
+        let old = Port {
+            at: Point {
+                x: face,
+                y: center.y,
+            },
+            side,
+        };
+        center.y = resolve(old, PortSideHint::Auto, node, rect, dir)?.at.y;
+        let extent = (center.y - rect.y).min(rect.y + rect.height - center.y);
+        node.perpendicular_port_span
+            .or(node.port_span)
+            .unwrap_or(rect.height)
+            .min(2.0 * extent.max(0.0))
+    } else {
+        rect.height
+    };
     let f = 0.5 - 0.25 / (nth + 1) as f64;
     let a = Point {
         x: face,
-        y: finite(center.y - rect.height * f)?,
+        y: finite(center.y - span * f)?,
     };
     let b = Point {
         x: face,
-        y: finite(center.y + rect.height * f)?,
+        y: finite(center.y + span * f)?,
     };
     let label = spec.label.map(|s| canonical_size(dir, s));
     let width = label.unwrap_or_default().width;
@@ -534,9 +552,17 @@ fn ports_for(
 ) -> LayoutResult<[Port; 2]> {
     let old = old_ports(edge)?;
     let [a, b] = endpoints(index, c);
+    let port = |old, hint, node| {
+        // Automatic loop ports are already placed around the anchor and must stay distinct.
+        if index >= c.links.len() && hint == PortSideHint::Auto {
+            Ok(old)
+        } else {
+            resolve(old, hint, &c.nodes[node], nodes[node], dir)
+        }
+    };
     Ok([
-        resolve(old[0], spec.source_port, &c.nodes[a], nodes[a], dir)?,
-        resolve(old[1], spec.target_port, &c.nodes[b], nodes[b], dir)?,
+        port(old[0], spec.source_port, a)?,
+        port(old[1], spec.target_port, b)?,
     ])
 }
 
@@ -598,7 +624,15 @@ pub(super) fn finish(
             let n = l.node as usize;
             let count = &mut counts[n][usize::from(l.right)];
             let spec = &graph.edges[l.edge as usize];
-            let edge = loop_geometry(drawing.nodes[n], l, *count, spec, graph.direction, options)?;
+            let edge = loop_geometry(
+                drawing.nodes[n],
+                &c.nodes[n],
+                l,
+                *count,
+                spec,
+                graph.direction,
+                options,
+            )?;
             *count += 1;
             drawing.edges.push((l.edge, edge));
             has_end_labels |= spec.start_label.is_some() || spec.end_label.is_some();

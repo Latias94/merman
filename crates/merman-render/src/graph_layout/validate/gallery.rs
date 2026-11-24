@@ -1244,9 +1244,20 @@ fn replay_aesthetic_witnesses() {
                     "{} path commands",
                     metrics.max_commands_per_edge
                 );
+                let sink: Vec<_> = metrics
+                    .marker_faces
+                    .iter()
+                    .filter(|face| face.body == "Sink")
+                    .collect();
+                assert_eq!(sink.len(), 3);
+                assert_eq!(sink.iter().map(|face| face.marker_count).sum::<usize>(), 16);
+                assert!(sink.iter().all(|face| face.pitch_over_width > 1.0));
+                assert!(sink.iter().any(|face| face.face == "left"));
+                assert!(sink.iter().any(|face| face.face == "right"));
             }
             if name == "cycle" {
                 assert_eq!(metrics.micro_kink_count, 0, "{name}: micro kinks");
+                check_cycle_feedback(&drawing, &scene, view_box(doc.root_element()));
             }
             if name.starts_with("release") {
                 let across = |point| drawing.axis().coordinate(point);
@@ -1272,6 +1283,54 @@ fn replay_aesthetic_witnesses() {
         }
     });
     compound::aesthetic_witnesses();
+}
+
+#[cfg(feature = "diagram-agentflow")]
+fn check_cycle_feedback(drawing: &Drawing, scene: &Scene<'_>, viewport: Rect) {
+    let entry = scene.bodies[drawing.node("n0")].bounds.center().y;
+    for (index, body) in scene.bodies.iter().enumerate() {
+        assert!(index == drawing.node("n0") || entry < body.bounds.center().y);
+    }
+    let mut length = 0.0;
+    let mut exterior_routes = 0;
+    for (index, edge) in scene.edges.iter().enumerate() {
+        let shaft = Shaft::read(edge).unwrap();
+        length += shaft.metrics.length;
+        let start = scene.bodies[edge.start.body].bounds.y1;
+        let end = scene.bodies[edge.end.body].bounds.y0;
+        let mut exterior = false;
+        for body in &scene.bodies {
+            let y = body.bounds.center().y;
+            if !((end..start).contains(&y)) || body.bounds.y0 <= end || body.bounds.y1 >= start {
+                continue;
+            }
+            let band = scene
+                .bodies
+                .iter()
+                .filter(|other| other.bounds.y0 < y && y < other.bounds.y1)
+                .fold(body.bounds, |bounds, other| bounds.union(other.bounds));
+            for line in &shaft.lines {
+                let (a, b) = (line.p0, line.p1);
+                if a.y.min(b.y) <= y && y < a.y.max(b.y) {
+                    let x = a.x + (b.x - a.x) * ((y - a.y) / (b.y - a.y));
+                    assert!(
+                        x <= band.x0 + FLATNESS || x >= band.x1 - FLATNESS,
+                        "feedback {} enters the interior of a crossed rank",
+                        drawing.layout.edges[index].id,
+                    );
+                    exterior = true;
+                }
+            }
+        }
+        exterior_routes += usize::from(exterior);
+    }
+    assert!(exterior_routes > 0);
+    eprintln!(
+        "cycle: {:.2} × {:.2} px, {:.2} px of painted shafts, {exterior_routes} exterior feedback routes",
+        viewport.width(),
+        viewport.height(),
+        length,
+    );
 }
 
 #[test]

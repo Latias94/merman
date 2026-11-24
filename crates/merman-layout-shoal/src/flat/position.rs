@@ -1,7 +1,8 @@
 //! Port spreading and four-way Brandes-Kopf coordinate assignment on the ordered ranks.
 
 use super::{Component, Csr, Expanded, Kind, acyclic::Orientation, to_canonical_port, validate};
-use crate::work::{LayoutResult, Work, filled, reserved};
+use crate::scratch::{capacity_bytes, clear_reserve};
+use crate::work::{LayoutResult, Work, filled};
 use crate::{
     Direction, Graph, LayoutError, NodeSpec, Options, PortSideHint, Side, Spacing, WorkError,
 };
@@ -21,6 +22,74 @@ pub(super) fn extents(g: &Expanded, c: &Component, opts: &Options, v: u32) -> (f
     }
 }
 
+/// Use one straight column for each exterior lane that the order pass reserved.
+pub(super) fn straighten_feedback(
+    g: &mut Expanded,
+    c: &Component,
+    options: &Options,
+    x: &mut [f64],
+    work: &mut Work<'_>,
+) -> LayoutResult<()> {
+    if g.feedback_lanes.is_empty() {
+        return Ok(());
+    }
+    work.charge(x.len())?;
+    let mut reserved = filled(x.len(), false)?;
+    for lane in &g.feedback_lanes {
+        let chain = &g.chains[lane.edge];
+        work.visit(chain.len())?;
+        for &v in &chain[1..chain.len() - 1] {
+            reserved[v as usize] = true;
+        }
+    }
+
+    // The order pass reserves outer lanes first. Place the innermost lane first so each
+    // outer lane can read its neighbor's final position wherever their ranks overlap.
+    let pitch = options.spacing.edge.max(12.0);
+    let mut outside = filled(g.layers.len(), [None; 2])?;
+    for lane in g.feedback_lanes.iter().rev() {
+        let chain = &g.chains[lane.edge];
+        let bends = &chain[1..chain.len() - 1];
+        let side = usize::from(lane.right);
+        let sign = if lane.right { 1.0 } else { -1.0 };
+        let mut axis = f64::NEG_INFINITY;
+        for &v in bends {
+            let rank = g.rank[v as usize] as usize;
+            let row = &g.layers[rank];
+            let own = if lane.right {
+                extents(g, c, options, v).0
+            } else {
+                extents(g, c, options, v).1
+            };
+            work.visit(row.len() + 1)?;
+            let next = |v: u32| !reserved[v as usize];
+            let interior = if lane.right {
+                row.iter().rev().copied().find(|&v| next(v))
+            } else {
+                row.iter().copied().find(|&v| next(v))
+            };
+            if let Some(other) = interior {
+                let extent = extents(g, c, options, other);
+                let edge = if lane.right { extent.1 } else { extent.0 };
+                axis = axis.max(sign * x[other as usize] + edge + own);
+            }
+            if let Some((neighbor, reach)) = outside[rank][side] {
+                axis = axis.max(neighbor + pitch.max(reach + own));
+            }
+        }
+        let center = finite(axis)?;
+        for &v in bends {
+            work.visit(1)?;
+            let rank = g.rank[v as usize] as usize;
+            let extent = extents(g, c, options, v);
+            outside[rank][side] = Some((center, if lane.right { extent.1 } else { extent.0 }));
+            x[v as usize] = sign * center;
+            g.keep[v as usize] = true;
+        }
+    }
+    Ok(())
+}
+
 fn finite(x: f64) -> LayoutResult<f64> {
     if x.is_finite() {
         Ok(x)
@@ -38,13 +107,15 @@ fn by_peer(
     ends: &Csr,
     peers: &Csr,
     vertex: &[u32],
+    Csr { start, entries }: &mut Csr,
     work: &mut Work<'_>,
-) -> LayoutResult<Csr> {
+) -> LayoutResult<()> {
     work.charge(ends.start.len())?;
     work.charge(vertex.len())?;
-    let mut start = reserved(ends.start.len())?;
+    clear_reserve(start, ends.start.len())?;
     start.extend_from_slice(&ends.start);
-    let mut entries = filled(vertex.len(), 0)?;
+    clear_reserve(entries, vertex.len())?;
+    entries.resize(vertex.len(), 0);
     for &peer in g.layers.iter().flatten() {
         work.visit(1)?;
         for &e in peers.at(peer) {
@@ -56,10 +127,10 @@ fn by_peer(
     }
     start.copy_within(..g.rank.len(), 1);
     start[0] = 0;
-    Ok(Csr { start, entries })
+    Ok(())
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum End {
     Held,
     Leaves,
@@ -95,9 +166,12 @@ fn held_offset(
     }
 }
 
+#[derive(Debug, Default)]
 struct Ports {
     source: Vec<f64>,
     target: Vec<f64>,
+    starts: Vec<End>,
+    ends: Vec<End>,
 }
 
 fn spread_face(
@@ -170,21 +244,28 @@ fn spread_face(
 
 fn spread(
     g: &Expanded,
-    c: &Component,
-    o: &Orientation,
+    (c, o): (&Component, &Orientation),
     graph: &Graph,
     spacing: &Spacing,
     lists: &Neighbours,
+    Ports {
+        source,
+        target,
+        starts,
+        ends,
+    }: &mut Ports,
     work: &mut Work<'_>,
-) -> LayoutResult<Ports> {
+) -> LayoutResult<()> {
     let m = g.from.len();
     work.charge(m.checked_mul(4).ok_or(WorkError::ArithmeticOverflow)?)?;
-    let mut ports = Ports {
-        source: filled(m, 0.0)?,
-        target: filled(m, 0.0)?,
-    };
-    let mut starts = filled(m, End::Held)?;
-    let mut ends = filled(m, End::Held)?;
+    for offsets in [&mut *source, &mut *target] {
+        clear_reserve(offsets, m)?;
+        offsets.resize(m, 0.0);
+    }
+    for roles in [&mut *starts, &mut *ends] {
+        clear_reserve(roles, m)?;
+        roles.resize(m, End::Held);
+    }
     let mut first = 0;
     for (i, chain) in g.chains.iter().enumerate() {
         work.visit(1)?;
@@ -215,7 +296,7 @@ fn spread(
                 tail,
                 tail_role,
                 &mut starts[first],
-                &mut ports.source[first],
+                &mut source[first],
             ),
             (
                 g.to[last],
@@ -223,7 +304,7 @@ fn spread(
                 head,
                 head_role,
                 &mut ends[last],
-                &mut ports.target[last],
+                &mut target[last],
             ),
         ] {
             let v = v as usize;
@@ -243,26 +324,13 @@ fn spread(
             .port_span
             .unwrap_or((width - 2.0 * spacing.corner_clearance).max(0.0))
             .min(width);
-        spread_face(
-            lists.succ.at(v as u32),
-            &starts,
-            &mut ports.source,
-            span,
-            spacing,
-            work,
-        )?;
-        spread_face(
-            lists.pred.at(v as u32),
-            &ends,
-            &mut ports.target,
-            span,
-            spacing,
-            work,
-        )?;
+        spread_face(lists.succ.at(v as u32), starts, source, span, spacing, work)?;
+        spread_face(lists.pred.at(v as u32), ends, target, span, spacing, work)?;
     }
-    Ok(ports)
+    Ok(())
 }
 
+#[derive(Debug, Default)]
 struct Neighbours {
     pred: Csr,
     succ: Csr,
@@ -302,6 +370,7 @@ fn guard_inner(
     row: &[u32],
     anchors: &mut [u32],
     blocked: &mut [bool],
+    [left, right]: &mut [Vec<u32>; 2],
     work: &mut Work<'_>,
 ) -> LayoutResult<()> {
     let slots = |e: u32| {
@@ -320,8 +389,10 @@ fn guard_inner(
         .checked_add(1)
         .ok_or(WorkError::ArithmeticOverflow)?;
     work.charge(len.checked_mul(2).ok_or(WorkError::ArithmeticOverflow)?)?;
-    let mut left = filled(len, 0u32)?;
-    let mut right = filled(len, 0u32)?;
+    for tree in [&mut *left, &mut *right] {
+        clear_reserve(tree, len)?;
+        tree.resize(len, 0);
+    }
     for &e in anchors.iter() {
         work.visit(4 * (len.ilog2() as usize + 1))?;
         let (north, south) = slots(e);
@@ -329,20 +400,36 @@ fn guard_inner(
         let rev = row.len() - 1 - at;
         let key = north + 1;
         let reverse_key = u32::MAX - north;
-        if prefix(&left, at) > key || prefix(&right, rev) > reverse_key {
+        if prefix(left, at) > key || prefix(right, rev) > reverse_key {
             blocked[e as usize] = true;
         } else {
-            insert(&mut left, at, key);
-            insert(&mut right, rev, reverse_key);
+            insert(left, at, key);
+            insert(right, rev, reverse_key);
         }
     }
     Ok(())
 }
 
-fn conflicts(g: &Expanded, pos: &[u32], work: &mut Work<'_>) -> LayoutResult<Vec<bool>> {
+#[derive(Debug, Default)]
+struct Conflicts {
+    blocked: Vec<bool>,
+    anchors: Vec<u32>,
+    trees: [Vec<u32>; 2],
+}
+
+fn find_conflicts(
+    g: &Expanded,
+    pos: &[u32],
+    Conflicts {
+        blocked,
+        anchors,
+        trees,
+    }: &mut Conflicts,
+    work: &mut Work<'_>,
+) -> LayoutResult<()> {
     work.charge(g.from.len())?;
-    let mut blocked = filled(g.from.len(), false)?;
-    let mut anchors = Vec::new();
+    clear_reserve(blocked, g.from.len())?;
+    blocked.resize(g.from.len(), false);
     for row in g.layers.iter().skip(1) {
         anchors.clear();
         let mut crossed = false;
@@ -357,7 +444,7 @@ fn conflicts(g: &Expanded, pos: &[u32], work: &mut Work<'_>) -> LayoutResult<Vec
                     let up = pos[g.from[e as usize] as usize];
                     if !reverse {
                         crossed |= boundary.is_some_and(|before| before > up);
-                        crate::work::push(&mut anchors, e)?;
+                        crate::work::push(anchors, e)?;
                     }
                     boundary = Some(
                         boundary.map_or(up, |old| if reverse { old.min(up) } else { old.max(up) }),
@@ -374,10 +461,17 @@ fn conflicts(g: &Expanded, pos: &[u32], work: &mut Work<'_>) -> LayoutResult<Vec
             }
         }
         if crossed {
-            guard_inner(g, pos, row, &mut anchors, &mut blocked, work)?;
+            guard_inner(g, pos, row, anchors, blocked, trees, work)?;
         }
     }
-    Ok(blocked)
+    Ok(())
+}
+
+#[cfg(test)]
+fn conflicts(g: &Expanded, pos: &[u32], work: &mut Work<'_>) -> LayoutResult<Vec<bool>> {
+    let mut scratch = Conflicts::default();
+    find_conflicts(g, pos, &mut scratch, work)?;
+    Ok(scratch.blocked)
 }
 
 struct Sweep<'a> {
@@ -389,6 +483,7 @@ struct Sweep<'a> {
     peer_offset: &'a [f64],
 }
 
+#[derive(Debug, Default)]
 struct Blocks {
     root: Vec<u32>,
     shift: Vec<f64>,
@@ -400,13 +495,15 @@ impl Sweep<'_> {
         layers: &[Vec<u32>],
         top_down: bool,
         right: bool,
+        Blocks { root, shift }: &mut Blocks,
         work: &mut Work<'_>,
-    ) -> LayoutResult<Blocks> {
+    ) -> LayoutResult<()> {
         let n = self.pos.len();
         work.charge(n.checked_mul(2).ok_or(WorkError::ArithmeticOverflow)?)?;
-        let mut root = reserved(n)?;
+        clear_reserve(root, n)?;
         root.extend(0..n as u32);
-        let mut shift = filled(n, 0.0)?;
+        clear_reserve(shift, n)?;
+        shift.resize(n, 0.0);
         for i in 0..layers.len() {
             let row = &layers[if top_down { i } else { layers.len() - 1 - i }];
             let mut previous = None;
@@ -437,28 +534,46 @@ impl Sweep<'_> {
                 }
             }
         }
-        Ok(Blocks { root, shift })
+        Ok(())
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct Constraint {
     from: u32,
     to: u32,
     gap: f64,
 }
 
-fn compact(
+#[derive(Debug, Default)]
+struct Compaction {
+    edges: Vec<Constraint>,
+    degree: Vec<u32>,
+    outgoing: Csr,
+    topo: Vec<u32>,
+    xs: Vec<f64>,
+}
+
+fn compact_into(
     g: &Expanded,
     ext: &[(f64, f64)],
     blocks: &Blocks,
     right: bool,
+    Compaction {
+        edges,
+        degree,
+        outgoing,
+        topo,
+        xs,
+    }: &mut Compaction,
+    result: &mut Vec<f64>,
     work: &mut Work<'_>,
-) -> LayoutResult<Vec<f64>> {
+) -> LayoutResult<()> {
     let n = g.rank.len();
     work.charge(n.checked_mul(4).ok_or(WorkError::ArithmeticOverflow)?)?;
-    let mut edges = reserved(n)?;
-    let mut degree = filled(n, 0u32)?;
+    clear_reserve(edges, n)?;
+    clear_reserve(degree, n)?;
+    degree.resize(n, 0);
     let sign = if right { -1.0 } else { 1.0 };
     for row in &g.layers {
         for pair in row.windows(2) {
@@ -475,8 +590,8 @@ fn compact(
             degree[to as usize] += 1;
         }
     }
-    let outgoing = Csr::new(n, edges.iter().map(|e| e.from), work)?;
-    let mut topo = reserved(n)?;
+    outgoing.rebuild(n, edges.iter().map(|e| e.from), work)?;
+    clear_reserve(topo, n)?;
     let mut roots = 0;
     for (i, &root) in blocks.root.iter().enumerate() {
         work.visit(1)?;
@@ -487,7 +602,8 @@ fn compact(
             }
         }
     }
-    let mut xs = filled(n, 0.0_f64)?;
+    clear_reserve(xs, n)?;
+    xs.resize(n, 0.0);
     let mut next = 0;
     while next < topo.len() {
         let v = topo[next];
@@ -521,11 +637,32 @@ fn compact(
             xs[v as usize] = xs[v as usize].max(limit);
         }
     }
-    let mut result = reserved(n)?;
+    clear_reserve(result, n)?;
     for (v, &root) in blocks.root.iter().enumerate() {
         work.visit(1)?;
         result.push(finite(sign * xs[root as usize] + blocks.shift[v])?);
     }
+    Ok(())
+}
+
+#[cfg(test)]
+fn compact(
+    g: &Expanded,
+    ext: &[(f64, f64)],
+    blocks: &Blocks,
+    right: bool,
+    work: &mut Work<'_>,
+) -> LayoutResult<Vec<f64>> {
+    let mut result = Vec::new();
+    compact_into(
+        g,
+        ext,
+        blocks,
+        right,
+        &mut Compaction::default(),
+        &mut result,
+        work,
+    )?;
     Ok(result)
 }
 
@@ -534,6 +671,45 @@ fn middle([a, b, c, d]: [f64; 4]) -> f64 {
     let (c, d) = (c.min(d), c.max(d));
     let (b, c) = (b.min(d), a.max(c));
     b.min(c).midpoint(b.max(c))
+}
+
+#[derive(Debug, Default)]
+pub(super) struct PositionScratch {
+    pos: Vec<u32>,
+    ext: Vec<(f64, f64)>,
+    lists: Neighbours,
+    ports: Ports,
+    conflicts: Conflicts,
+    blocks: Blocks,
+    compaction: Compaction,
+    alternatives: [Vec<f64>; 3],
+}
+
+impl PositionScratch {
+    pub(super) fn retained_bytes(&self) -> usize {
+        let csr = |list: &Csr| capacity_bytes(&list.start) + capacity_bytes(&list.entries);
+        let [left, right] = &self.conflicts.trees;
+        capacity_bytes(&self.pos)
+            + capacity_bytes(&self.ext)
+            + csr(&self.lists.pred)
+            + csr(&self.lists.succ)
+            + capacity_bytes(&self.ports.source)
+            + capacity_bytes(&self.ports.target)
+            + capacity_bytes(&self.ports.starts)
+            + capacity_bytes(&self.ports.ends)
+            + capacity_bytes(&self.conflicts.blocked)
+            + capacity_bytes(&self.conflicts.anchors)
+            + capacity_bytes(left)
+            + capacity_bytes(right)
+            + capacity_bytes(&self.blocks.root)
+            + capacity_bytes(&self.blocks.shift)
+            + capacity_bytes(&self.compaction.edges)
+            + capacity_bytes(&self.compaction.degree)
+            + csr(&self.compaction.outgoing)
+            + capacity_bytes(&self.compaction.topo)
+            + capacity_bytes(&self.compaction.xs)
+            + self.alternatives.iter().map(capacity_bytes).sum::<usize>()
+    }
 }
 
 pub(super) fn assign(
@@ -545,13 +721,44 @@ pub(super) fn assign(
     work: &mut Work<'_>,
 ) -> LayoutResult<Vec<f64>> {
     work.check()?;
-    let n = g.rank.len();
-    if n == 0 {
+    if g.rank.is_empty() {
         return Ok(Vec::new());
     }
+    let mut scratch = std::mem::take(&mut g.position_scratch);
+    let result = assign_with_scratch(g, c, spread_ends, graph, options, &mut scratch, work);
+    // Keep both allocations for the next solve. Offsets become visible only after balance succeeds.
+    if result.is_ok() && spread_ends.is_some() {
+        std::mem::swap(&mut g.source_offset, &mut scratch.ports.source);
+        std::mem::swap(&mut g.target_offset, &mut scratch.ports.target);
+    }
+    g.position_scratch = scratch;
+    result
+}
+
+fn assign_with_scratch(
+    g: &Expanded,
+    c: &Component,
+    spread_ends: Option<&Orientation>,
+    graph: &Graph,
+    options: &Options,
+    PositionScratch {
+        pos,
+        ext,
+        lists,
+        ports,
+        conflicts,
+        blocks,
+        compaction,
+        alternatives: [second, third, fourth],
+    }: &mut PositionScratch,
+    work: &mut Work<'_>,
+) -> LayoutResult<Vec<f64>> {
+    let n = g.rank.len();
     work.charge(n.checked_mul(2).ok_or(WorkError::ArithmeticOverflow)?)?;
-    let mut pos = filled(n, 0u32)?;
-    let mut ext = filled(n, (0.0, 0.0))?;
+    clear_reserve(pos, n)?;
+    pos.resize(n, 0);
+    clear_reserve(ext, n)?;
+    ext.resize(n, (0.0, 0.0));
     for row in &g.layers {
         for (index, &v) in row.iter().enumerate() {
             work.visit(1)?;
@@ -560,20 +767,17 @@ pub(super) fn assign(
             ext[v as usize] = (finite(left)?, finite(right)?);
         }
     }
-    let lists = Neighbours {
-        pred: by_peer(g, &g.pred, &g.succ, &g.to, work)?,
-        succ: by_peer(g, &g.succ, &g.pred, &g.from, work)?,
+    by_peer(g, &g.pred, &g.succ, &g.to, &mut lists.pred, work)?;
+    by_peer(g, &g.succ, &g.pred, &g.from, &mut lists.succ, work)?;
+    let (source, target) = if let Some(o) = spread_ends {
+        spread(g, (c, o), graph, &options.spacing, lists, ports, work)?;
+        (&ports.source, &ports.target)
+    } else {
+        (&g.source_offset, &g.target_offset)
     };
-    let ports = spread_ends
-        .map(|o| spread(g, c, o, graph, &options.spacing, &lists, work))
-        .transpose()?;
-    let (source, target) = ports
-        .as_ref()
-        .map_or((&g.source_offset, &g.target_offset), |p| {
-            (&p.source, &p.target)
-        });
-    let blocked = conflicts(g, &pos, work)?;
-    let mut layouts: [Vec<f64>; 4] = Default::default();
+    find_conflicts(g, pos, conflicts, work)?;
+    let mut result = Vec::new();
+    let mut layouts = [&mut result, second, third, fourth];
     let mut bounds = [(0.0, 0.0); 4];
     let mut narrow = 0;
     let mut best = f64::INFINITY;
@@ -586,15 +790,15 @@ pub(super) fn assign(
             (&lists.succ, &g.to, source, target)
         };
         let sweep = Sweep {
-            pos: &pos,
-            blocked: &blocked,
+            pos,
+            blocked: &conflicts.blocked,
             lists: list,
             peer,
             own_offset: own,
             peer_offset: other,
         };
-        let blocks = sweep.align(&g.layers, top_down, right, work)?;
-        *layout = compact(g, &ext, &blocks, right, work)?;
+        sweep.align(&g.layers, top_down, right, blocks, work)?;
+        compact_into(g, ext, blocks, right, compaction, layout, work)?;
         let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
         for (v, &x) in layout.iter().enumerate() {
             work.visit(1)?;
@@ -632,12 +836,10 @@ pub(super) fn assign(
         layouts[0][v] = middle(candidates);
     }
     work.finish()?;
-    if let Some(ports) = ports {
-        g.source_offset = ports.source;
-        g.target_offset = ports.target;
-    }
-    Ok(std::mem::take(&mut layouts[0]))
+    Ok(result)
 }
 
+#[cfg(test)]
+mod scratch_tests;
 #[cfg(test)]
 mod tests;

@@ -2,10 +2,12 @@
 
 mod acyclic;
 mod boundary;
+mod bus;
 mod crossings;
 mod expand;
 mod extras;
 mod fan;
+mod hub;
 mod order;
 mod pack;
 mod position;
@@ -148,9 +150,12 @@ pub(crate) struct Expanded {
     chains: Vec<Vec<u32>>,
     label_vertex: Vec<Option<u32>>,
     direct: Vec<bool>,
+    feedback_lanes: Vec<order::FeedbackLane>,
     separated_proxies: Vec<(u32, u32)>,
     pred: Csr,
     succ: Csr,
+    order_scratch: order::OrderScratch,
+    position_scratch: position::PositionScratch,
 }
 
 struct Loop {
@@ -226,9 +231,12 @@ impl Expanded {
             + nested(&self.chains)
             + bytes(&self.label_vertex)
             + bytes(&self.direct)
+            + bytes(&self.feedback_lanes)
             + bytes(&self.separated_proxies)
             + csr(&self.pred)
             + csr(&self.succ)
+            + self.order_scratch.retained_bytes()
+            + self.position_scratch.retained_bytes()
     }
 }
 
@@ -252,11 +260,20 @@ fn prepare_component(
     expanded: &mut Expanded,
 ) -> LayoutResult<(acyclic::Orientation, u64)> {
     let orientation = expand_component(c, graph, options, work, expanded)?;
-    let crossings = if c.boundaries || c.pinned {
+    expanded.feedback_lanes.clear();
+    let mut crossings = if c.boundaries || c.pinned {
         order::constrained(expanded, c, None, options, work)?
     } else {
         order::reduce(expanded, &c.nodes, options, work)?
     };
+    if options.cycle_policy == crate::CyclePolicy::HybridAdaptive
+        && orientation.cyclic_sccs != 0
+        && !c.boundaries
+        && !c.pinned
+        && !c.group_proxies
+    {
+        crossings = order::favor_feedback(expanded, c, &orientation, crossings, work)?;
+    }
     Ok((orientation, crossings))
 }
 
@@ -426,6 +443,7 @@ fn draw_component(
 ) -> LayoutResult<Drawing> {
     let mut x = position::assign(g, c, Some(orientation), graph, options, work)?;
     refine::refine(g, c, orientation, graph, options, &mut x, work)?;
+    position::straighten_feedback(g, c, options, &mut x, work)?;
     let mut drawing = routing::route(g, c, orientation, graph, options, &x, work)?;
     extras::finish(&mut drawing, g, c, graph, options, work)?;
     Ok(drawing)
@@ -474,7 +492,7 @@ fn run_packed(
             None => None,
         };
         let compress_shared = candidate.is_some();
-        let (drawing, dummies, fallbacks, reversed) = match candidate {
+        let (mut drawing, dummies, fallbacks, reversed) = match candidate {
             Some(candidate) => {
                 folded = true;
                 (
@@ -494,6 +512,11 @@ fn run_packed(
         stats.dummy_nodes += dummies;
         stats.direct_fallback_edges += fallbacks;
         stats.reversed_edges += reversed;
+        if !compress_shared {
+            hub::spread(&mut drawing, &c, graph, options, work)?;
+        }
+        let compress_shared =
+            compress_shared || bus::bundle(&mut drawing, &c, graph, options, work)?;
         stats.routed_crossings = stats
             .routed_crossings
             .checked_add(crossings::pairs(&drawing.edges, compress_shared, work)?)

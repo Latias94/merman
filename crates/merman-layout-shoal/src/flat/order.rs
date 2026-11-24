@@ -1,14 +1,18 @@
 //! Crossing reduction on adjacent expanded ranks. Each distinct offset on a vertex face is
 //! a port. Incidences on the same port cannot cross each other at that end.
 
+mod feedback;
 mod groups;
 
 use super::{Component, Csr, Expanded, Kind, validate};
+use crate::scratch::{capacity_bytes, clear_reserve};
 use crate::work::{LayoutResult, Work, filled, reserved};
 use crate::{GroupId, LayoutError, NodeSpec, Options, OrderHint, WorkError};
 use groups::Groups;
 use std::cmp::Ordering;
 use std::ops::Range;
+
+pub(super) use feedback::{FeedbackLane, favor_feedback};
 
 fn numeric_cmp(a: f64, b: f64) -> Ordering {
     if a == b {
@@ -274,7 +278,7 @@ fn initial_order(
     Ok((order, preference_slot, has_editor_hint))
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct Fenwick {
     tree: Vec<u32>,
     seen: u32,
@@ -483,6 +487,7 @@ fn editor_seed(
     }))
 }
 
+#[derive(Debug, Default)]
 struct Sweep {
     mean: Vec<f64>,
     moving: Vec<usize>,
@@ -642,17 +647,26 @@ fn between(a: &[usize], b: &[usize]) -> (u64, u64) {
 
 /// One flat slice per incidence list. All keys for a rank depend only on the opposite rank's
 /// order and fixed port offsets. Swaps inside the rank leave its own keys valid.
+#[derive(Debug, Default)]
 struct NeighborKeys {
     keys: Vec<usize>,
     valid: Vec<bool>,
 }
 
 impl NeighborKeys {
+    #[cfg(test)]
     fn new(segments: usize, ranks: usize) -> LayoutResult<Self> {
-        Ok(Self {
-            keys: filled(segments, 0)?,
-            valid: filled(ranks, false)?,
-        })
+        let mut result = Self::default();
+        result.reset(segments, ranks)?;
+        Ok(result)
+    }
+
+    fn reset(&mut self, segments: usize, ranks: usize) -> LayoutResult<()> {
+        clear_reserve(&mut self.keys, segments)?;
+        self.keys.resize(segments, 0);
+        clear_reserve(&mut self.valid, ranks)?;
+        self.valid.resize(ranks, false);
+        Ok(())
     }
 
     fn prepare(
@@ -705,17 +719,18 @@ impl NeighborKeys {
     }
 }
 
-fn transpose<const LIMITED: bool>(
+fn transpose_with_keys<const LIMITED: bool>(
     order: &mut Order,
     ports: &Ports<'_>,
     mut count: u64,
     rules: &Rules<'_>,
+    [up, down]: &mut [NeighborKeys; 2],
     work: &mut Work<'_>,
 ) -> LayoutResult<u64> {
     work.charge(ports.source.segments.len())?;
     work.charge(ports.target.segments.len())?;
-    let mut up = NeighborKeys::new(ports.target.segments.len(), order.ranks())?;
-    let mut down = NeighborKeys::new(ports.source.segments.len(), order.ranks())?;
+    up.reset(ports.target.segments.len(), order.ranks())?;
+    down.reset(ports.source.segments.len(), order.ranks())?;
     for _ in 0..8 {
         let mut changed = false;
         for r in 0..order.ranks() {
@@ -766,11 +781,28 @@ fn transpose<const LIMITED: bool>(
     Ok(count)
 }
 
+#[cfg(test)]
+fn transpose<const LIMITED: bool>(
+    order: &mut Order,
+    ports: &Ports<'_>,
+    count: u64,
+    rules: &Rules<'_>,
+    work: &mut Work<'_>,
+) -> LayoutResult<u64> {
+    transpose_with_keys::<LIMITED>(order, ports, count, rules, &mut Default::default(), work)
+}
+
 fn snapshot(ids: &[u32], work: &mut Work<'_>) -> LayoutResult<Vec<u32>> {
-    work.charge(ids.len())?;
-    let mut copy = reserved(ids.len())?;
-    copy.extend_from_slice(ids);
+    let mut copy = Vec::new();
+    save_order(ids, &mut copy, work)?;
     Ok(copy)
+}
+
+fn save_order(ids: &[u32], copy: &mut Vec<u32>, work: &mut Work<'_>) -> LayoutResult<()> {
+    work.charge(ids.len())?;
+    clear_reserve(copy, ids.len())?;
+    copy.extend_from_slice(ids);
+    Ok(())
 }
 
 type Score = (u64, u64);
@@ -808,54 +840,86 @@ fn improved_mirror<const EDITOR: bool>(
     Ok(None)
 }
 
+#[derive(Debug, Default)]
+pub(super) struct OrderScratch {
+    fenwick: Fenwick,
+    initial: Vec<u32>,
+    best: Vec<u32>,
+    sweep: Sweep,
+    neighbors: [NeighborKeys; 2],
+}
+
+impl OrderScratch {
+    pub(super) fn retained_bytes(&self) -> usize {
+        capacity_bytes(&self.fenwick.tree)
+            + capacity_bytes(&self.initial)
+            + capacity_bytes(&self.best)
+            + capacity_bytes(&self.sweep.mean)
+            + capacity_bytes(&self.sweep.moving)
+            + self
+                .neighbors
+                .iter()
+                .map(|keys| capacity_bytes(&keys.keys) + capacity_bytes(&keys.valid))
+                .sum::<usize>()
+    }
+}
+
 fn search<const LIMITED: bool, const EDITOR: bool>(
-    g: &Expanded,
+    (g, options): (&Expanded, &Options),
     order: &mut Order,
     preference: &[usize],
     ports: &Ports<'_>,
-    options: &Options,
     rules: &mut Rules<'_>,
+    scratch: &mut OrderScratch,
     work: &mut Work<'_>,
 ) -> LayoutResult<(Vec<u32>, Score)> {
-    let mut tree = Fenwick::default();
-    let initial_count = crossings(order, ports, &mut tree, work)?;
+    let OrderScratch {
+        fenwick: tree,
+        initial,
+        best,
+        sweep,
+        neighbors,
+    } = scratch;
+    let initial_count = crossings(order, ports, tree, work)?;
     if !EDITOR && initial_count == 0 {
         return Ok((std::mem::take(&mut order.ids), (0, 0)));
     }
 
     let initial_score = (
         initial_count,
-        inversions::<EDITOR>(&order.ids, &order.start, preference, &mut tree, work)?,
+        inversions::<EDITOR>(&order.ids, &order.start, preference, tree, work)?,
     );
     if initial_score == (0, 0) {
         return Ok((std::mem::take(&mut order.ids), initial_score));
     }
-    let initial = snapshot(&order.ids, work)?;
-    let mut chosen = snapshot(&initial, work)?;
+    save_order(&order.ids, initial, work)?;
+    let mut chosen = snapshot(initial, work)?;
     let mut chosen_score = initial_score;
-    let mut best = snapshot(&initial, work)?;
-    let mut sweep = Sweep {
-        mean: filled(order.ids.len(), 0.)?,
-        moving: reserved(g.layers.iter().map(Vec::len).max().unwrap_or(0))?,
-    };
+    save_order(initial, best, work)?;
+    clear_reserve(&mut sweep.mean, order.ids.len())?;
+    sweep.mean.resize(order.ids.len(), 0.);
+    clear_reserve(
+        &mut sweep.moving,
+        g.layers.iter().map(Vec::len).max().unwrap_or(0),
+    )?;
     let small = order.ids.len() <= options.caps.max_transpose_nodes;
     for attempt in 0..if small { 2 } else { 1 } {
         if attempt != 0 {
-            order.restore(&initial, ports, work)?;
+            order.restore(initial, ports, work)?;
             work.charge(initial.len())?;
-            best.copy_from_slice(&initial);
+            best.copy_from_slice(initial);
         }
         let mut best_score = initial_score;
         let mut stale = 0;
         for i in 0..options.caps.max_sweeps {
             let down = (i % 2) == attempt;
             sweep.run::<LIMITED>(g, order, ports, (down, i % 4 >= 2), rules, work)?;
-            let c = crossings(order, ports, &mut tree, work)?;
+            let c = crossings(order, ports, tree, work)?;
             stale = if c < best_score.0 { 0 } else { stale + 1 };
             if c <= best_score.0 {
                 let score = (
                     c,
-                    inversions::<EDITOR>(&order.ids, &order.start, preference, &mut tree, work)?,
+                    inversions::<EDITOR>(&order.ids, &order.start, preference, tree, work)?,
                 );
                 if score < best_score {
                     best_score = score;
@@ -868,12 +932,13 @@ fn search<const LIMITED: bool, const EDITOR: bool>(
             }
         }
         if small && best_score.0 > 0 {
-            order.restore(&best, ports, work)?;
-            let c = transpose::<LIMITED>(order, ports, best_score.0, rules, work)?;
+            order.restore(best, ports, work)?;
+            let c =
+                transpose_with_keys::<LIMITED>(order, ports, best_score.0, rules, neighbors, work)?;
             if c < best_score.0 {
                 best_score = (
                     c,
-                    inversions::<EDITOR>(&order.ids, &order.start, preference, &mut tree, work)?,
+                    inversions::<EDITOR>(&order.ids, &order.start, preference, tree, work)?,
                 );
                 work.charge(best.len())?;
                 best.copy_from_slice(&order.ids);
@@ -881,7 +946,7 @@ fn search<const LIMITED: bool, const EDITOR: bool>(
         }
         if best_score < chosen_score {
             chosen_score = best_score;
-            std::mem::swap(&mut best, &mut chosen);
+            std::mem::swap(best, &mut chosen);
         }
         if chosen_score == (0, 0) {
             break;
@@ -889,15 +954,8 @@ fn search<const LIMITED: bool, const EDITOR: bool>(
     }
     if chosen_score != (0, 0)
         && rules.can_mirror::<LIMITED>()
-        && let Some(score) = improved_mirror::<EDITOR>(
-            order,
-            ports,
-            &chosen,
-            chosen_score,
-            preference,
-            &mut tree,
-            work,
-        )?
+        && let Some(score) =
+            improved_mirror::<EDITOR>(order, ports, &chosen, chosen_score, preference, tree, work)?
     {
         return Ok((std::mem::take(&mut order.ids), score));
     }
@@ -909,6 +967,7 @@ fn minimize<const LIMITED: bool>(
     nodes: &[NodeSpec],
     options: &Options,
     rules: &mut Rules<'_>,
+    scratch: &mut OrderScratch,
     work: &mut Work<'_>,
 ) -> LayoutResult<(Vec<u32>, u64)> {
     let ports = Ports {
@@ -919,8 +978,15 @@ fn minimize<const LIMITED: bool>(
     if LIMITED {
         rules.initial(&mut order, &ports, work)?;
     }
-    let (stateless, (count, _)) =
-        search::<LIMITED, false>(g, &mut order, &declaration, &ports, options, rules, work)?;
+    let (stateless, (count, _)) = search::<LIMITED, false>(
+        (g, options),
+        &mut order,
+        &declaration,
+        &ports,
+        rules,
+        scratch,
+        work,
+    )?;
     if !has_editor_hint {
         return Ok((stateless, count));
     }
@@ -928,10 +994,15 @@ fn minimize<const LIMITED: bool>(
         return Ok((stateless, count));
     };
 
-    let mut tree = Fenwick::default();
     let stateless_score = (
         count,
-        inversions::<true>(&stateless, &order.start, &seed.preference, &mut tree, work)?,
+        inversions::<true>(
+            &stateless,
+            &order.start,
+            &seed.preference,
+            &mut scratch.fenwick,
+            work,
+        )?,
     );
     if stateless_score == (0, 0) {
         return Ok((stateless, 0));
@@ -942,11 +1013,17 @@ fn minimize<const LIMITED: bool>(
         order.reindex(rank, &ports, work)?;
     }
     if seed.anchored {
-        let candidate_count = crossings(&order, &ports, &mut tree, work)?;
+        let candidate_count = crossings(&order, &ports, &mut scratch.fenwick, work)?;
         if candidate_count <= count
             && (
                 candidate_count,
-                inversions::<true>(&order.ids, &order.start, &seed.preference, &mut tree, work)?,
+                inversions::<true>(
+                    &order.ids,
+                    &order.start,
+                    &seed.preference,
+                    &mut scratch.fenwick,
+                    work,
+                )?,
             ) < stateless_score
         {
             work.editor_choice = true;
@@ -958,12 +1035,12 @@ fn minimize<const LIMITED: bool>(
         rules.initial(&mut order, &ports, work)?;
     }
     let (hinted, hint_score) = search::<LIMITED, true>(
-        g,
+        (g, options),
         &mut order,
         &seed.preference,
         &ports,
-        options,
         rules,
+        scratch,
         work,
     )?;
     let score = stateless_score.min(hint_score);
@@ -975,7 +1052,7 @@ fn minimize<const LIMITED: bool>(
             &stateless,
             score,
             &seed.preference,
-            &mut tree,
+            &mut scratch.fenwick,
             work,
         )?
     {
@@ -1040,7 +1117,11 @@ fn publish<const LIMITED: bool>(
     work: &mut Work<'_>,
 ) -> LayoutResult<u64> {
     work.charge(1)?;
-    let (ids, crossings) = minimize::<LIMITED>(g, nodes, options, rules, work)?;
+    let mut scratch = std::mem::take(&mut g.order_scratch);
+    let result = minimize::<LIMITED>(g, nodes, options, rules, &mut scratch, work);
+    // Return storage before propagating errors so the outer frame can apply its cap.
+    g.order_scratch = scratch;
+    let (ids, crossings) = result?;
     work.charge(ids.len())?;
     work.finish()?;
     let mut rest = ids.as_slice();

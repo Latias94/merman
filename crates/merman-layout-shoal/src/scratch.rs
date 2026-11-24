@@ -1,4 +1,16 @@
 use crate::flat::Expanded;
+use crate::work::{LayoutError, LayoutResult};
+
+pub(crate) fn clear_reserve<T>(values: &mut Vec<T>, len: usize) -> LayoutResult<()> {
+    values.clear();
+    values
+        .try_reserve_exact(len)
+        .map_err(|_| LayoutError::AllocationLimit)
+}
+
+pub(crate) fn capacity_bytes<T>(values: &Vec<T>) -> usize {
+    values.capacity() * size_of::<T>()
+}
 
 /// Reusable component-local arrays. The byte cap applies between solves, including after errors.
 #[derive(Debug)]

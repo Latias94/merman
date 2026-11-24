@@ -42,7 +42,9 @@ pub enum RoutingStyle {
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum CyclePolicy {
+    /// Anchor small cycles at their authored entry and use greedy FAS for larger cycles.
     #[default]
+    HybridAdaptive,
     SccGreedyFas,
     SccDfs,
 }
@@ -129,6 +131,8 @@ impl Default for BudgetCaps {
 pub struct Options {
     pub spacing: Spacing,
     pub routing: RoutingStyle,
+    /// Allow unlabelled orthogonal fans of consistently styled edges to share a trunk.
+    pub bus_routing: bool,
     pub cycle_policy: CyclePolicy,
     pub rank_policy: RankPolicy,
     pub group_policy: GroupPolicy,
