@@ -1344,7 +1344,7 @@ fn render_state_cluster(
     out.push_str("</g>");
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "layout-elk"))]
 mod tests {
     use super::*;
 
