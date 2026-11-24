@@ -746,7 +746,32 @@ fn write_element(node: &Node, is_clip_path: bool, opt: &WriteOptions, xml: &mut 
                         TextAnchor::End => xml.write_svg_attribute(AId::TextAnchor, "end"),
                     }
 
+                    // Rebuild the element ranges around their flattened paint spans.
+                    let mut adjustments: Vec<_> = chunk.length_adjustments.iter().rev().collect();
+                    adjustments.sort_by_key(|adjustment| {
+                        (
+                            adjustment.bytes.start,
+                            std::cmp::Reverse(adjustment.bytes.end),
+                        )
+                    });
+                    let mut adjustments = adjustments.into_iter().peekable();
+                    let mut adjustment_ends = Vec::new();
                     for span in &chunk.spans {
+                        while adjustment_ends.last().is_some_and(|&end| end <= span.start) {
+                            adjustment_ends.pop();
+                            xml.end_element();
+                        }
+                        while let Some(adjustment) =
+                            adjustments.next_if(|adjustment| adjustment.bytes.start == span.start)
+                        {
+                            xml.start_svg_element(EId::Tspan);
+                            xml.write_svg_attribute(AId::TextLength, &adjustment.length);
+                            if adjustment.mode == LengthAdjust::SpacingAndGlyphs {
+                                xml.write_svg_attribute(AId::LengthAdjust, "spacingAndGlyphs");
+                            }
+                            adjustment_ends.push(adjustment.bytes.end);
+                        }
+
                         let decorations: Vec<_> = [
                             ("underline", &span.decoration.underline),
                             ("line-through", &span.decoration.line_through),
@@ -775,6 +800,9 @@ fn write_element(node: &Node, is_clip_path: bool, opt: &WriteOptions, xml: &mut 
                         for _ in &decorations {
                             xml.end_element();
                         }
+                    }
+                    for _ in adjustment_ends {
+                        xml.end_element();
                     }
                     xml.end_element();
 
@@ -1492,11 +1520,7 @@ fn write_span(
         xml.write_svg_attribute(AId::WordSpacing, &span.word_spacing);
     }
 
-    if let Some(text_length) = span.text_length {
-        xml.write_svg_attribute(AId::TextLength, &text_length);
-    }
-
-    if span.length_adjust == LengthAdjust::SpacingAndGlyphs {
+    if span.text_length.is_none() && span.length_adjust == LengthAdjust::SpacingAndGlyphs {
         xml.write_svg_attribute(AId::LengthAdjust, "spacingAndGlyphs");
     }
 

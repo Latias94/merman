@@ -545,6 +545,14 @@ pub enum TextFlow {
     Path(Arc<TextPath>),
 }
 
+#[cfg(feature = "writer")]
+#[derive(Clone, Debug)]
+pub(crate) struct TextLengthAdjustment {
+    pub(crate) bytes: std::ops::Range<usize>,
+    pub(crate) length: f32,
+    pub(crate) mode: LengthAdjust,
+}
+
 /// A text chunk.
 ///
 /// Text alignment and BIDI reordering can only be done inside a text chunk.
@@ -554,6 +562,8 @@ pub struct TextChunk {
     pub(crate) y: Option<f32>,
     pub(crate) anchor: TextAnchor,
     pub(crate) spans: Vec<TextSpan>,
+    #[cfg(feature = "writer")]
+    pub(crate) length_adjustments: Vec<TextLengthAdjustment>,
     pub(crate) text_flow: TextFlow,
     pub(crate) text: String,
 }

@@ -218,6 +218,13 @@ fn collect_text_chunks_impl(
     iter_state: &mut IterState,
     omissions: &mut TextFontOmissions,
 ) {
+    let text_length = parent
+        .try_convert_length(AId::TextLength, Units::UserSpaceOnUse, state)
+        .filter(|length| length.is_finite() && *length >= 0.0);
+    let length_adjust = parent.find_attribute(AId::LengthAdjust).unwrap_or_default();
+    let first_chunk = iter_state.chunks.len().saturating_sub(1);
+    let first_byte = iter_state.chunk_bytes_count;
+
     for child in parent.children() {
         if child.is_element() {
             if child.tag_name() == Some(EId::TextPath) {
@@ -305,15 +312,6 @@ fn collect_text_chunks_impl(
             _ => crate::FontOpticalSizing::Auto, // "auto" or missing (browser default)
         };
 
-        let mut text_length =
-            parent.try_convert_length(AId::TextLength, Units::UserSpaceOnUse, state);
-        // Negative values should be ignored.
-        if let Some(n) = text_length {
-            if n < 0.0 {
-                text_length = None;
-            }
-        }
-
         let visibility: Visibility = parent.find_attribute(AId::Visibility).unwrap_or_default();
 
         let mut paint_omissions = TextFontOmissions::default();
@@ -341,7 +339,7 @@ fn collect_text_chunks_impl(
             letter_spacing: parent.resolve_length(AId::LetterSpacing, state, 0.0),
             word_spacing: parent.resolve_length(AId::WordSpacing, state, 0.0),
             text_length,
-            length_adjust: parent.find_attribute(AId::LengthAdjust).unwrap_or_default(),
+            length_adjust,
         };
         if span.visible {
             omissions.merge(paint_omissions);
@@ -375,6 +373,7 @@ fn collect_text_chunks_impl(
                     y: pos_list[iter_state.chars_count].y,
                     anchor,
                     spans: vec![span2],
+                    length_adjustments: Vec::new(),
                     text_flow: iter_state.text_flow.clone(),
                     text: c.to_string(),
                 });
@@ -402,6 +401,21 @@ fn collect_text_chunks_impl(
             is_new_span = false;
             iter_state.chars_count += 1;
             iter_state.chunk_bytes_count += char_len;
+        }
+    }
+
+    if let Some(length) = text_length {
+        // Record the element's full range after its children, independently of paint spans.
+        for (index, chunk) in iter_state.chunks[first_chunk..].iter_mut().enumerate() {
+            let start = if index == 0 { first_byte } else { 0 };
+            let end = chunk.text.len();
+            if start < end {
+                chunk.length_adjustments.push(TextLengthAdjustment {
+                    bytes: start..end,
+                    length,
+                    mode: length_adjust,
+                });
+            }
         }
     }
 }

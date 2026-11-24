@@ -11,8 +11,9 @@ The change in `src/text/layout.rs` shapes missing text in its original direction
 surrounding context. Consecutive missing clusters with equivalent physical faces, effective
 coordinates, sizes and scripts are shaped together, preserving ligatures and joining. Glyphs
 already supplied by the primary face keep their original positions within their cluster.
-Adjacent spans with equivalent resolved fonts, shaping options and language tags share a run.
-Fallback uses the original span's request and primary selection for each missing cluster.
+Adjacent spans with equivalent resolved fonts, shaping options, language tags and decoration
+coverage share a run within the same script and direction. Shaping keeps the surrounding script
+context across span boundaries. Fallback uses each missing cluster's authored font request.
 `Font::selection_language` supplies the effective language to primary family matching.
 `Options::set_text_fallback` lets the font host consider the authored family stack,
 inherited `xml:lang`, and complete cluster text. `Options::set_font_instances` also
@@ -38,9 +39,11 @@ SVG tree and font database across native measurement, raster, and vector PDF.
 
 The native metric probe reuses a single text shape to obtain start- and end-anchor bounds.
 It retains the normal positioning and outline-conversion checks for both bounds.
-Path sampling supports nonmonotonic distances from bidirectional glyph positioning. `textLength`
-spacing is applied between clusters so the last cluster's advance also gives the next text chunk
-its correct starting position.
+Relative positions accumulate in source order, including offsets inside ligatures. Text on a path
+anchors the positioned chunk before sampling nonmonotonic distances and uses the limiting tangent
+at repeated curve endpoints.
+`textLength` adjusts nested ranges from the inside out. `spacingAndGlyphs` scales current spacing
+and glyph advances along the text axis, and scales each glyph outline before rotation.
 
 Text conversion records visible spans without a usable primary face and missing glyphs in
 text nodes that are dropped during conversion. The exporter combines these omissions with

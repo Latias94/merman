@@ -59,19 +59,32 @@ def master(path, location):
         "lam.init": 440,
         "alef.fina": 300,
         "lam_alef": 620,
+        "space": 250,
+        "f": 380,
+        "i": 280,
+        "f_i": 580,
+        "ka": 500,
+        "matra_i": 200,
+        "matra_i.pre": 220,
     }
 
     font = FontBuilder(1000, isTTF=True)
     font.setupGlyphOrder(list(advances))
     font.setupCharacterMap({
-        **{ord(name): name for name in "ABCVXZ"},
+        **{ord(name): name for name in "ABCVXZfi"},
+        0x0020: "space",
         0x05D0: "alef_hebrew",
         0x05D1: "bet",
         0x05D2: "gimel",
         0x0644: "lam",
         0x0627: "alef",
+        0x0915: "ka",
+        0x093F: "matra_i",
     })
-    font.setupGlyf({name: rectangle(advance - 40, 680) for name, advance in advances.items()})
+    font.setupGlyf({
+        name: TTGlyphPen(None).glyph() if name == "space" else rectangle(advance - 40, 680)
+        for name, advance in advances.items()
+    })
     font.setupHorizontalMetrics({name: (advance, 0) for name, advance in advances.items()})
     font.setupHorizontalHeader(ascent=ascender, descent=-200)
     font.setupNameTable(
@@ -97,10 +110,12 @@ def master(path, location):
         """
         languagesystem DFLT dflt;
         languagesystem arab dflt;
-        feature liga { sub A V by A_V; } liga;
+        languagesystem dev2 dflt;
+        feature liga { sub A V by A_V; sub f i by f_i; } liga;
         feature init { script arab; sub lam by lam.init; } init;
         feature fina { script arab; sub alef by alef.fina; } fina;
         feature rlig { script arab; sub lam.init alef.fina by lam_alef; } rlig;
+        feature pres { script dev2; sub matra_i by matra_i.pre; } pres;
         """,
     )
     font.font["head"].created = font.font["head"].modified = 3660681600
@@ -126,7 +141,7 @@ def main():
 
         variable, _, _ = build(designspace)
         # Make these characters require fallback at the default weight.
-        missing = dict.fromkeys(("A", "V", "lam", "alef"), ".notdef")
+        missing = dict.fromkeys(("A", "V", "lam", "alef", "ka", "matra_i"), ".notdef")
         addFeatureVariations(variable, [([{"wght": (0, 0.1)}], missing)])
         variable.recalcTimestamp = False
         collection = TTCollection()
