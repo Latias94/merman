@@ -116,7 +116,8 @@ fn assert_note_bounds(
     let bounds = tree
         .node_by_id("native-sequence-note-frame")
         .expect("the note frame survives SVG parsing")
-        .abs_bounding_box();
+        .abs_bounding_box()
+        .expect("the note frame has canvas bounds");
     assert!(bounds.width() > 0.0 && bounds.height() > 0.0);
     for (index, line) in lines.iter().enumerate() {
         let id = format!("native-sequence-note-label-{index}");
@@ -143,12 +144,12 @@ fn assert_note_bounds(
                 "weight 600 must select the fixed bold face"
             );
         }
-        // usvg 0.47 creates the flattened root with an identity transform;
-        // it does not inherit Text::abs_transform. Map its local outline bounds
-        // into the same canvas coordinates as the text metrics and the frame.
+        // Map the local outline bounds into the same canvas coordinates as the
+        // text metrics and the frame.
         let outline_bounds = text
             .flattened()
             .bounding_box()
+            .expect("the shaped glyph outlines have local bounds")
             .transform(text.abs_transform())
             .expect("the shaped glyph outlines have valid canvas bounds");
         for (kind, text_bounds) in [

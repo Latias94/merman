@@ -723,7 +723,8 @@ fn mindmap_icon_label_viewports_contain_the_selected_font_glyphs() {
         let bounds = tree
             .node_by_id("mindmap-font-probe")
             .expect("selected font must actually paint the label")
-            .abs_bounding_box();
+            .abs_bounding_box()
+            .expect("the painted label must have canvas bounds");
         assert!(
             bounds.x() >= -0.01
                 && bounds.y() >= -0.01
