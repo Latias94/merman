@@ -584,11 +584,11 @@ impl NativeFontContext {
     pub fn for_export(&self, control: &OperationControl) -> Result<Self, NativeFontError> {
         control.terminal_checkpoint_at(OperationPhase::Export)?;
         let check_source = || {
-            control.terminal_checkpoint_at(OperationPhase::Export)?;
-            match self.0.fatal.get() {
-                Some(error) => Err(Self::replay_failure(control, true, error)),
-                None => Ok(()),
+            if let Some(error) = self.0.fatal.get() {
+                return Err(Self::replay_failure(control, true, error));
             }
+            control.terminal_checkpoint_at(OperationPhase::Export)?;
+            Ok(())
         };
         #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         let sources = self.0.sources.for_export(check_source)?;
@@ -1143,11 +1143,16 @@ impl NativeFontContext {
         exporting: bool,
         error: NativeFontError,
     ) -> NativeFontError {
-        let error = self
-            .0
-            .fatal
-            .get_or_init(|| Self::replay_failure(control, exporting, &error));
-        Self::replay_failure(control, exporting, error)
+        let mut recorded_here = false;
+        let error = self.0.fatal.get_or_init(|| {
+            recorded_here = true;
+            Self::replay_failure(control, exporting, &error)
+        });
+        if recorded_here {
+            error.clone()
+        } else {
+            Self::replay_failure(control, exporting, error)
+        }
     }
 
     fn replay_failure(
@@ -1155,18 +1160,22 @@ impl NativeFontContext {
         exporting: bool,
         error: &NativeFontError,
     ) -> NativeFontError {
-        let Some((id, actual, maximum)) = error.resource_limit() else {
-            return error.clone();
+        let phase = if exporting {
+            OperationPhase::Export
+        } else {
+            OperationPhase::Layout
         };
-        let (phase, resource_phase, provenance) = if exporting {
+        let current_terminal = control.terminal_checkpoint_at(phase).err();
+        let Some((id, actual, maximum)) = error.resource_limit() else {
+            return current_terminal.map_or_else(|| error.clone(), NativeFontError::Operation);
+        };
+        let (resource_phase, provenance) = if exporting {
             (
-                OperationPhase::Export,
                 "native-font-export",
                 OperationResourceProvenance::new(OperationResourceDomain::Export, None, []),
             )
         } else {
             (
-                OperationPhase::Layout,
                 "native-font-measurement",
                 OperationResourceProvenance::new(
                     OperationResourceDomain::Render,
@@ -1184,10 +1193,8 @@ impl NativeFontContext {
             requested: actual,
             provenance,
         };
-        let terminal = control
-            .terminal_checkpoint_at(phase)
-            .err()
-            .unwrap_or_else(|| control.terminate_resource_limit(event.clone()));
+        let terminal =
+            current_terminal.unwrap_or_else(|| control.terminate_resource_limit(event.clone()));
         if terminal == OperationLedgerError::ResourceLimitExceeded(event) {
             error.clone()
         } else {
@@ -1340,9 +1347,8 @@ impl NativeFontContext {
     }
 
     fn checkpoint(&self, control: &OperationControl) -> Result<(), NativeFontError> {
-        self.check()?;
         control.terminal_checkpoint_at(OperationPhase::Layout)?;
-        Ok(())
+        self.check()
     }
 
     #[cfg(test)]
@@ -1981,6 +1987,58 @@ mod tests {
             Err(NativeFontError::Operation(error)) if error == terminal
         ));
         assert_eq!(result.unwrap_err().to_string(), terminal.to_string());
+    }
+
+    #[test]
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    fn measurement_and_export_replay_the_active_operation_terminal() {
+        let context = NativeFontOptions::default()
+            .with_font_file(
+                Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts/Cousine-Regular.ttf"),
+            )
+            .load(&OperationControl::new())
+            .unwrap();
+        let style = TextStyle::default();
+        let request = HostTextMeasurementRequest {
+            operation: TextMeasurementOperation::TitleBBoxX,
+            phase: TextMeasurementPhase::SvgBBox,
+            text: "label",
+            style: &style,
+            max_width: None,
+            wrap_mode: WrapMode::SvgLike,
+        };
+
+        let cancelled = OperationControl::new();
+        cancelled.cancel();
+        let source_error = cancelled
+            .terminal_checkpoint_at(OperationPhase::Layout)
+            .unwrap_err();
+        assert_eq!(
+            context
+                .measure_with_control(request, &cancelled)
+                .unwrap_err()
+                .to_string(),
+            source_error.to_string()
+        );
+
+        let expired = OperationControl::new().with_deadline(std::time::Duration::ZERO);
+        let current_error = expired
+            .terminal_checkpoint_at(OperationPhase::Parse)
+            .unwrap_err();
+        assert_ne!(current_error, source_error);
+        assert_eq!(
+            context
+                .measure_with_control(request, &expired)
+                .unwrap_err()
+                .to_string(),
+            current_error.to_string()
+        );
+        assert!(
+            matches!(context.for_export(&expired), Err(NativeFontError::Operation(error)) if error == current_error)
+        );
+        assert!(
+            matches!(context.check(), Err(NativeFontError::Operation(error)) if error == source_error)
+        );
     }
 
     #[test]
