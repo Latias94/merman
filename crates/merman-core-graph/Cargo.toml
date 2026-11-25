@@ -1,0 +1,26 @@
+[package]
+name = "merman-core-graph"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Syntax parsers for Merman's graph diagram families."
+readme = "README.md"
+
+[package.metadata.merman-legal]
+third-party-bundle = true
+
+[features]
+default = []
+diagram-er = ["merman-model/diagram-er", "dep:indexmap", "dep:merman-core-preprocess"]
+editor-facts = []
+
+[dependencies]
+indexmap = { workspace = true, optional = true }
+merman-core-preprocess = { workspace = true, optional = true }
+merman-model.workspace = true
+
+[dev-dependencies]
+merman-model = { workspace = true, features = ["test-support"] }

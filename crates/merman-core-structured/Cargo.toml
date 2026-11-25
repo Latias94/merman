@@ -14,8 +14,12 @@ third-party-bundle = true
 
 [features]
 default = []
+diagram-packet = ["merman-model/diagram-packet"]
 diagram-railroad = ["merman-model/diagram-railroad"]
 editor-facts = []
 
 [dependencies]
 merman-model.workspace = true
+
+[dev-dependencies]
+merman-model = { workspace = true, features = ["test-support"] }

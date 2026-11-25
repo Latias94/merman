@@ -1,15 +1,11 @@
 //! Predictive parser over the ER lexer's spanned events.
 
 use super::{
-    Action, Attribute, ErActionArena, ErActionList, ErLexicalEvent, ErParsedActions, LexError,
-    RelSpec, Tok,
+    Action, ErActionArena, ErActionList, ErLexicalError, ErLexicalEvent, ErParsedActions, ErToken,
 };
-use crate::diagrams::scan::TokenStream;
-use crate::parse_diagnostic::{unexpected_eof_message, unexpected_token_message};
-use crate::{
-    OperationCancelled, OperationControl, OperationControlResult, ParseDiagnostic,
-    ParseDiagnosticSpanKind, SourceSpan,
-};
+use crate::scan::TokenStream;
+use merman_model::families::er::{ErAttribute, ErRelSpec};
+use merman_model::{OperationCancelled, OperationControl, OperationControlResult, SourceSpan};
 
 macro_rules! terminals {
     ($($terminal:ident $(($payload:tt))? => $name:literal),+ $(,)?) => {
@@ -22,9 +18,9 @@ macro_rules! terminals {
         const TERMINAL_NAMES: &[&str] = &[$($name),+];
 
         impl Terminal {
-            const fn of(token: &Tok) -> Self {
+            const fn of(token: &ErToken) -> Self {
                 match token {
-                    $(Tok::$terminal $(($payload))? => Self::$terminal),+
+                    $(ErToken::$terminal $(($payload))? => Self::$terminal),+
                 }
             }
         }
@@ -68,10 +64,11 @@ terminals! {
     Comment(_) => "Comment",
 }
 
+/// Grammar terminals accepted at the failing position.
 #[derive(Debug, Clone, Copy)]
-struct Expected(u64);
+pub struct ErExpectedTokens(u64);
 
-impl Expected {
+impl ErExpectedTokens {
     const fn one(terminal: Terminal) -> Self {
         Self(1 << terminal as u8)
     }
@@ -102,7 +99,8 @@ impl Expected {
         self.0 & Self::one(terminal).0 != 0
     }
 
-    fn names(self) -> impl Iterator<Item = &'static str> {
+    /// Terminal names in grammar order.
+    pub fn names(self) -> impl Iterator<Item = &'static str> {
         TERMINAL_NAMES
             .iter()
             .copied()
@@ -118,7 +116,7 @@ use Terminal::{
     SquareStop, Str, StyleKw, StyleSeparator, SubgraphKw, ZeroOrMore, ZeroOrOne,
 };
 
-const STATEMENT_START: Expected = Expected::new(&[
+const STATEMENT_START: ErExpectedTokens = ErExpectedTokens::new(&[
     Name,
     AccTitle,
     AccDescr,
@@ -129,47 +127,30 @@ const STATEMENT_START: Expected = Expected::new(&[
     ClassKw,
     SubgraphKw,
 ]);
-const NAME_OR_STR: Expected = Expected::new(&[Name, Str]);
-const CARDINALITY: Expected = Expected::new(&[ZeroOrOne, ZeroOrMore, OneOrMore, OnlyOne, MdParent]);
-const RELATION_KIND: Expected = Expected::new(&[Identifying, NonIdentifying]);
-const ATTRIBUTE_BOUNDARY: Expected = Expected::new(&[BlockStop, AttrWord]);
+const NAME_OR_STR: ErExpectedTokens = ErExpectedTokens::new(&[Name, Str]);
+const CARDINALITY: ErExpectedTokens =
+    ErExpectedTokens::new(&[ZeroOrOne, ZeroOrMore, OneOrMore, OnlyOne, MdParent]);
+const RELATION_KIND: ErExpectedTokens = ErExpectedTokens::new(&[Identifying, NonIdentifying]);
+const ATTRIBUTE_BOUNDARY: ErExpectedTokens = ErExpectedTokens::new(&[BlockStop, AttrWord]);
 
+/// The first lexing or grammar error in ER input byte coordinates.
 #[derive(Debug)]
-enum SyntaxError {
-    Lexical(LexError),
+pub enum ErSyntaxDiagnostic {
+    Lexical(ErLexicalError),
     UnexpectedToken {
-        token: (usize, Tok, usize),
-        expected: Expected,
+        token: ErToken,
+        span: SourceSpan,
+        expected: ErExpectedTokens,
     },
     UnexpectedEof {
-        location: usize,
-        expected: Expected,
+        offset: usize,
+        expected: ErExpectedTokens,
     },
-}
-
-impl SyntaxError {
-    fn into_diagnostic(self) -> ParseDiagnostic {
-        use ParseDiagnosticSpanKind::{Exact, InsertionPoint};
-        match self {
-            Self::Lexical(error) => {
-                ParseDiagnostic::new(error.message).with_span(error.span, Exact)
-            }
-            Self::UnexpectedToken {
-                token: (start, token, end),
-                expected,
-            } => ParseDiagnostic::new(unexpected_token_message(&token, expected.names()))
-                .with_span(SourceSpan::new(start, end), Exact),
-            Self::UnexpectedEof { location, expected } => {
-                ParseDiagnostic::new(unexpected_eof_message(expected.names()))
-                    .with_span(SourceSpan::new(location, location), InsertionPoint)
-            }
-        }
-    }
 }
 
 #[derive(Debug)]
 enum Failure {
-    Syntax(SyntaxError),
+    Syntax(ErSyntaxDiagnostic),
     Cancelled(OperationCancelled),
 }
 
@@ -190,7 +171,7 @@ pub(super) fn parse(
     control.checkpoint()?;
     match outcome {
         Ok(actions) => Ok(Ok((parser.arena, actions))),
-        Err(Failure::Syntax(error)) => Ok(Err(error.into_diagnostic())),
+        Err(Failure::Syntax(error)) => Ok(Err(error)),
         Err(Failure::Cancelled(error)) => Err(error),
     }
 }
@@ -217,7 +198,7 @@ impl<'a, I: Iterator<Item = ErLexicalEvent>> Parser<'a, I> {
     fn peek(&mut self) -> ParseResult<Option<Terminal>> {
         match self.input.peek()? {
             Some(Ok((_, token, _))) => Ok(Some(Terminal::of(token))),
-            Some(Err(error)) => Err(Failure::Syntax(SyntaxError::Lexical(error.clone()))),
+            Some(Err(error)) => Err(Failure::Syntax(ErSyntaxDiagnostic::Lexical(error.clone()))),
             None => Ok(None),
         }
     }
@@ -230,44 +211,48 @@ impl<'a, I: Iterator<Item = ErLexicalEvent>> Parser<'a, I> {
         Ok(matches)
     }
 
-    fn require(&mut self, expected: Expected) -> ParseResult<Tok> {
+    fn require(&mut self, expected: ErExpectedTokens) -> ParseResult<ErToken> {
         match self.input.bump()? {
             Some(Ok((_, token, _))) if expected.contains(Terminal::of(&token)) => Ok(token),
             event => Err(self.failure(event, expected)),
         }
     }
 
-    fn unexpected<T>(&mut self, expected: Expected) -> ParseResult<T> {
+    fn unexpected<T>(&mut self, expected: ErExpectedTokens) -> ParseResult<T> {
         let event = self.input.bump()?;
         Err(self.failure(event, expected))
     }
 
-    fn failure(&self, event: Option<ErLexicalEvent>, expected: Expected) -> Failure {
+    fn failure(&self, event: Option<ErLexicalEvent>, expected: ErExpectedTokens) -> Failure {
         Failure::Syntax(match event {
-            Some(Ok(token)) => SyntaxError::UnexpectedToken { token, expected },
-            Some(Err(error)) => SyntaxError::Lexical(error),
-            None => SyntaxError::UnexpectedEof {
-                location: self.input.previous_end(),
+            Some(Ok((start, token, end))) => ErSyntaxDiagnostic::UnexpectedToken {
+                token,
+                span: SourceSpan::new(start, end),
+                expected,
+            },
+            Some(Err(error)) => ErSyntaxDiagnostic::Lexical(error),
+            None => ErSyntaxDiagnostic::UnexpectedEof {
+                offset: self.input.previous_end(),
                 expected,
             },
         })
     }
 
-    fn text(&mut self, expected: Expected) -> ParseResult<String> {
+    fn text(&mut self, expected: ErExpectedTokens) -> ParseResult<String> {
         match self.require(expected)? {
-            Tok::Name(text)
-            | Tok::Str(text)
-            | Tok::RestOfLine(text)
-            | Tok::AttrWord(text)
-            | Tok::AttrKey(text)
-            | Tok::Comment(text) => Ok(text),
+            ErToken::Name(text)
+            | ErToken::Str(text)
+            | ErToken::RestOfLine(text)
+            | ErToken::AttrWord(text)
+            | ErToken::AttrKey(text)
+            | ErToken::Comment(text) => Ok(text),
             _ => unreachable!("ER text expectation contains only string tokens"),
         }
     }
 
     fn id_list(&mut self) -> ParseResult<Vec<String>> {
-        match self.require(Expected::one(IdList))? {
-            Tok::IdList(ids) => Ok(ids.into_names()),
+        match self.require(ErExpectedTokens::one(IdList))? {
+            ErToken::IdList(ids) => Ok(ids.into_names()),
             _ => unreachable!("ER id list expectation contains only IdList"),
         }
     }
@@ -284,7 +269,7 @@ impl<'a, I: Iterator<Item = ErLexicalEvent>> Parser<'a, I> {
         while self.accept(Newline)? {
             leading_newline = true;
         }
-        let mut header = Expected::new(&[Newline, ErDiagram]);
+        let mut header = ErExpectedTokens::new(&[Newline, ErDiagram]);
         // Preserve the reported expectations after the old grammar reduces its leading newlines.
         if leading_newline
             && self
@@ -321,11 +306,11 @@ impl<'a, I: Iterator<Item = ErLexicalEvent>> Parser<'a, I> {
                 follow
             };
             match self.require(expected)? {
-                Tok::Newline => {
+                ErToken::Newline => {
                     skipped_newline = true;
                     continue;
                 }
-                Tok::SubgraphKw => {
+                ErToken::SubgraphKw => {
                     let (id, title) = self.subgraph_header()?;
                     frames.push(SubgraphFrame {
                         id,
@@ -333,7 +318,7 @@ impl<'a, I: Iterator<Item = ErLexicalEvent>> Parser<'a, I> {
                         outer: std::mem::take(&mut body),
                     });
                 }
-                Tok::EndKw => {
+                ErToken::EndKw => {
                     let frame = frames.pop().expect("ER end requires an open subgraph");
                     let subgraph = self.arena.push(Action::AddSubgraph {
                         id: frame.id,
@@ -343,7 +328,7 @@ impl<'a, I: Iterator<Item = ErLexicalEvent>> Parser<'a, I> {
                     });
                     body = self.arena.append(frame.outer, subgraph);
                 }
-                Tok::Name(name) => {
+                ErToken::Name(name) => {
                     let statement = self.named_statement(name, follow)?;
                     body = self.arena.append(body, statement);
                 }
@@ -359,43 +344,43 @@ impl<'a, I: Iterator<Item = ErLexicalEvent>> Parser<'a, I> {
 
     fn subgraph_header(&mut self) -> ParseResult<(String, String)> {
         let id = self.text(NAME_OR_STR)?;
-        match self.require(Expected::new(&[Newline, SquareStart]))? {
-            Tok::Newline => Ok((id.clone(), id)),
-            Tok::SquareStart => {
+        match self.require(ErExpectedTokens::new(&[Newline, SquareStart]))? {
+            ErToken::Newline => Ok((id.clone(), id)),
+            ErToken::SquareStart => {
                 let mut title = self.text(NAME_OR_STR)?;
                 loop {
                     match self.require(NAME_OR_STR.with(SquareStop))? {
-                        Tok::Name(part) | Tok::Str(part) => {
+                        ErToken::Name(part) | ErToken::Str(part) => {
                             title.push(' ');
                             title.push_str(&part);
                         }
-                        Tok::SquareStop => break,
+                        ErToken::SquareStop => break,
                         _ => unreachable!("ER subgraph title expects text or its closing bracket"),
                     }
                 }
-                self.require(Expected::one(Newline))?;
+                self.require(ErExpectedTokens::one(Newline))?;
                 Ok((id, title))
             }
             _ => unreachable!("ER subgraph header expects a line ending or title"),
         }
     }
 
-    fn payload_statement(&mut self, token: Tok) -> ParseResult<Action> {
+    fn payload_statement(&mut self, token: ErToken) -> ParseResult<Action> {
         Ok(match token {
-            Tok::AccTitle(title) => Action::SetAccTitle(title),
-            Tok::AccDescr(description) | Tok::AccDescrMultiline(description) => {
+            ErToken::AccTitle(title) => Action::SetAccTitle(title),
+            ErToken::AccDescr(description) | ErToken::AccDescrMultiline(description) => {
                 Action::SetAccDescr(description)
             }
-            Tok::Direction(direction) => Action::SetDirection(direction.value),
-            Tok::StyleKw => Action::AddCssStyles {
+            ErToken::Direction(direction) => Action::SetDirection(direction.value),
+            ErToken::StyleKw => Action::AddCssStyles {
                 entities: self.id_list()?,
-                raw: self.text(Expected::one(RestOfLine))?,
+                raw: self.text(ErExpectedTokens::one(RestOfLine))?,
             },
-            Tok::ClassDefKw => Action::AddClassDef {
+            ErToken::ClassDefKw => Action::AddClassDef {
                 classes: self.id_list()?,
-                raw: self.text(Expected::one(RestOfLine))?,
+                raw: self.text(ErExpectedTokens::one(RestOfLine))?,
             },
-            Tok::ClassKw => Action::SetClass {
+            ErToken::ClassKw => Action::SetClass {
                 entities: self.id_list()?,
                 classes: self.id_list()?,
             },
@@ -403,10 +388,14 @@ impl<'a, I: Iterator<Item = ErLexicalEvent>> Parser<'a, I> {
         })
     }
 
-    fn named_statement(&mut self, name: String, follow: Expected) -> ParseResult<ErActionList> {
+    fn named_statement(
+        &mut self,
+        name: String,
+        follow: ErExpectedTokens,
+    ) -> ParseResult<ErActionList> {
         let alias = if self.accept(SquareStart)? {
-            let alias = self.text(Expected::one(Name))?;
-            self.require(Expected::one(SquareStop))?;
+            let alias = self.text(ErExpectedTokens::one(Name))?;
+            self.require(ErExpectedTokens::one(SquareStop))?;
             Some(alias)
         } else {
             None
@@ -417,7 +406,7 @@ impl<'a, I: Iterator<Item = ErLexicalEvent>> Parser<'a, I> {
                 return self.relationship(name, classes);
             }
             Some(BlockStart) => {
-                self.require(Expected::one(BlockStart))?;
+                self.require(ErExpectedTokens::one(BlockStart))?;
                 Some(self.attributes()?)
             }
             // EOF and end reduce a complete entity before the document checks the boundary.
@@ -458,19 +447,19 @@ impl<'a, I: Iterator<Item = ErLexicalEvent>> Parser<'a, I> {
     ) -> ParseResult<ErActionList> {
         let card_b = self.cardinality()?;
         let rel_type = match self.require(RELATION_KIND)? {
-            Tok::Identifying => "IDENTIFYING".to_string(),
-            Tok::NonIdentifying => "NON_IDENTIFYING".to_string(),
+            ErToken::Identifying => "IDENTIFYING".to_string(),
+            ErToken::NonIdentifying => "NON_IDENTIFYING".to_string(),
             _ => unreachable!("ER relationship kind is identifying or non-identifying"),
         };
         let card_a = self.cardinality()?;
-        let b = self.text(Expected::one(Name))?;
-        let right_classes = match self.require(Expected::new(&[StyleSeparator, Colon]))? {
-            Tok::StyleSeparator => {
+        let b = self.text(ErExpectedTokens::one(Name))?;
+        let right_classes = match self.require(ErExpectedTokens::new(&[StyleSeparator, Colon]))? {
+            ErToken::StyleSeparator => {
                 let classes = self.id_list()?;
-                self.require(Expected::one(Colon))?;
+                self.require(ErExpectedTokens::one(Colon))?;
                 Some(classes)
             }
-            Tok::Colon => None,
+            ErToken::Colon => None,
             _ => unreachable!("ER right endpoint expects classes or the role separator"),
         };
         let role = self.text(NAME_OR_STR)?;
@@ -486,7 +475,7 @@ impl<'a, I: Iterator<Item = ErLexicalEvent>> Parser<'a, I> {
             a,
             role,
             b,
-            spec: RelSpec {
+            spec: ErRelSpec {
                 card_a,
                 card_b,
                 rel_type,
@@ -499,52 +488,52 @@ impl<'a, I: Iterator<Item = ErLexicalEvent>> Parser<'a, I> {
 
     fn cardinality(&mut self) -> ParseResult<String> {
         Ok(match self.require(CARDINALITY)? {
-            Tok::ZeroOrOne => "ZERO_OR_ONE",
-            Tok::ZeroOrMore => "ZERO_OR_MORE",
-            Tok::OneOrMore => "ONE_OR_MORE",
-            Tok::OnlyOne => "ONLY_ONE",
-            Tok::MdParent => "MD_PARENT",
+            ErToken::ZeroOrOne => "ZERO_OR_ONE",
+            ErToken::ZeroOrMore => "ZERO_OR_MORE",
+            ErToken::OneOrMore => "ONE_OR_MORE",
+            ErToken::OnlyOne => "ONLY_ONE",
+            ErToken::MdParent => "MD_PARENT",
             _ => unreachable!("ER cardinality expectation contains only cardinalities"),
         }
         .to_string())
     }
 
-    fn attributes(&mut self) -> ParseResult<Vec<Attribute>> {
+    fn attributes(&mut self) -> ParseResult<Vec<ErAttribute>> {
         let mut attributes = Vec::new();
         loop {
             let ty = match self.require(ATTRIBUTE_BOUNDARY)? {
-                Tok::BlockStop => return Ok(attributes),
-                Tok::AttrWord(word) => word,
+                ErToken::BlockStop => return Ok(attributes),
+                ErToken::AttrWord(word) => word,
                 _ => unreachable!("ER attribute block expects a type or its closing brace"),
             };
             attributes.push(self.attribute(ty)?);
         }
     }
 
-    fn attribute(&mut self, mut ty: String) -> ParseResult<Attribute> {
-        let name = match self.require(Expected::new(&[Question, AttrWord]))? {
-            Tok::Question => {
+    fn attribute(&mut self, mut ty: String) -> ParseResult<ErAttribute> {
+        let name = match self.require(ErExpectedTokens::new(&[Question, AttrWord]))? {
+            ErToken::Question => {
                 ty.push('?');
-                self.text(Expected::one(AttrWord))?
+                self.text(ErExpectedTokens::one(AttrWord))?
             }
-            Tok::AttrWord(word) => word,
+            ErToken::AttrWord(word) => word,
             _ => unreachable!("ER attribute type expects a nullable suffix or a name"),
         };
         let mut keys = Vec::new();
         let mut comment_or_boundary = ATTRIBUTE_BOUNDARY.with(Comment).with(AttrKey);
         if self.peek()? == Some(AttrKey) {
-            keys.push(self.text(Expected::one(AttrKey))?);
+            keys.push(self.text(ErExpectedTokens::one(AttrKey))?);
             while self.accept(Comma)? {
-                keys.push(self.text(Expected::one(AttrKey))?);
+                keys.push(self.text(ErExpectedTokens::one(AttrKey))?);
             }
             comment_or_boundary = ATTRIBUTE_BOUNDARY.with(Comment).with(Comma);
         }
         let comment = match self.peek()? {
-            Some(Comment) => self.text(Expected::one(Comment))?,
+            Some(Comment) => self.text(ErExpectedTokens::one(Comment))?,
             Some(next) if ATTRIBUTE_BOUNDARY.contains(next) => String::new(),
             _ => return self.unexpected(comment_or_boundary),
         };
-        Ok(Attribute {
+        Ok(ErAttribute {
             ty,
             name,
             keys,
@@ -552,6 +541,3 @@ impl<'a, I: Iterator<Item = ErLexicalEvent>> Parser<'a, I> {
         })
     }
 }
-
-#[cfg(test)]
-mod tests;

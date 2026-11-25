@@ -2417,6 +2417,7 @@ dependencies = [
  "granit-parser",
  "indexmap",
  "json5",
+ "merman-core-graph",
  "merman-core-preprocess",
  "merman-core-structured",
  "merman-fixture-render-context",
@@ -2429,6 +2430,15 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "unicode-general-category",
+]
+
+[[package]]
+name = "merman-core-graph"
+version = "0.11.0"
+dependencies = [
+ "indexmap",
+ "merman-core-preprocess",
+ "merman-model",
 ]
 
 [[package]]

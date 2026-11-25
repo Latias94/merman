@@ -1,5 +1,5 @@
-#[cfg(feature = "presentation")]
-use crate::SourcePresentationMetadata;
+#[cfg(test)]
+use crate::SourceSpan;
 use crate::common_db::LangiumCommonDbFields;
 use crate::diagrams::langium_common::{
     LangiumCommonFacts, convert_langium_escape_character, is_ecmascript_line_terminator,
@@ -19,16 +19,19 @@ use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, editor::ensure_editor_recovery_from_error,
 };
-use crate::{Error, MermaidConfig, Result, SourceSpan, family};
-#[cfg(feature = "compat-json")]
-use serde_json::Value;
-
-const MAX_PACKET_SIZE: usize = 10_000;
+use crate::{Error, MermaidConfig, ParseDiagnostic, ParseDiagnosticSpanKind, family};
+#[cfg(feature = "presentation")]
+use crate::{Result, SourcePresentationMetadata};
+#[cfg(feature = "editor-facts")]
+use merman_core_structured::packet::PacketField;
+use merman_core_structured::packet::{
+    PacketExpansionDiagnostic, PacketFieldError, PacketLexer, expand_fields,
+};
+use merman_model::families::packet::PacketDiagramModel;
 #[cfg(feature = "presentation")]
 use merman_model::families::packet::PacketOutputData;
-use merman_model::families::packet::{
-    PacketBlock, PacketDiagramModel, validate_packet_bits_per_row,
-};
+#[cfg(feature = "compat-json")]
+use serde_json::Value;
 
 pub(crate) fn sanitize_common_db_fields(
     model: &mut PacketDiagramModel,
@@ -51,15 +54,6 @@ pub(crate) fn render_model_to_compat_json(
         &meta.diagram_type,
         meta.effective_config.as_config(),
     ))
-}
-
-#[derive(Debug, Clone)]
-struct ParsedPacketBlock {
-    start: Option<f64>,
-    end: Option<f64>,
-    bits: Option<f64>,
-    label: String,
-    numeric_span: SourceSpan,
 }
 
 enum PacketParseOutput {
@@ -89,8 +83,6 @@ struct PacketSemanticSource {
     #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
 }
-
-type PacketWord = Vec<PacketBlock>;
 
 #[cfg(feature = "compat-json")]
 pub(crate) fn parse_packet(code: &str, meta: &SourcePresentationMetadata) -> Result<Value> {
@@ -249,8 +241,8 @@ fn construct_packet_semantic_source_controlled(
     #[cfg(test)]
     crate::diagrams::langium_common::record_family_syntax_construction("packet");
 
-    let body_offset = match packet_body_start_controlled(code, control)? {
-        Ok(Some(body)) => body,
+    let mut lexer = match PacketLexer::after_header(code, control)? {
+        Ok(Some(lexer)) => lexer,
         Ok(None) => {
             return Ok(Ok(PacketSemanticSource {
                 output: PacketParseOutput::Empty,
@@ -260,9 +252,9 @@ fn construct_packet_semantic_source_controlled(
                     .then(EditorSemanticFacts::new),
             }));
         }
-        Err(error) => {
+        Err(diagnostic) => {
             return Ok(Err(packet_parse_failure(
-                error,
+                Error::diagram_parse_fallback("packet", diagnostic.message),
                 #[cfg(feature = "editor-facts")]
                 editor_demand
                     .needs_recovery()
@@ -272,10 +264,8 @@ fn construct_packet_semantic_source_controlled(
             )));
         }
     };
-    let mut cursor = PacketCursor::new(code, body_offset, control);
-    let mut on_header_line = true;
     let mut common = LangiumCommonFacts::default();
-    let mut blocks: Vec<ParsedPacketBlock> = Vec::new();
+    let mut fields = Vec::new();
     #[cfg(feature = "editor-facts")]
     let mut editor_facts = match editor_demand {
         EditorFactsDemand::Omit => None,
@@ -288,21 +278,9 @@ fn construct_packet_semantic_source_controlled(
     };
     let mut first_error = None;
 
-    while cursor.offset < code.len() {
-        control.checkpoint()?;
-        cursor.begin_statement();
-        let line_start = cursor.offset;
-        cursor.skip_horizontal_whitespace()?;
-        if cursor.remaining().starts_with("%%") {
-            cursor.skip_line()?;
-            on_header_line = false;
-            continue;
-        }
-        if cursor.consume_eol()? {
-            on_header_line = false;
-            continue;
-        }
-        if let Some(mut parsed) = parse_langium_common(code, cursor.offset) {
+    while let Some(field) = lexer.next_field(
+        |line_start, offset| {
+            let mut parsed = parse_langium_common(code, offset)?;
             parsed.fact.raw_span.start = line_start;
             if let Some(diagnostic) = &parsed.diagnostic {
                 #[cfg(feature = "editor-facts")]
@@ -325,49 +303,40 @@ fn construct_packet_semantic_source_controlled(
                 push_langium_common_editor_fact(facts, &parsed.fact, "packet");
             }
             common.push(parsed.fact);
-            cursor.offset += parsed.consumed;
-            on_header_line = false;
-            continue;
-        }
-
-        if let Some(block) = parse_packet_block_controlled(&mut cursor)? {
-            #[cfg(feature = "editor-facts")]
-            if let Some(facts) = editor_facts
-                .as_mut()
-                .filter(|_| editor_demand.captures_rich())
-            {
-                push_packet_block_editor_fact(facts, &block);
+            Some(parsed.consumed)
+        },
+        decode_packet_escape,
+    )? {
+        match field {
+            Ok(field) => {
+                #[cfg(feature = "editor-facts")]
+                if let Some(facts) = editor_facts
+                    .as_mut()
+                    .filter(|_| editor_demand.captures_rich())
+                {
+                    push_packet_block_editor_fact(facts, &field);
+                }
+                fields.push(field);
             }
-            blocks.push(block.semantic);
-            on_header_line = false;
-            continue;
+            Err(diagnostic) => {
+                #[cfg(feature = "editor-facts")]
+                if let Some(facts) = &mut editor_facts {
+                    facts.mark_recovered_from_parse_error(
+                        &diagnostic.message,
+                        diagnostic.recovery_span,
+                    );
+                }
+                first_error.get_or_insert_with(|| {
+                    Error::diagram_parse_fallback(diagram_type, diagnostic.message)
+                });
+            }
         }
-
-        let span = cursor.recover_statement()?;
-        let t = &code[span.start..span.end];
-        let diagnostic = if on_header_line {
-            "expected packet".to_string()
-        } else {
-            format!("unexpected packet statement: {t}")
-        };
-        on_header_line = false;
-        #[cfg(feature = "editor-facts")]
-        if let Some(facts) = &mut editor_facts {
-            facts.mark_recovered_from_parse_error(diagnostic.clone(), Some(span));
-        }
-        first_error.get_or_insert_with(|| Error::diagram_parse_fallback(diagram_type, diagnostic));
     }
 
-    let packet_result = match validate_packet_bits_per_row(config_bits_per_row(config)) {
-        Ok(bits_per_row) => populate_packet_controlled(blocks, bits_per_row, control)?,
-        Err(error) => Err(Error::diagram_parse_fallback(
-            diagram_type,
-            error.to_string(),
-        )),
-    };
-    let packet = match packet_result {
-        Ok(packet) => packet,
-        Err(error) => {
+    let model = match expand_fields(fields, config_bits_per_row(config), control)? {
+        Ok(model) => model,
+        Err(diagnostic) => {
+            let error = packet_expansion_error(diagnostic, diagram_type);
             #[cfg(feature = "editor-facts")]
             if let Some(facts) = editor_facts.take() {
                 editor_facts = Some(ensure_editor_recovery_from_error(
@@ -379,7 +348,7 @@ fn construct_packet_semantic_source_controlled(
             if first_error.is_none() {
                 first_error = Some(error);
             }
-            Vec::new()
+            PacketDiagramModel::default()
         }
     };
     let common = LangiumCommonDbFields::from_facts(&common);
@@ -398,7 +367,7 @@ fn construct_packet_semantic_source_controlled(
             title: common.title,
             acc_title: common.acc_title,
             acc_descr: common.acc_descr,
-            packet,
+            ..model
         }),
         #[cfg(feature = "editor-facts")]
         editor_facts,
@@ -422,492 +391,87 @@ fn packet_parse_failure(
 }
 
 #[cfg(feature = "editor-facts")]
-fn push_packet_block_editor_fact(facts: &mut EditorSemanticFacts, block: &PacketBlockSpanned) {
+fn push_packet_block_editor_fact(facts: &mut EditorSemanticFacts, block: &PacketField) {
     facts.push_expected_syntax(EditorExpectedSyntax::new(
         EditorExpectedSyntaxKind::Payload,
-        block.semantic.numeric_span,
+        block.numeric_span(),
     ));
     facts.push_symbol(EditorSemanticSymbol::payload(
-        block.semantic.label.clone(),
+        block.label().to_owned(),
         Some("packet block".to_string()),
         EditorSemanticKind::String,
-        block.label_span,
-        block.label_span,
+        block.label_span(),
+        block.label_span(),
     ));
 }
 
-fn populate_packet_controlled(
-    blocks: Vec<ParsedPacketBlock>,
-    bits_per_row: f64,
-    control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<Vec<PacketWord>>> {
-    let mut packet: Vec<PacketWord> = Vec::new();
-    let mut last_bit = -1.0;
-    let mut word: PacketWord = Vec::new();
-    let mut row = 1.0;
-
-    for (block_index, mut block) in blocks.into_iter().enumerate() {
-        if block_index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        if let (Some(start), Some(end)) = (block.start, block.end)
-            && end < start
-        {
-            return Ok(Err(Error::diagram_parse_exact(
-                "packet".to_string(),
-                format!(
-                    "Packet block {} - {} is invalid. End must be greater than start.",
-                    format_js_number(start),
-                    format_js_number(end),
-                ),
-                block.numeric_span,
-            )));
-        }
-
-        let expected_start = last_bit + 1.0;
-        let start = block.start.unwrap_or(expected_start);
-        let end_for_msg = block.end.unwrap_or(start);
-        if start != expected_start {
-            return Ok(Err(Error::diagram_parse_exact(
-                "packet".to_string(),
-                format!(
-                    "Packet block {} - {} is not contiguous. It should start from {}.",
-                    format_js_number(start),
-                    format_js_number(end_for_msg),
-                    format_js_number(expected_start),
-                ),
-                block.numeric_span,
-            )));
-        }
-
-        if block.bits == Some(0.0) {
-            return Ok(Err(Error::diagram_parse_exact(
-                "packet".to_string(),
-                format!(
-                    "Packet block {} is invalid. Cannot have a zero bit field.",
-                    format_js_number(start),
-                ),
-                block.numeric_span,
-            )));
-        }
-
-        // Keep the source's left-associative Number operations and its explicit relative width.
-        // `start + bits - 1` differs from `start + (bits - 1)` at binary64 boundaries.
-        let end = block
-            .end
-            .unwrap_or_else(|| start + block.bits.unwrap_or(1.0) - 1.0);
-        let bits = block.bits.unwrap_or(end - start + 1.0);
-        last_bit = end;
-
-        let mut cur = PacketBlock {
-            start,
-            end,
-            bits,
-            label: std::mem::take(&mut block.label),
-        };
-
-        let mut split_count = 0usize;
-        loop {
-            if split_count.is_multiple_of(128) {
-                control.checkpoint()?;
-            }
-            split_count = split_count.saturating_add(1);
-            if packet.len() >= MAX_PACKET_SIZE {
-                return Ok(Err(packet_expansion_error(
-                    format!("Packet exceeds the {MAX_PACKET_SIZE}-row safety limit."),
-                    "merman.packet.row_limit",
-                    block.numeric_span,
-                )));
-            }
-            let (fitting, next) =
-                match get_next_fitting_block(cur, row, bits_per_row, block.numeric_span) {
-                    Ok(next) => next,
-                    Err(error) => return Ok(Err(error)),
-                };
-            let reached_row_end = fitting.end + 1.0 == row * bits_per_row;
-            word.push(fitting);
-            if reached_row_end {
-                packet.push(std::mem::take(&mut word));
-                // The materialized row budget bounds this counter, independently of bit values.
-                row += 1.0;
-            }
-            let Some(next) = next else {
-                break;
-            };
-            cur = next;
-        }
-    }
-
-    if !word.is_empty() {
-        packet.push(word);
-    }
-
-    control.checkpoint()?;
-    Ok(Ok(packet))
+fn decode_packet_escape(ch: char) -> Option<char> {
+    (!is_ecmascript_line_terminator(ch)).then(|| convert_langium_escape_character(ch))
 }
 
-fn get_next_fitting_block(
-    block: PacketBlock,
-    row: f64,
-    bits_per_row: f64,
-    numeric_span: SourceSpan,
-) -> Result<(PacketBlock, Option<PacketBlock>)> {
-    if block.start > block.end {
-        return Err(Error::diagram_parse_exact(
-            "packet".to_string(),
+fn packet_expansion_error(diagnostic: PacketExpansionDiagnostic, diagram_type: &str) -> Error {
+    let (span, error) = match diagnostic {
+        PacketExpansionDiagnostic::InvalidRowWidth(error) => {
+            return Error::diagram_parse_fallback(diagram_type, error.to_string());
+        }
+        PacketExpansionDiagnostic::Field { span, error } => (span, error),
+    };
+    let (message, code) = match error {
+        PacketFieldError::ReversedRange { start, end } => (
+            format!(
+                "Packet block {} - {} is invalid. End must be greater than start.",
+                format_js_number(start),
+                format_js_number(end),
+            ),
+            None,
+        ),
+        PacketFieldError::NotContiguous {
+            start,
+            end,
+            expected,
+        } => (
+            format!(
+                "Packet block {} - {} is not contiguous. It should start from {}.",
+                format_js_number(start),
+                format_js_number(end),
+                format_js_number(expected),
+            ),
+            None,
+        ),
+        PacketFieldError::ZeroBitField { start } => (
+            format!(
+                "Packet block {} is invalid. Cannot have a zero bit field.",
+                format_js_number(start),
+            ),
+            None,
+        ),
+        PacketFieldError::InvertedFragment { start, end } => (
             format!(
                 "Block start {} is greater than block end {}.",
-                format_js_number(block.start),
-                format_js_number(block.end),
+                format_js_number(start),
+                format_js_number(end),
             ),
-            numeric_span,
-        ));
-    }
-
-    let row_start = row * bits_per_row;
-
-    if block.end + 1.0 <= row_start {
-        return Ok((block, None));
-    }
-
-    let row_end = row_start - 1.0;
-    // Without this equality the upstream loop keeps the same row and repeatedly emits the same
-    // remainder. Detect that Number-rounding stall before allocating any repeated fragments.
-    if row_end + 1.0 != row_start {
-        return Err(packet_expansion_error(
-            "Packet row splitting cannot make progress with JavaScript Number arithmetic.",
-            "merman.packet.nonprogress",
-            numeric_span,
-        ));
-    }
-    Ok((
-        PacketBlock {
-            start: block.start,
-            end: row_end,
-            label: block.label.clone(),
-            bits: row_end - block.start,
-        },
-        Some(PacketBlock {
-            start: row_start,
-            end: block.end,
-            label: block.label,
-            bits: block.end - row_start,
-        }),
-    ))
-}
-
-fn packet_expansion_error(message: impl Into<String>, code: &str, span: SourceSpan) -> Error {
-    Error::diagram_parse_diagnostic(
-        "packet",
-        crate::ParseDiagnostic::new(message)
-            .with_code(code)
-            .with_span(span, crate::ParseDiagnosticSpanKind::Exact),
-    )
-}
-
-fn parse_packet_block_controlled(
-    cursor: &mut PacketCursor<'_>,
-) -> crate::OperationControlResult<Option<PacketBlockSpanned>> {
-    let relative = cursor.peek() == Some('+');
-    if relative {
-        cursor.advance()?;
-        cursor.skip_horizontal_whitespace()?;
-    }
-    let Some((first, first_span)) = cursor.integer()? else {
-        return Ok(None);
-    };
-    cursor.skip_horizontal_whitespace()?;
-    let (start, end, bits, numeric_span) = if relative {
-        (None, None, Some(first), first_span)
-    } else if cursor.peek() == Some('-') {
-        cursor.advance()?;
-        cursor.skip_horizontal_whitespace()?;
-        let Some((end, end_span)) = cursor.integer()? else {
-            return Ok(None);
-        };
-        cursor.skip_horizontal_whitespace()?;
-        (
-            Some(first),
-            Some(end),
             None,
-            SourceSpan::new(first_span.start, end_span.end),
-        )
-    } else {
-        (Some(first), None, None, first_span)
+        ),
+        PacketFieldError::RowLimit { max_rows } => (
+            format!("Packet exceeds the {max_rows}-row safety limit."),
+            Some("merman.packet.row_limit"),
+        ),
+        PacketFieldError::Nonprogress => (
+            "Packet row splitting cannot make progress with JavaScript Number arithmetic.".into(),
+            Some("merman.packet.nonprogress"),
+        ),
     };
-    if cursor.peek() != Some(':') {
-        return Ok(None);
+    let mut diagnostic =
+        ParseDiagnostic::new(message).with_span(span, ParseDiagnosticSpanKind::Exact);
+    if let Some(code) = code {
+        diagnostic = diagnostic.with_code(code);
     }
-    cursor.advance()?;
-    cursor.skip_horizontal_whitespace()?;
-    let Some((label, _label_span)) = cursor.label()? else {
-        return Ok(None);
-    };
-    cursor.skip_horizontal_whitespace()?;
-    if cursor.remaining().starts_with("%%") {
-        cursor.skip_line()?;
-    } else if !cursor.consume_eol()? {
-        return Ok(None);
-    }
-    Ok(Some(PacketBlockSpanned {
-        semantic: ParsedPacketBlock {
-            start,
-            end,
-            bits,
-            label,
-            numeric_span,
-        },
-        #[cfg(feature = "editor-facts")]
-        label_span: _label_span,
-    }))
-}
-
-fn parse_packet_integer(token: &str) -> Option<f64> {
-    if token.len() > 1 && token.starts_with('0') {
-        return None;
-    }
-    token.parse().ok()
-}
-
-const PACKET_SCAN_CHECKPOINT_BYTES: usize = 1024;
-
-/// Consumes Packet STRING values in one pass, retaining only the first physical line for recovery.
-struct PacketCursor<'a> {
-    source: &'a str,
-    offset: usize,
-    control: &'a crate::OperationControl,
-    checkpoint_bytes: usize,
-    recovery: PacketRecoveryLine,
-    // EOF has no later closing delimiter of this kind. Reuse that failure after recovery rather
-    // than scanning the same suffix again; there are only two quote kinds to retain.
-    exhausted_quotes: [Option<usize>; 2],
-    #[cfg(test)]
-    scanned_bytes: usize,
-}
-
-struct PacketRecoveryLine {
-    span: SourceSpan,
-    next_offset: Option<usize>,
-    comment: bool,
-    quote: Option<char>,
-    escaped: bool,
-}
-
-impl PacketRecoveryLine {
-    fn new(start: usize) -> Self {
-        Self {
-            span: SourceSpan::new(start, start),
-            next_offset: None,
-            comment: false,
-            quote: None,
-            escaped: false,
-        }
-    }
-}
-
-impl<'a> PacketCursor<'a> {
-    fn new(source: &'a str, offset: usize, control: &'a crate::OperationControl) -> Self {
-        Self {
-            source,
-            offset,
-            control,
-            checkpoint_bytes: 0,
-            recovery: PacketRecoveryLine::new(offset),
-            exhausted_quotes: [None; 2],
-            #[cfg(test)]
-            scanned_bytes: 0,
-        }
-    }
-
-    fn remaining(&self) -> &'a str {
-        &self.source[self.offset..]
-    }
-
-    fn peek(&self) -> Option<char> {
-        self.remaining().chars().next()
-    }
-
-    fn begin_statement(&mut self) {
-        self.recovery = PacketRecoveryLine::new(self.offset);
-    }
-
-    fn advance(&mut self) -> crate::OperationControlResult<Option<char>> {
-        let Some(ch) = self.peek() else {
-            return Ok(None);
-        };
-        let start = self.offset;
-        self.offset += ch.len_utf8();
-        if self.recovery.next_offset.is_none() {
-            if ch == '\n' {
-                self.recovery.next_offset = Some(self.offset);
-            } else if !self.recovery.comment {
-                if self.recovery.escaped {
-                    self.recovery.escaped = false;
-                } else if self.recovery.quote.is_some() && ch == '\\' {
-                    self.recovery.escaped = true;
-                } else if Some(ch) == self.recovery.quote {
-                    self.recovery.quote = None;
-                } else if self.recovery.quote.is_none() {
-                    if matches!(ch, '\'' | '"') {
-                        self.recovery.quote = Some(ch);
-                    } else if ch == '%' && self.remaining().starts_with('%') {
-                        self.recovery.comment = true;
-                    }
-                }
-                if !self.recovery.comment && !ch.is_whitespace() {
-                    if self.recovery.span.start == self.recovery.span.end {
-                        self.recovery.span.start = start;
-                    }
-                    self.recovery.span.end = self.offset;
-                }
-            }
-        }
-        #[cfg(test)]
-        {
-            self.scanned_bytes += ch.len_utf8();
-        }
-        self.checkpoint_bytes += ch.len_utf8();
-        if self.checkpoint_bytes >= PACKET_SCAN_CHECKPOINT_BYTES {
-            self.control.checkpoint()?;
-            self.checkpoint_bytes = 0;
-        }
-        Ok(Some(ch))
-    }
-
-    fn skip_horizontal_whitespace(&mut self) -> crate::OperationControlResult<()> {
-        while matches!(self.peek(), Some(' ' | '\t')) {
-            self.advance()?;
-        }
-        Ok(())
-    }
-
-    fn integer(&mut self) -> crate::OperationControlResult<Option<(f64, SourceSpan)>> {
-        let start = self.offset;
-        while self.peek().is_some_and(|ch| ch.is_ascii_digit()) {
-            self.advance()?;
-        }
-        Ok(parse_packet_integer(&self.source[start..self.offset])
-            .map(|value| (value, SourceSpan::new(start, self.offset))))
-    }
-
-    fn label(&mut self) -> crate::OperationControlResult<Option<(String, SourceSpan)>> {
-        let quote = match self.peek() {
-            Some(quote @ ('\'' | '"')) => quote,
-            _ => return Ok(None),
-        };
-        let slot = usize::from(quote == '\'');
-        let opening = self.offset;
-        if self.exhausted_quotes[slot].is_some_and(|start| opening >= start) {
-            return Ok(None);
-        }
-        self.advance()?;
-        let start = self.offset;
-        let mut value = String::new();
-        let mut escaped = false;
-        while let Some(ch) = self.advance()? {
-            if escaped {
-                if is_ecmascript_line_terminator(ch) {
-                    return Ok(None);
-                }
-                value.push(convert_langium_escape_character(ch));
-                escaped = false;
-            } else if ch == '\\' {
-                escaped = true;
-            } else if ch == quote {
-                return Ok(Some((value, SourceSpan::new(start, self.offset - 1))));
-            } else {
-                value.push(ch);
-            }
-        }
-        self.exhausted_quotes[slot] = Some(opening);
-        Ok(None)
-    }
-
-    fn consume_eol(&mut self) -> crate::OperationControlResult<bool> {
-        if self.remaining().starts_with("\r\n") {
-            self.advance()?;
-            self.advance()?;
-            return Ok(true);
-        }
-        if self.peek() == Some('\n') {
-            self.advance()?;
-            return Ok(true);
-        }
-        Ok(self.offset == self.source.len())
-    }
-
-    fn skip_line(&mut self) -> crate::OperationControlResult<()> {
-        while let Some(ch) = self.advance()? {
-            if ch == '\n' {
-                break;
-            }
-        }
-        Ok(())
-    }
-
-    fn recover_statement(&mut self) -> crate::OperationControlResult<SourceSpan> {
-        while self.recovery.next_offset.is_none() && self.advance()?.is_some() {}
-        self.offset = self.recovery.next_offset.unwrap_or(self.source.len());
-        Ok(self.recovery.span)
-    }
-}
-
-fn packet_header_token_len(line: &str) -> Option<usize> {
-    if let Some(rest) = line.strip_prefix("packet-beta")
-        && keyword_boundary(rest)
-    {
-        return Some("packet-beta".len());
-    }
-    if let Some(rest) = line.strip_prefix("packet")
-        && keyword_boundary(rest)
-    {
-        return Some("packet".len());
-    }
-    None
-}
-
-fn keyword_boundary(rest: &str) -> bool {
-    rest.is_empty()
-        || rest.starts_with("%%")
-        || rest.chars().next().is_some_and(char::is_whitespace)
-}
-
-fn packet_body_start_controlled(
-    code: &str,
-    control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<Option<usize>>> {
-    let mut cursor = PacketCursor::new(code, 0, control);
-    loop {
-        control.checkpoint()?;
-        while cursor.peek().is_some_and(char::is_whitespace) {
-            cursor.advance()?;
-        }
-        if cursor.remaining().starts_with("%%") {
-            cursor.skip_line()?;
-            continue;
-        }
-        if cursor.remaining().is_empty() {
-            return Ok(Ok(None));
-        }
-        let Some(header_len) = packet_header_token_len(cursor.remaining()) else {
-            return Ok(Err(Error::diagram_parse_fallback(
-                "packet".to_string(),
-                "expected packet".to_string(),
-            )));
-        };
-        return Ok(Ok(Some(cursor.offset + header_len)));
-    }
+    Error::diagram_parse_diagnostic("packet", diagnostic)
 }
 
 fn config_bits_per_row(config: &MermaidConfig) -> Option<f64> {
     config.get_path(&["packet", "bitsPerRow"])?.as_f64()
-}
-
-#[derive(Debug, Clone)]
-struct PacketBlockSpanned {
-    semantic: ParsedPacketBlock,
-    #[cfg(feature = "editor-facts")]
-    label_span: SourceSpan,
 }
 
 #[cfg(test)]
@@ -1123,28 +687,60 @@ mod semantic_tests {
     }
 
     #[test]
-    fn packet_long_tokens_and_recovery_can_cancel_with_bounded_scan_work() {
-        let payload = "雪".repeat(8 * PACKET_SCAN_CHECKPOINT_BYTES);
-        for source in [
-            format!("0: \"{payload}\nB\""),
-            format!("0: '{payload}"),
-            format!("+{}: 'bit'", "9".repeat(payload.len())),
-            format!("0: 'bit' %% {payload}"),
-            format!("invalid {payload}"),
-            format!("0: 'bit' garbage {payload}"),
+    #[cfg(feature = "editor-facts")]
+    fn packet_preserves_editor_facts_and_first_error_across_common_and_numeric_fields() {
+        let source = concat!(
+            "packet title Header\r\n",
+            "0: 'first'\r\n",
+            "  invalid 雪  %% hidden\r\n",
+            "accTitle: Accessible\r\n",
+            "  2 - 3: 'gap'\r\n",
+        );
+        let result = construct_packet_semantic_source_controlled(
+            source,
+            "packet",
+            &MermaidConfig::empty_object(),
+            EditorFactsDemand::Capture,
+            &crate::OperationControl::new(),
+        )
+        .unwrap();
+        let Err(failure) = result else {
+            panic!("invalid Packet statements must fail strict parsing");
+        };
+        let (error, facts) = failure.into_parts();
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("expected a Packet diagnostic");
+        };
+        let syntax_message = "unexpected packet statement: invalid 雪";
+        assert_eq!(diagnostic.message(), syntax_message);
+        assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Fallback);
+        assert_eq!(diagnostic.span(), None);
+        assert_eq!(
+            facts
+                .symbols
+                .iter()
+                .map(|symbol| symbol.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Header", "first", "Accessible", "gap"]
+        );
+        for (message, needle) in [
+            (syntax_message, "invalid 雪"),
+            (
+                "Packet block 2 - 3 is not contiguous. It should start from 1.",
+                "2 - 3",
+            ),
         ] {
-            let control = crate::OperationControl::new();
-            control.cancel_after_checkpoints(1);
-            let mut cursor = PacketCursor::new(&source, 0, &control);
-            let cancelled = match parse_packet_block_controlled(&mut cursor) {
-                Err(_) => true,
-                Ok(None) => cursor.recover_statement().is_err(),
-                Ok(Some(_)) => false,
-            };
-            assert!(cancelled, "long Packet scan did not cancel");
-            assert!(cursor.scanned_bytes <= 2 * (PACKET_SCAN_CHECKPOINT_BYTES + 3));
-            assert!(cursor.scanned_bytes < source.len());
+            let start = source.find(needle).unwrap();
+            assert!(facts.diagnostics.iter().any(|diagnostic| {
+                diagnostic.message == message
+                    && diagnostic.span == Some(SourceSpan::new(start, start + needle.len()))
+            }));
         }
+    }
+
+    #[test]
+    fn packet_semantic_construction_can_cancel_inside_a_field() {
+        let payload = "雪".repeat(8192);
         let source = format!("packet 0: \"{payload}\nB\"");
         let control = crate::OperationControl::new();
         control.cancel_after_checkpoints(8);
@@ -1159,29 +755,6 @@ mod semantic_tests {
             ),
             Err(crate::OperationCancelled { .. })
         ));
-    }
-
-    #[test]
-    fn packet_recovery_scans_quoted_suffixes_only_linearly() {
-        let mut source = String::from("+1: 'unterminated\n");
-        for _ in 0..1024 {
-            source.push_str("+1: \"unterminated\n");
-            source.push_str("+1: \"closed\" garbage\n");
-        }
-        source.push_str("+1: \"survivor\"\n");
-        let control = crate::OperationControl::new();
-        let mut cursor = PacketCursor::new(&source, 0, &control);
-        let mut labels = Vec::new();
-        while cursor.offset < source.len() {
-            cursor.begin_statement();
-            if let Some(block) = parse_packet_block_controlled(&mut cursor).unwrap() {
-                labels.push(block.semantic.label);
-            } else {
-                cursor.recover_statement().unwrap();
-            }
-        }
-        assert_eq!(labels, ["survivor"]);
-        assert!(cursor.scanned_bytes <= 3 * source.len());
     }
 
     #[test]
@@ -1276,20 +849,6 @@ mod semantic_tests {
                 .parse_diagram_controlled_sync("packet\n+1: \"bit\"", &control)
                 .is_err()
         );
-    }
-
-    #[test]
-    fn packet_row_expansion_checks_cancellation_inside_a_single_large_field() {
-        let control = crate::OperationControl::new();
-        control.cancel_after_checkpoints(3);
-        let blocks = vec![ParsedPacketBlock {
-            start: Some(0.0),
-            end: Some(319_999.0),
-            bits: None,
-            label: "bounded expansion".to_string(),
-            numeric_span: SourceSpan::new(0, 8),
-        }];
-        assert!(populate_packet_controlled(blocks, 32.0, &control).is_err());
     }
 }
 

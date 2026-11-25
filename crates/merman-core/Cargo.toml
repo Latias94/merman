@@ -17,7 +17,7 @@ artifact-profile-required = true
 
 [features]
 presentation = ["merman-markup/color", "merman-model/presentation-data", "serde_json/raw_value"]
-editor-facts = ["granit-parser/comments", "merman-core-structured?/editor-facts"]
+editor-facts = ["granit-parser/comments", "merman-core-graph?/editor-facts", "merman-core-structured?/editor-facts"]
 compat-json = ["presentation", "merman-model/compat-json"]
 terminal-text = ["merman-model/terminal-text"]
 # Diagram selection is independent of output formats and optional layout engines.
@@ -62,7 +62,7 @@ diagram-block = ["merman-model/diagram-block", "dep:indexmap", "dep:ryu-js"]
 diagram-c4 = ["merman-model/diagram-c4"]
 diagram-class = ["merman-model/diagram-class", "dep:indexmap"]
 diagram-cynefin = ["merman-model/diagram-cynefin"]
-diagram-er = ["merman-model/diagram-er", "dep:indexmap"]
+diagram-er = ["merman-model/diagram-er", "dep:merman-core-graph", "merman-core-graph/diagram-er"]
 diagram-event-modeling = ["merman-model/diagram-event-modeling"]
 diagram-agentflow = ["merman-model/diagram-agentflow", "dep:rustc-hash", "dep:indexmap"]
 diagram-usecase = ["merman-model/diagram-usecase", "dep:indexmap"]
@@ -74,7 +74,7 @@ diagram-ishikawa = ["merman-model/diagram-ishikawa"]
 diagram-journey = ["merman-model/diagram-journey"]
 diagram-kanban = ["merman-model/diagram-kanban", "dep:ryu-js"]
 diagram-mindmap = ["merman-model/diagram-mindmap"]
-diagram-packet = ["merman-model/diagram-packet", "dep:ryu-js"]
+diagram-packet = ["merman-model/diagram-packet", "dep:merman-core-structured", "merman-core-structured/diagram-packet", "dep:ryu-js"]
 diagram-pie = ["merman-model/diagram-pie", "dep:ryu-js"]
 diagram-quadrant-chart = ["merman-model/diagram-quadrant-chart"]
 diagram-radar = ["merman-model/diagram-radar", "dep:ryu-js"]
@@ -103,6 +103,7 @@ system-timing = ["merman-model/system-timing"]
 benchmark-stages = ["merman-model/benchmark-stages"]
 
 [dependencies]
+merman-core-graph = { workspace = true, optional = true }
 merman-core-preprocess.workspace = true
 merman-core-structured = { workspace = true, optional = true }
 merman-markup = { workspace = true, features = ["html", "url"] }
