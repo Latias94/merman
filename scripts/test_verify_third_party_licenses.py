@@ -20,6 +20,17 @@ sys.modules[SPEC.name] = verify
 SPEC.loader.exec_module(verify)
 
 
+class ReleaseScopeTests(unittest.TestCase):
+    def test_pdf_only_scope_accounts_for_filter_rasterization(self) -> None:
+        contract = json.loads((REPOSITORY_ROOT / verify.CONTRACT_PATH).read_bytes())
+        components = {component["id"]: component for component in contract["components"]}
+        scopes = verify.validate_scopes(contract["artifact_scopes"], components)
+        self.assertEqual(
+            set(scopes["pdf-export"]["resolved_components"]),
+            {"krilla", "krilla-icc-profiles", "krilla-svg", "resvg", "resvg-iir-blur", "usvg"},
+        )
+
+
 class ContractFixture:
     def __init__(self, root: Path) -> None:
         self.root = root

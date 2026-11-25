@@ -940,7 +940,7 @@ fn discretionary_hyphen_survives_usvg_glyph_conversion() {
     fn first_text_glyph_width(group: &usvg::Group) -> Option<f32> {
         group.children().iter().find_map(|node| match node {
             usvg::Node::Group(group) => first_text_glyph_width(group),
-            usvg::Node::Text(text) => Some(text.flattened().bounding_box().width()),
+            usvg::Node::Text(text) => text.flattened().bounding_box().map(|bbox| bbox.width()),
             usvg::Node::Path(_) | usvg::Node::Image(_) => None,
         })
     }

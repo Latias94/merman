@@ -242,11 +242,14 @@ settings; verify the event before using manual `publish=true` rather than assumi
 For crates.io, register owner `Latias94`, repository `merman`, environment `crates.io`, and the
 workflow filename belonging to each crate:
 
-| Crates | Trusted workflow filename |
+| Crates | Publish owner |
 | --- | --- |
 | Workspace-coupled crates, including `merman-unicode-linebreak` | `release-crates.yml` |
-| `roughr-merman` | `release-independent-crate.yml` |
+| `roughr-merman`, `merman-usvg`, `merman-resvg`, `merman-krilla`, `merman-krilla-svg` | `release-independent-crate.yml` |
 | `tree-sitter-mermaid` | `release-tree-sitter-mermaid.yml` |
+
+A maintainer bootstraps the SVG and PDF implementation crates using the
+[implementation crate procedure](#svg-and-pdf-implementation-crates).
 
 The single-crate owners use `rust-lang/crates-io-auth-action` immediately before uploading. The
 workspace operator exchanges a fresh GitHub OIDC token before each actual upload and revokes the
@@ -671,6 +674,75 @@ the latest published compatible baseline. Version `0.12.3` is the forward-lookin
 floor; the historical `0.12.1` to `0.12.3` recovery is not re-litigated by future release gates.
 
 For the current release lane, also review `docs/release/PUBLISH_ORDER.md`.
+
+### SVG and PDF implementation crates
+
+The native export graph uses four independently versioned library packages. Each `UPSTREAM.md`
+records the upstream revision, archive checksum, and local changes. Keep `merman-usvg` and
+`merman-resvg` on the same upstream stable release. Advance the fork's version when its owned
+source changes, and advance its minor version when the change breaks a public Rust type or API.
+Update the root dependency versions and `Cargo.lock` and `fuzz/Cargo.lock` together.
+
+Package the group from the selected clean checkout so Cargo verifies the normalized registry
+dependencies in dependency order.
+
+```sh
+cargo package --locked -p merman-usvg -p merman-resvg -p merman-krilla -p merman-krilla-svg
+python3 scripts/verify_crate_package_legal_materials.py
+```
+
+Verify the font instance regressions and the native PNG, JPEG, and PDF contracts. Include the
+PDF case where two instances of one variable face have distinct CID subset tags. Also run the
+standalone upstream resvg embedding example, which exchanges SVG bytes with Merman.
+
+For a selected initial publication, upload `merman-usvg` and `merman-krilla` first, then
+`merman-resvg`, then `merman-krilla-svg`. Run `scripts/crates_io_release.py preflight-independent`
+for each package once its required dependencies are visible in the registry. This manual bootstrap
+uses the ordinary preflight without `--verify-fork-consumer`. Publish that package
+with `cargo publish --locked -p <package> --registry crates-io` and verify the exact version
+and checksum before proceeding. After the group is visible, build a fresh registry consumer
+with all three output features before releasing `merman-export` and its workspace dependents.
+Keep accepted versions and checksums in [Publish Order](PUBLISH_ORDER.md).
+
+After the first upload, configure each implementation crate's Trusted Publisher for
+`release-independent-crate.yml`. Dispatch that workflow for later versions with the exact
+package and version on the reviewed source ref. The single-fork workflow checks Rust API
+compatibility, builds workspace export features, and verifies the registry archive or dry-run.
+It also compiles a fresh SVG raster and PDF consumer with the normalized `.crate` as its sole
+local patch, pinned to the exact candidate version. Cargo resolves the other three forks from
+crates.io within the following compatibility ranges and logs the selected versions.
+
+| Fork | Registry requirement |
+| --- | --- |
+| `merman-usvg` | `^0.50.0` |
+| `merman-resvg` | `^0.50.0` |
+| `merman-krilla` | `^0.8.2` |
+| `merman-krilla-svg` | `^0.8.1` |
+
+A candidate `merman-usvg 0.50.1` can therefore compile with published `merman-resvg 0.50.0`
+while the checkout contains a pending `merman-resvg 0.50.1`. Cargo also applies the dependency
+requirements in the normalized archives. Publish the versions those requirements need before
+dispatching. Coordinate incompatible fork upgrades through group qualification and an explicit
+publication order, then update the compatibility ranges for the new series.
+
+The four forks share one workflow concurrency group across source refs, from candidate preflight
+through registry consumer verification. `roughr-merman` has a separate group. Each group allows
+one running and one pending dispatch. A newer dispatch replaces the pending one. Submit dependent
+releases in order and wait for each run to finish before dispatching the next.
+[GitHub concurrency semantics](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)
+
+The read-only preflight records the candidate archive's SHA-256. Before uploading a missing
+version, the publisher rechecks the crates.io API and Cargo sparse index and compares its package
+bytes to that digest. Both endpoints must report absence to authorize an upload. A matching
+published version proceeds to verification. A partial observation, conflicting checksum or yank
+stops the release. If an upload response is lost, check propagation before attempting recovery.
+When retrying the upload job, re-run **all jobs** so the candidate is checked against the siblings
+visible in that attempt.
+
+After upload or a matching existing release, a read-only job waits for both endpoints to report
+the exact checksum. For a renderer fork it then compiles a fresh consumer with all four packages
+from crates.io and the released fork pinned to its exact version. This verification job can be
+retried on its own after registry propagation.
 
 ## Release Preflight
 

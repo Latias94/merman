@@ -31,10 +31,24 @@ class PackageLegalMaterialTests(unittest.TestCase):
         with self.assertRaisesRegex(verify.PackageLegalMaterialError, "LICENSE-APACHE"):
             verify.verify_package_listing(self.package(), {"LICENSE-MIT"})
 
+    def test_dual_license_package_with_bsd_code_requires_all_three_texts(self) -> None:
+        package = self.package("(MIT OR Apache-2.0) AND BSD-2-Clause")
+        dual_license = {"LICENSE-MIT", "LICENSE-APACHE"}
+        with self.assertRaisesRegex(verify.PackageLegalMaterialError, "LICENSE-BSD-2-Clause"):
+            verify.verify_package_listing(package, dual_license)
+        verify.verify_package_listing(package, dual_license | {"LICENSE-BSD-2-Clause"})
+
     def test_apache_only_package_requires_its_upstream_license_text(self) -> None:
         package = self.package("Apache-2.0")
         self.assertEqual(verify.required_legal_paths(package), {"LICENSE"})
         verify.verify_package_listing(package, {"LICENSE", "src/lib.rs"})
+
+    def test_krilla_requires_the_embedded_icc_profile_license(self) -> None:
+        package = self.package() | {"name": "merman-krilla"}
+        files = {"LICENSE-MIT", "LICENSE-APACHE", "icc/sRGB-v4.icc"}
+        with self.assertRaisesRegex(verify.PackageLegalMaterialError, "icc/LICENSE"):
+            verify.verify_package_listing(package, files)
+        verify.verify_package_listing(package, files | {"icc/LICENSE"})
 
     def test_apache_only_package_cannot_omit_its_license_text(self) -> None:
         with self.assertRaisesRegex(

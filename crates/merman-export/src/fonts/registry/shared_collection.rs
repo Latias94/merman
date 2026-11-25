@@ -1,40 +1,47 @@
-use super::read_bounded_into;
+use super::{OpenPlatformFont, read_bounded_file};
 use crate::fonts::{
     FontByteBudget, NativeFontError, OperationControl, OperationPhase,
     platform::coretext::NativeFace,
 };
+use std::path::Path;
 use ttf_parser::RawFace;
 
 /// Keeps a verified collection when two copies of its shared outline would cost more.
 pub(super) fn shared_collection(
     candidate: &NativeFace,
-    file_len: u64,
+    path: &Path,
     budget: FontByteBudget,
     max_faces: usize,
     control: &OperationControl,
 ) -> Result<Option<(Vec<u8>, u32)>, NativeFontError> {
     control.terminal_checkpoint_at(OperationPhase::Layout)?;
     if max_faces < 2
-        || file_len > budget.remaining() as u64
-        || !candidate
-            .path
+        || !path
             .extension()
             .is_some_and(|ext| ext.eq_ignore_ascii_case("ttc") || ext.eq_ignore_ascii_case("otc"))
     {
         return Ok(None);
     }
-    let native_outline = candidate.largest_outline();
-    control.terminal_checkpoint_at(OperationPhase::Layout)?;
-    let Some((tag, length)) = native_outline else {
+    let mut source = match OpenPlatformFont::new(path, control) {
+        Ok(source) => source,
+        Err(NativeFontError::Source { .. }) => return Ok(None),
+        Err(error) => return Err(error),
+    };
+    if source.len > budget.remaining() as u64 {
+        return Ok(None);
+    }
+    let Some((tag, length)) = candidate.largest_outline(control)? else {
         return Ok(None);
     };
-    if length as u64 <= file_len / 2 {
+    if length as u64 <= source.len / 2 {
         return Ok(None);
     }
 
     let mut data = Vec::new();
-    read_bounded_into(
-        &candidate.path,
+    read_bounded_file(
+        path,
+        &mut source.file,
+        source.len,
         budget,
         control,
         OperationPhase::Layout,

@@ -67,8 +67,8 @@ The development source targets the next breaking release. When upgrading from
 continue to compile. Exhaustive `NativeFontError` matches must also handle
 `PlatformDiscoveryUnavailable { .. }`.
 
-With system fonts authorized, `load_platform` uses Fontique for family matching
-and DirectWrite for fallback on Windows. On macOS it queries Core Text descriptors
+With system fonts authorized, `load_platform` uses DirectWrite for family matching
+and glyph fallback on Windows. On macOS it queries Core Text descriptors
 one family at a time with automatic activation disabled and skips font assets
 that still need to be downloaded. Linux and FreeBSD submit the authored family
 order to Fontconfig, which applies strong and weak aliases. Merman accepts
@@ -78,12 +78,12 @@ stops at the first accepted face.
 
 Layout and painting share the same bounded snapshots. A system-only context starts
 with zero resident font bytes and acquires each face on demand, including the
-generic default for text without a font family. Platform metadata access and file
-mappings run outside Merman's scan budgets and preemptive cancellation.
-Before acquiring a new fallback source, mapped coverage tables can reject an
-unrelated font without consuming the selected-file budget. Coverage and identity
-are checked again on admitted bytes. Existing snapshots take precedence over
-later file changes. When explicit files contain identical bytes, each supplied
+generic default for text without a font family. Operating system queries have their
+own runtime cost. Merman accounts for its own preflight table reads separately from
+the selected-file budget. Coverage and identity are checked on admitted bytes.
+On Windows, new snapshots are checked against the selected DirectWrite reference's
+write time, horizontal metrics, and variation axes when present. Existing snapshots
+take precedence over later file changes. When explicit files contain identical bytes, each supplied
 path refers to the same retained snapshot. Each input still counts toward the
 acquisition limits. If a repeated path changes during acquisition, registry
 construction reports the path and asks the caller to retry.
@@ -113,7 +113,8 @@ With system fallback authorized on macOS, the resolver looks up an explicit face
 by its PostScript name and verifies its admitted OpenType tables at the selected index
 against the registered Core Text face before using that face's native cascade.
 If no registered face matches, the resolver can use the Helvetica system cascade.
-The resolver declines non-default native variation coordinates before data admission.
+The resolver preserves standard OpenType instance coordinates for shaping and painting. Authored
+variation settings override the platform's selected coordinates.
 
 The default for `NativeFontLimits::max_bytes` increases from 64 MiB to 256 MiB.
 Each native context counts explicit inputs and selected system data toward this total. Explicit files
@@ -130,22 +131,21 @@ Fontconfig runtime cannot load, before acquiring explicit sources. A valid empty
 Fontconfig configuration remains empty; library callers decide whether an unavailable
 service permits another provider. The CLI retries bounded discovery only for automatic
 provider selection, never for an explicit `--font-system platform` request.
-Fontconfig named instances that require variation coordinates are skipped. CSS
-weight can still vary the admitted physical face along its supported weight axis.
+Fontconfig named instances keep their selected coordinates and use the physical face
+index to acquire the font. Authored variation settings can override those coordinates.
 
 ### Selection and fallback order
 
-Workspace builds shape each missing cluster with one physical face that covers it
-and preserve the other clusters in the run. Platform discovery tries the authored
+Merman shapes each missing cluster with one physical face that covers it and
+preserves the other clusters in the run. Platform discovery tries the authored
 stack, then caller fonts in source order, then the platform's candidates for the
 missing cluster. Windows applies the relative font size returned by DirectWrite
 to both the cluster metrics and the painted glyphs.
 
 SVG text inherits `xml:lang`, and each `<tspan>` can override it. Library users can set
 the default for Mermaid measurement and untagged SVG with
-`NativeFontContext::with_language`. Registry builds using the published usvg 0.47
-retain its scalar fallback interface. That interface can use the context language for
-platform lookup and has the original whole-run shaping and replacement behavior.
+`NativeFontContext::with_language`. Hosts that configure the parser directly can use
+`merman_export::usvg::Options` with `NativeFontContext::apply_to_usvg_options`.
 
 For explicit font files or memory buffers without system discovery, fallback visits
 admitted faces in source order, skipping previously tried, unsuitable, and incompatible

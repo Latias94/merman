@@ -11,7 +11,7 @@ use crate::{ClipPath, Group, NonEmptyString, NonZeroRect, TextFontOmissions, Tra
 pub(crate) fn convert(
     node: SvgNode,
     state: &converter::State,
-    object_bbox: Option<NonZeroRect>,
+    object_bbox: &dyn Fn() -> Option<NonZeroRect>,
     cache: &mut converter::Cache,
     missing_bbox_text: &dyn Fn() -> TextFontOmissions,
     omissions: &mut TextFontOmissions,
@@ -41,7 +41,7 @@ pub(crate) fn convert(
     }
 
     if units == Units::ObjectBoundingBox {
-        let object_bbox = match object_bbox {
+        let object_bbox = match object_bbox() {
             Some(v) => v,
             None => {
                 omissions.merge(missing_bbox_text());
@@ -91,7 +91,6 @@ pub(crate) fn convert(
     converter::convert_clip_path_elements(node, &clip_state, cache, &mut clip.root);
 
     if clip.root.has_children() {
-        clip.root.calculate_bounding_boxes();
         let clip = Arc::new(clip);
         cache.clip_paths.insert(id_copy, clip.clone());
         Some(clip)

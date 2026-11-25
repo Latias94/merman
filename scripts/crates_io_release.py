@@ -20,7 +20,9 @@ import urllib.request
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from scripts import renderer_fork_consumer
 from scripts.crates_io_auth import trusted_publishing_token
+from scripts.release_registry_dependents import RegistryDependentError
 from tools.publish import (
     PackageInfo,
     PublishPlan,
@@ -422,6 +424,8 @@ def fetch_crates_io_checksum(
             f"cannot observe crates.io checksum for {crate_name} {version}: {error}"
         ) from error
     version_record = payload.get("version") if isinstance(payload, dict) else None
+    if isinstance(version_record, dict) and version_record.get("yanked") is True:
+        raise RegistryConflictError(f"crates.io version is yanked: {crate_name} {version}")
     checksum = version_record.get("checksum") if isinstance(version_record, dict) else None
     if not isinstance(checksum, str) or SHA256.fullmatch(checksum) is None:
         raise CratesIoPublishError(
@@ -490,35 +494,51 @@ def reconcile_registry_barrier(
     delay_seconds: int,
     registry_index: str = CRATES_IO_INDEX,
 ) -> RegistryBarrier:
+    return _observe_registry(
+        {item.package.name: (item.package.version, item.artifact_sha256) for item in prepared},
+        registry_api=registry_api, registry_index=registry_index,
+        attempts=attempts, delay_seconds=delay_seconds,
+    )
+
+
+def _observe_registry(
+    expected: dict[str, tuple[str, str]],
+    *,
+    registry_api: str,
+    registry_index: str,
+    attempts: int,
+    delay_seconds: int,
+    accept_absent_single: bool = False,
+) -> RegistryBarrier:
     if attempts <= 0 or delay_seconds < 0:
         raise ValueError("registry reconciliation bounds must be non-negative")
-    pending = {item.package.name: item for item in prepared}
+    pending = expected.copy()
     checksums: dict[str, str | None] = {name: None for name in pending}
     index_checksums: dict[str, str | None] = {name: None for name in pending}
     errors: dict[str, str] = {}
     mismatches: dict[str, str] = {}
     deadline = time.monotonic() + REGISTRY_OBSERVATION_SECONDS
     for attempt in range(attempts):
-        for name, item in list(pending.items()):
+        for name, (version, digest) in list(pending.items()):
             if time.monotonic() >= deadline:
                 break
             try:
                 checksum = fetch_crates_io_checksum(
-                    name, item.package.version, api_url=registry_api,
+                    name, version, api_url=registry_api,
                     timeout=max(1, min(30, deadline - time.monotonic())),
                 )
                 checksums[name] = checksum
-                if checksum is not None and checksum != item.artifact_sha256:
+                if checksum is not None and checksum != digest:
                     mismatches[name] = checksum
                     continue
                 if time.monotonic() >= deadline:
                     break
                 index_checksum = fetch_crates_io_index_checksum(
-                    name, item.package.version, index_url=registry_index,
+                    name, version, index_url=registry_index,
                     timeout=max(1, min(30, deadline - time.monotonic())),
                 )
                 index_checksums[name] = index_checksum
-                if index_checksum is not None and index_checksum != item.artifact_sha256:
+                if index_checksum is not None and index_checksum != digest:
                     mismatches[name] = index_checksum
                     continue
                 errors.pop(name, None)
@@ -528,6 +548,8 @@ def reconcile_registry_barrier(
                     errors[name] = "exact archive accepted; waiting for Cargo sparse index propagation"
                 elif index_checksum is not None:
                     errors[name] = "exact Cargo sparse index entry visible; waiting for crates.io API propagation"
+                elif accept_absent_single and len(expected) == 1:
+                    return RegistryBarrier("missing", checksums, errors, mismatches, index_checksums)
                 else:
                     errors[name] = "version not yet visible through the crates.io API or Cargo sparse index"
             except RegistryConflictError as error:
@@ -946,6 +968,25 @@ def _workspace_package(metadata: dict, package_name: str) -> PackageInfo:
     )
 
 
+def independent_version_exists(
+    name: str, version: str, digest: str, *, registry_api: str, registry_index: str,
+    require_published: bool = False, attempts: int = 1, delay_seconds: int = 0,
+) -> bool:
+    observation = _observe_registry(
+        {name: (version, digest)}, registry_api=registry_api, registry_index=registry_index,
+        attempts=attempts if require_published else 1, delay_seconds=delay_seconds,
+        accept_absent_single=not require_published,
+    )
+    if observation.state == "missing":
+        return False
+    if observation.state != "complete":
+        detail = observation.errors or observation.mismatches
+        raise CratesIoPublishError(
+            f"cannot confirm registry state for {name} {version} against {digest}: {detail}"
+        )
+    return True
+
+
 def preflight_independent_crate(
     repo_root: Path,
     metadata: dict,
@@ -953,14 +994,19 @@ def preflight_independent_crate(
     package_name: str,
     expected_version: str,
     registry_api: str = CRATES_IO_API,
-) -> bool:
-    """Verify one independently owned crate and return whether it already exists.
+    registry_index: str = CRATES_IO_INDEX,
+    verify_fork_consumer: bool = False,
+) -> tuple[bool, str]:
+    """Return the publication state and checksum of the verified archive.
 
     Existing registry versions are accepted only when the locally packaged
     archive has the exact registry checksum.  Missing versions must pass a
     credential-free publish dry-run.  The package is intentionally resolved
-    outside the coupled publish graph.
+    outside the coupled publish graph. Later renderer fork releases can also
+    compile the prepared archive with published siblings.
     """
+    if verify_fork_consumer and package_name not in renderer_fork_consumer.FORK_REQUIREMENTS:
+        raise CratesIoPublishError("the renderer fork consumer requires a renderer fork package")
     package = _workspace_package(metadata, package_name)
     if package.version != expected_version:
         raise CratesIoPublishError(
@@ -970,22 +1016,23 @@ def preflight_independent_crate(
     target_directory_raw = metadata.get("target_directory")
     if not isinstance(target_directory_raw, str) or not target_directory_raw:
         raise CratesIoPublishError("cargo metadata is missing target_directory")
-    prepared = _prepare_crate(repo_root, Path(target_directory_raw).resolve(), package)
-    registry_checksum = fetch_crates_io_checksum(
-        package.name,
-        package.version,
-        api_url=registry_api,
+    target_directory = Path(target_directory_raw).resolve()
+    prepared = _prepare_crate(repo_root, target_directory, package)
+    exists = independent_version_exists(
+        package.name, package.version, prepared.artifact_sha256,
+        registry_api=registry_api, registry_index=registry_index,
     )
-    if registry_checksum is not None:
-        if registry_checksum != prepared.artifact_sha256:
-            raise CratesIoPublishError(
-                f"registry checksum mismatch for {package.name} {package.version}: "
-                f"local {prepared.artifact_sha256}, registry {registry_checksum}"
-            )
+    if verify_fork_consumer:
+        _assert_artifact_unchanged(prepared)
+        renderer_fork_consumer.verify(
+            prepared.artifact_path, candidate=package.name, version=package.version,
+            repo_root=repo_root, target_directory=target_directory,
+        )
+    if exists:
         print(
             f"Skipping {package.name} {package.version}; the exact version already exists"
         )
-        return True
+        return True, prepared.artifact_sha256
 
     environment = dict(os.environ)
     environment.pop("CARGO_REGISTRY_TOKEN", None)
@@ -1009,17 +1056,22 @@ def preflight_independent_crate(
             f"independent publish dry-run failed for {package.name} {package.version}"
         )
     print(f"{package.name} {package.version} is not yet published; dry-run passed")
-    return False
+    return False, prepared.artifact_sha256
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "command",
-        choices=["preflight-initial", "preflight-independent", "publish-receipted"],
+        choices=["preflight-initial", "preflight-independent", "registry-independent", "publish-receipted"],
     )
     parser.add_argument("--package")
     parser.add_argument("--version")
+    parser.add_argument("--sha256", help="preflight archive checksum for registry-independent")
+    parser.add_argument(
+        "--verify-fork-consumer", action="store_true",
+        help="compile the candidate or the confirmed registry fork with its published siblings",
+    )
     parser.add_argument("--source-sha")
     parser.add_argument("--source-tree")
     parser.add_argument("--receipts-dir", type=Path)
@@ -1040,6 +1092,15 @@ def main() -> int:
     parser.add_argument("--visibility-attempts", type=int, default=12)
     parser.add_argument("--visibility-delay", type=int, default=15)
     args = parser.parse_args()
+    if args.observe_only and args.command not in {"registry-independent", "publish-receipted"}:
+        parser.error("--observe-only requires registry-independent or publish-receipted")
+    if args.sha256 and args.command != "registry-independent":
+        parser.error("--sha256 requires registry-independent")
+    if args.verify_fork_consumer and not (
+        args.command == "preflight-independent" or
+        (args.command == "registry-independent" and args.observe_only)
+    ):
+        parser.error("--verify-fork-consumer requires preflight-independent or registry-independent --observe-only")
 
     repo_root = args.repo_root.resolve()
     registry_token = os.environ.pop("CARGO_REGISTRY_TOKEN", None)
@@ -1047,10 +1108,11 @@ def main() -> int:
     oidc_request_url = os.environ.pop("ACTIONS_ID_TOKEN_REQUEST_URL", None)
     oidc_request_token = os.environ.pop("ACTIONS_ID_TOKEN_REQUEST_TOKEN", None)
     try:
-        require_tool("cargo")
         if args.command == "publish-receipted":
             require_tool("git")
-        metadata = cargo_metadata(repo_root, quiet=True)
+        if args.command != "registry-independent":
+            require_tool("cargo")
+            metadata = cargo_metadata(repo_root, quiet=True)
     except (OSError, RuntimeError, ValueError) as error:
         print_error(str(error))
         return 2
@@ -1067,18 +1129,35 @@ def main() -> int:
             return 1
         return 0
 
-    if args.command == "preflight-independent":
+    if args.command in {"preflight-independent", "registry-independent"}:
         if not args.package or not args.version:
-            parser.error("preflight-independent requires --package and --version")
+            parser.error(f"{args.command} requires --package and --version")
         try:
-            preflight_independent_crate(
-                repo_root,
-                metadata,
-                package_name=args.package,
-                expected_version=args.version,
-                registry_api=args.registry_api,
-            )
-        except (CratesIoPublishError, OSError, ValueError) as error:
+            if args.command == "preflight-independent":
+                exists, digest = preflight_independent_crate(
+                    repo_root, metadata, package_name=args.package, expected_version=args.version,
+                    registry_api=args.registry_api, registry_index=args.registry_index,
+                    verify_fork_consumer=args.verify_fork_consumer,
+                )
+            else:
+                digest = args.sha256
+                if not digest or not SHA256.fullmatch(digest):
+                    parser.error("registry-independent requires the preflight --sha256")
+                exists = independent_version_exists(
+                    args.package, args.version, digest, registry_api=args.registry_api,
+                    registry_index=args.registry_index, require_published=args.observe_only,
+                    attempts=args.visibility_attempts, delay_seconds=args.visibility_delay,
+                )
+                if args.verify_fork_consumer:
+                    renderer_fork_consumer.verify(
+                        None, candidate=args.package, version=args.version, repo_root=repo_root,
+                        target_directory=repo_root / os.environ.get("CARGO_TARGET_DIR", "target"),
+                    )
+            print(f"{args.package} {args.version}: {'published' if exists else 'missing'} (SHA-256 {digest})")
+            if output := os.environ.get("GITHUB_OUTPUT"):
+                with Path(output).open("a", encoding="utf-8") as stream:
+                    print(f"sha256={digest}", f"publish={str(not exists).lower()}", sep="\n", file=stream)
+        except (CratesIoPublishError, RegistryDependentError, OSError, ValueError) as error:
             print_error(str(error))
             return 1
         return 0

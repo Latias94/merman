@@ -655,7 +655,10 @@ fn title_extents_contain_independently_parsed_metric_and_ink_bounds() {
         };
         let tree = probe(&context, label, &style);
         let text = text(tree.root()).expect("probe contains laid-out text");
-        for bound in [text.bounding_box(), text.flattened().bounding_box()] {
+        for bound in [
+            text.bounding_box(),
+            text.flattened().bounding_box().unwrap(),
+        ] {
             assert!(
                 -left <= f64::from(bound.x()) + 0.0001,
                 "left bound for {label:?}"
@@ -872,25 +875,6 @@ fn png_pixels(bytes: Vec<u8>) -> (u32, u32, Vec<u8>) {
 }
 
 #[cfg(feature = "png")]
-fn records_font_omissions() -> bool {
-    #[allow(dead_code, reason = "used when the consumer resolves unpatched usvg")]
-    trait RegistryGroup {
-        fn text_font_omissions(&self) -> Option<(bool, bool)> {
-            None
-        }
-    }
-    impl RegistryGroup for usvg::Group {}
-    usvg::Tree::from_str(
-        r#"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>"#,
-        &usvg::Options::default(),
-    )
-    .unwrap()
-    .root()
-    .text_font_omissions()
-    .is_some()
-}
-
-#[cfg(feature = "png")]
 fn assert_strict_export<T>(result: merman_export::Result<T>, missing: bool, case: &str) {
     if missing {
         assert!(
@@ -931,13 +915,9 @@ fn strict_exports_check_final_mixed_font_spans() {
 
     let covered = seal("");
     let permissive = RasterOptions::default().with_font_context(context.clone());
-    let records_omissions = records_font_omissions();
     let (png, report) = svg_to_png_with_report(&covered, &permissive).unwrap();
     assert!(!report.fonts().unresolved_font_request());
-    assert_eq!(
-        report.fonts().unresolved_glyph_fallback(),
-        !records_omissions
-    );
+    assert!(!report.fonts().unresolved_glyph_fallback());
     assert_eq!(report.fonts().notdef_glyph_count(), 0);
     let (_, _, pixels) = png_pixels(png);
     let pixels = pixels.as_chunks::<4>().0;
@@ -945,7 +925,7 @@ fn strict_exports_check_final_mixed_font_spans() {
     assert!(pixels.iter().any(|p| p[3] > 0 && p[2] > p[0]));
     assert_strict_export(
         svg_to_png_with_report(&covered, &raster),
-        !records_omissions,
+        false,
         "mixed-span PNG",
     );
 
@@ -964,13 +944,10 @@ fn strict_exports_check_final_mixed_font_spans() {
     {
         let (jpeg, report) = merman_export::svg_to_jpeg_with_report(&covered, &permissive).unwrap();
         assert!(jpeg.starts_with(b"\xff\xd8\xff"));
-        assert_eq!(
-            report.fonts().unresolved_glyph_fallback(),
-            !records_omissions
-        );
+        assert!(!report.fonts().unresolved_glyph_fallback());
         assert_strict_export(
             merman_export::svg_to_jpeg_with_report(&covered, &raster),
-            !records_omissions,
+            false,
             "mixed-span JPEG",
         );
         assert!(matches!(
@@ -987,13 +964,10 @@ fn strict_exports_check_final_mixed_font_spans() {
             .with_font_context(context.with_strict_glyph_coverage(true));
         let (bytes, report) = merman_export::svg_to_pdf_with_report(&covered, &permissive).unwrap();
         assert!(bytes.starts_with(b"%PDF-"));
-        assert_eq!(
-            report.fonts().unresolved_glyph_fallback(),
-            !records_omissions
-        );
+        assert!(!report.fonts().unresolved_glyph_fallback());
         assert_strict_export(
             merman_export::svg_to_pdf_with_report(&covered, &pdf),
-            !records_omissions,
+            false,
             "mixed-span PDF",
         );
         assert!(matches!(
@@ -1019,7 +993,6 @@ fn strict_exports_check_visible_text_in_svg_resources() {
     let session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
         .unwrap();
-    let records_omissions = records_font_omissions();
     let check = |body: &str, missing: bool, case: &str| {
         let text = format!(
             r#"<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60">{body}</svg>"#
@@ -1066,7 +1039,7 @@ fn strict_exports_check_visible_text_in_svg_resources() {
         }
         check(
             &format!(r##"{definitions}<g {attribute}="url(#base)" opacity="0">{box_path}</g>"##),
-            !records_omissions,
+            false,
             "transparent consumer",
         );
         for resource_geometry in ["", box_path] {
@@ -1076,7 +1049,7 @@ fn strict_exports_check_visible_text_in_svg_resources() {
                         r##"<defs><{tag} id="base" {units}>{resource_geometry}{text}</{tag}></defs>
                             <g {attribute}="url(#base)"><rect width="120" height="60" {props}/></g>"##
                     ),
-                    !records_omissions,
+                    false,
                     "consumer with invisible contents",
                 );
             }
@@ -1116,11 +1089,8 @@ fn strict_exports_check_visible_text_in_svg_resources() {
         (r#"fill="url(#tiles)""#, true),
         (r#"fill="url(#tiles) red""#, true),
         (r#"fill="none" stroke="url(#tiles)""#, true),
-        (r#"fill="url(#tiles)" fill-opacity="0""#, !records_omissions),
-        (
-            r#"fill="url(#tiles)" visibility="hidden""#,
-            !records_omissions,
-        ),
+        (r#"fill="url(#tiles)" fill-opacity="0""#, false),
+        (r#"fill="url(#tiles)" visibility="hidden""#, false),
     ] {
         check(
             &format!(r#"{pattern}<rect width="120" height="60" {paint}/>"#),
@@ -1136,7 +1106,7 @@ fn strict_exports_check_visible_text_in_svg_resources() {
                 "patternContentUnits=\"objectBoundingBox\" patternUnits="
             )
         ),
-        !records_omissions,
+        false,
         "pattern content coordinates require nonzero object bounds",
     );
 
@@ -1166,7 +1136,7 @@ fn strict_exports_check_visible_text_in_svg_resources() {
         );
         check(
             &format!(r#"{definitions}<g opacity="0">{filtered}</g>"#),
-            !records_omissions,
+            false,
             "transparent filter consumer",
         );
         check(
@@ -1201,13 +1171,13 @@ fn strict_exports_check_visible_text_in_svg_resources() {
     ] {
         check(
             &format!("{}{filtered}", filter(&direct, after_image)),
-            consumed || !records_omissions,
+            consumed,
             case,
         );
     }
     for (paint, missing) in [
-        (r#"fill="none""#, !records_omissions),
-        (r#"fill="white" fill-opacity="0""#, !records_omissions),
+        (r#"fill="none""#, false),
+        (r#"fill="white" fill-opacity="0""#, false),
         (r#"fill="none" stroke="white""#, true),
     ] {
         check(&text.replace(r#"fill="white""#, paint), missing, paint);

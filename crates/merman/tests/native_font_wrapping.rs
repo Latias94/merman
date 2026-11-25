@@ -146,7 +146,9 @@ fn assert_drawn_text_inside_node(svg: &str, context: &NativeFontContext) {
     context.apply_to_usvg_options(&mut options);
     let tree = usvg::Tree::from_str(&annotated, &options).unwrap();
     let node = tree.node_by_id("native-wrapping-shape").unwrap();
-    let bounds = node.abs_bounding_box();
+    let bounds = node
+        .abs_bounding_box()
+        .expect("the wrapping shape has canvas bounds");
     let mut boxes = Vec::new();
     texts(tree.root(), &mut boxes);
     assert!(!boxes.is_empty(), "the emitted label must actually shape");

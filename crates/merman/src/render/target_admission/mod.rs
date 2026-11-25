@@ -99,7 +99,7 @@ pub enum TargetAdmissionReason {
     SvgTerminalUnverified,
     FontResolutionIncomplete,
     SystemOrHostFontDependency,
-    /// Native filter offsets can differ under a local rotation, shear or reflection.
+    /// Native filter offsets can differ where a local transform mixes the filter axes.
     NativeDirectionalFilterTransformResidual,
     /// An inferred PDF viewport can clip painted content without a source clipping decision.
     PdfImplicitViewportClippingResidual,

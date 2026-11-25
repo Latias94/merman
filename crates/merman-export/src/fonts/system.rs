@@ -1292,7 +1292,6 @@ mod tests {
         assert!(!tree.root().children().is_empty());
         assert!(observer.family_fallback_used());
         assert!(observer.glyph_fallback_used());
-        assert!(observer.unresolved_glyph_fallback());
         #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
         {
             let plan = seed
@@ -1309,7 +1308,7 @@ mod tests {
     }
 
     #[test]
-    fn discovery_export_failure_marks_unresolved_font_without_admitting_candidate() {
+    fn discovery_export_failure_retains_omission_without_admitting_candidate() {
         let root = Root::new();
         let font_path = root.copy("Cousine-Regular.ttf");
         let control = OperationControl::new();
@@ -1322,7 +1321,7 @@ mod tests {
             context.check().is_err(),
             "a discovered source failure must remain terminal"
         );
-        assert!(observer.unresolved_font_request());
+        assert!(tree.root().text_font_omissions().0);
         assert!(observer.admitted_faces().unwrap().is_empty());
         assert!(!observer.family_fallback_used());
         assert!(tree.root().children().is_empty());
