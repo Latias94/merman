@@ -59,55 +59,39 @@
   "artifact_scopes": [
     {
       "id": "sdk-native-standard",
-      "description": "Native C standard SDK, including its ASCII source notices.",
-      "extends": ["sdk-standard", "ascii-render"],
+      "description": "Native C standard SDK, including its ASCII and PDF notices.",
+      "extends": ["sdk-standard", "ascii-render", "pdf-export"],
       "components": []
     },
     {
       "id": "sdk-native-math",
-      "description": "Native C math SDK, including its ASCII source notices.",
-      "extends": ["sdk-math", "ascii-render"],
+      "description": "Native C math SDK, including its ASCII and PDF notices.",
+      "extends": ["sdk-math", "ascii-render", "pdf-export"],
       "components": []
     },
     {
       "id": "sdk-native-full",
-      "description": "Native C full SDK, including its ASCII source notices.",
-      "extends": ["sdk-full", "ascii-render"],
+      "description": "Native C full SDK, including its ASCII and PDF notices.",
+      "extends": ["sdk-full", "ascii-render", "pdf-export"],
       "components": []
     },
     {
       "id": "sdk-standard",
-      "description": "Embedding SDK standard legal closure.",
-      "extends": [
-        "rust-render-base"
-      ],
-      "components": [
-        "sdk-cousine",
-        "usvg"
-      ]
+      "description": "WASI standard SDK legal closure, including the PNG renderer and bundled font.",
+      "extends": ["rust-render-base", "raster-export"],
+      "components": ["sdk-cousine"]
     },
     {
       "id": "sdk-math",
-      "description": "Embedding SDK math legal closure.",
-      "extends": [
-        "ratex-render"
-      ],
-      "components": [
-        "sdk-cousine",
-        "usvg"
-      ]
+      "description": "WASI math SDK legal closure, including RaTeX and its fonts.",
+      "extends": ["sdk-standard", "ratex-render"],
+      "components": []
     },
     {
       "id": "sdk-full",
-      "description": "Embedding SDK full legal closure.",
-      "extends": [
-        "elk-render",
-        "ratex-render"
-      ],
-      "components": [
-        "sdk-cousine",
-        "usvg"
-      ]
+      "description": "WASI full SDK legal closure, including RaTeX and ELK.",
+      "extends": ["sdk-math", "elk-render"],
+      "components": []
     },
     {
       "id": "rust-render-base",
@@ -151,6 +135,18 @@
       "components": ["katex-fonts", "ratex"]
     },
     {
+      "id": "raster-export",
+      "description": "Raster output using the Merman resvg and usvg forks.",
+      "extends": [],
+      "components": ["resvg", "resvg-iir-blur", "usvg"]
+    },
+    {
+      "id": "pdf-export",
+      "description": "PDF output using the Merman Krilla and krilla-svg forks with embedded ICC profiles and resvg filter rasterization.",
+      "extends": ["raster-export"],
+      "components": ["krilla", "krilla-icc-profiles", "krilla-svg"]
+    },
+    {
       "id": "ascii-render",
       "description": "ASCII rendering source, copied fixtures, and behavior references.",
       "extends": [],
@@ -189,14 +185,14 @@
     {
       "id": "cli-default",
       "description": "The source-default CLI feature closure including ELK without RaTeX math/font support.",
-      "extends": ["elk-render"],
-      "components": ["usvg"]
+      "extends": ["elk-render", "raster-export", "pdf-export"],
+      "components": []
     },
     {
       "id": "cli-release",
       "description": "The published complete CLI release closure, including explicit ELK and RaTeX math/font support.",
-      "extends": ["elk-render", "ratex-render"],
-      "components": ["usvg"]
+      "extends": ["elk-render", "ratex-render", "raster-export", "pdf-export"],
+      "components": []
     },
     {
       "id": "web-full",
@@ -696,6 +692,115 @@
       "notice": "The RaTeX SVG backend embeds twenty KaTeX TrueType fonts; those font bytes are licensed under OFL-1.1 rather than RaTeX's MIT code license."
     },
     {
+      "id": "krilla",
+      "name": "Krilla",
+      "version": "0.8.2 with CID font subset naming backport",
+      "source": {
+        "repository": "https://github.com/LaurenzV/krilla",
+        "ref": "crates.io:krilla@0.8.2",
+        "commit": "3ffdf0588cf98050aad6edba51ca70162e1fb5b5",
+        "path": "crates/krilla"
+      },
+      "relationships": ["copied", "modified", "linked"],
+      "local_paths": ["vendor/krilla"],
+      "license_expression": "Apache-2.0 OR MIT",
+      "selected_license": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/krilla/LICENSE-APACHE",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "source_url": "https://raw.githubusercontent.com/LaurenzV/krilla/3ffdf0588cf98050aad6edba51ca70162e1fb5b5/LICENSE_APACHE",
+          "source_path": "LICENSE_APACHE",
+          "role": "license"
+        },
+        {
+          "path": "THIRD_PARTY_LICENSES/krilla/LICENSE-MIT",
+          "sha256": "9d1eb142840c7acfd5511b4dd298cece3f0053f5809228906445cd8a3365592f",
+          "source_url": "https://raw.githubusercontent.com/LaurenzV/krilla/3ffdf0588cf98050aad6edba51ca70162e1fb5b5/LICENSE_MIT",
+          "source_path": "LICENSE_MIT",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {
+          "type": "pinned-file",
+          "path": "vendor/krilla/UPSTREAM.md",
+          "sha256": "273e860272b1da17a80d6f766dd352dd60a8a54962be1e49beb4118a734cc773"
+        }
+      ],
+      "notice": "Merman PDF builds link the Krilla 0.8.2 fork, which assigns distinct names to CID font subsets."
+    },
+    {
+      "id": "krilla-icc-profiles",
+      "name": "Compact ICC Profiles bundled by Krilla",
+      "version": "krilla@0.8.2",
+      "source": {
+        "repository": "https://github.com/LaurenzV/krilla",
+        "ref": "crates.io:krilla@0.8.2",
+        "commit": "3ffdf0588cf98050aad6edba51ca70162e1fb5b5",
+        "path": "crates/krilla/icc"
+      },
+      "relationships": ["copied", "embedded"],
+      "local_paths": ["vendor/krilla/icc"],
+      "license_expression": "CC0-1.0",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/krilla/LICENSE-ICC",
+          "sha256": "469d87b5fa48f8aaf69e25f4fcac3a309c97dbb7d561b917638abdb640e004d9",
+          "source_url": "https://raw.githubusercontent.com/LaurenzV/krilla/3ffdf0588cf98050aad6edba51ca70162e1fb5b5/crates/krilla/icc/LICENSE",
+          "source_path": "crates/krilla/icc/LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {
+          "type": "pinned-file",
+          "path": "vendor/krilla/UPSTREAM.md",
+          "sha256": "273e860272b1da17a80d6f766dd352dd60a8a54962be1e49beb4118a734cc773"
+        }
+      ],
+      "notice": "Krilla includes Compact ICC Profiles for grayscale and RGB PDF output, distributed under CC0-1.0."
+    },
+    {
+      "id": "krilla-svg",
+      "name": "krilla-svg",
+      "version": "0.8.1 with shared font instance support",
+      "source": {
+        "repository": "https://github.com/LaurenzV/krilla",
+        "ref": "crates.io:krilla-svg@0.8.1",
+        "commit": "3ffdf0588cf98050aad6edba51ca70162e1fb5b5",
+        "path": "crates/krilla-svg"
+      },
+      "relationships": ["copied", "modified", "linked"],
+      "local_paths": ["vendor/krilla-svg"],
+      "license_expression": "Apache-2.0 OR MIT",
+      "selected_license": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/krilla/LICENSE-APACHE",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "source_url": "https://raw.githubusercontent.com/LaurenzV/krilla/3ffdf0588cf98050aad6edba51ca70162e1fb5b5/LICENSE_APACHE",
+          "source_path": "LICENSE_APACHE",
+          "role": "license"
+        },
+        {
+          "path": "THIRD_PARTY_LICENSES/krilla/LICENSE-MIT",
+          "sha256": "9d1eb142840c7acfd5511b4dd298cece3f0053f5809228906445cd8a3365592f",
+          "source_url": "https://raw.githubusercontent.com/LaurenzV/krilla/3ffdf0588cf98050aad6edba51ca70162e1fb5b5/LICENSE_MIT",
+          "source_path": "LICENSE_MIT",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {
+          "type": "pinned-file",
+          "path": "vendor/krilla-svg/UPSTREAM.md",
+          "sha256": "e9813189e8e05e56f19d6cdc80d8a505e086104dd35aff48adbe9b70739e4624"
+        }
+      ],
+      "notice": "The Merman PDF adapter consumes the same SVG tree and resolved font instances as the rasterizer."
+    },
+    {
       "id": "layout-base-v1",
       "name": "layout-base 1.x",
       "version": "1.0.2",
@@ -895,6 +1000,76 @@
         {"type": "cargo", "path": "Cargo.lock", "package": "ratex-unicode-font", "version": "0.1.15", "checksum": "1747dee726d3f05c96fd13f123693d350f9cba572bbdfaf7fc4bbe43948c7129"}
       ],
       "notice": "Optional math rendering links the RaTeX 0.1.15 crate family; its separately licensed embedded fonts are recorded as their own component."
+    },
+    {
+      "id": "resvg",
+      "name": "resvg",
+      "version": "0.50.0 with Merman usvg integration",
+      "source": {
+        "repository": "https://github.com/linebender/resvg",
+        "ref": "v0.50.0",
+        "commit": "5bdbae64eefadc4bf0caa56dcf91702037929086",
+        "path": "crates/resvg"
+      },
+      "relationships": ["copied", "modified", "linked"],
+      "local_paths": ["vendor/resvg"],
+      "license_expression": "Apache-2.0 OR MIT",
+      "selected_license": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/usvg/LICENSE-APACHE",
+          "sha256": "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9",
+          "source_url": "https://raw.githubusercontent.com/linebender/resvg/5bdbae64eefadc4bf0caa56dcf91702037929086/crates/resvg/LICENSE-APACHE",
+          "source_path": "crates/resvg/LICENSE-APACHE",
+          "role": "license"
+        },
+        {
+          "path": "THIRD_PARTY_LICENSES/usvg/LICENSE-MIT",
+          "sha256": "f5d934dc281b44e0003ee461ac740b18b6629a454decd872c774d34e4ee0b21d",
+          "source_url": "https://raw.githubusercontent.com/linebender/resvg/5bdbae64eefadc4bf0caa56dcf91702037929086/crates/resvg/LICENSE-MIT",
+          "source_path": "crates/resvg/LICENSE-MIT",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {
+          "type": "pinned-file",
+          "path": "vendor/resvg/UPSTREAM.md",
+          "sha256": "475102e9ebf242337e20a19195cec7d3e4fdbc91db8fdc28e8f8a36b5b5216c0"
+        }
+      ],
+      "notice": "The Merman SVG rasterizer links the Merman usvg fork to share SVG tree and font identities."
+    },
+    {
+      "id": "resvg-iir-blur",
+      "name": "Pascal Getreuer's Gaussian convolution in resvg",
+      "version": "gaussian_20131215, as adapted in resvg 0.50.0",
+      "source": {
+        "repository": "https://github.com/linebender/resvg",
+        "ref": "v0.50.0",
+        "commit": "5bdbae64eefadc4bf0caa56dcf91702037929086",
+        "path": "crates/resvg/src/filter/iir_blur.rs"
+      },
+      "relationships": ["copied", "modified", "linked"],
+      "local_paths": ["vendor/resvg/src/filter/iir_blur.rs"],
+      "license_expression": "BSD-2-Clause",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/resvg-iir-blur/LICENSE",
+          "sha256": "a9371cfa1c4d8146817a501ef944663b8a40ee684f767b21ccb1c7047ac7cf00",
+          "source_url": "https://www.ipol.im/pub/art/2013/87/gaussian_20131215.tgz",
+          "source_path": "gaussian_20131215/BSD_simplified.txt",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {
+          "type": "pinned-file",
+          "path": "vendor/resvg/LICENSE-BSD-2-Clause",
+          "sha256": "a9371cfa1c4d8146817a501ef944663b8a40ee684f767b21ccb1c7047ac7cf00"
+        }
+      ],
+      "notice": "The resvg IIR Gaussian blur credits Pascal Getreuer's Simplified BSD implementation. The copyright notice from `gaussian_conv_am.c` and the license from `BSD_simplified.txt` come from the [original Gaussian convolution source archive](https://www.ipol.im/pub/art/2013/87/gaussian_20131215.tgz)."
     },
     {
       "id": "rough-rs",
@@ -1510,11 +1685,11 @@
     {
       "id": "usvg",
       "name": "usvg",
-      "version": "0.47.0 with font fallback backport",
+      "version": "0.50.0 with contextual fallback and font instances",
       "source": {
         "repository": "https://github.com/linebender/resvg",
-        "ref": "v0.47.0",
-        "commit": "3a0fdba53ccf2d346b54cc53ba7adf0ee60d0707",
+        "ref": "v0.50.0",
+        "commit": "5bdbae64eefadc4bf0caa56dcf91702037929086",
         "path": "crates/usvg"
       },
       "relationships": ["copied", "modified", "linked"],
@@ -1525,14 +1700,14 @@
         {
           "path": "THIRD_PARTY_LICENSES/usvg/LICENSE-APACHE",
           "sha256": "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9",
-          "source_url": "https://raw.githubusercontent.com/linebender/resvg/3a0fdba53ccf2d346b54cc53ba7adf0ee60d0707/crates/usvg/LICENSE-APACHE",
+          "source_url": "https://raw.githubusercontent.com/linebender/resvg/5bdbae64eefadc4bf0caa56dcf91702037929086/crates/usvg/LICENSE-APACHE",
           "source_path": "crates/usvg/LICENSE-APACHE",
           "role": "license"
         },
         {
           "path": "THIRD_PARTY_LICENSES/usvg/LICENSE-MIT",
           "sha256": "f5d934dc281b44e0003ee461ac740b18b6629a454decd872c774d34e4ee0b21d",
-          "source_url": "https://raw.githubusercontent.com/linebender/resvg/3a0fdba53ccf2d346b54cc53ba7adf0ee60d0707/crates/usvg/LICENSE-MIT",
+          "source_url": "https://raw.githubusercontent.com/linebender/resvg/5bdbae64eefadc4bf0caa56dcf91702037929086/crates/usvg/LICENSE-MIT",
           "source_path": "crates/usvg/LICENSE-MIT",
           "role": "license"
         }
@@ -1541,10 +1716,10 @@
         {
           "type": "pinned-file",
           "path": "vendor/usvg/UPSTREAM.md",
-          "sha256": "96edf473205e6638fa3d3b14428732341df096461c583869013bea8a8cb69849"
+          "sha256": "ffb310a4d695ffda2336f4ca43808c0c092b63aff00a192910b74d7224910dbe"
         }
       ],
-      "notice": "Source-tree builds of the native font and image export pipeline link usvg 0.47.0 with a local font fallback backport. This source component carries the two upstream license texts."
+      "notice": "The Merman SVG parser retains the selected native font instance in shaping, outlines, and export evidence."
     }
   ]
 }

@@ -180,7 +180,7 @@ format.
 Current-source default builds and the official release profile include
 `native-fonts` and `system-fonts`. Mermaid SVG keeps deterministic, font-agnostic
 measurement by default. The current release profile queries system fonts through
-Fontique and DirectWrite on Windows, Core Text on macOS, and Fontconfig on Linux for Mermaid
+DirectWrite on Windows, Core Text on macOS, and Fontconfig on Linux for Mermaid
 PNG/JPEG/PDF. Measurement and painting share the selected fonts. Default Cargo
 builds use bounded discovery. Font selection can change wrapping, node sizes, and
 image/PDF output across hosts or discovery providers.
@@ -206,6 +206,15 @@ That compatibility route can still discover system fonts during painting; it doe
 not guarantee font-free or host-independent PNG/JPEG/PDF bytes. The same output-based
 defaults apply to Mermaid input through `render`, `batch`, and `mmdc`. Raw SVG
 conversion only paints existing geometry and is never relaid out.
+
+Builds with `system-fonts` use their default provider for raw SVG PNG, JPEG, and
+PDF, including bounded discovery in ordinary Cargo builds. A font source or
+system provider option selects the conversion font context explicitly.
+`--font-max-bytes` applies the byte budget to the selected provider. The CLI
+checks the finalized SVG for text, including text inside nested `<svg>`
+elements, before it starts system discovery. Path-only SVG can be converted
+with `--font-system off` and no font files. Supply explicit fonts to paint text
+with system discovery off.
 
 For diagrams with strict layout requirements, **provide the fonts that will be
 used to display the result**. Actual-font measurement uses their glyph sizes for
@@ -249,14 +258,15 @@ Release archives and builds with the `platform-system-font-query` feature offer
 `--font-system platform` and `--font-system bounded`. `--font-system on` uses the
 build's default provider. The current release profile selects Platform. On Linux,
 the default and `on` retry with bounded discovery if the Fontconfig runtime cannot
-load. An explicit `platform` request reports the load error. Platform metadata
-queries run outside Merman's scan budgets.
+load. An explicit `platform` request reports the load error. An available service
+with an empty catalog and font budget failures are reported directly. Platform
+metadata queries run outside Merman's scan budgets.
 For a missing shaping cluster, platform fallback tries the authored font stack,
 then the supplied fonts, then the platform's candidates. Measurement and painting
-use the same physical face for the cluster. SVG text inherits `xml:lang` and a
-`<tspan>` can override it. On Windows, DirectWrite's fallback scale applies to
-both layout and painting. An unsupported named variable family can fall through
-to the next family in the stack.
+use the same physical face and effective variation coordinates for the cluster.
+Font selection honors SVG `xml:lang`, including inherited tags and `<tspan>`
+overrides. On Windows, DirectWrite's fallback scale applies to both layout and
+painting.
 See [Optional CLI fonts](../../docs/FEATURES.md#optional-cli-fonts).
 
 If bounded discovery reports `native font limit system-cmap-bytes exceeded`, the installed fonts'
@@ -268,9 +278,9 @@ Each native font context has a default budget of 256 MiB for explicit font files
 Set `--font-max-bytes <SIZE>` to a positive integer in bytes, KiB, MiB, or GiB.
 For example, `--font-max-bytes 536870912` and `--font-max-bytes 512MiB`
 set the same limit. With only this option, ordinary Mermaid SVG uses deterministic
-measurement with system discovery off. For raw SVG conversion, pair the budget with
-`--font-system on` or an explicit font source. If the fonts exceed the budget, the CLI
-preserves the existing output file. Retry the same command with the
+measurement with system discovery off. For raw SVG conversion, a byte budget on
+its own selects the build's default system provider. If the fonts exceed the
+budget, the CLI preserves the existing output file. Retry the same command with the
 `--font-max-bytes` argument from stderr, replacing any previous value.
 
 Native measurement allows 16,384 uncached shaping probes per diagram by default.
@@ -340,9 +350,9 @@ suppresses that diagnostic.
 Best-effort export remains permissive, while strict portability admission retains
 its existing rejection policy.
 
-Known native backend differences also produce specific warnings: directional filter offsets
-under rotation, shear or reflection; CSS effects on converted HTML labels; and implicit PDF
-viewports that may clip painted content. These fidelity diagnostics preserve default output.
+Native export reports fidelity warnings for directional filter offsets under transforms that
+mix the filter axes, CSS effects on converted HTML labels, and implicit PDF viewports that may
+clip painted content. These fidelity diagnostics preserve default output.
 Use explicit SVG dimensions or a `viewBox` to control PDF clipping. `--quiet` suppresses warnings.
 
 ## Command Dialects And Root Compatibility
@@ -728,6 +738,9 @@ Current release-profile builds report `platform-managed-system-query` and
 discovery policy. Without `system-fonts`, the three values are `deterministic`, `none`,
 and `disabled`. Explicit font sources enable native measurement with a closed set.
 Use `--font-system on` to permit system fallback with the build's default provider.
+`legacy_export_paths` describes which input routes use the codec font environment.
+It covers deterministic Mermaid exports. Builds without `system-fonts` also use
+that environment for raw SVG without font options.
 
 The contract preserves the native `-f` spelling, text-first `lint`, narrowed `detect` surface, and feature-gated top-level `rustdoc` workflow. ASCII-enabled builds additionally expose an `ascii` subcontract with its own schema version, report schemas and streams, family layout/width/encoding/fallback arrays, and detector-to-family mappings. Automation should version-check the CLI contract independently from the outer JSON schema.
 

@@ -7,6 +7,13 @@
 //! SVG validation stay owned by `merman`; this crate owns explicit native font contexts and
 //! allocation-aware encoding.
 
+#![cfg_attr(
+    feature = "native-fonts",
+    doc = "
+Use the re-exported [`usvg::Options`] with [`NativeFontContext::apply_to_usvg_options`]
+to share Merman's SVG parser types."
+)]
+
 #[cfg(any(
     feature = "native-fonts",
     all(
@@ -27,6 +34,9 @@ pub mod fonts;
 pub use fonts::{
     FontSource, NativeFontContext, NativeFontError, NativeFontLimits, NativeFontOptions,
 };
+
+#[cfg(feature = "native-fonts")]
+pub use usvg;
 
 /// Returns production Cousine regular, bold, and italic font bytes in that order.
 ///
@@ -366,9 +376,7 @@ fn terminate_export_resource_error(control: &OperationControl, error: ExportErro
     let Some(provenance) = error.resource_limit_provenance() else {
         return error;
     };
-    if let Err(terminal) = control.terminal_checkpoint_at(OperationPhase::Export) {
-        return export_terminal_error(terminal);
-    }
+    let previous = control.terminal_checkpoint_at(OperationPhase::Export).err();
     let (terminal, expected) = match details.cause {
         ExportResourceLimitCause::Ceiling => {
             let error = OperationResourceLimitExceeded {
@@ -381,7 +389,7 @@ fn terminate_export_resource_error(control: &OperationControl, error: ExportErro
                 provenance: provenance.clone(),
             };
             (
-                control.terminate_resource_limit(error.clone()),
+                previous.unwrap_or_else(|| control.terminate_resource_limit(error.clone())),
                 OperationLedgerError::ResourceLimitExceeded(error),
             )
         }
@@ -395,14 +403,16 @@ fn terminate_export_resource_error(control: &OperationControl, error: ExportErro
                 provenance: provenance.clone(),
             };
             (
-                control.terminate_resource_overflow(
-                    details.limit_id,
-                    OperationPhase::Export,
-                    details.phase,
-                    details.actual,
-                    details.max,
-                    provenance,
-                ),
+                previous.unwrap_or_else(|| {
+                    control.terminate_resource_overflow(
+                        details.limit_id,
+                        OperationPhase::Export,
+                        details.phase,
+                        details.actual,
+                        details.max,
+                        provenance,
+                    )
+                }),
                 expected,
             )
         }
@@ -1401,9 +1411,8 @@ impl RasterExportReport {
 
     /// Returns whether directional filter offsets may differ from their SVG transform.
     ///
-    /// The native raster backend renders these effects with scale magnitudes and can lose
-    /// rotation, shear or reflection. Best-effort export still produces the diagram; callers
-    /// should disclose this paint-quality limitation or reject it under an exactness policy.
+    /// Raster export supports transforms that preserve or swap the coordinate axes. Best-effort
+    /// export reports the residual for other transforms that can resample the filtered layer.
     pub const fn directional_filter_transform_residual(self) -> bool {
         self.directional_filter_transform_residual
     }
@@ -1931,11 +1940,11 @@ fn prepare_raster_source_on_backend_stack(
     )?;
     export_checkpoint(control)?;
     let tree = usvg::Tree::from_str(source, &usvg_options).map_err(|_| ExportError::SvgParse);
-    export_checkpoint(control)?;
     #[cfg(feature = "native-fonts")]
     if let Some(context) = &options.font_context {
         context.check()?;
     }
+    export_checkpoint(control)?;
     let tree = tree?;
     let (geometry, translate_min_to_origin) = raster_geometry_for_svg(root_metadata, &tree);
     let native_filter_receipt = match usvg::Rect::from_xywh(
@@ -1957,7 +1966,7 @@ fn prepare_raster_source_on_backend_stack(
     let fallback_css_residual = svg.finalization_report().fallback_css_residual();
     let conversion_plan = plan_svg_conversion(&tree, options.conversion_limits, control)?;
     let directional_filter_transform_residual =
-        !raster_filter_transforms_supported(tree.root(), control)?;
+        !directional_filter_transforms_supported(tree.root(), control)?;
     let embedded_image_plan =
         plan_embedded_images(&tree, options.embedded_image_limit, data_plan, control)?;
     let plan = raster_plan_for_geometry(geometry, options, control)?;
@@ -2032,17 +2041,15 @@ fn prepare_pdf_on_backend_stack(
     let (tree, font_plan) = parse_pdf_tree(svg, options, control)?;
     let fallback_css_residual = svg.finalization_report().fallback_css_residual();
     let metadata = parse_root_svg_metadata(source, control)?;
-    let implicit_viewport_clipping_residual =
-        if !metadata.has_view_box && !metadata.has_explicit_size {
-            let layer = tree.root().abs_layer_bounding_box();
+    let implicit_viewport_clipping_residual = !metadata.has_view_box
+        && !metadata.has_explicit_size
+        && tree.root().abs_layer_bounding_box().is_some_and(|layer| {
             let viewport = tree.size();
             layer.left() < 0.0
                 || layer.top() < 0.0
                 || layer.right() > viewport.width()
                 || layer.bottom() > viewport.height()
-        } else {
-            false
-        };
+        });
     let native_filter_receipt = match tree.size().to_rect(0.0, 0.0) {
         Some(viewport) => native_filter_receipt::preflight_native_filter_receipt(
             source, &tree, viewport, control,
@@ -2291,11 +2298,11 @@ fn parse_pdf_tree(
     let mut opts = usvg::Options::default();
     let font_plan = configure_usvg_options_for_pdf(&mut opts, svg, options, control)?;
     let tree = usvg::Tree::from_str(svg.as_str(), &opts).map_err(|_| ExportError::SvgParse);
-    export_checkpoint(control)?;
     #[cfg(feature = "native-fonts")]
     if let Some(context) = &options.font_context {
         context.check()?;
     }
+    export_checkpoint(control)?;
     let tree = tree?;
     let font_plan = font_plan.finish_with_tree(&tree, control)?;
     #[cfg(feature = "native-fonts")]
@@ -2580,7 +2587,7 @@ fn check_svg_conversion_limit(
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn raster_filter_transforms_supported(
+fn directional_filter_transforms_supported(
     root: &usvg::Group,
     control: &OperationControl,
 ) -> Result<bool> {
@@ -2588,19 +2595,23 @@ fn raster_filter_transforms_supported(
     while let Some((group, parent_transform)) = stack.pop() {
         export_checkpoint(control)?;
         let transform = parent_transform.pre_concat(group.transform());
-        let preserves_offset_axes =
-            transform.kx == 0.0 && transform.ky == 0.0 && transform.sx > 0.0 && transform.sy > 0.0;
-        if !preserves_offset_axes {
+        // resvg factors rotation and reflection out of the filter layer and restores them
+        // during compositing, including when Krilla renders a group into a localized image.
+        let keeps_axes = transform.sx != 0.0
+            && transform.sy != 0.0
+            && transform.ky.abs() <= transform.sx.abs() * f32::EPSILON
+            && transform.kx.abs() <= transform.sy.abs() * f32::EPSILON;
+        let swaps_axes = transform.ky != 0.0
+            && transform.kx != 0.0
+            && transform.sx.abs() <= transform.ky.abs() * f32::EPSILON
+            && transform.sy.abs() <= transform.kx.abs() * f32::EPSILON;
+        if !(keeps_axes || swaps_axes) {
             for primitive in group
                 .filters()
                 .iter()
                 .flat_map(|filter| filter.primitives())
             {
                 export_checkpoint(control)?;
-                // resvg 0.47's scale_coordinates uses only scale magnitudes, so directional
-                // offsets lose rotation, shear and reflection. Report the residual without
-                // preventing best-effort output. PDF uses this rasterizer inside each filtered
-                // group, so its ancestor transforms remain outside this validation root.
                 let directional = match primitive.kind() {
                     usvg::filter::Kind::Offset(offset) => offset.dx() != 0.0 || offset.dy() != 0.0,
                     usvg::filter::Kind::DropShadow(shadow) => {
@@ -2760,20 +2771,22 @@ fn pdf_filtered_group_bounds(
     while let Some((group, parent_transform)) = stack.pop() {
         export_checkpoint(control)?;
         if !group.filters().is_empty() {
-            // krilla reapplies vector ancestor transforms after rasterization, but a transform
-            // on this group or its rasterized descendants still reaches resvg's offset bug.
+            // Krilla skips the entire subtree if it cannot localize a layer.
+            let Some(bbox) = group.layer_bounding_box() else {
+                continue;
+            };
+            if group.abs_layer_bounding_box().is_none() {
+                continue;
+            }
             let directional_transform_residual =
-                !raster_filter_transforms_supported(group, control)?;
-            // Match krilla-svg 0.8.1's filter.rs before its f32 side cap and pixel rounding.
+                !directional_filter_transforms_supported(group, control)?;
+            // Match krilla-svg's composed transform before its f32 side cap and pixel rounding.
             // Absolute bounds are insufficient: isolated PDF streams reset their current CTM.
-            let local = group
-                .layer_bounding_box()
+            let local = bbox
                 .transform(group.transform())
                 .ok_or(ExportError::SvgDocSize)?;
-            let actual = group
-                .layer_bounding_box()
-                .transform(parent_transform)
-                .and_then(|bbox| bbox.transform(group.transform()))
+            let actual = bbox
+                .transform(parent_transform.pre_concat(group.transform()))
                 .ok_or(ExportError::SvgDocSize)?;
             bounds.push(PdfFilterGeometry {
                 width: local.width(),
@@ -3413,7 +3426,18 @@ fn raster_geometry_for_svg(metadata: RootSvgMetadata, tree: &usvg::Tree) -> (Ras
 
     // Some Mermaid diagrams (e.g. `info`) don't emit a viewBox upstream.
     // For raster formats, fall back to the rendered content bounds as computed by usvg.
-    let bbox = tree.root().abs_layer_bounding_box();
+    let Some(bbox) = tree.root().abs_layer_bounding_box() else {
+        // Preserve the minimum raster canvas for an empty SVG without an explicit viewport.
+        return (
+            RasterGeometry {
+                min_x: 0.0,
+                min_y: 0.0,
+                width: 1.0,
+                height: 1.0,
+            },
+            false,
+        );
+    };
     let w = bbox.width().max(1.0);
     let h = bbox.height().max(1.0);
     if w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0 {
@@ -4946,6 +4970,52 @@ mod tests {
     }
 
     #[test]
+    fn empty_svg_keeps_raster_and_pdf_canvas_sizes() {
+        for (attributes, body, raster_size, pdf_size) in [
+            ("", "", (1, 1), (100.0, 100.0)),
+            (
+                r#" width="100%" style="max-width:400px""#,
+                r#"<g transform="translate(50 80)" opacity=".5"><g/></g>"#,
+                (1, 1),
+                (100.0, 100.0),
+            ),
+            (r#" width="20" height="12""#, "<g/>", (20, 12), (20.0, 12.0)),
+            (r#" viewBox="-2 -2 20 12""#, "<g/>", (20, 12), (20.0, 12.0)),
+        ] {
+            let svg =
+                format!(r#"<svg xmlns="http://www.w3.org/2000/svg"{attributes}>{body}</svg>"#);
+            let raster_options = fixture_raster_options().with_size_limit(RasterSizeLimit::new(
+                None,
+                None,
+                Some(u64::from(raster_size.0) * u64::from(raster_size.1)),
+            ));
+            let prepared = prepare_raster(&svg, &raster_options).unwrap();
+            assert!(!prepared.plan().limited);
+            let png = prepared.encode_png().unwrap();
+            assert_eq!(png_size(&png), raster_size);
+            assert_eq!(rgba_pixel(&png, 0, 0), [0; 4]);
+            let jpeg = svg_to_jpeg(&svg, &raster_options).unwrap();
+            let jpeg =
+                image::load_from_memory_with_format(&jpeg, image::ImageFormat::Jpeg).unwrap();
+            assert_eq!((jpeg.width(), jpeg.height()), raster_size);
+
+            let prepared = prepare_pdf(&svg, &fixture_pdf_options()).unwrap();
+            let report = prepared.report();
+            assert_eq!(
+                (
+                    report.page().page_width_pt(),
+                    report.page().page_height_pt()
+                ),
+                pdf_size
+            );
+            assert_eq!(report.filters().filtered_groups, 0);
+            assert_eq!(report.filters().effective_image_pixels, 0);
+            assert!(!report.implicit_viewport_clipping_residual());
+            assert!(prepared.encode().unwrap().starts_with(b"%PDF-"));
+        }
+    }
+
+    #[test]
     fn dimensionless_root_keeps_content_fit() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100%" style="max-width:400px"><rect x="20" y="30" width="10" height="10" fill="red"/></svg>"#;
         let png = svg_to_png(svg, &fixture_raster_options()).unwrap();
@@ -5006,7 +5076,7 @@ mod tests {
 
     #[test]
     fn raster_directional_filters_report_transform_residual_and_encode() {
-        for transform in ["rotate(90)", "skewX(30)", "scale(-1 1)"] {
+        for transform in ["rotate(30)", "skewX(30)"] {
             for primitive in [
                 r#"<feDropShadow dx="7" dy="4" stdDeviation="0" flood-color="blue"/>"#,
                 r#"<feOffset dx="7" dy="4"/>"#,
@@ -5039,6 +5109,35 @@ mod tests {
     }
 
     #[test]
+    fn raster_filter_offsets_follow_rotated_and_reflected_axes() {
+        for (transform, x, y, width, height) in [
+            ("rotate(90)", 65, 35, 10, 20),
+            ("scale(-1 1)", 40, 20, 20, 10),
+        ] {
+            let filtered = format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg" width="120" height="110"><defs><filter id="effect" filterUnits="userSpaceOnUse" x="-20" y="-20" width="100" height="100"><feOffset dx="15" dy="0"/></filter></defs><g transform="translate(75 20) {transform}" filter="url(#effect)"><rect width="20" height="10" fill="red"/></g></svg>"##
+            );
+            let reference = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="120" height="110"><rect x="{x}" y="{y}" width="{width}" height="{height}" fill="red"/></svg>"#
+            );
+            let options = fixture_raster_options();
+            let (png, report) = svg_to_png_with_report(&filtered, &options).unwrap();
+            assert!(
+                !report.directional_filter_transform_residual(),
+                "{transform}"
+            );
+            let reference = svg_to_png(&reference, &options).unwrap();
+            assert!(png == reference, "{transform} must paint at the SVG offset");
+            assert_eq!(rgba_pixel(&png, x, y), [255, 0, 0, 255]);
+            let (_, report) = svg_to_jpeg_with_report(&filtered, &options).unwrap();
+            assert!(
+                !report.directional_filter_transform_residual(),
+                "{transform}"
+            );
+        }
+    }
+
+    #[test]
     fn raster_nondirectional_filters_keep_transformed_content() {
         for primitive in [
             r#"<feGaussianBlur stdDeviation="1"/>"#,
@@ -5067,8 +5166,13 @@ mod tests {
     }
 
     #[test]
-    fn pdf_directional_filters_report_local_transform_residual_and_encode() {
-        for transform in ["rotate(90)", "skewX(30)", "scale(-1 1)"] {
+    fn pdf_directional_filters_report_residuals_for_transforms_that_mix_axes() {
+        for (transform, expects_residual) in [
+            ("rotate(90)", false),
+            ("scale(-1 1)", false),
+            ("rotate(30)", true),
+            ("skewX(30)", true),
+        ] {
             for primitive in [
                 r#"<feDropShadow dx="15" dy="0" stdDeviation="0" flood-color="blue"/>"#,
                 r#"<feOffset dx="15" dy="0"/>"#,
@@ -5079,9 +5183,16 @@ mod tests {
                 let prepared = prepare_pdf(&svg, &fixture_pdf_options()).expect(
                     "best-effort PDF still exports localized directional filter transforms",
                 );
-                assert!(prepared.report().directional_filter_transform_residual());
+                assert_eq!(
+                    prepared.report().directional_filter_transform_residual(),
+                    expects_residual,
+                    "{transform} {primitive}"
+                );
                 let (pdf, report) = prepared.encode_with_report().unwrap();
-                assert!(report.directional_filter_transform_residual());
+                assert_eq!(
+                    report.directional_filter_transform_residual(),
+                    expects_residual
+                );
                 assert!(String::from_utf8_lossy(&pdf).contains("/Subtype/Image"));
             }
         }
@@ -5125,7 +5236,7 @@ mod tests {
 
     #[test]
     fn pdf_directional_filters_report_nested_local_transform_residual() {
-        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><filter id="outer"><feGaussianBlur stdDeviation="0"/></filter><filter id="shadow" filterUnits="userSpaceOnUse" x="-20" y="-20" width="80" height="80"><feDropShadow dx="15" dy="0" stdDeviation="0" flood-color="blue"/></filter></defs><g filter="url(#outer)"><g transform="translate(60 20) rotate(90)" filter="url(#shadow)"><rect width="20" height="10" fill="red"/></g></g></svg>"##;
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><filter id="outer"><feGaussianBlur stdDeviation="0"/></filter><filter id="shadow" filterUnits="userSpaceOnUse" x="-20" y="-20" width="80" height="80"><feDropShadow dx="15" dy="0" stdDeviation="0" flood-color="blue"/></filter></defs><g filter="url(#outer)"><g transform="translate(60 20) skewX(30)" filter="url(#shadow)"><rect width="20" height="10" fill="red"/></g></g></svg>"##;
         let prepared = prepare_pdf(svg, &fixture_pdf_options())
             .expect("descendant transform limitations must not disable best-effort PDF output");
         assert!(prepared.report().directional_filter_transform_residual());
@@ -5725,6 +5836,38 @@ mod tests {
             pdf.contains("/Subtype/Image"),
             "filtered content must survive encoding"
         );
+    }
+
+    #[test]
+    fn filter_output_without_source_geometry_is_still_budgeted() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><filter id="flood" filterUnits="userSpaceOnUse" x="20" y="30" width="8" height="4"><feFlood flood-color="red"/></filter></defs><g filter="url(#flood)"><g/></g></svg>"##;
+        let png = svg_to_png(svg, &fixture_raster_options()).unwrap();
+        assert_eq!(png_size(&png), (8, 4));
+        assert_eq!(rgba_pixel(&png, 3, 2), [255, 0, 0, 255]);
+
+        let prepared = prepare_pdf(svg, &fixture_pdf_options()).unwrap();
+        assert_eq!(prepared.filter_plan().filtered_groups, 1);
+        assert_eq!(prepared.filter_plan().requested_image_pixels, 32 * 16);
+        let pdf = prepared.encode().unwrap();
+        assert!(String::from_utf8_lossy(&pdf).contains("/Subtype/Image"));
+    }
+
+    #[test]
+    fn pdf_filter_budget_matches_composed_transforms() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><filter id="identity" filterUnits="userSpaceOnUse" x="0" y="0" width="10" height="10"><feGaussianBlur stdDeviation="0"/></filter></defs><g transform="translate(50 50) rotate(-45)"><g transform="rotate(45)" filter="url(#identity)"><rect width="10" height="10" fill="red"/></g></g></svg>"##;
+        let prepared = prepare_pdf(
+            svg,
+            &fixture_pdf_options().with_filter_image_limit(PdfFilterImageLimit::new(Some(40 * 40))),
+        )
+        .unwrap();
+        let plan = prepared.filter_plan();
+        assert_eq!(plan.filtered_groups, 1);
+        assert_eq!(plan.requested_image_pixels, 40 * 40);
+        assert!(!plan.limited);
+        let pdf = prepared.encode().unwrap();
+        let pdf = String::from_utf8_lossy(&pdf);
+        assert!(pdf.contains("/Subtype/Image"));
+        assert!(pdf.contains("/Width 40") && pdf.contains("/Height 40"));
     }
 
     #[test]

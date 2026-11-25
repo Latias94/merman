@@ -253,6 +253,7 @@ fn write_filters(tree: &Tree, opt: &WriteOptions, xml: &mut XmlWriter) {
                             filter::CompositeOperator::Out => "out",
                             filter::CompositeOperator::Atop => "atop",
                             filter::CompositeOperator::Xor => "xor",
+                            filter::CompositeOperator::Lighter => "lighter",
                             filter::CompositeOperator::Arithmetic { .. } => "arithmetic",
                         },
                     );
@@ -582,20 +583,8 @@ fn has_text_paths(parent: &Group) -> bool {
             }
         } else if let Node::Text(text) = node {
             for chunk in &text.chunks {
-                if let TextFlow::Path(text_path) = &chunk.text_flow {
-                    let path = Path::new(
-                        text_path.id().to_string(),
-                        true,
-                        None,
-                        None,
-                        PaintOrder::default(),
-                        ShapeRendering::default(),
-                        text_path.path.clone(),
-                        Transform::default(),
-                    );
-                    if path.is_some() {
-                        return true;
-                    }
+                if let TextFlow::Path(_) = &chunk.text_flow {
+                    return true;
                 }
             }
         }
@@ -621,7 +610,7 @@ fn write_text_path_paths(parent: &Group, opt: &WriteOptions, xml: &mut XmlWriter
             for chunk in &text.chunks {
                 if let TextFlow::Path(text_path) = &chunk.text_flow {
                     let path = Path::new(
-                        text_path.id().to_string(),
+                        text_path.id().into(),
                         true,
                         None,
                         None,
@@ -630,9 +619,7 @@ fn write_text_path_paths(parent: &Group, opt: &WriteOptions, xml: &mut XmlWriter
                         text_path.path.clone(),
                         Transform::default(),
                     );
-                    if let Some(path) = &path {
-                        write_path(path, false, Transform::default(), None, opt, xml);
-                    }
+                    write_path(&path, false, Transform::default(), None, opt, xml);
                 }
             }
         }
@@ -726,83 +713,106 @@ fn write_element(node: &Node, is_clip_path: bool, opt: &WriteOptions, xml: &mut 
                     xml.write_numbers(AId::Dy, &text.dy);
                 }
 
-                xml.set_preserve_whitespaces(true);
-
-                for chunk in &text.chunks {
-                    if let TextFlow::Path(text_path) = &chunk.text_flow {
-                        xml.start_svg_element(EId::TextPath);
-
-                        let prefix = opt.id_prefix.as_deref().unwrap_or_default();
-                        xml.write_attribute_fmt(
-                            "xlink:href",
-                            format_args!("#{}{}", prefix, text_path.id()),
-                        );
-
-                        if text_path.start_offset != 0.0 {
-                            xml.write_svg_attribute(AId::StartOffset, &text_path.start_offset);
-                        }
-                    }
-
-                    xml.start_svg_element(EId::Tspan);
-
-                    if let Some(x) = chunk.x {
-                        xml.write_svg_attribute(AId::X, &x);
-                    }
-
-                    if let Some(y) = chunk.y {
-                        xml.write_svg_attribute(AId::Y, &y);
-                    }
-
-                    match chunk.anchor {
-                        TextAnchor::Start => {}
-                        TextAnchor::Middle => xml.write_svg_attribute(AId::TextAnchor, "middle"),
-                        TextAnchor::End => xml.write_svg_attribute(AId::TextAnchor, "end"),
-                    }
-
-                    for span in &chunk.spans {
-                        let decorations: Vec<_> = [
-                            ("underline", &span.decoration.underline),
-                            ("line-through", &span.decoration.line_through),
-                            ("overline", &span.decoration.overline),
-                        ]
-                        .iter()
-                        .filter_map(|&(key, option_value)| {
-                            option_value.as_ref().map(|value| (key, value))
-                        })
-                        .collect();
-
-                        // Decorations need to be dumped BEFORE we write the actual span data
-                        // (so that for example stroke color of span doesn't affect the text
-                        // itself while baseline shifts need to be written after (since they are
-                        // affected by the font size)
-                        for (deco_name, deco) in &decorations {
-                            xml.start_svg_element(EId::Tspan);
-                            xml.write_svg_attribute(AId::TextDecoration, deco_name);
-                            write_fill(&deco.fill, false, opt, xml);
-                            write_stroke(&deco.stroke, opt, xml);
-                        }
-
-                        write_span(is_clip_path, opt, xml, chunk, span);
-
-                        // End for each tspan we needed to create for decorations
-                        for _ in &decorations {
-                            xml.end_element();
-                        }
-                    }
-                    xml.end_element();
-
-                    // End textPath element
-                    if matches!(&chunk.text_flow, TextFlow::Path(_)) {
-                        xml.end_element();
-                    }
+                if let Some(adjustment) = text.length_adjustments.last().filter(|a| a.at_text_root)
+                {
+                    write_text_length(adjustment, xml);
                 }
 
+                xml.set_preserve_whitespaces(true);
+                write_text_chunks(text, is_clip_path, opt, xml);
                 xml.end_element();
                 xml.set_preserve_whitespaces(false);
             } else {
                 write_group_element(text.flattened(), is_clip_path, opt, xml);
             }
         }
+    }
+}
+
+fn write_text_length(adjustment: &TextLengthAdjustment, xml: &mut XmlWriter) {
+    xml.write_svg_attribute(AId::TextLength, &adjustment.length);
+    let mode = match adjustment.mode {
+        LengthAdjust::Spacing => "spacing",
+        LengthAdjust::SpacingAndGlyphs => "spacingAndGlyphs",
+    };
+    xml.write_svg_attribute(AId::LengthAdjust, mode);
+}
+
+fn write_text_chunks(text: &Text, is_clip_path: bool, opt: &WriteOptions, xml: &mut XmlWriter) {
+    let mut adjustments: Vec<_> = text
+        .length_adjustments
+        .iter()
+        .rev()
+        .filter(|adjustment| !adjustment.at_text_root)
+        .collect();
+    adjustments.sort_by_key(|a| (a.bytes.start, std::cmp::Reverse(a.bytes.end)));
+    let mut adjustments = adjustments.into_iter().peekable();
+    let mut adjustment_ends = Vec::new();
+    let mut chunk_start = 0;
+    let mut open_path = None;
+
+    for chunk in &text.chunks {
+        let path = match &chunk.text_flow {
+            TextFlow::Linear => None,
+            TextFlow::Path(path) => Some(path),
+        };
+        for (index, span) in chunk.spans.iter().enumerate() {
+            let start = chunk_start + span.start;
+            while adjustment_ends.last().is_some_and(|&end| end <= start) {
+                adjustment_ends.pop();
+                xml.end_element();
+            }
+
+            if index == 0
+                && !matches!((open_path, path), (Some(a), Some(b)) if std::sync::Arc::ptr_eq(a, b))
+            {
+                if open_path.is_some() {
+                    xml.end_element();
+                }
+                if let Some(path) = path {
+                    xml.start_svg_element(EId::TextPath);
+                    let prefix = opt.id_prefix.as_deref().unwrap_or_default();
+                    xml.write_attribute_fmt("xlink:href", format_args!("#{}{}", prefix, path.id()));
+                    if path.start_offset != 0.0 {
+                        xml.write_svg_attribute(AId::StartOffset, &path.start_offset);
+                    }
+                }
+                open_path = path;
+            }
+
+            // Open declarations around their flattened spans, including any positioning chunks.
+            while let Some(adjustment) = adjustments.next_if(|a| a.bytes.start == start) {
+                xml.start_svg_element(EId::Tspan);
+                write_text_length(adjustment, xml);
+                adjustment_ends.push(adjustment.bytes.end);
+            }
+
+            let decorations = [
+                ("underline", &span.decoration.underline),
+                ("line-through", &span.decoration.line_through),
+                ("overline", &span.decoration.overline),
+            ];
+            // Decoration paint precedes the span paint, which may use different colors.
+            for (name, decoration) in decorations {
+                if let Some(decoration) = decoration {
+                    xml.start_svg_element(EId::Tspan);
+                    xml.write_svg_attribute(AId::TextDecoration, name);
+                    write_fill(&decoration.fill, false, opt, xml);
+                    write_stroke(&decoration.stroke, opt, xml);
+                }
+            }
+            write_span(is_clip_path, opt, xml, chunk, span, index == 0);
+            for _ in decorations.iter().filter(|(_, d)| d.is_some()) {
+                xml.end_element();
+            }
+        }
+        chunk_start += chunk.text.len();
+    }
+    for _ in adjustment_ends {
+        xml.end_element();
+    }
+    if open_path.is_some() {
+        xml.end_element();
     }
 }
 
@@ -954,16 +964,9 @@ impl XmlWriterExt for XmlWriter {
         });
     }
 
-    // TODO: simplify
     fn write_units(&mut self, id: AId, units: Units, def: Units) {
         if units != def {
-            self.write_attribute(
-                id.to_str(),
-                match units {
-                    Units::UserSpaceOnUse => "userSpaceOnUse",
-                    Units::ObjectBoundingBox => "objectBoundingBox",
-                },
-            );
+            self.write_attribute(id.to_str(), &units);
         }
     }
 
@@ -1437,8 +1440,23 @@ fn write_span(
     xml: &mut XmlWriter,
     chunk: &TextChunk,
     span: &TextSpan,
+    first_in_chunk: bool,
 ) {
     xml.start_svg_element(EId::Tspan);
+
+    if first_in_chunk {
+        if let Some(x) = chunk.x {
+            xml.write_svg_attribute(AId::X, &x);
+        }
+        if let Some(y) = chunk.y {
+            xml.write_svg_attribute(AId::Y, &y);
+        }
+        match chunk.anchor {
+            TextAnchor::Start => {}
+            TextAnchor::Middle => xml.write_svg_attribute(AId::TextAnchor, "middle"),
+            TextAnchor::End => xml.write_svg_attribute(AId::TextAnchor, "end"),
+        }
+    }
 
     let font_family_to_str = |font_family: &FontFamily| match font_family {
         FontFamily::Monospace => "monospace".to_string(),
@@ -1475,18 +1493,20 @@ fn write_span(
         xml.write_svg_attribute(AId::FontFamily, &families);
     }
 
-    match span.font.style {
-        FontStyle::Normal => {}
-        FontStyle::Italic => xml.write_svg_attribute(AId::FontStyle, "italic"),
-        FontStyle::Oblique => xml.write_svg_attribute(AId::FontStyle, "oblique"),
+    if let Some(style) = span.font.style {
+        let name = match style {
+            FontStyle::Normal => "normal",
+            FontStyle::Italic => "italic",
+            FontStyle::Oblique => "oblique",
+        };
+        xml.write_svg_attribute(AId::FontStyle, name);
+    }
+    if let Some(weight) = span.font.weight {
+        xml.write_svg_attribute(AId::FontWeight, &weight);
     }
 
-    if span.font.weight != 400 {
-        xml.write_svg_attribute(AId::FontWeight, &span.font.weight);
-    }
-
-    if span.font.stretch != FontStretch::Normal {
-        let name = match span.font.stretch {
+    if let Some(stretch) = span.font.stretch {
+        let name = match stretch {
             FontStretch::Condensed => "condensed",
             FontStretch::ExtraCondensed => "extra-condensed",
             FontStretch::UltraCondensed => "ultra-condensed",
@@ -1495,11 +1515,29 @@ fn write_span(
             FontStretch::SemiExpanded => "semi-expanded",
             FontStretch::ExtraExpanded => "extra-expanded",
             FontStretch::UltraExpanded => "ultra-expanded",
-            FontStretch::Normal => unreachable!(),
+            FontStretch::Normal => "normal",
         };
         xml.write_svg_attribute(AId::FontStretch, name);
     }
 
+    if span.font_optical_sizing == FontOpticalSizing::None {
+        xml.write_svg_attribute(AId::FontOpticalSizing, "none");
+    }
+    if !span.font.explicit_variations().is_empty() {
+        let settings = span
+            .font
+            .explicit_variations()
+            .iter()
+            .map(|axis| {
+                let tag = String::from_utf8_lossy(&axis.tag);
+                let quote = if tag.contains('\'') { '"' } else { '\'' };
+                let tag = tag.replace('&', "&amp;").replace('<', "&lt;");
+                format!("{quote}{tag}{quote} {}", axis.value)
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        xml.write_svg_attribute(AId::FontVariationSettings, &settings);
+    }
     xml.write_svg_attribute(AId::FontSize, &span.font_size);
 
     xml.write_visibility(span.visible);
@@ -1512,11 +1550,7 @@ fn write_span(
         xml.write_svg_attribute(AId::WordSpacing, &span.word_spacing);
     }
 
-    if let Some(text_length) = span.text_length {
-        xml.write_svg_attribute(AId::TextLength, &text_length);
-    }
-
-    if span.length_adjust == LengthAdjust::SpacingAndGlyphs {
+    if span.text_length.is_none() && span.length_adjust == LengthAdjust::SpacingAndGlyphs {
         xml.write_svg_attribute(AId::LengthAdjust, "spacingAndGlyphs");
     }
 

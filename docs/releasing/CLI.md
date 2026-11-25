@@ -43,8 +43,9 @@ and Debian 12 without relying on a newer build host's libc symbols.
 
 The CLI Distribution Checks workflow runs each verified GNU CLI in a disposable container with
 DejaVu Sans installed and the Fontconfig runtime removed. Default and `--font-system on` PNGs
-must match `--font-system bounded` byte for byte. Explicit `--font-system platform` must report
-the unavailable service, exit with code 3, and emit no PNG.
+must match `--font-system bounded` byte for byte for Mermaid and raw SVG inputs.
+Explicit `--font-system platform` must report the unavailable service, exit with code 3,
+and emit no PNG. A separate run validates an available but empty Fontconfig catalog.
 
 Published archives retain their original compatibility. Both Linux CLI archives in `0.9.0`
 require GLIBC 2.38; this workflow change does not replace those assets. A lower baseline takes
@@ -58,11 +59,12 @@ and CLI contract 8. Default source builds and the official release profile inclu
 and `system-fonts`. Mermaid SVG defaults to deterministic measurement. Mermaid PNG/JPEG/PDF
 use native measurements with the same font context as painting. Archives built from the current
 profile query the platform catalog by default. On Linux the default retries bounded discovery
-when the Fontconfig runtime cannot load. Cargo source defaults use bounded discovery. Archive
-verification checks the declared provider and exercises native exports. Official archives use
-the [workspace usvg backport](../DEPENDENCY_POLICY.md#exact-and-compatible-requirements), while
-registry consumers use the public usvg dependency. Explicit font files or directories enable
-native measurement with a closed set. See the
+when the Fontconfig runtime cannot load. Cargo source defaults use bounded discovery.
+Raw SVG uses the same build-specific provider for painting when the finalized SVG contains
+text. Archive verification checks the declared provider and exercises native exports.
+Archives and Cargo packages built from this source use the
+[same renderer forks](../DEPENDENCY_POLICY.md#exact-and-compatible-requirements).
+Explicit font files or directories enable native measurement with a closed set. See the
 [CLI font guide](../../crates/merman-cli/README.md#explicit-fonts).
 
 Contract 8 makes `layout` return schema-1 geometry. To read the complete `meta`, `semantic`,

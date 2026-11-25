@@ -517,7 +517,7 @@ mod native_quality_tests {
     fn successful_best_effort_native_quality_residuals_remain_visible_in_binding_metadata() {
         let scenes = [
             (
-                r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><defs><filter id="effect" filterUnits="userSpaceOnUse" x="-20" y="-20" width="80" height="80"><feDropShadow dx="15" dy="0" stdDeviation="0" flood-color="blue"/></filter></defs><g transform="translate(60 20) rotate(90)" filter="url(#effect)"><rect width="20" height="10" fill="red"/></g></svg>"##,
+                r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><defs><filter id="effect" filterUnits="userSpaceOnUse" x="-20" y="-20" width="80" height="80"><feDropShadow dx="15" dy="0" stdDeviation="0" flood-color="blue"/></filter></defs><g transform="translate(60 20) skewX(30)" filter="url(#effect)"><rect width="20" height="10" fill="red"/></g></svg>"##,
                 "native_directional_filter_transform_residual",
             ),
             (

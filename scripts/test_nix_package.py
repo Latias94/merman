@@ -96,7 +96,7 @@ class NixPackageContractTests(unittest.TestCase):
             self.assertEqual(len(values), len(set(values)), key)
         self.assertEqual(
             policy["root_directories"],
-            ["THIRD_PARTY_LICENSES", "capabilities", "vendor/usvg"],
+            ["THIRD_PARTY_LICENSES", "capabilities"],
         )
         self.assertEqual(
             policy["script_files"],
@@ -122,7 +122,10 @@ class NixPackageContractTests(unittest.TestCase):
             "scripts/ascii_capability_contract.py",
             "scripts/theme_preset_catalog_contract.py",
             "scripts/verify_cli_installation.py",
-            "vendor/usvg/Cargo.toml",
+            "vendor/krilla/icc/sRGB-v4.icc",
+            "vendor/krilla/src/text/cid.rs",
+            "vendor/krilla-svg/src/text.rs",
+            "vendor/resvg/src/render.rs",
             "vendor/usvg/src/text/layout.rs",
         }
         required.update(f"{member}/Cargo.toml" for member in workspace_members())
@@ -144,6 +147,9 @@ class NixPackageContractTests(unittest.TestCase):
             "crates/merman-node/target/release/merman-cli",
             "crates/merman-node/src/lib.rs",
             "crates/merman-wasm/pkg/merman.js",
+            "distribution/tree-sitter-mermaid/build/parser.c",
+            "vendor/unlisted/src/lib.rs",
+            "vendor/usvg/target/debug/usvg",
         )
         for relative in excluded:
             with self.subTest(relative=relative):

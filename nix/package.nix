@@ -1,4 +1,5 @@
 {
+  buildPackages,
   lib,
   rustPlatform,
   python3,
@@ -52,6 +53,20 @@ let
     src = repositoryRoot;
     filter = sourceFilter;
   };
+  buildRustPackage = rustPlatform.buildRustPackage.override {
+    cargo-auditable = buildPackages.cargo-auditable.overrideAttrs (old: {
+      # Qualify CLI features for cargo metadata in our resolver-2 workspace.
+      # Other packages, including cargo-auditable's resolver-1 fixtures, use bare features.
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace cargo-auditable/src/collect_audit_data.rs \
+          --replace-fail 'let owned_features: Vec<String> = features.iter().map(|s| s.to_string()).collect();' \
+            'let cli = matches!(std::env::var("CARGO_PKG_NAME").as_deref(), Ok("merman-cli"));
+            let owned_features: Vec<String> = features.iter().map(|s| {
+                if cli { format!("merman-cli/{s}") } else { s.to_string() }
+            }).collect();'
+      '';
+    });
+  };
 in
 assert descriptor.schema_version == 2;
 assert profile.cargo.package == "merman-cli";
@@ -60,7 +75,7 @@ assert profile.cargo.profile == "dist";
 assert profile.cargo.default_features == false;
 assert profile.cargo.target.name == "merman-cli";
 assert profile.cargo.target.kinds == [ "bin" ];
-rustPlatform.buildRustPackage rec {
+buildRustPackage rec {
   pname = "merman-cli";
   version = workspace.workspace.package.version;
 

@@ -9,8 +9,7 @@
   ],
   "root_directories": [
     "THIRD_PARTY_LICENSES",
-    "capabilities",
-    "vendor/usvg"
+    "capabilities"
   ],
   "script_files": [
     "scripts/ascii_capability_contract.py",
@@ -23,6 +22,7 @@
     ".pytest_cache",
     ".ruff_cache",
     "__pycache__",
+    "build",
     "coverage",
     "dist",
     "node_modules",

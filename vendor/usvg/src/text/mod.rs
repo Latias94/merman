@@ -6,14 +6,24 @@ use std::sync::Arc;
 use fontdb::{Database, ID};
 use svgtypes::FontFamily;
 
-use self::layout::DatabaseExt;
-use crate::{Cache, Font, FontStretch, FontStyle, Text};
+use crate::{Cache, Font, FontStretch, FontStyle, FontVariation, Text};
 
+pub(crate) mod cache;
 pub(crate) mod flatten;
 
 mod colr;
 /// Provides access to the layout of a text node.
 pub mod layout;
+
+/// The ID of a glyph within a font.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct GlyphId(pub u32);
+
+impl From<GlyphId> for skrifa::raw::types::GlyphId {
+    fn from(value: GlyphId) -> Self {
+        Self::new(value.0)
+    }
+}
 
 /// Checks the syntax of a BCP 47 tag (RFC 5646, sections 2.1 and 2.2).
 /// Language selection does not require looking up subtags in the IANA registry.
@@ -96,28 +106,37 @@ pub(crate) fn is_language_tag(tag: &str) -> bool {
     true
 }
 
-// Use the same coordinates for shaping and outline extraction.
-fn apply_variations(
-    face: &mut rustybuzz::ttf_parser::Face<'_>,
-    variations: &[crate::FontVariation],
-    font_size: f32,
-    optical_sizing: crate::FontOpticalSizing,
-) {
-    use rustybuzz::ttf_parser::Tag;
+/// A selected physical face, its relative size, and its native OpenType design coordinates.
+///
+/// The tuple contains the face ID in the callback's database, a positive finite scale
+/// relative to the authored size, and the selected coordinates before SVG styling.
+pub type FontInstance = (ID, f32, Vec<FontVariation>);
 
-    if !face.is_variable() {
-        return;
-    }
+/// Selects a font instance for an authored font specification.
+///
+/// The database may be extended as in [`FontSelectionFn`].
+pub type FontInstanceSelectionFn<'a> =
+    Box<dyn Fn(&Font, &mut Arc<Database>) -> Option<FontInstance> + Send + Sync + 'a>;
 
-    for variation in variations {
-        face.set_variation(Tag::from_bytes(&variation.tag), variation.value);
-    }
-    if optical_sizing == crate::FontOpticalSizing::Auto
-        && !variations.iter().any(|variation| variation.tag == *b"opsz")
-    {
-        face.set_variation(Tag::from_bytes(b"opsz"), font_size);
-    }
-}
+/// Selects a font instance for a missing shaping cluster.
+///
+/// The callback receives the authored font, cluster text, language, RTL flag,
+/// and previous selections in order, starting with the primary instance. Their
+/// coordinates are the original selections so the resolver can identify them.
+/// Return a new selection or `None` when the candidates are exhausted.
+pub type FontInstanceFallbackFn<'a> = Box<
+    dyn Fn(
+            &Font,
+            &str,
+            Option<&str>,
+            bool,
+            &[FontInstance],
+            &mut Arc<Database>,
+        ) -> Option<FontInstance>
+        + Send
+        + Sync
+        + 'a,
+>;
 
 /// A shorthand for [FontResolver]'s font selection function.
 ///
@@ -164,11 +183,13 @@ pub type ClusterFallbackFn<'a> = Box<
         + 'a,
 >;
 
-/// Optional context for text shaping and missing-cluster selection.
+/// Optional language and selection hooks for text shaping.
 #[derive(Default)]
 pub struct TextFallback<'a> {
     pub(crate) language: Option<String>,
     pub(crate) select: Option<ClusterFallbackFn<'a>>,
+    pub(crate) select_instance: Option<FontInstanceSelectionFn<'a>>,
+    pub(crate) fallback_instance: Option<FontInstanceFallbackFn<'a>>,
 }
 
 impl std::fmt::Debug for TextFallback<'_> {
@@ -228,7 +249,7 @@ impl FontResolver<'_> {
             // Use the default font as fallback.
             name_list.push(fontdb::Family::Serif);
 
-            let stretch = match font.stretch {
+            let stretch = match font.stretch() {
                 FontStretch::UltraCondensed => fontdb::Stretch::UltraCondensed,
                 FontStretch::ExtraCondensed => fontdb::Stretch::ExtraCondensed,
                 FontStretch::Condensed => fontdb::Stretch::Condensed,
@@ -240,7 +261,7 @@ impl FontResolver<'_> {
                 FontStretch::UltraExpanded => fontdb::Stretch::UltraExpanded,
             };
 
-            let style = match font.style {
+            let style = match font.style() {
                 FontStyle::Normal => fontdb::Style::Normal,
                 FontStyle::Italic => fontdb::Style::Italic,
                 FontStyle::Oblique => fontdb::Style::Oblique,
@@ -248,7 +269,7 @@ impl FontResolver<'_> {
 
             let query = fontdb::Query {
                 families: &name_list,
-                weight: fontdb::Weight(font.weight),
+                weight: fontdb::Weight(font.weight()),
                 stretch,
                 style,
             };
@@ -275,7 +296,7 @@ impl FontResolver<'_> {
     /// to find a font that has the correct style and supports the character.
     pub fn default_fallback_selector() -> FallbackSelectionFn<'static> {
         Box::new(|c, exclude_fonts, fontdb| {
-            let base_font_id = exclude_fonts[0];
+            let base_face = fontdb.face(*exclude_fonts.first()?)?;
 
             // Iterate over fonts and check if any of them support the specified char.
             for face in fontdb.faces() {
@@ -285,7 +306,6 @@ impl FontResolver<'_> {
                 }
 
                 // Check that the new face has the same style.
-                let base_face = fontdb.face(base_font_id)?;
                 if base_face.style != face.style
                     && base_face.weight != face.weight
                     && base_face.stretch != face.stretch
@@ -293,7 +313,7 @@ impl FontResolver<'_> {
                     continue;
                 }
 
-                if !fontdb.has_char(face.id, c) {
+                if !has_char(fontdb, face.id, c) {
                     continue;
                 }
 
@@ -301,15 +321,17 @@ impl FontResolver<'_> {
                     .families
                     .iter()
                     .find(|f| f.1 == fontdb::Language::English_UnitedStates)
-                    .unwrap_or(&base_face.families[0]);
+                    .or_else(|| base_face.families.first());
 
                 let new_family = face
                     .families
                     .iter()
                     .find(|f| f.1 == fontdb::Language::English_UnitedStates)
-                    .unwrap_or(&base_face.families[0]);
+                    .or_else(|| face.families.first());
 
-                log::warn!("Fallback from {} to {}.", base_family.0, new_family.0);
+                if let (Some(base), Some(new)) = (base_family, new_family) {
+                    log::warn!("Fallback from {} to {}.", base.0, new.0);
+                }
                 return Some(face.id);
             }
 
@@ -340,7 +362,7 @@ pub(crate) fn convert(
     let (layout, end) = layout::layout_text(
         text,
         options,
-        &mut cache.fontdb,
+        &mut cache.fonts,
         probe_end_anchor,
         no_primary_face,
     )?;
@@ -348,8 +370,13 @@ pub(crate) fn convert(
     text.bounding_box = layout.bbox.to_rect();
     text.abs_bounding_box = layout.bbox.transform(text.abs_transform)?.to_rect();
 
-    let (group, stroke_bbox) =
-        flatten::flatten(&text.id, text.rendering_mode, &text.layouted, cache)?;
+    let (group, stroke_bbox) = flatten::flatten(
+        text.id.clone(),
+        text.rendering_mode,
+        text.abs_transform,
+        &text.layouted,
+        &mut cache.fonts,
+    )?;
     text.flattened = Box::new(group);
     text.stroke_bounding_box = stroke_bbox.to_rect();
     text.abs_stroke_bounding_box = stroke_bbox.transform(text.abs_transform)?.to_rect();
@@ -357,9 +384,27 @@ pub(crate) fn convert(
     let end_x = end.and_then(|end| {
         end.bbox.transform(text.abs_transform)?;
         // The legacy probe also required the second text to survive outline conversion.
-        let (_, stroke_bbox) = flatten::flatten("", text.rendering_mode, &end.spans, cache)?;
+        let (_, stroke_bbox) = flatten::flatten(
+            String::new(),
+            text.rendering_mode,
+            text.abs_transform,
+            &end.spans,
+            &mut cache.fonts,
+        )?;
         stroke_bbox.transform(text.abs_transform)?;
         Some(end.bbox.x())
     });
     Some(end_x)
+}
+
+#[inline(never)]
+fn has_char(fontdb: &Database, id: ID, c: char) -> bool {
+    // Borrow fallback candidates' font bytes until a face is selected for shaping.
+    fontdb
+        .with_face_data(id, |data, face_index| {
+            let font = skrifa::FontRef::from_index(data, face_index).ok()?;
+            skrifa::charmap::Charmap::new(&font).map(c)
+        })
+        .flatten()
+        .is_some_and(|id| id.to_u32() != 0)
 }

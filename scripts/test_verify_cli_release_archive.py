@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import stat
+import struct
 import subprocess
 import sys
 import tarfile
@@ -21,6 +22,7 @@ from unittest import mock
 import uuid
 import warnings
 import zipfile
+import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -81,6 +83,26 @@ ROOT_RELEASE_FILES = {
     "LICENSE-MIT": b"MIT license\n",
 }
 PACKAGE_README = b"Merman CLI package readme\n"
+
+
+def raw_svg_png(*, ink: bool = False, background_alpha: int = 0) -> bytes:
+    width, height = verifier.RAW_SVG_SMOKE_SIZE
+    blank = b"\x00" + bytes((32, 32, 32, background_alpha)) * width
+    rows = blank * height
+    if ink:
+        # One Up-filtered row differs from its predecessor in eight alpha samples.
+        delta = b"\x02" + b"\x00" * 16 + b"\x00\x00\x00\xff" * 8 + b"\x00" * (4 * (width - 12))
+        rows = blank * 8 + delta + blank * (height - 9)
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+    return (
+        verifier.PNG_SIGNATURE
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(rows))
+        + chunk(b"IEND", b"")
+    )
 
 
 def read_json(root: Path, relative: str) -> dict[str, object]:
@@ -266,9 +288,7 @@ def valid_capabilities_payload(
                 "system_fallback_values": ["on", "bounded", "platform"],
             },
             "selected_font_bytes_bounded": True,
-            "legacy_export_paths": (
-                "raw-svg-without-font-options-and-deterministic-mermaid-use-output-environment-contract"
-            ),
+            "legacy_export_paths": "deterministic-mermaid-uses-output-environment-contract",
             "explicit_font_sources": "closed-set-unless-system-fallback-requested",
             "measurement_operations": [
                 "measure",
@@ -1538,6 +1558,15 @@ class RuntimeContractTests(unittest.TestCase):
                     PROJECT_ROOT, payload, f"native_fonts.*{field}"
                 )
 
+    def test_runtime_rejects_legacy_raw_svg_default_in_release_archive(self) -> None:
+        payload = valid_capabilities_payload()
+        payload["native_fonts"]["legacy_export_paths"] = (
+            "raw-svg-without-font-options-and-deterministic-mermaid-use-output-environment-contract"
+        )
+        self.assert_runtime_payload_rejected(
+            PROJECT_ROOT, payload, "native_fonts.*legacy_export_paths"
+        )
+
     def test_runtime_rejects_native_font_metadata_field_drift(self) -> None:
         native = valid_capabilities_payload()["native_fonts"]
         for field, value in native.items():
@@ -1706,7 +1735,7 @@ class RuntimeContractTests(unittest.TestCase):
                     "completions/merman-cli.bash"
                 ]
             elif "png" in command:
-                stdout = VALID_PNG
+                stdout = raw_svg_png(ink=True) if "--input-kind" in command else VALID_PNG
             elif "jpg" in command:
                 stdout = VALID_JPEG
             elif "pdf" in command:
@@ -1744,7 +1773,7 @@ class RuntimeContractTests(unittest.TestCase):
                 host_target_checker=lambda _target: True,
             )
 
-        self.assertEqual(len(calls), 9)
+        self.assertEqual(len(calls), 12)
         self.assertEqual(
             [command[1:] for command, _stdin in calls],
             [
@@ -1755,27 +1784,30 @@ class RuntimeContractTests(unittest.TestCase):
                 ["render", "--format", "png", "-"],
                 ["render", "--format", "jpg", "-"],
                 ["render", "--format", "pdf", "-"],
+                ["render", "--input-kind", "svg", "--format", "png", "-"],
+                ["render", "--input-kind", "svg", "--format", "jpg", "-"],
+                ["render", "--input-kind", "svg", "--format", "pdf", "-"],
                 [
                     "rustdoc",
                     "build",
                     "--config",
-                    calls[7][0][4],
+                    calls[10][0][4],
                     "--quiet",
                 ],
                 [
                     "rustdoc",
                     "check",
                     "--config",
-                    calls[8][0][4],
+                    calls[11][0][4],
                     "--quiet",
                 ],
             ],
         )
-        self.assertEqual(calls[3][1], verifier.SVG_SMOKE_SOURCE)
         self.assertTrue(all(stdin == verifier.SVG_SMOKE_SOURCE for _, stdin in calls[3:7]))
-        self.assertEqual(calls[7][1], b"")
-        self.assertEqual(calls[8][1], b"")
-        self.assertEqual(calls[7][0][4], calls[8][0][4])
+        self.assertTrue(all(stdin == verifier.RAW_SVG_SMOKE_SOURCE for _, stdin in calls[7:10]))
+        self.assertEqual(calls[10][1], b"")
+        self.assertEqual(calls[11][1], b"")
+        self.assertEqual(calls[10][0][4], calls[11][0][4])
 
     def test_macos_mixed_script_png_contract(self) -> None:
         info = (
@@ -1834,7 +1866,7 @@ class RuntimeContractTests(unittest.TestCase):
             elif command[-2:] == ["completion", "bash"]:
                 stdout = (repo_root / "crates/merman-cli/assets/completions/merman-cli.bash").read_bytes()
             elif "png" in command:
-                stdout = VALID_PNG
+                stdout = raw_svg_png(ink=True) if "--input-kind" in command else VALID_PNG
             elif "jpg" in command:
                 stdout = VALID_JPEG
             elif "pdf" in command:
@@ -1855,7 +1887,7 @@ class RuntimeContractTests(unittest.TestCase):
                 runner=runner,
                 host_target_checker=lambda _target: True,
             )
-        self.assertEqual(len(calls), 7)
+        self.assertEqual(len(calls), 10)
         self.assertTrue(all("rustdoc" not in command for command in calls))
 
     def test_runtime_rejects_rustdoc_build_without_managed_outputs(self) -> None:
@@ -1874,7 +1906,7 @@ class RuntimeContractTests(unittest.TestCase):
                     "completions/merman-cli.bash"
                 ]
             elif "png" in command:
-                stdout = VALID_PNG
+                stdout = raw_svg_png(ink=True) if "--input-kind" in command else VALID_PNG
             elif "jpg" in command:
                 stdout = VALID_JPEG
             elif "pdf" in command:
@@ -1922,6 +1954,8 @@ class RuntimeContractTests(unittest.TestCase):
             valid_completion,
             valid_svg,
         ]
+        raw_svg_prefix = [*render_prefix, completed(VALID_PNG), completed(VALID_JPEG), completed(VALID_PDF)]
+        raw_ink_png = raw_svg_png(ink=True)
         outputs = (
             (
                 "version",
@@ -1969,6 +2003,21 @@ class RuntimeContractTests(unittest.TestCase):
                     completed(VALID_JPEG),
                     completed(b"not pdf"),
                 ],
+            ),
+            (
+                "transparent raw SVG PNG",
+                "raw SVG text PNG has no visible ink",
+                [*raw_svg_prefix, completed(raw_svg_png())],
+            ),
+            (
+                "flat opaque raw SVG PNG",
+                "raw SVG text PNG has no visible ink",
+                [*raw_svg_prefix, completed(raw_svg_png(background_alpha=255))],
+            ),
+            (
+                "raw SVG PNG missing image data",
+                "raw SVG text PNG has invalid image data",
+                [*raw_svg_prefix, completed(raw_ink_png[:33] + raw_ink_png[-12:])],
             ),
         )
         with tempfile.TemporaryDirectory() as temp_dir:

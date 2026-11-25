@@ -1,7 +1,16 @@
-# usvg
-[![Crates.io](https://img.shields.io/crates/v/usvg.svg)](https://crates.io/crates/usvg)
-[![Documentation](https://docs.rs/usvg/badge.svg)](https://docs.rs/usvg)
-[![Rust 1.65+](https://img.shields.io/badge/rust-1.65+-orange.svg)](https://www.rust-lang.org)
+# merman-usvg
+
+Merman's fork of usvg 0.50.0 provides contextual cluster fallback, language-aware selection,
+and OpenType instance coordinates for font selection and shaping.
+Merman's rasterizer and SVG-to-PDF adapter share this package's `Tree` and `Options`.
+See [UPSTREAM.md](UPSTREAM.md) for the source revision and local patches.
+
+```toml
+[dependencies]
+usvg = { package = "merman-usvg", version = "0.50", default-features = false, features = ["text"] }
+```
+
+## Upstream usvg
 
 `usvg` (micro SVG) is an [SVG] parser that tries to solve most of SVG complexity.
 

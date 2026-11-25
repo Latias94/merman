@@ -147,8 +147,8 @@ def release_capabilities_subcontract(
 ) -> dict[str, object]:
     """Project the release metadata shared by archive and installation checks.
 
-    SVG defaults stay deterministic. Native encoded output uses the artifact's
-    default provider for the target platform.
+    Mermaid SVG defaults stay deterministic. The platform-default release
+    profile uses its native provider for raw SVG painting as well.
     """
     platform_default = bool(cargo_features & {
         "experimental-system-font-query",
@@ -206,7 +206,9 @@ def release_capabilities_subcontract(
             **platform_options,
             "selected_font_bytes_bounded": True,
             "legacy_export_paths": (
-                "raw-svg-without-font-options-and-deterministic-mermaid-use-output-environment-contract"
+                "deterministic-mermaid-uses-output-environment-contract"
+                if "system-fonts" in cargo_features
+                else "raw-svg-without-font-options-and-deterministic-mermaid-use-output-environment-contract"
             ),
             "explicit_font_sources": (
                 "closed-set-unless-system-fallback-requested"

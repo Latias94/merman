@@ -7,23 +7,16 @@
         "name": "ttf-parser",
         "version": "0.25.1"
       },
-      "reason": "Pinned usvg 0.47 and the published krilla-svg 0.8.1 and ratex 0.1.15 dependency closures still resolve ttf-parser 0.25.1. Published resvg/usvg 0.48+ provides a partial migration path, but does not remove the remaining application, PDF, and math dependency paths.",
+      "reason": "Native font admission, Merman Krilla, and RaTeX still resolve ttf-parser 0.25.1. The Merman usvg runtime now uses Skrifa.",
       "dependency_paths": [
         [
           "merman-export@0.11.0",
-          "krilla-svg@0.8.1",
-          "fontdb@0.23.0",
-          "ttf-parser@0.25.1"
-        ],
-        [
-          "merman-export@0.11.0",
-          "krilla@0.8.2",
+          "merman-krilla@0.8.2",
           "rustybuzz@0.20.1",
           "ttf-parser@0.25.1"
         ],
         [
           "merman-export@0.11.0",
-          "usvg@0.47.0",
           "ttf-parser@0.25.1"
         ],
         [
@@ -76,16 +69,15 @@
         "name": "rustybuzz",
         "version": "0.20.1"
       },
-      "reason": "Pinned usvg 0.47 and the published krilla-svg 0.8.1 dependency closure still resolve rustybuzz 0.20.1. Published resvg/usvg 0.48+ provides a partial migration path, but does not remove the remaining application, PDF, and test dependency paths.",
+      "reason": "Native font coverage probes and Merman Krilla still resolve rustybuzz 0.20.1. The Merman usvg runtime now uses HarfRust.",
       "dependency_paths": [
         [
           "merman-export@0.11.0",
-          "krilla@0.8.2",
+          "merman-krilla@0.8.2",
           "rustybuzz@0.20.1"
         ],
         [
           "merman-export@0.11.0",
-          "usvg@0.47.0",
           "rustybuzz@0.20.1"
         ]
       ],

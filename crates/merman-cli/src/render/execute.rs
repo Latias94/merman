@@ -197,16 +197,11 @@ fn execute_graphical_with_pipeline(
     #[cfg(feature = "native-fonts")]
     if prepared.font_context.is_some() {
         crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
-        let message = if matches!(&prepared.source, PreparedGraphicalSource::Mermaid(_)) {
-            "native fonts: shared layout, wrapping, bounds and computed lengths use the selected font context; missing glyphs fall back to deterministic measurement; SVG fonts are not embedded"
-        } else {
-            "native fonts: raw SVG uses the selected font context for painting; geometry is unchanged"
-        };
         crate::diagnostics::DiagnosticSink::new(
             prepared.quiet || !prepared.font_diagnostics,
             stderr,
         )
-        .info(message);
+        .info("native fonts: shared layout, wrapping, bounds and computed lengths use the selected font context; missing glyphs fall back to deterministic measurement; SVG fonts are not embedded");
     }
     let permit = prepared.admission.acquire_controlled(control)?;
     match &prepared.source {
@@ -428,32 +423,30 @@ fn execute_graphical_with_pipeline(
             }
         }
         #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-        PreparedGraphicalSource::RawSvg(environment) => {
-            // Raw SVG bypasses the facade's per-operation font activation.
-            #[cfg(feature = "native-fonts")]
-            let output = {
-                let font_context = prepared
-                    .font_context
-                    .as_ref()
-                    .map(|context| context.for_operation(control));
-                if let Some(context) = &font_context {
-                    context
-                        .check()
-                        .map_err(|error| super::prepare::native_font_error(error, &[]))?;
-                }
-                prepared.output.clone().with_font_context(font_context)
-            };
-            #[cfg(feature = "native-fonts")]
-            let output = &output;
-            #[cfg(not(feature = "native-fonts"))]
-            let output = &prepared.output;
-            let session = environment
+        PreparedGraphicalSource::RawSvg(raw) => {
+            let session = raw
+                .environment
                 .begin_session_with_control(control.clone())
                 .map_err(merman::RenderError::from)?;
             let svg = pipeline
                 .process_resvg_compatible(source, &session)
                 .map_err(merman::RenderError::from)?;
-            execute_raw_svg(prepared, output, svg, permit, control, stderr)
+            let font_context = if let Some(fonts) = &raw.fonts {
+                fonts.load(svg.finalization_report().text_element_count() != 0, control)?
+            } else {
+                None
+            };
+            let output = if let Some(context) = font_context {
+                crate::diagnostics::DiagnosticSink::new(
+                    prepared.quiet || !prepared.font_diagnostics,
+                    stderr,
+                )
+                .info("native fonts: raw SVG uses the selected font context for painting; geometry is unchanged");
+                std::borrow::Cow::Owned(prepared.output.clone().with_font_context(context))
+            } else {
+                std::borrow::Cow::Borrowed(&prepared.output)
+            };
+            execute_raw_svg(prepared, &output, svg, permit, control, stderr)
         }
     }
 }
@@ -615,7 +608,7 @@ fn report_native_export_quality(
 ) {
     let diagnostics = crate::diagnostics::DiagnosticSink::new(quiet, stderr);
     if directional_filter_transform_residual {
-        diagnostics.info("warning: native_directional_filter_transform_residual: directional filter offsets may differ under rotation, shear or reflection; best-effort rendering may differ");
+        diagnostics.info("warning: native_directional_filter_transform_residual: a transform mixes the filter axes; directional offsets may differ");
     }
     if implicit_viewport_clipping_residual {
         diagnostics.info("warning: pdf_implicit_viewport_clipping_residual: the derived PDF viewport may clip painted content; specify an explicit SVG viewport to control clipping");

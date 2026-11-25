@@ -59,15 +59,14 @@ def workflow_job(text: str, name: str) -> str:
     jobs = text.split("\njobs:\n", 1)
     if len(jobs) != 2:
         raise AssertionError("workflow has no jobs mapping")
-    marker = f"  {name}:\n"
-    start = jobs[1].find(marker)
-    if start < 0:
+    marker = re.search(rf"(?m)^  {re.escape(name)}:\n", jobs[1])
+    if marker is None:
         raise AssertionError(f"workflow has no {name!r} job")
-    body = jobs[1][start + len(marker) :]
+    body = jobs[1][marker.end():]
     next_job = re.search(r"(?m)^  [A-Za-z0-9_-]+:\s*$", body)
     if next_job is not None:
         body = body[: next_job.start()]
-    return marker + body
+    return marker[0] + body
 
 
 def assert_no_npm_provenance_disable(test_case: unittest.TestCase, text: str) -> None:
@@ -2184,7 +2183,7 @@ jobs:
 
     def test_independent_crate_has_fresh_registry_dependent_compile_gate(self) -> None:
         independent = read(WORKFLOW_ROOT / "release-independent-crate.yml")
-        publish = workflow_job(independent, "publish")
+        published = workflow_job(independent, "verify-published")
         preflight = read(WORKFLOW_ROOT / "release-preflight.yml")
         self.assertIn("scripts/release_registry_dependents.py", preflight)
         self.assertIn("--candidate-path crates/roughr", preflight)
@@ -2199,14 +2198,82 @@ jobs:
         self.assertIn("fetch-depth: 0", candidate)
         self.assertIn("steps.dependent-versions.outputs.stable_version", candidate)
         self.assertIn("steps.dependent-versions.outputs.prerelease_version", candidate)
-        self.assertIn("needs.preflight.outputs.stable_dependent_version", publish)
-        self.assertIn("needs.preflight.outputs.prerelease_dependent_version", publish)
-        for job in (candidate, publish):
+        self.assertIn("needs.preflight.outputs.stable_dependent_version", published)
+        self.assertIn("needs.preflight.outputs.prerelease_dependent_version", published)
+        for job in (candidate, published):
             self.assertIn('--dependent "merman-render=$STABLE_DEPENDENT_VERSION"', job)
             self.assertIn('--dependent "merman-render=$PRERELEASE_DEPENDENT_VERSION"', job)
         self.assertIn("preflight-independent", independent)
-        self.assertGreaterEqual(publish.count("preflight-independent"), 3)
         self.assertIn("Verify published dependent lanes", independent)
+
+    def test_independent_release_serializes_forks_through_read_only_registry_verification(self) -> None:
+        workflow = read(WORKFLOW_ROOT / "release-independent-crate.yml")
+        self.assertIn(
+            "\nconcurrency:\n  group: release-independent-crate-${{ inputs.package == 'roughr-merman' "
+            "&& 'roughr' || 'renderers' }}\n  cancel-in-progress: false\n", workflow,
+        )
+        self.assertIn("\npermissions:\n  contents: read\n", workflow)
+        self.assertNotIn("cargo info", workflow)
+
+        def step_body(job: str, name: str) -> str:
+            steps = job.split("\n    steps:\n", 1)[1]
+            match = re.search(rf"(?m)^      - name: {re.escape(name)}\n((?:^        .*\n|^\n)*)", steps)
+            self.assertIsNotNone(match, name)
+            return match[1]
+
+        for name in ("validate-inputs", "preflight", "publish", "verify-published"):
+            self.assertNotRegex(workflow_job(workflow, name), r"(?m)^    (?:if|continue-on-error):")
+        publish = workflow_job(workflow, "publish")
+        self.assertIn("needs: [validate-inputs, preflight]", publish)
+        inspect = step_body(publish, "Inspect independent crate publication state")
+        self.assertIn("if: ${{ needs.preflight.outputs.publish == 'true' }}", inspect)
+        self.assertIn('[[ "$PREFLIGHT_ATTEMPT" != "$GITHUB_RUN_ATTEMPT" ]]', inspect)
+        self.assertIn('registry-independent', inspect)
+        self.assertNotIn("continue-on-error:", inspect)
+        self.assertNotIn("--verify-fork-consumer", publish)
+        self.assertLess(publish.index("registry-independent"), publish.index("sha256sum --check"))
+        self.assertLess(publish.index("sha256sum --check"), publish.index("crates-io-auth-action"))
+        for step_name in ("Match the upload archive to the read-only preflight", "Authenticate with crates.io",
+                          "Upload independent crate to crates.io"):
+            step = step_body(publish, step_name)
+            self.assertIn("if: ${{ steps.crate-state.outputs.publish == 'true' }}", step)
+            self.assertNotIn("continue-on-error:", step)
+        for job_name, step_name in (
+            ("preflight", "Verify registry bytes or dry-run independent crate publication"),
+            ("verify-published", "Verify exact published archive and registry consumers"),
+        ):
+            with self.subTest(job=job_name):
+                job = workflow_job(workflow, job_name)
+                self.assertNotRegex(job, r"(?m)^    permissions:")
+                if job_name == "verify-published":
+                    self.assertIn("needs: [validate-inputs, preflight, publish]", job)
+                    self.assertIn("ref: ${{ needs.preflight.outputs.source_sha }}", job)
+                step = step_body(job, step_name)
+                self.assertNotRegex(step, r"(?m)^\s*(?:if|continue-on-error):")
+                self.assertIn("PACKAGE: ${{ needs.validate-inputs.outputs.package }}", step)
+                self.assertIn("VERSION: ${{ needs.validate-inputs.outputs.version }}", step)
+                self.assertIn('args+=(--verify-fork-consumer)', step)
+                command = textwrap.dedent(step.split("        run: |\n", 1)[1])
+                self.assertTrue(command.startswith("set -euo pipefail\n"))
+                if not BASH or (os.name == "nt" and Path(BASH).parent.name.casefold() in {"system32", "windowsapps"}):
+                    continue
+                for package, code in (("merman-krilla", 0), ("merman-krilla-svg", 0), ("merman-resvg", 0),
+                                      ("merman-usvg", 0), ("merman-usvg", 7), ("roughr-merman", 0)):
+                    with self.subTest(package=package, code=code):
+                        result = subprocess.run(
+                            [BASH, "-c", 'python3() { printf "%s\\n" "$@"; return "$EXIT_CODE"; }\n' + command],
+                            env={"PATH": "", "PACKAGE": package, "VERSION": "0.50.1",
+                                 "SHA256": "a" * 64, "EXIT_CODE": str(code)},
+                            capture_output=True, text=True, timeout=15,
+                        )
+                        args = ["preflight-independent"] if job_name == "preflight" else ["registry-independent", "--observe-only"]
+                        args += ["--package", package, "--version", "0.50.1"]
+                        if job_name == "verify-published":
+                            args += ["--sha256", "a" * 64]
+                        if package != "roughr-merman":
+                            args.append("--verify-fork-consumer")
+                        self.assertEqual(result.returncode, code, result.stderr)
+                        self.assertEqual(result.stdout.splitlines(), ["scripts/crates_io_release.py", *args])
 
     def test_tag_bound_publishers_recheck_remote_tag_at_mutation_boundary(self) -> None:
         jobs = (

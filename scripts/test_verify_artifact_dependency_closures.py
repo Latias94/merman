@@ -341,6 +341,9 @@ class VerificationCaseTests(unittest.TestCase):
                 self.assertNotIn("manatee", current.claim.forbidden_packages)
                 baseline = {name: () for name in current.claim.required_packages}
                 baseline.update(DAGRE_SVG_FIXTURE_PACKAGES)
+                baseline.update({"merman-resvg": (), "merman-usvg": ()})
+                if "-native-" in profile_id:
+                    baseline.update({"merman-krilla": (), "merman-krilla-svg": ()})
                 closure = parse_fixture_metadata(
                     metadata_document(current.recipe.package, baseline),
                     root_package=current.recipe.package,
@@ -369,6 +372,7 @@ class VerificationCaseTests(unittest.TestCase):
             self.assertEqual(current.target, "wasm32-wasip1")
             baseline = {name: () for name in current.claim.required_packages}
             baseline.update(DAGRE_SVG_FIXTURE_PACKAGES)
+            baseline.update({"merman-resvg": (), "merman-usvg": ()})
             if not current.recipe.profile_id.endswith("standard"):
                 closure = parse_fixture_metadata(
                     metadata_document(current.recipe.package, {
@@ -383,7 +387,7 @@ class VerificationCaseTests(unittest.TestCase):
                 ("merman", "system-fonts"),
                 ("merman", "network-icons"),
                 ("merman-export", "system-fonts"),
-                ("usvg", "system-fonts"),
+                ("merman-usvg", "system-fonts"),
                 ("fontdb", "fs"),
                 ("fontdb", "memmap"),
                 ("fontdb", "fontconfig"),
@@ -629,6 +633,11 @@ class VerificationCaseTests(unittest.TestCase):
 
 
 class DescriptorTests(unittest.TestCase):
+    def test_static_svg_profile_covers_the_default_rust_feature_set(self) -> None:
+        loaded = load_artifact_profile("rust-static-svg")
+        manifest = tomllib.loads((SCRIPT_DIR.parent / loaded.manifest).read_text(encoding="utf-8"))
+        self.assertCountEqual(loaded.features, manifest["features"]["default"])
+
     def test_reference_profiles_are_default_empty_exact_recipes(self) -> None:
         expected = {
             "cli-analysis": ("merman-cli", ("all-diagrams", "analysis")),
@@ -1001,6 +1010,55 @@ class CargoMetadataParserTests(unittest.TestCase):
 
 
 class ClaimTests(unittest.TestCase):
+    def test_renderer_packages_follow_the_artifact_recipe(self) -> None:
+        raster = {"merman-resvg", "merman-usvg"}
+        pdf = raster | {"merman-krilla", "merman-krilla-svg"}
+        upstream = {package.removeprefix("merman-") for package in pdf}
+        expected_backends = {
+            "cli-analysis": set(),
+            "rust-core": set(),
+            "rust-static-svg": set(),
+            "rust-svg-basic": set(),
+            "rust-render-native-svg": set(),
+            "typst-wasm": set(),
+            "web-render": set(),
+            "web-full": set(),
+            "cli-native-fonts": {"merman-usvg"},
+            "rust-export-native-fonts": {"merman-usvg"},
+            "rust-export-jpeg": raster,
+            "rust-export-png": raster,
+            "sdk-wasi-standard": raster,
+            "rust-export-pdf": pdf,
+            "cli-release": pdf,
+        }
+        cases = {current.recipe.profile_id: current for current in load_verification_cases()}
+        for profile_id, required in expected_backends.items():
+            current = cases[profile_id]
+            for normal_build, scope in ((False, current.claim), (True, current.normal_build_claim)):
+                if scope is None:
+                    continue
+                with self.subTest(profile=profile_id, normal_build=normal_build):
+                    def failures(packages: set[str]) -> list[str]:
+                        names = (current.recipe.package, *scope.required_packages, *sorted(packages))
+                        baseline = dict.fromkeys(names, ())
+                        if not normal_build and "layout-dagre" in current.recipe.features:
+                            baseline.update(DAGRE_SVG_FIXTURE_PACKAGES)
+                        document = metadata_document(current.recipe.package, baseline)
+                        closure = parse_fixture_metadata(document, root_package=current.recipe.package)
+                        return check_case(current, closure, normal_build=normal_build)[0]
+
+                    self.assertEqual(failures(required), [])
+                    rejected = upstream | (pdf - required)
+                    self.assertEqual(
+                        failures(pdf | upstream),
+                        ["forbidden packages present: " + ", ".join(sorted(rejected))],
+                    )
+                    if required:
+                        self.assertEqual(
+                            failures(set()),
+                            ["required packages missing: " + ", ".join(sorted(required))],
+                        )
+
     def test_native_binding_claim_rejects_tooling_and_application_dependencies(
         self,
     ) -> None:

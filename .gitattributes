@@ -66,9 +66,12 @@ crates/merman-ascii/tests/sequence_model/corrected-fixtures/*.txt text eol=lf wh
 # This corpus case exercises an indentation-only Mermaid source line.
 distribution/tree-sitter-mermaid/test/corpus/families/ishikawa.txt text eol=lf whitespace=-blank-at-eol
 
-# Pinned upstream source snapshots preserve Mermaid's original whitespace byte-for-byte.
+# Pinned upstream source snapshots preserve their original whitespace byte-for-byte.
 fixtures/_upstream/mermaid-11.16.0/sources/**/*.mmd text eol=lf -whitespace
 fixtures/swimlane/_upstream_ddlt/**/*.mmd text eol=lf -whitespace
+vendor/krilla/src/configure/*.md text eol=lf -whitespace
+vendor/krilla/src/configure/validate.rs text eol=lf whitespace=-blank-at-eol
+vendor/krilla/src/interchange/tagging/generated.rs text eol=lf whitespace=-blank-at-eof
 
 # Script formats
 *.ps1 text eol=lf
