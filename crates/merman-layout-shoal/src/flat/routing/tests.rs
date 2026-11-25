@@ -685,6 +685,86 @@ fn occupied_band_clearance_uses_the_local_sweep_and_falls_back_at_an_obstacle() 
     assert_eq!(clear.edges[0].1.ports, blocked.edges[0].1.ports);
 }
 
+#[test]
+fn a_merged_sweep_releases_its_departure_only_inside_an_independent_corridor() {
+    let mut gaps = [gap(&[(0., 40.), (-60., -60.)]), gap(&[(40., 100.)])];
+    gaps[0].allow_local_sweeps = true;
+    gaps[0].upper_guard = 12.;
+    let bands = [
+        Band {
+            bottom: 10.,
+            ..Band::default()
+        },
+        Band {
+            top: 40.,
+            bottom: 60.,
+            ..Band::default()
+        },
+        Band {
+            top: 100.,
+            ..Band::default()
+        },
+    ];
+    let prove = |gaps: &[Gap], room| {
+        prove_sweep(
+            gaps,
+            &bands,
+            &[Some(room)],
+            4.,
+            true,
+            &mut Work::new(&mut NoopWorkControl),
+        )
+        .unwrap()
+        .expect("the original sweep fits")
+    };
+
+    let open = prove(&gaps, (0., 100.));
+    assert!(open.free_departure);
+    assert!(
+        open.occupied[..open.steps]
+            .iter()
+            .all(|span| span.lo() == 0. && span.hi() == 100.)
+    );
+
+    assert!(!prove(&gaps, (1., 99.)).free_departure);
+
+    gaps[0].pieces[1].occupied = Span { from: 99., to: 99. };
+    assert!(!prove(&gaps, (0., 100.)).free_departure);
+}
+
+#[test]
+fn a_long_departure_guard_leaves_room_for_the_next_sweep_in_both_edge_orders() {
+    let a: &[u32] = &[0, 4, 1];
+    let b: &[u32] = &[0, 5, 6, 2];
+    for (chains, marked_edge) in [([a, b], 1), ([b, a], 0)] {
+        let mut scene = Scene::new(
+            &[10.; 4],
+            &[&[0], &[4, 5, 3], &[1, 6], &[2]],
+            &chains,
+            &[110., 0., 85., 160., 88., 120., 120.],
+        );
+        scene.g.width[0] = 40.;
+        scene.g.keep[4..].fill(false);
+        scene.options.spacing.edge = 6.;
+        let first_offset = if marked_edge == 0 { 10. } else { -10. };
+        scene.g.source_offset[0] = first_offset;
+        scene.g.source_offset[chains[0].len() - 1] = -first_offset;
+        scene.graph.edges[marked_edge].start_marker = MarkerMetrics {
+            length: 14.,
+            width: 4.,
+        };
+        let drawing = scene.draw();
+        for edge in [marked_edge, 1 - marked_edge] {
+            let route = &drawing.edges[edge].1;
+            assert_eq!(
+                route.points[1],
+                RoutePoint::gap_boundary(route.points[0].x, 30., Axis::Vertical),
+                "the two sweeps can share the gaps with the original guard: {route:?}"
+            );
+        }
+    }
+}
+
 #[derive(Default)]
 struct Meter {
     used: usize,

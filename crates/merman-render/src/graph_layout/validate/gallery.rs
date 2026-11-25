@@ -873,6 +873,73 @@ fn basic_decision_branches_leave_separate_points_on_the_painted_diamond() {
 }
 
 #[test]
+fn a_clear_labelled_bypass_leaves_with_its_sibling_branch() {
+    for direction in ["TD", "BT", "LR", "RL"] {
+        for reversed in [false, true] {
+            let branches = if reversed {
+                "B -->|No| D[End]\nB -->|Yes| C[Execute]"
+            } else {
+                "B -->|Yes| C[Execute]\nB -->|No| D[End]"
+            };
+            let source =
+                format!("flowchart {direction}\nA[Start] --> B{{Condition?}}\n{branches}\nC --> D");
+            let drawing = render(&source, "decision-bypass").unwrap();
+            let doc = Document::parse(&drawing.svg).unwrap();
+            let scene = drawing.scene(&doc, view_box(doc.root_element()).size());
+            let report = validate(&scene);
+            assert!(report.hard.is_empty(), "{direction}: {:?}", report.hard);
+            assert!(
+                report.crossings.is_empty(),
+                "{direction}: {:?}",
+                report.crossings
+            );
+
+            let decision = drawing.node("B");
+            let contour = scene.bodies[decision].contour.as_ref().unwrap();
+            let axis = drawing.axis();
+            let mut exits = Vec::new();
+            for (index, edge) in scene
+                .edges
+                .iter()
+                .enumerate()
+                .filter(|(_, edge)| edge.start.body == decision)
+            {
+                let shaft = Shaft::read(edge).unwrap();
+                exits.push(axis.coordinate(shaft.sample(End::Start, 0.)));
+                assert!(
+                    shaft
+                        .lines
+                        .iter()
+                        .all(|line| !contour.contains(line.eval(0.5))),
+                    "{direction}: branch reenters its source"
+                );
+                let label = scene
+                    .labels
+                    .iter()
+                    .find(|label| label.owner == LabelOwner::Edge(index))
+                    .unwrap();
+                assert!(
+                    shaft.hits(label.bounds),
+                    "{direction}: detached branch label"
+                );
+                if matches!(direction, "TD" | "BT") {
+                    let (first, _) = shaft.segment_from(End::Start, 0);
+                    assert!(
+                        matches!(first, PathSeg::Cubic(curve) if
+                            (axis.coordinate(curve.p3) - axis.coordinate(curve.p0)).abs() > 1.0),
+                        "{direction}, reversed declarations {reversed}: the branch should start turning at the decision"
+                    );
+                }
+            }
+            let [first_exit, second_exit] = exits[..] else {
+                panic!("{direction}: expected two decision exits");
+            };
+            assert!((first_exit - second_exit).abs() >= 1.0, "{direction}");
+        }
+    }
+}
+
+#[test]
 fn neo_rectangle_ports_respect_the_configured_painted_radius() {
     let source = "---\nconfig:\n  layout: shoal\n  look: neo\n  themeVariables:\n    radius: 45\n---\nflowchart TD\nA[Build] --> B & C & D & E";
     let drawing = render(source, "rounded-ports").unwrap();
