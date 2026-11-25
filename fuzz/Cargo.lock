@@ -948,6 +948,7 @@ dependencies = [
  "granit-parser",
  "indexmap",
  "json5",
+ "merman-core-graph",
  "merman-core-preprocess",
  "merman-core-structured",
  "merman-markup",
@@ -958,6 +959,15 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "unicode-general-category",
+]
+
+[[package]]
+name = "merman-core-graph"
+version = "0.11.0"
+dependencies = [
+ "indexmap",
+ "merman-core-preprocess",
+ "merman-model",
 ]
 
 [[package]]
@@ -1130,6 +1140,7 @@ dependencies = [
  "merman-model",
  "merman-render-charts",
  "merman-render-core",
+ "merman-render-graph",
  "merman-render-structured",
  "merman-theme-contract",
  "merman-unicode-linebreak",
@@ -1157,9 +1168,11 @@ dependencies = [
 name = "merman-render-charts"
 version = "0.11.0"
 dependencies = [
+ "cssparser",
  "merman-model",
  "merman-render-core",
  "merman-theme-contract",
+ "rustc-hash",
  "ryu-js",
  "serde",
  "serde_json",
@@ -1174,11 +1187,19 @@ dependencies = [
  "memchr",
  "merman-markup",
  "merman-model",
+ "merman-theme-contract",
  "ryu-js",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "merman-render-graph"
+version = "0.11.0"
+dependencies = [
+ "merman-render-core",
 ]
 
 [[package]]
