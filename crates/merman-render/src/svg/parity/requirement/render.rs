@@ -355,13 +355,7 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 if edge.points.len() <= 2 {
                     super::super::curve::curve_linear_path_d(&edge.points)
                 } else {
-                    super::super::curve::curve_rounded_path_d_and_bounds(
-                        &edge.points,
-                        5.0,
-                        false,
-                        None,
-                    )
-                    .0
+                    super::super::curve::curve_rounded_path_d(&edge.points, 5.0)
                 }
             } else {
                 curve_basis_path_d(&edge.points)

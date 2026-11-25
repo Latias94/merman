@@ -32,7 +32,7 @@ fn er_edge_path_d(
         _ => {}
     }
     if rounded_layout && native.is_none() {
-        return super::super::curve::curve_rounded_path_d_and_bounds(points, 5.0, false, None).0;
+        return super::super::curve::curve_rounded_path_d(points, 5.0);
     }
     if let [a, b] = points {
         return curve_basis_path_d(&[

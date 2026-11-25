@@ -2,6 +2,7 @@
 use crate::{EditorExpectedSyntax, EditorExpectedSyntaxKind};
 use crate::{OperationControl, OperationControlResult, SourceSpan};
 use std::ops::Range;
+use std::sync::OnceLock;
 
 const CONTROLLED_EDIT_REBUILD_CHECKPOINT_BYTES: usize = 4 * 1024;
 const CONTROLLED_EDIT_REBUILD_CHECKPOINT_ITEMS: usize = 128;
@@ -15,7 +16,7 @@ pub(super) enum ReplacementMapping {
 #[derive(Debug, Clone)]
 pub(super) struct SourceEdit {
     range: Range<usize>,
-    replacement: String,
+    replacement: &'static str,
     mapping: ReplacementMapping,
 }
 
@@ -23,19 +24,19 @@ impl SourceEdit {
     pub(super) fn delete(range: Range<usize>) -> Self {
         Self {
             range,
-            replacement: String::new(),
+            replacement: "",
             mapping: ReplacementMapping::Boundaries,
         }
     }
 
     pub(super) fn replace(
         range: Range<usize>,
-        replacement: impl Into<String>,
+        replacement: &'static str,
         mapping: ReplacementMapping,
     ) -> Self {
         Self {
             range,
-            replacement: replacement.into(),
+            replacement,
             mapping,
         }
     }
@@ -45,7 +46,7 @@ impl SourceEdit {
 #[derive(Debug, Clone)]
 pub struct PreprocessedSource {
     text: String,
-    edit_map: SourceEditMap,
+    mapping: SourceMapping,
     #[cfg(feature = "editor-facts")]
     global_expected_syntax: Vec<EditorExpectedSyntax>,
     #[cfg(feature = "editor-facts")]
@@ -58,12 +59,13 @@ pub struct PreprocessedSource {
 
 impl PreprocessedSource {
     pub fn new(source: &str) -> Self {
-        Self::new_controlled(source, &OperationControl::new())
+        Self::new_controlled(source, false, &OperationControl::new())
             .expect("a private parse control cannot be cancelled")
     }
 
     pub(super) fn new_controlled(
         source: &str,
+        capture_spans: bool,
         control: &OperationControl,
     ) -> OperationControlResult<Self> {
         control.checkpoint()?;
@@ -82,7 +84,11 @@ impl PreprocessedSource {
         control.checkpoint()?;
         Ok(Self {
             text,
-            edit_map: SourceEditMap::identity(source.len()),
+            mapping: if capture_spans {
+                SourceMapping::Eager(None)
+            } else {
+                SourceMapping::Deferred(DeferredSourceMap::new(source.len()))
+            },
             #[cfg(feature = "editor-facts")]
             global_expected_syntax: Vec::new(),
             #[cfg(feature = "editor-facts")]
@@ -124,10 +130,34 @@ impl PreprocessedSource {
     }
 
     pub fn try_map_span(&self, span: SourceSpan) -> Option<SourceSpan> {
-        if !self.text.is_char_boundary(span.start) || !self.text.is_char_boundary(span.end) {
+        if !self.is_text_span(span) {
             return None;
         }
-        self.edit_map.try_map_span(span)
+        self.resolved_edit_map()
+            .map_or(Some(span), |map| map.try_map_span(span))
+    }
+
+    fn is_text_span(&self, span: SourceSpan) -> bool {
+        span.start <= span.end
+            && self.text.is_char_boundary(span.start)
+            && self.text.is_char_boundary(span.end)
+    }
+
+    fn resolved_edit_map(&self) -> Option<&SourceEditMap> {
+        match &self.mapping {
+            SourceMapping::Eager(map) => map.as_ref(),
+            SourceMapping::Deferred(map) => map.resolve(),
+        }
+    }
+
+    pub(super) fn prepare_span_mapping_controlled(
+        &self,
+        control: &OperationControl,
+    ) -> OperationControlResult<()> {
+        if let SourceMapping::Deferred(map) = &self.mapping {
+            map.resolve_controlled(control)?;
+        }
+        Ok(())
     }
 
     #[cfg(feature = "editor-facts")]
@@ -139,15 +169,20 @@ impl PreprocessedSource {
         // observe those spans during the same family construction even for a recovery capture.
         // Prefix/suffix deletions and one-byte boundary replacements (including CRLF) cannot
         // contain an interior UTF-8 boundary and do not need the richer observer.
-        for (index, gap) in self.edit_map.gaps.iter().enumerate() {
+        self.prepare_span_mapping_controlled(control)?;
+        let Some(map) = self.resolved_edit_map() else {
+            control.checkpoint()?;
+            return Ok(false);
+        };
+        for (index, gap) in map.gaps.iter().enumerate() {
             if index.is_multiple_of(128) {
                 control.checkpoint()?;
             }
-            if gap.output_offset > 0 && gap.output_offset < self.edit_map.output_len {
+            if gap.output_offset > 0 && gap.output_offset < map.output_len {
                 return Ok(true);
             }
         }
-        for (index, segment) in self.edit_map.segments.iter().enumerate() {
+        for (index, segment) in map.segments.iter().enumerate() {
             if index.is_multiple_of(128) {
                 control.checkpoint()?;
             }
@@ -161,17 +196,24 @@ impl PreprocessedSource {
         Ok(false)
     }
 
-    pub(crate) fn remap_parse_error(&self, error: crate::Error) -> crate::Error {
-        match error {
+    pub(crate) fn remap_parse_error_controlled(
+        &self,
+        error: crate::Error,
+        control: &OperationControl,
+    ) -> OperationControlResult<crate::Error> {
+        Ok(match error {
             crate::Error::DiagramParse {
                 diagram_type,
                 diagnostic,
             } => {
                 let diagnostic = match diagnostic.span() {
-                    Some(span) => match self.try_map_span(span) {
-                        Some(remapped) => diagnostic.map_span(|_| remapped),
-                        None => diagnostic.without_span(),
-                    },
+                    Some(span) => {
+                        self.prepare_span_mapping_controlled(control)?;
+                        match self.try_map_span(span) {
+                            Some(remapped) => diagnostic.map_span(|_| remapped),
+                            None => diagnostic.without_span(),
+                        }
+                    }
                     None => diagnostic,
                 };
                 crate::Error::DiagramParse {
@@ -180,7 +222,7 @@ impl PreprocessedSource {
                 }
             }
             error => error,
-        }
+        })
     }
 
     pub(crate) fn remap_warning_facts_controlled(
@@ -191,13 +233,16 @@ impl PreprocessedSource {
         for chunk in facts.chunks_mut(128) {
             control.checkpoint()?;
             for fact in chunk {
-                self.remap_warning_fact_spans(fact);
+                if fact.span.is_some() || fact.fix_span.is_some() {
+                    self.prepare_span_mapping_controlled(control)?;
+                    self.remap_warning_fact_spans(fact);
+                }
             }
         }
         control.checkpoint()
     }
 
-    pub(crate) fn remap_warning_fact_spans(&self, fact: &mut crate::DiagramWarningFact) {
+    pub(super) fn remap_warning_fact_spans(&self, fact: &mut crate::DiagramWarningFact) {
         let source_span = fact.span;
         let remapped_span = source_span.and_then(|span| self.try_map_span(span));
         fact.span = remapped_span;
@@ -214,10 +259,11 @@ impl PreprocessedSource {
 
     #[cfg(any(test, feature = "editor-facts"))]
     pub(super) fn try_map_enclosing_span(&self, span: SourceSpan) -> Option<SourceSpan> {
-        if !self.text.is_char_boundary(span.start) || !self.text.is_char_boundary(span.end) {
+        if !self.is_text_span(span) {
             return None;
         }
-        self.edit_map.try_map_enclosing_span(span)
+        self.resolved_edit_map()
+            .map_or(Some(span), |map| map.try_map_enclosing_span(span))
     }
 
     #[cfg(feature = "editor-facts")]
@@ -285,48 +331,47 @@ impl PreprocessedSource {
         // Borrow the published state until every checkpoint and invariant check succeeds. A
         // cancellation drops only these local builders and cannot expose a partial rewrite.
         let old_text = &self.text;
-        let old_map = &self.edit_map;
         let mut text = String::with_capacity(
             old_text
                 .len()
                 .saturating_sub(removed_bytes)
                 .saturating_add(replacement_bytes),
         );
-        let mut builder = EditMapBuilder::new(old_map.original_len);
         let mut cursor = 0usize;
 
-        for edit in edits {
+        for edit in &edits {
             checkpoints.processed_item()?;
             checkpoints.push_str(&mut text, &old_text[cursor..edit.range.start])?;
-            builder.copy_from(old_map, cursor..edit.range.start, &mut checkpoints)?;
-
-            if edit.replacement.is_empty() {
-                builder.delete_from(old_map, edit.range.clone(), &mut checkpoints)?;
-            } else {
-                checkpoints.push_str(&mut text, &edit.replacement)?;
-                builder.replace_from(
-                    old_map,
-                    edit.range.clone(),
-                    edit.replacement.len(),
-                    edit.mapping,
-                    &mut checkpoints,
-                )?;
-            }
+            checkpoints.push_str(&mut text, edit.replacement)?;
             cursor = edit.range.end;
         }
 
         checkpoints.push_str(&mut text, &old_text[cursor..])?;
-        builder.copy_from(old_map, cursor..old_text.len(), &mut checkpoints)?;
-        let edit_map = builder.finish(text.len(), &mut checkpoints)?;
-        #[cfg(debug_assertions)]
-        {
-            let well_formed = edit_map.is_well_formed_controlled(&mut checkpoints)?;
-            debug_assert!(well_formed);
+        match &mut self.mapping {
+            SourceMapping::Eager(map) => {
+                let identity;
+                let old_map = match map.as_ref() {
+                    Some(map) => map,
+                    None => {
+                        identity = SourceEditMap::identity(old_text.len());
+                        &identity
+                    }
+                };
+                let composed = old_map.compose_batch(&edits, text.len(), &mut checkpoints)?;
+                checkpoints.finish()?;
+                *map = Some(composed);
+            }
+            SourceMapping::Deferred(map) => {
+                checkpoints.finish()?;
+                map.composed.take();
+                map.batches.push(EditBatch {
+                    edits,
+                    output_len: text.len(),
+                });
+            }
         }
-        checkpoints.finish()?;
 
         self.text = text;
-        self.edit_map = edit_map;
         Ok(())
     }
 
@@ -334,6 +379,64 @@ impl PreprocessedSource {
     fn apply_edits_uncontrolled(&mut self, edits: Vec<SourceEdit>) {
         self.apply_edits(edits, &OperationControl::new())
             .expect("a private parse control cannot be cancelled");
+    }
+}
+
+#[derive(Debug, Clone)]
+enum SourceMapping {
+    Eager(Option<SourceEditMap>),
+    Deferred(DeferredSourceMap),
+}
+
+#[derive(Debug, Clone)]
+struct EditBatch {
+    edits: Vec<SourceEdit>,
+    output_len: usize,
+}
+
+/// Source edits are already validated in their pre-edit coordinate spaces. Save the batches
+/// for ordinary parsing and compose them only if a diagnostic or warning needs original spans.
+#[derive(Debug, Clone)]
+struct DeferredSourceMap {
+    original_len: usize,
+    batches: Vec<EditBatch>,
+    composed: OnceLock<Box<SourceEditMap>>,
+}
+
+impl DeferredSourceMap {
+    fn new(original_len: usize) -> Self {
+        Self {
+            original_len,
+            batches: Vec::new(),
+            composed: OnceLock::new(),
+        }
+    }
+
+    fn resolve(&self) -> Option<&SourceEditMap> {
+        if let Some(map) = self.composed.get() {
+            return Some(map);
+        }
+        if self.batches.is_empty() {
+            return None;
+        }
+        self.resolve_controlled(&OperationControl::new())
+            .expect("a private source mapping control cannot be cancelled");
+        self.composed.get().map(Box::as_ref)
+    }
+
+    fn resolve_controlled(&self, control: &OperationControl) -> OperationControlResult<()> {
+        if self.batches.is_empty() || self.composed.get().is_some() {
+            return Ok(());
+        }
+        let mut checkpoints = ControlledEditRebuildCheckpoints::new(control)?;
+        let mut map = SourceEditMap::identity(self.original_len);
+        for batch in &self.batches {
+            map = map.compose_batch(&batch.edits, batch.output_len, &mut checkpoints)?;
+        }
+        checkpoints.finish()?;
+        // Another observer of the same source can finish the same deterministic map first.
+        let _ = self.composed.set(Box::new(map));
+        Ok(())
     }
 }
 
@@ -403,6 +506,7 @@ impl<'a> ControlledEditRebuildCheckpoints<'a> {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 struct SourceEditMap {
     original_len: usize,
     output_len: usize,
@@ -434,6 +538,40 @@ impl SourceEditMap {
             #[cfg(test)]
             scan_stats: EditMapScanStats::default(),
         }
+    }
+
+    fn compose_batch(
+        &self,
+        edits: &[SourceEdit],
+        output_len: usize,
+        checkpoints: &mut ControlledEditRebuildCheckpoints<'_>,
+    ) -> OperationControlResult<Self> {
+        let mut builder = EditMapBuilder::new(self.original_len);
+        let mut cursor = 0usize;
+        for edit in edits {
+            checkpoints.processed_item()?;
+            builder.copy_from(self, cursor..edit.range.start, checkpoints)?;
+            if edit.replacement.is_empty() {
+                builder.delete_from(self, edit.range.clone(), checkpoints)?;
+            } else {
+                builder.replace_from(
+                    self,
+                    edit.range.clone(),
+                    edit.replacement.len(),
+                    edit.mapping,
+                    checkpoints,
+                )?;
+            }
+            cursor = edit.range.end;
+        }
+        builder.copy_from(self, cursor..self.output_len, checkpoints)?;
+        let map = builder.finish(output_len, checkpoints)?;
+        #[cfg(debug_assertions)]
+        {
+            let well_formed = map.is_well_formed_controlled(checkpoints)?;
+            debug_assert!(well_formed);
+        }
+        Ok(map)
     }
 
     /// Maps a parser-input span to the smallest exact span in the original source.
@@ -1311,7 +1449,8 @@ mod tests {
     #[test]
     fn controlled_mapping_rebuild_cancellation_preserves_the_previous_source_atomically() {
         let original = "x".repeat(CONTROLLED_EDIT_REBUILD_CHECKPOINT_ITEMS * 2);
-        let mut source = PreprocessedSource::new(&original);
+        let mut source =
+            PreprocessedSource::new_controlled(&original, true, &OperationControl::new()).unwrap();
         source.apply_edits_uncontrolled(
             (0..original.len())
                 .map(|offset| {
@@ -1319,7 +1458,8 @@ mod tests {
                 })
                 .collect(),
         );
-        assert!(source.edit_map.segments.len() > CONTROLLED_EDIT_REBUILD_CHECKPOINT_ITEMS);
+        let map = source.resolved_edit_map().unwrap();
+        assert!(map.segments.len() > CONTROLLED_EDIT_REBUILD_CHECKPOINT_ITEMS);
         assert!(source.text().len() < CONTROLLED_EDIT_REBUILD_CHECKPOINT_BYTES);
 
         let before = source.clone();
@@ -1335,6 +1475,68 @@ mod tests {
     }
 
     #[test]
+    fn deferred_map_waits_for_spans_and_can_retry_cancelled_composition() {
+        let removed = "discard\r\n".repeat(CONTROLLED_EDIT_REBUILD_CHECKPOINT_ITEMS * 2);
+        let original = format!("{removed}前😀\r\nTAIL");
+        let mut source = PreprocessedSource::new(&original);
+        source.apply_edits_uncontrolled(crlf_normalization_edits(source.text()));
+        source.apply_edits_uncontrolled(vec![SourceEdit::delete(
+            0..source.text().find('前').unwrap(),
+        )]);
+        assert_eq!(source.text(), "前😀\nTAIL");
+        let SourceMapping::Deferred(map) = &source.mapping else {
+            panic!("ordinary parsing records edits for deferred composition");
+        };
+
+        let control = OperationControl::new();
+        let mut facts = [crate::DiagramWarningFact::new("warning", "no source span")];
+        source
+            .remap_warning_facts_controlled(&mut facts, &control)
+            .unwrap();
+        assert!(map.composed.get().is_none());
+
+        let len = "前😀".len();
+        let span = SourceSpan::new(0, len);
+        let expected = SourceSpan::new(removed.len(), removed.len() + len);
+        let error = || {
+            crate::Error::diagram_parse_diagnostic(
+                "flowchart-v2",
+                crate::ParseDiagnostic::new("unexpected label")
+                    .with_span(span, crate::ParseDiagnosticSpanKind::Exact),
+            )
+        };
+        let cancelled = OperationControl::new();
+        cancelled.cancel_after_checkpoints(1);
+        assert!(
+            source
+                .remap_parse_error_controlled(error(), &cancelled)
+                .is_err()
+        );
+        assert!(map.composed.get().is_none());
+
+        let remapped = source
+            .remap_parse_error_controlled(error(), &control)
+            .unwrap();
+        assert!(
+            matches!(remapped, crate::Error::DiagramParse { diagnostic, .. }
+            if diagnostic.span() == Some(expected))
+        );
+        assert!(map.composed.get().is_some());
+
+        let mut facts = [crate::DiagramWarningFact::new("warning", "label")
+            .with_span(span)
+            .with_fix_span(SourceSpan::new(span.end, span.end))];
+        source
+            .remap_warning_facts_controlled(&mut facts, &control)
+            .unwrap();
+        assert_eq!(facts[0].span, Some(expected));
+        assert_eq!(
+            facts[0].fix_span,
+            Some(SourceSpan::new(expected.end, expected.end))
+        );
+    }
+
+    #[test]
     fn same_offset_insertions_and_adjacent_deletions_coalesce_gaps_in_order() {
         let mut source = PreprocessedSource::new("aXbYc");
         source.apply_edits_uncontrolled(vec![SourceEdit::delete(1..2)]);
@@ -1347,8 +1549,9 @@ mod tests {
         ]);
 
         assert_eq!(source.text(), "a<>c");
-        assert!(source.edit_map.is_well_formed());
-        assert_eq!(source.edit_map.gaps.len(), 2);
+        let map = source.resolved_edit_map().unwrap();
+        assert!(map.is_well_formed());
+        assert_eq!(map.gaps.len(), 2);
 
         let c = source.text().find('c').unwrap();
         assert_eq!(
@@ -1372,8 +1575,9 @@ mod tests {
             "!",
             ReplacementMapping::ExactBytes,
         )]);
-        assert!(source.edit_map.unmapped_ranges_match_segments());
-        assert!(!source.edit_map.unmapped_output_ranges.is_empty());
+        let map = source.resolved_edit_map().unwrap();
+        assert!(map.unmapped_ranges_match_segments());
+        assert!(!map.unmapped_output_ranges.is_empty());
 
         let generated = source.text().find('ﬂ').unwrap();
         assert_eq!(
@@ -1409,19 +1613,25 @@ mod tests {
         original.push_str("TAIL\r\n");
         assert!(original.len() >= MIN_INPUT_BYTES);
 
-        let mut source = PreprocessedSource::new(&original);
+        let mut source =
+            PreprocessedSource::new_controlled(&original, true, &OperationControl::new()).unwrap();
         source.apply_edits_uncontrolled(crlf_normalization_edits(source.text()));
         assert!(!source.text().contains('\r'));
         assert!(
-            source.edit_map.unmapped_output_ranges.is_empty(),
+            source
+                .resolved_edit_map()
+                .unwrap()
+                .unmapped_output_ranges
+                .is_empty(),
             "CRLF boundary mappings must not make every fact lookup scan every line"
         );
 
         let even_comments = comment_line_deletions(source.text(), "%% even-comment-");
         source.apply_edits_uncontrolled(even_comments);
 
-        let old_segment_count = source.edit_map.segments.len();
-        let old_gap_count = source.edit_map.gaps.len();
+        let old_map = source.resolved_edit_map().unwrap();
+        let old_segment_count = old_map.segments.len();
+        let old_gap_count = old_map.gaps.len();
         let odd_comments = comment_line_deletions(source.text(), "%% odd-comment-");
         let odd_comment_count = odd_comments.len();
         assert!(odd_comment_count > 8_000);
@@ -1429,7 +1639,7 @@ mod tests {
 
         source.apply_edits_uncontrolled(odd_comments);
 
-        let scans = source.edit_map.scan_stats;
+        let scans = source.resolved_edit_map().unwrap().scan_stats;
         assert_eq!(scans.copy_ranges, odd_comment_count + 1);
         assert!(
             scans.copy_segment_steps <= old_segment_count + scans.copy_ranges,
@@ -1479,8 +1689,13 @@ mod tests {
 
         for case in 0..CASES {
             let mut source = PreprocessedSource::new(original);
+            let mut eager =
+                PreprocessedSource::new_controlled(original, true, &OperationControl::new())
+                    .unwrap();
             for transformation in shuffled_transformations(&mut rng) {
                 apply_transformation(&mut source, transformation);
+                apply_transformation(&mut eager, transformation);
+                assert_source_state_eq(&source, &eager);
                 assert_mapping_invariants(&source, original, case, transformation);
             }
 
@@ -1508,9 +1723,10 @@ mod tests {
                 assert_literal_mapping(&source, original, "ﬂ°quot¶ß", "#quot;");
             } else {
                 let degree = source.text().find('°').unwrap();
-                source.apply_edits_uncontrolled(vec![SourceEdit::delete(
-                    degree..degree + '°'.len_utf8(),
-                )]);
+                let edits = vec![SourceEdit::delete(degree..degree + '°'.len_utf8())];
+                source.apply_edits_uncontrolled(edits.clone());
+                eager.apply_edits_uncontrolled(edits);
+                assert_source_state_eq(&source, &eager);
                 assert_mapping_invariants(
                     &source,
                     original,
@@ -1618,7 +1834,7 @@ mod tests {
     fn replace_once(
         source: &mut PreprocessedSource,
         needle: &str,
-        replacement: &str,
+        replacement: &'static str,
         mapping: ReplacementMapping,
     ) {
         let start = source.text().find(needle).unwrap();
@@ -1671,15 +1887,7 @@ mod tests {
 
     fn assert_source_state_eq(actual: &PreprocessedSource, expected: &PreprocessedSource) {
         assert_eq!(actual.text, expected.text);
-        assert_eq!(actual.edit_map.original_len, expected.edit_map.original_len);
-        assert_eq!(actual.edit_map.output_len, expected.edit_map.output_len);
-        assert_eq!(actual.edit_map.segments, expected.edit_map.segments);
-        assert_eq!(actual.edit_map.gaps, expected.edit_map.gaps);
-        assert_eq!(
-            actual.edit_map.unmapped_output_ranges,
-            expected.edit_map.unmapped_output_ranges
-        );
-        assert_eq!(actual.edit_map.scan_stats, expected.edit_map.scan_stats);
+        assert_eq!(actual.resolved_edit_map(), expected.resolved_edit_map());
         #[cfg(feature = "editor-facts")]
         assert_eq!(
             actual.global_expected_syntax,
@@ -1703,12 +1911,13 @@ mod tests {
         case: usize,
         transformation: SeededTransformation,
     ) {
+        let map = source.resolved_edit_map().unwrap();
         assert!(
-            source.edit_map.is_well_formed(),
+            map.is_well_formed(),
             "case {case} after {transformation:?}: malformed composed edit map"
         );
-        assert_eq!(source.edit_map.original_len, original.len());
-        assert_eq!(source.edit_map.output_len, source.text().len());
+        assert_eq!(map.original_len, original.len());
+        assert_eq!(map.output_len, source.text().len());
 
         let mut boundaries = source
             .text()

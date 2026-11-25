@@ -26,6 +26,8 @@ const { NativeEngine } = binding;
 assert.equal(typeof NativeEngine, "function");
 const supportsDirectSvg = typeof NativeEngine.prototype.executeSvg === "function";
 assert.equal(typeof NativeEngine.prototype.executeSvgSync === "function", supportsDirectSvg);
+const supportsTypedId = typeof NativeEngine.prototype.executeSvgWithId === "function";
+assert.equal(typeof NativeEngine.prototype.executeSvgWithIdSync === "function", supportsTypedId);
 const manifest = JSON.parse(readFileSync(
   path.resolve(path.dirname(entrypoint), "..", "package.json"), "utf8",
 ));
@@ -71,6 +73,10 @@ try {
   if (supportsDirectInput) {
     assert.equal(cold.executeSvgSync(source), baseline);
     assert.equal(await cold.executeSvg(source), baseline);
+    if (supportsTypedId) {
+      assert.equal(cold.executeSvgWithIdSync(source, "napi-task-smoke"), baseline);
+      assert.equal(await cold.executeSvgWithId(source, "napi-task-smoke"), baseline);
+    }
     for (const args of [[`${source}\ud800`], [source, '"\udc00"']]) {
       assert.throws(() => cold.executeSvgSync(...args), (error) => {
         const failure = assertError(error.message, "MERMAN_OPTIONS_JSON_ERROR");
@@ -152,11 +158,14 @@ try {
       };
     }
     const { source: publicSource, optionsJson } = publicRequest;
-    const withoutOuterRequestJson = (invoke) => {
+    const withoutOuterRequestJson = (invoke, diagramId) => {
       if (!supportsDirectInput) return invoke();
       const stringify = JSON.stringify;
       JSON.stringify = (value, ...args) => {
         assert.notEqual(value?.source, publicSource, "the SVG helper encoded the source in JSON");
+        if (diagramId !== undefined) {
+          assert.notEqual(value?.svg?.diagram_id, diagramId, "the SVG helper encoded the ID in JSON");
+        }
         return stringify(value, ...args);
       };
       try {
@@ -172,6 +181,14 @@ try {
       await assert.rejects(publicEngine.renderSvg(publicSource), installed.MermanQueueSaturatedError);
       for (const result of await Promise.all([first, second])) assert.equal(result, svg.data);
       assert.equal(withoutOuterRequestJson(() => publicEngine.renderSvgSync(publicSource, { optionsJson })), svg.data);
+      if (supportsTypedId) {
+        const diagramId = 'typed: café 🧪 "scope"';
+        const expected = publicEngine.renderSvgSync(publicSource, {
+          optionsJson: JSON.stringify({ svg: { diagram_id: diagramId } }),
+        });
+        assert.equal(withoutOuterRequestJson(() => publicEngine.renderSvgSync(publicSource, { diagramId }), diagramId), expected);
+        assert.equal(await withoutOuterRequestJson(() => publicEngine.renderSvg(publicSource, { diagramId }), diagramId), expected);
+      }
 
       const isDeadline = (error) => error instanceof installed.MermanOperationError &&
         error.codeName === "MERMAN_CANCELLED" &&

@@ -47,6 +47,10 @@ async function main() {
     const svg = await engine.renderSvg(source);
     assert.match(svg, /<svg\b/);
     assert.match(svg, /<\/svg>/);
+    const diagramId = "installed-diagram-id";
+    const withId = engine.renderSvgSync(source, { diagramId });
+    assert.match(withId, /<svg\b[^>]*\bid="installed-diagram-id"/);
+    assert.equal(await engine.renderSvg(source, { diagramId }), withId);
     if (expectedTarget !== "node-wasm") {
       assert.throws(() => engine.renderSvgSync(source, { timeoutMs: 0 }), (error) =>
         error instanceof module.MermanOperationError &&

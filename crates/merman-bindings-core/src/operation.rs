@@ -1,8 +1,11 @@
 use crate::artifact_contract::ValidatedArtifactContract;
 use crate::capability::{OperationKey, operation_is_compiled};
+use crate::common::BindingRequestOptions;
 use crate::payload_contract::BINDING_OPERATION_SCHEMA_VERSION;
 use crate::resource_contract::BindingResourceScope;
-use crate::{BindingEngine, BindingEngineServices, BindingError, BindingStatus};
+use crate::{
+    BindingEngine, BindingEngineServices, BindingError, BindingStatus, DecodedOperationOptions,
+};
 use merman::{OperationControl, OperationPhase};
 use serde::Serialize;
 use serde_json::{Map, Value};
@@ -1588,7 +1591,17 @@ impl BindingEngine {
         &self,
         request: BindingOperationRequest<'_>,
     ) -> Result<BindingOperationResult, BindingError> {
-        self.execute_request(request, true)
+        self.execute_with_decoded_options(request, None)
+    }
+
+    /// Executes a reusable request with options already decoded by the transport.
+    #[doc(hidden)]
+    pub fn execute_with_decoded_options<'a>(
+        &self,
+        request: BindingOperationRequest<'a>,
+        options: Option<DecodedOperationOptions<'a>>,
+    ) -> Result<BindingOperationResult, BindingError> {
+        self.execute_request(request, options, true)
             .and_then(|execution| execution.into_result(self.runtime_policy_id()))
     }
 
@@ -1597,14 +1610,66 @@ impl BindingEngine {
         &self,
         request: BindingOperationRequest<'_>,
     ) -> Result<Vec<u8>, BindingError> {
-        self.execute_request(request, false)
+        self.execute_data_with_decoded_options(request, None)
+    }
+
+    /// Executes a data-only request with options already decoded by the transport.
+    #[doc(hidden)]
+    pub fn execute_data_with_decoded_options<'a>(
+        &self,
+        request: BindingOperationRequest<'a>,
+        options: Option<DecodedOperationOptions<'a>>,
+    ) -> Result<Vec<u8>, BindingError> {
+        self.execute_request(request, options, false)
             .map(BindingOperationExecution::into_data)
     }
 
-    fn execute_request(
+    /// Executes data-only SVG with a request-local ID from a typed transport.
+    #[cfg(feature = "svg")]
+    #[doc(hidden)]
+    pub fn execute_svg_data_with_diagram_id(
+        &self,
+        source: &[u8],
+        diagram_id: &str,
+        control: OperationControl,
+    ) -> Result<Vec<u8>, BindingError> {
+        let request =
+            BindingOperationRequest::new(OperationKey::Svg.id(), source).with_control(control);
+        self.execute_request_with_options(request, false, |operation| {
+            self.prepare_svg_diagram_id(operation, diagram_id)
+        })
+        .map(BindingOperationExecution::into_data)
+    }
+
+    fn execute_request<'a>(
+        &self,
+        request: BindingOperationRequest<'a>,
+        options: Option<DecodedOperationOptions<'a>>,
+        include_metadata: bool,
+    ) -> Result<BindingOperationExecution, BindingError> {
+        let (request, options) = match options {
+            Some(options) => (
+                request.with_options_json(options.json.as_bytes()),
+                BindingRequestOptions::Decoded(options),
+            ),
+            None => {
+                let options = BindingRequestOptions::Raw(request.options_json);
+                (request, options)
+            }
+        };
+        self.execute_request_with_options(request, include_metadata, |operation| {
+            self.prepare_request_overlay(operation, options)
+        })
+    }
+
+    fn execute_request_with_options(
         &self,
         request: BindingOperationRequest<'_>,
         include_metadata: bool,
+        prepare_options: impl FnOnce(
+            BindingOperationKind,
+        )
+            -> Result<crate::engine::PreparedRequestOverlay, BindingError>,
     ) -> Result<BindingOperationExecution, BindingError> {
         let operation = resolve_operation_request(&request)?;
         let control = request.control_or_default();
@@ -1617,13 +1682,20 @@ impl BindingEngine {
                 execute_theme_output(admitted, request.source, request.options_json, &control)?;
             return Ok(BindingOperationExecution { operation, output });
         }
-        let prepared = self.prepare_request_overlay(operation, request.options_json)?;
+        let prepared = prepare_options(operation)?;
         let admitted = self.admit_operation(operation)?;
         let output = match prepared {
             crate::engine::PreparedRequestOverlay::Unchanged => self.execute_admitted_output(
                 admitted,
                 request.source,
                 request.uri,
+                control.clone(),
+                include_metadata,
+            ),
+            #[cfg(feature = "svg")]
+            crate::engine::PreparedRequestOverlay::Svg(overlay) => self.execute_svg_override(
+                overlay,
+                request.source,
                 control.clone(),
                 include_metadata,
             ),

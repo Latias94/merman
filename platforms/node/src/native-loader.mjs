@@ -24,6 +24,7 @@ const TARGET_PACKAGES = Object.freeze({
 const requireFromPackage = createRequire(import.meta.url);
 // Only installed native addons can use the direct SVG input and result contract.
 const directSvgTransports = new WeakSet();
+const versionCheckedRuntimeCatalogs = new WeakMap();
 const loaderPackageManifest = requireFromPackage("../package.json");
 const loaderPackageVersion = loaderPackageManifest?.version;
 
@@ -40,14 +41,32 @@ export function nodeLoaderUsesLocalShoal(packageName = "@mermanjs/node") {
     loaderPackageManifest.private === true && loaderPackageManifest.mermanLocalShoal === true;
 }
 
-export function assertRuntimePackageVersion(value) {
-  const catalog = parseRuntimeCatalogJsonText(value);
+export function cacheRuntimeCatalog(transport) {
+  const text = transport.runtimeCatalogJson();
+  const catalog = parseRuntimeCatalogJsonText(text);
   if (catalog?.package_version !== loaderPackageVersion) {
     throw new MermanInvalidTransportError(
       `The Merman runtime package version ${JSON.stringify(catalog?.package_version)} does not match the loader package version ${JSON.stringify(loaderPackageVersion)}.`,
     );
   }
-  return value;
+  const wrapped = {
+    ...transport,
+    runtimeCatalogJson: () => text,
+    dispose: () => {
+      versionCheckedRuntimeCatalogs.delete(wrapped);
+      return transport.dispose();
+    },
+  };
+  versionCheckedRuntimeCatalogs.set(wrapped, { text, catalog });
+  return wrapped;
+}
+
+export function takeVersionCheckedRuntimeCatalog(transport, text) {
+  const checked = versionCheckedRuntimeCatalogs.get(transport);
+  if (checked === undefined) return undefined;
+  versionCheckedRuntimeCatalogs.delete(transport);
+  // A custom loader can replace the catalog method on a wrapped transport.
+  return checked.text === text ? checked.catalog : undefined;
 }
 
 export function nativePackageName(target) {
@@ -155,11 +174,7 @@ export async function wrapNativeBinding(
     throw decodeWireCreationError(cause, label);
   }
   try {
-    const runtimeCatalogJson = assertRuntimePackageVersion(transport.runtimeCatalogJson());
-    const wrapped = {
-      ...transport,
-      runtimeCatalogJson: () => runtimeCatalogJson,
-    };
+    const wrapped = cacheRuntimeCatalog(transport);
     return typeof wrapped.executeSvg === "function" ? Object.freeze(wrapped) : wrapped;
   } catch (cause) {
     try {

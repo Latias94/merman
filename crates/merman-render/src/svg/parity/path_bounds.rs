@@ -11,7 +11,7 @@ pub(super) struct SvgPathBounds {
 }
 
 impl SvgPathBounds {
-    fn at(x: f64, y: f64) -> Self {
+    pub(super) fn at(x: f64, y: f64) -> Self {
         Self {
             min_x: x,
             min_y: y,
@@ -20,7 +20,7 @@ impl SvgPathBounds {
         }
     }
 
-    fn include_point(&mut self, x: f64, y: f64) {
+    pub(super) fn include_point(&mut self, x: f64, y: f64) {
         self.min_x = self.min_x.min(x);
         self.min_y = self.min_y.min(y);
         self.max_x = self.max_x.max(x);
@@ -106,6 +106,32 @@ pub(super) fn svg_path_bounds_include_cubic(b: &mut SvgPathBounds, c: CubicBezie
 
     include_extrema(b, [c.x0, c.x1, c.x2, c.x3], [c.y0, c.y1, c.y2, c.y3], true);
     include_extrema(b, [c.y0, c.y1, c.y2, c.y3], [c.x0, c.x1, c.x2, c.x3], false);
+}
+
+pub(super) fn svg_path_bounds_include_quadratic(
+    b: &mut SvgPathBounds,
+    x0: f64,
+    y0: f64,
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+) {
+    // Convert quadratic to cubic for extrema math:
+    // https://pomax.github.io/bezierinfo/#circles_cubic
+    svg_path_bounds_include_cubic(
+        b,
+        CubicBezier {
+            x0,
+            y0,
+            x1: x0 + (2.0 / 3.0) * (x1 - x0),
+            y1: y0 + (2.0 / 3.0) * (y1 - y0),
+            x2: x2 + (2.0 / 3.0) * (x1 - x2),
+            y2: y2 + (2.0 / 3.0) * (y1 - y2),
+            x3: x2,
+            y3: y2,
+        },
+    );
 }
 
 pub(super) fn svg_path_bounds_from_rough_ops(
@@ -212,36 +238,6 @@ pub(super) fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
             *i = save;
         }
         v
-    }
-
-    fn quadratic_include_bounds(
-        b: &mut SvgPathBounds,
-        x0: f64,
-        y0: f64,
-        x1: f64,
-        y1: f64,
-        x2: f64,
-        y2: f64,
-    ) {
-        // Convert quadratic to cubic for extrema math:
-        // https://pomax.github.io/bezierinfo/#circles_cubic
-        let cx1 = x0 + (2.0 / 3.0) * (x1 - x0);
-        let cy1 = y0 + (2.0 / 3.0) * (y1 - y0);
-        let cx2 = x2 + (2.0 / 3.0) * (x1 - x2);
-        let cy2 = y2 + (2.0 / 3.0) * (y1 - y2);
-        svg_path_bounds_include_cubic(
-            b,
-            CubicBezier {
-                x0,
-                y0,
-                x1: cx1,
-                y1: cy1,
-                x2: cx2,
-                y2: cy2,
-                x3: x2,
-                y3: y2,
-            },
-        );
     }
 
     fn normalize_angle(mut a: f64) -> f64 {
@@ -677,7 +673,7 @@ pub(super) fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
                     y2 += cy;
                 }
                 let cur = ensure_bounds(&mut b, cx, cy);
-                quadratic_include_bounds(cur, cx, cy, x1, y1, x2, y2);
+                svg_path_bounds_include_quadratic(cur, cx, cy, x1, y1, x2, y2);
                 cx = x2;
                 cy = y2;
                 last_quad_ctrl = Some((x1, y1));
@@ -700,7 +696,7 @@ pub(super) fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
                     y2 += cy;
                 }
                 let cur = ensure_bounds(&mut b, cx, cy);
-                quadratic_include_bounds(cur, cx, cy, x1, y1, x2, y2);
+                svg_path_bounds_include_quadratic(cur, cx, cy, x1, y1, x2, y2);
                 cx = x2;
                 cy = y2;
                 last_quad_ctrl = Some((x1, y1));

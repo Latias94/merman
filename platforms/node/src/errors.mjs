@@ -176,6 +176,25 @@ export { NODE_TRANSPORT_FIELD_LIMITS, NODE_TRANSPORT_LIMITS, NODE_WIRE_CONTRACT 
 
 export function parseTransportJsonText(value, label, limits) {
   assertTransportJsonTextLimits(value, label, limits);
+  return parseJsonText(value, label);
+}
+
+export function validateOperationOptionsJson(value, countJsonEscapes = false) {
+  if (typeof value !== "string") {
+    throw new TypeError("optionsJson must be a JSON string when provided.");
+  }
+  const label = "operation request optionsJson";
+  const limits = NODE_TRANSPORT_LIMITS.binding_options;
+  const bytes = measureUtf8Field(
+    value, label, NODE_TRANSPORT_FIELD_LIMITS.options_json_utf8_bytes,
+    countJsonEscapes, limits.max_utf8_bytes,
+  );
+  scanBoundedJsonText(value, label, limits);
+  parseJsonText(value, label);
+  return bytes;
+}
+
+function parseJsonText(value, label) {
   try {
     return JSON.parse(value);
   } catch (cause) {
@@ -193,12 +212,7 @@ function assertTransportJsonTextLimits(value, label, limits) {
   if (!limits || typeof limits !== "object") {
     throw new TypeError(`Missing Node wire limits for ${label}.`);
   }
-  const byteLength = strictUtf8ByteLength(value, label);
-  if (byteLength > limits.max_utf8_bytes) {
-    throw new MermanInvalidTransportError(
-      `Merman transport ${label} exceeds the ${limits.max_utf8_bytes}-byte wire limit.`,
-    );
-  }
+  measureUtf8Field(value, label, Infinity, false, limits.max_utf8_bytes);
   scanBoundedJsonText(value, label, limits);
 }
 
@@ -514,7 +528,7 @@ export function strictUtf8ByteLength(value, label = "text") {
   return measureUtf8Field(value, label, Infinity, false);
 }
 
-function measureUtf8Field(value, label, maxUtf8Bytes, countJsonEscapes) {
+function measureUtf8Field(value, label, maxUtf8Bytes, countJsonEscapes, maxDocumentUtf8Bytes = Infinity) {
   let bytes = 0;
   let escapeBytes = 0;
   for (let index = 0; index < value.length; index += 1) {
@@ -544,6 +558,11 @@ function measureUtf8Field(value, label, maxUtf8Bytes, countJsonEscapes) {
   if (bytes > maxUtf8Bytes) {
     throw new MermanInvalidTransportError(
       `Merman transport ${label} exceeds the ${maxUtf8Bytes}-byte field limit.`,
+    );
+  }
+  if (bytes > maxDocumentUtf8Bytes) {
+    throw new MermanInvalidTransportError(
+      `Merman transport ${label} exceeds the ${maxDocumentUtf8Bytes}-byte wire limit.`,
     );
   }
   return bytes + escapeBytes;

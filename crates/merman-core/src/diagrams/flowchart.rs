@@ -2361,6 +2361,26 @@ mod tests {
 
     #[test]
     #[cfg(feature = "editor-facts")]
+    fn captured_flowchart_observes_cancellation_in_a_long_accessibility_statement() {
+        let source = format!("flowchart TD\naccDescr: {}\nA --> B\n", "x".repeat(65_536));
+        let meta = semantic_test_meta("flowchart-v2");
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(8);
+        reset_flowchart_token_trace_construction_count();
+
+        let result = construct_flowchart_captured_semantic_model_controlled(
+            &source,
+            &meta,
+            EditorFactsDemand::Capture,
+            &control,
+        );
+
+        assert!(matches!(result, Err(crate::OperationCancelled { .. })));
+        assert_eq!(flowchart_token_trace_construction_count(), 1);
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
     fn canonical_flowchart_capture_uses_one_trace_and_keeps_failure_facts() {
         for diagram_type in ["flowchart-v2", "swimlane"] {
             let meta = semantic_test_meta(diagram_type);

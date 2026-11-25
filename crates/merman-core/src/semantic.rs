@@ -323,7 +323,9 @@ impl SemanticParser {
                             remap_semantic_source_positions(&mut model, &source, control)?;
                             SemanticParseOutcome::Parsed(model)
                         }
-                        Err(error) => SemanticParseOutcome::Failed(source.remap_parse_error(error)),
+                        Err(error) => SemanticParseOutcome::Failed(
+                            source.remap_parse_error_controlled(error, control)?,
+                        ),
                     };
                     (outcome, editor_facts)
                 }
@@ -544,7 +546,7 @@ impl SemanticParser {
         let mut model = match parsed {
             Ok(model) => model,
             Err(error) => {
-                let error = source.remap_parse_error(error);
+                let error = source.remap_parse_error_controlled(error, control)?;
                 if !options.suppress_errors {
                     return Ok(Err(error));
                 }

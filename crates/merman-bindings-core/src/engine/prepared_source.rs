@@ -124,7 +124,7 @@ impl BindingPreparedSource {
             .map_err(BindingError::cancelled)?;
         self.artifact.validate_engine_services(services)?;
         let overlay = common::parse_request_overlay_for_artifact(
-            options,
+            common::BindingRequestOptions::Raw(options),
             operation.resource_scope(),
             &self.artifact,
         )?;

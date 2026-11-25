@@ -28,7 +28,6 @@ pub(crate) struct FlowchartRenderConfig {
     pub cluster_stroke_color: String,
     pub node_corner_radius_config_override: bool,
     pub edge_corner_radius: f64,
-    pub compact_edge_corners: bool,
 }
 
 impl FlowchartRenderConfig {
@@ -116,7 +115,6 @@ pub(crate) fn prepare_flowchart_render_config(
     let node_corner_radius_config_override = compatibility.node_corner_radius_configured
         && effective_config.explicit_config_owns_path("themeVariables.radius");
     let edge_corner_radius = 5.0;
-    let compact_edge_corners = false;
 
     FlowchartRenderConfig {
         font_family,
@@ -142,6 +140,5 @@ pub(crate) fn prepare_flowchart_render_config(
         cluster_stroke_color,
         node_corner_radius_config_override,
         edge_corner_radius,
-        compact_edge_corners,
     }
 }

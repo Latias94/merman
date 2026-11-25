@@ -1405,12 +1405,49 @@ test("custom adapters cannot opt out of SVG envelope validation", async () => {
     executeSync() { return rawSvg; },
     async executeSvg() { assert.fail("custom adapter SVG method was called"); },
     executeSvgSync() { assert.fail("custom adapter SVG sync method was called"); },
+    async executeSvgWithId() { assert.fail("custom adapter typed SVG method was called"); },
+    executeSvgWithIdSync() { assert.fail("custom adapter typed SVG sync method was called"); },
   });
   const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
   try {
     const source = "flowchart TD\nA";
     await assert.rejects(engine.renderSvg(source), MermanInvalidTransportError);
     assert.throws(() => engine.renderSvgSync(source), MermanInvalidTransportError);
+    await assert.rejects(engine.renderSvg(source, { diagramId: "unsafe-bypass" }), MermanInvalidTransportError);
+    assert.throws(() => engine.renderSvgSync(source, { diagramId: "unsafe-bypass" }), MermanInvalidTransportError);
+  } finally {
+    await engine.dispose();
+  }
+});
+
+test("SVG diagramId reuses validated options on the generic transport", async (context) => {
+  const factory = transportFactory();
+  const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+  try {
+    const source = "flowchart LR\nA --> B";
+    const diagramId = 'deployment: café 🧪 "quoted" \\ \r\n'.repeat(1024);
+    const optionsJson = JSON.stringify({ svg: { diagram_id: diagramId } });
+    const parse = JSON.parse;
+    let optionParses = 0;
+    context.mock.method(JSON, "parse", (text, reviver) => {
+      if (text === optionsJson) optionParses += 1;
+      return parse(text, reviver);
+    });
+
+    assert.equal(await engine.renderSvg(source, { diagramId }), "<svg />");
+    assert.equal(engine.renderSvgSync(source, { diagramId }), "<svg />");
+    assert.equal(optionParses, 0);
+
+    assert.equal(engine.renderSvgSync(source, { optionsJson }), "<svg />");
+    assert.equal(optionParses, 1);
+    for (const request of factory.calls) {
+      assert.equal(request.options_json, optionsJson);
+      assert.equal(request.include_metadata, false);
+    }
+    assert.throws(() => engine.renderSvgSync(source, { diagramId, optionsJson: "{}" }), /cannot be used together/);
+    assert.throws(() => engine.renderSvgSync(source, { diagramId: 42 }), /must be a string/);
+    assert.throws(() => engine.renderSvgSync(source, { diagramId: "\ud800" }), /isolated UTF-16 surrogate/);
+    assert.equal(factory.calls.length, 3);
   } finally {
     await engine.dispose();
   }
@@ -1456,6 +1493,98 @@ test("construction validates and exposes the loaded artifact runtime catalog", a
     createNodeEngine({}, { loadTransport: malformed.loadTransport }),
     MermanInvalidTransportError,
   );
+});
+
+test("candidate construction decodes the runtime catalog once", async (context) => {
+  const catalog = runtimeCatalog();
+  const catalogText = `${JSON.stringify(catalog)}\n`;
+  for (const kind of ["napi", "wasm"]) {
+    await context.test(kind, async (candidateTest) => {
+      const events = [];
+      const identityText = JSON.stringify({
+        schema_version: 1,
+        package_id: NODE_WIRE_CONTRACT.package_id,
+        artifact_id: NODE_WIRE_CONTRACT.artifact_id,
+        package_version: PACKAGE_VERSION,
+        transport_kind: kind,
+        transport_api_version: NODE_WIRE_CONTRACT.transport_api_version,
+        binding_result_payload_version: NODE_WIRE_CONTRACT.binding_result_payload_version,
+        capability_descriptor_digest: CAPABILITY_DESCRIPTOR_DIGEST,
+        wire_contract: NODE_WIRE_CONTRACT,
+      });
+      const parse = JSON.parse;
+      candidateTest.mock.method(JSON, "parse", (text, reviver) => {
+        if (text === identityText) events.push("decode identity");
+        if (text === catalogText) events.push("decode catalog");
+        return parse(text, reviver);
+      });
+
+      let reply = catalogText;
+      let disposeCalls = 0;
+      class CandidateEngine {
+        constructor() { events.push("construct candidate"); }
+        execute() {}
+        executeSync() {}
+        metadataJson() {}
+        runtimeCatalogJson() {
+          events.push("read candidate catalog");
+          return reply;
+        }
+        dispose() { disposeCalls += 1; }
+      }
+      const binding = {
+        NativeEngine: CandidateEngine,
+        WasmEngine: CandidateEngine,
+        transportIdentityJson() {
+          events.push("read identity");
+          return identityText;
+        },
+      };
+      const load = (optionsJson) => kind === "napi"
+        ? loadNativeTransport(optionsJson, { loadPackage: () => binding })
+        : loadNodeWasmTransport(optionsJson, {
+          modulePath: "candidate:node-wasm", loadModule: async () => binding,
+        });
+      let transport;
+      const engine = await createNodeEngine({}, {
+        async loadTransport(optionsJson) {
+          transport = await load(optionsJson);
+          return transport;
+        },
+      });
+      try {
+        assert.deepEqual(engine.runtimeCatalog, catalog);
+        assert.equal(transport.runtimeCatalogJson(), catalogText);
+      } finally {
+        await engine.dispose();
+      }
+      const startupEvents = events.slice();
+      candidateTest.diagnostic(JSON.stringify(startupEvents));
+
+      const modified = await load("{}");
+      modified.runtimeCatalogJson = () => catalog;
+      await assert.rejects(
+        createNodeEngine({}, { loadTransport: () => modified }),
+        /runtime catalog must be JSON text/i,
+      );
+
+      reply = JSON.stringify(runtimeCatalog({
+        capabilities: {
+          ...catalog.capabilities,
+          capability_ids: [...catalog.capabilities.capability_ids, "layout-shoal"].sort(),
+        },
+      }));
+      await assert.rejects(
+        createNodeEngine({}, { loadTransport: load }),
+        /known capabilities do not match the Node artifact contract/i,
+      );
+      assert.equal(disposeCalls, 3);
+      assert.deepEqual(startupEvents, [
+        "read identity", "decode identity", "construct candidate", "read candidate catalog",
+        "decode catalog",
+      ]);
+    });
+  }
 });
 
 test("construction disposes every unusable transport exactly once", async () => {

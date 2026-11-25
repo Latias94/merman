@@ -255,8 +255,8 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         details.node_style_compile += s.elapsed();
     }
     let native_label_color = selection.native_label_color.as_deref();
-    let fill_color = selection.fill.as_str();
-    let stroke_color = selection.stroke.as_str();
+    let fill_color = prepared.fill_color(ctx.compatibility);
+    let stroke_color = prepared.stroke_color(ctx.compatibility);
     let label_emission = label::FlowchartNodeLabelEmissionPlan::new(
         prepared.source_text_style.as_ref(),
         compiled_styles,
@@ -355,7 +355,7 @@ fn prepare_node_geometry<'a>(
         node_asset_width: resolved.node_asset_width,
         node_asset_height: resolved.node_asset_height,
         stroke_width: selection.stroke_width,
-        stroke_dasharray: selection.stroke_dasharray.as_str(),
+        stroke_dasharray: prepared.stroke_dasharray(),
         native_corner_radius: selection.native_radius.map(f64::from),
         source_corner_radii: selection.source_radii,
         configured_corner_radius: selection.configured_radius,

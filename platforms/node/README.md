@@ -55,6 +55,13 @@ See the [native package example](packages/node/README.md#compiled-themes) and th
 
 ## SVG output pipelines
 
+Set `diagramId` on `renderSvg()` or `renderSvgSync()` to give one SVG a stable ID. Use
+`optionsJson` with `svg.diagram_id` when the request also sets other overrides.
+
+```js
+const svg = await engine.renderSvg(source, { diagramId: "deployment-preview" });
+```
+
 `renderSvg()` and `renderSvgSync()` use the `parity` pipeline by default. This preserves the
 Mermaid-compatible SVG structure and is the right choice for trusted input or parity-sensitive
 consumers. `parity` is not a browser DOM-admission or sanitization check.

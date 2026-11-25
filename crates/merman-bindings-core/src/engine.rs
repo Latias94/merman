@@ -43,6 +43,8 @@ pub struct BindingEngine {
 
 pub(crate) enum PreparedRequestOverlay {
     Unchanged,
+    #[cfg(feature = "svg")]
+    Svg(common::LightSvgOverride),
     Override(Box<BindingOperationConfigs>),
 }
 
@@ -228,13 +230,22 @@ impl BindingEngine {
     pub(crate) fn prepare_request_overlay(
         &self,
         operation: crate::BindingOperationKind,
-        options_json: &[u8],
+        options: common::BindingRequestOptions<'_>,
     ) -> Result<PreparedRequestOverlay, BindingError> {
         let overlay = common::parse_request_overlay_for_artifact(
-            options_json,
+            options,
             operation.resource_scope(),
             &self.artifact_contract,
         )?;
+        #[cfg(feature = "svg")]
+        let mut overlay = overlay;
+        #[cfg(feature = "svg")]
+        if operation.key() == crate::OperationKey::Svg
+            && !self.base_options.has_analysis_wrapper()
+            && let Some(overlay) = overlay.take_light_svg_override()
+        {
+            return Ok(PreparedRequestOverlay::Svg(overlay));
+        }
         match overlay {
             common::BindingRequestOverlay::Unchanged => {
                 self.unchanged_request_validation
@@ -262,6 +273,41 @@ impl BindingEngine {
                 Ok(PreparedRequestOverlay::Override(Box::new(configs)))
             }
         }
+    }
+
+    #[cfg(feature = "svg")]
+    pub(crate) fn prepare_svg_diagram_id(
+        &self,
+        operation: crate::BindingOperationKind,
+        diagram_id: &str,
+    ) -> Result<PreparedRequestOverlay, BindingError> {
+        const OPTIONS_FRAME_BYTES: usize = br#"{"svg":{"diagram_id":""}}"#.len();
+        let max_json_bytes = OPTIONS_FRAME_BYTES.saturating_add(diagram_id.len().saturating_mul(6));
+        if max_json_bytes <= crate::BINDING_OPTIONS_JSON_MAX_BYTES
+            && !self.base_options.has_analysis_wrapper()
+            && self
+                .artifact_contract
+                .exposes_option_group(crate::BindingOptionGroupKey::Svg)
+        {
+            return Ok(PreparedRequestOverlay::Svg(common::LightSvgOverride {
+                diagram_id: Some(diagram_id.to_owned()),
+            }));
+        }
+
+        #[derive(serde::Serialize)]
+        struct Options<'a> {
+            svg: Svg<'a>,
+        }
+        #[derive(serde::Serialize)]
+        struct Svg<'a> {
+            diagram_id: &'a str,
+        }
+        let options = Options {
+            svg: Svg { diagram_id },
+        };
+        common::enforce_compact_options_budget(&options)?;
+        let options = serde_json::to_vec(&options).map_err(common::internal_json_error)?;
+        self.prepare_request_overlay(operation, common::BindingRequestOptions::Raw(&options))
     }
 
     pub(crate) fn execute_request_projection(
@@ -392,9 +438,12 @@ impl BindingEngine {
                         .map_err(BindingError::cancelled)?;
                     let render = configs.render.materialize(&self.services);
                     let output = match operation.key() {
-                        crate::OperationKey::Svg => {
-                            render.render_svg_output(source, control.clone(), include_metadata)
-                        }
+                        crate::OperationKey::Svg => render.render_svg_output(
+                            source,
+                            control.clone(),
+                            include_metadata,
+                            None,
+                        ),
                         crate::OperationKey::SvgPlanJson => render
                             .svg_plan_json(source, control.clone())
                             .map(BindingOperationOutput::plain),
@@ -523,7 +572,7 @@ impl BindingEngine {
         #[cfg(feature = "svg")]
         {
             self.render_engine()
-                .render_svg_output(source, control, include_metadata)
+                .render_svg_output(source, control, include_metadata, None)
         }
 
         #[cfg(not(feature = "svg"))]
@@ -531,6 +580,31 @@ impl BindingEngine {
             let _ = (source, control, include_metadata);
             Err(common::feature_required_error("SVG rendering", "svg"))
         }
+    }
+
+    #[cfg(feature = "svg")]
+    pub(crate) fn execute_svg_override(
+        &self,
+        overlay: common::LightSvgOverride,
+        source: &[u8],
+        control: OperationControl,
+        include_metadata: bool,
+    ) -> Result<BindingOperationOutput, BindingError> {
+        for phase in [OperationPhase::Admission, OperationPhase::Layout] {
+            control
+                .checkpoint_at(phase)
+                .map_err(BindingError::cancelled)?;
+        }
+        let output = self.render_engine().render_svg_output(
+            source,
+            control.clone(),
+            include_metadata,
+            Some(overlay),
+        )?;
+        control
+            .checkpoint_at(OperationPhase::Postprocess)
+            .map_err(BindingError::cancelled)?;
+        Ok(output)
     }
 
     pub fn render_png(&self, source: &[u8]) -> Result<Vec<u8>, BindingError> {
@@ -1247,6 +1321,193 @@ mod tests {
 
     #[cfg(all(
         feature = "svg",
+        feature = "diagram-flowchart",
+        feature = "layout-dagre"
+    ))]
+    #[test]
+    fn diagram_id_overrides_reuse_the_render_engine() {
+        const BASE: &[u8] = br#"{
+            "site_config": {"layout":"dagre"},
+            "theme": {"preset":"studio"},
+            "svg": {"diagram_id":"base","pipeline":"readable","viewbox_padding":6}
+        }"#;
+        const SOURCE: &[u8] = b"flowchart LR\nA[Start] --> B[End]";
+        const OVERRIDES: [&[u8]; 2] = [
+            br#"{"svg":{"diagram_id":"changed id"}}"#,
+            br#"{"version":4,"svg":{"diagram_id":null}}"#,
+        ];
+        let expected = [Some("changed id"), None].map(|id| {
+            let config = serde_json::json!({
+                "site_config": {"layout":"dagre"},
+                "theme": {"preset":"studio"},
+                "svg": {"diagram_id":id,"pipeline":"readable","viewbox_padding":6}
+            });
+            crate::execute_once(
+                crate::BindingOperationRequest::new("svg", SOURCE)
+                    .with_options_json(config.to_string().as_bytes()),
+            )
+            .unwrap()
+        });
+        let before = full_engine_materializations();
+        let engine = BindingEngine::new(BASE).unwrap();
+        for _ in 0..32 {
+            for (options, expected) in OVERRIDES.into_iter().zip(&expected) {
+                let request =
+                    crate::BindingOperationRequest::new("svg", SOURCE).with_options_json(options);
+                assert_eq!(&engine.execute(request.clone()).unwrap(), expected);
+                assert_eq!(engine.execute_data(request).unwrap(), expected.data());
+            }
+        }
+        let after = full_engine_materializations();
+        eprintln!(
+            "128 diagram ID requests, {} render engine materializations",
+            after.1 - before.1
+        );
+        assert_eq!(after, (before.0, before.1 + 1));
+
+        let full_engine = BindingEngine::new(BASE).unwrap();
+        let before_full = full_engine_materializations();
+        for _ in 0..128 {
+            let request = crate::BindingOperationRequest::new("svg", SOURCE)
+                .with_options_json(br#"{"svg":{"diagram_id":"changed id","pipeline":"readable"}}"#);
+            full_engine.execute_data(request).unwrap();
+        }
+        let after_full = full_engine_materializations();
+        eprintln!(
+            "128 full SVG options requests, {} render engine materializations",
+            after_full.1 - before_full.1
+        );
+        assert_eq!(after_full, (before_full.0, before_full.1 + 128));
+        assert!(
+            std::str::from_utf8(&engine.render_svg(SOURCE).unwrap())
+                .unwrap()
+                .contains("id=\"base\"")
+        );
+    }
+
+    #[cfg(all(
+        feature = "analysis",
+        feature = "svg",
+        feature = "diagram-flowchart",
+        feature = "layout-dagre"
+    ))]
+    #[test]
+    fn diagram_id_overrides_keep_the_full_projection_for_wrapped_constructors() {
+        use crate::{
+            ArtifactContractSpec, BindingOperationRequest, BindingTransportKey, CapabilityKey,
+            OperationKey, TargetKey,
+        };
+
+        let spec = ArtifactContractSpec::new(TargetKey::Native, BindingTransportKey::Rust)
+            .with_operations(&[OperationKey::Svg]);
+        let contract = if cfg!(feature = "layout-elk") {
+            spec.with_supplemental_capabilities(&[
+                CapabilityKey::LayoutDagre,
+                CapabilityKey::LayoutElk,
+            ])
+        } else {
+            spec.with_supplemental_capabilities(&[CapabilityKey::LayoutDagre])
+        }
+        .materialize();
+
+        const SOURCE: &[u8] = b"flowchart TD\nA --> B";
+        for base in [
+            br#"{"analysis":{"merman":{"site_config":{"layout":"shoal"}}},"svg":{"pipeline":"readable"}}"#.as_slice(),
+            br#"{"merman":{"analysis":{"site_config":{"layout":"shoal"}}},"svg":{"pipeline":"readable"}}"#.as_slice(),
+        ] {
+            let engine = contract.create_engine(base).unwrap();
+            let constructor_error = engine.render_svg(SOURCE).unwrap_err();
+            assert_eq!(constructor_error.capability_id(), Some("layout-shoal"));
+
+            let request = BindingOperationRequest::new("svg", SOURCE)
+                .with_options_json(br#"{"svg":{"diagram_id":"probe"}}"#);
+            let full_request = request.clone().with_options_json(
+                br#"{"svg":{"diagram_id":"probe","pipeline":"readable"}}"#,
+            );
+            let expected = engine.execute(full_request.clone()).unwrap();
+            assert_eq!(engine.execute_data(full_request).unwrap(), expected.data());
+            assert_eq!(engine.execute(request.clone()).unwrap(), expected);
+            assert_eq!(engine.execute_data(request).unwrap(), expected.data());
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn diagram_id_overrides_validate_options_before_rendering() {
+        use crate::{BindingOperationRequest, BindingStatus};
+
+        let engine = BindingEngine::new(b"").unwrap();
+        for options in [
+            br#"{"svg":{"diagram_id":42}}"#.as_slice(),
+            br#"{"svg":{"diagramId":"probe"}}"#.as_slice(),
+            br#"{"svg":{"diagram_id":"probe"},"version":3}"#.as_slice(),
+            br#"{"svg":{"diagram_id":"probe"}"#.as_slice(),
+        ] {
+            let request = BindingOperationRequest::new("svg", b"").with_options_json(options);
+            let expected = crate::execute_once(request.clone()).unwrap_err();
+            assert_eq!(expected.status(), BindingStatus::OptionsJsonError);
+            assert_eq!(engine.execute(request.clone()).unwrap_err(), expected);
+            assert_eq!(engine.execute_data(request).unwrap_err(), expected);
+        }
+
+        let mut oversized = br#"{"svg":{"diagram_id":"probe"}}"#.to_vec();
+        oversized.resize(crate::BINDING_OPTIONS_JSON_MAX_BYTES + 1, b' ');
+        let request = BindingOperationRequest::new("svg", b"").with_options_json(&oversized);
+        let expected = crate::execute_once(request.clone()).unwrap_err();
+        assert_eq!(expected.status(), BindingStatus::ResourceLimitExceeded);
+        assert_eq!(
+            expected.resource_details().unwrap().limit_id,
+            crate::resource_contract::BINDING_OPTIONS_JSON_LIMIT_ID
+        );
+        assert_eq!(engine.execute(request.clone()).unwrap_err(), expected);
+        assert_eq!(engine.execute_data(request).unwrap_err(), expected);
+        assert!(engine.render.get().is_none());
+    }
+
+    #[cfg(all(
+        feature = "svg",
+        feature = "diagram-flowchart",
+        feature = "layout-dagre"
+    ))]
+    #[test]
+    fn diagram_id_overrides_preserve_resource_ceilings() {
+        use crate::{BindingOperationRequest, BindingStatus};
+
+        const SOURCE: &[u8] = b"---\nconfig:\n  layout: dagre\n---\nflowchart TD\nA --> B";
+        const ID_OVERRIDE: &[u8] = br#"{"svg":{"diagram_id":"probe"}}"#;
+        const TIGHTENED: &[u8] =
+            br#"{"svg":{"diagram_id":"probe"},"resources":{"limits":{"max_svg_bytes":32}}}"#;
+        const LOOSENED: &[u8] =
+            br#"{"svg":{"diagram_id":"probe"},"resources":{"limits":{"max_svg_bytes":65}}}"#;
+        let engine = BindingEngine::new(
+            br#"{"resources":{"profile":"constrained","limits":{"max_svg_bytes":64}}}"#,
+        )
+        .unwrap();
+
+        for (options, maximum) in [(ID_OVERRIDE, 64), (TIGHTENED, 32), (ID_OVERRIDE, 64)] {
+            let request = BindingOperationRequest::new("svg", SOURCE).with_options_json(options);
+            let error = engine.execute(request.clone()).unwrap_err();
+            assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+            let details = error.resource_details().unwrap();
+            assert_eq!(details.limit_id, "max_svg_bytes");
+            assert_eq!(details.max, maximum);
+            assert_eq!(details.profile, "constrained");
+            assert_eq!(engine.execute_data(request).unwrap_err(), error);
+        }
+
+        let request = BindingOperationRequest::new("svg", SOURCE).with_options_json(LOOSENED);
+        let error = engine.execute(request.clone()).unwrap_err();
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(
+            error
+                .message()
+                .contains("would loosen the transport ceiling")
+        );
+        assert_eq!(engine.execute_data(request).unwrap_err(), error);
+    }
+
+    #[cfg(all(
+        feature = "svg",
         feature = "analysis",
         feature = "ascii",
         feature = "diagram-flowchart"
@@ -1390,9 +1651,18 @@ mod tests {
         use std::time::{Duration, Instant};
 
         const SOURCE: &[u8] = b"flowchart TD\nA[Shared] --> B[Recovered]";
+        const ID_OVERRIDE: &[u8] = br#"{"svg":{"diagram_id":"probe"}}"#;
         const WAIT: Duration = Duration::from_secs(5);
 
-        for deadline_exceeded in [true, false] {
+        for (options, deadline_exceeded) in [
+            (b"".as_slice(), true),
+            (b"".as_slice(), false),
+            (ID_OVERRIDE, true),
+            (ID_OVERRIDE, false),
+        ] {
+            // The deadline setup reads the clock first. The final pre-cache checkpoint is
+            // Parse for an unchanged request and Layout after a second Admission for an override.
+            let last_pre_cache_clock_read = 2 + usize::from(!options.is_empty());
             let engine = Arc::new(BindingEngine::new(b"").unwrap());
             assert!(engine.render.get().is_none());
             let (initializing_sender, initializing_receiver) = mpsc::channel();
@@ -1409,7 +1679,7 @@ mod tests {
                 } else {
                     base
                 };
-                if observed_reads.fetch_add(1, Ordering::SeqCst) == 2 {
+                if observed_reads.fetch_add(1, Ordering::SeqCst) == last_pre_cache_clock_read {
                     before_cache_sender.send(()).unwrap();
                 }
                 now
@@ -1442,6 +1712,7 @@ mod tests {
                     let before = full_engine_materializations();
                     let result = waiting_engine.execute_data(
                         crate::BindingOperationRequest::new("svg", SOURCE)
+                            .with_options_json(options)
                             .with_control(waiting_control),
                     );
                     assert_eq!(full_engine_materializations(), before);
@@ -1460,7 +1731,7 @@ mod tests {
                 let result = waiting.join().expect("settle the waiting request");
 
                 reached_cache
-                    .expect("request must pass admission and the pre-cache parse checkpoint");
+                    .expect("request must reach the final checkpoint before the shared cache");
                 assert!(cache_is_cold);
                 assert!(request_is_pending);
                 let error =

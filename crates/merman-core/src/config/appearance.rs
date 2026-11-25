@@ -124,11 +124,13 @@ impl<'a> AppearanceDecision<'a> {
             } else if effective.get(key) != Some(value) {
                 effective.set_computed_value(key, value.clone());
             }
-            if section_has_key {
+            if section_has_key
+                && (explicit || effective.get_path(&[self.section, key]) != Some(value))
+            {
                 let scoped_key = format!("{}.{key}", self.section);
                 if explicit {
                     effective.set_value(&scoped_key, value.clone());
-                } else if effective.get_path(&[self.section, key]) != Some(value) {
+                } else {
                     effective.set_computed_value(&scoped_key, value.clone());
                 }
             }
