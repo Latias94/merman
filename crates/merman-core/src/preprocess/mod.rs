@@ -722,9 +722,10 @@ fn process_frontmatter_controlled(
         control,
     )?;
     control.checkpoint()?;
-    let captured = crate::yaml_config::parse_yaml_frontmatter_controlled(
+    let mut captured = crate::yaml_config::parse_yaml_with_capture_controlled(
         yaml_input.text(),
         MAX_CONFIG_NESTING_DEPTH,
+        &["title", "displayMode"],
         #[cfg(feature = "editor-facts")]
         capture_mode.collects(),
         control,
@@ -778,10 +779,13 @@ fn process_frontmatter_controlled(
         return Err(cancelled);
     }
 
-    let title = frontmatter_text(parsed_obj.get("title"), captured.collection_text.title);
+    let title = frontmatter_text(
+        parsed_obj.get("title"),
+        captured.collection_text.remove("title"),
+    );
     let display_mode = frontmatter_text(
         parsed_obj.get("displayMode"),
-        captured.collection_text.display_mode,
+        captured.collection_text.remove("displayMode"),
     );
 
     let mut config = MermaidConfig::empty_object();

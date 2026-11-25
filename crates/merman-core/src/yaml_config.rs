@@ -6,7 +6,7 @@ use granit_parser::Span;
 use granit_parser::{Event, Parser, ScalarStyle, Tag};
 use merman_model::json::{JSON_OBJECT_ENTRY_CHARGE_BYTES, JSON_VALUE_CHARGE_BYTES};
 use serde_json::{Map, Number, Value};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::mem::size_of;
 
 const YAML_MATERIALIZATION_MIN_BYTES: usize = 64 * 1024;
@@ -51,29 +51,27 @@ pub(crate) struct YamlConfigKeyEvidence {
 
 pub(crate) struct YamlValueCapture {
     pub(crate) value: Result<Value, String>,
-    pub(crate) collection_text: FrontmatterCollectionText,
+    pub(crate) collection_text: YamlCollectionText,
     #[cfg(feature = "editor-facts")]
     pub(crate) keys: Vec<YamlConfigKeyEvidence>,
     #[cfg(feature = "editor-facts")]
     pub(crate) rewrite_safe: bool,
 }
 
-#[derive(Default)]
-pub(crate) struct FrontmatterCollectionText {
-    pub(crate) title: Option<String>,
-    pub(crate) display_mode: Option<String>,
-}
+/// Ordered JSON text for requested top-level collection fields.
+pub(crate) type YamlCollectionText = BTreeMap<&'static str, String>;
 
 #[derive(Clone, Copy, Default)]
-struct Capture {
-    collection_text: bool,
+struct Capture<'a> {
+    collection_text_keys: &'a [&'static str],
     #[cfg(feature = "editor-facts")]
     keys: bool,
 }
 
-pub(crate) fn parse_yaml_frontmatter_controlled(
+pub(crate) fn parse_yaml_with_capture_controlled(
     input: &str,
     max_nesting_depth: usize,
+    collection_text_keys: &[&'static str],
     #[cfg(feature = "editor-facts")] capture_keys: bool,
     control: &OperationControl,
 ) -> OperationControlResult<YamlValueCapture> {
@@ -83,7 +81,7 @@ pub(crate) fn parse_yaml_frontmatter_controlled(
         max_nesting_depth,
         default_materialization_budget(input),
         Capture {
-            collection_text: true,
+            collection_text_keys,
             #[cfg(feature = "editor-facts")]
             keys: capture_keys,
         },
@@ -114,7 +112,7 @@ fn parse_yaml_controlled(
     max_input_bytes: usize,
     max_nesting_depth: usize,
     materialization_budget: usize,
-    capture: Capture,
+    capture: Capture<'_>,
     control: &OperationControl,
 ) -> OperationControlResult<YamlValueCapture> {
     control.checkpoint()?;
@@ -123,7 +121,7 @@ fn parse_yaml_controlled(
             value: Err(format!(
                 "YAML input exceeds the safe parser budget of {max_input_bytes} bytes"
             )),
-            collection_text: FrontmatterCollectionText::default(),
+            collection_text: YamlCollectionText::new(),
             #[cfg(feature = "editor-facts")]
             keys: Vec::new(),
             #[cfg(feature = "editor-facts")]
@@ -176,7 +174,7 @@ fn parse_yaml_controlled(
                 let (keys, _) = builder.take_capture();
                 return Ok(YamlValueCapture {
                     value: Err(error.to_string()),
-                    collection_text: FrontmatterCollectionText::default(),
+                    collection_text: YamlCollectionText::new(),
                     #[cfg(feature = "editor-facts")]
                     keys,
                     #[cfg(feature = "editor-facts")]
@@ -195,7 +193,7 @@ fn parse_yaml_controlled(
             let (keys, _) = builder.take_capture();
             return Ok(YamlValueCapture {
                 value: Err(error),
-                collection_text: FrontmatterCollectionText::default(),
+                collection_text: YamlCollectionText::new(),
                 #[cfg(feature = "editor-facts")]
                 keys,
                 #[cfg(feature = "editor-facts")]
@@ -208,19 +206,20 @@ fn parse_yaml_controlled(
     #[cfg(feature = "editor-facts")]
     let (keys, rewrite_safe) = builder.take_capture();
     let value = builder.finish_controlled(control)?;
-    let collection_text = if capture.collection_text && value.as_ref().is_ok_and(Value::is_object) {
-        match builder.frontmatter_collection_text(control) {
-            Ok(text) => text,
-            Err(cancelled) => {
-                if let Ok(value) = value {
-                    crate::json_value::drop_value_nonrecursive(value);
+    let collection_text =
+        if !capture.collection_text_keys.is_empty() && value.as_ref().is_ok_and(Value::is_object) {
+            match builder.capture_collection_text(capture.collection_text_keys, control) {
+                Ok(text) => text,
+                Err(cancelled) => {
+                    if let Ok(value) = value {
+                        crate::json_value::drop_value_nonrecursive(value);
+                    }
+                    return Err(cancelled);
                 }
-                return Err(cancelled);
             }
-        }
-    } else {
-        FrontmatterCollectionText::default()
-    };
+        } else {
+            YamlCollectionText::new()
+        };
     Ok(YamlValueCapture {
         value,
         collection_text,
@@ -600,11 +599,12 @@ impl YamlValueBuilder {
         )
     }
 
-    fn frontmatter_collection_text(
+    fn capture_collection_text(
         &self,
+        allowed_keys: &[&'static str],
         control: &OperationControl,
-    ) -> OperationControlResult<FrontmatterCollectionText> {
-        let mut text = FrontmatterCollectionText::default();
+    ) -> OperationControlResult<YamlCollectionText> {
+        let mut text = YamlCollectionText::new();
         let Some(YamlNode::Mapping(entries)) = self.root.map(|root| &self.arena[root.0]) else {
             return Ok(text);
         };
@@ -612,10 +612,12 @@ impl YamlValueBuilder {
             if index.is_multiple_of(64) {
                 control.checkpoint()?;
             }
-            let field = match key.as_str() {
-                "title" => &mut text.title,
-                "displayMode" => &mut text.display_mode,
-                _ => continue,
+            let Some(key) = allowed_keys
+                .iter()
+                .copied()
+                .find(|allowed| *allowed == key.as_str())
+            else {
+                continue;
             };
             if matches!(
                 self.arena[node.0],
@@ -623,7 +625,7 @@ impl YamlValueBuilder {
             ) {
                 // JSON text is externally visible for these fields. Use the already validated
                 // YAML arena to retain source order through alias expansion and nested objects.
-                *field = Some(write_ordered_yaml_json(&self.arena, *node, control)?);
+                text.insert(key, write_ordered_yaml_json(&self.arena, *node, control)?);
             }
         }
         Ok(text)
@@ -1217,7 +1219,7 @@ mod tests {
 
     #[cfg(feature = "editor-facts")]
     fn capture_yaml(input: &str) -> YamlValueCapture {
-        parse_yaml_frontmatter_controlled(input, 16, true, &OperationControl::new())
+        parse_yaml_with_capture_controlled(input, 16, &[], true, &OperationControl::new())
             .expect("a private parse control cannot be cancelled")
     }
 

@@ -1,19 +1,42 @@
+use crate::yaml_config::{YamlCollectionText, parse_yaml_with_capture_controlled};
 use serde_json::Value;
 
+#[cfg(any(
+    test,
+    feature = "diagram-agentflow",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-sequence"
+))]
 pub(crate) fn parse_mermaid_inline_object_controlled(
     input: &str,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<Value, String>> {
+    let parsed = parse_mermaid_inline_object_with_text_controlled(input, &[], control)?;
+    Ok(parsed.map(|(value, _)| value))
+}
+
+pub(crate) fn parse_mermaid_inline_object_with_text_controlled(
+    input: &str,
+    collection_text_keys: &[&'static str],
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Result<(Value, YamlCollectionText), String>> {
     let yaml_data = if input.contains('\n') {
         format!("{input}\n")
     } else {
         format!("{{\n{input}\n}}")
     };
-    crate::yaml_config::parse_yaml_value_controlled(
+    let captured = parse_yaml_with_capture_controlled(
         &yaml_data,
         crate::MAX_DIAGRAM_NESTING_DEPTH,
+        collection_text_keys,
+        #[cfg(feature = "editor-facts")]
+        false,
         control,
-    )
+    )?;
+    Ok(captured
+        .value
+        .map(|value| (value, captured.collection_text)))
 }
 
 #[cfg(any(
