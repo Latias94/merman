@@ -7,6 +7,7 @@ impl PreprocessedSource {
         facts: &mut EditorSemanticFacts,
         control: &OperationControl,
     ) -> OperationControlResult<()> {
+        self.prepare_span_mapping_controlled(control)?;
         let original_symbol_count = facts.symbols.len();
         let mut remapped_symbols = Vec::with_capacity(original_symbol_count);
         for (index, mut symbol) in std::mem::take(&mut facts.symbols).into_iter().enumerate() {

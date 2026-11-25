@@ -294,7 +294,11 @@ fn preprocess_source_capture_controlled(
     PREPROCESS_COUNT.set(PREPROCESS_COUNT.get() + 1);
 
     // Mermaid 12 passes the complete DiagramCode to Diagram.fromText on both public paths.
-    let mut source = PreprocessedSource::new_controlled(input, control)?;
+    #[cfg(feature = "editor-facts")]
+    let capture_spans = capture_mode.collects();
+    #[cfg(not(feature = "editor-facts"))]
+    let capture_spans = false;
+    let mut source = PreprocessedSource::new_controlled(input, capture_spans, control)?;
     // The cleanup passes add only newlines and single quotes. Later config and comment
     // removal passes delete text, so the original marker set covers all of their inputs.
     let markers = PreprocessMarkers::scan(input, control)?;
@@ -1371,7 +1375,7 @@ fn dedented_frontmatter_yaml_input_controlled<'a>(
             return Ok(FrontmatterYamlInput::Plain(Cow::Borrowed(body)));
         }
 
-        let mut source = PreprocessedSource::new_controlled(body, control)?;
+        let mut source = PreprocessedSource::new_controlled(body, true, control)?;
         let mut checkpoints = ControlledScanCheckpoints::new(control)?;
         let mut edits = Vec::new();
         let mut line_start = 0usize;

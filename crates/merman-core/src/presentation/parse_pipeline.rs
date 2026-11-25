@@ -10,6 +10,7 @@ use crate::diagram::{
 };
 #[cfg(feature = "compat-json")]
 use crate::diagram::{ParsedDiagram, ResolvedSemanticParser};
+use crate::diagram::{ParsedDiagramRender, RenderSemanticParseOutput, ResolvedRenderParser};
 use crate::operation::OperationPhase;
 #[cfg(feature = "editor-facts")]
 use crate::preprocess::SourceConfigEvidence;
@@ -27,16 +28,14 @@ use crate::{
 use crate::{ManagedSemanticJson, common_db, diagram};
 #[cfg(any(feature = "compat-json", test))]
 use merman_model::presentation::CustomJsonRenderModel;
-#[cfg(feature = "compat-json")]
+use merman_model::presentation::RenderSemanticModel;
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
+use merman_model::warnings::DiagramWarningFact;
+#[cfg(all(feature = "compat-json", feature = "editor-facts"))]
 use serde::Deserialize;
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
 use std::sync::Arc;
-use {
-    crate::diagram::{ParsedDiagramRender, RenderSemanticParseOutput, ResolvedRenderParser},
-    merman_model::presentation::RenderSemanticModel,
-    merman_model::warnings::DiagramWarningFact,
-};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum ParseSource<'a> {
@@ -249,10 +248,6 @@ impl<'a> ParserSourceMap<'a> {
 
     fn parser_input(&self) -> &'a str {
         self.source.text()
-    }
-
-    fn remap_parse_error(&self, err: Error) -> Error {
-        self.source.remap_parse_error(err)
     }
 }
 
@@ -520,7 +515,9 @@ impl<'a> ParsePipeline<'a> {
         let mut model = match model_result {
             Ok(model) => model,
             Err(err) => {
-                let err = source_map.remap_parse_error(err);
+                let err = source_map
+                    .source
+                    .remap_parse_error_controlled(err, control)?;
                 let editor_facts = self.finish_snapshot_editor_facts(
                     owner,
                     combined_facts,
@@ -713,12 +710,11 @@ impl<'a> ParsePipeline<'a> {
                     line_offset,
                     column_offset,
                 );
-                crate::presentation::diagram::remap_warning_fact_spans(
+                crate::presentation::diagram::remap_warning_fact_spans_controlled(
                     output.model_mut(),
-                    |fact| {
-                        Self::remap_warning_fact_spans(fact, source_map);
-                    },
-                );
+                    source_map.source,
+                    control,
+                )?;
                 control.checkpoint()?;
                 Ok(Ok(output))
             },
@@ -825,7 +821,9 @@ impl<'a> ParsePipeline<'a> {
                 Ok(model) => model,
                 Err(err) => {
                     if !self.options.suppress_errors {
-                        return Ok(Err(source_map.remap_parse_error(err)));
+                        return Ok(Err(source_map
+                            .source
+                            .remap_parse_error_controlled(err, &control)?));
                     }
 
                     let finalization = operation.for_phase(OperationPhase::Semantic);
@@ -833,12 +831,13 @@ impl<'a> ParsePipeline<'a> {
                         Ok(meta) => meta,
                         Err(error) => return Ok(Err(error)),
                     };
-                    let output =
-                        match suppressed(&meta, &source_map.remap_parse_error(err), &finalization)?
-                        {
-                            Ok(output) => output,
-                            Err(error) => return Ok(Err(error)),
-                        };
+                    let err = source_map
+                        .source
+                        .remap_parse_error_controlled(err, &finalization)?;
+                    let output = match suppressed(&meta, &err, &finalization)? {
+                        Ok(output) => output,
+                        Err(error) => return Ok(Err(error)),
+                    };
                     finalization.checkpoint()?;
                     timing.log_suppressed_error(total_start, preprocess, parse, self.text.len());
                     return Ok(Ok(Some(output)));
@@ -910,37 +909,15 @@ impl<'a> ParsePipeline<'a> {
                     .map(|(model, _)| model))
             }
             CompatibilitySemanticParse::Custom(mut model) => {
-                Self::remap_custom_compatibility_json_warning_facts(
+                crate::presentation::diagram::remap_json_warning_fact_spans_controlled(
                     model.as_value_mut(),
-                    source_map,
-                );
+                    source_map.source,
+                    control,
+                )?;
                 control.checkpoint()?;
                 Ok(Ok(model))
             }
         }
-    }
-
-    #[cfg(feature = "compat-json")]
-    fn remap_custom_compatibility_json_warning_facts(
-        model: &mut serde_json::Value,
-        source_map: &ParserSourceMap<'_>,
-    ) {
-        let Some(warning_facts_value) = model.get_mut("warningFacts") else {
-            return;
-        };
-        let Ok(mut warning_facts) = Vec::<DiagramWarningFact>::deserialize(&*warning_facts_value)
-        else {
-            return;
-        };
-
-        for fact in &mut warning_facts {
-            Self::remap_warning_fact_spans(fact, source_map);
-        }
-
-        crate::config::replace_value_nonrecursive(
-            warning_facts_value,
-            serde_json::json!(warning_facts),
-        );
     }
 
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
@@ -976,10 +953,6 @@ impl<'a> ParsePipeline<'a> {
             serde_json::to_value(warning_facts)
                 .expect("diagram warning facts must remain JSON-serializable"),
         );
-    }
-
-    fn remap_warning_fact_spans(fact: &mut DiagramWarningFact, source_map: &ParserSourceMap<'_>) {
-        source_map.source.remap_warning_fact_spans(fact);
     }
 
     fn parse_render_semantic_model_controlled(
