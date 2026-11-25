@@ -312,6 +312,14 @@ one work budget and cancellation control. Retained candidate text counts toward 
 Use the spacing builders for explicit overrides, including a value equal to the default; direct
 assignment of a default-valued public field cannot record that intent.
 
+Flat Flowchart diagrams can also use
+`AsciiRenderOptions::with_graph_routing_space(AsciiGraphRoutingSpace::Fixed)`. Fixed requires
+Strict graph presentation and retains resolved padding, authored edge lengths, and the cells
+needed for shapes, strokes, and markers. The router can choose other ports or paths within that
+layout. If search exhausts or independent ports run out, the host can retry with
+`AsciiGraphRoutingSpace::Expand`, the default. This choice applies to every layout profile the
+request tries. Labels and detours contribute to the final measured extent.
+
 ## Graph Presentation Boundary
 
 Flowchart, Swimlane, and State use one private [scene planner](src/graph/planning.rs) to join measured

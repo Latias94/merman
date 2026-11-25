@@ -964,6 +964,33 @@ fn draw_cylinder_node(
     layout_policy: &GraphLayoutPolicy,
 ) -> Result<()> {
     draw_rounded_node(canvas, layout, charset)?;
+    if !layout_policy.expands_routing_space() {
+        // Cylinder sizing reserves a cell on either side of the text and its padding.
+        // Use those cells for the lid even when the first interior row contains text.
+        let lid_y = layout.y + 1;
+        let left = layout.x + 1;
+        let right = layout.right() - 1;
+        set_node_border(
+            canvas,
+            left,
+            lid_y,
+            charset.rounded_bottom_left,
+            layout.style,
+        )?;
+        set_node_border(
+            canvas,
+            right,
+            lid_y,
+            charset.rounded_bottom_right,
+            layout.style,
+        )?;
+        if label_content_y(layout) > lid_y {
+            for x in (left + 1)..right {
+                set_node_border(canvas, x, lid_y, charset.horizontal, layout.style)?;
+            }
+        }
+        return Ok(());
+    }
     if layout.height > 3 {
         for x in (layout.x + 1)..layout.right() {
             set_node_border(canvas, x, layout.y + 1, charset.horizontal, layout.style)?;

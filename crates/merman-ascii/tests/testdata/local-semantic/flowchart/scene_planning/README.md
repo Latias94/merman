@@ -39,6 +39,11 @@ and Unicode. Endpoint/corridor and return-lane growth take precedence over the c
 the labelled source must keep all six edge labels. The independent oracle additionally checks every
 relationship and its final paint for both sources in TD and both character sets.
 
+`issue_370_terminal_height.mmd` reproduces the terminal height regression.
+With Fixed routing space it keeps all ten relationships, seven edge labels, and the cylinder lid
+within 33 rows at a two-cell rank gap. The independent oracle checks the endpoint contacts,
+markers, and painted routes in both character sets. [#370](https://github.com/Latias94/merman/issues/370)
+
 ## Reading worksheet and existing owners
 
 Review the complete emitted document before consulting the source. An adaptive Plain request

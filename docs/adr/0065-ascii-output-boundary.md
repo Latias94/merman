@@ -186,6 +186,22 @@ The [current migration](../migrations/render-reuse-host-integration.md) owns con
 the [support matrix](../rendering/ASCII_SUPPORT_MATRIX.md) owns family admission. The dated
 schema-2/schema-3 decisions above retain their historical meaning.
 
+## Fixed routing space for flat Flowchart
+
+The default `AsciiGraphRoutingSpace::Expand` reserves node contacts and routing corridors before
+search and can rebuild a layout after a planning miss. In issue #370, those reservations brought
+the output to 48 rows at a preferred two-cell rank gap and zero vertical node padding.
+[#314](https://github.com/Latias94/merman/pull/314),
+[#323](https://github.com/Latias94/merman/pull/323),
+[#370](https://github.com/Latias94/merman/issues/370)
+
+`AsciiGraphRoutingSpace::Fixed` lays out an ungrouped Flowchart from measured content, shape
+geometry, requested spacing, authored edge lengths, and the minimum stroke and marker cells.
+It uses the same bounded route, port, and label search on that geometry. The host receives
+`RoutingSearchExhausted` or `PortCapacityExceeded` on a planning miss and can submit a new request
+with `Expand`. Fixed requires Strict presentation. Each selected width profile applies the same
+routing-space policy, and the viewport still handles the measured width of a valid scene.
+
 ## Terminal layer ordering and coordinate ownership
 
 Flowchart, State, and Swimlane retain Dugong's rank seed. Cross-axis placement uses bounded

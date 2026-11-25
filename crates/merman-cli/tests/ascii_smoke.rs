@@ -1693,6 +1693,36 @@ fn auto_layout_requires_an_explicit_width() {
 }
 
 #[test]
+#[cfg(feature = "diagram-flowchart")]
+fn fixed_flowchart_routing_space_is_applied_to_cli_reports() {
+    let output = run_with_stdin(
+        &[
+            "render",
+            "-",
+            "--format",
+            "unicode",
+            "--ascii-report",
+            "--ascii-node-padding-y",
+            "0",
+            "--ascii-graph-padding-y",
+            "2",
+            "--ascii-graph-routing-space",
+            "fixed",
+        ],
+        "flowchart TD\nA[Load] -->|submit| B[Save]",
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report = assert_plain_ascii_report(&output.stdout);
+    assert_eq!(report["primary_height"], 8);
+    assert_eq!(report["emitted_height"], 8);
+    assert!(report["text"].as_str().unwrap().contains("submit"));
+}
+
+#[test]
 fn adaptive_graph_report_distinguishes_missing_geometry_from_width_overflow() {
     let source = include_str!(
         "../../merman-ascii/tests/testdata/local-semantic/flowchart/scene_planning/dense-minimized.mmd"

@@ -107,6 +107,43 @@ fn renderer_renders_ascii_flowchart_from_mermaid_text() {
     );
 }
 
+#[cfg(feature = "diagram-flowchart")]
+#[test]
+fn facade_fixed_routing_space_respects_vertical_rank_gaps_in_both_directions() {
+    use merman::ascii::AsciiGraphRoutingSpace;
+
+    for direction in ["TD", "BT"] {
+        let source = format!("flowchart {direction}\nA[Load] -->|submit| B[Save]");
+        for gap in [2, 4] {
+            let output = Renderer::new()
+                .render(RenderRequest::ascii(
+                    &source,
+                    OperationControl::new(),
+                    AsciiRequest {
+                        options: AsciiRenderOptions::unicode()
+                            .with_node_padding_y(0)
+                            .with_graph_padding_y(gap)
+                            .with_graph_routing_space(AsciiGraphRoutingSpace::Fixed),
+                        ..Default::default()
+                    },
+                ))
+                .unwrap();
+            let RenderOutput::Ascii(Some(rendered)) = output else {
+                panic!("expected a fixed Flowchart diagram");
+            };
+            assert_eq!(rendered.emitted_extent.height, 6 + gap, "{}", rendered.text);
+            let from = rendered.text.find("Load").unwrap();
+            let edge = rendered.text.find("submit").unwrap();
+            let to = rendered.text.find("Save").unwrap();
+            assert!(if direction == "TD" {
+                from < edge && edge < to && rendered.text.contains('▼')
+            } else {
+                to < edge && edge < from && rendered.text.contains('▲')
+            });
+        }
+    }
+}
+
 #[test]
 fn facade_report_exposes_bounded_fallback_without_remeasuring_text() {
     let output = Renderer::new()

@@ -13,6 +13,7 @@ use crate::graph::topology::GraphGroupTopology;
 use crate::operation::AsciiExecution;
 use crate::options::{GraphLayoutPolicy, TerminalWidthProfile};
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
+use crate::safe_text::NormalizedLabelMetrics;
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::hash::Hash;
 
@@ -184,23 +185,6 @@ pub(super) fn preflight_minimum_grid_extent(
     Ok(())
 }
 
-pub(super) fn layout_nodes(
-    input: &LayoutInput<'_>,
-    feedback: &LayoutFeedback,
-    resources: &mut ResourceContext,
-    execution: AsciiExecution<'_>,
-) -> Result<MeasuredGridLayout> {
-    match input.graph.direction.canonical() {
-        GraphDirection::LeftRight => {
-            layout_left_right_grid_nodes(input, feedback, resources, execution)
-        }
-        GraphDirection::TopDown => {
-            layout_top_down_grid_nodes(input, feedback, resources, execution)
-        }
-        GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
-    }
-}
-
 pub(super) fn plan_node_labels<'a>(
     graph: &'a AsciiGraph,
     width_profile: TerminalWidthProfile,
@@ -277,7 +261,7 @@ fn checkpoint_node_label_plan(resources: &ResourceContext, iteration: usize) -> 
     Ok(())
 }
 
-fn layout_left_right_grid_nodes(
+pub(super) fn layout_nodes(
     input: &LayoutInput<'_>,
     feedback: &LayoutFeedback,
     resources: &mut ResourceContext,
@@ -288,30 +272,49 @@ fn layout_left_right_grid_nodes(
     let topology = input.topology.as_ref();
     let label_plans = &input.labels;
     let demand = &input.demand;
-    let ranked =
-        place_left_right_grid_nodes(graph, topology, policy, feedback, resources, execution)?;
+    let direction = graph.direction.canonical();
+    let horizontal = direction == GraphDirection::LeftRight;
+    let mut ranked = place_ranked_grid_nodes(
+        graph,
+        topology,
+        direction,
+        feedback.component_ranks(),
+        resources,
+        execution,
+    )?;
+    if let Some(topology) = topology {
+        checkpoint_layout(execution, 0)?;
+        ranked.group_directions = groups::apply_group_placement_adjustments(
+            graph,
+            &mut ranked.nodes,
+            topology,
+            policy,
+            resources,
+            execution,
+        )?;
+        checkpoint_layout(execution, 0)?;
+    }
     let placements = ranked.nodes;
     let node_padding = groups::NodePaddingIndex::try_new(graph, &placements, topology, resources)?;
     let axis_entity_count = resources.checked_grid_add(graph.nodes.len(), graph.groups.len())?;
     let mut column_widths = new_axis_sizes(axis_entity_count, resources)?;
     let mut row_heights = new_axis_sizes(axis_entity_count, resources)?;
+    resources.charge_layout_work(graph.nodes.len())?;
+    let mut sizes = Vec::new();
+    try_reserve_vec(&mut sizes, graph.nodes.len())?;
 
     for (index, coord) in placements.iter().copied().enumerate() {
-        checkpoint_layout(execution, index)?;
+        resources.checkpoint()?;
         let node = &graph.nodes[index];
         let label_plan = label_plans
             .get(index)
             .ok_or_else(|| invalid_node_label_plans(graph.diagram_type()))?;
-        let shape_size = feedback.size_for_node(
-            index,
-            demand.size_for_node(
-                &node.id,
-                node.shape,
-                node_shape_size(node, label_plan, policy, resources)?,
-                resources,
-            )?,
-            resources,
-        )?;
+        let mut shape_size = node_shape_size(node, label_plan, policy, resources)?;
+        if policy.expands_routing_space() {
+            shape_size = demand.size_for_node(&node.id, node.shape, shape_size, resources)?;
+            shape_size = feedback.size_for_node(index, shape_size, resources)?;
+        }
+        sizes.push(shape_size);
         set_axis_size(&mut column_widths, coord.x, 1);
         set_axis_size(
             &mut column_widths,
@@ -342,23 +345,32 @@ fn layout_left_right_grid_nodes(
     reserve_leaf_group_rank_axis_sizes(
         graph,
         &ranked.leaf_group_levels,
-        GraphDirection::LeftRight,
+        direction,
         policy,
         &mut column_widths,
         &mut row_heights,
         resources,
     )?;
 
-    reserve_self_loop_lanes(
-        graph,
-        &placements,
-        policy,
-        &mut column_widths,
-        &mut row_heights,
-        resources,
-    )?;
     let index_by_id = node_indices_by_id(graph)?;
-    let degrees = visible_node_degrees(graph, &index_by_id, resources, execution)?;
+    let degrees = if policy.expands_routing_space() {
+        reserve_self_loop_lanes(
+            graph,
+            &placements,
+            policy,
+            &mut column_widths,
+            &mut row_heights,
+            resources,
+        )?;
+        Some(visible_node_degrees(
+            graph,
+            &index_by_id,
+            resources,
+            execution,
+        )?)
+    } else {
+        None
+    };
     let occupied = NodeAxisBands::try_new(&placements, resources)?;
     for (index, edge) in graph.edges.iter().enumerate() {
         checkpoint_layout(execution, index)?;
@@ -370,29 +382,17 @@ fn layout_left_right_grid_nodes(
         };
         let from = placements[from_index];
         let to = placements[to_index];
-        apply_horizontal_edge_spacing(
-            edge,
-            from,
-            to,
-            policy,
-            &occupied,
-            &mut column_widths,
-            resources,
-        )?;
-        reserve_branch_rank_spacing(
-            graph,
-            edge,
-            from,
-            to,
-            degrees[from_index].outgoing > 1 || degrees[to_index].incoming > 1,
-            topology,
-            &ranked.group_directions,
-            &occupied,
-            &mut column_widths,
-            &mut row_heights,
-            resources,
-        )?;
-        if from.x == to.x {
+        if horizontal {
+            apply_horizontal_edge_spacing(
+                edge,
+                from,
+                to,
+                policy,
+                &occupied,
+                &mut column_widths,
+                resources,
+            )?;
+        } else {
             apply_vertical_edge_spacing(
                 edge,
                 from,
@@ -401,6 +401,43 @@ fn layout_left_right_grid_nodes(
                 &occupied,
                 &mut column_widths,
                 &mut row_heights,
+                resources,
+            )?;
+        }
+        if let Some(degrees) = &degrees {
+            reserve_branch_rank_spacing(
+                graph,
+                edge,
+                from,
+                to,
+                degrees[from_index].outgoing > 1 || degrees[to_index].incoming > 1,
+                topology,
+                &ranked.group_directions,
+                &occupied,
+                &mut column_widths,
+                &mut row_heights,
+                resources,
+            )?;
+        }
+        if horizontal && from.x == to.x {
+            apply_vertical_edge_spacing(
+                edge,
+                from,
+                to,
+                policy,
+                &occupied,
+                &mut column_widths,
+                &mut row_heights,
+                resources,
+            )?;
+        } else if !horizontal && from.y == to.y && from.x != to.x {
+            apply_horizontal_edge_spacing(
+                edge,
+                from,
+                to,
+                policy,
+                &occupied,
+                &mut column_widths,
                 resources,
             )?;
         }
@@ -416,6 +453,7 @@ fn layout_left_right_grid_nodes(
     let parts = finalize_compound_node_layouts(
         input,
         placements,
+        &sizes,
         feedback,
         &mut column_widths,
         &mut row_heights,
@@ -427,37 +465,6 @@ fn layout_left_right_grid_nodes(
         reversed_edge_indices: ranked.reversed_edge_indices,
         group_directions: ranked.group_directions,
     })
-}
-
-fn place_left_right_grid_nodes(
-    graph: &AsciiGraph,
-    topology: Option<&GraphGroupTopology<'_>>,
-    policy: &GraphLayoutPolicy,
-    feedback: &LayoutFeedback,
-    resources: &mut ResourceContext,
-    execution: AsciiExecution<'_>,
-) -> Result<RankedGridPlacements> {
-    let mut ranked = place_ranked_grid_nodes(
-        graph,
-        topology,
-        GraphDirection::LeftRight,
-        feedback.component_ranks(),
-        resources,
-        execution,
-    )?;
-    if !graph.groups.is_empty() {
-        checkpoint_layout(execution, 0)?;
-        ranked.group_directions = groups::apply_group_placement_adjustments(
-            graph,
-            &mut ranked.nodes,
-            topology.expect("non-empty graph groups must have topology"),
-            policy,
-            resources,
-            execution,
-        )?;
-        checkpoint_layout(execution, 0)?;
-    }
-    Ok(ranked)
 }
 
 pub(super) fn place_ranked_grid_nodes_without_group_adjustments(
@@ -507,158 +514,6 @@ fn index_order(len: usize) -> Result<Vec<usize>> {
     try_reserve_vec(&mut order, len)?;
     order.extend(0..len);
     Ok(order)
-}
-
-fn layout_top_down_grid_nodes(
-    input: &LayoutInput<'_>,
-    feedback: &LayoutFeedback,
-    resources: &mut ResourceContext,
-    execution: AsciiExecution<'_>,
-) -> Result<MeasuredGridLayout> {
-    let graph = input.graph;
-    let policy = &input.policy;
-    let topology = input.topology.as_ref();
-    let label_plans = &input.labels;
-    let demand = &input.demand;
-    let ranked =
-        place_top_down_grid_nodes(graph, topology, policy, feedback, resources, execution)?;
-    let placements = ranked.nodes;
-    let node_padding = groups::NodePaddingIndex::try_new(graph, &placements, topology, resources)?;
-    let axis_entity_count = resources.checked_grid_add(graph.nodes.len(), graph.groups.len())?;
-    let mut column_widths = new_axis_sizes(axis_entity_count, resources)?;
-    let mut row_heights = new_axis_sizes(axis_entity_count, resources)?;
-
-    for (index, coord) in placements.iter().copied().enumerate() {
-        checkpoint_layout(execution, index)?;
-        let node = &graph.nodes[index];
-        let label_plan = label_plans
-            .get(index)
-            .ok_or_else(|| invalid_node_label_plans(graph.diagram_type()))?;
-        let shape_size = feedback.size_for_node(
-            index,
-            demand.size_for_node(
-                &node.id,
-                node.shape,
-                node_shape_size(node, label_plan, policy, resources)?,
-                resources,
-            )?,
-            resources,
-        )?;
-        set_axis_size(&mut column_widths, coord.x, 1);
-        set_axis_size(
-            &mut column_widths,
-            coord.x + 1,
-            shape_size.width.saturating_sub(2),
-        );
-        set_axis_size(&mut column_widths, coord.x + 2, 1);
-        if coord.x > 0 {
-            set_axis_size(&mut column_widths, coord.x - 1, policy.rank_gap_x);
-        }
-
-        set_axis_size(&mut row_heights, coord.y, 1);
-        set_axis_size(
-            &mut row_heights,
-            coord.y + 1,
-            shape_size.height.saturating_sub(2),
-        );
-        set_axis_size(&mut row_heights, coord.y + 2, 1);
-        if coord.y > 0 {
-            set_axis_size(
-                &mut row_heights,
-                coord.y - 1,
-                groups::node_padding_y(index, &node_padding, policy, resources)?,
-            );
-        }
-    }
-
-    reserve_leaf_group_rank_axis_sizes(
-        graph,
-        &ranked.leaf_group_levels,
-        GraphDirection::TopDown,
-        policy,
-        &mut column_widths,
-        &mut row_heights,
-        resources,
-    )?;
-
-    reserve_self_loop_lanes(
-        graph,
-        &placements,
-        policy,
-        &mut column_widths,
-        &mut row_heights,
-        resources,
-    )?;
-    let index_by_id = node_indices_by_id(graph)?;
-    let degrees = visible_node_degrees(graph, &index_by_id, resources, execution)?;
-    let occupied = NodeAxisBands::try_new(&placements, resources)?;
-    for (index, edge) in graph.edges.iter().enumerate() {
-        checkpoint_layout(execution, index)?;
-        let (Some(from_index), Some(to_index)) = (
-            index_by_id.get(edge.from.as_str()).copied(),
-            index_by_id.get(edge.to.as_str()).copied(),
-        ) else {
-            continue;
-        };
-        let from = placements[from_index];
-        let to = placements[to_index];
-        apply_vertical_edge_spacing(
-            edge,
-            from,
-            to,
-            policy,
-            &occupied,
-            &mut column_widths,
-            &mut row_heights,
-            resources,
-        )?;
-        reserve_branch_rank_spacing(
-            graph,
-            edge,
-            from,
-            to,
-            degrees[from_index].outgoing > 1 || degrees[to_index].incoming > 1,
-            topology,
-            &ranked.group_directions,
-            &occupied,
-            &mut column_widths,
-            &mut row_heights,
-            resources,
-        )?;
-        if to.x != from.x && from.y == to.y {
-            apply_horizontal_edge_spacing(
-                edge,
-                from,
-                to,
-                policy,
-                &occupied,
-                &mut column_widths,
-                resources,
-            )?;
-        }
-    }
-
-    feedback.reserve_axes(
-        input,
-        &placements,
-        &mut column_widths,
-        &mut row_heights,
-        resources,
-    )?;
-    let parts = finalize_compound_node_layouts(
-        input,
-        placements,
-        feedback,
-        &mut column_widths,
-        &mut row_heights,
-        resources,
-        execution,
-    )?;
-    Ok(MeasuredGridLayout {
-        parts,
-        reversed_edge_indices: ranked.reversed_edge_indices,
-        group_directions: ranked.group_directions,
-    })
 }
 
 fn reserve_leaf_group_rank_axis_sizes(
@@ -821,26 +676,9 @@ fn apply_vertical_edge_spacing(
     } else {
         0
     };
-    let label_metrics = edge
-        .label
-        .as_deref()
-        .map(|label| {
-            try_measure_edge_label(
-                label,
-                policy.terminal_width_profile,
-                resources,
-                edge.label_break_policy,
-            )
-        })
-        .transpose()?
-        .flatten();
+    let label_metrics = measure_spacing_label(edge, policy, resources)?;
     let label_gap = if let Some(metrics) = label_metrics {
-        let marker_cells = [edge.start_marker, edge.end_marker]
-            .into_iter()
-            .filter(|marker| *marker != GraphEdgeMarker::Open)
-            .count();
-        // Preferred zero padding must still leave the full label block, independent
-        // endpoint markers, and a visible connecting cell on either side.
+        // Reserve an inline label block, endpoint markers, and a visible cell on either side.
         resources.checked_grid_add(metrics.line_count, marker_cells + 2)?
     } else {
         0
@@ -883,20 +721,7 @@ fn apply_horizontal_edge_spacing(
         policy.rank_gap_x,
         resources.checked_grid_mul(edge.length.saturating_sub(1), 2)?,
     )?;
-    let label_metrics = edge
-        .label
-        .as_deref()
-        .map(|label| {
-            try_measure_edge_label(
-                label,
-                policy.terminal_width_profile,
-                resources,
-                edge.label_break_policy,
-            )
-        })
-        .transpose()?
-        .flatten();
-    let label_gap = label_metrics
+    let label_gap = measure_spacing_label(edge, policy, resources)?
         .map(|metrics| {
             resources.checked_grid_add(
                 metrics.max_width,
@@ -922,6 +747,22 @@ fn apply_horizontal_edge_spacing(
     Ok(())
 }
 
+fn measure_spacing_label(
+    edge: &AsciiGraphEdge,
+    policy: &GraphLayoutPolicy,
+    resources: &ResourceContext,
+) -> Result<Option<NormalizedLabelMetrics>> {
+    match edge.label.as_deref() {
+        Some(label) if policy.expands_routing_space() => try_measure_edge_label(
+            label,
+            policy.terminal_width_profile,
+            resources,
+            edge.label_break_policy,
+        ),
+        _ => Ok(None),
+    }
+}
+
 fn last_free_separator(
     from: usize,
     to: usize,
@@ -940,37 +781,6 @@ fn last_free_separator(
     // Independent contours stay inside their allocated bands. If unrelated nodes cover
     // every separator, widening the last one shifts their centers without stretching them.
     Ok((first < last).then(|| last - 1))
-}
-
-fn place_top_down_grid_nodes(
-    graph: &AsciiGraph,
-    topology: Option<&GraphGroupTopology<'_>>,
-    policy: &GraphLayoutPolicy,
-    feedback: &LayoutFeedback,
-    resources: &mut ResourceContext,
-    execution: AsciiExecution<'_>,
-) -> Result<RankedGridPlacements> {
-    let mut ranked = place_ranked_grid_nodes(
-        graph,
-        topology,
-        GraphDirection::TopDown,
-        feedback.component_ranks(),
-        resources,
-        execution,
-    )?;
-    if !graph.groups.is_empty() {
-        checkpoint_layout(execution, 0)?;
-        ranked.group_directions = groups::apply_group_placement_adjustments(
-            graph,
-            &mut ranked.nodes,
-            topology.expect("non-empty graph groups must have topology"),
-            policy,
-            resources,
-            execution,
-        )?;
-        checkpoint_layout(execution, 0)?;
-    }
-    Ok(ranked)
 }
 
 fn minimum_node_grid_cells(node_count: usize, resources: &ResourceContext) -> Result<usize> {
@@ -1125,9 +935,11 @@ fn finalize_axis_projections(
     Ok((columns, rows))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn finalize_compound_node_layouts(
     input: &LayoutInput<'_>,
     placements: Vec<GridCoord>,
+    sizes: &[GraphNodeShapeSize],
     feedback: &LayoutFeedback,
     column_widths: &mut AxisSizes,
     row_heights: &mut AxisSizes,
@@ -1137,24 +949,7 @@ fn finalize_compound_node_layouts(
     let graph = input.graph;
     let policy = &input.policy;
     let topology = input.topology.as_ref();
-    let label_plans = &input.labels;
     let demand = &input.demand;
-    let mut sizes = Vec::new();
-    try_reserve_vec(&mut sizes, graph.nodes.len())?;
-    for (index, (node, plan)) in graph.nodes.iter().zip(label_plans).enumerate() {
-        resources.checkpoint()?;
-        resources.charge_layout_work(1)?;
-        sizes.push(feedback.size_for_node(
-            index,
-            demand.size_for_node(
-                &node.id,
-                node.shape,
-                node_shape_size(node, plan, policy, resources)?,
-                resources,
-            )?,
-            resources,
-        )?);
-    }
     let (mut nodes, columns, rows) = finalize_node_layouts(
         graph,
         placements,
@@ -1166,11 +961,11 @@ fn finalize_compound_node_layouts(
     )?;
     let Some(topology) = topology else {
         order::compact_nodes(
-            graph, &mut nodes, &sizes, demand, feedback, policy, resources,
+            graph, &mut nodes, sizes, demand, feedback, policy, resources,
         )?;
         return Ok((nodes, columns, rows));
     };
-    fit_node_contours(&mut nodes, &sizes, &columns, &rows, resources)?;
+    fit_node_contours(&mut nodes, sizes, &columns, &rows, resources)?;
     groups::reserve_compound_axis_spacing(
         graph,
         &nodes,
@@ -1192,7 +987,7 @@ fn finalize_compound_node_layouts(
             execution,
             &mut checkpoint_iteration,
         )?;
-        fit_node_contours(&mut nodes, &sizes, &columns, &rows, resources)?;
+        fit_node_contours(&mut nodes, sizes, &columns, &rows, resources)?;
         Ok((nodes, columns, rows))
     })
 }

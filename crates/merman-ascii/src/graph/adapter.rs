@@ -62,6 +62,14 @@ fn from_flowchart_model_transactional(
     resources: &ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<AsciiGraph> {
+    if layout_policy.routing_space == crate::AsciiGraphRoutingSpace::Fixed
+        && !model.subgraphs.is_empty()
+    {
+        return Err(AsciiError::InvalidOption {
+            field: "graph_routing_space",
+            message: "fixed routing space is only available for flat Flowchart diagrams",
+        });
+    }
     let memberships = preflight_flowchart_projection(model, resources, execution)?;
     validate_supported_flowchart_model(model, &memberships, resources, execution)?;
     let style_plan = FlowchartStylePlan::try_new(

@@ -270,8 +270,8 @@ fn on_ray(port: NodeAttachment, coord: CanvasCoord) -> bool {
     }
 }
 
-// Independently rasterize just the three contour families used by this generator. In
-// particular, a lean node's bounding rectangle is not its actual occupied shape.
+// Independently rasterize the contours used by the fixtures. Slanted nodes occupy
+// different column ranges on each row.
 fn shape_contains(node: &NodeLayout, coord: CanvasCoord) -> bool {
     if coord.y < node.y || coord.y >= node.y + node.height {
         return false;
@@ -282,7 +282,10 @@ fn shape_contains(node: &NodeLayout, coord: CanvasCoord) -> bool {
     let (left, right) = match node.shape {
         GraphNodeShape::LeanRight => (node.x + shift, right - slant + shift),
         GraphNodeShape::LeanLeft => (node.x + slant - shift, right - shift),
-        GraphNodeShape::Rect | GraphNodeShape::Rounded | GraphNodeShape::Diamond => (node.x, right),
+        GraphNodeShape::Rect
+        | GraphNodeShape::Rounded
+        | GraphNodeShape::Diamond
+        | GraphNodeShape::Cylinder => (node.x, right),
         _ => panic!("generator introduced a shape without an independent contour oracle"),
     };
     (left..=right).contains(&coord.x)
@@ -1019,6 +1022,7 @@ fn assert_planned_flowchart_preserves_information(
     node_count: usize,
     edge_count: usize,
     directions: &[GraphDirection],
+    options: AsciiRenderOptions,
 ) {
     let parsed = merman_core::SemanticParser::new()
         .parse_diagram_sync(source)
@@ -1032,9 +1036,9 @@ fn assert_planned_flowchart_preserves_information(
         "{fixture}: frozen authored node and edge counts"
     );
     for &direction in directions {
-        for mode in ["ascii", "unicode"] {
-            let case = format!("{fixture}/{direction:?}/{mode}");
-            let options = options(mode);
+        for charset in [crate::AsciiCharset::Ascii, crate::AsciiCharset::Unicode] {
+            let case = format!("{fixture}/{direction:?}/{charset:?}");
+            let options = AsciiRenderOptions { charset, ..options };
             let policy = options.flowchart_layout().graph_policy();
             let charset = GraphCharset::for_options(&options);
             let limits = AsciiResourcePolicy::unbounded();
@@ -1048,7 +1052,7 @@ fn assert_planned_flowchart_preserves_information(
                 (node_count, edge_count),
                 "{case}: projection must retain every authored node and edge"
             );
-            // Exercise recovery with the default internal work and repair allowances.
+            // Use the production planner and default internal allowances.
             let planned = crate::graph::planning::plan_graph(
                 &graph,
                 &policy,
@@ -1119,7 +1123,14 @@ fn multiline_labels_crossed_branches_and_parallel_self_loops_keep_complete_paint
             &[GraphDirection::TopDown, GraphDirection::LeftRight][..],
         ),
     ] {
-        assert_planned_flowchart_preserves_information(name, source, nodes, edges, directions);
+        assert_planned_flowchart_preserves_information(
+            name,
+            source,
+            nodes,
+            edges,
+            directions,
+            AsciiRenderOptions::default(),
+        );
     }
 }
 
@@ -1135,6 +1146,7 @@ fn dense_minimized_planning_preserves_information() {
         20,
         33,
         &[GraphDirection::TopDown, GraphDirection::LeftRight],
+        AsciiRenderOptions::default(),
     );
 }
 
@@ -1150,6 +1162,7 @@ fn dense_work_budget_component_rank_reflow_preserves_information() {
         100,
         195,
         &[GraphDirection::TopDown, GraphDirection::LeftRight],
+        AsciiRenderOptions::default(),
     );
 }
 
@@ -1180,8 +1193,28 @@ fn capacity_recovery_keeps_every_edge_of_previously_readable_cycles() {
             8,
             edges,
             &[GraphDirection::TopDown],
+            AsciiRenderOptions::default(),
         );
     }
+}
+
+#[test]
+#[cfg(feature = "diagram-flowchart")]
+fn issue_370_fixed_routing_preserves_every_edge_and_label() {
+    assert_planned_flowchart_preserves_information(
+        "issue_370_terminal_height",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/testdata/local-semantic/flowchart/scene_planning/issue_370_terminal_height.mmd"
+        )),
+        10,
+        10,
+        &[GraphDirection::TopDown],
+        AsciiRenderOptions::unicode()
+            .with_node_padding_y(0)
+            .with_graph_padding_y(2)
+            .with_graph_routing_space(crate::AsciiGraphRoutingSpace::Fixed),
+    );
 }
 
 #[test]

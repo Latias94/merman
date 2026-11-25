@@ -287,6 +287,7 @@ fn side(value: char) -> Result<PositionedSide> {
 
 fn policy(options: &AsciiRenderOptions) -> GraphLayoutPolicy {
     GraphLayoutPolicy {
+        routing_space: Default::default(),
         node_padding_x: options.node_padding_x.unwrap_or(options.box_border_padding),
         node_padding_y: options.node_padding_y.unwrap_or(0),
         rank_gap_x: 9,

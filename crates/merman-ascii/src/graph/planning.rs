@@ -69,7 +69,7 @@ pub(super) fn plan_graph<'graph>(
             Err(
                 miss @ (AsciiError::RoutingSearchExhausted { .. }
                 | AsciiError::PortCapacityExceeded { .. }),
-            ) => miss,
+            ) if policy.expands_routing_space() => miss,
             Err(error) => return Err(error),
         };
         let allowance = &execution
@@ -135,6 +135,14 @@ fn initial_layout<'graph>(
 ) -> Result<InitialGraph<'graph>> {
     let initial = input.generate(&LayoutFeedback::default(), resources, execution)?;
     let routes = routing::SceneRoutingInput::try_new(graph, &graph.edges, charset, resources)?;
+    if !policy.expands_routing_space() {
+        return Ok(InitialGraph {
+            measured: initial,
+            feedback: LayoutFeedback::default(),
+            input: routes,
+            incumbent: None,
+        });
+    }
     let allowance = &execution
         .graph_planning()
         .expect("scene planning budget")

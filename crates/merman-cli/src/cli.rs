@@ -1846,6 +1846,16 @@ pub(crate) struct TextOutputCliArgs {
     )]
     pub(crate) ascii_graph_presentation: TextGraphPresentation,
 
+    /// Use fixed node sizes and rank gaps for a flat Flowchart with strict presentation.
+    #[arg(
+        long = "ascii-graph-routing-space",
+        value_enum,
+        default_value = "expand",
+        help_heading = "Text output",
+        hide_short_help = true
+    )]
+    pub(crate) ascii_graph_routing_space: TextGraphRoutingSpace,
+
     /// Emit the canonical ASCII report JSON instead of text bytes.
     #[arg(
         long = "ascii-report",
@@ -1901,6 +1911,14 @@ pub(crate) enum TextGraphPresentation {
     #[default]
     Strict,
     Adaptive,
+}
+
+#[cfg(feature = "ascii")]
+#[derive(Debug, Clone, Copy, Default, ValueEnum)]
+pub(crate) enum TextGraphRoutingSpace {
+    #[default]
+    Expand,
+    Fixed,
 }
 
 #[cfg(feature = "ascii")]
