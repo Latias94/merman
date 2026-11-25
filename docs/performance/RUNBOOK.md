@@ -238,14 +238,17 @@ same or different Node products. Compare each later variant against the first. T
 independent rounds in opposite order. Set `--process-rounds` to select a longer even schedule.
 Use `--variant` on its own when selecting products.
 `MODULE` is a local public entry path. Omit it to use the locked consumer. An inline Options JSON
-object can follow `ENGINE:` directly or use an empty module field (`::`). Merman variants without
-the JSON suffix call `renderSvgSync(source)`. A supplied suffix is passed verbatim as `optionsJson`
-on every call. Use `--variant-layout LABEL=LAYOUT` to select a site layout when the engine is
-created. The collector checks the reported SVG plan for each successful request after timing.
+object can follow `ENGINE:` directly or use an empty module field (`::`). Pass `merman::{}` for a
+matched Merman variant. The runner inserts the frozen request's `diagram_id` into each Options JSON
+template before timing. A template with an explicit ID must match every request in the scenario.
+A named Merman variant without a JSON suffix calls `renderSvgSync(source)` and records its raw
+timings as a no-options diagnostic. These rows are ineligible for ratios because the call omits the
+plan ID. Use `--variant-layout LABEL=LAYOUT` to select a site layout when the engine is created.
+The SVG plan for a successful request must report the requested layout explicitly.
 
 ```console
 python tools/bench/bench.py plan --scenario small-svg --out target/bench/node-layout-plan.json
-python tools/bench/bench.py node --plan target/bench/node-layout-plan.json --variant direct=merman --variant 'with-json=merman::{}' --variant-layout direct=dagre --variant-layout with-json=dagre --out-dir target/bench/node-options
+python tools/bench/bench.py node --plan target/bench/node-layout-plan.json --variant 'matched=merman::{}' --variant no-options=merman --variant-layout matched=dagre --variant-layout no-options=dagre --out-dir target/bench/node-options
 ```
 
 Each worker runs the cold batch, warms the same renderer for up to 20 calls or 150 ms, then

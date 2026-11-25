@@ -12,6 +12,7 @@ from sys import float_info
 from .coverage import _schema_v1, _source_digest, summarize_coverage
 from .node import _comparison_file, _process_order
 from .reference import (LAYOUTS, NODE_PRODUCTS, _product as reference_product,
+                        _scenario as compare_scenario,
                         node_worker_failures, product_label, valid_node_variant_label)
 
 
@@ -243,6 +244,9 @@ def _case(scenario, observation, compared, issue, failures, audit_issue):
         elif compared.get("planned_requests") != scenario["requests"] or observation.get("planned_requests") != scenario["requests"]:
             issue = "evidence-mismatch"
             observation = {}
+        elif any("diagram-id-not-applied" in request[side]["statuses"]
+                 for request in observation.get("non_stable_requests", []) for side in ("left", "right")):
+            issue = "diagram-id-not-applied"
         elif observation.get("non_stable_requests") or compared.get("worker_failures"):
             issue = "output-not-stable"
         elif "failed" in checks.values():
@@ -308,6 +312,42 @@ def _measured_worker(row, index, requests, raw):
                     and len(batch["results"]) == len(requests)
                     and all(isinstance(r, dict) and isinstance(r.get("status"), str) and r["status"] for r in batch["results"])
                     for batch in [row.get("cold_batch"), *warm]))
+
+
+def _replay_pair(workers, compared, planned):
+    """Bind a published eligible pair to its two raw scenario rows and their warm batches."""
+    if any(worker is None for worker in workers) or not _matches_requests(compared.get("requests"), planned):
+        return "evidence-mismatch"
+    (left, left_row), (right, right_row) = workers
+    for raw, row in workers:
+        variant = raw.get("variant")
+        if raw["engine"] != "merman" or variant is None:
+            continue
+        if variant["options_json"] is None:
+            return "diagram-id-not-applied"
+        if raw.get("diagram_id_mode") != "plan":
+            return "diagram-id-unverified"
+        if layout := variant.get("site_layout"):
+            plans = row.get("layout_plans")
+            if not isinstance(plans, list) or len(plans) != len(planned) or any(
+                not isinstance(plan, dict) or not isinstance(plan.get("required_capability_ids"), list)
+                or [cap for cap in plan["required_capability_ids"] if isinstance(cap, str) and cap.startswith("layout-")]
+                != [f"layout-{layout}"] for plan in plans
+            ):
+                return "evidence-mismatch"
+
+    same_backend = (left["engine"] == right["engine"] == "merman" and left.get("variant") and right.get("variant")
+                    and left["backend"] == right["backend"]
+                    and left["variant"].get("site_layout") == right["variant"].get("site_layout"))
+    declared = [{"request_index": i} for i, request in enumerate(planned) if "drawing_facts" in request]
+    checks = compared.get("drawing_checks", {})
+    drawings = {side: dict(status=checks.get(side, "not-checked"), cases=declared) for side in ("left", "right")}
+    try:
+        replayed = compare_scenario(left_row, right_row, True, False, left["samples"], True, drawings,
+                                    identical_svg=same_backend)
+    except (KeyError, TypeError, ValueError):
+        return "evidence-mismatch"
+    return None if replayed == compared else "evidence-mismatch"
 
 
 def _duration(value):
@@ -400,7 +440,7 @@ def _passed_drawing(proof, row, planned):
 
 def _round_workers(folder, order, collection, rounds, frozen, plan, audit, measurements):
     """Verify each product once and collect its worker measurements and drawing checks."""
-    verified, passed = set(), set()
+    verified, passed = {}, set()
     for label, run in collection.get("runs", {}).items():
         if (order.count(label) != 1
                 or (label in collection.get("errors", {}) and not run.get("worker_failures"))):
@@ -408,11 +448,11 @@ def _round_workers(folder, order, collection, rounds, frozen, plan, audit, measu
         raw = _worker_report(folder, label, run, rounds, frozen, plan)
         if not raw:
             continue
-        verified.add(label)
         drawings = _drawing_rows(audit, rounds["reference_identities"][label], raw["samples"])
         for index, row in enumerate(raw["scenarios"]):
             name = row["id"]
             if _measured_worker(row, index, plan[name], raw):
+                verified[name, label] = (raw, row)
                 measurements[name, label].append(_worker_measurements(row, raw.get("init_scope")))
                 if _passed_drawing(drawings.get(name), row, plan[name]):
                     passed.add((name, label))
@@ -550,7 +590,7 @@ def _load(directory, *, independent):
                 audit, audit_issue = _sidecar(folder / "drawing-audit.json", digest)
             else:
                 audit_issue = "evidence-mismatch"
-        verified, passed_drawings = set(), set()
+        verified, passed_drawings = {}, set()
         if independent and not issue:
             observer = audit.get("observer")
             if (isinstance(observer, dict) and isinstance(observer.get("browser"), str) and observer["browser"].strip()
@@ -578,8 +618,6 @@ def _load(directory, *, independent):
             if summary:
                 warm_batches = warm_batches or summary["samples"]
                 compared, problem = _comparison(folder / filename, left, peer, summary, digest, frozen, records, rounds, runs)
-                if named and (left not in verified or peer not in verified):
-                    problem = problem or "evidence-mismatch"
             else:
                 problem = problem or "missing-evidence"
             rows = {r["id"]: r for r in summary.get("scenarios", [])} if problem != "evidence-mismatch" else {}
@@ -588,9 +626,13 @@ def _load(directory, *, independent):
                 comparison = compared.get(name, {})
                 case = _case(s, rows.get(name, {}), comparison, problem, failures, audit_issue)
                 if independent:
+                    if not case["reason"]:
+                        workers = [verified.get((name, label)) for label in (left, peer)]
+                        case["reason"] = _replay_pair(workers, comparison, plan[name])
                     checks = {"left": "passed", "right": "passed"}
                     case["visual_passed"] = (
-                        (name, left) in passed_drawings and (name, peer) in passed_drawings
+                        case["reason"] != "evidence-mismatch"
+                        and (name, left) in passed_drawings and (name, peer) in passed_drawings
                         and case["observation"].get("drawing_checks") == checks == comparison.get("drawing_checks")
                         and comparison.get("planned_requests") == s["requests"]
                         and not comparison.get("worker_failures") and not case["observation"].get("worker_failures")

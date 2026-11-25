@@ -16,7 +16,6 @@ const validator = fileURLToPath(new URL("../merman_bench/svg.py", import.meta.ur
 const DEFAULT_WARMUP = { max_calls: 20, max_ms: 150 };
 const VALIDATION_BATCH_BYTES = 32 * 1024 * 1024;
 const SITE_LAYOUTS = ["dagre", "elk", "shoal"];
-const FLOWCHART_TYPES = new Set(["flowchart", "flowchart-v2", "agentflow", "swimlane"]);
 
 function resolveImport(specifier, cwd) {
   // Let Node select the same conditional export as an import in the consumer project.
@@ -225,6 +224,16 @@ function validateOutputs(jobs) {
   }));
 }
 
+// Only assert literal root IDs in the subset that Merman's SVG ID sanitizer preserves.
+function preservesRootId(id) {
+  return /^[A-Za-z](?:[A-Za-z0-9_]|-(?=[A-Za-z0-9_]))*$/u.test(id) && id !== "m";
+}
+
+function rootId(svg) {
+  const match = /^<svg(?:\s+[^\s=<>]+\s*=\s*(?:"[^"]*"|'[^']*'))*?\s+id\s*=\s*(?:"([^"]*)"|'([^']*)')/u.exec(svg.trimStart());
+  return match?.[1] ?? match?.[2] ?? null;
+}
+
 function observedOutput(attempt) {
   const { elapsed_ms, svg } = attempt;
   if (Object.hasOwn(attempt, "error")) {
@@ -309,6 +318,9 @@ function deferredValidation(requests, validate, directory, maxBytes) {
         const error = failed ? { code: result.code, message: result.message } : null;
         const diagnostic = error && JSON.stringify(error);
         const svg = result.output_sha256 === null ? null : attempt.svg;
+        if (svg !== null && (requests[index].expected_root_id !== undefined || requests[index].omits_diagram_id)) {
+          result.svg_root_id = rootId(svg);
+        }
         // The validator sees lone surrogates in JSON. The report's UTF-8 hash replaces them.
         const svgKey = svg !== null && !svg.isWellFormed()
           ? `escaped:${sha256(JSON.stringify(svg))}` : result.output_sha256;
@@ -374,6 +386,17 @@ export async function measureScenario(requests, render, {
 }
 
 function summarizeBatch(requests, { elapsed_ms, firstReturnMs, results }, importStart) {
+  for (const [index, result] of results.entries()) {
+    if (result.status !== "ok") continue;
+    const { expected_root_id, omits_diagram_id } = requests[index];
+    if (omits_diagram_id) {
+      result.status = "diagram-id-not-applied";
+      result.message = "This no-options bridge call omits the frozen diagram_id.";
+    } else if (expected_root_id !== undefined && result.svg_root_id !== expected_root_id) {
+      result.status = "diagram-id-mismatch";
+      result.message = `Expected SVG root id ${JSON.stringify(expected_root_id)}, found ${JSON.stringify(result.svg_root_id)}.`;
+    }
+  }
   const successes = results.filter((item) => item.status === "ok");
   const first = results[0];
   const firstDrew = first?.status === "ok" &&
@@ -389,13 +412,69 @@ function summarizeBatch(requests, { elapsed_ms, firstReturnMs, results }, import
   };
 }
 
+function noOptionsBridge(engine, variant) {
+  return engine === "merman" && variant?.options_json === null;
+}
+
+function fieldValueEnd(text, objectStart, key, expectedToken) {
+  // The template is already valid JSON. Locate the field without rewriting the option bytes.
+  let depth = 0;
+  const tokens = /"(?:[^"\\]|\\.)*"|[{}\[\]]/gu;
+  tokens.lastIndex = objectStart;
+  const value = /[ \t\r\n]*:[ \t\r\n]*(\{|null)/uy;
+  for (const { 0: token, index } of text.matchAll(tokens)) {
+    if (token === "{" || token === "[") depth++;
+    else if (token === "}" || token === "]") {
+      if (--depth === 0) break;
+    } else if (depth === 1 && JSON.parse(token) === key) {
+      value.lastIndex = index + token.length;
+      if (value.exec(text)?.[1] === expectedToken) return value.lastIndex;
+    }
+  }
+  throw new Error(`Could not locate the ${key} Options JSON field`);
+}
+
+function optionsWithPlanId(text = "{}") {
+  const options = JSON.parse(text);
+  if (options === null || typeof options !== "object" || Array.isArray(options)) {
+    throw new Error("A Merman variant requires an Options JSON object");
+  }
+  const { svg } = options;
+  if (svg != null && (typeof svg !== "object" || Array.isArray(svg))) {
+    throw new Error("A Merman variant requires svg options to be an object or null");
+  }
+  if (svg && Object.hasOwn(svg, "diagram_id") && svg.diagram_id !== null) {
+    return (id) => {
+      if (svg.diagram_id !== id) throw new Error(`svg.diagram_id conflicts with frozen diagram_id ${JSON.stringify(id)}`);
+      return { optionsJson: text };
+    };
+  }
+  const root = text.indexOf("{");
+  const offset = svg === undefined ? root + 1 : fieldValueEnd(text, root, "svg", svg === null ? "null" : "{");
+  const insertId = (prefix, suffix) => (id) => ({ optionsJson: prefix + JSON.stringify(id) + suffix });
+  if (svg === null) return insertId(text.slice(0, offset - 4) + '{"diagram_id":', "}" + text.slice(offset));
+  if (svg?.diagram_id === null) {
+    const idEnd = fieldValueEnd(text, offset - 1, "diagram_id", "null");
+    return insertId(text.slice(0, idEnd - 4), text.slice(idEnd));
+  }
+  const comma = Object.keys(svg ?? options).length ? "," : "";
+  const prefix = text.slice(0, offset) + (svg ? '"diagram_id":' : '"svg":{"diagram_id":');
+  const suffix = (svg ? "" : "}") + comma + text.slice(offset);
+  return insertId(prefix, suffix);
+}
+
 async function runScenario({ product, engine, variant, scenario, samples, warmup, drawingDir, validationDirectory }) {
   const merman = engine === "merman";
   const siteLayout = variant?.site_layout;
-  const directOptions = typeof variant?.options_json === "string" ? { optionsJson: variant.options_json } : undefined;
+  const omitId = noOptionsBridge(engine, variant);
+  const planOptions = merman && !omitId ? optionsWithPlanId(variant?.options_json) : null;
   const requests = scenario.requests.map(({ source, diagram_id, expected_labels, expected_outcome }) => {
     const request = { source, diagram_id, expected_labels, expected_outcome };
-    if (merman) request.options = variant ? directOptions : { optionsJson: JSON.stringify({ svg: { diagram_id } }) };
+    if (planOptions) {
+      request.options = planOptions(diagram_id);
+      if (preservesRootId(diagram_id)) request.expected_root_id = diagram_id;
+    }
+    if (omitId) request.omits_diagram_id = true;
     if (engine === "pele") request.options = { idPrefix: diagram_id, now: 0 };
     return request;
   });
@@ -411,7 +490,7 @@ async function runScenario({ product, engine, variant, scenario, samples, warmup
   try {
     let render;
     if (merman && typeof instance?.renderSvgSync === "function") {
-      render = variant && !directOptions
+      render = omitId
         ? ({ source }) => instance.renderSvgSync(source)
         : ({ source, options }) => instance.renderSvgSync(source, options);
     } else if (engine === "pele" && typeof api.render === "function") {
@@ -437,15 +516,10 @@ async function runScenario({ product, engine, variant, scenario, samples, warmup
     const { cold_batch, warm_samples } = measured;
     const peakRss = process.resourceUsage().maxRSS;
     const layoutPlans = siteLayout && requests.map(({ source, options, diagram_id }, index) => {
-      if (cold_batch.results[index].status !== "ok") return null;
+      if (!["ok", "diagram-id-not-applied"].includes(cold_batch.results[index].status)) return null;
       const { ready, diagram_type, required_capability_ids } = JSON.parse(instance.svgPlanJsonSync(source, options));
-      const layouts = SITE_LAYOUTS.filter((layout) => required_capability_ids.includes(`layout-${layout}`));
-      // Older packages did not report Dagre as a separate capability. Other requested backends
-      // require an explicit witness in families where the site layout is selectable.
-      const layoutMismatch = layouts.length
-        ? layouts.length !== 1 || layouts[0] !== siteLayout
-        : siteLayout !== "dagre" && FLOWCHART_TYPES.has(diagram_type);
-      if (!ready || layoutMismatch) {
+      const layouts = required_capability_ids.filter((id) => id.startsWith("layout-"));
+      if (!ready || layouts.length !== 1 || layouts[0] !== `layout-${siteLayout}`) {
         const capabilities = required_capability_ids.join(", ") || "no required capabilities";
         throw new Error(`${diagram_id}: requested ${siteLayout}. SVG plan reports ${capabilities}.`);
       }
@@ -549,7 +623,7 @@ async function main() {
       !/^[1-9]\d*$/u.test(values.samples) || !Number.isSafeInteger(samples) ||
       !["warmup-calls", "warmup-ms"].every((key) => /^\d+$/u.test(values[key]) && Number.isSafeInteger(Number(values[key]))) ||
       !(timeoutSeconds > 0 && timeoutSeconds * 1000 <= 2_147_483_647)) {
-    throw new Error(`Usage: node tools/bench/collectors/node_runner.mjs --plan FILE --engine ${Object.keys(products).join("|")} [--module ENTRY] [--variant-label LABEL [--options-json JSON] [--site-layout dagre|elk|shoal]] [--samples N] [--warmup-calls N] [--warmup-ms N] [--timeout-seconds N] [--drawing-dir DIR [--all-drawings]]\nWarmup stops after ${DEFAULT_WARMUP.max_calls} calls or ${DEFAULT_WARMUP.max_ms} ms by default, whichever comes first. Set either limit to 0 to skip warmup.`);
+    throw new Error(`Usage: node tools/bench/collectors/node_runner.mjs --plan FILE --engine ${Object.keys(products).join("|")} [--module ENTRY] [--variant-label LABEL [--options-json JSON] [--site-layout dagre|elk|shoal]] [--samples N] [--warmup-calls N] [--warmup-ms N] [--timeout-seconds N] [--drawing-dir DIR [--all-drawings]]\nPass --options-json={} to match the plan IDs in a named Merman variant. Omitting --options-json in a named variant collects a no-options diagnostic without a timing ratio.\nWarmup stops after ${DEFAULT_WARMUP.max_calls} calls or ${DEFAULT_WARMUP.max_ms} ms by default, whichever comes first. Set either limit to 0 to skip warmup.`);
   }
   if (values["all-drawings"] && !values["drawing-dir"]) throw new Error("--all-drawings requires --drawing-dir");
   const label = values["variant-label"];
@@ -577,6 +651,7 @@ async function main() {
   const collectorFiles = ["node_runner.mjs", "../workloads.json", "../merman_bench/svg.py"];
   const report = {
     schema_version: 1, surface: "node", output_format: "svg", engine, backend: product.backend,
+    diagram_id_mode: noOptionsBridge(engine, variant) ? "omitted" : "plan",
     ...(variant ? { variant } : {}),
     ...(drawingDir ? { drawing_dir: drawingDir } : {}),
     // The existing comparison gate uses this fingerprint to withhold ratios across collection recipes.

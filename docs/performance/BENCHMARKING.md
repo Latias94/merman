@@ -937,9 +937,13 @@ executable digest and outcome. Preserve the raw samples with the report for repl
 
 Use the same frozen workload plan to compare the pinned Pele and Mermaid v13 products. `bench.py
 node` retains coverage, output checks, and warm samples per product. A variant can select a local
-Merman entry and an explicit site layout. Cold CLI, native Rust, Node N-API, Node WASM, and browser
-results have distinct execution and output boundaries. Use the runner for each boundary and report
-only qualified matching requests. [Node reference workflow](RUNBOOK.md#run-an-ordered-workload)
+Merman entry and an explicit site layout. Comparable variants pass the plan's diagram ID on every
+request and require explicit capability evidence for a declared layout. A named Merman no-options
+diagnostic records its direct calls and has no comparison ratio. Published round comparisons check
+the original worker rows against the frozen plan and replay eligible pairs from their measured
+batches. Cold CLI, native Rust, Node N-API, Node WASM, and browser results have distinct execution
+and output boundaries. Use the runner for each boundary and report only qualified matching
+requests. [Node reference workflow](RUNBOOK.md#run-an-ordered-workload)
 
 ## Browser comparison with Mermaid.js
 
