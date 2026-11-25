@@ -13,7 +13,9 @@
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
-use crate::graph::{LGraph, LNodeKind, PortRef, PortSide, ReorderNodePortsWorkContext};
+use crate::graph::{
+    FlatPortRemap, LGraph, LNodeKind, PortRef, PortSide, ReorderNodePortsWorkContext,
+};
 use crate::options::{OrderingStrategy, PortConstraints, PortSortingStrategy};
 use crate::work::{WorkControl, WorkError, ceil_log2, checked_add, checked_mul, checked_sum};
 
@@ -114,6 +116,15 @@ impl SweepCopy {
         graph: &mut LGraph,
         set_port_constraints: bool,
     ) -> bool {
+        self.transfer_with_port_remap(graph, set_port_constraints, None)
+    }
+
+    pub(super) fn transfer_with_port_remap(
+        &self,
+        graph: &mut LGraph,
+        set_port_constraints: bool,
+        flat_remap: Option<&FlatPortRemap>,
+    ) -> bool {
         if self.node_order.len() != graph.layers.len() {
             return false;
         }
@@ -138,7 +149,10 @@ impl SweepCopy {
                 let Some(port_order) = port_order_indices_by_id(graph, node, port_order) else {
                     return false;
                 };
-                if !graph.reorder_node_ports(node, port_order) {
+                if graph
+                    .reorder_node_ports_with_remap(node, port_order, flat_remap)
+                    .is_none()
+                {
                     return false;
                 }
                 if set_port_constraints
@@ -2811,6 +2825,43 @@ mod tests {
             vec![Some(7), Some(8)]
         );
     }
+
+    #[test]
+    fn sweep_copy_reuses_reference_sites_after_an_indexed_permutation() {
+        let mut graph = graph(
+            vec![node("owner"), node("peer")],
+            vec![
+                edge("forward", "owner", "peer"),
+                edge("loop", "owner", "owner"),
+            ],
+        );
+        graph.set_node_layer(0, 0);
+        graph.set_node_layer(1, 1);
+        crate::selfloops::preprocess_self_loops(&mut graph);
+        initialize_crossing_minimization_port_ids(&mut graph);
+        graph.layerless_nodes[0].ports[1].crossing_minimization_id = None;
+        graph.layerless_nodes[1].origin_port = Some(crate::graph::GraphPortRef {
+            graph_id: graph.id.clone(),
+            port: PortRef { node: 0, port: 2 },
+        });
+        let best = SweepCopy::new(&graph, &[vec![0], vec![1]]);
+        let mut expected = graph.clone();
+        for node in &mut expected.layerless_nodes {
+            node.port_constraints = PortConstraints::FixedOrder;
+        }
+
+        let remap = FlatPortRemap::new(&graph, &mut crate::work::NoopWorkControl).unwrap();
+        assert_eq!(
+            graph.reorder_node_ports_with_remap(0, [2, 0, 1], Some(&remap)),
+            Some(vec![1, 2, 0])
+        );
+        let mut full_walk = graph.clone();
+        assert!(best.transfer_node_and_port_orders_to_graph(&mut full_walk, true));
+        assert!(best.transfer_with_port_remap(&mut graph, true, Some(&remap)));
+        assert_eq!(graph, full_walk);
+        assert_eq!(graph, expected);
+    }
+
     #[test]
     fn sweep_copy_port_lookup_preserves_duplicate_and_mixed_fallback_matches() {
         let mut graph = graph(vec![node("A")], vec![]);

@@ -1663,15 +1663,18 @@ impl HierarchySweep {
 
     fn transfer_node_and_port_orders_to_graph(&self, root: &mut LGraph) -> bool {
         let mut changed = false;
-        for index in 0..self.infos.len() {
-            let Some(best_sweep) = self.infos[index]
-                .get_best_sweep(self.cross_min_type)
-                .cloned()
-            else {
+        for info in &self.infos {
+            let Some(best_sweep) = info.get_best_sweep(self.cross_min_type).cloned() else {
                 continue;
             };
-            let graph = graph_mut_at_path(root, &self.infos[index].path);
-            changed |= best_sweep.transfer_node_and_port_orders_to_graph(graph, true);
+            let graph = graph_mut_at_path(root, &info.path);
+            // The single-graph sweep preserves the owner and arena slot of every indexed site.
+            // Restoring layer order and port constraints preserves them as well.
+            let remap = info
+                .barycenter_heuristic
+                .as_ref()
+                .and_then(|heuristic| heuristic.port_distributor.flat_port_remap.as_ref());
+            changed |= best_sweep.transfer_with_port_remap(graph, true, remap);
         }
         changed
     }
@@ -3390,6 +3393,7 @@ pub(crate) fn minimize_single_graph_hierarchical_barycenter_with_work_control(
             }
         }
     }
+    // Keep the existing transfer admission for both reference walks.
     work.charge(transfer_work)?;
     graph.random = sweep.barycenter_random(0);
     Ok(sweep.transfer_node_and_port_orders_to_graph(graph))
