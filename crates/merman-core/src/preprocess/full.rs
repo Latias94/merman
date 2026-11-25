@@ -1,5 +1,5 @@
 #[cfg(test)]
-use super::{Directive, detect_init_controlled};
+use super::directives::{Directive, detect_init_controlled};
 use super::{DirectiveRecoveryMode, PreprocessResult, preprocess_source_capture_controlled};
 #[cfg(feature = "editor-facts")]
 use super::{PreprocessCaptureOutcome, SourceConfigCaptureMode};
@@ -89,7 +89,7 @@ pub(super) fn detect_init(
         input,
         &registry_detector(registry),
         #[cfg(feature = "editor-facts")]
-        &mut super::SourceAppearanceCapture::default(),
+        &mut super::source_config::SourceAppearanceCapture::default(),
         &control,
     )
     .expect("a private parse control cannot be cancelled")
@@ -97,9 +97,11 @@ pub(super) fn detect_init(
 
 #[cfg(test)]
 mod tests {
-    use super::super::{Value, detect_directives, preprocess_builtin_semantic_controlled};
+    use super::super::directives::detect_directives;
+    use super::super::preprocess_builtin_semantic_controlled;
     use super::*;
     use crate::SourceSpan;
+    use serde_json::Value;
     use serde_json::json;
     use std::sync::atomic::{AtomicUsize, Ordering};
 

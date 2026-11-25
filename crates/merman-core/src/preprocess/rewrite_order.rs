@@ -1,6 +1,17 @@
-use super::*;
+use super::config_scan::{max_flow_collection_depth_controlled, trim_whitespace_bounds_controlled};
+use super::directives::{
+    MAX_DIRECTIVE_CONFIG_PARSE_BYTES, normalize_directive_quotes_controlled,
+    sanitize_directive_controlled,
+};
+use super::{
+    PreprocessedSource, split_frontmatter_block_controlled, text::cleanup_text_controlled,
+};
+use crate::{OperationControl, OperationControlResult, SourceSpan};
+use merman_core_preprocess::scan::controlled::ControlledScanCheckpoints;
+use merman_core_preprocess::text::PreprocessMarkers;
 use merman_model::json::ordered::{JsonOrderScope, OrderedJson};
 use serde::Deserialize;
+use serde_json::{Map, Value};
 
 const MAX_REWRITE_DEPTH: usize = 64;
 const MAX_REWRITE_DIRECTIVES: usize = 128;
