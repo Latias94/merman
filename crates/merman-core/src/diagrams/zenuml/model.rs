@@ -36,6 +36,7 @@ pub(crate) fn render_model_to_compat_json_controlled(
 mod tests {
     use super::*;
     use crate::MermaidConfig;
+    use merman_model::families::zenuml::model_to_typed_json_controlled;
     use serde::Serialize;
 
     #[derive(Serialize)]
@@ -49,7 +50,7 @@ mod tests {
     }
 
     #[test]
-    fn iterative_projection_preserves_serde_fields_and_object_order() {
+    fn iterative_projection_preserves_serde_fields_and_typed_wire_order() {
         let source = concat!(
             "zenuml\n@Actor A 120\n@Starter(A)\n",
             "A.call(){\n// closing comment\n}\nnew B\nreturn okay\n",
@@ -73,11 +74,11 @@ mod tests {
             statements: &built.model.statements,
         };
         let mut expected = serde_json::to_value(&legacy).unwrap();
-        assert_eq!(serde_json::to_value(&built.model).unwrap(), expected);
-        assert_eq!(
-            serde_json::to_vec(&built.model).unwrap(),
-            serde_json::to_vec(&legacy).unwrap()
-        );
+        let canonical =
+            model_to_typed_json_controlled(&built.model, &crate::OperationControl::new())
+                .unwrap()
+                .unwrap();
+        assert_eq!(canonical.as_value(), &expected);
         assert!(expected.get("type").is_none());
         assert_eq!(expected["participants"][0]["widthSource"], "120");
         assert!(expected["participants"][0].get("width").is_none());
@@ -101,9 +102,11 @@ mod tests {
             .insert("type".into(), json!("zenuml"));
         let projected = render_model_to_compat_json(&built.model, &meta).unwrap();
         assert_eq!(projected, expected);
+
         assert_eq!(
-            serde_json::to_vec(&projected).unwrap(),
-            serde_json::to_vec(&expected).unwrap()
+            serde_json::to_string(&built.model).unwrap(),
+            serde_json::to_string(&legacy).unwrap(),
+            "typed ZenUML serialization must retain legacy field order"
         );
     }
 }

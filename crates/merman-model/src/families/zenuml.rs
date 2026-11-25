@@ -3,6 +3,7 @@ pub mod compat;
 
 use crate::json::ManagedJson;
 use crate::{OperationControl, OperationControlResult, SourceSpan};
+use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
@@ -22,10 +23,20 @@ impl Serialize for ZenumlDiagramModel {
         &self,
         serializer: S,
     ) -> std::result::Result<S::Ok, S::Error> {
-        let projected = model_to_typed_json_controlled(self, &OperationControl::new())
-            .expect("a private projection control cannot be cancelled")
-            .map_err(serde::ser::Error::custom)?;
-        projected.serialize(serializer)
+        if !statements_fit_serde_depth(&self.statements) {
+            return Err(serde::ser::Error::custom(
+                "semantic JSON exceeds generic serde's 128-container depth; use write_json",
+            ));
+        }
+
+        // Keep the typed wire's declaration order independent of the JSON map backend.
+        let mut wire = serializer.serialize_struct("ZenumlDiagramModel", 5)?;
+        wire.serialize_field("title", &self.title)?;
+        wire.serialize_field("starter", &self.starter)?;
+        wire.serialize_field("participants", &self.participants)?;
+        wire.serialize_field("groups", &self.groups)?;
+        wire.serialize_field("statements", &self.statements)?;
+        wire.end()
     }
 }
 
@@ -170,6 +181,56 @@ pub struct ZenumlFragmentSection {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub body_comment: Option<String>,
     pub span: SourceSpan,
+}
+
+fn statements_fit_serde_depth(statements: &[ZenumlStatement]) -> bool {
+    const MAX_CONTAINER_DEPTH: usize = 128;
+
+    enum Frame<'a> {
+        Statements(std::slice::Iter<'a, ZenumlStatement>),
+        Sections(std::slice::Iter<'a, ZenumlFragmentSection>),
+    }
+
+    let mut stack = vec![Frame::Statements(statements.iter())];
+    while let Some(frame) = stack.last_mut() {
+        let children = match frame {
+            Frame::Statements(statements) => {
+                let Some(statement) = statements.next() else {
+                    stack.pop();
+                    continue;
+                };
+                match &statement.kind {
+                    ZenumlStatementKind::Message { body, .. }
+                    | ZenumlStatementKind::Creation { body, .. } => {
+                        Some(Frame::Statements(body.iter()))
+                    }
+                    ZenumlStatementKind::Fragment { sections, .. } => {
+                        Some(Frame::Sections(sections.iter()))
+                    }
+                    ZenumlStatementKind::Return { .. }
+                    | ZenumlStatementKind::Reference { .. }
+                    | ZenumlStatementKind::Divider { .. } => None,
+                }
+            }
+            Frame::Sections(sections) => {
+                let Some(section) = sections.next() else {
+                    stack.pop();
+                    continue;
+                };
+                Some(Frame::Statements(section.statements.iter()))
+            }
+        };
+
+        // Each frame counts an owner object and its array, starting with the diagram.
+        // An entry adds an object and its span. Child arrays share the span's depth.
+        if 2 * stack.len() + 2 > MAX_CONTAINER_DEPTH {
+            return false;
+        }
+        if let Some(children) = children {
+            stack.push(children);
+        }
+    }
+    true
 }
 
 /// Projects typed serde fields iteratively while retaining managed JSON ownership.
@@ -379,4 +440,81 @@ fn statement_to_value_shallow(statement: &ZenumlStatement) -> Value {
     };
     object.extend(fields);
     Value::Object(object)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn typed_serde_checks_the_container_depth_before_writing() {
+        std::thread::Builder::new()
+            .stack_size(2 * 1024 * 1024)
+            .spawn(|| {
+                let span = SourceSpan::new(0, 1);
+                let section = |statements| ZenumlFragmentSection {
+                    label: None,
+                    statements,
+                    body_comment: None,
+                    span,
+                };
+                let statement = |kind| ZenumlStatement {
+                    id: String::new(),
+                    comment: None,
+                    span,
+                    kind,
+                };
+                let fragment = |sections| {
+                    statement(ZenumlStatementKind::Fragment {
+                        fragment_kind: ZenumlFragmentKind::Optional,
+                        label: None,
+                        sections,
+                    })
+                };
+                let model_with_leaf_sections = |sections| {
+                    let mut statements = vec![fragment(sections)];
+                    for _ in 0..31 {
+                        statements = vec![fragment(vec![section(Vec::new()), section(statements)])];
+                    }
+                    ZenumlDiagramModel {
+                        title: None,
+                        starter: None,
+                        participants: Vec::new(),
+                        groups: Vec::new(),
+                        statements,
+                    }
+                };
+
+                // Both the last sections array and the last message body are container 128.
+                let mut at_limit = model_with_leaf_sections(Vec::new());
+                let mut body = Vec::new();
+                for _ in 0..63 {
+                    body = vec![statement(ZenumlStatementKind::Message {
+                        explicit_from: None,
+                        resolved_from: None,
+                        resolved_to: None,
+                        label: String::new(),
+                        assignment: None,
+                        style: ZenumlMessageStyle::Synchronous,
+                        body,
+                        body_comment: None,
+                    })];
+                }
+                at_limit.statements.extend(body);
+                let managed = model_to_typed_json_controlled(&at_limit, &OperationControl::new())
+                    .unwrap()
+                    .unwrap();
+                serde_json::to_vec(&managed).unwrap();
+                serde_json::to_vec(&at_limit).unwrap();
+
+                let mut written = Vec::new();
+                let beyond_limit = model_with_leaf_sections(vec![section(Vec::new())]);
+                let error = serde_json::to_writer(&mut written, &beyond_limit).unwrap_err();
+                assert!(error.to_string().contains("128-container depth"), "{error}");
+                assert!(written.is_empty());
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
 }
