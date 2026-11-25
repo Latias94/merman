@@ -170,10 +170,10 @@ fn write_mermaid_common_neo_css_values(
         selector_id, selector_id, selector_id, neo_stroke, drop_shadow
     );
     out.checkpoint()?;
-    let _ = write!(
+    let _ = crate::write_static_css!(
         out,
-        r#"#{} [data-look="neo"].swimlane.cluster rect{{filter:none;}}"#,
-        selector_id
+        "#",
+        selector_id => r#" [data-look="neo"].swimlane.cluster rect{filter:none;}"#,
     );
     out.checkpoint()?;
     let _ = write!(
@@ -200,10 +200,10 @@ fn write_mermaid_common_neo_css_values(
         selector_id, neo_stroke, drop_shadow
     );
     out.checkpoint()?;
-    let _ = write!(
+    let _ = crate::write_static_css!(
         out,
-        r##"#{} [data-look="neo"].node circle .state-start{{fill:#000000;}}"##,
-        selector_id
+        "#",
+        selector_id => r#" [data-look="neo"].node circle .state-start{fill:#000000;}"#,
     );
     out.checkpoint()?;
     let _ = write!(

@@ -1,6 +1,7 @@
 //! Flowchart CSS generation.
 
 use super::*;
+use merman_render_core::write_static_css;
 
 pub(in crate::svg::parity::flowchart) fn flowchart_classdef_css_declarations(
     declarations: &[String],
@@ -150,20 +151,27 @@ where
     out.push_str(
         r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
     );
-    let _ = write!(
-        &mut *out,
-        r#"#{} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}}#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
-        id, id
+    let _ = write_static_css!(
+        out,
+        "#",
+        id => " .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#",
+        id => " .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}",
     );
     let _ = write!(
         &mut *out,
         r#"#{} .error-icon{{fill:{};}}#{} .error-text{{fill:{};stroke:{};}}"#,
         id, error_bkg, id, error_text, error_text
     );
-    let _ = write!(
-        &mut *out,
-        r#"#{} .edge-thickness-normal{{stroke-width:{}px;}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
-        id, connector_width, id, id, id, id, id
+    let _ = write_static_css!(
+        out,
+        "#",
+        id => " .edge-thickness-normal{stroke-width:",
+        connector_width => "px;}#",
+        id => " .edge-thickness-thick{stroke-width:3.5px;}#",
+        id => " .edge-pattern-solid{stroke-dasharray:0;}#",
+        id => " .edge-thickness-invisible{stroke-width:0;fill:none;}#",
+        id => " .edge-pattern-dashed{stroke-dasharray:3;}#",
+        id => " .edge-pattern-dotted{stroke-dasharray:2;}",
     );
     let _ = write!(
         &mut *out,
@@ -205,9 +213,27 @@ where
         out,
         "}}#{id} .cluster-label span p{{background-color:transparent;}}#{id} .label text,#{id} span{{fill:{node_text_color};color:{node_text_color};}}"
     );
-    let _ = write!(
-        &mut *out,
-        r#"#{id} .node rect,#{id} .node circle,#{id} .node ellipse,#{id} .node polygon,#{id} .node path{{fill:{main_bkg};stroke:{node_border};stroke-width:{stroke_width}px;}}#{id} .rough-node .label text,#{id} .node .label text,#{id} .image-shape .label,#{id} .icon-shape .label{{text-anchor:middle;}}#{id} .node .katex path{{fill:#000;stroke:#000;stroke-width:1px;}}#{id} .rough-node .label,#{id} .node .label,#{id} .image-shape .label,#{id} .icon-shape .label{{text-align:center;}}#{id} .node.clickable{{cursor:pointer;}}"#
+    let _ = write_static_css!(
+        out,
+        "#",
+        id => " .node rect,#",
+        id => " .node circle,#",
+        id => " .node ellipse,#",
+        id => " .node polygon,#",
+        id => " .node path{fill:",
+        main_bkg => ";stroke:",
+        node_border => ";stroke-width:",
+        stroke_width => "px;}#",
+        id => " .rough-node .label text,#",
+        id => " .node .label text,#",
+        id => " .image-shape .label,#",
+        id => " .icon-shape .label{text-anchor:middle;}#",
+        id => " .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#",
+        id => " .rough-node .label,#",
+        id => " .node .label,#",
+        id => " .image-shape .label,#",
+        id => " .icon-shape .label{text-align:center;}#",
+        id => " .node.clickable{cursor:pointer;}",
     );
     let _ = write!(
         &mut *out,
@@ -239,15 +265,15 @@ where
         &mut *out,
         r#"#{id} .node .collapsed-indicator{{fill:{cluster_border};stroke:none;opacity:0.6;}}#{id} .node .collapsed-separator{{stroke:{cluster_border};stroke-width:0.75px;}}"#,
     );
-    let _ = write!(
-        &mut *out,
-        "#{} div.mermaidTooltip{{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:{};font-size:12px;background:{};border:1px solid {};border-radius:2px;pointer-events:none;z-index:100;}}#{} .{}{{text-anchor:middle;",
-        id,
-        font_family,
-        tertiary,
-        tooltip_border,
-        id,
-        title_css_class(diagram_type),
+    let _ = write_static_css!(
+        out,
+        "#",
+        id => " div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:",
+        font_family => ";font-size:12px;background:",
+        tertiary => ";border:1px solid ",
+        tooltip_border => ";border-radius:2px;pointer-events:none;z-index:100;}#",
+        id => " .",
+        title_css_class(diagram_type) => "{text-anchor:middle;",
     );
     if let Some(style) = native_title {
         let _ = write!(out, "font-size:{}px;fill:{title_color};", style.font_size);
@@ -262,21 +288,21 @@ where
         let _ = write!(out, "font-size:{size}px;fill:{text_color};");
     }
     let _ = write!(out, "}}#{id} rect.text{{fill:none;stroke-width:0;}}");
-    let _ = write!(
-        &mut *out,
-        r#"#{} .icon-shape,#{} .image-shape{{background-color:{};text-align:center;}}#{} .icon-shape p,#{} .image-shape p{{background-color:{};padding:2px;}}#{} .icon-shape .label rect,#{} .image-shape .label rect{{opacity:0.5;background-color:{};fill:{};}}#{} .label-icon{{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}}#{} .node .label-icon path{{fill:currentColor;stroke:revert;stroke-width:revert;}}"#,
-        id,
-        id,
-        edge_label_background,
-        id,
-        id,
-        edge_label_background,
-        id,
-        id,
-        edge_label_background,
-        edge_label_background,
-        id,
-        id,
+    let _ = write_static_css!(
+        out,
+        "#",
+        id => " .icon-shape,#",
+        id => " .image-shape{background-color:",
+        edge_label_background => ";text-align:center;}#",
+        id => " .icon-shape p,#",
+        id => " .image-shape p{background-color:",
+        edge_label_background => ";padding:2px;}#",
+        id => " .icon-shape .label rect,#",
+        id => " .image-shape .label rect{opacity:0.5;background-color:",
+        edge_label_background => ";fill:",
+        edge_label_background => ";}#",
+        id => " .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#",
+        id => " .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}",
     );
     theme
         .neo

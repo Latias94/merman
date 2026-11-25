@@ -4,6 +4,38 @@ use std::ops::Range;
 use crate::resources::{OperationWorkMeter, SvgByteBudget};
 
 const MAX_HINTED_SVG_CAPACITY: usize = 32 * 1024;
+const XML_TEXT_CHUNK_BYTES: usize = 2_048;
+
+/// Source-owned text that can be appended as one unchanged XML character-data chunk.
+#[doc(hidden)]
+#[derive(Clone, Copy)]
+pub struct StaticXmlText(&'static str);
+
+impl StaticXmlText {
+    pub const fn new(value: &'static str) -> Self {
+        let bytes = value.as_bytes();
+        assert!(
+            !bytes.is_empty() && bytes.len() <= XML_TEXT_CHUNK_BYTES,
+            "static XML text must fit one nonempty chunk"
+        );
+        let mut index = 0;
+        while index < bytes.len() {
+            let byte = bytes[index];
+            assert!(
+                matches!(byte, b'\t' | b'\n' | b'\r' | b' '..=b'~')
+                    && !matches!(byte, b'&' | b'<' | b'>'),
+                "static XML text must be plain ASCII character data"
+            );
+            index += 1;
+        }
+        // No `>` can complete an incoming terminator, and the last byte resets its state.
+        assert!(
+            bytes[bytes.len() - 1] != b']',
+            "static XML text must reset the bracket state"
+        );
+        Self(value)
+    }
+}
 
 /// Minimal SVG output surface shared by unbounded helpers and operation-bounded renderers.
 ///
@@ -22,6 +54,12 @@ pub trait SvgOutput: fmt::Write {
 
     /// Estimates upcoming bytes for optional backing storage at the next actual growth.
     fn hint_additional_capacity(&mut self, _additional: usize) {}
+
+    /// Writes one compile-time checked literal at the original text append boundary.
+    #[doc(hidden)]
+    fn write_static_xml_text(&mut self, value: StaticXmlText) -> fmt::Result {
+        self.write_str(value.0)
+    }
 
     /// Appends an unchanged XML fragment whose bytes have already been observed while scanning.
     /// Retained-byte admission and sink failures still belong to this append.
@@ -190,14 +228,10 @@ impl<S: SvgOutput> XmlTextOutput<'_, S> {
 
 impl<S: SvgOutput> fmt::Write for XmlTextOutput<'_, S> {
     fn write_str(&mut self, value: &str) -> fmt::Result {
-        const MAX_PLAIN_FRAGMENT_BYTES: usize = 2_048;
-
         let bytes = value.as_bytes();
         let mut start = 0;
         while start < bytes.len() {
-            let mut end = start
-                .saturating_add(MAX_PLAIN_FRAGMENT_BYTES)
-                .min(bytes.len());
+            let mut end = start.saturating_add(XML_TEXT_CHUNK_BYTES).min(bytes.len());
             while !value.is_char_boundary(end) {
                 end += 1;
             }
@@ -262,6 +296,15 @@ impl<S: SvgOutput> SvgOutput for XmlTextOutput<'_, S> {
 
     fn hint_additional_capacity(&mut self, additional: usize) {
         self.out.hint_additional_capacity(additional);
+    }
+
+    fn write_static_xml_text(&mut self, value: StaticXmlText) -> fmt::Result {
+        self.out
+            .observe_scanned_work(value.0.len())
+            .map_err(|_| fmt::Error)?;
+        self.trailing_brackets = 0;
+        self.out.write_scanned_text(value.0)?;
+        self.out.checkpoint().map_err(|_| fmt::Error)
     }
 
     fn observe_scanned_work(&mut self, bytes: usize) -> crate::Result<()> {
@@ -591,6 +634,35 @@ impl SvgOutput for BoundedSvgOutput<'_> {
 mod tests {
     use super::*;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+
+    #[test]
+    fn static_xml_text_keeps_the_exact_append_and_resets_pending_brackets() {
+        const LITERAL: StaticXmlText = StaticXmlText::new(" [data-look=\"neo\"]{fill:none;}");
+        const EXPECTED: &str = "]] [data-look=\"neo\"]{fill:none;}>A&amp;B";
+        let append_end = 2 + LITERAL.0.len();
+
+        for max in [append_end - 1, EXPECTED.len()] {
+            let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxSvgBytes, max)
+                .unwrap();
+            let meter = OperationWorkMeter::new(policy);
+            let mut out = BoundedSvgOutput::new(&meter);
+            {
+                let mut text = XmlTextOutput::new(&mut out);
+                text.push_str("]]");
+                let literal = text.write_static_xml_text(LITERAL);
+                assert_eq!(literal.is_ok(), max >= append_end);
+                text.push_str(">A&B");
+            }
+            if max < append_end {
+                assert_eq!(out.as_str(), "]]");
+                let first = resource_limit(out.finish().unwrap_err());
+                assert_eq!((first.actual, first.max), (append_end, max));
+            } else {
+                assert_eq!(out.finish().unwrap(), EXPECTED);
+            }
+        }
+    }
 
     #[test]
     fn xml_text_output_matches_scalar_normalization_across_unicode_and_fragments() {

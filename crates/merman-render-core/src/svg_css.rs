@@ -20,6 +20,30 @@ pub use id_suffix::lower_id_suffix_selectors;
 #[cfg(feature = "css-style")]
 pub use prepared::{PreparedCommonCss, PreparedCommonNeoCss};
 
+/// Emits alternating literal pieces and ordinary `Display` values, in format order.
+/// Each literal stands for one nonempty `write!` piece. Values still go through `fmt::Write`.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! write_static_css {
+    ($out:expr, $first:literal $(, $value:expr => $following:literal)+ $(,)?) => {{
+        (|| -> ::std::fmt::Result {
+            let out = &mut *$out;
+            $crate::svg_output::SvgOutput::write_static_xml_text(
+                out,
+                const { $crate::svg_output::StaticXmlText::new($first) },
+            )?;
+            $(
+                ::std::fmt::Write::write_fmt(out, ::std::format_args!("{}", $value))?;
+                $crate::svg_output::SvgOutput::write_static_xml_text(
+                    out,
+                    const { $crate::svg_output::StaticXmlText::new($following) },
+                )?;
+            )+
+            Ok(())
+        })()
+    }};
+}
+
 /// Escapes one identifier for use in a CSS selector embedded in SVG XML text.
 ///
 /// This follows the CSSOM identifier serialization rules while using hexadecimal escapes for XML
@@ -132,10 +156,11 @@ fn emit_mermaid_base_css_prefix(
         r#"@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}"#,
     );
     out.checkpoint()?;
-    let _ = write!(
+    let _ = crate::write_static_css!(
         out,
-        r#"#{} .edge-animation-slow{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}}#{} .edge-animation-fast{{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}}"#,
-        id, id
+        "#",
+        id => " .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#",
+        id => " .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}",
     );
     out.checkpoint()?;
     let _ = write!(
@@ -144,10 +169,16 @@ fn emit_mermaid_base_css_prefix(
         id, css.error_bkg, id, css.error_text, css.error_text
     );
     out.checkpoint()?;
-    let _ = write!(
+    let _ = crate::write_static_css!(
         out,
-        r#"#{} .edge-thickness-normal{{stroke-width:{};}}#{} .edge-thickness-thick{{stroke-width:3.5px;}}#{} .edge-pattern-solid{{stroke-dasharray:0;}}#{} .edge-thickness-invisible{{stroke-width:0;fill:none;}}#{} .edge-pattern-dashed{{stroke-dasharray:3;}}#{} .edge-pattern-dotted{{stroke-dasharray:2;}}"#,
-        id, css.normal_edge_stroke_width_css, id, id, id, id, id
+        "#",
+        id => " .edge-thickness-normal{stroke-width:",
+        css.normal_edge_stroke_width_css => ";}#",
+        id => " .edge-thickness-thick{stroke-width:3.5px;}#",
+        id => " .edge-pattern-solid{stroke-dasharray:0;}#",
+        id => " .edge-thickness-invisible{stroke-width:0;fill:none;}#",
+        id => " .edge-pattern-dashed{stroke-dasharray:3;}#",
+        id => " .edge-pattern-dotted{stroke-dasharray:2;}",
     );
     out.checkpoint()?;
     let _ = write!(
