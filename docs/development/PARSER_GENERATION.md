@@ -4,7 +4,6 @@ Merman checks generated LALRPOP parsers into the repository so downstream builds
 or run the LALRPOP generator. The grammar sources are:
 
 - `crates/merman-core/src/diagrams/class_grammar.lalrpop`
-- `crates/merman-core/src/diagrams/er_grammar.lalrpop`
 - `crates/merman-core/src/diagrams/flowchart_grammar.lalrpop`
 - `crates/merman-core/src/diagrams/sequence_grammar.lalrpop`
 - `crates/merman-core/src/diagrams/state_grammar.lalrpop`
@@ -14,7 +13,7 @@ grammar and the complete generated parser set as one change. Never edit generate
 
 ## Regenerate Parsers
 
-After changing any grammar source, regenerate all five parsers from the workspace root:
+After changing a LALRPOP grammar source, regenerate the parser set from the workspace root.
 
 ```console
 cargo run -p xtask -- gen-lalrpop-parsers
@@ -51,5 +50,6 @@ behavioral surface it affects:
    Syntax-highlighting changes belong to `distribution/tree-sitter-mermaid` and its query tests.
 4. Run the workspace and strict gates before release.
 
-Parser generation belongs to the maintainer toolchain in `xtask`; published `merman-core` builds
-only depend on `lalrpop-util` and compile the checked-in parser modules.
+Parser generation belongs to the maintainer toolchain in `xtask`. Features that select a generated
+parser compile its checked-in module with `lalrpop-util`. The ER feature uses a handwritten parser
+in `crates/merman-core/src/diagrams/er/parser.rs`.

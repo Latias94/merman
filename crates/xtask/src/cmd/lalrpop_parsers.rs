@@ -18,14 +18,10 @@ struct GrammarArtifact {
     generated: &'static str,
 }
 
-const GRAMMAR_ARTIFACTS: [GrammarArtifact; 5] = [
+const GRAMMAR_ARTIFACTS: [GrammarArtifact; 4] = [
     GrammarArtifact {
         source: "diagrams/class_grammar.lalrpop",
         generated: "class_grammar.rs",
-    },
-    GrammarArtifact {
-        source: "diagrams/er_grammar.lalrpop",
-        generated: "er_grammar.rs",
     },
     GrammarArtifact {
         source: "diagrams/flowchart_grammar.lalrpop",
@@ -187,7 +183,7 @@ fn validate_grammar_source_set(source_root: &Path) -> Result<(), XtaskError> {
     let actual = read_directory_files(source_root, "lalrpop")?;
     if actual != expected {
         return Err(parser_error(format!(
-            "the LALRPOP grammar source set is not the declared five-file set; expected [{}], found [{}]",
+            "the LALRPOP grammar source set differs from the registry; expected [{}], found [{}]",
             display_paths(&expected),
             display_paths(&actual)
         )));

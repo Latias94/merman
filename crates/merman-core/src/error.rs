@@ -50,7 +50,6 @@ pub struct ParseDiagnostic {
 
 #[cfg(any(
     feature = "diagram-class",
-    feature = "diagram-er",
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-sequence",
@@ -62,7 +61,6 @@ pub(crate) trait ParseErrorSourceSpan {
 
 #[cfg(any(
     feature = "diagram-class",
-    feature = "diagram-er",
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-sequence",

@@ -19,7 +19,6 @@ pub(crate) fn source_metadata_for_test(
 
 #[cfg(any(
     feature = "diagram-class",
-    feature = "diagram-er",
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-sequence",
