@@ -9,11 +9,11 @@ use super::css_sanitize::{
     prepare_native_font_size_value, sanitize_css_value_with_checkpoints,
 };
 use super::quadrant_resvg_fallback::is_mermaid_missing_amount_hsl;
-use super::util::{
+use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
+use merman_render_core::svg_scan::{
     SvgTagScanner, checkpoint_loop, escape_xml_attr, find_with_checkpoints, next_svg_quoted_attr,
     next_svg_quoted_attr_with_checkpoints, start_tag_name,
 };
-use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SanitizeSvgAttributesPostprocessor;

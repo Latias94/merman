@@ -58,7 +58,6 @@ pub(crate) use parity::state_canonical_marker;
 ))]
 pub(crate) use parity::{FlowchartRenderConfig, prepare_flowchart_render_config};
 mod pipeline;
-pub(crate) mod scanner;
 
 pub use fallback::foreign_object_label_fallback_svg_text;
 pub use icon_registry::{

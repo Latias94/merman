@@ -31,6 +31,9 @@ pub mod svg_css;
 #[cfg(feature = "svg-output")]
 #[doc(hidden)]
 pub mod svg_output;
+#[cfg(feature = "svg-parse")]
+#[doc(hidden)]
+pub mod svg_scan;
 #[cfg(feature = "css-style")]
 #[doc(hidden)]
 pub mod text;

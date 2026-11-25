@@ -7,11 +7,11 @@ use std::borrow::Cow;
 use std::fmt;
 
 use super::attr_sanitize::is_unsafe_render_resource_url_value;
-use super::util::{
+use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
+use merman_render_core::svg_scan::{
     SvgTagScanner, checkpoint_loop, decode_xml_style_text_with_checkpoints, end_tag_name,
     find_with_checkpoints, start_tag_name,
 };
-use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
 
 const CSS_NESTING_HARD_LIMIT: u8 = 64;
 
@@ -1158,8 +1158,8 @@ fn format_parse_error(error: ParseError<CssViolation>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::super::util::escape_xml_text_with_checkpoints;
     use super::*;
+    use merman_render_core::svg_scan::escape_xml_text_with_checkpoints;
 
     #[test]
     fn zero_font_sizes_use_native_units_without_claiming_host_sizes() {

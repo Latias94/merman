@@ -1,11 +1,11 @@
-use super::builtin::util::{
-    SvgTagScanner, checkpoint_loop, next_svg_quoted_attr_with_checkpoints, start_tag_name,
-};
 use super::preset::SvgPipelinePreset;
 use crate::DiagramFamilyId;
 use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
 use crate::resources::{RenderResourcePolicy, ResourceLimitExceeded, ResourceLimitPhase};
 use merman_model::OperationPhase;
+use merman_render_core::svg_scan::{
+    SvgTagScanner, checkpoint_loop, next_svg_quoted_attr_with_checkpoints, start_tag_name,
+};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SvgPostprocessMetadata {

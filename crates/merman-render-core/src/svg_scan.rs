@@ -1,6 +1,8 @@
+//! Lexical scanning and text handling for SVG postprocessing.
+
 const POSTPROCESS_CHECKPOINT_BATCH: usize = 64;
 
-pub(crate) fn checkpoint_loop<E>(
+pub fn checkpoint_loop<E>(
     iteration: usize,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<(), E> {
@@ -69,7 +71,7 @@ fn find_pattern_with_checkpoints<E>(
 }
 
 /// Finds a UTF-8 substring in linear time while observing a cooperative checkpoint cadence.
-pub(crate) fn find_with_checkpoints<E>(
+pub fn find_with_checkpoints<E>(
     haystack: &str,
     needle: &str,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
@@ -78,7 +80,7 @@ pub(crate) fn find_with_checkpoints<E>(
 }
 
 /// Finds the last UTF-8 substring in linear time while observing a cooperative checkpoint cadence.
-pub(crate) fn rfind_with_checkpoints<E>(
+pub fn rfind_with_checkpoints<E>(
     haystack: &str,
     needle: &str,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
@@ -86,7 +88,7 @@ pub(crate) fn rfind_with_checkpoints<E>(
     find_pattern_with_checkpoints(haystack, needle, true, checkpoint)
 }
 
-pub(crate) fn trim_with_checkpoints<'a, E>(
+pub fn trim_with_checkpoints<'a, E>(
     value: &'a str,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<&'a str, E> {
@@ -115,7 +117,7 @@ pub(crate) fn trim_with_checkpoints<'a, E>(
     Ok(&value[start..end])
 }
 
-pub(crate) fn extract_exact_double_quoted_attr_with_checkpoints<'a, E>(
+pub fn extract_exact_double_quoted_attr_with_checkpoints<'a, E>(
     tag: &'a str,
     name: &str,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
@@ -131,7 +133,19 @@ pub(crate) fn extract_exact_double_quoted_attr_with_checkpoints<'a, E>(
     trim_with_checkpoints(&tag[value_start..value_start + value_end], checkpoint).map(Some)
 }
 
-pub(crate) fn find_tag_end_with_checkpoints<E>(
+/// Returns the byte index of the first unquoted `>` at or after `start`.
+pub fn find_tag_end(input: &str, start: usize) -> Option<usize> {
+    match find_tag_end_with_checkpoints(
+        input,
+        start,
+        &mut || Ok::<(), std::convert::Infallible>(()),
+    ) {
+        Ok(end) => end,
+        Err(error) => match error {},
+    }
+}
+
+pub fn find_tag_end_with_checkpoints<E>(
     input: &str,
     start: usize,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
@@ -235,49 +249,48 @@ fn find_markup_end_with_checkpoints<E>(
     find_tag_end_with_checkpoints(input, start, checkpoint)
 }
 
-pub(crate) use crate::svg::scanner::find_tag_end;
-
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct SvgTag<'a> {
+pub struct SvgTag<'a> {
     source: &'a str,
     start: usize,
     end: usize,
 }
 
 impl<'a> SvgTag<'a> {
-    pub(crate) fn raw(self) -> &'a str {
+    pub fn raw(self) -> &'a str {
         &self.source[self.start..=self.end]
     }
 
-    pub(crate) fn start(self) -> usize {
+    pub fn start(self) -> usize {
         self.start
     }
 
-    pub(crate) fn is_self_closing(self) -> bool {
+    pub fn is_self_closing(self) -> bool {
         self.raw().trim_end().ends_with("/>")
     }
 }
 
-pub(crate) struct SvgTagScanner<'a> {
+pub struct SvgTagScanner<'a> {
     source: &'a str,
     cursor: usize,
 }
 
 impl<'a> SvgTagScanner<'a> {
-    pub(crate) fn new(source: &'a str) -> Self {
+    pub fn new(source: &'a str) -> Self {
         Self { source, cursor: 0 }
     }
 
-    pub(crate) fn cursor(&self) -> usize {
+    pub fn cursor(&self) -> usize {
         self.cursor
     }
 
-    pub(crate) fn skip_to(&mut self, cursor: usize) {
-        self.cursor = cursor.min(self.source.len());
+    /// Seeks to the UTF-8 boundary at or immediately before the requested byte.
+    pub fn skip_to(&mut self, cursor: usize) {
+        self.cursor = self.source.floor_char_boundary(cursor);
     }
 
     #[cfg(test)]
-    pub(crate) fn next(&mut self) -> Option<SvgTag<'a>> {
+    fn next(&mut self) -> Option<SvgTag<'a>> {
         let mut checkpoint = || Ok::<(), std::convert::Infallible>(());
         match self.next_with_checkpoints(&mut checkpoint) {
             Ok(tag) => tag,
@@ -285,7 +298,7 @@ impl<'a> SvgTagScanner<'a> {
         }
     }
 
-    pub(crate) fn next_with_checkpoints<E>(
+    pub fn next_with_checkpoints<E>(
         &mut self,
         checkpoint: &mut impl FnMut() -> Result<(), E>,
     ) -> Result<Option<SvgTag<'a>>, E> {
@@ -308,16 +321,16 @@ impl<'a> SvgTagScanner<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct SvgQuotedAttr {
-    pub(crate) full_start: usize,
-    pub(crate) full_end: usize,
-    pub(crate) name_start: usize,
-    pub(crate) name_end: usize,
-    pub(crate) value_start: usize,
-    pub(crate) value_end: usize,
+pub struct SvgQuotedAttr {
+    pub full_start: usize,
+    pub full_end: usize,
+    pub name_start: usize,
+    pub name_end: usize,
+    pub value_start: usize,
+    pub value_end: usize,
 }
 
-pub(crate) fn next_svg_quoted_attr(tag: &str, from: usize) -> Option<SvgQuotedAttr> {
+pub fn next_svg_quoted_attr(tag: &str, from: usize) -> Option<SvgQuotedAttr> {
     let mut cursor = from;
     while cursor < tag.len() {
         let ch = tag.get(cursor..)?.chars().next()?;
@@ -335,7 +348,7 @@ pub(crate) fn next_svg_quoted_attr(tag: &str, from: usize) -> Option<SvgQuotedAt
     None
 }
 
-pub(crate) fn next_svg_quoted_attr_with_checkpoints<E>(
+pub fn next_svg_quoted_attr_with_checkpoints<E>(
     tag: &str,
     from: usize,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
@@ -365,7 +378,7 @@ pub(crate) fn next_svg_quoted_attr_with_checkpoints<E>(
     Ok(None)
 }
 
-pub(crate) fn start_tag_name(tag: &str) -> Option<&str> {
+pub fn start_tag_name(tag: &str) -> Option<&str> {
     let tag = tag.trim_start();
     if !tag.starts_with('<')
         || tag.starts_with("</")
@@ -384,7 +397,7 @@ pub(crate) fn start_tag_name(tag: &str) -> Option<&str> {
     (start < end).then_some(&tag[start..end])
 }
 
-pub(crate) fn end_tag_name(tag: &str) -> Option<&str> {
+pub fn end_tag_name(tag: &str) -> Option<&str> {
     let tag = tag.trim_start().strip_prefix("</")?;
     let end = tag
         .find(|ch: char| ch.is_whitespace() || ch == '>')
@@ -534,12 +547,12 @@ fn is_svg_attr_name_continue_byte(b: u8) -> bool {
     b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b':' | b'.')
 }
 
-pub(crate) fn extract_quoted_attr<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
+pub fn extract_quoted_attr<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
     let (start, end) = find_quoted_attr_value_span(tag, name)?;
     Some(tag[start..end].trim())
 }
 
-pub(crate) fn find_quoted_attr_value_span(tag: &str, name: &str) -> Option<(usize, usize)> {
+pub fn find_quoted_attr_value_span(tag: &str, name: &str) -> Option<(usize, usize)> {
     let mut cursor = 0usize;
     while let Some(attr) = next_svg_quoted_attr(tag, cursor) {
         if tag[attr.name_start..attr.name_end].eq_ignore_ascii_case(name) {
@@ -550,7 +563,11 @@ pub(crate) fn find_quoted_attr_value_span(tag: &str, name: &str) -> Option<(usiz
     None
 }
 
-pub(crate) fn set_or_insert_quoted_attr(tag: &str, name: &str, value: &str) -> String {
+/// Replaces an attribute value or inserts a new double-quoted attribute.
+///
+/// The caller supplies a valid XML attribute name and a value already escaped for use in
+/// either quote style. An existing attribute keeps its original delimiter.
+pub fn set_or_insert_quoted_attr(tag: &str, name: &str, value: &str) -> String {
     if let Some((value_start, value_end)) = find_quoted_attr_value_span(tag, name) {
         let mut out = String::with_capacity(tag.len() + value.len());
         out.push_str(&tag[..value_start]);
@@ -575,7 +592,7 @@ pub(crate) fn set_or_insert_quoted_attr(tag: &str, name: &str, value: &str) -> S
     out
 }
 
-pub(crate) fn escape_xml_attr(value: &str) -> String {
+pub fn escape_xml_attr(value: &str) -> String {
     let mut checkpoint = || Ok::<(), std::convert::Infallible>(());
     match escape_xml_attr_with_checkpoints(value, &mut checkpoint) {
         Ok(value) => value,
@@ -585,7 +602,7 @@ pub(crate) fn escape_xml_attr(value: &str) -> String {
 
 /// Reads logical XML stylesheet text exactly once before handing it to a CSS parser.
 /// CDATA stays literal, while XML references never enter CSS tokenization as source spelling.
-pub(crate) fn decode_xml_style_text_with_checkpoints<'a, E>(
+pub fn decode_xml_style_text_with_checkpoints<'a, E>(
     serialized: &'a str,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<Option<std::borrow::Cow<'a, str>>, E> {
@@ -626,7 +643,7 @@ pub(crate) fn decode_xml_style_text_with_checkpoints<'a, E>(
     Ok(Some(std::borrow::Cow::Owned(logical)))
 }
 
-pub(crate) fn escape_xml_text_with_checkpoints<E>(
+pub fn escape_xml_text_with_checkpoints<E>(
     value: &str,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<String, E> {
@@ -647,7 +664,7 @@ pub(crate) fn escape_xml_text_with_checkpoints<E>(
     Ok(out)
 }
 
-pub(crate) fn escape_xml_attr_with_checkpoints<E>(
+pub fn escape_xml_attr_with_checkpoints<E>(
     value: &str,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<String, E> {
@@ -673,6 +690,17 @@ pub(crate) fn escape_xml_attr_with_checkpoints<E>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tag_end_ignores_quoted_delimiters_and_reports_utf8_byte_offset() {
+        let input = "<tag title='x > y'>\u{03bb}</tag>";
+        assert_eq!(find_tag_end(input, 0), input.find(">\u{03bb}"));
+        let mut scanner = SvgTagScanner::new(input);
+        let text_start = input.find('\u{03bb}').unwrap();
+        scanner.skip_to(text_start + 1);
+        assert_eq!(scanner.cursor(), text_start);
+        assert_eq!(scanner.next().unwrap().raw(), "</tag>");
+    }
 
     #[test]
     fn logical_stylesheet_xml_text_decodes_only_xml_references_once() {

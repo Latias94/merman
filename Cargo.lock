@@ -2762,6 +2762,7 @@ dependencies = [
  "merman-markup",
  "merman-model",
  "merman-theme-contract",
+ "quick-xml",
  "roxmltree 0.21.2",
  "ryu-js",
  "serde",

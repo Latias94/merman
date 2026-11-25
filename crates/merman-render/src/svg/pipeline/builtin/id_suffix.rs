@@ -16,6 +16,7 @@
 use crate::svg::pipeline::SvgPostprocessExecution;
 use crate::{Error, Result};
 use cssparser::{Delimiter, ParseErrorKind, Parser, ToCss, Token};
+use merman_render_core::svg_scan::find_with_checkpoints;
 use quick_xml::{Reader, events::Event};
 use std::borrow::Cow;
 
@@ -45,7 +46,7 @@ pub(crate) fn apply_lower_id_suffix_selectors<'a>(
     execution: SvgPostprocessExecution<'_>,
 ) -> Result<Cow<'a, str>> {
     execution.checkpoint()?;
-    if super::util::find_with_checkpoints(&svg, "$=", &mut || execution.checkpoint())?.is_none() {
+    if find_with_checkpoints(&svg, "$=", &mut || execution.checkpoint())?.is_none() {
         return Ok(svg);
     }
     let mut ids = Vec::new();

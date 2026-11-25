@@ -1212,6 +1212,7 @@ dependencies = [
  "merman-markup",
  "merman-model",
  "merman-theme-contract",
+ "quick-xml",
  "ryu-js",
  "serde",
  "serde_json",

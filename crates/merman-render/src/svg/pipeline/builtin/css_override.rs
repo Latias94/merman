@@ -1,8 +1,8 @@
 use crate::Result;
 use std::borrow::Cow;
 
-use super::util::{find_tag_end, next_svg_quoted_attr};
 use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
+use merman_render_core::svg_scan::{find_tag_end, next_svg_quoted_attr};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CssOverridePolicy {

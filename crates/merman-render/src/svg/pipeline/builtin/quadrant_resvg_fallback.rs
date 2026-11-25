@@ -1,10 +1,10 @@
 use std::borrow::Cow;
 
-use super::util::{
-    SvgTagScanner, checkpoint_loop, next_svg_quoted_attr_with_checkpoints, start_tag_name,
-};
 use crate::DiagramFamilyId;
 use crate::svg::pipeline::SvgPostprocessMetadata;
+use merman_render_core::svg_scan::{
+    SvgTagScanner, checkpoint_loop, next_svg_quoted_attr_with_checkpoints, start_tag_name,
+};
 #[cfg(test)]
 use std::convert::Infallible;
 

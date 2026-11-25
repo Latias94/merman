@@ -6,12 +6,12 @@ use std::borrow::Cow;
 #[cfg(test)]
 use std::convert::Infallible;
 
-use super::util::{
+use crate::svg::pipeline::final_validation::SvgStructureMetrics;
+use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
+use merman_render_core::svg_scan::{
     extract_quoted_attr, find_tag_end_with_checkpoints, find_with_checkpoints,
     next_svg_quoted_attr_with_checkpoints, rfind_with_checkpoints,
 };
-use crate::svg::pipeline::final_validation::SvgStructureMetrics;
-use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ForeignObjectFallbackPostprocessor;

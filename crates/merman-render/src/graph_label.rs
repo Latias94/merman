@@ -1645,7 +1645,7 @@ pub(crate) fn normalize_flowchart_img_tags(input: &str, fixed_width: bool) -> Co
             cursor = start + 1;
             continue;
         }
-        let Some(end) = crate::svg::scanner::find_tag_end(input, start) else {
+        let Some(end) = merman_render_core::svg_scan::find_tag_end(input, start) else {
             cursor = start;
             break;
         };
@@ -1686,7 +1686,7 @@ pub(crate) fn is_single_img_label(label: &str) -> bool {
     if !starts_with_img_tag(label) {
         return false;
     }
-    let Some(end) = crate::svg::scanner::find_tag_end(label, 0) else {
+    let Some(end) = merman_render_core::svg_scan::find_tag_end(label, 0) else {
         return false;
     };
     flowchart_trim_html_collapsible_whitespace(&label[end + 1..]).is_empty()

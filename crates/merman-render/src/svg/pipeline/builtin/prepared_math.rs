@@ -5,7 +5,7 @@ use crate::xml_dom::Node;
 use crate::{DiagramFamilyId, Error, Result};
 use std::collections::HashSet;
 
-use super::util::{checkpoint_loop, find_tag_end_with_checkpoints};
+use merman_render_core::svg_scan::{checkpoint_loop, find_tag_end_with_checkpoints};
 
 const NATIVE_ATTRIBUTE: &str = "data-merman-prepared-math-native";
 const LEGACY_NATIVE_ATTRIBUTE: &str = "data-merman-math-native";

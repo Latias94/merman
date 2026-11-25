@@ -3,8 +3,8 @@ use cssparser::{Delimiter, Parser};
 use std::borrow::Cow;
 use std::ops::Range;
 
-use super::util::{escape_xml_attr, find_quoted_attr_value_span, find_tag_end};
 use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
+use merman_render_core::svg_scan::{escape_xml_attr, find_quoted_attr_value_span, find_tag_end};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RootBackgroundEdit {
