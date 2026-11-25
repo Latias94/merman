@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
+import { encodeShareHash } from "../src/lib/share";
+import { DEFAULT_WORKSPACE_SNAPSHOT } from "../src/lib/workspace-snapshot";
 import { expectNoDocumentOverflow, monitorBrowserErrors, openPlayground, waitForPreviewSvg } from "./helpers/playground";
 
 const nativeCanvas = (page: Page) => page.locator(".preview-container svg .merman-theme-canvas").first();
@@ -61,6 +63,16 @@ test("the runtime gallery applies native presets and offers Mermaid Classic", as
   await classic.locator('[data-mermaid-theme="forest"]').click();
   await expect(panel.locator('[data-theme-mode="mermaid_parity"]')).toBeVisible();
   await expect(nativeCanvas(page)).toHaveCount(0);
+  const browse = gallery.getByRole("button", { name: "Browse theme library" });
+  await browse.click();
+  const library = themeLibrary(page);
+  await library.getByRole("searchbox").fill("riso");
+  await expect(library.locator("[data-browser-preset]")).toHaveCount(1);
+  await library.getByRole("button", { name: "Riso", exact: true }).click();
+  await expectThemeDetail(library, "Riso");
+  await library.getByRole("button", { name: "Close theme library" }).click();
+  await expect(browse).toBeFocused();
+  await expect(panel.getByTestId("theme-current-name")).toHaveText("Forest");
   await expectNoDocumentOverflow(page);
   errors.assertNone();
 });
@@ -132,4 +144,92 @@ test("import applies a standalone v2 document and downloads its original content
   await expect(page.locator("#preview-mode-panel")).toHaveAttribute("data-preview-canvas-tone", "dark");
   await expect(nativeCanvas(page).locator("rect").first()).toHaveCSS("fill", "rgb(16, 24, 32)");
   expect(await downloadDocument(page, panel)).toEqual(document);
+});
+
+const themeLibrary = (page: Page) => page.getByRole("dialog", { name: "Theme library", exact: true });
+const browserSvg = (library: Locator) => library.getByTestId("theme-browser-preview").locator("svg");
+
+async function expectThemeDetail(library: Locator, name: string) {
+  await expect(library.getByTestId("theme-browser-name")).toHaveText(name);
+  await expect(browserSvg(library).locator(".merman-theme-canvas")).toBeVisible();
+}
+
+test("the theme library previews a shared workspace without applying changes until requested", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  const source = "flowchart LR\nA[SharedDraft] --> B[Kept]";
+  const hash = encodeShareHash({ ...DEFAULT_WORKSPACE_SNAPSHOT, code: source, diagramTheme: "forest", diagramFont: "georgia" });
+  await page.goto(`./?theme-design=tokyo${hash}`, { waitUntil: "domcontentloaded" });
+
+  const library = themeLibrary(page);
+  const preview = browserSvg(library);
+  const canvasFill = preview.locator(".merman-theme-canvas > rect").first();
+  const launcher = page.getByRole("banner").getByRole("button", { name: "Theme library", exact: true });
+  const status = page.getByTestId("status-appearance");
+  const expectWorkspace = async (theme: string) => {
+    await expect(page.getByTestId("editor-startup-surface").locator(".view-line")).toHaveText(source.split("\n"));
+    await expect(status).toHaveText(theme);
+    await expect(page.locator("footer").getByText("Font: Georgia", { exact: true })).toHaveCount(1);
+  };
+
+  await expectThemeDetail(library, "Tokyo");
+  await expect(library.locator("[data-browser-preset]")).toHaveCount(13);
+  await expectWorkspace("Theme: Forest");
+
+  await library.locator('[data-browser-preset="studio"]').click();
+  await expectThemeDetail(library, "Studio");
+  await expectWorkspace("Theme: Forest");
+  await library.locator('[data-browser-appearance="dark"]').click();
+  await expect(canvasFill).toHaveCSS("fill", "rgb(15, 20, 28)");
+  await expectWorkspace("Theme: Forest");
+  await library.locator('[data-browser-appearance="light"]').click();
+  await expect(canvasFill).toHaveCSS("fill", "rgb(248, 250, 252)");
+  await expectWorkspace("Theme: Forest");
+
+  for (const [sample, diagram] of [["sequence", /^sequence$/], ["pie", /^pie$/], ["flowchart", /^flowchart/]] as const) {
+    await library.locator(`[data-browser-sample="${sample}"]`).click();
+    await expect(preview).toHaveAttribute("aria-roledescription", diagram);
+    await expectWorkspace("Theme: Forest");
+  }
+  await library.locator('[data-browser-sample="current"]').click();
+  await expect(preview).toContainText("SharedDraft");
+  await expectWorkspace("Theme: Forest");
+  await page.keyboard.press("Escape");
+  await expect(library).toBeHidden();
+  await expectWorkspace("Theme: Forest");
+  expect(new URL(page.url()).hash).toBe(hash);
+
+  await launcher.click();
+  await library.locator('[data-browser-preset="studio"]').click();
+  await library.locator('[data-browser-appearance="dark"]').click();
+  await library.locator('[data-browser-sample="pie"]').click();
+  await expect(preview).toHaveAttribute("aria-roledescription", "pie");
+  await expectWorkspace("Theme: Forest");
+  await library.getByRole("button", { name: "Apply theme", exact: true }).click();
+  await expectWorkspace("Theme: studio · Dark");
+  errors.assertNone();
+});
+
+for (const [id, name] of [["riso", "Riso"], ["pop-art", "Pop Art"], ["carbon-copy", "Carbon Copy"], ["paper-cut", "Paper Cut"]]) {
+  test(`the v0.10.0 ${name} link opens its native SVG preview directly`, async ({ page }) => {
+    const errors = monitorBrowserErrors(page);
+    await page.goto(`./?theme-design=${id}`, { waitUntil: "domcontentloaded" });
+    const library = themeLibrary(page);
+    await expectThemeDetail(library, name);
+    await expect(library.getByRole("button", { name: "Apply theme", exact: true })).toBeInViewport();
+    await expect(library.locator(`[data-browser-preset="${id}"]`)).toBeInViewport();
+    await expect(page.getByTestId("status-appearance")).toHaveText("Theme: Source / default");
+    errors.assertNone();
+  });
+}
+
+test("a retired theme link explains its absence and still opens current presets", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  await page.goto("./?theme-design=metro", { waitUntil: "domcontentloaded" });
+  const library = themeLibrary(page);
+  await expect(library.getByText(/metro.*unavailable|unavailable.*metro/i)).toBeVisible();
+  await expect(library.locator('[data-browser-preset="metro"]')).toHaveCount(0);
+  await library.locator('[data-browser-preset="riso"]').click();
+  await expectThemeDetail(library, "Riso");
+  await expect(page.getByTestId("status-appearance")).toHaveText("Theme: Source / default");
+  errors.assertNone();
 });
