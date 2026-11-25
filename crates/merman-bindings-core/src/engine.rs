@@ -230,10 +230,10 @@ impl BindingEngine {
     pub(crate) fn prepare_request_overlay(
         &self,
         operation: crate::BindingOperationKind,
-        options_json: &[u8],
+        options: common::BindingRequestOptions<'_>,
     ) -> Result<PreparedRequestOverlay, BindingError> {
         let overlay = common::parse_request_overlay_for_artifact(
-            options_json,
+            options,
             operation.resource_scope(),
             &self.artifact_contract,
         )?;
@@ -307,7 +307,7 @@ impl BindingEngine {
         };
         common::enforce_compact_options_budget(&options)?;
         let options = serde_json::to_vec(&options).map_err(common::internal_json_error)?;
-        self.prepare_request_overlay(operation, &options)
+        self.prepare_request_overlay(operation, common::BindingRequestOptions::Raw(&options))
     }
 
     pub(crate) fn execute_request_projection(

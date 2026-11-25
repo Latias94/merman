@@ -20,9 +20,10 @@ use merman_bindings_core::{
     ArtifactContractSpec, BINDING_OPERATION_SCHEMA_VERSION, BindingEngine, BindingEngineServices,
     BindingError, BindingErrorKind, BindingOperationKind, BindingOperationRequest,
     BindingPayloadSchemaKey, BindingStatus, BindingTransportKey, CAPABILITY_DESCRIPTOR_DIGEST,
-    CapabilityKey, ConstructorServiceKey, NODE_TRANSPORT_API_VERSION, OperationControl,
-    OperationKey, OperationPhase, RUNTIME_CATALOG_MAX_SAFE_INTEGER, RUNTIME_CATALOG_SCHEMA_VERSION,
-    RuntimePolicyExposure, TargetKey, ValidatedArtifactContract, build_icon_registry_from_json,
+    CapabilityKey, ConstructorServiceKey, DecodedOperationOptions, NODE_TRANSPORT_API_VERSION,
+    OperationControl, OperationKey, OperationPhase, RUNTIME_CATALOG_MAX_SAFE_INTEGER,
+    RUNTIME_CATALOG_SCHEMA_VERSION, RuntimePolicyExposure, TargetKey, ValidatedArtifactContract,
+    build_icon_registry_from_json,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -371,7 +372,6 @@ impl NodeOperationRequest {
     fn binding_request(&self, control: OperationControl) -> BindingOperationRequest<'_> {
         BindingOperationRequest::new(&self.operation_id, self.source.as_bytes())
             .with_optional_uri(self.uri.as_deref().map(str::as_bytes))
-            .with_options_json(self.options_json.as_deref().map_or(b"", str::as_bytes))
             .with_control(control)
     }
 }
@@ -607,13 +607,17 @@ fn execute_wire_inner(
     admitted_timeout_ms: Option<u32>,
 ) -> Result<String, BindingError> {
     let (request, operation) = prepare_wire_request(request_json, &control, admitted_timeout_ms)?;
+    let options = decode_operation_request_options(request.options_json.as_deref())?;
+    control
+        .checkpoint_at(OperationPhase::Admission)
+        .map_err(BindingError::cancelled)?;
     let operation_request = request.binding_request(control);
     if request.include_metadata {
-        success_envelope(engine.execute(operation_request)?)
+        success_envelope(engine.execute_with_decoded_options(operation_request, options)?)
     } else {
         success_data_envelope(
             operation.key(),
-            engine.execute_data(operation_request)?,
+            engine.execute_data_with_decoded_options(operation_request, options)?,
             None,
         )
     }
@@ -653,17 +657,16 @@ pub(crate) fn execute_svg_with_admitted_control(
         control
             .checkpoint_at(OperationPhase::Admission)
             .map_err(BindingError::cancelled)?;
-        validate_operation_request_options(options_json)?;
+        let decoded = decode_operation_request_options(options_json)?;
         control
             .checkpoint_at(OperationPhase::Admission)
             .map_err(BindingError::cancelled)?;
         let data = match options {
-            DirectSvgOptions::Json(options_json) => {
+            DirectSvgOptions::Json(_) => {
                 let request =
                     BindingOperationRequest::new(OperationKey::Svg.id(), source.as_bytes())
-                        .with_options_json(options_json.unwrap_or_default().as_bytes())
                         .with_control(control);
-                engine.execute_data(request)?
+                engine.execute_data_with_decoded_options(request, decoded)?
             }
             DirectSvgOptions::DiagramId(id) => {
                 engine.execute_svg_data_with_diagram_id(source.as_bytes(), id, control)?
@@ -772,10 +775,6 @@ fn prepare_wire_request(
         }
         (Some(_), Some(_)) | (None, None) => {}
     }
-    validate_operation_request_options(request.options_json.as_deref())?;
-    control
-        .checkpoint_at(OperationPhase::Admission)
-        .map_err(BindingError::cancelled)?;
     Ok((request, operation))
 }
 
@@ -790,7 +789,7 @@ pub(crate) fn error_envelope(error: &BindingError) -> String {
 #[cfg(test)]
 fn parse_operation_request(request_json: &str) -> Result<NodeOperationRequest, BindingError> {
     let request = parse_operation_request_framing(request_json)?;
-    validate_operation_request_options(request.options_json.as_deref())?;
+    decode_operation_request_options(request.options_json.as_deref())?;
     Ok(request)
 }
 
@@ -851,23 +850,22 @@ fn validate_operation_request_identity(
     Ok(operation)
 }
 
-fn validate_operation_request_options(options_json: Option<&str>) -> Result<(), BindingError> {
+fn decode_operation_request_options(
+    options_json: Option<&str>,
+) -> Result<Option<DecodedOperationOptions<'_>>, BindingError> {
+    let Some(options_json) = options_json else {
+        return Ok(None);
+    };
     let contract = node_wire_contract();
-    if let Some(options_json) = options_json {
-        ensure_field(
-            options_json,
-            "operation request options_json",
-            contract.fields.options_json_utf8_bytes,
-        )
+    let label = "operation request options_json";
+    ensure_field(options_json, label, contract.fields.options_json_utf8_bytes)
         .map_err(caller_options_error)?;
-        deserialize_bounded_json::<Value>(
-            options_json,
-            "operation request options_json",
-            contract.documents.binding_options,
-        )
+    validate_bounded_json_text(options_json, label, contract.documents.binding_options)
         .map_err(caller_options_error)?;
-    }
-    Ok(())
+    DecodedOperationOptions::decode(options_json, |error| {
+        caller_options_error(format!("{label} is not valid JSON: {error}"))
+    })
+    .map(Some)
 }
 
 fn validate_binding_options(options_json: &str) -> Result<(), BindingError> {
@@ -2070,6 +2068,15 @@ mod tests {
         let source = "flowchart LR\r\nA[\"北京😀\"] --> B[\"Café\"]\r\n%% quote: \"\\\t\r\n";
         let options = r#"{"site_config":{"htmlLabels":false},"svg":{"diagram_id":"direct-svg"}}"#;
         for operation in ["svg", "semantic-json"] {
+            let expected = engine
+                .execute(
+                    merman_bindings_core::BindingOperationRequest::new(
+                        operation,
+                        source.as_bytes(),
+                    )
+                    .with_options_json(options.as_bytes()),
+                )
+                .unwrap();
             let mut request = serde_json::json!({
                 "operation_id": operation,
                 "source": source,
@@ -2079,7 +2086,14 @@ mod tests {
             let full: serde_json::Value =
                 serde_json::from_str(&execute_wire(&engine, &request.to_string())).unwrap();
             assert_eq!(full["ok"], true);
-            assert!(full["result"]["metadata_json"].is_string());
+            assert_eq!(
+                full["result"]["data"].as_str().unwrap().as_bytes(),
+                expected.data(),
+            );
+            assert_eq!(
+                full["result"]["metadata_json"].as_str().unwrap().as_bytes(),
+                expected.metadata_json(),
+            );
             request["include_metadata"] = false.into();
             let data: serde_json::Value =
                 serde_json::from_str(&execute_wire(&engine, &request.to_string())).unwrap();
@@ -2140,6 +2154,39 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn decoded_request_options_keep_duplicate_keys_for_theme_diagnostics() {
+        let engine = create_engine("").unwrap();
+        let source = "flowchart LR\nA --> B";
+        let options = "{\n  \"theme\": {\n    \"schema_version\": 2,\n    \"extends\": \"studio\", \"extends\": \"paper-cut\"\n  }\n}";
+        let raw = merman_bindings_core::BindingOperationRequest::new("svg", source.as_bytes())
+            .with_options_json(options.as_bytes());
+        let expected = engine.execute_data(raw).unwrap_err();
+        assert!(expected.message().contains("duplicate key"));
+        let envelope = serde_json::json!({
+            "operation_id": "svg",
+            "source": source,
+            "options_json": options,
+            "include_metadata": false,
+        });
+        assert_eq!(
+            execute_wire(&engine, &envelope.to_string()),
+            error_envelope(&expected)
+        );
+        #[cfg(feature = "transport-napi")]
+        assert_eq!(
+            execute_svg_with_admitted_control(
+                &engine,
+                source,
+                DirectSvgOptions::Json(Some(options)),
+                admitted_operation_control(None),
+                None,
+            )
+            .unwrap_err(),
+            expected,
+        );
     }
 
     #[cfg(feature = "svg")]

@@ -839,6 +839,30 @@ pub(crate) struct BaseBindingOptions {
     has_analysis_wrapper: bool,
 }
 
+/// An options document decoded during transport admission.
+#[doc(hidden)]
+pub struct DecodedOperationOptions<'a> {
+    pub(crate) json: &'a str,
+    value: Value,
+}
+
+impl<'a> DecodedOperationOptions<'a> {
+    /// Retains the original JSON for consumers that diagnose embedded documents.
+    pub fn decode(
+        json: &'a str,
+        invalid_json: impl FnOnce(serde_json::Error) -> BindingError,
+    ) -> Result<Self, BindingError> {
+        enforce_options_json_byte_len(json.len())?;
+        let value = serde_json::from_str(json).map_err(invalid_json)?;
+        Ok(Self { json, value })
+    }
+}
+
+pub(crate) enum BindingRequestOptions<'a> {
+    Raw(&'a [u8]),
+    Decoded(DecodedOperationOptions<'a>),
+}
+
 #[cfg(any(feature = "svg", feature = "ascii"))]
 #[derive(Debug)]
 pub(crate) enum BindingThemeOverlay {
@@ -1558,18 +1582,21 @@ pub(crate) fn parse_request_overlay(
     resource_scope: BindingResourceScope,
 ) -> Result<BindingRequestOverlay, BindingError> {
     parse_request_overlay_for_artifact(
-        request_options_json,
+        BindingRequestOptions::Raw(request_options_json),
         resource_scope,
         &DEFAULT_ARTIFACT_SNAPSHOT,
     )
 }
 
 pub(crate) fn parse_request_overlay_for_artifact(
-    request_options_json: &[u8],
+    request_options: BindingRequestOptions<'_>,
     resource_scope: BindingResourceScope,
     artifact_contract: &ValidatedArtifactContract,
 ) -> Result<BindingRequestOverlay, BindingError> {
-    let request_value = options_json_value(request_options_json)?;
+    let (request_options_json, request_value) = match request_options {
+        BindingRequestOptions::Raw(json) => (json, options_json_value(json)?),
+        BindingRequestOptions::Decoded(options) => (options.json.as_bytes(), options.value),
+    };
     if is_unchanged_request(&request_value) {
         return Ok(BindingRequestOverlay::Unchanged);
     }
