@@ -1,6 +1,7 @@
 use rustc_hash::FxHashMap;
 
 use super::{SimNode, WorkControl};
+use crate::algo::grid_cells::reset_dense_cells;
 use crate::error::WorkFailure;
 use crate::work::admit_dynamic_work;
 
@@ -287,17 +288,7 @@ impl RepulsionGrid {
                 };
                 let target = usize::try_from(plan.total_cell_count)
                     .map_err(|_| WorkFailure::ArithmeticOverflow)?;
-                if target > cells.len() {
-                    cells
-                        .try_reserve_exact(target - cells.len())
-                        .map_err(|_| WorkFailure::ArithmeticOverflow)?;
-                    cells.resize_with(target, Vec::new);
-                } else {
-                    cells.truncate(target);
-                }
-                for cell in cells {
-                    cell.clear();
-                }
+                reset_dense_cells(cells, target)?;
             }
             RepulsionGridStorageKind::Sparse => {
                 if !matches!(self.cells, RepulsionGridCells::Sparse(_)) {
