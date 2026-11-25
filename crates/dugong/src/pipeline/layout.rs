@@ -11,9 +11,9 @@ use crate::work::{
     checked_unparented_parent_batch_work,
 };
 use crate::{
-    EdgeLabel, GraphLabel, LabelPos, NodeLabel, Point, RankDir, acyclic, add_border_segments,
-    coordinate_system, nesting_graph, normalize, order, parent_dummy_chains, position, rank,
-    self_edges, util,
+    DummyEdge, EdgeLabel, GraphLabel, LabelPos, NodeLabel, Point, RankDir, acyclic,
+    add_border_segments, coordinate_system, nesting_graph, normalize, order, parent_dummy_chains,
+    position, rank, self_edges, util,
 };
 use crate::{LayoutError, NoopWorkControl, WorkControl, WorkError};
 
@@ -514,7 +514,7 @@ fn run_layout(
             NodeLabel {
                 rank: Some(rank),
                 dummy: Some("edge-proxy".to_string()),
-                edge_obj: Some(ek),
+                dummy_edge: DummyEdge::RankProxy(Box::new(ek)),
                 ..Default::default()
             },
         );
@@ -987,7 +987,10 @@ fn write_edge_label_proxy_rank(
         if node.dummy.as_deref() != Some("edge-proxy") {
             return None;
         }
-        node.edge_obj.clone().map(|edge_obj| (edge_obj, node.rank))
+        let DummyEdge::RankProxy(key) = &node.dummy_edge else {
+            return None;
+        };
+        Some((key.as_ref().clone(), node.rank))
     });
     let Some((edge_obj, rank)) = writeback else {
         return;
@@ -1524,7 +1527,7 @@ mod tests {
             NodeLabel {
                 rank: Some(4),
                 dummy: Some("edge-proxy".to_string()),
-                edge_obj: Some(target.clone()),
+                dummy_edge: DummyEdge::RankProxy(Box::new(target.clone())),
                 ..Default::default()
             },
         );
@@ -1533,7 +1536,7 @@ mod tests {
             NodeLabel {
                 rank: Some(6),
                 dummy: Some("edge-proxy".to_string()),
-                edge_obj: Some(generated_target),
+                dummy_edge: DummyEdge::RankProxy(Box::new(generated_target)),
                 ..Default::default()
             },
         );
@@ -1542,7 +1545,7 @@ mod tests {
             NodeLabel {
                 rank: Some(5),
                 dummy: Some("other".to_string()),
-                edge_obj: Some(target.clone()),
+                dummy_edge: DummyEdge::RankProxy(Box::new(target.clone())),
                 ..Default::default()
             },
         );
@@ -1551,7 +1554,7 @@ mod tests {
             NodeLabel {
                 rank: Some(7),
                 dummy: Some("edge-proxy".to_string()),
-                edge_obj: Some(target),
+                dummy_edge: DummyEdge::RankProxy(Box::new(target)),
                 ..Default::default()
             },
         );
@@ -1667,7 +1670,7 @@ mod tests {
                 NodeLabel {
                     rank: Some(i32::try_from(index).unwrap()),
                     dummy: Some("edge-proxy".to_string()),
-                    edge_obj: Some(target.clone()),
+                    dummy_edge: DummyEdge::RankProxy(Box::new(target.clone())),
                     ..Default::default()
                 },
             );

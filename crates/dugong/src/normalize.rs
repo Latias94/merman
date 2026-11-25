@@ -5,7 +5,7 @@
 //! chain of rank-adjacent edges.
 
 use crate::graphlib::{EdgeKey, Graph};
-use crate::{EdgeLabel, GraphLabel, NodeLabel, Point};
+use crate::{DummyEdge, EdgeLabel, GraphLabel, NodeLabel, OriginalEdge, Point};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 #[derive(Default)]
@@ -117,13 +117,15 @@ fn normalize_edge(
     let w = e.w.clone();
     let name = e.name.clone();
     // Reparenting and undo find the original edge through GraphLabel::dummy_chains.
-    let mut original = Some((e, original_label));
+    let mut original = Some(OriginalEdge {
+        key: e,
+        label: original_label,
+    });
 
     for r in first_rank..w_rank {
-        let (edge_obj, edge_label) = match original.take() {
-            Some((edge, label)) => (Some(edge), Some(label)),
-            None => (None, None),
-        };
+        let dummy_edge = original
+            .take()
+            .map_or(DummyEdge::None, |edge| DummyEdge::Original(Box::new(edge)));
         let dummy_id = add_dummy_node(
             g,
             ids,
@@ -132,8 +134,7 @@ fn normalize_edge(
                 height: 0.0,
                 rank: Some(r),
                 dummy: Some("edge".to_string()),
-                edge_label,
-                edge_obj,
+                dummy_edge,
                 ..Default::default()
             },
             "_d",
@@ -194,10 +195,11 @@ pub fn undo(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
         let Some(start_node) = g.node(&start) else {
             continue;
         };
-        let Some(mut orig_label) = start_node.edge_label.clone() else {
-            continue;
-        };
-        let Some(edge_obj) = start_node.edge_obj.clone() else {
+        let Some(OriginalEdge {
+            key,
+            label: mut orig_label,
+        }) = start_node.dummy_edge.original().cloned()
+        else {
             continue;
         };
 
@@ -248,7 +250,7 @@ pub fn undo(g: &mut Graph<NodeLabel, EdgeLabel, GraphLabel>) {
             }
         }
 
-        restored_edges.push((edge_obj, orig_label));
+        restored_edges.push((key, orig_label));
     }
 
     g.remove_nodes(dummy_nodes.iter().map(String::as_str));

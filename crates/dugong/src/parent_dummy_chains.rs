@@ -28,9 +28,10 @@ pub(crate) fn parent_dummy_chains_controlled(
         let Some(node) = g.node(&v) else {
             continue;
         };
-        let Some(edge_obj) = node.edge_obj.clone() else {
+        let Some(edge) = node.dummy_edge.original() else {
             continue;
         };
+        let edge_obj = edge.key.clone();
 
         let path_data = find_path(g, &postorder_nums, &edge_obj.v, &edge_obj.w);
         let path = path_data.path;
@@ -123,12 +124,12 @@ fn parent_dummy_chain_path_work_units(
 
     let mut path_work = 0usize;
     for chain in &g.graph().dummy_chains {
-        let Some(edge) = g.node(chain).and_then(|node| node.edge_obj.as_ref()) else {
+        let Some(edge) = g.node(chain).and_then(|node| node.dummy_edge.original()) else {
             continue;
         };
         let endpoint_depth = checked_add(
-            depths.get(&edge.v).copied().unwrap_or(0),
-            depths.get(&edge.w).copied().unwrap_or(0),
+            depths.get(&edge.key.v).copied().unwrap_or(0),
+            depths.get(&edge.key.w).copied().unwrap_or(0),
         )?;
         path_work = checked_add(path_work, checked_add(endpoint_depth, 2)?)?;
     }

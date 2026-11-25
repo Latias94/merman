@@ -1,6 +1,6 @@
 use dugong::graphlib::{EdgeKey, Graph, GraphOptions};
 use dugong::parent_dummy_chains;
-use dugong::{EdgeLabel, GraphLabel, NodeLabel};
+use dugong::{DummyEdge, EdgeLabel, GraphLabel, NodeLabel, OriginalEdge};
 
 fn graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
     let mut g: Graph<NodeLabel, EdgeLabel, GraphLabel> = Graph::new(GraphOptions {
@@ -12,6 +12,13 @@ fn graph() -> Graph<NodeLabel, EdgeLabel, GraphLabel> {
     g
 }
 
+fn chain_head_edge() -> DummyEdge {
+    DummyEdge::Original(Box::new(OriginalEdge {
+        key: EdgeKey::new("a", "b", None::<String>),
+        label: EdgeLabel::default(),
+    }))
+}
+
 #[test]
 fn parent_dummy_chains_does_not_set_a_parent_if_both_tail_and_head_have_no_parent() {
     let mut g = graph();
@@ -20,7 +27,7 @@ fn parent_dummy_chains_does_not_set_a_parent_if_both_tail_and_head_have_no_paren
     g.set_node(
         "d1",
         NodeLabel {
-            edge_obj: Some(EdgeKey::new("a", "b", None::<String>)),
+            dummy_edge: chain_head_edge(),
             ..Default::default()
         },
     );
@@ -46,7 +53,7 @@ fn parent_dummy_chains_uses_the_tails_parent_for_the_first_node_if_it_is_not_the
     g.set_node(
         "d1",
         NodeLabel {
-            edge_obj: Some(EdgeKey::new("a", "b", None::<String>)),
+            dummy_edge: chain_head_edge(),
             rank: Some(2),
             ..Default::default()
         },
@@ -73,7 +80,7 @@ fn parent_dummy_chains_uses_the_heads_parent_for_the_first_node_if_tails_is_root
     g.set_node(
         "d1",
         NodeLabel {
-            edge_obj: Some(EdgeKey::new("a", "b", None::<String>)),
+            dummy_edge: chain_head_edge(),
             rank: Some(1),
             ..Default::default()
         },
@@ -100,7 +107,7 @@ fn parent_dummy_chains_handles_a_long_chain_starting_in_a_subgraph() {
     g.set_node(
         "d1",
         NodeLabel {
-            edge_obj: Some(EdgeKey::new("a", "b", None::<String>)),
+            dummy_edge: chain_head_edge(),
             rank: Some(2),
             ..Default::default()
         },
@@ -143,7 +150,7 @@ fn parent_dummy_chains_handles_a_long_chain_ending_in_a_subgraph() {
     g.set_node(
         "d1",
         NodeLabel {
-            edge_obj: Some(EdgeKey::new("a", "b", None::<String>)),
+            dummy_edge: chain_head_edge(),
             rank: Some(1),
             ..Default::default()
         },
@@ -220,7 +227,7 @@ fn parent_dummy_chains_handles_nested_subgraphs() {
         );
     }
     if let Some(n) = g.node_mut("d1") {
-        n.edge_obj = Some(EdgeKey::new("a", "b", None::<String>));
+        n.dummy_edge = chain_head_edge();
     }
     g.graph_mut().dummy_chains = vec!["d1".to_string()];
     g.set_path(&["a", "d1", "d2", "d3", "d4", "d5", "b"]);
@@ -257,7 +264,7 @@ fn parent_dummy_chains_handles_overlapping_rank_ranges() {
     g.set_node(
         "d1",
         NodeLabel {
-            edge_obj: Some(EdgeKey::new("a", "b", None::<String>)),
+            dummy_edge: chain_head_edge(),
             rank: Some(2),
             ..Default::default()
         },
@@ -310,7 +317,7 @@ fn parent_dummy_chains_handles_an_lca_that_is_not_the_root_1() {
     g.set_node(
         "d1",
         NodeLabel {
-            edge_obj: Some(EdgeKey::new("a", "b", None::<String>)),
+            dummy_edge: chain_head_edge(),
             rank: Some(2),
             ..Default::default()
         },
@@ -355,7 +362,7 @@ fn parent_dummy_chains_handles_an_lca_that_is_not_the_root_2() {
     g.set_node(
         "d1",
         NodeLabel {
-            edge_obj: Some(EdgeKey::new("a", "b", None::<String>)),
+            dummy_edge: chain_head_edge(),
             rank: Some(3),
             ..Default::default()
         },
