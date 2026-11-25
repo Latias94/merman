@@ -432,7 +432,9 @@ NORMAL_BUILD_CLAIMS = tuple(
     for profile_id, required, forbidden in (
         ("rust-model", ("merman-model",), MODEL_ASCII_FORBIDDEN_PACKAGES),
         ("rust-model-all", ("merman-model",), MODEL_ASCII_FORBIDDEN_PACKAGES),
-        ("rust-markup", ("merman-markup", "merman-model"), SOURCE_INGESTION_PACKAGES),
+        ("rust-markup", ("merman-markup",), SOURCE_INGESTION_PACKAGES + (
+            "merman-model", "serde_json", "html5ever", "htmlize", "ryu-js", "url",
+        )),
         ("rust-markup-full", ("merman-markup", "merman-model", "html5ever", "url"),
          SOURCE_INGESTION_PACKAGES),
         ("rust-ascii", ("merman-ascii", "merman-model"), MODEL_ASCII_FORBIDDEN_PACKAGES),

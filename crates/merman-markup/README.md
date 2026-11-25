@@ -5,7 +5,8 @@ Khroma-compatible color operations. Source ingestion and SVG output use the same
 implementation while retaining their own admission, resource budgets, and error
 conversion.
 
-Default features are empty. Select only the shared work a consumer needs:
+The default build has no runtime dependencies and provides the structural CSS checks.
+Select the additional features your consumer needs.
 
 | Feature | Module | Responsibility |
 | --- | --- | --- |
